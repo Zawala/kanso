@@ -7,6 +7,7 @@
 
 mod backup;
 mod doc;
+mod history;
 mod read;
 mod schema;
 mod sync;
@@ -20,7 +21,7 @@ use rusqlite::Connection;
 
 pub use backup::BackupPolicy;
 pub use doc::{Attachment, Doc};
-pub use read::{NoteSummary, SearchParams, Sort, StatusCounts};
+pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
 pub use sync::{ApplyOutcome, SyncDoc};
 pub use write::{Put, WriteResult};
 

@@ -537,3 +537,24 @@ fn subscribers_see_committed_changes() {
     assert!(failed.is_err());
     assert!(changes.try_recv().is_err());
 }
+
+#[test]
+fn recorded_revisions_show_up_in_history() {
+    let (_dir, store) = store();
+    let book = create(&store, DocType::Book, json!({"name": "B"}));
+    let note = create(
+        &store,
+        DocType::Note,
+        json!({"bookId": book, "title": "T", "body": "mine"}),
+    );
+    let fields = json!({"title": "T", "body": "unsaved draft"})
+        .as_object()
+        .unwrap()
+        .clone();
+    store
+        .record_revision(&note, "1-draft", &fields, Origin::Ui)
+        .unwrap();
+    let history = store.revisions(&note).unwrap();
+    assert_eq!(history[0].fields["body"], "unsaved draft");
+    assert_eq!(history[0].origin, "ui");
+}

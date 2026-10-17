@@ -31,7 +31,7 @@ pub struct WriteResult {
 /// Minimum gap between snapshots of UI autosaves of one document.
 const UI_SNAPSHOT_INTERVAL_MS: i64 = 5 * 60 * 1000;
 /// Snapshots kept per document.
-const SNAPSHOTS_PER_DOC: i64 = 50;
+pub(crate) const SNAPSHOTS_PER_DOC: i64 = 50;
 
 /// A row of `docs` as the write path needs it.
 pub(crate) struct Row {

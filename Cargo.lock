@@ -3375,7 +3375,15 @@ name = "kanso-app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-channel",
+ "fastrand",
  "gpui-kit",
+ "kanso-core",
+ "kanso-store",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

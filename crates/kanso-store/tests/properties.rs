@@ -329,3 +329,23 @@ proptest! {
         }
     }
 }
+
+proptest! {
+    #![proptest_config(config(64))]
+
+    /// Invariant: recorded revisions read back newest first, and a document
+    /// never keeps more than 50 of them.
+    #[test]
+    fn prop_recorded_revisions_are_bounded_and_newest_first(bodies in prop::collection::vec("\\PC{0,40}", 1..60)) {
+        let (_dir, store) = temp_store();
+        for (n, body) in bodies.iter().enumerate() {
+            let fields = json!({"title": format!("v{n}"), "body": body}).as_object().unwrap().clone();
+            store.record_revision("note:r1", &format!("{}-x", n + 1), &fields, Origin::Ui).unwrap();
+        }
+        let revisions = store.revisions("note:r1").unwrap();
+        prop_assert_eq!(revisions.len(), bodies.len().min(50));
+        let last = bodies.len() - 1;
+        prop_assert_eq!(&revisions[0].fields["body"], &json!(bodies[last]));
+        prop_assert_eq!(&revisions[0].rev, &format!("{}-x", last + 1));
+    }
+}

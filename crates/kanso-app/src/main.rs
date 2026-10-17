@@ -1,270 +1,188 @@
-//! M0 spike: gpui-kit's editor and markdown preview on a real note.
+//! Kanso: a Markdown notes app with an Inkdrop-compatible local API.
 //!
-//! Usage: `kanso <note.md> [--files <dir>] [--no-preview] [--bench]`
-//!
-//! `--files` resolves `inkdrop://file:<id>` images to `<dir>/<id>`.
-//! `--bench` types into the start, middle and end of the note, prints
-//! edit-to-frame latencies, then quits.
+//! `kanso` opens the app. Other commands run without a window; see `--help`.
 
-use std::{
-    cell::RefCell,
-    path::PathBuf,
-    rc::Rc,
-    time::{Duration, Instant},
-};
+mod config;
+mod dialogs;
+mod editor;
+mod library;
+mod note_list;
+mod paths;
+mod preview;
+mod services;
+mod sidebar;
+mod workspace;
 
-use anyhow::{Context as _, Result};
-use gpui_kit::base::text::TextView;
-use gpui_kit::component::input::{Editor, EditorState, InputEvent, Position};
-use gpui_kit::component::{ActiveTheme, StyledExt as _};
-use gpui_kit::prelude::FluentBuilder as _;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use anyhow::{Context as _, Result, bail};
 use gpui_kit::*;
+use kanso_store::{BackupPolicy, Store, lock_data_dir};
 
-const PREVIEW_DEBOUNCE: Duration = Duration::from_millis(150);
-const BENCH_EDITS_PER_SPOT: usize = 120;
+use crate::config::AppConfig;
+use crate::services::Services;
+use crate::workspace::{AppState, Quit, Workspace};
+
+const USAGE: &str = "\
+Usage: kanso [command] [--data-dir <dir>]
+
+Commands:
+  (none)    Open the app
+  help      Show this message
+
+The data folder defaults to ~/Library/Application Support/Kanso
+(or $KANSO_DATA_DIR).";
 
 struct Args {
-    note: PathBuf,
-    files: Option<PathBuf>,
-    preview: bool,
-    bench: bool,
+    command: Option<String>,
+    data_dir: PathBuf,
+    rest: Vec<String>,
 }
 
-impl Args {
-    fn parse() -> Result<Self> {
-        let mut note = None;
-        let mut files = None;
-        let mut preview = true;
-        let mut bench = false;
-        let mut args = std::env::args().skip(1);
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "--files" => files = Some(args.next().context("--files needs a directory")?.into()),
-                "--no-preview" => preview = false,
-                "--bench" => bench = true,
-                _ => note = Some(PathBuf::from(arg)),
+fn parse_args() -> Result<Args> {
+    let mut command = None;
+    let mut data_dir = None;
+    let mut rest = Vec::new();
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--data-dir" => {
+                data_dir = Some(PathBuf::from(
+                    args.next().context("--data-dir needs a folder")?,
+                ))
             }
-        }
-        Ok(Self {
-            note: note
-                .context("usage: kanso <note.md> [--files <dir>] [--no-preview] [--bench]")?,
-            files,
-            preview,
-            bench,
-        })
-    }
-}
-
-struct Spike {
-    editor: Entity<EditorState>,
-    preview: Entity<Preview>,
-    show_preview: bool,
-    preview_task: Option<Task<()>>,
-    _subscription: Subscription,
-}
-
-/// The rendered note, in its own view so it can be cached: re-laying out a
-/// large note on every keystroke frame would double the edit latency.
-struct Preview {
-    text: SharedString,
-    files_dir: Option<PathBuf>,
-}
-
-impl Preview {
-    fn image_resolver(&self) -> impl Fn(&SharedUri) -> ImageSource + Send + Sync + 'static {
-        let files_dir = self.files_dir.clone();
-        move |uri| match (uri.strip_prefix("inkdrop://file:"), &files_dir) {
-            (Some(id), Some(dir)) => ImageSource::from(dir.join(id)),
-            _ => ImageSource::from(uri.clone()),
+            "-h" | "--help" => command = Some("help".to_owned()),
+            // macOS adds this when launching from Finder.
+            arg if arg.starts_with("-psn_") => {}
+            _ if command.is_none() && !arg.starts_with('-') => command = Some(arg),
+            _ => rest.push(arg),
         }
     }
-}
-
-impl Render for Preview {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .id("preview")
-            .size_full()
-            .p_4()
-            .border_l_1()
-            .border_color(cx.theme().border)
-            .overflow_y_scroll()
-            .child(
-                TextView::markdown("preview-text", self.text.clone())
-                    .image_source(self.image_resolver()),
-            )
-    }
-}
-
-impl Spike {
-    fn new(args: &Args, body: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let editor = cx.new(|cx| {
-            EditorState::new(window, cx)
-                .language("markdown")
-                .line_number(false)
-                .folding(false)
-                .indent_guides(false)
-                .soft_wrap(true)
-        });
-
-        let loaded = Instant::now();
-        let chars = body.len();
-        editor.update(cx, |state, cx| state.set_value(body.clone(), window, cx));
-        window.on_next_frame(move |_, _| {
-            eprintln!("load: {chars} bytes rendered in {:?}", loaded.elapsed());
-        });
-
-        let subscription = cx.subscribe_in(&editor, window, |this, _, event, window, cx| {
-            if matches!(event, InputEvent::Change) {
-                this.schedule_preview(window, cx);
-            }
-        });
-
-        let preview = cx.new(|_| Preview {
-            text: body.into(),
-            files_dir: args.files.clone(),
-        });
-
-        Self {
-            editor,
-            preview,
-            show_preview: args.preview,
-            preview_task: None,
-            _subscription: subscription,
-        }
-    }
-
-    fn schedule_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.show_preview {
-            return;
-        }
-        self.preview_task = Some(cx.spawn_in(window, async move |this, cx| {
-            cx.background_executor().timer(PREVIEW_DEBOUNCE).await;
-            this.update(cx, |this, cx| {
-                let text = this.editor.read(cx).value();
-                this.preview.update(cx, |preview, cx| {
-                    preview.text = text;
-                    cx.notify();
-                });
-            })
-            .ok();
-        }));
-    }
-}
-
-impl Render for Spike {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .h_flex()
-            .size_full()
-            .bg(cx.theme().background)
-            .child(
-                div()
-                    .flex_1()
-                    .h_full()
-                    .p_4()
-                    .child(Editor::new(&self.editor).bordered(false).h_full()),
-            )
-            .when(self.show_preview, |el| {
-                el.child(
-                    self.preview
-                        .clone()
-                        .cached(StyleRefinement::default().flex_1().h_full()),
-                )
-            })
-    }
-}
-
-/// Types into the start, middle and end of the note, one edit per frame, and
-/// records how long each edit takes to reach the screen.
-fn run_bench(editor: Entity<EditorState>, window: &mut Window, cx: &mut App) {
-    let rows = editor.read(cx).value().lines().count().saturating_sub(1) as u32;
-    let spots = [("start", 0), ("middle", rows / 2), ("end", rows)];
-    let samples: Rc<RefCell<Vec<(&'static str, Duration)>>> = Rc::default();
-    let plan: Vec<(&'static str, u32)> = spots
-        .into_iter()
-        .flat_map(|spot| std::iter::repeat_n(spot, BENCH_EDITS_PER_SPOT))
-        .collect();
-    bench_step(editor, plan, 0, samples, window, cx);
-}
-
-fn bench_step(
-    editor: Entity<EditorState>,
-    plan: Vec<(&'static str, u32)>,
-    index: usize,
-    samples: Rc<RefCell<Vec<(&'static str, Duration)>>>,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    let Some(&(spot, row)) = plan.get(index) else {
-        report_bench(&samples.borrow());
-        cx.quit();
-        return;
-    };
-    let first_at_spot = index == 0 || plan[index - 1].0 != spot;
-    let started = Instant::now();
-    editor.update(cx, |state, cx| {
-        if first_at_spot {
-            state.set_cursor_position(Position::new(row, 0), window, cx);
-        }
-        state.replace_text_in_range(None, "x", window, cx);
-    });
-    window.on_next_frame(move |window, cx| {
-        samples.borrow_mut().push((spot, started.elapsed()));
-        bench_step(editor, plan, index + 1, samples, window, cx);
-    });
-}
-
-fn report_bench(samples: &[(&'static str, Duration)]) {
-    for spot in ["start", "middle", "end"] {
-        let mut times: Vec<Duration> = samples
-            .iter()
-            .filter(|(s, _)| *s == spot)
-            .map(|(_, d)| *d)
-            .collect();
-        times.sort();
-        if times.is_empty() {
-            continue;
-        }
-        let pct = |p: f64| times[((times.len() - 1) as f64 * p).round() as usize];
-        eprintln!(
-            "bench {spot:>6}: n={} p50={:?} p95={:?} max={:?}",
-            times.len(),
-            pct(0.5),
-            pct(0.95),
-            times[times.len() - 1]
-        );
-    }
+    Ok(Args {
+        command,
+        data_dir: data_dir.unwrap_or_else(paths::default_data_dir),
+        rest,
+    })
 }
 
 fn main() -> Result<()> {
-    let args = Args::parse()?;
-    let body = std::fs::read_to_string(&args.note)
-        .with_context(|| format!("reading {}", args.note.display()))?;
+    let args = parse_args()?;
+    match args.command.as_deref() {
+        None => run_app(args.data_dir),
+        Some("help") => {
+            println!("{USAGE}");
+            Ok(())
+        }
+        Some(other) => bail!("unknown command `{other}`\n\n{USAGE}"),
+    }
+}
 
-    application().run(move |cx| {
+/// Loads the settings, filling in API credentials on first run.
+fn load_config(data_dir: &std::path::Path) -> Result<AppConfig> {
+    let path = paths::config_path(data_dir);
+    let mut config =
+        AppConfig::load(&path).with_context(|| format!("reading {}", path.display()))?;
+    if config.ensure_credentials() {
+        config.save(&path)?;
+    }
+    Ok(config)
+}
+
+fn run_app(data_dir: PathBuf) -> Result<()> {
+    std::fs::create_dir_all(&data_dir)
+        .with_context(|| format!("creating {}", data_dir.display()))?;
+    let Some(lock) = lock_data_dir(&data_dir)? else {
+        bail!(
+            "Kanso is already running with the data folder {}",
+            data_dir.display()
+        );
+    };
+    let config = load_config(&data_dir)?;
+    let store = Arc::new(Store::open(paths::db_path(&data_dir))?);
+
+    // A daily snapshot of the database, off the main thread.
+    let backup_store = store.clone();
+    let policy = BackupPolicy::daily(paths::backups_dir(&data_dir));
+    std::thread::spawn(move || {
+        if let Err(err) = backup_store.backup_if_due(&policy, kanso_core::now_ms()) {
+            eprintln!("kanso: backup failed: {err}");
+        }
+    });
+
+    let app = application();
+    app.on_reopen(|cx| {
+        if cx.windows().is_empty() {
+            open_main_window(cx);
+        }
+    });
+    app.run(move |cx| {
         gpui_kit::init(cx);
-        let bounds = Bounds::centered(None, size(px(1400.), px(900.)), cx);
-        let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
-            ..Default::default()
-        };
-        let bench = args.bench;
-        let (window, view) = gpui_kit::open_window(options, cx, |window, cx| {
-            cx.new(|cx| Spike::new(&args, body, window, cx))
-        })
-        .expect("failed to open window");
+        cx.set_global(AppState {
+            store,
+            data_dir,
+            config,
+        });
+        cx.set_global(Services::default());
+        workspace::bind_keys(cx);
+        note_list::bind_keys(cx);
+        workspace::set_menus(cx);
+        cx.on_action(|_: &Quit, cx| quit(cx));
+        open_main_window(cx);
         cx.activate(true);
+        // Held until the process exits so no second Kanso opens this folder.
+        let _ = &lock;
+        std::mem::forget(lock);
+    });
+    Ok(())
+}
 
-        if bench {
+fn open_main_window(cx: &mut App) {
+    let bounds = Bounds::centered(None, size(px(1360.), px(860.)), cx);
+    let options = WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        titlebar: Some(TitlebarOptions {
+            title: Some("Kanso".into()),
+            ..Default::default()
+        }),
+        window_min_size: Some(size(px(720.), px(420.))),
+        ..Default::default()
+    };
+    let theme = cx.global::<AppState>().config.appearance.theme;
+    let opened = gpui_kit::open_window(options, cx, |window, cx| {
+        workspace::apply_theme(theme, Some(window), cx);
+        cx.new(|cx| Workspace::new(window, cx))
+    });
+    match opened {
+        Ok((window, view)) => {
             window
                 .update(cx, |_, window, cx| {
                     let editor = view.read(cx).editor.clone();
-                    // Let the initial layout settle before typing.
-                    window.on_next_frame(move |window, cx| run_bench(editor, window, cx));
+                    window.on_window_should_close(cx, move |_, cx| {
+                        editor.update(cx, |editor, cx| editor.flush(cx));
+                        true
+                    });
                 })
                 .ok();
         }
-    });
-    Ok(())
+        Err(err) => eprintln!("kanso: couldn't open a window: {err:#}"),
+    }
+}
+
+/// Saves open notes, then quits.
+fn quit(cx: &mut App) {
+    for window in cx.windows() {
+        window
+            .update(cx, |root, _, cx| {
+                if let Ok(root) = root.downcast::<gpui_kit::base::Root>() {
+                    let view = root.read(cx).view().clone();
+                    if let Ok(workspace) = view.downcast::<Workspace>() {
+                        let editor = workspace.read(cx).editor.clone();
+                        editor.update(cx, |editor, cx| editor.flush(cx));
+                    }
+                }
+            })
+            .ok();
+    }
+    cx.quit();
 }
