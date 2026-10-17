@@ -6,6 +6,7 @@ mod config;
 mod dialogs;
 mod editor;
 mod export;
+mod history;
 mod inkdrop;
 mod library;
 mod note_list;

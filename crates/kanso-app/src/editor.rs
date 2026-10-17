@@ -46,6 +46,9 @@ pub struct NoteEditor {
     preview_task: Option<Task<()>>,
     /// A newer version from elsewhere that arrived over unsaved edits.
     incoming: Option<Note>,
+    /// Notes that link here: (id, title).
+    backlinks: Vec<(String, String)>,
+    backlinks_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -98,6 +101,8 @@ impl NoteEditor {
             autosave: None,
             preview_task: None,
             incoming: None,
+            backlinks: Vec::new(),
+            backlinks_task: None,
             _subscriptions: subscriptions,
         }
     }
@@ -169,6 +174,7 @@ impl NoteEditor {
         let text: SharedString = body.into();
         self.preview
             .update(cx, |preview, cx| preview.set_text(text, cx));
+        self.refresh_backlinks(cx);
         cx.notify();
     }
 
@@ -390,7 +396,35 @@ impl NoteEditor {
         cx.notify();
     }
 
+    /// Finds the notes that link to the open one, in the background.
+    pub fn refresh_backlinks(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.note_id().map(str::to_owned) else {
+            self.backlinks.clear();
+            self.backlinks_task = None;
+            return;
+        };
+        let store = self.store.clone();
+        let search = cx
+            .background_executor()
+            .spawn(async move { backlinks(&store, &id) });
+        self.backlinks_task = Some(cx.spawn(async move |this, cx| {
+            let found = search.await;
+            this.update(cx, |this, cx| {
+                if this.backlinks != found {
+                    this.backlinks = found;
+                    cx.notify();
+                }
+            })
+            .ok();
+        }));
+    }
+
+    pub fn current_version(&self, cx: &App) -> (String, String) {
+        self.current_text(cx)
+    }
+
     /// Replaces the editor's text with an earlier version, as a normal edit.
+    /// The text it replaces is kept in history first.
     pub fn restore(
         &mut self,
         title: String,
@@ -398,6 +432,17 @@ impl NoteEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.flush(cx);
+        if let Some(note) = &self.note {
+            let (current_title, current_body) = self.current_text(cx);
+            let mut fields = serde_json::Map::new();
+            fields.insert("title".into(), current_title.into());
+            fields.insert("body".into(), current_body.into());
+            let rev = note.rev.clone().unwrap_or_default();
+            self.store
+                .record_revision(&note.id, &rev, &fields, Origin::Ui)
+                .ok();
+        }
         self.title
             .update(cx, |state, cx| state.set_value(title, window, cx));
         self.body
@@ -573,6 +618,22 @@ impl NoteEditor {
                 "Preview only",
                 cx,
             ))
+            .child(
+                Button::new("note-menu")
+                    .ghost()
+                    .small()
+                    .icon(IconName::Ellipsis)
+                    .tooltip("More")
+                    .dropdown_menu(|menu, _, _| {
+                        menu.menu("History…", Box::new(crate::workspace::ShowHistory))
+                            .menu(
+                                "Export as Markdown…",
+                                Box::new(crate::workspace::ExportNote),
+                            )
+                            .separator()
+                            .menu("Move to Trash", Box::new(crate::workspace::TrashNote))
+                    }),
+            )
     }
 
     fn view_mode_button(
@@ -590,6 +651,42 @@ impl NoteEditor {
             .tooltip(tooltip)
             .selected(self.view_mode == mode)
             .on_click(cx.listener(move |this, _, _, cx| this.set_view_mode(mode, cx)))
+    }
+
+    fn render_backlinks(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let chips = self.backlinks.iter().enumerate().map(|(ix, (id, title))| {
+            let library = self.library.clone();
+            let id = id.clone();
+            div()
+                .id(("backlink", ix))
+                .px_2()
+                .rounded_md()
+                .cursor_pointer()
+                .text_color(cx.theme().link)
+                .hover(|el| el.bg(cx.theme().muted))
+                .child(if title.trim().is_empty() {
+                    "Untitled".to_owned()
+                } else {
+                    title.clone()
+                })
+                .on_click(move |_, _, cx| {
+                    library.update(cx, |library, cx| library.select(Some(id.clone()), cx));
+                })
+        });
+        h_flex()
+            .flex_wrap()
+            .gap_1()
+            .px_4()
+            .py_1()
+            .text_xs()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(
+                div()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Linked from"),
+            )
+            .children(chips)
     }
 
     fn render_incoming_banner(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -677,6 +774,9 @@ impl Render for NoteEditor {
             .when(self.incoming.is_some(), |el| {
                 el.child(self.render_incoming_banner(cx))
             })
+            .when(!self.backlinks.is_empty(), |el| {
+                el.child(self.render_backlinks(cx))
+            })
             .child(
                 h_flex()
                     .flex_1()
@@ -710,5 +810,79 @@ impl Render for NoteEditor {
                     }),
             )
             .into_any_element()
+    }
+}
+
+/// Notes outside the trash whose body links to note `id`, as (id, title).
+pub fn backlinks(store: &Store, id: &str) -> Vec<(String, String)> {
+    let Some(suffix) = id.strip_prefix("note:") else {
+        return Vec::new();
+    };
+    let target = format!("inkdrop://note/{suffix}");
+    let query = kanso_core::Query {
+        clauses: vec![kanso_core::Clause {
+            negated: false,
+            field: Some(kanso_core::Field::Body),
+            value: target.clone(),
+        }],
+    };
+    let params = kanso_store::SearchParams {
+        query,
+        ..Default::default()
+    };
+    store
+        .search_summaries(&params)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|n| n.id != id)
+        .filter(|n| {
+            // The search matches substrings; make sure the ID isn't just a
+            // prefix of a longer one.
+            store.note(&n.id).ok().flatten().is_some_and(|note| {
+                kanso_core::tasks::linked_note_ids(&note.body)
+                    .iter()
+                    .any(|linked| linked == id)
+            })
+        })
+        .map(|n| (n.id, n.title))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::backlinks;
+    use kanso_core::DocType;
+    use kanso_store::{Origin, Put, Store};
+    use proptest::prelude::*;
+    use serde_json::json;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(48))]
+
+        /// Model-based: backlinks are exactly the other live notes whose
+        /// links include the note, even when one ID is a prefix of another.
+        #[test]
+        fn prop_backlinks_match_the_link_graph(links in prop::collection::vec((prop::collection::vec(0usize..6, 0..4), any::<bool>()), 1..6)) {
+            let dir = tempfile::tempdir().unwrap();
+            let store = Store::open(dir.path().join("kanso.db")).unwrap();
+            let book = store.put(DocType::Book, json!({"name": "B"}), Put::Upsert, Origin::Ui).unwrap().id;
+            // IDs n, nn, nnn… so shorter IDs are prefixes of longer ones.
+            let ids: Vec<String> = (0..6).map(|i| format!("note:{}", "n".repeat(i + 1))).collect();
+            for (ix, (targets, trashed)) in links.iter().enumerate() {
+                let body: String = targets.iter().map(|t| format!("[x](inkdrop://note/{}) ", &ids[*t][5..])).collect();
+                let book_id = if *trashed { "trash".to_owned() } else { book.clone() };
+                store.put(DocType::Note, json!({"_id": ids[ix], "title": format!("t{ix}"), "body": body, "bookId": book_id}), Put::Upsert, Origin::Ui).unwrap();
+            }
+            for (target, id) in ids.iter().enumerate() {
+                let mut expected: Vec<String> = links.iter().enumerate()
+                    .filter(|(ix, (targets, trashed))| *ix != target && !*trashed && targets.contains(&target))
+                    .map(|(ix, _)| ids[ix].clone())
+                    .collect();
+                expected.sort();
+                let mut found: Vec<String> = backlinks(&store, id).into_iter().map(|(id, _)| id).collect();
+                found.sort();
+                prop_assert_eq!(found, expected);
+            }
+        }
     }
 }

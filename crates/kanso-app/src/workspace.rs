@@ -181,8 +181,12 @@ impl Workspace {
                 }
                 LibraryEvent::Changed(change) => {
                     let change = change.clone();
-                    this.editor
-                        .update(cx, |editor, cx| editor.on_store_change(&change, window, cx));
+                    this.editor.update(cx, |editor, cx| {
+                        editor.on_store_change(&change, window, cx);
+                        if change.id.starts_with("note:") {
+                            editor.refresh_backlinks(cx);
+                        }
+                    });
                 }
             }),
             cx.subscribe_in(&sidebar, window, |this, _, event, window, cx| {
@@ -706,6 +710,10 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|this, _: &TrashNote, _, cx| {
                 this.editor.update(cx, |editor, cx| editor.trash(cx));
+            }))
+            .on_action(cx.listener(|this, _: &ShowHistory, window, cx| {
+                this.flush(cx);
+                crate::history::open_history(this.editor.clone(), window, cx);
             }))
             .on_action(cx.listener(|this, _: &ExportNote, window, cx| {
                 let id = this.editor.read(cx).note_id().map(str::to_owned);
