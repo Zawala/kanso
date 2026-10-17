@@ -8,11 +8,13 @@ mod editor;
 mod export;
 mod history;
 mod inkdrop;
+mod launch;
 mod library;
 mod note_list;
 mod paths;
 mod preview;
 mod services;
+mod settings;
 mod sidebar;
 mod workspace;
 
@@ -136,6 +138,7 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
         note_list::bind_keys(cx);
         workspace::set_menus(cx);
         cx.on_action(|_: &Quit, cx| quit(cx));
+        cx.on_action(|_: &workspace::OpenSettings, cx| settings::SettingsWindow::open(cx));
         open_main_window(cx);
         cx.activate(true);
         // Held until the process exits so no second Kanso opens this folder.
@@ -205,18 +208,8 @@ fn offer_first_import(window: &mut Window, cx: &mut App) {
 
 /// Saves open notes, then quits.
 fn quit(cx: &mut App) {
-    for window in cx.windows() {
-        window
-            .update(cx, |root, _, cx| {
-                if let Ok(root) = root.downcast::<gpui_kit::base::Root>() {
-                    let view = root.read(cx).view().clone();
-                    if let Ok(workspace) = view.downcast::<Workspace>() {
-                        let editor = workspace.read(cx).editor.clone();
-                        editor.update(cx, |editor, cx| editor.flush(cx));
-                    }
-                }
-            })
-            .ok();
-    }
+    workspace::for_each_workspace(cx, |workspace, cx| {
+        workspace.editor.update(cx, |editor, cx| editor.flush(cx));
+    });
     cx.quit();
 }

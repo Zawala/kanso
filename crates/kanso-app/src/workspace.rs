@@ -129,6 +129,26 @@ pub fn set_menus(cx: &mut App) {
     ]);
 }
 
+/// Runs `f` on the workspace in every main window.
+pub fn for_each_workspace(
+    cx: &mut App,
+    mut f: impl FnMut(&mut Workspace, &mut Context<Workspace>),
+) {
+    for window in cx.windows() {
+        window
+            .update(cx, |root, _, cx| {
+                let Ok(root) = root.downcast::<gpui_kit::base::Root>() else {
+                    return;
+                };
+                let view = root.read(cx).view().clone();
+                if let Ok(workspace) = view.downcast::<Workspace>() {
+                    workspace.update(cx, |workspace, cx| f(workspace, cx));
+                }
+            })
+            .ok();
+    }
+}
+
 pub fn apply_theme(preference: ThemePreference, window: Option<&mut Window>, cx: &mut App) {
     match preference {
         ThemePreference::System => Theme::sync_system_appearance(window, cx),

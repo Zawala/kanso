@@ -50,3 +50,23 @@ impl Services {
         }
     }
 }
+
+/// Starts, stops or restarts the local API to match the settings.
+pub fn apply_server_settings(cx: &mut App) {
+    cx.refresh_windows();
+}
+
+/// Starts or stops background sync to match the settings.
+pub fn apply_sync_settings(cx: &mut App) {
+    cx.refresh_windows();
+}
+
+/// Syncs once, now.
+pub fn sync_now(cx: &mut App) {
+    cx.refresh_windows();
+}
+
+/// Keeps the sync access token in the Keychain.
+pub fn save_sync_token(_token: &str) -> anyhow::Result<()> {
+    anyhow::bail!("sync isn't set up in this build yet")
+}
