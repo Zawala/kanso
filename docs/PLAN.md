@@ -133,6 +133,21 @@ queries; terms under 3 characters fall back to an `instr` scan). Qualifiers: `bo
 | M5 | Native `/mcp` endpoint | Same 17 tools, outputs match the Node server |
 | M6 | Polish | Backlinks panel, Markdown export, settings, launch at login, revisions UI |
 
+### Status (2026-10-17)
+
+All milestones are built and tested.
+
+- M0: the automated criteria pass (load, edit latency, preview). IME, press-and-hold accents, emoji
+  and undo grouping still need a hands-on check.
+- M1: the real library imported (823 notes, 43 notebooks, 28 tags, 15 attachments, all verified);
+  a second import changes nothing.
+- M2 and M5: the real `@inkdropapp/mcp-server` runs all 17 tools against Kanso, and `/mcp` gives the
+  same results (`crates/kanso-server/tests/contract.rs`).
+- M4: deployed to Cloudflare and checked end to end between two data folders.
+- Inkdrop's stored task counts were stale on 21 notes; Kanso recounts from the body like GFM does.
+- Inkdrop's API credentials are encrypted with Electron safeStorage, so copying them needs the
+  "Inkdrop Safe Storage" Keychain item, which macOS asks the user to allow.
+
 ### M0 go/no-go
 
 - The 253 KB note opens in under 200 ms.
