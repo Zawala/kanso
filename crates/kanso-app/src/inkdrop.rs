@@ -92,7 +92,7 @@ pub struct ImportView {
 
 enum Message {
     Progress(Progress),
-    Done(Result<ImportReport, String>),
+    Done(Result<Box<ImportReport>, String>),
 }
 
 impl ImportView {
@@ -103,15 +103,17 @@ impl ImportView {
             let result = kanso_import::import(&source, &store, move |progress| {
                 progress_tx.try_send(Message::Progress(progress)).ok();
             });
-            tx.try_send(Message::Done(result.map_err(|err| format!("{err:#}"))))
-                .ok();
+            tx.try_send(Message::Done(
+                result.map(Box::new).map_err(|err| format!("{err:#}")),
+            ))
+            .ok();
         });
         let task = cx.spawn(async move |this, cx| {
             while let Ok(message) = rx.recv().await {
                 let alive = this.update(cx, |this, cx| {
                     this.state = match message {
                         Message::Progress(progress) => ImportState::Running(progress),
-                        Message::Done(Ok(report)) => ImportState::Done(Box::new(report)),
+                        Message::Done(Ok(report)) => ImportState::Done(report),
                         Message::Done(Err(err)) => ImportState::Failed(err),
                     };
                     cx.notify();

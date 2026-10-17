@@ -24,6 +24,13 @@ pub enum SidebarEvent {
     EmptyTrash,
 }
 
+/// What a sidebar row shows.
+struct Entry {
+    icon: AnyElement,
+    label: SharedString,
+    count: u32,
+}
+
 pub struct Sidebar {
     library: Entity<Library>,
     scroll: ScrollHandle,
@@ -44,12 +51,11 @@ impl Sidebar {
         &self,
         id: impl Into<ElementId>,
         filter: Filter,
-        icon: Option<AnyElement>,
-        label: SharedString,
-        count: Option<u32>,
+        entry: Entry,
         depth: usize,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
+        let Entry { icon, label, count } = entry;
         let selected = self.library.read(cx).filter == filter;
         let theme = cx.theme();
         let library = self.library.clone();
@@ -69,16 +75,14 @@ impl Sidebar {
             .when(!selected, |el| {
                 el.hover(|el| el.bg(theme.sidebar_accent.opacity(0.5)))
             })
-            .when_some(icon, |el, icon| el.child(icon))
+            .child(icon)
             .child(div().flex_1().min_w_0().truncate().child(label))
-            .when_some(count, |el, count| {
-                el.child(
-                    div()
-                        .text_xs()
-                        .text_color(theme.muted_foreground)
-                        .child(count.to_string()),
-                )
-            })
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(count.to_string()),
+            )
             .on_click(move |_, _, cx| {
                 library.update(cx, |library, cx| library.set_filter(filter.clone(), cx));
             })
@@ -132,18 +136,22 @@ impl Render for Sidebar {
             .child(self.row(
                 "all",
                 Filter::All,
-                Some(self.icon(IconName::Inbox, cx)),
-                "All Notes".into(),
-                Some(counts.all),
+                Entry {
+                    icon: self.icon(IconName::Inbox, cx),
+                    label: "All Notes".into(),
+                    count: counts.all,
+                },
                 0,
                 cx,
             ))
             .child(self.row(
                 "pinned",
                 Filter::Pinned,
-                Some(self.icon(IconName::Star, cx)),
-                "Pinned".into(),
-                Some(counts.pinned),
+                Entry {
+                    icon: self.icon(IconName::Star, cx),
+                    label: "Pinned".into(),
+                    count: counts.pinned,
+                },
                 0,
                 cx,
             ));
@@ -163,9 +171,11 @@ impl Render for Sidebar {
                 .row(
                     SharedString::from(format!("book-{id}")),
                     Filter::Book(id.clone()),
-                    Some(self.icon(IconName::Folder, cx)),
-                    name.into(),
-                    Some(count),
+                    Entry {
+                        icon: self.icon(IconName::Folder, cx),
+                        label: name.into(),
+                        count,
+                    },
                     depth,
                     cx,
                 )
@@ -205,9 +215,11 @@ impl Render for Sidebar {
             list = list.child(self.row(
                 SharedString::from(format!("status-{}", status.as_str())),
                 Filter::Status(status),
-                Some(self.icon(status_icon(status), cx)),
-                status.label().into(),
-                Some(count),
+                Entry {
+                    icon: self.icon(status_icon(status), cx),
+                    label: status.label().into(),
+                    count,
+                },
                 0,
                 cx,
             ));
@@ -234,9 +246,11 @@ impl Render for Sidebar {
                 .row(
                     SharedString::from(format!("tag-{id}")),
                     Filter::Tag(id.clone()),
-                    Some(dot),
-                    name.into(),
-                    Some(count),
+                    Entry {
+                        icon: dot,
+                        label: name.into(),
+                        count,
+                    },
                     0,
                     cx,
                 )
@@ -276,9 +290,11 @@ impl Render for Sidebar {
             self.row(
                 "trash",
                 Filter::Trash,
-                Some(self.icon(IconName::Delete, cx)),
-                "Trash".into(),
-                Some(counts.trash),
+                Entry {
+                    icon: self.icon(IconName::Delete, cx),
+                    label: "Trash".into(),
+                    count: counts.trash,
+                },
                 0,
                 cx,
             )

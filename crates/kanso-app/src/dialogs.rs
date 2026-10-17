@@ -7,6 +7,9 @@ use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::*;
 
+type TextHandler = Rc<dyn Fn(String, &mut Window, &mut App)>;
+type ConfirmHandler = Rc<dyn Fn(&mut Window, &mut App)>;
+
 /// Asks for a line of text. `on_ok` gets the trimmed, non-empty answer.
 pub fn prompt_text(
     title: impl Into<SharedString>,
@@ -20,7 +23,7 @@ pub fn prompt_text(
     let ok_label = ok_label.into();
     let initial = initial.to_owned();
     let input = cx.new(|cx| InputState::new(window, cx).default_value(initial));
-    let on_ok: Rc<dyn Fn(String, &mut Window, &mut App)> = Rc::new(on_ok);
+    let on_ok: TextHandler = Rc::new(on_ok);
 
     // Enter in the field submits, like the OK button.
     let handle = window.window_handle();
@@ -80,7 +83,7 @@ pub fn confirm(
     let title = title.into();
     let description = description.into();
     let ok_label = ok_label.into();
-    let on_ok: Rc<dyn Fn(&mut Window, &mut App)> = Rc::new(on_ok);
+    let on_ok: ConfirmHandler = Rc::new(on_ok);
     window.open_alert_dialog(cx, move |alert, _, _| {
         let on_ok = on_ok.clone();
         alert
