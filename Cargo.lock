@@ -3391,6 +3391,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "kanso-import"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "kanso-core",
+ "kanso-store",
+ "proptest",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "kanso-store"
 version = "0.1.0"
 dependencies = [

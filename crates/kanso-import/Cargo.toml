@@ -1,0 +1,18 @@
+[package]
+name = "kanso-import"
+description = "Imports an Inkdrop database (PouchDB on SQLite) into Kanso's store."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+base64.workspace = true
+kanso-core.workspace = true
+kanso-store.workspace = true
+rusqlite.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
