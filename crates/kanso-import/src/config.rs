@@ -32,7 +32,7 @@ pub enum InkdropCredentials {
     /// `"username:password"` (split at the first colon) or `{username, password}`.
     Basic { username: String, password: String },
     /// Electron `safeStorage` ciphertext: base64 of `v10`/`v11` followed by
-    /// AES-CBC data. Only the macOS Keychain item "Inkdrop Safe Storage" can
+    /// AES-CBC data. Only the macOS Keychain item "inkdrop Safe Storage" can
     /// decrypt it, so the username and password are not available here.
     Encrypted { ciphertext: String },
     /// A value in a shape this importer doesn't recognize.

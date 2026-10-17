@@ -18,8 +18,9 @@ use serde_json::Value;
 
 use crate::config::{InkdropCredentials, InkdropServerConfig, parse_credentials};
 
-/// The Keychain item holding Inkdrop's `safeStorage` secret.
-pub const INKDROP_KEYCHAIN_SERVICE: &str = "Inkdrop Safe Storage";
+/// The Keychain item holding Inkdrop's `safeStorage` secret. Electron names
+/// it after the app's package name, which for Inkdrop is lowercase.
+pub const INKDROP_KEYCHAIN_SERVICE: &str = "inkdrop Safe Storage";
 
 const SALT: &[u8] = b"saltysalt";
 const ITERATIONS: u32 = 1003;

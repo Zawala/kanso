@@ -26,7 +26,7 @@ empty library, Kanso offers to import from Inkdrop.
 **Taking over from Inkdrop.** Quit Inkdrop so Kanso can use port 19840 (until then the status bar
 says the port is in use, and Kanso keeps trying). In Settings › Local API, **Copy from Inkdrop…**
 takes Inkdrop's port, username and password; macOS asks you to allow access to the Keychain item
-"Inkdrop Safe Storage", which Inkdrop uses to encrypt them. MCP clients configured for Inkdrop then
+"inkdrop Safe Storage", which Inkdrop uses to encrypt them. MCP clients configured for Inkdrop then
 work without changes.
 
 **Sync.** Deploy the Worker (see [cloud/README.md](cloud/README.md)), then in Settings › Sync set the

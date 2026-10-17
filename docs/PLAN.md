@@ -146,7 +146,7 @@ All milestones are built and tested.
 - M4: deployed to Cloudflare and checked end to end between two data folders.
 - Inkdrop's stored task counts were stale on 21 notes; Kanso recounts from the body like GFM does.
 - Inkdrop's API credentials are encrypted with Electron safeStorage, so copying them needs the
-  "Inkdrop Safe Storage" Keychain item, which macOS asks the user to allow.
+  "inkdrop Safe Storage" Keychain item, which macOS asks the user to allow.
 - A code review of the app found ways to lose typed text (switching notes or quitting while the
   "changed elsewhere" question was open, ⌘Q, a note deleted elsewhere). All are fixed, and a
   model-based test (`prop_typed_text_is_never_lost`) runs random sequences of typing, outside

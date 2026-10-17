@@ -280,7 +280,7 @@ fn api_page() -> SettingPage {
                             .on_click(|_, window, cx| {
                                 dialogs::confirm(
                                     "Use Inkdrop's port, username and password?",
-                                    "Inkdrop keeps its password encrypted with a key in your Keychain. macOS will ask you to allow Kanso to read “Inkdrop Safe Storage”.",
+                                    "Inkdrop keeps its password encrypted with a key in your Keychain. macOS will ask you to allow Kanso to read “inkdrop Safe Storage”.",
                                     "Continue",
                                     window,
                                     cx,

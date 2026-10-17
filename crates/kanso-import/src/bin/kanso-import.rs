@@ -75,7 +75,7 @@ fn describe(credentials: &InkdropCredentials) -> &'static str {
         InkdropCredentials::None => "none",
         InkdropCredentials::Basic { .. } => "username and password present",
         InkdropCredentials::Encrypted { .. } => {
-            "encrypted with Electron safeStorage (needs the \"Inkdrop Safe Storage\" Keychain item)"
+            "encrypted with Electron safeStorage (needs the \"inkdrop Safe Storage\" Keychain item)"
         }
         InkdropCredentials::Unrecognized => "in an unrecognized format",
     }
