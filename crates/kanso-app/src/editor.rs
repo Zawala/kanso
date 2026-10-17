@@ -111,10 +111,6 @@ impl NoteEditor {
         self.note.as_ref().map(|n| n.id.as_str())
     }
 
-    pub fn note(&self) -> Option<&Note> {
-        self.note.as_ref()
-    }
-
     /// Saves the open note, then opens `id` (or nothing).
     pub fn open(&mut self, id: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
         if self.note_id() == id && self.incoming.is_none() {
@@ -417,10 +413,6 @@ impl NoteEditor {
             })
             .ok();
         }));
-    }
-
-    pub fn current_version(&self, cx: &App) -> (String, String) {
-        self.current_text(cx)
     }
 
     /// Replaces the editor's text with an earlier version, as a normal edit.

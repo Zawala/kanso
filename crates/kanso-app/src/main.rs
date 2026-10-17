@@ -34,6 +34,8 @@ Usage: kanso [command] [--data-dir <dir>]
 
 Commands:
   (none)            Open the app
+  serve             Run only the local API (Inkdrop-compatible REST and
+                    /mcp), without a window
   import-inkdrop    Import notes from Inkdrop
                     [--inkdrop-dir <dir>] [--credentials]
                     --credentials also takes Inkdrop's API port, username
@@ -79,12 +81,39 @@ fn main() -> Result<()> {
     let args = parse_args()?;
     match args.command.as_deref() {
         None => run_app(args.data_dir),
+        Some("serve") => serve(args.data_dir),
         Some("import-inkdrop") => inkdrop::run_cli(&args.data_dir, &args.rest),
         Some("help") => {
             println!("{USAGE}");
             Ok(())
         }
         Some(other) => bail!("unknown command `{other}`\n\n{USAGE}"),
+    }
+}
+
+/// Runs the local API until the process is stopped.
+fn serve(data_dir: PathBuf) -> Result<()> {
+    std::fs::create_dir_all(&data_dir)?;
+    let Some(_lock) = lock_data_dir(&data_dir)? else {
+        bail!(
+            "Kanso is already running with {}; its API is already on",
+            data_dir.display()
+        );
+    };
+    let config = load_config(&data_dir)?;
+    let server = services::server_config(&config.server).map_err(anyhow::Error::msg)?;
+    let store = Arc::new(Store::open(paths::db_path(&data_dir))?);
+    let handle = kanso_server::spawn(store, server);
+    match handle.bind_result() {
+        Ok(addr) => eprintln!("Kanso API on http://{addr} (MCP at /mcp). Ctrl-C stops it."),
+        Err(err) => bail!(
+            "couldn't listen on {}:{}: {err}",
+            config.server.bind_address,
+            config.server.port
+        ),
+    }
+    loop {
+        std::thread::park();
     }
 }
 
@@ -139,6 +168,7 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
         workspace::set_menus(cx);
         cx.on_action(|_: &Quit, cx| quit(cx));
         cx.on_action(|_: &workspace::OpenSettings, cx| settings::SettingsWindow::open(cx));
+        services::apply_server_settings(cx);
         open_main_window(cx);
         cx.activate(true);
         // Held until the process exits so no second Kanso opens this folder.
@@ -211,5 +241,6 @@ fn quit(cx: &mut App) {
     workspace::for_each_workspace(cx, |workspace, cx| {
         workspace.editor.update(cx, |editor, cx| editor.flush(cx));
     });
+    services::stop_server(cx);
     cx.quit();
 }

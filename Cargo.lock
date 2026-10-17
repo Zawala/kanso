@@ -3441,6 +3441,7 @@ dependencies = [
  "gpui-kit",
  "kanso-core",
  "kanso-import",
+ "kanso-server",
  "kanso-store",
  "proptest",
  "serde",

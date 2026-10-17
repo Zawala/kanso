@@ -26,11 +26,6 @@ pub fn backups_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("backups")
 }
 
-/// Inkdrop's data folder, the default import source.
-pub fn inkdrop_dir() -> PathBuf {
-    home().join("Library/Application Support/inkdrop")
-}
-
 /// The LaunchAgent that starts Kanso at login.
 pub fn launch_agent_path() -> PathBuf {
     home().join("Library/LaunchAgents/app.kanso.Kanso.plist")
