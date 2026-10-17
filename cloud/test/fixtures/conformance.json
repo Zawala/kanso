@@ -1,0 +1,334 @@
+{
+  "about": [
+    "Sync protocol cases shared by the Worker (cloud/test/conformance.test.ts) and MemoryRemote",
+    "(crates/kanso-sync/tests/conformance.rs). Every case starts from an empty server.",
+    "Steps: push (the docs array; results or an error status), changes (since, limit; page or status),",
+    "put_file (id, md5, base64; status), get_file (id; status, md5, base64).",
+    "push_body and changes_query steps send raw HTTP input a typed client cannot produce; MemoryRemote skips them."
+  ],
+  "cases": [
+    {
+      "name": "a document the server has never seen is accepted with a null or absent base_rev",
+      "steps": [
+        {
+          "push": [{ "id": "note:a", "rev": "1-aa", "deleted": false, "fields": { "title": "A", "updatedAt": 10 }, "base_rev": null }],
+          "results": [{ "id": "note:a", "status": "ok", "seq": 1 }]
+        },
+        {
+          "push": [{ "id": "note:b", "rev": "1-bb", "fields": { "title": "B" } }],
+          "results": [{ "id": "note:b", "status": "ok", "seq": 2 }]
+        },
+        {
+          "changes": { "since": 0, "limit": 100 },
+          "page": {
+            "docs": [
+              { "id": "note:a", "rev": "1-aa", "deleted": false, "fields": { "title": "A", "updatedAt": 10 }, "seq": 1 },
+              { "id": "note:b", "rev": "1-bb", "deleted": false, "fields": { "title": "B" }, "seq": 2 }
+            ],
+            "last_seq": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "an update is accepted only on top of the server's current revision",
+      "steps": [
+        {
+          "push": [{ "id": "note:a", "rev": "1-aa", "fields": { "title": "A" } }],
+          "results": [{ "id": "note:a", "status": "ok", "seq": 1 }]
+        },
+        {
+          "push": [{ "id": "note:a", "rev": "2-ab", "fields": { "title": "A2" }, "base_rev": "1-aa" }],
+          "results": [{ "id": "note:a", "status": "ok", "seq": 2 }]
+        },
+        {
+          "push": [{ "id": "note:a", "rev": "3-ac", "fields": { "title": "stale" }, "base_rev": "1-aa" }],
+          "results": [
+            { "id": "note:a", "status": "conflict", "current": { "id": "note:a", "rev": "2-ab", "deleted": false, "fields": { "title": "A2" } } }
+          ]
+        },
+        {
+          "push": [{ "id": "note:a", "rev": "1-ff", "fields": { "title": "new elsewhere" }, "base_rev": null }],
+          "results": [
+            { "id": "note:a", "status": "conflict", "current": { "id": "note:a", "rev": "2-ab", "deleted": false, "fields": { "title": "A2" } } }
+          ]
+        },
+        {
+          "push": [{ "id": "note:b", "rev": "1-bb" }],
+          "results": [{ "id": "note:b", "status": "ok", "seq": 3 }]
+        },
+        {
+          "changes": { "since": 0, "limit": 100 },
+          "page": {
+            "docs": [
+              { "id": "note:a", "rev": "2-ab", "deleted": false, "fields": { "title": "A2" }, "seq": 2 },
+              { "id": "note:b", "rev": "1-bb", "deleted": false, "fields": {}, "seq": 3 }
+            ],
+            "last_seq": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "a base_rev for a document the server never had is a conflict without a current version",
+      "steps": [
+        {
+          "push": [{ "id": "note:x", "rev": "2-cc", "fields": {}, "base_rev": "1-bb" }],
+          "results": [{ "id": "note:x", "status": "conflict", "current": null }]
+        },
+        { "changes": { "since": 0, "limit": 10 }, "page": { "docs": [], "last_seq": 0 } }
+      ]
+    },
+    {
+      "name": "documents in one push are applied in order",
+      "steps": [
+        {
+          "push": [
+            { "id": "note:a", "rev": "1-aa", "fields": { "v": 1 } },
+            { "id": "note:a", "rev": "2-ab", "fields": { "v": 2 }, "base_rev": "1-aa" },
+            { "id": "note:a", "rev": "3-ac", "fields": { "v": 3 }, "base_rev": "1-aa" },
+            { "id": "note:a", "rev": "3-ad", "fields": { "v": 4 }, "base_rev": "2-ab" },
+            { "id": "book:b", "rev": "1-bb", "fields": { "name": "B" } },
+            { "id": "book:b", "rev": "1-bc", "fields": { "name": "B again" } }
+          ],
+          "results": [
+            { "id": "note:a", "status": "ok", "seq": 1 },
+            { "id": "note:a", "status": "ok", "seq": 2 },
+            { "id": "note:a", "status": "conflict", "current": { "id": "note:a", "rev": "2-ab", "deleted": false, "fields": { "v": 2 } } },
+            { "id": "note:a", "status": "ok", "seq": 3 },
+            { "id": "book:b", "status": "ok", "seq": 4 },
+            { "id": "book:b", "status": "conflict", "current": { "id": "book:b", "rev": "1-bb", "deleted": false, "fields": { "name": "B" } } }
+          ]
+        },
+        {
+          "changes": { "since": 0, "limit": 100 },
+          "page": {
+            "docs": [
+              { "id": "note:a", "rev": "3-ad", "deleted": false, "fields": { "v": 4 }, "seq": 3 },
+              { "id": "book:b", "rev": "1-bb", "deleted": false, "fields": { "name": "B" }, "seq": 4 }
+            ],
+            "last_seq": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "tombstones are documents: deleting needs the current base and a new version builds on the tombstone",
+      "steps": [
+        {
+          "push": [{ "id": "tag:t", "rev": "1-aa", "fields": { "name": "t" } }],
+          "results": [{ "id": "tag:t", "status": "ok", "seq": 1 }]
+        },
+        {
+          "push": [{ "id": "tag:t", "rev": "2-dd", "deleted": true, "fields": {}, "base_rev": "1-aa" }],
+          "results": [{ "id": "tag:t", "status": "ok", "seq": 2 }]
+        },
+        {
+          "push": [{ "id": "tag:t", "rev": "1-ee", "fields": { "name": "again" } }],
+          "results": [
+            { "id": "tag:t", "status": "conflict", "current": { "id": "tag:t", "rev": "2-dd", "deleted": true, "fields": {} } }
+          ]
+        },
+        {
+          "push": [{ "id": "tag:t", "rev": "3-ee", "fields": { "name": "back" }, "base_rev": "2-dd" }],
+          "results": [{ "id": "tag:t", "status": "ok", "seq": 3 }]
+        },
+        {
+          "changes": { "since": 1, "limit": 100 },
+          "page": {
+            "docs": [{ "id": "tag:t", "rev": "3-ee", "deleted": false, "fields": { "name": "back" }, "seq": 3 }],
+            "last_seq": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "each accepted write takes the next seq and the feed lists a document once, at its latest write",
+      "steps": [
+        {
+          "push": [
+            { "id": "note:a", "rev": "1-aa" },
+            { "id": "note:b", "rev": "1-bb" },
+            { "id": "note:c", "rev": "1-cc" }
+          ],
+          "results": [
+            { "id": "note:a", "status": "ok", "seq": 1 },
+            { "id": "note:b", "status": "ok", "seq": 2 },
+            { "id": "note:c", "status": "ok", "seq": 3 }
+          ]
+        },
+        {
+          "push": [{ "id": "note:a", "rev": "2-ab", "base_rev": "1-aa" }],
+          "results": [{ "id": "note:a", "status": "ok", "seq": 4 }]
+        },
+        {
+          "changes": { "since": 0, "limit": 100 },
+          "page": {
+            "docs": [
+              { "id": "note:b", "rev": "1-bb", "deleted": false, "fields": {}, "seq": 2 },
+              { "id": "note:c", "rev": "1-cc", "deleted": false, "fields": {}, "seq": 3 },
+              { "id": "note:a", "rev": "2-ab", "deleted": false, "fields": {}, "seq": 4 }
+            ],
+            "last_seq": 4
+          }
+        },
+        {
+          "changes": { "since": 2, "limit": 100 },
+          "page": {
+            "docs": [
+              { "id": "note:c", "rev": "1-cc", "deleted": false, "fields": {}, "seq": 3 },
+              { "id": "note:a", "rev": "2-ab", "deleted": false, "fields": {}, "seq": 4 }
+            ],
+            "last_seq": 4
+          }
+        },
+        { "changes": { "since": 4, "limit": 100 }, "page": { "docs": [], "last_seq": 4 } },
+        { "changes": { "since": 99, "limit": 100 }, "page": { "docs": [], "last_seq": 99 } }
+      ]
+    },
+    {
+      "name": "conflicts do not take a seq",
+      "steps": [
+        {
+          "push": [{ "id": "note:a", "rev": "1-aa" }],
+          "results": [{ "id": "note:a", "status": "ok", "seq": 1 }]
+        },
+        {
+          "push": [{ "id": "note:a", "rev": "1-ab" }, { "id": "note:b", "rev": "1-bb" }],
+          "results": [
+            { "id": "note:a", "status": "conflict", "current": { "id": "note:a", "rev": "1-aa", "deleted": false, "fields": {} } },
+            { "id": "note:b", "status": "ok", "seq": 2 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "the feed pages by limit",
+      "steps": [
+        {
+          "push": [
+            { "id": "note:n1", "rev": "1-01" },
+            { "id": "note:n2", "rev": "1-02" },
+            { "id": "note:n3", "rev": "1-03" },
+            { "id": "note:n4", "rev": "1-04" },
+            { "id": "note:n5", "rev": "1-05" }
+          ],
+          "results": [
+            { "id": "note:n1", "status": "ok", "seq": 1 },
+            { "id": "note:n2", "status": "ok", "seq": 2 },
+            { "id": "note:n3", "status": "ok", "seq": 3 },
+            { "id": "note:n4", "status": "ok", "seq": 4 },
+            { "id": "note:n5", "status": "ok", "seq": 5 }
+          ]
+        },
+        {
+          "changes": { "since": 0, "limit": 2 },
+          "page": {
+            "docs": [
+              { "id": "note:n1", "rev": "1-01", "deleted": false, "fields": {}, "seq": 1 },
+              { "id": "note:n2", "rev": "1-02", "deleted": false, "fields": {}, "seq": 2 }
+            ],
+            "last_seq": 2
+          }
+        },
+        {
+          "changes": { "since": 2, "limit": 2 },
+          "page": {
+            "docs": [
+              { "id": "note:n3", "rev": "1-03", "deleted": false, "fields": {}, "seq": 3 },
+              { "id": "note:n4", "rev": "1-04", "deleted": false, "fields": {}, "seq": 4 }
+            ],
+            "last_seq": 4
+          }
+        },
+        {
+          "changes": { "since": 4, "limit": 2 },
+          "page": { "docs": [{ "id": "note:n5", "rev": "1-05", "deleted": false, "fields": {}, "seq": 5 }], "last_seq": 5 }
+        },
+        { "changes": { "since": 5, "limit": 2 }, "page": { "docs": [], "last_seq": 5 } }
+      ]
+    },
+    {
+      "name": "a malformed document rejects the whole push",
+      "steps": [
+        { "push": [{ "id": "page:x", "rev": "1-aa" }], "status": 400 },
+        { "push": [{ "id": "note:", "rev": "1-aa" }], "status": 400 },
+        { "push": [{ "id": "note:a/b", "rev": "1-aa" }], "status": 400 },
+        { "push": [{ "id": "note:x", "rev": "abc" }], "status": 400 },
+        { "push": [{ "id": "note:x", "rev": "1-xyz" }], "status": 400 },
+        { "push": [{ "id": "note:x", "rev": "1-aa", "base_rev": "nope" }], "status": 400 },
+        { "push": [{ "id": "note:x", "rev": "1-aa", "fields": [] }], "status": 400 },
+        { "push": [{ "id": "note:x", "rev": "1-aa", "fields": null }], "status": 400 },
+        { "push": [{ "id": "note:x", "rev": "1-aa", "deleted": "yes" }], "status": 400 },
+        { "push": [{ "id": "note:x", "rev": "1-aa", "deleted": null }], "status": 400 },
+        { "push": [{ "id": 5, "rev": "1-aa" }], "status": 400 },
+        { "push": [{ "id": "note:ok", "rev": "1-aa" }, { "id": "bad", "rev": "1-aa" }], "status": 400 },
+        { "push_body": "{\"docs\": {}}", "status": 400 },
+        { "push_body": "not json", "status": 400 },
+        { "push_body": "[]", "status": 400 },
+        { "changes": { "since": 0, "limit": 10 }, "page": { "docs": [], "last_seq": 0 } }
+      ]
+    },
+    {
+      "name": "an empty push is fine",
+      "steps": [{ "push": [], "results": [] }]
+    },
+    {
+      "name": "the feed rejects bad parameters",
+      "steps": [
+        { "changes": { "since": -1, "limit": 10 }, "status": 400 },
+        { "changes": { "since": 0, "limit": 0 }, "status": 400 },
+        { "changes": { "since": 0, "limit": 501 }, "status": 400 },
+        { "changes": { "since": 0, "limit": 500 }, "page": { "docs": [], "last_seq": 0 } },
+        { "changes_query": "since=abc", "status": 400 },
+        { "changes_query": "since=1.5", "status": 400 },
+        { "changes_query": "limit=x", "status": 400 },
+        { "changes_query": "", "status": 200 }
+      ]
+    },
+    {
+      "name": "file bytes must match x-kanso-md5",
+      "steps": [
+        { "put_file": { "id": "file:f1", "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" }, "status": 200 },
+        { "get_file": "file:f1", "status": 200, "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" },
+        { "put_file": { "id": "file:f1", "md5": "7d793037a0760186574b0282f2f435e7", "base64": "aGVsbG8=" }, "status": 400 },
+        { "get_file": "file:f1", "status": 200, "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" },
+        { "put_file": { "id": "file:f1", "md5": "7D793037A0760186574B0282F2F435E7", "base64": "d29ybGQ=" }, "status": 200 },
+        { "get_file": "file:f1", "status": 200, "md5": "7d793037a0760186574b0282f2f435e7", "base64": "d29ybGQ=" },
+        { "put_file": { "id": "file:empty", "md5": "d41d8cd98f00b204e9800998ecf8427e", "base64": "" }, "status": 200 },
+        { "get_file": "file:empty", "status": 200, "md5": "d41d8cd98f00b204e9800998ecf8427e", "base64": "" },
+        { "get_file": "file:missing", "status": 404 },
+        { "put_file": { "id": "note:x", "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" }, "status": 400 },
+        { "put_file": { "id": "file:f2", "md5": "xyz", "base64": "aGVsbG8=" }, "status": 400 },
+        { "get_file": "file:f2", "status": 404 }
+      ]
+    },
+    {
+      "name": "accepting a file tombstone drops its bytes",
+      "steps": [
+        { "put_file": { "id": "file:f1", "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" }, "status": 200 },
+        {
+          "push": [{ "id": "file:f1", "rev": "1-aa", "fields": { "name": "a.png", "contentType": "image/png", "md5digest": "5d41402abc4b2a76b9719d911017c592" } }],
+          "results": [{ "id": "file:f1", "status": "ok", "seq": 1 }]
+        },
+        { "get_file": "file:f1", "status": 200, "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" },
+        {
+          "push": [{ "id": "file:f1", "rev": "2-dd", "deleted": true, "base_rev": "9-ff" }],
+          "results": [
+            {
+              "id": "file:f1",
+              "status": "conflict",
+              "current": { "id": "file:f1", "rev": "1-aa", "deleted": false, "fields": { "name": "a.png", "contentType": "image/png", "md5digest": "5d41402abc4b2a76b9719d911017c592" } }
+            }
+          ]
+        },
+        { "get_file": "file:f1", "status": 200, "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" },
+        {
+          "push": [{ "id": "file:f1", "rev": "2-dd", "deleted": true, "base_rev": "1-aa" }],
+          "results": [{ "id": "file:f1", "status": "ok", "seq": 2 }]
+        },
+        { "get_file": "file:f1", "status": 404 }
+      ]
+    }
+  ]
+}
