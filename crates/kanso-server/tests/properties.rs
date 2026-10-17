@@ -143,7 +143,7 @@ proptest! {
             Attempt::NoHeader => false,
         };
         block_on(async move {
-            for (method, uri) in [(Method::GET, "/"), (Method::GET, "/note:missing"), (Method::POST, "/notes")] {
+            for (method, uri) in [(Method::GET, "/"), (Method::GET, "/note:missing"), (Method::POST, "/mcp")] {
                 let mut request = Request::builder().method(method).uri(uri);
                 if let Some(value) = &header_value {
                     request = request.header(header::AUTHORIZATION, value);
@@ -572,6 +572,251 @@ proptest! {
             let slash = send(&app.router, request(Method::GET, &format!("/{kind}/{suffix}{query}"), None)).await;
             prop_assert_eq!(colon.status, slash.status);
             prop_assert_eq!(colon.bytes, slash.bytes);
+            Ok(())
+        })?;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MCP vs HTTP oracle
+
+const WORDS: [&str; 10] = [
+    "apple",
+    "Banana",
+    "cherry",
+    "go",
+    "über",
+    "😀",
+    "inkdrop://note/n0",
+    "a-b",
+    "lorem-ipsum-dolor-sit-amet-consectetur-adipiscing",
+    "\n",
+];
+
+#[derive(Clone, Debug)]
+struct RandomNote {
+    title: Vec<usize>,
+    body: Vec<usize>,
+    book: &'static str,
+    tags: Vec<&'static str>,
+    status: NoteStatus,
+}
+
+fn random_note() -> impl Strategy<Value = RandomNote> {
+    (
+        prop::collection::vec(0..WORDS.len(), 0..3),
+        prop::collection::vec(0..WORDS.len(), 0..14),
+        prop::sample::select(vec!["book:b0", "book:b1", "trash"]),
+        prop::sample::subsequence(vec!["tag:t0", "tag:t1"], 0..=2),
+        prop::sample::select(NoteStatus::ALL.to_vec()),
+    )
+        .prop_map(|(title, body, book, tags, status)| RandomNote {
+            title,
+            body,
+            book,
+            tags,
+            status,
+        })
+}
+
+fn keyword() -> impl Strategy<Value = String> {
+    let clause = prop_oneof![
+        prop::sample::select(WORDS[..8].to_vec()).prop_map(str::to_owned),
+        prop::sample::select(vec!["app", "RRY", "ber", "ipsum dolor"])
+            .prop_map(|t| format!("\"{t}\"")),
+        prop::sample::select(vec![
+            "book:Alpha",
+            "book:\"beta Book\"",
+            "bookId:b0",
+            "bookId:trash",
+            "tag:red",
+            "tagId:tag:t1",
+            "status:active",
+            "title:an",
+            "body:lorem",
+        ])
+        .prop_map(str::to_owned),
+    ];
+    prop::collection::vec((any::<bool>(), clause), 0..3).prop_map(|clauses| {
+        clauses
+            .into_iter()
+            .map(|(negated, c)| if negated { format!("-{c}") } else { c })
+            .collect::<Vec<_>>()
+            .join(" ")
+    })
+}
+
+#[derive(Clone, Debug)]
+struct ListArgs {
+    book_id: Option<&'static str>,
+    tag_ids: Vec<&'static str>,
+    keyword: Option<String>,
+    sort: &'static str,
+    descending: bool,
+    limit: u32,
+}
+
+fn list_args() -> impl Strategy<Value = ListArgs> {
+    (
+        proptest::option::of(prop::sample::select(vec![
+            "book:b0", "book:b1", "trash", "",
+        ])),
+        prop::sample::subsequence(vec!["tag:t0", "tag:t1"], 0..=2),
+        proptest::option::of(keyword()),
+        prop::sample::select(vec!["updatedAt", "createdAt", "title"]),
+        any::<bool>(),
+        0..30u32,
+    )
+        .prop_map(
+            |(book_id, tag_ids, keyword, sort, descending, limit)| ListArgs {
+                book_id,
+                tag_ids,
+                keyword,
+                sort,
+                descending,
+                limit,
+            },
+        )
+}
+
+/// `list-notes`'s keyword, as @inkdropapp/mcp-server 1.5.0 builds it.
+fn node_keyword(args: &ListArgs) -> String {
+    let book_filter = match args.book_id {
+        Some(book) if !book.is_empty() => {
+            format!("bookId:{}", book.split(':').nth(1).unwrap_or("undefined"))
+        }
+        _ => String::new(),
+    };
+    let tag_filter: Vec<String> = args.tag_ids.iter().map(|t| format!("tagId:{t}")).collect();
+    format!(
+        "{book_filter} {} {}",
+        tag_filter.join(" "),
+        args.keyword.as_deref().unwrap_or("")
+    )
+    .trim()
+    .to_owned()
+}
+
+/// JavaScript's `body.substring(0, 200)`, minus any half surrogate pair.
+fn js_substring_200(body: &str) -> String {
+    let units: Vec<u16> = body.encode_utf16().take(200).collect();
+    char::decode_utf16(units).map_while(Result::ok).collect()
+}
+
+fn summaries_match(mcp: &Value, http: &Value) -> CaseResult {
+    let (mcp, http) = (mcp.as_array().unwrap(), http.as_array().unwrap());
+    prop_assert_eq!(mcp.len(), http.len());
+    for (m, h) in mcp.iter().zip(http) {
+        let mut expected = h.clone();
+        expected["body"] = json!(js_substring_200(h["body"].as_str().unwrap()));
+        prop_assert_eq!(m, &expected);
+    }
+    Ok(())
+}
+
+proptest! {
+    #![proptest_config(config(64))]
+
+    /// MCP vs HTTP oracle: `search-notes` and `list-notes` through `/mcp`
+    /// return the notes `GET /notes` returns for the keyword the Node server
+    /// would send, in the same order, with bodies cut to 200 characters.
+    #[test]
+    fn mcp_http_oracle(
+        notes in prop::collection::vec(random_note(), 0..14),
+        search in keyword(),
+        list in list_args(),
+    ) {
+        let app = seeded_app();
+        block_on(async move {
+            for (i, note) in notes.iter().enumerate() {
+                let words = |ix: &[usize]| ix.iter().map(|&w| WORDS[w]).collect::<Vec<_>>().join(" ");
+                write(&app.router, "/notes", json!({
+                    "title": words(&note.title), "body": words(&note.body), "bookId": note.book,
+                    "tags": note.tags, "status": note.status.as_str(), "updatedAt": 1_000 + i % 5,
+                    "createdAt": 2_000 - i % 3,
+                })).await;
+            }
+
+            let mcp = tool_json(&tool(&app.router, "search-notes", json!({ "keyword": search })).await);
+            let (status, http) = get(&app.router, &format!("/notes?keyword={}&limit=10", encode(&search))).await;
+            prop_assert_eq!(status, StatusCode::OK);
+            summaries_match(&mcp, &http)?;
+
+            let mut args = json!({
+                "tagIds": list.tag_ids, "sort": list.sort, "descending": list.descending, "limit": list.limit,
+            });
+            if let Some(book) = list.book_id {
+                args["bookId"] = json!(book);
+            }
+            if let Some(keyword) = &list.keyword {
+                args["keyword"] = json!(keyword);
+            }
+            let mcp = tool_json(&tool(&app.router, "list-notes", args).await);
+            let uri = format!(
+                "/notes?keyword={}&sort={}&descending={}&limit={}",
+                encode(&node_keyword(&list)), list.sort, list.descending, list.limit
+            );
+            let (status, http) = get(&app.router, &uri).await;
+            prop_assert_eq!(status, StatusCode::OK);
+            summaries_match(&mcp, &http)?;
+            Ok(())
+        })?;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// patch-note
+
+/// Occurrences of `needle` in `haystack` counted in UTF-16 code units,
+/// overlapping, as repeated JavaScript `indexOf` calls find them.
+fn js_occurrences(haystack: &str, needle: &str) -> Vec<usize> {
+    let h: Vec<u16> = haystack.encode_utf16().collect();
+    let n: Vec<u16> = needle.encode_utf16().collect();
+    (0..h.len().saturating_sub(n.len() - 1))
+        .filter(|&i| h[i..].starts_with(&n))
+        .collect()
+}
+
+proptest! {
+    #![proptest_config(config(128))]
+
+    /// patch-note refinement: the patch applies exactly when `old_string`
+    /// occurs once (overlaps included) and then replaces that occurrence;
+    /// otherwise the note is untouched and the Node server's message returned.
+    #[test]
+    fn patch_note_refinement(
+        body in "[ab😀é]{0,16}",
+        old in "[ab😀é]{1,3}",
+        new in "[xy😀]{0,3}",
+    ) {
+        let app = app();
+        block_on(async move {
+            let (id, rev) = write(&app.router, "/notes", json!({ "bookId": "trash", "title": "", "body": body })).await;
+            let result = tool(&app.router, "patch-note", json!({ "_id": id, "_rev": rev, "old_string": old, "new_string": new })).await;
+            let (_, doc) = get(&app.router, &format!("/{id}")).await;
+            let occurrences = js_occurrences(&body, &old);
+            match occurrences.len() {
+                1 => {
+                    prop_assert_ne!(&result["isError"], &json!(true), "{}", result);
+                    let units: Vec<u16> = body.encode_utf16().collect();
+                    let at = occurrences[0];
+                    let old_len = old.encode_utf16().count();
+                    let mut expected: Vec<u16> = units[..at].to_vec();
+                    expected.extend(new.encode_utf16());
+                    expected.extend(&units[at + old_len..]);
+                    prop_assert_eq!(&doc["body"], &json!(String::from_utf16(&expected).unwrap()));
+                }
+                n => {
+                    prop_assert_eq!(&result["isError"], &json!(true));
+                    let message = if n == 0 {
+                        "Failed to patch: `old_string` was not found in the note body."
+                    } else {
+                        "Failed to patch: `old_string` matches multiple locations in the note body. Provide more surrounding context to make it unique."
+                    };
+                    prop_assert_eq!(text(&result, 0), message);
+                    prop_assert_eq!(&doc["_rev"], &json!(rev));
+                }
+            }
             Ok(())
         })?;
     }

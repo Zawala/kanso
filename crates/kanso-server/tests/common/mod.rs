@@ -10,7 +10,7 @@ use axum::http::{HeaderMap, Method, Request, StatusCode, header};
 use http_body_util::BodyExt;
 use kanso_server::{ServerConfig, basic_header, router};
 use kanso_store::Store;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tower::ServiceExt;
 
 pub const USER: &str = "kanso-test";
@@ -126,6 +126,38 @@ pub async fn write(router: &Router, uri: &str, body: Value) -> (String, String) 
         res["id"].as_str().unwrap().to_owned(),
         res["rev"].as_str().unwrap().to_owned(),
     )
+}
+
+/// A JSON-RPC request to `/mcp`; returns the whole answer.
+pub async fn rpc(router: &Router, method: &str, params: Value) -> Value {
+    let message = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params });
+    let (status, answer) = post(router, "/mcp", message).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    answer
+}
+
+/// Calls a tool through `/mcp`; returns its result.
+pub async fn tool(router: &Router, name: &str, arguments: Value) -> Value {
+    let answer = rpc(
+        router,
+        "tools/call",
+        json!({ "name": name, "arguments": arguments }),
+    )
+    .await;
+    answer["result"].clone()
+}
+
+/// The text of a tool result's `index`th content block.
+pub fn text(result: &Value, index: usize) -> &str {
+    result["content"][index]["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no text block {index} in {result}"))
+}
+
+/// The JSON document in a tool result's first text block.
+pub fn tool_json(result: &Value) -> Value {
+    assert_ne!(result["isError"], true, "{result}");
+    serde_json::from_str(text(result, 0)).unwrap()
 }
 
 /// A valid 1x1 PNG.

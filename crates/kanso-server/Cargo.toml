@@ -11,6 +11,7 @@ axum = { version = "0.8", default-features = false, features = ["http1", "json",
 base64.workspace = true
 kanso-core.workspace = true
 kanso-store.workspace = true
+regex-lite = "0.1"
 serde.workspace = true
 serde_json.workspace = true
 subtle = "2.6"

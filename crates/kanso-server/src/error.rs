@@ -72,6 +72,16 @@ impl ApiError {
             reason,
         )
     }
+
+    /// The text the Node MCP server reports when a request fails, e.g.
+    /// `Fetch error [404] Not Found`.
+    pub fn fetch_error_text(&self) -> String {
+        format!(
+            "Fetch error [{}] {}",
+            self.status.as_u16(),
+            self.status.canonical_reason().unwrap_or_default()
+        )
+    }
 }
 
 impl From<StoreError> for ApiError {

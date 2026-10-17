@@ -61,6 +61,7 @@ async fn every_route_requires_basic_auth() {
         (Method::DELETE, "/note:abc"),
         (Method::GET, "/note/abc"),
         (Method::GET, "/_changes"),
+        (Method::POST, "/mcp"),
         (Method::GET, "/no/such/route"),
     ] {
         for auth in [
@@ -297,7 +298,7 @@ async fn malformed_and_oversized_bodies_are_rejected() {
         "{{\"bookId\":\"trash\",\"title\":\"x\",\"body\":\"{}\"}}",
         "a".repeat(kanso_server::MAX_BODY_BYTES)
     );
-    for uri in ["/notes", "/note:abc"] {
+    for uri in ["/notes", "/note:abc", "/mcp"] {
         let request = Request::builder()
             .method(Method::POST)
             .uri(uri)

@@ -2,8 +2,8 @@
 //!
 //! The REST endpoints are wire-compatible with Inkdrop's local HTTP server,
 //! so the official `@inkdropapp/mcp-server` and scripts written for Inkdrop
-//! work against Kanso unchanged. Every route requires HTTP Basic
-//! authentication.
+//! work against Kanso unchanged. `/mcp` serves the same 17 MCP tools natively
+//! on the same port. Every route requires HTTP Basic authentication.
 //!
 //! The server stays thin: validation, conflicts and search live in
 //! [`kanso_store::Store`], which is synchronous and is called on tokio's
@@ -12,6 +12,7 @@
 mod api;
 mod auth;
 mod error;
+mod mcp;
 mod rest;
 
 use std::fmt;
@@ -25,6 +26,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware;
+use axum::routing::post;
 use kanso_store::Store;
 
 pub use auth::basic_header;
@@ -53,13 +55,24 @@ impl fmt::Debug for ServerConfig {
 #[derive(Clone)]
 pub(crate) struct AppState {
     pub store: Arc<Store>,
+    /// Whether MCP tools may read and write local files (`create-file` with
+    /// `filePath`, `read-file` with `outputPath`). Only when the server is
+    /// bound to a loopback address, so every client is on this machine.
+    pub local_files: bool,
 }
 
-/// The full API: REST endpoints, Basic auth and the body limit.
+/// The full API: REST endpoints, `/mcp`, Basic auth and the body limit.
 pub fn router(store: Arc<Store>, config: &ServerConfig) -> Router {
-    let state = AppState { store };
+    let state = AppState {
+        store,
+        local_files: config.bind.ip().is_loopback(),
+    };
     let credentials = Arc::new(auth::Credentials::new(&config.username, &config.password));
     rest::routes()
+        .route(
+            "/mcp",
+            post(mcp::handle).get(mcp::no_stream).delete(mcp::no_stream),
+        )
         .fallback(rest::not_found)
         .method_not_allowed_fallback(rest::method_not_allowed)
         .with_state(state)
