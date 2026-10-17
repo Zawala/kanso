@@ -582,6 +582,49 @@ impl Workspace {
         }
     }
 
+    /// Asks for a folder, then exports `only` those notes, or all of them.
+    fn export(&mut self, only: Option<Vec<String>>, window: &mut Window, cx: &mut Context<Self>) {
+        self.flush(cx);
+        let store = self.store.clone();
+        let picked = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Export Here".into()),
+        });
+        cx.spawn_in(window, async move |_, cx| {
+            let Ok(Ok(Some(paths))) = picked.await else {
+                return;
+            };
+            let Some(root) = paths.into_iter().next() else {
+                return;
+            };
+            let result = cx
+                .background_executor()
+                .spawn({
+                    let root = root.clone();
+                    async move { crate::export::export(&store, &root, only.as_deref()) }
+                })
+                .await;
+            cx.update(|window, cx| match result {
+                Ok(report) => {
+                    window.push_notification(
+                        Notification::success(format!(
+                            "Exported {} notes and {} attachments.",
+                            report.notes, report.attachments
+                        )),
+                        cx,
+                    );
+                    cx.reveal_path(&root);
+                }
+                Err(err) => window
+                    .push_notification(Notification::error(format!("Export failed: {err:#}")), cx),
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
         self.editor
             .update(cx, |editor, cx| editor.set_view_mode(mode, cx));
@@ -664,6 +707,15 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &TrashNote, _, cx| {
                 this.editor.update(cx, |editor, cx| editor.trash(cx));
             }))
+            .on_action(cx.listener(|this, _: &ExportNote, window, cx| {
+                let id = this.editor.read(cx).note_id().map(str::to_owned);
+                if let Some(id) = id {
+                    this.export(Some(vec![id]), window, cx);
+                }
+            }))
+            .on_action(
+                cx.listener(|this, _: &ExportLibrary, window, cx| this.export(None, window, cx)),
+            )
             .on_action(cx.listener(|_, _: &ImportInkdrop, window, cx| {
                 crate::inkdrop::start_import(window, cx);
             }))
