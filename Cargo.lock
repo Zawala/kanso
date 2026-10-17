@@ -3376,9 +3376,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
+ "base64 0.22.1",
  "fastrand",
  "gpui-kit",
  "kanso-core",
+ "kanso-import",
  "kanso-store",
  "proptest",
  "serde",

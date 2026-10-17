@@ -5,6 +5,7 @@
 mod config;
 mod dialogs;
 mod editor;
+mod inkdrop;
 mod library;
 mod note_list;
 mod paths;
@@ -28,8 +29,12 @@ const USAGE: &str = "\
 Usage: kanso [command] [--data-dir <dir>]
 
 Commands:
-  (none)    Open the app
-  help      Show this message
+  (none)            Open the app
+  import-inkdrop    Import notes from Inkdrop
+                    [--inkdrop-dir <dir>] [--credentials]
+                    --credentials also takes Inkdrop's API port, username
+                    and password (macOS asks to allow Keychain access)
+  help              Show this message
 
 The data folder defaults to ~/Library/Application Support/Kanso
 (or $KANSO_DATA_DIR).";
@@ -70,6 +75,7 @@ fn main() -> Result<()> {
     let args = parse_args()?;
     match args.command.as_deref() {
         None => run_app(args.data_dir),
+        Some("import-inkdrop") => inkdrop::run_cli(&args.data_dir, &args.rest),
         Some("help") => {
             println!("{USAGE}");
             Ok(())
@@ -162,11 +168,37 @@ fn open_main_window(cx: &mut App) {
                         editor.update(cx, |editor, cx| editor.flush(cx));
                         true
                     });
+                    offer_first_import(window, cx);
                 })
                 .ok();
         }
         Err(err) => eprintln!("kanso: couldn't open a window: {err:#}"),
     }
+}
+
+/// On a first run with an empty library, offers to bring notes over from
+/// Inkdrop.
+fn offer_first_import(window: &mut Window, cx: &mut App) {
+    let state = cx.global::<AppState>();
+    let empty = state
+        .store
+        .counts()
+        .is_ok_and(|counts| counts.get(&kanso_core::DocType::Note).copied().unwrap_or(0) == 0);
+    if !empty
+        || state.store.meta("import_offered").ok().flatten().is_some()
+        || inkdrop::find_inkdrop().is_none()
+    {
+        return;
+    }
+    state.store.set_meta("import_offered", "1").ok();
+    dialogs::confirm(
+        "Import your Inkdrop notes?",
+        "Kanso found an Inkdrop library. Its notes, notebooks, tags and attachments can be copied in now; Inkdrop's files are only read.",
+        "Import",
+        window,
+        cx,
+        inkdrop::start_import,
+    );
 }
 
 /// Saves open notes, then quits.

@@ -664,6 +664,9 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &TrashNote, _, cx| {
                 this.editor.update(cx, |editor, cx| editor.trash(cx));
             }))
+            .on_action(cx.listener(|_, _: &ImportInkdrop, window, cx| {
+                crate::inkdrop::start_import(window, cx);
+            }))
             .on_action(cx.listener(|this, _: &NextNote, _, cx| {
                 this.library
                     .update(cx, |library, cx| library.select_relative(1, cx));

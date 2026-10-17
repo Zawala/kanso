@@ -15,10 +15,12 @@ async-channel.workspace = true
 fastrand.workspace = true
 gpui-kit.workspace = true
 kanso-core.workspace = true
+kanso-import.workspace = true
 kanso-store.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
 proptest.workspace = true
 tempfile.workspace = true
