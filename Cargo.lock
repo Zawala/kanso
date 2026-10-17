@@ -3443,6 +3443,7 @@ dependencies = [
  "kanso-import",
  "kanso-server",
  "kanso-store",
+ "kanso-sync",
  "proptest",
  "serde",
  "serde_json",

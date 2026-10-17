@@ -169,6 +169,7 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
         cx.on_action(|_: &Quit, cx| quit(cx));
         cx.on_action(|_: &workspace::OpenSettings, cx| settings::SettingsWindow::open(cx));
         services::apply_server_settings(cx);
+        services::apply_sync_settings(cx);
         open_main_window(cx);
         cx.activate(true);
         // Held until the process exits so no second Kanso opens this folder.

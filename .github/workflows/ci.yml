@@ -23,3 +23,17 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+
+  worker:
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: cloud
+    env:
+      # fast-check reads its seed in vitest.config.ts.
+      FAST_CHECK_SEED: "20261017"
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
