@@ -1,0 +1,146 @@
+//! `kanso-import [--inkdrop-dir DIR] [--db FILE] --data-dir DIR`
+//!
+//! Imports Inkdrop's database into `DIR/kanso.db` and prints a report.
+//! Inkdrop may keep running; its files are only read. Credentials from
+//! Inkdrop's config are never printed.
+
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+use anyhow::{Context as _, bail};
+use kanso_import::{
+    InkdropCredentials, Phase, default_inkdrop_dir, find_inkdrop_db, import,
+    read_inkdrop_server_config,
+};
+use kanso_store::Store;
+
+const USAGE: &str = "\
+Usage: kanso-import [--inkdrop-dir DIR] [--db FILE] --data-dir DIR
+
+Imports an Inkdrop database into DIR/kanso.db. Safe to run again: documents
+already imported at the same revision are left alone.
+
+  --inkdrop-dir DIR  Inkdrop's data directory
+                     (default: ~/Library/Application Support/inkdrop)
+  --db FILE          The Inkdrop database file (default: the single
+                     db/<32 hex>.sqlite in the Inkdrop directory)
+  --data-dir DIR     Kanso's data directory (required)";
+
+struct Args {
+    inkdrop_dir: Option<PathBuf>,
+    db: Option<PathBuf>,
+    data_dir: PathBuf,
+}
+
+fn parse_args() -> anyhow::Result<Option<Args>> {
+    let mut inkdrop_dir = None;
+    let mut db = None;
+    let mut data_dir = None;
+    let mut args = std::env::args_os().skip(1);
+    while let Some(arg) = args.next() {
+        let slot = match arg.to_str() {
+            Some("-h" | "--help") => return Ok(None),
+            Some("--inkdrop-dir") => &mut inkdrop_dir,
+            Some("--db") => &mut db,
+            Some("--data-dir") => &mut data_dir,
+            _ => bail!("unexpected argument {arg:?}\n\n{USAGE}"),
+        };
+        let value = args
+            .next()
+            .with_context(|| format!("{} needs a value", arg.to_string_lossy()))?;
+        *slot = Some(PathBuf::from(value));
+    }
+    let data_dir = data_dir.with_context(|| format!("--data-dir is required\n\n{USAGE}"))?;
+    Ok(Some(Args {
+        inkdrop_dir,
+        db,
+        data_dir,
+    }))
+}
+
+fn phase_name(phase: Phase) -> &'static str {
+    match phase {
+        Phase::Snapshot => "snapshot",
+        Phase::Books => "notebooks",
+        Phase::Tags => "tags",
+        Phase::Files => "files",
+        Phase::Notes => "notes",
+        Phase::Activities => "activity log",
+        Phase::Verify => "verify",
+    }
+}
+
+fn describe(credentials: &InkdropCredentials) -> &'static str {
+    match credentials {
+        InkdropCredentials::None => "none",
+        InkdropCredentials::Basic { .. } => "username and password present",
+        InkdropCredentials::Encrypted { .. } => {
+            "encrypted with Electron safeStorage (needs the \"Inkdrop Safe Storage\" Keychain item)"
+        }
+        InkdropCredentials::Unrecognized => "in an unrecognized format",
+    }
+}
+
+fn run() -> anyhow::Result<ExitCode> {
+    let Some(args) = parse_args()? else {
+        println!("{USAGE}");
+        return Ok(ExitCode::SUCCESS);
+    };
+    let inkdrop_dir = match args.inkdrop_dir {
+        Some(dir) => dir,
+        None => default_inkdrop_dir().context("HOME is not set; pass --inkdrop-dir")?,
+    };
+    let source = match args.db {
+        Some(db) => db,
+        None => find_inkdrop_db(&inkdrop_dir)?,
+    };
+    let Some(_lock) = kanso_store::lock_data_dir(&args.data_dir)? else {
+        bail!(
+            "{} is in use by another Kanso process; quit it first",
+            args.data_dir.display()
+        );
+    };
+    let store = Store::open(args.data_dir.join("kanso.db"))?;
+
+    eprintln!("Importing {}", source.display());
+    let mut finished = None;
+    let report = import(&source, &store, |progress| {
+        if progress.done == progress.total && finished != Some(progress.phase) {
+            finished = Some(progress.phase);
+            eprintln!("  {}: {}", phase_name(progress.phase), progress.total);
+        }
+    })?;
+    println!("{report}");
+
+    match read_inkdrop_server_config(&inkdrop_dir) {
+        Ok(Some(server)) => println!(
+            "Inkdrop API server: {} on {}:{}; credentials {}.",
+            if server.enabled {
+                "enabled"
+            } else {
+                "disabled"
+            },
+            server.bind_address,
+            server.port,
+            describe(&server.credentials),
+        ),
+        Ok(None) => println!("Inkdrop API server: not configured."),
+        Err(err) => eprintln!("Could not read Inkdrop's server settings: {err:#}"),
+    }
+
+    Ok(if report.is_clean() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(2)
+    })
+}
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(code) => code,
+        Err(err) => {
+            eprintln!("kanso-import: {err:#}");
+            ExitCode::FAILURE
+        }
+    }
+}
