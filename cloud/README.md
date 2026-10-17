@@ -22,14 +22,16 @@ export CLOUDFLARE_API_TOKEN=...            # never commit it
 npx wrangler d1 create kanso-sync          # put the printed database_id in wrangler.jsonc
 npx wrangler r2 bucket create kanso-files
 npm run migrate:remote
-openssl rand -hex 32 | npx wrangler secret put SYNC_TOKEN
+token=$(openssl rand -hex 32)
+printf %s "$token" | npx wrangler secret put SYNC_TOKEN
+printf %s "$token" | cargo run -q -p kanso-sync -- token set   # this Mac's Keychain
 npm run deploy
 ```
 
-Then give each Mac the Worker URL and the same token in Kanso's Settings › Sync. The token is kept
-in the Keychain (service "Kanso", account "sync-token"). From the command line,
-`kanso-sync token set` reads it from stdin, and `kanso-sync check --endpoint <url>` checks the
-URL and token.
+Then set the Worker URL in Kanso's Settings › Sync on each Mac. The token is kept in the Keychain
+(service "Kanso", account "sync-token"); on another Mac, enter the same token with Settings › Sync ›
+Access token › Set…, or `kanso-sync token set` (reads stdin). `kanso-sync check --endpoint <url>`
+checks the URL and token.
 
 The current deployment is listed in [DEPLOYED.md](DEPLOYED.md).
 
