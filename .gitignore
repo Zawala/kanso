@@ -1,25 +1,5 @@
 /target
 **/*.rs.bk
-*.db
-*.db-shm
-*.db-wal
-*.log
 *.profraw
 .DS_Store
 .env
-.dev.vars
-
-# JavaScript / Cloudflare local state
-node_modules/
-dist/
-.wrangler/
-
-# SwiftPM
-.build/
-
-# Xcode local state
-xcuserdata/
-*.xcuserstate
-
-# Generated Apple FFI artifacts
-apps/KansoMac/KansoFFI.xcframework/

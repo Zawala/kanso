@@ -1,74 +1,14 @@
 [workspace]
-members = [
-  "crates/kanso-types",
-  "crates/kanso-engine",
-  "crates/kanso-ink",
-  "crates/kanso-cloud",
-  "crates/kanso-ffi",
-  "crates/kanso-client",
-  "crates/kanso-crypto",
-  "crates/kanso-mcp",
-]
-resolver = "2"
+resolver = "3"
+members = ["crates/*"]
 
 [workspace.package]
-authors = ["Kanso"]
-edition = "2024"
-license = "UNLICENSED"
-rust-version = "1.85"
 version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
 
 [workspace.dependencies]
-# Shared
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.150"
-thiserror = "2.0.18"
-anyhow = "1.0.102"
-uuid = { version = "1.23.1", features = ["v7", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
-base64 = "0.22"
-
-# Engine (embedded SQLite — the only DB-driver divergence from the
-# Postgres backends; the engine is local-first and on-device).
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
-comrak = "0.52.0"
-
-# Ink core
-tiny-skia = { version = "0.12.0", features = ["png-format"] }
-ciborium = "0.2.2"
-
-# Cloud (mirrors heimdall's actix stack)
-actix-web = "4"
-actix-rt = "2"
-actix-cors = "0.7"
-log = "0.4"
-env_logger = "0.11"
-async-trait = "0.1.89"
-
-# FFI bindings (UniFFI -> Swift/Kotlin)
-uniffi = "0.31.1"
-pollster = "0.4.0"
-
-# GPU ink renderer (feature-gated in kanso-ink)
-wgpu = "29.0.3"
-bytemuck = { version = "1.25.0", features = ["derive"] }
-
-# HTTP client (sync transport)
-reqwest = { version = "0.13", default-features = false, features = ["json"] }
-
-# Client-side crypto (E2EE)
-chacha20poly1305 = "0.10"
-argon2 = { version = "0.5", features = ["std"] }
-zeroize = "1.8.2"
-
-# Server auth (rust_crypto = pure-Rust provider, no C toolchain)
-jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
-
-# Async
-tokio = { version = "1", features = ["full"] }
-
-# Internal
-kanso-types = { path = "crates/kanso-types" }
-kanso-ink = { path = "crates/kanso-ink" }
-kanso-engine = { path = "crates/kanso-engine" }
-kanso-crypto = { path = "crates/kanso-crypto" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+gpui-kit = { version = "=0.7.3", features = ["tree-sitter-markdown", "tree-sitter-markdown-inline"] }
