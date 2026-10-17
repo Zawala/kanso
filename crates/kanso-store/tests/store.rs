@@ -558,3 +558,56 @@ fn recorded_revisions_show_up_in_history() {
     assert_eq!(history[0].fields["body"], "unsaved draft");
     assert_eq!(history[0].origin, "ui");
 }
+
+#[test]
+fn reimport_keeps_kanso_edits_and_takes_newer_inkdrop_edits() {
+    let (_dir, store) = store();
+    let book = create(&store, DocType::Book, json!({"name": "B"}));
+    let fields = |body: &str| {
+        json!({"title": "T", "body": body, "bookId": book, "createdAt": 1, "updatedAt": 2})
+            .as_object()
+            .unwrap()
+            .clone()
+    };
+    assert!(
+        store
+            .import_doc(DocType::Note, "note:n1", "3-aaa", fields("inkdrop"), None)
+            .unwrap()
+    );
+    // Edited in Kanso: generation 4.
+    let edited = store
+        .put(
+            DocType::Note,
+            json!({"_id": "note:n1", "body": "kanso"}),
+            Put::Merge,
+            Origin::Ui,
+        )
+        .unwrap();
+    assert!(edited.rev.starts_with("4-"));
+    // Re-importing the old Inkdrop version leaves the Kanso edit alone.
+    assert!(
+        !store
+            .import_doc(DocType::Note, "note:n1", "3-aaa", fields("inkdrop"), None)
+            .unwrap()
+    );
+    assert_eq!(store.note("note:n1").unwrap().unwrap().body, "kanso");
+    // A newer Inkdrop edit wins, and the Kanso version stays in history.
+    assert!(
+        store
+            .import_doc(
+                DocType::Note,
+                "note:n1",
+                "5-bbb",
+                fields("inkdrop again"),
+                None
+            )
+            .unwrap()
+    );
+    assert_eq!(
+        store.note("note:n1").unwrap().unwrap().body,
+        "inkdrop again"
+    );
+    let history = store.revisions("note:n1").unwrap();
+    assert_eq!(history[0].fields["body"], "kanso");
+    assert_eq!(history[0].origin, "import");
+}

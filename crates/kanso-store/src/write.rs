@@ -154,9 +154,6 @@ pub(crate) fn store_row(
 }
 
 fn snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
-    if origin == Origin::Import {
-        return Ok(());
-    }
     let now = now_ms();
     if origin == Origin::Ui {
         let last: Option<i64> = tx.query_row(
@@ -401,7 +398,8 @@ impl Store {
     }
 
     /// Writes an imported document as-is, keeping its revision. Returns
-    /// `false` when the store already has that exact revision.
+    /// `false` when the store already has that revision, or a newer one made
+    /// in Kanso. A replaced version is kept in the document's history.
     pub fn import_doc(
         &self,
         doc_type: DocType,
@@ -410,15 +408,21 @@ impl Store {
         fields: Map<String, Value>,
         attachment: Option<Attachment>,
     ) -> Result<bool> {
-        rev.parse::<Rev>()
-            .map_err(|e| StoreError::Invalid(e.to_string()))?;
+        let incoming: Rev = rev
+            .parse()
+            .map_err(|e: kanso_core::rev::InvalidRev| StoreError::Invalid(e.to_string()))?;
         self.write(|tx, changes| {
             let previous = load_row(tx, id)?;
-            if previous
-                .as_ref()
-                .is_some_and(|p| p.rev == rev && !p.deleted)
-            {
-                return Ok(false);
+            if let Some(previous) = &previous {
+                if previous.rev == rev && !previous.deleted {
+                    return Ok(false);
+                }
+                // A copy edited or deleted in Kanso since the last import has
+                // a generation at least as high; like CouchDB, it wins.
+                let local: Option<Rev> = previous.rev.parse().ok();
+                if local.is_some_and(|local| local.generation >= incoming.generation) {
+                    return Ok(false);
+                }
             }
             let created_at = fields
                 .get("createdAt")

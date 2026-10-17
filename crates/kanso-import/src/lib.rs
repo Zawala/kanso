@@ -12,6 +12,7 @@ mod config;
 mod import;
 pub mod pouch;
 mod report;
+pub mod safe_storage;
 
 use std::path::{Path, PathBuf};
 

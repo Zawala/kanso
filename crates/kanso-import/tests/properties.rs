@@ -695,3 +695,25 @@ proptest! {
         );
     }
 }
+
+proptest! {
+    #![proptest_config(config(256))]
+
+    /// Round-trip: Electron safeStorage encryption decrypts back with the
+    /// same Keychain secret.
+    #[test]
+    fn round_trip_safe_storage(plaintext in prop::collection::vec(any::<u8>(), 0..200), secret in "[ -~]{1,40}") {
+        let data = kanso_import::safe_storage::encrypt(&plaintext, &secret);
+        prop_assert!(data.starts_with(b"v10"));
+        prop_assert_eq!(kanso_import::safe_storage::decrypt(&data, &secret).unwrap(), plaintext);
+    }
+
+    /// Invariant: decrypting with a different secret never yields the
+    /// plaintext.
+    #[test]
+    fn refinement_safe_storage_wrong_secret_fails(plaintext in "[a-z]{1,30}:[ -~]{1,30}", secret in "[a-z]{8}", other in "[A-Z]{8}") {
+        let data = kanso_import::safe_storage::encrypt(plaintext.as_bytes(), &secret);
+        let decrypted = kanso_import::safe_storage::decrypt(&data, &other);
+        prop_assert!(decrypted.map_or(true, |bytes| bytes != plaintext.as_bytes()));
+    }
+}

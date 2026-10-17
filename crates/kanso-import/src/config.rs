@@ -84,7 +84,7 @@ impl fmt::Debug for InkdropCredentials {
     }
 }
 
-fn parse_credentials(auth: Option<&Value>) -> InkdropCredentials {
+pub(crate) fn parse_credentials(auth: Option<&Value>) -> InkdropCredentials {
     match auth {
         None | Some(Value::Null) => InkdropCredentials::None,
         Some(Value::String(s)) if s.is_empty() => InkdropCredentials::None,
