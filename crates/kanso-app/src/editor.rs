@@ -3,7 +3,8 @@
 //! Edits autosave after a short pause. A change to the open note from
 //! elsewhere (the API, sync) reloads it quietly when there are no unsaved
 //! edits, and otherwise asks which version to keep. The losing version is
-//! kept in the note's history either way.
+//! kept in the note's history either way. Leaving the note or quitting
+//! before answering keeps the editor's text.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -32,6 +33,14 @@ pub enum EditorEvent {
     Notice(String),
 }
 
+/// What happened elsewhere to the open note while it had unsaved edits.
+enum Incoming {
+    /// A newer version was saved.
+    Changed(Box<Note>),
+    /// The note was deleted.
+    Deleted,
+}
+
 pub struct NoteEditor {
     store: Arc<Store>,
     library: Entity<Library>,
@@ -44,8 +53,8 @@ pub struct NoteEditor {
     pub font_size: f32,
     autosave: Option<Task<()>>,
     preview_task: Option<Task<()>>,
-    /// A newer version from elsewhere that arrived over unsaved edits.
-    incoming: Option<Note>,
+    /// A change from elsewhere that arrived over unsaved edits.
+    incoming: Option<Incoming>,
     /// Notes that link here: (id, title).
     backlinks: Vec<(String, String)>,
     backlinks_task: Option<Task<()>>,
@@ -88,6 +97,11 @@ impl NoteEditor {
                     this.schedule_preview(window, cx);
                 }
             }),
+            // Quitting from the Dock, at logout or from the menu.
+            cx.on_app_quit(|this, cx| {
+                this.flush(cx);
+                async {}
+            }),
         ];
         NoteEditor {
             store,
@@ -113,7 +127,7 @@ impl NoteEditor {
 
     /// Saves the open note, then opens `id` (or nothing).
     pub fn open(&mut self, id: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
-        if self.note_id() == id && self.incoming.is_none() {
+        if self.note_id() == id {
             return;
         }
         self.flush(cx);
@@ -226,11 +240,45 @@ impl NoteEditor {
             .update(cx, |preview, cx| preview.set_text(text, cx));
     }
 
-    /// Saves any pending edits now.
+    /// Saves any pending edits now. With the question about a change made
+    /// elsewhere still open, this keeps the editor's text, so that leaving
+    /// the note or quitting never loses it; the other version stays in
+    /// history.
     pub fn flush(&mut self, cx: &mut Context<Self>) {
         self.autosave = None;
-        if self.incoming.is_none() {
-            self.save(cx);
+        // Another writer can win the race between reading and writing; try
+        // again on top of its version.
+        for _ in 0..3 {
+            if self.incoming.is_some() {
+                self.keep_mine(cx);
+            } else {
+                self.save(cx);
+            }
+            if self.incoming.is_none() {
+                return;
+            }
+        }
+        self.stash_draft(cx);
+    }
+
+    /// Keeps the editor's text in the open note's history.
+    fn stash_draft(&mut self, cx: &mut Context<Self>) {
+        let Some(note) = &self.note else {
+            return;
+        };
+        let (title, body) = self.current_text(cx);
+        let mut fields = serde_json::Map::new();
+        fields.insert("title".into(), title.into());
+        fields.insert("body".into(), body.into());
+        fields.insert("bookId".into(), note.book_id.clone().into());
+        let rev = note.rev.clone().unwrap_or_default();
+        if let Err(err) = self
+            .store
+            .record_revision(&note.id, &rev, &fields, Origin::Ui)
+        {
+            cx.emit(EditorEvent::Notice(format!(
+                "Couldn't keep your draft: {err}"
+            )));
         }
     }
 
@@ -249,9 +297,21 @@ impl NoteEditor {
         origin: Origin,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(mut note) = self.note.clone() else {
+        let Some(note) = self.note.clone() else {
             return false;
         };
+        self.write_over(note, change, origin, cx)
+    }
+
+    /// Writes `base` with the editor's text and `change` applied. `self.note`
+    /// only changes once the write succeeds.
+    fn write_over(
+        &mut self,
+        mut note: Note,
+        change: impl FnOnce(&mut Note, &App),
+        origin: Origin,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let (title, body) = self.current_text(cx);
         note.title = title;
         note.body = body;
@@ -268,13 +328,16 @@ impl NoteEditor {
             Ok(result) => {
                 note.rev = Some(result.rev);
                 self.note = Some(note);
+                // The write was based on the current version, so there is
+                // nothing left to choose between.
+                self.incoming = None;
                 cx.notify();
                 true
             }
             Err(StoreError::Conflict) => {
                 // Someone else saved first; show their version next to ours.
                 if let Ok(Some(latest)) = self.store.note(&note.id) {
-                    self.incoming = Some(latest);
+                    self.incoming = Some(Incoming::Changed(Box::new(latest)));
                     cx.notify();
                 }
                 false
@@ -299,59 +362,68 @@ impl NoteEditor {
         if change.id != note.id || note.rev.as_deref() == Some(change.rev.as_str()) {
             return;
         }
-        if change.deleted {
-            self.note = None;
-            self.show(None, false, window, cx);
-            return;
-        }
-        let Ok(Some(latest)) = self.store.note(&change.id) else {
-            return;
+        let incoming = if change.deleted {
+            Incoming::Deleted
+        } else {
+            let Ok(Some(latest)) = self.store.note(&change.id) else {
+                return;
+            };
+            Incoming::Changed(Box::new(latest))
         };
         if self.has_unsaved_edits(cx) {
             self.autosave = None;
-            self.incoming = Some(latest);
+            self.incoming = Some(incoming);
             cx.notify();
         } else {
-            self.show(Some(latest), true, window, cx);
-        }
-    }
-
-    /// Keeps the editor's text over the incoming version, which stays in history.
-    pub fn keep_mine(&mut self, cx: &mut Context<Self>) {
-        let Some(theirs) = self.incoming.take() else {
-            return;
-        };
-        let mut note = theirs;
-        let (title, body) = self.current_text(cx);
-        note.title = title;
-        note.body = body;
-        self.note = Some(note);
-        // An API-origin write always snapshots the version it replaces.
-        self.write(|_, _| {}, Origin::Api, cx);
-    }
-
-    /// Takes the incoming version; the editor's unsaved text goes to history.
-    pub fn take_theirs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(theirs) = self.incoming.take() else {
-            return;
-        };
-        if let Some(mine) = &self.note {
-            let (title, body) = self.current_text(cx);
-            let mut fields = serde_json::Map::new();
-            fields.insert("title".into(), title.into());
-            fields.insert("body".into(), body.into());
-            fields.insert("bookId".into(), mine.book_id.clone().into());
-            let rev = mine.rev.clone().unwrap_or_default();
-            if let Err(err) = self
-                .store
-                .record_revision(&mine.id, &rev, &fields, Origin::Ui)
-            {
-                cx.emit(EditorEvent::Notice(format!(
-                    "Couldn't keep your draft: {err}"
-                )));
+            match incoming {
+                Incoming::Changed(latest) => self.show(Some(*latest), true, window, cx),
+                Incoming::Deleted => self.show(None, false, window, cx),
             }
         }
-        self.show(Some(theirs), true, window, cx);
+    }
+
+    /// Keeps the editor's text over the change made elsewhere. A newer
+    /// version stays in history; a deleted note comes back.
+    pub fn keep_mine(&mut self, cx: &mut Context<Self>) {
+        let Some(incoming) = self.incoming.take() else {
+            return;
+        };
+        let base = match &incoming {
+            Incoming::Changed(theirs) => (**theirs).clone(),
+            Incoming::Deleted => match self.note.clone() {
+                Some(note) => note,
+                None => return,
+            },
+        };
+        // The note's notebook may have been deleted along with it.
+        let store = self.store.clone();
+        let fallback_book = self.library.read(cx).default_book();
+        let rehome = move |note: &mut Note, _: &App| {
+            if note.book_id != TRASH_BOOK_ID
+                && store.get(&note.book_id).ok().flatten().is_none()
+                && let Some(book) = fallback_book
+            {
+                note.book_id = book;
+            }
+        };
+        // An API-origin write always snapshots the version it replaces.
+        if !self.write_over(base, rehome, Origin::Api, cx) && self.incoming.is_none() {
+            // Not a conflict: leave the question open rather than drop it.
+            self.incoming = Some(incoming);
+        }
+    }
+
+    /// Takes the change made elsewhere; the editor's unsaved text goes to
+    /// history.
+    pub fn take_theirs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(incoming) = self.incoming.take() else {
+            return;
+        };
+        self.stash_draft(cx);
+        match incoming {
+            Incoming::Changed(theirs) => self.show(Some(*theirs), true, window, cx),
+            Incoming::Deleted => self.show(None, false, window, cx),
+        }
     }
 
     pub fn set_book(&mut self, book_id: String, cx: &mut Context<Self>) {
@@ -425,16 +497,7 @@ impl NoteEditor {
         cx: &mut Context<Self>,
     ) {
         self.flush(cx);
-        if let Some(note) = &self.note {
-            let (current_title, current_body) = self.current_text(cx);
-            let mut fields = serde_json::Map::new();
-            fields.insert("title".into(), current_title.into());
-            fields.insert("body".into(), current_body.into());
-            let rev = note.rev.clone().unwrap_or_default();
-            self.store
-                .record_revision(&note.id, &rev, &fields, Origin::Ui)
-                .ok();
-        }
+        self.stash_draft(cx);
         self.title
             .update(cx, |state, cx| state.set_value(title, window, cx));
         self.body
@@ -681,7 +744,20 @@ impl NoteEditor {
             .children(chips)
     }
 
-    fn render_incoming_banner(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_incoming_banner(&self, deleted: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let (message, keep, take) = if deleted {
+            (
+                "This note was deleted elsewhere while you were editing.",
+                "Keep it",
+                "Discard",
+            )
+        } else {
+            (
+                "This note was changed elsewhere while you were editing. The version you don't keep stays in its history.",
+                "Keep mine",
+                "Use theirs",
+            )
+        };
         h_flex()
             .gap_2()
             .px_4()
@@ -690,20 +766,18 @@ impl NoteEditor {
             .border_b_1()
             .border_color(cx.theme().border)
             .text_sm()
-            .child(div().flex_1().child(
-                "This note was changed elsewhere while you were editing. The version you don't keep stays in its history.",
-            ))
+            .child(div().flex_1().child(message))
             .child(
                 Button::new("keep-mine")
                     .small()
                     .primary()
-                    .label("Keep mine")
+                    .label(keep)
                     .on_click(cx.listener(|this, _, _, cx| this.keep_mine(cx))),
             )
             .child(
                 Button::new("take-theirs")
                     .small()
-                    .label("Use theirs")
+                    .label(take)
                     .on_click(cx.listener(|this, _, window, cx| this.take_theirs(window, cx))),
             )
     }
@@ -763,8 +837,9 @@ impl Render for NoteEditor {
                         ),
                 )
             })
-            .when(self.incoming.is_some(), |el| {
-                el.child(self.render_incoming_banner(cx))
+            .when_some(self.incoming.as_ref(), |el, incoming| {
+                let deleted = matches!(incoming, Incoming::Deleted);
+                el.child(self.render_incoming_banner(deleted, cx))
             })
             .when(!self.backlinks.is_empty(), |el| {
                 el.child(self.render_backlinks(cx))

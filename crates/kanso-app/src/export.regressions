@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 3c107b058777586f407d009996a0d757257a8d3171fc9eca2680882c4f5874bc # shrinks to name = ":"
+cc 0c8f309fcfd930f048f62e5c6d19260d0186697233ea1ff932644c86777cd287 # shrinks to books = ["aA"], notes = [(0, "")], existing = [("aa", "")]

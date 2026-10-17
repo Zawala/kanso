@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::resizable::{h_resizable, resizable_panel};
@@ -58,14 +59,43 @@ pub struct AppState {
 
 impl Global for AppState {}
 
+/// How long settings that change often wait before they are written.
+const CONFIG_SAVE_DELAY: Duration = Duration::from_secs(2);
+
+/// A settings write waiting for [`CONFIG_SAVE_DELAY`].
+#[derive(Default)]
+struct PendingConfigSave(Option<Task<()>>);
+
+impl Global for PendingConfigSave {}
+
 impl AppState {
     /// Changes the settings and writes them to disk.
     pub fn update_config(cx: &mut App, change: impl FnOnce(&mut AppConfig)) {
+        // This write includes anything still waiting.
+        cx.default_global::<PendingConfigSave>().0 = None;
         let state = cx.global_mut::<AppState>();
         change(&mut state.config);
         let path = paths::config_path(&state.data_dir);
         if let Err(err) = state.config.save(&path) {
             eprintln!("kanso: couldn't save settings: {err:#}");
+        }
+    }
+
+    /// Changes the settings now and writes them once they stop changing for
+    /// a moment, for things that change all the time, like the selected note.
+    pub fn update_config_soon(cx: &mut App, change: impl FnOnce(&mut AppConfig)) {
+        change(&mut cx.global_mut::<AppState>().config);
+        let save = cx.spawn(async move |cx| {
+            cx.background_executor().timer(CONFIG_SAVE_DELAY).await;
+            cx.update(AppState::save_pending_config);
+        });
+        cx.default_global::<PendingConfigSave>().0 = Some(save);
+    }
+
+    /// Writes a waiting settings change now, as when quitting.
+    pub fn save_pending_config(cx: &mut App) {
+        if cx.default_global::<PendingConfigSave>().0.take().is_some() {
+            AppState::update_config(cx, |_| {});
         }
     }
 }
@@ -197,7 +227,7 @@ impl Workspace {
                     let id = id.clone();
                     this.editor
                         .update(cx, |editor, cx| editor.open(id.as_deref(), window, cx));
-                    AppState::update_config(cx, |config| config.last_note = id);
+                    AppState::update_config_soon(cx, |config| config.last_note = id);
                 }
                 LibraryEvent::Changed(change) => {
                     let change = change.clone();

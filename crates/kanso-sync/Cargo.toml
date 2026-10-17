@@ -19,6 +19,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 # Blocking HTTP with rustls: the GPUI app has no async runtime.
 ureq = "3.4"
+url = "2.5"
 # macOS Keychain for the sync token.
 keyring = { version = "3.6", features = ["apple-native"] }
 

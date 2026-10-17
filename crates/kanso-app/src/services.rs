@@ -236,9 +236,13 @@ pub fn sync_now(cx: &mut App) {
     std::thread::Builder::new()
         .name("kanso-sync".into())
         .spawn(move || {
-            let result = SyncConfig::new(endpoint)
-                .remote_from_keychain()
-                .map_err(|err| format!("couldn't read the access token: {err}"))
+            let result = SyncConfig::new(&endpoint)
+                .map_err(|err| format!("the Worker URL is refused: {err}"))
+                .and_then(|config| {
+                    config
+                        .remote_from_keychain()
+                        .map_err(|err| format!("couldn't read the access token: {err}"))
+                })
                 .and_then(|remote| {
                     remote.ok_or_else(|| "no access token; set one in Settings › Sync".to_owned())
                 })

@@ -48,30 +48,35 @@ pub fn plist(program_args: &[String]) -> String {
     )
 }
 
-/// How to start this copy of Kanso: through `open` when it's in an app
-/// bundle, otherwise the executable itself.
-pub fn program_args(exe: &Path) -> Vec<String> {
+/// How to start this copy of Kanso on `data_dir`: through `open` when it's
+/// in an app bundle, otherwise the executable itself.
+pub fn program_args(exe: &Path, data_dir: &Path) -> Vec<String> {
     let bundle = exe
         .ancestors()
         .find(|p| p.extension().is_some_and(|ext| ext == "app"));
-    match bundle {
+    let mut args = match bundle {
         Some(app) => vec![
             "/usr/bin/open".into(),
             "-a".into(),
             app.to_string_lossy().into_owned(),
+            "--args".into(),
         ],
         None => vec![exe.to_string_lossy().into_owned()],
-    }
+    };
+    args.push("--data-dir".into());
+    args.push(data_dir.to_string_lossy().into_owned());
+    args
 }
 
-/// Installs or removes the LaunchAgent at `path`.
-pub fn set_enabled(path: &PathBuf, enabled: bool) -> anyhow::Result<()> {
+/// Installs or removes the LaunchAgent at `path`, which opens Kanso on
+/// `data_dir`.
+pub fn set_enabled(path: &PathBuf, enabled: bool, data_dir: &Path) -> anyhow::Result<()> {
     if enabled {
         let exe = std::env::current_exe().context("couldn't find the Kanso executable")?;
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        std::fs::write(path, plist(&program_args(&exe)))
+        std::fs::write(path, plist(&program_args(&exe, data_dir)))
             .with_context(|| format!("writing {}", path.display()))?;
     } else {
         match std::fs::remove_file(path) {
@@ -117,11 +122,59 @@ mod tests {
 
     #[test]
     fn bundle_uses_open() {
-        let args = program_args(Path::new("/Applications/Kanso.app/Contents/MacOS/kanso"));
-        assert_eq!(args, ["/usr/bin/open", "-a", "/Applications/Kanso.app"]);
-        let args = program_args(Path::new("/Users/me/kanso/target/release/kanso"));
-        assert_eq!(args, ["/Users/me/kanso/target/release/kanso"]);
+        let data = Path::new("/Users/me/Notes");
+        let args = program_args(
+            Path::new("/Applications/Kanso.app/Contents/MacOS/kanso"),
+            data,
+        );
+        assert_eq!(
+            args,
+            [
+                "/usr/bin/open",
+                "-a",
+                "/Applications/Kanso.app",
+                "--args",
+                "--data-dir",
+                "/Users/me/Notes"
+            ]
+        );
+        let args = program_args(Path::new("/Users/me/kanso/target/release/kanso"), data);
+        assert_eq!(
+            args,
+            [
+                "/Users/me/kanso/target/release/kanso",
+                "--data-dir",
+                "/Users/me/Notes"
+            ]
+        );
         assert!(plist(&args).contains("<string>/Users/me/kanso/target/release/kanso</string>"));
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(256))]
+
+        /// Round-trip: the arguments the agent passes, read the way Kanso
+        /// reads its command line, open the same data folder.
+        #[test]
+        fn prop_launch_opens_the_same_data_folder(
+            dir in "/[^\\x00]{0,40}",
+            bundled in any::<bool>(),
+        ) {
+            let exe = if bundled {
+                Path::new("/Applications/Kanso.app/Contents/MacOS/kanso")
+            } else {
+                Path::new("/usr/local/bin/kanso")
+            };
+            let args = program_args(exe, Path::new(&dir));
+            // `open --args` hands the app whatever follows it.
+            let passed: Vec<String> = match args.iter().position(|a| a == "--args") {
+                Some(at) => args[at + 1..].to_vec(),
+                None => args[1..].to_vec(),
+            };
+            let parsed = crate::parse_args_from(passed).unwrap();
+            prop_assert_eq!(parsed.command, None);
+            prop_assert_eq!(parsed.data_dir, Path::new(&dir).to_path_buf());
+        }
     }
 
     /// Oracle: macOS's own plist checker accepts the file.

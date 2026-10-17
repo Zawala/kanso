@@ -13,7 +13,7 @@ use gpui_kit::*;
 use kanso_core::NoteStatus;
 use kanso_store::{NoteSummary, Sort};
 
-use crate::library::{Filter, Library};
+use crate::library::{Filter, Library, LibraryEvent};
 
 const SEARCH_DELAY: Duration = Duration::from_millis(120);
 const ROW_HEIGHT: f32 = 76.;
@@ -66,11 +66,15 @@ impl NoteList {
                 .clean_on_escape()
         });
         let subscriptions = vec![
-            cx.observe(&library, |this, library, cx| {
-                if let Some(ix) = library.read(cx).selected_index() {
+            cx.observe(&library, |_, _, cx| cx.notify()),
+            // Follow the selection when it moves, but not on every reload,
+            // which would pull the list back while it's being scrolled.
+            cx.subscribe(&library, |this, library, event, cx| {
+                if let LibraryEvent::Selected(_) = event
+                    && let Some(ix) = library.read(cx).selected_index()
+                {
                     this.scroll.scroll_to_item(ix, ScrollStrategy::Nearest);
                 }
-                cx.notify();
             }),
             cx.subscribe_in(&search, window, |this, search, event, _, cx| match event {
                 InputEvent::Change => {

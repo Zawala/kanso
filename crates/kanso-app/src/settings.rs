@@ -1,4 +1,10 @@
 //! The Settings window.
+//!
+//! Switches and menus apply at once. Addresses, ports, names and URLs are
+//! changed in a prompt and applied only when they check out, so the API
+//! doesn't restart and sync doesn't run on every keystroke.
+
+use std::rc::Rc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::notification::Notification;
@@ -6,6 +12,7 @@ use gpui_kit::component::setting::{
     NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings,
 };
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, WindowExt as _, h_flex};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::config::ThemePreference;
@@ -14,6 +21,72 @@ use crate::{dialogs, inkdrop, launch, paths, services};
 
 fn config(cx: &App) -> &crate::config::AppConfig {
     &cx.global::<AppState>().config
+}
+
+/// A value with a Change… button that asks for a new one. `apply` returns
+/// why a value can't be used, and the prompt stays open until it can.
+fn changeable(
+    id: &'static str,
+    title: &'static str,
+    current: impl Fn(&App) -> String + 'static,
+    apply: impl Fn(String, &mut App) -> Result<(), String> + 'static,
+) -> SettingField<SharedString> {
+    let current = Rc::new(current);
+    let apply = Rc::new(apply);
+    SettingField::render(move |_, _, cx| {
+        let value = current(cx);
+        let current = current.clone();
+        let apply = apply.clone();
+        h_flex()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .when(value.is_empty(), |el| {
+                        el.text_color(cx.theme().muted_foreground)
+                    })
+                    .child(if value.is_empty() {
+                        "Not set".to_owned()
+                    } else {
+                        value
+                    }),
+            )
+            .child(
+                Button::new(id)
+                    .small()
+                    .label("Change…")
+                    .on_click(move |_, window, cx| {
+                        let apply = apply.clone();
+                        dialogs::prompt_checked(
+                            title,
+                            &current(cx),
+                            "Save",
+                            window,
+                            cx,
+                            move |value, _, cx| apply(value, cx),
+                        );
+                    }),
+            )
+    })
+}
+
+/// The API port from what was typed.
+pub fn parse_port(value: &str) -> Result<u16, String> {
+    match value.trim().parse::<u16>() {
+        Ok(port) if port >= 1024 => Ok(port),
+        _ => Err("Use a port from 1024 to 65535.".into()),
+    }
+}
+
+/// The API username from what was typed. Basic authentication can't carry
+/// a colon in the username.
+pub fn parse_username(value: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() || value.contains(':') || value.chars().any(char::is_control) {
+        Err("The username can't be empty or contain a colon.".into())
+    } else {
+        Ok(value.to_owned())
+    }
 }
 
 pub struct SettingsWindow;
@@ -132,14 +205,19 @@ fn api_page() -> SettingPage {
             .item(
                 SettingItem::new(
                     "Address",
-                    SettingField::input(
-                        |cx| config(cx).server.bind_address.clone().into(),
+                    changeable(
+                        "change-address",
+                        "API Address",
+                        |cx| config(cx).server.bind_address.clone(),
                         |value, cx| {
-                            let value = value.trim().to_owned();
-                            if value.parse::<std::net::IpAddr>().is_ok() {
-                                AppState::update_config(cx, |config| config.server.bind_address = value);
-                                services::apply_server_settings(cx);
-                            }
+                            let ip: std::net::IpAddr = value
+                                .parse()
+                                .map_err(|_| "Enter an IP address, such as 127.0.0.1.".to_owned())?;
+                            AppState::update_config(cx, |config| {
+                                config.server.bind_address = ip.to_string()
+                            });
+                            services::apply_server_settings(cx);
+                            Ok(())
                         },
                     ),
                 )
@@ -147,30 +225,29 @@ fn api_page() -> SettingPage {
             )
             .item(SettingItem::new(
                 "Port",
-                SettingField::number_input(
-                    NumberFieldOptions {
-                        min: 1024.0,
-                        max: 65535.0,
-                        step: 1.0,
-                    },
-                    |cx| f64::from(config(cx).server.port),
+                changeable(
+                    "change-port",
+                    "API Port",
+                    |cx| config(cx).server.port.to_string(),
                     |value, cx| {
-                        let port = value.clamp(1024.0, 65535.0) as u16;
+                        let port = parse_port(&value)?;
                         AppState::update_config(cx, |config| config.server.port = port);
                         services::apply_server_settings(cx);
+                        Ok(())
                     },
                 ),
             ))
             .item(SettingItem::new(
                 "Username",
-                SettingField::input(
-                    |cx| config(cx).server.username.clone().into(),
+                changeable(
+                    "change-username",
+                    "API Username",
+                    |cx| config(cx).server.username.clone(),
                     |value, cx| {
-                        let value = value.trim().to_owned();
-                        if !value.is_empty() {
-                            AppState::update_config(cx, |config| config.server.username = value);
-                            services::apply_server_settings(cx);
-                        }
+                        let username = parse_username(&value)?;
+                        AppState::update_config(cx, |config| config.server.username = username);
+                        services::apply_server_settings(cx);
+                        Ok(())
                     },
                 ),
             ))
@@ -241,34 +318,45 @@ fn sync_page() -> SettingPage {
             ))
             .item(SettingItem::new(
                 "Worker URL",
-                SettingField::input(
-                    |cx| config(cx).sync.endpoint.clone().unwrap_or_default().into(),
+                changeable(
+                    "change-endpoint",
+                    "Worker URL",
+                    |cx| config(cx).sync.endpoint.clone().unwrap_or_default(),
                     |value, cx| {
-                        let value = value.trim().trim_end_matches('/').to_owned();
-                        if value.is_empty()
-                            || value.starts_with("https://")
-                            || value.starts_with("http://127.0.0.1")
-                        {
-                            AppState::update_config(cx, |config| {
-                                config.sync.endpoint = (!value.is_empty()).then_some(value);
-                            });
-                            services::apply_sync_settings(cx);
-                        }
+                        let endpoint = kanso_sync::check_endpoint(&value).map_err(|err| {
+                            let mut message = err.to_string();
+                            message[..1].make_ascii_uppercase();
+                            format!("{message}.")
+                        })?;
+                        AppState::update_config(cx, |config| config.sync.endpoint = Some(endpoint));
+                        services::apply_sync_settings(cx);
+                        Ok(())
                     },
                 ),
             ))
             .item(SettingItem::new(
-                "Every (minutes)",
-                SettingField::number_input(
-                    NumberFieldOptions {
-                        min: 1.0,
-                        max: 1440.0,
-                        step: 1.0,
-                    },
-                    |cx| (config(cx).sync.interval_secs / 60) as f64,
+                "Sync every",
+                // A menu rather than a number field: each change restarts
+                // sync, which shouldn't happen per keystroke.
+                SettingField::dropdown(
+                    [1u64, 5, 15, 30, 60, 240]
+                        .into_iter()
+                        .map(|minutes| {
+                            let label = match minutes {
+                                1 => "Minute".to_owned(),
+                                60 => "Hour".to_owned(),
+                                m if m % 60 == 0 => format!("{} hours", m / 60),
+                                m => format!("{m} minutes"),
+                            };
+                            (minutes.to_string().into(), label.into())
+                        })
+                        .collect(),
+                    |cx| (config(cx).sync.interval_secs / 60).to_string().into(),
                     |value, cx| {
-                        let secs = (value.clamp(1.0, 1440.0) as u64) * 60;
-                        AppState::update_config(cx, |config| config.sync.interval_secs = secs);
+                        let minutes: u64 = value.parse().unwrap_or(15).clamp(1, 1440);
+                        AppState::update_config(cx, |config| {
+                            config.sync.interval_secs = minutes * 60
+                        });
                         services::apply_sync_settings(cx);
                     },
                 ),
@@ -335,7 +423,11 @@ fn general_page() -> SettingPage {
                 "Open Kanso at login",
                 SettingField::switch(
                     |cx| config(cx).launch_at_login,
-                    |on, cx| match launch::set_enabled(&paths::launch_agent_path(), on) {
+                    |on, cx| match launch::set_enabled(
+                        &paths::launch_agent_path(),
+                        on,
+                        &cx.global::<AppState>().data_dir,
+                    ) {
                         Ok(()) => AppState::update_config(cx, |config| config.launch_at_login = on),
                         Err(err) => eprintln!("kanso: launch at login: {err:#}"),
                     },
@@ -375,27 +467,37 @@ fn general_page() -> SettingPage {
                         .label("Back Up")
                         .on_click(|_, window, cx| {
                             let state = cx.global::<AppState>();
-                            let path = paths::backups_dir(&state.data_dir)
-                                .join(format!("kanso-{}.db", kanso_core::now_ms()));
-                            let result =
-                                std::fs::create_dir_all(paths::backups_dir(&state.data_dir))
-                                    .map_err(anyhow::Error::from)
-                                    .and_then(|()| {
-                                        state.store.backup_to(&path).map_err(anyhow::Error::from)
-                                    });
-                            match result {
-                                Ok(()) => window.push_notification(
-                                    Notification::success(format!(
-                                        "Backed up to {}",
-                                        path.display()
-                                    )),
-                                    cx,
-                                ),
-                                Err(err) => window.push_notification(
-                                    Notification::error(format!("Backup failed: {err:#}")),
-                                    cx,
-                                ),
-                            }
+                            let store = state.store.clone();
+                            let dir = paths::backups_dir(&state.data_dir);
+                            let path = dir.join(format!("kanso-{}.db", kanso_core::now_ms()));
+                            // Copying a large library takes a while; keep the
+                            // window responsive.
+                            let backup = cx.background_spawn({
+                                let path = path.clone();
+                                async move {
+                                    std::fs::create_dir_all(&dir)?;
+                                    store.backup_to(&path)?;
+                                    anyhow::Ok(())
+                                }
+                            });
+                            window
+                                .spawn(cx, async move |cx| {
+                                    let result = backup.await;
+                                    cx.update(|window, cx| {
+                                        let notification = match result {
+                                            Ok(()) => Notification::success(format!(
+                                                "Backed up to {}",
+                                                path.display()
+                                            )),
+                                            Err(err) => Notification::error(format!(
+                                                "Backup failed: {err:#}"
+                                            )),
+                                        };
+                                        window.push_notification(notification, cx);
+                                    })
+                                    .ok();
+                                })
+                                .detach();
                         })
                 }),
             ))
@@ -425,5 +527,47 @@ impl Render for SettingsWindow {
                 api_page(),
                 sync_page(),
             ]))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_port, parse_username};
+    use proptest::prelude::*;
+
+    #[test]
+    fn examples() {
+        assert_eq!(parse_port(" 19840 "), Ok(19840));
+        assert!(parse_port("1023").is_err());
+        assert!(parse_port("1984o").is_err());
+        assert!(parse_port("65536").is_err());
+        assert_eq!(parse_username(" bob ").as_deref(), Ok("bob"));
+        assert!(parse_username("bob:x").is_err());
+        assert!(parse_username("  ").is_err());
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(512))]
+
+        /// Round-trip: every usable port is accepted as typed, and nothing
+        /// outside 1024..=65535 is.
+        #[test]
+        fn prop_ports_round_trip(port in any::<u16>()) {
+            let parsed = parse_port(&port.to_string());
+            prop_assert_eq!(parsed.is_ok(), port >= 1024);
+            if let Ok(parsed) = parsed {
+                prop_assert_eq!(parsed, port);
+            }
+        }
+
+        /// Refinement: an accepted username is trimmed, non-empty and
+        /// usable in Basic authentication.
+        #[test]
+        fn prop_usernames_fit_basic_auth(value in "\\PC{0,12}|[a-z:]{0,6}") {
+            if let Ok(name) = parse_username(&value) {
+                prop_assert!(!name.is_empty() && !name.contains(':'));
+                prop_assert_eq!(name.trim(), name.as_str());
+            }
+        }
     }
 }

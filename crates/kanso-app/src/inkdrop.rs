@@ -241,25 +241,38 @@ pub fn start_copy_credentials(
         return;
     };
     let mut server = cx.global::<AppState>().config.server.clone();
-    match copy_server_settings(&inkdrop_dir, &mut server, || {
-        keychain_secret(INKDROP_KEYCHAIN_SERVICE)
-    }) {
-        Ok(copied) => {
-            AppState::update_config(cx, |config| config.server = server);
-            let message = match copied {
-                Copied::Everything => "Kanso now uses Inkdrop's API port, username and password.",
-                Copied::PortOnly => "Kanso now uses Inkdrop's API port.",
-            };
-            window.push_notification(Notification::success(message), cx);
-            on_done(window, cx);
-        }
-        Err(err) => {
-            window.push_notification(
-                Notification::error(format!("Couldn't copy Inkdrop's settings: {err:#}")),
-                cx,
-            );
-        }
-    }
+    // Reading the Keychain waits for the user to answer macOS's prompt.
+    let copy = cx.background_spawn(async move {
+        copy_server_settings(&inkdrop_dir, &mut server, || {
+            keychain_secret(INKDROP_KEYCHAIN_SERVICE)
+        })
+        .map(|copied| (copied, server))
+    });
+    window
+        .spawn(cx, async move |cx| {
+            let result = copy.await;
+            cx.update(|window, cx| match result {
+                Ok((copied, server)) => {
+                    AppState::update_config(cx, |config| config.server = server);
+                    let message = match copied {
+                        Copied::Everything => {
+                            "Kanso now uses Inkdrop's API port, username and password."
+                        }
+                        Copied::PortOnly => "Kanso now uses Inkdrop's API port.",
+                    };
+                    window.push_notification(Notification::success(message), cx);
+                    on_done(window, cx);
+                }
+                Err(err) => {
+                    window.push_notification(
+                        Notification::error(format!("Couldn't copy Inkdrop's settings: {err:#}")),
+                        cx,
+                    );
+                }
+            })
+            .ok();
+        })
+        .detach();
 }
 
 /// `kanso import-inkdrop [--inkdrop-dir DIR] [--credentials]`

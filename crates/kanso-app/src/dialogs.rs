@@ -5,9 +5,10 @@ use std::rc::Rc;
 
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::notification::Notification;
 use gpui_kit::*;
 
-type TextHandler = Rc<dyn Fn(String, &mut Window, &mut App)>;
+type TextHandler = Rc<dyn Fn(String, &mut Window, &mut App) -> Result<(), String>>;
 type ConfirmHandler = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// Asks for a line of text. `on_ok` gets the trimmed, non-empty answer.
@@ -18,6 +19,29 @@ pub fn prompt_text(
     window: &mut Window,
     cx: &mut App,
     on_ok: impl Fn(String, &mut Window, &mut App) + 'static,
+) {
+    prompt_checked(
+        title,
+        initial,
+        ok_label,
+        window,
+        cx,
+        move |value, window, cx| {
+            on_ok(value, window, cx);
+            Ok(())
+        },
+    );
+}
+
+/// Asks for a line of text until `on_ok` accepts it. `on_ok` gets the
+/// trimmed, non-empty answer; an error is shown and the dialog stays open.
+pub fn prompt_checked(
+    title: impl Into<SharedString>,
+    initial: &str,
+    ok_label: impl Into<SharedString>,
+    window: &mut Window,
+    cx: &mut App,
+    on_ok: impl Fn(String, &mut Window, &mut App) -> Result<(), String> + 'static,
 ) {
     let title = title.into();
     let ok_label = ok_label.into();
@@ -38,9 +62,9 @@ pub fn prompt_text(
         }
         let submit = submit.clone();
         handle
-            .update(cx, move |_, window, cx| {
-                window.close_dialog(cx);
-                submit(value, window, cx);
+            .update(cx, move |_, window, cx| match submit(value, window, cx) {
+                Ok(()) => window.close_dialog(cx),
+                Err(message) => window.push_notification(Notification::error(message), cx),
             })
             .ok();
     });
@@ -65,8 +89,13 @@ pub fn prompt_text(
                 if value.is_empty() {
                     return false;
                 }
-                on_ok(value, window, cx);
-                true
+                match on_ok(value, window, cx) {
+                    Ok(()) => true,
+                    Err(message) => {
+                        window.push_notification(Notification::error(message), cx);
+                        false
+                    }
+                }
             })
     });
 }

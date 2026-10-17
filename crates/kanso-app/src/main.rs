@@ -54,10 +54,15 @@ struct Args {
 }
 
 fn parse_args() -> Result<Args> {
+    parse_args_from(std::env::args().skip(1))
+}
+
+/// Reads the command line after the program name.
+fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
     let mut command = None;
     let mut data_dir = None;
     let mut rest = Vec::new();
-    let mut args = std::env::args().skip(1);
+    let mut args = args.into_iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--data-dir" => {
@@ -169,6 +174,7 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
         note_list::bind_keys(cx);
         workspace::set_menus(cx);
         cx.on_action(|_: &Quit, cx| quit(cx));
+        watch_for_quit(cx);
         cx.on_action(|_: &workspace::OpenSettings, cx| settings::SettingsWindow::open(cx));
         services::apply_server_settings(cx);
         services::apply_sync_settings(cx);
@@ -239,11 +245,26 @@ fn offer_first_import(window: &mut Window, cx: &mut App) {
     );
 }
 
-/// Saves open notes, then quits.
+/// Cleans up on any quit, including ones without the Quit action (the
+/// Dock, logging out). Open notes save themselves.
+fn watch_for_quit(cx: &mut App) {
+    cx.on_app_quit(|cx| {
+        services::stop_server(cx);
+        AppState::save_pending_config(cx);
+        async {}
+    })
+    .detach();
+}
+
+/// Saves open notes, then quits. The Quit action arrives while its window
+/// is being updated, and a window can't be reached from inside its own
+/// update, so the work waits until that update ends.
 fn quit(cx: &mut App) {
-    workspace::for_each_workspace(cx, |workspace, cx| {
-        workspace.editor.update(cx, |editor, cx| editor.flush(cx));
+    cx.defer(|cx| {
+        workspace::for_each_workspace(cx, |workspace, cx| {
+            workspace.editor.update(cx, |editor, cx| editor.flush(cx));
+        });
+        services::stop_server(cx);
+        cx.quit();
     });
-    services::stop_server(cx);
-    cx.quit();
 }

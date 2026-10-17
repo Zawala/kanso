@@ -1,8 +1,11 @@
 //! Markdown export: one `.md` file per note in folders named after its
 //! notebooks, attachments in `_attachments/`, and in-app links rewritten to
-//! relative paths so the export reads well in any Markdown editor.
+//! relative paths so the export reads well in any Markdown editor. Files
+//! already in the chosen folder are never replaced; new ones get numbered
+//! names instead.
 
 use std::collections::{HashMap, HashSet};
+use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::Context as _;
@@ -164,6 +167,11 @@ fn iso_time(ms: i64) -> String {
 fn book_dirs(books: &[Book]) -> HashMap<String, PathBuf> {
     let mut dirs: HashMap<String, PathBuf> = HashMap::new();
     let mut taken: HashMap<Option<String>, HashSet<String>> = HashMap::new();
+    // A top-level notebook must not share the attachments folder.
+    taken
+        .entry(None)
+        .or_default()
+        .insert(ATTACHMENTS_DIR.to_lowercase());
     for (_, book) in crate::library::book_tree(books) {
         let parent = book.parent_book_id.clone().filter(|p| dirs.contains_key(p));
         let parent_dir = parent.as_ref().map(|p| dirs[p].clone()).unwrap_or_default();
@@ -206,19 +214,30 @@ pub fn export(store: &Store, root: &Path, only: Option<&[String]>) -> anyhow::Re
         .collect();
 
     // Decide every path first so links between notes can point at them.
+    // Names in use, on disk or by notebook folders, are taken.
     let mut taken: HashMap<PathBuf, HashSet<String>> = HashMap::new();
+    for dir in dirs.values() {
+        if let (Some(parent), Some(name)) = (dir.parent(), dir.file_name()) {
+            taken
+                .entry(parent.to_path_buf())
+                .or_insert_with(|| existing_names(&root.join(parent)))
+                .insert(name.to_string_lossy().to_lowercase());
+        }
+    }
     let mut note_paths: HashMap<String, PathBuf> = HashMap::new();
     for note in &notes {
         let dir = dirs.get(&note.book_id).cloned().unwrap_or_default();
         let name = unique_name(
             &sanitize_file_name(&note.title),
             ".md",
-            taken.entry(dir.clone()).or_default(),
+            taken
+                .entry(dir.clone())
+                .or_insert_with(|| existing_names(&root.join(&dir))),
         );
         note_paths.insert(note.id.clone(), dir.join(name));
     }
     let mut file_paths: HashMap<String, PathBuf> = HashMap::new();
-    let mut attachment_names = HashSet::new();
+    let mut attachment_names = existing_names(&root.join(ATTACHMENTS_DIR));
     for note in &notes {
         for file_id in kanso_core::tasks::linked_file_ids(&note.body) {
             if file_paths.contains_key(&file_id) {
@@ -277,20 +296,144 @@ fn split_extension(name: &str) -> (&str, String) {
     }
 }
 
+/// Names already in `dir`, lowercased.
+fn existing_names(dir: &Path) -> HashSet<String> {
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().to_lowercase())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Writes a file that must not exist yet.
 fn write_new(path: &Path, data: &[u8]) -> anyhow::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     }
-    std::fs::write(path, data).with_context(|| format!("writing {}", path.display()))
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .with_context(|| format!("creating {}", path.display()))?;
+    file.write_all(data)
+        .with_context(|| format!("writing {}", path.display()))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{encode_link, relative_path, rewrite_links, sanitize_file_name, unique_name};
+    use super::{
+        encode_link, export, relative_path, rewrite_links, sanitize_file_name, unique_name,
+    };
+    use kanso_core::DocType;
+    use kanso_store::{Origin, Put, Store};
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
-    use std::collections::HashSet;
+    use serde_json::json;
+    use std::collections::{BTreeMap, HashSet};
     use std::path::{Path, PathBuf};
+
+    /// Every file under `root`, relative path to contents.
+    fn read_tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+        let mut out = BTreeMap::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else {
+                    let data = std::fs::read(&path).unwrap();
+                    out.insert(path.strip_prefix(root).unwrap().to_path_buf(), data);
+                }
+            }
+        }
+        out
+    }
+
+    /// A store with notebooks named `books` and notes `(book index, title)`.
+    fn library(books: &[&str], notes: &[(usize, &str)]) -> (tempfile::TempDir, Store) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().join("kanso.db")).unwrap();
+        let ids: Vec<String> = books
+            .iter()
+            .map(|name| {
+                store
+                    .put(
+                        DocType::Book,
+                        json!({ "name": name }),
+                        Put::Upsert,
+                        Origin::Ui,
+                    )
+                    .unwrap()
+                    .id
+            })
+            .collect();
+        for (book, title) in notes {
+            store
+                .put(
+                    DocType::Note,
+                    json!({"title": title, "body": format!("body of {title}"), "bookId": ids[*book]}),
+                    Put::Upsert,
+                    Origin::Ui,
+                )
+                .unwrap();
+        }
+        (dir, store)
+    }
+
+    #[test]
+    fn exporting_twice_keeps_the_first_export() {
+        let (_dir, store) = library(&["Work"], &[(0, "Plan"), (0, "plan")]);
+        let out = tempfile::tempdir().unwrap();
+        assert_eq!(export(&store, out.path(), None).unwrap().notes, 2);
+        let first = read_tree(out.path());
+        assert_eq!(export(&store, out.path(), None).unwrap().notes, 2);
+        let second = read_tree(out.path());
+        assert_eq!(second.len(), 4);
+        for (path, data) in &first {
+            assert_eq!(second.get(path), Some(data), "{} changed", path.display());
+        }
+    }
+
+    #[test]
+    fn a_notebook_named_like_the_attachments_folder_gets_its_own() {
+        let (_dir, store) = library(&["_Attachments"], &[(0, "image.png")]);
+        let encoded = "aGVsbG8=";
+        let file = store
+            .put(
+                DocType::File,
+                json!({
+                    "name": "image.png",
+                    "contentType": "image/png",
+                    "publicIn": [],
+                    "_attachments": {"index": {"content_type": "image/png", "data": encoded}},
+                }),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let suffix = file.strip_prefix("file:").unwrap();
+        let book = store.books().unwrap()[0].id.clone();
+        store
+            .put(
+                DocType::Note,
+                json!({"title": "pic", "body": format!("![](inkdrop://file:{suffix})"), "bookId": book}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let report = export(&store, out.path(), None).unwrap();
+        assert_eq!((report.notes, report.attachments), (2, 1));
+        let tree = read_tree(out.path());
+        assert_eq!(tree[Path::new("_attachments/image.png")], b"hello");
+        assert!(tree.contains_key(Path::new("_Attachments 2/image.png.md")));
+        assert!(tree.contains_key(Path::new("_Attachments 2/pic.md")));
+    }
 
     fn config() -> ProptestConfig {
         ProptestConfig {
@@ -383,6 +526,33 @@ mod tests {
                 restored = restored.replacen(&full, &uri, 1);
             }
             prop_assert_eq!(restored, body);
+        }
+
+        /// Invariant: exporting into a folder that already has files keeps
+        /// them byte for byte and adds one file per note.
+        #[test]
+        fn prop_export_never_replaces_files(
+            books in prop::collection::vec("[aA_]{1,3}", 1..4),
+            notes in prop::collection::vec((0usize..4, "[aA. ]{0,3}"), 0..8),
+            existing in prop::collection::vec(("[aA_]{1,3}", "[aA. ]{0,3}"), 0..6),
+        ) {
+            let books: Vec<&str> = books.iter().map(String::as_str).collect();
+            let notes: Vec<(usize, &str)> = notes.iter().map(|(b, t)| (b % books.len(), t.as_str())).collect();
+            let (_dir, store) = library(&books, &notes);
+            let out = tempfile::tempdir().unwrap();
+            for (folder, file) in &existing {
+                let dir = out.path().join(folder);
+                std::fs::create_dir_all(&dir).unwrap();
+                std::fs::write(dir.join(format!("{}.md", sanitize_file_name(file))), b"mine").unwrap();
+            }
+            let before = read_tree(out.path());
+            let report = export(&store, out.path(), None).unwrap();
+            let after = read_tree(out.path());
+            for (path, data) in &before {
+                prop_assert_eq!(after.get(path), Some(data));
+            }
+            prop_assert_eq!(report.notes, notes.len());
+            prop_assert_eq!(after.len(), before.len() + notes.len());
         }
 
         /// Invariant: an encoded link has no character that ends a link target.

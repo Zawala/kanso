@@ -121,7 +121,7 @@ impl AppConfig {
     /// Writes the config atomically with owner-only permissions.
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         use std::io::Write as _;
-        use std::os::unix::fs::OpenOptionsExt as _;
+        use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
@@ -132,6 +132,8 @@ impl AppConfig {
             .truncate(true)
             .mode(0o600)
             .open(&tmp)?;
+        // `mode` only applies to a new file; a leftover one keeps its own.
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
         file.write_all(&serde_json::to_vec_pretty(self)?)?;
         file.sync_all()?;
         std::fs::rename(&tmp, path)?;
@@ -260,6 +262,21 @@ mod tests {
         assert_eq!(
             AppConfig::load(&dir.path().join("missing.json")).unwrap(),
             AppConfig::default()
+        );
+    }
+
+    #[test]
+    fn a_leftover_temporary_file_does_not_widen_permissions() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, "{}").unwrap();
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
+        AppConfig::default().save(&path).unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
         );
     }
 }

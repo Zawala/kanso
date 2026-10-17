@@ -70,6 +70,20 @@ pub fn linked_note(url: &str) -> Option<String> {
     (!suffix.is_empty()).then(|| format!("note:{suffix}"))
 }
 
+/// Whether a clicked link may be handed to macOS to open. Only web and mail
+/// links are: a note can come from sync or the API, and other schemes can
+/// launch apps or open local files.
+pub fn is_openable(url: &str) -> bool {
+    let Some((scheme, rest)) = url.split_once(':') else {
+        return false;
+    };
+    match scheme.to_ascii_lowercase().as_str() {
+        "http" | "https" => rest.starts_with("//") && rest.len() > 2,
+        "mailto" => !rest.is_empty(),
+        _ => false,
+    }
+}
+
 impl Render for Preview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let links = self.links.clone();
@@ -89,7 +103,8 @@ impl Render for Preview {
                         Some(id) => {
                             links.try_send(id).ok();
                         }
-                        None => cx.open_url(url),
+                        None if is_openable(url) => cx.open_url(url),
+                        None => {}
                     }),
             )
     }
@@ -97,7 +112,7 @@ impl Render for Preview {
 
 #[cfg(test)]
 mod tests {
-    use super::linked_note;
+    use super::{is_openable, linked_note};
     use proptest::prelude::*;
 
     proptest! {
@@ -108,6 +123,20 @@ mod tests {
         fn prop_note_links_resolve_to_their_id(suffix in "[A-Za-z0-9_-]{1,20}", tail in prop::option::of("[?#/][a-z=]{0,8}")) {
             let url = format!("inkdrop://note/{suffix}{}", tail.unwrap_or_default());
             prop_assert_eq!(linked_note(&url), Some(format!("note:{suffix}")));
+        }
+
+        /// Refinement: only web and mail links are opened, whatever the
+        /// scheme's case.
+        #[test]
+        fn prop_only_web_and_mail_links_open(scheme in "[a-zA-Z][a-zA-Z0-9+.-]{0,10}", rest in "(//)?[a-z@./]{1,20}") {
+            let url = format!("{scheme}:{rest}");
+            let allowed = matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https" | "mailto");
+            if is_openable(&url) {
+                prop_assert!(allowed, "{}", url);
+            }
+            // Metamorphic: changing the scheme's case changes nothing.
+            let flipped = format!("{}:{rest}", scheme.to_ascii_uppercase());
+            prop_assert_eq!(is_openable(&flipped), is_openable(&url));
         }
 
         /// Invariant: other URLs never resolve to a note.
@@ -130,5 +159,23 @@ mod tests {
         );
         assert_eq!(linked_note("inkdrop://note/"), None);
         assert_eq!(linked_note("https://example.com"), None);
+    }
+
+    #[test]
+    fn openable_links() {
+        assert!(is_openable("https://example.com/a?b#c"));
+        assert!(is_openable("HTTP://example.com"));
+        assert!(is_openable("mailto:someone@example.com"));
+        for url in [
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "x-apple.systempreferences:com.apple.preference",
+            "smb://server/share",
+            "https:",
+            "https://",
+            "example.com",
+        ] {
+            assert!(!is_openable(url), "{url}");
+        }
     }
 }

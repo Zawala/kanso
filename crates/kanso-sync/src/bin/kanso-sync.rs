@@ -126,5 +126,7 @@ fn remote(flags: &Flags) -> Result<HttpRemote> {
             anyhow!("no sync token: set KANSO_SYNC_TOKEN or run `kanso-sync token set`")
         })?,
     };
-    Ok(SyncConfig::new(endpoint).remote(token))
+    Ok(SyncConfig::new(endpoint)
+        .map_err(|err| anyhow!("--endpoint: {err}"))?
+        .remote(token))
 }
