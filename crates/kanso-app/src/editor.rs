@@ -805,6 +805,24 @@ impl Render for NoteEditor {
     }
 }
 
+#[cfg(test)]
+impl NoteEditor {
+    /// Replaces the title and body as if typed, scheduling the autosave.
+    pub fn edit_for_test(&mut self, body: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.body
+            .update(cx, |state, cx| state.set_value(body.to_owned(), window, cx));
+        self.schedule_autosave(cx);
+    }
+
+    pub fn body_for_test(&self, cx: &App) -> String {
+        self.current_text(cx).1
+    }
+
+    pub fn has_incoming(&self) -> bool {
+        self.incoming.is_some()
+    }
+}
+
 /// Notes outside the trash whose body links to note `id`, as (id, title).
 pub fn backlinks(store: &Store, id: &str) -> Vec<(String, String)> {
     let Some(suffix) = id.strip_prefix("note:") else {

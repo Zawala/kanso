@@ -16,6 +16,8 @@ mod preview;
 mod services;
 mod settings;
 mod sidebar;
+#[cfg(test)]
+mod ui_tests;
 mod workspace;
 
 use std::path::PathBuf;

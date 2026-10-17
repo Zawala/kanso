@@ -159,7 +159,7 @@ pub fn apply_theme(preference: ThemePreference, window: Option<&mut Window>, cx:
 
 pub struct Workspace {
     store: Arc<Store>,
-    library: Entity<Library>,
+    pub(crate) library: Entity<Library>,
     sidebar: Entity<Sidebar>,
     note_list: Entity<NoteList>,
     pub editor: Entity<NoteEditor>,

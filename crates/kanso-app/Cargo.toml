@@ -24,5 +24,11 @@ serde_json.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+# gpui-kit's own test-support feature also resolves its alternative GPUI
+# backend, whose cocoa pin conflicts; enabling it on each layer is equivalent.
+gpui-pre = { version = "=0.3.9", features = ["test-support"] }
+gpui-pre-platform = { version = "=0.3.9", features = ["test-support"] }
+gpui-base = { version = "=0.7.3", features = ["test-support"] }
+gpui-component = { version = "=0.7.3", features = ["test-support"] }
 proptest.workspace = true
 tempfile.workspace = true
