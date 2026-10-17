@@ -1,0 +1,20 @@
+[package]
+name = "kanso-store"
+description = "Kanso's SQLite document store: Inkdrop-shaped JSON documents, trigram search, revisions and sync state."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+async-channel.workspace = true
+base64.workspace = true
+kanso-core.workspace = true
+md-5.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true

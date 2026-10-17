@@ -1,0 +1,25 @@
+//! Kanso's domain layer.
+//!
+//! Documents keep Inkdrop's shapes and IDs (`note:…`, `book:…`, `tag:…`,
+//! `file:…`) so links inside note bodies, API clients and imported data keep
+//! working unchanged.
+
+pub mod id;
+pub mod model;
+pub mod query;
+pub mod rev;
+pub mod tasks;
+
+pub use id::{DocType, new_id};
+pub use model::{Book, FileMeta, Note, NoteShare, NoteStatus, TRASH_BOOK_ID, Tag, TagColor};
+pub use query::{Clause, Field, NoteFacts, Query};
+pub use rev::Rev;
+
+/// Milliseconds since the Unix epoch, the timestamp unit every document uses.
+pub fn now_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_default()
+}

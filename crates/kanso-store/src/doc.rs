@@ -1,0 +1,82 @@
+//! Stored documents and their API representation.
+
+use base64::Engine as _;
+use kanso_core::DocType;
+use serde_json::{Map, Value, json};
+
+/// A stored document: its JSON fields plus `_id` and `_rev`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Doc {
+    pub id: String,
+    pub doc_type: DocType,
+    pub rev: String,
+    pub seq: i64,
+    pub deleted: bool,
+    /// Fields without `_id`, `_rev` and derived values.
+    pub fields: Map<String, Value>,
+}
+
+/// An attachment's bytes as stored in the `blobs` table.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Attachment {
+    pub md5: [u8; 16],
+    pub data: Vec<u8>,
+}
+
+impl Attachment {
+    pub fn new(data: Vec<u8>) -> Self {
+        use md5::{Digest, Md5};
+        Attachment {
+            md5: Md5::digest(&data).into(),
+            data,
+        }
+    }
+
+    /// PouchDB's digest form: `md5-<base64 of the raw MD5>`.
+    pub fn digest(&self) -> String {
+        format!(
+            "md5-{}",
+            base64::engine::general_purpose::STANDARD.encode(self.md5)
+        )
+    }
+
+    pub fn md5_hex(&self) -> String {
+        self.md5.iter().map(|b| format!("{b:02x}")).collect()
+    }
+}
+
+impl Doc {
+    /// The document as the HTTP API returns it: `_id` and `_rev` first, then
+    /// the stored fields, then `extra` (derived values such as `count`).
+    pub fn to_api(&self, extra: Map<String, Value>) -> Value {
+        let mut out = Map::new();
+        out.insert("_id".into(), Value::String(self.id.clone()));
+        out.insert("_rev".into(), Value::String(self.rev.clone()));
+        out.extend(self.fields.clone());
+        out.extend(extra);
+        Value::Object(out)
+    }
+
+    /// The API form of a file document. With `data`, the attachment carries its
+    /// base64 bytes; otherwise it is a stub, as in CouchDB.
+    pub fn file_to_api(&self, content_type: &str, attachment: &Attachment, data: bool) -> Value {
+        let mut index = json!({
+            "content_type": content_type,
+            "digest": attachment.digest(),
+            "length": attachment.data.len(),
+        });
+        if data {
+            index["data"] =
+                Value::String(base64::engine::general_purpose::STANDARD.encode(&attachment.data));
+        } else {
+            index["stub"] = Value::Bool(true);
+        }
+        let mut extra = Map::new();
+        extra.insert("_attachments".into(), json!({ "index": index }));
+        self.to_api(extra)
+    }
+
+    pub fn str_field(&self, key: &str) -> Option<&str> {
+        self.fields.get(key).and_then(Value::as_str)
+    }
+}

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 7adbaa14b2f60ddf76fbecfca6f25ab98bf02acd741a0f392ef7897e10ab6dab # shrinks to notes = [NoteSpec { title: [], body: [], book: 3, tags: [], status: None }], clauses = []
