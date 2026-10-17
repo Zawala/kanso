@@ -135,10 +135,10 @@ fn task_marker(line: &str) -> Option<bool> {
         "[x]" | "[X]" => true,
         _ => return None,
     };
-    match item[3..].chars().next() {
-        None | Some(' ') | Some('\t') => Some(checked),
-        _ => None,
-    }
+    // Like GFM (micromark), the checkbox needs whitespace and then some text
+    // after it; a bare `- [ ]` is a plain list item.
+    let text = &item[3..];
+    (text.starts_with([' ', '\t']) && !text.trim().is_empty()).then_some(checked)
 }
 
 #[cfg(test)]
@@ -185,5 +185,14 @@ mod tests {
                     ![img](inkdrop://file:XyZ9) inkdrop://note/";
         assert_eq!(linked_note_ids(body), vec!["note:abc-1_2"]);
         assert_eq!(linked_file_ids(body), vec!["file:XyZ9"]);
+    }
+
+    #[test]
+    fn a_checkbox_without_text_is_not_a_task() {
+        assert_eq!(count_tasks("- [ ]\n* [x]   \n- [ ] real\n").total, 1);
+        assert_eq!(
+            toggle_task("- [ ]\n- [ ] real\n", 0).as_deref(),
+            Some("- [ ]\n- [x] real\n")
+        );
     }
 }
