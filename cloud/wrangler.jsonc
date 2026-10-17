@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kanso-sync",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "kanso-sync",
+      "database_id": "d9b0a705-d37b-46c0-b8f5-6ceabfd976b8",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "kanso-files"
+    }
+  ]
+  // SYNC_TOKEN is a secret: `wrangler secret put SYNC_TOKEN` (reads stdin).
+}

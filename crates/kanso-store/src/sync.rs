@@ -32,7 +32,8 @@ pub struct SyncDoc {
 pub enum ApplyOutcome {
     /// The remote version replaced the local one.
     Applied,
-    /// The local copy already had this revision.
+    /// The local copy already had this revision, or its pending changes are
+    /// based on it.
     Unchanged,
     /// Both sides changed; the remote version won and the local one was kept
     /// as a snapshot.
@@ -71,12 +72,17 @@ impl Store {
         })
     }
 
-    /// Records that the server now has revision `rev` of `id`. Does nothing
-    /// if the document changed again in the meantime.
+    /// Records that the server accepted revision `rev` of `id`. Call it right
+    /// after the push that sent `rev` succeeded.
+    ///
+    /// If the document was edited locally while the push was in flight, the
+    /// edit stays pending, now based on `rev`: local writes only ever build
+    /// on the current revision, so the newer one descends from what the
+    /// server now has and its next push is accepted.
     pub fn mark_synced(&self, id: &str, rev: &str) -> Result<()> {
         self.write(|tx, _| {
             tx.execute(
-                "UPDATE docs SET synced_rev = ?2 WHERE id = ?1 AND rev = ?2",
+                "UPDATE docs SET synced_rev = ?2 WHERE id = ?1",
                 params![id, rev],
             )?;
             Ok(())
@@ -138,10 +144,21 @@ impl Store {
                 return Ok(ApplyOutcome::Applied);
             };
             if local.rev == remote.rev {
+                // Same revision, same content: bytes that arrive with it are
+                // this document's (e.g. fetched after an earlier miss).
+                if !remote.deleted {
+                    store_blob(tx)?;
+                }
                 tx.execute(
                     "UPDATE docs SET synced_rev = rev WHERE id = ?",
                     [&remote.id],
                 )?;
+                return Ok(ApplyOutcome::Unchanged);
+            }
+            // The server's version is the one the local edits are based on
+            // (typically our own push coming back through the change feed):
+            // nothing new on the remote side, so it is not a conflict.
+            if local.synced_rev.as_deref() == Some(remote.rev.as_str()) {
                 return Ok(ApplyOutcome::Unchanged);
             }
             let local_dirty = local.synced_rev.as_deref() != Some(local.rev.as_str());
@@ -171,5 +188,139 @@ impl Store {
             )?;
             Ok(ApplyOutcome::LocalWon)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use kanso_core::DocType;
+    use serde_json::json;
+
+    use super::*;
+    use crate::Put;
+
+    fn store() -> (tempfile::TempDir, Store) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().join("kanso.db")).unwrap();
+        (dir, store)
+    }
+
+    fn pending(store: &Store, id: &str) -> Option<SyncDoc> {
+        store
+            .pending_push(usize::MAX)
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == id)
+    }
+
+    fn create_note(store: &Store, id: &str) -> crate::WriteResult {
+        store
+            .put(
+                DocType::Note,
+                json!({"_id": id, "bookId": "trash", "body": "v1", "updatedAt": 100}),
+                Put::Upsert,
+                Origin::Api,
+            )
+            .unwrap()
+    }
+
+    fn merge_body(store: &Store, id: &str, body: &str) -> crate::WriteResult {
+        store
+            .put(
+                DocType::Note,
+                json!({"_id": id, "body": body}),
+                Put::Merge,
+                Origin::Api,
+            )
+            .unwrap()
+    }
+
+    /// Pushing R1, editing to R2 and then pulling R1 back through the change
+    /// feed must keep R2, even when both share `updatedAt` (merges keep it).
+    #[test]
+    fn own_push_echo_is_not_a_conflict() {
+        let (_dir, store) = store();
+        let note = create_note(&store, "note:echo1");
+        let pushed = pending(&store, &note.id).unwrap();
+        store.mark_synced(&note.id, &pushed.rev).unwrap();
+
+        let edited = merge_body(&store, &note.id, "v2");
+        assert_eq!(store.note(&note.id).unwrap().unwrap().updated_at, 100);
+
+        let echo = SyncDoc {
+            base_rev: None,
+            ..pushed.clone()
+        };
+        assert_eq!(
+            store.apply_remote(&echo, None).unwrap(),
+            ApplyOutcome::Unchanged
+        );
+        assert_eq!(store.note(&note.id).unwrap().unwrap().body, "v2");
+        let still = pending(&store, &note.id).unwrap();
+        assert_eq!(still.rev, edited.rev);
+        assert_eq!(still.base_rev.as_deref(), Some(pushed.rev.as_str()));
+        assert!(
+            store
+                .revisions(&note.id)
+                .unwrap()
+                .iter()
+                .all(|r| r.origin != "sync"),
+            "an echo must not be recorded as a conflicting version"
+        );
+    }
+
+    /// An edit made while a push was in flight stays pending, based on the
+    /// revision the server accepted.
+    #[test]
+    fn mark_synced_rebases_an_edit_made_during_the_push() {
+        let (_dir, store) = store();
+        let note = create_note(&store, "note:race1");
+        let pushed = pending(&store, &note.id).unwrap();
+        assert_eq!(pushed.base_rev, None);
+
+        let edited = merge_body(&store, &note.id, "v2");
+        store.mark_synced(&note.id, &pushed.rev).unwrap();
+
+        let next = pending(&store, &note.id).unwrap();
+        assert_eq!(next.rev, edited.rev);
+        assert_eq!(next.base_rev.as_deref(), Some(pushed.rev.as_str()));
+
+        store.mark_synced(&note.id, &edited.rev).unwrap();
+        assert!(pending(&store, &note.id).is_none());
+    }
+
+    /// A file first applied without its bytes (the server had none yet)
+    /// takes them when the same revision arrives again with them.
+    #[test]
+    fn same_revision_with_bytes_fills_a_missing_blob() {
+        let (_dir, store) = store();
+        let bytes = b"\x89PNG fake".to_vec();
+        let blob = Attachment::new(bytes.clone());
+        let doc = SyncDoc {
+            id: "file:img1".into(),
+            rev: "1-aa".into(),
+            deleted: false,
+            fields: json!({"name": "a.png", "contentType": "image/png", "md5digest": blob.md5_hex(), "createdAt": 1})
+                .as_object()
+                .unwrap()
+                .clone(),
+            base_rev: None,
+        };
+        assert_eq!(
+            store.apply_remote(&doc, None).unwrap(),
+            ApplyOutcome::Applied
+        );
+        assert!(store.attachment(&doc.id).unwrap().is_none());
+        assert!(!store.has_blob(&doc.id, &blob.md5_hex()).unwrap());
+
+        assert_eq!(
+            store.apply_remote(&doc, Some(blob.clone())).unwrap(),
+            ApplyOutcome::Unchanged
+        );
+        let (content_type, stored) = store.attachment(&doc.id).unwrap().unwrap();
+        assert_eq!(content_type, "image/png");
+        assert_eq!(stored.data, bytes);
+        assert!(store.has_blob(&doc.id, &blob.md5_hex()).unwrap());
+        assert!(store.pending_push(10).unwrap().is_empty());
     }
 }

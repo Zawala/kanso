@@ -1,0 +1,23 @@
+{
+  "name": "kanso-sync-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Kanso's sync server: a Cloudflare Worker over D1 (documents, change sequence) and R2 (attachment bytes).",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "migrate:local": "wrangler d1 migrations apply kanso-sync --local",
+    "migrate:remote": "wrangler d1 migrations apply kanso-sync --remote",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.4",
+    "@cloudflare/workers-types": "5.20261016.1",
+    "fast-check": "4.10.2",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5",
+    "wrangler": "4.151.1"
+  }
+}
