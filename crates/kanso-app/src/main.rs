@@ -12,6 +12,7 @@ mod history;
 mod inkdrop;
 mod launch;
 mod library;
+mod markdown_source;
 mod note_list;
 mod paths;
 mod preview;

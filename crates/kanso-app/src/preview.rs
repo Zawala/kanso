@@ -14,12 +14,25 @@ use crate::theme::Colors;
 /// The rendered text's size and line height.
 const TEXT_SIZE: f32 = 16.;
 const LINE_HEIGHT: f32 = 1.65;
-/// The widest the text runs: about 75 characters a line, however wide the
-/// window. The source in Edit mode keeps to the same measure.
-pub const READABLE_WIDTH: f32 = 720.;
+/// The widest text runs, in ems of its size: about 75 characters a line,
+/// however wide the window. SF Pro averages about 0.44 em a character in
+/// prose, SF Mono 0.62.
+const READABLE_EMS: f32 = 35.;
+const MONO_READABLE_EMS: f32 = 47.;
 /// How far text sits from the pane's left edge: under the note's title, like
 /// the source in Edit mode.
 pub const TEXT_INSET: f32 = 28.;
+
+/// The readable measure for text set at `size`, in the monospaced face or
+/// the proportional one. The preview keeps to it, and so does the source in
+/// Edit mode, at its own size.
+pub fn readable_width(size: f32, mono: bool) -> f32 {
+    size * if mono {
+        MONO_READABLE_EMS
+    } else {
+        READABLE_EMS
+    }
+}
 
 /// Where clicks on `inkdrop://note/<id>` links go.
 pub type LinkSender = async_channel::Sender<String>;
@@ -98,12 +111,15 @@ pub fn is_openable(url: &str) -> bool {
 
 /// Body text in the theme's colors; code is set apart by a quiet fill rather
 /// than by color, and so is a table's header row, which is also set heavier.
-/// Table rows sit on the page itself. Quotes and finished tasks, which the
-/// text view draws in its muted color, get the secondary text color: they are
-/// still read. `dark` picks the check mark that reads on the dark theme's
-/// task boxes.
+/// Table rows sit on the page itself; a table wider than the column scrolls
+/// sideways rather than cutting off its last columns. Quotes and finished
+/// tasks, which the text view draws in its muted color, get the secondary
+/// text color: they are still read. `dark` picks the check mark that reads
+/// on the dark theme's task boxes.
 // no-prop-test: maps theme colors onto a style; the snapshots show it.
 fn text_style(colors: &Colors, dark: bool) -> TextViewStyle {
+    let mut table = StyleRefinement::default().bg(colors.editor);
+    table.overflow.x = Some(Overflow::Scroll);
     TextViewStyle::default()
         .with_dark(dark)
         .with_foreground(colors.text.into())
@@ -118,7 +134,7 @@ fn text_style(colors: &Colors, dark: bool) -> TextViewStyle {
             background_color: Some(colors.code.into()),
             ..Default::default()
         })
-        .with_table(StyleRefinement::default().bg(colors.editor))
+        .with_table(table)
         .with_table_head(StyleRefinement::default().font_weight(FontWeight::SEMIBOLD))
 }
 
@@ -137,30 +153,81 @@ impl Render for Preview {
             .track_scroll(&self.scroll)
             .bg(colors.editor)
             .child(
-                div().w_full().max_w(px(READABLE_WIDTH)).child(
-                    TextView::markdown("preview-text", self.text.clone())
-                        .style(text_style(colors, dark))
-                        .text_size(px(TEXT_SIZE))
-                        .line_height(relative(LINE_HEIGHT))
-                        .text_color(colors.text)
-                        .selectable(true)
-                        .image_source(self.image_resolver())
-                        .on_link_click(move |url, _, _, cx| match linked_note(url) {
-                            Some(id) => {
-                                links.try_send(id).ok();
-                            }
-                            None if is_openable(url) => cx.open_url(url),
-                            None => {}
-                        }),
-                ),
+                div()
+                    .w_full()
+                    .max_w(px(readable_width(TEXT_SIZE, false)))
+                    .child(
+                        TextView::markdown("preview-text", self.text.clone())
+                            .style(text_style(colors, dark))
+                            .text_size(px(TEXT_SIZE))
+                            .line_height(relative(LINE_HEIGHT))
+                            .text_color(colors.text)
+                            .selectable(true)
+                            .image_source(self.image_resolver())
+                            .on_link_click(move |url, _, _, cx| match linked_note(url) {
+                                Some(id) => {
+                                    links.try_send(id).ok();
+                                }
+                                None if is_openable(url) => cx.open_url(url),
+                                None => {}
+                            }),
+                    ),
             )
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{is_openable, linked_note};
+    use super::{is_openable, linked_note, readable_width};
+    use crate::theme::SYSTEM_MONO;
+    use gpui_kit::{TextSystem, font, px};
     use proptest::prelude::*;
+    use proptest::test_runner::FileFailurePersistence;
+
+    /// Ordinary note prose, to measure faces with.
+    const PROSE: &str = "Kanso acts as an MCP host. Clients connect to Kanso, discover the \
+        tools it offers, and ask before they act. Documents live in D1, attachments in R2. \
+        Last writer wins by the update time; the loser stays in history. Rows, not cards. \
+        The reason is not recorded in the inspected fields, so earlier QA cannot establish \
+        current acceptance.";
+
+    /// How many characters of [`PROSE`] fit in `width`, on average, set in
+    /// `family` at `size`.
+    fn characters_in(family: &str, size: f32, width: f32) -> f32 {
+        let text_system = TextSystem::new(std::sync::Arc::new(gpui_apple::AppleTextSystem::new()));
+        let id = text_system.resolve_font(&font(family));
+        let advance = |c| f32::from(text_system.advance(id, px(size), c).unwrap().width);
+        let total: f32 = PROSE.chars().map(advance).sum();
+        width / (total / PROSE.chars().count() as f32)
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 24,
+            failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
+            ..ProptestConfig::default()
+        })]
+
+        /// Invariant: at every size the setting allows, the measure holds
+        /// about 75 characters of prose in either face, so it grows with the
+        /// text instead of crowding more words onto a line at small sizes.
+        #[test]
+        fn prop_readable_measure_holds_about_75_characters(size in 10f32..=28., mono in any::<bool>()) {
+            let family = if mono { SYSTEM_MONO } else { ".SystemUIFont" };
+            let characters = characters_in(family, size, readable_width(size, mono));
+            prop_assert!((72.0..=82.0).contains(&characters), "{size} {mono}: {characters:.1}");
+        }
+    }
+
+    /// The default body size gives the preview 560 points of text, and the
+    /// wider monospaced face a wider measure.
+    #[test]
+    fn readable_width_examples() {
+        assert_eq!(readable_width(16., false), 560.);
+        assert!(readable_width(16., true) > readable_width(16., false));
+        // The old fixed 720 points held far more than 75 characters.
+        assert!(characters_in(".SystemUIFont", 16., 720.) > 95.);
+    }
 
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(256))]

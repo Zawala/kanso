@@ -118,7 +118,7 @@ fn demo_store(path: &Path) -> Store {
         (
             &engineering,
             "Weekly sync notes",
-            "# Weekly sync\n\n| Topic | Owner | Status |\n|---|---|---|\n| Release | Ngoni | On track |\n| Docs | Team | Drafting |\n\nAction items live in the tracker.".to_owned(),
+            "# Weekly sync\n\n| Topic | Owner | Status | Due | Risk | Next step |\n|---|---|---|---|---|---|\n| Release | Ngoni | On track | Jun 4 | Notarization queue | Submit the build |\n| Docs | Team | Drafting | Jun 11 | Screenshots out of date | Retake them after the theme lands |\n\nAction items live in the tracker.".to_owned(),
             vec![],
             "none",
             false,
@@ -235,6 +235,38 @@ fn empty_notebook(
                 library.select(None, cx);
             })
         });
+    }
+}
+
+/// The note whose first table of five or more columns comes earliest, so
+/// the table sits as high in the preview as the library allows.
+fn open_wide_table(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    // The line of the first table head separator with five or more columns.
+    let wide_table_line = |body: &str| {
+        body.lines().position(|line| {
+            let line = line.trim();
+            line.starts_with('|')
+                && line.matches('|').count() >= 6
+                && line.chars().all(|c| matches!(c, '|' | '-' | ':' | ' '))
+        })
+    };
+    let notes = store.search_summaries(&Default::default()).unwrap();
+    let found = notes
+        .into_iter()
+        .filter_map(|n| {
+            let note = store.note(&n.id).ok().flatten()?;
+            Some((wide_table_line(&note.body)?, n))
+        })
+        .min_by_key(|(line, _)| *line)
+        .map(|(_, note)| note);
+    if let Some(note) = found {
+        let library = cx.update(|cx| workspace.read(cx).library.clone());
+        cx.update(|cx| library.update(cx, |library, cx| library.select(Some(note.id), cx)));
     }
 }
 
@@ -398,6 +430,11 @@ fn snapshots() {
         Shot {
             size: size(px(1100.), px(720.)),
             ..shot("dark-split-min", Dark, Split, open_latest)
+        },
+        // A table wider than the narrow preview scrolls instead of clipping.
+        Shot {
+            size: size(px(1100.), px(720.)),
+            ..shot("dark-split-table", Dark, Split, open_wide_table)
         },
         // Tall enough for the whole demo note.
         Shot {

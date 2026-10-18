@@ -52,8 +52,12 @@ pub struct Colors {
     pub list: Rgb,
     /// The editor and preview, and the theme's `background`.
     pub editor: Rgb,
-    /// Menus, popovers and muted fills.
+    /// Menus and popovers.
     pub elevated: Rgb,
+    /// Chips, banners and other quiet fills on the panes: a step off every
+    /// pane, in both themes. (In light mode the elevated color is the
+    /// lightest surface of all, so a fill in it would vanish.)
+    pub fill: Rgb,
     pub text: Rgb,
     pub text_secondary: Rgb,
     pub text_muted: Rgb,
@@ -95,6 +99,7 @@ pub const DARK: Colors = Colors {
     list: Rgb(0x232320),
     editor: Rgb(0x282824),
     elevated: Rgb(0x30302B),
+    fill: Rgb(0x30302B),
     text: Rgb(0xF1EFE7),
     text_secondary: Rgb(0xB7B3A8),
     text_muted: Rgb(0x7E7A70),
@@ -125,6 +130,7 @@ pub const LIGHT: Colors = Colors {
     list: Rgb(0xF8F5EF),
     editor: Rgb(0xFCFAF4),
     elevated: Rgb(0xFFFDF8),
+    fill: Rgb(0xE6E0D4),
     text: Rgb(0x26241F),
     text_secondary: Rgb(0x655F55),
     // The spec's #948B7D reads below 3:1 on most surfaces.
@@ -146,9 +152,11 @@ pub const LIGHT: Colors = Colors {
     code_text: Rgb(0x7D5B32),
     syntax_keyword: Rgb(0x4D6684),
     syntax_string: Rgb(0x55704A),
-    success: Rgb(0x7BAA78),
-    warning: Rgb(0xC49A5A),
-    danger: Rgb(0xC96E63),
+    // The spec's status colors are for the dark theme; on paper they fall
+    // under 3:1, so they are shaded the way muted text and links are.
+    success: Rgb(0x4F7F4C),
+    warning: Rgb(0x8A6424),
+    danger: Rgb(0xA6493F),
 };
 
 impl Colors {
@@ -190,7 +198,7 @@ pub fn ensure_installed(cx: &mut App) {
 /// SF Mono, the system's monospaced face, by the name Core Text knows it
 /// by. It isn't installed as a family called "SF Mono", so it never shows in
 /// the font list.
-const SYSTEM_MONO: &str = ".AppleSystemUIFontMonospaced";
+pub(crate) const SYSTEM_MONO: &str = ".AppleSystemUIFontMonospaced";
 
 /// SF Mono when it loads. A family that doesn't load quietly becomes a
 /// proportional fallback, so it is checked rather than assumed; without it
@@ -216,7 +224,7 @@ fn loads_monospaced(text_system: &TextSystem, family: &str) -> bool {
 }
 
 // no-prop-test: a fixed document; `themes_parse` checks it loads as written.
-fn theme_set(mono: Option<&str>) -> Value {
+pub(crate) fn theme_set(mono: Option<&str>) -> Value {
     json!({
         "name": "Kanso",
         "themes": [
@@ -244,8 +252,9 @@ fn theme_config(name: &str, dark: bool, c: &Colors, mono: Option<&str>) -> Value
 
 /// The component library's color keys.
 fn theme_colors(dark: bool, c: &Colors) -> Value {
-    // Text on the status colors.
-    let on_status = if dark { c.app } else { c.text };
+    // Text on the status colors: dark on the light dark-theme ones, paper
+    // on the shaded light-theme ones.
+    let on_status = if dark { c.app } else { c.button_text };
     let colors: [(&str, String); 60] = [
         ("background", c.editor.hex()),
         ("foreground", c.text.hex()),
@@ -264,7 +273,7 @@ fn theme_colors(dark: bool, c: &Colors) -> Value {
             (if dark { c.elevated } else { c.hover }).hex(),
         ),
         ("button.active.background", c.selected.hex()),
-        ("muted.background", c.elevated.hex()),
+        ("muted.background", c.fill.hex()),
         ("muted.foreground", c.text_muted.hex()),
         ("popover.background", c.elevated.hex()),
         ("popover.foreground", c.text.hex()),
@@ -635,7 +644,7 @@ mod tests {
         for (name, dark, c) in [("dark", true, &DARK), ("light", false, &LIGHT)] {
             for (ix, a) in TagColor::ALL.iter().enumerate() {
                 let shown = muted_tag_color(a.rgb(), dark);
-                for bg in [c.sidebar, c.list, c.editor, c.elevated] {
+                for bg in [c.sidebar, c.list, c.editor, c.elevated, c.fill] {
                     let ratio = contrast_ratio(shown, bg.0);
                     assert!(ratio >= 3.0, "{name}: {a:?} on {bg:?} is {ratio:.2}");
                 }
@@ -664,7 +673,8 @@ mod tests {
     /// Every text color reads on every surface it can sit on, in both
     /// themes: primary text at 7:1, secondary at 4.5:1, muted at 3:1, links
     /// at 4.5:1. Muted text and links don't sit on the brief hover fill of a
-    /// menu item, and links aren't drawn on sidebar rows.
+    /// menu item, and links aren't drawn on sidebar rows. Status colors,
+    /// drawn as icons and dots, read at 3:1 on every surface.
     #[test]
     fn text_contrast_on_every_surface() {
         for (name, c) in [("dark", &DARK), ("light", &LIGHT)] {
@@ -674,12 +684,35 @@ mod tests {
                 ("list", c.list, true),
                 ("editor", c.editor, true),
                 ("elevated", c.elevated, true),
+                ("fill", c.fill, true),
                 ("row_active", c.row_active, true),
                 ("row_hover", c.row_hover, true),
                 ("sidebar_active", c.sidebar_active, false),
                 ("sidebar_hover", c.sidebar_hover, false),
                 ("code", c.code, true),
             ];
+            let all_surfaces = surfaces
+                .iter()
+                .map(|&(surface, bg, _)| (surface, bg))
+                .chain([("hover", c.hover), ("selected", c.selected)]);
+            for (surface, bg) in all_surfaces {
+                for (status, fg) in [
+                    ("success", c.success),
+                    ("warning", c.warning),
+                    ("danger", c.danger),
+                ] {
+                    let ratio = contrast_ratio(fg.0, bg.0);
+                    assert!(
+                        ratio >= 3.0,
+                        "{name}: {status} on {surface} is {ratio:.2}, wants 3"
+                    );
+                }
+            }
+            // A chip or banner shows on the panes it sits on.
+            for (surface, bg) in [("list", c.list), ("editor", c.editor)] {
+                let ratio = contrast_ratio(c.fill.0, bg.0);
+                assert!(ratio >= 1.1, "{name}: fill on {surface} is {ratio:.2}");
+            }
             for (surface, bg, links) in surfaces {
                 for (text, fg, min) in [
                     ("text", c.text, 7.0),
@@ -713,8 +746,18 @@ mod tests {
                 contrast_ratio(c.button_text.0, c.button.0) >= 4.5,
                 "{name}: button"
             );
+            // Text on a status color, as in a destructive button.
+            let on_status = if name == "dark" { c.app } else { c.button_text };
+            for fill in [c.success, c.warning, c.danger] {
+                assert!(
+                    contrast_ratio(on_status.0, fill.0) >= 4.5,
+                    "{name}: text on {fill:?}"
+                );
+            }
             // Selected rows are a subtle fill, but one that shows against
-            // their pane.
+            // their pane. A chip on a selected row takes the pane's color,
+            // so it shows by the same step: in the dark theme no fill can be
+            // a step off the selected row and still carry muted text at 3:1.
             assert!(
                 contrast_ratio(c.row_active.0, c.list.0) >= 1.08,
                 "{name}: row"
@@ -759,8 +802,10 @@ mod tests {
         Rgb((channel(16) << 16) | (channel(8) << 8) | channel(0))
     }
 
-    /// The spec's own light muted text and accent fall short as text, which
-    /// is why [`LIGHT`] shades them.
+    /// The spec's own light muted text and accent fall short as text, and
+    /// its (dark) status colors fall short on paper, which is why [`LIGHT`]
+    /// shades them. Its elevated color is the lightest light surface, so it
+    /// can't be a fill there.
     #[test]
     fn spec_colors_that_were_shaded() {
         let spec_muted = 0x948B7D;
@@ -768,6 +813,10 @@ mod tests {
         let spec_accent = 0x5E7895;
         assert!(contrast_ratio(spec_accent, LIGHT.sidebar.0) < 4.5);
         assert!(contrast_ratio(DARK.accent.0, DARK.elevated.0) < 4.5);
+        for spec_status in [DARK.success, DARK.warning, DARK.danger] {
+            assert!(contrast_ratio(spec_status.0, LIGHT.sidebar.0) < 3.0);
+        }
+        assert!(contrast_ratio(LIGHT.elevated.0, LIGHT.list.0) < 1.1);
     }
 
     #[test]
@@ -814,7 +863,11 @@ mod tests {
         assert_eq!(dark.colors.secondary_hover.as_deref(), Some("#30302B"));
         assert_eq!(dark.colors.button_active.as_deref(), Some("#3A3933"));
         assert_eq!(dark.colors.overlay.as_deref(), Some("#18181699"));
+        assert_eq!(dark.colors.muted.as_deref(), Some("#30302B"));
         let light = &set.themes[0].colors;
+        assert_eq!(light.muted.as_deref(), Some("#E6E0D4"));
+        assert_eq!(light.popover.as_deref(), Some("#FFFDF8"));
+        assert_eq!(light.danger_foreground.as_deref(), Some("#FFFDF8"));
         assert_eq!(light.secondary_active.as_deref(), Some("#E6E0D4"));
         assert_eq!(light.secondary_hover.as_deref(), Some("#F0ECE3"));
         let highlight = dark.highlight.as_ref().expect("highlight");

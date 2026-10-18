@@ -182,6 +182,7 @@ pub fn for_each_workspace(
 
 pub fn apply_theme(preference: ThemePreference, window: Option<&mut Window>, cx: &mut App) {
     crate::theme::ensure_installed(cx);
+    crate::markdown_source::ensure_registered();
     match preference {
         ThemePreference::System => Theme::sync_system_appearance(window, cx),
         ThemePreference::Light => Theme::change(ThemeMode::Light, window, cx),

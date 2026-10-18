@@ -23,18 +23,19 @@ use kanso_store::{Change, Origin, Put, Store, StoreError};
 
 use crate::config::{Appearance, EditorFont, ViewMode};
 use crate::library::Library;
-use crate::preview::{LinkSender, Preview, READABLE_WIDTH, TEXT_INSET};
+use crate::preview::{LinkSender, Preview, TEXT_INSET, readable_width};
 use crate::theme::{Colors, muted_tag_color};
 
 const AUTOSAVE_DELAY: Duration = Duration::from_millis(600);
 const PREVIEW_DELAY: Duration = Duration::from_millis(150);
 /// Line height of the Markdown source, relative to its size.
 const BODY_LINE_HEIGHT: f32 = 1.6;
-/// The monospaced face is sized optically: at the same size it runs about a
-/// fifth wider than the proportional one, so beside the preview it is set a
-/// step smaller (14 at the default 16), with rows to match.
-const MONO_SCALE: f32 = 0.875;
-const MONO_LINE_HEIGHT: f32 = 1.5;
+/// Beside the preview, where it shares the width, the monospaced face is set
+/// a step smaller (14 at the default 16), with rows to match: at the same
+/// size it runs about two fifths wider than the proportional one. Alone, it
+/// keeps the body size. See `EditorFace::compact`.
+const COMPACT_SCALE: f32 = 0.875;
+const COMPACT_LINE_HEIGHT: f32 = 1.5;
 /// Where the source editor's text starts inside it, without line numbers:
 /// its padding and the gap its gutter keeps. The pane's padding makes up the
 /// rest of [`TEXT_INSET`].
@@ -573,7 +574,7 @@ impl NoteEditor {
                     .py_0p5()
                     .rounded_md()
                     .text_xs()
-                    .bg(colors.elevated)
+                    .bg(colors.fill)
                     .text_color(colors.text_secondary)
                     .child(
                         div()
@@ -851,28 +852,26 @@ impl Render for NoteEditor {
         };
         let trashed = note.is_trashed();
         let mode = self.view_mode;
-        let (family, size, line_height) = if face.mono {
-            (
-                cx.theme().mono_font_family.clone(),
-                self.font_size * MONO_SCALE,
-                MONO_LINE_HEIGHT,
-            )
+        let family = if face.mono {
+            cx.theme().mono_font_family.clone()
         } else {
-            (
-                cx.theme().font_family.clone(),
-                self.font_size,
-                BODY_LINE_HEIGHT,
-            )
+            cx.theme().font_family.clone()
         };
-        // Alone, the source keeps to the preview's measure, starting under
-        // the title; beside the preview it takes its half.
+        let (size, line_height) = if face.compact {
+            (self.font_size * COMPACT_SCALE, COMPACT_LINE_HEIGHT)
+        } else {
+            (self.font_size, BODY_LINE_HEIGHT)
+        };
+        // Alone, the source keeps to a readable measure for its face and
+        // size, starting under the title; beside the preview it takes its
+        // half.
         let measure = (mode == ViewMode::Edit).then(|| {
             let numbers = if face.line_numbers {
                 LINE_NUMBER_COLUMN
             } else {
                 0.
             };
-            px(READABLE_WIDTH + SOURCE_EDGES + numbers)
+            px(readable_width(size, face.mono) + SOURCE_EDGES + numbers)
         });
         v_flex()
             .size_full()
@@ -893,7 +892,7 @@ impl Render for NoteEditor {
                         .py_1()
                         .gap_2()
                         .text_sm()
-                        .bg(colors.elevated)
+                        .bg(colors.fill)
                         .child(div().flex_1().child("This note is in the trash."))
                         .child(
                             Button::new("restore-from-trash")

@@ -185,7 +185,9 @@ impl NoteList {
                             div()
                                 .px_1()
                                 .rounded_sm()
-                                .bg(colors.elevated)
+                                // On the selected row the chip takes the
+                                // pane's color; see `Colors::fill`.
+                                .bg(if selected { colors.list } else { colors.fill })
                                 .text_color(colors.text_secondary)
                                 .child(note.status.label()),
                         )

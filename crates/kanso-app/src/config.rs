@@ -94,6 +94,9 @@ pub enum EditorFont {
 pub struct EditorFace {
     pub mono: bool,
     pub line_numbers: bool,
+    /// Set a step smaller, with tighter rows: monospace beside the preview,
+    /// where it shares the width. Alone, every face is set at the body size.
+    pub compact: bool,
 }
 
 impl EditorFont {
@@ -108,6 +111,7 @@ impl EditorFont {
         EditorFace {
             mono,
             line_numbers: mono,
+            compact: mono && mode == ViewMode::Split,
         }
     }
 }
@@ -379,14 +383,24 @@ mod tests {
 
     /// Auto writes in the proportional face and switches to monospace with
     /// line numbers beside the preview; the fixed choices hold in every mode.
+    /// Only monospace beside the preview is set smaller: Mono alone keeps
+    /// the body size.
     #[test]
     fn editor_faces() {
         use ViewMode::{Edit, Preview, Split};
         let face = |font: EditorFont, mode| {
             let face = font.face(mode);
             assert_eq!(face.line_numbers, face.mono);
+            assert_eq!(
+                face.compact,
+                face.mono && mode == Split,
+                "{font:?} {mode:?}"
+            );
             face.mono
         };
+        assert!(!EditorFont::Mono.face(Edit).compact);
+        assert!(EditorFont::Mono.face(Split).compact);
+        assert!(EditorFont::Auto.face(Split).compact);
         assert!(!face(EditorFont::Auto, Edit));
         assert!(face(EditorFont::Auto, Split));
         assert!(!face(EditorFont::Auto, Preview));
