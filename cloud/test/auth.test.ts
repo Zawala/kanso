@@ -525,6 +525,46 @@ describe("sign-in", () => {
 	});
 });
 
+describe("sign-up retries", () => {
+	beforeEach(() => resetServer());
+
+	// Only the same request again is a retry. The right auth key with anything
+	// else is answered exactly like a wrong one, so sign-up can't be used to
+	// test passwords outside the sign-in limits, even with sign-ups closed.
+	it("the right auth key in a different request gets what a wrong key gets, never a session", async () => {
+		const a = await signUp("alice");
+		const other = newCreds("alice");
+		const body = signupBody(a.creds, newDevice());
+		const variants: Record<string, unknown> = {
+			account_id: other.accountId,
+			salt: other.salt,
+			wrapped_key: other.wrappedKey,
+			recovery_auth_key: other.recoveryAuthKey,
+			recovery_wrapped_key: other.recoveryWrappedKey,
+			key_id: other.keyId,
+			kdf: { ...KDF, t: 4 },
+		};
+		let ip = 0;
+		for (const signup of ["open", "closed"]) {
+			await env.DB.prepare("UPDATE settings SET value = ?1 WHERE name = 'signup'").bind(signup).run();
+			const send = (json: unknown) => callJson("/v2/auth/signup", { json, ip: `198.51.100.${++ip}` });
+			for (const [field, value] of Object.entries(variants)) {
+				// The same request with a wrong auth key, then with the right one: one answer.
+				const wrong = await send({ ...body, [field]: value, auth_key: other.authKey });
+				const right = await send({ ...body, [field]: value });
+				expect(wrong.status, `${signup}: ${field}`).toBe(signup === "open" ? 409 : 403);
+				expect(right.status, `${signup}: ${field}`).toBe(wrong.status);
+				expect(right.body, `${signup}: ${field}`).toEqual(wrong.body);
+			}
+			// The same request again is still a retry, whatever the settings.
+			const retry = await send(body);
+			expect(retry.status).toBe(201);
+			expect(retry.body.account_id).toBe(a.creds.accountId);
+		}
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM sessions WHERE revoked_at IS NULL").first("n")).toBe(2);
+	});
+});
+
 describe("account deletion", () => {
 	beforeEach(() => resetServer());
 

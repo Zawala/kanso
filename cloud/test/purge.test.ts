@@ -18,6 +18,7 @@ import {
 	recomputed,
 	resetServer,
 	signUp,
+	setSetting,
 	signupBody,
 	testEnv,
 	wireId,
@@ -190,8 +191,50 @@ describe("reconciliation", () => {
 		expect(await recomputed(a.creds.accountId)).toEqual({ docs: 0, doc_bytes: 0, files: 2, file_bytes: 400 + 2048 });
 		const row = await accountRow(a.creds.accountId);
 		expect({ files: row!.files, file_bytes: row!.file_bytes }).toEqual({ files: 2, file_bytes: 400 + 2048 });
-		// A correction that grows usage past a quota is still made.
-		expect(row!.recounted_at).toBe(START + 2 * HOUR);
+		// The growth went through the quota triggers, not the recount's exemption.
+		expect(row!.recounted_at).toBeNull();
+	});
+
+	// Two racing uploads of one ID can leave a small row over a large object
+	// (D1 commits the large one last, R2 stores the small one first). The
+	// correction is a growth like any upload: past the account's quota or the
+	// server's cap, the row (refunded) and the object both go.
+	it("deletes an object larger than its row when the quotas refuse its real size", async () => {
+		await resetServer({ signup: "open", signups_per_day: "100" });
+		const a = await signUp("alice");
+		const b = await signUp("bob");
+		await env.DB.prepare("UPDATE accounts SET quota_file_bytes = 5000 WHERE id = ?1").bind(a.creds.accountId).run();
+		const [over, within, fine] = [wireId("file"), wireId("file"), wireId("file")];
+		for (const id of [over, within, fine]) expect((await client(a.token).putFile(id, new Uint8Array(100))).status).toBe(200);
+		const prefix = `accounts/${a.creds.accountId}/`;
+		await env.FILES.put(`${prefix}${over}`, new Uint8Array(9000));
+		await env.FILES.put(`${prefix}${within}`, new Uint8Array(1500));
+
+		// Bob, within his quota, against the server's file cap.
+		const bobs = wireId("file");
+		expect((await client(b.token).putFile(bobs, new Uint8Array(100))).status).toBe(200);
+		await env.FILES.put(`accounts/${b.creds.accountId}/${bobs}`, new Uint8Array(20_000));
+		await setSetting("global_file_bytes", "15000");
+
+		const report = await reconcile(testEnv(), START + 2 * HOUR);
+		expect(report.accounts).toHaveLength(2);
+		const sizes = (await env.DB.prepare("SELECT account_id, id, size FROM account_files ORDER BY size").all()).results;
+		expect(sizes).toEqual([
+			{ account_id: a.creds.accountId, id: fine, size: 100 },
+			{ account_id: a.creds.accountId, id: within, size: 1500 },
+		]);
+		expect(await r2Keys()).toEqual([`${prefix}${fine}`, `${prefix}${within}`].sort());
+		for (const account of [a, b]) {
+			const row = await accountRow(account.creds.accountId);
+			expect({ files: row!.files, file_bytes: row!.file_bytes }).toEqual({
+				files: (await recomputed(account.creds.accountId)).files,
+				file_bytes: (await recomputed(account.creds.accountId)).file_bytes,
+			});
+			expect(row!.recounted_at).toBeNull();
+		}
+		expect((await accountRow(a.creds.accountId))!.file_bytes).toBe(1600 + 2 * 1024);
+		expect((await accountRow(b.creds.accountId))!.files).toBe(0);
+		expect(report).toMatchObject({ oversizeDeleted: 2, sizesFixed: 1 });
 	});
 
 	it("leaves an orphan younger than an hour", async () => {

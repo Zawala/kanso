@@ -94,6 +94,16 @@ npm run -s admin -- --local accounts        # the local database (wrangler dev's
 | `legacy-export --dir DIR` | `manifest.json`, `legacy.sql` and every live legacy file, into DIR |
 | `purge-legacy --account <username> --verified R.json` | Drop the single-user tables, queue the `files/` purge and delete `SYNC_TOKEN`, once `R.json` (from `kanso-sync verify --legacy`) proves everything arrived |
 
+**Daily budgets.** Each account may push documents plus upload files up to `writes_per_day`
+(100,000) per UTC day, and upload at most 1 GiB (1,073,741,824 bytes) of file bytes, replacements
+included. The server as a whole stores at most `global_writes_per_day` (300,000) document writes
+and `global_upload_bytes_per_day` (5,000,000,000) upload bytes a day. So three accounts at their
+write budget, or five at their upload budget, use up the server's day for everyone until UTC
+midnight. The defaults leave room for a full re-merge of a library at every quota (about 60,000
+writes and 500 MiB); with accounts you don't trust, lower `writes-per-day` (the command prints how
+many accounts it then takes). The 1 GiB upload budget is fixed in `src/limits.ts` because the
+migration has no setting for it.
+
 `max-accounts`, `quota` and `default-quota` refuse a change after which the quotas would promise
 more than a global cap, unless given `--force`. Every value is validated before it reaches SQL.
 The exit status is 0 on success, 1 when a command is refused or wrangler fails, and 2 for a usage

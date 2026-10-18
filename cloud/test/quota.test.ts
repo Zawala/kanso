@@ -7,9 +7,14 @@ import { env } from "cloudflare:workers";
 import fc from "fast-check";
 import { beforeEach, describe, expect, it } from "vitest";
 import { setQuota } from "../src/accounts";
+import { sha256Hex } from "../src/crypto";
+import { handle } from "../src/index";
+import { UPLOAD_BYTES_PER_DAY } from "../src/limits";
+import { MAX_SEALED_FILE } from "../src/protocol";
 import {
 	type Account,
 	type Client,
+	ORIGIN,
 	START,
 	accountRow,
 	client,
@@ -19,6 +24,7 @@ import {
 	sealed,
 	setSetting,
 	signUp,
+	testEnv,
 	testIO,
 	wireId,
 	wireRev,
@@ -309,6 +315,50 @@ describe("examples", () => {
 		const [first] = (await env.DB.prepare("SELECT id FROM account_files ORDER BY uploaded_at LIMIT 1").all<{ id: string }>()).results;
 		expect((await at.putFile(first.id, bytes(41))).body.limit).toBe("uploads-global");
 		expect((await client(a.token, { now: START + 86_400_000 }).putFile(first.id, bytes(999))).status).toBe(200);
+	});
+
+	it("the uploads-account rule caps one account's upload bytes per UTC day, counted before the body is read", async () => {
+		const key = `uploads-account:${a.creds.accountId}`;
+		const near = (left: number) =>
+			env.DB.prepare("INSERT OR REPLACE INTO limits (key, window_start, count) VALUES (?1, ?2, ?3)").bind(key, START, UPLOAD_BYTES_PER_DAY - left).run();
+		const now = START + 10 * 3_600_000;
+		const at = client(a.token, { now });
+		const id = wireId("file");
+		await near(1000);
+		// Exactly the day's remaining bytes pass; one more byte doesn't, replacement or not.
+		expect((await at.putFile(id, bytes(1000))).status).toBe(200);
+		const r = await at.putFile(id, bytes(41));
+		expect(r.status).toBe(429);
+		expect(r.body).toMatchObject({ error: "rate_limited", limit: "uploads-account", retry_after: 14 * 3600 });
+		// Other accounts have their own budget; the next UTC day starts afresh.
+		const b = client((await signUp("bob")).token, { now });
+		expect((await b.putFile(id, bytes(5000))).status).toBe(200);
+		expect((await client(a.token, { now: START + 86_400_000 }).putFile(id, bytes(5000))).status).toBe(200);
+
+		// Without Content-Length, the largest file is counted before anything is read.
+		await near(MAX_SEALED_FILE - 1);
+		const streamed = async () => {
+			const body = bytes(64);
+			const stream = new ReadableStream({
+				start(controller) {
+					controller.enqueue(body);
+					controller.close();
+				},
+			});
+			const response = await handle(
+				new Request(`${ORIGIN}/v2/files/${id}`, {
+					method: "PUT",
+					body: stream,
+					headers: { authorization: `Bearer ${a.token}`, "content-type": "application/octet-stream", "x-kanso-sha256": await sha256Hex(body) },
+				}),
+				testEnv(),
+				now,
+			);
+			return response.status;
+		};
+		expect(await streamed()).toBe(429);
+		await near(MAX_SEALED_FILE + 64);
+		expect(await streamed()).toBe(200);
 	});
 
 	it("the writes-account rule counts documents and uploads per account per UTC day", async () => {

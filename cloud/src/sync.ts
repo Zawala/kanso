@@ -211,7 +211,12 @@ async function dropDeletedFiles(env: Env, session: Session, docs: { id: string; 
 	});
 	const gone = [...last].filter(([, deleted]) => deleted).map(([id]) => id);
 	if (gone.length === 0) return;
-	await env.FILES.delete(gone.map((id) => fileKey(session.accountId, id)));
+	try {
+		await env.FILES.delete(gone.map((id) => fileKey(session.accountId, id)));
+	} catch {
+		// The rows and charges still go: objects left without a row are orphans, which
+		// reconciliation deletes. Keeping the rows would charge the account for them forever.
+	}
 	const ids = JSON.stringify(gone);
 	const rows = `FROM account_files WHERE account_id = ?1 AND id IN (SELECT value FROM json_each(?2))`;
 	await env.DB.batch([
@@ -317,8 +322,20 @@ export function putFile(wireId: string) {
 		if (claimed === null || !isSha256Hex(claimed)) return badRequest("x-kanso-sha256 must be 64 lowercase hex digits.");
 		const limited = await count(env.DB, "writes-account", accountKey("writes-account", session.accountId), now, 1);
 		if (limited) return limited;
+		// The day's upload bytes, counted from Content-Length before the body is read
+		// (the largest file when it's missing; anything over the largest is refused anyway).
+		const declared = request.headers.get("content-length");
+		const counted = declared !== null && /^[0-9]{1,15}$/.test(declared) ? Math.min(Number(declared), MAX_SEALED_FILE + 1) : MAX_SEALED_FILE;
+		const uploadKey = accountKey("uploads-account", session.accountId);
+		const overBytes = await count(env.DB, "uploads-account", uploadKey, now, counted);
+		if (overBytes) return overBytes;
 		const bytes = await readBody(request, MAX_SEALED_FILE);
 		if (!bytes) return tooLarge(`A file is at most ${MAX_SEALED_FILE} bytes.`);
+		if (bytes.length > counted) {
+			// A body longer than it said: count the rest too.
+			const overRest = await count(env.DB, "uploads-account", uploadKey, now, bytes.length - counted);
+			if (overRest) return overRest;
+		}
 		if (bytes.length < MIN_SEALED_FILE) return badRequest(`A sealed file is at least ${MIN_SEALED_FILE} bytes.`);
 		const actual = await sha256Hex(bytes);
 		if (actual !== claimed) return error(400, "checksum_mismatch", "The body doesn't match x-kanso-sha256.");

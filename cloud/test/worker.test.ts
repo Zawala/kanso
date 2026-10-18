@@ -5,7 +5,7 @@
 import { createExecutionContext, createScheduledController, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import worker from "../src/index";
+import worker, { runCron } from "../src/index";
 import { MAX_PUSH_BODY, MAX_PUSH_DOCS, MAX_SEALED, MAX_SEALED_FILE, MIN_SEALED_FILE } from "../src/protocol";
 import { ORIGIN, type Account, type Client, START, call, callJson, client, r2Keys, resetServer, sealed, setSetting, signUp, testEnv, wireId, wireRev } from "./helpers";
 
@@ -168,6 +168,33 @@ describe("files", () => {
 		expect((await alice.getFile(id)).status).toBe(404);
 		expect(await r2Keys()).toEqual([]);
 		expect((await alice.account()).body.usage).toMatchObject({ files: 0, file_bytes: 0 });
+	});
+});
+
+describe("R2 failures", () => {
+	it("a tombstone still removes the file's row and charges when R2's delete fails; reconciliation removes the object", async () => {
+		const id = wireId("file");
+		const meta = { id, rev: wireRev(), deleted: false, sealed: sealed(), base_rev: null };
+		expect((await alice.push([meta])).status).toBe(200);
+		expect((await alice.putFile(id, new Uint8Array(500))).status).toBe(200);
+		const failing = {
+			get: env.FILES.get.bind(env.FILES),
+			head: env.FILES.head.bind(env.FILES),
+			put: env.FILES.put.bind(env.FILES),
+			list: env.FILES.list.bind(env.FILES),
+			delete: async () => {
+				throw new Error("R2 is down");
+			},
+		} as unknown as R2Bucket;
+		const tomb = { ...meta, rev: wireRev(), deleted: true, base_rev: meta.rev };
+		const r = await client(a.token, { env: testEnv({ FILES: failing }) }).push([tomb]);
+		expect(r.status).toBe(200);
+		expect(r.body.results).toEqual([{ id, status: "ok", seq: 2 }]);
+		expect((await alice.account()).body.usage).toMatchObject({ files: 0, file_bytes: 0 });
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_files").first("n")).toBe(0);
+		expect(await r2Keys()).toEqual([`accounts/${a.creds.accountId}/${id}`]);
+		await runCron(testEnv(), START + 2 * 3_600_000);
+		expect(await r2Keys()).toEqual([]);
 	});
 });
 

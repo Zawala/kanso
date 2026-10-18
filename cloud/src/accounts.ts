@@ -370,7 +370,8 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 				`DELETE FROM account_docs WHERE account_id = ${id}`,
 				`DELETE FROM account_files WHERE account_id = ${id}`,
 				`DELETE FROM sessions WHERE account_id = ${id}`,
-				`DELETE FROM limits WHERE key IN ('login-user:' || ${id}, 'password-account:' || ${id}, 'writes-account:' || ${id})`,
+				`DELETE FROM limits WHERE key IN ('login-user:' || ${id}, 'password-account:' || ${id}, 'writes-account:' || ${id},
+  'uploads-account:' || ${id})`,
 				`INSERT INTO purges (prefix, requested_at) SELECT 'accounts/' || id || '/', ${now} FROM accounts WHERE username = ${sqlText(user)}
   ON CONFLICT (prefix) DO UPDATE SET requested_at = excluded.requested_at`,
 				`DELETE FROM accounts WHERE username = ${sqlText(user)} RETURNING id`,
@@ -452,8 +453,19 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 			arity(positional, 1, 1);
 			const setting = SETTING_COMMANDS[name];
 			const n = positive(positional[0], name);
-			await io.sql([`UPDATE settings SET value = ${sqlText(String(n))} WHERE name = ${sqlText(setting)}`]);
-			return ok(`${setting} = ${n}.`);
+			const [, budgets] = await io.sql([
+				`UPDATE settings SET value = ${sqlText(String(n))} WHERE name = ${sqlText(setting)}`,
+				"SELECT name, value FROM settings WHERE name IN ('writes_per_day', 'global_writes_per_day')",
+			]);
+			const budget = new Map(budgets.results.map((r) => [String(r.name), Number(r.value)]));
+			const perAccount = budget.get("writes_per_day") ?? 0;
+			const global = budget.get("global_writes_per_day") ?? 0;
+			// One account can spend the whole server-wide budget unless writes_per_day sits well below it.
+			const note =
+				name === "global-upload-bytes-per-day" || perAccount === 0
+					? ""
+					: ` ${Math.ceil(global / perAccount)} account${Math.ceil(global / perAccount) === 1 ? "" : "s"} writing their whole writes_per_day (${perAccount}) use up global_writes_per_day (${global}) for everyone until UTC midnight.`;
+			return ok(`${setting} = ${n}.${note}`);
 		}
 		case "recount":
 			return recount(rest, io, now);

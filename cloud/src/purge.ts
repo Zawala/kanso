@@ -12,6 +12,7 @@
 // the old account left behind are then orphans, which reconciliation removes.
 
 import type { Env } from "./env";
+import { refusal } from "./http";
 import { expiredLimitsSql } from "./limits";
 import { FILE_ROW_COST, HOUR, MAX_SEALED_FILE, MIN_SEALED_FILE, REVOKED_KEEP_MS, SESSION_IDLE_MS } from "./protocol";
 
@@ -84,15 +85,20 @@ export interface ReconcileReport {
 	orphansDeleted: number;
 	sizesFixed: number;
 	rowsDropped: number;
+	/** Objects larger than their row whose real size the quotas refused: object and row deleted. */
+	oversizeDeleted: number;
 }
 
 const ROWS_FOR_IDS = `SELECT id, size, uploaded_at FROM account_files
   WHERE account_id = ?1 AND id IN (SELECT value FROM json_each(?2))`;
 
-// Correcting a size can grow file_bytes; setting recounted_at exempts it from
-// the quota triggers, as the admin recount is.
+// Sets a row's size to its object's. No recounted_at: a correction that grows
+// file_bytes goes through the quota triggers like an upload, because two
+// racing uploads of one ID can leave a small row over a large object, and an
+// exempt correction would let that object past the account's quota and the
+// server's cap. A shrinking correction always passes.
 const FIX_SIZE = [
-	`UPDATE accounts SET file_bytes = file_bytes - ?3 + ?4, recounted_at = ?5
+	`UPDATE accounts SET file_bytes = file_bytes - ?3 + ?4
   WHERE id = ?1 AND EXISTS (SELECT 1 FROM account_files WHERE account_id = ?1 AND id = ?2 AND size = ?3)`,
 	"UPDATE account_files SET size = ?4 WHERE account_id = ?1 AND id = ?2 AND size = ?3",
 ];
@@ -123,7 +129,8 @@ async function reconcileAccount(env: Env, accountId: string, now: number, budget
 			.all<{ id: string; size: number; uploaded_at: number }>();
 		const byId = new Map(rows.map((r) => [r.id, r]));
 		const orphans: string[] = [];
-		const fixes: D1PreparedStatement[] = [];
+		const shrinks: D1PreparedStatement[] = [];
+		const growths: { id: string; key: string; size: number; objectSize: number }[] = [];
 		for (const object of listed.objects) {
 			const id = object.key.slice(prefix.length);
 			seen.add(id);
@@ -136,18 +143,46 @@ async function reconcileAccount(env: Env, accountId: string, now: number, budget
 				object.size >= MIN_SEALED_FILE &&
 				object.size <= MAX_SEALED_FILE
 			) {
-				fixes.push(
-					env.DB.prepare(FIX_SIZE[0]).bind(accountId, id, row.size, object.size, now),
-					env.DB.prepare(FIX_SIZE[1]).bind(accountId, id, row.size, object.size),
-				);
-				report.sizesFixed += 1;
+				if (object.size < row.size) {
+					shrinks.push(
+						env.DB.prepare(FIX_SIZE[0]).bind(accountId, id, row.size, object.size),
+						env.DB.prepare(FIX_SIZE[1]).bind(accountId, id, row.size, object.size),
+					);
+					report.sizesFixed += 1;
+				} else {
+					growths.push({ id, key: object.key, size: row.size, objectSize: object.size });
+				}
 			}
 		}
 		if (orphans.length > 0) {
 			await env.FILES.delete(orphans);
 			report.orphansDeleted += orphans.length;
 		}
-		if (fixes.length > 0) await env.DB.batch(fixes);
+		if (shrinks.length > 0) await env.DB.batch(shrinks);
+		// One batch per growth, so one refusal doesn't roll back the others.
+		for (const g of growths) {
+			try {
+				await env.DB.batch([
+					env.DB.prepare(FIX_SIZE[0]).bind(accountId, g.id, g.size, g.objectSize),
+					env.DB.prepare(FIX_SIZE[1]).bind(accountId, g.id, g.size, g.objectSize),
+				]);
+				report.sizesFixed += 1;
+			} catch (err) {
+				if (refusal(err)?.kind !== "quota_exceeded") throw err;
+				// The quotas refuse the object's real size: the row goes (refunded), if it still
+				// holds the size listed here, and then the object.
+				const [, dropped] = await env.DB.batch(DROP_ROW.map((sql) => env.DB.prepare(sql).bind(accountId, g.id, g.size, now - HOUR)));
+				if ((dropped.meta.changes ?? 0) > 0) {
+					seen.delete(g.id);
+					report.oversizeDeleted += 1;
+					try {
+						await env.FILES.delete(g.key);
+					} catch {
+						// Without its row the object is an orphan: a later run deletes it.
+					}
+				}
+			}
+		}
 		if (!listed.truncated) {
 			complete = true;
 			break;
@@ -171,7 +206,7 @@ async function reconcileAccount(env: Env, accountId: string, now: number, budget
 
 /** Reconciles a bounded number of accounts' prefixes, taking accounts in turn from one run to the next. */
 export async function reconcile(env: Env, now: number): Promise<ReconcileReport> {
-	const report: ReconcileReport = { accounts: [], orphansDeleted: 0, sizesFixed: 0, rowsDropped: 0 };
+	const report: ReconcileReport = { accounts: [], orphansDeleted: 0, sizesFixed: 0, rowsDropped: 0, oversizeDeleted: 0 };
 	const { results } = await env.DB.prepare("SELECT id FROM accounts ORDER BY id").all<{ id: string }>();
 	if (results.length === 0) return report;
 	const count = Math.min(RECONCILE_ACCOUNTS_PER_RUN, results.length);

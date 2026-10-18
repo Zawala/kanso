@@ -123,6 +123,12 @@ describe("commands", () => {
 			expect((await runAdmin([command, "123"])).ok).toBe(true);
 			expect(await setting(name)).toBe("123");
 		}
+		// The per-account write budget against the server's: how many accounts it takes to use the day up.
+		expect((await runAdmin(["global-writes-per-day", "300000"])).ok).toBe(true);
+		expect((await runAdmin(["writes-per-day", "100000"])).message).toBe(
+			"writes_per_day = 100000. 3 accounts writing their whole writes_per_day (100000) use up global_writes_per_day (300000) for everyone until UTC midnight.",
+		);
+		expect((await runAdmin(["global-upload-bytes-per-day", "5000000000"])).message).toBe("global_upload_bytes_per_day = 5000000000.");
 		expect((await runAdmin(["max-accounts", "40"])).ok).toBe(true);
 		expect(await setting("max_accounts")).toBe("40");
 	});

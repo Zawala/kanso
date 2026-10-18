@@ -150,6 +150,23 @@ describe("the D1 layer", () => {
 		);
 	});
 
+	it("a device another device signed out is counted against the name again", async () => {
+		await resetServer(ROOMY);
+		const a = await signUp("alice");
+		const lost = newDevice();
+		expect((await login(a.creds, lost, { ip: "198.51.100.1" })).status).toBe(200);
+		expect((await client(a.token).revoke(lost.id)).status).toBe(204);
+		const now = START + 15 * 60_000;
+		const wrong = { ...a.creds, authKey: base64url(new Uint8Array(32).fill(9)) };
+		for (let i = 0; i < 10; i += 1) expect((await login(wrong, newDevice(), { now, ip: `198.51.100.${10 + i}` })).status).toBe(401);
+		// The lost Mac still holds its proof, but it's a stranger now: refused like any other.
+		const r = await login(a.creds, lost, { now, ip: "198.51.100.40" });
+		expect(r.status).toBe(429);
+		expect(r.body.limit).toBe("login-user");
+		// The account's own signed-in device is still exempt.
+		expect((await login(a.creds, a.device, { now, ip: "198.51.100.41" })).status).toBe(200);
+	});
+
 	it("a known device proving itself isn't counted against the name, even signed out; one revoked over 90 days ago is", async () => {
 		await resetServer(ROOMY);
 		const a = await signUp("alice");

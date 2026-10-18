@@ -183,7 +183,8 @@ export function client(token: string, init: Call = {}) {
 				token,
 				method: "PUT",
 				body: bytes,
-				headers: { "content-type": "application/octet-stream", "x-kanso-sha256": sha ?? (await sha256Hex(bytes)) },
+				// As the native client sends it; the Worker counts upload bytes from it before reading the body.
+				headers: { "content-type": "application/octet-stream", "content-length": String(bytes.length), "x-kanso-sha256": sha ?? (await sha256Hex(bytes)) },
 			});
 			return { status: response.status, body: await response.json<any>() };
 		},

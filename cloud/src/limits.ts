@@ -15,7 +15,19 @@ import { type PepperKeys, hex, hmac16 } from "./crypto";
 import { rateLimited } from "./http";
 import { DAY, HOUR } from "./protocol";
 
-export type Rule = "signup-ip" | "login-user" | "login-ip" | "recover-ip" | "password-account" | "writes-account";
+export type Rule = "signup-ip" | "login-user" | "login-ip" | "recover-ip" | "password-account" | "writes-account" | "uploads-account";
+
+/**
+ * File bytes one account may upload per UTC day, replacements included.
+ * Without it, one account could spend the whole server-wide
+ * `global_upload_bytes_per_day` (5,000,000,000) alone: about 480
+ * replacements of one 10 MiB file, each counting 1 towards `writes-account`.
+ * 1 GiB is twice the default `quota_file_bytes` (a full re-upload fits with
+ * room to spare) and takes five accounts to exhaust the global cap. The
+ * frozen migration has no settings row for it, so it's fixed here; a later
+ * migration can add `upload_bytes_per_day` and an admin command.
+ */
+export const UPLOAD_BYTES_PER_DAY = 1_073_741_824;
 
 /** Window and maximum of each rule; `writes-account` takes its maximum from `settings.writes_per_day`. */
 export const RULES: Record<Rule, { window: number; max: number | null }> = {
@@ -25,6 +37,7 @@ export const RULES: Record<Rule, { window: number; max: number | null }> = {
 	"recover-ip": { window: HOUR, max: 10 },
 	"password-account": { window: 15 * 60_000, max: 5 },
 	"writes-account": { window: DAY, max: null },
+	"uploads-account": { window: DAY, max: UPLOAD_BYTES_PER_DAY },
 };
 
 /** The binding's window, which is also its `retry_after`. */

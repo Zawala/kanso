@@ -304,13 +304,47 @@ export const signup: PepperHandler = async (request, env, now, keys) => {
 	const b = checked.value;
 	const session = await newSession(b.device);
 
-	// A retry of a sign-up whose answer was lost: same name, same auth key.
-	// Null when there is no such account.
+	// A retry of a sign-up whose answer was lost: the same request again, so
+	// the same account ID, KDF parameters, salt, auth key, wrapped keys,
+	// recovery auth key and key ID. Matching the auth key alone would make
+	// sign-up a password oracle outside the sign-in limits; a guesser knows
+	// neither the wraps nor the recovery auth key. Null when it isn't a retry.
 	const retried = async (): Promise<Response | null> => {
-		const existing = await env.DB.prepare("SELECT id, auth_hash, epoch, disabled_at FROM accounts WHERE username = ?1")
+		const existing = await env.DB.prepare(
+			`SELECT id, kdf_m_kib, kdf_t, kdf_p, salt, auth_hash, wrapped_key, recovery_hash, recovery_wrapped_key, key_id,
+  epoch, disabled_at FROM accounts WHERE username = ?1`,
+		)
 			.bind(b.username)
-			.first<{ id: string; auth_hash: string; epoch: string; disabled_at: number | null }>();
-		if (!existing || !(await proofMatches(b.authKey, existing.auth_hash))) return null;
+			.first<{
+				id: string;
+				kdf_m_kib: number;
+				kdf_t: number;
+				kdf_p: number;
+				salt: string;
+				auth_hash: string;
+				wrapped_key: string;
+				recovery_hash: string;
+				recovery_wrapped_key: string;
+				key_id: string;
+				epoch: string;
+				disabled_at: number | null;
+			}>();
+		if (!existing) return null;
+		// Both hashes are always compared, so the answer's timing doesn't say which part differed.
+		const authMatches = await proofMatches(b.authKey, existing.auth_hash);
+		const recoveryMatches = await proofMatches(b.recoveryAuthKey, existing.recovery_hash);
+		const same =
+			authMatches &&
+			recoveryMatches &&
+			existing.id === b.accountId &&
+			existing.kdf_m_kib === b.kdf.m_kib &&
+			existing.kdf_t === b.kdf.t &&
+			existing.kdf_p === b.kdf.p &&
+			existing.salt === b.salt &&
+			existing.wrapped_key === b.wrappedKey &&
+			existing.recovery_wrapped_key === b.recoveryWrappedKey &&
+			existing.key_id === b.keyId;
+		if (!same) return null;
 		if (existing.disabled_at !== null) return accountDisabled();
 		const results = await env.DB.batch(
 			sessionStatements(
@@ -405,12 +439,13 @@ export const login: PepperHandler = async (request, env, now, keys) => {
 
 	const account = await env.DB.prepare(
 		`SELECT a.*, (SELECT s.proof_hash FROM sessions s WHERE s.account_id = a.id AND s.device_id = ?2
-     AND (s.revoked_at IS NULL OR s.revoked_at > ?3)) AS device_proof_hash
+     AND (s.revoked_at IS NULL OR (s.revoked_at > ?3 AND s.revoked_reason != 'revoked'))) AS device_proof_hash
   FROM (${ACCOUNT_BY_NAME}) a`,
 	)
 		.bind(name.value, device.value.id, now - REVOKED_KEEP_MS)
 		.first<AccountRow & { device_proof_hash: string | null }>();
-	// A device the account knows, proving itself, doesn't count against the name.
+	// A device the account knows, proving itself, doesn't count against the name. One that
+	// another device of the account signed out (`revoked`, say a lost Mac) is a stranger again.
 	const known = account !== null && account.device_proof_hash !== null && (await proofMatches(device.value.proof, account.device_proof_hash));
 	if (!known) {
 		limited = await count(env.DB, "login-user", account ? accountKey("login-user", account.id) : UNKNOWN_LOGIN_KEY, now);
@@ -669,7 +704,8 @@ export function deletionStatements(db: D1Database, accountId: string, now: numbe
 		bind(`DELETE FROM account_files WHERE account_id = ?1 AND ${guard}`),
 		bind(`DELETE FROM sessions WHERE account_id = ?1 AND ${guard}`),
 		bind(
-			`DELETE FROM limits WHERE key IN ('login-user:' || ?1, 'password-account:' || ?1, 'writes-account:' || ?1) AND ${guard}`,
+			`DELETE FROM limits WHERE key IN ('login-user:' || ?1, 'password-account:' || ?1, 'writes-account:' || ?1, 'uploads-account:' || ?1)
+  AND ${guard}`,
 		),
 		db
 			.prepare(

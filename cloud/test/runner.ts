@@ -150,6 +150,7 @@ export async function runCase(fixture: Fixture, steps: Step[]): Promise<void> {
 				const bytes = fromBase64url(String(values.resolve(step.file)))!;
 				headers.set("content-type", "application/octet-stream");
 				headers.set("x-kanso-sha256", await sha256Hex(bytes));
+				headers.set("content-length", String(bytes.length));
 				body = bytes;
 			}
 			request = new Request(`${ORIGIN}${path}`, { method: spec.method, headers, body });
