@@ -1196,7 +1196,8 @@ fn delete_account_dialog_for(
 fn revoke_dialog(name: String, device_id: String, window: &mut Window, cx: &mut App) {
     let (title, body) = words::revoke_question(&name);
     dialogs::confirm(title, body, "Sign out", window, cx, move |_, cx| {
-        account_flow::revoke_device(device_id.clone(), cx);
+        // The task says how it went.
+        account_flow::revoke_device(device_id.clone(), name.clone(), cx);
     });
 }
 

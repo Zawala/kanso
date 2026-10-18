@@ -390,6 +390,11 @@ pub fn evicted_notice(device: &DeviceInfo) -> String {
 
 /// "Sign out of …?"; `unsaved_key` when a new recovery key is still on
 /// screen, which signing out deletes.
+/// After signing another device out.
+pub fn revoked_notice(name: &str) -> String {
+    format!("Signed out {name}.")
+}
+
 pub fn sign_out_question(username: &str, unsaved_key: bool) -> (String, String) {
     let body = "Notes stay on this Mac. Sync stops until you sign in again.";
     (
@@ -814,6 +819,11 @@ mod tests {
         assert_eq!(format_count(999), "999");
         assert_eq!(format_count(1000), "1,000");
         assert_eq!(format_count(1_234_567), "1,234,567");
+    }
+
+    #[test]
+    fn revoked_examples() {
+        assert_eq!(revoked_notice("Laptop"), "Signed out Laptop.");
     }
 
     #[test]

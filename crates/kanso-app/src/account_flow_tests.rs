@@ -1298,3 +1298,51 @@ fn the_launch_check_never_overwrites_a_newer_state(cx: &mut TestAppContext) {
         "loaded from the Keychain"
     );
 }
+
+// MARK: Other devices
+
+/// Signing another Mac out says so and refreshes the list; one the server
+/// no longer knows counts as signed out already; a failure says why (A5).
+#[gpui_kit::test]
+fn signing_another_mac_out_says_how_it_went(cx: &mut TestAppContext, cx_b: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+    let b = mac(cx_b, &server, "Laptop", 0);
+    let rx = b.sign_in(cx_b, "alice", PASSWORD);
+    assert_eq!(finish(cx_b, rx), Ok(()));
+    let laptop = session(cx_b);
+    let devices = kanso_sync::devices(server.as_ref(), &session(cx)).unwrap();
+    let other = devices.iter().find(|d| !d.current).unwrap().id.clone();
+
+    let before = a.notifications(cx);
+    let id = other.clone();
+    let rx = cx.update(|cx| account_flow::revoke_device(id, "Laptop".into(), cx));
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert_eq!(a.notifications(cx), before + 1, "Signed out Laptop.");
+    assert!(matches!(
+        kanso_sync::usage(server.as_ref(), &laptop),
+        Err(AccountError::Unauthorized { .. })
+    ));
+    wait_until(cx, "the list without it", |cx| {
+        cx.read(|cx| {
+            let details = &cx.global::<Services>().details;
+            !details.loading && details.devices.as_ref().is_some_and(|d| d.len() == 1)
+        })
+    });
+
+    // Again, from a list that hadn't caught up: already done.
+    let id = other.clone();
+    let rx = cx.update(|cx| account_flow::revoke_device(id, "Laptop".into(), cx));
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert_eq!(a.notifications(cx), before + 2);
+
+    // An answer that never came says why.
+    server.drop_next_responses(Route::RevokeDevice, 1);
+    let rx = cx.update(|cx| account_flow::revoke_device(other, "Laptop".into(), cx));
+    assert_eq!(finish(cx, rx), Err(words::CANT_REACH.to_owned()));
+    assert_eq!(a.notifications(cx), before + 3);
+    assert_eq!(account(cx), signed_in_as("alice"));
+}

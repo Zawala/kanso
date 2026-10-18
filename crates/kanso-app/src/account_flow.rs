@@ -1076,10 +1076,17 @@ pub fn delete_account(password: Password, typed: String, cx: &mut App) -> Receiv
     rx
 }
 
-/// Signs another device of the account out.
-pub fn revoke_device(device_id: String, cx: &mut App) -> Receiver<Progress> {
+/// Signs another device of the account out, and says how it went: nothing
+/// else waits on it once its dialog closes (A5). A device the server no
+/// longer knows is signed out already.
+pub fn revoke_device(device_id: String, name: String, cx: &mut App) -> Receiver<Progress> {
     let (tx, rx) = async_channel::unbounded();
     let Some((seams, session, _)) = begin_signed_in(&tx, cx) else {
+        if let Ok(Progress::Done(Err(words))) = rx.try_recv() {
+            let told = words.clone();
+            notify_windows(move || Notification::error(told.clone()), cx);
+            done(&tx, Err(words));
+        }
         return rx;
     };
     run(
@@ -1088,15 +1095,25 @@ pub fn revoke_device(device_id: String, cx: &mut App) -> Receiver<Progress> {
         false,
         Some(tx.clone()),
         cx,
-        move |_| {
-            kanso_sync::revoke_device(seams.backend.as_ref(), &session, &device_id)
-                .map_err(|err| Failure::account(err, ErrorContext::Account))
+        move |_| match kanso_sync::revoke_device(seams.backend.as_ref(), &session, &device_id) {
+            Ok(()) | Err(AccountError::NotFound) => Ok(()),
+            Err(err) => Err(Failure::account(err, ErrorContext::Account)),
         },
         move |result, cx| {
             match result {
-                Some(Ok(())) => done(&tx, Ok(())),
-                Some(Err(failure)) => failed(&tx, Some(failure), cx),
-                None => failed(&tx, None, cx),
+                Some(Ok(())) => {
+                    let notice = words::revoked_notice(&name);
+                    notify_windows(move || Notification::success(notice.clone()), cx);
+                    done(&tx, Ok(()));
+                }
+                failure => {
+                    let failure = failure.and_then(Result::err);
+                    let told = failure
+                        .as_ref()
+                        .map_or(SOMETHING_WRONG.to_owned(), |failure| failure.words.clone());
+                    notify_windows(move || Notification::error(told.clone()), cx);
+                    failed(&tx, failure, cx);
+                }
             }
             refresh_details(cx);
         },
