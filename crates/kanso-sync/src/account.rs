@@ -960,6 +960,33 @@ pub fn recover(
     })
 }
 
+/// Whether `key` is `username`'s recovery key on `server` now: one
+/// `recover/start`, sent once, which changes nothing on the server
+/// (review-verify 6). It settles a key whose rotation's answer was lost.
+/// `Ok(false)` when the server refuses the key (401); any other failure is
+/// an error and says nothing about the key. Each call counts against the
+/// server's `recover-ip` limit (10 an hour per IP), so the app asks once
+/// per key.
+pub fn recovery_key_held(
+    b: &dyn Backend,
+    server: &str,
+    username: &str,
+    key: &RecoveryKey,
+) -> Result<bool, AccountError> {
+    let username = normalize_username(username)?;
+    let (server, origin) = checked_server(server)?;
+    let auth = recovery_keys(key, &origin, &username).auth_key;
+    let asked = b.api(&server).recover_start(&RecoverStartRequest {
+        username,
+        recovery_auth_key: auth.to_base64url(),
+    });
+    match asked {
+        Ok(_) => Ok(true),
+        Err(ApiError::InvalidCredentials) => Ok(false),
+        Err(err) => Err(err.into()),
+    }
+}
+
 /// Deletes `sync-account:<library>` and any `sync-recovery-key:<library>`,
 /// then tries `logout` (the HTTP backend gives it 5 s). On failure it queues
 /// `{server, token}` in `sync-logout:<library>`; a 401 counts as done. The

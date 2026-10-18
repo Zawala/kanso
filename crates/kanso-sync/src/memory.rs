@@ -259,6 +259,8 @@ struct ServerState {
     /// `None`: the wall clock.
     now: Option<i64>,
     drops: BTreeMap<Route, usize>,
+    /// Requests per route still to time out before they are carried out.
+    losses: BTreeMap<Route, usize>,
     stats: ServerStats,
     floor: KdfParams,
     default: KdfParams,
@@ -334,6 +336,7 @@ impl ServerState {
             settings,
             now: None,
             drops: BTreeMap::new(),
+            losses: BTreeMap::new(),
             stats: ServerStats::default(),
             floor,
             default,
@@ -1821,6 +1824,13 @@ impl MemoryServer {
         self.server().drops.insert(route, n);
     }
 
+    /// The next `n` requests to `route` time out before the server carries
+    /// them out: a transport error after sending, as for a lost answer, but
+    /// nothing changed (review-verify 6).
+    pub fn lose_next_requests(&self, route: Route, n: usize) {
+        self.server().losses.insert(route, n);
+    }
+
     pub fn stats(&self) -> ServerStats {
         self.server().stats.clone()
     }
@@ -1845,6 +1855,12 @@ impl MemoryServer {
         handle: impl FnOnce(&mut ServerState, i64) -> Result<T, ApiError>,
     ) -> Result<T, ApiError> {
         let mut state = self.server();
+        if let Some(n) = state.losses.get_mut(&route)
+            && *n > 0
+        {
+            *n -= 1;
+            return Err(ApiError::Transport("timed out (simulated)".into()));
+        }
         let now = state.clock();
         *state.stats.requests.entry(route).or_default() += 1;
         let result = handle(&mut state, now);

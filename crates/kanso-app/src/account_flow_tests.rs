@@ -218,6 +218,17 @@ fn key_note(cx: &mut TestAppContext) -> Option<&'static str> {
     })
 }
 
+/// Waits for the one ask about a shown key Kanso couldn't tell the server
+/// took (review-verify 6).
+fn key_checked(cx: &mut TestAppContext) {
+    wait_until(cx, "the key check", |cx| {
+        cx.read(|cx| {
+            let services = cx.global::<Services>();
+            !services.key_check_due && services.task.is_none()
+        })
+    });
+}
+
 /// Whether `key` is the account's recovery key on `server` now.
 fn holds(server: &MemoryServer, username: &str, key: &RecoveryKey) -> bool {
     let origin = kanso_sync::origin(SERVER).unwrap();
@@ -1129,9 +1140,10 @@ fn relaunching_restores_the_session(cx: &mut TestAppContext) {
 // MARK: New recovery keys are never lost
 
 /// Sign-up's answer is lost three times: the account may exist, so its key
-/// shows anyway (saying so), stays in the Keychain, and is the key the
-/// server holds. The Account page isn't showing, so a notification's "Show
-/// key" leads there.
+/// shows anyway, stays in the Keychain, and is the key the server holds.
+/// The server is asked once whether it holds it, and then the words say the
+/// account was created and the item is confirmed. The Account page isn't
+/// showing, so a notification's "Show key" leads there.
 #[gpui_kit::test]
 fn a_lost_sign_up_answer_still_shows_the_key(cx: &mut TestAppContext) {
     let server = Arc::new(MemoryServer::new());
@@ -1143,9 +1155,11 @@ fn a_lost_sign_up_answer_still_shows_the_key(cx: &mut TestAppContext) {
     assert_eq!(finish(cx, rx), Err(words::CANT_REACH.to_owned()));
     assert_eq!(account(cx), AccountState::SignedOut);
     let shown = pending_key(cx).expect("the key shows");
-    assert_eq!(key_note(cx), Some(words::KEY_UNCONFIRMED_SIGN_UP));
+    key_checked(cx);
+    assert_eq!(key_note(cx), Some(words::KEY_TAKEN_SIGN_UP));
+    assert_eq!(server.stats().count(Route::RecoverStart), 1, "asked once");
     let kept = a.kept_key().expect("the Keychain keeps it");
-    assert!(kept.unconfirmed);
+    assert!(!kept.unconfirmed, "confirmed once the server said so");
     assert_eq!(kept.recovery_key, shown);
     assert!(holds(&server, "alice", &shown), "the account was created");
 
@@ -1225,8 +1239,9 @@ fn a_recovery_that_cant_finish_says_the_password_changed(cx: &mut TestAppContext
     assert_eq!(finish(cx, rx), Ok(()), "the new password works");
 }
 
-/// "New recovery key" whose answer is lost shows the key, saying Kanso
-/// couldn't tell; a Keychain that refuses the new key sends nothing.
+/// "New recovery key" whose answer is lost shows the key, and once the
+/// server says it holds it, says it took; a Keychain that refuses the new
+/// key sends nothing.
 #[gpui_kit::test]
 fn a_new_key_is_kept_before_it_is_sent(cx: &mut TestAppContext) {
     let server = Arc::new(MemoryServer::new());
@@ -1256,16 +1271,24 @@ fn a_new_key_is_kept_before_it_is_sent(cx: &mut TestAppContext) {
     assert!(holds(&server, "alice", &first));
 
     server.drop_next_responses(Route::RecoveryKey, 3);
+    let asked = server.stats().count(Route::RecoverStart);
     let rx = cx.update(|cx| account_flow::new_recovery_key(password(PASSWORD, "alice"), cx));
     assert_eq!(finish(cx, rx), Err(words::CANT_REACH.to_owned()));
     let shown = pending_key(cx).expect("the key shows");
-    assert_eq!(key_note(cx), Some(words::KEY_UNCONFIRMED));
+    key_checked(cx);
+    assert_eq!(key_note(cx), Some(words::KEY_TAKEN));
+    assert_eq!(
+        server.stats().count(Route::RecoverStart),
+        asked + 1,
+        "asked once"
+    );
+    assert!(a.kept_key().is_some_and(|kept| !kept.unconfirmed));
     assert!(holds(&server, "alice", &shown), "the server took it");
     assert_eq!(account(cx), signed_in_as("alice"));
 }
 
-/// A password change whose answer is lost shows the new key anyway, saying
-/// Kanso couldn't tell whether the password changed.
+/// A password change whose answer is lost shows the new key anyway, and
+/// once the server says it holds it, says the password changed.
 #[gpui_kit::test]
 fn a_lost_password_change_still_shows_the_key(cx: &mut TestAppContext) {
     let server = Arc::new(MemoryServer::new());
@@ -1284,9 +1307,101 @@ fn a_lost_password_change_still_shows_the_key(cx: &mut TestAppContext) {
     });
     assert_eq!(finish(cx, rx), Err(words::CANT_REACH.to_owned()));
     let shown = pending_key(cx).expect("the key shows");
-    assert_eq!(key_note(cx), Some(words::KEY_UNCONFIRMED_PASSWORD));
+    key_checked(cx);
+    assert_eq!(key_note(cx), Some(words::KEY_TAKEN_PASSWORD));
     assert!(holds(&server, "alice", &shown), "the change went through");
+    assert!(a.kept_key().is_some_and(|kept| !kept.unconfirmed));
+}
+
+/// A new key whose request timed out before the server carried it out: the
+/// server is asked once, says it doesn't hold it, and the key goes (screen
+/// and Keychain item) with a notification, in place of "Show key", saying
+/// nothing changed. The old key still works (review-verify 6).
+#[gpui_kit::test]
+fn a_key_the_server_never_took_goes_and_says_nothing_changed(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 1);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    let first = pending_key(cx).unwrap();
+    key_saved(cx);
+    a.window
+        .update(cx, |_, window, cx| window.clear_notifications(cx))
+        .unwrap();
+    cx.executor().advance_clock(Duration::from_secs(2));
+    cx.run_until_parked();
+    assert_eq!(a.notifications(cx), 0);
+
+    server.lose_next_requests(Route::RecoveryKey, 3);
+    let rx = cx.update(|cx| account_flow::new_recovery_key(password(PASSWORD, "alice"), cx));
+    assert_eq!(finish(cx, rx), Err(words::CANT_REACH.to_owned()));
+    key_checked(cx);
+    assert_eq!(server.stats().count(Route::RecoverStart), 1, "asked once");
+    assert!(
+        pending_key(cx).is_none(),
+        "the key the server never took goes"
+    );
+    assert!(a.kept_key().is_none(), "and so does its Keychain item");
+    assert_eq!(a.notifications(cx), 1, "one notification says so");
+    assert!(holds(&server, "alice", &first), "the old key still works");
+    assert_eq!(account(cx), signed_in_as("alice"));
+
+    // A lost recovery's key: the password didn't change either.
+    assert_eq!(sign_out(cx), Ok(()));
+    server.lose_next_requests(Route::RecoverFinish, 3);
+    let rx = a.recover(cx, "alice", first.clone(), NEW_PASSWORD);
+    assert_eq!(finish(cx, rx), Err(words::CANT_REACH.to_owned()));
+    key_checked(cx);
+    assert!(pending_key(cx).is_none());
+    assert!(a.kept_key().is_none());
+    assert!(holds(&server, "alice", &first));
+    let rx = a.sign_in(cx, "alice", PASSWORD);
+    assert_eq!(finish(cx, rx), Ok(()), "the old password still works");
+}
+
+/// Until the server has answered, the words over the key say to keep the
+/// old key too, and the ask isn't repeated by later tasks: the next launch
+/// asks again, once, and the item is confirmed (review-verify 6).
+#[gpui_kit::test]
+fn an_unanswered_key_check_waits_for_the_next_launch(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 1);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    let first = pending_key(cx).unwrap();
+    key_saved(cx);
+
+    server.drop_next_responses(Route::RecoveryKey, 3);
+    server.lose_next_requests(Route::RecoverStart, 1);
+    let rx = cx.update(|cx| account_flow::new_recovery_key(password(PASSWORD, "alice"), cx));
+    assert_eq!(finish(cx, rx), Err(words::CANT_REACH.to_owned()));
+    key_checked(cx);
+    let shown = pending_key(cx).expect("the key still shows");
+    assert_eq!(key_note(cx), Some(words::KEY_UNCONFIRMED));
+    assert!(words::KEY_UNCONFIRMED.contains("keep your old recovery key too"));
     assert!(a.kept_key().is_some_and(|kept| kept.unconfirmed));
+
+    // Other tasks don't ask again.
+    let rx = cx.update(|cx| account_flow::use_server(SERVER.into(), cx));
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_checked(cx);
+    assert_eq!(
+        server.stats().count(Route::RecoverStart),
+        0,
+        "not asked again"
+    );
+    assert_eq!(key_note(cx), Some(words::KEY_UNCONFIRMED));
+
+    relaunched(cx, &server, &a);
+    cx.update(account_flow::restore);
+    restored(cx);
+    key_checked(cx);
+    assert_eq!(pending_key(cx), Some(shown.clone()));
+    assert_eq!(key_note(cx), Some(words::KEY_TAKEN));
+    assert_eq!(server.stats().count(Route::RecoverStart), 1, "asked once");
+    assert!(a.kept_key().is_some_and(|kept| !kept.unconfirmed));
+    assert!(holds(&server, "alice", &shown));
+    assert!(!holds(&server, "alice", &first));
 }
 
 /// A Keychain that won't delete the session's item still signs this Mac out

@@ -88,6 +88,9 @@ pub enum TaskKind {
     /// "Use a different server…" asking the server whether it is one.
     CheckServer,
     RevokeDevice,
+    /// Asking the server once whether it took a shown key Kanso couldn't
+    /// tell it took (review-verify 6).
+    CheckKey,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,6 +190,10 @@ pub struct Services {
     pub account: AccountState,
     pub task: Option<RunningTask>,
     pub pending_key: Option<PendingKey>,
+    /// The shown key is one Kanso couldn't tell the server took, and the
+    /// server hasn't been asked about it yet: it is asked once, when no
+    /// task runs (`recover/start` counts against a per-address limit).
+    pub key_check_due: bool,
     pub details: AccountDetails,
     /// What a server last said about new accounts, for the Create account
     /// form: the server's URL and its answer.

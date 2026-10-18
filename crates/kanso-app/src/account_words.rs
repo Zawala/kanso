@@ -528,12 +528,56 @@ pub fn upload_question(from: &str) -> (String, String, &'static str) {
 pub const RECOVERY_KEY_TEXT: &str = "If you forget your password, this key and your username are the only way back into your account. Kanso and the server's owner can't reset it. Anyone with it can take over your account and read your notes, so keep it somewhere safe, like a password manager or on paper. Each time it's used, Kanso gives you a new one.";
 /// When a new key shows while the Account page doesn't.
 pub const KEY_READY: &str = "Save your new recovery key. It's on the Account page.";
-/// Over a key "New recovery key" made, when the answer was lost.
-pub const KEY_UNCONFIRMED: &str = "Kanso couldn't tell whether the server took this key. Save it anyway: if it did, it's your recovery key now, and the old one no longer works.";
+/// Over a key "New recovery key" made, when the answer was lost (and over
+/// any unconfirmed key found at launch), until Kanso has asked the server.
+pub const KEY_UNCONFIRMED: &str = "Kanso couldn't tell yet whether the server took this key. Save it, and keep your old recovery key too until Kanso confirms which one works.";
 /// Over a sign-up's key, when the answer was lost.
-pub const KEY_UNCONFIRMED_SIGN_UP: &str = "Kanso couldn't tell whether your account was created. Save this key anyway: if it was, it's the account's recovery key. Then sign in with your password.";
+pub const KEY_UNCONFIRMED_SIGN_UP: &str = "Kanso couldn't tell yet whether your account was created. Save this key anyway: if it was, it's the account's recovery key. Then sign in with your password.";
 /// Over a recovery's or a password change's key, when the answer was lost.
-pub const KEY_UNCONFIRMED_PASSWORD: &str = "Kanso couldn't tell whether your password was changed. Save this key anyway: if it was, it's your recovery key now, and the old one no longer works.";
+pub const KEY_UNCONFIRMED_PASSWORD: &str = "Kanso couldn't tell yet whether your password was changed. Save this key, and keep your old recovery key too until Kanso confirms which one works.";
+/// Over an unconfirmed key once the server said it holds it.
+pub const KEY_TAKEN: &str =
+    "The server took this key: it's your recovery key now, and the old one no longer works.";
+/// Over a sign-up's unconfirmed key once the server said it holds it.
+pub const KEY_TAKEN_SIGN_UP: &str =
+    "Your account was created, and this is its recovery key. Sign in with your password.";
+/// Over a recovery's or a password change's unconfirmed key once the server
+/// said it holds it.
+pub const KEY_TAKEN_PASSWORD: &str =
+    "Your password was changed, and this is your recovery key now: the old one no longer works.";
+/// When the server said it doesn't hold an unconfirmed key (it goes).
+pub const KEY_NOT_TAKEN: &str =
+    "The server didn't take the new recovery key, so nothing changed: your old one still works.";
+/// When the server said it doesn't hold a sign-up's unconfirmed key.
+pub const KEY_NOT_TAKEN_SIGN_UP: &str =
+    "Your account wasn't created after all. You can create it again.";
+/// When the server said it doesn't hold a recovery's or a password change's
+/// unconfirmed key.
+pub const KEY_NOT_TAKEN_PASSWORD: &str =
+    "Your password wasn't changed after all, so your old recovery key still works.";
+
+/// What Kanso says once it asked the server about a key it couldn't tell
+/// the server took (review-verify 6).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyChecked {
+    /// Over the key: the server holds it.
+    pub taken: &'static str,
+    /// In a notification: the server doesn't hold it, and the key goes.
+    pub not_taken: &'static str,
+}
+
+/// The words for once the server is asked, when `note` (over a key) says
+/// Kanso couldn't tell whether the server took it; `None` for any other
+/// note, whose key needs no asking.
+pub fn key_checked(note: &str) -> Option<KeyChecked> {
+    let (taken, not_taken) = match note {
+        KEY_UNCONFIRMED => (KEY_TAKEN, KEY_NOT_TAKEN),
+        KEY_UNCONFIRMED_SIGN_UP => (KEY_TAKEN_SIGN_UP, KEY_NOT_TAKEN_SIGN_UP),
+        KEY_UNCONFIRMED_PASSWORD => (KEY_TAKEN_PASSWORD, KEY_NOT_TAKEN_PASSWORD),
+        _ => return None,
+    };
+    Some(KeyChecked { taken, not_taken })
+}
 /// Over the key a password change set.
 pub const KEY_AFTER_PASSWORD: &str =
     "Your password changed, and so did your recovery key: the one you saved no longer works.";

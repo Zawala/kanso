@@ -1515,6 +1515,13 @@ the Keychain refuses. Then:
   sticky across the retries (review-verify 1): when the first attempt's answer is lost and a retry then
   never leaves the Mac (offline) or gets a 429, the first one may still have been carried out, so
   the key is kept, not dropped.
+- Such a key is checked once (review-verify 6): `recovery_key_held` sends `recover/start` with the
+  key's proof for the item's username. 200: the server holds it, so the item is marked confirmed.
+  401 `invalid_credentials`: it doesn't, so the change never happened and the item is deleted
+  (while it still holds that key and is still unconfirmed). Anything else (offline, a 429, a 5xx)
+  leaves the item as it is. The app asks once per key shown, after the task that showed it and the
+  launch check, and never again in that launch, since `recover/start` counts against `recover-ip`
+  (10 an hour per address); a key still unconfirmed is asked about again at the next launch.
 
 While the item holds an unsaved key for the same account, the next rotation sets that same key
 again (except the key a recovery proves), so a retried or repeated change can't leave the server
@@ -2070,10 +2077,19 @@ account] [Sign in].
   still holds that key.
 - **A note over the key**, in the warning colour, when it needs one: after a password change, "Your
   password changed, and so did your recovery key: the one you saved no longer works." When the
-  answer was lost, that Kanso couldn't tell whether the server took the key (or created the
-  account, or changed the password), and to save it anyway. When the account was created or the
+  answer was lost, that Kanso couldn't tell yet whether the server took the key (or created the
+  account, or changed the password), to save it, and, except after a sign-up, to keep the old
+  recovery key too until Kanso confirms which one works. When the account was created or the
   password changed but this Mac couldn't finish signing in, that sentence, with "Sign in with your
   password" (or the new password).
+- **Checking an unconfirmed key** (review-verify 6). While the screen shows a key Kanso couldn't tell
+  the server took, the app asks the server once (`TaskKind::CheckKey`, above). If the server holds
+  it, the note becomes "The server took this key: it's your recovery key now, and the old one no
+  longer works." (or says the account was created, or the password changed). If it doesn't, the
+  key and its Keychain item go, and a notification, in place of [Show key], says nothing changed:
+  "The server didn't take the new recovery key, so nothing changed: your old one still works." (or
+  that the account wasn't created, or the password wasn't changed). If the ask fails, the note
+  stays as it is until the next launch asks again.
 - **Elsewhere.** A key that arrives while Settings › Account isn't showing (from a task, a failure
   carrying one, or the launch check) raises the notification "Save your new recovery key. It's on
   the Account page." with [Show key]; a second key replaces it.
@@ -2216,7 +2232,8 @@ documents and files under the test session and can push plaintext as another cli
 | Rebinding (fix 2) | `prop_rebinding_during_a_sync_never_mixes_accounts`: a remote that rebinds the library mid-sync (between any two calls); no write of A's lands after B's binding; B's cursor is never A's | `tests/binding.rs` |
 | Binding | `prop_binding_plan` (model-based): notes reach another account only through an explicit add; Replace always leaves a backup with every document; sign-out never changes the library; sign-up into an empty account pushes no tombstones; a crash between any two steps of Replace leaves either the old library or an empty one bound fresh | `tests/binding.rs` |
 | Rollback (fix 1 / H5) | `v2_then_unbind_then_v1_loses_no_edit`: a library synced under v1 rules, then v2 with edits, creations and deletions, then `unbind`, then v1 rules again. Every v2-window edit and creation reaches the v1 server; v2-window deletions come back (asserted, as the rollback steps say). v1 rules come from a plaintext legacy server in `tests/common/legacy.rs` (today's `MemoryRemote`, conformance-tested against the v1 Worker) and the cursor key `sync.last_seq`, so no live old Worker is needed. | `tests/rollback.rs` |
-| Client retries | A lost response for sign-up, password change, recovery finish, new recovery key, push and file upload is recovered by the documented retry | `tests/accounts.rs` |
+| Client retries | A lost response for sign-up, password change, recovery finish, new recovery key, push and file upload is recovered by the documented retry; a kept key stays kept when a later retry never leaves or is refused (review-verify 1); `recovery_key_held` says whether the server holds a key (review-verify 6) | `tests/accounts.rs` |
+| Unconfirmed keys in the app | An unconfirmed key is asked about once: one the server holds is confirmed and says so; one it doesn't hold goes, with a notification; a failed ask keeps the note and asks again only at the next launch (review-verify 6) | `kanso-app` `account_flow_tests.rs` |
 | Client quota and pause | Deletions still go through after a 413; a refused batch isn't sent again until usage drops, and then only what fits (`over_quota_syncs_spend_writes_only_on_what_the_server_stores`, and `prop_over_quota_writes_only_grow_by_what_is_sent`); a file-upload quota error holds new uploads; a 429 pauses and keeps its `limit`; `writes-global` is `ServerBusy`; an `uploads-global` 429 holds uploads without blocking pulls; a `session-account` 429 on the feed, a push, an upload or a download backs off briefly with the cursor kept and nothing marked done | `tests/sync.rs`, `tests/integrity.rs` |
 | Keychain | An item with a different origin or account ID is ignored; sign-out deletes an unconfirmed recovery key; pending logouts are retried until 204 or 401 | `tests/accounts.rs` (with `MemorySecrets`) |
 | Device identity | Same account → same ID; different accounts → unlinkable IDs; a hardware hash mismatch regenerates the identity and leaves the binding | `tests/binding.rs` |

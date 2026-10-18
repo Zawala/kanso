@@ -1679,6 +1679,36 @@ fn a_lost_answer_then_unsent_or_refused_retries_keep_the_key() {
     }
 }
 
+/// Review-verify 6: one `recover/start` tells whether the server holds a
+/// key, and changes nothing there. A wrong key, or an unknown name, is a
+/// no; a request that fails says nothing.
+#[test]
+fn whether_the_server_holds_a_key() {
+    let b = hostile();
+    let secrets = MemorySecrets::new();
+    let pw = password("correct horse battery");
+    let up = kanso_sync::sign_up(&b, &secrets, SERVER, "alice", &pw, &mac(1), &quiet).unwrap();
+    tick(&b.server);
+    let held = |username: &str, key: &RecoveryKey| {
+        kanso_sync::recovery_key_held(&b, SERVER, username, key)
+    };
+    assert_eq!(held("alice", &up.recovery_key).ok(), Some(true));
+    assert_eq!(held("Alice", &up.recovery_key).ok(), Some(true));
+    assert_eq!(held("alice", &RecoveryKey::generate()).ok(), Some(false));
+    assert_eq!(held("nobody", &up.recovery_key).ok(), Some(false));
+    b.faults.unsent.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        held("alice", &up.recovery_key),
+        Err(AccountError::Transport(_))
+    ));
+    b.faults.unsent.store(false, Ordering::SeqCst);
+    assert!(
+        holds(&b.server, "alice", &up.recovery_key),
+        "nothing changed"
+    );
+    assert!(sign_in(&b, "alice", "correct horse battery", &mac(1)).is_ok());
+}
+
 /// The Keychain refusing before the request means nothing is sent; refusing
 /// to mark the key confirmed afterwards still returns the key, which stays
 /// in the Keychain unconfirmed.

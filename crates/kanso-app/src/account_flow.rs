@@ -245,6 +245,7 @@ fn run<T: Send + 'static>(
             cx.global_mut::<Services>().task = None;
             finish(result, cx);
             resume_stopped_sync(cx);
+            check_unconfirmed_key(cx);
             cx.refresh_windows();
         });
     })
@@ -431,7 +432,11 @@ fn show_key(session: &Session, key: RecoveryKey, cx: &mut App) {
 /// Shows `key` on the Account page until "I've saved it". When that page
 /// isn't showing, a notification leads there.
 fn show_pending(key: PendingKey, cx: &mut App) {
-    cx.global_mut::<Services>().pending_key = Some(key);
+    let services = cx.global_mut::<Services>();
+    services.key_check_due = key.note.and_then(words::key_checked).is_some();
+    services.pending_key = Some(key);
+    // Once the task that showed it is done, or the launch check.
+    cx.defer(check_unconfirmed_key);
     // Windows can't be read from inside their own updates.
     cx.defer(|cx| {
         if !account_page_showing(cx) {
@@ -456,6 +461,109 @@ fn show_pending(key: PendingKey, cx: &mut App) {
 
 /// The "Show key" notification's ID: a second key replaces it.
 struct KeyReady;
+
+/// Asks the server once whether it took the shown key, when Kanso couldn't
+/// tell (review-verify 6). A key the server holds is the account's now, and
+/// the screen says so; one it doesn't hold goes, screen and Keychain item,
+/// since nothing changed, and a notification says that. It waits for a
+/// running task and the launch check, and is asked once per key shown (and
+/// so once per launch for a key kept from before): `recover/start` counts
+/// against the server's per-address limit. A failed ask leaves the key as
+/// it is, its words saying to keep the old key too.
+fn check_unconfirmed_key(cx: &mut App) {
+    let Some(services) = cx.try_global::<Services>() else {
+        return;
+    };
+    if !services.key_check_due || services.task.is_some() || services.restoring {
+        return;
+    }
+    let Some(shown) = services.pending_key.clone() else {
+        return;
+    };
+    let Some(checked) = shown.note.and_then(words::key_checked) else {
+        return;
+    };
+    let Some(seams) = Seams::get(cx) else {
+        return;
+    };
+    let library_id = services.library_id.clone();
+    cx.global_mut::<Services>().key_check_due = false;
+    let asked = shown.key.clone();
+    run(
+        TaskKind::CheckKey,
+        Step::Contacting,
+        false,
+        None,
+        cx,
+        move |_| {
+            let held = kanso_sync::recovery_key_held(
+                seams.backend.as_ref(),
+                &shown.server,
+                &shown.username,
+                &shown.key,
+            )?;
+            settle_kept_key(&seams, library_id, &shown.key, held);
+            Ok::<bool, AccountError>(held)
+        },
+        move |result, cx| {
+            let services = cx.global_mut::<Services>();
+            let same = services
+                .pending_key
+                .as_ref()
+                .is_some_and(|now| now.key == asked);
+            match result {
+                Some(Ok(true)) => {
+                    if let Some(now) = services.pending_key.as_mut().filter(|_| same) {
+                        now.note = Some(checked.taken);
+                    }
+                }
+                Some(Ok(false)) => {
+                    if same {
+                        services.pending_key = None;
+                    }
+                    // In place of its "Show key", if that still shows.
+                    notify_windows(
+                        move || Notification::warning(checked.not_taken).id::<KeyReady>(),
+                        cx,
+                    );
+                }
+                Some(Err(err)) => {
+                    eprintln!("kanso: asking whether the server took the recovery key: {err}");
+                }
+                None => {}
+            }
+        },
+    );
+}
+
+/// The Keychain's unsaved key once the server answered about `key`:
+/// confirmed when the server holds it, gone when it doesn't. An item that
+/// holds another key by then, or is confirmed already, stays as it is.
+fn settle_kept_key(s: &Seams, library_id: Option<String>, key: &RecoveryKey, held: bool) {
+    let library_id = match library_id {
+        Some(library_id) => library_id,
+        None => match s.device() {
+            Ok(device) => device.library_id,
+            Err(_) => return,
+        },
+    };
+    let secrets = s.secrets.as_ref();
+    let settled =
+        keychain::load_any_recovery_key(secrets, &library_id).and_then(|kept| match kept {
+            Some(mut kept) if kept.unconfirmed && kept.recovery_key == *key => {
+                if held {
+                    kept.unconfirmed = false;
+                    keychain::save_recovery_key(secrets, &library_id, &kept)
+                } else {
+                    keychain::delete_recovery_key(secrets, &library_id)
+                }
+            }
+            _ => Ok(()),
+        });
+    if let Err(err) = settled {
+        eprintln!("kanso: settling the unconfirmed recovery key: {err}");
+    }
+}
 
 /// Whether a window shows Settings › Account.
 fn account_page_showing(cx: &mut App) -> bool {

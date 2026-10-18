@@ -1338,7 +1338,8 @@ fn settings_recovery_key_password(
     show_demo_key(cx, Some(crate::account_words::KEY_AFTER_PASSWORD));
 }
 
-/// "New recovery key" whose answer was lost.
+/// "New recovery key" whose answer was lost, before the server is asked:
+/// keep the old key too.
 fn settings_recovery_key_unconfirmed(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
@@ -1347,6 +1348,17 @@ fn settings_recovery_key_unconfirmed(
 ) {
     settings_account(cx, window, workspace, store);
     show_demo_key(cx, Some(crate::account_words::KEY_UNCONFIRMED));
+}
+
+/// The same key once the server said it holds it.
+fn settings_recovery_key_taken(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
+    show_demo_key(cx, Some(crate::account_words::KEY_TAKEN));
 }
 
 /// The key screen with "I've saved my recovery key" ticked.
@@ -2321,6 +2333,18 @@ fn snapshots() {
             Light,
             Edit,
             settings_recovery_key_unconfirmed,
+        ),
+        shot(
+            "dark-settings-recovery-key-unconfirmed",
+            Dark,
+            Edit,
+            settings_recovery_key_unconfirmed,
+        ),
+        shot(
+            "dark-settings-recovery-key-taken",
+            Dark,
+            Edit,
+            settings_recovery_key_taken,
         ),
         // The account's dialogs.
         form("dark-account-binding-question", Dark, binding_question),
