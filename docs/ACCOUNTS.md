@@ -344,7 +344,9 @@ Two store rules keep it, in `apply_remote`:
   loss and an epoch change never lower it (see "Sync with encryption › What a Mac remembers per
   document"). A replayed older version or tombstone therefore can't revert a Mac that has seen
   something newer, including a note re-created under the same ID. That holds even after the server
-  claims it lost the document or rotates its epoch.
+  claims it lost the document or rotates its epoch. The one exception is a live version this Mac
+  never held, arriving over a local deletion: an edit always beats a deletion, so it wins (rule 4
+  in "Sync with encryption › In order" has the trade-off).
 
 The report lists stale documents; the cursor moves past them.
 
@@ -1570,6 +1572,33 @@ skips it, and a note re-created over it is pushed with no base.
    different Macs no longer compare: another Mac's newer offline edit can fall below this Mac's floor.
    It loses to the local version, as any conflict loser does, and is kept and flagged. A replayed
    version this Mac already holds adds nothing and flags nothing.
+
+   **Except over a deletion** (review-verify 2). When the local side is a tombstone, a live stale version
+   whose content this Mac never held isn't stale. It takes the normal "edit beats deletion" path:
+   it is stored (a file's bytes with it), `synced_rev` becomes its revision, and it is `RemoteWon`,
+   counted in `conflicts_remote` and flagged. So after a restore, a Mac's deletion never pushes a
+   tombstone over another Mac's edit it never saw, and never deletes that file's bytes on the
+   server or on the other Mac. The outcome no longer depends on which Mac syncs first, or on how
+   many edits each made, and the flag always names a note that is there to open. A stale conflict
+   is only ever raised over live local content.
+
+   A deletion always puts the version it deletes into history, even from the UI right after an
+   edit, whose snapshots are otherwise at most one per 5 minutes. That history is how a replay of
+   content this Mac held, the version it deleted or any earlier one still in history, is told from
+   another Mac's edit: a replay stays `Stale`, and the deletion stands.
+
+   The trade-off: a hostile server can now bring a deleted note back on a Mac by replaying a version
+   another Mac wrote that this Mac never pulled (for instance an intermediate edit it skipped). It
+   is real content of the account, flagged where it lands, and of the same class as the existing
+   "a Mac that never saw a newer version" risk ("Threat model › Residual risks", stale reads). The
+   user-facing rule, "an edit always beats a deletion", wins over that.
+
+   A residual stays on the other side, in the re-merge: a Mac whose clean edit the restore dropped
+   takes a deletion that another Mac pushed after the restore without ever seeing that edit,
+   because it can't tell that deletion from one made after seeing it. The edit is kept in the
+   document's history and the document is flagged, but nothing in the app opens a deleted note's
+   history; a backup has it. The Account page names and opens only a conflicted note that is still
+   there.
 5. Otherwise the conflict rules apply as before. A clean local copy takes the remote version. A
    changed one keeps the newer `updatedAt`, and an edit beats a deletion. The loser is kept as a
    snapshot and flagged.
@@ -2153,7 +2182,7 @@ documents and files under the test session and can push plaintext as another cli
 | Golden vectors | `crypto-v1.json` (owner: Rust builder, step 2a): Argon2 at test parameters with a fixed origin and username, every HKDF info, both wraps, sealed document, file and name with fixed nonces, wire ID and rev, key ID, recovery-key text. One `#[ignore]` vector at production parameters. | `kanso-sync/tests/fixtures/` |
 | KDF | `prop_prelogin_outside_floor_or_ceiling_is_refused` (no auth key is sent) | `tests/accounts.rs` |
 | Usernames | Shared fixture; idempotent; case-insensitive; accepted names match the pattern; non-ASCII refused | Rust and `cloud/test/usernames.test.ts` |
-| Generations (M2) | `prop_accepted_generations_only_grow` over random multi-Mac histories; a local win's new revision beats the remote one; replayed older revisions and tombstones come back `Stale`; `Lost` and the re-merge's missing pass keep the floor | `kanso-store` tests, `tests/properties.rs` |
+| Generations (M2) | `prop_accepted_generations_only_grow` over random multi-Mac histories; a local win's new revision beats the remote one; replayed older revisions and tombstones come back `Stale`, except a live version a Mac never held over its deletion, which wins (review-verify 2); `Lost` and the re-merge's missing pass keep the floor | `kanso-store` tests, `tests/properties.rs` |
 | Integrity of `synced_rev` | Add never pushes a tombstone over the account's live copy (`prop_add_never_pushes_a_tombstone_over_a_live_copy`, and the example for 0–3 edits on either side, notes and files); a restore never silently drops an edit (`prop_no_live_edit_is_lost_silently` with restores, and the two-Mac example); our own echo after a lost answer never reverts or flags (`prop_our_own_echo_never_reverts_an_edit`); missing bytes are fetched again within the bound (`prop_missing_bytes_come_back`); over quota, a refused batch isn't sent again until usage drops (`prop_over_quota_writes_only_grow_by_what_is_sent`) | `tests/integrity.rs` |
 | Sync over encryption | The existing convergence and idempotence properties and `sync.rs` cases, run over `Sealed<MemoryServer>` with `PlainView` | `tests/properties.rs`, `tests/sync.rs` |
 | Hostile server | `prop_a_hostile_server_never_changes_local_data_wrongly`, with a sequence of attacks per sync. A wrapper flips bits; swaps sealed values between documents and accounts; forges tombstones; relabels revisions; replays old versions; rewinds the account (lower `head_seq`); changes the epoch; leaves documents out of a re-merge; returns `current: null`; answers a push with an old version as the conflict's `current`; and sends unknown format bytes. Invariants: local content is always some client's write for that same ID; the floor never drops; a document's content only changes to a version above the floor it had before the sync; nothing pending is lost; replays are `Stale`; rewinds re-merge; a wrong key ID writes nothing; too-new never overwrites. | `tests/properties.rs` |
@@ -2492,7 +2521,8 @@ Time Travel copy; network observers; malicious web pages (M7); and a malicious s
 - Writes are authenticated, so the server can't forge, alter, relabel, cross-link or move documents,
   files, deletions or device names without the Mac noticing.
 - Replaying an older version is refused once a Mac has seen a newer one (M2), also after the server
-  claims it lost the document or rotates its epoch.
+  claims it lost the document or rotates its epoch. The exception is a live version that a Mac
+  never held, over its deletion: an edit beats a deletion (see the stale reads below).
 - Rewinding a whole account makes the Macs re-merge rather than lose changes (M1).
 
 Residual risks:
@@ -2508,8 +2538,9 @@ Residual risks:
   that such a person set while they knew the password stops working, so they can't take the
   account over by recovery after the owner changes it. What remains is reading, not control.
 - **Stale reads and withholding.** A malicious server can withhold changes, delete data, or replay
-  an old version to a Mac that never saw a newer one. It can't fabricate content, and every
-  replaced local version is kept in history.
+  an old version to a Mac that never saw a newer one. It can bring a deleted note back on a Mac
+  with a version another Mac wrote that this Mac never held, since an edit always beats a deletion
+  (review-verify 2). It can't fabricate content, and every replaced local version is kept in history.
 - **Metadata.** Sizes, counts per kind, timing and IPs are visible, as listed above.
 - **The client is trusted.** Friends run ad-hoc builds the owner makes. End-to-end encryption
   protects them against the server, but not against whoever builds the app: a modified build could

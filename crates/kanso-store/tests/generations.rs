@@ -29,6 +29,51 @@ fn generation(rev: &str) -> u64 {
     rev.parse::<Rev>().unwrap().generation
 }
 
+/// Whether `store` holds content `rev` of `id`: live now, or in history.
+fn holds(store: &Store, id: &str, rev: &str) -> bool {
+    let hash = |rev: &str| rev.parse::<Rev>().unwrap().hash;
+    store
+        .get(id)
+        .unwrap()
+        .is_some_and(|d| hash(&d.rev) == hash(rev))
+        || store
+            .revisions(id)
+            .unwrap()
+            .iter()
+            .any(|r| hash(&r.rev) == hash(rev))
+}
+
+/// What a replay of `replay` did to `mac`, whose copy was `deleted` with
+/// `fields` and held `held` (whether it held the replay's content): a live
+/// version this Mac never held beats a local deletion even below the
+/// floor (review-verify 2, the documented trade-off: an edit always beats a
+/// deletion). Anything else is `Stale` and changes nothing.
+fn check_replay(
+    mac: &Store,
+    replay: &SyncDoc,
+    (deleted, fields, held): (bool, Map<String, Value>, bool),
+    outcome: &ApplyOutcome,
+) -> Result<(), TestCaseError> {
+    let (_, deleted_after, fields_after) = all_docs(mac)[&replay.id].clone();
+    if deleted && !replay.deleted && !held {
+        prop_assert_eq!(
+            outcome,
+            &ApplyOutcome::RemoteWon,
+            "a never-held version over a deletion"
+        );
+        prop_assert!(!deleted_after);
+        return Ok(());
+    }
+    prop_assert!(
+        matches!(outcome, ApplyOutcome::Stale { .. }),
+        "{:?} for a replay",
+        outcome
+    );
+    prop_assert_eq!(deleted_after, deleted, "a replay changed a deletion");
+    prop_assert_eq!(fields_after, fields);
+    Ok(())
+}
+
 fn book(store: &Store, name: &str) -> String {
     store
         .put(
@@ -161,8 +206,9 @@ proptest! {
     /// accepts a push iff its base is current: every accepted revision has a
     /// higher generation than the one it replaced; a local win or a stale
     /// replay is rebased above the remote revision; a replayed older version
-    /// comes back `Stale` without changing the Mac's content; and the Macs
-    /// converge. (A Mac's own generation may drop when a remote version
+    /// comes back `Stale` without changing the Mac's content, except a live
+    /// version the Mac never held over its deletion, which wins (review-verify 2);
+    /// and the Macs converge. (A Mac's own generation may drop when a remote version
     /// wins: that is the remote's revision, already accepted.)
     #[test]
     fn prop_accepted_generations_only_grow(ops in prop::collection::vec(op(), 1..40)) {
@@ -206,11 +252,9 @@ proptest! {
                     }
                     let replay = old[k % old.len()].clone();
                     let (_, deleted, fields) = held[&replay.id].clone();
+                    let had = holds(mac, &replay.id, &replay.rev);
                     let outcome = mac.apply_remote(&replay, None, None).unwrap();
-                    prop_assert!(matches!(outcome, ApplyOutcome::Stale { .. }), "{outcome:?} for a replay");
-                    let (_, deleted_after, fields_after) = all_docs(mac)[&replay.id].clone();
-                    prop_assert_eq!(deleted_after, deleted);
-                    prop_assert_eq!(fields_after, fields);
+                    check_replay(mac, &replay, (deleted, fields, had), &outcome)?;
                 }
                 Op::LoseThenReplay(m, k, missing) => {
                     let mac = &macs[m].1;
@@ -239,11 +283,9 @@ proptest! {
                     }
                     prop_assert_eq!(floor(mac), before, "a reported loss lowered the floor");
                     let (_, deleted, fields) = held[&replay.id].clone();
+                    let had = holds(mac, &replay.id, &replay.rev);
                     let outcome = mac.apply_remote(&replay, None, None).unwrap();
-                    prop_assert!(matches!(outcome, ApplyOutcome::Stale { .. }), "{outcome:?} for a replay after a loss");
-                    let (_, deleted_after, fields_after) = all_docs(mac)[&replay.id].clone();
-                    prop_assert_eq!(deleted_after, deleted, "a loss let a replay change a deletion");
-                    prop_assert_eq!(fields_after, fields);
+                    check_replay(mac, &replay, (deleted, fields, had), &outcome)?;
                 }
             }
         }
@@ -374,6 +416,137 @@ fn replayed_older_revisions_and_tombstones_are_stale() {
     assert_eq!(
         other.get(&id2).unwrap().unwrap().fields["name"],
         "still alive"
+    );
+}
+
+/// Review-verify 2: below the floor, a live version this Mac never held beats a
+/// local tombstone (an edit always beats a deletion): it is stored, bytes
+/// and all, and it is `RemoteWon`, not `Stale`. A replay of the version
+/// this Mac deleted stays `Stale`, even when the deletion came from the UI
+/// right after an edit (whose snapshots are throttled): a deletion always
+/// keeps the version it deletes.
+#[test]
+fn below_the_floor_an_unseen_edit_beats_a_tombstone_but_a_replay_doesnt() {
+    let (_dir, store) = temp_store();
+    let id = book(&store, "v1");
+    let v1 = store.pending_push(10).unwrap().remove(0);
+    store.mark_synced(&id, &v1.rev, None).unwrap();
+    rename(&store, &id, "v2", 2_000);
+    let v2 = store.pending_push(10).unwrap().remove(0);
+    store.mark_synced(&id, &v2.rev, None).unwrap();
+    store.delete(&id, Origin::Ui).unwrap();
+    let tombstone = store.pending_push(10).unwrap().remove(0);
+    store.mark_synced(&id, &tombstone.rev, None).unwrap();
+    assert_eq!(generation(&tombstone.rev), 3);
+
+    for replay in [&v2, &v1] {
+        let outcome = store
+            .apply_remote(
+                &SyncDoc {
+                    base_rev: None,
+                    ..replay.clone()
+                },
+                None,
+                None,
+            )
+            .unwrap();
+        assert!(
+            matches!(
+                outcome,
+                ApplyOutcome::Stale {
+                    conflict: false,
+                    ..
+                }
+            ),
+            "{outcome:?} for a replay of {}",
+            replay.rev
+        );
+        assert!(store.get(&id).unwrap().is_none(), "a replay revived it");
+    }
+
+    let unseen = SyncDoc {
+        id: id.clone(),
+        rev: format!("3-{}", "c".repeat(32)),
+        deleted: false,
+        fields: json!({ "name": "edited elsewhere", "updatedAt": 9_000 })
+            .as_object()
+            .unwrap()
+            .clone(),
+        base_rev: None,
+    };
+    assert_eq!(
+        store.apply_remote(&unseen, None, None).unwrap(),
+        ApplyOutcome::RemoteWon
+    );
+    let doc = store.get(&id).unwrap().expect("the edit is live");
+    assert_eq!(doc.fields["name"], "edited elsewhere");
+    assert_eq!(doc.rev, unseen.rev);
+    let state = store
+        .sync_states()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.id == id)
+        .unwrap();
+    assert!(!state.pending(), "the account's version, nothing to push");
+    assert!(state.synced_gen >= 3, "the floor never drops");
+
+    // A file's bytes come with it.
+    let file = store
+        .put(
+            DocType::File,
+            json!({
+                "_id": "file:f1",
+                "name": "a.png",
+                "contentType": "image/png",
+                "createdAt": 1,
+                "_attachments": { "index": {
+                    "content_type": "image/png",
+                    "data": "b2xk",
+                }},
+            }),
+            Put::Upsert,
+            Origin::Ui,
+        )
+        .unwrap();
+    store.mark_synced("file:f1", &file.rev, None).unwrap();
+    store.delete("file:f1", Origin::Ui).unwrap();
+    let gone = store.pending_push(10).unwrap().remove(0);
+    store.mark_synced("file:f1", &gone.rev, None).unwrap();
+    let bytes = b"new bytes".to_vec();
+    let md5 = kanso_store::Attachment::new(bytes.clone()).md5_hex();
+    let edited = SyncDoc {
+        id: "file:f1".into(),
+        rev: format!("{}-{}", generation(&gone.rev), "d".repeat(32)),
+        deleted: false,
+        fields: json!({
+            "name": "a.png",
+            "contentType": "image/png",
+            "contentLength": bytes.len(),
+            "md5digest": md5,
+            "createdAt": 1,
+            "updatedAt": 9_000,
+        })
+        .as_object()
+        .unwrap()
+        .clone(),
+        base_rev: None,
+    };
+    assert_eq!(
+        store
+            .apply_remote(
+                &edited,
+                Some(kanso_store::Attachment::new(bytes.clone())),
+                None
+            )
+            .unwrap(),
+        ApplyOutcome::RemoteWon
+    );
+    assert_eq!(
+        store
+            .attachment("file:f1")
+            .unwrap()
+            .map(|(_, blob)| blob.data),
+        Some(bytes)
     );
 }
 

@@ -162,17 +162,22 @@ pub(crate) fn store_row(
 }
 
 fn snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
-    let now = now_ms();
     if origin == Origin::Ui {
         let last: Option<i64> = tx.query_row(
             "SELECT MAX(saved_at) FROM revisions WHERE doc_id = ?",
             [id],
             |row| row.get(0),
         )?;
-        if last.is_some_and(|at| now - at < UI_SNAPSHOT_INTERVAL_MS) {
+        if last.is_some_and(|at| now_ms() - at < UI_SNAPSHOT_INTERVAL_MS) {
             return Ok(());
         }
     }
+    keep_snapshot(tx, id, prev, origin)
+}
+
+/// Puts `prev` in the document's history, unthrottled, then prunes it.
+fn keep_snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
+    let now = now_ms();
     tx.execute(
         "INSERT INTO revisions (doc_id, rev, json, saved_at, origin) VALUES (?1, ?2, ?3, ?4, ?5)",
         params![
@@ -189,6 +194,38 @@ fn snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()
         params![id, SNAPSHOTS_PER_DOC],
     )?;
     Ok(())
+}
+
+/// Replaces live row `prev` with a tombstone and returns its revision. The
+/// version it deletes always goes into history, however recent the last
+/// snapshot: sync tells a replay of content this Mac held from another
+/// Mac's edit it never saw by that history, and only the edit may beat the
+/// deletion (docs/ACCOUNTS.md › Sync with encryption, review-verify 2).
+fn delete_row(
+    tx: &Transaction,
+    id: &str,
+    prev: &Row,
+    origin: Origin,
+    changes: &mut Vec<Change>,
+) -> Result<String> {
+    if origin == Origin::Ui {
+        // `store_row`'s throttled snapshot then adds nothing.
+        keep_snapshot(tx, id, prev, origin)?;
+    }
+    let rev = tombstone_rev(prev)?;
+    store_row(
+        tx,
+        id,
+        prev.doc_type,
+        &rev,
+        true,
+        &Map::new(),
+        Some(prev),
+        Synced::Keep,
+        origin,
+        changes,
+    )?;
+    Ok(rev)
 }
 
 fn next_rev(previous: Option<&Row>, content: &Value) -> Result<String> {
@@ -376,8 +413,7 @@ impl Store {
                     }
                     for book in books.iter().skip(1) {
                         if let Some(child) = load_row(tx, book)? {
-                            let rev = tombstone_rev(&child)?;
-                            store_row(tx, book, DocType::Book, &rev, true, &Map::new(), Some(&child), Synced::Keep, origin, changes)?;
+                            delete_row(tx, book, &child, origin, changes)?;
                         }
                     }
                 }
@@ -396,8 +432,7 @@ impl Store {
                 }
                 DocType::Note | DocType::File => {}
             }
-            let rev = tombstone_rev(&prev)?;
-            store_row(tx, id, prev.doc_type, &rev, true, &Map::new(), Some(&prev), Synced::Keep, origin, changes)?;
+            let rev = delete_row(tx, id, &prev, origin, changes)?;
             Ok(WriteResult {
                 id: id.to_owned(),
                 rev,

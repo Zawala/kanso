@@ -64,7 +64,9 @@ pub enum ApplyOutcome {
     /// based on it.
     Unchanged,
     /// Both sides changed; the remote version won and the local one was kept
-    /// as a snapshot.
+    /// as a snapshot. Also a live remote version this Mac never held that
+    /// falls at or below the replay floor while the local side is a
+    /// tombstone: an edit always beats a deletion (review-verify 2).
     RemoteWon,
     /// Both sides changed; the local version won and will be pushed with
     /// `base_rev` = the remote revision. The remote one was kept as a snapshot.
@@ -88,7 +90,10 @@ pub enum ApplyOutcome {
     /// document's history. It was kept as a snapshot, and the engine flags
     /// the document, so no edit is discarded silently: after a restore,
     /// another Mac's newer offline edit can fall below this Mac's floor. A
-    /// replayed version the Mac already holds adds nothing.
+    /// replayed version the Mac already holds adds nothing. When the local
+    /// side is a tombstone, such a version isn't stale: it wins
+    /// ([`ApplyOutcome::RemoteWon`]), so `conflict` is only ever set over
+    /// live local content.
     Stale { new_rev: String, conflict: bool },
 }
 
@@ -554,8 +559,11 @@ impl Store {
     /// with the same content hash, pushed on top of the remote one; and a
     /// remote revision at or below the replay floor `synced_gen` (and not
     /// `synced_rev` itself) never reverts the Mac: the local version is
-    /// rebased onto it the same way ([`ApplyOutcome::Stale`]). Every
-    /// outcome that takes a revision from the server raises the floor.
+    /// rebased onto it the same way ([`ApplyOutcome::Stale`]). The one
+    /// exception is a live version this Mac never held over a local
+    /// tombstone: an edit beats a deletion, so it wins
+    /// ([`ApplyOutcome::RemoteWon`]). Every outcome that takes a revision
+    /// from the server raises the floor.
     pub fn apply_remote(
         &self,
         remote: &SyncDoc,
@@ -653,6 +661,18 @@ impl Store {
                 let conflict = !remote.deleted
                     && differs
                     && !holds_content(tx, &remote.id, &local, &remote_rev)?;
+                // An edit always beats a deletion, below the floor too
+                // (review-verify 2): a live version this Mac never held replaces
+                // a local tombstone, bytes and all, and is flagged. Pushing
+                // the tombstone would delete another Mac's edit, and the
+                // file's bytes, everywhere. A replay of content this Mac
+                // held stays stale below.
+                if conflict && local.deleted {
+                    store_blob(tx)?;
+                    store_row(tx, &remote.id, doc_type, &remote.rev, false, &fields, Some(&local), Synced::Set(&remote.rev), Origin::Sync, changes)?;
+                    learned(tx, &remote.id, &remote.rev)?;
+                    return Ok(ApplyOutcome::RemoteWon);
+                }
                 if conflict {
                     keep_remote(tx, &remote.id, &remote.rev, &fields)?;
                 }

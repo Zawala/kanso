@@ -562,6 +562,95 @@ fn a_restore_never_silently_drops_an_offline_edit() {
     }
 }
 
+/// Review-verify 2: after a restore, Mac A's deletion and Mac B's offline edit
+/// land at the same generation. Whichever Mac syncs first, the edit beats
+/// the deletion: the note (or file, with B's bytes) is live on every Mac
+/// and on the account, and a Mac that flags it can open it.
+#[test]
+fn after_a_restore_an_edit_this_mac_never_held_beats_its_deletion() {
+    for as_file in [false, true] {
+        for b_first in [true, false] {
+            let case = format!("file {as_file}, B first {b_first}");
+            let server = MemoryServer::new();
+            let a = Mac::new(sign_up(&server, "alice", 1));
+            let b = Mac::new(sign_in(&server, "alice", 2));
+            let id = if as_file { "file:x" } else { "note:x" };
+            let write = |store: &Store, text: &str, at: i64| {
+                if as_file {
+                    if all_docs(store).contains_key(id) {
+                        write_file(store, id, text.as_bytes());
+                    } else {
+                        file(store, id, text.as_bytes());
+                    }
+                } else if all_docs(store).contains_key(id) {
+                    edit_note(store, id, text, Some(at));
+                } else {
+                    note(store, id, "trash", text, at);
+                }
+            };
+            write(&a.store, "v1", 100);
+            a.sync(&server);
+            write(&a.store, "v2", 200);
+            a.sync(&server);
+            b.sync(&server);
+            let snapshot = server.snapshot("alice");
+            a.store.delete(id, Origin::Ui).unwrap();
+            a.sync(&server);
+            server.restore("alice", &snapshot);
+            write(&b.store, "B's edit", 300);
+            let b_edit = all_docs(&b.store)[id].0.clone();
+            assert_eq!(
+                generation(&b_edit),
+                generation(&all_docs(&a.store)[id].0),
+                "{case}: the edit and the deletion share a generation"
+            );
+
+            let mut reports = Vec::new();
+            for _ in 0..2 {
+                if b_first {
+                    reports.push(("B", b.sync(&server)));
+                    reports.push(("A", a.sync(&server)));
+                } else {
+                    reports.push(("A", a.sync(&server)));
+                    reports.push(("B", b.sync(&server)));
+                }
+            }
+            for (mac, store) in [("A", &a.store), ("B", &b.store)] {
+                let (rev, deleted) = all_docs(store)[id].clone();
+                assert!(!deleted, "{case}: deleted on {mac}");
+                assert_eq!(hash(&rev), hash(&b_edit), "{case}: {mac} lacks B's edit");
+                assert_eq!(pending(store), 0, "{case}: {mac}");
+            }
+            assert_eq!(
+                server_docs(&server, &a.session).get(id).map(|(_, d)| *d),
+                Some(false),
+                "{case}: the account's copy"
+            );
+            if as_file {
+                let c = Mac::new(sign_in(&server, "alice", 3));
+                c.sync(&server);
+                for (mac, store) in [("A", &a.store), ("B", &b.store), ("C", &c.store)] {
+                    assert_eq!(
+                        bytes(store, id).as_deref(),
+                        Some(&b"B's edit"[..]),
+                        "{case}: {mac}'s bytes"
+                    );
+                }
+            }
+            // Every flag names a document the flagging Mac can open.
+            for (mac, report) in &reports {
+                for flagged in &report.conflicted {
+                    let store = if *mac == "A" { &a.store } else { &b.store };
+                    assert!(
+                        store.get(flagged).unwrap().is_some(),
+                        "{case}: {mac} flagged {flagged}, which is gone"
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// Review-sync P5, with the epoch the admin's `restore` rotates: a rewound
 /// account re-merges on every Mac, so no Mac skips another's documents and
 /// every lost document goes back, even after others pushed past the cursor.
@@ -612,9 +701,12 @@ enum RestoreOp {
         pick: usize,
         bump: bool,
     },
+    /// Mac `m` deletes note `pick`, from the UI (whose snapshots are
+    /// throttled) or the API.
     Delete {
         m: usize,
         pick: usize,
+        ui: bool,
     },
     Sync {
         m: usize,
@@ -628,7 +720,7 @@ enum RestoreOp {
 fn gen_restore_op() -> impl Strategy<Value = RestoreOp> {
     prop_oneof![
         5 => (0..3usize, 0..3usize, any::<bool>()).prop_map(|(m, pick, bump)| RestoreOp::Write { m, pick, bump }),
-        1 => (0..3usize, 0..3usize).prop_map(|(m, pick)| RestoreOp::Delete { m, pick }),
+        1 => (0..3usize, 0..3usize, any::<bool>()).prop_map(|(m, pick, ui)| RestoreOp::Delete { m, pick, ui }),
         5 => (0..3usize).prop_map(|m| RestoreOp::Sync { m }),
         1 => Just(RestoreOp::Snapshot),
         1 => Just(RestoreOp::Restore),
@@ -646,15 +738,38 @@ fn content(store: &Store, id: &str) -> String {
     }
 }
 
+/// Every document `report` names both stale and conflicted is live on
+/// `store`: a stale conflict keeps the local content, which is never a
+/// tombstone (review-verify 2).
+fn stale_conflicts_are_live(store: &Store, report: &SyncReport) -> Result<(), TestCaseError> {
+    for id in report
+        .conflicted
+        .iter()
+        .filter(|id| report.stale.contains(id))
+    {
+        prop_assert!(
+            store.get(id).unwrap().is_some(),
+            "{} was flagged stale over a deletion: {:?}",
+            id,
+            report
+        );
+    }
+    Ok(())
+}
+
 proptest! {
     #![proptest_config(config(48))]
 
-    /// Invariant (b), over three Macs with random edits, deletions, syncs,
-    /// bookmarks and restores: every live version a Mac wrote is either an
-    /// ancestor of the document's final version (something was built on
-    /// it), or a sync after it was written flagged the document in
-    /// `conflicted` and the version is still current or in history on some
-    /// Mac. The Macs converge, and nothing is stale without a restore.
+    /// Invariant (b), over three Macs with random edits, deletions (from
+    /// the UI or the API), syncs, bookmarks and restores: every live version
+    /// a Mac wrote is either an ancestor of the document's final version
+    /// (something was built on it), or a sync after it was written flagged
+    /// the document in `conflicted` and the version is still current or in
+    /// history on some Mac. A document a sync reports both stale and
+    /// conflicted is live on that Mac afterwards: below the floor, a local
+    /// deletion never beats a version this Mac never held (review-verify 2), so
+    /// the flag leads to a note the user can open. The Macs converge, and
+    /// nothing is stale without a restore.
     #[test]
     fn prop_no_live_edit_is_lost_silently(ops in prop::collection::vec(gen_restore_op(), 1..36)) {
         let server = MemoryServer::new();
@@ -706,11 +821,12 @@ proptest! {
                     parents.entry((id.to_owned(), hash(&rev))).or_default().insert(before);
                     written.push((step, id.to_owned(), rev));
                 }
-                RestoreOp::Delete { m, pick } => {
+                RestoreOp::Delete { m, pick, ui } => {
                     let store = &macs[*m].store;
                     let id = ids[*pick];
                     let before = content(store, id);
-                    if store.delete(id, Origin::Api).is_ok() {
+                    let origin = if *ui { Origin::Ui } else { Origin::Api };
+                    if store.delete(id, origin).is_ok() {
                         parents.entry((id.to_owned(), TOMBSTONE.to_owned())).or_default().insert(before);
                     }
                 }
@@ -718,6 +834,7 @@ proptest! {
                     let report = macs[*m].sync(&server);
                     prop_assert!(report.invalid.is_empty() && report.skipped.is_empty());
                     prop_assert!(restored || report.stale.is_empty(), "stale without a restore: {:?}", report);
+                    stale_conflicts_are_live(&macs[*m].store, &report)?;
                     for id in &report.conflicted {
                         flagged.entry(id.clone()).or_default().push(step);
                     }
@@ -735,6 +852,7 @@ proptest! {
         for round in 0..3 {
             for mac in &macs {
                 let report = mac.sync(&server);
+                stale_conflicts_are_live(&mac.store, &report)?;
                 for id in &report.conflicted {
                     flagged.entry(id.clone()).or_default().push(last + round);
                 }
