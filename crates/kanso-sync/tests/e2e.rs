@@ -240,9 +240,10 @@ fn two_macs_sync_through_a_local_worker() {
     );
     assert_eq!(all_docs(&a.store), all_docs(&b.store));
 
-    // 2. A password change gives the other device 401 password_changed.
+    // 2. A password change gives the other device 401 password_changed, and
+    //    replaces the recovery key (security review 1).
     let second = Password::new(&format!("{PASSWORD} two {marker}"), &username).unwrap();
-    patiently(|| {
+    let changed = patiently(|| {
         kanso_sync::change_password(
             &backend,
             &MemorySecrets::new(),
@@ -261,17 +262,21 @@ fn two_macs_sync_through_a_local_worker() {
         other => panic!("expected 401 password_changed, got {other:?}"),
     }
 
+    let password_change_key = changed.recovery_key;
+    assert_ne!(password_change_key, recovery_key);
+
     // 3. Recovery rotates the key: the used one gets 401, and so does
-    //    every session from before it.
+    //    every session from before it. The sign-up key already stopped
+    //    working with the password change.
     let third = Password::new(&format!("{PASSWORD} three {marker}"), &username).unwrap();
-    let recover = || {
+    let recover = |key: &kanso_sync::RecoveryKey| {
         patiently(|| {
             kanso_sync::recover(
                 &backend,
                 &MemorySecrets::new(),
                 &endpoint,
                 &username,
-                &recovery_key,
+                key,
                 &third,
                 &device_b,
                 &|_| {},
@@ -279,9 +284,14 @@ fn two_macs_sync_through_a_local_worker() {
             .map_err(|err| err.error)
         })
     };
-    let recovered = recover().expect("recover");
-    assert_ne!(recovered.recovery_key, recovery_key);
-    let again = recover();
+    let before_change = recover(&recovery_key);
+    assert!(
+        matches!(before_change, Err(AccountError::InvalidCredentials)),
+        "{before_change:?}"
+    );
+    let recovered = recover(&password_change_key).expect("recover");
+    assert_ne!(recovered.recovery_key, password_change_key);
+    let again = recover(&password_change_key);
     assert!(
         matches!(again, Err(AccountError::InvalidCredentials)),
         "{again:?}"
@@ -399,6 +409,10 @@ fn two_macs_sync_through_a_local_worker() {
         (
             "the recovery key".into(),
             hex(recovery_key.display().as_bytes()),
+        ),
+        (
+            "the password change's recovery key".into(),
+            hex(password_change_key.display().as_bytes()),
         ),
     ];
     for doc in a.store.sync_docs().unwrap() {
