@@ -579,6 +579,87 @@ describe("fair shares of the server-wide daily caps", () => {
 	});
 });
 
+// Security review 2, finding 8: every earlier daily-cap test sent its requests
+// with one timestamp per day, which can't tell a counter keyed by the UTC day
+// from one keyed by the millisecond. These use distinct times through one day,
+// and the last and first milliseconds around midnight.
+describe("the UTC day rollover of the server-wide daily caps", () => {
+	const DAY = 86_400_000;
+	const HOUR = 3_600_000;
+	/** A UTC midnight three days after the fixtures' start. */
+	const DAY0 = START + 3 * DAY;
+	const doc = () => ({ id: wireId(), rev: wireRev(), deleted: false, sealed: sealed(64), base_rev: null as string | null });
+	const docs = (n: number) => Array.from({ length: n }, doc);
+	const daily = (name: string) => env.DB.prepare("SELECT day, count FROM daily WHERE name = ?1").bind(name).first<{ day: number; count: number }>();
+
+	it("writes at different times of one UTC day count against the same global_writes_per_day", async () => {
+		// Fair share 3 / 50 = 0: past the cap every write is refused.
+		await resetServer({ signup: "open", max_accounts: "50", global_writes_per_day: "3" });
+		const token = (await signUp("alice")).token;
+		const at = (offset: number) => client(token, { now: DAY0 + offset });
+		expect((await at(0).push(docs(1))).status).toBe(200);
+		expect((await at(7 * HOUR + 13 * 60_000 + 5_001).push(docs(1))).status).toBe(200);
+		expect((await at(16 * HOUR + 59_999).push(docs(1))).status).toBe(200);
+		expect(await daily("writes")).toEqual({ day: DAY0 / DAY, count: 3 });
+		expect((await at(20 * HOUR + 1).push(docs(1))).body).toMatchObject({ error: "rate_limited", limit: "writes-global", retry_after: 4 * 3600 });
+		expect((await at(DAY - 1).push(docs(1))).body).toMatchObject({ error: "rate_limited", limit: "writes-global", retry_after: 1 });
+		expect(await daily("writes")).toEqual({ day: DAY0 / DAY, count: 3 });
+		expect((await at(23 * HOUR).account()).body.usage.writes_today).toBe(5);
+	});
+
+	it("an account's fair share is judged by its own count for the same UTC day, whatever the time of day", async () => {
+		// Fair share 4 / 2 = 2 writes.
+		await resetServer({ signup: "open", max_accounts: "2", global_writes_per_day: "4" });
+		const alice = (await signUp("alice")).token;
+		const bob = (await signUp("bob")).token;
+		expect((await client(alice, { now: DAY0 + 1 }).push(docs(4))).status).toBe(200);
+		expect((await client(alice, { now: DAY0 + 2 * HOUR }).push(docs(1))).body).toMatchObject({ limit: "writes-global" });
+		// Bob's two writes, hours apart, are within his share although the cap is reached.
+		expect((await client(bob, { now: DAY0 + 9 * HOUR + 1 }).push(docs(1))).status).toBe(200);
+		expect((await client(bob, { now: DAY0 + DAY - 1 }).push(docs(1))).status).toBe(200);
+		expect((await client(bob, { now: DAY0 + DAY - 1 }).push(docs(1))).body).toMatchObject({ limit: "writes-global", retry_after: 1 });
+		expect(await daily("writes")).toEqual({ day: DAY0 / DAY, count: 6 });
+	});
+
+	it("sign-ups at different times of one UTC day count against the same signups_per_day", async () => {
+		await resetServer({ signup: "open", signups_per_day: "3" });
+		const at = (offset: number, ip: number) => ({ now: DAY0 + offset, ip: `203.0.113.${ip}` });
+		await signUp("ann", at(0, 1));
+		await signUp("ben", at(5 * HOUR + 1, 2));
+		await signUp("cat", at(23 * HOUR + 59 * 60_000, 3));
+		expect(await daily("signups")).toEqual({ day: DAY0 / DAY, count: 3 });
+		await expect(signUp("dan", at(DAY - 1, 4))).rejects.toThrow(/403 .*"reason":"busy"/);
+		expect(await daily("signups")).toEqual({ day: DAY0 / DAY, count: 3 });
+		// The first millisecond of the next UTC day starts the count again.
+		await signUp("dan", at(DAY, 5));
+		expect(await daily("signups")).toEqual({ day: DAY0 / DAY + 1, count: 1 });
+		await signUp("eve", at(DAY + 12 * HOUR, 6));
+		expect(await daily("signups")).toEqual({ day: DAY0 / DAY + 1, count: 2 });
+	});
+
+	it("across UTC midnight: refused at 23:59:59.999 with retry_after 1, then counted afresh from 00:00:00.000", async () => {
+		// Fair shares 2 / 50 = 0 writes and 100 / 50 = 2 bytes, so both caps bind.
+		await resetServer({ signup: "open", max_accounts: "50", global_writes_per_day: "2", global_upload_bytes_per_day: "100" });
+		const token = (await signUp("alice")).token;
+		const noon = client(token, { now: DAY0 + 12 * HOUR });
+		const late = client(token, { now: DAY0 + DAY - 1 });
+		const early = client(token, { now: DAY0 + DAY });
+		expect((await noon.push(docs(2))).status).toBe(200);
+		expect((await noon.putFile(wireId("file"), bytes(100))).status).toBe(200);
+		const refused = await late.push(docs(1));
+		expect(refused.body).toMatchObject({ error: "rate_limited", limit: "writes-global", retry_after: 1 });
+		expect(refused.headers.get("retry-after")).toBe("1");
+		expect((await late.putFile(wireId("file"), bytes(41))).body).toMatchObject({ error: "rate_limited", limit: "uploads-global", retry_after: 1 });
+		expect((await early.push(docs(2))).status).toBe(200);
+		expect((await early.putFile(wireId("file"), bytes(100))).status).toBe(200);
+		expect(await daily("writes")).toEqual({ day: DAY0 / DAY + 1, count: 2 });
+		expect(await daily("upload_bytes")).toEqual({ day: DAY0 / DAY + 1, count: 100 });
+		// The new day fills up in its turn, for the whole of it.
+		expect((await early.push(docs(1))).body).toMatchObject({ error: "rate_limited", limit: "writes-global", retry_after: 86_400 });
+		expect((await early.account()).body.usage.writes_today).toBe(4);
+	});
+});
+
 describe("the row cost", () => {
 	// docs/ACCOUNTS.md › Settings: 10,000 random rows in a fresh database grow
 	// it by no more than Σ(length(sealed) + 512).
