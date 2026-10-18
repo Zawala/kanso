@@ -476,6 +476,8 @@ impl Palette {
                 let on_note = self.note.as_ref().map_or(&[][..], |n| &n.tags[..]);
                 let mut tags: Vec<_> = library.tags.iter().collect();
                 tags.sort_by_key(|t| t.name.to_lowercase());
+                // Tags show as "#mcp", so "#mcp" typed finds "mcp".
+                let name = tag_name(query);
                 let mut entries: Vec<_> = tags
                     .iter()
                     .map(|tag| {
@@ -486,14 +488,15 @@ impl Palette {
                         )
                         .checked(on_note.contains(&tag.id))
                         .hint(tag.count.to_string());
-                        fit(item, &[])
+                        let score = item_score(name, &item.label, &[]);
+                        (item, score)
                     })
                     .collect();
-                let exists = tags.iter().any(|t| t.name.eq_ignore_ascii_case(query));
-                if !query.is_empty() && !exists {
+                let exists = tags.iter().any(|t| t.name.eq_ignore_ascii_case(name));
+                if !name.is_empty() && !exists {
                     let item = Item::new(
-                        Target::NewTag(query.to_owned()),
-                        format!("Create tag “{query}”"),
+                        Target::NewTag(name.to_owned()),
+                        format!("Create tag “{name}”"),
                         IconName::Plus,
                     );
                     // Last, but always there.
@@ -1378,6 +1381,14 @@ fn merge_by_id(first: Vec<NoteSummary>, then: Vec<NoteSummary>, limit: usize) ->
     merged
 }
 
+/// The tag name in what was typed in the tag list: without the "#" tags are
+/// shown with, and the spaces around it.
+fn tag_name(query: &str) -> &str {
+    query
+        .trim_start_matches(|c: char| c == '#' || c.is_whitespace())
+        .trim_end()
+}
+
 /// How well `query` fits an entry: its label, or a little less, one of its
 /// keywords.
 fn item_score(query: &str, label: &str, keywords: &[&str]) -> Option<i64> {
@@ -1566,12 +1577,13 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        MODIFIER_SYMBOLS, Mode, Palette, merge_by_id, shortcut, shortcut_parts, title_search,
+        MODIFIER_SYMBOLS, Mode, Palette, merge_by_id, shortcut, shortcut_parts, tag_name,
+        title_search,
     };
     use crate::config::AppConfig;
     use crate::library::Filter;
     use crate::services::Services;
-    use crate::workspace::{AppState, FocusSearch, NewNote, Workspace};
+    use crate::workspace::{AppState, FocusSearch, NewNote, SearchAllNotes, Workspace};
 
     proptest! {
         #![proptest_config(ProptestConfig {
@@ -1598,6 +1610,29 @@ mod tests {
                 let first = chars.next().unwrap();
                 prop_assert!(!MODIFIER_SYMBOLS.contains(&first) || chars.next().is_none(), "{:?}", parts);
             }
+        }
+
+        /// Invariants: the name is part of what was typed, with no "#" or
+        /// space in front and no space after, and a second pass keeps it.
+        #[test]
+        fn prop_tag_name_drops_the_hash_and_spaces(query in "[# a-z\t]{0,12}") {
+            let name = tag_name(&query);
+            prop_assert!(query.contains(name));
+            prop_assert!(!name.starts_with(|c: char| c == '#' || c.is_whitespace()));
+            prop_assert!(!name.ends_with(char::is_whitespace));
+            prop_assert_eq!(tag_name(name), name);
+        }
+
+        /// Metamorphic: any run of "#" and spaces in front changes nothing,
+        /// and a plain name comes back as it is.
+        #[test]
+        fn prop_tag_name_ignores_what_tags_are_shown_with(
+            prefix in "[# ]{0,4}",
+            name in "[a-z][a-z#-]{0,8}",
+        ) {
+            prop_assert_eq!(tag_name(&name), name.as_str());
+            let typed = format!("{prefix}{name}");
+            prop_assert_eq!(tag_name(&typed), name.as_str());
         }
     }
 
@@ -1683,6 +1718,16 @@ mod tests {
         .map(|n| n.id)
         .collect();
         assert_eq!(merged, ["note:1", "note:2", "note:3"]);
+    }
+
+    #[test]
+    fn tag_name_examples() {
+        assert_eq!(tag_name("#mcp"), "mcp");
+        assert_eq!(tag_name("  ##mcp "), "mcp");
+        assert_eq!(tag_name("c#"), "c#");
+        assert_eq!(tag_name("to do"), "to do");
+        assert_eq!(tag_name("#"), "");
+        assert_eq!(tag_name(""), "");
     }
 
     #[test]
@@ -1905,15 +1950,96 @@ mod tests {
     fn rows_show_the_real_shortcuts(cx: &mut TestAppContext) {
         let f = setup(cx);
         f.keys(cx, "cmd-k");
-        let (new_note, search) = f.update(cx, |_, window, _| {
-            (shortcut(&NewNote, window), shortcut(&FocusSearch, window))
+        let (new_note, search_all, search_list) = f.update(cx, |_, window, _| {
+            (
+                shortcut(&NewNote, window),
+                shortcut(&SearchAllNotes, window),
+                shortcut(&FocusSearch, window),
+            )
         });
         assert_eq!(new_note, Some(vec!["⌘".to_owned(), "N".to_owned()]));
-        // ⌘L also searches; ⇧⌘F is the one shown.
         assert_eq!(
-            search,
+            search_all,
             Some(vec!["⇧".to_owned(), "⌘".to_owned(), "F".to_owned()])
         );
+        assert_eq!(search_list, Some(vec!["⌘".to_owned(), "L".to_owned()]));
+    }
+
+    /// Global search leaves the notebook that was showing: what is typed
+    /// finds notes in every notebook. Searching this list keeps to it.
+    #[gpui_kit::test]
+    fn search_all_notes_searches_every_notebook(cx: &mut TestAppContext) {
+        let f = setup(cx);
+        f.store
+            .put(
+                DocType::Note,
+                json!({"title": "Tomato seedlings", "body": "", "bookId": f.other_book}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap();
+        let library = cx.read(|cx| f.workspace.read(cx).library.clone());
+        let work = cx.read(|cx| {
+            let books = &library.read(cx).books;
+            books.iter().find(|b| b.name == "Work").unwrap().id.clone()
+        });
+        library.update(cx, |library, cx| {
+            library.set_filter(Filter::Book(work.clone()), cx);
+            library.set_pinned_only(true, cx);
+        });
+        cx.run_until_parked();
+        let search = cx.read(|cx| f.workspace.read(cx).note_list.read(cx).search.clone());
+        let titles = |cx: &mut TestAppContext| -> Vec<String> {
+            cx.read(|cx| {
+                library
+                    .read(cx)
+                    .notes
+                    .iter()
+                    .map(|n| n.title.clone())
+                    .collect()
+            })
+        };
+        let search_focused = |cx: &mut TestAppContext| {
+            let search = search.clone();
+            f.update(cx, |_, window, cx| {
+                gpui_kit::Focusable::focus_handle(search.read(cx), cx).is_focused(window)
+            })
+        };
+
+        // This list: still Work, and the tomato isn't in it.
+        f.keys(cx, "cmd-k");
+        f.type_query(cx, "search this list");
+        f.keys(cx, "enter");
+        assert!(search_focused(cx));
+        assert_eq!(
+            cx.read(|cx| library.read(cx).filter.clone()),
+            Filter::Book(work)
+        );
+        f.keys(cx, "t o m a t o");
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        cx.run_until_parked();
+        assert!(titles(cx).is_empty());
+
+        // All notes: the same words find it in Garden.
+        f.keys(cx, "cmd-k");
+        f.type_query(cx, "search all notes");
+        assert_eq!(f.selected_label(cx).as_deref(), Some("Search all notes"));
+        f.keys(cx, "enter");
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        cx.run_until_parked();
+        assert!(search_focused(cx));
+        let library_state = cx.read(|cx| {
+            let library = library.read(cx);
+            (
+                library.filter.clone(),
+                library.is_refined(),
+                library.search.clone(),
+            )
+        });
+        assert_eq!(library_state, (Filter::All, false, "tomato".to_owned()));
+        assert_eq!(titles(cx), ["Tomato seedlings"]);
     }
 
     #[gpui_kit::test]
@@ -2018,6 +2144,53 @@ mod tests {
             f.store.note(&f.note).unwrap().unwrap().tags,
             vec![tag.id.clone()]
         );
+    }
+
+    /// Tags are shown as "#errands"; typed that way, the tag list finds the
+    /// tag rather than offering to make "#errands" as well.
+    #[gpui_kit::test]
+    fn a_tag_typed_with_its_hash_is_found(cx: &mut TestAppContext) {
+        let f = setup(cx);
+        let errands = f
+            .store
+            .put(
+                DocType::Tag,
+                json!({"name": "errands"}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        cx.run_until_parked();
+        f.keys(cx, "cmd-k");
+        f.type_query(cx, "add tag");
+        f.keys(cx, "enter");
+        f.type_query(cx, "#");
+        assert_eq!(f.labels(cx), ["errands"], "every tag, nothing to create");
+        // The tag first and chosen; making "err" stays possible, last.
+        f.type_query(cx, "#err");
+        assert_eq!(f.labels(cx), ["errands", "Create tag “err”"]);
+        assert_eq!(f.selected_label(cx).as_deref(), Some("errands"));
+        f.keys(cx, "enter");
+        assert_eq!(f.store.note(&f.note).unwrap().unwrap().tags, [errands]);
+        let names: Vec<String> = f
+            .store
+            .tags()
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert_eq!(names, ["errands"]);
+        // A new one is made under its name, without the "#".
+        f.keys(cx, "cmd-k");
+        f.type_query(cx, "add tag");
+        f.keys(cx, "enter");
+        f.type_query(cx, " #garden ");
+        assert_eq!(f.labels(cx), ["Create tag “garden”"]);
+        f.keys(cx, "enter");
+        let tags = f.store.tags().unwrap();
+        assert!(tags.iter().any(|t| t.name == "garden"), "{tags:?}");
+        assert!(!tags.iter().any(|t| t.name.contains('#')), "{tags:?}");
     }
 
     #[gpui_kit::test]

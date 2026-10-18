@@ -377,10 +377,17 @@ impl Library {
         book_path(id, &self.books)
     }
 
+    /// Whether the notebooks inside `id` hold notes, though it may have
+    /// none of its own.
+    pub fn has_notes_inside(&self, id: &str) -> bool {
+        has_notes_inside(id, &self.books)
+    }
+
     /// The title for an empty place, "No notes in Research" or "No notes
     /// yet", when the list is empty only because all notes or a notebook
     /// has none: loaded, no search, no narrowing. The editor then offers
-    /// the first note.
+    /// the first note. A notebook whose notes are all in the notebooks
+    /// inside it isn't empty.
     // no-prop-test: a few plain conditions; the note list's
     // `empty_place_cases` covers each.
     pub fn empty_place(&self) -> Option<String> {
@@ -394,6 +401,7 @@ impl Library {
         }
         match &self.filter {
             Filter::All => Some("No notes yet".into()),
+            Filter::Book(id) if self.has_notes_inside(id) => None,
             Filter::Book(id) => Some(format!(
                 "No notes in {}",
                 self.book(id).map_or("this notebook", |b| b.name.as_str())
@@ -435,6 +443,31 @@ pub fn book_path<'a>(id: &str, books: &'a [Book]) -> Vec<&'a Book> {
     }
     path.reverse();
     path
+}
+
+/// Whether a notebook inside `id`, at any depth, has notes of its own. A
+/// notebook can hold only notebooks, its notes all a level or more down;
+/// it isn't empty then. Should the notebooks form a cycle, each is looked
+/// at once.
+pub fn has_notes_inside(id: &str, books: &[Book]) -> bool {
+    let mut seen = vec![id];
+    let mut parents = vec![id];
+    while let Some(parent) = parents.pop() {
+        for book in books
+            .iter()
+            .filter(|b| b.parent_book_id.as_deref() == Some(parent))
+        {
+            if seen.contains(&book.id.as_str()) {
+                continue;
+            }
+            if book.count > 0 {
+                return true;
+            }
+            seen.push(&book.id);
+            parents.push(&book.id);
+        }
+    }
+    false
 }
 
 /// Orders notebooks depth-first by name, children under their parent. A book
@@ -481,8 +514,8 @@ pub fn book_tree(books: &[Book]) -> Vec<(usize, &Book)> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Filter, book_path, book_tree, pinned_first, recent_first, recent_notes, refine_status,
-        search_params,
+        Filter, book_path, book_tree, has_notes_inside, pinned_first, recent_first, recent_notes,
+        refine_status, search_params,
     };
     use kanso_core::{Book, NoteFacts, NoteStatus, Query};
     use kanso_store::{NoteSummary, Sort};
@@ -602,6 +635,27 @@ mod tests {
             }
         }
 
+        /// Model: a notebook holds notes inside it exactly when some other
+        /// notebook with notes has it on its path up to the top. The path
+        /// walks parents bottom-up; the function walks children top-down.
+        #[test]
+        fn prop_notes_inside_are_below_on_some_path(
+            specs in prop::collection::vec((prop::option::of(0usize..12), 0u32..3), 1..10),
+            target in any::<prop::sample::Index>(),
+        ) {
+            // Any parent at all, so cycles and missing parents both occur.
+            let books: Vec<Book> = specs
+                .iter()
+                .enumerate()
+                .map(|(ix, (parent, count))| Book { count: *count, ..book(ix, *parent, "b") })
+                .collect();
+            let id = books[target.index(books.len())].id.clone();
+            let expected = books.iter().any(|b| {
+                b.id != id && b.count > 0 && book_path(&b.id, &books).iter().any(|p| p.id == id)
+            });
+            prop_assert_eq!(has_notes_inside(&id, &books), expected);
+        }
+
         /// Model: Recent is exactly the notes changed at or after the cut,
         /// newest first, with ties in their original order.
         #[test]
@@ -690,6 +744,38 @@ mod tests {
         assert_eq!(names("book:1"), ["Work"]);
         assert_eq!(names("book:4"), ["Back", "Loop"]);
         assert!(names("book:9").is_empty());
+    }
+
+    #[test]
+    fn notes_inside_examples() {
+        let counted = |id, parent, count| Book {
+            count,
+            ..book(id, parent, "b")
+        };
+        let books = vec![
+            // GridOps holds its notes in Fleet orchestration.
+            counted(1, None, 0),
+            counted(2, Some(1), 17),
+            // Projects holds one empty notebook.
+            counted(3, None, 0),
+            counted(4, Some(3), 0),
+            // Archive's notes are two levels down.
+            counted(5, None, 0),
+            counted(6, Some(5), 0),
+            counted(7, Some(6), 2),
+            // A loop with notes only at the start.
+            counted(8, Some(9), 4),
+            counted(9, Some(8), 0),
+        ];
+        let inside = |id: &str| has_notes_inside(id, &books);
+        assert!(inside("book:1"));
+        assert!(!inside("book:2"), "notes of its own only");
+        assert!(!inside("book:3"));
+        assert!(inside("book:5"));
+        assert!(inside("book:6"));
+        assert!(inside("book:9"));
+        assert!(!inside("book:8"), "its own notes come back round the loop");
+        assert!(!inside("book:99"));
     }
 
     /// Recent reads the store a page at a time and still finds every recent

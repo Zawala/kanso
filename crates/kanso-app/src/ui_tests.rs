@@ -485,3 +485,75 @@ fn quitting_saves_the_selected_note_right_away(cx: &mut TestAppContext) {
     cx.quit();
     assert_eq!(saved_last_note(&f), Some(f.notes[1].clone()));
 }
+
+/// A press on bare chrome leaves the keyboard in the note: on the editor's
+/// top band, where a drag moves the window and a double-click zooms it, and
+/// on its footer. The workspace's own focus is only for when nothing else
+/// has the keyboard.
+#[gpui_kit::test]
+fn a_press_on_the_chrome_keeps_the_keyboard(cx: &mut TestAppContext) {
+    use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
+    use gpui_kit::{Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, point, px};
+
+    let f = setup(cx);
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    f.select(cx, &f.notes[0]);
+    let body = f
+        .window
+        .update(cx, |_, window, cx| {
+            let editor = f.workspace.read(cx).editor.clone();
+            editor.update(cx, |editor, cx| editor.focus_body(window, cx));
+            window.refresh();
+            window.draw(cx).clear(cx);
+            window.focused(cx).expect("the body takes the keyboard")
+        })
+        .unwrap();
+    cx.run_until_parked();
+    // The middle of the editor pane, between the path and the buttons.
+    let (x, height) = f
+        .window
+        .update(cx, |_, window, cx| {
+            let workspace = f.workspace.read(cx);
+            let widths = workspace.pane_widths;
+            let size = window.viewport_size();
+            let left = widths.list
+                + if workspace.show_sidebar {
+                    widths.sidebar
+                } else {
+                    0.
+                };
+            ((left + f32::from(size.width)) / 2., f32::from(size.height))
+        })
+        .unwrap();
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    let press = |vcx: &mut gpui_kit::VisualTestContext, y: f32, click_count: usize| {
+        let position = point(px(x), px(y));
+        vcx.simulate_event(MouseDownEvent {
+            position,
+            modifiers: Modifiers::none(),
+            button: MouseButton::Left,
+            click_count,
+            first_mouse: false,
+        });
+        vcx.simulate_event(MouseUpEvent {
+            position,
+            modifiers: Modifiers::none(),
+            button: MouseButton::Left,
+            click_count,
+        });
+    };
+    let body_focused =
+        |vcx: &mut gpui_kit::VisualTestContext| vcx.update(|window, _| body.is_focused(window));
+    press(&mut vcx, TOP_BAND_HEIGHT / 2., 1);
+    assert!(body_focused(&mut vcx), "a press on the top band");
+    press(&mut vcx, TOP_BAND_HEIGHT / 2., 2);
+    assert!(body_focused(&mut vcx), "a double-click on the top band");
+    press(&mut vcx, height - BOTTOM_BAND_HEIGHT / 2., 1);
+    assert!(body_focused(&mut vcx), "a press on the footer");
+    // Typing afterwards still reaches the note.
+    vcx.simulate_input("!");
+    let typed = f.editor(cx, |e, cx| e.body_for_test(cx));
+    assert!(typed.contains('!'), "{typed:?}");
+}

@@ -26,7 +26,7 @@ use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::text_match::{highlight_terms, match_ranges};
 use crate::theme::{Colors, Rgb};
-use crate::workspace::FocusSearch;
+use crate::workspace::{FocusSearch, SearchAllNotes};
 
 const SEARCH_DELAY: Duration = Duration::from_millis(120);
 
@@ -637,6 +637,15 @@ impl NoteList {
         let colors = Colors::get(cx);
         let empty = self.search.read(cx).value().is_empty();
         let focused = self.search.read(cx).focus_handle(cx).is_focused(window);
+        // The key that brings the keyboard here and searches what this box
+        // searches: over all notes, global search's; in a narrower place,
+        // the one that keeps to it.
+        let library = self.library.read(cx);
+        let key = if library.filter == Filter::All && !library.is_refined() {
+            Kbd::global_binding_for_action(&SearchAllNotes, window)
+        } else {
+            Kbd::global_binding_for_action(&FocusSearch, window)
+        };
         v_flex()
             .flex_shrink_0()
             .px(px(12.))
@@ -651,12 +660,7 @@ impl NoteList {
                             .text_color(colors.text_muted),
                     )
                     // The shortcut as bound, while there is room for it.
-                    .when_some(
-                        empty
-                            .then(|| Kbd::global_binding_for_action(&FocusSearch, window))
-                            .flatten(),
-                        |input, key| input.suffix(key),
-                    ),
+                    .when_some(key.filter(|_| empty), |input, key| input.suffix(key)),
             )
             .when(focused && empty, |el| {
                 el.child(div().pl(px(2.)).child(query_tokens(colors, cx)))
@@ -767,6 +771,14 @@ impl NoteList {
             .into_any_element();
         }
         match &library.filter {
+            // Its notes are a level or more down: not a notebook to start.
+            Filter::Book(id) if library.has_notes_inside(id) => quiet_empty(
+                Lucide::Notebook,
+                format!("No notes directly in {}", library.filter_title()),
+                Some("Its notes are in the notebooks inside it."),
+                colors,
+            )
+            .into_any_element(),
             // The editor beside it shows the full block with the actions;
             // this one sits in the middle of the list, as in the design.
             Filter::All | Filter::Book(_) => quiet_empty(
@@ -1697,6 +1709,44 @@ mod tests {
             cx.run_until_parked();
             assert!(cx.read(|cx| library.read(cx).notes.is_empty()));
             assert_eq!(place(cx), None);
+            // A notebook of notebooks: none of its own, but the one inside
+            // it has notes, so it isn't an empty notebook to start.
+            let book = |name: &str, parent: Option<&str>| {
+                f.store
+                    .put(
+                        DocType::Book,
+                        json!({"name": name, "parentBookId": parent}),
+                        Put::Upsert,
+                        Origin::Ui,
+                    )
+                    .unwrap()
+                    .id
+            };
+            let clients = book("Clients", None);
+            let acme = book("Acme", Some(&clients));
+            f.store
+                .put(
+                    DocType::Note,
+                    json!({"title": "Kickoff", "bookId": acme}),
+                    Put::Upsert,
+                    Origin::Ui,
+                )
+                .unwrap();
+            library.update(cx, |library, cx| {
+                library.set_filter(Filter::Book(clients.clone()), cx)
+            });
+            cx.run_until_parked();
+            assert!(cx.read(|cx| library.read(cx).notes.is_empty()));
+            assert_eq!(place(cx), None);
+            assert!(cx.read(|cx| library.read(cx).has_notes_inside(&clients)));
+            // Only empty notebooks inside: still empty.
+            let projects = book("Projects", None);
+            book("Q3", Some(&projects));
+            library.update(cx, |library, cx| {
+                library.set_filter(Filter::Book(projects), cx)
+            });
+            cx.run_until_parked();
+            assert_eq!(place(cx).as_deref(), Some("No notes in Projects"));
         }
 
         #[gpui_kit::test]

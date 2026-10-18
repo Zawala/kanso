@@ -1237,24 +1237,40 @@ impl Render for NoteEditor {
         let colors = Colors::get(cx);
         let Some(note) = self.note.clone() else {
             let pane = v_flex()
-                .size_full()
+                .flex_1()
+                .min_h_0()
+                .w_full()
                 .items_center()
                 .justify_center()
-                .bg(colors.editor)
                 .track_focus(&self.empty_focus);
-            return match self.library.read(cx).empty_place() {
+            let content = match self.library.read(cx).empty_place() {
+                // Centred a little above the middle, as the list's is: the
+                // top band's room less the bottom band's.
                 Some(title) => pane
                     .px(px(24.))
-                    .pb(px(TOP_BAND_HEIGHT))
-                    .child(EmptyNotebook::titled(title, self.empty_focus.clone()))
-                    .into_any_element(),
+                    .pb(px(TOP_BAND_HEIGHT - BOTTOM_BAND_HEIGHT))
+                    .child(EmptyNotebook::titled(title, self.empty_focus.clone())),
                 None => pane
                     .gap_2()
                     .text_color(colors.text_muted)
                     .child("No note selected")
-                    .child(div().text_xs().child("⌘N creates a note"))
-                    .into_any_element(),
+                    .child(div().text_xs().child("⌘N creates a note")),
             };
+            // The bottom band runs on under the editor with no note too, so
+            // the bands line up across the panes.
+            return v_flex()
+                .size_full()
+                .bg(colors.editor)
+                .child(content)
+                .child(
+                    AnyView::from(self.footer.clone()).cached(
+                        StyleRefinement::default()
+                            .w_full()
+                            .flex_none()
+                            .h(px(BOTTOM_BAND_HEIGHT)),
+                    ),
+                )
+                .into_any_element();
         };
         let trashed = note.is_trashed();
         let mode = self.view_mode;

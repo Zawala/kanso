@@ -33,6 +33,7 @@ actions!(
         NewNote,
         NewNotebook,
         FocusSearch,
+        SearchAllNotes,
         FocusNoteList,
         FocusEditor,
         ToggleSidebar,
@@ -110,10 +111,9 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-n", NewNote, None),
         KeyBinding::new("cmd-shift-n", NewNotebook, None),
-        // The last binding for an action is the one menus and the palette
-        // show.
+        // ⌘L searches the list as it is; ⇧⌘F, global search, all notes.
         KeyBinding::new("cmd-l", FocusSearch, None),
-        KeyBinding::new("cmd-shift-f", FocusSearch, None),
+        KeyBinding::new("cmd-shift-f", SearchAllNotes, None),
         KeyBinding::new("cmd-\\", ToggleSidebar, None),
         KeyBinding::new("cmd-1", ShowEditor, None),
         KeyBinding::new("cmd-2", ShowSplit, None),
@@ -165,7 +165,8 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Preview Only", ShowPreview),
             MenuItem::separator(),
             MenuItem::action("Toggle Sidebar", ToggleSidebar),
-            MenuItem::action("Search Notes", FocusSearch),
+            MenuItem::action("Search All Notes", SearchAllNotes),
+            MenuItem::action("Search This List", FocusSearch),
         ]),
     ]);
 }
@@ -749,6 +750,17 @@ impl Workspace {
         crate::history::open_history(self.editor.clone(), window, cx);
     }
 
+    /// Global search: the search box over every note, whatever place or
+    /// narrowing the list showed. Text already in the box stays.
+    fn search_all_notes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.library.update(cx, |library, cx| {
+            library.set_filter(Filter::All, cx);
+            library.clear_refinements(cx);
+        });
+        self.note_list
+            .update(cx, |list, cx| list.focus_search(window, cx));
+    }
+
     /// Acts on a band drag's verdict.
     fn on_band(&mut self, action: BandAction, window: &mut Window) {
         match action {
@@ -848,18 +860,23 @@ impl Render for Workspace {
             // Presses on empty parts of the top bands move the window. A
             // button prevents the default; an input claims the press for its
             // own text selection.
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, event: &MouseDownEvent, window, cx| {
-                    let claimed = window.default_prevented()
-                        || (cx.has_global::<GlobalState>()
-                            && GlobalState::is_text_selection_suppressed(cx));
+            .on_any_mouse_down(cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                let claimed = window.default_prevented()
+                    || (cx.has_global::<GlobalState>()
+                        && GlobalState::is_text_selection_suppressed(cx));
+                if event.button == MouseButton::Left {
                     let action = this
                         .band_drag
                         .down(event.position, event.click_count, claimed);
                     this.on_band(action, window);
-                }),
-            )
+                }
+                // The workspace's focus only gives the keyboard a place when
+                // nothing else has it. A press on a band or any other bare
+                // chrome, or on text selected for copying, leaves the
+                // keyboard where it was, as on macOS: without this the focus
+                // would move here and typing would go nowhere.
+                window.prevent_default();
+            }))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, _| {
                 if this.band_drag.is_armed() {
                     let pressed = event.pressed_button == Some(MouseButton::Left);
@@ -878,6 +895,9 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &FocusSearch, window, cx| {
                 this.note_list
                     .update(cx, |list, cx| list.focus_search(window, cx));
+            }))
+            .on_action(cx.listener(|this, _: &SearchAllNotes, window, cx| {
+                this.search_all_notes(window, cx);
             }))
             .on_action(cx.listener(|this, _: &FocusNoteList, window, cx| {
                 this.note_list

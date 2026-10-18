@@ -29,7 +29,7 @@ use crate::clock::Clock;
 use crate::commands::Picker;
 use crate::config::{AppConfig, EditorFont, ThemePreference, ViewMode};
 use crate::layout::{BOTTOM_BAND_HEIGHT, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, TOP_BAND_HEIGHT};
-use crate::library::Filter;
+use crate::library::{Filter, has_notes_inside};
 use crate::palette::{Mode, PANEL_HEIGHT, PANEL_WIDTH};
 use crate::services::{ApiState, Services, SyncState};
 use crate::theme::{Colors, DARK, LIGHT, Rgb};
@@ -325,7 +325,9 @@ fn conflict(
         .unwrap();
 }
 
-/// An empty notebook, "Research" when there is one.
+/// An empty notebook, "Research" when there is one: no notes of its own
+/// and none in notebooks inside it. Else the first, preferring a name no
+/// other notebook has, so the shot can't be read as its namesake.
 fn empty_notebook(
     cx: &mut HeadlessAppContext,
     _: AnyWindowHandle,
@@ -333,10 +335,14 @@ fn empty_notebook(
     store: &Store,
 ) {
     let books = store.books().unwrap();
+    let is_empty = |b: &&kanso_core::Book| b.count == 0 && !has_notes_inside(&b.id, &books);
+    let unique = |b: &&kanso_core::Book| books.iter().filter(|o| o.name == b.name).count() == 1;
     let empty = books
         .iter()
-        .find(|b| b.count == 0 && b.name == "Research")
-        .or_else(|| books.iter().find(|b| b.count == 0));
+        .filter(is_empty)
+        .find(|b| b.name == "Research")
+        .or_else(|| books.iter().filter(is_empty).find(unique))
+        .or_else(|| books.iter().find(is_empty));
     if let Some(book) = empty {
         let library = cx.update(|cx| workspace.read(cx).library.clone());
         cx.update(|cx| {
@@ -346,6 +352,55 @@ fn empty_notebook(
             })
         });
     }
+}
+
+/// A notebook that holds only notebooks, its notes a level down. The demo
+/// has none, so it gets one: "Clients", with "Acme" and a note inside.
+fn notebook_of_notebooks(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let books = store.books().unwrap();
+    let found = books
+        .iter()
+        .find(|b| b.count == 0 && has_notes_inside(&b.id, &books))
+        .map(|b| b.id.clone());
+    let id = found.unwrap_or_else(|| {
+        let book = |name: &str, parent: Option<&str>| {
+            store
+                .put(
+                    DocType::Book,
+                    json!({"name": name, "parentBookId": parent}),
+                    Put::Upsert,
+                    Origin::Ui,
+                )
+                .unwrap()
+                .id
+        };
+        let clients = book("Clients", None);
+        let acme = book("Acme", Some(&clients));
+        let now = cx.update(|cx| Clock::now_ms(cx));
+        store
+            .put(
+                DocType::Note,
+                json!({"title": "Kickoff notes", "body": "Scope, people and dates.",
+                    "bookId": acme, "createdAt": now - DAY, "updatedAt": now - DAY}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap();
+        clients
+    });
+    cx.run_until_parked();
+    let library = cx.update(|cx| workspace.read(cx).library.clone());
+    cx.update(|cx| {
+        library.update(cx, |library, cx| {
+            library.set_filter(Filter::Book(id), cx);
+            library.select(None, cx);
+        })
+    });
 }
 
 /// The note whose first table of five or more columns comes earliest, so
@@ -765,6 +820,27 @@ fn check_surfaces(image: &image::RgbaImage, shot: &Shot) {
             ),
         ]);
     }
+    // The bottom band's top edge runs across every pane, with a note open
+    // or not.
+    let band_top = height - BOTTOM_BAND_HEIGHT;
+    let left_pane = if shot.sidebar {
+        vec![
+            ((4., band_top), colors.divider, "sidebar's bottom divider"),
+            (
+                (SIDEBAR_WIDTH + 6., band_top),
+                colors.divider,
+                "note list's bottom divider",
+            ),
+        ]
+    } else {
+        vec![((8., band_top), colors.divider, "note list's bottom divider")]
+    };
+    checks.extend(left_pane);
+    checks.push((
+        (width - 4., band_top),
+        colors.divider,
+        "editor's bottom divider",
+    ));
     for (at, expected, what) in checks {
         assert_surface(
             image,
@@ -803,6 +879,12 @@ fn snapshots() {
         shot("dark-edit-mono", Dark, Edit, mono_font),
         shot("dark-empty", Dark, Split, empty_notebook),
         shot("light-empty", Light, Split, empty_notebook),
+        shot(
+            "dark-notebook-of-notebooks",
+            Dark,
+            Edit,
+            notebook_of_notebooks,
+        ),
         shot("dark-search", Dark, Edit, search_sync),
         // The Status group open and the footer's warnings.
         shot("dark-status-warnings", Dark, Edit, status_and_warnings),

@@ -47,6 +47,7 @@ icon_assets!(
         Tag,
         TextQuote,
         Trash,
+        Unplug,
         Upload,
     ]
 );

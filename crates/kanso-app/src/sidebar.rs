@@ -440,10 +440,12 @@ impl Sidebar {
         };
         let (tone, sync_label) = sync_line(&sync, now);
         let dot = tone_color(tone, colors);
-        let api_color = match api {
-            ApiState::Running(_) => colors.text_secondary,
-            ApiState::Off => colors.text_muted,
-            ApiState::PortInUse(_) | ApiState::Failed(_) => colors.warning,
+        // The shape says whether the API is listening; the warning color
+        // adds that it should be and can't.
+        let (api_icon, api_color) = match api {
+            ApiState::Running(_) => (Lucide::Plug, colors.text_secondary),
+            ApiState::Off => (Lucide::Unplug, colors.text_muted),
+            ApiState::PortInUse(_) | ApiState::Failed(_) => (Lucide::Unplug, colors.warning),
         };
         h_flex()
             .flex_none()
@@ -500,7 +502,7 @@ impl Sidebar {
                     .justify_center()
                     .size(px(20.))
                     .rounded(px(6.))
-                    .child(Icon::new(Lucide::Plug).size(px(15.)).text_color(api_color))
+                    .child(Icon::new(api_icon).size(px(15.)).text_color(api_color))
                     .tooltip(move |window, cx| Tooltip::new(api_tip.clone()).build(window, cx)),
             )
             .child(

@@ -9,8 +9,8 @@ use gpui_kit::assets::IconName;
 
 use crate::workspace::{
     ExportLibrary, ExportNote, FocusSearch, ImportInkdrop, NewNote, NewNotebook, NextNote,
-    OpenNotePicker, OpenSettings, PreviousNote, Quit, SaveNote, ShowEditor, ShowHistory,
-    ShowPreview, ShowSplit, SyncNow, TogglePinned, ToggleSidebar, TrashNote,
+    OpenNotePicker, OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes, ShowEditor,
+    ShowHistory, ShowPreview, ShowSplit, SyncNow, TogglePinned, ToggleSidebar, TrashNote,
 };
 
 /// The palette's sections, in the order they appear with nothing typed.
@@ -121,9 +121,20 @@ static COMMANDS: &[Command] = &[
         id: "search",
         label: "Search all notes",
         label_when_pinned: None,
-        description: "Moves to the search box above the note list. It searches titles and text; book:, tag: and status: narrow it down.",
+        description: "Shows all notes and moves to the search box above them, whatever notebook, tag or status was showing. It searches titles and text; book:, tag: and status: narrow it down.",
         icon: IconName::Search,
-        keywords: &["find", "filter", "query"],
+        keywords: &["find", "global", "everywhere", "query"],
+        group: Group::Note,
+        run: action!(SearchAllNotes),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "search-list",
+        label: "Search this list",
+        label_when_pinned: None,
+        description: "Moves to the search box above the note list, to search only the notes it shows: a notebook, a tag, a status or the trash.",
+        icon: IconName::Search,
+        keywords: &["find", "filter", "notebook", "query"],
         group: Group::Note,
         run: action!(FocusSearch),
         needs: Needs::Nothing,
