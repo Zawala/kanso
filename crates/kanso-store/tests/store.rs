@@ -590,6 +590,44 @@ fn backups_are_made_when_due_and_rotated() {
     assert_eq!(copy.counts().unwrap(), store.counts().unwrap());
 }
 
+/// A backup made with "Back up now" is kept beside fourteen daily ones:
+/// it doesn't push the oldest daily one out, isn't pruned itself, and
+/// doesn't stand in for the next daily backup.
+#[test]
+fn manual_backups_stay_out_of_the_daily_rotation() {
+    let (dir, store) = store();
+    let day = 24 * 60 * 60 * 1000;
+    let policy = BackupPolicy::daily(dir.path().join("backups"));
+    let start = 1_000 * day;
+    for n in 0..14 {
+        assert!(
+            store
+                .backup_if_due(&policy, start + n * day)
+                .unwrap()
+                .is_some()
+        );
+    }
+    let oldest = policy.dir.join(format!("kanso-{start}.db"));
+    assert!(oldest.exists());
+    // An hour after the last daily one, then the day after it.
+    let manual = store
+        .backup_now(&policy.dir, start + 13 * day + 3_600_000)
+        .unwrap();
+    assert!(manual.exists());
+    let daily = store
+        .backup_if_due(&policy, start + 14 * day)
+        .unwrap()
+        .expect("the manual backup doesn't stand in for the daily one");
+    assert!(manual.exists(), "the manual backup is kept");
+    assert!(daily.exists());
+    assert!(!oldest.exists(), "fourteen daily backups are kept");
+    assert_eq!(std::fs::read_dir(&policy.dir).unwrap().count(), 15);
+    assert_eq!(
+        Store::open(&manual).unwrap().counts().unwrap(),
+        store.counts().unwrap()
+    );
+}
+
 #[test]
 fn imports_keep_revisions_and_are_idempotent() {
     let (_dir, store) = store();
@@ -651,6 +689,14 @@ fn recorded_revisions_show_up_in_history() {
     let history = store.revisions(&note).unwrap();
     assert_eq!(history[0].fields["body"], "unsaved draft");
     assert_eq!(history[0].origin, "ui");
+    // One kept as of an earlier time lists by that time, behind the newer.
+    store
+        .record_revision_at(&note, "0-old", &fields, Origin::Sync, 5_000)
+        .unwrap();
+    let history = store.revisions(&note).unwrap();
+    let last = history.last().unwrap();
+    assert_eq!((last.rev.as_str(), last.saved_at), ("0-old", 5_000));
+    assert_eq!(last.origin, "sync");
 }
 
 #[test]

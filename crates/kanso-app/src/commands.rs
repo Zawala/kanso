@@ -8,14 +8,14 @@ use gpui_kit::Action;
 use gpui_kit::assets::IconName;
 
 use crate::settings::{
-    OpenApiSettings, OpenAppearanceSettings, OpenEditorSettings, OpenGeneralSettings,
-    OpenSyncSettings,
+    CloseSettings, OpenApiSettings, OpenAppearanceSettings, OpenEditorSettings,
+    OpenGeneralSettings, OpenSyncSettings,
 };
 use crate::workspace::{
-    ExportLibrary, ExportNote, FocusSearch, ImportInkdrop, NewNote, NewNotebook, NextNote,
-    OpenNotePicker, OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes, ShowEditor,
-    ShowHistory, ShowPreview, ShowSplit, SyncNow, ToggleFocusMode, TogglePinned, ToggleSidebar,
-    TrashNote,
+    ExportLibrary, ExportNote, FocusNoteList, FocusSearch, ImportInkdrop, NewNote, NewNotebook,
+    NextNote, OpenNotePicker, OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes,
+    ShowEditor, ShowHistory, ShowPreview, ShowSplit, SyncNow, ToggleFocusMode, TogglePinned,
+    ToggleSidebar, TrashNote,
 };
 
 /// The palette's sections, in the order they appear with nothing typed.
@@ -68,6 +68,8 @@ pub enum Needs {
     Note,
     /// A note is open and isn't in the trash.
     LiveNote,
+    /// Settings are open, in place of the notes.
+    Settings,
 }
 
 pub struct Command {
@@ -328,6 +330,17 @@ static COMMANDS: &[Command] = &[
         needs: Needs::Nothing,
     },
     Command {
+        id: "go-to-list",
+        label: "Go to note list",
+        label_when_pinned: None,
+        description: "Moves the keyboard to the note list, where the arrow keys pick a note and Return opens it for writing.",
+        icon: IconName::List,
+        keywords: &["focus", "list", "notes", "keyboard", "navigate"],
+        group: Group::GoTo,
+        run: action!(FocusNoteList),
+        needs: Needs::Nothing,
+    },
+    Command {
         id: "next-note",
         label: "Next note",
         label_when_pinned: None,
@@ -393,6 +406,17 @@ static COMMANDS: &[Command] = &[
         group: Group::App,
         run: action!(OpenSettings),
         needs: Needs::Nothing,
+    },
+    Command {
+        id: "back-to-notes",
+        label: "Back to notes",
+        label_when_pinned: None,
+        description: "Leaves Settings for the notes as they were: the same note, with the keyboard where it was.",
+        icon: IconName::ArrowLeft,
+        keywords: &["close settings", "leave", "return", "notes", "done"],
+        group: Group::App,
+        run: action!(CloseSettings),
+        needs: Needs::Settings,
     },
     Command {
         id: "settings-general",
@@ -539,6 +563,25 @@ mod tests {
             }
             assert!(checked >= 15, "{checked}");
         });
+    }
+
+    /// Shortcuts for one place are skipped above, but some of them leave or
+    /// move between places, and those have commands too: Escape leaves
+    /// Settings (the palette lists it only while they are open).
+    #[test]
+    fn leaving_and_moving_have_commands() {
+        use super::Needs;
+        use crate::settings::CloseSettings;
+        use crate::workspace::FocusNoteList;
+        let find = |action: &dyn gpui_kit::Action| {
+            all()
+                .iter()
+                .find(|c| c.action().is_some_and(|a| a.partial_eq(action)))
+        };
+        let back = find(&CloseSettings).expect("a command leaves Settings");
+        assert_eq!(back.needs, Needs::Settings);
+        assert_eq!(back.label, "Back to notes");
+        assert!(find(&FocusNoteList).is_some(), "a command goes to the list");
     }
 
     #[test]

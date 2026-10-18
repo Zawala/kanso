@@ -43,6 +43,7 @@ icon_assets!(
         Pin,
         PinOff,
         Plug,
+        PlugZap,
         Power,
         RefreshCcw,
         Ruler,

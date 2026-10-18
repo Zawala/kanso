@@ -469,9 +469,15 @@ fn note_actions_leave_settings_first(cx: &mut TestAppContext) {
     let palette = cx.read(|cx| f.workspace.read(cx).palette.clone());
     let labels = cx.read(|cx| palette.read(cx).item_labels());
     assert!(labels.iter().any(|l| l == "Settings: Sync"), "{labels:?}");
+    assert!(labels.iter().any(|l| l == "Back to notes"), "{labels:?}");
     let note_commands: Vec<_> = crate::commands::all()
         .iter()
-        .filter(|c| c.needs != crate::commands::Needs::Nothing)
+        .filter(|c| {
+            matches!(
+                c.needs,
+                crate::commands::Needs::Note | crate::commands::Needs::LiveNote
+            )
+        })
         .map(|c| c.label)
         .collect();
     assert!(!note_commands.is_empty());
@@ -485,6 +491,7 @@ fn note_actions_leave_settings_first(cx: &mut TestAppContext) {
     f.keys(cx, "cmd-k");
     let labels = cx.read(|cx| palette.read(cx).item_labels());
     assert!(labels.iter().any(|l| l == "Show history…"), "{labels:?}");
+    assert!(!labels.iter().any(|l| l == "Back to notes"), "{labels:?}");
 }
 
 /// The token can always be set: while the Keychain lookup is pending or
@@ -693,4 +700,62 @@ fn search_leaves_focus_mode(cx: &mut TestAppContext) {
         assert!(f.drawn(cx, "list-pane"), "{keys}");
         assert!(f.focused(cx, &search), "{keys}");
     }
+}
+
+/// Over Settings the palette offers Back to notes, which goes back as Escape
+/// does; over the notes it isn't offered.
+#[gpui_kit::test]
+fn the_palette_goes_back_to_the_notes(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let palette = cx.read(|cx| f.workspace.read(cx).palette.clone());
+    let ask = |cx: &mut TestAppContext| {
+        f.keys(cx, "cmd-k");
+        f.window
+            .update(cx, |_, window, cx| {
+                palette.update(cx, |palette, cx| {
+                    palette.set_query("back to notes", window, cx)
+                })
+            })
+            .unwrap();
+        cx.executor().advance_clock(Duration::from_millis(200));
+        cx.run_until_parked();
+        cx.read(|cx| palette.read(cx).item_labels())
+    };
+    let labels = ask(cx);
+    assert!(!labels.iter().any(|l| l == "Back to notes"), "{labels:?}");
+    f.keys(cx, "escape");
+
+    f.keys(cx, "cmd-,");
+    assert!(f.open(cx));
+    let labels = ask(cx);
+    assert_eq!(
+        labels.first().map(String::as_str),
+        Some("Back to notes"),
+        "{labels:?}"
+    );
+    f.keys(cx, "enter");
+    assert_eq!(cx.read(|cx| palette.read(cx).mode()), None);
+    assert!(!f.open(cx));
+    assert!(f.focused(cx, &f.body), "the keyboard is back in the text");
+}
+
+/// Back up now leaves its copy beside the daily backups under a name their
+/// rotation passes over, so it never costs one of them.
+#[gpui_kit::test]
+fn back_up_now_keeps_its_copy_apart(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    f.keys(cx, "cmd-,");
+    assert_eq!(f.page(cx), SettingsPage::General);
+    f.click(cx, "backup-now");
+    cx.run_until_parked();
+    let dir = crate::paths::backups_dir(f._dir.path());
+    let names: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names.len(), 1, "{names:?}");
+    assert!(
+        names[0].starts_with("kanso-manual-") && names[0].ends_with(".db"),
+        "{names:?}"
+    );
 }

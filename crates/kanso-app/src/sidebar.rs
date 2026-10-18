@@ -2,7 +2,8 @@
 //! sections, notebooks, tags, statuses and trash, and a footer with who is
 //! using it, sync, the local API and settings.
 //!
-//! Collapsed (⌘\), it is a rail of icons: compose, the library places, the
+//! Collapsed (⌘\, or the panel button in its top band), it is a rail of
+//! icons: a button to open it again, compose, the library places, the
 //! notebooks and the tags (lists in the palette), trash, sync and settings.
 
 use std::time::Duration;
@@ -24,7 +25,7 @@ use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library};
 use crate::services::{ApiState, Services, SyncState};
 use crate::theme::{Colors, Rgb, muted_tag_color, section_label};
-use crate::workspace::{AppState, NewNote, OpenSettings};
+use crate::workspace::{AppState, NewNote, OpenSettings, ToggleSidebar};
 
 /// Things only the workspace can do (it owns dialogs and the editor).
 pub enum SidebarEvent {
@@ -209,7 +210,7 @@ impl Sidebar {
             .child(
                 div()
                     .text_size(px(12.))
-                    .text_color(colors.text_muted)
+                    .text_color(colors.quiet(selected))
                     .child(count.to_string()),
             )
             .on_click(move |_, _, cx| {
@@ -259,6 +260,39 @@ impl Sidebar {
             .tooltip(tooltip)
             .on_click(cx.listener(move |_, _, _, cx| cx.emit(event())))
             .into_any_element()
+    }
+
+    /// The top band: the traffic lights' row, with the button that folds
+    /// the sidebar to its rail at the far end. The rest stays empty so the
+    /// window drags from it.
+    // no-prop-test: drawing; the sidebar snapshots show it.
+    fn render_top_band(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let colors = Colors::get(cx);
+        let revealed = self.revealed_tooltip(TOGGLE_LABEL, Some(&ToggleSidebar), cx);
+        h_flex()
+            .flex_none()
+            .h(px(TOP_BAND_HEIGHT))
+            .justify_end()
+            // In line with the compose button below, and centred on the
+            // traffic lights rather than on the band.
+            .pr(px(12.))
+            .pb(px(2.))
+            .child(
+                div()
+                    .relative()
+                    .child(
+                        Button::new("sidebar-toggle")
+                            .ghost()
+                            .small()
+                            .icon(Icon::new(Lucide::PanelLeft).text_color(colors.text_secondary))
+                            .tooltip_with_action(TOGGLE_LABEL, &ToggleSidebar, None)
+                            .debug_selector(|| "sidebar-toggle".into())
+                            .on_click(|_, window, cx| {
+                                window.dispatch_action(Box::new(ToggleSidebar), cx)
+                            }),
+                    )
+                    .children(revealed),
+            )
     }
 
     fn render_brand(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -352,7 +386,7 @@ impl Sidebar {
                 .child(
                     div()
                         .ml(px(5.))
-                        .text_color(colors.text_muted)
+                        .text_color(colors.quiet(selected))
                         .child(count.to_string()),
                 )
                 .on_click(move |_, _, cx| {
@@ -509,13 +543,14 @@ impl Sidebar {
         let (api, api_tip, sync, sync_tip) = Self::service_states(cx);
         let (tone, sync_label) = sync_line(&sync, now);
         let dot = tone_color(tone, colors);
-        // The shape says whether the API is listening; the warning color
-        // adds that it should be and can't.
-        let (api_icon, api_color) = match api {
-            ApiState::Running(_) => (Lucide::Plug, colors.text_secondary),
-            ApiState::Off => (Lucide::Unplug, colors.text_muted),
-            ApiState::PortInUse(_) | ApiState::Failed(_) => (Lucide::Unplug, colors.warning),
+        // The shape says whether the API is listening, off, or failing to
+        // listen; the color only repeats it.
+        let api_color = match api {
+            ApiState::Running(_) => colors.text_secondary,
+            ApiState::Off => colors.text_muted,
+            ApiState::PortInUse(_) | ApiState::Failed(_) => colors.warning,
         };
+        let api_icon = api_icon(&api);
         h_flex()
             .flex_none()
             .h(px(BOTTOM_BAND_HEIGHT))
@@ -610,6 +645,9 @@ impl Sidebar {
 
 /// The rail's buttons: one square for each icon.
 const RAIL_BUTTON: f32 = 34.;
+/// What the buttons that fold and open the sidebar are called, as the
+/// palette and the View menu call the action.
+const TOGGLE_LABEL: &str = "Toggle sidebar";
 
 impl Sidebar {
     /// One of the rail's icon buttons, named by its tooltip (with the
@@ -628,6 +666,7 @@ impl Sidebar {
         let revealed = self.revealed_tooltip(label, action.as_deref(), cx);
         div()
             .id(id)
+            .debug_selector(move || id.into())
             .relative()
             .flex()
             .flex_none()
@@ -656,8 +695,9 @@ impl Sidebar {
             })
     }
 
-    /// The tooltip of the rail button named `label`, open beside it, when a
-    /// picture of the hovered rail asks for it.
+    /// The tooltip of the button named `label` (on the rail, or the one
+    /// that folds the sidebar), open beside it, when a picture of the
+    /// pointer resting there asks for it.
     #[cfg(test)]
     fn revealed_tooltip(
         &self,
@@ -721,8 +761,21 @@ impl Sidebar {
         let (tone, sync_label) = sync_line(&sync, Clock::now_ms(cx));
         let sync_color = tone_color(tone, colors);
         let api_warning = matches!(api, ApiState::PortInUse(_) | ApiState::Failed(_));
+        let api_glyph = api_icon(&api);
         let trash_view = cx.entity();
 
+        // Under the traffic lights, near where the full sidebar's own
+        // button was: the way back to the full sidebar.
+        let expand = self
+            .rail_button(
+                "rail-expand",
+                Lucide::PanelLeft,
+                TOGGLE_LABEL,
+                Some(Box::new(ToggleSidebar)),
+                false,
+                cx,
+            )
+            .on_click(|_, window, cx| window.dispatch_action(Box::new(ToggleSidebar), cx));
         let compose = self
             .rail_button(
                 "rail-compose",
@@ -789,7 +842,7 @@ impl Sidebar {
                 .justify_center()
                 .size(px(RAIL_BUTTON))
                 .child(
-                    Icon::new(Lucide::Unplug)
+                    Icon::new(api_glyph)
                         .size(px(15.))
                         .text_color(colors.warning),
                 )
@@ -813,6 +866,7 @@ impl Sidebar {
             .text_color(colors.text)
             // The traffic lights' row, empty so the window drags from it.
             .child(div().flex_none().h(px(TOP_BAND_HEIGHT)))
+            .child(expand)
             .child(compose)
             .child(
                 v_flex()
@@ -1026,9 +1080,7 @@ impl Render for Sidebar {
             .size_full()
             .bg(colors.sidebar)
             .text_color(colors.text)
-            // The top band: the traffic lights' row, empty so the window can
-            // be dragged from it.
-            .child(div().flex_none().h(px(TOP_BAND_HEIGHT)))
+            .child(self.render_top_band(cx))
             .child(self.render_brand(cx))
             .child(div().flex_none().h(px(6.)))
             .child(
@@ -1089,6 +1141,17 @@ pub(crate) fn tone_icon(tone: Tone) -> Lucide {
         Tone::Busy => Lucide::RefreshCcw,
         Tone::Quiet => Lucide::CloudOff,
         Tone::Warning => Lucide::TriangleAlert,
+    }
+}
+
+/// The local API's icon, in the footer and the rail: its shape alone says
+/// whether the API is listening, off, or failing to listen.
+// no-prop-test: a finite domain; `api_icons_differ` checks every pair.
+pub(crate) fn api_icon(api: &ApiState) -> Lucide {
+    match api {
+        ApiState::Running(_) => Lucide::Plug,
+        ApiState::Off => Lucide::Unplug,
+        ApiState::PortInUse(_) | ApiState::Failed(_) => Lucide::PlugZap,
     }
 }
 
@@ -1195,7 +1258,7 @@ pub fn visible_tags(
 #[cfg(test)]
 mod tests {
     use super::{
-        SYNC_PROBLEMS, SyncState, Tone, initials, status_choice_after, status_group_open,
+        SYNC_PROBLEMS, SyncState, Tone, api_icon, initials, status_choice_after, status_group_open,
         sync_line, tone_icon, visible_tags,
     };
     use proptest::prelude::*;
@@ -1416,6 +1479,25 @@ mod tests {
         let tones = [Tone::Good, Tone::Busy, Tone::Quiet, Tone::Warning];
         let icons: std::collections::HashSet<_> = tones.into_iter().map(tone_icon).collect();
         assert_eq!(icons.len(), tones.len());
+    }
+
+    /// The local API's states don't share an icon either: off and failing
+    /// once looked alike but for the color. Both ways of failing are one
+    /// state to the reader, and the tooltip says which.
+    #[test]
+    fn api_icons_differ() {
+        use crate::services::ApiState;
+        let running = api_icon(&ApiState::Running("http://127.0.0.1:19840".into()));
+        let off = api_icon(&ApiState::Off);
+        let port = api_icon(&ApiState::PortInUse(19840));
+        let failed = api_icon(&ApiState::Failed("permission denied".into()));
+        assert_eq!(port, failed);
+        let icons: std::collections::HashSet<_> = [running, off, failed].into_iter().collect();
+        assert_eq!(icons.len(), 3);
+        // Nor does failing look like a sync state beside it in the rail.
+        for tone in [Tone::Good, Tone::Busy, Tone::Quiet, Tone::Warning] {
+            assert_ne!(tone_icon(tone), failed);
+        }
     }
 
     #[test]

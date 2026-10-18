@@ -612,6 +612,7 @@ impl Palette {
                 Needs::Nothing => true,
                 Needs::Note => note.is_some(),
                 Needs::LiveNote => note.is_some() && !in_trash,
+                Needs::Settings => self.notes_hidden,
             })
             .map(|command| {
                 let (label, icon) = match command.label_when_pinned {
@@ -991,11 +992,7 @@ impl Palette {
                 Icon::new(item.icon)
                     .size_4()
                     .flex_none()
-                    .text_color(if selected {
-                        colors.text_secondary
-                    } else {
-                        colors.text_muted
-                    }),
+                    .text_color(colors.quiet(selected)),
             )
             .child(
                 div()
@@ -1012,12 +1009,7 @@ impl Palette {
                         .max_w(px(120.))
                         .truncate()
                         .text_size(px(12.))
-                        // Muted text doesn't read on the selected fill.
-                        .text_color(if selected {
-                            colors.text_secondary
-                        } else {
-                            colors.text_muted
-                        })
+                        .text_color(colors.quiet(selected))
                         .child(hint),
                 )
             })
@@ -1121,7 +1113,7 @@ impl Palette {
                         render_keys(&keys, true, false, cx).into_any_element(),
                     ));
                 }
-                if command.needs != Needs::Nothing
+                if matches!(command.needs, Needs::Note | Needs::LiveNote)
                     && let Some(title) = note_title.clone()
                 {
                     detail
@@ -1532,11 +1524,7 @@ fn render_keys(keys: &[String], caps: bool, selected: bool, cx: &App) -> AnyElem
         .flex_none()
         .gap(px(3.))
         .text_size(px(12.5))
-        .text_color(if selected {
-            colors.text_secondary
-        } else {
-            colors.text_muted
-        })
+        .text_color(colors.quiet(selected))
         .children(
             keys.iter()
                 .map(|key| div().min_w(px(9.)).text_center().child(key.clone())),

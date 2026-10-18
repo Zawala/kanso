@@ -168,6 +168,19 @@ impl Colors {
             &LIGHT
         }
     }
+
+    /// Quiet text that still says something (a row's time, a count, a
+    /// hint, a shortcut): muted on a pane, and secondary on a `selected`
+    /// row, whose fill takes muted text under 4.5:1.
+    // no-prop-test: two cases per theme; `quiet_text_reads_on_selected_rows`
+    // checks every one.
+    pub fn quiet(&self, selected: bool) -> Rgb {
+        if selected {
+            self.text_secondary
+        } else {
+            self.text_muted
+        }
+    }
 }
 
 /// How strongly the accent tints the palette's selected row over the
@@ -847,6 +860,33 @@ mod tests {
                 contrast_ratio(palette_selected.0, c.elevated.0) >= 1.2,
                 "{name}: palette selected row"
             );
+        }
+    }
+
+    /// Times, counts and hints are small (11.5 to 13 px), so on a selected
+    /// row, note or sidebar or palette, they take the 4.5:1 that small
+    /// text needs; muted text falls short of it on every one of those
+    /// fills, which is why they don't stay muted there.
+    #[test]
+    fn quiet_text_reads_on_selected_rows() {
+        for (name, c, alpha) in [
+            ("dark", &DARK, PALETTE_SELECTED_ALPHA.0),
+            ("light", &LIGHT, PALETTE_SELECTED_ALPHA.1),
+        ] {
+            assert_eq!(c.quiet(false), c.text_muted, "{name}");
+            let palette_selected = mix(c.accent, c.elevated, f64::from(alpha));
+            for (fill, bg) in [
+                ("row_active", c.row_active),
+                ("sidebar_active", c.sidebar_active),
+                ("palette", palette_selected),
+            ] {
+                let ratio = contrast_ratio(c.quiet(true).0, bg.0);
+                assert!(ratio >= 4.5, "{name}: quiet text on {fill} is {ratio:.2}");
+                assert!(
+                    contrast_ratio(c.text_muted.0, bg.0) < 4.5,
+                    "{name}: muted text would do on {fill}"
+                );
+            }
         }
     }
 

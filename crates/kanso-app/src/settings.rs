@@ -666,14 +666,12 @@ impl SettingsView {
         let state = cx.global::<AppState>();
         let store = state.store.clone();
         let dir = paths::backups_dir(&state.data_dir);
-        let path = dir.join(format!("kanso-{}.db", kanso_core::now_ms()));
+        let now = Clock::now_ms(cx);
+        // Beside the daily backups but out of their rotation, so a copy
+        // made on request never costs an older daily one.
         let backup = cx.background_spawn({
-            let path = path.clone();
-            async move {
-                std::fs::create_dir_all(&dir)?;
-                store.backup_to(&path)?;
-                anyhow::Ok(())
-            }
+            let dir = dir.clone();
+            async move { store.backup_now(&dir, now).map(drop) }
         });
         self.backing_up = true;
         cx.notify();
@@ -684,7 +682,7 @@ impl SettingsView {
                 let notification = match result {
                     Ok(()) => Notification::success("Backed up."),
                     Err(err) => {
-                        eprintln!("kanso: backing up to {}: {err:#}", path.display());
+                        eprintln!("kanso: backing up to {}: {err:#}", dir.display());
                         Notification::error(
                             "Couldn't back up your notes. Check there is free space on this Mac, then try again.",
                         )
@@ -864,13 +862,14 @@ impl SettingsView {
                                 .on_click(move |_, _, cx| cx.reveal_path(&dir)),
                         ),
                     Row::new(Lucide::DatabaseBackup, "Backups")
-                        .detail("Kanso backs up its database once a day and keeps the last 14.")
+                        .detail("Kanso backs up its database once a day and keeps the last 14. A backup made with Back up now is kept until you delete it.")
                         .trailing(
                             Button::new("backup-now")
                                 .outline()
                                 .small()
                                 .label("Back up now")
                                 .loading(self.backing_up)
+                                .debug_selector(|| "backup-now".into())
                                 .on_click(cx.listener(|this, _, window, cx| this.back_up(window, cx))),
                         ),
                 ],
@@ -1338,13 +1337,9 @@ impl Render for SettingsView {
                             .overflow_y_scroll()
                             .track_scroll(&self.scroll)
                             .child(
-                                v_flex()
-                                    .w_full()
-                                    .max_w(px(PAGE_MAX_WIDTH + 2. * PAGE_INSET))
-                                    // Centred, so a wide window leaves the
-                                    // same room either side.
-                                    .mx_auto()
-                                    .px(px(PAGE_INSET))
+                                page_column()
+                                    .flex()
+                                    .flex_col()
                                     // The title sits just below the top band's
                                     // middle, as in the design.
                                     .pt(px(30.))
@@ -1364,15 +1359,28 @@ impl Render for SettingsView {
                         h_flex()
                             .flex_none()
                             .h(px(BOTTOM_BAND_HEIGHT))
-                            .px(px(PAGE_INSET))
                             .border_t_1()
                             .border_color(colors.divider)
                             .text_size(px(12.))
                             .text_color(colors.text_muted)
-                            .child("Changes apply right away."),
+                            // In the page's column, so the words start under
+                            // its rows at any width.
+                            .child(page_column().child("Changes apply right away.")),
                     ),
             )
     }
+}
+
+/// The column a page's rows sit in: centred, so a wide window leaves the
+/// same room either side, and no wider than rows read well. The footer's
+/// words sit in one too, to start where the rows do.
+// no-prop-test: a style; the settings snapshots show it at three widths.
+fn page_column() -> Div {
+    div()
+        .w_full()
+        .max_w(px(PAGE_MAX_WIDTH + 2. * PAGE_INSET))
+        .mx_auto()
+        .px(px(PAGE_INSET))
 }
 
 // MARK: Rows
@@ -1506,6 +1514,10 @@ fn section(title: &'static str, rows: Vec<Row>, colors: &Colors) -> AnyElement {
         .into_any_element()
 }
 
+/// The status row's line of words, and its dot, centred on that line.
+const STATUS_LINE: f32 = 20.;
+const STATUS_DOT: f32 = 9.;
+
 /// A page's status: a dot in the state's color, the state in a few words
 /// and what it means, and an action on the right. The words carry the
 /// state too, so it never rests on the color alone.
@@ -1526,10 +1538,14 @@ fn status_row(
                 .flex_1()
                 .min_w_0()
                 .gap(px(12.))
+                // The dot belongs to the state's words, on their line, however
+                // many lines the meaning below takes.
+                .items_start()
                 .child(
                     div()
                         .flex_none()
-                        .size(px(9.))
+                        .mt(px((STATUS_LINE - STATUS_DOT) / 2.))
+                        .size(px(STATUS_DOT))
                         .rounded_full()
                         .bg(tone_color(status.tone, colors)),
                 )
@@ -1540,7 +1556,7 @@ fn status_row(
                         .child(
                             div()
                                 .text_size(px(15.))
-                                .line_height(px(20.))
+                                .line_height(px(STATUS_LINE))
                                 .font_medium()
                                 .text_color(colors.text)
                                 .child(status.label.clone()),
@@ -1629,6 +1645,8 @@ impl Workspace {
             self.set_focus_mode(false, window, cx);
             self.sidebar
                 .update(cx, |sidebar, cx| sidebar.set_settings_open(true, cx));
+            self.palette
+                .update(cx, |palette, _| palette.set_notes_hidden(true));
         }
         self.settings.update(cx, |settings, cx| {
             settings.show(page.unwrap_or(settings.page()), cx);
@@ -1645,6 +1663,8 @@ impl Workspace {
         };
         self.sidebar
             .update(cx, |sidebar, cx| sidebar.set_settings_open(false, cx));
+        self.palette
+            .update(cx, |palette, _| palette.set_notes_hidden(false));
         if back.focus_mode {
             self.set_focus_mode(true, window, cx);
         }
@@ -1661,6 +1681,8 @@ impl Workspace {
         }
         self.sidebar
             .update(cx, |sidebar, cx| sidebar.set_settings_open(false, cx));
+        self.palette
+            .update(cx, |palette, _| palette.set_notes_hidden(false));
         if self.settings.read(cx).contains_focus(window, cx) {
             self.note_list
                 .update(cx, |list, cx| list.focus_list(window, cx));

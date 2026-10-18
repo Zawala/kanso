@@ -417,7 +417,7 @@ impl NoteList {
                 .flex_shrink_0()
                 .gap_1()
                 .text_size(px(12.))
-                .text_color(colors.text_muted)
+                .text_color(colors.quiet(selected))
                 .when(pinned, |el| el.child(Icon::new(Lucide::Pin).size(px(12.))))
                 .child(time)
                 .into_any_element()
@@ -471,7 +471,7 @@ impl NoteList {
                                     .line_height(px(TITLE_LINE))
                                     .font_semibold()
                                     .text_color(if untitled {
-                                        colors.text_muted
+                                        colors.quiet(selected)
                                     } else {
                                         colors.text
                                     })

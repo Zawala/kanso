@@ -15,6 +15,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::{
     AnyWindowHandle, AppContext as _, Bounds, Entity, HeadlessAppContext, Pixels, Size,
     WindowBounds, WindowOptions, px, size,
@@ -340,6 +341,122 @@ fn rail_tooltip(
             cx.notify();
         });
     });
+}
+
+/// The pointer resting on the rail's button that opens the sidebar again.
+fn rail_expand_tooltip(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    collapse_sidebar(cx, window, workspace, store);
+    reveal_sidebar_tooltip(cx, workspace, "Toggle sidebar");
+}
+
+/// The pointer resting on the full sidebar's button that folds it to the
+/// rail, at the end of its top band.
+fn sidebar_toggle_tooltip(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    reveal_sidebar_tooltip(cx, workspace, "Toggle sidebar");
+}
+
+fn reveal_sidebar_tooltip(
+    cx: &mut HeadlessAppContext,
+    workspace: &Entity<Workspace>,
+    label: &'static str,
+) {
+    cx.update(|cx| {
+        let sidebar = workspace.read(cx).sidebar.clone();
+        sidebar.update(cx, |sidebar, cx| {
+            sidebar.reveal_tooltip = Some(label);
+            cx.notify();
+        });
+    });
+}
+
+/// The local API turned off: the footer's plug is unplugged, a shape of
+/// its own rather than the failing one in grey.
+fn api_off(cx: &mut HeadlessAppContext, _: AnyWindowHandle, _: &Entity<Workspace>, _: &Store) {
+    cx.update(|cx| cx.global_mut::<Services>().api = ApiState::Off);
+}
+
+/// A note's history, the newest version selected. The demo keeps versions
+/// of the open note from the last few days, each a section shorter; a real
+/// library shows the most recently edited note that has earlier versions.
+fn history(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let id = cx.update(|cx| {
+        workspace
+            .read(cx)
+            .editor
+            .read(cx)
+            .note_id()
+            .map(str::to_owned)
+    });
+    let Some(id) = id else {
+        return;
+    };
+    if std::env::var_os("KANSO_SNAPSHOT_DB").is_some() {
+        let with_history = store
+            .search_summaries(&Default::default())
+            .unwrap()
+            .into_iter()
+            .take(500)
+            .find(|n| store.revisions(&n.id).is_ok_and(|r| !r.is_empty()));
+        if let Some(note) = with_history {
+            let library = cx.update(|cx| workspace.read(cx).library.clone());
+            cx.update(|cx| library.update(cx, |library, cx| library.select(Some(note.id), cx)));
+            cx.run_until_parked();
+        }
+    } else {
+        let note = store.note(&id).unwrap().unwrap();
+        let now = cx.update(|cx| Clock::now_ms(cx));
+        // The body up to its `n`th section from the end.
+        let without = |n: usize| {
+            let starts: Vec<usize> = note.body.match_indices("\n## ").map(|(ix, _)| ix).collect();
+            let cut = starts
+                .len()
+                .checked_sub(n)
+                .map_or(note.body.len(), |ix| starts[ix]);
+            note.body[..cut].to_owned()
+        };
+        let edited = note
+            .body
+            .replace("discover the tools it offers", "list its tools");
+        let versions = [
+            (3 * DAY, Origin::Import, without(3)),
+            (DAY + 5 * 60 * MINUTE, Origin::Sync, without(2)),
+            (2 * 60 * MINUTE, Origin::Api, without(1)),
+            (12 * MINUTE, Origin::Ui, edited),
+        ];
+        for (n, (ago, origin, body)) in versions.into_iter().enumerate() {
+            let fields = json!({"title": note.title, "body": body});
+            store
+                .record_revision_at(
+                    &id,
+                    &format!("{}-demo", n + 1),
+                    fields.as_object().unwrap(),
+                    origin,
+                    now - ago,
+                )
+                .unwrap();
+        }
+    }
+    // The dialog shows at rest, not partway through sliding in.
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        workspace.update(cx, |workspace, cx| workspace.show_history(window, cx));
+    })
+    .unwrap();
 }
 
 /// The rail while the Worker can't be reached: the sync icon's shape says
@@ -1221,6 +1338,27 @@ fn check_palette(image: &image::RgbaImage, shot: &Shot) {
     );
 }
 
+/// A dialog: its surface in the editor's color, centred across the window
+/// a tenth of the way down. The point sits in its top padding.
+fn check_dialog(image: &image::RgbaImage, shot: &Shot, dialog_width: f32) {
+    let colors: &Colors = match shot.theme {
+        ThemePreference::Dark => &DARK,
+        _ => &LIGHT,
+    };
+    let width = f32::from(shot.size.width);
+    let height = f32::from(shot.size.height);
+    let scale = image.width() as f32 / width;
+    let corner = ((width - dialog_width) / 2., height / 10.);
+    assert_surface(
+        image,
+        scale,
+        (corner.0 + 24., corner.1 + 6.),
+        colors.editor,
+        2,
+        &format!("{}: dialog", shot.name),
+    );
+}
+
 /// Settings: the sidebar, then the page column in the list's color and
 /// the page in the editor's, each band running across.
 fn check_settings_surfaces(image: &image::RgbaImage, shot: &Shot) {
@@ -1424,6 +1562,20 @@ fn snapshots() {
             left: Left::Rail,
             ..shot("dark-rail-offline", Dark, Edit, rail_offline)
         },
+        Shot {
+            left: Left::Rail,
+            ..shot("dark-rail-expand", Dark, Edit, rail_expand_tooltip)
+        },
+        Shot {
+            left: Left::Rail,
+            ..shot("light-rail-expand", Light, Split, rail_expand_tooltip)
+        },
+        // The button that folds the sidebar, its tooltip open.
+        shot("dark-sidebar-toggle", Dark, Edit, sidebar_toggle_tooltip),
+        shot("dark-api-off", Dark, Edit, api_off),
+        // The open note's earlier versions.
+        shot("dark-history", Dark, Edit, history),
+        shot("light-history", Light, Edit, history),
         // Focus mode, at rest and with the pointer near the top.
         Shot {
             left: Left::Nothing,
@@ -1625,7 +1777,12 @@ fn snapshots() {
         );
         let palette_open = cx.update(|cx| workspace.read(cx).palette.read(cx).is_open());
         let settings_open = cx.update(|cx| workspace.read(cx).settings_open());
-        if palette_open {
+        let dialog_open = cx
+            .update_window(window, |_, window, cx| window.has_active_dialog(cx))
+            .unwrap();
+        if dialog_open {
+            check_dialog(&image, shot, crate::history::DIALOG_WIDTH);
+        } else if palette_open {
             check_palette(&image, shot);
         } else if settings_open {
             check_settings_surfaces(&image, shot);

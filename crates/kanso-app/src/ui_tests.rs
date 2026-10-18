@@ -740,6 +740,93 @@ fn escape_leaves_focus_mode_last(cx: &mut TestAppContext) {
     );
 }
 
+/// ⌘⇧D with the palette open closes the palette on the way into focus mode
+/// (its field loses the keyboard to the note's text): left open, it would
+/// hide the note being typed into, out of Escape's reach.
+// no-prop-test: drives one window through keystrokes.
+#[gpui_kit::test]
+fn focus_mode_closes_the_palette(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    cx.update(crate::workspace::bind_keys);
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    f.select(cx, &f.notes[0]);
+    f.draw(cx);
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    let palette = f.workspace(&mut vcx, |w, _| w.palette.clone());
+    let editor = f.workspace(&mut vcx, |w, _| w.editor.clone());
+    vcx.simulate_keystrokes("cmd-k");
+    f.draw(&mut vcx);
+    assert!(vcx.read(|cx| palette.read(cx).is_open()));
+
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    assert!(f.workspace(&mut vcx, |w, _| w.focus_mode));
+    assert!(
+        !vcx.read(|cx| palette.read(cx).is_open()),
+        "the palette closes"
+    );
+    assert!(vcx.update(|window, cx| editor.read(cx).body_focused(window, cx)));
+    // The next Escape is focus mode's.
+    vcx.simulate_keystrokes("escape");
+    f.draw(&mut vcx);
+    assert!(!f.workspace(&mut vcx, |w, _| w.focus_mode));
+}
+
+/// ⇧⌘L takes the keyboard from the note's text to the note list, from
+/// focus mode and from Settings too, so the list's arrow keys are always a
+/// keystroke away; Return goes back into the note.
+// no-prop-test: drives one window through keystrokes.
+#[gpui_kit::test]
+fn the_keyboard_reaches_the_note_list(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    cx.update(|cx| {
+        crate::workspace::bind_keys(cx);
+        crate::note_list::bind_keys(cx);
+    });
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    f.select(cx, &f.notes[0]);
+    f.update_editor(cx, |editor, window, cx| editor.focus_body(window, cx));
+    f.draw(cx);
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    let (editor, list) = f.workspace(&mut vcx, |w, _| (w.editor.clone(), w.note_list.clone()));
+    let list_focused = |vcx: &mut gpui_kit::VisualTestContext| {
+        vcx.update(|window, cx| {
+            gpui_kit::Focusable::focus_handle(list.read(cx), cx).is_focused(window)
+        })
+    };
+    let body_focused = |vcx: &mut gpui_kit::VisualTestContext| {
+        vcx.update(|window, cx| editor.read(cx).body_focused(window, cx))
+    };
+    assert!(body_focused(&mut vcx));
+
+    vcx.simulate_keystrokes("cmd-shift-l");
+    f.draw(&mut vcx);
+    assert!(list_focused(&mut vcx));
+    vcx.simulate_keystrokes("enter");
+    f.draw(&mut vcx);
+    assert!(body_focused(&mut vcx));
+
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    assert!(f.workspace(&mut vcx, |w, _| w.focus_mode));
+    vcx.simulate_keystrokes("cmd-shift-l");
+    f.draw(&mut vcx);
+    assert!(!f.workspace(&mut vcx, |w, _| w.focus_mode));
+    assert!(list_focused(&mut vcx));
+
+    vcx.simulate_keystrokes("cmd-,");
+    f.draw(&mut vcx);
+    assert!(f.workspace(&mut vcx, |w, _| w.settings_open()));
+    vcx.simulate_keystrokes("cmd-shift-l");
+    f.draw(&mut vcx);
+    assert!(!f.workspace(&mut vcx, |w, _| w.settings_open()));
+    assert!(list_focused(&mut vcx));
+}
+
 /// ⌘\ folds the sidebar to its icon rail rather than hiding it, keeps that
 /// for next time, and from focus mode brings everything back.
 // no-prop-test: drives one window through keystrokes; the widths' rules
@@ -773,6 +860,25 @@ fn the_sidebar_folds_to_its_rail(cx: &mut TestAppContext) {
     assert!(f.workspace(&mut vcx, |w, _| w.show_sidebar));
     assert!(f.saved_config().appearance.show_sidebar);
     assert!(!vcx.read(|cx| sidebar.read(cx).is_collapsed()));
+    assert_eq!(vcx.debug_bounds("sidebar-pane").unwrap().size.width, full);
+
+    // The mouse does the same: the button at the end of the sidebar's top
+    // band folds it, and the one at the top of the rail opens it again.
+    let click = |vcx: &mut gpui_kit::VisualTestContext, selector: &'static str| {
+        let bounds = vcx
+            .debug_bounds(selector)
+            .unwrap_or_else(|| panic!("{selector} is drawn"));
+        vcx.simulate_click(bounds.center(), gpui_kit::Modifiers::none());
+    };
+    click(&mut vcx, "sidebar-toggle");
+    f.draw(&mut vcx);
+    assert!(vcx.read(|cx| sidebar.read(cx).is_collapsed()));
+    assert!(!f.saved_config().appearance.show_sidebar);
+    assert_eq!(vcx.debug_bounds("sidebar-toggle"), None);
+    click(&mut vcx, "rail-expand");
+    f.draw(&mut vcx);
+    assert!(!vcx.read(|cx| sidebar.read(cx).is_collapsed()));
+    assert!(f.saved_config().appearance.show_sidebar);
     assert_eq!(vcx.debug_bounds("sidebar-pane").unwrap().size.width, full);
 
     // Folded, then in focus mode: ⌘\ brings the whole sidebar back.

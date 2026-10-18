@@ -7,8 +7,10 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_store::Revision;
 
+use crate::clock::Clock;
 use crate::editor::NoteEditor;
 use crate::note_list::relative_time;
+use crate::theme::Colors;
 
 /// Why a version was kept, from the origin of the write that replaced it.
 pub fn origin_label(origin: &str) -> &'static str {
@@ -20,6 +22,12 @@ pub fn origin_label(origin: &str) -> &'static str {
         _ => "Saved version",
     }
 }
+
+/// The dialog's width and its body's height, and the width of its list of
+/// versions.
+pub const DIALOG_WIDTH: f32 = 820.;
+const BODY_HEIGHT: f32 = 440.;
+const LIST_WIDTH: f32 = 200.;
 
 pub struct HistoryView {
     revisions: Vec<Revision>,
@@ -42,31 +50,44 @@ fn field(revision: &Revision, key: &str) -> String {
         .to_owned()
 }
 
+// no-prop-test: drawing; the history snapshots show it in both themes.
 impl Render for HistoryView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let colors = Colors::get(cx);
         if self.revisions.is_empty() {
             return div()
                 .py_8()
-                .text_color(cx.theme().muted_foreground)
+                .text_size(px(13.5))
+                .text_color(colors.text_secondary)
                 .child("No earlier versions yet. Kanso keeps one every few minutes while you edit, and one before every change made elsewhere.")
                 .into_any_element();
         }
-        let now = kanso_core::now_ms();
+        let now = Clock::now_ms(cx);
         let rows = self.revisions.iter().enumerate().map(|(ix, revision)| {
             let selected = ix == self.selected;
-            div()
+            v_flex()
                 .id(("revision", ix))
-                .px_2()
-                .py_1()
-                .rounded_md()
+                .px(px(10.))
+                .py(px(7.))
+                .gap(px(1.))
+                .rounded(px(6.))
                 .cursor_pointer()
-                .when(selected, |el| el.bg(cx.theme().list_active))
-                .when(!selected, |el| el.hover(|el| el.bg(cx.theme().list_hover)))
-                .child(div().text_sm().child(relative_time(revision.saved_at, now)))
+                // The selected version as the selected note in the list.
+                .when(selected, |el| el.bg(colors.row_active))
+                .when(!selected, |el| el.hover(|el| el.bg(colors.row_hover)))
                 .child(
                     div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
+                        .text_size(px(13.))
+                        .line_height(px(18.))
+                        .font_medium()
+                        .text_color(colors.text)
+                        .child(relative_time(revision.saved_at, now)),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .line_height(px(16.))
+                        .text_color(colors.quiet(selected))
                         .child(origin_label(&revision.origin)),
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -78,17 +99,19 @@ impl Render for HistoryView {
             .selected()
             .map(|r| (field(r, "title"), field(r, "body")))
             .unwrap_or_default();
+        let dark = cx.theme().is_dark();
         h_flex()
-            .h(px(440.))
-            .gap_3()
+            .h(px(BODY_HEIGHT))
+            .gap(px(14.))
             .items_start()
             .child(
                 div()
                     .id("revisions")
-                    .w(px(190.))
+                    .w(px(LIST_WIDTH))
+                    .flex_none()
                     .h_full()
                     .overflow_y_scroll()
-                    .child(v_flex().gap_0p5().children(rows)),
+                    .child(v_flex().gap(px(2.)).children(rows)),
             )
             .child(
                 v_flex()
@@ -96,9 +119,17 @@ impl Render for HistoryView {
                     .min_w_0()
                     .h_full()
                     .border_l_1()
-                    .border_color(cx.theme().border)
-                    .pl_3()
-                    .child(div().font_semibold().pb_2().child(title))
+                    .border_color(colors.divider)
+                    .pl(px(18.))
+                    .child(
+                        div()
+                            .pb(px(10.))
+                            .text_size(px(18.))
+                            .line_height(px(24.))
+                            .font_semibold()
+                            .text_color(colors.text)
+                            .child(title),
+                    )
                     .child(
                         div()
                             .id("revision-body")
@@ -106,7 +137,15 @@ impl Render for HistoryView {
                             .min_h_0()
                             .overflow_y_scroll()
                             .track_scroll(&self.scroll)
-                            .child(TextView::markdown(("revision-text", self.selected), body)),
+                            // The version as the preview shows a note, a size
+                            // smaller to suit the dialog.
+                            .child(
+                                TextView::markdown(("revision-text", self.selected), body)
+                                    .style(crate::preview::text_style(colors, dark))
+                                    .text_size(px(14.))
+                                    .line_height(relative(1.6))
+                                    .text_color(colors.text),
+                            ),
                     ),
             )
             .into_any_element()
@@ -130,13 +169,13 @@ pub fn open_history(editor: Entity<NoteEditor>, window: &mut Window, cx: &mut Ap
         let view_for_ok = view.clone();
         let editor = editor.clone();
         alert
-            .title("Note History")
-            .width(px(820.))
+            .title("Note history")
+            .width(px(DIALOG_WIDTH))
             .child(view.clone())
             .show_cancel(has_revisions)
             .cancel_text("Close")
             .ok_text(if has_revisions {
-                "Restore This Version"
+                "Restore this version"
             } else {
                 "Close"
             })

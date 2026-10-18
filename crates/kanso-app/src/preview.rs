@@ -137,7 +137,7 @@ pub fn is_openable(url: &str) -> bool {
 /// text color: they are still read. `dark` picks the check mark that reads
 /// on the dark theme's task boxes.
 // no-prop-test: maps theme colors onto a style; the snapshots show it.
-fn text_style(colors: &Colors, dark: bool) -> TextViewStyle {
+pub(crate) fn text_style(colors: &Colors, dark: bool) -> TextViewStyle {
     let mut table = StyleRefinement::default().bg(colors.editor);
     table.overflow.x = Some(Overflow::Scroll);
     TextViewStyle::default()

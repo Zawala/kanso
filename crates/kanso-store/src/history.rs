@@ -17,11 +17,24 @@ impl Store {
         fields: &Map<String, Value>,
         origin: Origin,
     ) -> Result<()> {
+        self.record_revision_at(id, rev, fields, origin, now_ms())
+    }
+
+    /// [`Store::record_revision`], saved as of `saved_at`: a version kept
+    /// from another clock, or a history drawn at a fixed time.
+    pub fn record_revision_at(
+        &self,
+        id: &str,
+        rev: &str,
+        fields: &Map<String, Value>,
+        origin: Origin,
+        saved_at: i64,
+    ) -> Result<()> {
         let json = serde_json::to_string(fields)?;
         self.write(|tx, _| {
             tx.execute(
                 "INSERT INTO revisions (doc_id, rev, json, saved_at, origin) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![id, rev, json, now_ms(), origin.as_str()],
+                params![id, rev, json, saved_at, origin.as_str()],
             )?;
             tx.execute(
                 "DELETE FROM revisions WHERE doc_id = ?1 AND id NOT IN

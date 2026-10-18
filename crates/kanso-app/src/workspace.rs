@@ -119,6 +119,8 @@ pub fn bind_keys(cx: &mut App) {
         // ⌘L searches the list as it is; ⇧⌘F, global search, all notes.
         KeyBinding::new("cmd-l", FocusSearch, None),
         KeyBinding::new("cmd-shift-f", SearchAllNotes, None),
+        // ⌘L goes to the list's search box; ⇧⌘L to the list itself.
+        KeyBinding::new("cmd-shift-l", FocusNoteList, None),
         KeyBinding::new("cmd-\\", ToggleSidebar, None),
         KeyBinding::new("cmd-shift-d", ToggleFocusMode, None),
         // After anything inside that takes Escape (an open menu, extra
@@ -177,6 +179,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Focus Mode", ToggleFocusMode),
             MenuItem::action("Search All Notes", SearchAllNotes),
             MenuItem::action("Search This List", FocusSearch),
+            MenuItem::action("Go to Note List", FocusNoteList),
         ]),
     ]);
 }
@@ -804,7 +807,7 @@ impl Workspace {
         AppState::update_config(cx, |config| config.appearance.view_mode = mode);
     }
 
-    fn show_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn show_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.flush(cx);
         crate::history::open_history(self.editor.clone(), window, cx);
     }
@@ -830,7 +833,8 @@ impl Workspace {
     }
 
     /// Turns focus mode on or off, and keeps it for next time. Going in,
-    /// the keyboard goes to the note's text, for writing.
+    /// the keyboard goes to the note's text, for writing. (An open palette
+    /// closes as its field loses the keyboard.)
     pub(crate) fn set_focus_mode(&mut self, on: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.focus_mode == on {
             return;
@@ -1026,6 +1030,8 @@ impl Render for Workspace {
                 this.search_all_notes(window, cx);
             }))
             .on_action(cx.listener(|this, _: &FocusNoteList, window, cx| {
+                // The list is hidden behind Settings and in focus mode.
+                this.leave_settings(window, cx);
                 this.set_focus_mode(false, window, cx);
                 this.note_list
                     .update(cx, |list, cx| list.focus_list(window, cx));
