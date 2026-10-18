@@ -320,6 +320,9 @@ impl Run {
 
     /// A note created over REST, for fields the tools can't set.
     fn create_over_rest(&mut self, note: Value) -> String {
+        // As in `call`: a note made in the same millisecond as the one
+        // before would sort either way.
+        std::thread::sleep(Duration::from_millis(5));
         let response: Value = reqwest::blocking::Client::new()
             .post(format!("{}/notes", self.base_url))
             .header("Authorization", basic_header(USER, PASS))

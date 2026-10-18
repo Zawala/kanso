@@ -1806,19 +1806,23 @@ mod tests {
         };
         let work = book("Work");
         let other_book = book("Garden");
-        let note = |title: &str, body: &str| {
+        // A minute apart, so the most recently edited is the same however
+        // fast the notes are made.
+        let now = kanso_core::now_ms();
+        let note = |title: &str, body: &str, at: i64| {
             store
                 .put(
                     DocType::Note,
-                    json!({"title": title, "body": body, "bookId": work}),
+                    json!({"title": title, "body": body, "bookId": work,
+                        "createdAt": at, "updatedAt": at}),
                     Put::Upsert,
                     Origin::Ui,
                 )
                 .unwrap()
                 .id
         };
-        note("Quarterly planning", "goals");
-        let open = note("Weekly sync notes", "agenda");
+        note("Quarterly planning", "goals", now - 60_000);
+        let open = note("Weekly sync notes", "agenda", now);
         let app_store = store.clone();
         let data_dir = dir.path().to_path_buf();
         let (window, workspace) = cx.update(|cx| {
