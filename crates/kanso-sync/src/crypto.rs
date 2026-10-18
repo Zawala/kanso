@@ -683,6 +683,28 @@ fn canonical_object(map: &Map<String, Value>, out: &mut String) {
     out.push('}');
 }
 
+/// A sealed document's plaintext: `{"id", "rev", "fields"}` as canonical
+/// JSON; a tombstone's fields are `{}`.
+fn doc_plaintext(doc: &SyncDoc) -> Zeroizing<Vec<u8>> {
+    let empty = Map::new();
+    let fields = if doc.deleted { &empty } else { &doc.fields };
+    let mut text = Zeroizing::new(String::from("{\"id\":"));
+    canonical_json(&Value::String(doc.id.clone()), &mut text);
+    text.push_str(",\"rev\":");
+    canonical_json(&Value::String(doc.rev.clone()), &mut text);
+    text.push_str(",\"fields\":");
+    canonical_object(fields, &mut text);
+    text.push('}');
+    Zeroizing::new(std::mem::take(&mut *text).into_bytes())
+}
+
+/// The length of `doc`'s sealed text (base64url without padding of the
+/// format byte, nonce, ciphertext and tag), what the server charges.
+pub(crate) fn sealed_doc_len(doc: &SyncDoc) -> usize {
+    let raw = SEAL_OVERHEAD + doc_plaintext(doc).len();
+    (4 * raw).div_ceil(3)
+}
+
 /// The kind prefix of a local or wire ID (`note`, `book`, `tag`, `file`).
 fn kind_of(id: &str) -> &str {
     id.split_once(':').map_or("", |(kind, _)| kind)
@@ -762,16 +784,7 @@ impl ContentKeys {
     ) -> WireDoc {
         let id = self.wire_id(&doc.id);
         let rev = self.wire_rev(&doc.id, &doc.rev);
-        let empty = Map::new();
-        let fields = if doc.deleted { &empty } else { &doc.fields };
-        let mut text = Zeroizing::new(String::from("{\"id\":"));
-        canonical_json(&Value::String(doc.id.clone()), &mut text);
-        text.push_str(",\"rev\":");
-        canonical_json(&Value::String(doc.rev.clone()), &mut text);
-        text.push_str(",\"fields\":");
-        canonical_object(fields, &mut text);
-        text.push('}');
-        let plaintext = Zeroizing::new(std::mem::take(&mut *text).into_bytes());
+        let plaintext = doc_plaintext(doc);
         let aad = doc_aad(account_id, &id, &rev, doc.deleted);
         let sealed = b64(&seal_raw(&self.doc_key, nonce, &aad, &plaintext));
         WireDoc {

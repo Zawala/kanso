@@ -1,8 +1,13 @@
-//! The sync protocol: wire types, limits and the [`Remote`] trait.
+//! The engine's plaintext side of sync: documents with local IDs and
+//! revisions, and the v1 [`Remote`] trait.
 //!
-//! The Cloudflare Worker in `cloud/` and [`crate::MemoryRemote`] implement
-//! the same rules; `cloud/test/fixtures/conformance-v1.json` holds the cases
-//! both test suites run.
+//! Legacy (v1): [`Remote`], [`ChangesPage`], [`RemoteFile`] and the v1
+//! limits are today's protocol, which the Cloudflare Worker's `/v1` routes,
+//! [`crate::HttpRemote`] and [`crate::MemoryRemote`] implement
+//! (`cloud/test/fixtures/conformance-v1.json`); they stay until step 3 of
+//! docs/ACCOUNTS.md › Build order. Accounts sync through `Sealed`
+//! (`sealed.rs`), which opens v2 documents into [`RemoteDoc`] and
+//! [`PushResult`].
 
 use kanso_core::DocType;
 use kanso_core::id::is_valid_id;
@@ -23,25 +28,39 @@ pub const MAX_FILE_BYTES: usize = kanso_core::model::MAX_ATTACHMENT_SIZE;
 pub const DEFAULT_CHANGES_LIMIT: usize = 100;
 pub const MAX_CHANGES_LIMIT: usize = 500;
 
-/// The outcome of pushing one document.
+/// The outcome of pushing one document, with local IDs and revisions.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum PushResult {
     /// The server stored the document under change sequence `seq`.
     Ok { id: String, seq: i64 },
     /// The document's `base_rev` is not the server's current revision.
-    /// `current` is the server's version, or `None` when the server has no
-    /// copy although the client sent a `base_rev`.
+    /// `current` is the server's version. A v1 server sends `None` when it
+    /// has no copy although the client sent a `base_rev`; v2 says
+    /// [`PushResult::Lost`] instead.
     Conflict {
         id: String,
         current: Option<SyncDoc>,
     },
+    /// v2: the client sent a `base_rev`, but the server has no such
+    /// document. The engine pushes it again with no base (M1).
+    Lost { id: String },
+    /// v2: a conflict whose current version didn't fit the response's
+    /// budget. The engine pulls before the next round.
+    Behind { id: String },
+    /// v2: a conflict whose current version couldn't be opened:
+    /// undecryptable (format 1), or a newer format.
+    Unreadable { id: String, newer_format: bool },
 }
 
 impl PushResult {
     pub fn id(&self) -> &str {
         match self {
-            PushResult::Ok { id, .. } | PushResult::Conflict { id, .. } => id,
+            PushResult::Ok { id, .. }
+            | PushResult::Conflict { id, .. }
+            | PushResult::Lost { id }
+            | PushResult::Behind { id }
+            | PushResult::Unreadable { id, .. } => id,
         }
     }
 }
@@ -108,7 +127,9 @@ impl RemoteError {
     }
 }
 
-/// A sync server.
+/// A v1 sync server.
+///
+/// Legacy (v1): kept until step 3 of docs/ACCOUNTS.md › Build order.
 pub trait Remote {
     /// `POST /v1/push`: one result per document, in order. Documents are
     /// applied one after another, so a later one may build on an earlier one.

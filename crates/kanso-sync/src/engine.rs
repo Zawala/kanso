@@ -1,28 +1,32 @@
 //! One sync pass: pull the server's changes, then push local ones; and what
 //! a sync reports (docs/ACCOUNTS.md › Sync with encryption, › Problems).
 //!
-//! `sync_once`/`sync_with` are today's engine over the plaintext [`Remote`]
-//! (v1 rules, legacy cursor). Step 2b runs it over `Sealed<W>` and adds the
-//! v2 rules; [`sync`] is the app's entry point. [`SyncReport`],
-//! [`SyncOptions`], [`SyncError`], [`SyncProblem`], [`problem`] and
-//! [`report_problem`] are frozen by step 1.
+//! [`sync`] is the app's entry point: the v2 rules over `Sealed` (sealed
+//! documents, opaque IDs, the guard, re-merge, repair, quotas and pauses).
+//! `sync_once`/`sync_with` are the legacy v1 engine over the plaintext
+//! [`Remote`] (v1 rules, legacy cursor), kept until step 3 of
+//! docs/ACCOUNTS.md › Build order. [`SyncReport`], [`SyncOptions`],
+//! [`SyncError`], [`SyncProblem`], [`problem`] and [`report_problem`] are
+//! frozen by step 1.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use kanso_store::{ApplyOutcome, Attachment, Store, StoreError, SyncDoc};
+use kanso_store::{ApplyOutcome, Attachment, Store, StoreError, SyncDoc, SyncGuard};
 use serde_json::Value;
 
 use crate::account::Session;
 use crate::api::Backend;
 use crate::binding::meta_keys;
 use crate::remote::{MAX_FIELDS_BYTES, PushResult, Remote, RemoteError, is_file_id, md5_hex};
-use crate::wire::{ApiError, QuotaKind, SignOutReason};
+use crate::sealed::{Entry, FileBytes, Pushed, Sealed};
+use crate::wire::{ApiError, QuotaKind, SignOutReason, WireChange};
 
 /// The `meta` key holding the last change sequence pulled from a v1 server.
-/// `sync_once`/`sync_with` use it until step 2b; v2 uses
+///
+/// Legacy (v1): `sync_once`/`sync_with` use it until step 3; [`sync`] uses
 /// [`SyncOptions::cursor_key`].
 pub const CURSOR_KEY: &str = meta_keys::LEGACY_LAST_SEQ;
 
@@ -140,7 +144,9 @@ fn protocol(message: String) -> SyncError {
     SyncError::Remote(RemoteError::Protocol(message))
 }
 
-/// The last change sequence this store pulled.
+/// The last change sequence this store pulled from a v1 server.
+///
+/// Legacy (v1): see [`CURSOR_KEY`].
 pub fn cursor(store: &Store) -> Result<i64, StoreError> {
     Ok(store
         .meta(CURSOR_KEY)?
@@ -149,22 +155,558 @@ pub fn cursor(store: &Store) -> Result<i64, StoreError> {
         .unwrap_or(0))
 }
 
-/// Makes the next sync pull every document again. Safe at any time: what the
-/// store already has comes back as unchanged, and missing attachment bytes
-/// are fetched.
+/// Makes the next v1 sync pull every document again. Safe at any time: what
+/// the store already has comes back as unchanged, and missing attachment
+/// bytes are fetched.
+///
+/// Legacy (v1): see [`CURSOR_KEY`].
 pub fn reset_cursor(store: &Store) -> Result<(), StoreError> {
     store.set_meta(CURSOR_KEY, "0")
 }
 
 /// The app's sync: one pass of `session`'s account over `b`, with every v2
-/// rule (docs/ACCOUNTS.md › Sync with encryption). Step 2b.
+/// rule (docs/ACCOUNTS.md › Sync with encryption, the order below).
+///
+/// 1. **Pull.** Pages through the feed after the cursor
+///    ([`SyncOptions::cursor_key`]), opening each document. The first page
+///    is checked before anything is written: a key ID other than this
+///    Mac's is [`SyncError::WrongKey`]; an epoch other than the saved one,
+///    or a `head_seq` below the cursor, means the server's copy was
+///    restored or rewound, and the Mac re-merges (M1): the cursor goes to
+///    0, the whole feed is applied through `apply_remote` (so replayed
+///    revisions come back `Stale` and are rebased), and the documents the
+///    feed lacked are marked unsynced and pushed again with no base.
+///    Undecryptable documents never stop the pull; one is repaired only
+///    when it is the version this Mac last synced (M3), else skipped. A
+///    newer format stops the pull before it.
+/// 2. **Push.** Sends pending documents in batches, sealed, uploading file
+///    bytes first; up to [`SyncOptions::max_rounds`] rounds resolve
+///    conflicts, lost documents and `behind` answers (which pull first). A
+///    413 retries the batch with its tombstones only and pushes nothing but
+///    tombstones afterwards; a second 413, or any 429, stops pushing.
+///
+/// Every store write carries the session's guard
+/// ([`crate::binding::guard_pairs`]); if the library was re-bound
+/// meanwhile, or [`SyncOptions::cancel`] is set, the sync stops with
+/// [`SyncError::Cancelled`]. Nothing is pushed unless the library is bound
+/// to the session's account.
 pub fn sync(
     store: &Store,
     b: &dyn Backend,
     session: &Session,
     options: &SyncOptions,
 ) -> Result<SyncReport, SyncError> {
-    crate::stub!("2b", store, b, session, options)
+    let pairs = crate::binding::guard_pairs(session);
+    let sealed = Sealed::new(b.remote(session), session);
+    let mut run = Run {
+        store,
+        sealed: &sealed,
+        guard: SyncGuard { expect: &pairs },
+        options,
+        report: SyncReport::default(),
+        epoch: None,
+        remerging: false,
+        present: HashSet::new(),
+        wire_ids: None,
+        stopped: false,
+        tombstones_only: false,
+    };
+    run.check_cancel()?;
+    run.check_bound()?;
+    run.pull()?;
+    run.push()?;
+    run.report.pending = store.pending_count()?;
+    Ok(run.report)
+}
+
+/// The value of [`meta_keys::EPOCH`] while a re-merge hasn't finished. It is
+/// never a server's epoch (16 hex digits), so an interrupted re-merge runs
+/// again from the start at the next sync.
+const REMERGING: &str = "remerging";
+
+/// Turns the store's guard failure into [`SyncError::Cancelled`].
+fn guarded(err: StoreError) -> SyncError {
+    match err {
+        StoreError::GuardFailed => SyncError::Cancelled,
+        err => SyncError::Store(err),
+    }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
+}
+
+/// An upper bound of a document's size on the wire, sealed, from its
+/// `fields` JSON length: the plaintext adds the ID, the revision and 30
+/// bytes of framing; sealing adds 41 bytes and base64url a third; the
+/// push entry adds its wire ID, revisions and keys.
+fn wire_size(doc: &SyncDoc, fields_len: usize) -> usize {
+    let plaintext = fields_len + doc.id.len() + doc.rev.len() + 30;
+    (plaintext + 41).div_ceil(3) * 4 + 160
+}
+
+/// One run of [`sync`].
+struct Run<'r> {
+    store: &'r Store,
+    sealed: &'r Sealed<'r>,
+    guard: SyncGuard<'r>,
+    options: &'r SyncOptions,
+    report: SyncReport,
+    /// The epoch of this sync's first page.
+    epoch: Option<String>,
+    /// A re-merge is running: `present` collects the local IDs the feed
+    /// carries.
+    remerging: bool,
+    present: HashSet<String>,
+    /// Wire ID → (local ID, `synced_rev`) of every local document, built
+    /// when the first undecryptable document of a pull shows up.
+    wire_ids: Option<HashMap<String, (String, Option<String>)>>,
+    /// Pushing stopped for this sync (a second 413, or a 429).
+    stopped: bool,
+    /// After a 413: push only tombstones.
+    tombstones_only: bool,
+}
+
+impl Run<'_> {
+    fn check_cancel(&self) -> Result<(), SyncError> {
+        match &self.options.cancel {
+            Some(flag) if flag.load(std::sync::atomic::Ordering::SeqCst) => {
+                Err(SyncError::Cancelled)
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// The library must still be bound to the session's account before
+    /// anything of it is sent there.
+    fn check_bound(&self) -> Result<(), SyncError> {
+        for (key, value) in self.guard.expect {
+            if self.store.meta(key)?.as_deref() != Some(*value) {
+                return Err(SyncError::Cancelled);
+            }
+        }
+        Ok(())
+    }
+
+    fn set_meta(&self, key: &str, value: &str) -> Result<(), SyncError> {
+        self.store
+            .set_meta_if(key, value, &self.guard)
+            .map_err(guarded)
+    }
+
+    fn cursor(&self) -> Result<i64, SyncError> {
+        Ok(self
+            .store
+            .meta(self.options.cursor_key)?
+            .and_then(|v| v.parse::<i64>().ok())
+            .filter(|v| *v >= 0)
+            .unwrap_or(0))
+    }
+
+    /// Pages through the feed from the cursor (see [`sync`]). Runs again
+    /// before a push round after a `behind` answer.
+    fn pull(&mut self) -> Result<(), SyncError> {
+        let page_size = self
+            .options
+            .page_size
+            .clamp(1, crate::wire::MAX_CHANGES_LIMIT);
+        let mut since = self.cursor()?;
+        self.wire_ids = None;
+        loop {
+            self.check_cancel()?;
+            let page = self.sealed.changes(since, page_size)?;
+            if page.key_id != self.sealed.key_id() {
+                return Err(SyncError::WrongKey);
+            }
+            match &self.epoch {
+                None => {
+                    self.epoch = Some(page.epoch.clone());
+                    let saved = self.store.meta(meta_keys::EPOCH)?;
+                    let restored =
+                        saved.as_deref().is_some_and(|e| e != page.epoch) || page.head_seq < since;
+                    if restored {
+                        self.set_meta(self.options.cursor_key, "0")?;
+                        self.set_meta(meta_keys::EPOCH, REMERGING)?;
+                        self.remerging = true;
+                        self.present.clear();
+                        self.report.remerged = true;
+                        if since != 0 {
+                            since = 0;
+                            continue;
+                        }
+                    } else if saved.is_none() {
+                        // The first sync after binding: adopt the epoch.
+                        self.set_meta(meta_keys::EPOCH, &page.epoch)?;
+                    }
+                }
+                Some(epoch) if *epoch != page.epoch => {
+                    return Err(SyncError::Api(ApiError::Protocol(
+                        "the epoch changed during the sync".into(),
+                    )));
+                }
+                Some(_) => {}
+            }
+            let mut last = since;
+            let mut too_new = false;
+            for entry in page.entries {
+                let seq = entry.seq();
+                match entry {
+                    Entry::TooNew { .. } => {
+                        too_new = true;
+                        break;
+                    }
+                    Entry::Opened { doc, .. } => {
+                        if self.remerging {
+                            self.present.insert(doc.id.clone());
+                        }
+                        self.apply(&doc)?;
+                    }
+                    Entry::Undecryptable { wire, .. } => self.undecryptable(&wire)?,
+                }
+                last = seq;
+            }
+            if last > since {
+                self.set_meta(self.options.cursor_key, &last.to_string())?;
+                since = last;
+            }
+            if too_new {
+                // Stop before it, keeping the cursor; pushing continues.
+                self.report.too_new = true;
+                return Ok(());
+            }
+            if !page.more {
+                break;
+            }
+        }
+        if self.remerging {
+            self.store
+                .mark_missing_unsynced(&self.present, Some(&self.guard))
+                .map_err(guarded)?;
+            let epoch = self.epoch.clone().unwrap_or_default();
+            self.set_meta(meta_keys::EPOCH, &epoch)?;
+            self.remerging = false;
+            self.present.clear();
+        }
+        Ok(())
+    }
+
+    /// Applies one opened server document, fetching its file bytes when the
+    /// store lacks them.
+    fn apply(&mut self, doc: &SyncDoc) -> Result<(), SyncError> {
+        let attachment = if !doc.deleted && is_file_id(&doc.id) {
+            self.fetch_blob(doc)?
+        } else {
+            None
+        };
+        let outcome = match self.store.apply_remote(doc, attachment, Some(&self.guard)) {
+            Ok(outcome) => outcome,
+            Err(StoreError::Invalid(reason)) => {
+                self.report.invalid.push((doc.id.clone(), reason));
+                return Ok(());
+            }
+            Err(err) => return Err(guarded(err)),
+        };
+        let report = &mut self.report;
+        match outcome {
+            ApplyOutcome::Applied => report.pulled += 1,
+            ApplyOutcome::Unchanged => {}
+            ApplyOutcome::RemoteWon => {
+                report.pulled += 1;
+                report.conflicts_remote += 1;
+                report.note_conflict(&doc.id);
+            }
+            ApplyOutcome::LocalWon { .. } => {
+                report.conflicts_local += 1;
+                report.note_conflict(&doc.id);
+            }
+            ApplyOutcome::Stale { .. } => {
+                if !report.stale.contains(&doc.id) {
+                    report.stale.push(doc.id.clone());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The opened bytes of a live file document, when they match its
+    /// `md5digest`; otherwise they count as missing.
+    fn fetch_blob(&mut self, doc: &SyncDoc) -> Result<Option<Attachment>, SyncError> {
+        let md5 = doc
+            .fields
+            .get("md5digest")
+            .and_then(Value::as_str)
+            .map(str::to_ascii_lowercase);
+        if let Some(md5) = &md5
+            && self.store.has_blob(&doc.id, md5)?
+        {
+            return Ok(None);
+        }
+        self.check_cancel()?;
+        match self.sealed.get_file(&doc.id)? {
+            FileBytes::Opened(bytes) if md5.as_deref() == Some(md5_hex(&bytes).as_str()) => {
+                self.report.files_down += 1;
+                Ok(Some(Attachment::new(bytes)))
+            }
+            FileBytes::Opened(_) | FileBytes::Missing | FileBytes::Unreadable => {
+                self.report.files_missing += 1;
+                Ok(None)
+            }
+        }
+    }
+
+    /// A feed document that didn't open (M3, security re-check 10).
+    fn undecryptable(&mut self, wire: &WireChange) -> Result<(), SyncError> {
+        if self.wire_ids.is_none() {
+            let map = self
+                .store
+                .sync_docs()?
+                .into_iter()
+                .map(|d| (self.sealed.wire_id(&d.id), (d.id, d.base_rev)))
+                .collect();
+            self.wire_ids = Some(map);
+        }
+        let Some((local_id, synced)) = self.wire_ids.as_ref().and_then(|m| m.get(&wire.id)) else {
+            self.report.skipped.push(wire.id.clone());
+            return Ok(());
+        };
+        let (local_id, synced) = (local_id.clone(), synced.clone());
+        if self.remerging {
+            // The server has it, broken: it isn't missing.
+            self.present.insert(local_id.clone());
+        }
+        let ours = synced.map(|s| self.sealed.wire_rev(&local_id, &s));
+        if ours.as_deref() == Some(wire.rev.as_str())
+            && self
+                .store
+                .bump_revision(&local_id, Some(&self.guard))
+                .map_err(guarded)?
+                .is_some()
+        {
+            // Pushed one generation higher over the broken revision, which
+            // is `wire_rev(id, synced_rev)`, the base the push sends.
+            if !self.report.repaired.contains(&local_id) {
+                self.report.repaired.push(local_id);
+            }
+        } else {
+            self.report.skipped.push(wire.id.clone());
+        }
+        Ok(())
+    }
+
+    fn pause(&mut self, retry_after: u64) {
+        let until = now_ms().saturating_add((retry_after as i64).saturating_mul(1000));
+        self.report.paused_until = Some(self.report.paused_until.map_or(until, |u| u.max(until)));
+        self.stopped = true;
+    }
+
+    /// Sends pending documents (see [`sync`]).
+    fn push(&mut self) -> Result<(), SyncError> {
+        // Documents this sync can't push: their server copy is too new or
+        // unreadable.
+        let mut held: HashSet<String> = HashSet::new();
+        let max_docs = self.options.batch_docs.clamp(1, crate::wire::MAX_PUSH_DOCS);
+        let max_bytes = self
+            .options
+            .batch_bytes
+            .clamp(1, crate::wire::MAX_PUSH_BODY - 1024);
+        for _ in 0..self.options.max_rounds.max(1) {
+            self.check_cancel()?;
+            let mut docs = Vec::new();
+            let mut sizes = Vec::new();
+            self.report.too_large.clear();
+            for doc in self.store.pending_push(usize::MAX)? {
+                if held.contains(&doc.id) || (self.tombstones_only && !doc.deleted) {
+                    continue;
+                }
+                let fields = serde_json::to_string(&doc.fields).map_or(usize::MAX, |s| s.len());
+                if !doc.deleted && fields > crate::wire::MAX_FIELDS_JSON {
+                    self.report.too_large.push(doc.id);
+                    continue;
+                }
+                sizes.push(wire_size(&doc, fields));
+                docs.push(doc);
+            }
+            if docs.is_empty() {
+                break;
+            }
+            let mut again = false;
+            let mut need_pull = false;
+            for range in batches(&sizes, max_docs, max_bytes) {
+                self.check_cancel()?;
+                let batch: Vec<SyncDoc> = docs[range]
+                    .iter()
+                    .filter(|d| !self.tombstones_only || d.deleted)
+                    .cloned()
+                    .collect();
+                let batch = self.upload_files(batch)?;
+                if self.stopped {
+                    break;
+                }
+                if batch.is_empty() {
+                    continue;
+                }
+                let Some((batch, results)) = self.push_batch(batch)? else {
+                    if self.stopped {
+                        break;
+                    }
+                    continue;
+                };
+                for (doc, result) in batch.iter().zip(results) {
+                    match result {
+                        Pushed::Ok => {
+                            self.store
+                                .mark_synced(&doc.id, &doc.rev, Some(&self.guard))
+                                .map_err(guarded)?;
+                            self.report.pushed += 1;
+                        }
+                        Pushed::Conflict(current) => {
+                            again = true;
+                            self.apply(&current)?;
+                        }
+                        Pushed::Lost => {
+                            // The server lost it (M1): push it again with no base.
+                            self.store
+                                .mark_unsynced(&doc.id, Some(&self.guard))
+                                .map_err(guarded)?;
+                            again = true;
+                        }
+                        Pushed::Behind => {
+                            need_pull = true;
+                            again = true;
+                        }
+                        Pushed::Unreadable {
+                            newer_format: true, ..
+                        } => {
+                            self.report.too_new = true;
+                            held.insert(doc.id.clone());
+                        }
+                        Pushed::Unreadable {
+                            wire_rev,
+                            newer_format: false,
+                        } => {
+                            let ours = doc
+                                .base_rev
+                                .as_deref()
+                                .map(|s| self.sealed.wire_rev(&doc.id, s));
+                            if ours.as_deref() == Some(wire_rev.as_str())
+                                && self
+                                    .store
+                                    .bump_revision(&doc.id, Some(&self.guard))
+                                    .map_err(guarded)?
+                                    .is_some()
+                            {
+                                if !self.report.repaired.contains(&doc.id) {
+                                    self.report.repaired.push(doc.id.clone());
+                                }
+                                again = true;
+                            } else {
+                                let wire_id = self.sealed.wire_id(&doc.id);
+                                if !self.report.skipped.contains(&wire_id) {
+                                    self.report.skipped.push(wire_id);
+                                }
+                                held.insert(doc.id.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            if self.stopped || !again {
+                break;
+            }
+            if need_pull {
+                self.pull()?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Pushes one batch, handling a quota (retry with the tombstones only;
+    /// a second 413 stops pushing) and a pause. `None` when nothing was
+    /// pushed.
+    #[allow(clippy::type_complexity)]
+    fn push_batch(
+        &mut self,
+        batch: Vec<SyncDoc>,
+    ) -> Result<Option<(Vec<SyncDoc>, Vec<Pushed>)>, SyncError> {
+        // Right before the request: an upload just before it writes nothing
+        // locally, so no guarded write would have noticed a re-bind.
+        self.check_bound()?;
+        match self.sealed.push(&batch) {
+            Ok(results) => return Ok(Some((batch, results))),
+            Err(ApiError::QuotaExceeded { quota, .. }) => {
+                self.report.quota = Some(quota);
+                if self.tombstones_only {
+                    self.stopped = true;
+                    return Ok(None);
+                }
+                self.tombstones_only = true;
+            }
+            Err(ApiError::RateLimited { retry_after, .. }) => {
+                self.pause(retry_after);
+                return Ok(None);
+            }
+            Err(err) => return Err(err.into()),
+        }
+        let tombstones: Vec<SyncDoc> = batch.into_iter().filter(|d| d.deleted).collect();
+        if tombstones.is_empty() {
+            return Ok(None);
+        }
+        self.check_cancel()?;
+        self.check_bound()?;
+        match self.sealed.push(&tombstones) {
+            Ok(results) => Ok(Some((tombstones, results))),
+            Err(ApiError::QuotaExceeded { quota, .. }) => {
+                self.report.quota = Some(quota);
+                self.stopped = true;
+                Ok(None)
+            }
+            Err(ApiError::RateLimited { retry_after, .. }) => {
+                self.pause(retry_after);
+                Ok(None)
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    /// Uploads the bytes of the live files in `batch`, so they are on the
+    /// server before any device can see the documents. A file whose upload
+    /// hits a quota leaves the batch and stays pending; a 429 stops pushing.
+    fn upload_files(&mut self, batch: Vec<SyncDoc>) -> Result<Vec<SyncDoc>, SyncError> {
+        let mut kept = Vec::with_capacity(batch.len());
+        for doc in batch {
+            if doc.deleted || !is_file_id(&doc.id) {
+                kept.push(doc);
+                continue;
+            }
+            match self.store.attachment(&doc.id)? {
+                Some((_, blob)) => {
+                    self.check_cancel()?;
+                    self.check_bound()?;
+                    match self.sealed.put_file(&doc.id, &blob.data) {
+                        Ok(()) => {
+                            self.report.files_up += 1;
+                            kept.push(doc);
+                        }
+                        Err(ApiError::QuotaExceeded { quota, .. }) => {
+                            self.report.quota = Some(quota);
+                        }
+                        Err(ApiError::RateLimited { retry_after, .. }) => {
+                            self.pause(retry_after);
+                            return Ok(Vec::new());
+                        }
+                        Err(err) => return Err(err.into()),
+                    }
+                }
+                None => {
+                    self.report.files_missing += 1;
+                    kept.push(doc);
+                }
+            }
+        }
+        Ok(kept)
+    }
 }
 
 /// What the sidebar and Settings › Account show for a sync that failed or
@@ -463,10 +1005,13 @@ fn push<R: Remote + ?Sized>(
                         conflicts += 1;
                         apply(store, remote, &current, report)?;
                     }
-                    PushResult::Conflict { current: None, .. } => {
-                        // The server lost it. Under v2 this is `Lost`: the
-                        // engine marks it unsynced and pushes it again with
-                        // no base (step 2b). Today it stays pending.
+                    PushResult::Conflict { current: None, .. }
+                    | PushResult::Lost { .. }
+                    | PushResult::Behind { .. }
+                    | PushResult::Unreadable { .. } => {
+                        // The server lost it (v1 rules keep it pending; the
+                        // v2 engine pushes it again with no base), or a v2
+                        // answer a v1 server never sends.
                         lost.insert(doc.id.clone());
                     }
                 }

@@ -1,33 +1,38 @@
-//! Manual sync runs.
+//! Manual runs against a library's account (docs/ACCOUNTS.md › Command line).
 //!
 //! ```text
-//! kanso-sync --data-dir DIR --endpoint URL [--full]   sync once
-//! kanso-sync check --endpoint URL                     check the endpoint and token
-//! kanso-sync token set                                store a token read from stdin in the Keychain
-//! kanso-sync token delete                             remove it
+//! status   --data-dir DIR                             account, server, device, cursor, pending changes
+//! sync     --data-dir DIR [--full]                    sync once with this library's session
+//! verify   --data-dir DIR [--repair] [--legacy M.json --out R.json]
+//! estimate --data-dir DIR                             charged document and file bytes this library needs
+//! unbind   --data-dir DIR                             sign out locally and reset bookkeeping for the old app
 //! ```
 //!
-//! The token comes from `KANSO_SYNC_TOKEN` or, failing that, the Keychain.
+//! Each command takes the data-directory lock, so quit Kanso first. `sync`
+//! and `verify` read the library's `sync-account` item from the Keychain
+//! (macOS asks once); `unbind` deletes it.
 
-// no-prop-test: argument plumbing around `sync_once`, which has its own tests.
-
-use std::io::Read as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, anyhow, bail};
 use kanso_store::Store;
-use kanso_sync::{HttpRemote, Remote, SyncConfig, credentials, reset_cursor, sync_once};
+use kanso_sync::{
+    DeviceIdentity, HttpBackend, Keychain, Session, SyncOptions, keychain, meta_keys, problem,
+    report_problem,
+};
 
 const USAGE: &str = "usage:
-  kanso-sync --data-dir DIR --endpoint URL [--full]
-  kanso-sync check --endpoint URL
-  kanso-sync token set        (reads the token from stdin)
-  kanso-sync token delete";
+  kanso-sync status   --data-dir DIR
+  kanso-sync sync     --data-dir DIR [--full]
+  kanso-sync verify   --data-dir DIR [--repair] [--legacy M.json --out R.json]
+  kanso-sync estimate --data-dir DIR
+  kanso-sync unbind   --data-dir DIR";
 
 fn main() -> ExitCode {
-    match run(std::env::args().skip(1).collect()) {
-        Ok(()) => ExitCode::SUCCESS,
+    match parse(&std::env::args().skip(1).collect::<Vec<_>>()).and_then(run) {
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::FAILURE,
         Err(err) => {
             eprintln!("kanso-sync: {err:#}");
             ExitCode::FAILURE
@@ -35,98 +40,310 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(args: Vec<String>) -> Result<()> {
-    match args.first().map(String::as_str) {
-        Some("token") => match args.get(1).map(String::as_str) {
-            Some("set") => {
-                let mut token = String::new();
-                std::io::stdin().read_to_string(&mut token)?;
-                let token = token.trim();
-                if token.is_empty() {
-                    bail!("no token on stdin");
-                }
-                credentials::save_token(token)?;
-                println!("Saved the sync token in the Keychain.");
-                Ok(())
-            }
-            Some("delete") => {
-                credentials::delete_token()?;
-                println!("Removed the sync token from the Keychain.");
-                Ok(())
-            }
-            _ => bail!("{USAGE}"),
-        },
-        Some("check") => {
-            let flags = Flags::parse(&args[1..])?;
-            let remote = remote(&flags)?;
-            remote.health().context("health check")?;
-            remote.changes(0, 1).context("authenticated request")?;
-            println!("{} is reachable and accepts the token.", remote.endpoint());
-            Ok(())
-        }
-        Some("-h" | "--help") | None => {
-            println!("{USAGE}");
-            Ok(())
-        }
-        Some(_) => {
-            let flags = Flags::parse(&args)?;
-            let data_dir = flags
-                .data_dir
-                .clone()
-                .ok_or_else(|| anyhow!("--data-dir is required\n{USAGE}"))?;
-            let remote = remote(&flags)?;
-            let _lock = kanso_store::lock_data_dir(&data_dir)?
-                .ok_or_else(|| anyhow!("{} is in use by Kanso", data_dir.display()))?;
-            let store = Store::open(data_dir.join("kanso.db"))?;
-            if flags.full {
-                reset_cursor(&store)?;
-            }
-            let report = sync_once(&store, &remote)?;
-            println!("{report:#?}");
-            Ok(())
-        }
-    }
+/// A parsed command line.
+#[derive(Debug, PartialEq, Eq)]
+enum Command {
+    Help,
+    Status {
+        data_dir: PathBuf,
+    },
+    Sync {
+        data_dir: PathBuf,
+        full: bool,
+    },
+    Verify {
+        data_dir: PathBuf,
+        repair: bool,
+        legacy: Option<(PathBuf, PathBuf)>,
+    },
+    Estimate {
+        data_dir: PathBuf,
+    },
+    Unbind {
+        data_dir: PathBuf,
+    },
 }
 
-#[derive(Default)]
-struct Flags {
-    data_dir: Option<PathBuf>,
-    endpoint: Option<String>,
-    full: bool,
-}
-
-impl Flags {
-    fn parse(args: &[String]) -> Result<Flags> {
-        let mut flags = Flags::default();
-        let mut iter = args.iter();
-        while let Some(arg) = iter.next() {
-            match arg.as_str() {
-                "--data-dir" => {
-                    flags.data_dir = Some(iter.next().context("--data-dir needs a value")?.into())
-                }
-                "--endpoint" => {
-                    flags.endpoint = Some(iter.next().context("--endpoint needs a value")?.clone())
-                }
-                "--full" => flags.full = true,
-                other => bail!("unknown argument {other}\n{USAGE}"),
-            }
-        }
-        Ok(flags)
-    }
-}
-
-fn remote(flags: &Flags) -> Result<HttpRemote> {
-    let endpoint = flags
-        .endpoint
-        .as_deref()
-        .ok_or_else(|| anyhow!("--endpoint is required\n{USAGE}"))?;
-    let token = match std::env::var("KANSO_SYNC_TOKEN") {
-        Ok(token) if !token.trim().is_empty() => token.trim().to_owned(),
-        _ => credentials::load_token()?.ok_or_else(|| {
-            anyhow!("no sync token: set KANSO_SYNC_TOKEN or run `kanso-sync token set`")
-        })?,
+fn parse(args: &[String]) -> Result<Command> {
+    let Some(command) = args.first() else {
+        return Ok(Command::Help);
     };
-    Ok(SyncConfig::new(endpoint)
-        .map_err(|err| anyhow!("--endpoint: {err}"))?
-        .remote(token))
+    if matches!(command.as_str(), "-h" | "--help" | "help") {
+        return Ok(Command::Help);
+    }
+    let mut data_dir = None;
+    let (mut full, mut repair) = (false, false);
+    let (mut legacy, mut out) = (None, None);
+    let mut rest = args[1..].iter();
+    while let Some(arg) = rest.next() {
+        let mut value = |name: &str| -> Result<PathBuf> {
+            Ok(rest
+                .next()
+                .with_context(|| format!("{name} needs a value"))?
+                .into())
+        };
+        match arg.as_str() {
+            "--data-dir" => data_dir = Some(value("--data-dir")?),
+            "--full" if command == "sync" => full = true,
+            "--repair" if command == "verify" => repair = true,
+            "--legacy" if command == "verify" => legacy = Some(value("--legacy")?),
+            "--out" if command == "verify" => out = Some(value("--out")?),
+            other => bail!("unknown argument {other}\n{USAGE}"),
+        }
+    }
+    let data_dir = data_dir.ok_or_else(|| anyhow!("--data-dir is required\n{USAGE}"))?;
+    Ok(match command.as_str() {
+        "status" => Command::Status { data_dir },
+        "sync" => Command::Sync { data_dir, full },
+        "verify" => {
+            let legacy = match (legacy, out) {
+                (Some(manifest), Some(out)) => Some((manifest, out)),
+                (None, None) => None,
+                _ => bail!("--legacy and --out go together\n{USAGE}"),
+            };
+            Command::Verify {
+                data_dir,
+                repair,
+                legacy,
+            }
+        }
+        "estimate" => Command::Estimate { data_dir },
+        "unbind" => Command::Unbind { data_dir },
+        other => bail!("unknown command {other}\n{USAGE}"),
+    })
+}
+
+/// Runs a command; `Ok(false)` exits 1 without an error message.
+fn run(command: Command) -> Result<bool> {
+    match command {
+        Command::Help => {
+            println!("{USAGE}");
+            Ok(true)
+        }
+        Command::Status { data_dir } => {
+            let (_lock, store) = open(&data_dir)?;
+            status(&store)?;
+            Ok(true)
+        }
+        Command::Sync { data_dir, full } => {
+            let (_lock, store) = open(&data_dir)?;
+            let session = session(&store)?;
+            if full {
+                let pairs = kanso_sync::binding::guard_pairs(&session);
+                store.set_meta_if(
+                    meta_keys::LAST_SEQ,
+                    "0",
+                    &kanso_sync::binding::guard(&pairs),
+                )?;
+            }
+            match kanso_sync::sync(&store, &HttpBackend, &session, &SyncOptions::default()) {
+                Ok(report) => {
+                    println!("{report:#?}");
+                    if let Some(problem) = report_problem(&report) {
+                        println!("problem: {problem:?}");
+                    }
+                    Ok(true)
+                }
+                Err(err) => {
+                    let problem = problem(&err);
+                    Err(anyhow!(err)).with_context(|| format!("sync failed ({problem:?})"))
+                }
+            }
+        }
+        Command::Verify {
+            data_dir,
+            repair,
+            legacy,
+        } => {
+            let (_lock, store) = open(&data_dir)?;
+            let session = session(&store)?;
+            let manifest = legacy.as_ref().map(|(manifest, _)| manifest.as_path());
+            let report = kanso_sync::verify(&store, &HttpBackend, &session, manifest, repair)?;
+            println!("matched        {}", report.matched);
+            println!("missing        {}", report.missing);
+            println!("extra          {}", report.extra);
+            println!("different      {}", report.different);
+            println!("undecryptable  {}", report.undecryptable);
+            println!("still pending  {}", report.pending);
+            if repair {
+                println!("repaired       {}", report.repaired);
+            }
+            if let (Some(result), Some((_, out))) = (&report.legacy, &legacy) {
+                println!(
+                    "legacy rows    {} checked, {} failed (manifest {})",
+                    result.rows,
+                    result.failed.len(),
+                    result.manifest_sha256
+                );
+                std::fs::write(out, serde_json::to_vec_pretty(result)?)
+                    .with_context(|| format!("writing {}", out.display()))?;
+            }
+            Ok(report.ok())
+        }
+        Command::Estimate { data_dir } => {
+            let (_lock, store) = open(&data_dir)?;
+            let estimate = kanso_sync::estimate(&store)?;
+            println!(
+                "documents   {} ({} charged)",
+                estimate.docs,
+                megabytes(estimate.doc_bytes)
+            );
+            println!(
+                "files       {} ({} charged)",
+                estimate.files,
+                megabytes(estimate.file_bytes)
+            );
+            Ok(true)
+        }
+        Command::Unbind { data_dir } => {
+            let (_lock, store) = open(&data_dir)?;
+            kanso_sync::unbind(&store, &Keychain)?;
+            println!(
+                "Unbound {}: signed out locally, live documents will go to the old server again, and its cursor is 0.",
+                data_dir.display()
+            );
+            Ok(true)
+        }
+    }
+}
+
+/// Takes the data-directory lock and opens the library.
+fn open(data_dir: &Path) -> Result<(kanso_store::DataDirLock, Store)> {
+    if !data_dir.join("kanso.db").exists() {
+        bail!("{} has no kanso.db", data_dir.display());
+    }
+    let lock = kanso_store::lock_data_dir(data_dir)?
+        .ok_or_else(|| anyhow!("{} is in use by Kanso; quit it first", data_dir.display()))?;
+    let store = Store::open(data_dir.join("kanso.db"))?;
+    Ok((lock, store))
+}
+
+/// The library's binding: (library ID, origin, account ID).
+fn binding(store: &Store) -> Result<Option<(String, String, String)>> {
+    Ok(
+        match (
+            store.meta(meta_keys::LIBRARY_ID)?,
+            store.meta(meta_keys::ORIGIN)?,
+            store.meta(meta_keys::ACCOUNT_ID)?,
+        ) {
+            (Some(library), Some(origin), Some(account)) => Some((library, origin, account)),
+            _ => None,
+        },
+    )
+}
+
+/// The library's session from the Keychain.
+fn session(store: &Store) -> Result<Session> {
+    let (library, origin, account) =
+        binding(store)?.ok_or_else(|| anyhow!("this library isn't bound to an account"))?;
+    keychain::load_session(&Keychain, &library, &origin, &account)?
+        .ok_or_else(|| anyhow!("this library is signed out; sign in from Kanso first"))
+}
+
+fn status(store: &Store) -> Result<()> {
+    let pending = store.pending_count()?;
+    let Some((library, origin, account)) = binding(store)? else {
+        println!("account   none (not signed in)");
+        println!("pending   {pending} changes");
+        return Ok(());
+    };
+    let meta = |key: &str| -> Result<String> { Ok(store.meta(key)?.unwrap_or_else(|| "-".into())) };
+    println!("account   {} ({account})", meta(meta_keys::USERNAME)?);
+    println!("server    {} ({origin})", meta(meta_keys::SERVER)?);
+    if let Some(secret) = store
+        .meta(meta_keys::DEVICE_SECRET)?
+        .and_then(|hex| parse_hex32(&hex))
+    {
+        let device = DeviceIdentity::from_parts(&library, "", secret);
+        println!("device    {}", device.device_id(&account));
+    }
+    println!("library   {library}");
+    println!("cursor    {}", meta(meta_keys::LAST_SEQ)?);
+    println!("epoch     {}", meta(meta_keys::EPOCH)?);
+    println!("pending   {pending} changes not on the server");
+    Ok(())
+}
+
+fn parse_hex32(hex: &str) -> Option<[u8; 32]> {
+    if hex.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, byte) in out.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(hex.get(2 * i..2 * i + 2)?, 16).ok()?;
+    }
+    Some(out)
+}
+
+fn megabytes(bytes: u64) -> String {
+    format!("{:.1} MB", bytes as f64 / 1_000_000.0)
+}
+
+#[cfg(test)]
+mod tests {
+    // no-prop-test: argument plumbing; the commands' bodies are tested in
+    // the library (sync, verify, estimate, unbind). Nothing here touches the
+    // Keychain.
+    use super::*;
+
+    fn args(line: &str) -> Vec<String> {
+        line.split_whitespace().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn commands_parse() {
+        assert_eq!(parse(&[]).unwrap(), Command::Help);
+        assert_eq!(
+            parse(&args("sync --data-dir /d --full")).unwrap(),
+            Command::Sync {
+                data_dir: "/d".into(),
+                full: true
+            }
+        );
+        assert_eq!(
+            parse(&args(
+                "verify --data-dir /d --repair --legacy m.json --out r.json"
+            ))
+            .unwrap(),
+            Command::Verify {
+                data_dir: "/d".into(),
+                repair: true,
+                legacy: Some(("m.json".into(), "r.json".into()))
+            }
+        );
+        assert_eq!(
+            parse(&args("estimate --data-dir /d")).unwrap(),
+            Command::Estimate {
+                data_dir: "/d".into()
+            }
+        );
+        assert_eq!(
+            parse(&args("unbind --data-dir /d")).unwrap(),
+            Command::Unbind {
+                data_dir: "/d".into()
+            }
+        );
+        assert_eq!(
+            parse(&args("status --data-dir /d")).unwrap(),
+            Command::Status {
+                data_dir: "/d".into()
+            }
+        );
+    }
+
+    #[test]
+    fn bad_command_lines_are_refused() {
+        assert!(parse(&args("sync")).is_err());
+        assert!(parse(&args("status --data-dir /d --full")).is_err());
+        assert!(parse(&args("verify --data-dir /d --legacy m.json")).is_err());
+        assert!(parse(&args("frobnicate --data-dir /d")).is_err());
+        assert!(parse(&args("sync --data-dir")).is_err());
+    }
+
+    #[test]
+    fn hex_secrets_parse() {
+        assert_eq!(parse_hex32(&"ab".repeat(32)), Some([0xab; 32]));
+        assert_eq!(parse_hex32("ab"), None);
+        assert_eq!(parse_hex32(&"zz".repeat(32)), None);
+    }
 }

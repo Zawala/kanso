@@ -112,6 +112,31 @@ impl Store {
         })
     }
 
+    /// Every document, tombstones included, in `seq` order, with `base_rev`
+    /// set to its `synced_rev`. `kanso-sync verify` and `estimate` read the
+    /// whole library with it, and the engine maps wire IDs back to local
+    /// ones when it meets an undecryptable server copy (M3).
+    pub fn sync_docs(&self) -> Result<Vec<SyncDoc>> {
+        self.read(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT id, rev, deleted, json, synced_rev FROM docs ORDER BY seq")?;
+            let rows = stmt.query_map([], |row| {
+                let json: String = row.get(3)?;
+                Ok(SyncDoc {
+                    id: row.get(0)?,
+                    rev: row.get(1)?,
+                    deleted: row.get(2)?,
+                    fields: match serde_json::from_str(&json) {
+                        Ok(Value::Object(map)) => map,
+                        _ => Map::new(),
+                    },
+                    base_rev: row.get(4)?,
+                })
+            })?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })
+    }
+
     /// The number of documents with changes that never reached any server:
     /// the length of [`Store::pending_push`]. `binding::local_library` reports
     /// it as `unsynced`.

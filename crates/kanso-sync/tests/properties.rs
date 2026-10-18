@@ -1,27 +1,32 @@
-//! Property tests for sync. CI pins the seed with `PROPTEST_RNG_SEED`.
+//! Property tests for sync over sealed accounts on a `MemoryServer`
+//! (docs/ACCOUNTS.md › Tests). CI pins the seed with `PROPTEST_RNG_SEED`.
 //!
-//! - prop_stores_converge_and_no_edit_is_lost (model-based): three stores and
-//!   one server under random interleavings of local writes and syncs.
+//! - prop_stores_converge_and_no_edit_is_lost (model-based): three Macs of
+//!   one account under random interleavings of local writes and syncs. Also
+//!   checks M2 over these multi-Mac histories: every revision the server
+//!   accepts for a document has a higher generation than the one it
+//!   replaces, and an honest history never produces a stale document.
 //! - prop_syncing_a_synced_store_changes_nothing (idempotence).
-//! - prop_memory_remote_follows_the_acceptance_model (model-based), the same
-//!   property the Worker's tests check (cloud/test/properties.test.ts).
-//! - prop_batches_cover_the_input_greedily_within_limits (invariant).
+//! - prop_a_hostile_server_never_changes_local_data_wrongly: a server that
+//!   flips bits, swaps sealed values between documents and accounts, forges
+//!   tombstones, relabels revisions, replays old versions, rewinds, changes
+//!   the epoch, answers `current: null`, sends unknown formats and another
+//!   key ID.
 
 mod common;
 
-use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Mutex;
 
+use base64::Engine as _;
 use common::*;
 use kanso_core::DocType;
-use kanso_store::{Change, Origin, Store, StoreError, SyncDoc};
-use kanso_sync::{
-    ChangesPage, MemoryRemote, PushResult, Remote, RemoteError, RemoteFile, SyncReport, batches,
-    sync_once,
-};
+use kanso_store::{Change, Origin, Store, StoreError};
+use kanso_sync::wire::{WireChange, WirePushResult};
+use kanso_sync::{MemoryServer, Route, SyncError, SyncReport, meta_keys};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
-use serde_json::{Value, json};
+use serde_json::json;
 
 fn config(cases: u32) -> ProptestConfig {
     ProptestConfig {
@@ -30,6 +35,8 @@ fn config(cases: u32) -> ProptestConfig {
         ..ProptestConfig::default()
     }
 }
+
+const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
 const WORDS: [&str; 6] = [
     "alpha",
@@ -41,9 +48,17 @@ const WORDS: [&str; 6] = [
 ];
 const NAMES: [&str; 4] = ["Inbox", "Work", "Ideas", "Archive"];
 
-/// One step of a scenario. `s` picks a store; `pick` picks one of that store's
-/// live documents of the kind (modulo their count), so steps stay meaningful
-/// as the scenario shrinks.
+fn generation(rev: &str) -> u64 {
+    rev.parse::<kanso_core::Rev>().unwrap().generation
+}
+
+fn hash(rev: &str) -> String {
+    rev.parse::<kanso_core::Rev>().unwrap().hash
+}
+
+/// One step of a scenario. `s` picks a Mac; `pick` picks one of that Mac's
+/// live documents of the kind (modulo their count), so steps stay
+/// meaningful as the scenario shrinks.
 #[derive(Clone, Debug)]
 enum Op {
     CreateBook {
@@ -135,19 +150,22 @@ fn gen_op(stores: usize) -> impl Strategy<Value = Op> {
     ]
 }
 
-/// A local write a store made: which store, document, revision, tombstone.
+/// A local write a Mac made: which Mac, document, revision, tombstone.
 type Version = (usize, String, String, bool);
+/// A document version: id, revision, tombstone.
+type Seen = (String, String, bool);
 
 struct World {
-    _dirs: Vec<tempfile::TempDir>,
-    stores: Vec<Store>,
+    server: MemoryServer,
+    macs: Vec<Mac>,
     feeds: Vec<async_channel::Receiver<Change>>,
-    remote: MemoryRemote,
     next_id: usize,
     clock: i64,
     local: Vec<Version>,
-    /// Per store, every version the server handed it.
+    /// Per Mac, every version the server handed it.
     seen: Vec<Vec<Seen>>,
+    /// The latest server revision of each document, to check M2.
+    accepted: BTreeMap<String, String>,
 }
 
 fn live_ids(store: &Store, prefix: &str) -> Vec<String> {
@@ -162,91 +180,35 @@ fn choose(ids: &[String], pick: usize) -> Option<String> {
     (!ids.is_empty()).then(|| ids[pick % ids.len()].clone())
 }
 
-/// A document version: id, revision, tombstone.
-type Seen = (String, String, bool);
-
-/// Passes calls through to the server, noting every version it hands out
-/// (change-feed documents and the server's side of conflicts).
-struct Recording<'a> {
-    inner: &'a MemoryRemote,
-    seen: RefCell<Vec<Seen>>,
-}
-
-impl Remote for Recording<'_> {
-    fn push(&self, docs: &[SyncDoc]) -> Result<Vec<PushResult>, RemoteError> {
-        let results = self.inner.push(docs)?;
-        for result in &results {
-            if let PushResult::Conflict {
-                current: Some(c), ..
-            } = result
-            {
-                self.seen
-                    .borrow_mut()
-                    .push((c.id.clone(), c.rev.clone(), c.deleted));
-            }
-        }
-        Ok(results)
-    }
-    fn changes(&self, since: i64, limit: usize) -> Result<ChangesPage, RemoteError> {
-        let page = self.inner.changes(since, limit)?;
-        for d in &page.docs {
-            self.seen
-                .borrow_mut()
-                .push((d.id.clone(), d.rev.clone(), d.deleted));
-        }
-        Ok(page)
-    }
-    fn put_file(&self, id: &str, md5: &str, ct: &str, bytes: &[u8]) -> Result<(), RemoteError> {
-        self.inner.put_file(id, md5, ct, bytes)
-    }
-    fn get_file(&self, id: &str) -> Result<Option<RemoteFile>, RemoteError> {
-        self.inner.get_file(id)
-    }
-}
-
-/// Syncs a store, adding what the server handed it to `seen`. A sync must
-/// never fail or leave anything it could not handle.
-fn sync_cleanly(store: &Store, remote: &MemoryRemote, seen: &mut Vec<Seen>) -> SyncReport {
-    let recording = Recording {
-        inner: remote,
-        seen: RefCell::default(),
-    };
-    let report = sync_once(store, &recording).expect("sync");
-    seen.extend(recording.seen.into_inner());
-    assert!(report.invalid.is_empty(), "invalid: {:?}", report.invalid);
-    assert!(report.too_large.is_empty());
-    assert_eq!(report.files_missing, 0, "a live file without bytes");
-    report
+fn id_or_trash(id: Option<String>) -> String {
+    id.unwrap_or_else(|| "trash".to_owned())
 }
 
 impl World {
     fn new(stores: usize) -> World {
-        let mut dirs = Vec::new();
-        let mut opened = Vec::new();
-        let mut feeds = Vec::new();
-        for _ in 0..stores {
-            let (dir, store) = temp_store();
-            feeds.push(store.subscribe());
-            dirs.push(dir);
-            opened.push(store);
+        let server = MemoryServer::new();
+        let mut macs = vec![Mac::new(sign_up(&server, "alice", 1))];
+        for n in 1..stores {
+            macs.push(Mac::new(sign_in(&server, "alice", n as u8 + 1)));
         }
+        let feeds = macs.iter().map(|m| m.store.subscribe()).collect();
         World {
-            _dirs: dirs,
-            stores: opened,
+            server,
+            macs,
             feeds,
-            remote: MemoryRemote::new(),
             next_id: 0,
             clock: 0,
             local: Vec::new(),
             seen: vec![Vec::new(); stores],
+            accepted: BTreeMap::new(),
         }
     }
 
-    /// A world whose stores already share a few documents, so random edits
-    /// on different stores often hit the same document.
+    /// A world whose Macs already share a few documents, so random edits on
+    /// different Macs often hit the same document.
     fn seeded(stores: usize) -> World {
         let mut world = World::new(stores);
-        let first = &world.stores[0];
+        let first = &world.macs[0].store;
         put(
             first,
             DocType::Book,
@@ -279,7 +241,7 @@ impl World {
         )
         .unwrap();
         world.run(&Op::Sync { s: 0 });
-        for s in 1..stores {
+        for s in 0..stores {
             world.run(&Op::Sync { s });
         }
         world
@@ -293,8 +255,7 @@ impl World {
     fn run(&mut self, op: &Op) {
         self.clock += 1;
         let now = 1_000_000 + self.clock;
-        let result = self.write(op, now);
-        match result {
+        match self.write(op, now) {
             Ok(()) | Err(StoreError::Invalid(_) | StoreError::Conflict | StoreError::NotFound) => {}
             Err(err) => panic!("{op:?}: {err}"),
         }
@@ -307,16 +268,56 @@ impl World {
         }
     }
 
+    /// Syncs Mac `s` and checks what an honest sync must never report.
+    fn sync(&mut self, s: usize) -> SyncReport {
+        let view = self.server.plain_view(&self.macs[s].session);
+        let before = view.docs();
+        let cursor = self.macs[s].cursor();
+        let report = self.macs[s].sync(&self.server);
+        assert!(report.invalid.is_empty(), "invalid: {:?}", report.invalid);
+        assert!(report.too_large.is_empty());
+        assert_eq!(report.files_missing, 0, "a live file without bytes");
+        assert!(
+            report.stale.is_empty(),
+            "M2: an honest history is never stale: {:?}",
+            report.stale
+        );
+        assert!(report.skipped.is_empty() && report.repaired.is_empty());
+        assert!(!report.too_new && !report.remerged);
+        assert_eq!((report.quota, report.paused_until), (None, None));
+        for doc in &before {
+            if doc.seq > cursor || report.conflicted.contains(&doc.id) {
+                self.seen[s].push((doc.id.clone(), doc.rev.clone(), doc.deleted));
+            }
+        }
+        // M2: each accepted revision has a higher generation than the one
+        // it replaced.
+        for doc in view.docs() {
+            if let Some(old) = self.accepted.get(&doc.id)
+                && *old != doc.rev
+            {
+                assert!(
+                    generation(&doc.rev) > generation(old),
+                    "{} went from {old} to {}",
+                    doc.id,
+                    doc.rev
+                );
+            }
+            self.accepted.insert(doc.id, doc.rev);
+        }
+        report
+    }
+
     fn write(&mut self, op: &Op, now: i64) -> Result<(), StoreError> {
         let id = |world: &World, s: usize, prefix: &str, pick: usize| {
-            choose(&live_ids(&world.stores[s], prefix), pick)
+            choose(&live_ids(&world.macs[s].store, prefix), pick)
         };
         match op.clone() {
             Op::CreateBook { s } => {
                 let id = self.fresh("book:b");
                 let name = NAMES[self.next_id % NAMES.len()];
                 put(
-                    &self.stores[s],
+                    &self.macs[s].store,
                     DocType::Book,
                     json!({"_id": id, "name": name, "createdAt": now, "updatedAt": now}),
                 )?;
@@ -324,7 +325,7 @@ impl World {
             Op::RenameBook { s, pick, name } => {
                 if let Some(id) = id(self, s, "book:", pick) {
                     merge(
-                        &self.stores[s],
+                        &self.macs[s].store,
                         DocType::Book,
                         json!({"_id": id, "name": NAMES[name], "updatedAt": now}),
                     )?;
@@ -341,27 +342,28 @@ impl World {
                     _ => "file:",
                 };
                 if let Some(id) = id(self, s, prefix, pick) {
-                    self.stores[s].delete(&id, Origin::Api)?;
+                    self.macs[s].store.delete(&id, Origin::Api)?;
                 }
             }
             Op::CreateTag { s } => {
                 let id = self.fresh("tag:t");
                 let name = format!("tag{}", self.next_id);
                 put(
-                    &self.stores[s],
+                    &self.macs[s].store,
                     DocType::Tag,
                     json!({"_id": id, "name": name, "createdAt": now, "updatedAt": now}),
                 )?;
             }
             Op::CreateNote { s, book, tag, word } => {
                 let id = self.fresh("note:n");
-                let book = id_or_trash(choose(&live_ids(&self.stores[s], "book:"), book));
+                let store = &self.macs[s].store;
+                let book = id_or_trash(choose(&live_ids(store, "book:"), book));
                 let tags: Vec<String> = tag
-                    .and_then(|t| choose(&live_ids(&self.stores[s], "tag:"), t))
+                    .and_then(|t| choose(&live_ids(store, "tag:"), t))
                     .into_iter()
                     .collect();
                 put(
-                    &self.stores[s],
+                    store,
                     DocType::Note,
                     json!({"_id": id, "bookId": book, "tags": tags, "title": WORDS[word],
                            "body": format!("{} {now}", WORDS[word]), "createdAt": now, "updatedAt": now}),
@@ -374,12 +376,13 @@ impl World {
                 bump,
             } => {
                 if let Some(id) = id(self, s, "note:", pick) {
-                    let mut doc = self.stores[s].get_api(&id, None, false)?;
+                    let store = &self.macs[s].store;
+                    let mut doc = store.get_api(&id, None, false)?;
                     doc["body"] = format!("{} {now}", WORDS[word]).into();
                     if bump {
                         doc["updatedAt"] = now.into();
                     }
-                    put(&self.stores[s], DocType::Note, doc)?;
+                    put(store, DocType::Note, doc)?;
                 }
             }
             Op::TagNote { s, pick, tag } => {
@@ -387,7 +390,7 @@ impl World {
                 let tag = id(self, s, "tag:", tag);
                 if let (Some(note), Some(tag)) = (note, tag) {
                     merge(
-                        &self.stores[s],
+                        &self.macs[s].store,
                         DocType::Note,
                         json!({"_id": note, "tags": [tag]}),
                     )?;
@@ -396,7 +399,7 @@ impl World {
             Op::CreateFile { s, bytes } => {
                 let id = self.fresh("file:f");
                 put(
-                    &self.stores[s],
+                    &self.macs[s].store,
                     DocType::File,
                     file_body(&id, "f.png", &bytes),
                 )?;
@@ -404,7 +407,7 @@ impl World {
             Op::RenameFile { s, pick, name } => {
                 if let Some(id) = id(self, s, "file:", pick) {
                     merge(
-                        &self.stores[s],
+                        &self.macs[s].store,
                         DocType::File,
                         json!({"_id": id, "name": format!("{}.png", NAMES[name])}),
                     )?;
@@ -412,29 +415,18 @@ impl World {
             }
             Op::ReplaceFile { s, pick, bytes } => {
                 if let Some(id) = id(self, s, "file:", pick) {
-                    let mut doc = self.stores[s].get_api(&id, None, false)?;
+                    let store = &self.macs[s].store;
+                    let mut doc = store.get_api(&id, None, false)?;
                     doc["_attachments"] = file_body(&id, "f.png", &bytes)["_attachments"].clone();
-                    put(&self.stores[s], DocType::File, doc)?;
+                    put(store, DocType::File, doc)?;
                 }
             }
             Op::Sync { s } => {
-                sync_cleanly(&self.stores[s], &self.remote, &mut self.seen[s]);
+                self.sync(s);
             }
         }
         Ok(())
     }
-}
-
-fn id_or_trash(id: Option<String>) -> String {
-    id.unwrap_or_else(|| "trash".to_owned())
-}
-
-fn server_docs(remote: &MemoryRemote) -> BTreeMap<String, (String, bool)> {
-    remote
-        .docs()
-        .into_iter()
-        .map(|d| (d.id, (d.rev, d.deleted)))
-        .collect()
 }
 
 proptest! {
@@ -446,76 +438,66 @@ proptest! {
         for op in &ops {
             world.run(op);
         }
-        // Final round: every store syncs twice.
+        // Final round: every Mac syncs twice.
         for _ in 0..2 {
-            for s in 0..world.stores.len() {
+            for s in 0..world.macs.len() {
                 world.run(&Op::Sync { s });
             }
         }
-        let stores = &world.stores;
-        let server = server_docs(&world.remote);
+        let session = &world.macs[0].session;
+        let server = server_docs(&world.server, session);
+        let view = world.server.plain_view(session);
+        prop_assert_eq!(view.unreadable(), 0);
 
-        for (s, store) in stores.iter().enumerate() {
-            prop_assert_eq!(pending(store), 0, "store {} has pending pushes", s);
-            // Same documents, revisions and tombstones as the server.
-            prop_assert_eq!(&all_docs(store), &server, "store {} differs from the server", s);
+        for (s, mac) in world.macs.iter().enumerate() {
+            prop_assert_eq!(pending(&mac.store), 0, "Mac {} has pending pushes", s);
+            prop_assert_eq!(&all_docs(&mac.store), &server, "Mac {} differs from the server", s);
         }
-        // Same fields everywhere, equal to what the server holds.
-        let server_fields: BTreeMap<String, _> = world
-            .remote
-            .docs()
-            .into_iter()
-            .filter(|d| !d.deleted)
-            .map(|d| (d.id, (d.rev, d.fields)))
-            .collect();
-        for store in stores {
-            prop_assert_eq!(&live_docs(store), &server_fields);
+        let server_fields = server_live(&world.server, session);
+        for mac in &world.macs {
+            prop_assert_eq!(&live_docs(&mac.store), &server_fields);
         }
-        // Same attachment bytes everywhere, and on the server.
+        // Same attachment bytes everywhere, and on the server, sealed.
         for id in server_fields.keys().filter(|id| id.starts_with("file:")) {
-            let first = stores[0].attachment(id).unwrap();
+            let first = world.macs[0].store.attachment(id).unwrap();
             prop_assert!(first.is_some(), "{} has no bytes", id);
             let (content_type, blob) = first.unwrap();
-            for store in &stores[1..] {
-                let other = store.attachment(id).unwrap().unwrap();
+            for mac in &world.macs[1..] {
+                let other = mac.store.attachment(id).unwrap().unwrap();
                 prop_assert_eq!(&other.0, &content_type);
                 prop_assert_eq!(&other.1.data, &blob.data);
             }
-            prop_assert_eq!(world.remote.file(id).map(|f| f.md5_hex), Some(blob.md5_hex()));
+            prop_assert_eq!(view.file(id), Some(blob.data.clone()));
         }
         for (id, (_, deleted)) in &server {
             if *deleted && id.starts_with("file:") {
-                prop_assert!(world.remote.file(id).is_none(), "{} kept its bytes", id);
+                prop_assert!(view.file(id).is_none(), "{} kept its bytes", id);
             }
         }
-        // No edit is lost: every version a store wrote or was handed by the
-        // server (including the losing side of each conflict it resolved) is
-        // still its current version or in its revision history.
-        for (s, store) in stores.iter().enumerate() {
-            let wrote = world
-                .local
-                .iter()
-                .filter(|v| v.0 == s)
-                .map(|(_, id, rev, deleted)| (id, rev, *deleted));
+        // No edit is lost: every version a Mac wrote or was handed by the
+        // server (including the losing side of each conflict it resolved)
+        // is still its current version or in its revision history. A
+        // rebased revision (M2) keeps the content hash.
+        for (s, mac) in world.macs.iter().enumerate() {
+            let wrote = world.local.iter().filter(|v| v.0 == s).map(|(_, id, rev, deleted)| (id, rev, *deleted));
             let received = world.seen[s].iter().map(|(id, rev, deleted)| (id, rev, *deleted));
             for (id, rev, deleted) in wrote.chain(received) {
                 if deleted {
                     continue;
                 }
-                let current = store.get(id).unwrap().map(|d| d.rev);
-                prop_assert!(
-                    current.as_deref() == Some(rev.as_str()) || has_revision(store, id, rev),
-                    "store {} lost {} {}", s, id, rev
-                );
+                let current = mac.store.get(id).unwrap().map(|d| hash(&d.rev));
+                let kept = mac.store.revisions(id).unwrap().iter().any(|r| hash(&r.rev) == hash(rev));
+                prop_assert!(current.as_deref() == Some(hash(rev).as_str()) || kept, "Mac {} lost {} {}", s, id, rev);
             }
         }
-        // Sync never invents revisions: each final one was written by a store.
-        let written: BTreeSet<(&str, &str)> =
-            world.local.iter().map(|(_, id, rev, _)| (id.as_str(), rev.as_str())).collect();
+        // Sync never invents content: each final revision's hash was written
+        // by a Mac.
+        let written: BTreeSet<(&str, String)> =
+            world.local.iter().map(|(_, id, rev, _)| (id.as_str(), hash(rev))).collect();
         for (id, (rev, _)) in &server {
-            prop_assert!(written.contains(&(id.as_str(), rev.as_str())), "{} {} came from nowhere", id, rev);
+            prop_assert!(written.contains(&(id.as_str(), hash(rev))), "{} {} came from nowhere", id, rev);
         }
-        // A document only one store ever wrote ends at that store's last
+        // A document only one Mac ever wrote ends at that Mac's last
         // version: with no concurrent edit there is nothing to lose to.
         let mut writers: BTreeMap<&str, (BTreeSet<usize>, &str)> = BTreeMap::new();
         for (s, id, rev, _) in &world.local {
@@ -523,17 +505,18 @@ proptest! {
             entry.0.insert(*s);
             entry.1 = rev.as_str();
         }
-        for (id, (stores_that_wrote, last)) in &writers {
-            if stores_that_wrote.len() == 1 {
+        for (id, (macs_that_wrote, last)) in &writers {
+            if macs_that_wrote.len() == 1 {
                 prop_assert_eq!(server[*id].0.as_str(), *last, "single-writer {} was reverted", id);
             }
         }
-        // And one more sync on a converged store does nothing.
-        let (seq, pushes) = (world.remote.last_seq(), world.remote.stats().pushes);
-        for store in stores {
-            prop_assert_eq!(sync_once(store, &world.remote).unwrap(), SyncReport::default());
+        // And one more sync on a converged Mac does nothing.
+        let pushes = world.server.stats().count(Route::Push);
+        for mac in &world.macs {
+            prop_assert_eq!(mac.sync(&world.server), SyncReport::default());
         }
-        prop_assert_eq!((world.remote.last_seq(), world.remote.stats().pushes), (seq, pushes));
+        prop_assert_eq!(world.server.stats().count(Route::Push), pushes);
+        prop_assert_eq!(server_docs(&world.server, session), server);
     }
 
     #[test]
@@ -542,140 +525,366 @@ proptest! {
         for op in &ops {
             world.run(op);
         }
-        let store = &world.stores[0];
-        sync_cleanly(store, &world.remote, &mut Vec::new());
-        prop_assert_eq!(pending(store), 0);
-        let before = (all_docs(store), live_docs(store), server_docs(&world.remote), world.remote.stats());
-        prop_assert_eq!(sync_once(store, &world.remote).unwrap(), SyncReport::default());
-        let after = (all_docs(store), live_docs(store), server_docs(&world.remote), world.remote.stats());
-        prop_assert_eq!(&after.0, &before.0);
-        prop_assert_eq!(&after.1, &before.1);
-        prop_assert_eq!(&after.2, &before.2);
-        prop_assert_eq!(after.3.pushes, before.3.pushes);
-        prop_assert_eq!(after.3.file_puts, before.3.file_puts);
-        prop_assert_eq!(after.3.file_gets, before.3.file_gets);
+        let mac = &world.macs[0];
+        mac.sync(&world.server);
+        // The next pull moves the cursor past the Mac's own pushes.
+        mac.sync(&world.server);
+        prop_assert_eq!(pending(&mac.store), 0);
+        let stats = world.server.stats();
+        let before = (snapshot(&mac.store), server_docs(&world.server, &mac.session));
+        prop_assert_eq!(mac.sync(&world.server), SyncReport::default());
+        let after = (snapshot(&mac.store), server_docs(&world.server, &mac.session));
+        prop_assert_eq!(&after, &before);
+        let now = world.server.stats();
+        for route in [Route::Push, Route::PutFile, Route::GetFile] {
+            prop_assert_eq!(now.count(route), stats.count(route), "{:?}", route);
+        }
     }
 }
 
-/// How a generated push picks its base revision.
-#[derive(Clone, Copy, Debug)]
-enum Base {
-    Current,
-    Null,
-    Stale,
+// ---------------------------------------------------------------------------
+// A hostile server
+// ---------------------------------------------------------------------------
+
+/// What the hostile server does to one of the victim's syncs.
+#[derive(Clone, Debug)]
+enum Attack {
+    None,
+    FlipBit { pick: usize, byte: usize, bit: u8 },
+    SwapSealed { a: usize, b: usize },
+    OtherAccount { pick: usize },
+    ForgeTombstone { pick: usize },
+    Relabel { pick: usize },
+    Replay { pick: usize },
+    Rewind,
+    Epoch,
+    Lost { pick: usize },
+    NewFormat { pick: usize, format: u8 },
+    WrongKey,
+}
+
+fn gen_attack() -> impl Strategy<Value = Attack> {
+    let pick = 0..8usize;
+    prop_oneof![
+        2 => Just(Attack::None),
+        2 => (pick.clone(), any::<usize>(), 0u8..8).prop_map(|(pick, byte, bit)| Attack::FlipBit { pick, byte, bit }),
+        1 => (pick.clone(), pick.clone()).prop_map(|(a, b)| Attack::SwapSealed { a, b }),
+        1 => pick.clone().prop_map(|pick| Attack::OtherAccount { pick }),
+        1 => pick.clone().prop_map(|pick| Attack::ForgeTombstone { pick }),
+        1 => pick.clone().prop_map(|pick| Attack::Relabel { pick }),
+        2 => pick.clone().prop_map(|pick| Attack::Replay { pick }),
+        1 => Just(Attack::Rewind),
+        1 => Just(Attack::Epoch),
+        1 => pick.clone().prop_map(|pick| Attack::Lost { pick }),
+        1 => (pick.clone(), 2u8..=255).prop_map(|(pick, format)| Attack::NewFormat { pick, format }),
+        1 => Just(Attack::WrongKey),
+    ]
+}
+
+/// Writes on the victim (A) and an honest Mac (B) of the same account, B's
+/// syncs, and A's syncs through the hostile server.
+#[derive(Clone, Debug)]
+enum HostileOp {
+    Write {
+        mac: usize,
+        pick: usize,
+        word: usize,
+    },
+    Delete {
+        mac: usize,
+        pick: usize,
+    },
+    SyncB,
+    SyncA(Attack),
+}
+
+fn gen_hostile_op() -> impl Strategy<Value = HostileOp> {
+    prop_oneof![
+        4 => (0..2usize, 0..4usize, 0..WORDS.len()).prop_map(|(mac, pick, word)| HostileOp::Write { mac, pick, word }),
+        1 => (0..2usize, 0..4usize).prop_map(|(mac, pick)| HostileOp::Delete { mac, pick }),
+        2 => Just(HostileOp::SyncB),
+        4 => gen_attack().prop_map(HostileOp::SyncA),
+    ]
+}
+
+/// Creates or edits `note:p<pick>` (in the trash, so no notebook is needed).
+fn write_note(store: &Store, pick: usize, text: &str, now: i64) {
+    let id = format!("note:p{pick}");
+    let result = match store.get_api(&id, None, false) {
+        Ok(mut doc) => {
+            doc["body"] = text.into();
+            doc["updatedAt"] = now.into();
+            put(store, DocType::Note, doc)
+        }
+        Err(_) => put(
+            store,
+            DocType::Note,
+            json!({"_id": id, "bookId": "trash", "title": "p", "body": text, "createdAt": now, "updatedAt": now}),
+        ),
+    };
+    match result {
+        Ok(_) | Err(StoreError::Invalid(_) | StoreError::Conflict | StoreError::NotFound) => {}
+        Err(err) => panic!("{err}"),
+    }
+}
+
+/// The victim's state the invariants compare: local ID -> (rev, synced_rev).
+fn revs(store: &Store) -> BTreeMap<String, (String, Option<String>)> {
+    store
+        .sync_docs()
+        .unwrap()
+        .into_iter()
+        .map(|d| (d.id, (d.rev, d.base_rev)))
+        .collect()
+}
+
+fn reseal(sealed: &str, f: impl FnOnce(&mut Vec<u8>)) -> String {
+    let mut raw = B64.decode(sealed).unwrap_or_default();
+    if raw.is_empty() {
+        return sealed.to_owned();
+    }
+    f(&mut raw);
+    B64.encode(raw)
 }
 
 proptest! {
-    #![proptest_config(config(256))]
+    #![proptest_config(config(96))]
 
-    /// Model: a map of current revisions and one counter. A document is
-    /// accepted iff its base is the current revision (or both are absent);
-    /// each accepted write takes the next seq; the feed lists every document
-    /// once, at its latest seq.
+    /// Invariants: the victim's content for an ID is always some client's
+    /// write for that same ID (never another account's, never a forgery);
+    /// replays of versions older than the synced one are `Stale`; rewinds
+    /// and epoch changes re-merge; another key ID writes nothing; a newer
+    /// format never overwrites and stops the pull before it; and after the
+    /// attacks, honest syncs converge with nothing pending lost.
     #[test]
-    fn prop_memory_remote_follows_the_acceptance_model(
-        pushes in prop::collection::vec(
-            prop::collection::vec(
-                (0..3usize, prop_oneof![2 => Just(Base::Current), 1 => Just(Base::Null), 1 => Just(Base::Stale)], any::<bool>()),
-                0..4,
-            ),
-            1..8,
-        )
+    fn prop_a_hostile_server_never_changes_local_data_wrongly(
+        ops in prop::collection::vec(gen_hostile_op(), 1..30)
     ) {
-        const IDS: [&str; 3] = ["note:a", "note:b", "file:c"];
-        let remote = MemoryRemote::new();
-        let mut model: BTreeMap<String, (String, bool, i64)> = BTreeMap::new();
-        let mut counter = 0;
-        let mut revs = 0;
-        for batch in &pushes {
-            let sent: Vec<SyncDoc> = batch
-                .iter()
-                .map(|(i, base, deleted)| {
-                    revs += 1;
-                    let known = model.get(IDS[*i]).map(|m| m.0.clone());
-                    SyncDoc {
-                        id: IDS[*i].into(),
-                        rev: format!("{revs}-{revs:x}"),
-                        deleted: *deleted,
-                        fields: Default::default(),
-                        base_rev: match base {
-                            Base::Current => known,
-                            Base::Null => None,
-                            Base::Stale => Some("1-0".into()),
-                        },
-                    }
-                })
-                .collect();
-            let results = remote.push(&sent).unwrap();
-            for (doc, result) in sent.iter().zip(results) {
-                let current = model.get(&doc.id).cloned();
-                let accepted = match &current {
-                    None => doc.base_rev.is_none(),
-                    Some((rev, ..)) => doc.base_rev.as_deref() == Some(rev.as_str()),
-                };
-                if accepted {
-                    counter += 1;
-                    model.insert(doc.id.clone(), (doc.rev.clone(), doc.deleted, counter));
-                    prop_assert_eq!(result, PushResult::Ok { id: doc.id.clone(), seq: counter });
-                } else {
-                    let PushResult::Conflict { current: got, .. } = result else {
-                        return Err(TestCaseError::fail(format!("{} should conflict", doc.id)));
-                    };
-                    prop_assert_eq!(got.map(|c| (c.rev, c.deleted)), current.map(|c| (c.0, c.1)));
+        let server = MemoryServer::new();
+        let a = Mac::new(sign_up(&server, "alice", 1));
+        let b = Mac::new(sign_in(&server, "alice", 2));
+        // Another account with notes under the same local IDs.
+        let z = Mac::new(sign_up(&server, "zed", 3));
+        for pick in 0..4 {
+            write_note(&z.store, pick, &format!("zed's secret {pick}"), 1);
+        }
+        z.store.delete("note:p3", Origin::Api).unwrap();
+        z.sync(&server);
+        let zed_rows = server.plain_view(&z.session).wire_docs();
+
+        let view = server.plain_view(&a.session);
+        let feeds = [a.store.subscribe(), b.store.subscribe()];
+        // Every content hash a client of the account wrote, per local ID.
+        let mut written: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        // The victim's local writes of live versions: (id, rev). A deletion
+        // can lose to an edit (an edit beats a deletion), so tombstones
+        // aren't counted.
+        let mut a_wrote: Vec<(String, String)> = Vec::new();
+        // Every row the account ever held, with its local ID and revision.
+        let mut history: Vec<(WireChange, String, String)> = Vec::new();
+        let mut clock = 0i64;
+        let mut attacks = 0u64;
+
+        let record = |history: &mut Vec<(WireChange, String, String)>| {
+            let plain = view.docs();
+            for wire in view.wire_docs() {
+                if let Some(doc) = plain.iter().find(|d| d.seq == wire.seq)
+                    && !history.iter().any(|(w, ..)| w.id == wire.id && w.rev == wire.rev)
+                {
+                    history.push((wire, doc.id.clone(), doc.rev.clone()));
                 }
             }
-        }
-        let feed = remote.changes(0, 500).unwrap();
-        let mut expected: Vec<(String, String, bool, i64)> =
-            model.into_iter().map(|(id, (rev, deleted, seq))| (id, rev, deleted, seq)).collect();
-        expected.sort_by_key(|e| e.3);
-        let got: Vec<(String, String, bool, i64)> =
-            feed.docs.into_iter().map(|d| (d.id, d.rev, d.deleted, d.seq)).collect();
-        prop_assert_eq!(feed.last_seq, expected.last().map_or(0, |e| e.3));
-        prop_assert_eq!(got, expected);
-    }
+        };
 
-    #[test]
-    fn prop_batches_cover_the_input_greedily_within_limits(
-        sizes in prop::collection::vec(0usize..5_000, 0..60),
-        max_docs in 1usize..10,
-        max_bytes in 1usize..12_000,
-    ) {
-        let ranges = batches(&sizes, max_docs, max_bytes);
-        let mut next = 0;
-        for (i, range) in ranges.iter().enumerate() {
-            prop_assert_eq!(range.start, next, "batches are consecutive");
-            prop_assert!(!range.is_empty());
-            prop_assert!(range.len() <= max_docs);
-            let bytes: usize = sizes[range.clone()].iter().sum();
-            prop_assert!(bytes <= max_bytes || range.len() == 1, "over the byte budget");
-            if i + 1 < ranges.len() {
-                // Greedy: the next item would not have fitted.
-                prop_assert!(range.len() == max_docs || bytes + sizes[range.end] > max_bytes);
+        for op in &ops {
+            clock += 1;
+            match op {
+                HostileOp::Write { mac, pick, word } => {
+                    let store = if *mac == 0 { &a.store } else { &b.store };
+                    write_note(store, *pick, &format!("{} by {mac} at {clock}", WORDS[*word]), 1_000 + clock);
+                }
+                HostileOp::Delete { mac, pick } => {
+                    let store = if *mac == 0 { &a.store } else { &b.store };
+                    let _ = store.delete(&format!("note:p{pick}"), Origin::Api);
+                }
+                HostileOp::SyncB => {
+                    b.sync(&server);
+                }
+                HostileOp::SyncA(attack) => {
+                    attacks += 1;
+                    let before = snapshot(&a.store);
+                    let revs_before = revs(&a.store);
+                    let pending_before: BTreeSet<String> =
+                        a.store.pending_push(usize::MAX).unwrap().into_iter().map(|d| d.id).collect();
+                    let saved_epoch = a.store.meta(meta_keys::EPOCH).unwrap();
+                    let cursor = a.cursor();
+                    // What the attack aimed at, for the checks below.
+                    let target: Mutex<Option<(String, String, i64)>> = Mutex::new(None);
+                    let mut changes_calls = 0;
+                    let fake_epoch = format!("{attacks:016x}");
+                    let tap = Tap::new(&server, |event| {
+                        match (attack, event) {
+                            (Attack::FlipBit { pick, byte, bit }, Event::Page(page)) if !page.docs.is_empty() => {
+                                let n = page.docs.len();
+                                let doc = &mut page.docs[pick % n];
+                                doc.sealed = reseal(&doc.sealed, |raw| {
+                                    let i = byte % raw.len();
+                                    raw[i] ^= 1 << bit;
+                                });
+                            }
+                            (Attack::SwapSealed { a, b }, Event::Page(page)) if page.docs.len() > 1 => {
+                                let n = page.docs.len();
+                                let (i, j) = (a % n, b % n);
+                                if i != j {
+                                    let sealed = page.docs[i].sealed.clone();
+                                    page.docs[i].sealed = std::mem::replace(&mut page.docs[j].sealed, sealed);
+                                }
+                            }
+                            (Attack::OtherAccount { pick }, Event::Page(page)) if !page.docs.is_empty() => {
+                                let n = page.docs.len();
+                                page.docs[pick % n].sealed = zed_rows[pick % zed_rows.len()].sealed.clone();
+                            }
+                            (Attack::ForgeTombstone { pick }, Event::Page(page)) if !page.docs.is_empty() => {
+                                let n = page.docs.len();
+                                page.docs[pick % n].deleted = true;
+                            }
+                            (Attack::Relabel { pick }, Event::Page(page)) if !page.docs.is_empty() => {
+                                let n = page.docs.len();
+                                let other = page.docs[(pick + 1) % n].rev.clone();
+                                let doc = &mut page.docs[pick % n];
+                                doc.rev = if other != doc.rev { other } else { "0".repeat(32) };
+                            }
+                            (Attack::Replay { pick }, Event::Page(page)) if !history.is_empty() => {
+                                let (wire, id, rev) = &history[pick % history.len()];
+                                let mut replay = wire.clone();
+                                replay.seq = page.head_seq.max(page.last_seq) + 1;
+                                page.head_seq = replay.seq;
+                                page.last_seq = replay.seq;
+                                page.more = false;
+                                *target.lock().unwrap() = Some((id.clone(), rev.clone(), replay.seq));
+                                page.docs.push(replay);
+                            }
+                            (Attack::Rewind, Event::Page(page)) => {
+                                changes_calls += 1;
+                                if changes_calls == 1 && cursor > 0 {
+                                    page.docs.clear();
+                                    page.last_seq = cursor;
+                                    page.head_seq = cursor - 1;
+                                    page.more = false;
+                                }
+                            }
+                            (Attack::Epoch, Event::Page(page)) => page.epoch = fake_epoch.clone(),
+                            (Attack::Lost { pick }, Event::Pushed(results)) if !results.is_empty() => {
+                                let n = results.len();
+                                let id = results[pick % n].id().to_owned();
+                                results[pick % n] = WirePushResult::Lost { id };
+                            }
+                            (Attack::NewFormat { pick, format }, Event::Page(page)) if !page.docs.is_empty() => {
+                                let n = page.docs.len();
+                                let doc = &mut page.docs[pick % n];
+                                doc.sealed = reseal(&doc.sealed, |raw| raw[0] = *format);
+                                if let Some((_, id, rev)) = history.iter().find(|(w, ..)| w.id == doc.id) {
+                                    let mut target = target.lock().unwrap();
+                                    if target.is_none() {
+                                        *target = Some((id.clone(), rev.clone(), doc.seq));
+                                    }
+                                }
+                            }
+                            (Attack::WrongKey, Event::Page(page)) => page.key_id = "00000000000000ff".into(),
+                            _ => {}
+                        }
+                        Ok(())
+                    });
+                    let result = a.try_sync(&tap);
+                    drop(tap);
+                    match attack {
+                        Attack::WrongKey => {
+                            prop_assert!(matches!(result, Err(SyncError::WrongKey)), "{:?}", result);
+                            prop_assert_eq!(&snapshot(&a.store), &before, "a wrong key ID wrote something");
+                        }
+                        Attack::Rewind if cursor > 0 => {
+                            let report = result.expect("sync");
+                            prop_assert!(report.remerged, "a rewind must re-merge");
+                        }
+                        Attack::Epoch if saved_epoch.is_some() => {
+                            let report = result.expect("sync");
+                            prop_assert!(report.remerged, "a new epoch must re-merge");
+                        }
+                        Attack::Replay { .. } => {
+                            let report = result.expect("sync");
+                            // A replay of a version older than the one this
+                            // Mac synced never reverts it: it is stale.
+                            if let Some((id, replayed, _)) = target.lock().unwrap().clone()
+                                && let Some((_, Some(synced))) = revs_before.get(&id)
+                                && replayed != *synced
+                                && generation(&replayed) <= generation(synced)
+                            {
+                                prop_assert!(report.stale.contains(&id), "{} replayed at {} over {}: {:?}", id, replayed, synced, report);
+                            }
+                        }
+                        Attack::NewFormat { .. } => {
+                            if let Ok(report) = &result
+                                && let Some((id, _, seq)) = target.lock().unwrap().clone()
+                                && seq > cursor
+                            {
+                                prop_assert!(report.too_new);
+                                prop_assert!(a.cursor() < seq, "the pull went past a newer format");
+                                if !pending_before.contains(&id) {
+                                    let after = revs(&a.store);
+                                    prop_assert_eq!(after.get(&id), revs_before.get(&id), "a newer format overwrote {}", id);
+                                }
+                            }
+                        }
+                        _ => {
+                            // Undecryptable rows are skipped or repaired, a
+                            // lost answer pushed again; none of it fails.
+                            if let Err(err) = &result {
+                                prop_assert!(false, "{:?}: {}", attack, err);
+                            }
+                        }
+                    }
+                }
             }
-            next = range.end;
+            for (m, feed) in feeds.iter().enumerate() {
+                while let Ok(change) = feed.try_recv() {
+                    if change.origin != Origin::Sync {
+                        written.entry(change.id.clone()).or_default().insert(hash(&change.rev));
+                        if m == 0 && !change.deleted {
+                            a_wrote.push((change.id, change.rev));
+                        }
+                    }
+                }
+            }
+            // The victim's content for an ID is always a client's write for it.
+            for doc in a.store.sync_docs().unwrap() {
+                prop_assert!(
+                    written.get(&doc.id).is_some_and(|w| w.contains(&hash(&doc.rev))),
+                    "{} holds {}, which no client wrote for it", doc.id, doc.rev
+                );
+            }
+            record(&mut history);
         }
-        prop_assert_eq!(next, sizes.len(), "every item is in a batch");
-    }
-}
 
-#[test]
-fn values_round_trip_through_the_wire_shape() {
-    let result = PushResult::Conflict {
-        id: "note:a".into(),
-        current: Some(SyncDoc {
-            id: "note:a".into(),
-            rev: "2-ab".into(),
-            deleted: false,
-            fields: json!({"body": "ü", "updatedAt": 1_700_000_000_000_i64})
-                .as_object()
-                .unwrap()
-                .clone(),
-            base_rev: None,
-        }),
-    };
-    let text = serde_json::to_string(&result).unwrap();
-    let value: Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(value["status"], "conflict");
-    assert_eq!(serde_json::from_str::<PushResult>(&text).unwrap(), result);
+        // Honest syncs converge, with nothing pending lost. A hostile replay
+        // may have moved the victim's cursor past the head; a full resync
+        // (`kanso-sync sync --full`) recovers.
+        a.store.set_meta(meta_keys::LAST_SEQ, "0").unwrap();
+        for _ in 0..3 {
+            a.sync(&server);
+            b.sync(&server);
+        }
+        prop_assert_eq!(pending(&a.store), 0);
+        prop_assert_eq!(pending(&b.store), 0);
+        let on_server = server_docs(&server, &a.session);
+        prop_assert_eq!(&all_docs(&a.store), &on_server);
+        prop_assert_eq!(&all_docs(&b.store), &on_server);
+        prop_assert_eq!(live_docs(&a.store), live_docs(&b.store));
+        for (id, rev) in &a_wrote {
+            let current = a.store.get(id).unwrap().map(|d| hash(&d.rev));
+            let kept = a.store.revisions(id).unwrap().iter().any(|r| hash(&r.rev) == hash(rev));
+            prop_assert!(current.as_deref() == Some(hash(rev).as_str()) || kept, "A lost {} {}", id, rev);
+        }
+        // Nothing of the other account ever reached this one.
+        prop_assert_eq!(server.plain_view(&z.session).docs().len(), 4);
+    }
 }

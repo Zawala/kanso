@@ -1,9 +1,10 @@
 //! In-memory sync servers for tests: [`MemoryRemote`], today's v1 server
-//! (step 2b moves it to `tests/common/legacy.rs`), and [`MemoryServer`], the
-//! v2 server with accounts, frozen by step 1.
+//! (legacy: kept until step 3 of docs/ACCOUNTS.md › Build order, and the
+//! rollback test's v1 server through `tests/common/legacy.rs`), and
+//! [`MemoryServer`], the v2 server with accounts, frozen by step 1.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use kanso_store::SyncDoc;
@@ -29,7 +30,7 @@ use crate::wire::{
     MAX_CHANGES_LIMIT as MAX_WIRE_CHANGES_LIMIT, MAX_PUSH_BODY, MAX_PUSH_DOCS, MAX_SEALED_FILE,
     MAX_SEALED_LEN, MIN_SEALED_FILE, MIN_SEALED_LEN, PAGE_SEALED_BUDGET, PROTOCOL_VERSION,
     PushRequest, PushResponse, PutFileResponse, QuotaKind, SESSION_IDLE_MS, SessionToken,
-    SignOutReason, SignupClosedReason, WireChange, WireDoc, WirePage, WirePushResult,
+    SignOutReason, SignupClosedReason, WireChange, WireDoc, WirePage, WirePushDoc, WirePushResult,
     is_account_id, is_base64url, is_device_id, is_hex16, is_sealed_name, is_token, is_wire_file_id,
     is_wire_id, is_wire_rev,
 };
@@ -1707,7 +1708,8 @@ impl ServerState {
 /// the Worker; its KDF floor and default are [`KdfParams::TEST`]. Tests and
 /// snapshots only; `main.rs` never constructs it.
 pub struct MemoryServer {
-    state: Mutex<ServerState>,
+    /// Shared with the [`PlainView`]s it hands out.
+    state: Arc<Mutex<ServerState>>,
 }
 
 impl Default for MemoryServer {
@@ -1729,7 +1731,7 @@ impl MemoryServer {
     /// derives keys against it.
     pub fn with_kdf(floor: KdfParams, default: KdfParams) -> MemoryServer {
         MemoryServer {
-            state: Mutex::new(ServerState::new(floor, default)),
+            state: Arc::new(Mutex::new(ServerState::new(floor, default))),
         }
     }
 
@@ -1895,6 +1897,60 @@ impl MemoryServer {
         a.doc_bytes = doc_bytes;
     }
 
+    /// A copy of one account's documents, files and counters, for
+    /// [`MemoryServer::restore`].
+    pub fn snapshot(&self, username: &str) -> AccountSnapshot {
+        let state = self.server();
+        let id = state.account_id_of(username);
+        let account = &state.accounts[&id];
+        AccountSnapshot {
+            docs: state
+                .docs
+                .iter()
+                .filter(|((account, _), _)| *account == id)
+                .map(|((_, wire_id), row)| (wire_id.clone(), row.clone()))
+                .collect(),
+            files: state
+                .files
+                .iter()
+                .filter(|((account, _), _)| *account == id)
+                .map(|((_, wire_id), bytes)| (wire_id.clone(), bytes.clone()))
+                .collect(),
+            last_seq: account.last_seq,
+            counters: [
+                account.docs,
+                account.doc_bytes,
+                account.files,
+                account.file_bytes,
+            ],
+        }
+    }
+
+    /// Puts the account's documents, files, counters and `last_seq` back as
+    /// `snapshot` holds them and gives it a new epoch: a D1 Time Travel
+    /// restore followed by `admin restored` (M1). Sessions and credentials
+    /// stay.
+    pub fn restore(&self, username: &str, snapshot: &AccountSnapshot) {
+        let mut state = self.server();
+        let id = state.account_id_of(username);
+        state.docs.retain(|(account, _), _| *account != id);
+        state.files.retain(|(account, _), _| *account != id);
+        for (wire_id, row) in &snapshot.docs {
+            state
+                .docs
+                .insert((id.clone(), wire_id.clone()), row.clone());
+        }
+        for (wire_id, bytes) in &snapshot.files {
+            state
+                .files
+                .insert((id.clone(), wire_id.clone()), bytes.clone());
+        }
+        let a = state.accounts.get_mut(&id).expect("found");
+        a.last_seq = snapshot.last_seq;
+        [a.docs, a.doc_bytes, a.files, a.file_bytes] = snapshot.counters;
+        a.epoch = hex(&random::<8>());
+    }
+
     /// The next `n` requests to `route` are applied but answer with a
     /// transport error, as when the connection drops after the server
     /// committed.
@@ -1908,7 +1964,14 @@ impl MemoryServer {
 
     /// The account of `session`, decrypted with its keys.
     pub fn plain_view(&self, session: &Session) -> PlainView {
-        crate::stub!("2b", session)
+        PlainView::new(
+            AccountHandle {
+                state: Arc::clone(&self.state),
+                account_id: session.account_id.clone(),
+                token: session.token().clone(),
+            },
+            session,
+        )
     }
 
     /// Runs one request: counts it, applies it, then answers with a
@@ -1929,6 +1992,79 @@ impl MemoryServer {
             return Err(ApiError::Transport("connection reset (simulated)".into()));
         }
         result
+    }
+}
+
+/// One account's rows on a [`MemoryServer`], from
+/// [`MemoryServer::snapshot`].
+#[derive(Clone, Debug)]
+pub struct AccountSnapshot {
+    docs: Vec<(String, DocRow)>,
+    files: Vec<(String, Vec<u8>)>,
+    last_seq: i64,
+    /// `docs`, `doc_bytes`, `files`, `file_bytes`.
+    counters: [u64; 4],
+}
+
+/// One account of a [`MemoryServer`], for [`PlainView`]: reads its rows
+/// directly and pushes through the push route with the session's token,
+/// without counting the request in [`MemoryServer::stats`] or taking a
+/// pending dropped response.
+pub(crate) struct AccountHandle {
+    state: Arc<Mutex<ServerState>>,
+    account_id: String,
+    token: SessionToken,
+}
+
+impl AccountHandle {
+    fn server(&self) -> std::sync::MutexGuard<'_, ServerState> {
+        self.state.lock().expect("memory server poisoned")
+    }
+
+    /// The account's documents in `seq` order, tombstones included.
+    pub(crate) fn docs(&self) -> Vec<WireChange> {
+        let state = self.server();
+        let mut docs: Vec<WireChange> = state
+            .docs
+            .iter()
+            .filter(|((account, _), _)| *account == self.account_id)
+            .map(|((_, id), row)| WireChange {
+                id: id.clone(),
+                rev: row.rev.clone(),
+                deleted: row.deleted,
+                sealed: row.sealed.clone(),
+                seq: row.seq,
+            })
+            .collect();
+        docs.sort_by_key(|d| d.seq);
+        docs
+    }
+
+    /// The sealed bytes stored for `wire_id`.
+    pub(crate) fn file(&self, wire_id: &str) -> Option<Vec<u8>> {
+        self.server()
+            .files
+            .get(&(self.account_id.clone(), wire_id.to_owned()))
+            .cloned()
+    }
+
+    /// `PUT /v2/files/<wire_id>` with the session's token.
+    pub(crate) fn put_file(&self, wire_id: &str, sealed: &[u8]) -> Result<(), ApiError> {
+        let mut state = self.server();
+        let now = state.clock();
+        state
+            .put_file(&self.token, wire_id, sealed, now)
+            .map(|_| ())
+    }
+
+    /// `POST /v2/push` with the session's token.
+    pub(crate) fn push(&self, docs: &[WirePushDoc]) -> Result<Vec<WirePushResult>, ApiError> {
+        let mut state = self.server();
+        let now = state.clock();
+        let request = PushRequest {
+            docs: docs.to_vec(),
+        };
+        Ok(state.push(&self.token, &request, now)?.results)
     }
 }
 

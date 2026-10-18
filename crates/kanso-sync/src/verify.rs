@@ -1,15 +1,21 @@
 //! `kanso-sync verify` and `estimate` (docs/ACCOUNTS.md › Command line).
-//! Frozen by step 1; the bodies are step 2b, except the legacy manifest hash,
-//! which the admin script must reproduce byte for byte (security re-check 6).
+//! The types were frozen by step 1; the legacy manifest hash must match the
+//! admin script's byte for byte (security re-check 6).
 
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
-use kanso_store::{Store, StoreError};
+use kanso_store::{Store, StoreError, SyncDoc, SyncGuard};
 use serde::{Deserialize, Serialize};
 
 use crate::account::Session;
 use crate::api::Backend;
+use crate::binding::guard_pairs;
+use crate::crypto::{SEAL_OVERHEAD, sealed_doc_len};
 use crate::engine::SyncError;
+use crate::remote::is_file_id;
+use crate::sealed::{Entry, FileBytes, Pushed, Sealed};
+use crate::wire::{DOC_ROW_COST, FILE_ROW_COST, MAX_CHANGES_LIMIT};
 
 /// What `verify` found, comparing the whole feed (opened) with the library.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,9 +142,19 @@ pub struct Estimate {
 }
 
 /// Pulls the whole feed into memory without applying it, opens every
-/// document and live file, and compares them with the library. With
-/// `legacy`, also checks each manifest row; with `repair`, pushes this
-/// Mac's version over undecryptable server copies (step 2b).
+/// document and live file, and compares them with the library
+/// (docs/ACCOUNTS.md › Command line): every local document whose
+/// `synced_rev == rev` must be on the server at that revision with equal
+/// fields, and every such live file's bytes must open to the local ones.
+///
+/// With `repair`, each undecryptable server copy of a document this Mac has
+/// is replaced from the Mac first: the local version gets a new revision one
+/// generation higher (`Store::bump_revision`) and is pushed over the broken
+/// revision. A newer format is never replaced. With `legacy`, each row of
+/// the `admin legacy-export` manifest is checked too (H4).
+///
+/// A key ID other than this Mac's is [`SyncError::WrongKey`]; a library not
+/// bound to the session's account is [`SyncError::Cancelled`].
 pub fn verify(
     store: &Store,
     b: &dyn Backend,
@@ -146,12 +162,251 @@ pub fn verify(
     legacy: Option<&Path>,
     repair: bool,
 ) -> Result<VerifyReport, SyncError> {
-    crate::stub!("2b", store, b, session, legacy, repair)
+    let pairs = guard_pairs(session);
+    let guard = SyncGuard { expect: &pairs };
+    for (key, value) in &pairs {
+        if store.meta(key)?.as_deref() != Some(*value) {
+            return Err(SyncError::Cancelled);
+        }
+    }
+    let manifest = legacy.map(read_manifest).transpose()?;
+    let sealed = Sealed::new(b.remote(session), session);
+
+    // The whole feed, opened, in memory.
+    let mut server: HashMap<String, SyncDoc> = HashMap::new();
+    // Wire ID → (wire rev, newer format) of rows that didn't open.
+    let mut broken: BTreeMap<String, (String, bool)> = BTreeMap::new();
+    let mut since = 0;
+    loop {
+        let page = sealed.changes(since, MAX_CHANGES_LIMIT)?;
+        if page.key_id != sealed.key_id() {
+            return Err(SyncError::WrongKey);
+        }
+        for entry in page.entries {
+            match entry {
+                Entry::Opened { doc, .. } => {
+                    server.insert(doc.id.clone(), doc);
+                }
+                Entry::Undecryptable { wire, .. } => {
+                    broken.insert(wire.id, (wire.rev, false));
+                }
+                Entry::TooNew { wire, .. } => {
+                    broken.insert(wire.id, (wire.rev, true));
+                }
+            }
+        }
+        since = page.last_seq;
+        if !page.more {
+            break;
+        }
+    }
+    let mut local: BTreeMap<String, SyncDoc> = store
+        .sync_docs()?
+        .into_iter()
+        .map(|d| (d.id.clone(), d))
+        .collect();
+    let by_wire: HashMap<String, String> = local
+        .keys()
+        .map(|id| (sealed.wire_id(id), id.clone()))
+        .collect();
+
+    let mut report = VerifyReport::default();
+    if repair {
+        for (wire_id, (wire_rev, newer)) in &broken.clone() {
+            let Some(id) = by_wire.get(wire_id) else {
+                continue;
+            };
+            if *newer {
+                continue;
+            }
+            if let Some(doc) = repair_one(store, &sealed, &guard, &local[id], wire_rev)? {
+                broken.remove(wire_id);
+                server.insert(id.clone(), doc.clone());
+                local.insert(id.clone(), doc);
+                report.repaired += 1;
+            }
+        }
+    }
+
+    let mut matched = BTreeSet::new();
+    for (id, doc) in &local {
+        if doc.base_rev.as_deref() != Some(doc.rev.as_str()) {
+            report.pending += 1;
+            continue;
+        }
+        let Some(theirs) = server.get(id) else {
+            if broken.contains_key(&sealed.wire_id(id)) {
+                // Counted below as undecryptable.
+                continue;
+            }
+            report.missing += 1;
+            continue;
+        };
+        let same = theirs.rev == doc.rev
+            && theirs.deleted == doc.deleted
+            && (doc.deleted || theirs.fields == doc.fields);
+        if !same {
+            report.different += 1;
+            continue;
+        }
+        if !doc.deleted && is_file_id(id) {
+            let Some((_, blob)) = store.attachment(id)? else {
+                report.missing += 1;
+                continue;
+            };
+            match sealed.get_file(id)? {
+                FileBytes::Opened(bytes) if bytes == blob.data => {}
+                FileBytes::Opened(_) => {
+                    report.different += 1;
+                    continue;
+                }
+                FileBytes::Missing => {
+                    report.missing += 1;
+                    continue;
+                }
+                FileBytes::Unreadable => {
+                    report.undecryptable += 1;
+                    continue;
+                }
+            }
+        }
+        report.matched += 1;
+        matched.insert(id.clone());
+    }
+    report.extra = server.keys().filter(|id| !local.contains_key(*id)).count();
+    report.undecryptable += broken.len();
+
+    if let Some(manifest) = manifest {
+        report.legacy = Some(check_legacy(store, session, &manifest, &local, &matched)?);
+    }
+    Ok(report)
 }
 
-/// The charged bytes the library needs (step 2b).
+/// Replaces one undecryptable server copy from this Mac: a new revision one
+/// generation higher, pushed over the broken one. Returns the pushed
+/// version (now synced) when the server took it.
+fn repair_one(
+    store: &Store,
+    sealed: &Sealed,
+    guard: &SyncGuard,
+    doc: &SyncDoc,
+    broken_rev: &str,
+) -> Result<Option<SyncDoc>, SyncError> {
+    let Some(rev) = store.bump_revision(&doc.id, Some(guard)).map_err(guarded)? else {
+        return Ok(None);
+    };
+    let bumped = SyncDoc {
+        rev: rev.clone(),
+        ..doc.clone()
+    };
+    if !bumped.deleted
+        && is_file_id(&bumped.id)
+        && let Some((_, blob)) = store.attachment(&bumped.id)?
+    {
+        sealed.put_file(&bumped.id, &blob.data)?;
+    }
+    sealed.set_repair_base(&bumped.id, broken_rev);
+    match sealed.push(std::slice::from_ref(&bumped))?.first() {
+        Some(Pushed::Ok) => {
+            store
+                .mark_synced(&bumped.id, &rev, Some(guard))
+                .map_err(guarded)?;
+            Ok(Some(SyncDoc {
+                base_rev: Some(rev),
+                ..bumped
+            }))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn guarded(err: StoreError) -> SyncError {
+    match err {
+        StoreError::GuardFailed => SyncError::Cancelled,
+        err => SyncError::Store(err),
+    }
+}
+
+fn read_manifest(path: &Path) -> Result<LegacyManifest, SyncError> {
+    let bytes = std::fs::read(path).map_err(StoreError::from)?;
+    Ok(serde_json::from_slice(&bytes).map_err(StoreError::from)?)
+}
+
+/// The generation of a local revision, or `None` when it isn't one.
+fn generation(rev: &str) -> Option<u64> {
+    rev.parse::<kanso_core::Rev>().ok().map(|r| r.generation)
+}
+
+/// The `--legacy` check (H4): each live legacy document is in the library
+/// at that revision or a higher generation and passed the checks above;
+/// each live legacy file also has a local blob with the manifest's
+/// `md5digest`.
+fn check_legacy(
+    store: &Store,
+    session: &Session,
+    manifest: &LegacyManifest,
+    local: &BTreeMap<String, SyncDoc>,
+    matched: &BTreeSet<String>,
+) -> Result<LegacyReport, SyncError> {
+    let mut failed = Vec::new();
+    for row in &manifest.rows {
+        if row.deleted {
+            continue;
+        }
+        let ok = match local.get(&row.id) {
+            Some(doc) if !doc.deleted => {
+                let revision = doc.rev == row.rev
+                    || matches!(
+                        (generation(&doc.rev), generation(&row.rev)),
+                        (Some(mine), Some(theirs)) if mine > theirs
+                    );
+                let bytes = if is_file_id(&row.id) {
+                    match &row.md5digest {
+                        Some(md5) => store.has_blob(&row.id, &md5.to_ascii_lowercase())?,
+                        None => false,
+                    }
+                } else {
+                    true
+                };
+                revision && bytes && matched.contains(&row.id)
+            }
+            _ => false,
+        };
+        if !ok {
+            failed.push(row.id.clone());
+        }
+    }
+    failed.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+    failed.dedup();
+    Ok(LegacyReport {
+        manifest_sha256: manifest_sha256(&manifest.rows),
+        account_id: session.account_id.clone(),
+        ok: failed.is_empty(),
+        rows: manifest.rows.len(),
+        failed,
+    })
+}
+
+/// The charged bytes the library needs on a v2 server: every document
+/// sealed as the engine would (exact lengths: canonical JSON, 41 bytes of
+/// sealing, base64url) plus 512 bytes a row, and every live file's bytes
+/// plus 41 bytes of sealing and 1,024 a row.
 pub fn estimate(store: &Store) -> Result<Estimate, StoreError> {
-    crate::stub!("2b", store)
+    let mut estimate = Estimate::default();
+    for doc in store.sync_docs()? {
+        estimate.doc_bytes += sealed_doc_len(&doc) as u64 + DOC_ROW_COST;
+        if doc.deleted {
+            continue;
+        }
+        estimate.docs += 1;
+        if is_file_id(&doc.id)
+            && let Some((_, blob)) = store.attachment(&doc.id)?
+        {
+            estimate.files += 1;
+            estimate.file_bytes += blob.data.len() as u64 + SEAL_OVERHEAD as u64 + FILE_ROW_COST;
+        }
+    }
+    Ok(estimate)
 }
 
 #[cfg(test)]

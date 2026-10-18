@@ -1,29 +1,20 @@
-//! Kanso's sync client.
+//! Kanso's sync client: accounts with end-to-end encryption
+//! (docs/ACCOUNTS.md).
 //!
-//! Today ([`sync_once`]) it syncs one plaintext library behind one shared
-//! token: the Worker (`cloud/`) holds every document's current revision in
-//! D1 and attachment bytes in R2; a sync pulls the changes after the stored
-//! cursor, then pushes local ones; the store's bookkeeping (`synced_rev`,
-//! last writer by `updatedAt` wins, losers kept in revisions) decides the
-//! rest. [`HttpRemote`] talks to that Worker; [`MemoryRemote`] is an
-//! in-memory server with the same rules.
+//! A library binds to one account on one server ([`binding`]). The
+//! [`account`] functions sign up, sign in, recover and manage it; the
+//! [`keychain`] keeps the session and data key. [`sync()`] pulls the
+//! account's sealed change feed and pushes local changes through `Sealed`,
+//! which seals documents and files with the account's content keys
+//! ([`crypto`]) and maps local IDs and revisions to opaque wire ones, so the
+//! server never sees a note, a title, an ID or a revision. [`Backend`] is the
+//! server: [`HttpBackend`] (the Cloudflare Worker's `/v2` routes) or
+//! [`MemoryServer`] (tests). [`verify()`] and [`estimate()`] back the
+//! `kanso-sync` command line.
 //!
-//! Accounts with end-to-end encryption replace it (docs/ACCOUNTS.md). Step 1
-//! of that spec's build order froze their contract here: [`account`]'s
-//! functions, [`Session`], [`Backend`] ([`HttpBackend`], [`MemoryServer`]),
-//! [`wire`] and [`api`] shapes, [`binding`], [`keychain`], [`crypto`] and
-//! [`username`] types, [`SyncReport`], [`SyncProblem`] and [`verify()`]. Bodies
-//! marked with `stub!("2a" | "2b")` are the Rust builder's steps 2a and 2b.
-
-/// Marks a body that a later step of docs/ACCOUNTS.md › Build order writes.
-/// The remaining arguments are the parameters that body will use.
-macro_rules! stub {
-    ($step:literal $(, $arg:expr)* $(,)?) => {{
-        $( let _ = &$arg; )*
-        todo!(concat!("docs/ACCOUNTS.md › Build order, step ", $step))
-    }};
-}
-pub(crate) use stub;
+//! Legacy (v1), kept until step 3 of docs/ACCOUNTS.md › Build order moves
+//! the app over: [`sync_once`] syncs one plaintext library behind one shared
+//! token ([`HttpRemote`], [`MemoryRemote`], [`credentials`], [`SyncConfig`]).
 
 pub mod account;
 pub mod api;
@@ -59,8 +50,8 @@ pub use http::{HttpBackend, HttpRemote};
 pub use kanso_store::SyncDoc;
 pub use keychain::{Keychain, MemorySecrets, SecretError, SecretStore};
 pub use memory::{
-    DEFAULT_SETTINGS, Limits, MemoryRemote, MemoryServer, MemoryStats, QuotaOverride, ServerDevice,
-    ServerStats, Signup, is_valid_setting,
+    AccountSnapshot, DEFAULT_SETTINGS, Limits, MemoryRemote, MemoryServer, MemoryStats,
+    QuotaOverride, ServerDevice, ServerStats, Signup, is_valid_setting,
 };
 pub use remote::{
     ChangesPage, DEFAULT_CHANGES_LIMIT, MAX_CHANGES_LIMIT, MAX_FIELDS_BYTES, MAX_FILE_BYTES,

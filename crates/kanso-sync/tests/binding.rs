@@ -1,8 +1,10 @@
 //! Device identity and library binding (docs/ACCOUNTS.md › Device identity,
 //! › Library binding): stable, unlinkable device IDs; a copied library gets a
-//! new identity and keeps its binding; and a model of the binding plan and
-//! its choices. Tests never touch the real Keychain. CI pins the seed with
-//! `PROPTEST_RNG_SEED`.
+//! new identity and keeps its binding; a model of the binding plan and its
+//! choices; and re-binding during a sync (fix 2). Tests never touch the real
+//! Keychain. CI pins the seed with `PROPTEST_RNG_SEED`.
+
+mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -385,5 +387,97 @@ proptest! {
             let (origin, account_id) = binding(&store);
             prop_assert_eq!(origin.zip(account_id), expected);
         }
+    }
+}
+
+proptest! {
+    #![proptest_config(config(64))]
+
+    /// Fix 2 / M6: a library is re-bound to another account (Add or Replace)
+    /// between any two of a running sync's calls to the server (one-document
+    /// pages and batches, so there are many). No write of the first
+    /// account's sync lands after the new binding (the library is exactly as
+    /// the bind left it), nothing more is sent to the first account apart
+    /// from the call already on its way, the new account's cursor is never
+    /// the first one's, and the new account's next sync works on its own
+    /// feed.
+    #[test]
+    fn prop_rebinding_during_a_sync_never_mixes_accounts(
+        at in 0..16usize,
+        replace in any::<bool>(),
+        pending_notes in 0..3usize,
+        remote_notes in 0..3usize,
+        with_file in any::<bool>(),
+    ) {
+        let server = MemoryServer::new();
+        let a = common::Mac::new(common::sign_up(&server, "alice", 1));
+        let other = common::Mac::new(common::sign_in(&server, "alice", 2));
+        let bob = common::sign_up(&server, "bob", 3);
+        let bobs = common::Mac::new(common::sign_in(&server, "bob", 4));
+        // Something for each account's feed, and something pending here.
+        common::note(&bobs.store, "note:bob", "trash", "bob's", 1);
+        bobs.sync(&server);
+        common::note(&a.store, "note:synced", "trash", "synced", 1);
+        a.sync(&server);
+        for i in 0..remote_notes {
+            common::note(&other.store, &format!("note:r{i}"), "trash", "from the other Mac", 2);
+        }
+        other.sync(&server);
+        for i in 0..pending_notes {
+            common::note(&a.store, &format!("note:p{i}"), "trash", "pending", 3);
+        }
+        if with_file {
+            common::file(&a.store, "file:f", b"bytes");
+        }
+
+        let choice = if replace { Choice::Replace } else { Choice::Add };
+        let mut calls = 0;
+        let mut sent_after_bind = Vec::new();
+        let after_bind = std::sync::Mutex::new(None);
+        let tap = common::Tap::new(&server, |event| {
+            if calls > at {
+                match event {
+                    common::Event::Push(docs) => sent_after_bind.push(format!("a push of {}", docs.len())),
+                    common::Event::PutFile { .. } => sent_after_bind.push("an upload".to_owned()),
+                    _ => {}
+                }
+            }
+            if calls == at {
+                bind(&a.store, &bob, choice, &a.dir.path().join("backups"), 1).unwrap();
+                *after_bind.lock().unwrap() = Some(common::snapshot(&a.store));
+            }
+            calls += 1;
+            Ok(())
+        });
+        let small = kanso_sync::SyncOptions { page_size: 1, batch_docs: 1, ..kanso_sync::SyncOptions::default() };
+        let result = a.sync_with(&tap, &small);
+        drop(tap);
+        let Some(bound) = after_bind.into_inner().unwrap() else {
+            // The sync made fewer calls than `at`: nothing to race.
+            prop_assert!(result.is_ok());
+            return Ok(());
+        };
+        prop_assert!(
+            matches!(result, Ok(_) | Err(kanso_sync::SyncError::Cancelled)),
+            "{:?}", result
+        );
+        prop_assert_eq!(&common::snapshot(&a.store), &bound, "a write of alice's landed after bob's binding");
+        prop_assert!(sent_after_bind.is_empty(), "sent to alice after bob's binding: {:?}", sent_after_bind);
+        prop_assert_eq!(a.store.meta(meta_keys::ACCOUNT_ID).unwrap(), Some(bob.account_id.clone()));
+        prop_assert_eq!(a.store.meta(meta_keys::LAST_SEQ).unwrap(), Some("0".to_owned()));
+        prop_assert_eq!(a.store.meta(meta_keys::EPOCH).unwrap(), None);
+
+        // Bob's sync runs on bob's feed: his note arrives, his cursor is his.
+        let report = kanso_sync::sync(&a.store, &server, &bob, &kanso_sync::SyncOptions::default()).unwrap();
+        prop_assert!(!report.remerged);
+        prop_assert_eq!(common::body(&a.store, "note:bob"), Some("bob's".to_owned()));
+        let bob_view = server.plain_view(&bob);
+        let head = bob_view.docs().iter().map(|d| d.seq).max().unwrap_or(0);
+        let cursor: i64 = a.store.meta(meta_keys::LAST_SEQ).unwrap().unwrap().parse().unwrap();
+        prop_assert!(cursor <= head);
+        // Alice's notes reach bob only through Add.
+        let reached = bob_view.docs().iter().any(|d| d.id == "note:synced");
+        prop_assert_eq!(reached, !replace);
+        prop_assert_eq!(server.plain_view(&a.session).unreadable(), 0);
     }
 }

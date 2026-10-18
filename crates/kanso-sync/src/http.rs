@@ -1,20 +1,33 @@
 //! The Cloudflare Worker over HTTPS (blocking; the app has no async runtime):
-//! [`HttpRemote`], today's v1 client, and [`HttpBackend`], every v2 route
-//! (step 2b) with `max_redirects(0)` and the response caps of
-//! docs/ACCOUNTS.md › Conventions.
+//! [`HttpBackend`], every v2 route with `max_redirects(0)` and the response
+//! caps of docs/ACCOUNTS.md › Conventions, and [`HttpRemote`], the legacy v1
+//! client.
 
 use std::fmt;
 use std::time::Duration;
 
 use kanso_store::SyncDoc;
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use ureq::http::Response;
 use ureq::{Agent, Body};
 
+use crate::api::{
+    AccountResponse, Api, Backend, DeleteRequest, DeleteResponse, DeviceNameRequest,
+    DevicesResponse, Health, LoginRequest, LoginResponse, PasswordRequest, PasswordResponse,
+    PreloginRequest, PreloginResponse, RecoverFinishRequest, RecoverStartRequest,
+    RecoverStartResponse, RecoveryKeyRequest, RecoveryKeyResponse, Route, SessionResponse,
+    SignupRequest,
+};
+use crate::crypto::{KdfParams, sha256_hex};
 use crate::remote::{
     ChangesPage, MAX_FILE_BYTES, PushResult, Remote, RemoteError, RemoteFile, encode_segment,
     md5_hex,
+};
+use crate::wire::{
+    ApiError, MAX_AUTH_RESPONSE, MAX_FILE_RESPONSE, MAX_SYNC_RESPONSE, PushRequest, PushResponse,
+    PutFileResponse, SessionToken, WirePage,
 };
 
 /// Largest JSON response read (a page of large notes can be big).
@@ -40,7 +53,7 @@ impl fmt::Debug for HttpRemote {
 }
 
 #[derive(serde::Deserialize)]
-struct PushResponse {
+struct V1PushResponse {
     results: Vec<PushResult>,
 }
 
@@ -140,7 +153,7 @@ impl Remote for HttpRemote {
             .header("content-type", "application/json")
             .send(&body[..])
             .map_err(transport)?;
-        let parsed: PushResponse = read_json(&mut response)?;
+        let parsed: V1PushResponse = read_json(&mut response)?;
         Ok(parsed.results)
     }
 
@@ -220,8 +233,9 @@ impl Remote for HttpRemote {
 }
 
 /// The app's [`Backend`]: every v2 route over blocking `ureq`, with no
-/// redirects (a redirect could re-send a proof) and the response caps.
-/// Its KDF floor and default are the production constants.
+/// redirects (a redirect could re-send a proof) and the response caps of
+/// docs/ACCOUNTS.md › Conventions. It never sends an `Origin` header. Its
+/// KDF floor and default are the production constants.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct HttpBackend;
 
@@ -231,16 +245,395 @@ impl HttpBackend {
     }
 }
 
-impl crate::api::Backend for HttpBackend {
-    fn api(&self, server: &str) -> Box<dyn crate::api::Api + '_> {
-        crate::stub!("2b", server)
+impl Backend for HttpBackend {
+    fn api(&self, server: &str) -> Box<dyn Api + '_> {
+        Box::new(HttpApi::new(server))
     }
 
-    fn kdf_floor(&self) -> crate::crypto::KdfParams {
-        crate::crypto::KdfParams::FLOOR
+    fn kdf_floor(&self) -> KdfParams {
+        KdfParams::FLOOR
     }
 
-    fn kdf_default(&self) -> crate::crypto::KdfParams {
-        crate::crypto::KdfParams::DEFAULT
+    fn kdf_default(&self) -> KdfParams {
+        KdfParams::DEFAULT
+    }
+}
+
+/// How long a logout may take: sign-out never waits on a slow server.
+const LOGOUT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The v2 routes of one server.
+struct HttpApi {
+    base: String,
+    agent: Agent,
+}
+
+/// A request body.
+enum Payload<'a> {
+    None,
+    Json(Vec<u8>),
+    /// Sealed file bytes, sent with their SHA-256 in `x-kanso-sha256`.
+    File(&'a [u8]),
+}
+
+impl HttpApi {
+    fn new(server: &str) -> HttpApi {
+        let agent: Agent = Agent::config_builder()
+            .http_status_as_error(false)
+            .max_redirects(0)
+            .timeout_connect(Some(Duration::from_secs(20)))
+            .timeout_global(Some(Duration::from_secs(300)))
+            .user_agent(concat!("kanso-sync/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .into();
+        HttpApi {
+            base: server.trim().trim_end_matches('/').to_owned(),
+            agent,
+        }
+    }
+
+    /// Sends one request and reads the answer up to `cap` bytes: the status
+    /// and body of a 2xx answer, or the route's [`ApiError`].
+    fn send(
+        &self,
+        route: Route,
+        path: &str,
+        token: Option<&SessionToken>,
+        payload: Payload,
+        cap: u64,
+    ) -> Result<(u16, Vec<u8>), ApiError> {
+        let (method, _) = route.http();
+        let url = format!("{}{path}", self.base);
+        let auth = token.map(|t| format!("Bearer {}", t.expose()));
+        let timeout = (route == Route::Logout).then_some(LOGOUT_TIMEOUT);
+        let response = match method {
+            "GET" | "DELETE" => {
+                let mut request = if method == "GET" {
+                    self.agent.get(&url)
+                } else {
+                    self.agent.delete(&url)
+                };
+                if let Some(auth) = &auth {
+                    request = request.header("authorization", auth);
+                }
+                request
+                    .config()
+                    .timeout_global(timeout.or(Some(Duration::from_secs(300))))
+                    .build()
+                    .call()
+            }
+            _ => {
+                let mut request = if method == "POST" {
+                    self.agent.post(&url)
+                } else {
+                    self.agent.put(&url)
+                };
+                if let Some(auth) = &auth {
+                    request = request.header("authorization", auth);
+                }
+                let request = request
+                    .config()
+                    .timeout_global(timeout.or(Some(Duration::from_secs(300))))
+                    .build();
+                match payload {
+                    Payload::None => request
+                        .header("content-type", "application/json")
+                        .send(&b"{}"[..]),
+                    Payload::Json(body) => request
+                        .header("content-type", "application/json")
+                        .send(&body[..]),
+                    Payload::File(bytes) => request
+                        .header("content-type", "application/octet-stream")
+                        .header("x-kanso-sha256", sha256_hex(bytes))
+                        .send(bytes),
+                }
+            }
+        };
+        let mut response = response.map_err(|err| ApiError::Transport(err.to_string()))?;
+        let status = response.status().as_u16();
+        if (300..400).contains(&status) {
+            return Err(ApiError::Protocol(format!(
+                "the server answered {status} (a redirect), which the client never follows"
+            )));
+        }
+        let ok = (200..300).contains(&status);
+        let limit = if ok { cap } else { MAX_AUTH_RESPONSE };
+        let body = response
+            .body_mut()
+            .with_config()
+            .limit(limit)
+            .read_to_vec()
+            .map_err(|err| match err {
+                ureq::Error::BodyExceedsLimit(_) => {
+                    ApiError::Protocol(format!("the answer is over the {limit}-byte cap"))
+                }
+                err => ApiError::Transport(err.to_string()),
+            })?;
+        if ok {
+            Ok((status, body))
+        } else {
+            Err(ApiError::from_response(status, &body))
+        }
+    }
+
+    /// A JSON request whose 2xx answer is JSON.
+    fn json<T: DeserializeOwned>(
+        &self,
+        route: Route,
+        path: &str,
+        token: Option<&SessionToken>,
+        body: Option<&impl Serialize>,
+        cap: u64,
+    ) -> Result<T, ApiError> {
+        let payload = match body {
+            Some(body) => Payload::Json(
+                serde_json::to_vec(body).map_err(|e| ApiError::Protocol(e.to_string()))?,
+            ),
+            None => Payload::None,
+        };
+        let (_, bytes) = self.send(route, path, token, payload, cap)?;
+        serde_json::from_slice(&bytes)
+            .map_err(|e| ApiError::Protocol(format!("{}: {e}", route.http().1)))
+    }
+
+    /// A request whose answer is 204 (or any 2xx; its body is ignored).
+    fn empty(
+        &self,
+        route: Route,
+        path: &str,
+        token: &SessionToken,
+        body: Option<&impl Serialize>,
+    ) -> Result<(), ApiError> {
+        let payload = match body {
+            Some(body) => Payload::Json(
+                serde_json::to_vec(body).map_err(|e| ApiError::Protocol(e.to_string()))?,
+            ),
+            None => Payload::None,
+        };
+        self.send(route, path, Some(token), payload, MAX_AUTH_RESPONSE)
+            .map(|_| ())
+    }
+}
+
+/// No request body.
+const NO_BODY: Option<&()> = None;
+
+impl Api for HttpApi {
+    fn health(&self) -> Result<Health, ApiError> {
+        self.json(
+            Route::Health,
+            "/v2/health",
+            None,
+            NO_BODY,
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn prelogin(&self, request: &PreloginRequest) -> Result<PreloginResponse, ApiError> {
+        self.json(
+            Route::Prelogin,
+            "/v2/auth/prelogin",
+            None,
+            Some(request),
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn signup(&self, request: &SignupRequest) -> Result<SessionResponse, ApiError> {
+        self.json(
+            Route::Signup,
+            "/v2/auth/signup",
+            None,
+            Some(request),
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn login(&self, request: &LoginRequest) -> Result<LoginResponse, ApiError> {
+        self.json(
+            Route::Login,
+            "/v2/auth/login",
+            None,
+            Some(request),
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn recover_start(
+        &self,
+        request: &RecoverStartRequest,
+    ) -> Result<RecoverStartResponse, ApiError> {
+        self.json(
+            Route::RecoverStart,
+            "/v2/auth/recover/start",
+            None,
+            Some(request),
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn recover_finish(&self, request: &RecoverFinishRequest) -> Result<SessionResponse, ApiError> {
+        self.json(
+            Route::RecoverFinish,
+            "/v2/auth/recover/finish",
+            None,
+            Some(request),
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn logout(&self, token: &SessionToken) -> Result<(), ApiError> {
+        self.empty(Route::Logout, "/v2/auth/logout", token, NO_BODY)
+    }
+
+    fn account(&self, token: &SessionToken) -> Result<AccountResponse, ApiError> {
+        self.json(
+            Route::Account,
+            "/v2/account",
+            Some(token),
+            NO_BODY,
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn change_password(
+        &self,
+        token: &SessionToken,
+        request: &PasswordRequest,
+    ) -> Result<PasswordResponse, ApiError> {
+        self.json(
+            Route::Password,
+            "/v2/account/password",
+            Some(token),
+            Some(request),
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn replace_recovery_key(
+        &self,
+        token: &SessionToken,
+        request: &RecoveryKeyRequest,
+    ) -> Result<RecoveryKeyResponse, ApiError> {
+        self.json(
+            Route::RecoveryKey,
+            "/v2/account/recovery-key",
+            Some(token),
+            Some(request),
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn delete_account(
+        &self,
+        token: &SessionToken,
+        request: &DeleteRequest,
+    ) -> Result<DeleteResponse, ApiError> {
+        self.json(
+            Route::Delete,
+            "/v2/account/delete",
+            Some(token),
+            Some(request),
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn set_device_name(
+        &self,
+        token: &SessionToken,
+        request: &DeviceNameRequest,
+    ) -> Result<(), ApiError> {
+        self.empty(Route::SetDevice, "/v2/account/device", token, Some(request))
+    }
+
+    fn devices(&self, token: &SessionToken) -> Result<DevicesResponse, ApiError> {
+        self.json(
+            Route::Devices,
+            "/v2/account/devices",
+            Some(token),
+            NO_BODY,
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn revoke_device(&self, token: &SessionToken, device_id: &str) -> Result<(), ApiError> {
+        let path = format!("/v2/account/devices/{}", encode_segment(device_id));
+        self.send(
+            Route::RevokeDevice,
+            &path,
+            Some(token),
+            Payload::None,
+            MAX_AUTH_RESPONSE,
+        )
+        .map(|_| ())
+    }
+
+    fn push(&self, token: &SessionToken, request: &PushRequest) -> Result<PushResponse, ApiError> {
+        self.json(
+            Route::Push,
+            "/v2/push",
+            Some(token),
+            Some(request),
+            MAX_SYNC_RESPONSE,
+        )
+    }
+
+    fn changes(
+        &self,
+        token: &SessionToken,
+        since: Option<i64>,
+        limit: Option<usize>,
+    ) -> Result<WirePage, ApiError> {
+        let mut query = Vec::new();
+        if let Some(since) = since {
+            query.push(format!("since={since}"));
+        }
+        if let Some(limit) = limit {
+            query.push(format!("limit={limit}"));
+        }
+        let path = if query.is_empty() {
+            "/v2/changes".to_owned()
+        } else {
+            format!("/v2/changes?{}", query.join("&"))
+        };
+        self.json(
+            Route::Changes,
+            &path,
+            Some(token),
+            NO_BODY,
+            MAX_SYNC_RESPONSE,
+        )
+    }
+
+    fn put_file(
+        &self,
+        token: &SessionToken,
+        wire_id: &str,
+        sealed: &[u8],
+    ) -> Result<PutFileResponse, ApiError> {
+        let path = format!("/v2/files/{}", encode_segment(wire_id));
+        let (_, body) = self.send(
+            Route::PutFile,
+            &path,
+            Some(token),
+            Payload::File(sealed),
+            MAX_AUTH_RESPONSE,
+        )?;
+        serde_json::from_slice(&body).map_err(|e| ApiError::Protocol(format!("/v2/files: {e}")))
+    }
+
+    fn get_file(&self, token: &SessionToken, wire_id: &str) -> Result<Option<Vec<u8>>, ApiError> {
+        let path = format!("/v2/files/{}", encode_segment(wire_id));
+        match self.send(
+            Route::GetFile,
+            &path,
+            Some(token),
+            Payload::None,
+            MAX_FILE_RESPONSE,
+        ) {
+            Ok((_, bytes)) => Ok(Some(bytes)),
+            Err(ApiError::NotFound) => Ok(None),
+            Err(err) => Err(err),
+        }
     }
 }
