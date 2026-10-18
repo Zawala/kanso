@@ -527,9 +527,7 @@ impl Store {
 
     /// The highest change sequence number.
     pub fn last_seq(&self) -> Result<i64> {
-        self.read(|conn| {
-            Ok(conn.query_row("SELECT COALESCE(MAX(seq), 0) FROM docs", [], |r| r.get(0))?)
-        })
+        self.read(crate::schema::last_seq)
     }
 
     /// Live documents per type.

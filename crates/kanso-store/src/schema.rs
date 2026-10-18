@@ -125,11 +125,22 @@ pub fn set_meta(conn: &Connection, key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
+/// The `meta` key holding the highest change sequence handed out before
+/// [`crate::Store::replace_library`] emptied `docs`, so sequences never
+/// repeat and API change feeds keep moving forward.
+pub const SEQ_FLOOR_KEY: &str = "store.seq_floor";
+
+/// The highest change sequence handed out so far.
+pub fn last_seq(conn: &Connection) -> Result<i64> {
+    Ok(conn.query_row(
+        "SELECT max(COALESCE((SELECT MAX(seq) FROM docs), 0),
+                    COALESCE((SELECT CAST(value AS INTEGER) FROM meta WHERE key = ?1), 0))",
+        [SEQ_FLOOR_KEY],
+        |row| row.get(0),
+    )?)
+}
+
 /// The next value of the store-wide change sequence.
 pub fn next_seq(conn: &Connection) -> Result<i64> {
-    Ok(
-        conn.query_row("SELECT COALESCE(MAX(seq), 0) + 1 FROM docs", [], |row| {
-            row.get(0)
-        })?,
-    )
+    Ok(last_seq(conn)? + 1)
 }

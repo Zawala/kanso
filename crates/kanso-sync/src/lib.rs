@@ -114,7 +114,9 @@ pub fn origin(server: &str) -> Result<String, EndpointError> {
 
 /// Checks a Worker URL and returns it normalized, without a trailing slash.
 /// Only https is accepted, apart from plain http to this Mac (for `wrangler
-/// dev`), so the access token never crosses the network unencrypted.
+/// dev`), so the access token never crosses the network unencrypted. A host
+/// ending in a dot is refused: it would give the same server a second origin
+/// (docs/ACCOUNTS.md › Conventions).
 pub fn check_endpoint(input: &str) -> Result<String, EndpointError> {
     let url = url::Url::parse(input.trim()).map_err(|_| EndpointError::Invalid)?;
     if !url.username().is_empty()
@@ -125,6 +127,9 @@ pub fn check_endpoint(input: &str) -> Result<String, EndpointError> {
         return Err(EndpointError::Extra);
     }
     let loopback = match url.host() {
+        Some(url::Host::Domain(domain)) if domain.ends_with('.') => {
+            return Err(EndpointError::Invalid);
+        }
         Some(url::Host::Domain(domain)) => domain.eq_ignore_ascii_case("localhost"),
         Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
         Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
@@ -139,6 +144,9 @@ pub fn check_endpoint(input: &str) -> Result<String, EndpointError> {
 }
 
 /// Where the app syncs to. The token is kept separately, in the Keychain.
+///
+/// Legacy (v1, one shared token): kept until the app moves to accounts;
+/// step 3 of docs/ACCOUNTS.md › Build order removes it.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SyncConfig {
     /// The Worker's base URL, e.g. `https://kanso-sync.example.workers.dev`.
@@ -206,6 +214,15 @@ mod endpoint_tests {
         assert_eq!(
             check_endpoint("https://user:pw@example.com"),
             Err(EndpointError::Extra)
+        );
+        // A trailing dot names the same host under a second origin.
+        assert_eq!(
+            check_endpoint("https://kanso-sync.imngonii.workers.dev./"),
+            Err(EndpointError::Invalid)
+        );
+        assert_eq!(
+            check_endpoint("http://localhost.:8787"),
+            Err(EndpointError::Invalid)
         );
         assert_eq!(
             check_endpoint("https://example.com/?a=1"),

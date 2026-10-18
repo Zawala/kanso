@@ -276,6 +276,9 @@ pub fn report_problem(report: &SyncReport) -> Option<SyncProblem> {
 }
 
 /// Pulls, then pushes, with the default options.
+///
+/// Legacy (v1 rules, plaintext, one shared token): kept until step 3 of
+/// docs/ACCOUNTS.md › Build order; accounts use [`sync()`].
 pub fn sync_once<R: Remote + ?Sized>(store: &Store, remote: &R) -> Result<SyncReport, SyncError> {
     sync_with(store, remote, &SyncOptions::default())
 }
@@ -290,6 +293,8 @@ pub fn sync_once<R: Remote + ?Sized>(store: &Store, remote: &R) -> Result<SyncRe
 ///    first. Accepted documents are marked synced; on a conflict the server's
 ///    version is applied, and a local version that won goes again in the
 ///    next round.
+///
+/// Legacy (v1): see [`sync_once`].
 pub fn sync_with<R: Remote + ?Sized>(
     store: &Store,
     remote: &R,
@@ -344,7 +349,7 @@ fn apply<R: Remote + ?Sized>(
     } else {
         None
     };
-    let outcome = match store.apply_remote(doc, attachment, None) {
+    let outcome = match store.apply_remote_legacy(doc, attachment) {
         Ok(outcome) => outcome,
         Err(StoreError::Invalid(reason)) => {
             report.invalid.push((doc.id.clone(), reason));

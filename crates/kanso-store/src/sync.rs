@@ -58,7 +58,8 @@ pub enum ApplyOutcome {
     /// `new_rev` is the local version's revision after the conflict. Under M2
     /// (docs/ACCOUNTS.md › Revision generations only grow) it is a new
     /// revision with generation `max(local, remote) + 1` and the same content
-    /// hash. Until step 2a adds that bump it is the unchanged local revision.
+    /// hash. Under the legacy v1 rules ([`Store::apply_remote_legacy`]) it is
+    /// the unchanged local revision.
     LocalWon { new_rev: String },
     /// A replayed older version (M2, security re-check 4): the remote
     /// revision's generation is at or below the generation of the local
@@ -67,7 +68,7 @@ pub enum ApplyOutcome {
     /// it gets `new_rev` (generation `max(local, remote) + 1`, same content
     /// hash), `synced_rev` becomes the remote revision, the remote version is
     /// kept as a snapshot when its content differs, and the local version is
-    /// pushed again. Step 2a returns it; until then it is never produced.
+    /// pushed again. Never produced under the legacy v1 rules.
     Stale { new_rev: String },
 }
 
@@ -203,8 +204,11 @@ impl Store {
     /// same account (M1) doesn't use it; it keeps `synced_rev` (security
     /// re-check 4).
     pub fn reset_sync(&self, meta: &[(&str, Option<&str>)]) -> Result<()> {
-        let _ = meta;
-        todo!("step 2a: docs/ACCOUNTS.md › Library binding › reset_sync")
+        self.write(|tx, _| {
+            tx.execute("UPDATE docs SET synced_rev = NULL WHERE deleted = 0", [])?;
+            tx.execute("UPDATE docs SET synced_rev = rev WHERE deleted != 0", [])?;
+            write_meta(tx, meta)
+        })
     }
 
     /// Empties the library in one transaction (docs/ACCOUNTS.md › Library
@@ -213,9 +217,69 @@ impl Store {
     /// (`None`) the meta entries. Broadcasts a deletion per document
     /// (`Origin::Sync`). Returns the number of documents removed. A crash
     /// leaves either the old library or an empty one bound fresh.
+    ///
+    /// Change sequences keep growing afterwards: the highest one handed out
+    /// so far is kept as a floor, so API change feeds never go back.
     pub fn replace_library(&self, meta: &[(&str, Option<&str>)]) -> Result<usize> {
-        let _ = meta;
-        todo!("step 2a: docs/ACCOUNTS.md › Library binding › replace_library")
+        self.write(|tx, changes| {
+            let floor = crate::schema::last_seq(tx)?;
+            let removed: Vec<(String, String)> = tx
+                .prepare("SELECT id, rev FROM docs ORDER BY seq")?
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<rusqlite::Result<_>>()?;
+            for table in [
+                "note_tags",
+                "notes_fts",
+                "blobs",
+                "revisions",
+                "archive",
+                "docs",
+            ] {
+                tx.execute(&format!("DELETE FROM {table}"), [])?;
+            }
+            crate::schema::set_meta(tx, crate::schema::SEQ_FLOOR_KEY, &floor.to_string())?;
+            write_meta(tx, meta)?;
+            changes.extend(removed.iter().map(|(id, rev)| crate::Change {
+                id: id.clone(),
+                rev: rev.clone(),
+                seq: floor,
+                deleted: true,
+                origin: Origin::Sync,
+            }));
+            Ok(removed.len())
+        })
+    }
+
+    /// Writes (`Some`) or removes (`None`) several `meta` entries in one
+    /// transaction (device identity, docs/ACCOUNTS.md › Device identity).
+    pub fn set_metas(&self, meta: &[(&str, Option<&str>)]) -> Result<()> {
+        self.write(|tx, _| write_meta(tx, meta))
+    }
+
+    /// Gives `id` a new revision one generation higher with the same content
+    /// hash, keeping its `synced_rev`, so it is pushed again on top of the
+    /// server's current revision. The engine's automatic repair of an
+    /// undecryptable server copy (M3, security re-check 10) and `kanso-sync
+    /// verify --repair` use it. Returns the new revision, or `None` when
+    /// there is no such document. Nothing is written unless `guard` holds.
+    pub fn bump_revision(&self, id: &str, guard: Option<&SyncGuard>) -> Result<Option<String>> {
+        self.write(|tx, changes| {
+            check_guard(tx, guard)?;
+            let Some(local) = load_row(tx, id)? else {
+                return Ok(None);
+            };
+            let rev = parse_rev(&local.rev)?;
+            let new_rev = rebased(&rev, rev.generation);
+            set_rev(
+                tx,
+                id,
+                &local,
+                &new_rev,
+                local.synced_rev.as_deref(),
+                changes,
+            )?;
+            Ok(Some(new_rev))
+        })
     }
 
     /// Whether the store has the bytes of attachment `id` with this MD5 (hex).
@@ -240,22 +304,44 @@ impl Store {
     /// losing version is kept in the document's revision history. With a
     /// `guard`, nothing is written unless it holds ([`StoreError::GuardFailed`]).
     ///
-    /// Step 2a adds the M2 rules (docs/ACCOUNTS.md › Revision generations only
-    /// grow): a local win gets a new revision, and a replayed older revision
-    /// never reverts the Mac: the local version is rebased onto it and pushed
-    /// again ([`ApplyOutcome::Stale`]).
+    /// The M2 rules hold (docs/ACCOUNTS.md › Revision generations only grow):
+    /// a local win gets a new revision, generation `max(local, remote) + 1`
+    /// with the same content hash, pushed on top of the remote one; and a
+    /// remote revision at or below the generation of `synced_rev` (and not
+    /// `synced_rev` itself) never reverts the Mac: the local version is
+    /// rebased onto it the same way ([`ApplyOutcome::Stale`]).
     pub fn apply_remote(
         &self,
         remote: &SyncDoc,
         attachment: Option<Attachment>,
         guard: Option<&SyncGuard>,
     ) -> Result<ApplyOutcome> {
+        self.apply(remote, attachment, guard, Rules::V2)
+    }
+
+    /// Legacy: [`Store::apply_remote`] under the v1 rules, for the v1 engine
+    /// (`kanso_sync::sync_once`) until step 3 of docs/ACCOUNTS.md removes it.
+    /// A local win keeps its revision and nothing is ever `Stale`, exactly as
+    /// the app before accounts behaved, so a rolled-back library syncs with
+    /// a v1 server the way the old app would.
+    pub fn apply_remote_legacy(
+        &self,
+        remote: &SyncDoc,
+        attachment: Option<Attachment>,
+    ) -> Result<ApplyOutcome> {
+        self.apply(remote, attachment, None, Rules::Legacy)
+    }
+
+    fn apply(
+        &self,
+        remote: &SyncDoc,
+        attachment: Option<Attachment>,
+        guard: Option<&SyncGuard>,
+        rules: Rules,
+    ) -> Result<ApplyOutcome> {
         let doc_type = DocType::of_id(&remote.id)
             .ok_or_else(|| StoreError::Invalid(format!("Invalid document ID '{}'.", remote.id)))?;
-        remote
-            .rev
-            .parse::<kanso_core::Rev>()
-            .map_err(|e| StoreError::Invalid(e.to_string()))?;
+        let remote_rev = parse_rev(&remote.rev)?;
         self.write(|tx, changes| {
             check_guard(tx, guard)?;
             let local = load_row(tx, &remote.id)?;
@@ -298,6 +384,21 @@ impl Store {
             if local.synced_rev.as_deref() == Some(remote.rev.as_str()) {
                 return Ok(ApplyOutcome::Unchanged);
             }
+            let local_rev = parse_rev(&local.rev)?;
+            // M2: a revision at or below the one this Mac last synced is a
+            // replay (or a rewound server). Never revert; rebase and push.
+            if rules == Rules::V2
+                && let Some(synced) = &local.synced_rev
+                && remote_rev.generation <= parse_rev(synced)?.generation
+            {
+                let differs = local.deleted || local.fields != fields;
+                if !remote.deleted && differs {
+                    keep_remote(tx, &remote.id, &remote.rev, &fields)?;
+                }
+                let new_rev = rebased(&local_rev, local_rev.generation.max(remote_rev.generation));
+                set_rev(tx, &remote.id, &local, &new_rev, Some(&remote.rev), changes)?;
+                return Ok(ApplyOutcome::Stale { new_rev });
+            }
             let local_dirty = local.synced_rev.as_deref() != Some(local.rev.as_str());
             let remote_wins = !local_dirty
                 || match (local.deleted, remote.deleted) {
@@ -314,18 +415,95 @@ impl Store {
             // Keep the local version; base it on the server's revision so the
             // next push is accepted, and keep the remote version as history.
             if !remote.deleted {
-                tx.execute(
-                    "INSERT INTO revisions (doc_id, rev, json, saved_at, origin) VALUES (?1, ?2, ?3, ?4, 'sync')",
-                    params![remote.id, remote.rev, serde_json::to_string(&fields)?, kanso_core::now_ms()],
-                )?;
+                keep_remote(tx, &remote.id, &remote.rev, &fields)?;
             }
-            tx.execute(
-                "UPDATE docs SET synced_rev = ?2 WHERE id = ?1",
-                params![remote.id, remote.rev],
-            )?;
-            Ok(ApplyOutcome::LocalWon { new_rev: local.rev })
+            if rules == Rules::Legacy {
+                tx.execute(
+                    "UPDATE docs SET synced_rev = ?2 WHERE id = ?1",
+                    params![remote.id, remote.rev],
+                )?;
+                return Ok(ApplyOutcome::LocalWon { new_rev: local.rev });
+            }
+            let new_rev = rebased(&local_rev, local_rev.generation.max(remote_rev.generation));
+            set_rev(tx, &remote.id, &local, &new_rev, Some(&remote.rev), changes)?;
+            Ok(ApplyOutcome::LocalWon { new_rev })
         })
     }
+}
+
+/// Which conflict rules [`Store::apply_remote`] follows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Rules {
+    /// Accounts (M2): local wins and replays get a higher generation.
+    V2,
+    /// The v1 engine's rules, unchanged (legacy, until step 3).
+    Legacy,
+}
+
+fn parse_rev(rev: &str) -> Result<kanso_core::Rev> {
+    rev.parse::<kanso_core::Rev>()
+        .map_err(|e| StoreError::Invalid(e.to_string()))
+}
+
+/// `rev`'s content hash under generation `above + 1`.
+fn rebased(rev: &kanso_core::Rev, above: u64) -> String {
+    kanso_core::Rev {
+        generation: above.saturating_add(1),
+        hash: rev.hash.clone(),
+    }
+    .to_string()
+}
+
+/// Keeps a remote version that didn't win as a snapshot in history.
+fn keep_remote(
+    tx: &rusqlite::Transaction,
+    id: &str,
+    rev: &str,
+    fields: &Map<String, Value>,
+) -> Result<()> {
+    tx.execute(
+        "INSERT INTO revisions (doc_id, rev, json, saved_at, origin) VALUES (?1, ?2, ?3, ?4, 'sync')",
+        params![id, rev, serde_json::to_string(fields)?, kanso_core::now_ms()],
+    )?;
+    Ok(())
+}
+
+/// Gives a row a new revision (same content) and `synced_rev`, under a new
+/// change sequence, and reports the change.
+fn set_rev(
+    tx: &rusqlite::Transaction,
+    id: &str,
+    local: &crate::write::Row,
+    new_rev: &str,
+    synced_rev: Option<&str>,
+    changes: &mut Vec<crate::Change>,
+) -> Result<()> {
+    let seq = crate::schema::next_seq(tx)?;
+    tx.execute(
+        "UPDATE docs SET rev = ?2, synced_rev = ?3, seq = ?4 WHERE id = ?1",
+        params![id, new_rev, synced_rev, seq],
+    )?;
+    changes.push(crate::Change {
+        id: id.to_owned(),
+        rev: new_rev.to_owned(),
+        seq,
+        deleted: local.deleted,
+        origin: Origin::Sync,
+    });
+    Ok(())
+}
+
+/// Writes (`Some`) or removes (`None`) meta entries inside a transaction.
+fn write_meta(tx: &rusqlite::Transaction, meta: &[(&str, Option<&str>)]) -> Result<()> {
+    for (key, value) in meta {
+        match value {
+            Some(value) => crate::schema::set_meta(tx, key, value)?,
+            None => {
+                tx.execute("DELETE FROM meta WHERE key = ?", [key])?;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
