@@ -370,6 +370,31 @@ impl Library {
         book_path(id, &self.books)
     }
 
+    /// The title for an empty place, "No notes in Research" or "No notes
+    /// yet", when the list is empty only because all notes or a notebook
+    /// has none: loaded, no search, no narrowing. The editor then offers
+    /// the first note.
+    // no-prop-test: a few plain conditions; the note list's
+    // `empty_place_cases` covers each.
+    pub fn empty_place(&self) -> Option<String> {
+        let empty = self.notes_version > 0
+            && self.notes.is_empty()
+            && self.load_error.is_none()
+            && self.search.trim().is_empty()
+            && !self.is_refined();
+        if !empty {
+            return None;
+        }
+        match &self.filter {
+            Filter::All => Some("No notes yet".into()),
+            Filter::Book(id) => Some(format!(
+                "No notes in {}",
+                self.book(id).map_or("this notebook", |b| b.name.as_str())
+            )),
+            _ => None,
+        }
+    }
+
     pub fn filter_title(&self) -> String {
         match &self.filter {
             Filter::All => "All Notes".into(),

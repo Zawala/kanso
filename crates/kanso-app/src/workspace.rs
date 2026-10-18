@@ -18,9 +18,7 @@ use serde_json::{Value, json};
 use crate::config::{AppConfig, ThemePreference, ViewMode};
 use crate::dialogs::{confirm, prompt_text};
 use crate::editor::{EditorEvent, NoteEditor};
-use crate::layout::{
-    BandAction, BandDrag, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, TOP_BAND_HEIGHT, leading_inset,
-};
+use crate::layout::{BandAction, BandDrag, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, leading_inset};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::{NoteList, NoteListEvent};
 use crate::palette::{Mode, Palette};
@@ -350,6 +348,13 @@ impl Workspace {
             Filter::Status(status) => note["status"] = json!(status.as_str()),
             Filter::Pinned => note["pinned"] = json!(true),
             _ => {}
+        }
+        // The list's own narrowing too, so the new note shows in it.
+        if let Some(status) = library.status_only {
+            note["status"] = json!(status.as_str());
+        }
+        if library.pinned_only {
+            note["pinned"] = json!(true);
         }
         if matches!(library.filter, Filter::Trash) {
             self.library.update(cx, |library, cx| {
@@ -764,14 +769,11 @@ pub fn tag_color_name(color: TagColor) -> String {
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
-        // With the sidebar hidden the note list is leftmost. Its header
-        // has no room for the traffic lights, so it moves down from under
-        // them.
-        let list_inset = if leading_inset(!self.show_sidebar, window.is_fullscreen()) > 0. {
-            TOP_BAND_HEIGHT
-        } else {
-            0.
-        };
+        // With the sidebar hidden the note list is leftmost, so its top band
+        // keeps the traffic lights' room free (none in full screen).
+        let list_inset = px(leading_inset(!self.show_sidebar, window.is_fullscreen()));
+        self.note_list
+            .update(cx, |list, cx| list.set_leading_inset(list_inset, cx));
         v_flex()
             .size_full()
             .relative()
@@ -899,13 +901,7 @@ impl Render for Workspace {
                             resizable_panel()
                                 .size(px(NOTE_LIST_WIDTH))
                                 .size_range(px(260.)..px(480.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .bg(colors.list)
-                                        .pt(px(list_inset))
-                                        .child(self.note_list.clone()),
-                                ),
+                                .child(self.note_list.clone()),
                         )
                         .child(resizable_panel().child(self.editor.clone())),
                 ),

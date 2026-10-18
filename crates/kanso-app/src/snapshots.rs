@@ -199,6 +199,9 @@ fn context(clock: Option<Clock>) -> HeadlessAppContext {
     );
     cx.update(|cx| {
         gpui_kit::init(cx);
+        // The app's keymap, so shortcuts show as bound.
+        crate::workspace::bind_keys(cx);
+        crate::note_list::bind_keys(cx);
         if let Some(clock) = clock {
             cx.set_global(clock);
         }
@@ -527,8 +530,7 @@ fn mono_font(
     });
 }
 
-/// Opens the palette in `mode` and types `query`, as from the keyboard. The
-/// keymap is loaded so the rows show their real shortcuts.
+/// Opens the palette in `mode` and types `query`, as from the keyboard.
 fn open_palette(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
@@ -536,7 +538,6 @@ fn open_palette(
     mode: Mode,
     query: &str,
 ) {
-    cx.update(crate::workspace::bind_keys);
     cx.update_window(window, |_, window, cx| {
         let palette = workspace.read(cx).palette.clone();
         palette.update(cx, |palette, cx| {

@@ -571,7 +571,7 @@ impl Palette {
         places.push(place(
             Filter::Trash,
             "Trash".into(),
-            IconName::Delete,
+            IconName::Trash,
             counts.trash,
             &["deleted"],
         ));
@@ -1497,6 +1497,7 @@ mod tests {
 
     use super::{MODIFIER_SYMBOLS, Mode, Palette, shortcut, shortcut_parts};
     use crate::config::AppConfig;
+    use crate::library::Filter;
     use crate::services::Services;
     use crate::workspace::{AppState, FocusSearch, NewNote, Workspace};
 
@@ -1886,6 +1887,53 @@ mod tests {
         // Closing returns the keyboard to the note, not to the first list.
         f.keys(cx, "escape");
         assert!(f.body_focused(cx));
+    }
+
+    /// Every command the palette runs as an action finds a handler from
+    /// where the palette sends it (the note being written, inside the
+    /// workspace), whatever the layout. Quit and Settings are the app's own:
+    /// main.rs registers them with `cx.on_action`.
+    #[gpui_kit::test]
+    fn every_command_reaches_a_handler(cx: &mut TestAppContext) {
+        let f = setup(cx);
+        let app_wide = ["kanso::Quit", "kanso::OpenSettings"];
+        let missing: Vec<&str> = f.update(cx, |_, window, cx| {
+            crate::commands::all()
+                .iter()
+                .filter(|command| {
+                    command.action().is_some_and(|action| {
+                        !window.is_action_available(action.as_ref(), cx)
+                            && !app_wide.contains(&action.name())
+                    })
+                })
+                .map(|command| command.id)
+                .collect()
+        });
+        assert!(missing.is_empty(), "no handler for {missing:?}");
+        // The exceptions are real commands, so the list can't go stale.
+        for name in app_wide {
+            assert!(
+                crate::commands::all()
+                    .iter()
+                    .any(|c| c.action().is_some_and(|a| a.name() == name)),
+                "{name}"
+            );
+        }
+    }
+
+    #[gpui_kit::test]
+    fn go_to_shows_recent(cx: &mut TestAppContext) {
+        let f = setup(cx);
+        f.keys(cx, "cmd-k");
+        f.type_query(cx, "recent");
+        assert_eq!(f.selected_label(cx).as_deref(), Some("Recent"));
+        f.keys(cx, "enter");
+        assert_eq!(f.mode(cx), None);
+        let library = cx.read(|cx| f.workspace.read(cx).library.clone());
+        assert_eq!(
+            cx.read(|cx| library.read(cx).filter.clone()),
+            Filter::Recent
+        );
     }
 
     #[gpui_kit::test]

@@ -21,17 +21,14 @@ use kanso_core::{Field, NoteStatus, Query};
 use kanso_store::{NoteSummary, Sort};
 
 use crate::clock::Clock;
-use crate::empty_state::EmptyNotebook;
 use crate::grouping::{Grouped, Row, RowKey, bucket_label, day_of, group_rows, row_time_label};
+use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::text_match::{highlight_terms, match_ranges};
 use crate::theme::{Colors, Rgb};
+use crate::workspace::FocusSearch;
 
 const SEARCH_DELAY: Duration = Duration::from_millis(120);
-
-/// The band across the top of every pane, and the one along the bottom.
-pub const TOP_BAND_HEIGHT: f32 = 52.;
-pub const BOTTOM_BAND_HEIGHT: f32 = 36.;
 
 /// A note row, top to bottom: a sliver between neighbouring fills, padding,
 /// the title line, a gap, two lines of excerpt, padding, the sliver. The
@@ -190,10 +187,6 @@ impl NoteList {
 
     /// Keeps `inset` free at the left of the top band, for the traffic
     /// lights when nothing else is to the list's left.
-    #[allow(
-        dead_code,
-        reason = "the workspace calls it once the window chrome reserves the room"
-    )]
     pub fn set_leading_inset(&mut self, inset: Pixels, cx: &mut Context<Self>) {
         if self.leading_inset != inset {
             self.leading_inset = inset;
@@ -209,7 +202,11 @@ impl NoteList {
         // groups by date too.
         let recent = library.filter == Filter::Recent;
         let group_pinned = !recent && library.filter != Filter::Pinned && !library.pinned_only;
-        let sort = if recent { Sort::UpdatedAt } else { library.sort };
+        let sort = if recent {
+            Sort::UpdatedAt
+        } else {
+            library.sort
+        };
         let key = (library.notes_version, sort, group_pinned);
         if self.layout.key == Some(key) {
             return;
@@ -539,7 +536,7 @@ impl NoteList {
                 ))
                 .child(action(
                     "row-trash",
-                    Icon::new(IconName::Delete),
+                    Icon::new(Lucide::Trash),
                     "Move to Trash",
                     NoteListEvent::Trash,
                     cx,
@@ -625,11 +622,13 @@ impl NoteList {
                             .size(px(14.))
                             .text_color(colors.text_muted),
                     )
-                    .when(empty, |input| {
-                        input.suffix(Kbd::new(
-                            Keystroke::parse("cmd-shift-f").expect("a valid keystroke"),
-                        ))
-                    }),
+                    // The shortcut as bound, while there is room for it.
+                    .when_some(
+                        empty
+                            .then(|| Kbd::global_binding_for_action(&FocusSearch, window))
+                            .flatten(),
+                        |input, key| input.suffix(key),
+                    ),
             )
             .when(focused && empty, |el| {
                 el.child(div().pl(px(2.)).child(query_tokens(colors, cx)))
@@ -736,28 +735,11 @@ impl NoteList {
             )
             .into_any_element();
         }
-        let focus = self.focus.clone();
-        let centered = |block: AnyElement| {
-            v_flex()
-                .size_full()
-                .items_center()
-                .justify_center()
-                .px(px(16.))
-                .pb(px(48.))
-                .child(block)
-                .into_any_element()
-        };
         match &library.filter {
-            Filter::All => centered(
-                EmptyNotebook::titled("No notes yet", focus)
-                    .compact()
-                    .into_any_element(),
-            ),
-            Filter::Book(id) => {
-                let name = library
-                    .book(id)
-                    .map_or("this notebook", |b| b.name.as_str());
-                centered(EmptyNotebook::new(name, focus).compact().into_any_element())
+            // The editor beside it shows the full block with the actions.
+            Filter::All | Filter::Book(_) => {
+                quiet_empty(IconName::FileText, "No notes yet".into(), None, colors)
+                    .into_any_element()
             }
             Filter::Pinned => quiet_empty(
                 Lucide::Pin,
@@ -787,8 +769,9 @@ impl NoteList {
                 colors,
             )
             .into_any_element(),
-            Filter::Trash => quiet_empty(IconName::Delete, "Trash is empty".into(), None, colors)
-                .into_any_element(),
+            Filter::Trash => {
+                quiet_empty(Lucide::Trash, "Trash is empty".into(), None, colors).into_any_element()
+            }
         }
     }
 }
@@ -1261,8 +1244,9 @@ mod tests {
         use crate::clock::Clock;
         use crate::config::AppConfig;
         use crate::library::{Filter, Library};
+        use crate::palette::Mode;
         use crate::services::Services;
-        use crate::workspace::{AppState, NewNote, Workspace};
+        use crate::workspace::{AppState, NewNote, OpenCommandPalette, Workspace};
 
         const NOW: i64 = 1_779_954_300_000;
         const DAY: i64 = 86_400_000;
@@ -1406,6 +1390,93 @@ mod tests {
             assert_eq!(f.selected_title(cx), before);
         }
 
+        /// A note made while the list narrows to a status or to pinned
+        /// notes gets them, so it shows in the list it was made from.
+        #[gpui_kit::test]
+        fn a_new_note_keeps_to_the_narrowing(cx: &mut TestAppContext) {
+            use kanso_core::NoteStatus;
+
+            let f = setup(cx);
+            let library = f.library(cx);
+            library.update(cx, |library, cx| {
+                library.set_status_only(Some(NoteStatus::OnHold), cx);
+                library.set_pinned_only(true, cx);
+            });
+            f.draw(cx);
+            assert!(cx.read(|cx| library.read(cx).notes.is_empty()));
+            let focus = cx.read(|cx| f.workspace.read(cx).note_list.read(cx).focus.clone());
+            f.window
+                .update(cx, |_, window, cx| {
+                    focus.dispatch_action(&NewNote, window, cx)
+                })
+                .unwrap();
+            cx.run_until_parked();
+            let listed: Vec<(bool, NoteStatus)> = cx.read(|cx| {
+                library
+                    .read(cx)
+                    .notes
+                    .iter()
+                    .map(|n| (n.pinned, n.status))
+                    .collect()
+            });
+            assert_eq!(listed, [(true, NoteStatus::OnHold)]);
+        }
+
+        /// Recent lists by edit time under day headers, whatever the sort,
+        /// and a pinned note stays among its day's notes.
+        #[gpui_kit::test]
+        fn recent_groups_by_day_only(cx: &mut TestAppContext) {
+            use crate::grouping::{Bucket, Row};
+            use kanso_store::Sort;
+
+            let f = setup(cx);
+            let library = f.library(cx);
+            let list = cx.read(|cx| f.workspace.read(cx).note_list.clone());
+            let pinned = cx.read(|cx| {
+                let library = library.read(cx);
+                library
+                    .notes
+                    .iter()
+                    .find(|n| n.title == "b")
+                    .unwrap()
+                    .id
+                    .clone()
+            });
+            f.store
+                .put(
+                    DocType::Note,
+                    json!({"_id": pinned, "pinned": true, "updatedAt": NOW - 120_000}),
+                    Put::Merge,
+                    Origin::Ui,
+                )
+                .unwrap();
+            library.update(cx, |library, cx| {
+                library.set_sort(Sort::Title, false, cx);
+                library.set_filter(Filter::Recent, cx);
+            });
+            f.draw(cx);
+            let rows = cx.read(|cx| list.read(cx).layout.grouped.rows.clone());
+            let titles: Vec<String> = cx.read(|cx| {
+                library
+                    .read(cx)
+                    .notes
+                    .iter()
+                    .map(|n| n.title.clone())
+                    .collect()
+            });
+            assert_eq!(titles, ["a", "b", "c"], "newest first");
+            assert_eq!(
+                rows,
+                [
+                    Row::Header(Bucket::Day(NOW / DAY)),
+                    Row::Note(0),
+                    Row::Note(1),
+                    Row::Header(Bucket::Day(NOW / DAY - 1)),
+                    Row::Note(2),
+                ]
+            );
+        }
+
         /// The menus are built only when opened, so build each once here.
         #[gpui_kit::test]
         fn the_list_menus_build(cx: &mut TestAppContext) {
@@ -1434,6 +1505,34 @@ mod tests {
         }
 
         #[gpui_kit::test]
+        fn empty_place_cases(cx: &mut TestAppContext) {
+            let f = setup(cx);
+            let library = f.library(cx);
+            let place = |cx: &mut TestAppContext| cx.read(|cx| library.read(cx).empty_place());
+            assert_eq!(place(cx), None, "all notes has notes");
+            let research = f.research.clone();
+            library.update(cx, |library, cx| {
+                library.set_filter(Filter::Book(research), cx)
+            });
+            cx.run_until_parked();
+            assert_eq!(place(cx).as_deref(), Some("No notes in Research"));
+            // Empty for another reason: a search, a narrowing, another place.
+            library.update(cx, |library, cx| library.set_search("x".into(), cx));
+            cx.run_until_parked();
+            assert_eq!(place(cx), None);
+            library.update(cx, |library, cx| {
+                library.set_search(String::new(), cx);
+                library.set_pinned_only(true, cx);
+            });
+            cx.run_until_parked();
+            assert_eq!(place(cx), None);
+            library.update(cx, |library, cx| library.set_filter(Filter::Pinned, cx));
+            cx.run_until_parked();
+            assert!(cx.read(|cx| library.read(cx).notes.is_empty()));
+            assert_eq!(place(cx), None);
+        }
+
+        #[gpui_kit::test]
         fn the_empty_notebook_adds_its_first_note(cx: &mut TestAppContext) {
             let f = setup(cx);
             let library = f.library(cx);
@@ -1443,10 +1542,20 @@ mod tests {
             });
             f.draw(cx);
             assert!(cx.read(|cx| library.read(cx).notes.is_empty()));
-            // What the block's New note button does.
-            let focus = cx.read(|cx| f.workspace.read(cx).note_list.read(cx).focus.clone());
+            // What the editor pane's block sends: its palette row opens the
+            // palette, and its New note button adds a note here.
+            let focus = cx.read(|cx| f.workspace.read(cx).editor.read(cx).empty_focus.clone());
+            let palette = cx.read(|cx| f.workspace.read(cx).palette.clone());
             f.window
                 .update(cx, |_, window, cx| {
+                    focus.dispatch_action(&OpenCommandPalette, window, cx)
+                })
+                .unwrap();
+            cx.run_until_parked();
+            assert_eq!(cx.read(|cx| palette.read(cx).mode()), Some(Mode::Commands));
+            f.window
+                .update(cx, |_, window, cx| {
+                    palette.update(cx, |palette, cx| palette.close(window, cx));
                     focus.dispatch_action(&NewNote, window, cx)
                 })
                 .unwrap();

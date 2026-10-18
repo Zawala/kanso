@@ -46,6 +46,7 @@ icon_assets!(
         Table,
         Tag,
         TextQuote,
+        Trash,
         Upload,
     ]
 );

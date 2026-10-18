@@ -221,7 +221,7 @@ static COMMANDS: &[Command] = &[
         label: "Move to trash",
         label_when_pinned: None,
         description: "Moves the note to the trash. It can be restored from there.",
-        icon: IconName::Delete,
+        icon: IconName::Trash,
         keywords: &["delete", "remove", "discard"],
         group: Group::Note,
         run: action!(TrashNote),

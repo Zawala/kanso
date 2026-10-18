@@ -28,6 +28,7 @@ use kanso_store::{Change, Origin, Put, Store, StoreError};
 use crate::clock::Clock;
 use crate::config::{Appearance, EditorFont, ViewMode};
 use crate::editor_footer::EditorFooter;
+use crate::empty_state::EmptyNotebook;
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library};
 use crate::markdown_edit::{self, Format};
@@ -86,6 +87,9 @@ pub struct NoteEditor {
     /// Notes that link here: (id, title).
     backlinks: Vec<(String, String)>,
     backlinks_task: Option<Task<()>>,
+    /// Where the empty-notebook block sends its actions from while no note
+    /// is open.
+    pub(crate) empty_focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -147,6 +151,13 @@ impl NoteEditor {
                 this.flush(cx);
                 async {}
             }),
+            // With no note open, the pane follows the list: an empty
+            // notebook offers its first note.
+            cx.observe(&library, |this, _, cx| {
+                if this.note.is_none() {
+                    cx.notify();
+                }
+            }),
         ];
         NoteEditor {
             store,
@@ -165,6 +176,7 @@ impl NoteEditor {
             incoming: None,
             backlinks: Vec::new(),
             backlinks_task: None,
+            empty_focus: cx.focus_handle(),
             _subscriptions: subscriptions,
         }
     }
@@ -1149,16 +1161,25 @@ impl Render for NoteEditor {
         }
         let colors = Colors::get(cx);
         let Some(note) = self.note.clone() else {
-            return v_flex()
+            let pane = v_flex()
                 .size_full()
                 .items_center()
                 .justify_center()
-                .gap_2()
                 .bg(colors.editor)
-                .text_color(colors.text_muted)
-                .child("No note selected")
-                .child(div().text_xs().child("⌘N creates a note"))
-                .into_any_element();
+                .track_focus(&self.empty_focus);
+            return match self.library.read(cx).empty_place() {
+                Some(title) => pane
+                    .px(px(24.))
+                    .pb(px(TOP_BAND_HEIGHT))
+                    .child(EmptyNotebook::titled(title, self.empty_focus.clone()))
+                    .into_any_element(),
+                None => pane
+                    .gap_2()
+                    .text_color(colors.text_muted)
+                    .child("No note selected")
+                    .child(div().text_xs().child("⌘N creates a note"))
+                    .into_any_element(),
+            };
         };
         let trashed = note.is_trashed();
         let mode = self.view_mode;
