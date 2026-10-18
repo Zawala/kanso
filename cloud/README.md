@@ -65,9 +65,29 @@ npm run deploy
 Losing the pepper only changes the fake prelogin answers and resets rate-limit counters, so a
 backup in a password manager is optional.
 
-Moving the existing single-user deployment to accounts (legacy export, verification, the purge of
-the old plaintext) follows the rollout in [docs/ACCOUNTS.md](../docs/ACCOUNTS.md#rollout). The current
-deployment is listed in [DEPLOYED.md](DEPLOYED.md).
+### Moving the existing deployment to accounts
+
+The deployed Worker still runs v1 ([DEPLOYED.md](DEPLOYED.md)). The owner's move follows
+[docs/ACCOUNTS.md › Deploy and the owner's migration](../docs/ACCOUNTS.md#deploy-and-the-owners-migration),
+which has every command; in outline:
+
+1. With the v1 build, sync every Mac until nothing is pending, then stop editing.
+2. Back up: Settings › General › Back up now, a copy of `Kanso.app`, the D1 Time Travel bookmark,
+   and `npm run -s admin -- legacy-export --dir ~/KansoLegacy-<date>` (the old plaintext; keep it).
+3. Set `AUTH_PEPPER`, `npm run migrate:remote` (adds `0002_accounts`, sign-ups closed), then
+   `npm run deploy`. From here `/v1` answers 404.
+4. Install the new app, run `kanso-sync estimate`, then `npm run -s admin -- signups only <you>`
+   and create your account in Settings › Account. Save the recovery key. If the estimate is over a
+   default quota, raise your own account (`quota <you> …`); the daily budget of 20,000 writes
+   covers a first upload of the current library several times over.
+5. Wait for "Synced", quit Kanso, and run `kanso-sync verify --legacy …/manifest.json --out
+   …/verified.json`; it must exit 0. Sign the other Macs in one at a time with Add.
+6. `npm run -s admin -- purge-legacy --account <you> --verified …/verified.json` drops the old
+   tables, queues the `files/` purge and deletes `SYNC_TOKEN`. Then `signups open` if others are
+   to join, remove the old `sync-token` Keychain item, and update DEPLOYED.md.
+
+Before step 6, `kanso-sync unbind` on each Mac, `npx wrangler rollback` and the old app go back to
+v1 ([Rollback](../docs/ACCOUNTS.md#rollback)).
 
 ## Administering accounts
 
@@ -135,6 +155,10 @@ scripts/e2e-local.sh
 `test/fixtures/` holds cases the Worker and the Rust client's in-memory server must both pass:
 `usernames.json`, `auth.json` and `conformance.json` (protocol v2), and `conformance-v1.json`,
 which this Worker no longer serves: only the Rust rollback test's stand-in for the old Worker
-still runs it. `scripts/e2e-local.sh` starts the Worker under `wrangler
-dev` on a throwaway state directory and runs `cargo test -p kanso-sync --test e2e` against it,
-all in Miniflare with no Cloudflare credentials.
+still runs it. `scripts/e2e-local.sh` starts the Worker under `wrangler dev` on a throwaway state
+directory (port 8787, or `KANSO_E2E_PORT`; a port in use is refused) and runs `cargo test -p
+kanso-sync --test e2e` against it at production KDF parameters, all in Miniflare with no
+Cloudflare credentials. Once the Worker has stopped, a second test scans every file of its state
+for the first one's canaries (password, recovery key, a marker in every note and name, revision
+hashes, the deleted account's sealed files) and must find a live witness account in D1 and R2.
+`KANSO_E2E_KEEP=1` keeps the state directory.

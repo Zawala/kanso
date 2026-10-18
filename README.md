@@ -9,8 +9,10 @@ A local-first Markdown notes app for macOS, built with [GPUI](https://www.gpui.r
 - **Serves Inkdrop's local API.** `http://127.0.0.1:19840` answers like Inkdrop's local server, so
   `@inkdropapp/mcp-server` and other Inkdrop API clients keep working unchanged. `/mcp` on the same
   port is a native MCP endpoint with the same 17 tools.
-- **Syncs through Cloudflare.** A Worker you deploy to your own account (D1 for documents, R2 for
-  attachments). Conflicts keep both versions: the losing one stays in the note's history.
+- **Syncs end-to-end encrypted.** An account on a Cloudflare Worker (D1 for documents, R2 for
+  attachments) keeps your Macs in step. Each Mac encrypts notes, titles, IDs and attachments before
+  they leave it, with a key the server never sees. Conflicts keep both versions: the losing one
+  stays in the note's history.
 - **Keeps history.** Earlier versions of each note, including every version replaced by the API,
   sync or an import, and a daily database backup.
 
@@ -29,8 +31,24 @@ Settings › Local API, **Copy from Inkdrop…** takes Inkdrop's port, username 
 you to allow access to the Keychain item "inkdrop Safe Storage", which Inkdrop uses to encrypt them.
 MCP clients configured for Inkdrop then work without changes.
 
-**Sync.** Deploy the Worker (see [cloud/README.md](cloud/README.md)), then in Settings › Sync set the
-Worker URL and access token and turn on **Sync automatically**.
+**Sync.** Settings › Account › **Create account** picks a username and a password of at least 12
+characters; this Mac's notes are encrypted and uploaded. Kanso then shows a **recovery key**: save
+it somewhere safe (a password manager, or printed). Kanso can't reset a forgotten password. The
+recovery key sets a new one (**Forgot your password?**), and a new key replaces it afterwards. On
+your other Macs, **Sign in** with the same username and password. A Mac that already has notes asks
+whether to add them to the account or replace them with the account's notes (after saving a backup
+of its library). Signing out keeps every note on the Mac. The Account page also lists your devices,
+signs one out, changes the password and deletes the account.
+
+The default server is the owner's Worker, `kanso-sync.imngonii.workers.dev`, which takes new
+accounts only when its owner opens sign-ups. To run your own, deploy the Worker in
+[cloud/](cloud/README.md) to your Cloudflare account and choose **Use a different server…** before
+creating the account. An account belongs to its server's address, so pick the final URL first.
+
+**Other people's Macs.** The builds are ad-hoc signed and not notarized. On first launch,
+Control-click Kanso and choose Open (or System Settings › Privacy & Security › Open Anyway). Each new
+build has a different signature, so macOS may ask once per build to let Kanso use its Keychain
+items; choose Always Allow.
 
 ### Shortcuts
 
@@ -68,6 +86,7 @@ Every command takes `--data-dir <dir>`. The default is `~/Library/Application Su
 PROPTEST_RNG_SEED=20261017 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 (cd cloud && npm ci && npm test)
+cloud/scripts/e2e-local.sh   # the Worker under wrangler dev and the Rust client against it
 ```
 
 | Crate | |
@@ -76,8 +95,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 | `kanso-store` | SQLite store: writes, search, history, change feed, backups, sync bookkeeping |
 | `kanso-import` | Inkdrop (PouchDB on SQLite) importer and Electron safeStorage decryption |
 | `kanso-server` | Inkdrop-compatible HTTP API and the native MCP endpoint |
-| `kanso-sync` | Cloudflare sync client |
+| `kanso-sync` | Accounts and end-to-end encrypted sync, and the `kanso-sync` command (`verify`, `estimate`, `unbind`) |
 | `kanso-app` | The GPUI app and the `kanso` command |
-| `cloud/` | The sync Worker (TypeScript, D1, R2) |
+| `cloud/` | The sync Worker (TypeScript, D1, R2) and its admin script |
 
-Design notes and decisions are in [docs/PLAN.md](docs/PLAN.md).
+Design notes and decisions are in [docs/PLAN.md](docs/PLAN.md); accounts and encrypted sync in
+[docs/ACCOUNTS.md](docs/ACCOUNTS.md).

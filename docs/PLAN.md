@@ -2,7 +2,7 @@
 
 Kanso is a local-first markdown notes app that replaces Inkdrop. It has a GPUI desktop UI,
 serves Inkdrop's local HTTP API on `127.0.0.1:19840` so existing MCP setups keep working,
-imports an Inkdrop database losslessly, and syncs through Cloudflare.
+imports an Inkdrop database losslessly, and syncs end-to-end encrypted through Cloudflare.
 
 ## Decisions
 
@@ -14,7 +14,7 @@ imports an Inkdrop database losslessly, and syncs through Cloudflare.
 | Credentials | Port, username and password are copied from Inkdrop's `config.json` at import time and kept in Kanso's own config. Never logged. |
 | Storage | rusqlite (bundled), WAL. Each document stored as verbatim Inkdrop-shaped JSON with derived index columns. |
 | Search | FTS5 `trigram` over title and body, the same design Inkdrop 5.9+ uses. |
-| Sync | Cloudflare Worker + D1 (documents, change sequence) + R2 (attachment bytes). See "Sync". |
+| Sync | Accounts with end-to-end encryption on a Cloudflare Worker + D1 (accounts, sessions, sealed documents) + R2 (sealed attachment bytes). See "Sync" and [ACCOUNTS.md](ACCOUNTS.md). |
 | Server placement | In the app process; the app stays alive with no window open. `kanso serve` runs headless. An `flock` on the data directory decides who owns the database and the port. |
 
 ## Workspace
@@ -25,9 +25,9 @@ crates/
   kanso-store    SQLite store, FTS, revisions, backups, sync state
   kanso-import   Inkdrop PouchDB importer
   kanso-server   axum REST API (+ /mcp later)
-  kanso-sync     Cloudflare sync client
+  kanso-sync     accounts, encrypted sync client, `kanso-sync` command
   kanso-app      GPUI app, binary `kanso`
-cloud/           Cloudflare Worker (D1 + R2)
+cloud/           Cloudflare Worker (D1 + R2) and admin script
 ```
 
 ## Data model
@@ -107,17 +107,30 @@ queries; terms under 3 characters fall back to an `instr` scan). Qualifiers: `bo
 
 ## Sync (Cloudflare)
 
-- **Worker** (TypeScript, deployed with wrangler) exposing `/sync/push`, `/sync/changes`,
-  `/files/<id>`. Auth is a single bearer secret (wrangler secret on the server, Keychain on the client).
-- **D1**: `docs(id PK, rev, seq, deleted, json, updated_at)`; `seq` increases on every accepted write.
-- **R2**: attachment bytes keyed by file ID.
-- **Push**: every local doc whose `rev != synced_rev` is sent with its `base_rev` (`synced_rev`).
-  The server accepts when `base_rev` matches its current rev (or the doc is new) and returns the
-  new seq; otherwise it returns its version. Blobs are uploaded before their file docs.
-- **Pull**: `GET /sync/changes?since=<seq>` pages through changes; applied docs get
-  `synced_rev = rev` so they are not pushed back.
+The full design, protocol and rollout are in [ACCOUNTS.md](ACCOUNTS.md). In short:
+
+- **Accounts.** A username and a password (at least 12 characters). Argon2id turns the password
+  into an auth key, which the server stores only as a peppered hash, and a key that unwraps the
+  account's data key. A recovery key, shown once, can set a new password; Kanso can't reset one.
+  Each Mac signs in as a device with its own session; the Account page lists and signs out devices.
+- **Encryption.** Every document and attachment is sealed (XChaCha20-Poly1305) under keys derived
+  from the data key. IDs (apart from their kind) and revisions go over the wire as HMACs, so the
+  server never sees a note, a title, an ID or a revision. It sees each document's kind, sizes,
+  counts, times, and device IDs with when each was last seen.
+- **Worker** (TypeScript, wrangler): `/v2/auth/*`, `/v2/account*`, `/v2/push`, `/v2/changes`,
+  `/v2/files/<wire_id>`. D1 holds accounts, sessions, sealed documents, quotas and rate-limit
+  counters; R2 holds sealed file bytes per account. Quotas, daily budgets and sign-up rules are
+  enforced in D1 triggers and counting upserts, so parallel requests can't race past them.
+- **Push and pull** are as before, over sealed values: every local doc whose `rev != synced_rev` is
+  pushed with its `base_rev`; the server accepts when it matches, else returns its version; pulls
+  page through the account's feed. Revision generations only grow, so a stale or broken server copy
+  is rebased or repaired rather than lost.
 - **Conflicts**: last writer by `updatedAt` wins; the losing version goes into `revisions` and the
   GUI flags the note.
+- **Limits** (defaults, changed with `npm run -s admin`): 50 accounts, 50,000 documents and 100 MiB
+  of documents, 10,000 files and 500 MiB of files per account; per account per UTC day 20,000
+  writes and 1 GiB of uploads; server-wide per day 300,000 writes and 5 GB of uploads. Past a daily
+  budget sync pauses until UTC midnight.
 - The deploy token comes from the `IMNGONII_CLOUDFLARE_API_TOKEN` environment variable
   (exported in `~/.zshrc`), passed to wrangler as `CLOUDFLARE_API_TOKEN`. It is never written to the repo.
 
@@ -174,9 +187,24 @@ settings, 05 command palette, 06 split editor, 07 empty notebook):
   settings window is gone.
 
 Left out on purpose, because Kanso has no such features yet: sketch blocks, skills, MCP
-permissions, accounts and devices, templates and a Tasks view. The UI is checked headlessly by an
+permissions, templates and a Tasks view. (Accounts and devices came with encrypted sync, below.) The UI is checked headlessly by an
 ignored snapshot test that renders PNGs (`KANSO_SNAPSHOT_DIR=<dir> cargo test -p kanso-app
 snapshots -- --ignored`, optionally with `KANSO_SNAPSHOT_DB` pointing at a copy of a library).
+
+### Accounts and encrypted sync (2026-10-18)
+
+Sync moved from one shared token to accounts with end-to-end encryption (ACCOUNTS.md); the
+plaintext v1 engine and its Worker routes are gone, and `kanso-sync unbind` is the rollback path.
+
+- Settings › Account: create an account, sign in, recover with the recovery key, change the
+  password, a new recovery key, devices, sign out and delete. A Mac with notes is asked whether to
+  add them or replace them (after a backup).
+- Tested by the shared fixtures (the Worker and the in-memory server pass the same cases), flow
+  tests that run the real sync in headless windows, and `cloud/scripts/e2e-local.sh`: two Macs
+  against the Worker under `wrangler dev` at production KDF parameters, ending with a scan of the
+  stopped Worker's files for canaries (with a positive control).
+- Not deployed yet: the owner's deploy and migration follow ACCOUNTS.md › Rollout. Until then the
+  deployed Worker and Kanso.app still run v1.
 
 ### M0 go/no-go
 
