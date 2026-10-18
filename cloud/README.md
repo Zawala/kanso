@@ -30,9 +30,10 @@ admin route: accounts are administered from the command line (below).
 `wrangler.jsonc` binds the D1 database `kanso-sync` (`DB`), the R2 bucket `kanso-files` (`FILES`)
 and two rate limiters that write nothing to D1: `AUTH_LIMITER` (20 requests a minute per IP group,
 in front of `/v2/auth/*` and `/v2/health`) and `SESSION_LIMITER` (120 requests a minute per
-account, on every session route but logout). It runs the cron every 15 minutes (purges, expired rate-limit rows and
-sessions, R2 reconciliation) and keeps invocation logs off; the Worker itself logs only route
-names and error codes.
+account, on every session route but logout). It runs the cron every 15 minutes (purges, expired
+rate-limit rows and sessions, R2 reconciliation). Workers Logs keeps only the Worker's own lines
+(route names and error codes); invocation logs and traces are pinned off. `wrangler tail` still
+shows each request's URL and metadata live to whoever runs it (see `DEPLOYED.md`).
 
 One secret is required, `AUTH_PEPPER`: 32 random bytes as base64url. It keys the fake answers
 `prelogin` gives for unknown names and the rate-limit keys of IP addresses. Without it, health and

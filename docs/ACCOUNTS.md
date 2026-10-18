@@ -87,6 +87,9 @@ nothing was deployed yet):
 4. **Only signed-in devices are exempt from `login-user`.** A device signed out for any reason
    counts like a stranger. `DELETE /v2/account/devices/<id>` on a row that is already signed out
    marks it `revoked` and answers 204 instead of 404.
+5. **Logs and traces pinned.** `wrangler.jsonc` sets `observability.logs.enabled: true` with
+   `invocation_logs: false`, and `observability.traces.enabled: false`, so a changed default
+   can't start recording requests. `cloud/DEPLOYED.md` says what `wrangler tail` still shows.
 8. **Day rollover.** Tests now send requests at different times of one UTC day and on both sides
    of midnight, for the server-wide writes cap and `signups_per_day`. They found one fault: a
    request stamped just before a window's boundary but counted just after it reset that row of
@@ -172,8 +175,11 @@ The server sees:
   times, the latter to the hour. How many devices there are, and why each was signed out. Not their
   names: those are sealed.
 - **Network:** IP addresses, times and the `kanso-sync/<version>` user agent, in Cloudflare's own
-  request handling. Workers invocation logs are off (`observability.logs.invocation_logs: false`).
-  The Worker logs only route names and error codes. D1 stores IPs and usernames only as keyed
+  request handling. Workers invocation logs and traces are pinned off
+  (`observability.logs.invocation_logs: false`, `observability.traces.enabled: false`), and the
+  Worker logs only route names and error codes. `wrangler tail` (or the dashboard's live logs)
+  still shows each request's URL, headers and Cloudflare metadata live to whoever runs it, with
+  some values redacted by Cloudflare's heuristics; nothing from it is stored unless they save it. D1 stores IPs and usernames only as keyed
   hashes, inside rate-limit rows kept at most 2 days.
 - **Backups:** Cloudflare D1 Time Travel keeps 30 days of history. Deleted accounts' rows and the
   purged legacy plaintext stay restorable by the owner for that window.
@@ -1293,7 +1299,11 @@ counts.
 Changes to `cloud/wrangler.jsonc`:
 
 ```jsonc
-"observability": { "enabled": true, "logs": { "invocation_logs": false } },
+"observability": {
+  "enabled": true,
+  "logs": { "enabled": true, "invocation_logs": false },
+  "traces": { "enabled": false }
+},
 "triggers": { "crons": ["*/15 * * * *"] },
 "ratelimits": [
   { "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
