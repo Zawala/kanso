@@ -7,6 +7,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use ureq::Agent;
+use zeroize::Zeroizing;
 
 use crate::api::{
     AccountResponse, Api, Backend, DeleteRequest, DeleteResponse, DeviceNameRequest,
@@ -82,7 +83,8 @@ struct HttpApi {
 /// A request body.
 enum Payload<'a> {
     None,
-    Json(Vec<u8>),
+    /// Zeroized once sent: it may hold auth keys and proofs.
+    Json(Zeroizing<Vec<u8>>),
     /// Sealed file bytes, sent with their SHA-256 in `x-kanso-sha256`.
     File(&'a [u8]),
 }
@@ -115,7 +117,7 @@ impl HttpApi {
     ) -> Result<(u16, Vec<u8>), ApiError> {
         let (method, _) = route.http();
         let url = format!("{}{path}", self.base);
-        let auth = token.map(|t| format!("Bearer {}", t.expose()));
+        let auth = token.map(|t| Zeroizing::new(format!("Bearer {}", t.expose())));
         let timeout = Some(timeout(route));
         let response = match method {
             "GET" | "DELETE" => {
@@ -125,7 +127,7 @@ impl HttpApi {
                     self.agent.delete(&url)
                 };
                 if let Some(auth) = &auth {
-                    request = request.header("authorization", auth);
+                    request = request.header("authorization", auth.as_str());
                 }
                 request.config().timeout_global(timeout).build().call()
             }
@@ -136,7 +138,7 @@ impl HttpApi {
                     self.agent.put(&url)
                 };
                 if let Some(auth) = &auth {
-                    request = request.header("authorization", auth);
+                    request = request.header("authorization", auth.as_str());
                 }
                 let request = request.config().timeout_global(timeout).build();
                 match payload {
@@ -190,12 +192,13 @@ impl HttpApi {
         cap: u64,
     ) -> Result<T, ApiError> {
         let payload = match body {
-            Some(body) => Payload::Json(
+            Some(body) => Payload::Json(Zeroizing::new(
                 serde_json::to_vec(body).map_err(|e| ApiError::Protocol(e.to_string()))?,
-            ),
+            )),
             None => Payload::None,
         };
-        let (_, bytes) = self.send(route, path, token, payload, cap)?;
+        // An answer may carry a session token.
+        let bytes = Zeroizing::new(self.send(route, path, token, payload, cap)?.1);
         serde_json::from_slice(&bytes)
             .map_err(|e| ApiError::Protocol(format!("{}: {e}", route.http().1)))
     }
@@ -209,9 +212,9 @@ impl HttpApi {
         body: Option<&impl Serialize>,
     ) -> Result<(), ApiError> {
         let payload = match body {
-            Some(body) => Payload::Json(
+            Some(body) => Payload::Json(Zeroizing::new(
                 serde_json::to_vec(body).map_err(|e| ApiError::Protocol(e.to_string()))?,
-            ),
+            )),
             None => Payload::None,
         };
         self.send(route, path, Some(token), payload, MAX_AUTH_RESPONSE)

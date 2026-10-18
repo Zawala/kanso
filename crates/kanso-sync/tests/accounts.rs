@@ -1827,21 +1827,16 @@ fn the_password_route_checks_its_recovery_fields_and_retries() {
 
     let other_key = RecoveryKey::generate();
     let other = kanso_sync::crypto::recovery_keys(&other_key, ORIGIN, "alice");
+    let with = |change: &dyn Fn(&mut PasswordRequest)| {
+        let mut request = sent.clone();
+        change(&mut request);
+        request
+    };
+    let bad_auth = with(&|r| r.recovery_auth_key = "AAAA".into());
+    let bad_wrap = with(&|r| r.recovery_wrapped_key = "AAAA".into());
     for (field, bad) in [
-        (
-            "recovery_auth_key",
-            PasswordRequest {
-                recovery_auth_key: "AAAA".into(),
-                ..sent.clone()
-            },
-        ),
-        (
-            "recovery_wrapped_key",
-            PasswordRequest {
-                recovery_wrapped_key: "AAAA".into(),
-                ..sent.clone()
-            },
-        ),
+        ("recovery_auth_key", bad_auth),
+        ("recovery_wrapped_key", bad_wrap),
     ] {
         tick(&b.server);
         assert_eq!(
@@ -1851,10 +1846,7 @@ fn the_password_route_checks_its_recovery_fields_and_retries() {
         );
     }
     tick(&b.server);
-    let different = PasswordRequest {
-        recovery_auth_key: other.auth_key.to_base64url(),
-        ..sent.clone()
-    };
+    let different = with(&|r| r.recovery_auth_key = other.auth_key.to_base64url());
     assert_eq!(
         api.change_password(token, &different).unwrap_err(),
         ApiError::InvalidCredentials

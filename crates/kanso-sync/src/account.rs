@@ -513,8 +513,7 @@ fn checked_server(server: &str) -> Result<(String, String), AccountError> {
 
 /// Refuses a password equal to the (normalized) username, ignoring case.
 fn check_not_username(password: &Password, username: &str) -> Result<(), AccountError> {
-    let text = String::from_utf8_lossy(password.as_bytes()).to_lowercase();
-    if text == username.to_lowercase() {
+    if password.is_username(username) {
         return Err(PasswordError::SameAsUsername.into());
     }
     Ok(())

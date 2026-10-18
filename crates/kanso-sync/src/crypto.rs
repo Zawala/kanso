@@ -229,7 +229,7 @@ impl Password {
         }
         let name = crate::username::normalize_username(username)
             .unwrap_or_else(|_| username.nfc().collect());
-        if *Zeroizing::new(normalized.to_lowercase()) == name.to_lowercase() {
+        if same_ignoring_case(&normalized, &name) {
             return Err(PasswordError::SameAsUsername);
         }
         Ok(Password(normalized))
@@ -239,6 +239,20 @@ impl Password {
     pub(crate) fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
+
+    /// Whether the password is `username`, ignoring case, compared without
+    /// a lowercased copy of the password.
+    pub(crate) fn is_username(&self, username: &str) -> bool {
+        same_ignoring_case(&self.0, username)
+    }
+}
+
+/// `a` and `b` lowercased, character by character, are equal; nothing is
+/// copied.
+fn same_ignoring_case(a: &str, b: &str) -> bool {
+    a.chars()
+        .flat_map(char::to_lowercase)
+        .eq(b.chars().flat_map(char::to_lowercase))
 }
 
 impl fmt::Debug for Password {
@@ -299,7 +313,8 @@ impl RecoveryKey {
     /// requires exactly 28 characters, a first character below `8`, a check
     /// value below 1021 and a matching checksum. Pure.
     pub fn parse(text: &str) -> Result<RecoveryKey, RecoveryKeyError> {
-        let mut digits = Vec::with_capacity(28);
+        // The key's digits and value are zeroized once read.
+        let mut digits: Zeroizing<Vec<u128>> = Zeroizing::new(Vec::with_capacity(28));
         for c in text.chars() {
             let c = match c.to_ascii_uppercase() {
                 ' ' | '-' => continue,
@@ -319,9 +334,9 @@ impl RecoveryKey {
         if digits[0] >= 8 {
             return Err(RecoveryKeyError::Checksum);
         }
-        let value = digits[..26].iter().fold(0u128, |v, d| (v << 5) | d);
+        let value = Zeroizing::new(digits[..26].iter().fold(0u128, |v, d| (v << 5) | d));
         let check = digits[26] * 32 + digits[27];
-        if check >= CHECK_MODULUS || check != value % CHECK_MODULUS {
+        if check >= CHECK_MODULUS || check != *value % CHECK_MODULUS {
             return Err(RecoveryKeyError::Checksum);
         }
         Ok(RecoveryKey::from_bytes(value.to_be_bytes()))
@@ -329,11 +344,13 @@ impl RecoveryKey {
 
     /// The key as shown: `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX`. Pure.
     pub fn display(&self) -> String {
-        let value = u128::from_be_bytes(*self.0);
-        let check = value % CHECK_MODULUS;
-        let mut digits: Vec<u8> = (0..26)
-            .map(|i| ALPHABET[((value >> (5 * (25 - i))) & 31) as usize])
-            .collect();
+        let value = Zeroizing::new(u128::from_be_bytes(*self.0));
+        let check = *value % CHECK_MODULUS;
+        let mut digits: Zeroizing<Vec<u8>> = Zeroizing::new(
+            (0..26)
+                .map(|i| ALPHABET[((*value >> (5 * (25 - i))) & 31) as usize])
+                .collect(),
+        );
         digits.push(ALPHABET[(check / 32) as usize]);
         digits.push(ALPHABET[(check % 32) as usize]);
         digits
@@ -571,10 +588,9 @@ pub fn unwrap(
     }
     match open_raw(&kek.0, &wrap_aad(purpose, account_id), &sealed) {
         Opened::Opened(plain) if plain.len() == 32 => {
-            let mut key = [0u8; 32];
+            let mut key = Zeroizing::new([0u8; 32]);
             key.copy_from_slice(&plain);
-            let key = DataKey::from_bytes(key);
-            Ok(key)
+            Ok(DataKey::from_bytes(*key))
         }
         _ => Err(CryptoError::KeyMismatch),
     }
@@ -1184,6 +1200,26 @@ mod tests {
 
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(512))]
+
+        /// The copy-free comparison agrees with lowercasing both, for the
+        /// usernames Kanso allows and passwords of any case.
+        #[test]
+        fn prop_same_ignoring_case_is_lowercase_equality(
+            name in "[a-z0-9_]{3,20}",
+            flips in prop::collection::vec(any::<bool>(), 20),
+            other in "\\PC{0,24}",
+        ) {
+            let flipped: String = name
+                .chars()
+                .zip(flips.iter().cycle())
+                .map(|(c, &up)| if up { c.to_ascii_uppercase() } else { c })
+                .collect();
+            prop_assert!(same_ignoring_case(&flipped, &name));
+            prop_assert_eq!(
+                same_ignoring_case(&other, &name),
+                other.to_lowercase() == name.to_lowercase()
+            );
+        }
 
         /// Round trip: a displayed key parses back to the same bytes.
         #[test]

@@ -7,9 +7,11 @@
 //! written in these shapes, and the Rust conformance runner (step 2a) drives
 //! `MemoryServer` through [`Api`] with them.
 
+use std::fmt;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 use crate::account::{Session, SignupState};
 use crate::crypto::KdfParams;
@@ -279,7 +281,7 @@ impl WireKdf {
 /// The device of a sign-up or a recovery: its per-account ID, its sealed
 /// name (or null), and its proof (43 base64url characters; security
 /// re-check 5).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NewDevice {
     pub id: String,
     pub sealed_name: Option<String>,
@@ -289,7 +291,7 @@ pub struct NewDevice {
 /// The device of a sign-in: no name yet (the client doesn't hold the data
 /// key), but its proof, which alone exempts a returning device from
 /// `login-user`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoginDevice {
     pub id: String,
     pub proof: String,
@@ -330,7 +332,7 @@ pub struct PreloginResponse {
     pub account_id: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignupRequest {
     pub username: String,
     /// `a_` + 32 hex, chosen by the client.
@@ -356,7 +358,7 @@ pub struct SessionResponse {
     pub epoch: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoginRequest {
     pub username: String,
     pub auth_key: String,
@@ -374,7 +376,7 @@ pub struct LoginResponse {
     pub evicted_device: Option<WireDevice>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecoverStartRequest {
     pub username: String,
     pub recovery_auth_key: String,
@@ -387,7 +389,7 @@ pub struct RecoverStartResponse {
     pub key_id: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecoverFinishRequest {
     pub username: String,
     pub recovery_auth_key: String,
@@ -434,7 +436,7 @@ pub struct WireQuota {
 
 /// A new password and, with it, a new recovery key: the old key stops
 /// working, like every proof of the old password (docs/ACCOUNTS.md › Routes).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PasswordRequest {
     pub current_auth_key: String,
     pub kdf: WireKdf,
@@ -450,7 +452,7 @@ pub struct PasswordResponse {
     pub signed_out_devices: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecoveryKeyRequest {
     pub current_auth_key: String,
     pub recovery_auth_key: String,
@@ -461,7 +463,7 @@ pub struct RecoveryKeyRequest {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecoveryKeyResponse {}
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeleteRequest {
     pub auth_key: String,
     pub username: String,
@@ -523,6 +525,103 @@ mod tests {
         );
     }
 
+    /// No request's `Debug` shows an auth key or a device proof, and every
+    /// other field still shows.
+    #[test]
+    fn requests_never_print_their_secrets() {
+        let kdf = WireKdf::from(KdfParams::DEFAULT);
+        let device = NewDevice {
+            id: "d_shown".into(),
+            sealed_name: Some("name-shown".into()),
+            proof: "SECRET-proof".into(),
+        };
+        let login_device = LoginDevice {
+            id: "d_shown".into(),
+            proof: "SECRET-proof".into(),
+        };
+        let printed = [
+            format!("{device:?}"),
+            format!("{login_device:?}"),
+            format!(
+                "{:?}",
+                SignupRequest {
+                    username: "alice".into(),
+                    account_id: "a_shown".into(),
+                    kdf: kdf.clone(),
+                    salt: "salt-shown".into(),
+                    auth_key: "SECRET-auth".into(),
+                    wrapped_key: "wrap-shown".into(),
+                    recovery_auth_key: "SECRET-recovery".into(),
+                    recovery_wrapped_key: "rwrap-shown".into(),
+                    key_id: "kid-shown".into(),
+                    device: device.clone(),
+                }
+            ),
+            format!(
+                "{:?}",
+                LoginRequest {
+                    username: "alice".into(),
+                    auth_key: "SECRET-auth".into(),
+                    device: login_device.clone(),
+                }
+            ),
+            format!(
+                "{:?}",
+                RecoverStartRequest {
+                    username: "alice".into(),
+                    recovery_auth_key: "SECRET-recovery".into(),
+                }
+            ),
+            format!(
+                "{:?}",
+                RecoverFinishRequest {
+                    username: "alice".into(),
+                    recovery_auth_key: "SECRET-recovery".into(),
+                    kdf: kdf.clone(),
+                    salt: "salt-shown".into(),
+                    auth_key: "SECRET-auth".into(),
+                    wrapped_key: "wrap-shown".into(),
+                    recovery_auth_key_new: "SECRET-new".into(),
+                    recovery_wrapped_key_new: "rwrap-shown".into(),
+                    device: device.clone(),
+                }
+            ),
+            format!(
+                "{:?}",
+                PasswordRequest {
+                    current_auth_key: "SECRET-current".into(),
+                    kdf: kdf.clone(),
+                    salt: "salt-shown".into(),
+                    auth_key: "SECRET-auth".into(),
+                    wrapped_key: "wrap-shown".into(),
+                    recovery_auth_key: "SECRET-recovery".into(),
+                    recovery_wrapped_key: "rwrap-shown".into(),
+                }
+            ),
+            format!(
+                "{:?}",
+                RecoveryKeyRequest {
+                    current_auth_key: "SECRET-current".into(),
+                    recovery_auth_key: "SECRET-recovery".into(),
+                    recovery_wrapped_key: "rwrap-shown".into(),
+                }
+            ),
+            format!(
+                "{:?}",
+                DeleteRequest {
+                    auth_key: "SECRET-auth".into(),
+                    username: "alice".into(),
+                }
+            ),
+        ];
+        for text in &printed {
+            assert!(!text.contains("SECRET"), "{text}");
+            assert!(text.contains("<redacted>"), "{text}");
+        }
+        assert!(printed[2].contains("a_shown") && printed[2].contains("d_shown"));
+        assert!(printed[6].contains("rwrap-shown"));
+    }
+
     #[test]
     fn route_names_are_the_fixture_names() {
         for route in Route::ALL {
@@ -537,3 +636,82 @@ mod tests {
         assert!(Route::Push.needs_session() && !Route::Login.needs_session());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Secrets in requests (sec-client 6)
+// ---------------------------------------------------------------------------
+
+/// `Debug` that shows `$shown` and redacts `$secret`, and a `Drop` that
+/// zeroizes `$secret`: auth keys and device proofs never reach a log and
+/// don't outlive their request in memory.
+macro_rules! secret_fields {
+    ($name:ident { shown: [$($shown:ident),*], secret: [$($secret:ident),+] }) => {
+        impl fmt::Debug for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.debug_struct(stringify!($name))
+                    $(.field(stringify!($shown), &self.$shown))*
+                    $(.field(stringify!($secret), &"<redacted>"))+
+                    .finish()
+            }
+        }
+
+        impl Drop for $name {
+            fn drop(&mut self) {
+                $(self.$secret.zeroize();)+
+            }
+        }
+    };
+}
+
+secret_fields!(NewDevice {
+    shown: [id, sealed_name],
+    secret: [proof]
+});
+secret_fields!(LoginDevice {
+    shown: [id],
+    secret: [proof]
+});
+secret_fields!(SignupRequest {
+    shown: [
+        username,
+        account_id,
+        kdf,
+        salt,
+        wrapped_key,
+        recovery_wrapped_key,
+        key_id,
+        device
+    ],
+    secret: [auth_key, recovery_auth_key]
+});
+secret_fields!(LoginRequest {
+    shown: [username, device],
+    secret: [auth_key]
+});
+secret_fields!(RecoverStartRequest {
+    shown: [username],
+    secret: [recovery_auth_key]
+});
+secret_fields!(RecoverFinishRequest {
+    shown: [
+        username,
+        kdf,
+        salt,
+        wrapped_key,
+        recovery_wrapped_key_new,
+        device
+    ],
+    secret: [recovery_auth_key, auth_key, recovery_auth_key_new]
+});
+secret_fields!(PasswordRequest {
+    shown: [kdf, salt, wrapped_key, recovery_wrapped_key],
+    secret: [current_auth_key, auth_key, recovery_auth_key]
+});
+secret_fields!(RecoveryKeyRequest {
+    shown: [recovery_wrapped_key],
+    secret: [current_auth_key, recovery_auth_key]
+});
+secret_fields!(DeleteRequest {
+    shown: [username],
+    secret: [auth_key]
+});
