@@ -7,7 +7,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::Result;
 
-pub(crate) const MIGRATIONS: &[&str] = &[r#"
+pub(crate) const MIGRATIONS: &[&str] = &[
+    r#"
 CREATE TABLE docs (
     id TEXT PRIMARY KEY NOT NULL,
     type TEXT NOT NULL,

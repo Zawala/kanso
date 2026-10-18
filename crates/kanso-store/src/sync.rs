@@ -164,7 +164,6 @@ fn holds_content(
         })?)
 }
 
-
 /// Fails with [`StoreError::GuardFailed`] unless `guard` (when given) holds.
 /// Runs inside the caller's write transaction, so it can't race a re-bind.
 fn check_guard(tx: &rusqlite::Transaction, guard: Option<&SyncGuard>) -> Result<()> {
@@ -312,7 +311,10 @@ impl Store {
     pub fn mark_unsynced(&self, id: &str, guard: Option<&SyncGuard>) -> Result<()> {
         self.write(|tx, _| {
             check_guard(tx, guard)?;
-            tx.execute("UPDATE docs SET synced_rev = NULL, sent_rev = NULL WHERE id = ?", [id])?;
+            tx.execute(
+                "UPDATE docs SET synced_rev = NULL, sent_rev = NULL WHERE id = ?",
+                [id],
+            )?;
             Ok(())
         })
     }
@@ -1025,9 +1027,15 @@ mod tests {
             let (_dir, store) = store();
             let id = "note:floor1";
             let old = format!("3-{}", "a".repeat(32));
-            store.apply_remote(&live(id, &old, "months old"), None, None).unwrap();
             store
-                .apply_remote(&live(id, &format!("5-{}", "b".repeat(32)), "current"), None, None)
+                .apply_remote(&live(id, &old, "months old"), None, None)
+                .unwrap();
+            store
+                .apply_remote(
+                    &live(id, &format!("5-{}", "b".repeat(32)), "current"),
+                    None,
+                    None,
+                )
                 .unwrap();
             store.delete(id, Origin::Api).unwrap();
             let tombstone = pending(&store, id).unwrap().rev;
@@ -1043,9 +1051,14 @@ mod tests {
             }
             let after = state(&store, id);
             assert_eq!((after.synced_rev, after.synced_gen), (None, 6));
-            let outcome = store.apply_remote(&live(id, &old, "months old"), None, None).unwrap();
+            let outcome = store
+                .apply_remote(&live(id, &old, "months old"), None, None)
+                .unwrap();
             assert!(matches!(outcome, ApplyOutcome::Stale { .. }), "{outcome:?}");
-            assert!(store.get(id).unwrap().is_none(), "the deleted note came back");
+            assert!(
+                store.get(id).unwrap().is_none(),
+                "the deleted note came back"
+            );
             assert_eq!(state(&store, id).synced_gen, 6);
         }
     }
@@ -1067,11 +1080,17 @@ mod tests {
             let reset = state(&store, id);
             assert!(reset.never_on_account() && !reset.pending());
             assert!(pending(&store, id).is_none());
-            assert!(store
-                .mark_missing_unsynced(&std::collections::HashSet::new(), None)
-                .unwrap()
-                .is_empty());
-            let theirs = live(id, &format!("{remote_gen}-{}", "c".repeat(32)), "the account's");
+            assert!(
+                store
+                    .mark_missing_unsynced(&std::collections::HashSet::new(), None)
+                    .unwrap()
+                    .is_empty()
+            );
+            let theirs = live(
+                id,
+                &format!("{remote_gen}-{}", "c".repeat(32)),
+                "the account's",
+            );
             assert_eq!(
                 store.apply_remote(&theirs, None, None).unwrap(),
                 ApplyOutcome::Applied,
@@ -1100,11 +1119,20 @@ mod tests {
         store.mark_synced(&note.id, &first.rev, None).unwrap();
         let sent = merge_body(&store, &note.id, "v2");
         store.mark_sent(&[(&sent.id, &sent.rev)], None).unwrap();
-        assert_eq!(state(&store, &note.id).sent_rev.as_deref(), Some(sent.rev.as_str()));
+        assert_eq!(
+            state(&store, &note.id).sent_rev.as_deref(),
+            Some(sent.rev.as_str())
+        );
         let newer = merge_body(&store, &note.id, "v3");
         let echo = SyncDoc {
             rev: sent.rev.clone(),
-            fields: store.revisions(&note.id).unwrap().into_iter().find(|r| r.rev == sent.rev).unwrap().fields,
+            fields: store
+                .revisions(&note.id)
+                .unwrap()
+                .into_iter()
+                .find(|r| r.rev == sent.rev)
+                .unwrap()
+                .fields,
             ..first.clone()
         };
         assert_eq!(
@@ -1113,10 +1141,19 @@ mod tests {
         );
         assert_eq!(store.note(&note.id).unwrap().unwrap().body, "v3");
         let next = pending(&store, &note.id).unwrap();
-        assert_eq!((next.rev, next.base_rev), (newer.rev, Some(sent.rev.clone())));
+        assert_eq!(
+            (next.rev, next.base_rev),
+            (newer.rev, Some(sent.rev.clone()))
+        );
         let after = state(&store, &note.id);
         assert_eq!((after.sent_rev, after.synced_gen), (None, 2));
-        assert!(store.revisions(&note.id).unwrap().iter().all(|r| r.origin != "sync"));
+        assert!(
+            store
+                .revisions(&note.id)
+                .unwrap()
+                .iter()
+                .all(|r| r.origin != "sync")
+        );
     }
 
     /// Review-sync 5: files without their bytes are listed, and fetched
@@ -1127,7 +1164,8 @@ mod tests {
         let (_dir, store) = store();
         let bytes = b"\x89PNG later".to_vec();
         let blob = Attachment::new(bytes.clone());
-        let doc = |id: &str, rev: &str, md5: &str| SyncDoc {
+        let doc = |id: &str, rev: &str, md5: &str| {
+            SyncDoc {
             id: id.into(),
             rev: rev.into(),
             deleted: false,
@@ -1136,10 +1174,13 @@ mod tests {
                 .unwrap()
                 .clone(),
             base_rev: None,
+        }
         };
         let md5 = blob.md5_hex().to_uppercase();
         for id in ["file:b", "file:a", "file:c"] {
-            store.apply_remote(&doc(id, "1-aa", &md5), None, None).unwrap();
+            store
+                .apply_remote(&doc(id, "1-aa", &md5), None, None)
+                .unwrap();
         }
         store
             .apply_remote(&doc("file:d", "1-aa", &md5), Some(blob.clone()), None)
@@ -1157,12 +1198,22 @@ mod tests {
 
         let wrong = Attachment::new(b"other".to_vec());
         assert!(!store.fill_blob("file:a", "1-aa", wrong, None).unwrap());
-        assert!(!store.fill_blob("file:a", "2-bb", blob.clone(), None).unwrap());
-        assert!(store.fill_blob("file:a", "1-aa", blob.clone(), None).unwrap());
+        assert!(
+            !store
+                .fill_blob("file:a", "2-bb", blob.clone(), None)
+                .unwrap()
+        );
+        assert!(
+            store
+                .fill_blob("file:a", "1-aa", blob.clone(), None)
+                .unwrap()
+        );
         assert_eq!(store.attachment("file:a").unwrap().unwrap().1.data, bytes);
         assert_eq!(ids("", usize::MAX), ["file:b", "file:c"]);
         let guard_pairs = [("sync.v2.account_id", "a_1")];
-        let guard = SyncGuard { expect: &guard_pairs };
+        let guard = SyncGuard {
+            expect: &guard_pairs,
+        };
         assert!(matches!(
             store.fill_blob("file:b", "1-aa", blob, Some(&guard)),
             Err(StoreError::GuardFailed)

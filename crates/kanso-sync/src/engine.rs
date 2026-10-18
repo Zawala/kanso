@@ -406,9 +406,7 @@ impl QuotaEntry {
             QuotaKind::Docs => usage.docs < self.used || quota.docs > self.limit,
             QuotaKind::DocBytes => usage.doc_bytes < self.used || quota.doc_bytes > self.limit,
             QuotaKind::Files => usage.files < self.used || quota.files > self.limit,
-            QuotaKind::FileBytes => {
-                usage.file_bytes < self.used || quota.file_bytes > self.limit
-            }
+            QuotaKind::FileBytes => usage.file_bytes < self.used || quota.file_bytes > self.limit,
             QuotaKind::Server => now >= self.at_ms.saturating_add(SERVER_HOLD_MS),
         };
         dropped.then(|| match family {
@@ -1130,9 +1128,8 @@ impl Run<'_> {
                 Err(ApiError::QuotaExceeded { quota, used, limit }) => {
                     let worst = batch.iter().map(Class::of).max().unwrap_or(Class::New);
                     let level = self.refused(Family::Docs, quota, used, limit, worst)?;
-                    let (out, kept): (Vec<_>, Vec<_>) = batch
-                        .into_iter()
-                        .partition(|d| Class::of(d).held_at(level));
+                    let (out, kept): (Vec<_>, Vec<_>) =
+                        batch.into_iter().partition(|d| Class::of(d).held_at(level));
                     for doc in &out {
                         self.note_held(doc);
                     }
@@ -1181,8 +1178,13 @@ impl Run<'_> {
                 Class::Edit
             };
             let bytes = blob.data.len() as u64 + FILE_ROW_COST;
-            if self.quota_holds(Family::Files, &doc, class, u64::from(class == Class::New), bytes)?
-                || !self.still_goes(Family::Files, &doc)
+            if self.quota_holds(
+                Family::Files,
+                &doc,
+                class,
+                u64::from(class == Class::New),
+                bytes,
+            )? || !self.still_goes(Family::Files, &doc)
             {
                 continue;
             }
@@ -1451,7 +1453,11 @@ mod problem_tests {
             uploads_held_until: Some(5),
             ..SyncReport::default()
         };
-        assert_eq!(report_problem(&held), None, "an upload hold isn't a problem");
+        assert_eq!(
+            report_problem(&held),
+            None,
+            "an upload hold isn't a problem"
+        );
     }
 
     #[test]
@@ -1468,7 +1474,13 @@ mod problem_tests {
                 assert_eq!(QuotaEntry::parse(&entry.encode()), Some(entry));
             }
         }
-        for bad in ["", "docs 1 2 3", "docs 1 2 3 most", "disk 1 2 3 new", "docs 1 2 3 new x"] {
+        for bad in [
+            "",
+            "docs 1 2 3",
+            "docs 1 2 3 most",
+            "disk 1 2 3 new",
+            "docs 1 2 3 new x",
+        ] {
             assert_eq!(QuotaEntry::parse(bad), None, "{bad:?}");
         }
     }
@@ -1489,7 +1501,16 @@ mod problem_tests {
             0..3usize,
         )
             .prop_map(
-                |(too_new, paused_until, limit, quota, uploads_held_until, skipped, stale, repaired)| {
+                |(
+                    too_new,
+                    paused_until,
+                    limit,
+                    quota,
+                    uploads_held_until,
+                    skipped,
+                    stale,
+                    repaired,
+                )| {
                     SyncReport {
                         too_new,
                         paused_until,

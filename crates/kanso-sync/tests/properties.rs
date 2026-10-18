@@ -552,23 +552,47 @@ proptest! {
 #[derive(Clone, Debug)]
 enum Attack {
     None,
-    FlipBit { pick: usize, byte: usize, bit: u8 },
-    SwapSealed { a: usize, b: usize },
-    OtherAccount { pick: usize },
-    ForgeTombstone { pick: usize },
-    Relabel { pick: usize },
-    Replay { pick: usize },
+    FlipBit {
+        pick: usize,
+        byte: usize,
+        bit: u8,
+    },
+    SwapSealed {
+        a: usize,
+        b: usize,
+    },
+    OtherAccount {
+        pick: usize,
+    },
+    ForgeTombstone {
+        pick: usize,
+    },
+    Relabel {
+        pick: usize,
+    },
+    Replay {
+        pick: usize,
+    },
     Rewind,
     Epoch,
-    Lost { pick: usize },
-    NewFormat { pick: usize, format: u8 },
+    Lost {
+        pick: usize,
+    },
+    NewFormat {
+        pick: usize,
+        format: u8,
+    },
     WrongKey,
     /// While the victim re-reads the feed from 0 (a re-merge or full
     /// resync), leaves one document out, as a restored copy that lacks it.
-    OmitInRemerge { pick: usize },
+    OmitInRemerge {
+        pick: usize,
+    },
     /// Answers a push with a conflict whose `current` is an older version
     /// of that document the account once held (`behind` the real one).
-    ConflictReplay { pick: usize },
+    ConflictReplay {
+        pick: usize,
+    },
 }
 
 fn gen_attack() -> impl Strategy<Value = Attack> {

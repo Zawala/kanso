@@ -311,7 +311,11 @@ fn replayed_older_revisions_and_tombstones_are_stale() {
         base_rev: None,
         ..v1.clone()
     };
-    let ApplyOutcome::Stale { new_rev, conflict: false } = store.apply_remote(&replay, None, None).unwrap() else {
+    let ApplyOutcome::Stale {
+        new_rev,
+        conflict: false,
+    } = store.apply_remote(&replay, None, None).unwrap()
+    else {
         panic!("a replay must be stale");
     };
     assert_eq!(store.get(&id).unwrap().unwrap().fields["name"], "v2");

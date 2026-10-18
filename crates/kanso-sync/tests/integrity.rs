@@ -51,14 +51,27 @@ fn copy_of(from: &Store) -> (tempfile::TempDir, Store) {
     for doc in from.sync_docs().unwrap() {
         let blob = from.attachment(&doc.id).unwrap().map(|(_, blob)| blob);
         store
-            .apply_remote(&SyncDoc { base_rev: None, ..doc }, blob, None)
+            .apply_remote(
+                &SyncDoc {
+                    base_rev: None,
+                    ..doc
+                },
+                blob,
+                None,
+            )
             .unwrap();
     }
     (dir, store)
 }
 
 /// Binds `store` to `username`'s account from Mac `n`, choosing Add.
-fn add(server: &MemoryServer, store: &Store, dir: &tempfile::TempDir, username: &str, n: u8) -> kanso_sync::Session {
+fn add(
+    server: &MemoryServer,
+    store: &Store,
+    dir: &tempfile::TempDir,
+    username: &str,
+    n: u8,
+) -> kanso_sync::Session {
     let session = sign_in(server, username, n);
     kanso_sync::bind(store, &session, Choice::Add, &dir.path().join("backups"), 0).unwrap();
     session
@@ -109,8 +122,16 @@ fn add_never_pushes_a_tombstone_over_the_accounts_live_copy() {
                 "{case}: B's tombstone was pushed over the account's live copy"
             );
             a.sync(&server);
-            assert_eq!(body(&a.store, "note:x"), a_body, "{case}: A lost its version");
-            assert_eq!(body(&b, "note:x"), a_body, "{case}: B didn't take the account's version");
+            assert_eq!(
+                body(&a.store, "note:x"),
+                a_body,
+                "{case}: A lost its version"
+            );
+            assert_eq!(
+                body(&b, "note:x"),
+                a_body,
+                "{case}: B didn't take the account's version"
+            );
             assert_eq!(pending(&b), 0, "{case}");
         }
     }
@@ -138,7 +159,10 @@ fn add_never_deletes_the_accounts_file_or_its_bytes() {
         a.sync(&server);
         let precious = b"\x89PNG precious bytes".to_vec();
         assert_eq!(
-            a.store.attachment("file:f1").unwrap().map(|(_, blob)| blob.data),
+            a.store
+                .attachment("file:f1")
+                .unwrap()
+                .map(|(_, blob)| blob.data),
             Some(precious.clone()),
             "{a_renames}: A's bytes are gone"
         );
@@ -251,7 +275,10 @@ fn a_reported_loss_then_an_old_version_never_brings_a_deleted_note_back() {
     let report = a.sync(&tap);
     drop(tap);
     assert!(report.stale.contains(&"note:x".to_owned()), "{report:?}");
-    assert!(a.store.get("note:x").unwrap().is_none(), "the deleted note came back");
+    assert!(
+        a.store.get("note:x").unwrap().is_none(),
+        "the deleted note came back"
+    );
     assert!(floor(&a.store, "note:x") >= 4);
     a.sync(&server);
     assert!(server_docs(&server, &a.session)["note:x"].1);
@@ -290,7 +317,10 @@ fn an_epoch_change_then_an_old_version_never_brings_a_deleted_note_back() {
     drop(tap);
     assert!(report.remerged);
     assert!(report.stale.contains(&"note:x".to_owned()), "{report:?}");
-    assert!(a.store.get("note:x").unwrap().is_none(), "the deleted note came back");
+    assert!(
+        a.store.get("note:x").unwrap().is_none(),
+        "the deleted note came back"
+    );
     a.sync(&server);
     assert!(server_docs(&server, &a.session)["note:x"].1);
 }
@@ -306,9 +336,19 @@ fn a_reported_loss_then_an_old_version_never_rolls_back_an_edit() {
     let view = server.plain_view(&a.session);
     let wire = view.wire_id("note:x");
     let old = view.wire_docs().into_iter().find(|d| d.id == wire).unwrap();
-    merge(&a.store, DocType::Note, json!({"_id": "note:x", "body": "v2"})).unwrap();
+    merge(
+        &a.store,
+        DocType::Note,
+        json!({"_id": "note:x", "body": "v2"}),
+    )
+    .unwrap();
     a.sync(&server);
-    merge(&a.store, DocType::Note, json!({"_id": "note:x", "body": "v3"})).unwrap();
+    merge(
+        &a.store,
+        DocType::Note,
+        json!({"_id": "note:x", "body": "v3"}),
+    )
+    .unwrap();
     let mut pushes = 0;
     let tap = Tap::new(&server, |event| {
         if let Event::Pushed(results) = event {
@@ -327,10 +367,7 @@ fn a_reported_loss_then_an_old_version_never_rolls_back_an_edit() {
     assert_eq!(body(&a.store, "note:x").as_deref(), Some("v3"));
     a.sync(&server);
     assert_eq!(body(&a.store, "note:x").as_deref(), Some("v3"));
-    assert_eq!(
-        server_live(&server, &a.session)["note:x"].1["body"],
-        "v3"
-    );
+    assert_eq!(server_live(&server, &a.session)["note:x"].1["body"], "v3");
 }
 
 // ---------------------------------------------------------------------------
@@ -358,7 +395,9 @@ fn gen_add_op() -> impl Strategy<Value = AddOp> {
     ]
 }
 
-const SHARED: [&str; 6] = ["note:s0", "note:s1", "note:s2", "note:s3", "file:f0", "file:f1"];
+const SHARED: [&str; 6] = [
+    "note:s0", "note:s1", "note:s2", "note:s3", "file:f0", "file:f1",
+];
 
 proptest! {
     #![proptest_config(config(48))]
@@ -457,7 +496,10 @@ proptest! {
 /// Whether `id`'s content `rev` (by content hash) is current or in the
 /// history of `store`.
 fn holds(store: &Store, id: &str, rev: &str) -> bool {
-    store.get(id).unwrap().is_some_and(|d| hash(&d.rev) == hash(rev))
+    store
+        .get(id)
+        .unwrap()
+        .is_some_and(|d| hash(&d.rev) == hash(rev))
         || store
             .revisions(id)
             .unwrap()
@@ -485,7 +527,12 @@ fn a_restore_never_silently_drops_an_offline_edit() {
         b.sync(&server);
         let mut a_last = None;
         for i in 0..a_offline_edits {
-            a_last = Some(edit_note(&a.store, "note:x", &format!("A offline {i}"), Some(900 + i)));
+            a_last = Some(edit_note(
+                &a.store,
+                "note:x",
+                &format!("A offline {i}"),
+                Some(900 + i),
+            ));
         }
         let a_last = a_last.unwrap();
         server.restore("alice", &snapshot);
@@ -499,10 +546,17 @@ fn a_restore_never_silently_drops_an_offline_edit() {
             .iter()
             .any(|r| r.conflicted.contains(&"note:x".to_owned()));
         assert!(flagged, "{case}: nothing flagged ({ra:?} {rb:?} {ra2:?})");
-        assert_eq!(body(&a.store, "note:x"), body(&b.store, "note:x"), "{case}: the Macs differ");
+        assert_eq!(
+            body(&a.store, "note:x"),
+            body(&b.store, "note:x"),
+            "{case}: the Macs differ"
+        );
         // Both versions survive somewhere, whichever won.
         for rev in [&a_last.rev, &b_two.rev] {
-            assert!(holds(&a.store, "note:x", rev) || holds(&b.store, "note:x", rev), "{case}: {rev}");
+            assert!(
+                holds(&a.store, "note:x", rev) || holds(&b.store, "note:x", rev),
+                "{case}: {rev}"
+            );
         }
         assert_eq!((pending(&a.store), pending(&b.store)), (0, 0), "{case}");
     }
@@ -522,7 +576,13 @@ fn a_rewind_with_a_new_epoch_loses_nothing_once_others_push_past_it() {
     a.sync(&server);
     b.sync(&server);
     let c = a.cursor().max(b.cursor());
-    note(&a.store, "note:a-late", "trash", "A's, lost by the rewind", 200);
+    note(
+        &a.store,
+        "note:a-late",
+        "trash",
+        "A's, lost by the rewind",
+        200,
+    );
     a.sync(&server);
     a.sync(&server);
     server.rewind("alice", c);
@@ -534,7 +594,10 @@ fn a_rewind_with_a_new_epoch_loses_nothing_once_others_push_past_it() {
     assert!(a.sync(&server).remerged);
     b.sync(&server);
     for i in 0..3 {
-        assert!(body(&a.store, &format!("note:b{i}")).is_some(), "A skipped note:b{i}");
+        assert!(
+            body(&a.store, &format!("note:b{i}")).is_some(),
+            "A skipped note:b{i}"
+        );
     }
     assert!(server_docs(&server, &a.session).contains_key("note:a-late"));
     assert_eq!(all_docs(&a.store), all_docs(&b.store));
@@ -544,9 +607,18 @@ fn a_rewind_with_a_new_epoch_loses_nothing_once_others_push_past_it() {
 #[derive(Clone, Debug)]
 enum RestoreOp {
     /// Mac `m` edits (or re-creates) note `pick`; `bump` moves `updatedAt`.
-    Write { m: usize, pick: usize, bump: bool },
-    Delete { m: usize, pick: usize },
-    Sync { m: usize },
+    Write {
+        m: usize,
+        pick: usize,
+        bump: bool,
+    },
+    Delete {
+        m: usize,
+        pick: usize,
+    },
+    Sync {
+        m: usize,
+    },
     /// The owner takes a Time Travel bookmark.
     Snapshot,
     /// The owner restores the last bookmark (which rotates the epoch).
@@ -717,7 +789,12 @@ fn a_lost_push_answer_then_another_edit_keeps_the_edit() {
             if editor {
                 edit_note(&a.store, "note:x", text, Some(at));
             } else {
-                merge(&a.store, DocType::Note, json!({"_id": "note:x", "body": text})).unwrap();
+                merge(
+                    &a.store,
+                    DocType::Note,
+                    json!({"_id": "note:x", "body": text}),
+                )
+                .unwrap();
             }
         };
         write("v2", 200);
@@ -726,13 +803,27 @@ fn a_lost_push_answer_then_another_edit_keeps_the_edit() {
         write("v3", 300);
         let report = a.sync(&server);
         let case = if editor { "editor" } else { "API merge" };
-        assert_eq!(body(&a.store, "note:x").as_deref(), Some("v3"), "{case}: the later edit was reverted");
-        assert!(report.conflicted.is_empty(), "{case}: a false conflict: {report:?}");
+        assert_eq!(
+            body(&a.store, "note:x").as_deref(),
+            Some("v3"),
+            "{case}: the later edit was reverted"
+        );
+        assert!(
+            report.conflicted.is_empty(),
+            "{case}: a false conflict: {report:?}"
+        );
         assert_eq!(report.conflicts(), 0, "{case}");
         assert_eq!(pending(&a.store), 0, "{case}");
         b.sync(&server);
         assert_eq!(body(&b.store, "note:x").as_deref(), Some("v3"), "{case}");
-        assert!(a.store.revisions("note:x").unwrap().iter().all(|r| r.origin != "sync"), "{case}");
+        assert!(
+            a.store
+                .revisions("note:x")
+                .unwrap()
+                .iter()
+                .all(|r| r.origin != "sync"),
+            "{case}"
+        );
     }
 }
 
@@ -740,8 +831,13 @@ fn a_lost_push_answer_then_another_edit_keeps_the_edit() {
 enum EchoOp {
     /// Edit note `pick` on A; `bump` moves `updatedAt` (editor), else an
     /// API merge keeps it.
-    Edit { pick: usize, bump: bool },
-    Delete { pick: usize },
+    Edit {
+        pick: usize,
+        bump: bool,
+    },
+    Delete {
+        pick: usize,
+    },
     Sync,
     /// A syncs, and the server applies its push but the answer is lost.
     SyncLosingTheAnswer,
@@ -842,7 +938,9 @@ fn write_file(store: &Store, id: &str, data: &[u8]) {
 }
 
 /// A backend that loses every file's bytes.
-fn losing_bytes(server: &MemoryServer) -> Tap<'_, impl FnMut(Event) -> Result<(), kanso_sync::ApiError> + Send> {
+fn losing_bytes(
+    server: &MemoryServer,
+) -> Tap<'_, impl FnMut(Event) -> Result<(), kanso_sync::ApiError> + Send> {
     Tap::new(server, |event| {
         if let Event::File(bytes) = event {
             *bytes = None;
@@ -865,7 +963,10 @@ fn missing_bytes_are_fetched_by_the_next_sync() {
     assert_eq!(bytes(&b.store, "file:f1"), None);
     let report = b.sync(&server);
     assert_eq!((report.files_down, report.files_missing), (1, 0));
-    assert_eq!(bytes(&b.store, "file:f1").as_deref(), Some(&b"\x89PNG bytes"[..]));
+    assert_eq!(
+        bytes(&b.store, "file:f1").as_deref(),
+        Some(&b"\x89PNG bytes"[..])
+    );
     let gets = server.stats().count(Route::GetFile);
     assert_eq!(b.sync(&server).files_down, 0);
     assert_eq!(server.stats().count(Route::GetFile), gets);
@@ -891,10 +992,16 @@ fn refetched_bytes_never_replace_a_newer_versions_bytes() {
     });
     let report = b.sync(&race);
     assert_eq!(report.files_down, 0, "{report:?}");
-    assert_eq!(bytes(&b.store, "file:f1").as_deref(), Some(&b"new bytes"[..]));
+    assert_eq!(
+        bytes(&b.store, "file:f1").as_deref(),
+        Some(&b"new bytes"[..])
+    );
     assert_eq!(pending(&b.store), 0);
     a.sync(&server);
-    assert_eq!(bytes(&a.store, "file:f1").as_deref(), Some(&b"new bytes"[..]));
+    assert_eq!(
+        bytes(&a.store, "file:f1").as_deref(),
+        Some(&b"new bytes"[..])
+    );
 }
 
 /// Too many missing files: each sync asks for at most
@@ -905,7 +1012,11 @@ fn refetching_is_bounded_and_goes_round() {
     let a = Mac::new(sign_up(&server, "alice", 1));
     let b = Mac::new(sign_in(&server, "alice", 2));
     for i in 0..5 {
-        file(&a.store, &format!("file:f{i}"), format!("bytes {i}").as_bytes());
+        file(
+            &a.store,
+            &format!("file:f{i}"),
+            format!("bytes {i}").as_bytes(),
+        );
     }
     a.sync(&server);
     let options = SyncOptions {

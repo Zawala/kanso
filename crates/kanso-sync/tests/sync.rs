@@ -296,7 +296,11 @@ fn a_missing_attachment_is_reported_and_fetched_by_a_later_sync() {
     );
     let gets = server.stats().count(Route::GetFile);
     assert_eq!(b.sync(&server).files_down, 0);
-    assert_eq!(server.stats().count(Route::GetFile), gets, "not asked again");
+    assert_eq!(
+        server.stats().count(Route::GetFile),
+        gets,
+        "not asked again"
+    );
 }
 
 #[test]
@@ -855,7 +859,10 @@ fn a_refused_batch_is_not_sent_again_until_usage_drops() {
         "the batch only: nothing in it can go"
     );
     let entry = a.store.meta(meta_keys::QUOTA_DOCS).unwrap().unwrap();
-    assert!(entry.starts_with("doc_bytes ") && entry.ends_with(" new"), "{entry}");
+    assert!(
+        entry.starts_with("doc_bytes ") && entry.ends_with(" new"),
+        "{entry}"
+    );
 
     // Nothing changed on the server: later syncs send nothing and still
     // say the account is full.
@@ -897,9 +904,7 @@ fn over_quota_syncs_spend_writes_only_on_what_the_server_stores() {
     for i in 0..3 {
         note(&a.store, &format!("note:new{i}"), "book:b1", "new", 100);
     }
-    a.store
-        .delete("note:n1", kanso_store::Origin::Api)
-        .unwrap();
+    a.store.delete("note:n1", kanso_store::Origin::Api).unwrap();
     let writes = || kanso_sync::usage(&server, &a.session).unwrap().writes_today;
     let start = writes();
     // The batch of four is refused, then the deletion goes alone.
@@ -919,7 +924,11 @@ fn over_quota_syncs_spend_writes_only_on_what_the_server_stores() {
         );
         assert_eq!((report.pushed, report.pending), (0, 2));
     }
-    assert_eq!(writes() - start, 6, "syncs with nothing that fits cost nothing");
+    assert_eq!(
+        writes() - start,
+        6,
+        "syncs with nothing that fits cost nothing"
+    );
     // An edit of a note the server has still goes at level `new`.
     edit_note(&a.store, "note:new0", "edited", Some(200));
     let report = a.sync(&server);
@@ -940,7 +949,12 @@ fn a_refused_edit_holds_edits_but_deletions_still_go() {
             ..QuotaOverride::default()
         },
     );
-    edit_note(&a.store, "note:n1", &"a much longer body ".repeat(50), Some(200));
+    edit_note(
+        &a.store,
+        "note:n1",
+        &"a much longer body ".repeat(50),
+        Some(200),
+    );
     a.store
         .delete("note:gone", kanso_store::Origin::Api)
         .unwrap();
@@ -953,7 +967,11 @@ fn a_refused_edit_holds_edits_but_deletions_still_go() {
     let pushes = server.stats().count(Route::Push);
     let report = a.sync(&server);
     assert_eq!((report.pushed, report.pending), (0, 1));
-    assert_eq!(server.stats().count(Route::Push), pushes, "the edit doesn't fit the room");
+    assert_eq!(
+        server.stats().count(Route::Push),
+        pushes,
+        "the edit doesn't fit the room"
+    );
     server.set_quota("alice", QuotaOverride::default());
     let report = a.sync(&server);
     assert_eq!((report.pushed, report.pending, report.quota), (1, 0, None));
@@ -986,7 +1004,10 @@ fn a_file_upload_quota_error_keeps_its_document_pending() {
     assert_eq!(server.stats().count(Route::PutFile), uploads);
     server.set_quota("alice", QuotaOverride::default());
     let report = a.sync(&server);
-    assert_eq!((report.files_up, report.pending, report.quota), (1, 0, None));
+    assert_eq!(
+        (report.files_up, report.pending, report.quota),
+        (1, 0, None)
+    );
     assert!(server_docs(&server, &a.session).contains_key("file:img1"));
 }
 
@@ -1139,15 +1160,25 @@ fn a_session_limit_on_a_push_or_a_file_backs_off() {
         });
         let before = kanso_core::now_ms();
         assert_backs_off(mac.try_sync(&tap), before);
-        assert_eq!(sync_meta(&mac.store), before_docs, "{route}: cursor or meta moved");
+        assert_eq!(
+            sync_meta(&mac.store),
+            before_docs,
+            "{route}: cursor or meta moved"
+        );
         assert_eq!(pending(&mac.store), pending_before, "{route}");
         let report = mac.sync(&server);
         assert_eq!(report.pending, 0, "{route}");
         other.sync(&server);
         assert_eq!(live_docs(&a.store), live_docs(&b.store), "{route}");
         assert_eq!(
-            a.store.attachment("file:img1").unwrap().map(|(_, f)| f.data),
-            b.store.attachment("file:img1").unwrap().map(|(_, f)| f.data),
+            a.store
+                .attachment("file:img1")
+                .unwrap()
+                .map(|(_, f)| f.data),
+            b.store
+                .attachment("file:img1")
+                .unwrap()
+                .map(|(_, f)| f.data),
             "{route}"
         );
     }

@@ -52,7 +52,8 @@ pub mod meta_keys {
 
     /// The sync state that belongs to one account and goes when the library
     /// is bound to another or unbound (the cursor aside).
-    pub const PER_ACCOUNT: &[&str] = &[EPOCH, REFETCH_AFTER, QUOTA_DOCS, QUOTA_FILES, UPLOADS_UNTIL];
+    pub const PER_ACCOUNT: &[&str] =
+        &[EPOCH, REFETCH_AFTER, QUOTA_DOCS, QUOTA_FILES, UPLOADS_UNTIL];
 }
 
 /// The guard every sync write of `session` carries: the library must still
