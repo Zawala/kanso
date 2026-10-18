@@ -149,12 +149,17 @@ function parseIpv4(text: string): number[] | null {
 	return parts.map(Number);
 }
 
+/** IPv6 addresses are grouped by their first 48 bits. */
+const IPV6_PREFIX = 48;
+
 /**
- * The subject a rule counts by: IPv4 per address, IPv6 per `/prefix` (56 in
- * D1, 48 for sign-up and the binding). `CF-Connecting-IP` supplies the
+ * The subject a rule counts by: IPv4 per address, IPv6 per /48, in D1 and in
+ * the binding alike. A /48 is the smallest block a home or small office is
+ * commonly given, so a finer group would let one subscriber rotate through
+ * 256 /56s (security review 2, finding 9). `CF-Connecting-IP` supplies the
  * address; "unknown" stands in when it's absent (local dev).
  */
-export function ipGroup(ip: string | null, prefix: 48 | 56): string {
+export function ipGroup(ip: string | null): string {
 	if (!ip) return "unknown";
 	if (!ip.includes(":")) return parseIpv4(ip) ? ip : ip.toLowerCase();
 	const groups = parseIpv6(ip);
@@ -164,10 +169,10 @@ export function ipGroup(ip: string | null, prefix: 48 | 56): string {
 		return [groups[6] >> 8, groups[6] & 255, groups[7] >> 8, groups[7] & 255].join(".");
 	}
 	const masked = groups.map((g, i) => {
-		const bits = Math.max(0, Math.min(16, prefix - 16 * i));
+		const bits = Math.max(0, Math.min(16, IPV6_PREFIX - 16 * i));
 		return bits === 0 ? 0 : g & ((0xffff << (16 - bits)) & 0xffff);
 	});
-	return `${masked.map((g) => g.toString(16)).join(":")}/${prefix}`;
+	return `${masked.map((g) => g.toString(16)).join(":")}/${IPV6_PREFIX}`;
 }
 
 export const clientIp = (request: Request): string | null => request.headers.get("cf-connecting-ip");
@@ -175,7 +180,7 @@ export const clientIp = (request: Request): string | null => request.headers.get
 /** The binding layer: 429 `binding` when AUTH_LIMITER refuses this IP group, else null. */
 export async function bindingFilter(limiter: RateLimit | undefined, request: Request): Promise<Response | null> {
 	if (!limiter) return null;
-	const { success } = await limiter.limit({ key: ipGroup(clientIp(request), 48) });
+	const { success } = await limiter.limit({ key: ipGroup(clientIp(request)) });
 	return success ? null : rateLimited("binding", BINDING_PERIOD_MS);
 }
 

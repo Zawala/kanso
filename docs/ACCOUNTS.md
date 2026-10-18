@@ -92,6 +92,8 @@ nothing was deployed yet):
    request stamped just before a window's boundary but counted just after it reset that row of
    `limits` to the old window, losing the new day's count. It now counts against the newer window,
    as the `daily` counters do.
+9. **IPv6 per /48 everywhere.** `login-ip` and `recover-ip` count IPv6 per /48, as `signup-ip`
+   and the binding already did, so one subscriber's 256 /56s are one group.
 
 Rejected: no finding. Where the result differs from a review's suggestion:
 
@@ -509,9 +511,10 @@ primitives.
   together. A request stamped with an earlier window than the row's (begun just before the
   boundary, or from a Worker whose clock is a little behind) counts against the newer window
   rather than resetting it, as the `daily` counters do (security review 2, finding 8).
-- **IP groups.** IPv4 counts per address. In D1, IPv6 counts per /56, except sign-up, which counts
-  per /48. The binding keys IPv6 by /48. The value comes from `CF-Connecting-IP`; `unknown` stands in
-  when it's absent (local dev).
+- **IP groups.** IPv4 counts per address and IPv6 per /48, in D1 and in the binding alike. A /48
+  is the smallest block a home or small office is commonly given, so per /56 one subscriber could
+  rotate through 256 groups (security review 2, finding 9). The value comes from `CF-Connecting-IP`;
+  `unknown` stands in when it's absent (local dev).
 - **Expiry.** A rule's rows are deleted once their window has ended (by the cron; the counting
   upsert also overwrites a stale window).
 
@@ -519,8 +522,8 @@ primitives.
 |---|---|---|---|---|
 | `signup-ip` | IP group (/48) | 1 h | 10 | Every sign-up request |
 | `login-user` | account ID; one shared row for names without an account | 15 min | 10 | Every sign-in, unless its device ID has an active session row (`revoked_at IS NULL`) for that account and SHA-256 of the request's device proof equals that row's `proof_hash` (M8, security re-check 5, security review 2) |
-| `login-ip` | IP group | 15 min | 30 | Every sign-in |
-| `recover-ip` | IP group | 1 h | 10 | Every `recover/start` and `recover/finish` |
+| `login-ip` | IP group (/48) | 15 min | 30 | Every sign-in |
+| `recover-ip` | IP group (/48) | 1 h | 10 | Every `recover/start` and `recover/finish` |
 | `password-account` | account ID | 15 min | 5 | Every current-password check (password change, new recovery key, delete) |
 | `writes-account` | account ID | 1 day | the account's `quota_writes_per_day`, else `settings.writes_per_day` | Documents in each push, plus 1 per file upload, plus 1 per push refused as malformed or too large (so failed pushes aren't free) |
 | `uploads-account` | account ID | 1 day | `settings.upload_bytes_per_day` | Each upload's `Content-Length` (capped at the largest file plus one byte; the largest file when it's missing), counted before the body is read, after `writes-account` passes; a body longer than it declared counts the rest |

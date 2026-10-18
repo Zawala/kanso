@@ -298,7 +298,7 @@ function checkSignup(body: Record<string, unknown>): Checked<SignupBody> {
 }
 
 export const signup: PepperHandler = async (request, env, now, keys) => {
-	const limited = await count(env.DB, "signup-ip", await ipKey(keys, "signup-ip", ipGroup(clientIp(request), 48)), now);
+	const limited = await count(env.DB, "signup-ip", await ipKey(keys, "signup-ip", ipGroup(clientIp(request))), now);
 	if (limited) return limited;
 	const body = await readObject(request);
 	if (!body.ok) return body.response;
@@ -429,7 +429,7 @@ const ACCOUNT_BY_NAME = `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE username 
 const ACCOUNT_BY_ID = `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE id = ?1`;
 
 export const login: PepperHandler = async (request, env, now, keys) => {
-	let limited = await count(env.DB, "login-ip", await ipKey(keys, "login-ip", ipGroup(clientIp(request), 56)), now);
+	let limited = await count(env.DB, "login-ip", await ipKey(keys, "login-ip", ipGroup(clientIp(request))), now);
 	if (limited) return limited;
 	const body = await readObject(request);
 	if (!body.ok) return body.response;
@@ -482,7 +482,7 @@ export const login: PepperHandler = async (request, env, now, keys) => {
 // ------------------------------------------------------------------ recovery
 
 export const recoverStart: PepperHandler = async (request, env, now, keys) => {
-	const limited = await count(env.DB, "recover-ip", await ipKey(keys, "recover-ip", ipGroup(clientIp(request), 56)), now);
+	const limited = await count(env.DB, "recover-ip", await ipKey(keys, "recover-ip", ipGroup(clientIp(request))), now);
 	if (limited) return limited;
 	const body = await readObject(request);
 	if (!body.ok) return body.response;
@@ -497,7 +497,7 @@ export const recoverStart: PepperHandler = async (request, env, now, keys) => {
 };
 
 export const recoverFinish: PepperHandler = async (request, env, now, keys) => {
-	const limited = await count(env.DB, "recover-ip", await ipKey(keys, "recover-ip", ipGroup(clientIp(request), 56)), now);
+	const limited = await count(env.DB, "recover-ip", await ipKey(keys, "recover-ip", ipGroup(clientIp(request))), now);
 	if (limited) return limited;
 	const body = await readObject(request);
 	if (!body.ok) return body.response;
