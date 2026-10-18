@@ -134,7 +134,6 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-,", OpenSettings, None),
         KeyBinding::new("cmd-q", Quit, None),
         KeyBinding::new("enter", FocusEditor, Some("NoteList")),
-        KeyBinding::new("escape", FocusNoteList, Some("NoteEditor")),
         KeyBinding::new("cmd-k", OpenCommandPalette, None),
         KeyBinding::new("cmd-p", OpenNotePicker, None),
     ]);
@@ -157,14 +156,14 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("New Notebook", NewNotebook),
             MenuItem::separator(),
             MenuItem::action("Save", SaveNote),
-            MenuItem::action("Export Note as Markdown…", ExportNote),
-            MenuItem::action("Export All Notes as Markdown…", ExportLibrary),
+            MenuItem::action("Export Note…", ExportNote),
+            MenuItem::action("Export All Notes…", ExportLibrary),
         ]),
         Menu::new("Edit").items([MenuItem::os_submenu("Services", SystemMenuType::Services)]),
         Menu::new("Note").items([
-            MenuItem::action("Pin / Unpin", TogglePinned),
+            MenuItem::action("Pin / Unpin Note", TogglePinned),
             MenuItem::action("Move to Trash", TrashNote),
-            MenuItem::action("History…", ShowHistory),
+            MenuItem::action("Show History…", ShowHistory),
             MenuItem::separator(),
             MenuItem::action("Next Note", NextNote),
             MenuItem::action("Previous Note", PreviousNote),
@@ -281,7 +280,7 @@ impl Workspace {
             )
         });
 
-        let settings = cx.new(SettingsView::new);
+        let settings = cx.new(|cx| SettingsView::new(library.clone(), cx));
 
         let subscriptions = vec![
             cx.subscribe_in(&library, window, |this, _, event, window, cx| match event {
@@ -290,8 +289,13 @@ impl Workspace {
                     this.leave_settings(window, cx);
                     this.set_focus_mode(false, window, cx);
                 }
-                LibraryEvent::Selected(id) => {
-                    this.leave_settings(window, cx);
+                // A note someone picked shows; one the app picked itself
+                // (the last note at launch, the first of a new list) waits
+                // behind Settings.
+                LibraryEvent::Selected { id, asked } => {
+                    if *asked {
+                        this.leave_settings(window, cx);
+                    }
                     let id = id.clone();
                     this.editor
                         .update(cx, |editor, cx| editor.open(id.as_deref(), window, cx));
@@ -348,7 +352,17 @@ impl Workspace {
         });
 
         if let Some(id) = last_note.filter(|id| store.note(id).ok().flatten().is_some()) {
-            library.update(cx, |library, cx| library.select(Some(id), cx));
+            library.update(cx, |library, cx| library.select_quietly(Some(id), cx));
+        }
+        // Focus mode kept from last time: once the note is open, the
+        // keyboard goes into its text, as turning focus mode on does.
+        if focus_mode {
+            cx.defer_in(window, |this: &mut Workspace, window, cx| {
+                if this.focus_mode && !this.settings_open() {
+                    this.editor
+                        .update(cx, |editor, cx| editor.focus_for_writing(window, cx));
+                }
+            });
         }
 
         Workspace {
@@ -561,6 +575,11 @@ impl Workspace {
             SidebarEvent::NewNote => self.new_note(window, cx),
             SidebarEvent::GoToNotebook => {
                 let mode = Mode::Pick(Picker::GoToNotebook);
+                self.palette
+                    .update(cx, |palette, cx| palette.open(mode, window, cx));
+            }
+            SidebarEvent::GoToTag => {
+                let mode = Mode::Pick(Picker::GoToTag);
                 self.palette
                     .update(cx, |palette, cx| palette.open(mode, window, cx));
             }
@@ -825,13 +844,22 @@ impl Workspace {
         cx.notify();
     }
 
+    /// The rail's width while the sidebar is folded to it.
+    fn rail(&self, window: &Window) -> Option<f32> {
+        (!self.show_sidebar).then(|| rail_width(window.is_fullscreen()))
+    }
+
+    /// The panes' widths as drawn: as set, or narrower when the window
+    /// leaves the editor less than its minimum.
+    fn fitted_widths(&self, window: &Window) -> PaneWidths {
+        let width = f32::from(window.viewport_size().width);
+        self.pane_widths.fitted(width, self.rail(window))
+    }
+
     /// The width of what is left of the note list: the sidebar or its rail.
     fn leading_width(&self, window: &Window) -> f32 {
-        if self.show_sidebar {
-            self.pane_widths.sidebar
-        } else {
-            rail_width(window.is_fullscreen())
-        }
+        self.rail(window)
+            .unwrap_or_else(|| self.fitted_widths(window).sidebar)
     }
 
     /// A pane's edge followed the pointer.
@@ -843,9 +871,11 @@ impl Workspace {
     ) {
         let edge = **event.drag(cx);
         let x = f32::from(event.event.position.x - event.bounds.left());
-        let rail = (!self.show_sidebar).then(|| self.leading_width(window));
+        let rail = self.rail(window);
+        // From the widths as drawn, so the edge doesn't jump to the pointer.
+        let from = self.fitted_widths(window);
         let window = f32::from(event.bounds.size.width);
-        let widths = self.pane_widths.dragged(edge, x, window, rail);
+        let widths = from.dragged(edge, x, window, rail);
         if widths != self.pane_widths {
             self.pane_widths = widths;
             cx.notify();
@@ -926,7 +956,9 @@ impl Render for Workspace {
         let focus_mode = self.focus_mode && !settings_open;
         self.editor
             .update(cx, |editor, cx| editor.set_focus_mode(focus_mode, cx));
-        let widths = self.pane_widths;
+        let widths = self.fitted_widths(window);
+        self.palette
+            .update(cx, |palette, _| palette.set_notes_hidden(settings_open));
         v_flex()
             .size_full()
             .relative()
@@ -1022,29 +1054,36 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &ExitFocusMode, window, cx| {
                 this.set_focus_mode(false, window, cx);
             }))
-            .on_action(
-                cx.listener(|this, _: &ShowEditor, _, cx| this.set_view_mode(ViewMode::Edit, cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &ShowSplit, _, cx| this.set_view_mode(ViewMode::Split, cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &ShowPreview, _, cx| {
-                    this.set_view_mode(ViewMode::Preview, cx)
-                }),
-            )
+            // What acts on the open note brings it back from behind
+            // Settings first, so the note it changes is in view.
+            .on_action(cx.listener(|this, _: &ShowEditor, window, cx| {
+                this.close_settings(window, cx);
+                this.set_view_mode(ViewMode::Edit, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ShowSplit, window, cx| {
+                this.close_settings(window, cx);
+                this.set_view_mode(ViewMode::Split, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ShowPreview, window, cx| {
+                this.close_settings(window, cx);
+                this.set_view_mode(ViewMode::Preview, cx)
+            }))
             .on_action(cx.listener(|this, _: &SaveNote, _, cx| this.flush(cx)))
-            .on_action(cx.listener(|this, _: &TogglePinned, _, cx| {
+            .on_action(cx.listener(|this, _: &TogglePinned, window, cx| {
+                this.close_settings(window, cx);
                 this.editor
                     .update(cx, |editor, cx| editor.toggle_pinned(cx));
             }))
-            .on_action(cx.listener(|this, _: &TrashNote, _, cx| {
+            .on_action(cx.listener(|this, _: &TrashNote, window, cx| {
+                this.close_settings(window, cx);
                 this.editor.update(cx, |editor, cx| editor.trash(cx));
             }))
             .on_action(cx.listener(|this, _: &ShowHistory, window, cx| {
+                this.close_settings(window, cx);
                 this.show_history(window, cx);
             }))
             .on_action(cx.listener(|this, _: &ExportNote, window, cx| {
+                this.close_settings(window, cx);
                 let id = this.editor.read(cx).note_id().map(str::to_owned);
                 if let Some(id) = id {
                     this.export(Some(vec![id]), window, cx);

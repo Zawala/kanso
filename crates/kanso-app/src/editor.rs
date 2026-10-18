@@ -19,7 +19,6 @@ use std::time::Duration;
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::input::{Editor, EditorState, Input, InputEvent, InputState, Position};
-use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{
@@ -42,7 +41,7 @@ use crate::library::{Filter, Library};
 use crate::markdown_edit::{self, Format};
 use crate::preview::{LinkSender, Preview, TEXT_INSET, readable_width};
 use crate::split::{
-    SPLIT_MIN_SIDE, scroll_sync, source_scroll_max, split_left, split_ratio, wrapped_rows,
+    scroll_sync, source_scroll_max, split_left, split_min_side, split_ratio, wrapped_rows,
 };
 use crate::theme::{Colors, muted_tag_color};
 use crate::workspace::{AppState, NewNote};
@@ -108,6 +107,9 @@ pub struct NoteEditor {
     pub font_size: f32,
     /// Whether monospace text may show line numbers (a setting).
     pub allow_line_numbers: bool,
+    /// Whether the text keeps to a readable measure (a setting), or fills
+    /// the pane.
+    pub readable_width: bool,
     /// Whether the body shows line numbers now; see [`EditorFont::face`].
     line_numbers: bool,
     autosave: Option<Task<()>>,
@@ -156,6 +158,7 @@ impl NoteEditor {
             editor_font,
             editor_font_size: font_size,
             line_numbers: allow_line_numbers,
+            readable_width,
             ..
         } = *appearance;
         let title = cx.new(|cx| InputState::new(window, cx).placeholder("Untitled"));
@@ -233,6 +236,7 @@ impl NoteEditor {
             editor_font,
             font_size,
             allow_line_numbers,
+            readable_width,
             line_numbers,
             autosave: None,
             preview_task: None,
@@ -456,9 +460,20 @@ impl NoteEditor {
                 state.set_scroll_offset(scroll, cx);
             }
         });
+        // The kept line lengths describe the old text, which may have had
+        // the same length.
+        self.source_lines = None;
         let text: SharedString = body.into();
-        self.preview
-            .update(cx, |preview, cx| preview.set_text(text, cx));
+        self.preview.update(cx, |preview, cx| {
+            preview.set_text(text, cx);
+            // Another note starts at its top, beside a source that does.
+            if !keep_place {
+                preview.scroll_to(0., cx);
+            }
+        });
+        if !keep_place {
+            self.followed_scroll = None;
+        }
         let has_note = self.note.is_some();
         self.footer
             .update(cx, |footer, cx| footer.note_opened(has_note, cx));
@@ -813,6 +828,7 @@ impl NoteEditor {
             .update(cx, |state, cx| state.set_value(title, window, cx));
         self.body
             .update(cx, |state, cx| state.set_value(body.clone(), window, cx));
+        self.source_lines = None;
         self.preview
             .update(cx, |preview, cx| preview.set_text(body.into(), cx));
         self.save(cx);
@@ -1027,7 +1043,7 @@ impl NoteEditor {
                         colors.text_secondary
                     }))
                     .selected(pinned)
-                    .tooltip(if pinned { "Unpin" } else { "Pin to top" })
+                    .tooltip(if pinned { "Unpin note" } else { "Pin note" })
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_pinned(cx))),
             )
             .child(
@@ -1035,7 +1051,7 @@ impl NoteEditor {
                     .ghost()
                     .small()
                     .icon(Icon::new(Lucide::Clock).text_color(colors.text_secondary))
-                    .tooltip("History")
+                    .tooltip("Show history")
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(EditorEvent::ShowHistory))),
             )
             .child(
@@ -1046,11 +1062,8 @@ impl NoteEditor {
                     .tooltip("More")
                     .dropdown_menu(move |menu, window, cx| {
                         let view = view.clone();
-                        menu.menu("History…", Box::new(crate::workspace::ShowHistory))
-                            .menu(
-                                "Export as Markdown…",
-                                Box::new(crate::workspace::ExportNote),
-                            )
+                        menu.menu("Show History…", Box::new(crate::workspace::ShowHistory))
+                            .menu("Export Note…", Box::new(crate::workspace::ExportNote))
                             .submenu("Status", window, cx, move |mut menu, _, _| {
                                 for option in NoteStatus::ALL {
                                     let view = view.clone();
@@ -1070,6 +1083,56 @@ impl NoteEditor {
                             .menu("Move to Trash", Box::new(crate::workspace::TrashNote))
                     }),
             )
+    }
+
+    /// The note's title: the field while it has the keyboard, and otherwise
+    /// the title cut short with an ellipsis where the pane ends, as the list
+    /// and the header cut it. A click puts the keyboard in the field.
+    // no-prop-test: layout; `the_title_is_cut_short_until_it_is_edited`
+    // clicks it and the focus snapshots show it.
+    fn render_title(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let style = |el: Div| {
+            el.w_full()
+                .h(px(40.))
+                .text_size(px(28.))
+                .line_height(px(36.))
+                .font_semibold()
+        };
+        if self.title.read(cx).focus_handle(cx).is_focused(window) {
+            return Input::new(&self.title)
+                .appearance(false)
+                .text_size(px(28.))
+                .line_height(px(36.))
+                .h(px(40.))
+                .p_0()
+                .font_semibold()
+                .into_any_element();
+        }
+        let colors = Colors::get(cx);
+        let title = self.title.read(cx).value().clone();
+        let (text, color) = if title.trim().is_empty() {
+            (SharedString::from("Untitled"), colors.text_muted)
+        } else {
+            (title, colors.text)
+        };
+        style(div())
+            .id("note-title")
+            .debug_selector(|| "note-title".into())
+            .min_w_0()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .text_ellipsis()
+            .text_color(color)
+            .cursor_text()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    this.focus_title(window, cx);
+                    cx.notify();
+                }),
+            )
+            .child(text)
+            .into_any_element()
     }
 
     /// The status chip, the note's tags and "Add tag".
@@ -1444,7 +1507,7 @@ impl Render for NoteEditor {
                     .child(if first_run { block.first_run() } else { block })
             } else {
                 // The shortcut as bound, so the hint never shows a stale one.
-                let new_note = Kbd::global_binding_for_action(&NewNote, window);
+                let new_note = crate::keys::shortcut_chip(&NewNote, window, cx);
                 pane.gap_2()
                     .text_color(colors.text_muted)
                     .child("No note selected")
@@ -1481,9 +1544,9 @@ impl Render for NoteEditor {
         };
         let size = self.font_size;
         // Alone, the source keeps to a readable measure for its face and
-        // size, starting under the title; beside the preview it takes its
-        // side of the divider.
-        let measure = (mode == ViewMode::Edit).then(|| {
+        // size, starting under the title, unless the setting lets it fill the
+        // pane; beside the preview it takes its side of the divider.
+        let measure = (mode == ViewMode::Edit && self.readable_width).then(|| {
             let numbers = if face.line_numbers {
                 LINE_NUMBER_COLUMN
             } else {
@@ -1510,17 +1573,9 @@ impl Render for NoteEditor {
                     .pl(px(TEXT_INSET))
                     .pr_4()
                     .pb(px(8.))
-                    .child(
-                        Input::new(&self.title)
-                            .appearance(false)
-                            .text_size(px(28.))
-                            .line_height(px(36.))
-                            .h(px(40.))
-                            .p_0()
-                            .font_semibold(),
-                    ),
+                    .child(self.render_title(window, cx)),
             )
-            .child(self.render_meta(&note, cx))
+            .child(chrome(v_flex()).child(self.render_meta(&note, cx)))
             .when(mode == ViewMode::Edit && !trashed, |el| {
                 el.child(chrome(v_flex()).child(self.render_format_bar(cx)))
             });
@@ -1557,11 +1612,16 @@ impl Render for NoteEditor {
                             .line_height(relative(BODY_LINE_HEIGHT)),
                     ),
             );
-        let preview = div().flex_1().h_full().min_w_0().child(
-            self.preview
-                .clone()
-                .cached(StyleRefinement::default().size_full()),
-        );
+        let preview = div()
+            .flex_1()
+            .h_full()
+            .min_w_0()
+            .debug_selector(|| "preview-pane".into())
+            .child(
+                self.preview
+                    .clone()
+                    .cached(StyleRefinement::default().size_full()),
+            );
         let body = match mode {
             ViewMode::Edit => h_flex().size_full().child(source).into_any_element(),
             ViewMode::Preview => h_flex().size_full().child(preview).into_any_element(),
@@ -1569,11 +1629,14 @@ impl Render for NoteEditor {
                 self.place_split(window, cx);
                 let editor = cx.entity().downgrade();
                 // Until the divider is placed for a measured width, the
-                // sides grow in the kept proportion from nothing.
+                // sides grow in the kept proportion from nothing. Neither
+                // may be dragged narrower than the editor has room for, so
+                // the preview never runs past the window.
                 let ratio = self.split_ratio.clamp(0., 1.);
+                let min_side = split_min_side(f32::from(self.split.read(cx).container_size()));
                 let side = |share: f32| {
                     let mut panel = resizable_panel()
-                        .size_range(px(SPLIT_MIN_SIDE)..px(f32::MAX))
+                        .size_range(px(min_side)..px(f32::MAX))
                         .min_w_0()
                         .flex_basis(px(0.));
                     panel.style().flex_grow = Some(share);
@@ -1581,15 +1644,20 @@ impl Render for NoteEditor {
                 };
                 // Painted after the source, which by then has taken any
                 // scroll set for this frame (from its scrollbar, or the
-                // margin's wheel), which it doesn't announce.
+                // margin's wheel), which it doesn't announce. The preview
+                // follows once the frame is drawn, so moving it asks for the
+                // next one.
                 let follow = {
                     let editor = editor.clone();
                     canvas(
                         |_, _, _| {},
-                        move |_, _, _, cx| {
-                            editor
-                                .update(cx, |this, cx| this.follow_source_scroll(cx))
-                                .ok();
+                        move |_, _, window, cx| {
+                            let editor = editor.clone();
+                            window.defer(cx, move |_, cx| {
+                                editor
+                                    .update(cx, |this, cx| this.follow_source_scroll(cx))
+                                    .ok();
+                            });
                         },
                     )
                     .absolute()
@@ -1639,6 +1707,7 @@ impl Render for NoteEditor {
         // text itself is centred; beside the preview each side gets as much.
         let width = match mode {
             ViewMode::Split => 2. * FOCUS_COLUMN,
+            _ if !self.readable_width => FOCUS_COLUMN,
             _ => {
                 let numbers = if face.line_numbers {
                     LINE_NUMBER_COLUMN
@@ -1732,6 +1801,33 @@ impl NoteEditor {
             .iter()
             .map(|s| f32::from(*s))
             .collect()
+    }
+
+    /// Shows what focus mode hides, as the pointer near the top and over
+    /// the footer would.
+    pub fn reveal_chrome_for_test(&mut self, cx: &mut Context<Self>) {
+        self.reveal_chrome = true;
+        self.footer.update(cx, |footer, cx| {
+            footer.reveal = true;
+            cx.notify();
+        });
+        cx.notify();
+    }
+
+    /// Scrolls the preview `top` points down, as its wheel would.
+    pub fn scroll_preview_for_test(&mut self, top: f32, cx: &mut Context<Self>) {
+        self.preview
+            .update(cx, |preview, cx| preview.scroll_to(top, cx));
+    }
+
+    /// The cached source line lengths, as (text length, lines).
+    pub fn source_lines_for_test(&self) -> Option<(usize, Vec<usize>)> {
+        self.source_lines.clone()
+    }
+
+    /// Fills the source line cache, as a paint in Split does.
+    pub fn estimate_source_for_test(&mut self, cx: &mut Context<Self>) -> Option<f32> {
+        self.source_scroll_estimate(cx)
     }
 }
 

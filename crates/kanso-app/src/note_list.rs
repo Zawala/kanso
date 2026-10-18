@@ -8,7 +8,6 @@ use std::time::Duration;
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt as _,
@@ -25,7 +24,7 @@ use crate::grouping::{Grouped, Row, RowKey, bucket_label, day_of, group_rows, ro
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::text_match::{highlight_terms, match_ranges};
-use crate::theme::{Colors, Rgb};
+use crate::theme::{Colors, Rgb, section_label};
 use crate::workspace::SearchAllNotes;
 
 const SEARCH_DELAY: Duration = Duration::from_millis(120);
@@ -127,6 +126,9 @@ pub struct NoteList {
     /// Room kept at the left of the top band, for the window's traffic
     /// lights when the sidebar is hidden.
     leading_inset: Pixels,
+    /// Whether the list has the keyboard, as of the last frame: its
+    /// selected row then shows a focus ring.
+    list_focused: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -150,7 +152,7 @@ impl NoteList {
             // Follow the selection when it moves, but not on every reload,
             // which would pull the list back while it's being scrolled.
             cx.subscribe(&library, |this, library, event, cx| {
-                if let LibraryEvent::Selected(Some(id)) = event {
+                if let LibraryEvent::Selected { id: Some(id), .. } = event {
                     this.scroll_to = Some((id.clone(), library.read(cx).notes_version));
                     cx.notify();
                 }
@@ -179,6 +181,7 @@ impl NoteList {
             layout: ListLayout::default(),
             scroll_to: None,
             hovered: None,
+            list_focused: false,
             pressed: None,
             leading_inset: px(0.),
             _subscriptions: subscriptions,
@@ -431,10 +434,18 @@ impl NoteList {
             .child(
                 v_flex()
                     .size_full()
-                    .px(px(ROW_PAD_X))
-                    .py(px(ROW_PAD_Y))
+                    // The ring's width comes out of the padding, so text
+                    // stays put with and without it.
+                    .px(px(ROW_PAD_X - 1.))
+                    .py(px(ROW_PAD_Y - 1.))
                     .gap(px(ROW_GAP))
                     .rounded(px(6.))
+                    .border_1()
+                    .border_color(if selected && self.list_focused {
+                        Hsla::from(colors.accent)
+                    } else {
+                        gpui_kit::transparent_black()
+                    })
                     .when(selected, |el| el.bg(colors.row_active))
                     .when(hovered && !selected, |el| el.bg(colors.row_hover))
                     .child(
@@ -548,7 +559,7 @@ impl NoteList {
                         )
                 } else {
                     menu.item(
-                        PopupMenuItem::new(if pinned { "Unpin" } else { "Pin to Top" })
+                        PopupMenuItem::new(if pinned { "Unpin Note" } else { "Pin Note" })
                             .on_click(emit(NoteListEvent::TogglePinned)),
                     )
                     .item(PopupMenuItem::new("Duplicate").on_click(emit(NoteListEvent::Duplicate)))
@@ -566,6 +577,7 @@ impl NoteList {
         in_trash: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let colors = Colors::get(cx);
         let action = |name: &'static str,
                       icon: Icon,
                       tooltip: &'static str,
@@ -575,7 +587,7 @@ impl NoteList {
             Button::new(name)
                 .ghost()
                 .xsmall()
-                .icon(icon.size(px(13.)))
+                .icon(icon.size(px(13.)).text_color(colors.text_secondary))
                 .tooltip(tooltip)
                 .debug_selector(|| name.into())
                 .on_click(cx.listener(move |_, _, _, cx| {
@@ -600,14 +612,18 @@ impl NoteList {
                     } else {
                         Lucide::Pin
                     }),
-                    if note.pinned { "Unpin" } else { "Pin to Top" },
+                    if note.pinned {
+                        "Unpin note"
+                    } else {
+                        "Pin note"
+                    },
                     NoteListEvent::TogglePinned,
                     cx,
                 ))
                 .child(action(
                     "row-trash",
                     Icon::new(Lucide::Trash),
-                    "Move to Trash",
+                    "Move to trash",
                     NoteListEvent::Trash,
                     cx,
                 ))
@@ -651,7 +667,11 @@ impl NoteList {
         let filter_menu = Button::new("list-filter")
             .ghost()
             .small()
-            .icon(Icon::new(Lucide::ListFilter).size(px(15.)))
+            .icon(
+                Icon::new(Lucide::ListFilter)
+                    .size(px(15.))
+                    .text_color(colors.text_secondary),
+            )
             .selected(refined)
             .tooltip("Filter and sort")
             .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, window, cx| {
@@ -695,7 +715,7 @@ impl NoteList {
         let focused = self.search.read(cx).focus_handle(cx).is_focused(window);
         // Global search's key, the same in every place: it brings the
         // keyboard here over all notes.
-        let key = Kbd::global_binding_for_action(&SearchAllNotes, window);
+        let key = crate::keys::shortcut_chip(&SearchAllNotes, window, cx);
         v_flex()
             .flex_shrink_0()
             .px(px(12.))
@@ -738,7 +758,7 @@ impl NoteList {
                         .icon(IconName::Plus)
                         .label("New note")
                         .text_color(colors.text_secondary)
-                        .tooltip("New note (⌘N)")
+                        .tooltip_with_action("New note", &crate::workspace::NewNote, None)
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(NoteListEvent::NewNote))),
                 )
             })
@@ -748,7 +768,11 @@ impl NoteList {
                     Button::new("list-sort")
                         .ghost()
                         .small()
-                        .icon(Icon::new(Lucide::ArrowUpDown).size(px(15.)))
+                        .icon(
+                            Icon::new(Lucide::ArrowUpDown)
+                                .size(px(15.))
+                                .text_color(colors.text_secondary),
+                        )
                         .tooltip("Sort")
                         .dropdown_menu_with_anchor(Anchor::BottomRight, move |menu, _, cx| {
                             sort_items(menu, &sort_library, cx)
@@ -763,42 +787,21 @@ impl NoteList {
         let library = self.library.read(cx);
         let search = library.search.trim().to_owned();
         if !search.is_empty() {
-            return v_flex()
-                .w_full()
-                .items_center()
-                .pt(px(56.))
-                .px(px(24.))
-                .child(
-                    Icon::new(IconName::Search)
-                        .size(px(24.))
-                        .text_color(colors.text_muted),
-                )
-                .child(
-                    div()
-                        .mt(px(12.))
-                        .text_size(px(14.))
-                        .font_semibold()
-                        .text_color(colors.text)
-                        .child("No matches"),
-                )
-                .child(
-                    div()
-                        .mt(px(4.))
-                        .text_size(px(12.5))
-                        .line_height(px(18.))
-                        .text_color(colors.text_secondary)
-                        .text_center()
-                        .child(format!("No notes match “{search}”.")),
-                )
-                .child(
-                    div()
-                        .mt(px(18.))
-                        .text_size(px(11.5))
-                        .text_color(colors.text_muted)
-                        .child("Narrow a search with"),
-                )
-                .child(div().mt(px(6.)).child(query_tokens(colors, cx)))
-                .into_any_element();
+            return quiet_empty(
+                IconName::Search,
+                "No matches".into(),
+                Some(format!("No notes match “{search}”.")),
+                colors,
+            )
+            .child(
+                div()
+                    .mt(px(18.))
+                    .text_size(px(11.5))
+                    .text_color(colors.text_muted)
+                    .child("Narrow a search with"),
+            )
+            .child(div().mt(px(6.)).child(query_tokens(colors, cx)))
+            .into_any_element();
         }
         if library.is_refined() {
             let library = self.library.clone();
@@ -825,34 +828,29 @@ impl NoteList {
             Filter::Book(id) if library.has_notes_inside(id) => quiet_empty(
                 Lucide::Notebook,
                 format!("No notes directly in {}", library.filter_title()),
-                Some("Its notes are in the notebooks inside it."),
+                Some("Its notes are in the notebooks inside it.".into()),
                 colors,
             )
             .into_any_element(),
-            // The editor beside it shows the full block with the actions;
-            // this one sits in the middle of the list, as in the design.
+            // The editor beside it shows the full block with the actions.
             Filter::All | Filter::Book(_) => quiet_empty(
                 IconName::FileText,
                 "No notes yet".into(),
-                Some("Create your first note to get started."),
+                Some("Create your first note to get started.".into()),
                 colors,
             )
-            .size_full()
-            .justify_center()
-            .pt_0()
-            .pb(px(TOP_BAND_HEIGHT))
             .into_any_element(),
             Filter::Pinned => quiet_empty(
                 Lucide::Pin,
                 "No pinned notes".into(),
-                Some("Pin a note to keep it at the top."),
+                Some("Pin a note to keep it at the top.".into()),
                 colors,
             )
             .into_any_element(),
             Filter::Recent => quiet_empty(
                 Lucide::Clock,
                 "No recent notes".into(),
-                Some("Notes edited in the last 7 days show here."),
+                Some("Notes edited in the last 7 days show here.".into()),
                 colors,
             )
             .into_any_element(),
@@ -945,12 +943,9 @@ fn render_header(label: String, cx: &App) -> impl IntoElement {
         .px(px(ROW_INSET_X + ROW_PAD_X))
         .pt(px(HEADER_PAD_TOP))
         .child(
-            div()
+            section_label(div(), colors)
                 .h(px(HEADER_LINE))
-                .text_size(px(12.))
                 .line_height(px(HEADER_LINE))
-                .font_medium()
-                .text_color(colors.text_muted)
                 .child(label),
         )
         .child(
@@ -995,17 +990,20 @@ fn query_tokens(colors: &Colors, cx: &App) -> impl IntoElement {
         )
 }
 
-/// A short centered message for lists that are empty by nature.
+/// A short message in the middle of an empty list, as in the design, a
+/// little above the centre (by the top band's height) so it sits level with
+/// the editor's block beside it.
 fn quiet_empty(
     icon: impl Into<Icon>,
     title: String,
-    detail: Option<&'static str>,
+    detail: Option<String>,
     colors: &Colors,
 ) -> Div {
     v_flex()
-        .w_full()
+        .size_full()
         .items_center()
-        .pt(px(72.))
+        .justify_center()
+        .pb(px(TOP_BAND_HEIGHT))
         .px(px(24.))
         .child(icon.into().size(px(22.)).text_color(colors.text_muted))
         .child(
@@ -1195,6 +1193,9 @@ impl Render for NoteList {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.update_layout(cx);
         self.scroll_to_pending(cx);
+        // Keyboard focus shows on the selected row, so it is clear which
+        // pane the arrows move.
+        self.list_focused = self.focus.contains_focused(window, cx);
         let library = self.library.read(cx);
         let error = library.load_error.clone();
         let empty = library.notes.is_empty();

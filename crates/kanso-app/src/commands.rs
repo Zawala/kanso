@@ -47,6 +47,8 @@ pub enum Picker {
     Status,
     /// A notebook for the note list to show.
     GoToNotebook,
+    /// A tag whose notes the list shows.
+    GoToTag,
 }
 
 /// What choosing a command does.
@@ -312,6 +314,17 @@ static COMMANDS: &[Command] = &[
         keywords: &["notebooks", "folder", "open", "switch", "show"],
         group: Group::GoTo,
         run: Run::Pick(Picker::GoToNotebook),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "go-to-tag",
+        label: "Go to tag…",
+        label_when_pinned: None,
+        description: "Lists the tags; the notes with the one chosen show in the note list.",
+        icon: IconName::Hash,
+        keywords: &["tags", "label", "show", "switch", "filter"],
+        group: Group::GoTo,
+        run: Run::Pick(Picker::GoToTag),
         needs: Needs::Nothing,
     },
     Command {

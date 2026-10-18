@@ -31,8 +31,9 @@ use crate::commands::{self, Command, Group, Needs, Picker, Run};
 use crate::config::ViewMode;
 use crate::editor::{NoteEditor, rgb_color};
 use crate::fuzzy;
+use crate::keys::keycap;
 use crate::library::{Filter, Library, RECENT_DAYS, search_params};
-use crate::theme::{Colors, muted_tag_color};
+use crate::theme::{Colors, PALETTE_SELECTED_ALPHA, muted_tag_color, section_label};
 
 actions!(
     palette,
@@ -188,6 +189,9 @@ pub struct Palette {
     restore_focus: Option<FocusHandle>,
     /// The note that was open when the palette opened.
     note: Option<Note>,
+    /// Whether the open note is out of sight (behind Settings): the palette
+    /// then offers nothing that acts on it.
+    notes_hidden: bool,
     items: Vec<Item>,
     rows: Vec<Row>,
     selected: Option<usize>,
@@ -245,6 +249,7 @@ impl Palette {
             from_commands: false,
             restore_focus: None,
             note: None,
+            notes_hidden: false,
             items: Vec::new(),
             rows: Vec::new(),
             selected: None,
@@ -334,6 +339,15 @@ impl Palette {
         }
     }
 
+    /// The labels of the entries listed now.
+    #[cfg(test)]
+    pub fn item_labels(&self) -> Vec<String> {
+        self.items
+            .iter()
+            .map(|item| item.label.to_string())
+            .collect()
+    }
+
     /// Types `query` into the field, as the user would.
     #[cfg(test)]
     pub fn set_query(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -355,7 +369,15 @@ impl Palette {
         cx.notify();
     }
 
+    /// The open note is out of sight, or back in view.
+    pub fn set_notes_hidden(&mut self, hidden: bool) {
+        self.notes_hidden = hidden;
+    }
+
     fn open_note(&self, cx: &App) -> Option<Note> {
+        if self.notes_hidden {
+            return None;
+        }
         let id = self.editor.read(cx).note_id()?;
         self.store.note(id).ok().flatten()
     }
@@ -503,6 +525,29 @@ impl Palette {
                     })
                     .collect();
                 vec![section("Notebooks", entries, false)]
+            }
+            Some(Mode::Pick(Picker::GoToTag)) => {
+                let library = self.library.read(cx);
+                let showing = &library.filter;
+                let mut tags: Vec<_> = library.tags.iter().collect();
+                tags.sort_by_key(|t| t.name.to_lowercase());
+                let name = tag_name(query);
+                let entries = tags
+                    .iter()
+                    .map(|tag| {
+                        let filter = Filter::Tag(tag.id.clone());
+                        let item = Item::new(
+                            Target::Show(filter.clone()),
+                            tag.name.clone(),
+                            IconName::Hash,
+                        )
+                        .checked(*showing == filter)
+                        .hint(tag.count.to_string());
+                        let score = item_score(name, &item.label, &[]);
+                        (item, score)
+                    })
+                    .collect();
+                vec![section("Tags", entries, false)]
             }
             Some(Mode::Pick(Picker::Tag)) => {
                 let library = self.library.read(cx);
@@ -723,12 +768,14 @@ impl Palette {
             .and_then(|key| self.items.iter().position(|item| &item.key() == key));
         // Listing recent notes, the open one comes first; start on the one
         // before it, so ⌘P and Enter go back to the previous note.
+        // The editor's note, even behind Settings, where `note` is none.
+        let open = self.editor.read(cx).note_id();
         let open_first = self.mode == Some(Mode::Notes)
             && query.is_empty()
             && self.items.len() > 1
             && matches!(
-                (&self.items[0].target, &self.note),
-                (Target::Note(first), Some(open)) if first.id == open.id
+                (&self.items[0].target, open),
+                (Target::Note(first), Some(open)) if first.id == open
             );
         let first = if open_first { 1 } else { 0 };
         self.selected = kept.or((!self.items.is_empty()).then_some(first));
@@ -965,7 +1012,12 @@ impl Palette {
                         .max_w(px(120.))
                         .truncate()
                         .text_size(px(12.))
-                        .text_color(colors.text_muted)
+                        // Muted text doesn't read on the selected fill.
+                        .text_color(if selected {
+                            colors.text_secondary
+                        } else {
+                            colors.text_muted
+                        })
                         .child(hint),
                 )
             })
@@ -977,7 +1029,9 @@ impl Palette {
                         .text_color(colors.accent),
                 )
             })
-            .when_some(keys, |el, keys| el.child(render_keys(&keys, false, cx)))
+            .when_some(keys, |el, keys| {
+                el.child(render_keys(&keys, false, selected, cx))
+            })
             .on_mouse_move(cx.listener(move |this, _, _, cx| this.select(ix, false, cx)))
             .on_click(cx.listener(move |this, _, window, cx| this.choose(ix, window, cx)))
     }
@@ -998,9 +1052,7 @@ impl Palette {
                         .px(px(14.))
                         .pt_2()
                         .pb_1()
-                        .text_size(px(12.))
-                        .font_medium()
-                        .text_color(colors.text_muted)
+                        .map(|el| section_label(el, colors))
                         .child(heading.clone()),
                 ),
                 Row::Separator => list.child(
@@ -1024,6 +1076,7 @@ impl Palette {
                     }
                     // Only with nothing typed: a name typed offers to make it.
                     Some(Mode::Pick(Picker::Tag)) => "No tags yet. Type a name to create one.",
+                    Some(Mode::Pick(Picker::GoToTag)) => "No matching tags",
                     Some(Mode::Pick(Picker::Status)) => "No matching status",
                     _ => "No matching commands or notes",
                 }
@@ -1063,9 +1116,10 @@ impl Palette {
                     .action()
                     .and_then(|action| shortcut(action.as_ref(), window))
                 {
-                    detail
-                        .sections
-                        .push(("Shortcut", render_keys(&keys, true, cx).into_any_element()));
+                    detail.sections.push((
+                        "Shortcut",
+                        render_keys(&keys, true, false, cx).into_any_element(),
+                    ));
                 }
                 if command.needs != Needs::Nothing
                     && let Some(title) = note_title.clone()
@@ -1090,9 +1144,8 @@ impl Palette {
                         Filter::Status(status) => {
                             format!("Shows the notes marked {}.", status.label())
                         }
-                        Filter::Book(_) | Filter::Tag(_) => {
-                            format!("Shows the notes in {}.", item.label)
-                        }
+                        Filter::Book(_) => format!("Shows the notes in {}.", item.label),
+                        Filter::Tag(_) => format!("Shows the notes tagged #{}.", item.label),
                     }
                     .into(),
                 );
@@ -1466,44 +1519,29 @@ pub(crate) fn shortcut_parts(text: &str) -> Vec<String> {
     parts
 }
 
+/// A shortcut: as one key chip in the detail pane (`caps`), or as glyphs
+/// spaced like a menu's on a row, in secondary text on the `selected` row.
 // no-prop-test: drawing; the parts come from `shortcut_parts`.
-fn render_keys(keys: &[String], caps: bool, cx: &App) -> impl IntoElement {
+fn render_keys(keys: &[String], caps: bool, selected: bool, cx: &App) -> AnyElement {
+    if caps {
+        // In a row of its own, so the chip keeps to its text's width.
+        return h_flex().child(keycap(keys.concat(), cx)).into_any_element();
+    }
     let colors = Colors::get(cx);
     h_flex()
         .flex_none()
-        .gap(px(if caps { 4. } else { 3. }))
+        .gap(px(3.))
         .text_size(px(12.5))
-        .text_color(colors.text_muted)
-        .children(keys.iter().map(|key| {
-            if caps {
-                keycap(key.clone(), cx).into_any_element()
-            } else {
-                div()
-                    .min_w(px(9.))
-                    .text_center()
-                    .child(key.clone())
-                    .into_any_element()
-            }
-        }))
-}
-
-pub(crate) fn keycap(text: impl Into<SharedString>, cx: &App) -> impl IntoElement {
-    let colors = Colors::get(cx);
-    div()
-        .flex_none()
-        .min_w(px(20.))
-        .h(px(20.))
-        .px(px(5.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(4.))
-        .border_1()
-        .border_color(colors.divider)
-        .bg(colors.editor)
-        .text_size(px(11.5))
-        .text_color(colors.text_secondary)
-        .child(text.into())
+        .text_color(if selected {
+            colors.text_secondary
+        } else {
+            colors.text_muted
+        })
+        .children(
+            keys.iter()
+                .map(|key| div().min_w(px(9.)).text_center().child(key.clone())),
+        )
+        .into_any_element()
 }
 
 /// A bordered chip, like the scope chips in the design, as wide as its
@@ -1525,12 +1563,12 @@ fn chip(text: impl Into<SharedString>, cx: &App) -> impl IntoElement {
     )
 }
 
-/// A tag as a chip with its color as a dot. Bordered rather than filled:
-/// the dark theme's fill is the panel's own color.
+/// A tag as a chip, "#name" as everywhere else, the "#" in the tag's color.
+/// Bordered rather than filled: the dark theme's fill is the panel's own
+/// color.
 fn tag_chip(name: &str, rgb: u32, cx: &App) -> impl IntoElement {
     let colors = Colors::get(cx);
     h_flex()
-        .gap_1p5()
         .px_2()
         .py_0p5()
         .rounded(px(6.))
@@ -1538,14 +1576,18 @@ fn tag_chip(name: &str, rgb: u32, cx: &App) -> impl IntoElement {
         .border_color(colors.divider)
         .text_size(px(12.))
         .text_color(colors.text_secondary)
-        .child(div().size_2().rounded_full().bg(rgb_color(rgb)))
+        .child(div().text_color(rgb_color(rgb)).child("#"))
         .child(name.to_owned())
 }
 
 /// The selected row: a quiet tint of the accent, which shows on the
 /// elevated panel in both themes.
 fn selected_fill(cx: &App) -> Hsla {
-    let alpha = if cx.theme().is_dark() { 0.26 } else { 0.18 };
+    let alpha = if cx.theme().is_dark() {
+        PALETTE_SELECTED_ALPHA.0
+    } else {
+        PALETTE_SELECTED_ALPHA.1
+    };
     Hsla::from(Colors::get(cx).accent).opacity(alpha)
 }
 
@@ -1557,6 +1599,7 @@ fn placeholder(mode: Mode) -> &'static str {
         Mode::Pick(Picker::Tag) => "Add or create a tag…",
         Mode::Pick(Picker::Status) => "Set status…",
         Mode::Pick(Picker::GoToNotebook) => "Go to notebook…",
+        Mode::Pick(Picker::GoToTag) => "Go to tag…",
     }
 }
 

@@ -134,6 +134,8 @@ pub struct Appearance {
     pub editor_font_size: f32,
     /// Whether monospace text shows line numbers beside it.
     pub line_numbers: bool,
+    /// Whether text keeps to a readable measure, or fills the pane.
+    pub readable_width: bool,
     pub view_mode: ViewMode,
     /// The full sidebar, or (false) the icon rail it collapses to.
     pub show_sidebar: bool,
@@ -146,6 +148,7 @@ impl Default for Appearance {
             editor_font: EditorFont::Auto,
             editor_font_size: DEFAULT_FONT_SIZE,
             line_numbers: true,
+            readable_width: true,
             view_mode: ViewMode::Split,
             show_sidebar: true,
         }
@@ -317,6 +320,7 @@ mod tests {
                 any::<bool>(),
                 gen_mode(),
                 any::<bool>(),
+                any::<bool>(),
             ),
             any::<bool>(),
             prop::option::of("note:[a-zA-Z0-9]{8}"),
@@ -330,7 +334,7 @@ mod tests {
                     user,
                     pass,
                     (s_on, endpoint, interval),
-                    (theme, font, size, numbers, mode, sidebar),
+                    (theme, font, size, numbers, mode, sidebar, readable),
                     login,
                     last,
                     version,
@@ -353,6 +357,7 @@ mod tests {
                         editor_font: font,
                         editor_font_size: size,
                         line_numbers: numbers,
+                        readable_width: readable,
                         view_mode: mode,
                         show_sidebar: sidebar,
                     },
@@ -495,8 +500,10 @@ mod tests {
         assert_eq!(config.server.port, 1234);
         assert_eq!(config.server.bind_address, "127.0.0.1");
         assert_eq!(config.appearance.view_mode, ViewMode::Split);
-        // Files from before the setting keep their line numbers.
+        // Files from before the setting keep their line numbers, and their
+        // text to its readable measure.
         assert!(config.appearance.line_numbers);
+        assert!(config.appearance.readable_width);
         assert!(config.ensure_credentials());
         assert!(!config.ensure_credentials());
         config.save(&path).unwrap();

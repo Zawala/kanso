@@ -29,6 +29,7 @@ use gpui_kit::*;
 use crate::clock::Clock;
 use crate::config::{DEFAULT_FONT_SIZE, EditorFont, SyncSettings, ThemePreference};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
+use crate::library::Library;
 use crate::services::{self, ApiState, Services, SyncState, TokenState};
 use crate::sidebar::{SYNC_PROBLEMS, Tone, sync_line, tone_color};
 use crate::theme::Colors;
@@ -158,18 +159,25 @@ pub struct StatusLine {
 
 /// What to do about each of the sidebar's sync problems
 /// ([`SYNC_PROBLEMS`]), in the same order.
-const SYNC_PROBLEM_HELP: [&str; 4] = [
+const SYNC_PROBLEM_HELP: [&str; 5] = [
     "Add the Worker URL below, then sync.",
     "Set the access token below. The Worker needs it to accept changes.",
+    "The Worker didn't accept the saved token. Change it below.",
     "Kanso couldn't reach the Worker. It tries again at the next sync; your notes are safe on this Mac.",
     "Something went wrong on the way. Try Sync now; if it keeps happening, check the Worker URL and the token.",
 ];
 
 /// The Sync page's status: the sidebar's words ("Synced just now",
 /// "Syncing…", "Offline", "Conflict detected", "Sync off") and what they
-/// mean here. A failure's own reason (from the network or the Keychain)
-/// never shows.
-pub fn sync_status_line(state: &SyncState, settings: &SyncSettings, now_ms: i64) -> StatusLine {
+/// mean here. A conflict names the note it was in, by `conflicted_title`
+/// when that is known. A failure's own reason (from the network or the
+/// Keychain) never shows.
+pub fn sync_status_line(
+    state: &SyncState,
+    settings: &SyncSettings,
+    now_ms: i64,
+    conflicted_title: Option<&str>,
+) -> StatusLine {
     let (tone, label) = sync_line(state, now_ms);
     let every = sync_every((settings.interval_secs / 60).max(1));
     let detail = match state {
@@ -193,12 +201,22 @@ pub fn sync_status_line(state: &SyncState, settings: &SyncSettings, now_ms: i64)
         SyncState::Off | SyncState::Synced { conflicts: 0, .. } => {
             "Automatic sync is off; Sync now syncs again.".to_owned()
         }
-        SyncState::Synced { conflicts: 1, .. } => {
-            "A note changed on two Macs at once. Both versions are kept: the other one is in the note's history.".to_owned()
-        }
-        SyncState::Synced { conflicts, .. } => format!(
-            "{conflicts} notes changed on two Macs at once. Both versions of each are kept: the others are in their history."
-        ),
+        SyncState::Synced { conflicts: 1, .. } => match conflicted_title {
+            Some(title) => format!(
+                "“{title}” changed on two Macs at once. Both versions are kept: the other one is in its history."
+            ),
+            None => "A note changed on two Macs at once. Both versions are kept: the other one is in the note's history.".to_owned(),
+        },
+        SyncState::Synced { conflicts, .. } => match conflicted_title {
+            Some(title) => format!(
+                "“{title}” and {} other {} changed on two Macs at once. Both versions of each are kept: the others are in their history.",
+                conflicts - 1,
+                if *conflicts == 2 { "note" } else { "notes" },
+            ),
+            None => format!(
+                "{conflicts} notes changed on two Macs at once. Both versions of each are kept: the others are in their history."
+            ),
+        },
         SyncState::Failed(_) => {
             let problem = SYNC_PROBLEMS
                 .iter()
@@ -357,6 +375,7 @@ fn update_editors(cx: &mut App) {
                 editor.editor_font = appearance.editor_font;
                 editor.font_size = appearance.editor_font_size;
                 editor.allow_line_numbers = appearance.line_numbers;
+                editor.readable_width = appearance.readable_width;
                 cx.notify();
             });
         });
@@ -376,6 +395,11 @@ fn step_editor_size(step: i32, cx: &mut App) {
 
 fn set_line_numbers(on: bool, cx: &mut App) {
     AppState::update_config(cx, |config| config.appearance.line_numbers = on);
+    update_editors(cx);
+}
+
+fn set_readable_width(on: bool, cx: &mut App) {
+    AppState::update_config(cx, |config| config.appearance.readable_width = on);
     update_editors(cx);
 }
 
@@ -558,6 +582,8 @@ pub struct SettingsReturn {
 }
 
 pub struct SettingsView {
+    /// Where a conflicted note is opened from the Sync page.
+    library: Entity<Library>,
     page: SettingsPage,
     /// The page column's: up and down move between pages there.
     nav_focus: FocusHandle,
@@ -576,7 +602,7 @@ pub struct SettingsView {
 }
 
 impl SettingsView {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(library: Entity<Library>, cx: &mut Context<Self>) -> Self {
         let tick = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(TICK).await;
@@ -586,6 +612,7 @@ impl SettingsView {
             }
         });
         SettingsView {
+            library,
             page: SettingsPage::default(),
             nav_focus: cx.focus_handle(),
             root_focus: cx.focus_handle(),
@@ -598,13 +625,16 @@ impl SettingsView {
         }
     }
 
-    #[cfg(test)]
     pub fn page(&self) -> SettingsPage {
         self.page
     }
 
-    /// Shows `page` from its top.
+    /// Shows `page` from its top. The Sync page looks up whether a token
+    /// is saved, the first time it shows.
     pub fn show(&mut self, page: SettingsPage, cx: &mut Context<Self>) {
+        if page == SettingsPage::Sync {
+            services::ensure_sync_token(cx);
+        }
         if self.page != page {
             self.page = page;
             self.scroll.set_offset(Point::default());
@@ -652,8 +682,13 @@ impl SettingsView {
             this.update_in(cx, |this, window, cx| {
                 this.backing_up = false;
                 let notification = match result {
-                    Ok(()) => Notification::success(format!("Backed up to {}", path.display())),
-                    Err(err) => Notification::error(format!("Backup failed: {err:#}")),
+                    Ok(()) => Notification::success("Backed up."),
+                    Err(err) => {
+                        eprintln!("kanso: backing up to {}: {err:#}", path.display());
+                        Notification::error(
+                            "Couldn't back up your notes. Check there is free space on this Mac, then try again.",
+                        )
+                    }
                 };
                 window.push_notification(notification, cx);
                 cx.notify();
@@ -667,10 +702,13 @@ impl SettingsView {
         let colors = Colors::get(cx);
         // Escape as the palette writes it, rather than the ⎋ glyph.
         let back_key = Kbd::binding_for_action(&CloseSettings, Some("Settings"), window)
-            .map(|_| crate::palette::keycap("esc", cx).into_any_element());
+            .map(|_| crate::keys::keycap("esc", cx).into_any_element());
+        // The page shown wears a ring while the column has the keyboard,
+        // so it is clear the arrows move there.
+        let nav_focused = self.nav_focus.is_focused(window);
         let mut items = Vec::new();
         for page in SettingsPage::ALL {
-            items.push(self.render_nav_item(page, cx));
+            items.push(self.render_nav_item(page, nav_focused, cx));
         }
         v_flex()
             .id("settings-nav")
@@ -734,7 +772,12 @@ impl SettingsView {
             )
     }
 
-    fn render_nav_item(&self, page: SettingsPage, cx: &mut Context<Self>) -> AnyElement {
+    fn render_nav_item(
+        &self,
+        page: SettingsPage,
+        nav_focused: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let colors = Colors::get(cx);
         let selected = self.page == page;
         let color = if selected {
@@ -746,9 +789,16 @@ impl SettingsView {
             .id(page.id())
             .flex_none()
             .h(px(NAV_ROW_HEIGHT))
-            .px(px(10.))
+            // The ring's width comes out of the padding.
+            .px(px(9.))
             .gap(px(10.))
             .rounded(px(6.))
+            .border_1()
+            .border_color(if selected && nav_focused {
+                Hsla::from(colors.accent)
+            } else {
+                transparent_black()
+            })
             .cursor_pointer()
             .text_size(px(14.))
             .text_color(color)
@@ -774,7 +824,7 @@ impl SettingsView {
             SettingsPage::General => self.general_page(cx),
             SettingsPage::Editor => editor_page(cx),
             SettingsPage::Appearance => appearance_page(cx),
-            SettingsPage::Sync => sync_page(cx),
+            SettingsPage::Sync => sync_page(self.library.clone(), cx),
             SettingsPage::LocalApi => api_page(cx),
         }
     }
@@ -907,6 +957,15 @@ fn editor_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                             .on_click(|on, _, cx| set_line_numbers(*on, cx)),
                     ),
                 ),
+            Row::new(Lucide::Ruler, "Readable width")
+                .detail("Keeps lines to a comfortable length; off lets text fill the pane.")
+                .trailing(
+                    div().debug_selector(|| "readable-width".into()).child(
+                        Switch::new("readable-width")
+                            .checked(appearance.readable_width)
+                            .on_click(|on, _, cx| set_readable_width(*on, cx)),
+                    ),
+                ),
         ],
         colors,
     )]
@@ -938,7 +997,7 @@ fn appearance_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
     )]
 }
 
-fn sync_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
+fn sync_page(library: Entity<Library>, cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
     let colors = Colors::get(cx);
     let settings = config(cx).sync.clone();
     let (state, token, tip) = match cx.try_global::<Services>() {
@@ -949,7 +1008,41 @@ fn sync_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
         ),
         None => (SyncState::Off, TokenState::Unknown, "Sync off".to_owned()),
     };
-    let status = sync_status_line(&state, &settings, Clock::now_ms(cx));
+    // The first conflicted note that is still there, to name and open.
+    let conflicted = match &state {
+        SyncState::Synced { conflicted, .. } => {
+            let store = &cx.global::<AppState>().store;
+            conflicted
+                .iter()
+                .filter(|id| id.starts_with("note:"))
+                .find_map(|id| store.note(id).ok().flatten())
+        }
+        _ => None,
+    };
+    let conflicted_title = conflicted.as_ref().map(|note| {
+        if note.title.trim().is_empty() {
+            "Untitled".to_owned()
+        } else {
+            note.title.clone()
+        }
+    });
+    let status = sync_status_line(
+        &state,
+        &settings,
+        Clock::now_ms(cx),
+        conflicted_title.as_deref(),
+    );
+    let open_note = conflicted.map(|note| {
+        let id = note.id;
+        Button::new("open-conflicted-note")
+            .outline()
+            .label("Open note")
+            .debug_selector(|| "open-conflicted-note".into())
+            .on_click(move |_, _, cx| {
+                let id = id.clone();
+                library.update(cx, |library, cx| library.select(Some(id), cx));
+            })
+    });
     let sync_now = Button::new("sync-now")
         .outline()
         .icon(Lucide::RefreshCcw)
@@ -980,15 +1073,33 @@ fn sync_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                 )
             })
         });
+    let set_token = || {
+        Button::new("set-token")
+            .outline()
+            .small()
+            .label("Set…")
+            .debug_selector(|| "set-token".into())
+            .on_click(|_, window, cx| change_token(window, cx))
+            .into_any_element()
+    };
+    // A token can always be set, whatever the Keychain said or hasn't yet.
     let token_controls = match token {
-        TokenState::Unknown => vec![value_text("Checking…", colors).into_any_element()],
+        TokenState::Unknown => vec![
+            value_text("Checking…", colors).into_any_element(),
+            set_token(),
+        ],
         TokenState::Missing => vec![
             value_text("Not set", colors).into_any_element(),
-            Button::new("set-token")
+            set_token(),
+        ],
+        TokenState::Unreadable => vec![
+            value_text("Couldn't read", colors).into_any_element(),
+            set_token(),
+            Button::new("remove-token")
                 .outline()
                 .small()
-                .label("Set…")
-                .on_click(|_, window, cx| change_token(window, cx))
+                .label("Remove")
+                .on_click(|_, window, cx| remove_token(window, cx))
                 .into_any_element(),
         ],
         TokenState::Saved(masked) => vec![
@@ -1007,23 +1118,32 @@ fn sync_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                 .into_any_element(),
         ],
     };
+    let actions = h_flex()
+        .flex_none()
+        .gap_2()
+        .children(open_note)
+        .child(sync_now);
+    // Until one is set, the row says what a Worker is, and "Not set" sits
+    // with the button, as the token's does.
+    let worker = Row::new(Lucide::Cloud, "Worker URL");
+    let worker = if endpoint.is_empty() {
+        worker
+            .detail("The address of your own Cloudflare Worker (cloud/README.md sets one up).")
+            .trailing(value_text("Not set", colors))
+    } else {
+        worker.value(endpoint.clone())
+    };
     vec![
-        status_row(&status, tip, Some(sync_now.into_any_element()), colors),
+        status_row(&status, tip, Some(actions.into_any_element()), colors),
         section(
             "Server",
             vec![
-                Row::new(Lucide::Cloud, "Worker URL")
-                    .value(if endpoint.is_empty() {
-                        "Not set".to_owned()
-                    } else {
-                        endpoint.clone()
-                    })
-                    .trailing(change_button(
-                        "change-endpoint",
-                        "Worker URL",
-                        endpoint,
-                        apply_endpoint,
-                    )),
+                worker.trailing(change_button(
+                    "change-endpoint",
+                    "Worker URL",
+                    endpoint,
+                    apply_endpoint,
+                )),
                 Row::new(Lucide::KeyRound, "Access token")
                     .detail("Kept in your Keychain, never in Kanso's settings file.")
                     .trailing_all(token_controls),
@@ -1049,7 +1169,7 @@ fn sync_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
         section(
             "Conflict handling",
             vec![
-                Row::new(Lucide::Split, "Keep conflicted copies")
+                Row::new(Lucide::Split, "Keep both versions")
                     .detail("When a note changes on two Macs at once, the newer version shows and the other is kept in the note's history."),
             ],
             colors,
@@ -1068,15 +1188,9 @@ fn api_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
     let endpoint = mcp_endpoint(&server.bind_address, server.port);
     let password = server.password.clone();
     let mut password_controls = vec![
-        value_text(
-            if password.is_empty() {
-                "Not set".to_owned()
-            } else {
-                mask_secret(&password)
-            },
-            colors,
-        )
-        .into_any_element(),
+        // None of the password shows: it may be one used elsewhere too,
+        // and Copy gets it when it's needed.
+        value_text(if password.is_empty() { "Not set" } else { MASK }, colors).into_any_element(),
     ];
     if !password.is_empty() {
         password_controls.push(
@@ -1227,6 +1341,9 @@ impl Render for SettingsView {
                                 v_flex()
                                     .w_full()
                                     .max_w(px(PAGE_MAX_WIDTH + 2. * PAGE_INSET))
+                                    // Centred, so a wide window leaves the
+                                    // same room either side.
+                                    .mx_auto()
                                     .px(px(PAGE_INSET))
                                     // The title sits just below the top band's
                                     // middle, as in the design.
@@ -1514,9 +1631,7 @@ impl Workspace {
                 .update(cx, |sidebar, cx| sidebar.set_settings_open(true, cx));
         }
         self.settings.update(cx, |settings, cx| {
-            if let Some(page) = page {
-                settings.show(page, cx);
-            }
+            settings.show(page.unwrap_or(settings.page()), cx);
             settings.focus(window, cx);
         });
         cx.notify();
@@ -1707,8 +1822,9 @@ mod tests {
         let synced = |conflicts| SyncState::Synced {
             at_ms: 0,
             conflicts,
+            conflicted: Vec::new(),
         };
-        let line = sync_status_line(&synced(0), &on, 10_000);
+        let line = sync_status_line(&synced(0), &on, 10_000, None);
         assert_eq!(
             (line.tone, line.label.as_str()),
             (Tone::Good, "Synced just now")
@@ -1718,10 +1834,10 @@ mod tests {
             "Kanso syncs every 5 minutes and soon after you edit."
         );
         assert_eq!(
-            sync_status_line(&SyncState::Syncing, &on, 0).label,
+            sync_status_line(&SyncState::Syncing, &on, 0, None).label,
             "Syncing…"
         );
-        let conflict = sync_status_line(&synced(2), &on, 0);
+        let conflict = sync_status_line(&synced(2), &on, 0, None);
         assert_eq!(
             (conflict.tone, conflict.label.as_str()),
             (Tone::Warning, "Conflict detected")
@@ -1731,10 +1847,32 @@ mod tests {
             "{}",
             conflict.detail
         );
+        // A conflict names its note when the note is known.
+        let named = sync_status_line(&synced(1), &on, 0, Some("Plans"));
+        assert!(
+            named.detail.starts_with("“Plans” changed on two Macs"),
+            "{}",
+            named.detail
+        );
+        let named = sync_status_line(&synced(2), &on, 0, Some("Plans"));
+        assert!(
+            named.detail.starts_with("“Plans” and 1 other note changed"),
+            "{}",
+            named.detail
+        );
+        let named = sync_status_line(&synced(3), &on, 0, Some("Plans"));
+        assert!(
+            named
+                .detail
+                .starts_with("“Plans” and 2 other notes changed"),
+            "{}",
+            named.detail
+        );
         let offline = sync_status_line(
             &SyncState::Failed("error sending request: connection refused".into()),
             &on,
             0,
+            None,
         );
         assert_eq!(offline.label, "Offline");
         assert!(
@@ -1742,20 +1880,20 @@ mod tests {
             "{}",
             offline.detail
         );
-        let off = sync_status_line(&SyncState::Off, &sync_settings(false, false, 5), 0);
+        let off = sync_status_line(&SyncState::Off, &sync_settings(false, false, 5), 0, None);
         assert_eq!((off.tone, off.label.as_str()), (Tone::Quiet, "Sync off"));
         assert!(off.detail.contains("Worker URL"), "{}", off.detail);
-        let paused = sync_status_line(&synced(0), &sync_settings(true, false, 5), 0);
+        let paused = sync_status_line(&synced(0), &sync_settings(true, false, 5), 0, None);
         assert!(
             paused.detail.contains("Automatic sync is off"),
             "{}",
             paused.detail
         );
         // Synced once, then the Worker URL was taken away.
-        let unset = sync_status_line(&synced(0), &sync_settings(false, true, 5), 0);
+        let unset = sync_status_line(&synced(0), &sync_settings(false, true, 5), 0, None);
         assert_eq!(unset.detail, "Add a Worker URL to sync again.");
         assert_eq!(
-            sync_status_line(&synced(0), &sync_settings(true, true, 60), 0).detail,
+            sync_status_line(&synced(0), &sync_settings(true, true, 60), 0, None).detail,
             "Kanso syncs every hour and soon after you edit."
         );
     }
@@ -1850,12 +1988,13 @@ mod tests {
         let reasons = [
             "set the Worker URL in Settings › Sync",
             "no access token; set one in Settings › Sync",
-            "error sending request: connection refused",
+            "the sync server rejected the token",
+            "could not reach the sync server: io: failed to lookup address information: nodename nor servname provided, or not known",
             "the server said 500",
         ];
         let settings = sync_settings(true, true, 5);
         for (ix, reason) in reasons.into_iter().enumerate() {
-            let line = sync_status_line(&SyncState::Failed(reason.into()), &settings, 0);
+            let line = sync_status_line(&SyncState::Failed(reason.into()), &settings, 0, None);
             assert_eq!(line.label, SYNC_PROBLEMS[ix]);
             assert_eq!(line.detail, SYNC_PROBLEM_HELP[ix]);
         }
@@ -1865,8 +2004,11 @@ mod tests {
         prop_oneof![
             Just(SyncState::Off),
             Just(SyncState::Syncing),
-            (0i64..1_000_000_000, 0usize..4)
-                .prop_map(|(at_ms, conflicts)| SyncState::Synced { at_ms, conflicts }),
+            (0i64..1_000_000_000, 0usize..4).prop_map(|(at_ms, conflicts)| SyncState::Synced {
+                at_ms,
+                conflicts,
+                conflicted: Vec::new()
+            }),
             // Reasons start with letters no fixed sentence has, so one in
             // the output can only have come from the reason.
             "zq[a-z0-9 :;/._-]{4,40}".prop_map(SyncState::Failed),
@@ -1943,7 +2085,7 @@ mod tests {
         ) {
             let settings = sync_settings(endpoint, enabled, minutes);
             let now = match &state { SyncState::Synced { at_ms, .. } => at_ms + ago, _ => ago };
-            let line = sync_status_line(&state, &settings, now);
+            let line = sync_status_line(&state, &settings, now, None);
             prop_assert_eq!((line.tone, line.label.clone()), sync_line(&state, now));
             prop_assert!(!line.detail.is_empty());
             prop_assert!(!line.detail.contains("zq"), "{}", line.detail);

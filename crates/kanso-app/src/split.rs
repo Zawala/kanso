@@ -33,6 +33,13 @@ pub fn split_left(ratio: f32, width: f32) -> f32 {
     (ratio * width).clamp(SPLIT_MIN_SIDE, width - SPLIT_MIN_SIDE)
 }
 
+/// The narrowest either side may be dragged in an editor `width` points
+/// wide: [`SPLIT_MIN_SIDE`], or half the editor when that is less, so the
+/// two minimums always fit and the preview never runs past the window.
+pub fn split_min_side(width: f32) -> f32 {
+    SPLIT_MIN_SIDE.min(width.max(0.) / 2.)
+}
+
 /// The ratio to keep for a source side `left` points wide in an editor
 /// `width` points wide: between 0 and 1, and the default when the width
 /// isn't known.
@@ -196,24 +203,61 @@ mod tests {
             prop_assert!(wrapped_rows(lines.iter().copied(), columns + wider) <= rows);
         }
 
-        /// The estimated range is never negative, grows with the rows, and
-        /// a note that fits above the room left below it can't scroll.
+        /// The estimated range is never negative and grows with the rows;
+        /// a taller viewport never adds to it; scrolled to the end, the
+        /// last row is in view with at least three lines of room below it;
+        /// a viewport three lines tall or more never scrolls past the text
+        /// itself; and a note in the top half of a tall viewport can't
+        /// scroll at all.
         #[test]
-        fn prop_source_scroll_max_grows_with_the_rows(
+        fn prop_source_scroll_max_keeps_the_last_line_in_reach(
             rows in 0usize..5000,
             more in 1usize..100,
             line_height in 10f32..40.,
-            viewport in 100f32..1500.,
+            viewport in 0f32..1500.,
+            taller in 0f32..800.,
         ) {
             let max = source_scroll_max(rows, line_height, viewport);
+            let text = rows as f32 * line_height;
             prop_assert!(max >= 0.);
             prop_assert!(source_scroll_max(rows + more, line_height, viewport) >= max);
-            let room = (viewport / 2.).max(BOTTOM_ROOM_LINES * line_height);
-            if rows as f32 * line_height + room <= viewport {
-                prop_assert_eq!(max, 0.);
-            } else {
-                prop_assert!((max - (rows as f32 * line_height + room - viewport)).abs() < 1e-2);
+            prop_assert!(source_scroll_max(rows, line_height, viewport + taller) <= max + 1e-2);
+            prop_assert!(max + viewport >= text - 1e-2, "{} + {} < {}", max, viewport, text);
+            // The editor's own rule, written out rather than borrowed from
+            // the code under test: three lines, or half the viewport.
+            if max > 0. {
+                let below = max + viewport - text;
+                prop_assert!(below >= 3. * line_height - 1e-2, "{}", below);
+                prop_assert!(below >= viewport / 2. - 1e-2, "{}", below);
             }
+            if viewport >= 3. * line_height {
+                prop_assert!(max <= text + 1e-2, "{} past {}", max, text);
+            }
+            if viewport >= 6. * line_height && text <= viewport / 2. {
+                prop_assert_eq!(max, 0.);
+            }
+        }
+
+        /// The drag minimum never exceeds the fixed one, two of them always
+        /// fit the editor, it is the fixed one whenever both sides have
+        /// room, it grows with the editor, and the placed divider keeps it.
+        #[test]
+        fn prop_split_min_side_fits_the_editor(
+            ratio in any_ratio(),
+            a in -100f32..3000.,
+            b in -100f32..3000.,
+        ) {
+            let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+            let min = split_min_side(lo);
+            prop_assert!((0. ..=SPLIT_MIN_SIDE).contains(&min));
+            prop_assert!(2. * min <= lo.max(0.));
+            if lo >= 2. * SPLIT_MIN_SIDE {
+                prop_assert_eq!(min, SPLIT_MIN_SIDE);
+            }
+            prop_assert!(min <= split_min_side(hi));
+            let width = lo.max(0.);
+            let left = split_left(ratio, width);
+            prop_assert!(left >= min - 1e-3 && width - left >= min - 1e-3, "{} of {}", left, width);
         }
     }
 
@@ -227,6 +271,11 @@ mod tests {
         assert_eq!(split_ratio(300., 1000.), 0.3);
         assert_eq!(split_ratio(300., 0.), DEFAULT_SPLIT_RATIO);
         assert_eq!(split_ratio(f32::NAN, 1000.), DEFAULT_SPLIT_RATIO);
+        assert_eq!(split_min_side(1000.), SPLIT_MIN_SIDE);
+        // A 480 point editor, as a narrow window leaves it: 240 a side.
+        assert_eq!(split_min_side(480.), 240.);
+        assert_eq!(split_min_side(-10.), 0.);
+        assert_eq!(split_min_side(f32::NAN), 0.);
     }
 
     #[test]
@@ -249,5 +298,7 @@ mod tests {
         // 100 rows of 20 points in a 600 point viewport, 300 below the last.
         assert_eq!(source_scroll_max(100, 20., 600.), 1700.);
         assert_eq!(source_scroll_max(10, 20., 600.), 0.);
+        // A short viewport keeps three lines below the last: 2000 + 60 - 40.
+        assert_eq!(source_scroll_max(100, 20., 40.), 2020.);
     }
 }

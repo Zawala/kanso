@@ -16,7 +16,7 @@ use serde_json::json;
 use crate::config::{AppConfig, EditorFont};
 use crate::library::Filter;
 use crate::palette::Mode;
-use crate::services::{Services, SyncState};
+use crate::services::{Services, SyncState, TokenState};
 use crate::settings::{OpenEditorSettings, OpenSyncSettings, SettingsPage, register_app_actions};
 use crate::workspace::{AppState, OpenSettings, Workspace, for_each_workspace};
 
@@ -385,6 +385,172 @@ fn settings_open_a_window_when_none_is_open(cx: &mut TestAppContext) {
     cx.update(|cx| cx.dispatch_action(&OpenSettings));
     cx.run_until_parked();
     assert_eq!(shown(cx), [Some(SettingsPage::Sync)]);
+}
+
+/// The same with notes, the last one kept from before: the window opens on
+/// Settings and stays there, with the last note open behind them. The app
+/// picking that note itself doesn't take Settings away.
+#[gpui_kit::test]
+fn settings_stay_when_the_window_opens_on_a_library(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(dir.path().join("kanso.db")).unwrap());
+    let book = store
+        .put(DocType::Book, json!({"name": "B"}), Put::Upsert, Origin::Ui)
+        .unwrap()
+        .id;
+    let mut last = String::new();
+    for n in 0..3 {
+        last = store
+            .put(
+                DocType::Note,
+                json!({"title": format!("Note {n}"), "body": "x", "bookId": book}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+    }
+    let data_dir = dir.path().to_path_buf();
+    let kept = last.clone();
+    cx.update(|cx| {
+        globals(cx, store, data_dir);
+        cx.global_mut::<AppState>().config.last_note = Some(kept);
+        register_app_actions(cx, open_test_window);
+    });
+    cx.update(|cx| cx.dispatch_action(&OpenSyncSettings));
+    cx.run_until_parked();
+    cx.executor().advance_clock(Duration::from_secs(1));
+    cx.run_until_parked();
+    let shown = cx.update(|cx| {
+        let mut shown = Vec::new();
+        for_each_workspace(cx, |workspace, cx| {
+            shown.push((
+                workspace
+                    .settings_open()
+                    .then(|| workspace.settings.read(cx).page()),
+                workspace.editor.read(cx).note_id().map(str::to_owned),
+            ));
+        });
+        shown
+    });
+    assert_eq!(shown, [(Some(SettingsPage::Sync), Some(last))]);
+}
+
+/// What acts on the open note brings it back from behind Settings first,
+/// so the note it changes is in view; the palette over Settings offers no
+/// note actions at all.
+#[gpui_kit::test]
+fn note_actions_leave_settings_first(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    f.keys(cx, "cmd-,");
+    assert!(f.open(cx));
+    f.dispatch(cx, Box::new(crate::workspace::TrashNote));
+    assert!(!f.open(cx), "Settings closed first");
+    let store = cx.read(|cx| cx.global::<AppState>().store.clone());
+    let note = store.note(&f.note).unwrap().unwrap();
+    assert!(note.is_trashed());
+    let open = cx.read(|cx| {
+        let editor = f.workspace.read(cx).editor.clone();
+        editor.read(cx).note_id().map(str::to_owned)
+    });
+    assert_eq!(open.as_deref(), Some(f.note.as_str()), "in view");
+
+    for action in [
+        Box::new(crate::workspace::TogglePinned) as Box<dyn gpui_kit::Action>,
+        Box::new(crate::workspace::ShowPreview),
+    ] {
+        f.keys(cx, "cmd-,");
+        f.dispatch(cx, action);
+        assert!(!f.open(cx));
+    }
+
+    f.keys(cx, "cmd-,");
+    f.keys(cx, "cmd-k");
+    let palette = cx.read(|cx| f.workspace.read(cx).palette.clone());
+    let labels = cx.read(|cx| palette.read(cx).item_labels());
+    assert!(labels.iter().any(|l| l == "Settings: Sync"), "{labels:?}");
+    let note_commands: Vec<_> = crate::commands::all()
+        .iter()
+        .filter(|c| c.needs != crate::commands::Needs::Nothing)
+        .map(|c| c.label)
+        .collect();
+    assert!(!note_commands.is_empty());
+    for label in note_commands {
+        assert!(!labels.iter().any(|l| l == label), "{label} over Settings");
+    }
+    f.keys(cx, "escape");
+    f.keys(cx, "escape");
+    assert!(!f.open(cx));
+    // Back with the notes, the palette offers them again.
+    f.keys(cx, "cmd-k");
+    let labels = cx.read(|cx| palette.read(cx).item_labels());
+    assert!(labels.iter().any(|l| l == "Show history…"), "{labels:?}");
+}
+
+/// The token can always be set: while the Keychain lookup is pending or
+/// never answered, and when the Keychain wouldn't say.
+#[gpui_kit::test]
+fn a_token_can_always_be_set(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    f.dispatch(cx, Box::new(OpenSyncSettings));
+    assert_eq!(
+        cx.read(|cx| cx.global::<Services>().sync_token.clone()),
+        TokenState::Unknown,
+        "tests never read the Keychain"
+    );
+    assert!(f.drawn(cx, "set-token"), "unknown");
+    cx.update(|cx| cx.global_mut::<Services>().sync_token = TokenState::Unreadable);
+    assert!(f.drawn(cx, "set-token"), "unreadable");
+    cx.update(|cx| cx.global_mut::<Services>().sync_token = TokenState::Missing);
+    assert!(f.drawn(cx, "set-token"), "missing");
+}
+
+/// A conflict names its note on the Sync page, and Open note goes to it.
+#[gpui_kit::test]
+fn a_conflicted_note_opens_from_the_sync_page(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let library = cx.read(|cx| f.workspace.read(cx).library.clone());
+    let other = cx.read(|cx| {
+        library
+            .read(cx)
+            .notes
+            .iter()
+            .map(|n| n.id.clone())
+            .find(|id| *id != f.note)
+            .unwrap()
+    });
+    cx.update(|cx| {
+        cx.global_mut::<Services>().sync = SyncState::Synced {
+            at_ms: 0,
+            conflicts: 1,
+            conflicted: vec!["book:gone".into(), other.clone()],
+        };
+    });
+    f.dispatch(cx, Box::new(OpenSyncSettings));
+    f.click(cx, "open-conflicted-note");
+    assert!(!f.open(cx));
+    let open = cx.read(|cx| {
+        let editor = f.workspace.read(cx).editor.clone();
+        editor.read(cx).note_id().map(str::to_owned)
+    });
+    assert_eq!(open, Some(other));
+}
+
+/// The readable width can be turned off, for the editor at once and in the
+/// settings file.
+#[gpui_kit::test]
+fn the_readable_width_can_be_turned_off(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    f.dispatch(cx, Box::new(OpenEditorSettings));
+    let editor = cx.read(|cx| f.workspace.read(cx).editor.clone());
+    assert!(cx.read(|cx| editor.read(cx).readable_width));
+    f.click(cx, "readable-width");
+    assert!(!cx.read(|cx| editor.read(cx).readable_width));
+    let saved = cx.read(|cx| {
+        let state = cx.global::<AppState>();
+        AppConfig::load(&crate::paths::config_path(&state.data_dir)).unwrap()
+    });
+    assert!(!saved.appearance.readable_width);
 }
 
 impl Fixture {

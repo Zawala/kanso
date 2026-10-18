@@ -586,14 +586,18 @@ fn a_press_on_the_chrome_keeps_the_keyboard(cx: &mut TestAppContext) {
 /// A second window, as on the next launch, reading the settings the first
 /// one wrote.
 fn reopen(cx: &mut TestAppContext) -> Entity<Workspace> {
-    let (_, workspace) = cx.update(|cx| {
+    reopen_window(cx).1
+}
+
+fn reopen_window(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Workspace>) {
+    let (window, workspace) = cx.update(|cx| {
         gpui_kit::open_window(Default::default(), cx, |window, cx| {
             cx.new(|cx| Workspace::new(window, cx))
         })
         .unwrap()
     });
     cx.run_until_parked();
-    workspace
+    (window, workspace)
 }
 
 /// ⌘⇧D leaves the note alone in the window, with the keyboard in its text,
@@ -638,9 +642,23 @@ fn focus_mode_leaves_the_note_alone_and_is_kept(cx: &mut TestAppContext) {
     vcx.simulate_keystrokes("cmd-k");
     assert!(vcx.read(|cx| palette.read(cx).is_open()));
 
-    // The next launch starts in focus mode.
-    let next = reopen(&mut vcx);
+    // The next launch starts in focus mode, with the keyboard in the
+    // last note's text.
+    let (next_window, next) = reopen_window(&mut vcx);
     assert!(vcx.read(|cx| next.read(cx).focus_mode));
+    let next_editor = vcx.read(|cx| next.read(cx).editor.clone());
+    assert_eq!(
+        vcx.read(|cx| next_editor.read(cx).note_id().map(str::to_owned)),
+        Some(f.notes[0].clone())
+    );
+    assert!(
+        next_window
+            .update(&mut vcx, |_, window, cx| next_editor
+                .read(cx)
+                .body_focused(window, cx))
+            .unwrap(),
+        "the keyboard is in the text at launch"
+    );
 
     vcx.simulate_keystrokes("escape");
     assert!(!vcx.read(|cx| palette.read(cx).is_open()));
@@ -693,9 +711,33 @@ fn escape_leaves_focus_mode_last(cx: &mut TestAppContext) {
         "the next one leaves"
     );
     assert!(!f.saved_config().layout.focus_mode);
-    // Out of focus mode, Escape in the text leaves things as they are.
+    // Out of focus mode, Escape in the text leaves things as they are: the
+    // keyboard stays in the text.
     vcx.simulate_keystrokes("escape");
+    f.draw(&mut vcx);
     assert!(!f.workspace(&mut vcx, |w, _| w.focus_mode));
+    assert!(vcx.update(|window, cx| editor.read(cx).body_focused(window, cx)));
+    // Escape is only ever bound to leave something, never to move the
+    // keyboard out of the text, where a deeper binding would win over
+    // leaving focus mode.
+    let escapes: Vec<&'static str> = vcx.update(|_, cx| {
+        let keymap = cx.key_bindings();
+        let keymap = keymap.borrow();
+        keymap
+            .bindings()
+            .filter(|binding| {
+                binding
+                    .keystrokes()
+                    .first()
+                    .is_some_and(|k| gpui_kit::AsKeystroke::as_keystroke(k).key == "escape")
+            })
+            .map(|binding| binding.action().name())
+            .collect()
+    });
+    assert!(
+        !escapes.iter().any(|name| name.ends_with("FocusNoteList")),
+        "{escapes:?}"
+    );
 }
 
 /// ⌘\ folds the sidebar to its icon rail rather than hiding it, keeps that
@@ -919,4 +961,232 @@ fn the_preview_follows_the_source(cx: &mut TestAppContext) {
     let (top, max) = f.editor(&mut vcx, |e, cx| e.preview_scroll(cx));
     assert_eq!(source, 600.);
     assert!(top > 0. && top < max / 2., "{top} of {max}");
+}
+
+/// A window too narrow for the panes as they were left gives the editor
+/// its minimum back: the list narrows first, then the sidebar. In Split the
+/// two sides share what is left, and the preview never runs past the
+/// window, beside the sidebar or its rail. The widths come back with the
+/// room.
+// no-prop-test: drives one window; `PaneWidths::fitted` and
+// `split_min_side` have the properties.
+#[gpui_kit::test]
+fn a_narrow_window_keeps_the_editor_its_room(cx: &mut TestAppContext) {
+    use crate::layout::{EDITOR_MIN_WIDTH, PaneWidths};
+    use gpui_kit::{px, size};
+
+    let f = split_fixture(cx, "one\ntwo");
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    let wide = PaneWidths {
+        sidebar: 300.,
+        list: 480.,
+    };
+    vcx.update(|_, cx| {
+        f.workspace.update(cx, |workspace, cx| {
+            workspace.pane_widths = wide;
+            cx.notify();
+        })
+    });
+    f.draw(&mut vcx);
+    let check = |vcx: &mut gpui_kit::VisualTestContext, case: &str| {
+        for _ in 0..3 {
+            f.draw(vcx);
+        }
+        let width = vcx.update(|window, _| f32::from(window.viewport_size().width));
+        let editor = vcx.debug_bounds("editor-pane").unwrap();
+        assert!(
+            f32::from(editor.right()) <= width + 0.5,
+            "{case}: the editor ends at {:?} in {width}",
+            editor.right()
+        );
+        let sizes = f.editor(vcx, |e, cx| e.split_sizes(cx));
+        let room = f32::from(editor.size.width);
+        assert_eq!(sizes.len(), 2, "{case}");
+        assert!(
+            sizes[0] + sizes[1] <= room + 1.,
+            "{case}: {sizes:?} in an editor {room} wide"
+        );
+        // What is drawn, not only what the divider was asked for.
+        let preview = vcx.debug_bounds("preview-pane").unwrap();
+        assert!(
+            f32::from(preview.right()) <= width + 0.5,
+            "{case}: the preview ends at {:?} in {width}",
+            preview.right()
+        );
+        room
+    };
+    vcx.simulate_resize(size(px(1100.), px(720.)));
+    let room = check(&mut vcx, "1100 wide");
+    assert!(room >= EDITOR_MIN_WIDTH - 0.5, "the editor has {room}");
+    assert_eq!(
+        vcx.debug_bounds("list-pane").unwrap().size.width,
+        px(260.),
+        "the list gave up its room first"
+    );
+    // The rail and back.
+    vcx.simulate_keystrokes("cmd-\\");
+    check(&mut vcx, "beside the rail");
+    vcx.simulate_keystrokes("cmd-\\");
+    let room = check(&mut vcx, "the sidebar back");
+    assert!(room >= EDITOR_MIN_WIDTH - 0.5, "the editor has {room}");
+    // Narrower than the panes' minimums leave room for: the two sides
+    // share the editor equally.
+    vcx.simulate_resize(size(px(900.), px(700.)));
+    let room = check(&mut vcx, "900 wide");
+    let sizes = f.editor(&mut vcx, |e, cx| e.split_sizes(cx));
+    assert!((sizes[0] - room / 2.).abs() <= 1., "{sizes:?} in {room}");
+    // The widths as left come back with the room.
+    vcx.simulate_resize(size(px(1800.), px(1000.)));
+    check(&mut vcx, "1800 wide");
+    assert_eq!(f.workspace(&mut vcx, |w, _| w.pane_widths), wide);
+    assert_eq!(vcx.debug_bounds("list-pane").unwrap().size.width, px(480.));
+}
+
+/// Another note opens at its top in the preview too, whether the preview
+/// was scrolled alone (Preview) or beside a source left at its top (Split).
+// no-prop-test: drives one window; the scroll mapping is a property in
+// split.rs.
+#[gpui_kit::test]
+fn another_note_opens_at_the_top_of_its_preview(cx: &mut TestAppContext) {
+    let body = (1..=300)
+        .map(|n| format!("Line {n} of the note."))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let f = split_fixture(cx, &body);
+    f.edit_elsewhere(cx, &f.notes[1], &body);
+    for (mode, keys) in [("Split", "cmd-2"), ("Preview", "cmd-3")] {
+        let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+        vcx.simulate_keystrokes(keys);
+        f.select(&mut vcx, &f.notes[0]);
+        for _ in 0..2 {
+            f.draw(&mut vcx);
+        }
+        // Only the preview scrolled; the source stays at its top.
+        f.update_editor(&mut vcx, |e, _, cx| e.scroll_preview_for_test(800., cx));
+        f.draw(&mut vcx);
+        assert_eq!(
+            f.editor(&mut vcx, |e, cx| e.preview_scroll(cx).0),
+            800.,
+            "{mode}"
+        );
+        f.select(&mut vcx, &f.notes[1]);
+        for _ in 0..2 {
+            f.draw(&mut vcx);
+        }
+        assert_eq!(
+            f.editor(&mut vcx, |e, cx| e.preview_scroll(cx).0),
+            0.,
+            "{mode}"
+        );
+        assert_eq!(
+            f.editor(&mut vcx, |e, cx| e.source_scroll(cx)),
+            0.,
+            "{mode}"
+        );
+    }
+}
+
+/// The lines the preview's scroll range is estimated from are the open
+/// text's, even after another text of the same length replaced it: by
+/// opening another note, or by a reload from elsewhere.
+// no-prop-test: two fixed texts of one length are the case that broke.
+#[gpui_kit::test]
+fn the_source_lines_follow_a_text_of_the_same_length(cx: &mut TestAppContext) {
+    let f = split_fixture(cx, "aaaa\nbbbb");
+    f.edit_elsewhere(cx, &f.notes[1], "abcdefgh\n");
+    let lines = |cx: &mut TestAppContext| {
+        f.update_editor(cx, |e, _, cx| {
+            e.estimate_source_for_test(cx);
+        });
+        f.editor(cx, |e, _| e.source_lines_for_test())
+    };
+    assert_eq!(lines(cx), Some((9, vec![4, 4])));
+    f.select(cx, &f.notes[1]);
+    assert_eq!(lines(cx), Some((9, vec![8, 0])));
+    // Reloaded from elsewhere, still nine bytes.
+    f.edit_elsewhere(cx, &f.notes[1], "a\nb\nc\nd\ne");
+    assert_eq!(f.editor(cx, |e, cx| e.body_for_test(cx)), "a\nb\nc\nd\ne");
+    assert_eq!(lines(cx), Some((9, vec![1, 1, 1, 1, 1])));
+}
+
+/// The title reads cut short with an ellipsis until it is clicked, and is
+/// then edited in place.
+// no-prop-test: one click on the real view.
+#[gpui_kit::test]
+fn the_title_is_cut_short_until_it_is_edited(cx: &mut TestAppContext) {
+    use gpui_kit::Modifiers;
+
+    let f = setup(cx);
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    f.select(cx, &f.notes[0]);
+    f.draw(cx);
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    let title = vcx.debug_bounds("note-title").expect("the title as text");
+    let editor = f.workspace(&mut vcx, |w, _| w.editor.clone());
+    assert!(!vcx.update(|window, cx| editor.read(cx).title_focused(window, cx)));
+    vcx.simulate_click(title.center(), Modifiers::none());
+    f.draw(&mut vcx);
+    assert!(vcx.update(|window, cx| editor.read(cx).title_focused(window, cx)));
+    assert_eq!(vcx.debug_bounds("note-title"), None, "the field instead");
+    vcx.simulate_input("!");
+    cx.run_until_parked();
+    cx.executor().advance_clock(Duration::from_secs(1));
+    cx.run_until_parked();
+    assert_eq!(f.store.note(&f.notes[0]).unwrap().unwrap().title, "a!");
+}
+
+/// The rail's tags button lists the tags, and the one chosen is what the
+/// list shows.
+// no-prop-test: one event through the palette.
+#[gpui_kit::test]
+fn the_rail_goes_to_a_tag(cx: &mut TestAppContext) {
+    use crate::commands::Picker;
+    use crate::library::Filter;
+    use crate::palette::Mode;
+    use crate::sidebar::SidebarEvent;
+
+    let f = setup(cx);
+    cx.update(crate::workspace::bind_keys);
+    let tag = f
+        .store
+        .put(
+            DocType::Tag,
+            json!({"name": "mcp"}),
+            Put::Upsert,
+            Origin::Ui,
+        )
+        .unwrap()
+        .id;
+    f.store
+        .put(
+            DocType::Note,
+            json!({"_id": f.notes[1], "tags": [tag]}),
+            Put::Merge,
+            Origin::Ui,
+        )
+        .unwrap();
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    cx.run_until_parked();
+    f.draw(cx);
+    let (sidebar, palette, library) = f.workspace(cx, |w, _| {
+        (w.sidebar.clone(), w.palette.clone(), w.library.clone())
+    });
+    sidebar.update(cx, |_, cx| cx.emit(SidebarEvent::GoToTag));
+    f.draw(cx);
+    assert_eq!(
+        cx.read(|cx| palette.read(cx).mode()),
+        Some(Mode::Pick(Picker::GoToTag))
+    );
+    assert_eq!(cx.read(|cx| palette.read(cx).item_labels()), ["mcp"]);
+    cx.simulate_keystrokes(f.window, "enter");
+    f.draw(cx);
+    assert_eq!(
+        cx.read(|cx| library.read(cx).filter.clone()),
+        Filter::Tag(tag)
+    );
+    assert_eq!(cx.read(|cx| palette.read(cx).mode()), None);
 }

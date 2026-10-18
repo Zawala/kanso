@@ -4,10 +4,10 @@
 //! it says so quietly.
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::{Icon, StyledExt as _, h_flex, v_flex};
 use gpui_kit::*;
 
+use crate::keys::shortcut_chip;
 use crate::theme::Colors;
 use crate::workspace::{ImportInkdrop, NewNote, OpenCommandPalette};
 
@@ -36,7 +36,7 @@ impl EmptyNotebook {
     /// The words for a library with no notes at all, as on first run.
     pub fn first_run(self) -> Self {
         EmptyNotebook {
-            message: "Create your first note or import Markdown files.",
+            message: "Create your first note, or bring your notes over from Inkdrop.",
             ..self
         }
     }
@@ -51,7 +51,7 @@ impl RenderOnce for EmptyNotebook {
         let import_focus = self.focus.clone();
         let palette_focus = self.focus;
         // The shortcut as bound, so the row never shows a stale one.
-        let palette_key = Kbd::global_binding_for_action(&OpenCommandPalette, window);
+        let palette_key = shortcut_chip(&OpenCommandPalette, window, cx);
         let divider = || div().w_full().h(px(1.)).bg(colors.divider);
         v_flex()
             .w_full()
@@ -100,6 +100,7 @@ impl RenderOnce for EmptyNotebook {
                         Button::new("empty-import")
                             .icon(Lucide::Upload)
                             .label("Import notes")
+                            .tooltip("Import from Inkdrop")
                             .on_click(move |_, window, cx| {
                                 import_focus.dispatch_action(&ImportInkdrop, window, cx);
                             }),

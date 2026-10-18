@@ -35,6 +35,8 @@ pub enum SyncState {
         at_ms: i64,
         /// Conflicts in that sync; the losing versions are in history.
         conflicts: usize,
+        /// The documents that had them, to show and open the note.
+        conflicted: Vec<String>,
     },
     Failed(String),
 }
@@ -49,6 +51,9 @@ pub enum TokenState {
     Missing,
     /// Saved; what Settings shows of it (see [`crate::settings::mask_secret`]).
     Saved(String),
+    /// The Keychain wouldn't say: locked, or access was denied. A new token
+    /// can still be set.
+    Unreadable,
 }
 
 #[derive(Default)]
@@ -56,6 +61,11 @@ pub struct Services {
     pub api: ApiState,
     pub sync: SyncState,
     pub sync_token: TokenState,
+    /// Whether the token may be looked up in the Keychain: only in the app,
+    /// never in tests or snapshots, where macOS would ask for access.
+    pub keychain: bool,
+    /// A token lookup is on its way.
+    token_lookup: bool,
     server: Option<ServerHandle>,
     port_retry: Option<Task<()>>,
     sync_tasks: Vec<Task<()>>,
@@ -82,7 +92,9 @@ impl Services {
         match &self.sync {
             SyncState::Off => "Sync off".into(),
             SyncState::Syncing => "Syncing…".into(),
-            SyncState::Synced { at_ms, conflicts } => {
+            SyncState::Synced {
+                at_ms, conflicts, ..
+            } => {
                 let when = crate::note_list::relative_time(*at_ms, kanso_core::now_ms());
                 match conflicts {
                     0 => format!("Synced {when}"),
@@ -175,6 +187,7 @@ pub fn sync_state(result: Result<SyncReport, String>, now_ms: i64) -> SyncState 
         Ok(report) => SyncState::Synced {
             at_ms: now_ms,
             conflicts: report.conflicts(),
+            conflicted: report.conflicted,
         },
         Err(reason) => SyncState::Failed(reason),
     }
@@ -303,9 +316,21 @@ pub fn remove_sync_token(cx: &mut App) -> anyhow::Result<()> {
 }
 
 /// Looks up whether a sync access token is saved, off the main thread, so
-/// Settings can say so. Only the app calls this: reading the Keychain can
-/// make macOS ask for permission.
-pub fn load_sync_token(cx: &mut App) {
+/// the Sync page can say so: only when it shows, only in the app (reading
+/// the Keychain can make macOS ask for permission), and only until a lookup
+/// has answered. One that failed is tried again the next time.
+pub fn ensure_sync_token(cx: &mut App) {
+    let Some(services) = cx.try_global::<Services>() else {
+        return;
+    };
+    let wanted = matches!(
+        services.sync_token,
+        TokenState::Unknown | TokenState::Unreadable
+    );
+    if !services.keychain || services.token_lookup || !wanted {
+        return;
+    }
+    cx.global_mut::<Services>().token_lookup = true;
     let lookup = cx.background_spawn(async move {
         kanso_sync::credentials::load_token()
             .map(|token| match token {
@@ -316,12 +341,15 @@ pub fn load_sync_token(cx: &mut App) {
     });
     cx.spawn(async move |cx| {
         let state = lookup.await;
-        cx.update(|cx| match state {
-            Ok(state) => {
-                cx.global_mut::<Services>().sync_token = state;
-                cx.refresh_windows();
-            }
-            Err(err) => eprintln!("kanso: couldn't look up the sync token: {err}"),
+        cx.update(|cx| {
+            let state = state.unwrap_or_else(|err| {
+                eprintln!("kanso: couldn't look up the sync token: {err}");
+                TokenState::Unreadable
+            });
+            let services = cx.global_mut::<Services>();
+            services.token_lookup = false;
+            services.sync_token = state;
+            cx.refresh_windows();
         });
     })
     .detach();
@@ -418,7 +446,8 @@ mod tests {
             state,
             SyncState::Synced {
                 at_ms: 7,
-                conflicts: 0
+                conflicts: 0,
+                conflicted: Vec::new(),
             }
         );
         kanso_sync::sync_once(&b, &remote).unwrap();

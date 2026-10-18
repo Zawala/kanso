@@ -45,6 +45,7 @@ icon_assets!(
         Plug,
         Power,
         RefreshCcw,
+        Ruler,
         Split,
         SquareCheck,
         SquarePen,

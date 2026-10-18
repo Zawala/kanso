@@ -3,7 +3,7 @@
 //! using it, sync, the local API and settings.
 //!
 //! Collapsed (⌘\), it is a rail of icons: compose, the library places, the
-//! notebooks (a list in the palette), trash, sync and settings.
+//! notebooks and the tags (lists in the palette), trash, sync and settings.
 
 use std::time::Duration;
 
@@ -23,7 +23,7 @@ use crate::editor::rgb_color;
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library};
 use crate::services::{ApiState, Services, SyncState};
-use crate::theme::{Colors, Rgb, muted_tag_color};
+use crate::theme::{Colors, Rgb, muted_tag_color, section_label};
 use crate::workspace::{AppState, NewNote, OpenSettings};
 
 /// Things only the workspace can do (it owns dialogs and the editor).
@@ -41,6 +41,8 @@ pub enum SidebarEvent {
     EmptyTrash,
     /// The rail's notebooks button: the palette lists them to go to one.
     GoToNotebook,
+    /// The rail's tags button: the palette lists them to go to one.
+    GoToTag,
 }
 
 const ROW_HEIGHT: f32 = 28.;
@@ -74,6 +76,10 @@ pub struct Sidebar {
     /// shown, not the filter.
     settings_open: bool,
     user: SharedString,
+    /// Shows the rail button with this tooltip hovered, its tooltip open,
+    /// as a pointer resting on it would.
+    #[cfg(test)]
+    pub(crate) reveal_tooltip: Option<&'static str>,
     _tick: Task<()>,
 }
 
@@ -114,6 +120,8 @@ impl Sidebar {
             collapsed: false,
             settings_open: false,
             user: user.into(),
+            #[cfg(test)]
+            reveal_tooltip: None,
             _tick: tick,
         }
     }
@@ -224,8 +232,7 @@ impl Sidebar {
             .pl(px(10.))
             .pr_1()
             .h(px(26.))
-            .text_size(px(12.5))
-            .text_color(Colors::get(cx).text_secondary)
+            .map(|el| section_label(el, Colors::get(cx)))
             .child(div().flex_1().child(label))
             .children(action)
     }
@@ -280,7 +287,7 @@ impl Sidebar {
                     .ghost()
                     .small()
                     .icon(Icon::new(Lucide::SquarePen).text_color(colors.text_secondary))
-                    .tooltip("New note (⌘N)")
+                    .tooltip_with_action("New note", &NewNote, None)
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(SidebarEvent::NewNote))),
             )
     }
@@ -433,8 +440,7 @@ impl Sidebar {
             .pr(px(8.))
             .h(px(26.))
             .rounded(px(6.))
-            .text_size(px(12.5))
-            .text_color(colors.text_secondary)
+            .map(|el| section_label(el, colors))
             .cursor_pointer()
             .hover(|el| el.bg(colors.sidebar_hover))
             .child(div().flex_1().child("Status"))
@@ -592,7 +598,11 @@ impl Sidebar {
                             colors.text_secondary
                         },
                     ))
-                    .tooltip(|window, cx| Tooltip::new("Settings (⌘,)").build(window, cx))
+                    .tooltip(|window, cx| {
+                        Tooltip::new("Settings")
+                            .action(&OpenSettings, None)
+                            .build(window, cx)
+                    })
                     .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx)),
             )
     }
@@ -615,8 +625,10 @@ impl Sidebar {
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let colors = Colors::get(cx);
+        let revealed = self.revealed_tooltip(label, action.as_deref(), cx);
         div()
             .id(id)
+            .relative()
             .flex()
             .flex_none()
             .items_center()
@@ -626,11 +638,15 @@ impl Sidebar {
             .cursor_pointer()
             .when(active, |el| el.bg(colors.sidebar_active))
             .when(!active, |el| el.hover(|el| el.bg(colors.sidebar_hover)))
+            .when(!active && revealed.is_some(), |el| {
+                el.bg(colors.sidebar_hover)
+            })
             .child(Icon::new(icon).size(px(16.)).text_color(if active {
                 colors.text
             } else {
                 colors.text_secondary
             }))
+            .children(revealed)
             .tooltip(move |window, cx| {
                 Tooltip::new(label)
                     .when_some(action.as_ref(), |tooltip, action| {
@@ -638,6 +654,43 @@ impl Sidebar {
                     })
                     .build(window, cx)
             })
+    }
+
+    /// The tooltip of the rail button named `label`, open beside it, when a
+    /// picture of the hovered rail asks for it.
+    #[cfg(test)]
+    fn revealed_tooltip(
+        &self,
+        label: &'static str,
+        action: Option<&dyn Action>,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        (self.reveal_tooltip == Some(label)).then(|| {
+            let tooltip = cx.new(|_| {
+                Tooltip::new(label)
+                    .when_some(action, |tooltip, action| tooltip.action(action, None))
+            });
+            // Over the panes beside the rail, as the real one floats.
+            deferred(
+                div()
+                    .absolute()
+                    .top(px(-6.))
+                    .left(px(RAIL_BUTTON - 4.))
+                    .child(AnyView::from(tooltip)),
+            )
+            .with_priority(1)
+            .into_any_element()
+        })
+    }
+
+    #[cfg(not(test))]
+    fn revealed_tooltip(
+        &self,
+        _: &'static str,
+        _: Option<&dyn Action>,
+        _: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        None
     }
 
     /// A rail button that shows a place in the note list.
@@ -666,7 +719,7 @@ impl Sidebar {
         let filter = self.library.read(cx).filter.clone();
         let (api, api_tip, sync, sync_tip) = Self::service_states(cx);
         let (tone, sync_label) = sync_line(&sync, Clock::now_ms(cx));
-        let dot = tone_color(tone, colors);
+        let sync_color = tone_color(tone, colors);
         let api_warning = matches!(api, ApiState::PortInUse(_) | ApiState::Failed(_));
         let trash_view = cx.entity();
 
@@ -690,6 +743,16 @@ impl Sidebar {
                 cx,
             )
             .on_click(cx.listener(|_, _, _, cx| cx.emit(SidebarEvent::GoToNotebook)));
+        let tags = self
+            .rail_button(
+                "rail-tags",
+                Lucide::Hash,
+                "Tags",
+                None,
+                !self.settings_open && matches!(filter, Filter::Tag(_)),
+                cx,
+            )
+            .on_click(cx.listener(|_, _, _, cx| cx.emit(SidebarEvent::GoToTag)));
         let trash = self
             .rail_place("rail-trash", Lucide::Trash, "Trash", Filter::Trash, cx)
             .context_menu(move |menu, _, _| {
@@ -702,14 +765,20 @@ impl Sidebar {
             });
         // The sync line's words, then the details.
         let sync_tip: SharedString = format!("{sync_label}\n{sync_tip}").into();
-        let sync_dot = div()
+        // The shape says how sync is, not only the color: no state is told
+        // apart by hue alone.
+        let sync_icon = div()
             .id("rail-sync")
             .flex()
             .flex_none()
             .items_center()
             .justify_center()
             .size(px(RAIL_BUTTON))
-            .child(div().size(px(8.)).rounded_full().bg(dot))
+            .child(
+                Icon::new(tone_icon(tone))
+                    .size(px(15.))
+                    .text_color(sync_color),
+            )
             .tooltip(move |window, cx| Tooltip::new(sync_tip.clone()).build(window, cx));
         let api_icon = api_warning.then(|| {
             div()
@@ -785,10 +854,11 @@ impl Sidebar {
                             .bg(colors.divider),
                     )
                     .child(notebooks)
+                    .child(tags)
                     .child(trash),
             )
             .children(api_icon)
-            .child(sync_dot)
+            .child(sync_icon)
             .child(
                 h_flex()
                     .flex_none()
@@ -1011,6 +1081,17 @@ pub enum Tone {
     Warning,
 }
 
+/// The rail's sync icon for each tone: its shape alone says which.
+// no-prop-test: a finite domain; `tone_icons_differ` checks every pair.
+pub(crate) fn tone_icon(tone: Tone) -> Lucide {
+    match tone {
+        Tone::Good => Lucide::CloudCheck,
+        Tone::Busy => Lucide::RefreshCcw,
+        Tone::Quiet => Lucide::CloudOff,
+        Tone::Warning => Lucide::TriangleAlert,
+    }
+}
+
 pub(crate) fn tone_color(tone: Tone, colors: &Colors) -> Rgb {
     match tone {
         Tone::Good => colors.success,
@@ -1022,9 +1103,10 @@ pub(crate) fn tone_color(tone: Tone, colors: &Colors) -> Rgb {
 
 /// What a failed sync says in the sidebar. The reason itself (an error from
 /// the network or the Keychain) only shows in the tooltip.
-pub const SYNC_PROBLEMS: [&str; 4] = [
+pub const SYNC_PROBLEMS: [&str; 5] = [
     "Sync not set up",
     "Sync token needed",
+    "Token rejected",
     "Offline",
     "Couldn't sync",
 ];
@@ -1038,6 +1120,7 @@ pub fn sync_line(state: &SyncState, now_ms: i64) -> (Tone, String) {
         SyncState::Synced {
             conflicts: 0,
             at_ms,
+            ..
         } => (
             Tone::Good,
             format!("Synced {}", crate::note_list::relative_time(*at_ms, now_ms)),
@@ -1046,23 +1129,31 @@ pub fn sync_line(state: &SyncState, now_ms: i64) -> (Tone, String) {
         SyncState::Failed(reason) => {
             let reason = reason.to_lowercase();
             let has = |words: &[&str]| words.iter().any(|w| reason.contains(w));
+            // A token the Worker turned down is there but wrong; one that
+            // can't be read or was never set is needed.
             let label = if has(&["worker url"]) {
                 SYNC_PROBLEMS[0]
-            } else if has(&["token", "keychain", "401", "403", "unauthorized"]) {
+            } else if has(&["rejected the token", "401", "403", "unauthorized"]) {
+                SYNC_PROBLEMS[2]
+            } else if has(&["token", "keychain"]) {
                 SYNC_PROBLEMS[1]
             } else if has(&[
+                "could not reach",
                 "connect",
                 "dns",
                 "resolve",
+                "lookup",
+                "host not found",
+                "name resolution",
                 "timed out",
                 "timeout",
                 "network",
                 "offline",
                 "unreachable",
             ]) {
-                SYNC_PROBLEMS[2]
-            } else {
                 SYNC_PROBLEMS[3]
+            } else {
+                SYNC_PROBLEMS[4]
             };
             (Tone::Warning, label.into())
         }
@@ -1105,7 +1196,7 @@ pub fn visible_tags(
 mod tests {
     use super::{
         SYNC_PROBLEMS, SyncState, Tone, initials, status_choice_after, status_group_open,
-        sync_line, visible_tags,
+        sync_line, tone_icon, visible_tags,
     };
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
@@ -1171,7 +1262,8 @@ mod tests {
         /// long ago; one with conflicts warns.
         #[test]
         fn prop_synced_reads_synced(at in 0i64..1_000_000_000_000, ago in 0i64..100_000_000_000, conflicts in 0usize..3) {
-            let (tone, label) = sync_line(&SyncState::Synced { at_ms: at, conflicts }, at + ago);
+            let synced = SyncState::Synced { at_ms: at, conflicts, conflicted: Vec::new() };
+            let (tone, label) = sync_line(&synced, at + ago);
             if conflicts == 0 {
                 prop_assert_eq!(tone, Tone::Good);
                 prop_assert!(label.starts_with("Synced "), "{}", label);
@@ -1238,7 +1330,8 @@ mod tests {
             sync_line(
                 &SyncState::Synced {
                     at_ms: 0,
-                    conflicts: 0
+                    conflicts: 0,
+                    conflicted: Vec::new(),
                 },
                 10_000
             ),
@@ -1248,7 +1341,8 @@ mod tests {
             sync_line(
                 &SyncState::Synced {
                     at_ms: 0,
-                    conflicts: 0
+                    conflicts: 0,
+                    conflicted: Vec::new(),
                 },
                 3 * minute
             ),
@@ -1273,6 +1367,55 @@ mod tests {
             "Offline"
         );
         assert_eq!(failed("the server said 500"), "Couldn't sync");
+        // The words sync really reports (kanso-sync's errors, with ureq's
+        // reasons inside), as `sync_now` passes them on.
+        assert_eq!(
+            failed(
+                "could not reach the sync server: io: failed to lookup address information: nodename nor servname provided, or not known"
+            ),
+            "Offline"
+        );
+        assert_eq!(
+            failed("could not reach the sync server: io: Temporary failure in name resolution"),
+            "Offline"
+        );
+        assert_eq!(
+            failed("could not reach the sync server: io: Connection refused (os error 61)"),
+            "Offline"
+        );
+        assert_eq!(
+            failed("the sync server rejected the token"),
+            "Token rejected"
+        );
+        assert_eq!(
+            failed("the sync server answered 403: forbidden"),
+            "Token rejected"
+        );
+        assert_eq!(
+            failed("couldn't read the access token: keychain: Platform secure storage failure"),
+            "Sync token needed"
+        );
+        assert_eq!(
+            failed("the Worker URL is refused: that isn't a URL"),
+            "Sync not set up"
+        );
+        assert_eq!(
+            failed("the sync server answered 500: internal error"),
+            "Couldn't sync"
+        );
+        assert_eq!(
+            failed("unexpected answer from the sync server: missing field `docs`"),
+            "Couldn't sync"
+        );
+    }
+
+    /// No two sync states share an icon in the rail, where the icon is all
+    /// there is besides its color.
+    #[test]
+    fn tone_icons_differ() {
+        let tones = [Tone::Good, Tone::Busy, Tone::Quiet, Tone::Warning];
+        let icons: std::collections::HashSet<_> = tones.into_iter().map(tone_icon).collect();
+        assert_eq!(icons.len(), tones.len());
     }
 
     #[test]

@@ -110,8 +110,10 @@ fn recent_notes(
 }
 
 pub enum LibraryEvent {
-    /// The selected note changed.
-    Selected(Option<String>),
+    /// The selected note changed: `asked` when someone picked it, rather
+    /// than the app on its own (the first note of a new list, the last note
+    /// at launch).
+    Selected { id: Option<String>, asked: bool },
     /// A place was asked for (a notebook, tag, status or list), even the
     /// one already showing: the notes should be in view.
     Shown,
@@ -266,7 +268,7 @@ impl Library {
                         .is_some_and(|id| this.notes.iter().any(|n| &n.id == id));
                     if !listed {
                         let first = this.notes.first().map(|n| n.id.clone());
-                        this.select(first, cx);
+                        this.select_quietly(first, cx);
                     }
                 }
                 cx.notify();
@@ -330,10 +332,26 @@ impl Library {
         self.reload(cx);
     }
 
+    /// Selects the note someone picked.
     pub fn select(&mut self, id: Option<String>, cx: &mut Context<Self>) {
-        if self.selected != id {
+        self.select_as(id, true, cx);
+    }
+
+    /// Selects a note the app picked on its own, which doesn't take the
+    /// window away from what it shows (Settings, say).
+    pub fn select_quietly(&mut self, id: Option<String>, cx: &mut Context<Self>) {
+        self.select_as(id, false, cx);
+    }
+
+    /// A note picked again that is already selected still says so, so
+    /// whatever hides it (Settings) gives way.
+    fn select_as(&mut self, id: Option<String>, asked: bool, cx: &mut Context<Self>) {
+        let changed = self.selected != id;
+        if changed || asked {
             self.selected = id.clone();
-            cx.emit(LibraryEvent::Selected(id));
+            cx.emit(LibraryEvent::Selected { id, asked });
+        }
+        if changed {
             cx.notify();
         }
     }

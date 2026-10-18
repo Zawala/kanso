@@ -110,6 +110,28 @@ impl PaneWidths {
             }
         }
     }
+
+    /// The widths that fit a window `window` wide, with the full sidebar
+    /// (`rail` is `None`) or a rail that wide before the list: as they are
+    /// when the editor keeps its minimum, else the list gives up room first
+    /// and then the sidebar, each down to the narrow end of its range. Panes
+    /// never grow, so the user's widths come back once the window does.
+    pub fn fitted(self, window: f32, rail: Option<f32>) -> PaneWidths {
+        let left = rail.unwrap_or(self.sidebar);
+        let short = EDITOR_MIN_WIDTH - (window - left - self.list);
+        // Rounding leaves a fitted layout a hair short; that is room enough.
+        if short <= 1e-3 {
+            return self;
+        }
+        let list = (self.list - short).max(NOTE_LIST_RANGE.0.min(self.list));
+        let short = short - (self.list - list);
+        let sidebar = if rail.is_none() && short > 0. {
+            (self.sidebar - short).max(SIDEBAR_RANGE.0.min(self.sidebar))
+        } else {
+            self.sidebar
+        };
+        PaneWidths { sidebar, list }
+    }
 }
 
 /// What a pointer event in the window asks of it.
@@ -355,6 +377,97 @@ mod tests {
                 prop_assert_eq!(at(lo), wanted);
             }
         }
+    }
+
+    /// Widths anywhere in their ranges, and a little outside them, as an
+    /// older config or a hand-edited file may hold.
+    fn widths() -> impl Strategy<Value = PaneWidths> {
+        (
+            SIDEBAR_RANGE.0 - 20.0..=SIDEBAR_RANGE.1 + 20.,
+            NOTE_LIST_RANGE.0 - 20.0..=NOTE_LIST_RANGE.1 + 20.,
+        )
+            .prop_map(|(sidebar, list)| PaneWidths { sidebar, list })
+    }
+
+    fn rail() -> impl Strategy<Value = Option<f32>> {
+        prop_oneof![
+            Just(None),
+            Just(Some(RAIL_MIN_WIDTH)),
+            Just(Some(TRAFFIC_LIGHT_INSET))
+        ]
+    }
+
+    proptest! {
+        #![proptest_config(config())]
+
+        /// Invariants of fitting the panes to a window: the editor keeps its
+        /// minimum whenever the narrowest panes leave it room; panes only
+        /// ever narrow, never below their range unless they already were;
+        /// the list gives up room before the sidebar does; nothing changes
+        /// when the editor already has its room; fitting twice is fitting
+        /// once; and beside the rail the sidebar's width is left alone.
+        #[test]
+        fn prop_fitted_panes_leave_the_editor_its_room(
+            before in widths(),
+            rail in rail(),
+            window in 600f32..2600.,
+        ) {
+            let after = before.fitted(window, rail);
+            let left = |w: PaneWidths| rail.unwrap_or(w.sidebar);
+            let editor = |w: PaneWidths| window - left(w) - w.list;
+            prop_assert!(after.sidebar <= before.sidebar && after.list <= before.list);
+            prop_assert!(after.list >= before.list.min(NOTE_LIST_RANGE.0));
+            prop_assert!(after.sidebar >= before.sidebar.min(SIDEBAR_RANGE.0));
+            let narrowest_left = rail.unwrap_or(before.sidebar.min(SIDEBAR_RANGE.0));
+            if window - narrowest_left - before.list.min(NOTE_LIST_RANGE.0) >= EDITOR_MIN_WIDTH {
+                prop_assert!(editor(after) >= EDITOR_MIN_WIDTH - 1e-3, "{:?} leaves {}", after, editor(after));
+            }
+            if editor(before) >= EDITOR_MIN_WIDTH {
+                prop_assert_eq!(after, before);
+            }
+            if after.sidebar < before.sidebar {
+                prop_assert_eq!(after.list, before.list.min(NOTE_LIST_RANGE.0));
+            }
+            if rail.is_some() {
+                prop_assert_eq!(after.sidebar, before.sidebar);
+            }
+            prop_assert_eq!(after.fitted(window, rail), after);
+        }
+    }
+
+    #[test]
+    fn fitted_examples() {
+        let wide = PaneWidths {
+            sidebar: 300.,
+            list: 480.,
+        };
+        // Room to spare: nothing moves.
+        assert_eq!(wide.fitted(1600., None), wide);
+        // 1100 points leave the editor 320: the list gives up 220 points,
+        // down to its 260, and the sidebar the other 20.
+        assert_eq!(
+            wide.fitted(1100., None),
+            PaneWidths {
+                sidebar: 280.,
+                list: 260.
+            }
+        );
+        // Beside the rail only the list narrows.
+        assert_eq!(
+            wide.fitted(1100., Some(76.)),
+            PaneWidths {
+                sidebar: 300.,
+                list: 464.
+            }
+        );
+        // A window too narrow for everything leaves both at their minimum.
+        assert_eq!(
+            wide.fitted(700., None),
+            PaneWidths {
+                sidebar: SIDEBAR_RANGE.0,
+                list: NOTE_LIST_RANGE.0
+            }
+        );
     }
 
     proptest! {

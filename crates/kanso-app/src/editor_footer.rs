@@ -19,6 +19,8 @@ use crate::theme::Colors;
 
 /// How long typing pauses before the counts catch up.
 const COUNT_DELAY: Duration = Duration::from_millis(250);
+/// The band itself: in focus mode, hovering it shows the counts.
+const FOOTER_GROUP: &str = "editor-footer";
 
 pub struct EditorFooter {
     body: Entity<EditorState>,
@@ -28,8 +30,12 @@ pub struct EditorFooter {
     /// Whether there is a note, and a cursor in it to report.
     has_note: bool,
     show_cursor: bool,
-    /// In focus mode: no divider above it.
+    /// In focus mode: no divider above it, and the counts wait for the
+    /// pointer.
     quiet: bool,
+    /// Shows the counts in focus mode, as a hover would.
+    #[cfg(test)]
+    pub(crate) reveal: bool,
     count_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -58,6 +64,8 @@ impl EditorFooter {
             has_note: false,
             show_cursor: true,
             quiet: false,
+            #[cfg(test)]
+            reveal: false,
             count_task: None,
             _subscriptions: subscriptions,
         }
@@ -79,7 +87,8 @@ impl EditorFooter {
         }
     }
 
-    /// Focus mode keeps the counts but drops the divider above them.
+    /// Focus mode drops the divider above the counts, and shows them only
+    /// while the pointer is over the band.
     pub fn set_quiet(&mut self, quiet: bool, cx: &mut Context<Self>) {
         if self.quiet != quiet {
             self.quiet = quiet;
@@ -135,8 +144,19 @@ impl Render for EditorFooter {
     // no-prop-test: layout only; the snapshots show it.
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
+        #[cfg(test)]
+        let hidden = self.quiet && !self.reveal;
+        #[cfg(not(test))]
+        let hidden = self.quiet;
+        let item = |el: Div| {
+            el.when(hidden, |el| {
+                el.opacity(0.)
+                    .group_hover(FOOTER_GROUP, |style| style.opacity(1.))
+            })
+        };
         h_flex()
             .id("editor-footer")
+            .group(FOOTER_GROUP)
             .h(px(BOTTOM_BAND_HEIGHT))
             .w_full()
             .flex_none()
@@ -149,8 +169,14 @@ impl Render for EditorFooter {
             .text_size(px(12.))
             .text_color(colors.text_muted)
             .when(self.has_note, |el| {
-                el.child(div().flex_1().min_w_0().truncate().child(self.label()))
-                    .child(div().flex_none().child("Markdown"))
+                el.child(
+                    item(div())
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .child(self.label()),
+                )
+                .child(item(div()).flex_none().child("Markdown"))
             })
     }
 }

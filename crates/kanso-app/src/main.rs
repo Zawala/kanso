@@ -15,6 +15,7 @@ mod fuzzy;
 mod grouping;
 mod history;
 mod inkdrop;
+mod keys;
 mod launch;
 mod layout;
 mod library;
@@ -190,7 +191,11 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
             data_dir,
             config,
         });
-        cx.set_global(Services::default());
+        // The app may read the sync token from the Keychain, once the Sync
+        // page asks for it.
+        let mut services = Services::default();
+        services.keychain = true;
+        cx.set_global(services);
         workspace::bind_keys(cx);
         note_list::bind_keys(cx);
         workspace::set_menus(cx);
@@ -199,7 +204,6 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
         settings::register_app_actions(cx, open_main_window);
         services::apply_server_settings(cx);
         services::apply_sync_settings(cx);
-        services::load_sync_token(cx);
         open_main_window(cx);
         cx.activate(true);
         // Held until the process exits so no second Kanso opens this folder.

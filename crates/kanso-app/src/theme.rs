@@ -9,7 +9,7 @@
 use std::sync::OnceLock;
 
 use gpui_kit::component::{Theme, ThemeRegistry};
-use gpui_kit::{App, Fill, Hsla, TextSystem, font, px};
+use gpui_kit::{App, Fill, FontWeight, Hsla, Styled, TextSystem, font, px};
 use serde_json::{Value, json};
 
 pub const LIGHT_NAME: &str = "Kanso Light";
@@ -168,6 +168,23 @@ impl Colors {
             &LIGHT
         }
     }
+}
+
+/// How strongly the accent tints the palette's selected row over the
+/// elevated panel, in the dark theme and the light one: enough to show, and
+/// little enough that secondary text on it still reads at 4.5:1.
+pub const PALETTE_SELECTED_ALPHA: (f32, f32) = (0.22, 0.18);
+
+/// The size of a section's label.
+pub const SECTION_LABEL_SIZE: f32 = 12.;
+
+/// A section's label, in one quiet style in every pane: the sidebar's
+/// "Notebooks", the list's "Today", the palette's "Note actions".
+// no-prop-test: a style; the snapshots show it.
+pub fn section_label<E: Styled>(el: E, colors: &Colors) -> E {
+    el.text_size(px(SECTION_LABEL_SIZE))
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(colors.text_muted)
 }
 
 /// Registers Kanso's themes and makes them the ones light and dark mode use.
@@ -806,6 +823,29 @@ mod tests {
             assert!(
                 contrast_ratio(c.text_secondary.0, c.selected.0) >= 4.5,
                 "{name}"
+            );
+            // The palette's selected row: the accent over the elevated
+            // panel. Its label is primary text; its icon, hint and keys
+            // turn secondary on it, and it shows against the panel.
+            let alpha = if name == "dark" {
+                PALETTE_SELECTED_ALPHA.0
+            } else {
+                PALETTE_SELECTED_ALPHA.1
+            };
+            let palette_selected = mix(c.accent, c.elevated, f64::from(alpha));
+            for (text, fg, min) in [
+                ("text", c.text, 7.0),
+                ("text_secondary", c.text_secondary, 4.5),
+            ] {
+                let ratio = contrast_ratio(fg.0, palette_selected.0);
+                assert!(
+                    ratio >= min,
+                    "{name}: {text} on the palette's selected row is {ratio:.2}, wants {min}"
+                );
+            }
+            assert!(
+                contrast_ratio(palette_selected.0, c.elevated.0) >= 1.2,
+                "{name}: palette selected row"
             );
         }
     }

@@ -309,6 +309,68 @@ fn rail_notebooks(
     .unwrap();
 }
 
+/// The rail's tags button: the palette lists the tags to go to.
+fn rail_tags(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    collapse_sidebar(cx, window, workspace, store);
+    cx.update_window(window, |_, _, cx| {
+        let sidebar = workspace.read(cx).sidebar.clone();
+        sidebar.update(cx, |_, cx| cx.emit(crate::sidebar::SidebarEvent::GoToTag));
+    })
+    .unwrap();
+}
+
+/// The pointer resting on the rail's compose button: its tooltip, with the
+/// shortcut as bound.
+fn rail_tooltip(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    collapse_sidebar(cx, window, workspace, store);
+    cx.update(|cx| {
+        let sidebar = workspace.read(cx).sidebar.clone();
+        sidebar.update(cx, |sidebar, cx| {
+            sidebar.reveal_tooltip = Some("New note");
+            cx.notify();
+        });
+    });
+}
+
+/// The rail while the Worker can't be reached: the sync icon's shape says
+/// so, not only its color.
+fn rail_offline(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    collapse_sidebar(cx, window, workspace, store);
+    set_sync(cx, SyncState::Failed(OFFLINE.into()));
+}
+
+/// What sync reports with no network: kanso-sync's words around ureq's.
+const OFFLINE: &str = "could not reach the sync server: io: failed to lookup address information: nodename nor servname provided, or not known";
+
+/// The keyboard in the note list: its selected row wears the focus ring.
+fn list_focused(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update_window(window, |_, window, cx| {
+        let list = workspace.read(cx).note_list.clone();
+        list.update(cx, |list, cx| list.focus_list(window, cx));
+    })
+    .unwrap();
+}
+
 /// Focus mode, as after ⌘⇧D: the note alone, its header out of sight.
 fn focus_mode(
     cx: &mut HeadlessAppContext,
@@ -334,10 +396,7 @@ fn focus_mode_hover(
     focus_mode(cx, window, workspace, store);
     cx.update(|cx| {
         let editor = workspace.read(cx).editor.clone();
-        editor.update(cx, |editor, cx| {
-            editor.reveal_chrome = true;
-            cx.notify();
-        });
+        editor.update(cx, |editor, cx| editor.reveal_chrome_for_test(cx));
     });
 }
 
@@ -372,7 +431,7 @@ fn split_scrolled(
     .unwrap();
 }
 
-/// A library with no notes at all, as on first run.
+/// The first launch: no notes, notebooks or tags, and sync never set up.
 fn first_run(
     cx: &mut HeadlessAppContext,
     _: AnyWindowHandle,
@@ -385,6 +444,14 @@ fn first_run(
             store.delete(&note.id, Origin::Ui).unwrap();
         }
     }
+    for tag in store.tags().unwrap() {
+        store.delete(&tag.id, Origin::Ui).unwrap();
+    }
+    // A notebook inside one deleted before it is gone already.
+    for book in store.books().unwrap() {
+        store.delete(&book.id, Origin::Ui).ok();
+    }
+    set_sync(cx, SyncState::Off);
     cx.run_until_parked();
 }
 
@@ -724,6 +791,7 @@ fn show_settings(
         services.sync = SyncState::Synced {
             at_ms: now,
             conflicts: 0,
+            conflicted: Vec::new(),
         };
     });
     cx.update_window(window, |_, window, cx| {
@@ -795,10 +863,33 @@ fn settings_sync_offline(
     _: &Store,
 ) {
     show_settings(cx, window, workspace, SettingsPage::Sync);
+    set_sync(cx, SyncState::Failed(OFFLINE.into()));
+}
+
+/// The Worker turned the saved token down.
+fn settings_sync_rejected(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Sync);
     set_sync(
         cx,
-        SyncState::Failed("error sending request: connection refused".into()),
+        SyncState::Failed("the sync server rejected the token".into()),
     );
+}
+
+/// The Keychain wouldn't say whether a token is saved (locked, or access
+/// denied): one can still be set.
+fn settings_sync_unreadable(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Sync);
+    cx.update(|cx| cx.global_mut::<Services>().sync_token = TokenState::Unreadable);
 }
 
 /// The Worker refused the sync for a reason of its own.
@@ -812,19 +903,27 @@ fn settings_sync_error(
     set_sync(cx, SyncState::Failed("the server said 500".into()));
 }
 
+/// A note changed on two Macs at once: the page names it and opens it.
 fn settings_sync_conflict(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
     workspace: &Entity<Workspace>,
-    _: &Store,
+    store: &Store,
 ) {
     show_settings(cx, window, workspace, SettingsPage::Sync);
     let now = cx.update(|cx| Clock::now_ms(cx));
+    let first = store
+        .search_summaries(&Default::default())
+        .unwrap()
+        .into_iter()
+        .next()
+        .map(|note| note.id);
     set_sync(
         cx,
         SyncState::Synced {
             at_ms: now - 3 * MINUTE,
             conflicts: 1,
+            conflicted: first.into_iter().collect(),
         },
     );
 }
@@ -1044,6 +1143,7 @@ fn open(
         services.sync = SyncState::Synced {
             at_ms: now - 2 * MINUTE,
             conflicts: 0,
+            conflicted: Vec::new(),
         };
         cx.set_global(services);
         apply_theme(theme, None, cx);
@@ -1312,6 +1412,18 @@ fn snapshots() {
             left: Left::Rail,
             ..shot("dark-rail-notebooks", Dark, Edit, rail_notebooks)
         },
+        Shot {
+            left: Left::Rail,
+            ..shot("dark-rail-tags", Dark, Edit, rail_tags)
+        },
+        Shot {
+            left: Left::Rail,
+            ..shot("dark-rail-tooltip", Dark, Edit, rail_tooltip)
+        },
+        Shot {
+            left: Left::Rail,
+            ..shot("dark-rail-offline", Dark, Edit, rail_offline)
+        },
         // Focus mode, at rest and with the pointer near the top.
         Shot {
             left: Left::Nothing,
@@ -1329,6 +1441,10 @@ fn snapshots() {
             left: Left::Nothing,
             ..shot("dark-focus-split", Dark, Split, focus_mode_hover)
         },
+        Shot {
+            left: Left::Nothing,
+            ..shot("dark-focus-split-quiet", Dark, Split, focus_mode)
+        },
         // The divider where a drag left it, and the preview following the
         // source's scrolling.
         shot("dark-split-dragged", Dark, Split, split_dragged),
@@ -1343,6 +1459,7 @@ fn snapshots() {
         shot("light-search", Light, Edit, search_sync),
         shot("dark-list-no-results", Dark, Edit, search_nothing),
         shot("dark-list-search-focus", Dark, Edit, focus_search),
+        shot("dark-list-focused", Dark, Edit, list_focused),
         shot("dark-list-hover", Dark, Edit, hover_third),
         shot("dark-list-title-sort", Dark, Edit, sort_by_title),
         shot("dark-list-filtered", Dark, Edit, only_completed),
@@ -1416,6 +1533,18 @@ fn snapshots() {
             settings_sync_conflict,
         ),
         shot("dark-settings-sync-off", Dark, Edit, settings_sync_off),
+        shot(
+            "dark-settings-sync-rejected",
+            Dark,
+            Edit,
+            settings_sync_rejected,
+        ),
+        shot(
+            "dark-settings-sync-unreadable",
+            Dark,
+            Edit,
+            settings_sync_unreadable,
+        ),
         shot("dark-settings-api", Dark, Edit, settings_api),
         shot(
             "dark-settings-api-port-in-use",
