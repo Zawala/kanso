@@ -121,7 +121,7 @@ impl Server {
 
 /// A local win or a stale replay is rebased above the remote revision.
 fn check_rebase(outcome: &ApplyOutcome, remote: &SyncDoc) -> Result<(), TestCaseError> {
-    if let ApplyOutcome::LocalWon { new_rev } | ApplyOutcome::Stale { new_rev } = outcome {
+    if let ApplyOutcome::LocalWon { new_rev } | ApplyOutcome::Stale { new_rev, .. } = outcome {
         prop_assert!(
             generation(new_rev) > generation(&remote.rev),
             "{new_rev} isn't above {}",
@@ -311,21 +311,43 @@ fn replayed_older_revisions_and_tombstones_are_stale() {
         base_rev: None,
         ..v1.clone()
     };
-    let ApplyOutcome::Stale { new_rev } = store.apply_remote(&replay, None, None).unwrap() else {
+    let ApplyOutcome::Stale { new_rev, conflict: false } = store.apply_remote(&replay, None, None).unwrap() else {
         panic!("a replay must be stale");
     };
     assert_eq!(store.get(&id).unwrap().unwrap().fields["name"], "v2");
     assert!(generation(&new_rev) > generation(&v2.rev));
     let pending = store.pending_push(10).unwrap();
     assert_eq!(pending[0].base_rev.as_deref(), Some(v1.rev.as_str()));
-    // The replayed version differed, so it was kept as a snapshot.
-    assert!(
+    // The replayed version was already in history (this Mac wrote it), so
+    // it isn't kept twice and isn't a conflict.
+    let copies = |store: &Store, name: &str| {
         store
             .revisions(&id)
             .unwrap()
             .iter()
-            .any(|r| r.fields["name"] == "v1")
-    );
+            .filter(|r| r.fields["name"] == name)
+            .count()
+    };
+    assert_eq!(copies(&store, "v1"), 1);
+
+    // A stale version this Mac never held is kept and flagged: after a
+    // restore it can be another Mac's newer edit.
+    let unseen = SyncDoc {
+        id: id.clone(),
+        rev: format!("2-{}", "c".repeat(32)),
+        deleted: false,
+        fields: json!({ "name": "edited elsewhere", "updatedAt": 9_000 })
+            .as_object()
+            .unwrap()
+            .clone(),
+        base_rev: None,
+    };
+    assert!(matches!(
+        store.apply_remote(&unseen, None, None).unwrap(),
+        ApplyOutcome::Stale { conflict: true, .. }
+    ));
+    assert_eq!(store.get(&id).unwrap().unwrap().fields["name"], "v2");
+    assert_eq!(copies(&store, "edited elsewhere"), 1);
 
     let (_dir2, other) = temp_store();
     let id2 = book(&other, "alive");

@@ -7,7 +7,7 @@
 
 mod common;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use common::*;
 use kanso_core::DocType;
@@ -446,6 +446,253 @@ proptest! {
             let current = b.get(id).unwrap().map(|d| hash(&d.rev));
             let kept = b.revisions(id).unwrap().iter().any(|r| hash(&r.rev) == hash(rev));
             prop_assert!(current.as_deref() == Some(hash(rev).as_str()) || kept, "B lost {} {}", id, rev);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// b. No live edit is ever silently lost (restores and rewinds)
+// ---------------------------------------------------------------------------
+
+/// Whether `id`'s content `rev` (by content hash) is current or in the
+/// history of `store`.
+fn holds(store: &Store, id: &str, rev: &str) -> bool {
+    store.get(id).unwrap().is_some_and(|d| hash(&d.rev) == hash(rev))
+        || store
+            .revisions(id)
+            .unwrap()
+            .iter()
+            .any(|r| hash(&r.rev) == hash(rev))
+}
+
+/// Review-sync P2: after a restore, Mac A's offline edit lands below Mac
+/// B's floor (B edited twice), or above it (A edited three times). Either
+/// way both versions are kept and the document is flagged; nothing is
+/// silently dropped.
+#[test]
+fn a_restore_never_silently_drops_an_offline_edit() {
+    for a_offline_edits in [1, 3] {
+        let server = MemoryServer::new();
+        let a = Mac::new(sign_up(&server, "alice", 1));
+        let b = Mac::new(sign_in(&server, "alice", 2));
+        note(&a.store, "note:x", "trash", "v1", 100);
+        a.sync(&server);
+        b.sync(&server);
+        let snapshot = server.snapshot("alice");
+        edit_note(&b.store, "note:x", "B one", Some(200));
+        b.sync(&server);
+        let b_two = edit_note(&b.store, "note:x", "B two", Some(300));
+        b.sync(&server);
+        let mut a_last = None;
+        for i in 0..a_offline_edits {
+            a_last = Some(edit_note(&a.store, "note:x", &format!("A offline {i}"), Some(900 + i)));
+        }
+        let a_last = a_last.unwrap();
+        server.restore("alice", &snapshot);
+
+        let ra = a.sync(&server);
+        let rb = b.sync(&server);
+        let ra2 = a.sync(&server);
+        let case = format!("{a_offline_edits} offline edits on A");
+        assert!(ra.remerged && rb.remerged, "{case}");
+        let flagged = [&ra, &rb, &ra2]
+            .iter()
+            .any(|r| r.conflicted.contains(&"note:x".to_owned()));
+        assert!(flagged, "{case}: nothing flagged ({ra:?} {rb:?} {ra2:?})");
+        assert_eq!(body(&a.store, "note:x"), body(&b.store, "note:x"), "{case}: the Macs differ");
+        // Both versions survive somewhere, whichever won.
+        for rev in [&a_last.rev, &b_two.rev] {
+            assert!(holds(&a.store, "note:x", rev) || holds(&b.store, "note:x", rev), "{case}: {rev}");
+        }
+        assert_eq!((pending(&a.store), pending(&b.store)), (0, 0), "{case}");
+    }
+}
+
+/// Review-sync P5, with the epoch the admin's `restore` rotates: a rewound
+/// account re-merges on every Mac, so no Mac skips another's documents and
+/// every lost document goes back, even after others pushed past the cursor.
+#[test]
+fn a_rewind_with_a_new_epoch_loses_nothing_once_others_push_past_it() {
+    let server = MemoryServer::new();
+    let a = Mac::new(sign_up(&server, "alice", 1));
+    let b = Mac::new(sign_in(&server, "alice", 2));
+    note(&a.store, "note:base", "trash", "base", 100);
+    a.sync(&server);
+    b.sync(&server);
+    a.sync(&server);
+    b.sync(&server);
+    let c = a.cursor().max(b.cursor());
+    note(&a.store, "note:a-late", "trash", "A's, lost by the rewind", 200);
+    a.sync(&server);
+    a.sync(&server);
+    server.rewind("alice", c);
+    server.set_epoch("alice");
+    for i in 0..3 {
+        note(&b.store, &format!("note:b{i}"), "trash", "B's", 300);
+    }
+    assert!(b.sync(&server).remerged);
+    assert!(a.sync(&server).remerged);
+    b.sync(&server);
+    for i in 0..3 {
+        assert!(body(&a.store, &format!("note:b{i}")).is_some(), "A skipped note:b{i}");
+    }
+    assert!(server_docs(&server, &a.session).contains_key("note:a-late"));
+    assert_eq!(all_docs(&a.store), all_docs(&b.store));
+    assert_eq!(all_docs(&a.store), server_docs(&server, &a.session));
+}
+
+#[derive(Clone, Debug)]
+enum RestoreOp {
+    /// Mac `m` edits (or re-creates) note `pick`; `bump` moves `updatedAt`.
+    Write { m: usize, pick: usize, bump: bool },
+    Delete { m: usize, pick: usize },
+    Sync { m: usize },
+    /// The owner takes a Time Travel bookmark.
+    Snapshot,
+    /// The owner restores the last bookmark (which rotates the epoch).
+    Restore,
+}
+
+fn gen_restore_op() -> impl Strategy<Value = RestoreOp> {
+    prop_oneof![
+        5 => (0..3usize, 0..3usize, any::<bool>()).prop_map(|(m, pick, bump)| RestoreOp::Write { m, pick, bump }),
+        1 => (0..3usize, 0..3usize).prop_map(|(m, pick)| RestoreOp::Delete { m, pick }),
+        5 => (0..3usize).prop_map(|m| RestoreOp::Sync { m }),
+        1 => Just(RestoreOp::Snapshot),
+        1 => Just(RestoreOp::Restore),
+    ]
+}
+
+/// The node every tombstone shares in the ancestry graph.
+const TOMBSTONE: &str = "tombstone";
+
+/// A document's current content hash on `store`, or [`TOMBSTONE`].
+fn content(store: &Store, id: &str) -> String {
+    match all_docs(store).get(id) {
+        Some((rev, false)) => hash(rev),
+        _ => TOMBSTONE.to_owned(),
+    }
+}
+
+proptest! {
+    #![proptest_config(config(48))]
+
+    /// Invariant (b), over three Macs with random edits, deletions, syncs,
+    /// bookmarks and restores: every live version a Mac wrote is either an
+    /// ancestor of the document's final version (something was built on
+    /// it), or a sync after it was written flagged the document in
+    /// `conflicted` and the version is still current or in history on some
+    /// Mac. The Macs converge, and nothing is stale without a restore.
+    #[test]
+    fn prop_no_live_edit_is_lost_silently(ops in prop::collection::vec(gen_restore_op(), 1..36)) {
+        let server = MemoryServer::new();
+        let macs = [
+            Mac::new(sign_up(&server, "alice", 1)),
+            Mac::new(sign_in(&server, "alice", 2)),
+            Mac::new(sign_in(&server, "alice", 3)),
+        ];
+        let ids = ["note:p0", "note:p1", "note:p2"];
+        for id in ids {
+            note(&macs[0].store, id, "trash", "seed", 1);
+        }
+        for mac in &macs {
+            mac.sync(&server);
+        }
+        // (doc, content hash) -> the content hashes it was built on.
+        let mut parents: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
+        // Live versions written: (step, doc, rev).
+        let mut written: Vec<(usize, String, String)> = Vec::new();
+        // doc -> steps of the syncs that flagged it.
+        let mut flagged: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        let mut snapshot = None;
+        let mut restored = false;
+        let mut clock = 10_000;
+        for (step, op) in ops.iter().enumerate() {
+            clock += 1;
+            match op {
+                RestoreOp::Write { m, pick, bump } => {
+                    let store = &macs[*m].store;
+                    let id = ids[*pick];
+                    let before = content(store, id);
+                    let text = format!("{m} at {clock}");
+                    let rev = match store.get_api(id, None, false) {
+                        Ok(mut doc) => {
+                            doc["body"] = text.into();
+                            if *bump {
+                                doc["updatedAt"] = clock.into();
+                            }
+                            put(store, DocType::Note, doc).unwrap().rev
+                        }
+                        Err(_) => put(
+                            store,
+                            DocType::Note,
+                            json!({"_id": id, "bookId": "trash", "body": text, "createdAt": 1, "updatedAt": clock}),
+                        )
+                        .unwrap()
+                        .rev,
+                    };
+                    parents.entry((id.to_owned(), hash(&rev))).or_default().insert(before);
+                    written.push((step, id.to_owned(), rev));
+                }
+                RestoreOp::Delete { m, pick } => {
+                    let store = &macs[*m].store;
+                    let id = ids[*pick];
+                    let before = content(store, id);
+                    if store.delete(id, Origin::Api).is_ok() {
+                        parents.entry((id.to_owned(), TOMBSTONE.to_owned())).or_default().insert(before);
+                    }
+                }
+                RestoreOp::Sync { m } => {
+                    let report = macs[*m].sync(&server);
+                    prop_assert!(report.invalid.is_empty() && report.skipped.is_empty());
+                    prop_assert!(restored || report.stale.is_empty(), "stale without a restore: {:?}", report);
+                    for id in &report.conflicted {
+                        flagged.entry(id.clone()).or_default().push(step);
+                    }
+                }
+                RestoreOp::Snapshot => snapshot = Some(server.snapshot("alice")),
+                RestoreOp::Restore => {
+                    if let Some(snapshot) = &snapshot {
+                        server.restore("alice", snapshot);
+                        restored = true;
+                    }
+                }
+            }
+        }
+        let last = ops.len();
+        for round in 0..3 {
+            for mac in &macs {
+                let report = mac.sync(&server);
+                for id in &report.conflicted {
+                    flagged.entry(id.clone()).or_default().push(last + round);
+                }
+            }
+        }
+        let on_server = server_docs(&server, &macs[0].session);
+        for mac in &macs {
+            prop_assert_eq!(pending(&mac.store), 0);
+            prop_assert_eq!(&all_docs(&mac.store), &on_server);
+        }
+        for (step, id, rev) in &written {
+            let last_version = content(&macs[0].store, id);
+            let mut ancestors = BTreeSet::from([last_version.clone()]);
+            let mut todo = vec![last_version];
+            while let Some(node) = todo.pop() {
+                for parent in parents.get(&(id.clone(), node)).into_iter().flatten() {
+                    if ancestors.insert(parent.clone()) {
+                        todo.push(parent.clone());
+                    }
+                }
+            }
+            if ancestors.contains(&hash(rev)) {
+                continue;
+            }
+            let reported = flagged.get(id).is_some_and(|steps| steps.iter().any(|s| s > step));
+            prop_assert!(reported, "{} {} (step {}) was dropped and never flagged", id, rev, step);
+            prop_assert!(
+                macs.iter().any(|mac| holds(&mac.store, id, rev)),
+                "{} {} (step {}) was dropped and kept nowhere", id, rev, step
+            );
         }
     }
 }

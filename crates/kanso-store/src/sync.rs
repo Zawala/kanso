@@ -78,9 +78,15 @@ pub enum ApplyOutcome {
     /// Mac. Instead the local version is rebased onto it like a local win:
     /// it gets `new_rev` (generation `max(local, remote) + 1`, same content
     /// hash), `synced_rev` becomes the remote revision, and the local version
-    /// is pushed again; the remote version is kept as a snapshot when its
-    /// content differs. Never produced by the old app's rules.
-    Stale { new_rev: String },
+    /// is pushed again. Never produced by the old app's rules.
+    ///
+    /// `conflict`: the remote version was live, differed from the local
+    /// content, and its content hash was neither the local one nor in the
+    /// document's history. It was kept as a snapshot, and the engine flags
+    /// the document, so no edit is discarded silently: after a restore,
+    /// another Mac's newer offline edit can fall below this Mac's floor. A
+    /// replayed version the Mac already holds adds nothing.
+    Stale { new_rev: String, conflict: bool },
 }
 
 /// One document's sync facts (docs/ACCOUNTS.md › Sync with encryption ›
@@ -127,6 +133,30 @@ fn learned(tx: &rusqlite::Transaction, id: &str, rev: &str) -> Result<()> {
         params![id, rev, sql_gen(generation)],
     )?;
     Ok(())
+}
+
+/// Whether `local` already holds the content of `rev`: it is the current
+/// content, or a snapshot in the document's history.
+fn holds_content(
+    tx: &rusqlite::Transaction,
+    id: &str,
+    local: &crate::write::Row,
+    rev: &kanso_core::Rev,
+) -> Result<bool> {
+    if parse_rev(&local.rev)?.hash == rev.hash {
+        return Ok(true);
+    }
+    Ok(tx
+        .query_row(
+            "SELECT 1 FROM revisions WHERE doc_id = ?1 AND substr(rev, instr(rev, '-') + 1) = ?2 LIMIT 1",
+            params![id, rev.hash],
+            |_| Ok(()),
+        )
+        .map(|_| true)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(false),
+            e => Err(e),
+        })?)
 }
 
 
@@ -508,14 +538,20 @@ impl Store {
             // an old version. A tombstone `reset_sync` left has floor 0: the
             // account's versions aren't replays of it.
             if !rules.legacy() && remote_rev.generation <= local.synced_gen {
+                // A live version this Mac has never held is kept and
+                // flagged: it may be another Mac's edit made after a restore
+                // (generations from different Macs stop comparing then).
                 let differs = local.deleted || local.fields != fields;
-                if !remote.deleted && differs {
+                let conflict = !remote.deleted
+                    && differs
+                    && !holds_content(tx, &remote.id, &local, &remote_rev)?;
+                if conflict {
                     keep_remote(tx, &remote.id, &remote.rev, &fields)?;
                 }
                 let new_rev = rebased(&local_rev, local_rev.generation.max(remote_rev.generation));
                 set_rev(tx, &remote.id, &local, &new_rev, Some(&remote.rev), changes)?;
                 learned(tx, &remote.id, &remote.rev)?;
-                return Ok(ApplyOutcome::Stale { new_rev });
+                return Ok(ApplyOutcome::Stale { new_rev, conflict });
             }
             let local_dirty = local.synced_rev.as_deref() != Some(local.rev.as_str());
             let remote_wins = !local_dirty

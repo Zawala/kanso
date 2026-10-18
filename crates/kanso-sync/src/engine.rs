@@ -192,6 +192,11 @@ fn guarded(err: StoreError) -> SyncError {
     }
 }
 
+/// The content hash of a local revision (`{generation}-{hash}`).
+fn content_hash(rev: &str) -> &str {
+    rev.split_once('-').map_or(rev, |(_, hash)| hash)
+}
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -360,6 +365,17 @@ impl Run<'_> {
         } else {
             None
         };
+        // During a re-merge the Mac can't tell whether a server version
+        // descends from the one it synced (the server lost history), so a
+        // remote version that replaces different live content is flagged.
+        let replaced = if self.remerging {
+            self.store
+                .get(&doc.id)?
+                .map(|d| d.rev)
+                .filter(|rev| content_hash(rev) != content_hash(&doc.rev))
+        } else {
+            None
+        };
         let outcome = match self.store.apply_remote(doc, attachment, Some(&self.guard)) {
             Ok(outcome) => outcome,
             Err(StoreError::Invalid(reason)) => {
@@ -370,7 +386,15 @@ impl Run<'_> {
         };
         let report = &mut self.report;
         match outcome {
-            ApplyOutcome::Applied => report.pulled += 1,
+            ApplyOutcome::Applied => {
+                report.pulled += 1;
+                if replaced.is_some() {
+                    // The local version is in history (`apply_remote`
+                    // snapshots what it replaces).
+                    report.conflicts_remote += 1;
+                    report.note_conflict(&doc.id);
+                }
+            }
             ApplyOutcome::Unchanged => {}
             ApplyOutcome::RemoteWon => {
                 report.pulled += 1;
@@ -381,9 +405,15 @@ impl Run<'_> {
                 report.conflicts_local += 1;
                 report.note_conflict(&doc.id);
             }
-            ApplyOutcome::Stale { .. } => {
+            ApplyOutcome::Stale { conflict, .. } => {
                 if !report.stale.contains(&doc.id) {
                     report.stale.push(doc.id.clone());
+                }
+                if conflict {
+                    // A live version below the floor that this Mac never
+                    // held: kept in history and flagged, never silent.
+                    report.conflicts_local += 1;
+                    report.note_conflict(&doc.id);
                 }
             }
         }
