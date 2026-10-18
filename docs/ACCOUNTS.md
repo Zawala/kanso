@@ -490,7 +490,8 @@ primitives.
 | `login-ip` | IP group | 15 min | 30 | Every sign-in |
 | `recover-ip` | IP group | 1 h | 10 | Every `recover/start` and `recover/finish` |
 | `password-account` | account ID | 15 min | 5 | Every current-password check (password change, new recovery key, delete) |
-| `writes-account` | account ID | 1 day | `settings.writes_per_day` | Documents in each push, plus 1 per file upload |
+| `writes-account` | account ID | 1 day | the account's `quota_writes_per_day`, else `settings.writes_per_day` | Documents in each push, plus 1 per file upload |
+| `uploads-account` | account ID | 1 day | `settings.upload_bytes_per_day` | Each upload's `Content-Length` (capped at the largest file plus one byte; the largest file when it's missing), counted before the body is read, after `writes-account` passes; a body longer than it declared counts the rest |
 
 There is no per-username recovery rule, so nobody can lock someone else out of recovery (M8). A
 sign-up past `signups_per_day` (server-wide per UTC day, counted by a trigger in `daily`; deleting
@@ -564,10 +565,14 @@ Steps:
 
 1. Count `signup-ip`.
 2. Validate the body.
-3. If an account with this username exists and its `auth_hash` equals SHA-256 of `auth_key`, this
-   sign-up already happened and its answer was lost: upsert this device's session and answer 201
-   with that account's ID, username and epoch and the new token, whatever the sign-up settings
-   say. It doesn't count towards `signups_per_day`. A disabled account gets 403 `account_disabled`.
+3. If an account with this username exists and this is the same request that created it (the same
+   account ID, KDF parameters, salt, wrapped keys and key ID, its `auth_hash` equal to SHA-256 of
+   `auth_key` and its `recovery_hash` to SHA-256 of `recovery_auth_key`, both hashes always
+   compared), this sign-up already happened and its answer was lost: upsert this device's session
+   and answer 201 with that account's ID, username and epoch and the new token, whatever the
+   sign-up settings say. It doesn't count towards `signups_per_day`. A disabled account gets 403
+   `account_disabled`. The auth key alone isn't enough: that would make sign-up a password oracle
+   outside the sign-in limits.
 4. Otherwise insert the account and the session in one batch. Triggers refuse it when sign-ups are
    closed, the server is full, or the day's limit is reached (403 `signup_closed` with `closed`,
    `full` or `busy`), before any `UNIQUE` check. `UNIQUE` failures give 409 `account_id_taken`
@@ -837,7 +842,8 @@ INSERT INTO settings (name, value) VALUES
     ('quota_doc_bytes', '104857600'),
     ('quota_files', '10000'),
     ('quota_file_bytes', '524288000'),
-    ('writes_per_day', '100000'),
+    ('writes_per_day', '20000'),
+    ('upload_bytes_per_day', '1073741824'),
     ('global_doc_bytes', '6000000000'),
     ('global_file_bytes', '50000000000'),
     ('global_writes_per_day', '300000'),
@@ -882,8 +888,9 @@ BEGIN SELECT RAISE(ABORT, 'daily_required'); END;
 
 -- `docs` counts live documents; `doc_bytes` is the sum of length(sealed) + 512 over all of
 -- the account's rows, tombstones included; `files` and `file_bytes` count account_files rows
--- and their size + 1024. NULL quotas use `defaults`. `recounted_at` changes only in the admin
--- recount, which the quota triggers exempt.
+-- and their size + 1024. NULL quotas use `defaults`; a NULL `quota_writes_per_day` uses the
+-- `writes_per_day` setting (the Worker reads it; no trigger does). `recounted_at` changes
+-- only in the admin recount, which the quota triggers exempt.
 CREATE TABLE accounts (
     id TEXT PRIMARY KEY NOT NULL
         CHECK (length(id) = 34 AND substr(id, 1, 2) = 'a_' AND substr(id, 3) NOT GLOB '*[^0-9a-f]*'),
@@ -910,6 +917,7 @@ CREATE TABLE accounts (
     quota_doc_bytes INTEGER CHECK (quota_doc_bytes > 0),
     quota_files INTEGER CHECK (quota_files > 0),
     quota_file_bytes INTEGER CHECK (quota_file_bytes > 0),
+    quota_writes_per_day INTEGER CHECK (quota_writes_per_day > 0),
     recounted_at INTEGER,
     created_at INTEGER NOT NULL,
     disabled_at INTEGER
@@ -1127,7 +1135,8 @@ refuses rather than allows (security re-check 1).
 | `quota_doc_bytes` | 100 MiB (104,857,600) | `length(sealed) + 512` per row, tombstones included. Real cost. |
 | `quota_files` | 10,000 | Stored file objects |
 | `quota_file_bytes` | 500 MiB (524,288,000) | `size + 1,024` per file |
-| `writes_per_day` | 100,000 | Pushed documents plus file uploads, per account. A full re-merge of a library at every quota (50,000 documents and 10,000 files) fits with room for a day's edits. |
+| `writes_per_day` | 20,000 | Pushed documents plus file uploads, per account, unless the account's `quota_writes_per_day` says otherwise (`quota <user> --writes-per-day`). A fifteenth of `global_writes_per_day`, so no one account can spend the server's day. A library that needs more in one day, like the owner's first upload or a re-merge of a large library, pauses at the cap and finishes after UTC midnight; the owner raises their own account instead. |
+| `upload_bytes_per_day` | 1 GiB (1,073,741,824) | Uploaded file bytes per account per UTC day, refused uploads included. Twice the default file bytes quota, under a fifth of `global_upload_bytes_per_day`. |
 | `global_doc_bytes` | 6,000,000,000 | Sum over all accounts |
 | `global_file_bytes` | 50,000,000,000 | Sum over all accounts |
 | `global_writes_per_day` | 300,000 | Stored document writes (new and updated) per UTC day, all accounts together |
@@ -1156,9 +1165,9 @@ live documents only reach 100 MiB at an average of about 1,585 bytes sealed (104
 cap, which only overrides can approach, and costs at most 50 GB × $0.015 = $0.75 a month.
 
 **Rows written:** an accepted document writes about 5 rows (the account row, the document row, its
-two index entries and the `daily` counter). One account at the daily maximum writes 100,000 × 5 =
-500,000 rows a day, which is 15,000,000 a month, inside the included 50 million. It takes four
-accounts at the maximum all month to exceed it, and `global_writes_per_day` bounds the whole server
+two index entries and the `daily` counter). One account at the daily maximum writes 20,000 × 5 =
+100,000 rows a day, which is 3,100,000 in a 31-day month, inside the included 50 million. It takes
+seventeen accounts at the maximum all month to exceed it, and `global_writes_per_day` bounds the whole server
 at 300,000 × 5 = 1,500,000 rows a day, about 46.5 million in a 31-day month. Beyond the included
 rows it costs $1 per million, and the `accounts` command shows `writes_today` for each account. The owner's first upload is about 909 documents, roughly 3,600
 rows.
@@ -1168,7 +1177,12 @@ rows.
 
 **Admin overcommit rule:** `max-accounts`, `quota` and `default-quota` refuse, unless given
 `--force`, any change after which `Σ effective quotas of existing accounts + (max_accounts −
-accounts) × default` exceeds a global cap.
+accounts) × default` exceeds a global cap. The daily budgets are shared first come, first served,
+so their rule is per account: `writes-per-day`, `upload-bytes-per-day`, `global-writes-per-day`,
+`global-upload-bytes-per-day` and `quota --writes-per-day` refuse, unless given `--force`, any
+change after which one account's daily budget (the default, an override, or the upload budget) is
+over its server-wide cap. Each prints how many accounts at their whole budget use the server's day
+up.
 
 ### R2 layout, purges and the cron
 
@@ -1750,15 +1764,19 @@ CLOUDFLARE_API_TOKEN="$IMNGONII_CLOUDFLARE_API_TOKEN" npm run -s admin -- accoun
 
 | Command | Effect |
 |---|---|
-| `accounts` | Each account's username, ID, created date, usage against quotas, `writes_today`, active devices, last seen and status. Also the settings, global sums and pending purges. |
+| `accounts` | Each account's username, ID, created date, usage against quotas, writes today against its budget, bytes uploaded today, active devices, last seen and status. Also the settings, global sums and pending purges. |
 | `disable <username>` / `enable <username>` | Set or clear `disabled_at`. |
 | `delete <username> --confirm <username>` | The deletion batch, plus the purge row. |
 | `signups open` / `signups close` / `signups only <username>` | `settings.signup`. `only` then checks whether that name already has an account, and says so: the reservation is spent once it does. |
 | `max-accounts <n>` | Subject to the overcommit check unless `--force` |
-| `quota <username> [--docs N] [--doc-mib N] [--files N] [--file-mib N]`, `quota <username> --default` | Overrides, in MiB; overcommit check |
+| `quota <username> [--docs N] [--doc-mib N] [--files N] [--file-mib N] [--writes-per-day N]`, `quota <username> --default` | Overrides, in MiB; overcommit check. `--writes-per-day` sets `quota_writes_per_day`, refused over `global_writes_per_day` unless `--force` |
 | `default-quota [--docs N] [--doc-mib N] [--files N] [--file-mib N]` | Defaults; overcommit check |
-| `writes-per-day <n>` | `settings.writes_per_day` |
+| `writes-per-day <n>` / `upload-bytes-per-day <n>` | `settings.writes_per_day` / `settings.upload_bytes_per_day`, the per-account daily budgets |
 | `global-writes-per-day <n>` / `global-upload-bytes-per-day <n>` | The server-wide daily caps |
+
+The four daily commands refuse, unless given `--force`, a value after which one account's budget
+(the default, any override, or the upload budget) is over its server-wide cap, and print how many
+accounts at their whole budget use up the server's day.
 | `recount [<username>]` | Recompute the counters from the tables, setting `recounted_at` |
 | `restored [<username> \| --all]` | After a Time Travel restore: a new epoch (`lower(hex(randomblob(8)))`), so Macs re-merge (M1) |
 | `legacy-status` | Whether `docs`/`counter` exist, their live document and file counts and size, and the `files/` purge state |
@@ -1794,7 +1812,7 @@ documents and files under the test session and can push plaintext as another cli
 | Keychain | An item with a different origin or account ID is ignored; sign-out deletes an unconfirmed recovery key; pending logouts are retried until 204 or 401 | `tests/accounts.rs` (with `MemorySecrets`) |
 | Device identity | Same account → same ID; different accounts → unlinkable IDs; a hardware hash mismatch regenerates the identity and leaves the binding | `tests/binding.rs` |
 | Plaintext canary | `prop_nothing_plain_leaves_the_mac`: every byte the client sends (push, files, auth, device name) is captured. No marker string, local ID, local rev, file MD5, password, recovery key, data key or device name appears in it, raw, hex or base64 (all alignments, standard and URL). | `tests/canary.rs` |
-| Conformance | `conformance.json` (v2 sync cases, quotas and the global caps included) and `auth.json` (owner: Worker builder): same-device replacement, 11th-device eviction, password change signing others out with its reason, recovery rotating the key, logout then 401 `signed_out`, disabled after credentials, sign-up closed / full / busy, expiry, `account_id_taken`, the known-device proof, the idempotent sign-up retry, and every rate-limit rule. Both run by the Worker and by `MemoryServer`; `tests/fixtures.rs` keeps their shapes equal to `api.rs` from step 1. The v1 cases stay in `conformance-v1.json` while v1 code exists. | `cloud/test`, `tests/conformance.rs` |
+| Conformance | `conformance.json` (v2 sync cases, quotas and the global caps included) and `auth.json` (owner: Worker builder): same-device replacement, 11th-device eviction, password change signing others out with its reason, recovery rotating the key, logout then 401 `signed_out`, disabled after credentials, sign-up closed / full / busy, expiry, `account_id_taken`, the known-device proof, the idempotent sign-up retry (and the right auth key in a different request not being one), the per-account daily budgets and their overrides, and every rate-limit rule. Both run by the Worker and by `MemoryServer`; `tests/fixtures.rs` keeps their shapes equal to `api.rs` from step 1. The v1 cases in `conformance-v1.json` now only check the rollback test's stand-in for the old Worker. | `cloud/test`, `tests/conformance.rs` |
 | Isolation (Worker) | b4e2733's two properties with three signed-up accounts. R2 keys stay under each account's own prefix. A device revocation can't reach another account's session, even one with the same device ID. | `cloud/test/isolation.test.ts` |
 | Races (H1) | Through `handle(request, env, now)` with `Promise.all`: N parallel sign-ups at `max_accounts − 1` → exactly one succeeds; N parallel wrong logins → at most the rule's maximum are checked; parallel pushes and file uploads near every quota → no counter ever exceeds its quota; parallel uploads of one ID → `files` and `file_bytes` stay ≥ 0 and `recount` restores them | `cloud/test/races.test.ts` |
 | Auth (Worker) | Every route and status; `prop_only_the_registered_auth_key_signs_in`; `prop_sessions_follow_the_model`; idempotent retries; nothing in D1 equals a submitted proof or token; prelogin is deterministic and shaped like a real answer; `Origin` → 403; wrong content type → 415; non-canonical base64url → 400 | `cloud/test/auth.test.ts` |
@@ -1896,8 +1914,10 @@ above already say each of them; this list is the index.
    `api::LoginDevice { id, proof }`.
 6. **Legacy manifest hash**: rows only, sorted by `id`, the byte format and test vector under
    "Command line"; `verify::manifest_sha256` implements it.
-7. **Sign-up retry is idempotent on the server**: same username and auth key → 201 with the
-   existing account, whatever the settings; `auth.json` has the case.
+7. **Sign-up retry is idempotent on the server**: the same request again (username, account ID,
+   KDF parameters, salt, auth key, wrapped keys, recovery auth key and key ID) → 201 with the
+   existing account, whatever the settings. The right auth key with anything else different is not
+   a retry. `auth.json` has both cases.
 8. **R2 and D1 drift**: GET needs the `account_files` row; the cron reconciles orphans and sizes.
    The only schema addition is `account_files.uploaded_at`, which the upload cap needs anyway.
 9. `login-user` is keyed by account ID, with one shared row for unknown names; the binding groups
@@ -1957,6 +1977,26 @@ above already say each of them; this list is the index.
   `device_name`; `manifest_sha256`; `origin`; the guard helpers, `mark_unsynced`,
   `mark_missing_unsynced`, `set_meta_if` and `pending_count`; `MemorySecrets`. `LocalWon.new_rev`
   is the unchanged local revision until 2a adds the generation bump.
+
+*Step 3 (integration) decisions:*
+
+- **v1 is gone.** The plaintext engine, `HttpRemote`, `MemoryRemote`, the shared-token Keychain
+  code, `SyncConfig`, `CURSOR_KEY` and the legacy tests are deleted; the Worker serves no `/v1`.
+  `kanso-sync unbind` (the rollback path) stays. The rollback test's stand-ins for the old app and
+  Worker live in `tests/common/legacy.rs`, checked against `conformance-v1.json`; the old app's
+  store rules are behind `kanso-store`'s `legacy-v1-rules` feature, which only `kanso-sync`'s
+  dev-dependencies enable.
+- **Daily budgets.** `writes_per_day` is 20,000 (a fifteenth of `global_writes_per_day`, 300,000);
+  `accounts.quota_writes_per_day` (NULL: the setting) overrides it per account, set with `quota
+  <user> --writes-per-day N`, and `/v2/account` reports the effective value. The per-account
+  upload cap is the setting `upload_bytes_per_day` (1 GiB), rule `uploads-account`, counted from
+  `Content-Length` after `writes-account` passes; its 429 pauses sync like any push or upload 429.
+  Both maxima are read from D1 in the counting batch, and a missing value refuses. The admin
+  script has `upload-bytes-per-day`, and its four daily commands refuse, unless `--force`, a value
+  that lets one account's budget exceed the server's cap. Amended in `0002_accounts.sql` (not yet
+  applied anywhere), the fixtures, `MemoryServer` and the Worker together.
+- **Sign-up retry** (note 7) is the same request again, not just the same auth key; `MemoryServer`
+  now checks every field as the Worker does.
 
 **Step 2: in parallel.**
 

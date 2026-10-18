@@ -758,7 +758,7 @@ mod tests {
                 doc_bytes: 104_857_600,
                 files: 10_000,
                 file_bytes: 524_288_000,
-                writes_per_day: 100_000,
+                writes_per_day: 20_000,
             },
         };
         assert_eq!(

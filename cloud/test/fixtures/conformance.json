@@ -11,7 +11,7 @@
   "Steps, exactly one kind each; `note` is for readers and ignored:",
   "  {settings: {name: value}} sets settings rows (D1 UPDATE; MemoryServer::set_setting).",
   "  {admin: \"disable\" | \"enable\", username} and {admin: \"quota\", username, quota: {docs?, doc_bytes?, files?,",
-  "    file_bytes?}} (a number, or null for the default) act as the admin script does.",
+  "    file_bytes?, writes_per_day?}} (a number, or null for the default) act as the admin script does.",
   "  {request: <route>, t?, as?, token?, body?, query?, path?, file?, status, response?, capture?} sends one request.",
   "    route: a kanso_sync::Route name (health, prelogin, signup, login, recover_start, recover_finish, logout, account,",
   "    password, recovery_key, delete, set_device, devices, revoke_device, push, changes, put_file, get_file).",
@@ -239,7 +239,7 @@
        "doc_bytes": 104857600,
        "files": 10000,
        "file_bytes": 524288000,
-       "writes_per_day": 100000
+       "writes_per_day": 20000
       }
      }
     }
@@ -4228,6 +4228,373 @@
       },
       "quota": {
        "writes_per_day": 3
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "upload_bytes_per_day caps one account's upload bytes per UTC day, counting refused uploads too",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "signup",
+     "body": {
+      "username": "bob",
+      "account_id": "$acct_bob",
+      "kdf": "$kdf",
+      "salt": "$salt_bob1",
+      "auth_key": "$auth_bob1",
+      "wrapped_key": "$wrap_bob1",
+      "recovery_auth_key": "$rauth_bob1",
+      "recovery_wrapped_key": "$rwrap_bob1",
+      "key_id": "$kid_bob",
+      "device": {
+       "id": "$dev_2",
+       "sealed_name": "$name_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_bob",
+      "username": "bob",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "bob": "token",
+      "epoch_bob": "epoch"
+     }
+    },
+    {
+     "settings": {
+      "upload_bytes_per_day": "150"
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F100",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 100
+     }
+    },
+    {
+     "note": "100 + 60 is over 150: refused before the body is read, and the 60 bytes still count.",
+     "request": "put_file",
+     "t": 1000,
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G60",
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "uploads-account",
+      "retry_after": 86399
+     }
+    },
+    {
+     "note": "160 + 40 is over 150 as well, though 100 + 40 alone wouldn't be.",
+     "request": "put_file",
+     "t": 2000,
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G40",
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "uploads-account",
+      "retry_after": 86398
+     }
+    },
+    {
+     "note": "Each account has its own budget.",
+     "request": "put_file",
+     "as": "bob",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G100",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 100
+     }
+    },
+    {
+     "request": "put_file",
+     "t": 86400000,
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G60",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 60
+     }
+    }
+   ]
+  },
+  {
+   "name": "an admin quota writes_per_day overrides writes_per_day for that account alone",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "signup",
+     "body": {
+      "username": "bob",
+      "account_id": "$acct_bob",
+      "kdf": "$kdf",
+      "salt": "$salt_bob1",
+      "auth_key": "$auth_bob1",
+      "wrapped_key": "$wrap_bob1",
+      "recovery_auth_key": "$rauth_bob1",
+      "recovery_wrapped_key": "$rwrap_bob1",
+      "key_id": "$kid_bob",
+      "device": {
+       "id": "$dev_2",
+       "sealed_name": "$name_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_bob",
+      "username": "bob",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "bob": "token",
+      "epoch_bob": "epoch"
+     }
+    },
+    {
+     "settings": {
+      "writes_per_day": "1"
+     }
+    },
+    {
+     "admin": "quota",
+     "username": "alice",
+     "quota": {
+      "writes_per_day": 2
+     }
+    },
+    {
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "quota": {
+       "writes_per_day": 2
+      }
+     }
+    },
+    {
+     "request": "account",
+     "as": "bob",
+     "status": 200,
+     "response": {
+      "quota": {
+       "writes_per_day": 1
+      }
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       },
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "t": 1000,
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "writes-account",
+      "retry_after": 86399
+     }
+    },
+    {
+     "request": "push",
+     "t": 1000,
+     "as": "bob",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "t": 1000,
+     "as": "bob",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "writes-account",
+      "retry_after": 86399
+     }
+    },
+    {
+     "admin": "quota",
+     "username": "alice",
+     "quota": {
+      "writes_per_day": null
+     }
+    },
+    {
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "usage": {
+       "writes_today": 3
+      },
+      "quota": {
+       "writes_per_day": 1
       }
      }
     }

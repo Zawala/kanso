@@ -178,6 +178,7 @@ mod v2 {
                                 "doc_bytes" => &mut quota.doc_bytes,
                                 "files" => &mut quota.files,
                                 "file_bytes" => &mut quota.file_bytes,
+                                "writes_per_day" => &mut quota.writes_per_day,
                                 other => return Err(format!("unknown quota column {other}")),
                             };
                             *slot = value.as_u64();

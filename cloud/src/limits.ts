@@ -18,18 +18,15 @@ import { DAY, HOUR } from "./protocol";
 export type Rule = "signup-ip" | "login-user" | "login-ip" | "recover-ip" | "password-account" | "writes-account" | "uploads-account";
 
 /**
- * File bytes one account may upload per UTC day, replacements included.
- * Without it, one account could spend the whole server-wide
- * `global_upload_bytes_per_day` (5,000,000,000) alone: about 480
- * replacements of one 10 MiB file, each counting 1 towards `writes-account`.
- * 1 GiB is twice the default `quota_file_bytes` (a full re-upload fits with
- * room to spare) and takes five accounts to exhaust the global cap. The
- * frozen migration has no settings row for it, so it's fixed here; a later
- * migration can add `upload_bytes_per_day` and an admin command.
+ * Window and maximum of each rule. The two per-account daily rules read their
+ * maximum from D1 when they count, in the same batch: `writes-account` from the
+ * account's `quota_writes_per_day`, else `settings.writes_per_day` (20,000 by
+ * default; the owner raises one account with `admin quota <name>
+ * --writes-per-day N`); `uploads-account` from `settings.upload_bytes_per_day`
+ * (1 GiB by default). Without the upload rule one account could spend the whole
+ * server-wide `global_upload_bytes_per_day` alone: replacing one 10 MiB file
+ * about 480 times costs only 480 writes.
  */
-export const UPLOAD_BYTES_PER_DAY = 1_073_741_824;
-
-/** Window and maximum of each rule; `writes-account` takes its maximum from `settings.writes_per_day`. */
 export const RULES: Record<Rule, { window: number; max: number | null }> = {
 	"signup-ip": { window: HOUR, max: 10 },
 	"login-user": { window: 15 * 60_000, max: 10 },
@@ -37,7 +34,17 @@ export const RULES: Record<Rule, { window: number; max: number | null }> = {
 	"recover-ip": { window: HOUR, max: 10 },
 	"password-account": { window: 15 * 60_000, max: 5 },
 	"writes-account": { window: DAY, max: null },
-	"uploads-account": { window: DAY, max: UPLOAD_BYTES_PER_DAY },
+	"uploads-account": { window: DAY, max: null },
+};
+
+/**
+ * The maximum of a per-account daily rule for the account `?1`, as one row
+ * `{max}`. A missing setting reads as NULL, which refuses, like the triggers.
+ */
+export const DAILY_MAX_SQL: Partial<Record<Rule, string>> = {
+	"writes-account": `SELECT coalesce((SELECT quota_writes_per_day FROM accounts WHERE id = ?1),
+  (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'writes_per_day')) AS max`,
+	"uploads-account": "SELECT (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'upload_bytes_per_day') AS max",
 };
 
 /** The binding's window, which is also its `retry_after`. */
@@ -64,15 +71,20 @@ export const UNKNOWN_LOGIN_KEY = "login-user:unknown";
 
 /**
  * Counts `amount` against `key` under `rule`; the 429 response when the
- * window's count is now over `max`, else null.
+ * window's count is now over the rule's maximum, else null. The per-account
+ * daily rules (`DAILY_MAX_SQL`) read their maximum in the same batch; their
+ * keys are `rule:<account id>`.
  */
-export async function count(db: D1Database, rule: Rule, key: string, now: number, amount = 1, max?: number): Promise<Response | null> {
+export async function count(db: D1Database, rule: Rule, key: string, now: number, amount = 1): Promise<Response | null> {
 	const { window } = RULES[rule];
 	const start = windowStart(now, window);
-	if (rule === "writes-account") {
+	const maxSql = DAILY_MAX_SQL[rule];
+	if (maxSql !== undefined) {
+		const accountId = key.slice(rule.length + 1);
 		const [counted, setting] = await db.batch<{ count?: number; max?: number | null }>([
 			db.prepare(COUNT_SQL).bind(key, start, amount),
-			db.prepare("SELECT CAST(value AS INTEGER) AS max FROM settings WHERE name = 'writes_per_day'"),
+			// D1 refuses a binding the statement has no parameter for.
+			maxSql.includes("?1") ? db.prepare(maxSql).bind(accountId) : db.prepare(maxSql),
 		]);
 		const total = counted.results[0]?.count ?? Number.MAX_SAFE_INTEGER;
 		// A missing setting refuses, like the triggers.
@@ -80,7 +92,7 @@ export async function count(db: D1Database, rule: Rule, key: string, now: number
 		return total > limit ? rateLimited(rule, start + window - now) : null;
 	}
 	const row = await db.prepare(COUNT_SQL).bind(key, start, amount).first<{ count: number }>();
-	const limit = max ?? RULES[rule].max ?? 0;
+	const limit = RULES[rule].max ?? 0;
 	return (row?.count ?? Number.MAX_SAFE_INTEGER) > limit ? rateLimited(rule, start + window - now) : null;
 }
 

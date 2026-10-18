@@ -594,7 +594,7 @@ export const account = withSession(async (_request, env, now, session) => {
   coalesce(a.quota_docs, d.docs, 0) AS quota_docs, coalesce(a.quota_doc_bytes, d.doc_bytes, 0) AS quota_doc_bytes,
   coalesce(a.quota_files, d.files, 0) AS quota_files, coalesce(a.quota_file_bytes, d.file_bytes, 0) AS quota_file_bytes,
   coalesce((SELECT CASE WHEN window_start = ?2 THEN count ELSE 0 END FROM limits WHERE key = 'writes-account:' || a.id), 0) AS writes_today,
-  coalesce((SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'writes_per_day'), 0) AS writes_per_day
+  coalesce(a.quota_writes_per_day, (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'writes_per_day'), 0) AS writes_per_day
   FROM accounts a, defaults d WHERE a.id = ?1`,
 	)
 		.bind(session.accountId, windowStart(now, DAY))

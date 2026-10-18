@@ -13,8 +13,9 @@ import { normalizeUsername } from "./usernames.ts";
 
 export const USAGE = `Usage: npm run -s admin -- [--local [--persist-to DIR]] <command>
 
-  accounts                          Every account: usage against quotas, writes today, devices,
-                                    last seen and status; the settings, global sums and purges.
+  accounts                          Every account: usage against quotas, writes and uploads today,
+                                    devices, last seen and status; the settings, global sums and
+                                    purges.
   settings                          The settings.
   disable <username>                Refuse the account's sign-ins and sessions.
   enable <username>                 Undo disable.
@@ -23,13 +24,20 @@ export const USAGE = `Usage: npm run -s admin -- [--local [--persist-to DIR]] <c
   signups open | close | only <username>
                                     Open sign-ups, close them, or reserve them for one name.
   max-accounts <n> [--force]        At most n accounts.
-  quota <username> [--docs N] [--doc-mib N] [--files N] [--file-mib N] [--force]
-  quota <username> --default        Per-account quotas, or back to the defaults.
+  quota <username> [--docs N] [--doc-mib N] [--files N] [--file-mib N] [--writes-per-day N]
+        [--force]
+  quota <username> --default        Per-account quotas, or back to the defaults. --writes-per-day
+                                    raises (or lowers) one account's daily write budget.
   default-quota [--docs N] [--doc-mib N] [--files N] [--file-mib N] [--force]
                                     The default quotas.
-  writes-per-day <n>                Documents pushed plus files uploaded, per account per UTC day.
-  global-writes-per-day <n>         Stored document writes per UTC day, all accounts together.
-  global-upload-bytes-per-day <n>   Uploaded file bytes per UTC day, all accounts together.
+  writes-per-day <n> [--force]      Documents pushed plus files uploaded, per account per UTC day
+                                    (the default; quota --writes-per-day overrides it).
+  upload-bytes-per-day <n> [--force]
+                                    Uploaded file bytes, per account per UTC day.
+  global-writes-per-day <n> [--force]
+                                    Stored document writes per UTC day, all accounts together.
+  global-upload-bytes-per-day <n> [--force]
+                                    Uploaded file bytes per UTC day, all accounts together.
   recount [<username>]              Recompute usage counters from the tables.
   restored [<username> | --all]     After a Time Travel restore: a new epoch, so Macs re-merge.
   legacy-status                     The single-user tables and the files/ purge.
@@ -39,7 +47,9 @@ export const USAGE = `Usage: npm run -s admin -- [--local [--persist-to DIR]] <c
                                     delete SYNC_TOKEN, once R.json proves everything arrived.
 
 Runs against the deployed database unless --local is given. max-accounts, quota and
-default-quota refuse a change that would overcommit a global cap unless --force is given.`;
+default-quota refuse a change that would overcommit a global cap unless --force is given, and
+the daily commands (and quota --writes-per-day) refuse one that would let a single account's
+daily budget exceed the server-wide one.`;
 
 export class UsageError extends Error {}
 
@@ -217,6 +227,77 @@ function overcommitRefusal(after: Capacity, force: boolean): Report | null {
 	return refused(`Refused: ${problems.join("; ")}. Raise the global cap first, or repeat with --force.`);
 }
 
+// -------------------------------------------------------------- daily caps
+
+/** The per-account and server-wide daily budgets, as the settings and overrides hold them. */
+export interface DailyCaps {
+	writesPerDay: number;
+	uploadBytesPerDay: number;
+	globalWritesPerDay: number;
+	globalUploadBytesPerDay: number;
+	/** Accounts with their own `quota_writes_per_day`. */
+	writeOverrides: { username: string; writesPerDay: number }[];
+}
+
+/**
+ * The daily budgets overcommit when one account alone may spend more than
+ * the whole server's day: its write budget (the default or its own) over
+ * `global_writes_per_day`, or `upload_bytes_per_day` over
+ * `global_upload_bytes_per_day`. In words; empty when it fits.
+ */
+export function dailyOvercommitted(c: DailyCaps): string[] {
+	const problems: string[] = [];
+	if (c.writesPerDay > c.globalWritesPerDay) {
+		problems.push(`writes_per_day ${c.writesPerDay} is over global_writes_per_day ${c.globalWritesPerDay}`);
+	}
+	for (const o of c.writeOverrides.filter((o) => o.writesPerDay > c.globalWritesPerDay)) {
+		problems.push(`${o.username}'s writes per day ${o.writesPerDay} is over global_writes_per_day ${c.globalWritesPerDay}`);
+	}
+	if (c.uploadBytesPerDay > c.globalUploadBytesPerDay) {
+		problems.push(`upload_bytes_per_day ${c.uploadBytesPerDay} is over global_upload_bytes_per_day ${c.globalUploadBytesPerDay}`);
+	}
+	return problems;
+}
+
+/** How many accounts spending their whole default budget use up the server's day, in words. */
+export function dailyShares(c: DailyCaps): string {
+	const share = (perAccount: number, global: number, what: string, globalName: string) => {
+		if (perAccount <= 0) return "";
+		const n = Math.ceil(global / perAccount);
+		return ` ${n === 1 ? "1 account using its" : `${n} accounts using their`} whole ${what} (${perAccount}) use${n === 1 ? "s" : ""} up ${globalName} (${global}) for everyone until UTC midnight.`;
+	};
+	return (
+		share(c.writesPerDay, c.globalWritesPerDay, "writes_per_day", "global_writes_per_day") +
+		share(c.uploadBytesPerDay, c.globalUploadBytesPerDay, "upload_bytes_per_day", "global_upload_bytes_per_day")
+	);
+}
+
+const DAILY_SQL = [
+	"SELECT name, value FROM settings WHERE name IN ('writes_per_day', 'upload_bytes_per_day', 'global_writes_per_day', 'global_upload_bytes_per_day')",
+	"SELECT username, quota_writes_per_day FROM accounts WHERE quota_writes_per_day IS NOT NULL ORDER BY username",
+];
+
+async function dailyCaps(io: AdminIO): Promise<DailyCaps> {
+	const [settingsRows, overrideRows] = await io.sql(DAILY_SQL);
+	const settings = new Map(settingsRows.results.map((r) => [String(r.name), Number(r.value)]));
+	// A missing setting reads as 0, as the Worker reads it (it then refuses).
+	const n = (name: string) => settings.get(name) ?? 0;
+	return {
+		writesPerDay: n("writes_per_day"),
+		uploadBytesPerDay: n("upload_bytes_per_day"),
+		globalWritesPerDay: n("global_writes_per_day"),
+		globalUploadBytesPerDay: n("global_upload_bytes_per_day"),
+		writeOverrides: overrideRows.results.map((r) => ({ username: String(r.username), writesPerDay: Number(r.quota_writes_per_day) })),
+	};
+}
+
+/** Refuses (unless forced) a change after which one account's daily budget exceeds the server's. */
+function dailyRefusal(after: DailyCaps, force: boolean): Report | null {
+	const problems = dailyOvercommitted(after);
+	if (problems.length === 0 || force) return null;
+	return refused(`Refused: ${problems.join("; ")}: one account could use up the server's day. Raise the server-wide cap first, or repeat with --force.`);
+}
+
 // ------------------------------------------------------------ legacy rows
 
 /** One manifest row: [id, rev, deleted, md5digest]. */
@@ -261,19 +342,24 @@ const join = (dir: string, name: string): string => `${dir.replace(/\/+$/, "")}/
 
 // ----------------------------------------------------------------- commands
 
-const SETTING_COMMANDS: Record<string, string> = {
-	"writes-per-day": "writes_per_day",
-	"global-writes-per-day": "global_writes_per_day",
-	"global-upload-bytes-per-day": "global_upload_bytes_per_day",
+/** The daily commands, their settings, and how each changes the daily caps. */
+const SETTING_COMMANDS: Record<string, { setting: string; apply: (c: DailyCaps, n: number) => DailyCaps }> = {
+	"writes-per-day": { setting: "writes_per_day", apply: (c, n) => ({ ...c, writesPerDay: n }) },
+	"upload-bytes-per-day": { setting: "upload_bytes_per_day", apply: (c, n) => ({ ...c, uploadBytesPerDay: n }) },
+	"global-writes-per-day": { setting: "global_writes_per_day", apply: (c, n) => ({ ...c, globalWritesPerDay: n }) },
+	"global-upload-bytes-per-day": { setting: "global_upload_bytes_per_day", apply: (c, n) => ({ ...c, globalUploadBytesPerDay: n }) },
 };
 
 const QUOTA_FLAGS = ["--docs", "--doc-mib", "--files", "--file-mib"];
+/** `quota <username>` also takes the account's own daily write budget. */
+const ACCOUNT_QUOTA_FLAGS = [...QUOTA_FLAGS, "--writes-per-day"];
 
 interface QuotaChange {
 	docs?: number;
 	docBytes?: number;
 	files?: number;
 	fileBytes?: number;
+	writesPerDay?: number;
 }
 
 function quotaChange(flags: Map<string, string | true>): QuotaChange {
@@ -282,18 +368,20 @@ function quotaChange(flags: Map<string, string | true>): QuotaChange {
 	if (flags.has("--doc-mib")) change.docBytes = positive(flag(flags, "--doc-mib"), "--doc-mib", MIB);
 	if (flags.has("--files")) change.files = positive(flag(flags, "--files"), "--files");
 	if (flags.has("--file-mib")) change.fileBytes = positive(flag(flags, "--file-mib"), "--file-mib", MIB);
+	if (flags.has("--writes-per-day")) change.writesPerDay = positive(flag(flags, "--writes-per-day"), "--writes-per-day");
 	return change;
 }
 
 /**
  * Sets an account's quota overrides in raw units (null: back to the
- * default), refusing to overcommit a global cap unless forced. The fixtures'
- * `{admin: "quota"}` steps run this.
+ * default), refusing to overcommit a global cap, or to give it a daily write
+ * budget over the server's, unless forced. The fixtures' `{admin: "quota"}`
+ * steps run this.
  */
 export async function setQuota(
 	io: AdminIO,
 	name: string,
-	change: { docs?: number | null; docBytes?: number | null; files?: number | null; fileBytes?: number | null },
+	change: { docs?: number | null; docBytes?: number | null; files?: number | null; fileBytes?: number | null; writesPerDay?: number | null },
 	force: boolean,
 ): Promise<Report> {
 	const columns: [keyof typeof change, string][] = [
@@ -301,6 +389,7 @@ export async function setQuota(
 		["docBytes", "quota_doc_bytes"],
 		["files", "quota_files"],
 		["fileBytes", "quota_file_bytes"],
+		["writesPerDay", "quota_writes_per_day"],
 	];
 	const sets = columns
 		.filter(([key]) => change[key] !== undefined)
@@ -309,7 +398,7 @@ export async function setQuota(
 			if (value !== null && (!Number.isSafeInteger(value) || (value as number) <= 0)) throw new UsageError(`${column} must be positive.`);
 			return `${column} = ${value === null ? "NULL" : String(value)}`;
 		});
-	if (sets.length === 0) throw new UsageError("Name at least one of --docs, --doc-mib, --files, --file-mib, or --default.");
+	if (sets.length === 0) throw new UsageError("Name at least one of --docs, --doc-mib, --files, --file-mib, --writes-per-day, or --default.");
 	const { capacity: before } = await capacity(io);
 	const target = before.accounts.find((a) => a.username === name);
 	if (!target) return refused(`No account is named ${name}.`);
@@ -327,6 +416,12 @@ export async function setQuota(
 	};
 	const refusal = overcommitRefusal(after, force);
 	if (refusal) return refusal;
+	if (typeof change.writesPerDay === "number") {
+		const daily = await dailyCaps(io);
+		const others = daily.writeOverrides.filter((o) => o.username !== name);
+		const dailyRefused = dailyRefusal({ ...daily, writeOverrides: [...others, { username: name, writesPerDay: change.writesPerDay }] }, force);
+		if (dailyRefused) return dailyRefused;
+	}
 	const [updated] = await io.sql([`UPDATE accounts SET ${sets.join(", ")} WHERE username = ${sqlText(name)} RETURNING id`]);
 	return updated.results.length === 1 ? ok(`Set ${sets.join(", ")} for ${name}.`) : refused(`No account is named ${name}.`);
 }
@@ -414,12 +509,12 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 			return ok(`max_accounts = ${n}.`);
 		}
 		case "quota": {
-			const { positional, flags } = parse(rest, ["--default", "--force"], QUOTA_FLAGS);
+			const { positional, flags } = parse(rest, ["--default", "--force"], ACCOUNT_QUOTA_FLAGS);
 			arity(positional, 1, 1);
 			const user = username(positional[0]);
 			if (flags.has("--default")) {
-				if (QUOTA_FLAGS.some((f) => flags.has(f))) throw new UsageError("--default goes alone.");
-				return setQuota(io, user, { docs: null, docBytes: null, files: null, fileBytes: null }, flags.has("--force"));
+				if (ACCOUNT_QUOTA_FLAGS.some((f) => flags.has(f))) throw new UsageError("--default goes alone.");
+				return setQuota(io, user, { docs: null, docBytes: null, files: null, fileBytes: null, writesPerDay: null }, flags.has("--force"));
 			}
 			return setQuota(io, user, quotaChange(flags), flags.has("--force"));
 		}
@@ -447,25 +542,18 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 			return ok(`Defaults: ${chosen.map(([setting, value]) => `${setting} = ${value}`).join(", ")}.`);
 		}
 		case "writes-per-day":
+		case "upload-bytes-per-day":
 		case "global-writes-per-day":
 		case "global-upload-bytes-per-day": {
-			const { positional } = parse(rest, [], []);
+			const { positional, flags } = parse(rest, ["--force"], []);
 			arity(positional, 1, 1);
-			const setting = SETTING_COMMANDS[name];
+			const { setting, apply } = SETTING_COMMANDS[name];
 			const n = positive(positional[0], name);
-			const [, budgets] = await io.sql([
-				`UPDATE settings SET value = ${sqlText(String(n))} WHERE name = ${sqlText(setting)}`,
-				"SELECT name, value FROM settings WHERE name IN ('writes_per_day', 'global_writes_per_day')",
-			]);
-			const budget = new Map(budgets.results.map((r) => [String(r.name), Number(r.value)]));
-			const perAccount = budget.get("writes_per_day") ?? 0;
-			const global = budget.get("global_writes_per_day") ?? 0;
-			// One account can spend the whole server-wide budget unless writes_per_day sits well below it.
-			const note =
-				name === "global-upload-bytes-per-day" || perAccount === 0
-					? ""
-					: ` ${Math.ceil(global / perAccount)} account${Math.ceil(global / perAccount) === 1 ? "" : "s"} writing their whole writes_per_day (${perAccount}) use up global_writes_per_day (${global}) for everyone until UTC midnight.`;
-			return ok(`${setting} = ${n}.${note}`);
+			const after = apply(await dailyCaps(io), n);
+			const refusal = dailyRefusal(after, flags.has("--force"));
+			if (refusal) return refusal;
+			await io.sql([`UPDATE settings SET value = ${sqlText(String(n))} WHERE name = ${sqlText(setting)}`]);
+			return ok(`${setting} = ${n}.${dailyShares(after)}`);
 		}
 		case "recount":
 			return recount(rest, io, now);
@@ -510,6 +598,8 @@ async function accounts(rest: string[], io: AdminIO, now: number): Promise<Repor
   coalesce(a.quota_docs, d.docs, 0) AS quota_docs, coalesce(a.quota_doc_bytes, d.doc_bytes, 0) AS quota_doc_bytes,
   coalesce(a.quota_files, d.files, 0) AS quota_files, coalesce(a.quota_file_bytes, d.file_bytes, 0) AS quota_file_bytes,
   coalesce((SELECT CASE WHEN window_start = ${today} THEN count ELSE 0 END FROM limits WHERE key = 'writes-account:' || a.id), 0) AS writes_today,
+  coalesce(a.quota_writes_per_day, (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'writes_per_day'), 0) AS writes_per_day,
+  coalesce((SELECT CASE WHEN window_start = ${today} THEN count ELSE 0 END FROM limits WHERE key = 'uploads-account:' || a.id), 0) AS uploads_today,
   (SELECT count(*) FROM sessions s WHERE s.account_id = a.id AND s.revoked_at IS NULL) AS devices,
   (SELECT max(last_seen_at) FROM sessions s WHERE s.account_id = a.id) AS last_seen
   FROM accounts a, defaults d ORDER BY a.created_at, a.username`,
@@ -526,7 +616,8 @@ async function accounts(rest: string[], io: AdminIO, now: number): Promise<Repor
 		`${size(a.doc_bytes)}/${size(a.quota_doc_bytes)}`,
 		`${a.files}/${a.quota_files}`,
 		`${size(a.file_bytes)}/${size(a.quota_file_bytes)}`,
-		String(a.writes_today),
+		`${a.writes_today}/${a.writes_per_day}`,
+		size(a.uploads_today),
 		String(a.devices),
 		time(a.last_seen),
 		a.disabled_at === null ? "active" : `disabled ${date(a.disabled_at)}`,
@@ -538,7 +629,10 @@ async function accounts(rest: string[], io: AdminIO, now: number): Promise<Repor
 	return ok(
 		[
 			accountRows.length > 0
-				? table([["USERNAME", "ID", "CREATED", "DOCS", "DOC BYTES", "FILES", "FILE BYTES", "WRITES TODAY", "DEVICES", "LAST SEEN", "STATUS"], ...accountRows])
+				? table([
+						["USERNAME", "ID", "CREATED", "DOCS", "DOC BYTES", "FILES", "FILE BYTES", "WRITES TODAY", "UPLOADED TODAY", "DEVICES", "LAST SEEN", "STATUS"],
+						...accountRows,
+					])
 				: "No accounts.",
 			"",
 			table([["SETTING", "VALUE"], ...settings.results.map((r) => [String(r.name), String(r.value)])]),

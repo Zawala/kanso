@@ -9,12 +9,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { setQuota } from "../src/accounts";
 import { sha256Hex } from "../src/crypto";
 import { handle } from "../src/index";
-import { UPLOAD_BYTES_PER_DAY } from "../src/limits";
 import { MAX_SEALED_FILE } from "../src/protocol";
 import {
 	type Account,
 	type Client,
 	ORIGIN,
+	SEEDED_SETTINGS,
 	START,
 	accountRow,
 	client,
@@ -318,6 +318,8 @@ describe("examples", () => {
 	});
 
 	it("the uploads-account rule caps one account's upload bytes per UTC day, counted before the body is read", async () => {
+		const UPLOAD_BYTES_PER_DAY = Number(SEEDED_SETTINGS.upload_bytes_per_day);
+		expect(UPLOAD_BYTES_PER_DAY).toBe(1_073_741_824);
 		const key = `uploads-account:${a.creds.accountId}`;
 		const near = (left: number) =>
 			env.DB.prepare("INSERT OR REPLACE INTO limits (key, window_start, count) VALUES (?1, ?2, ?3)").bind(key, START, UPLOAD_BYTES_PER_DAY - left).run();
@@ -359,6 +361,25 @@ describe("examples", () => {
 		expect(await streamed()).toBe(429);
 		await near(MAX_SEALED_FILE + 64);
 		expect(await streamed()).toBe(200);
+
+		// The budget is the upload_bytes_per_day setting, read as each upload counts.
+		await setSetting("upload_bytes_per_day", "200");
+		const later = client(a.token, { now: START + 2 * 86_400_000 });
+		expect((await later.putFile(id, bytes(200))).status).toBe(200);
+		expect((await later.putFile(id, bytes(41))).body.limit).toBe("uploads-account");
+		await setSetting("upload_bytes_per_day", "0");
+		expect((await client(b.token, { now: START + 2 * 86_400_000 }).putFile(id, bytes(41))).body.limit).toBe("uploads-account");
+	});
+
+	it("an account's own quota_writes_per_day overrides writes_per_day for it alone", async () => {
+		await setSetting("writes_per_day", "2");
+		const b = client((await signUp("bob")).token);
+		await env.DB.prepare("UPDATE accounts SET quota_writes_per_day = 4 WHERE id = ?1").bind(a.creds.accountId).run();
+		expect((await alice.push([doc(), doc(), doc(), doc()])).status).toBe(200);
+		expect((await alice.push([doc()])).body.limit).toBe("writes-account");
+		expect((await alice.account()).body.quota.writes_per_day).toBe(4);
+		expect((await b.push([doc(), doc(), doc()])).body.limit).toBe("writes-account");
+		expect((await b.account()).body.quota.writes_per_day).toBe(2);
 	});
 
 	it("the writes-account rule counts documents and uploads per account per UTC day", async () => {

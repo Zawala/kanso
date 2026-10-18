@@ -44,10 +44,10 @@ describe("commands", () => {
 		await env.DB.prepare("INSERT INTO purges (prefix, requested_at) VALUES ('files/', ?1)").bind(START).run();
 		const r = await runAdmin(["accounts"]);
 		expect(r.ok).toBe(true);
-		expect(r.message).toMatch(/^USERNAME +ID +CREATED +DOCS +DOC BYTES +FILES +FILE BYTES +WRITES TODAY +DEVICES +LAST SEEN +STATUS/);
+		expect(r.message).toMatch(/^USERNAME +ID +CREATED +DOCS +DOC BYTES +FILES +FILE BYTES +WRITES TODAY +UPLOADED TODAY +DEVICES +LAST SEEN +STATUS/);
 		const line = r.message.split("\n").find((l) => l.startsWith("alice"))!;
 		expect(line).toContain(alice.creds.accountId);
-		expect(line).toMatch(/1\/50000 +612 B\/100 MiB +0\/10000 +0 B\/500 MiB +1 +1 +\d{4}-\d\d-\d\d \d\d:\d\d +active/);
+		expect(line).toMatch(/1\/50000 +612 B\/100 MiB +0\/10000 +0 B\/500 MiB +1\/20000 +0 B +1 +\d{4}-\d\d-\d\d \d\d:\d\d +active/);
 		expect(r.message).toContain("Accounts: 2 of 50.");
 		expect(r.message).toContain("Pending purges: files/");
 		expect(r.message).toContain("global_doc_bytes");
@@ -55,10 +55,11 @@ describe("commands", () => {
 		for (const secret of [row!.auth_hash, row!.recovery_hash, row!.salt, row!.wrapped_key, alice.token]) expect(r.message).not.toContain(secret);
 	});
 
-	it("settings lists the twelve settings", async () => {
+	it("settings lists the thirteen settings", async () => {
 		const r = await runAdmin(["settings"]);
-		expect(r.message.split("\n")).toHaveLength(13);
+		expect(r.message.split("\n")).toHaveLength(14);
 		expect(r.message).toContain("writes_per_day");
+		expect(r.message).toMatch(/upload_bytes_per_day +1073741824/);
 	});
 
 	it("disable refuses sign-ins and sessions; enable restores them", async () => {
@@ -117,20 +118,51 @@ describe("commands", () => {
 		expect([await setting("quota_docs"), await setting("quota_files")]).toEqual(["7", "8"]);
 		for (const [command, name] of [
 			["writes-per-day", "writes_per_day"],
+			["upload-bytes-per-day", "upload_bytes_per_day"],
 			["global-writes-per-day", "global_writes_per_day"],
 			["global-upload-bytes-per-day", "global_upload_bytes_per_day"],
 		]) {
 			expect((await runAdmin([command, "123"])).ok).toBe(true);
 			expect(await setting(name)).toBe("123");
 		}
-		// The per-account write budget against the server's: how many accounts it takes to use the day up.
+		// The per-account budgets against the server's: how many accounts it takes to use the day up.
 		expect((await runAdmin(["global-writes-per-day", "300000"])).ok).toBe(true);
-		expect((await runAdmin(["writes-per-day", "100000"])).message).toBe(
-			"writes_per_day = 100000. 3 accounts writing their whole writes_per_day (100000) use up global_writes_per_day (300000) for everyone until UTC midnight.",
+		expect((await runAdmin(["global-upload-bytes-per-day", "5000000000"])).ok).toBe(true);
+		expect((await runAdmin(["upload-bytes-per-day", "1073741824"])).ok).toBe(true);
+		expect((await runAdmin(["writes-per-day", "20000"])).message).toBe(
+			"writes_per_day = 20000. 15 accounts using their whole writes_per_day (20000) use up global_writes_per_day (300000) for everyone until UTC midnight. " +
+				"5 accounts using their whole upload_bytes_per_day (1073741824) use up global_upload_bytes_per_day (5000000000) for everyone until UTC midnight.",
 		);
-		expect((await runAdmin(["global-upload-bytes-per-day", "5000000000"])).message).toBe("global_upload_bytes_per_day = 5000000000.");
 		expect((await runAdmin(["max-accounts", "40"])).ok).toBe(true);
 		expect(await setting("max_accounts")).toBe("40");
+	});
+
+	it("quota --writes-per-day raises one account's daily write budget; no single account's budget may exceed the server's", async () => {
+		expect((await runAdmin(["quota", "alice", "--writes-per-day", "50000"])).ok).toBe(true);
+		expect((await accountRow(alice.creds.accountId))!.quota_writes_per_day).toBe(50000);
+		expect((await client(alice.token).account()).body.quota.writes_per_day).toBe(50000);
+		expect((await client(bob.token).account()).body.quota.writes_per_day).toBe(20000);
+		const writes = (await runAdmin(["accounts"])).message.split("\n").find((l) => l.startsWith("alice"))!;
+		expect(writes).toMatch(/ 0\/50000 /);
+
+		// Refused before any change, unless forced: one account must not be able to spend the whole server's day.
+		const over = await runAdmin(["quota", "bob", "--writes-per-day", "300001"]);
+		expect(over.ok).toBe(false);
+		expect(over.message).toContain("bob's writes per day 300001 is over global_writes_per_day 300000");
+		expect((await accountRow(bob.creds.accountId))!.quota_writes_per_day).toBeNull();
+		expect((await runAdmin(["global-writes-per-day", "40000"])).message).toContain("alice's writes per day 50000");
+		expect(await setting("global_writes_per_day")).toBe("300000");
+		expect((await runAdmin(["writes-per-day", "300001"])).ok).toBe(false);
+		expect((await runAdmin(["upload-bytes-per-day", "5000000001"])).ok).toBe(false);
+		expect((await runAdmin(["global-upload-bytes-per-day", "1000"])).message).toContain("upload_bytes_per_day 1073741824 is over");
+		expect(await setting("upload_bytes_per_day")).toBe("1073741824");
+		expect((await runAdmin(["writes-per-day", "300001", "--force"])).ok).toBe(true);
+		expect(await setting("writes_per_day")).toBe("300001");
+
+		expect((await runAdmin(["quota", "alice", "--default"])).ok).toBe(true);
+		expect((await accountRow(alice.creds.accountId))!.quota_writes_per_day).toBeNull();
+		await expect(runAdmin(["default-quota", "--writes-per-day", "5"])).rejects.toThrow(UsageError);
+		await expect(runAdmin(["quota", "alice", "--writes-per-day", "0"])).rejects.toThrow(UsageError);
 	});
 
 	it("recount recomputes the counters from the tables and always moves recounted_at forward", async () => {

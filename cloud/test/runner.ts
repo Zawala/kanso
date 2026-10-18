@@ -105,7 +105,12 @@ export async function runCase(fixture: Fixture, steps: Step[]): Promise<void> {
 			const { io } = testIO();
 			if (step.admin === "quota") {
 				const q = step.quota as Record<string, number | null | undefined>;
-				const report = await setQuota(io, step.username, { docs: q.docs, docBytes: q.doc_bytes, files: q.files, fileBytes: q.file_bytes }, false);
+				const report = await setQuota(
+					io,
+					step.username,
+					{ docs: q.docs, docBytes: q.doc_bytes, files: q.files, fileBytes: q.file_bytes, writesPerDay: q.writes_per_day },
+					false,
+				);
 				expect(report.ok, `${label}: ${report.message}`).toBe(true);
 			} else {
 				const report = await admin([step.admin, step.username], io, fixture.start + t);

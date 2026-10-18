@@ -78,16 +78,17 @@ npm run -s admin -- --local accounts        # the local database (wrangler dev's
 
 | Command | |
 |---|---|
-| `accounts` | Every account's usage against its quotas, writes today, devices, last seen and status; the settings, global sums and pending purges |
+| `accounts` | Every account's usage against its quotas, writes today against its budget, bytes uploaded today, devices, last seen and status; the settings, global sums and pending purges |
 | `settings` | The settings |
 | `signups open` / `signups close` / `signups only <username>` | Open sign-ups, close them, or reserve them for one name |
 | `disable <username>` / `enable <username>` | Refuse, or allow again, the account's sign-ins and sessions |
 | `delete <username> --confirm <username>` | Delete the account's rows and queue its R2 purge |
 | `max-accounts <n> [--force]` | At most n accounts |
-| `quota <username> [--docs N] [--doc-mib N] [--files N] [--file-mib N] [--force]` | Per-account quotas; `quota <username> --default` goes back to the defaults |
+| `quota <username> [--docs N] [--doc-mib N] [--files N] [--file-mib N] [--writes-per-day N] [--force]` | Per-account quotas, including the account's own daily write budget; `quota <username> --default` goes back to the defaults |
 | `default-quota [--docs N] [--doc-mib N] [--files N] [--file-mib N] [--force]` | The default quotas |
-| `writes-per-day <n>` | Documents pushed plus files uploaded, per account per UTC day |
-| `global-writes-per-day <n>` / `global-upload-bytes-per-day <n>` | Server-wide daily caps |
+| `writes-per-day <n> [--force]` | Documents pushed plus files uploaded, per account per UTC day (the default) |
+| `upload-bytes-per-day <n> [--force]` | Uploaded file bytes, per account per UTC day |
+| `global-writes-per-day <n> [--force]` / `global-upload-bytes-per-day <n> [--force]` | Server-wide daily caps |
 | `recount [<username>]` | Recompute the usage counters from the tables |
 | `restored [<username> \| --all]` | After a D1 Time Travel restore: a new epoch, so each Mac re-merges |
 | `legacy-status` | The single-user tables and the `files/` purge |
@@ -95,14 +96,16 @@ npm run -s admin -- --local accounts        # the local database (wrangler dev's
 | `purge-legacy --account <username> --verified R.json` | Drop the single-user tables, queue the `files/` purge and delete `SYNC_TOKEN`, once `R.json` (from `kanso-sync verify --legacy`) proves everything arrived |
 
 **Daily budgets.** Each account may push documents plus upload files up to `writes_per_day`
-(100,000) per UTC day, and upload at most 1 GiB (1,073,741,824 bytes) of file bytes, replacements
-included. The server as a whole stores at most `global_writes_per_day` (300,000) document writes
-and `global_upload_bytes_per_day` (5,000,000,000) upload bytes a day. So three accounts at their
-write budget, or five at their upload budget, use up the server's day for everyone until UTC
-midnight. The defaults leave room for a full re-merge of a library at every quota (about 60,000
-writes and 500 MiB); with accounts you don't trust, lower `writes-per-day` (the command prints how
-many accounts it then takes). The 1 GiB upload budget is fixed in `src/limits.ts` because the
-migration has no setting for it.
+(20,000) per UTC day, and upload at most `upload_bytes_per_day` (1 GiB, 1,073,741,824 bytes) of
+file bytes, refused uploads and replacements included. The server as a whole stores at most
+`global_writes_per_day` (300,000) document writes and `global_upload_bytes_per_day`
+(5,000,000,000) upload bytes a day. So fifteen accounts at their write budget, or five at their
+upload budget, use up the server's day for everyone until UTC midnight; each daily command prints
+that count. Past its budget an account's Macs show "Sync paused" and carry on after UTC midnight.
+A library that needs more in one day (a first upload or a re-merge of a large library) can be given
+its own budget with `quota <username> --writes-per-day N`; the owner does this for their own
+account rather than raising the default. The daily commands refuse, unless given `--force`, a
+value that lets one account's budget exceed the server's.
 
 `max-accounts`, `quota` and `default-quota` refuse a change after which the quotas would promise
 more than a global cap, unless given `--force`. Every value is validated before it reaches SQL.
@@ -131,6 +134,7 @@ scripts/e2e-local.sh
 
 `test/fixtures/` holds cases the Worker and the Rust client's in-memory server must both pass:
 `usernames.json`, `auth.json` and `conformance.json` (protocol v2), and `conformance-v1.json`,
-which only the Rust client still runs. `scripts/e2e-local.sh` starts the Worker under `wrangler
+which this Worker no longer serves: only the Rust rollback test's stand-in for the old Worker
+still runs it. `scripts/e2e-local.sh` starts the Worker under `wrangler
 dev` on a throwaway state directory and runs `cargo test -p kanso-sync --test e2e` against it,
 all in Miniflare with no Cloudflare credentials.

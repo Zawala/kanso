@@ -32,7 +32,7 @@ use crate::wire::{
 
 /// The `settings` rows `cloud/migrations/0002_accounts.sql` seeds, which
 /// [`MemoryServer::new`] starts from, except that its sign-ups are open.
-pub const DEFAULT_SETTINGS: [(&str, &str); 12] = [
+pub const DEFAULT_SETTINGS: [(&str, &str); 13] = [
     ("signup", "closed"),
     ("max_accounts", "50"),
     ("signups_per_day", "5"),
@@ -40,7 +40,8 @@ pub const DEFAULT_SETTINGS: [(&str, &str); 12] = [
     ("quota_doc_bytes", "104857600"),
     ("quota_files", "10000"),
     ("quota_file_bytes", "524288000"),
-    ("writes_per_day", "100000"),
+    ("writes_per_day", "20000"),
+    ("upload_bytes_per_day", "1073741824"),
     ("global_doc_bytes", "6000000000"),
     ("global_file_bytes", "50000000000"),
     ("global_writes_per_day", "300000"),
@@ -92,6 +93,8 @@ pub struct QuotaOverride {
     pub doc_bytes: Option<u64>,
     pub files: Option<u64>,
     pub file_bytes: Option<u64>,
+    /// `quota_writes_per_day`: the account's own `writes-account` budget.
+    pub writes_per_day: Option<u64>,
 }
 
 /// A session row as the server holds it (names stay sealed).
@@ -138,6 +141,7 @@ enum Rule {
     RecoverIp,
     PasswordAccount,
     WritesAccount,
+    UploadsAccount,
 }
 
 impl Rule {
@@ -149,6 +153,7 @@ impl Rule {
             Rule::RecoverIp => "recover-ip",
             Rule::PasswordAccount => "password-account",
             Rule::WritesAccount => "writes-account",
+            Rule::UploadsAccount => "uploads-account",
         }
     }
 
@@ -156,7 +161,7 @@ impl Rule {
         match self {
             Rule::SignupIp | Rule::RecoverIp => HOUR_MS,
             Rule::LoginUser | Rule::LoginIp | Rule::PasswordAccount => QUARTER_HOUR_MS,
-            Rule::WritesAccount => DAY_MS,
+            Rule::WritesAccount | Rule::UploadsAccount => DAY_MS,
         }
     }
 }
@@ -415,6 +420,12 @@ impl ServerState {
             .unwrap_or_else(|| self.setting("quota_file_bytes"))
     }
 
+    fn quota_writes_per_day(&self, a: &Account) -> u64 {
+        a.quota
+            .writes_per_day
+            .unwrap_or_else(|| self.setting("writes_per_day"))
+    }
+
     fn check_kdf(&self, kdf: &WireKdf) -> Result<KdfParams, ApiError> {
         if kdf.alg != "argon2id" || kdf.version != 19 {
             return Err(ApiError::UnsupportedKdf);
@@ -661,9 +672,18 @@ impl ServerState {
         let device = Self::check_device(&r.device)?;
         let auth_hash = sha256_hex(&auth);
 
-        // A retried sign-up whose answer was lost (security re-check 7).
+        // A retried sign-up whose answer was lost (security re-check 7): the
+        // same request again. The auth key alone would make sign-up a
+        // password oracle outside the sign-in limits.
         if let Some(existing) = self.account_by_name(&username)
             && existing.auth_hash == auth_hash
+            && existing.recovery_hash == sha256_hex(&recovery)
+            && existing.id == r.account_id
+            && existing.kdf == kdf
+            && existing.salt == r.salt
+            && existing.wrapped_key == r.wrapped_key
+            && existing.recovery_wrapped_key == r.recovery_wrapped_key
+            && existing.key_id == r.key_id
         {
             if existing.disabled_at.is_some() {
                 return Err(ApiError::AccountDisabled);
@@ -931,7 +951,7 @@ impl ServerState {
                 doc_bytes: self.quota_doc_bytes(a),
                 files: self.quota_files(a),
                 file_bytes: self.quota_file_bytes(a),
-                writes_per_day: self.setting("writes_per_day"),
+                writes_per_day: self.quota_writes_per_day(a),
             },
         })
     }
@@ -1043,7 +1063,12 @@ impl ServerState {
         self.docs.retain(|(account, _), _| *account != id);
         self.files.retain(|(account, _), _| *account != id);
         self.sessions.retain(|s| s.account_id != id);
-        for rule in ["login-user", "password-account", "writes-account"] {
+        for rule in [
+            "login-user",
+            "password-account",
+            "writes-account",
+            "uploads-account",
+        ] {
             self.limits.remove(&format!("{rule}:{id}"));
         }
         self.accounts.remove(&id);
@@ -1186,7 +1211,7 @@ impl ServerState {
             &format!("writes-account:{id}"),
             now,
             r.docs.len() as u64,
-            self.setting("writes_per_day"),
+            self.quota_writes_per_day(&self.accounts[&id]),
         )?;
         self.stats.pushed_docs += r.docs.len();
 
@@ -1401,7 +1426,16 @@ impl ServerState {
             &format!("writes-account:{id}"),
             now,
             1,
-            self.setting("writes_per_day"),
+            self.quota_writes_per_day(&self.accounts[&id]),
+        )?;
+        // The Worker counts Content-Length before it reads the body; a body
+        // over the largest file is refused anyway, so it counts one more.
+        self.count(
+            Rule::UploadsAccount,
+            &format!("uploads-account:{id}"),
+            now,
+            sealed.len().min(MAX_SEALED_FILE + 1) as u64,
+            self.setting("upload_bytes_per_day"),
         )?;
         if sealed.len() > MAX_SEALED_FILE {
             return Err(ApiError::TooLarge);
@@ -1544,7 +1578,11 @@ impl MemoryServer {
         self.set_setting("writes_per_day", &n.to_string());
     }
 
-    /// Sets an account's quota overrides (all four columns). Panics for an
+    pub fn set_upload_bytes_per_day(&self, n: u64) {
+        self.set_setting("upload_bytes_per_day", &n.to_string());
+    }
+
+    /// Sets an account's quota overrides (all five columns). Panics for an
     /// unknown username, as every admin control here does.
     pub fn set_quota(&self, username: &str, quota: QuotaOverride) {
         let mut state = self.server();

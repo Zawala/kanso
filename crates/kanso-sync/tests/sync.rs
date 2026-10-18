@@ -861,6 +861,31 @@ fn a_429_on_a_push_pauses_syncing() {
 }
 
 #[test]
+fn a_429_on_an_upload_pauses_syncing_and_keeps_the_file_pending() {
+    let server = MemoryServer::new();
+    let a = Mac::new(sign_up(&server, "alice", 1));
+    // Under one sealed file: the account's day of upload bytes is used up.
+    server.set_upload_bytes_per_day(1);
+    book(&a.store, "book:b1", "Inbox");
+    file(&a.store, "file:img1", b"bytes");
+    let before = kanso_core::now_ms();
+    let report = a.sync(&server);
+    let until = report.paused_until.expect("paused");
+    assert!(until > before);
+    assert_eq!(report_problem(&report), Some(SyncProblem::Paused { until }));
+    assert_eq!(report.files_up, 0);
+    assert!(report.pending >= 1);
+    assert!(!server_docs(&server, &a.session).contains_key("file:img1"));
+
+    // With room in the day's budget the next sync uploads it.
+    server.set_upload_bytes_per_day(1_073_741_824);
+    let report = a.sync(&server);
+    assert_eq!(report.paused_until, None);
+    assert_eq!((report.files_up, report.pending), (1, 0));
+    assert!(server_docs(&server, &a.session).contains_key("file:img1"));
+}
+
+#[test]
 fn a_cancelled_sync_changes_nothing_and_sends_nothing() {
     let (server, a, b) = two_synced();
     edit_note(&a.store, "note:n1", "newer", Some(300));

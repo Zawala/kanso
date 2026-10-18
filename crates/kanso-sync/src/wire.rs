@@ -464,8 +464,9 @@ pub enum ApiError {
     UnsupportedMediaType,
     /// 429: `retry_after` in seconds; `limit` names the rule (`signup-ip`,
     /// `login-user`, `login-ip`, `recover-ip`, `password-account`,
-    /// `writes-account`, `binding` for the Workers rate-limit binding, and
-    /// the server-wide daily caps `writes-global` and `uploads-global`).
+    /// `writes-account`, `uploads-account`, `binding` for the Workers
+    /// rate-limit binding, and the server-wide daily caps `writes-global`
+    /// and `uploads-global`).
     /// The engine treats any 429 on a push or an upload as a pause.
     #[error("429 rate_limited ({limit}, retry after {retry_after} s)")]
     RateLimited { retry_after: u64, limit: String },

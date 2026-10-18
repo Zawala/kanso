@@ -7,6 +7,7 @@ import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { SEEDED_SETTINGS } from "./helpers";
 
 const db = env.MIGRATION_DB;
 const v1 = () => env.TEST_MIGRATIONS.filter((m) => m.name.startsWith("0001"));
@@ -53,7 +54,7 @@ describe("0002_accounts.sql", () => {
 		await applyD1Migrations(db, env.TEST_MIGRATIONS);
 		const settings = await db.prepare("SELECT name, value FROM settings").all<{ name: string; value: string }>();
 		expect(Object.fromEntries(settings.results.map((r) => [r.name, r.value]))).toMatchObject({ signup: "closed", max_accounts: "50" });
-		expect(settings.results).toHaveLength(12);
+		expect(Object.fromEntries(settings.results.map((r) => [r.name, r.value]))).toEqual(SEEDED_SETTINGS);
 		const daily = await db.prepare("SELECT name, day, count FROM daily ORDER BY name").all();
 		expect(daily.results).toEqual([
 			{ name: "signups", day: 0, count: 0 },

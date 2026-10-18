@@ -197,6 +197,7 @@ fn check_fixture(name: &str) -> usize {
                             "password-account",
                             "writes-account",
                             "writes-global",
+                            "uploads-account",
                             "uploads-global"
                         ]
                         .contains(&limit.as_str()),

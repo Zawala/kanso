@@ -20,7 +20,8 @@ INSERT INTO settings (name, value) VALUES
     ('quota_doc_bytes', '104857600'),
     ('quota_files', '10000'),
     ('quota_file_bytes', '524288000'),
-    ('writes_per_day', '100000'),
+    ('writes_per_day', '20000'),
+    ('upload_bytes_per_day', '1073741824'),
     ('global_doc_bytes', '6000000000'),
     ('global_file_bytes', '50000000000'),
     ('global_writes_per_day', '300000'),
@@ -65,8 +66,9 @@ BEGIN SELECT RAISE(ABORT, 'daily_required'); END;
 
 -- `docs` counts live documents; `doc_bytes` is the sum of length(sealed) + 512 over all of
 -- the account's rows, tombstones included; `files` and `file_bytes` count account_files rows
--- and their size + 1024. NULL quotas use `defaults`. `recounted_at` changes only in the admin
--- recount, which the quota triggers exempt.
+-- and their size + 1024. NULL quotas use `defaults`; a NULL `quota_writes_per_day` uses the
+-- `writes_per_day` setting (the Worker reads it; no trigger does). `recounted_at` changes
+-- only in the admin recount, which the quota triggers exempt.
 CREATE TABLE accounts (
     id TEXT PRIMARY KEY NOT NULL
         CHECK (length(id) = 34 AND substr(id, 1, 2) = 'a_' AND substr(id, 3) NOT GLOB '*[^0-9a-f]*'),
@@ -93,6 +95,7 @@ CREATE TABLE accounts (
     quota_doc_bytes INTEGER CHECK (quota_doc_bytes > 0),
     quota_files INTEGER CHECK (quota_files > 0),
     quota_file_bytes INTEGER CHECK (quota_file_bytes > 0),
+    quota_writes_per_day INTEGER CHECK (quota_writes_per_day > 0),
     recounted_at INTEGER,
     created_at INTEGER NOT NULL,
     disabled_at INTEGER
