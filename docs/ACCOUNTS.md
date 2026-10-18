@@ -3,7 +3,8 @@
 Status: implementation spec, revision 2 (2026-10-18), after one plan review and one security
 review. It freezes when step 1 of the build order merges. From then on, changing a frozen file needs
 approval from every builder that consumes it (see "Build order"). It replaces the single
-shared-token sync in [PLAN.md](PLAN.md) › Sync.
+shared-token sync in [PLAN.md](PLAN.md) › Sync. Step 1 applied a security re-check while freezing the
+contract; its decisions are listed under "Build order" › "Contract notes".
 
 Kanso's sync moves from one library behind one shared secret to accounts. Anyone with the app can
 create an account on a Kanso sync Worker, by default the owner's. Each account's library is
@@ -91,12 +92,12 @@ Two places go beyond the reviews:
 | Topic | Decision |
 |---|---|
 | Sign-up | Open to anyone with the app, once the owner opens it; the migration seeds it closed. A `signup` setting (`open`, `closed`, or `only:<username>`), `max_accounts` and `signups_per_day` are enforced by D1 triggers. No CAPTCHA. |
-| Abuse controls | A write-free Workers rate-limit binding in front, then fixed-window counters in D1 (sign-up per IP; sign-ins per username and per IP; recovery per IP; password checks per account; writes per account per day). Per-account quotas on live documents, document bytes, files and file bytes, plus global caps, all enforced by triggers. |
+| Abuse controls | A write-free Workers rate-limit binding in front, then fixed-window counters in D1 (sign-up per IP; sign-ins per account and per IP; recovery per IP; password checks per account; writes per account per day). Per-account quotas on live documents, document bytes, files and file bytes, plus global caps and server-wide daily caps on sign-ups, document writes and upload bytes, all enforced by triggers that fail closed. |
 | Identifier | A username: ASCII, case-folded, 3–32 characters. There is no email anywhere. |
 | Keys | Argon2id(password, salt bound to the server's origin and the username) → HKDF splits it into an auth key (sent) and a key-encryption key (never leaves). A random data key encrypts everything. It is wrapped by the password KEK and, separately, by a recovery key that rotates on use. |
 | Server secrets | The server keeps SHA-256(auth key) and compares in constant time. It hands out a wrapped data key only after the matching proof. |
 | Content | Documents, files and device names are sealed with XChaCha20-Poly1305. The associated data binds the account, document, revision and deleted flag. Wire IDs and revisions are keyed hashes, and revision generations only grow. |
-| Sessions | One per device; device IDs are per account. Tokens are stored hashed and expire after 180 days unseen. At most 10 active devices; signing in on an 11th signs out the least recently seen. Revoked sessions are kept 90 days to explain 401s and to recognise returning devices. |
+| Sessions | One per device; device IDs are per account. Tokens are stored hashed and expire after 180 days unseen. At most 10 active devices; signing in on an 11th signs out the least recently seen. Revoked sessions are kept 90 days to explain 401s and to recognise returning devices, which prove themselves with a per-account device proof. |
 | Mac storage | The Keychain holds the session token, the data key, any pending logouts, and the recovery key until the user confirms they saved it. The Mac never stores the password, master key or KEKs. |
 | Server choice | The owner's Worker is compiled in as the default. "Use a different server…" points at another deployment. Accounts are bound to their server's origin. |
 | Signing out | Keychain items go (a logout is retried until the server accepts it). Local notes and the library's link to the account stay. |
@@ -112,8 +113,8 @@ one library behind `SYNC_TOKEN`. D1 holds plaintext `docs(id, rev, seq, deleted,
 updated_at)` and `counter`, and R2 holds bytes under `files/<id>`. The client (`kanso-sync`) runs
 `sync_once`: it pulls after the cursor `sync.last_seq` in `meta`, then pushes every doc whose `rev
 != synced_rev` with `base_rev = synced_rev`. Conflicts resolve by `updatedAt`, with the loser kept
-in `revisions`. `MemoryRemote` mirrors the Worker, and `cloud/test/fixtures/conformance.json` holds
-cases both pass.
+in `revisions`. `MemoryRemote` mirrors the Worker, and `cloud/test/fixtures/conformance.json` (renamed
+`conformance-v1.json` in step 1) holds cases both pass.
 
 Branch `claude/vigorous-stonebraker-0ea41a` (commit `b4e2733`) added per-user isolation. It is not
 merged: its migration drops the plaintext tables. The builders copy parts of it with `git checkout
@@ -141,7 +142,8 @@ The server sees:
   server time of every write, and the order of writes.
 - **Activity:** counts per kind and usage totals, which documents are written together, and when the account is active.
 - **Files:** each one's opaque ID, its ciphertext size (the file size plus 41 bytes) and upload times.
-- **Devices:** per-account device IDs, which can't be linked across accounts. Sign-in and last-seen
+- **Devices:** per-account device IDs, which can't be linked across accounts, and a hash of each
+  device's proof. Sign-in and last-seen
   times, the latter to the hour. How many devices there are, and why each was signed out. Not their
   names: those are sealed.
 - **Network:** IP addresses, times and the `kanso-sync/<version>` user agent, in Cloudflare's own
@@ -161,7 +163,8 @@ revisions; the password; the recovery key; or the data key.
 ### Encodings
 
 - Binary values in JSON and headers are unpadded base64url (RFC 4648 §5), except hashes, which are lowercase hex.
-- The Worker decodes base64url only for 32-byte proofs (auth keys, recovery auth keys). It rejects
+- The Worker decodes base64url only for 32-byte proofs (auth keys, recovery auth keys, device
+  proofs). It rejects
   input of the wrong length, or non-canonical input (where re-encoding doesn't reproduce it), with
   400 `bad_request`.
 - Fixed lengths: 16 bytes → 22 characters, 32 → 43, 73 → 98.
@@ -223,8 +226,10 @@ Every secret type wraps `Zeroizing` and has a redacted `Debug`.
 `wrapped = 0x01 || nonce(24) || XChaCha20-Poly1305(key, nonce, aad, data_key)`. That is 73 bytes,
 or 98 base64url characters.
 
-- **AAD.** `"kanso-wrap" || 0x01 || purpose`. The purpose byte is `0x50` (`P`) for the password wrap
-  and `0x52` (`R`) for the recovery wrap. Each wrap opens only under its own KEK.
+- **AAD.** `"kanso-wrap" || 0x01 || purpose || lp(account_id)`. The purpose byte is `0x50` (`P`) for
+  the password wrap and `0x52` (`R`) for the recovery wrap. Each wrap opens only under its own KEK
+  and for its own account, so a server can't pass one account's wrap off as another's (security
+  re-check 3).
 - **Rewrapping.** A password change rewraps the same data key, so notes aren't re-encrypted.
   Recovery unwraps with `recovery_kek`, then wraps under the new password's KEK and under a new
   recovery key.
@@ -330,6 +335,12 @@ The server stores and returns it opaquely. A device that has no name yet (just s
     `ioreg -rd1 -c IOPlatformExpertDevice`. If `ioreg` gives no UUID, the value is empty and the check below
     is skipped.
 - **The device ID for an account** is `d_ + hex(HMAC-SHA256(device_secret, account_id)[0..16])`, so the server can't link one Mac's sessions across accounts.
+- **The device proof for an account** is `HKDF(ikm device_secret, info "kanso/v1/device-proof" ||
+  lp(origin) || lp(account_id))`, 32 bytes, sent as 43 base64url characters as `proof` in every
+  `device` object (sign-up, sign-in, recovery). The server keeps only its SHA-256 in the session row
+  (`proof_hash`). A sign-in skips `login-user` only when the proof matches the row of a device the
+  account knows, so knowing a device ID (every Mac of the account sees them) isn't enough (security
+  re-check 5).
 - **A copied library.** When the stored `sync.v2.hardware` differs from this Mac's, the library was
   copied (Migration Assistant, restoring a backup to new hardware). The library ID and device secret
   are regenerated, which leaves the copy signed out: its Keychain item names change. Its binding and
@@ -344,14 +355,17 @@ The server stores and returns it opaquely. A device that has no name yet (just s
   the wrapped data key in the same row allows the same offline password guessing, and the pepper's
   only effect would be locking everyone out if it were lost. The Worker compares the 32-byte
   digests with `crypto.subtle.timingSafeEqual`. Unknown usernames still cost one hash.
-- **Session tokens** are 256-bit random values, stored as SHA-256 hex.
+- **Session tokens** are 256-bit random values, stored as SHA-256 hex. **Device proofs** are stored
+  the same way, as `proof_hash`.
 - **`AUTH_PEPPER`** is a 32-byte base64url secret, used only through HKDF subkeys (WebCrypto `deriveBits`):
   - **Fake prelogin answers.** `fake_key = HKDF(pepper, info "kanso/v1/fake")`. The fake salt is
     `HMAC(fake_key, "salt" || 0x00 || username)[0..16]`. The fake account ID is `a_` +
     `hex(HMAC(fake_key, "account" || 0x00 || username)[0..16])`.
-  - **Rate-limit keys.** `limit_key = HKDF(pepper, info "kanso/v1/limit")`. For IP and username
-    subjects the key is `rule + ":" + hex(HMAC(limit_key, rule || 0x00 || subject)[0..16])`. For
-    account subjects it is `rule + ":" + account_id`, which isn't secret, so the admin can read it.
+  - **Rate-limit keys.** `limit_key = HKDF(pepper, info "kanso/v1/limit")`. For IP subjects the key
+    is `rule + ":" + hex(HMAC(limit_key, rule || 0x00 || subject)[0..16])`. For account subjects it
+    is `rule + ":" + account_id`, which isn't secret, so the admin can read it. `login-user` uses the
+    account ID of an existing username, and one shared key, `login-user:unknown`, for every name
+    without an account.
 - **A missing or malformed pepper** answers 503 `misconfigured` on the routes that use it (health,
   prelogin, sign-up, login, recovery). Session routes keep working.
 
@@ -396,7 +410,8 @@ primitives.
 ### Conventions
 
 - **Base URL.** The server URL (default `https://kanso-sync.imngonii.workers.dev`), checked by
-  `check_endpoint`: https, or http to loopback only.
+  `check_endpoint`: https, or http to loopback only. A host ending in a dot is refused, since it would
+  give the same server a second origin.
 - **Browser requests (M7).** Any request with an `Origin` header gets 403 `forbidden_origin`,
   checked first; the native client never sends one. Requests with a body must have the right
   `Content-Type`, or they get 415 `unsupported_media_type`: `application/json` (with an optional
@@ -438,7 +453,7 @@ primitives.
 | 413 | `too_large` | | More than 200 documents, a push body over 4 MiB, sealed over 1,900,000 characters, a file over 10,485,801 bytes, an auth body over 8 KiB |
 | 413 | `quota_exceeded` | `quota`: `docs`, `doc_bytes`, `files`, `file_bytes` or `server`; `used` (usage before this request); `limit` | When several apply, the first in that order |
 | 415 | `unsupported_media_type` | | Wrong `Content-Type` |
-| 429 | `rate_limited` | `retry_after` (seconds), `Retry-After` header, `limit`: the rule name | |
+| 429 | `rate_limited` | `retry_after` (seconds to the end of the window, rounded up), `Retry-After` header, `limit`: the rule name, or `writes-global` or `uploads-global` | A rate-limit rule, or a server-wide daily cap |
 | 500 | `internal` | | |
 | 503 | `misconfigured` | | `AUTH_PEPPER` missing or malformed |
 
@@ -462,21 +477,31 @@ primitives.
   a push). The upsert runs before credentials are checked or any work is done. If the returned
   count is over the maximum, the request is refused with 429, so parallel requests can't pass
   together.
-- **IP groups.** IPv4 counts per address. IPv6 counts per /56, except sign-up, which counts per /48.
-  The value comes from `CF-Connecting-IP`; `unknown` stands in when it's absent (local dev).
+- **IP groups.** IPv4 counts per address. In D1, IPv6 counts per /56, except sign-up, which counts
+  per /48. The binding keys IPv6 by /48. The value comes from `CF-Connecting-IP`; `unknown` stands in
+  when it's absent (local dev).
+- **Expiry.** A rule's rows are deleted once their window has ended (by the cron; the counting
+  upsert also overwrites a stale window).
 
 | Rule | Subject | Window | Max | Counts |
 |---|---|---|---|---|
 | `signup-ip` | IP group (/48) | 1 h | 10 | Every sign-up request |
-| `login-user` | username | 15 min | 10 | Every sign-in, unless its device ID has a session row (active, or revoked within 90 days) for that account (M8) |
+| `login-user` | account ID; one shared row for names without an account | 15 min | 10 | Every sign-in, unless its device ID has a session row (active, or revoked within 90 days) for that account and SHA-256 of the request's device proof equals that row's `proof_hash` (M8, security re-check 5) |
 | `login-ip` | IP group | 15 min | 30 | Every sign-in |
 | `recover-ip` | IP group | 1 h | 10 | Every `recover/start` and `recover/finish` |
 | `password-account` | account ID | 15 min | 5 | Every current-password check (password change, new recovery key, delete) |
 | `writes-account` | account ID | 1 day | `settings.writes_per_day` | Documents in each push, plus 1 per file upload |
 
 There is no per-username recovery rule, so nobody can lock someone else out of recovery (M8). A
-sign-up past `signups_per_day` (global, counted by trigger) gets 403 `signup_closed` with reason
-`busy`.
+sign-up past `signups_per_day` (server-wide per UTC day, counted by a trigger in `daily`; deleting
+an account doesn't give one back) gets 403 `signup_closed` with reason `busy`. Two more server-wide
+daily caps are counted by triggers in `daily`, not here: stored document writes
+(`global_writes_per_day`) and uploaded file bytes (`global_upload_bytes_per_day`). Past either, a
+push or upload gets 429 with `limit` `writes-global` or `uploads-global` and `retry_after` up to the
+next UTC midnight (security re-check 2).
+
+Login keys `login-user` by account, so attempts on many unknown names share one row. That tells a
+prober whether a name exists, which sign-up's `username_taken` already does.
 
 **Floods.** A `workers.dev` address can't have WAF rules. Surviving a real flood needs a custom
 domain with a Cloudflare WAF rate-limiting rule in front of the Worker. Accounts are bound to their
@@ -510,13 +535,14 @@ Shared shapes:
 
 ```json
 "kdf":    {"alg": "argon2id", "version": 19, "m_kib": 1048576, "t": 3, "p": 4}
-"device": {"id": "d_<32 hex>", "sealed_name": "<55–400 base64url>" | null}
+"device": {"id": "d_<32 hex>", "sealed_name": "<55–400 base64url>" | null, "proof": "<43>"}
 ```
 
 #### GET /v2/health
 
 200 `{"ok": true, "protocol": 2, "signup": "open" | "closed" | "full"}`. A setting of
-`only:<name>` reports `closed`. 503 `misconfigured` without a pepper.
+`only:<name>` reports `closed`; `full` means the switch is open and `max_accounts` is reached. The
+daily cap isn't reported. 503 `misconfigured` without a pepper.
 
 #### POST /v2/auth/prelogin
 
@@ -538,19 +564,23 @@ Steps:
 
 1. Count `signup-ip`.
 2. Validate the body.
-3. Insert the account and the session in one batch. Triggers refuse it when sign-ups are closed,
-   the server is full, or the day's limit is reached (403 `signup_closed` with `closed`, `full` or
-   `busy`). `UNIQUE` failures give 409 `username_taken` or `account_id_taken`. The Worker generates
-   the epoch.
+3. If an account with this username exists and its `auth_hash` equals SHA-256 of `auth_key`, this
+   sign-up already happened and its answer was lost: upsert this device's session and answer 201
+   with that account's ID, username and epoch and the new token, whatever the sign-up settings
+   say. It doesn't count towards `signups_per_day`. A disabled account gets 403 `account_disabled`.
+4. Otherwise insert the account and the session in one batch. Triggers refuse it when sign-ups are
+   closed, the server is full, or the day's limit is reached (403 `signup_closed` with `closed`,
+   `full` or `busy`), before any `UNIQUE` check. `UNIQUE` failures give 409 `account_id_taken`
+   (checked first) or `username_taken`. The Worker generates the epoch.
 
-Retrying: if the response is lost and a retry gets 409 `username_taken`, the client signs in with
-the same `auth_key`. If that works and the unwrapped data key equals the one it generated, the
-sign-up succeeded.
+Retrying (security re-check 7): after a lost response the client sends the same request again (the
+same account ID, salt and keys) and gets 201 for the account it created; it checks that the
+answer's `account_id` is its own. A 409 `username_taken` means someone else holds the name.
 
 #### POST /v2/auth/login
 
-Request `{"username", "auth_key", "device": {"id"}}` (no name yet: the client doesn't hold the data
-key). 200:
+Request `{"username", "auth_key", "device": {"id", "proof"}}` (no name yet: the client doesn't hold
+the data key). 200:
 
 ```json
 {"account_id", "username", "token", "wrapped_key", "key_id", "epoch",
@@ -559,13 +589,16 @@ key). 200:
 
 Steps:
 
-1. Count `login-ip`, and `login-user` unless the device is known.
+1. Count `login-ip`, and `login-user` unless the device is known: its ID has a session row for the
+   account (active, or revoked within 90 days) whose `proof_hash` is SHA-256 of `device.proof`.
 2. Check the credentials: 401 `invalid_credentials` if wrong.
 3. Check that the account is enabled: 403 if disabled.
 4. One batch:
    1. If 10 other sessions are active, revoke the one with the oldest `last_seen_at` (`evicted`).
-   2. Upsert this device's session as active, with a new token hash and `sealed_name` kept from its
-      earlier row, if it has one.
+   2. Upsert this device's session as active, with a new token hash, the proof's hash, and
+      `sealed_name` kept from its earlier row, if it has one.
+   3. Delete the account's revoked rows beyond the 90 most recently revoked, so sign-ins can't
+      grow `sessions` without bound.
 
 Because it's one batch, concurrent sign-ins can't exceed 10 active devices. After unwrapping, the
 client sends `PUT /v2/account/device` with its sealed name.
@@ -595,6 +628,12 @@ Counts `recover-ip` and checks `recovery_hash`. One batch then:
 Retrying: if the old recovery hash no longer matches, but the hash of `recovery_auth_key_new` equals
 the stored recovery hash and the hash of `auth_key` equals `auth_hash`, the change is already in
 place, and the Worker only upserts the session.
+
+Credential updates are compare-and-swap: here, in password changes and in new recovery keys, the
+`UPDATE accounts` carries `WHERE` the hash the Worker just checked (`recovery_hash` here,
+`auth_hash` in the others), and counts as done only if it changed the row. Of two concurrent
+changes one wins; the other gets 401 `invalid_credentials`, or the retry answer when it asked for
+the same values.
 
 #### POST /v2/auth/logout
 
@@ -643,8 +682,9 @@ normalizes to the account's. One batch then:
 5. Delete the `accounts` row.
 6. Insert `purges('accounts/<id>/')`.
 
-Then up to 20 purge rounds inline. Retrying: a retry after a lost response gets 401, which the
-client treats the same as success.
+Then up to 20 purge rounds inline. Retrying: a retry after a lost response gets 401 `unknown` (the
+session row is gone), which the client treats as success. Any other 401 reason means the session
+ended before the deletion, so the client reports that instead.
 
 #### PUT /v2/account/device, GET /v2/account/devices, DELETE /v2/account/devices/<device_id>
 
@@ -653,7 +693,7 @@ client treats the same as success.
   active sessions only, most recently seen first.
 - **DELETE** runs `UPDATE sessions SET revoked_at = ?3, revoked_reason = 'revoked' WHERE account_id
   = ?1 AND device_id = ?2 AND revoked_at IS NULL`. It answers 204, or 404 when no row changes, or
-  400 for a malformed ID. Deleting the current device is a logout.
+  400 for a malformed ID. Deleting the current device is a logout (reason `signed_out`).
 
 #### POST /v2/push
 
@@ -678,7 +718,9 @@ Semantics are v1's, scoped to the account: a document is accepted iff its `base_
 account's current revision of it, or the account has none and `base_rev` is null. Documents apply
 in order. The client sends at most 200 documents and 4 MiB of body per push. Steps:
 
-1. Count `writes-account` by the number of documents. Over the day's budget → 429.
+1. Validate the body (400, or 413 for size); an empty `docs` answers 200 `{"results": []}` and
+   counts nothing. Then count `writes-account` by the number of documents. Over the day's budget →
+   429. The sealed alphabet is checked only by the `CHECK`, after counting.
 2. One batch, three statements per document, as in v1 and b4e2733, with `ROW_COST = 512`:
 
 ```sql
@@ -704,7 +746,9 @@ WRITE   = INSERT INTO account_docs (account_id, id, rev, seq, deleted, sealed, u
    (or, at sign-up, `signup_closed:<reason>`) text in D1's error message. It then reads the
    account's usage and answers 413
    `quota_exceeded` with `used` and `limit`. Shrinking writes always pass, so an account over quota
-   can still delete. There is no check-then-act anywhere (H1).
+   can still delete. There is no check-then-act anywhere (H1). Every stored write (new or updated)
+   also counts towards `global_writes_per_day`; past it a trigger raises
+   `rate_limited:writes-global`, the batch rolls back, and the answer is 429 (security re-check 2).
 3. **File tombstones.** For accepted file tombstones, delete their R2 objects (one call). Then one
    batch: subtract their `account_files` sizes (plus 1,024 each) and count from the account, and
    delete those rows.
@@ -721,7 +765,8 @@ feed, the echo matches `synced_rev`, and the store marks it synced.
  "head_seq": n, "epoch": "<16 hex>", "key_id": "<16 hex>"}
 ```
 
-- **Parameters.** `limit` defaults to 100 (maximum 500); `since` defaults to 0.
+- **Parameters.** `limit` defaults to 100 and must be 1–500; `since` defaults to 0 and must not be
+  negative. Anything else, a non-integer included, is 400.
 - **Two reads keep the page small.** First the sequence numbers and lengths. Then the rows that fit
   in 8 MiB of sealed text, always at least one.
 - **`more`** is true when that prefix was cut, or when the first read returned `limit` rows.
@@ -735,7 +780,7 @@ PUT takes the sealed bytes with `Content-Type: application/octet-stream`, `Conte
 `x-kanso-sha256: <64 lowercase hex>`. The client always sends the hash; anything but 64 lowercase
 hex is 400. Steps:
 
-1. Count `writes-account` by 1.
+1. Check the path's wire ID and the headers (400 or 415). Then count `writes-account` by 1.
 2. Read the body: under 41 bytes is 400; over 10,485,801 bytes is 413.
 3. Hash it with `crypto.subtle.digest("SHA-256")` and compare: 400 `checksum_mismatch` if different.
 4. One batch:
@@ -743,7 +788,9 @@ hex is 400. Steps:
    2. Update `accounts`: `files` grows by `NOT EXISTS(row)`, and `file_bytes` by `size + 1024 −
       coalesce(old size + 1024, 0)`, computed in SQL. The statement must affect the account row;
       if it doesn't, the account is gone, and the answer is 401.
-   3. Upsert `account_files`.
+   3. Upsert `account_files` with `uploaded_at` = now. A trigger counts the size towards
+      `global_upload_bytes_per_day`, replacements included, and refuses past it with
+      `rate_limited:uploads-global` (429; security re-check 2).
 
    Triggers refuse growth past quotas with 413.
 5. `FILES.put(key, body, {sha256})`. If R2 fails, a compensating batch restores the old row and
@@ -753,7 +800,9 @@ hex is 400. Steps:
 Two concurrent uploads of the same ID can leave the counter off by their size difference. `recount`
 repairs it. The engine never uploads one file twice at once.
 
-GET answers 200 with the bytes (`application/octet-stream`, `Content-Length`), or 404.
+GET answers 200 with the bytes (`application/octet-stream`, `Content-Length`) only when the account
+has an `account_files` row for the ID, and 404 otherwise, even if R2 still holds an object (security
+re-check 8). The cron reconciles the two (below).
 
 ## Storage
 
@@ -770,6 +819,8 @@ step 1 applies this file with both `wrangler d1 migrations apply --local` and vi
 -- single-user tables `docs` and `counter` stay as they are until the owner runs
 -- `npm run -s admin -- purge-legacy` with a verified manifest. Quotas, caps and the
 -- sign-up switch are enforced here, so concurrent requests can't race past them.
+-- Every setting fails closed: a missing value refuses (coalesce to 0 or 'closed'), and
+-- rows of `settings` and `daily` can't be deleted or renamed.
 
 CREATE TABLE settings (
     name TEXT PRIMARY KEY NOT NULL,
@@ -788,9 +839,18 @@ INSERT INTO settings (name, value) VALUES
     ('quota_file_bytes', '524288000'),
     ('writes_per_day', '100000'),
     ('global_doc_bytes', '6000000000'),
-    ('global_file_bytes', '50000000000');
+    ('global_file_bytes', '50000000000'),
+    ('global_writes_per_day', '300000'),
+    ('global_upload_bytes_per_day', '5000000000');
 
--- The numeric settings as one row, for the triggers.
+CREATE TRIGGER settings_keep BEFORE DELETE ON settings
+BEGIN SELECT RAISE(ABORT, 'settings_required'); END;
+
+CREATE TRIGGER settings_names_fixed BEFORE UPDATE OF name ON settings
+BEGIN SELECT RAISE(ABORT, 'settings_required'); END;
+
+-- The numeric settings as one row, for the triggers. A missing setting reads as NULL,
+-- which every trigger turns into a refusal.
 CREATE VIEW defaults AS SELECT
     (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'max_accounts') AS max_accounts,
     (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'signups_per_day') AS signups_per_day,
@@ -799,7 +859,26 @@ CREATE VIEW defaults AS SELECT
     (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'quota_files') AS files,
     (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'quota_file_bytes') AS file_bytes,
     (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'global_doc_bytes') AS global_doc_bytes,
-    (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'global_file_bytes') AS global_file_bytes;
+    (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'global_file_bytes') AS global_file_bytes,
+    (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'global_writes_per_day') AS global_writes_per_day,
+    (SELECT CAST(value AS INTEGER) FROM settings WHERE name = 'global_upload_bytes_per_day')
+        AS global_upload_bytes_per_day;
+
+-- Server-wide counters for one UTC day (`day` = floor(ms / 86400000)): accounts created,
+-- documents stored and file bytes uploaded. Only triggers write them, and deleting an
+-- account doesn't lower them. A write dated before `day` counts towards `day`.
+CREATE TABLE daily (
+    name TEXT PRIMARY KEY NOT NULL CHECK (name IN ('signups', 'writes', 'upload_bytes')),
+    day INTEGER NOT NULL CHECK (day >= 0),
+    count INTEGER NOT NULL CHECK (count >= 0)
+);
+INSERT INTO daily (name, day, count) VALUES ('signups', 0, 0), ('writes', 0, 0), ('upload_bytes', 0, 0);
+
+CREATE TRIGGER daily_keep BEFORE DELETE ON daily
+BEGIN SELECT RAISE(ABORT, 'daily_required'); END;
+
+CREATE TRIGGER daily_names_fixed BEFORE UPDATE OF name ON daily
+BEGIN SELECT RAISE(ABORT, 'daily_required'); END;
 
 -- `docs` counts live documents; `doc_bytes` is the sum of length(sealed) + 512 over all of
 -- the account's rows, tombstones included; `files` and `file_bytes` count account_files rows
@@ -838,70 +917,81 @@ CREATE TABLE accounts (
 CREATE INDEX accounts_created ON accounts (created_at);
 
 -- Sign-ups: the switch (or a reservation for one name), then max_accounts, then the daily
--- cap. The WHEN clauses exclude each other, so one refusal names one reason.
+-- cap, counted in `daily`. The WHEN clauses exclude each other, so one refusal names one
+-- reason.
 CREATE TRIGGER signup_closed BEFORE INSERT ON accounts
-WHEN (SELECT value FROM settings WHERE name = 'signup') NOT IN ('open', 'only:' || NEW.username)
+WHEN coalesce((SELECT value FROM settings WHERE name = 'signup'), 'closed') NOT IN ('open', 'only:' || NEW.username)
 BEGIN SELECT RAISE(ABORT, 'signup_closed:closed'); END;
 
 CREATE TRIGGER signup_full BEFORE INSERT ON accounts
-WHEN (SELECT value FROM settings WHERE name = 'signup') IN ('open', 'only:' || NEW.username)
- AND (SELECT count(*) FROM accounts) >= (SELECT max_accounts FROM defaults)
+WHEN coalesce((SELECT value FROM settings WHERE name = 'signup'), 'closed') IN ('open', 'only:' || NEW.username)
+ AND (SELECT count(*) FROM accounts) >= coalesce((SELECT max_accounts FROM defaults), 0)
 BEGIN SELECT RAISE(ABORT, 'signup_closed:full'); END;
 
 CREATE TRIGGER signup_busy BEFORE INSERT ON accounts
-WHEN (SELECT value FROM settings WHERE name = 'signup') IN ('open', 'only:' || NEW.username)
- AND (SELECT count(*) FROM accounts) < (SELECT max_accounts FROM defaults)
- AND (SELECT count(*) FROM accounts WHERE created_at > NEW.created_at - 86400000)
-     >= (SELECT signups_per_day FROM defaults)
+WHEN coalesce((SELECT value FROM settings WHERE name = 'signup'), 'closed') IN ('open', 'only:' || NEW.username)
+ AND (SELECT count(*) FROM accounts) < coalesce((SELECT max_accounts FROM defaults), 0)
+ AND coalesce((SELECT CASE WHEN day >= NEW.created_at / 86400000 THEN count ELSE 0 END
+               FROM daily WHERE name = 'signups'), 9223372036854775807)
+     >= coalesce((SELECT signups_per_day FROM defaults), 0)
 BEGIN SELECT RAISE(ABORT, 'signup_closed:busy'); END;
+
+CREATE TRIGGER signup_count AFTER INSERT ON accounts
+BEGIN
+    UPDATE daily SET count = CASE WHEN day >= NEW.created_at / 86400000 THEN count + 1 ELSE 1 END,
+                     day = max(day, NEW.created_at / 86400000)
+    WHERE name = 'signups';
+END;
 
 -- Quotas only stop growth. One refusal names one quota, in the order docs, doc_bytes,
 -- server (global document bytes); files, file_bytes, server (global file bytes).
 CREATE TRIGGER quota_docs BEFORE UPDATE OF docs ON accounts
 WHEN NEW.recounted_at IS OLD.recounted_at AND NEW.docs > OLD.docs
- AND NEW.docs > coalesce(NEW.quota_docs, (SELECT docs FROM defaults))
+ AND NEW.docs > coalesce(NEW.quota_docs, (SELECT docs FROM defaults), 0)
 BEGIN SELECT RAISE(ABORT, 'quota_exceeded:docs'); END;
 
 CREATE TRIGGER quota_doc_bytes BEFORE UPDATE OF doc_bytes ON accounts
 WHEN NEW.recounted_at IS OLD.recounted_at AND NEW.doc_bytes > OLD.doc_bytes
- AND NOT (NEW.docs > OLD.docs AND NEW.docs > coalesce(NEW.quota_docs, (SELECT docs FROM defaults)))
- AND NEW.doc_bytes > coalesce(NEW.quota_doc_bytes, (SELECT doc_bytes FROM defaults))
+ AND NOT (NEW.docs > OLD.docs AND NEW.docs > coalesce(NEW.quota_docs, (SELECT docs FROM defaults), 0))
+ AND NEW.doc_bytes > coalesce(NEW.quota_doc_bytes, (SELECT doc_bytes FROM defaults), 0)
 BEGIN SELECT RAISE(ABORT, 'quota_exceeded:doc_bytes'); END;
 
 CREATE TRIGGER quota_server_docs BEFORE UPDATE OF doc_bytes ON accounts
 WHEN NEW.recounted_at IS OLD.recounted_at AND NEW.doc_bytes > OLD.doc_bytes
- AND NOT (NEW.docs > OLD.docs AND NEW.docs > coalesce(NEW.quota_docs, (SELECT docs FROM defaults)))
- AND NEW.doc_bytes <= coalesce(NEW.quota_doc_bytes, (SELECT doc_bytes FROM defaults))
+ AND NOT (NEW.docs > OLD.docs AND NEW.docs > coalesce(NEW.quota_docs, (SELECT docs FROM defaults), 0))
+ AND NEW.doc_bytes <= coalesce(NEW.quota_doc_bytes, (SELECT doc_bytes FROM defaults), 0)
  AND (SELECT sum(doc_bytes) FROM accounts) - OLD.doc_bytes + NEW.doc_bytes
-     > (SELECT global_doc_bytes FROM defaults)
+     > coalesce((SELECT global_doc_bytes FROM defaults), 0)
 BEGIN SELECT RAISE(ABORT, 'quota_exceeded:server'); END;
 
 CREATE TRIGGER quota_files BEFORE UPDATE OF files ON accounts
 WHEN NEW.recounted_at IS OLD.recounted_at AND NEW.files > OLD.files
- AND NEW.files > coalesce(NEW.quota_files, (SELECT files FROM defaults))
+ AND NEW.files > coalesce(NEW.quota_files, (SELECT files FROM defaults), 0)
 BEGIN SELECT RAISE(ABORT, 'quota_exceeded:files'); END;
 
 CREATE TRIGGER quota_file_bytes BEFORE UPDATE OF file_bytes ON accounts
 WHEN NEW.recounted_at IS OLD.recounted_at AND NEW.file_bytes > OLD.file_bytes
- AND NOT (NEW.files > OLD.files AND NEW.files > coalesce(NEW.quota_files, (SELECT files FROM defaults)))
- AND NEW.file_bytes > coalesce(NEW.quota_file_bytes, (SELECT file_bytes FROM defaults))
+ AND NOT (NEW.files > OLD.files AND NEW.files > coalesce(NEW.quota_files, (SELECT files FROM defaults), 0))
+ AND NEW.file_bytes > coalesce(NEW.quota_file_bytes, (SELECT file_bytes FROM defaults), 0)
 BEGIN SELECT RAISE(ABORT, 'quota_exceeded:file_bytes'); END;
 
 CREATE TRIGGER quota_server_files BEFORE UPDATE OF file_bytes ON accounts
 WHEN NEW.recounted_at IS OLD.recounted_at AND NEW.file_bytes > OLD.file_bytes
- AND NOT (NEW.files > OLD.files AND NEW.files > coalesce(NEW.quota_files, (SELECT files FROM defaults)))
- AND NEW.file_bytes <= coalesce(NEW.quota_file_bytes, (SELECT file_bytes FROM defaults))
+ AND NOT (NEW.files > OLD.files AND NEW.files > coalesce(NEW.quota_files, (SELECT files FROM defaults), 0))
+ AND NEW.file_bytes <= coalesce(NEW.quota_file_bytes, (SELECT file_bytes FROM defaults), 0)
  AND (SELECT sum(file_bytes) FROM accounts) - OLD.file_bytes + NEW.file_bytes
-     > (SELECT global_file_bytes FROM defaults)
+     > coalesce((SELECT global_file_bytes FROM defaults), 0)
 BEGIN SELECT RAISE(ABORT, 'quota_exceeded:server'); END;
 
 -- One row per device per account. Revoked rows stay 90 days (to explain a 401 and to
--- recognise a returning device); active rows expire after 180 days unseen.
+-- recognise a returning device by its proof); active rows expire after 180 days unseen.
+-- `proof_hash` is SHA-256 of the device's proof, which only that device can derive.
 CREATE TABLE sessions (
     account_id TEXT NOT NULL REFERENCES accounts (id),
     device_id TEXT NOT NULL
         CHECK (length(device_id) = 34 AND substr(device_id, 1, 2) = 'd_' AND substr(device_id, 3) NOT GLOB '*[^0-9a-f]*'),
     token_hash TEXT NOT NULL UNIQUE CHECK (length(token_hash) = 64 AND token_hash NOT GLOB '*[^0-9a-f]*'),
+    proof_hash TEXT NOT NULL CHECK (length(proof_hash) = 64 AND proof_hash NOT GLOB '*[^0-9a-f]*'),
     sealed_name TEXT
         CHECK (sealed_name IS NULL OR (length(sealed_name) BETWEEN 55 AND 400 AND sealed_name NOT GLOB '*[^A-Za-z0-9_-]*')),
     created_at INTEGER NOT NULL,
@@ -930,13 +1020,61 @@ CREATE TABLE account_docs (
     UNIQUE (account_id, seq)
 );
 
+-- Server-wide document writes per UTC day (global_writes_per_day). The push's upsert fires
+-- BEFORE INSERT on both of its paths, then AFTER INSERT or AFTER UPDATE, so every stored
+-- write is checked and counted once.
+CREATE TRIGGER writes_global BEFORE INSERT ON account_docs
+WHEN coalesce((SELECT CASE WHEN day >= NEW.updated_at / 86400000 THEN count ELSE 0 END
+               FROM daily WHERE name = 'writes'), 9223372036854775807)
+     >= coalesce((SELECT global_writes_per_day FROM defaults), 0)
+BEGIN SELECT RAISE(ABORT, 'rate_limited:writes-global'); END;
+
+CREATE TRIGGER writes_count_insert AFTER INSERT ON account_docs
+BEGIN
+    UPDATE daily SET count = CASE WHEN day >= NEW.updated_at / 86400000 THEN count + 1 ELSE 1 END,
+                     day = max(day, NEW.updated_at / 86400000)
+    WHERE name = 'writes';
+END;
+
+CREATE TRIGGER writes_count_update AFTER UPDATE OF rev ON account_docs
+BEGIN
+    UPDATE daily SET count = CASE WHEN day >= NEW.updated_at / 86400000 THEN count + 1 ELSE 1 END,
+                     day = max(day, NEW.updated_at / 86400000)
+    WHERE name = 'writes';
+END;
+
 -- Every stored R2 object and its size, for quotas and for deleting without listing.
+-- `uploaded_at` is the time of the upload that stored this size; corrections (a failed R2
+-- put's compensation, the cron's reconciliation) change `size` but never `uploaded_at`.
 CREATE TABLE account_files (
     account_id TEXT NOT NULL REFERENCES accounts (id),
     id TEXT NOT NULL CHECK (substr(id, 1, 5) = 'file:' AND length(id) = 27 AND substr(id, 6) NOT GLOB '*[^A-Za-z0-9_-]*'),
     size INTEGER NOT NULL CHECK (size BETWEEN 41 AND 10485801),
+    uploaded_at INTEGER NOT NULL,
     PRIMARY KEY (account_id, id)
 );
+
+-- Server-wide upload bytes per UTC day (global_upload_bytes_per_day), weighted by size and
+-- counted on every upload, replacements included.
+CREATE TRIGGER uploads_global BEFORE INSERT ON account_files
+WHEN coalesce((SELECT CASE WHEN day >= NEW.uploaded_at / 86400000 THEN count ELSE 0 END
+               FROM daily WHERE name = 'upload_bytes'), 9223372036854775807)
+     > coalesce((SELECT global_upload_bytes_per_day FROM defaults), 0) - NEW.size
+BEGIN SELECT RAISE(ABORT, 'rate_limited:uploads-global'); END;
+
+CREATE TRIGGER uploads_count_insert AFTER INSERT ON account_files
+BEGIN
+    UPDATE daily SET count = CASE WHEN day >= NEW.uploaded_at / 86400000 THEN count + NEW.size ELSE NEW.size END,
+                     day = max(day, NEW.uploaded_at / 86400000)
+    WHERE name = 'upload_bytes';
+END;
+
+CREATE TRIGGER uploads_count_update AFTER UPDATE OF uploaded_at ON account_files
+BEGIN
+    UPDATE daily SET count = CASE WHEN day >= NEW.uploaded_at / 86400000 THEN count + NEW.size ELSE NEW.size END,
+                     day = max(day, NEW.uploaded_at / 86400000)
+    WHERE name = 'upload_bytes';
+END;
 
 -- Fixed-window counters. Keys hold HMACs of IPs and usernames, never the values.
 CREATE TABLE limits (
@@ -977,12 +1115,14 @@ replicas (L8).
 
 These are the D1 settings defaults, sized for Workers Paid. D1 there allows 10 GB per database; the
 arithmetic uses 10,000,000,000 bytes. Paid includes about 50 million rows written a month, and R2
-Paid has no size cap.
+Paid has no size cap. Every trigger reads its setting with `coalesce(…, 0)` (`'closed'` for
+`signup`), and rows of `settings` and `daily` can't be deleted or renamed, so a lost setting
+refuses rather than allows (security re-check 1).
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `max_accounts` | 50 | |
-| `signups_per_day` | 5 | Server-wide |
+| `signups_per_day` | 5 | Server-wide, per UTC day; deleting an account doesn't give one back |
 | `quota_docs` | 50,000 | Live documents of every kind; deleting frees space |
 | `quota_doc_bytes` | 100 MiB (104,857,600) | `length(sealed) + 512` per row, tombstones included. Real cost. |
 | `quota_files` | 10,000 | Stored file objects |
@@ -990,6 +1130,8 @@ Paid has no size cap.
 | `writes_per_day` | 100,000 | Pushed documents plus file uploads, per account. A full re-merge of a library at every quota (50,000 documents and 10,000 files) fits with room for a day's edits. |
 | `global_doc_bytes` | 6,000,000,000 | Sum over all accounts |
 | `global_file_bytes` | 50,000,000,000 | Sum over all accounts |
+| `global_writes_per_day` | 300,000 | Stored document writes (new and updated) per UTC day, all accounts together |
+| `global_upload_bytes_per_day` | 5,000,000,000 | File bytes uploaded per UTC day, all accounts, replacements included |
 
 **The 512-byte row cost** covers the row's other columns and its entries in both indexes. A
 tombstone measures about 300 B with indexes. `quota.test.ts` pins the figure: it inserts 10,000
@@ -1003,7 +1145,7 @@ than `Σ(length(sealed) + 512)`.
 | Documents | global cap; 50 × 104,857,600 = 5,242,880,000 fits inside, leaving 757,120,000 for owner overrides | 6,000,000,000 |
 | `account_files` rows | 50 × 10,000 × 200 B | 100,000,000 |
 | Sessions | 50 accounts × at most 100 rows (10 active plus 90 days of revoked) × 400 B, rounded up | 10,000,000 |
-| `limits` | the binding admits at most 20 auth requests per minute per IP group; rows live 2 days; budgeted | 200,000,000 |
+| `limits` | the binding admits at most 20 auth requests per minute per IP group; rows go when their window ends; budgeted | 200,000,000 |
 | Legacy `docs`/`counter` until the purge | 823 notes; `legacy-status` prints the real size | 100,000,000 |
 | Total | | 6,410,000,000 |
 
@@ -1013,11 +1155,12 @@ live documents only reach 100 MiB at an average of about 1,585 bytes sealed (104
 **R2:** 50 × 524,288,000 = 26,214,400,000 B of charged file bytes. That is under the 50 GB global
 cap, which only overrides can approach, and costs at most 50 GB × $0.015 = $0.75 a month.
 
-**Rows written:** an accepted document writes about 4 rows (the account row, the document row and
-its two index entries). One account at the daily maximum writes 100,000 × 4 = 400,000 rows a day,
-which is 12,000,000 a month, inside the included 50 million. It takes five accounts at the maximum
-all month to exceed it. Beyond that it costs $1 per million rows, and the `accounts` command shows
-`writes_today` for each account. The owner's first upload is about 909 documents, roughly 3,600
+**Rows written:** an accepted document writes about 5 rows (the account row, the document row, its
+two index entries and the `daily` counter). One account at the daily maximum writes 100,000 × 5 =
+500,000 rows a day, which is 15,000,000 a month, inside the included 50 million. It takes four
+accounts at the maximum all month to exceed it, and `global_writes_per_day` bounds the whole server
+at 300,000 × 5 = 1,500,000 rows a day, about 46.5 million in a 31-day month. Beyond the included
+rows it costs $1 per million, and the `accounts` command shows `writes_today` for each account. The owner's first upload is about 909 documents, roughly 3,600
 rows.
 
 **Requests:** 50 accounts × 3 Macs × about 400 requests a day is about 1.8 million a month, against
@@ -1033,9 +1176,14 @@ accounts) × default` exceeds a global cap.
 - **A purge round** is `list({prefix, limit: 1000})` then `delete(keys)`. A purge row is deleted
   only when a list returns empty and the row is more than an hour old, so an upload still in flight
   can't leave an orphan (L6). Account deletion runs up to 20 rounds inline.
-- **The cron** (`*/15 * * * *`, `scheduled()`) does four things:
+- **The cron** (`*/15 * * * *`, `scheduled()`) does five things:
   - runs up to 50 purge rounds;
-  - deletes `limits` rows more than 2 days old;
+  - deletes `limits` rows whose window has ended;
+  - reconciles R2 with `account_files` (security re-check 8): it lists a bounded number of
+    accounts' prefixes per run, taking accounts in turn, deletes objects that have no row and were
+    uploaded more than an hour ago, and sets a row's `size` to its object's size where they differ,
+    adjusting `file_bytes` in the same batch with `recounted_at` set, as `recount` does, so no quota
+    refuses the correction;
   - revokes active sessions unseen for 180 days (`expired`);
   - deletes revoked sessions more than 90 days old.
 
@@ -1072,7 +1220,7 @@ AUTH_PEPPER:<value>` on `wrangler dev`. `.dev.vars` and `cloud/.wrangler/` go in
 
 | Module | Contents |
 |---|---|
-| `crypto.rs` | `KdfParams` (`FLOOR`, `DEFAULT`, `TEST`, `CEILING`); derivation; HKDF; wrap and unwrap; `seal_doc`/`open_doc` (→ opened, undecryptable or too new); `seal_file`/`open_file`; `seal_name`/`open_name`; `wire_id`, `wire_rev`, `key_id`; `RecoveryKey`, `Password`, zeroizing key types. Pure. |
+| `crypto.rs` | `KdfParams` (`FLOOR`, `DEFAULT`, `TEST`, `CEILING`); derivation; HKDF; wrap and unwrap; `seal_doc`/`open_doc` (→ opened, undecryptable or too new); `seal_file`/`open_file`; `seal_name`/`open_name`; `wire_id`, `wire_rev`, `key_id`; `RecoveryKey`, `Password`, zeroizing key types (`AuthKey`, `Kek`, `DataKey`, `DeviceProof`). Pure. |
 | `username.rs` | `normalize_username`, reserved list. Pure. |
 | `wire.rs` | `WireDoc`, `WirePushResult` (`Ok`, `Conflict`, `Lost`, `Behind`), `WirePage` (with `more`, `head_seq`, `epoch`, `key_id`), patterns, limits, the `WireRemote` trait, `ApiError` and its codes. |
 | `remote.rs` | The engine's plaintext `Remote` trait. `PushResult` gains `Lost`, `Behind` and `Unreadable { newer_format }`. `ChangesPage` gains `more`, `head_seq`, `epoch: Option`, `key_id: Option`, `skipped`, `repairable` and `too_new`. `put_file(id, bytes)` and `get_file(id) -> Option<Vec<u8>>`. |
@@ -1081,7 +1229,7 @@ AUTH_PEPPER:<value>` on `wrangler dev`. `.dev.vars` and `cloud/.wrangler/` go in
 | `http.rs` | `HttpBackend`: every v2 route over blocking `ureq`, with no redirects and the response caps. |
 | `memory.rs` | `MemoryServer`: implements `Backend` with the Worker's sync, auth, session, quota and limit rules, run against the shared fixtures. Its auth hashes are SHA-256, as in the Worker. |
 | `account.rs` | The public account functions, `Session`, `Step`. |
-| `binding.rs` | Device identity, `local_library`, `plan`, `bind`, `unbind`. |
+| `binding.rs` | Device identity (ID and proof), `meta_keys`, the guard pairs, `local_library`, `plan`, `bind`, `unbind`. |
 | `keychain.rs` | Replaces `credentials.rs`: `SecretStore`, `Keychain`, `MemorySecrets`, the items below. |
 | `engine.rs` | Pull and push as now, with cancellation, the guard, epoch and head checks, re-merge, repair, stale handling, quota and pause handling, and file MD5 binding. |
 | `verify.rs` | `verify` (with an optional legacy manifest) and `estimate`. |
@@ -1097,7 +1245,12 @@ pub struct HttpBackend;                 // the app
 pub struct MemoryServer { /* … */ }     // tests and snapshots only; never constructed by main.rs
 
 pub struct DeviceIdentity { pub library_id: String, pub name: String, /* device secret, private */ }
-pub enum Step { DerivingKeys, Contacting, Saving }
+impl DeviceIdentity {
+    pub fn device_id(&self, account_id: &str) -> String;
+    pub fn device_proof(&self, origin: &str, account_id: &str) -> DeviceProof;
+}
+pub enum Step { StoppingSync, DerivingKeys, Contacting, Saving }
+pub fn origin(server: &str) -> Result<String, EndpointError>;   // the origin the salt input binds
 pub struct Password(/* NFC, Zeroizing */);
 impl Password { pub fn new(text: &str, username: &str) -> Result<Password, PasswordError>; }
 pub struct RecoveryKey(/* 16 bytes, Zeroizing */);
@@ -1129,7 +1282,7 @@ pub fn revoke_device(b: &dyn Backend, session: &Session, device_id: &str) -> Res
 pub fn usage(b: &dyn Backend, session: &Session) -> Result<Usage, AccountError>;
 
 pub fn sync(store: &Store, b: &dyn Backend, session: &Session, options: &SyncOptions) -> Result<SyncReport, SyncError>;
-pub fn verify(store: &Store, b: &dyn Backend, session: &Session, legacy: Option<&Path>) -> Result<VerifyReport, SyncError>;
+pub fn verify(store: &Store, b: &dyn Backend, session: &Session, legacy: Option<&Path>, repair: bool) -> Result<VerifyReport, SyncError>;
 pub fn estimate(store: &Store) -> Result<Estimate, StoreError>;   // charged bytes the library needs
 pub fn problem(err: &SyncError) -> Option<SyncProblem>;             // None for Cancelled
 pub fn report_problem(report: &SyncReport) -> Option<SyncProblem>;  // problems in a sync that finished
@@ -1154,6 +1307,7 @@ test remote leaves them `None`.
 - `KeyMismatch`: a failed unwrap or a different key ID.
 - `Unauthorized { reason }`
 - `Password`, `Username` and `RecoveryKey` validation.
+- `Protocol` (an answer of the wrong shape), `Endpoint` (`check_endpoint`) and `Keychain`.
 
 ### Account flows
 
@@ -1168,7 +1322,7 @@ test remote leaves them `None`.
   The salt input includes the username, so trying another name after `username_taken` derives again.
 - **Sign in.**
   1. Prelogin, refusing parameters outside the floor or ceilings, to get the salt and account ID.
-  2. Compute the device ID and derive.
+  2. Compute the device ID and proof, and derive.
   3. Log in, unwrap, and compare the key ID: a failure is `KeyMismatch` (the session is logged out,
      nothing is saved).
   4. Ask the binding question if needed, then bind and save.
@@ -1196,21 +1350,37 @@ The engine works on plaintext `SyncDoc`s through `Remote`, with `Sealed<W>` in b
 - **Start of a sync** (first page):
   - If `key_id` differs from the Mac's: `WrongKey`. Stop and write nothing.
   - If `epoch` differs from `sync.v2.epoch`, or `head_seq` is below the cursor, the server's copy
-    was restored or rewound (M1). The Mac re-merges: `reset_sync` with `sync.v2.last_seq = 0` and
-    the new epoch, then a normal sync, pulling everything and pushing every live document. Conflicts
-    keep both versions. The report sets `remerged`, and the app says "The server's copy was restored
-    from a backup; this Mac sent its changes again." The cursor is never just reset.
+    was restored or rewound (M1). The Mac re-merges without forgetting what it synced (security
+    re-check 4):
+    1. `synced_rev` stays as it is. The cursor goes to 0 and the new epoch is saved (`set_meta_if`,
+       guarded).
+    2. The engine pulls the whole feed through `apply_remote`, so the generation rule still holds:
+       a revision the Mac has seen superseded comes back `Stale`, and is rebased and pushed (below).
+    3. After the last page, `mark_missing_unsynced(present)` takes every document with a
+       `synced_rev` (tombstones included) that the feed didn't carry: the server lost it, so it is
+       pushed again with `base_rev = null`. Deletions are never lost.
+    4. A normal push follows. Conflicts keep both versions.
+
+    The report sets `remerged`, and the app says "The server's copy was restored from a backup; this
+    Mac sent its changes again." The cursor is never just reset, and `reset_sync` is only for
+    binding to a different account.
 - **Paging.** Continue while `page.more`; after applying a page, save `page.last_seq` with
   `set_meta_if` (guarded).
-- **Undecryptable feed documents** (format `0x01` that fails to open) are skipped and the cursor
-  moves past them. If the Mac has a local document with that wire ID, the engine calls
-  `mark_unsynced` and `Sealed` remembers the broken wire revision. The next push sends the local
-  version with that revision as its base, which repairs the server copy (M3). The report lists
-  `repaired` and `skipped`.
+- **Undecryptable feed documents** (format `0x01` that fails to open) never stop the pull; the
+  cursor moves past them. They are repaired automatically only when the Mac has a local document
+  with that wire ID and the broken copy's wire revision equals `wire_rev(id, synced_rev)`: the
+  server holds a damaged copy of exactly the version this Mac last synced. Then the local version
+  gets a new revision one generation higher and is pushed with the broken revision as its base,
+  which replaces the server copy (M3); `report.repaired` lists it. Any other undecryptable document
+  is only skipped and listed in `report.skipped`; `kanso-sync verify --repair` can replace it from
+  this Mac.
 - **Too-new documents** (format above `0x01`) stop the pull before them, keeping the cursor. The
   report sets `too_new`, which gives the problem `UpdateKanso`. Pushing continues, and is never a
   repair.
-- **Stale documents** (M2): `apply_remote` returns `Stale`. They are listed and the cursor moves on.
+- **Stale documents** (M2): `apply_remote` returns `Stale { new_rev }`. The remote version never
+  reverts the Mac. The local version is rebased onto it like a local win: generation `max(local,
+  remote) + 1`, `synced_rev` set to the remote revision, the remote version kept as a snapshot
+  when it differs. The next push sends it. `report.stale` lists them and the cursor moves on.
 - **Push results:**
   - `Conflict` with a current version that opens: applied as now. A local win gets the bumped generation and goes in the next round.
   - `Lost` (`current: null` with a `base_rev`): `mark_unsynced`, then pushed again with `base_rev = null` in the next round (M1).
@@ -1224,10 +1394,11 @@ The engine works on plaintext `SyncDoc`s through `Remote`, with `Sealed<W>` in b
   - A quota error on a file upload: drop that file's document from the batch; it stays pending.
   - 429 from `writes-account`: stop pushing, and set `report.paused_until`.
 - **Files.** Opened bytes must match the document's `md5digest`, or they count in `files_missing`.
-- **The guard** (fix 2 / M6). Every `apply_remote`, `mark_synced`, `mark_unsynced` and cursor write
-  carries `SyncGuard { key: "sync.v2.account_id", value: session.account_id }`. The store checks it
-  inside the same write transaction and fails with `StoreError::GuardFailed` otherwise. The engine
-  then stops with `SyncError::Cancelled`.
+- **The guard** (fix 2 / M6, security re-check 3). Every `apply_remote`, `mark_synced`,
+  `mark_unsynced`, `mark_missing_unsynced` and cursor write carries `SyncGuard { expect: &[
+  ("sync.v2.origin", session.origin), ("sync.v2.account_id", session.account_id)] }`
+  (`binding::guard_pairs`). The store checks every pair inside the same write transaction and fails
+  with `StoreError::GuardFailed` otherwise. The engine then stops with `SyncError::Cancelled`.
 
 Every remote write still goes through `apply_remote`, which snapshots the version it replaces.
 
@@ -1240,15 +1411,16 @@ Every remote write still goes through `apply_remote`, which snapshots the versio
 | `Paused { until }` | 429 writes | "Sync paused" | "This account made a lot of changes today. Sync resumes at *time*." | Waits until then |
 | `QuotaExceeded(kind)` | report | "Account full" | "Your account is full (*which*: notes and notebooks / attachments / number of attachments / number of items). Delete something or ask the server's owner for more space." | Keeps running |
 | `ServerFull` | report (`server`) | "Server full" | "The server is out of space. Ask its owner." | Keeps running |
-| `Skipped { count }` | report (skipped + stale) | "Some items skipped" | "*N* items on the server couldn't be read or were older than this Mac's copy. They were skipped; your copies here are unchanged." | Keeps running |
+| `Skipped { count }` | report (`skipped`: undecryptable documents not repaired) | "Some items skipped" | "*N* items on the server couldn't be read. They were skipped; your copies here are unchanged." | Keeps running |
 | `UpdateKanso` | report (too new) | "Update Kanso" | "Another Mac uses a newer Kanso. Update this one to keep syncing." | Stops; Sync now retries |
 | `WrongKey` | key ID | "Keys don't match" | "The server's account keys don't match this Mac's. Sync is stopped; your notes are safe here. Sign out and in again." | Stops |
 | `ServerOutdated` | 404 health | "Server needs an update" | "That server doesn't run this version of Kanso sync." | Stops; Sync now retries |
 | `Offline` | transport | "Offline" | "Can't reach the server. Your notes are safe on this Mac." | Keeps running |
 | `Other` | anything else | "Couldn't sync" | "Something went wrong. Try Sync now." | Keeps running |
 
-`report_problem` picks, in this order of precedence, `UpdateKanso`, `ServerFull`, `QuotaExceeded`,
-`Skipped`. `SyncState::Synced` gains `problem: Option<SyncProblem>`, and `SyncState::Failed`
+`report_problem` picks, in this order of precedence, `UpdateKanso`, `Paused` (from
+`paused_until`), `ServerFull`, `QuotaExceeded`, `Skipped`. Stale and repaired documents aren't
+problems: the Mac fixed them. `SyncState::Synced` gains `problem: Option<SyncProblem>`, and `SyncState::Failed`
 carries a `SyncProblem`. `SYNC_PROBLEMS` (sidebar) and `SYNC_PROBLEM_HELP` (settings) become
 functions of `SyncProblem`, which removes substring matching.
 
@@ -1259,12 +1431,14 @@ The service is `Kanso`. Item names use the library ID, so data directories never
 | Account (item name) | Value (JSON) | Lifetime |
 |---|---|---|
 | `sync-account:<library_id>` | `{"v":1,"server","origin","account_id","username","device_id","token","data_key"}` | Sign-up, sign-in or recovery until sign-out, deletion, a 401 or unbind |
-| `sync-recovery-key:<library_id>` | `{"v":1,"account_id","username","recovery_key"}` | From the moment sign-up, recovery or "New recovery key" succeeds until "I've saved it", or sign-out. While it exists, the Account page shows the key screen again. |
+| `sync-recovery-key:<library_id>` | `{"v":1,"origin","account_id","username","recovery_key"}` | From the moment sign-up, recovery or "New recovery key" succeeds until "I've saved it", or sign-out. While it exists, the Account page shows the key screen again. |
 | `sync-logout:<library_id>` | `{"v":1,"pending":[{"server","token"}]}` | Until each logout succeeds |
 | `sync-token` (legacy) | The old shared token | Never read or deleted by the new app; the owner removes it after the purge |
 
-On load, the item's `account_id` must equal the library's `sync.v2.account_id` and the config's
-account. If it doesn't, the item is ignored, and the Mac counts as signed out. `Session.server` and
+On load, the item's `(origin, account_id)` must equal the library's `(sync.v2.origin,
+sync.v2.account_id)` and the config's account (security re-check 3). If it doesn't, the item is
+ignored, and the Mac counts as signed out. The same pair decides everywhere else whether two
+accounts are the same. `Session.server` and
 `origin` always come from this item; `config.sync.server` only pre-fills the signed-out forms. The
 data key stays in memory once loaded, and is zeroized on sign-out or quit.
 
@@ -1274,6 +1448,7 @@ data key stays in memory once loaded, and is zeroized on sign-out or quit.
 
 | Key | Holds |
 |---|---|
+| `sync.v2.origin` | The origin of the account's server |
 | `sync.v2.account_id` | The account the library syncs with |
 | `sync.v2.username` | Its username |
 | `sync.v2.server` | The server URL |
@@ -1286,8 +1461,9 @@ data key stays in memory once loaded, and is zeroized on sign-out or quit.
 **kanso-store APIs** (frozen in step 1):
 
 ```rust
-pub struct SyncGuard<'a> { pub key: &'a str, pub value: &'a str }
-pub enum ApplyOutcome { Applied, Unchanged, RemoteWon, LocalWon { new_rev: String }, Stale }
+/// Every (meta key, value) pair must hold; the engine passes origin and account ID.
+pub struct SyncGuard<'a> { pub expect: &'a [(&'a str, &'a str)] }
+pub enum ApplyOutcome { Applied, Unchanged, RemoteWon, LocalWon { new_rev: String }, Stale { new_rev: String } }
 impl Store {
     /// One transaction: live documents get synced_rev = NULL, tombstones get synced_rev = rev
     /// (so they are never pushed to an account that never had them), and the meta entries are
@@ -1299,6 +1475,9 @@ impl Store {
     pub fn apply_remote(&self, doc: &SyncDoc, attachment: Option<Attachment>, guard: Option<&SyncGuard>) -> Result<ApplyOutcome>;
     pub fn mark_synced(&self, id: &str, rev: &str, guard: Option<&SyncGuard>) -> Result<()>;
     pub fn mark_unsynced(&self, id: &str, guard: Option<&SyncGuard>) -> Result<()>;
+    /// After a re-merge's full pull: documents with a synced_rev (tombstones included) whose IDs
+    /// aren't in `present` get synced_rev = NULL, so they are pushed with base_rev = null.
+    pub fn mark_missing_unsynced(&self, present: &HashSet<String>, guard: Option<&SyncGuard>) -> Result<Vec<String>>;
     pub fn set_meta_if(&self, key: &str, value: &str, guard: &SyncGuard) -> Result<()>;
     pub fn pending_count(&self) -> Result<usize>;
 }
@@ -1306,7 +1485,8 @@ impl Store {
 
 `StoreError` gains `GuardFailed`.
 
-`binding::local_library(store, account_id)` returns one of:
+`binding::local_library(store, origin, account_id)` returns one of these, where the same account
+means the same `(origin, account_id)`:
 
 - `Empty`: no live documents.
 - `Same`
@@ -1339,16 +1519,16 @@ The question in the last row:
 
 What the choices do:
 
-- **Fresh and merge (add).** `reset_sync` with the account, username, server, `last_seq = 0` and
-  epoch removed. The first sync pulls first: identical revisions become `Unchanged`, and the rest
+- **Fresh and merge (add).** `reset_sync` with the origin, account, username, server, `last_seq = 0`
+  and epoch removed. The first sync pulls first: identical revisions become `Unchanged`, and the rest
   resolve as conflicts with both versions kept.
 - **Replace.**
   1. `Store::backup_now(paths::backups_dir(data_dir), now)`: the same manual backup as Settings ›
      Back up now, outside the daily rotation. The path is shown with "Show in Finder".
   2. `replace_library` with the same meta, in one transaction (fix 3). A crash leaves either the old
      library or an empty one bound fresh, which pulls.
-- **Unbind** (after deleting the account, and for rollback). `reset_sync` that removes the account
-  keys, cursor, server and epoch, keeps the device identity, and sets the legacy `sync.last_seq =
+- **Unbind** (after deleting the account, and for rollback). `reset_sync` that removes the origin,
+  account keys, cursor, server and epoch, keeps the device identity, and sets the legacy `sync.last_seq =
   0`. It also deletes `sync-account:<library>`.
 
 **Order and cancellation.** Every flow that calls `reset_sync`, `replace_library` or `unbind`, or
@@ -1372,7 +1552,7 @@ the data-directory lock, so quit Kanso first. macOS asks once to let `kanso-sync
 ```text
 status   --data-dir DIR                             account, server, device, cursor, pending changes
 sync     --data-dir DIR [--full]                    sync once with this library's session
-verify   --data-dir DIR [--legacy M.json --out R.json]
+verify   --data-dir DIR [--repair] [--legacy M.json --out R.json]
 estimate --data-dir DIR                             charged document and file bytes this library needs
 unbind   --data-dir DIR                             sign out locally and reset bookkeeping for the old app
 ```
@@ -1381,7 +1561,9 @@ unbind   --data-dir DIR                             sign out locally and reset b
 live file. It compares them with the library: every local document whose `synced_rev == rev` must
 be on the server at that revision with equal fields, and every live file's bytes must match. It
 prints the counts (matched, missing, extra, different, undecryptable, still pending), and exits 0
-only when nothing is missing, different, undecryptable or pending.
+only when nothing is missing, different, undecryptable or pending. With `--repair`, it pushes this
+Mac's version over each undecryptable server copy of a document the Mac has, with a new
+generation, and counts them as repaired.
 
 With `--legacy`, it also checks each row of the manifest from `admin legacy-export` (H4):
 
@@ -1390,7 +1572,16 @@ With `--legacy`, it also checks each row of the manifest from `admin legacy-expo
 - **A live legacy file** must have a local blob with the manifest's `md5digest`, and must be on the
   encrypted server.
 
-It then writes `R.json` (`{"manifest_sha256", "account_id", "ok", counts}`).
+It then writes `R.json` (`{"manifest_sha256", "account_id", "ok", "rows", "failed"}`).
+
+**The manifest hash** (security re-check 6) covers the rows only, never `exported_at`. Sort the rows
+by `id` (bytewise UTF-8); write each as `id TAB rev TAB ("1" if deleted, else "0") TAB (md5digest,
+or nothing when null) LF`; the hash is SHA-256 of those bytes as 64 lowercase hex digits
+(`verify::manifest_sha256`). `purge-legacy` recomputes it the same way from a fresh export. Test
+vector: the rows `["note:b","2-bb",false,null]`, `["file:a","1-aa",false,
+"d41d8cd98f00b204e9800998ecf8427e"]` and `["tag:c","3-cc",true,null]` hash to
+`a0dbdfeedc42d0d264500b4faad3718aa823528946c653f34e62b2be42575b92`; no rows hash to SHA-256 of the
+empty string.
 
 ## App
 
@@ -1404,8 +1595,10 @@ pub struct SyncSettings {
     pub account: Option<AccountRef>,      // Some while signed in
     pub endpoint: Option<String>,         // legacy, preserved untouched so a rolled-back app finds it
 }
-pub struct AccountRef { pub id: String, pub username: String }
+pub struct AccountRef { pub origin: String, pub id: String, pub username: String }
 ```
+
+Startup compares `(origin, id)` with the Keychain item and the binding (security re-check 3).
 
 The migration to version 2 copies `endpoint` into `server` when it isn't the default, keeps
 `endpoint` and `enabled` as they are, and leaves `account` as `None`. The owner's Mac therefore
@@ -1560,16 +1753,17 @@ CLOUDFLARE_API_TOKEN="$IMNGONII_CLOUDFLARE_API_TOKEN" npm run -s admin -- accoun
 | `accounts` | Each account's username, ID, created date, usage against quotas, `writes_today`, active devices, last seen and status. Also the settings, global sums and pending purges. |
 | `disable <username>` / `enable <username>` | Set or clear `disabled_at`. |
 | `delete <username> --confirm <username>` | The deletion batch, plus the purge row. |
-| `signups open` / `signups close` / `signups only <username>` | `settings.signup` |
+| `signups open` / `signups close` / `signups only <username>` | `settings.signup`. `only` then checks whether that name already has an account, and says so: the reservation is spent once it does. |
 | `max-accounts <n>` | Subject to the overcommit check unless `--force` |
 | `quota <username> [--docs N] [--doc-mib N] [--files N] [--file-mib N]`, `quota <username> --default` | Overrides, in MiB; overcommit check |
 | `default-quota [--docs N] [--doc-mib N] [--files N] [--file-mib N]` | Defaults; overcommit check |
 | `writes-per-day <n>` | `settings.writes_per_day` |
+| `global-writes-per-day <n>` / `global-upload-bytes-per-day <n>` | The server-wide daily caps |
 | `recount [<username>]` | Recompute the counters from the tables, setting `recounted_at` |
 | `restored [<username> \| --all]` | After a Time Travel restore: a new epoch (`lower(hex(randomblob(8)))`), so Macs re-merge (M1) |
 | `legacy-status` | Whether `docs`/`counter` exist, their live document and file counts and size, and the `files/` purge state |
 | `legacy-export --dir DIR` | `manifest.json` (`{"exported_at", "rows": [id, rev, deleted, md5digest]}`), `legacy.sql` (`wrangler d1 export --table docs --table counter`), and every live legacy file from R2 into `DIR/files/` |
-| `purge-legacy --account <username> --verified R.json` | Refuses unless `R.json` is `ok`, names that account, and its `manifest_sha256` equals the hash of a fresh export of the legacy rows (nothing changed since). Then drops `docs` and `counter`, queues the `files/` purge, and runs `wrangler secret delete SYNC_TOKEN` with stdin attached. |
+| `purge-legacy --account <username> --verified R.json` | Refuses unless `R.json` is `ok`, names that account, and its `manifest_sha256` equals the manifest hash (under "Command line") of a fresh export of the legacy rows (nothing changed since). Then drops `docs` and `counter`, queues the `files/` purge, and runs `wrangler secret delete SYNC_TOKEN` with stdin attached. |
 
 ## Tests
 
@@ -1597,10 +1791,10 @@ documents and files under the test session and can push plaintext as another cli
 | Rollback (fix 1 / H5) | `v2_then_unbind_then_v1_loses_no_edit`: a library synced under v1 rules, then v2 with edits, creations and deletions, then `unbind`, then v1 rules again. Every v2-window edit and creation reaches the v1 server; v2-window deletions come back (asserted, as the rollback steps say). v1 rules come from a plaintext legacy server in `tests/common/legacy.rs` (today's `MemoryRemote`, conformance-tested against the v1 Worker) and the cursor key `sync.last_seq`, so no live old Worker is needed. | `tests/rollback.rs` |
 | Client retries | A lost response for sign-up, password change, recovery finish, new recovery key, push and file upload is recovered by the documented retry | `tests/accounts.rs` |
 | Client quota and pause | Deletions still go through after a 413; a second 413 stops pushing; a file-upload quota error keeps its document pending; a 429 pauses | `tests/sync.rs` |
-| Keychain | An item with a different account ID is ignored; sign-out deletes an unconfirmed recovery key; pending logouts are retried until 204 or 401 | `tests/accounts.rs` (with `MemorySecrets`) |
+| Keychain | An item with a different origin or account ID is ignored; sign-out deletes an unconfirmed recovery key; pending logouts are retried until 204 or 401 | `tests/accounts.rs` (with `MemorySecrets`) |
 | Device identity | Same account → same ID; different accounts → unlinkable IDs; a hardware hash mismatch regenerates the identity and leaves the binding | `tests/binding.rs` |
 | Plaintext canary | `prop_nothing_plain_leaves_the_mac`: every byte the client sends (push, files, auth, device name) is captured. No marker string, local ID, local rev, file MD5, password, recovery key, data key or device name appears in it, raw, hex or base64 (all alignments, standard and URL). | `tests/canary.rs` |
-| Conformance | `conformance.json` (v2 sync cases, quotas included) and `auth.json` (owner: Worker builder): same-device replacement, 11th-device eviction, password change signing others out with its reason, recovery rotating the key, logout then 401 `signed_out`, disabled after credentials, sign-up closed / full / busy, expiry, `account_id_taken`. Both run by the Worker and by `MemoryServer`. | `cloud/test`, `tests/conformance.rs` |
+| Conformance | `conformance.json` (v2 sync cases, quotas and the global caps included) and `auth.json` (owner: Worker builder): same-device replacement, 11th-device eviction, password change signing others out with its reason, recovery rotating the key, logout then 401 `signed_out`, disabled after credentials, sign-up closed / full / busy, expiry, `account_id_taken`, the known-device proof, the idempotent sign-up retry, and every rate-limit rule. Both run by the Worker and by `MemoryServer`; `tests/fixtures.rs` keeps their shapes equal to `api.rs` from step 1. The v1 cases stay in `conformance-v1.json` while v1 code exists. | `cloud/test`, `tests/conformance.rs` |
 | Isolation (Worker) | b4e2733's two properties with three signed-up accounts. R2 keys stay under each account's own prefix. A device revocation can't reach another account's session, even one with the same device ID. | `cloud/test/isolation.test.ts` |
 | Races (H1) | Through `handle(request, env, now)` with `Promise.all`: N parallel sign-ups at `max_accounts − 1` → exactly one succeeds; N parallel wrong logins → at most the rule's maximum are checked; parallel pushes and file uploads near every quota → no counter ever exceeds its quota; parallel uploads of one ID → `files` and `file_bytes` stay ≥ 0 and `recount` restores them | `cloud/test/races.test.ts` |
 | Auth (Worker) | Every route and status; `prop_only_the_registered_auth_key_signs_in`; `prop_sessions_follow_the_model`; idempotent retries; nothing in D1 equals a submitted proof or token; prelogin is deterministic and shaped like a real answer; `Origin` → 403; wrong content type → 415; non-canonical base64url → 400 | `cloud/test/auth.test.ts` |
@@ -1663,15 +1857,106 @@ the "Consumers" column.
 | `docs/ACCOUNTS.md` | — | all |
 | `cloud/migrations/0002_accounts.sql`, applied by `wrangler d1 migrations apply --local` and by a minimal vitest | Worker | Worker, Rust (`MemoryServer` mirrors it) |
 | `cloud/test/fixtures/usernames.json` | Worker | Worker, Rust |
-| `cloud/test/fixtures/conformance.json` (v2) and `cloud/test/fixtures/auth.json` | Worker | Worker, Rust |
+| `cloud/test/fixtures/conformance.json` (v2) and `cloud/test/fixtures/auth.json`, checked against `api.rs` by `crates/kanso-sync/tests/fixtures.rs` | Worker | Worker, Rust |
 | `crates/kanso-sync`: every public item in "Public API", with bodies `todo!()` except constants and pure validators. Also `wire.rs` types, `SyncReport` (new fields `skipped`, `stale`, `repaired`, `too_new`, `remerged`, `quota`, `paused_until`; `rejected` removed), `SyncProblem`, `problem`, `report_problem`, the binding types (`LocalLibrary`, `Flow`, `Plan`, `Choice`, `local_library`, `plan`, `bind`, `unbind`, `DeviceIdentity`, `device_identity`), the keychain types (`SecretStore`, `Keychain`, `MemorySecrets`, save/load/delete), and `MemoryServer` with its controls (below). `Send + Sync` on `Backend` and `Session`. | Rust | App |
-| `crates/kanso-store`: `SyncGuard`, `ApplyOutcome`, `StoreError::GuardFailed`, `reset_sync`, `replace_library`, `mark_unsynced`, `set_meta_if`, `pending_count`, and the guard parameter on `apply_remote`/`mark_synced`, with call sites updated. Bodies may be `todo!()` only where no current test calls them. | Rust | App, Rust |
+| `crates/kanso-store`: `SyncGuard`, `ApplyOutcome`, `StoreError::GuardFailed`, `reset_sync`, `replace_library`, `mark_unsynced`, `mark_missing_unsynced`, `set_meta_if`, `pending_count`, and the guard parameter on `apply_remote`/`mark_synced`, with call sites updated. Bodies may be `todo!()` only where no current test calls them. | Rust | App, Rust |
 
-`MemoryServer` controls: `new()`; `set_signup(Signup::{Open, Closed, Only(name)})`;
-`set_max_accounts`; `set_default_quota`; `set_quota(username, …)`; `set_writes_per_day`;
-`disable`/`enable(username)`; `devices(username)`; `revoke_all(username, reason)`;
-`expire_sessions(unseen_for)`; `set_epoch(username)` and `rewind(username, to_seq)` (restores);
-`drop_next_responses(route, n)`; `stats()`; `plain_view(&Session)`.
+`MemoryServer` controls: `new()`; `set_now(ms)`; `set_setting(name, value)`;
+`set_signup(Signup::{Open, Closed, Only(name)})`; `set_max_accounts`; `set_default_quota`;
+`set_quota(username, …)`; `set_writes_per_day`; `disable`/`enable(username)`; `devices(username)`;
+`revoke_all(username, reason)`; `expire_sessions(unseen_for)`; `set_epoch(username)` and
+`rewind(username, to_seq)` (restores); `drop_next_responses(route, n)`; `stats()`;
+`plain_view(&Session)`.
+
+**Contract notes.** Decisions made while freezing step 1, binding on every builder. The sections
+above already say each of them; this list is the index.
+
+*Security re-check, applied in step 1:*
+
+1. **Settings fail closed.** Every trigger reads its setting with `coalesce(…, 0)` (`'closed'` for
+   `signup`); `settings_keep` and `daily_keep` refuse deleting a row, and renaming one is refused
+   too. Proven in a scratch database with the guards dropped: each missing setting refuses.
+2. **Server-wide daily caps.** Settings `global_writes_per_day` (300,000) and
+   `global_upload_bytes_per_day` (5,000,000,000; uploads weighted by size, replacements included).
+   The `daily` table holds the UTC day's sign-ups, document writes and upload bytes; only triggers
+   write it, so deleting accounts can't lower a count. `signups_per_day` is per UTC day. Past a cap:
+   429 `rate_limited` with `limit` `writes-global` or `uploads-global` and `retry_after` to the next
+   UTC midnight.
+3. **The same account is the same `(origin, account_id)`.** Meta key `sync.v2.origin`;
+   `SyncGuard { expect }` over both (`binding::guard_pairs`); `local_library(store, origin,
+   account_id)`; `keychain::load_session` and `load_recovery_key` take both, and the recovery item
+   holds `origin`; `AccountRef` gains `origin`. The wrap AAD gains `lp(account_id)`.
+4. **Re-merge keeps `synced_rev`** and pulls from 0. `Stale { new_rev }` rebases the local version
+   and pushes it like a local win; `mark_missing_unsynced` re-pushes synced documents (tombstones
+   included) the full feed lacks, with `base_rev = null`.
+5. **Device proof.** `HKDF(device_secret, "kanso/v1/device-proof" || lp(origin) ||
+   lp(account_id))`, sent as `device.proof` at sign-up, sign-in and recovery; `sessions.proof_hash`
+   holds its SHA-256. Only a matching proof exempts a sign-in from `login-user`. Types:
+   `crypto::DeviceProof`, `DeviceIdentity::device_proof`, `api::NewDevice { id, sealed_name, proof }`,
+   `api::LoginDevice { id, proof }`.
+6. **Legacy manifest hash**: rows only, sorted by `id`, the byte format and test vector under
+   "Command line"; `verify::manifest_sha256` implements it.
+7. **Sign-up retry is idempotent on the server**: same username and auth key → 201 with the
+   existing account, whatever the settings; `auth.json` has the case.
+8. **R2 and D1 drift**: GET needs the `account_files` row; the cron reconciles orphans and sizes.
+   The only schema addition is `account_files.uploaded_at`, which the upload cap needs anyway.
+9. `login-user` is keyed by account ID, with one shared row for unknown names; the binding groups
+   IPv6 by /48; `limits` rows go when their window ends.
+10. Automatic repair only when the broken wire revision is `wire_rev(id, synced_rev)`, pushed one
+    generation higher; anything else is skipped and left to `verify --repair`. The store method for
+    that bump is the Rust builder's to add (additive, not frozen).
+11. Credential updates (recovery finish, password change, new recovery key) are compare-and-swap.
+12. Deletion: the client counts only 401 `unknown` as success. The login batch keeps at most 90
+    revoked rows per account.
+13. `signups only <name>` checks for an existing account afterwards; `check_endpoint` refuses a
+    host ending in a dot.
+14. `DEFAULT_SERVER` stays `https://kanso-sync.imngonii.workers.dev`.
+
+*Other step-1 decisions:*
+
+- **Fixtures.** The v1 file is renamed `conformance-v1.json` and still runs against the v1 Worker
+  and `MemoryRemote` until v1 code goes. `conformance.json` is v2. The step language is in each
+  file's `about`. Every case starts with sign-ups open and the clock at a UTC midnight. Raw steps
+  are Worker-only; `MemoryServer` runs the rest through `Api`. The expected values were checked
+  against an independent model before freezing.
+- **What the fixtures pin.** Health says `closed` for `closed` and `only:`, `full` when open at
+  `max_accounts`, else `open`. A missing or malformed bearer is 401 `unknown`. Revoking the current
+  device is a logout (`signed_out`). Sign-up triggers answer before `UNIQUE`, and
+  `account_id_taken` before `username_taken`. Deletion checks the key before the username. Device
+  proofs must be canonical like auth keys. `login-ip` counts before `login-user`, and the first
+  over its maximum is named. `retry_after` is the seconds to the window's end, rounded up.
+  `quota_exceeded` with `server` reports the server-wide sum and cap. Push validates all but the
+  sealed alphabet before counting `writes-account`; an empty push counts nothing; file uploads check
+  path and headers before counting. `limit` outside 1–500, or a negative `since`, is 400.
+- **`MemoryServer`.** `new()` starts with sign-ups open and the migration's other settings
+  (`DEFAULT_SETTINGS`, checked against the migration by a test). `set_setting` panics where D1's
+  `CHECK` would refuse (`is_valid_setting`). `set_now` fixes its clock.
+- **API surface.** `Api` has every v2 route with explicit tokens, so the conformance runner can
+  replay any token; `WireRemote` is the session-bound sync subset, and `Backend::remote` defaults
+  to an adapter over `Api`. `Route` names are the fixtures' route names.
+- **Account.** `Step` gains `StoppingSync`. `AccountError` gains `Protocol`, `Endpoint` and
+  `Keychain`. `check_new_username` and `UsernameError::Reserved` refuse reserved names on the
+  client. `kanso_sync::origin(server)` computes the origin.
+- **Binding.** `Machine { hardware_uuid, computer_name }` feeds `device_identity`, so tests can fake
+  the Mac. `device_name` trims again after cutting, so it is idempotent. `bind(store, session,
+  choice, backups_dir, now_ms)` returns the backup's path after a Replace; `Cancel` binds nothing.
+  `local_library` checks Same, Empty, Other, Unbound, in that order. The meta keys live in
+  `kanso_sync::meta_keys`.
+- **Keychain.** `set_pending_logouts` replaces the list; `PendingRecoveryKey` and `PendingLogout`
+  are the item types.
+- **Engine.** `SyncReport.skipped` holds the wire IDs of undecryptable documents not repaired;
+  `stale` and `repaired` aren't problems. `report_problem` precedence: `UpdateKanso`, `Paused`,
+  `ServerFull`, `QuotaExceeded`, `Skipped`. `problem` maps a 429 to `Other`; the engine itself turns
+  a push or upload 429 into `paused_until`. The v1 engine (`sync_once`, `sync_with`, `MemoryRemote`,
+  `HttpRemote`, `credentials`, `SyncConfig`) keeps working until 2b removes it.
+- **Left to the Rust builder:** `verify` gains `repair` and `VerifyReport.repaired`; `PlainView` has
+  inherent methods. `Sealed<W>`, the plaintext types in `remote.rs` and crypto internals beyond
+  `Password`, `RecoveryKey`, `KdfParams` and the key types are internal and may change.
+- **Implemented in step 1** (pure or trivial): username, password and recovery-key validation; wire
+  patterns and `ApiError` parsing; `problem`, `report_problem` and `schedule`; `plan`;
+  `device_name`; `manifest_sha256`; `origin`; the guard helpers, `mark_unsynced`,
+  `mark_missing_unsynced`, `set_meta_if` and `pending_count`; `MemorySecrets`. `LocalWon.new_rev`
+  is the unchanged local revision until 2a adds the generation bump.
 
 **Step 2: in parallel.**
 
@@ -1804,8 +2089,9 @@ Residual risks:
   - A used key stops working.
 - **A compromised Mac.** The local library is plaintext, and the Keychain holds the data key and the session.
 - **Lost password and recovery key.** The server copy is unrecoverable, by design. Local copies remain.
-- **Lockout.** Up to 10 sign-in attempts per username per 15 minutes from devices the account
-  doesn't know can be used up by anyone. Known devices, and signed-in Macs, are unaffected (M8).
+- **Lockout.** Up to 10 sign-in attempts per account per 15 minutes from devices the account
+  doesn't know can be used up by anyone. Known devices, which prove themselves with their device
+  proof, and signed-in Macs are unaffected (M8, security re-check 5).
 - **Floods and cost.** Without a custom domain and a WAF rule, a large flood can drive Workers
   request costs. Per-account write budgets cap D1 write costs, and the global caps bound storage.
 - **Unaudited crates.** The crypto crates are recent RustCrypto releases (argon2 0.6,
@@ -1833,12 +2119,13 @@ Residual risks:
 **Step 1, contract**
 
 - Rust builder:
-  - `crates/kanso-sync/src/{lib.rs, wire.rs, api.rs, account.rs, crypto.rs, username.rs, binding.rs, keychain.rs, memory.rs, remote.rs, engine.rs}` (stubs and types)
-  - `crates/kanso-store/src/{sync.rs, lib.rs, write.rs}` (store API signatures)
+  - `crates/kanso-sync/src/{lib.rs, wire.rs, api.rs, account.rs, crypto.rs, username.rs, binding.rs, keychain.rs, memory.rs, remote.rs, engine.rs, sealed.rs, verify.rs, http.rs}` (stubs and types)
+  - `crates/kanso-sync/tests/fixtures.rs` (fixture shapes)
+  - `crates/kanso-store/src/{sync.rs, lib.rs}` (store API signatures)
 - Worker builder:
   - `cloud/migrations/0002_accounts.sql`
-  - `cloud/test/fixtures/{usernames.json, conformance.json, auth.json}`
-  - `cloud/test/migration.test.ts` (minimal)
+  - `cloud/test/fixtures/{usernames.json, conformance.json, auth.json}`; `conformance-v1.json` (renamed)
+  - `cloud/test/migration.test.ts` (minimal), with `MIGRATION_DB` in `cloud/vitest.config.ts` and `cloud/test/env.d.ts`
 
 **Worker builder**
 
