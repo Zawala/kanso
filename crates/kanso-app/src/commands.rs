@@ -8,14 +8,14 @@ use gpui_kit::Action;
 use gpui_kit::assets::IconName;
 
 use crate::settings::{
-    CloseSettings, OpenApiSettings, OpenAppearanceSettings, OpenEditorSettings,
-    OpenGeneralSettings, OpenSyncSettings,
+    CloseSettings, OpenAccountSettings, OpenApiSettings, OpenAppearanceSettings,
+    OpenEditorSettings, OpenGeneralSettings,
 };
 use crate::workspace::{
-    ExportLibrary, ExportNote, FocusNoteList, FocusSearch, ImportInkdrop, NewNote, NewNotebook,
-    NextNote, OpenNotePicker, OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes,
-    ShowEditor, ShowHistory, ShowPreview, ShowSplit, SyncNow, ToggleFocusMode, TogglePinned,
-    ToggleSidebar, TrashNote,
+    ChangePassword, ExportLibrary, ExportNote, FocusNoteList, FocusSearch, ImportInkdrop, NewNote,
+    NewNotebook, NewRecoveryKey, NextNote, OpenNotePicker, OpenSettings, PreviousNote, Quit,
+    SaveNote, SearchAllNotes, ShowCreateAccount, ShowEditor, ShowHistory, ShowPreview, ShowSignIn,
+    ShowSplit, SignOut, SyncNow, ToggleFocusMode, TogglePinned, ToggleSidebar, TrashNote,
 };
 
 /// The palette's sections, in the order they appear with nothing typed.
@@ -70,6 +70,10 @@ pub enum Needs {
     LiveNote,
     /// Settings are open, in place of the notes.
     Settings,
+    /// This Mac is signed in to an account.
+    SignedIn,
+    /// This Mac isn't signed in (or was signed out by the server).
+    SignedOut,
 }
 
 pub struct Command {
@@ -372,7 +376,62 @@ static COMMANDS: &[Command] = &[
         keywords: &["cloud", "upload", "download", "refresh"],
         group: Group::App,
         run: action!(SyncNow),
-        needs: Needs::Nothing,
+        needs: Needs::SignedIn,
+    },
+    Command {
+        id: "sign-in",
+        label: "Sign in to sync…",
+        label_when_pinned: None,
+        description: "Signs this Mac in to your Kanso account, to sync its notes with your other Macs, end-to-end encrypted.",
+        icon: IconName::LogIn,
+        keywords: &["account", "log in", "login", "cloud"],
+        group: Group::App,
+        run: action!(ShowSignIn),
+        needs: Needs::SignedOut,
+    },
+    Command {
+        id: "create-account",
+        label: "Create account…",
+        label_when_pinned: None,
+        description: "Creates a Kanso account to sync notes between your Macs, end-to-end encrypted. The notes on this Mac are uploaded.",
+        icon: IconName::UserPlus,
+        keywords: &["sign up", "register", "sync", "cloud"],
+        group: Group::App,
+        run: action!(ShowCreateAccount),
+        needs: Needs::SignedOut,
+    },
+    Command {
+        id: "change-password",
+        label: "Change password…",
+        label_when_pinned: None,
+        description: "Changes your account's password. Your other Macs ask for the new one.",
+        icon: IconName::KeyRound,
+        keywords: &["account", "security", "sync"],
+        group: Group::App,
+        run: action!(ChangePassword),
+        needs: Needs::SignedIn,
+    },
+    Command {
+        id: "new-recovery-key",
+        label: "New recovery key…",
+        label_when_pinned: None,
+        description: "Replaces your account's recovery key. The one you saved stops working.",
+        icon: IconName::FileKey,
+        keywords: &["account", "security", "forgot password"],
+        group: Group::App,
+        run: action!(NewRecoveryKey),
+        needs: Needs::SignedIn,
+    },
+    Command {
+        id: "sign-out",
+        label: "Sign out",
+        label_when_pinned: None,
+        description: "Signs this Mac out of your account. Notes stay on this Mac; sync stops until you sign in again.",
+        icon: IconName::LogOut,
+        keywords: &["account", "log out", "logout", "sync"],
+        group: Group::App,
+        run: action!(SignOut),
+        needs: Needs::SignedIn,
     },
     Command {
         id: "import-inkdrop",
@@ -459,14 +518,21 @@ static COMMANDS: &[Command] = &[
         needs: Needs::Nothing,
     },
     Command {
-        id: "settings-sync",
-        label: "Settings: Sync",
+        id: "settings-account",
+        label: "Settings: Account",
         label_when_pinned: None,
-        description: "Whether notes are synced, the Worker URL and access token, and how often sync runs.",
-        icon: IconName::Cloud,
-        keywords: &["preferences", "cloud", "worker", "token", "conflict"],
+        description: "Your sync account: signing in, storage, devices, the password and recovery key, and how often sync runs.",
+        icon: IconName::CircleUser,
+        keywords: &[
+            "preferences",
+            "sync",
+            "cloud",
+            "devices",
+            "recovery key",
+            "conflict",
+        ],
         group: Group::App,
-        run: action!(OpenSyncSettings),
+        run: action!(OpenAccountSettings),
         needs: Needs::Nothing,
     },
     Command {

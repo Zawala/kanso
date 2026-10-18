@@ -13,11 +13,14 @@ use kanso_core::DocType;
 use kanso_store::{Origin, Put, Store};
 use serde_json::json;
 
+use crate::account_page::SignedOutForm;
 use crate::config::{AppConfig, EditorFont};
 use crate::library::Filter;
 use crate::palette::Mode;
-use crate::services::{Services, SyncState, TokenState};
-use crate::settings::{OpenEditorSettings, OpenSyncSettings, SettingsPage, register_app_actions};
+use crate::services::{AccountState, Services, SyncState};
+use crate::settings::{
+    OpenAccountSettings, OpenEditorSettings, SettingsPage, register_app_actions,
+};
 use crate::workspace::{AppState, OpenSettings, Workspace, for_each_workspace};
 
 struct Fixture {
@@ -279,7 +282,7 @@ fn the_palette_opens_each_page(cx: &mut TestAppContext) {
     f.window
         .update(cx, |_, window, cx| {
             palette.update(cx, |palette, cx| {
-                palette.set_query("settings: sync", window, cx)
+                palette.set_query("settings: account", window, cx)
             })
         })
         .unwrap();
@@ -288,7 +291,7 @@ fn the_palette_opens_each_page(cx: &mut TestAppContext) {
     f.keys(cx, "enter");
     assert_eq!(cx.read(|cx| palette.read(cx).mode()), None);
     assert!(f.open(cx));
-    assert_eq!(f.page(cx), SettingsPage::Sync);
+    assert_eq!(f.page(cx), SettingsPage::Account);
     // Escape closes Settings, and the keyboard is back where the palette
     // found it.
     f.keys(cx, "escape");
@@ -363,18 +366,45 @@ fn editor_controls_reach_the_editor(cx: &mut TestAppContext) {
     assert_eq!(saved.appearance.editor_font_size, 18.);
     assert!(!saved.appearance.line_numbers);
     // A click on a page in the column shows it.
-    f.click(cx, "settings-sync");
-    assert_eq!(f.page(cx), SettingsPage::Sync);
+    f.click(cx, "settings-account");
+    assert_eq!(f.page(cx), SettingsPage::Account);
 }
 
-/// Without a Worker there is nothing to sync with: Sync now waits for one.
+fn sign_in_as(cx: &mut TestAppContext, username: &str) {
+    let username = username.to_owned();
+    cx.update(|cx| {
+        cx.global_mut::<Services>().account = AccountState::SignedIn { username };
+        cx.refresh_windows();
+    });
+}
+
+/// Signed out there is nothing to sync with: no Sync now on the page, and
+/// the action (the menu's Sync Now) isn't available; signed in, both are.
 #[gpui_kit::test]
-fn sync_now_needs_a_worker(cx: &mut TestAppContext) {
+fn sync_now_needs_an_account(cx: &mut TestAppContext) {
     let f = setup(cx);
-    f.dispatch(cx, Box::new(OpenSyncSettings));
-    f.click(cx, "sync-now");
+    f.dispatch(cx, Box::new(OpenAccountSettings));
+    assert!(!f.drawn(cx, "sync-now"));
+    assert!(f.drawn(cx, "account-sign-in"));
+    let available = |cx: &mut TestAppContext| {
+        let focus = cx.read(|cx| f.workspace.read(cx).focus.clone());
+        f.window
+            .update(cx, |_, window, cx| {
+                window.focus(&focus, cx);
+                window.is_action_available(&crate::workspace::SyncNow, cx)
+            })
+            .unwrap()
+    };
+    assert!(!available(cx), "Sync Now is disabled while signed out");
+    f.dispatch(cx, Box::new(crate::workspace::SyncNow));
     let sync = cx.read(|cx| cx.global::<Services>().sync.clone());
     assert_eq!(sync, SyncState::Off);
+    sign_in_as(cx, "ngoni");
+    f.draw(cx);
+    assert!(available(cx), "Sync Now works while signed in");
+    f.dispatch(cx, Box::new(OpenAccountSettings));
+    assert!(f.drawn(cx, "sync-now"));
+    assert!(!f.drawn(cx, "account-sign-in"));
 }
 
 fn open_test_window(cx: &mut App) {
@@ -396,7 +426,7 @@ fn settings_open_a_window_when_none_is_open(cx: &mut TestAppContext) {
         register_app_actions(cx, open_test_window);
     });
     assert!(cx.read(|cx| cx.windows().is_empty()));
-    cx.update(|cx| cx.dispatch_action(&OpenSyncSettings));
+    cx.update(|cx| cx.dispatch_action(&OpenAccountSettings));
     cx.run_until_parked();
     let shown = |cx: &mut TestAppContext| {
         cx.update(|cx| {
@@ -411,10 +441,10 @@ fn settings_open_a_window_when_none_is_open(cx: &mut TestAppContext) {
             shown
         })
     };
-    assert_eq!(shown(cx), [Some(SettingsPage::Sync)]);
+    assert_eq!(shown(cx), [Some(SettingsPage::Account)]);
     cx.update(|cx| cx.dispatch_action(&OpenSettings));
     cx.run_until_parked();
-    assert_eq!(shown(cx), [Some(SettingsPage::Sync)]);
+    assert_eq!(shown(cx), [Some(SettingsPage::Account)]);
 }
 
 /// The same with notes, the last one kept from before: the window opens on
@@ -447,7 +477,7 @@ fn settings_stay_when_the_window_opens_on_a_library(cx: &mut TestAppContext) {
         cx.global_mut::<AppState>().config.last_note = Some(kept);
         register_app_actions(cx, open_test_window);
     });
-    cx.update(|cx| cx.dispatch_action(&OpenSyncSettings));
+    cx.update(|cx| cx.dispatch_action(&OpenAccountSettings));
     cx.run_until_parked();
     cx.executor().advance_clock(Duration::from_secs(1));
     cx.run_until_parked();
@@ -463,7 +493,7 @@ fn settings_stay_when_the_window_opens_on_a_library(cx: &mut TestAppContext) {
         });
         shown
     });
-    assert_eq!(shown, [(Some(SettingsPage::Sync), Some(last))]);
+    assert_eq!(shown, [(Some(SettingsPage::Account), Some(last))]);
 }
 
 /// What acts on the open note brings it back from behind Settings first,
@@ -498,7 +528,10 @@ fn note_actions_leave_settings_first(cx: &mut TestAppContext) {
     f.keys(cx, "cmd-k");
     let palette = cx.read(|cx| f.workspace.read(cx).palette.clone());
     let labels = cx.read(|cx| palette.read(cx).item_labels());
-    assert!(labels.iter().any(|l| l == "Settings: Sync"), "{labels:?}");
+    assert!(
+        labels.iter().any(|l| l == "Settings: Account"),
+        "{labels:?}"
+    );
     assert!(labels.iter().any(|l| l == "Back to notes"), "{labels:?}");
     let note_commands: Vec<_> = crate::commands::all()
         .iter()
@@ -524,25 +557,147 @@ fn note_actions_leave_settings_first(cx: &mut TestAppContext) {
     assert!(!labels.iter().any(|l| l == "Back to notes"), "{labels:?}");
 }
 
-/// The token can always be set: while the Keychain lookup is pending or
-/// never answered, and when the Keychain wouldn't say.
+/// Signed out, the page offers the two ways in; each opens its form, which
+/// checks what was typed before anything starts, and says plainly why it
+/// can't reach a server when there is none (tests have no backend).
 #[gpui_kit::test]
-fn a_token_can_always_be_set(cx: &mut TestAppContext) {
+fn the_signed_out_forms_check_before_they_start(cx: &mut TestAppContext) {
     let f = setup(cx);
-    f.dispatch(cx, Box::new(OpenSyncSettings));
+    f.dispatch(cx, Box::new(OpenAccountSettings));
+    let page = cx.read(|cx| f.workspace.read(cx).settings.read(cx).account.clone());
+    f.click(cx, "account-create");
     assert_eq!(
-        cx.read(|cx| cx.global::<Services>().sync_token.clone()),
-        TokenState::Unknown,
-        "tests never read the Keychain"
+        cx.read(|cx| page.read(cx).form()),
+        SignedOutForm::CreateAccount
     );
-    assert!(f.drawn(cx, "set-token"), "unknown");
-    cx.update(|cx| cx.global_mut::<Services>().sync_token = TokenState::Unreadable);
-    assert!(f.drawn(cx, "set-token"), "unreadable");
-    cx.update(|cx| cx.global_mut::<Services>().sync_token = TokenState::Missing);
-    assert!(f.drawn(cx, "set-token"), "missing");
+    for selector in [
+        "account-username",
+        "account-password",
+        "account-confirm",
+        "use-different-server",
+    ] {
+        assert!(f.drawn(cx, selector), "{selector}");
+    }
+    let fill = |cx: &mut TestAppContext, values: [&str; 4]| {
+        f.window
+            .update(cx, |_, window, cx| {
+                page.update(cx, |page, cx| page.fill(values, window, cx))
+            })
+            .unwrap();
+        f.draw(cx);
+    };
+    let error = |cx: &mut TestAppContext| cx.read(|cx| page.read(cx).error().map(str::to_owned));
+    fill(
+        cx,
+        ["ngoni", "correct horse battery", "correct horse batter", ""],
+    );
+    f.click(cx, "account-submit");
+    assert_eq!(error(cx).as_deref(), Some("The passwords don't match."));
+    fill(cx, ["ngoni", "short", "short", ""]);
+    f.click(cx, "account-submit");
+    assert_eq!(
+        error(cx).as_deref(),
+        Some("Use at least 12 characters. A few random words work well.")
+    );
+    fill(
+        cx,
+        [
+            "ngoni",
+            "correct horse battery",
+            "correct horse battery",
+            "",
+        ],
+    );
+    f.click(cx, "account-submit");
+    assert_eq!(
+        error(cx).as_deref(),
+        Some("Can't reach the server. Your notes are safe on this Mac.")
+    );
+    // Nothing ran, so nothing is left running.
+    assert!(cx.read(|cx| cx.global::<Services>().task.is_none()));
+    assert_eq!(
+        cx.read(|cx| cx.global::<Services>().account.clone()),
+        AccountState::SignedOut
+    );
+    // Sign in, and from there the recovery form.
+    f.click(cx, "account-cancel");
+    f.click(cx, "account-sign-in");
+    assert_eq!(cx.read(|cx| page.read(cx).form()), SignedOutForm::SignIn);
+    assert!(!f.drawn(cx, "account-confirm"));
+    f.click(cx, "account-forgot");
+    assert_eq!(cx.read(|cx| page.read(cx).form()), SignedOutForm::Recover);
+    fill(
+        cx,
+        [
+            "ngoni",
+            "correct horse battery",
+            "correct horse battery",
+            "nope",
+        ],
+    );
+    f.click(cx, "account-submit");
+    assert_eq!(
+        error(cx).as_deref(),
+        Some("A recovery key has 28 letters and digits, in groups of four.")
+    );
 }
 
-/// A conflict names its note on the Sync page, and Open note goes to it.
+/// The palette and the welcome screen lead to the Sign in form; the
+/// palette offers what fits the account.
+#[gpui_kit::test]
+fn sign_in_is_offered_where_it_fits(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let labels = |cx: &mut TestAppContext| {
+        f.keys(cx, "cmd-k");
+        let palette = cx.read(|cx| f.workspace.read(cx).palette.clone());
+        let labels = cx.read(|cx| palette.read(cx).item_labels());
+        f.keys(cx, "escape");
+        labels
+    };
+    let signed_out = labels(cx);
+    for label in ["Sign in to sync…", "Create account…", "Settings: Account"] {
+        assert!(
+            signed_out.iter().any(|l| l == label),
+            "{label}: {signed_out:?}"
+        );
+    }
+    for label in [
+        "Sync now",
+        "Sign out",
+        "Change password…",
+        "New recovery key…",
+    ] {
+        assert!(
+            !signed_out.iter().any(|l| l == label),
+            "{label}: {signed_out:?}"
+        );
+    }
+    f.dispatch(cx, Box::new(crate::workspace::ShowSignIn));
+    assert!(f.open(cx));
+    assert_eq!(f.page(cx), SettingsPage::Account);
+    let page = cx.read(|cx| f.workspace.read(cx).settings.read(cx).account.clone());
+    assert_eq!(cx.read(|cx| page.read(cx).form()), SignedOutForm::SignIn);
+    f.keys(cx, "escape");
+    sign_in_as(cx, "ngoni");
+    let signed_in = labels(cx);
+    for label in [
+        "Sync now",
+        "Sign out",
+        "Change password…",
+        "New recovery key…",
+    ] {
+        assert!(
+            signed_in.iter().any(|l| l == label),
+            "{label}: {signed_in:?}"
+        );
+    }
+    assert!(
+        !signed_in.iter().any(|l| l == "Sign in to sync…"),
+        "{signed_in:?}"
+    );
+}
+
+/// A conflict names its note on the Account page, and Open note goes to it.
 #[gpui_kit::test]
 fn a_conflicted_note_opens_from_the_sync_page(cx: &mut TestAppContext) {
     let f = setup(cx);
@@ -556,14 +711,16 @@ fn a_conflicted_note_opens_from_the_sync_page(cx: &mut TestAppContext) {
             .find(|id| *id != f.note)
             .unwrap()
     });
+    sign_in_as(cx, "ngoni");
     cx.update(|cx| {
         cx.global_mut::<Services>().sync = SyncState::Synced {
             at_ms: 0,
             conflicts: 1,
             conflicted: vec!["book:gone".into(), other.clone()],
+            problem: None,
         };
     });
-    f.dispatch(cx, Box::new(OpenSyncSettings));
+    f.dispatch(cx, Box::new(OpenAccountSettings));
     f.click(cx, "open-conflicted-note");
     assert!(!f.open(cx));
     let open = cx.read(|cx| {

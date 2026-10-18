@@ -2,7 +2,11 @@
 //!
 //! `kanso` opens the app. Other commands run without a window; see `--help`.
 
+mod account_flow;
+mod account_page;
+mod account_words;
 mod assets;
+mod clipboard;
 mod clock;
 mod commands;
 mod config;
@@ -191,10 +195,11 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
             data_dir,
             config,
         });
-        // The app may read the sync token from the Keychain, once the Sync
-        // page asks for it.
+        // The real servers and the Keychain; tests and snapshots leave both
+        // out.
         let mut services = Services::default();
-        services.keychain = true;
+        services.backend = Some(Arc::new(kanso_sync::HttpBackend::new()));
+        services.secrets = Some(Arc::new(kanso_sync::Keychain));
         cx.set_global(services);
         workspace::bind_keys(cx);
         note_list::bind_keys(cx);
@@ -203,7 +208,9 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
         watch_for_quit(cx);
         settings::register_app_actions(cx, open_main_window);
         services::apply_server_settings(cx);
-        services::apply_sync_settings(cx);
+        // Signed in again once the config, the binding and the Keychain
+        // agree; sync starts then.
+        account_flow::restore(cx);
         open_main_window(cx);
         cx.activate(true);
         // Held until the process exits so no second Kanso opens this folder.

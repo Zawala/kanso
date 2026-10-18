@@ -42,22 +42,47 @@ impl fmt::Debug for ServerSettings {
     }
 }
 
+/// Sync with an account (docs/ACCOUNTS.md › Config). The session itself is
+/// in the Keychain; this only says which account the library is signed in
+/// to, and where the forms point.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct SyncSettings {
+    /// Set on sign-up and sign-in; sync only runs while signed in too.
     pub enabled: bool,
-    pub endpoint: Option<String>,
     pub interval_secs: u64,
+    /// The server the signed-out forms start with; `None` is
+    /// [`kanso_sync::DEFAULT_SERVER`]. A signed-in session's server comes
+    /// from its Keychain item, never from here.
+    pub server: Option<String>,
+    /// Some while signed in.
+    pub account: Option<AccountRef>,
+    /// The version 1 Worker URL, kept untouched so a rolled-back app finds
+    /// it (docs/ACCOUNTS.md › Rollback).
+    pub endpoint: Option<String>,
 }
 
 impl Default for SyncSettings {
     fn default() -> Self {
         SyncSettings {
             enabled: false,
-            endpoint: None,
             interval_secs: 300,
+            server: None,
+            account: None,
+            endpoint: None,
         }
     }
+}
+
+/// The account a library is signed in to. With the Keychain item and the
+/// library's binding, `(origin, id)` says whether two accounts are the same
+/// (security re-check 3).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountRef {
+    pub origin: String,
+    pub id: String,
+    pub username: String,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,6 +180,11 @@ impl Default for Appearance {
     }
 }
 
+/// Whether `server` is the compiled-in default, however it is written.
+pub fn is_default_server(server: &str) -> bool {
+    kanso_sync::check_endpoint(server).as_deref() == Ok(kanso_sync::DEFAULT_SERVER)
+}
+
 /// The source side's share of the split before it is first dragged.
 pub const DEFAULT_SPLIT_RATIO: f32 = 0.5;
 
@@ -181,7 +211,7 @@ impl Default for WindowLayout {
 }
 
 /// The layout [`AppConfig::migrate`] brings older files up to.
-pub const CONFIG_VERSION: u32 = 1;
+pub const CONFIG_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -214,13 +244,23 @@ impl Default for AppConfig {
 impl AppConfig {
     /// Brings a config from an older version up to [`CONFIG_VERSION`], and
     /// says whether anything changed. Version 1 raised the default editor
-    /// size from 14 to 16; a size someone chose stays.
+    /// size from 14 to 16; a size someone chose stays. Version 2 brought
+    /// accounts: a Worker URL that isn't the default becomes the forms'
+    /// server, and the URL itself, `enabled` and the (absent) account stay
+    /// as they were, so the Mac starts signed out with its notes in place.
     pub fn migrate(&mut self) -> bool {
         if self.version >= CONFIG_VERSION {
             return false;
         }
         if self.version < 1 && self.appearance.editor_font_size == OLD_DEFAULT_FONT_SIZE {
             self.appearance.editor_font_size = DEFAULT_FONT_SIZE;
+        }
+        if self.version < 2 && self.sync.server.is_none() {
+            self.sync.server = self
+                .sync
+                .endpoint
+                .clone()
+                .filter(|endpoint| !is_default_server(endpoint));
         }
         self.version = CONFIG_VERSION;
         true
@@ -300,11 +340,7 @@ mod tests {
             "[a-z0-9.:]{0,15}",
             "\\PC{0,12}",
             "\\PC{0,24}",
-            (
-                any::<bool>(),
-                prop::option::of("https://[a-z.]{1,20}"),
-                1u64..100_000,
-            ),
+            gen_sync(),
             (
                 prop::sample::select(vec![
                     ThemePreference::System,
@@ -333,7 +369,7 @@ mod tests {
                     bind,
                     user,
                     pass,
-                    (s_on, endpoint, interval),
+                    sync,
                     (theme, font, size, numbers, mode, sidebar, readable),
                     login,
                     last,
@@ -347,11 +383,7 @@ mod tests {
                         username: user,
                         password: pass,
                     },
-                    sync: SyncSettings {
-                        enabled: s_on,
-                        endpoint,
-                        interval_secs: interval,
-                    },
+                    sync,
                     appearance: Appearance {
                         theme,
                         editor_font: font,
@@ -364,6 +396,41 @@ mod tests {
                     launch_at_login: login,
                     last_note: last,
                     layout: WindowLayout::default(),
+                },
+            )
+    }
+
+    /// Sync settings, with Worker URLs that are the default (written
+    /// several ways), another server, or not a URL at all.
+    fn gen_sync() -> impl Strategy<Value = SyncSettings> {
+        let url = prop_oneof![
+            Just(kanso_sync::DEFAULT_SERVER.to_owned()),
+            Just(format!("{}/", kanso_sync::DEFAULT_SERVER)),
+            Just("https://KANSO-SYNC.imngonii.workers.dev".to_owned()),
+            "https://[a-z]{1,8}[.][a-z]{2,3}",
+            "[a-z ]{0,8}",
+        ];
+        let account = ("https://[a-z]{1,8}[.]dev", "a_[0-9a-f]{32}", "[a-z]{3,8}").prop_map(
+            |(origin, id, username)| AccountRef {
+                origin,
+                id,
+                username,
+            },
+        );
+        (
+            any::<bool>(),
+            1u64..100_000,
+            prop::option::of("https://[a-z.]{1,20}"),
+            prop::option::of(account),
+            prop::option::of(url),
+        )
+            .prop_map(
+                |(enabled, interval_secs, server, account, endpoint)| SyncSettings {
+                    enabled,
+                    interval_secs,
+                    server,
+                    account,
+                    endpoint,
                 },
             )
     }
@@ -383,11 +450,14 @@ mod tests {
             ..ProptestConfig::default()
         })]
 
-        /// Migration ends at the current version, is idempotent, changes
-        /// nothing but the version and a never-changed old default size, and
-        /// leaves current files alone.
+        /// Migration ends at the current version and is idempotent. It
+        /// lifts a never-changed old default size (from before version 1),
+        /// makes a Worker URL that isn't the default the forms' server
+        /// (from before version 2, unless one is set), and changes nothing
+        /// else: the URL, `enabled` and the account stay as they were.
+        /// Current files are left alone.
         #[test]
-        fn prop_migration_only_lifts_the_old_default_size(config in gen_config()) {
+        fn prop_migration_lifts_old_files_to_v2(config in gen_config()) {
             let mut migrated = config.clone();
             let changed = migrated.migrate();
             prop_assert_eq!(migrated.version, CONFIG_VERSION.max(config.version));
@@ -398,13 +468,36 @@ mod tests {
                 config.appearance.editor_font_size
             };
             prop_assert_eq!(migrated.appearance.editor_font_size, expected_size);
+            let expected_server = if config.version < 2 && config.sync.server.is_none() {
+                config.sync.endpoint.clone().filter(|e| !is_default_server(e))
+            } else {
+                config.sync.server.clone()
+            };
+            prop_assert_eq!(&migrated.sync.server, &expected_server);
+            prop_assert_eq!(&migrated.sync.endpoint, &config.sync.endpoint);
+            prop_assert_eq!(migrated.sync.enabled, config.sync.enabled);
+            prop_assert_eq!(&migrated.sync.account, &config.sync.account);
             let mut rest = migrated.clone();
             rest.version = config.version;
             rest.appearance.editor_font_size = config.appearance.editor_font_size;
+            rest.sync.server = config.sync.server.clone();
             prop_assert_eq!(&rest, &config);
             let mut again = migrated.clone();
             prop_assert!(!again.migrate());
             prop_assert_eq!(again, migrated);
+        }
+
+        /// The default server is recognized however it is written, and no
+        /// other server is taken for it.
+        #[test]
+        fn prop_only_the_default_server_is_the_default(host in "[a-z]{1,10}", slash: bool, upper: bool) {
+            let default = kanso_sync::DEFAULT_SERVER;
+            let written = if upper { default.replace("kanso-sync", "KANSO-SYNC") } else { default.to_owned() };
+            let written = if slash { format!("{written}/") } else { written };
+            prop_assert!(is_default_server(&written));
+            let other = format!("https://{}.example", host);
+            prop_assert!(!is_default_server(&other));
+            prop_assert!(!is_default_server(&host));
         }
 
         /// Line numbers only ever come with the monospace face, and turning
@@ -482,13 +575,59 @@ mod tests {
             serde_json::from_str(r#"{"appearance": {"editorFontSize": 15}}"#).unwrap();
         assert!(chosen.migrate());
         assert_eq!(chosen.appearance.editor_font_size, 15.0);
-        // Someone who picks 14 after the migration keeps it.
+        // Someone who picks 14 after the migration keeps it, through the
+        // next version's migration too.
         let mut current: AppConfig =
             serde_json::from_str(r#"{"version": 1, "appearance": {"editorFontSize": 14}}"#)
                 .unwrap();
-        assert!(!current.migrate());
+        assert!(current.migrate());
         assert_eq!(current.appearance.editor_font_size, 14.0);
+        assert!(!current.migrate());
         assert_eq!(AppConfig::default().version, CONFIG_VERSION);
+    }
+
+    /// The owner's Mac before accounts: its Worker URL was the default, so
+    /// the forms start at the default; another Mac's own Worker is kept for
+    /// its forms. Both start signed out, with `endpoint` and `enabled`
+    /// untouched for a rolled-back app.
+    #[test]
+    fn version_1_files_start_signed_out() {
+        let owner = r#"{"version": 1, "sync": {"enabled": true, "endpoint": "https://kanso-sync.imngonii.workers.dev", "intervalSecs": 300}}"#;
+        let mut config: AppConfig = serde_json::from_str(owner).unwrap();
+        assert!(config.migrate());
+        assert_eq!(config.version, 2);
+        assert_eq!(config.sync.server, None);
+        assert_eq!(config.sync.account, None);
+        assert!(config.sync.enabled);
+        assert_eq!(
+            config.sync.endpoint.as_deref(),
+            Some("https://kanso-sync.imngonii.workers.dev")
+        );
+        let custom = r#"{"version": 1, "sync": {"endpoint": "https://sync.example.dev"}}"#;
+        let mut config: AppConfig = serde_json::from_str(custom).unwrap();
+        assert!(config.migrate());
+        assert_eq!(
+            config.sync.server.as_deref(),
+            Some("https://sync.example.dev")
+        );
+        assert_eq!(
+            config.sync.endpoint.as_deref(),
+            Some("https://sync.example.dev")
+        );
+        // An older app (which ignores fields it doesn't know) still finds
+        // the URL where it left it.
+        let json = serde_json::to_value(&config).unwrap();
+        assert_eq!(json["sync"]["endpoint"], "https://sync.example.dev");
+        assert!(json["sync"]["account"].is_null());
+        // A signed-in file keeps its account.
+        config.sync.account = Some(AccountRef {
+            origin: "https://sync.example.dev".into(),
+            id: format!("a_{}", "0".repeat(32)),
+            username: "ngoni".into(),
+        });
+        let back: AppConfig =
+            serde_json::from_value(serde_json::to_value(&config).unwrap()).unwrap();
+        assert_eq!(back, config);
     }
 
     #[test]

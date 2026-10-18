@@ -16,6 +16,7 @@ use kanso_core::{DocType, TagColor};
 use kanso_store::{Origin, Put, Store};
 use serde_json::{Value, json};
 
+use crate::account_page::SignedOutForm;
 use crate::commands::Picker;
 use crate::config::{AppConfig, ThemePreference, ViewMode};
 use crate::dialogs::{confirm, prompt_text};
@@ -25,7 +26,7 @@ use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::{NoteList, NoteListEvent};
 use crate::palette::{Mode, Palette};
 use crate::paths;
-use crate::settings::{SettingsReturn, SettingsView};
+use crate::settings::{SettingsPage, SettingsReturn, SettingsView};
 use crate::sidebar::{Sidebar, SidebarEvent};
 use crate::theme::Colors;
 
@@ -52,6 +53,11 @@ actions!(
         ExportNote,
         ExportLibrary,
         SyncNow,
+        ShowSignIn,
+        ShowCreateAccount,
+        ChangePassword,
+        NewRecoveryKey,
+        SignOut,
         ImportInkdrop,
         Quit,
         OpenCommandPalette,
@@ -283,7 +289,7 @@ impl Workspace {
             )
         });
 
-        let settings = cx.new(|cx| SettingsView::new(library.clone(), cx));
+        let settings = cx.new(|cx| SettingsView::new(library.clone(), window, cx));
 
         let subscriptions = vec![
             cx.subscribe_in(&library, window, |this, _, event, window, cx| match event {
@@ -758,6 +764,18 @@ impl Workspace {
         }
     }
 
+    /// Settings › Account with `form` open: Sign in, or Create account.
+    pub fn show_account_form(
+        &mut self,
+        form: SignedOutForm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_settings(Some(SettingsPage::Account), window, cx);
+        let account = self.settings.read(cx).account.clone();
+        account.update(cx, |account, cx| account.open_form(form, window, cx));
+    }
+
     /// Asks for a folder, then exports `only` those notes, or all of them.
     fn export(&mut self, only: Option<Vec<String>>, window: &mut Window, cx: &mut Context<Self>) {
         self.flush(cx);
@@ -963,6 +981,9 @@ impl Render for Workspace {
         let widths = self.fitted_widths(window);
         self.palette
             .update(cx, |palette, _| palette.set_notes_hidden(settings_open));
+        let signed_in = cx
+            .try_global::<crate::services::Services>()
+            .is_some_and(|services| services.signed_in());
         v_flex()
             .size_full()
             .relative()
@@ -1117,7 +1138,32 @@ impl Render for Workspace {
                 this.palette
                     .update(cx, |palette, cx| palette.open(Mode::Notes, window, cx));
             }))
-            .on_action(cx.listener(|_, _: &SyncNow, _, cx| crate::services::sync_now(cx)))
+            // Only while signed in, so the menu's Sync Now is disabled
+            // otherwise.
+            .when(signed_in, |el| {
+                el.on_action(cx.listener(|_, _: &SyncNow, _, cx| crate::services::sync_now(cx)))
+                    .on_action(cx.listener(|this, _: &ChangePassword, window, cx| {
+                        this.open_settings(Some(SettingsPage::Account), window, cx);
+                        crate::account_page::change_password_dialog(window, cx);
+                    }))
+                    .on_action(cx.listener(|this, _: &NewRecoveryKey, window, cx| {
+                        this.open_settings(Some(SettingsPage::Account), window, cx);
+                        crate::account_page::new_recovery_key_dialog(window, cx);
+                    }))
+                    .on_action(cx.listener(|_, _: &SignOut, window, cx| {
+                        crate::account_page::sign_out_dialog(window, cx);
+                    }))
+            })
+            .when(!signed_in, |el| {
+                el.on_action(cx.listener(|this, _: &ShowSignIn, window, cx| {
+                    this.show_account_form(SignedOutForm::SignIn, window, cx)
+                }))
+                .on_action(cx.listener(
+                    |this, _: &ShowCreateAccount, window, cx| {
+                        this.show_account_form(SignedOutForm::CreateAccount, window, cx)
+                    },
+                ))
+            })
             .map(|el| crate::settings::on_actions(el, cx))
             // The panes run the full height: each has its own top band
             // (the title bar's row) and bottom band. The sidebar and the

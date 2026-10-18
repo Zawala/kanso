@@ -1,12 +1,12 @@
 //! Settings, inside the main window: the sidebar stays, a column lists the
-//! pages (General, Editor, Appearance, Sync, Local API) where the note list
+//! pages (General, Editor, Appearance, Account, Local API) where the note list
 //! was, and the page takes the editor's place, in sections of bordered rows.
 //! ⌘, opens it; Escape or Back to notes returns to the notes as they were.
 //!
-//! Switches and menus apply at once. Addresses, ports, names and URLs are
-//! changed in a prompt and applied only when they check out, so the API
-//! doesn't restart and sync doesn't run on every keystroke. Passwords and
-//! tokens are never shown in full.
+//! Switches and menus apply at once. Addresses, ports and names are changed
+//! in a prompt and applied only when they check out, so the API doesn't
+//! restart on every keystroke. Passwords are never shown. The Account page
+//! is its own view, in `account_page.rs`.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::Path;
@@ -15,7 +15,6 @@ use std::time::Duration;
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::kbd::Kbd;
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::tooltip::Tooltip;
@@ -26,12 +25,16 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+use kanso_sync::{QuotaKind, SyncProblem};
+
+use crate::account_page::AccountPage;
+use crate::account_words::{quota_words, signed_out_sentence};
 use crate::clock::Clock;
 use crate::config::{DEFAULT_FONT_SIZE, EditorFont, SyncSettings, ThemePreference};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::Library;
-use crate::services::{self, ApiState, Services, SyncState, TokenState};
-use crate::sidebar::{SYNC_PROBLEMS, Tone, sync_line, tone_color};
+use crate::services::{self, AccountState, ApiState, Services, SyncState};
+use crate::sidebar::{Tone, sync_line, tone_color};
 use crate::theme::Colors;
 use crate::workspace::{AppState, OpenSettings, Workspace, apply_theme, for_each_workspace};
 use crate::{dialogs, inkdrop, launch, paths};
@@ -42,7 +45,7 @@ actions!(
         OpenGeneralSettings,
         OpenEditorSettings,
         OpenAppearanceSettings,
-        OpenSyncSettings,
+        OpenAccountSettings,
         OpenApiSettings,
         CloseSettings,
         NextSettingsPage,
@@ -75,7 +78,7 @@ pub enum SettingsPage {
     General,
     Editor,
     Appearance,
-    Sync,
+    Account,
     LocalApi,
 }
 
@@ -85,7 +88,7 @@ impl SettingsPage {
         SettingsPage::General,
         SettingsPage::Editor,
         SettingsPage::Appearance,
-        SettingsPage::Sync,
+        SettingsPage::Account,
         SettingsPage::LocalApi,
     ];
 
@@ -94,7 +97,7 @@ impl SettingsPage {
             SettingsPage::General => "General",
             SettingsPage::Editor => "Editor",
             SettingsPage::Appearance => "Appearance",
-            SettingsPage::Sync => "Sync",
+            SettingsPage::Account => "Account",
             SettingsPage::LocalApi => "Local API",
         }
     }
@@ -104,7 +107,7 @@ impl SettingsPage {
             SettingsPage::General => Lucide::Settings,
             SettingsPage::Editor => Lucide::Pencil,
             SettingsPage::Appearance => Lucide::Palette,
-            SettingsPage::Sync => Lucide::Cloud,
+            SettingsPage::Account => Lucide::CircleUser,
             SettingsPage::LocalApi => Lucide::Plug,
         }
     }
@@ -114,7 +117,7 @@ impl SettingsPage {
             SettingsPage::General => "settings-general",
             SettingsPage::Editor => "settings-editor",
             SettingsPage::Appearance => "settings-appearance",
-            SettingsPage::Sync => "settings-sync",
+            SettingsPage::Account => "settings-account",
             SettingsPage::LocalApi => "settings-api",
         }
     }
@@ -129,24 +132,8 @@ impl SettingsPage {
 
 // MARK: Plain words for values and states
 
-/// What a masked secret always starts with, whatever its length.
+/// What a saved password shows instead of itself, whatever its length.
 pub const MASK: &str = "••••••••";
-/// How many of a secret's last characters show, so a saved token or
-/// password can be told apart from another.
-const MASK_SUFFIX: usize = 4;
-/// Shorter secrets show none of their characters.
-const MASK_SUFFIX_FROM: usize = 12;
-
-/// A secret as Settings shows it: the same row of dots for every length and,
-/// for a long enough secret, its last four characters.
-pub fn mask_secret(secret: &str) -> String {
-    let chars: Vec<char> = secret.chars().collect();
-    if chars.len() < MASK_SUFFIX_FROM {
-        return MASK.to_owned();
-    }
-    let tail: String = chars[chars.len() - MASK_SUFFIX..].iter().collect();
-    format!("{MASK}{tail}")
-}
 
 /// A status line for the top of a page: a colored dot with a few words, and
 /// a sentence that says what it means or what to do.
@@ -157,73 +144,118 @@ pub struct StatusLine {
     pub detail: String,
 }
 
-/// What to do about each of the sidebar's sync problems
-/// ([`SYNC_PROBLEMS`]), in the same order.
-const SYNC_PROBLEM_HELP: [&str; 5] = [
-    "Add the Worker URL below, then sync.",
-    "Set the access token below. The Worker needs it to accept changes.",
-    "The Worker didn't accept the saved token. Change it below.",
-    "Kanso couldn't reach the Worker. It tries again at the next sync; your notes are safe on this Mac.",
-    "Something went wrong on the way. Try Sync now; if it keeps happening, check the Worker URL and the token.",
-];
+/// What to do about a sync problem, as Settings › Account and the sidebar's
+/// tooltip say it (docs/ACCOUNTS.md › Problems). `resume` names when a
+/// pause ends, to follow "Sync resumes".
+pub fn problem_help(problem: &SyncProblem, resume: impl FnOnce(i64) -> String) -> String {
+    match problem {
+        SyncProblem::SignedOut(reason) => format!(
+            "{} Sign in again to keep syncing.",
+            signed_out_sentence(*reason)
+        ),
+        SyncProblem::AccountDisabled => {
+            "This account is turned off on the server. Ask the server's owner.".to_owned()
+        }
+        SyncProblem::Paused { until } => format!(
+            "This account made a lot of changes today. Sync resumes {}.",
+            resume(*until)
+        ),
+        SyncProblem::QuotaExceeded(QuotaKind::Server) | SyncProblem::ServerFull => {
+            "The server is out of space. Ask its owner.".to_owned()
+        }
+        SyncProblem::QuotaExceeded(kind) => format!(
+            "Your account is full ({}). Delete something or ask the server's owner for more space.",
+            quota_words(*kind)
+        ),
+        SyncProblem::Skipped { count: 1 } => {
+            "1 item on the server couldn't be read. It was skipped; your copy here is unchanged."
+                .to_owned()
+        }
+        SyncProblem::Skipped { count } => format!(
+            "{count} items on the server couldn't be read. They were skipped; your copies here are unchanged."
+        ),
+        SyncProblem::UpdateKanso => {
+            "Another Mac uses a newer Kanso. Update this one to keep syncing.".to_owned()
+        }
+        SyncProblem::WrongKey => "The server's account keys don't match this Mac's. Sync is stopped; your notes are safe here. Sign out and in again.".to_owned(),
+        SyncProblem::ServerOutdated => {
+            "That server doesn't run this version of Kanso sync.".to_owned()
+        }
+        SyncProblem::Offline => {
+            "Can't reach the server. Your notes are safe on this Mac.".to_owned()
+        }
+        SyncProblem::Other => "Something went wrong. Try Sync now.".to_owned(),
+    }
+}
 
-/// The Sync page's status: the sidebar's words ("Synced just now",
-/// "Syncing…", "Offline", "Conflict detected", "Sync off") and what they
-/// mean here, with `when` naming the last sync's time as the sidebar does
-/// (see [`sync_line`]). A conflict names the note it was in, by
-/// `conflicted_title` when that is known. A failure's own reason (from the
-/// network or the Keychain) never shows.
+/// What the Account page's status says while signed out.
+pub const NOT_SIGNED_IN: &str = "Not signed in";
+pub const SIGNED_OUT_DETAIL: &str =
+    "Sync your notes between Macs, end-to-end encrypted. Your notes stay on this Mac either way.";
+
+/// The Account page's status: the sidebar's words ("Synced just now",
+/// "Syncing…", a problem's label) and what they mean here, with `when`
+/// naming the last sync's time as the sidebar does (see [`sync_line`]) and
+/// `resume` the end of a pause (see [`problem_help`]). Signed out, it reads
+/// "Not signed in". A conflict names the note it was in, by
+/// `conflicted_title` when that is known.
 pub fn sync_status_line(
     state: &SyncState,
+    account: &AccountState,
     settings: &SyncSettings,
     when: impl FnOnce(i64) -> String,
+    resume: impl FnOnce(i64) -> String,
     conflicted_title: Option<&str>,
 ) -> StatusLine {
-    let (tone, label) = sync_line(state, when);
+    let (tone, label) = sync_line(state, account, when);
     let every = sync_every((settings.interval_secs / 60).max(1));
-    let detail = match state {
-        SyncState::Off if settings.endpoint.is_none() => {
-            "Add a Worker URL and an access token to sync notes between your Macs.".to_owned()
-        }
-        SyncState::Off if !settings.enabled => {
-            "Turn on Sync automatically, or sync once with Sync now.".to_owned()
-        }
-        SyncState::Syncing => {
-            "Sending and fetching changes. Writing carries on as usual.".to_owned()
-        }
-        SyncState::Off | SyncState::Synced { conflicts: 0, .. }
-            if settings.enabled && settings.endpoint.is_some() =>
-        {
-            format!("Kanso syncs {every} and soon after you edit.")
-        }
-        SyncState::Synced { conflicts: 0, .. } if settings.endpoint.is_none() => {
-            "Add a Worker URL to sync again.".to_owned()
-        }
-        SyncState::Off | SyncState::Synced { conflicts: 0, .. } => {
-            "Automatic sync is off; Sync now syncs again.".to_owned()
-        }
-        SyncState::Synced { conflicts: 1, .. } => match conflicted_title {
-            Some(title) => format!(
-                "“{title}” changed on two Macs at once. Both versions are kept: the other one is in its history."
-            ),
-            None => "A note changed on two Macs at once. Both versions are kept: the other one is in the note's history.".to_owned(),
-        },
-        SyncState::Synced { conflicts, .. } => match conflicted_title {
-            Some(title) => format!(
-                "“{title}” and {} other {} changed on two Macs at once. Both versions of each are kept: the others are in their history.",
-                conflicts - 1,
-                if *conflicts == 2 { "note" } else { "notes" },
-            ),
-            None => format!(
-                "{conflicts} notes changed on two Macs at once. Both versions of each are kept: the others are in their history."
-            ),
-        },
-        SyncState::Failed(_) => {
-            let problem = SYNC_PROBLEMS
-                .iter()
-                .position(|p| *p == label)
-                .unwrap_or(SYNC_PROBLEMS.len() - 1);
-            SYNC_PROBLEM_HELP[problem].to_owned()
+    let (label, detail) = match account {
+        AccountState::SignedOut => (NOT_SIGNED_IN.to_owned(), SIGNED_OUT_DETAIL.to_owned()),
+        AccountState::SessionEnded { reason, .. } => (
+            label,
+            problem_help(&SyncProblem::SignedOut(*reason), resume),
+        ),
+        AccountState::Busy(_) => (
+            label,
+            "This takes a few seconds. Your notes stay on this Mac.".to_owned(),
+        ),
+        AccountState::SignedIn { .. } => {
+            let detail = match state {
+                SyncState::Failed(problem)
+                | SyncState::Synced {
+                    problem: Some(problem),
+                    ..
+                } => problem_help(problem, resume),
+                SyncState::Syncing => {
+                    "Sending and fetching changes. Writing carries on as usual.".to_owned()
+                }
+                SyncState::Off | SyncState::Synced { conflicts: 0, .. } if settings.enabled => {
+                    format!("Kanso syncs {every} and soon after you edit.")
+                }
+                SyncState::Off => {
+                    "Turn on Sync automatically, or sync once with Sync now.".to_owned()
+                }
+                SyncState::Synced { conflicts: 0, .. } => {
+                    "Automatic sync is off; Sync now syncs again.".to_owned()
+                }
+                SyncState::Synced { conflicts: 1, .. } => match conflicted_title {
+                    Some(title) => format!(
+                        "“{title}” changed on two Macs at once. Both versions are kept: the other one is in its history."
+                    ),
+                    None => "A note changed on two Macs at once. Both versions are kept: the other one is in the note's history.".to_owned(),
+                },
+                SyncState::Synced { conflicts, .. } => match conflicted_title {
+                    Some(title) => format!(
+                        "“{title}” and {} other {} changed on two Macs at once. Both versions of each are kept: the others are in their history.",
+                        conflicts - 1,
+                        if *conflicts == 2 { "note" } else { "notes" },
+                    ),
+                    None => format!(
+                        "{conflicts} notes changed on two Macs at once. Both versions of each are kept: the others are in their history."
+                    ),
+                },
+            };
+            (label, detail)
         }
     };
     StatusLine {
@@ -302,7 +334,7 @@ pub fn interval_label(minutes: u64) -> String {
 }
 
 /// "every minute", "every 15 minutes", "every hour".
-fn sync_every(minutes: u64) -> String {
+pub(crate) fn sync_every(minutes: u64) -> String {
     match minutes {
         1 => "every minute".to_owned(),
         60 => "every hour".to_owned(),
@@ -322,20 +354,6 @@ pub fn step_font_size(size: f32, step: i32) -> f32 {
         DEFAULT_FONT_SIZE
     };
     (size + step as f32).clamp(FONT_SIZES.0, FONT_SIZES.1)
-}
-
-/// An error message as a sentence: a capital letter first and a full stop.
-pub fn sentence(message: &str) -> String {
-    let message = message.trim();
-    let mut chars = message.chars();
-    let Some(first) = chars.next() else {
-        return String::new();
-    };
-    let mut out: String = first.to_uppercase().chain(chars).collect();
-    if !out.ends_with(['.', '!', '?']) {
-        out.push('.');
-    }
-    out
 }
 
 /// A path with the home folder written as `~`.
@@ -424,14 +442,6 @@ fn set_launch_at_login(on: bool, window: &mut Window, cx: &mut App) {
     }
 }
 
-/// The Worker URL from what was typed, saved and put to use.
-fn apply_endpoint(value: String, cx: &mut App) -> Result<(), String> {
-    let endpoint = kanso_sync::check_endpoint(&value).map_err(|err| sentence(&err.to_string()))?;
-    AppState::update_config(cx, |config| config.sync.endpoint = Some(endpoint));
-    services::apply_sync_settings(cx);
-    Ok(())
-}
-
 fn apply_address(value: String, cx: &mut App) -> Result<(), String> {
     let ip: IpAddr = value
         .trim()
@@ -478,46 +488,6 @@ pub fn parse_username(value: &str) -> Result<String, String> {
 fn copy_to_clipboard(text: String, message: &'static str, window: &mut Window, cx: &mut App) {
     cx.write_to_clipboard(ClipboardItem::new_string(text));
     window.push_notification(Notification::info(message), cx);
-}
-
-fn change_token(window: &mut Window, cx: &mut App) {
-    dialogs::prompt_secret(
-        "Sync Access Token",
-        "Save",
-        window,
-        cx,
-        |token, window, cx| match services::save_sync_token(&token, cx) {
-            Ok(()) => {
-                window.push_notification(Notification::success("Saved to the Keychain."), cx);
-                services::apply_sync_settings(cx);
-                Ok(())
-            }
-            Err(err) => {
-                eprintln!("kanso: saving the sync token: {err:#}");
-                Err("Couldn't save the token in the Keychain.".to_owned())
-            }
-        },
-    );
-}
-
-fn remove_token(window: &mut Window, cx: &mut App) {
-    dialogs::confirm(
-        "Remove the sync access token?",
-        "Sync stops until a token is set again. The token itself stays valid on the Worker.",
-        "Remove",
-        window,
-        cx,
-        |window, cx| match services::remove_sync_token(cx) {
-            Ok(()) => services::apply_sync_settings(cx),
-            Err(err) => {
-                eprintln!("kanso: removing the sync token: {err:#}");
-                window.push_notification(
-                    Notification::error("Couldn't remove the token from the Keychain."),
-                    cx,
-                );
-            }
-        },
-    );
 }
 
 fn change_password(window: &mut Window, cx: &mut App) {
@@ -583,9 +553,9 @@ pub struct SettingsReturn {
 }
 
 pub struct SettingsView {
-    /// Where a conflicted note is opened from the Sync page.
-    library: Entity<Library>,
     page: SettingsPage,
+    /// The Account page, with its forms.
+    pub(crate) account: Entity<AccountPage>,
     /// The page column's: up and down move between pages there.
     nav_focus: FocusHandle,
     /// The whole view's, to tell whether the keyboard is somewhere in it.
@@ -603,7 +573,7 @@ pub struct SettingsView {
 }
 
 impl SettingsView {
-    pub fn new(library: Entity<Library>, cx: &mut Context<Self>) -> Self {
+    pub fn new(library: Entity<Library>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let tick = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(TICK).await;
@@ -612,9 +582,10 @@ impl SettingsView {
                 }
             }
         });
+        let account = cx.new(|cx| AccountPage::new(library, window, cx));
         SettingsView {
-            library,
             page: SettingsPage::default(),
+            account,
             // In the Tab order, so the keyboard can come back to it from
             // a page's controls to switch pages.
             nav_focus: cx.focus_handle().tab_stop(true),
@@ -632,11 +603,11 @@ impl SettingsView {
         self.page
     }
 
-    /// Shows `page` from its top. The Sync page looks up whether a token
-    /// is saved, the first time it shows.
+    /// Shows `page` from its top. The Account page brings its storage and
+    /// devices up to date each time it shows.
     pub fn show(&mut self, page: SettingsPage, cx: &mut Context<Self>) {
-        if page == SettingsPage::Sync {
-            services::ensure_sync_token(cx);
+        if page == SettingsPage::Account {
+            self.account.update(cx, |account, cx| account.shown(cx));
         }
         if self.page != page {
             self.page = page;
@@ -831,7 +802,7 @@ impl SettingsView {
             SettingsPage::General => self.general_page(cx),
             SettingsPage::Editor => editor_page(cx),
             SettingsPage::Appearance => appearance_page(cx),
-            SettingsPage::Sync => sync_page(self.library.clone(), cx),
+            SettingsPage::Account => vec![self.account.clone().into_any_element()],
             SettingsPage::LocalApi => api_page(cx),
         }
     }
@@ -1003,186 +974,6 @@ fn appearance_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
         ],
         colors,
     )]
-}
-
-fn sync_page(library: Entity<Library>, cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
-    let colors = Colors::get(cx);
-    let settings = config(cx).sync.clone();
-    let (state, token, tip) = match cx.try_global::<Services>() {
-        Some(services) => (
-            services.sync.clone(),
-            services.sync_token.clone(),
-            services.sync_status(cx),
-        ),
-        None => (SyncState::Off, TokenState::Unknown, "Sync off".to_owned()),
-    };
-    // The first conflicted note that is still there, to name and open.
-    let conflicted = match &state {
-        SyncState::Synced { conflicted, .. } => {
-            let store = &cx.global::<AppState>().store;
-            conflicted
-                .iter()
-                .filter(|id| id.starts_with("note:"))
-                .find_map(|id| store.note(id).ok().flatten())
-        }
-        _ => None,
-    };
-    let conflicted_title = conflicted.as_ref().map(|note| {
-        if note.title.trim().is_empty() {
-            "Untitled".to_owned()
-        } else {
-            note.title.clone()
-        }
-    });
-    let status = sync_status_line(
-        &state,
-        &settings,
-        |at| Clock::edited_label(cx, at),
-        conflicted_title.as_deref(),
-    );
-    let open_note = conflicted.map(|note| {
-        let id = note.id;
-        Button::new("open-conflicted-note")
-            .outline()
-            .label("Open note")
-            .debug_selector(|| "open-conflicted-note".into())
-            .on_click(move |_, _, cx| {
-                let id = id.clone();
-                library.update(cx, |library, cx| library.select(Some(id), cx));
-            })
-    });
-    let sync_now = Button::new("sync-now")
-        .outline()
-        .icon(Lucide::RefreshCcw)
-        .label("Sync now")
-        .loading(state == SyncState::Syncing)
-        // Nothing to sync with until there is a Worker.
-        .disabled(settings.endpoint.is_none())
-        .debug_selector(|| "sync-now".into())
-        .on_click(|_, _, cx| services::sync_now(cx));
-    let endpoint = settings.endpoint.clone().unwrap_or_default();
-    let minutes = (settings.interval_secs / 60).max(1);
-    let interval = Button::new("sync-interval")
-        .outline()
-        .small()
-        .label(interval_label(minutes))
-        .dropdown_caret(true)
-        .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-            SYNC_INTERVALS.iter().fold(menu, |menu, &option| {
-                menu.item(
-                    PopupMenuItem::new(interval_label(option))
-                        .checked(option == minutes)
-                        .on_click(move |_, _, cx| {
-                            AppState::update_config(cx, |config| {
-                                config.sync.interval_secs = option * 60
-                            });
-                            services::apply_sync_settings(cx);
-                        }),
-                )
-            })
-        });
-    let set_token = || {
-        Button::new("set-token")
-            .outline()
-            .small()
-            .label("Set…")
-            .debug_selector(|| "set-token".into())
-            .on_click(|_, window, cx| change_token(window, cx))
-            .into_any_element()
-    };
-    // A token can always be set, whatever the Keychain said or hasn't yet.
-    let token_controls = match token {
-        TokenState::Unknown => vec![
-            value_text("Checking…", colors).into_any_element(),
-            set_token(),
-        ],
-        TokenState::Missing => vec![
-            value_text("Not set", colors).into_any_element(),
-            set_token(),
-        ],
-        TokenState::Unreadable => vec![
-            value_text("Couldn't read", colors).into_any_element(),
-            set_token(),
-            Button::new("remove-token")
-                .outline()
-                .small()
-                .label("Remove")
-                .on_click(|_, window, cx| remove_token(window, cx))
-                .into_any_element(),
-        ],
-        TokenState::Saved(masked) => vec![
-            value_text(masked, colors).into_any_element(),
-            Button::new("change-token")
-                .outline()
-                .small()
-                .label("Change…")
-                .on_click(|_, window, cx| change_token(window, cx))
-                .into_any_element(),
-            Button::new("remove-token")
-                .outline()
-                .small()
-                .label("Remove")
-                .on_click(|_, window, cx| remove_token(window, cx))
-                .into_any_element(),
-        ],
-    };
-    let actions = h_flex()
-        .flex_none()
-        .gap_2()
-        .children(open_note)
-        .child(sync_now);
-    // Until one is set, the row says what a Worker is, and "Not set" sits
-    // with the button, as the token's does.
-    let worker = Row::new(Lucide::Cloud, "Worker URL");
-    let worker = if endpoint.is_empty() {
-        worker
-            .detail("The address of your own Cloudflare Worker (cloud/README.md sets one up).")
-            .trailing(value_text("Not set", colors))
-    } else {
-        worker.value(endpoint.clone())
-    };
-    vec![
-        status_row(&status, tip, Some(actions.into_any_element()), colors),
-        section(
-            "Server",
-            vec![
-                worker.trailing(change_button(
-                    "change-endpoint",
-                    "Worker URL",
-                    endpoint,
-                    apply_endpoint,
-                )),
-                Row::new(Lucide::KeyRound, "Access token")
-                    .detail("Kept in your Keychain, never in Kanso's settings file.")
-                    .trailing_all(token_controls),
-            ],
-            colors,
-        ),
-        section(
-            "Schedule",
-            vec![
-                Row::new(Lucide::RefreshCcw, "Sync automatically")
-                    .detail("In the background, and soon after you edit.")
-                    .trailing(Switch::new("sync-enabled").checked(settings.enabled).on_click(
-                        |on, _, cx| {
-                            let on = *on;
-                            AppState::update_config(cx, |config| config.sync.enabled = on);
-                            services::apply_sync_settings(cx);
-                        },
-                    )),
-                Row::new(Lucide::Clock, "Sync every").trailing(interval),
-            ],
-            colors,
-        ),
-        section(
-            "Conflict handling",
-            vec![
-                Row::new(Lucide::Split, "Keep both versions")
-                    .detail("When a note changes on two Macs at once, the newer version shows and the other is kept in the note's history."),
-            ],
-            colors,
-        ),
-    ]
 }
 
 fn api_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
@@ -1397,7 +1188,7 @@ fn page_column() -> Div {
 /// One row of a section: an icon, a title with a line below it, and the
 /// controls on the right.
 // no-prop-test: layout; the snapshots show every page.
-struct Row {
+pub(crate) struct Row {
     icon: Lucide,
     title: SharedString,
     detail: Option<SharedString>,
@@ -1408,7 +1199,7 @@ struct Row {
 }
 
 impl Row {
-    fn new(icon: Lucide, title: impl Into<SharedString>) -> Self {
+    pub(crate) fn new(icon: Lucide, title: impl Into<SharedString>) -> Self {
         Row {
             icon,
             title: title.into(),
@@ -1418,23 +1209,23 @@ impl Row {
         }
     }
 
-    fn detail(mut self, text: impl Into<SharedString>) -> Self {
+    pub(crate) fn detail(mut self, text: impl Into<SharedString>) -> Self {
         self.detail = Some(text.into());
         self
     }
 
-    fn value(mut self, text: impl Into<SharedString>) -> Self {
+    pub(crate) fn value(mut self, text: impl Into<SharedString>) -> Self {
         self.detail = Some(text.into());
         self.value = true;
         self
     }
 
-    fn trailing(mut self, element: impl IntoElement) -> Self {
+    pub(crate) fn trailing(mut self, element: impl IntoElement) -> Self {
         self.trailing.push(element.into_any_element());
         self
     }
 
-    fn trailing_all(mut self, elements: Vec<AnyElement>) -> Self {
+    pub(crate) fn trailing_all(mut self, elements: Vec<AnyElement>) -> Self {
         self.trailing.extend(elements);
         self
     }
@@ -1497,7 +1288,7 @@ impl Row {
 /// A section: its title, then its rows in one bordered group with dividers
 /// between them.
 // no-prop-test: layout; the snapshots show every page.
-fn section(title: &'static str, rows: Vec<Row>, colors: &Colors) -> AnyElement {
+pub(crate) fn section(title: &'static str, rows: Vec<Row>, colors: &Colors) -> AnyElement {
     v_flex()
         .mt(px(26.))
         .child(
@@ -1532,7 +1323,7 @@ const STATUS_DOT: f32 = 9.;
 /// state too, so it never rests on the color alone.
 // no-prop-test: layout; the words come from `sync_status_line` and
 // `api_status_line`, which are tested.
-fn status_row(
+pub(crate) fn status_row(
     status: &StatusLine,
     tooltip: String,
     action: Option<AnyElement>,
@@ -1711,7 +1502,7 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
     let general = page(SettingsPage::General);
     let editor = page(SettingsPage::Editor);
     let appearance = page(SettingsPage::Appearance);
-    let sync = page(SettingsPage::Sync);
+    let account = page(SettingsPage::Account);
     let api = page(SettingsPage::LocalApi);
     el.on_action(
         cx.listener(|this, _: &OpenSettings, window, cx| this.open_settings(None, window, cx)),
@@ -1727,7 +1518,9 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
             appearance(this, window, cx)
         }),
     )
-    .on_action(cx.listener(move |this, _: &OpenSyncSettings, window, cx| sync(this, window, cx)))
+    .on_action(
+        cx.listener(move |this, _: &OpenAccountSettings, window, cx| account(this, window, cx)),
+    )
     .on_action(cx.listener(move |this, _: &OpenApiSettings, window, cx| api(this, window, cx)))
     .on_action(cx.listener(|this, _: &CloseSettings, window, cx| this.close_settings(window, cx)))
 }
@@ -1757,8 +1550,8 @@ pub fn register_app_actions(cx: &mut App, open_main_window: fn(&mut App)) {
     cx.on_action(move |_: &OpenAppearanceSettings, cx| {
         show(Some(SettingsPage::Appearance), open_main_window, cx)
     });
-    cx.on_action(move |_: &OpenSyncSettings, cx| {
-        show(Some(SettingsPage::Sync), open_main_window, cx)
+    cx.on_action(move |_: &OpenAccountSettings, cx| {
+        show(Some(SettingsPage::Account), open_main_window, cx)
     });
     cx.on_action(move |_: &OpenApiSettings, cx| {
         show(Some(SettingsPage::LocalApi), open_main_window, cx)
@@ -1797,18 +1590,19 @@ mod tests {
     use std::net::{IpAddr, SocketAddr};
     use std::path::Path;
 
+    use kanso_sync::{QuotaKind, SignOutReason, Step, SyncProblem};
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
 
     use super::{
-        FONT_SIZES, MASK, SYNC_INTERVALS, SYNC_PROBLEM_HELP, SettingsPage, api_status_line,
-        display_path, interval_label, mask_secret, mcp_endpoint, parse_port, parse_username,
-        sentence, step_font_size, sync_every, sync_status_line,
+        FONT_SIZES, NOT_SIGNED_IN, SIGNED_OUT_DETAIL, SYNC_INTERVALS, SettingsPage,
+        api_status_line, display_path, interval_label, mcp_endpoint, parse_port, parse_username,
+        problem_help, step_font_size, sync_every, sync_status_line,
     };
     use crate::config::{DEFAULT_FONT_SIZE, SyncSettings};
     use crate::grouping::utc_label;
-    use crate::services::{ApiState, SyncState};
-    use crate::sidebar::{SYNC_PROBLEMS, Tone, sync_line};
+    use crate::services::{AccountState, ApiState, SyncState, strategies};
+    use crate::sidebar::{Tone, sync_line};
 
     fn config() -> ProptestConfig {
         ProptestConfig {
@@ -1818,12 +1612,23 @@ mod tests {
         }
     }
 
-    fn sync_settings(endpoint: bool, enabled: bool, minutes: u64) -> SyncSettings {
+    fn sync_settings(enabled: bool, minutes: u64) -> SyncSettings {
         SyncSettings {
             enabled,
-            endpoint: endpoint.then(|| "https://sync.example.workers.dev".to_owned()),
             interval_secs: minutes * 60,
+            ..SyncSettings::default()
         }
+    }
+
+    fn signed_in() -> AccountState {
+        AccountState::SignedIn {
+            username: "ngoni".into(),
+        }
+    }
+
+    /// A pause's end as the page names it, for the examples.
+    fn resume(at: i64) -> String {
+        format!("at {at}")
     }
 
     #[test]
@@ -1838,38 +1643,29 @@ mod tests {
     }
 
     #[test]
-    fn mask_examples() {
-        assert_eq!(mask_secret("abcdefghijkl3f9a"), "••••••••3f9a");
-        assert_eq!(mask_secret("x".repeat(64).as_str()), "••••••••xxxx");
-        assert_eq!(mask_secret("short"), MASK);
-        assert_eq!(mask_secret(""), MASK);
-        // Eleven characters: still nothing of it.
-        assert_eq!(mask_secret("abcdefghijk"), MASK);
-        assert_eq!(mask_secret("ünïcödé-tökén-ÿ"), "••••••••én-ÿ");
-    }
-
-    #[test]
     fn sync_status_examples() {
-        let on = sync_settings(true, true, 5);
+        let on = sync_settings(true, 5);
+        let account = signed_in();
+        let line = |state: &SyncState, settings: &SyncSettings, now: i64, title: Option<&str>| {
+            sync_status_line(state, &account, settings, utc_label(now), resume, title)
+        };
         let synced = |conflicts| SyncState::Synced {
             at_ms: 0,
             conflicts,
             conflicted: Vec::new(),
+            problem: None,
         };
-        let line = sync_status_line(&synced(0), &on, utc_label(10_000), None);
+        let done = line(&synced(0), &on, 10_000, None);
         assert_eq!(
-            (line.tone, line.label.as_str()),
+            (done.tone, done.label.as_str()),
             (Tone::Good, "Synced just now")
         );
         assert_eq!(
-            line.detail,
+            done.detail,
             "Kanso syncs every 5 minutes and soon after you edit."
         );
-        assert_eq!(
-            sync_status_line(&SyncState::Syncing, &on, utc_label(0), None).label,
-            "Syncing…"
-        );
-        let conflict = sync_status_line(&synced(2), &on, utc_label(0), None);
+        assert_eq!(line(&SyncState::Syncing, &on, 0, None).label, "Syncing…");
+        let conflict = line(&synced(2), &on, 0, None);
         assert_eq!(
             (conflict.tone, conflict.label.as_str()),
             (Tone::Warning, "Conflict detected")
@@ -1880,19 +1676,19 @@ mod tests {
             conflict.detail
         );
         // A conflict names its note when the note is known.
-        let named = sync_status_line(&synced(1), &on, utc_label(0), Some("Plans"));
+        let named = line(&synced(1), &on, 0, Some("Plans"));
         assert!(
             named.detail.starts_with("“Plans” changed on two Macs"),
             "{}",
             named.detail
         );
-        let named = sync_status_line(&synced(2), &on, utc_label(0), Some("Plans"));
+        let named = line(&synced(2), &on, 0, Some("Plans"));
         assert!(
             named.detail.starts_with("“Plans” and 1 other note changed"),
             "{}",
             named.detail
         );
-        let named = sync_status_line(&synced(3), &on, utc_label(0), Some("Plans"));
+        let named = line(&synced(3), &on, 0, Some("Plans"));
         assert!(
             named
                 .detail
@@ -1900,54 +1696,81 @@ mod tests {
             "{}",
             named.detail
         );
-        let offline = sync_status_line(
-            &SyncState::Failed("error sending request: connection refused".into()),
+        let offline = line(&SyncState::Failed(SyncProblem::Offline), &on, 0, None);
+        assert_eq!(offline.label, "Offline");
+        assert_eq!(
+            offline.detail,
+            "Can't reach the server. Your notes are safe on this Mac."
+        );
+        let paused = line(
+            &SyncState::Failed(SyncProblem::Paused { until: 7 }),
+            &on,
+            0,
+            None,
+        );
+        assert_eq!(paused.label, "Sync paused");
+        assert_eq!(
+            paused.detail,
+            "This account made a lot of changes today. Sync resumes at 7."
+        );
+        let manual = line(&synced(0), &sync_settings(false, 5), 0, None);
+        assert!(
+            manual.detail.contains("Automatic sync is off"),
+            "{}",
+            manual.detail
+        );
+        assert_eq!(
+            line(&SyncState::Off, &sync_settings(false, 5), 0, None).detail,
+            "Turn on Sync automatically, or sync once with Sync now."
+        );
+        assert_eq!(
+            line(&synced(0), &sync_settings(true, 60), 0, None).detail,
+            "Kanso syncs every hour and soon after you edit."
+        );
+        // Signed out: the page invites signing in, whatever sync last did.
+        let out = sync_status_line(
+            &synced(0),
+            &AccountState::SignedOut,
             &on,
             utc_label(0),
+            resume,
             None,
         );
-        assert_eq!(offline.label, "Offline");
-        assert!(
-            offline.detail.contains("couldn't reach"),
-            "{}",
-            offline.detail
-        );
-        let off = sync_status_line(
-            &SyncState::Off,
-            &sync_settings(false, false, 5),
-            utc_label(0),
-            None,
-        );
-        assert_eq!((off.tone, off.label.as_str()), (Tone::Quiet, "Sync off"));
-        assert!(off.detail.contains("Worker URL"), "{}", off.detail);
-        let paused = sync_status_line(
-            &synced(0),
-            &sync_settings(true, false, 5),
-            utc_label(0),
-            None,
-        );
-        assert!(
-            paused.detail.contains("Automatic sync is off"),
-            "{}",
-            paused.detail
-        );
-        // Synced once, then the Worker URL was taken away.
-        let unset = sync_status_line(
-            &synced(0),
-            &sync_settings(false, true, 5),
-            utc_label(0),
-            None,
-        );
-        assert_eq!(unset.detail, "Add a Worker URL to sync again.");
         assert_eq!(
-            sync_status_line(
-                &synced(0),
-                &sync_settings(true, true, 60),
-                utc_label(0),
-                None
-            )
-            .detail,
-            "Kanso syncs every hour and soon after you edit."
+            (out.tone, out.label.as_str(), out.detail.as_str()),
+            (Tone::Quiet, "Not signed in", SIGNED_OUT_DETAIL)
+        );
+        // The server ended the session: the reason, and what to do.
+        let ended = sync_status_line(
+            &SyncState::Off,
+            &AccountState::SessionEnded {
+                username: "ngoni".into(),
+                reason: SignOutReason::PasswordChanged,
+            },
+            &on,
+            utc_label(0),
+            resume,
+            None,
+        );
+        assert_eq!(
+            (ended.tone, ended.label.as_str()),
+            (Tone::Warning, "Signed out")
+        );
+        assert_eq!(
+            ended.detail,
+            "Your password was changed on another Mac. Sign in again to keep syncing."
+        );
+        let busy = sync_status_line(
+            &SyncState::Off,
+            &AccountState::Busy(Step::Contacting),
+            &on,
+            utc_label(0),
+            resume,
+            None,
+        );
+        assert_eq!(
+            (busy.tone, busy.label.as_str()),
+            (Tone::Busy, "Contacting the server…")
         );
     }
 
@@ -2005,13 +1828,6 @@ mod tests {
         assert_eq!(step_font_size(15.6, 0), 16.);
         assert_eq!(step_font_size(f32::NAN, 0), DEFAULT_FONT_SIZE);
         assert_eq!(
-            sentence("the URL must start with https://"),
-            "The URL must start with https://."
-        );
-        assert_eq!(sentence("done!"), "Done!");
-        assert_eq!(sentence("éclair"), "Éclair.");
-        assert_eq!(sentence("  "), "");
-        assert_eq!(
             display_path(Path::new("/Users/me/Library/Kanso"), Path::new("/Users/me")),
             "~/Library/Kanso"
         );
@@ -2029,53 +1845,90 @@ mod tests {
             "/Users/meg/Kanso"
         );
         assert_eq!(SettingsPage::General.step(-1), SettingsPage::General);
-        assert_eq!(SettingsPage::General.step(3), SettingsPage::Sync);
+        assert_eq!(SettingsPage::General.step(3), SettingsPage::Account);
         assert_eq!(SettingsPage::LocalApi.step(1), SettingsPage::LocalApi);
+        assert_eq!(SettingsPage::Account.title(), "Account");
     }
 
-    /// Every sidebar problem has its own help, so none falls through to
-    /// another's.
+    /// Every problem in the table has its help, as the table words it.
     #[test]
     fn every_sync_problem_has_help() {
-        assert_eq!(SYNC_PROBLEMS.len(), SYNC_PROBLEM_HELP.len());
-        let reasons = [
-            "set the Worker URL in Settings › Sync",
-            "no access token; set one in Settings › Sync",
-            "the sync server rejected the token",
-            "could not reach the sync server: io: failed to lookup address information: nodename nor servname provided, or not known",
-            "the server said 500",
+        let cases = [
+            (
+                SyncProblem::SignedOut(SignOutReason::Revoked),
+                "This Mac was signed out from another Mac. Sign in again to keep syncing.",
+            ),
+            (
+                SyncProblem::SignedOut(SignOutReason::Recovered),
+                "Your account was recovered with its recovery key. Sign in again to keep syncing.",
+            ),
+            (
+                SyncProblem::SignedOut(SignOutReason::Evicted),
+                "Signed out to make room for another Mac. Sign in again to keep syncing.",
+            ),
+            (
+                SyncProblem::SignedOut(SignOutReason::Expired),
+                "Signed out after 180 days without syncing. Sign in again to keep syncing.",
+            ),
+            (
+                SyncProblem::SignedOut(SignOutReason::Unknown),
+                "This Mac was signed out. Sign in again to keep syncing.",
+            ),
+            (
+                SyncProblem::AccountDisabled,
+                "This account is turned off on the server. Ask the server's owner.",
+            ),
+            (
+                SyncProblem::Paused { until: 1 },
+                "This account made a lot of changes today. Sync resumes at 1.",
+            ),
+            (
+                SyncProblem::QuotaExceeded(QuotaKind::DocBytes),
+                "Your account is full (notes and notebooks). Delete something or ask the server's owner for more space.",
+            ),
+            (
+                SyncProblem::QuotaExceeded(QuotaKind::Files),
+                "Your account is full (number of attachments). Delete something or ask the server's owner for more space.",
+            ),
+            (
+                SyncProblem::ServerFull,
+                "The server is out of space. Ask its owner.",
+            ),
+            (
+                SyncProblem::Skipped { count: 3 },
+                "3 items on the server couldn't be read. They were skipped; your copies here are unchanged.",
+            ),
+            (
+                SyncProblem::UpdateKanso,
+                "Another Mac uses a newer Kanso. Update this one to keep syncing.",
+            ),
+            (
+                SyncProblem::WrongKey,
+                "The server's account keys don't match this Mac's. Sync is stopped; your notes are safe here. Sign out and in again.",
+            ),
+            (
+                SyncProblem::ServerOutdated,
+                "That server doesn't run this version of Kanso sync.",
+            ),
+            (
+                SyncProblem::Offline,
+                "Can't reach the server. Your notes are safe on this Mac.",
+            ),
+            (SyncProblem::Other, "Something went wrong. Try Sync now."),
         ];
-        let settings = sync_settings(true, true, 5);
-        for (ix, reason) in reasons.into_iter().enumerate() {
+        let settings = sync_settings(true, 5);
+        for (problem, help) in cases {
+            assert_eq!(problem_help(&problem, resume), help);
             let line = sync_status_line(
-                &SyncState::Failed(reason.into()),
+                &SyncState::Failed(problem),
+                &signed_in(),
                 &settings,
                 utc_label(0),
+                resume,
                 None,
             );
-            assert_eq!(line.label, SYNC_PROBLEMS[ix]);
-            assert_eq!(line.detail, SYNC_PROBLEM_HELP[ix]);
+            assert_eq!(line.detail, help);
         }
-    }
-
-    fn sync_state() -> impl Strategy<Value = SyncState> {
-        prop_oneof![
-            Just(SyncState::Off),
-            Just(SyncState::Syncing),
-            (0i64..1_000_000_000, 0usize..4).prop_map(|(at_ms, conflicts)| SyncState::Synced {
-                at_ms,
-                conflicts,
-                conflicted: Vec::new()
-            }),
-            // Reasons start with letters no fixed sentence has, so one in
-            // the output can only have come from the reason.
-            "zq[a-z0-9 :;/._-]{4,40}".prop_map(SyncState::Failed),
-            (
-                "zq[a-z ]{0,10}",
-                prop::sample::select(vec!["token", "connect", "worker url", "500"])
-            )
-                .prop_map(|(a, b)| SyncState::Failed(format!("{a}{b}"))),
-        ]
     }
 
     proptest! {
@@ -2102,28 +1955,20 @@ mod tests {
             }
         }
 
-        /// The mask: the same dots whatever the length, then at most the
-        /// last four characters, and only of a secret of twelve or more. Two
-        /// secrets that end alike look alike, however they begin or how
-        /// long they are: nothing else of a secret gets through.
+        /// Every problem's help is a sentence of its own, and a pause names
+        /// when it ends.
         #[test]
-        fn prop_masks_show_only_a_short_tail(
-            head_a in "\\PC{0,40}",
-            head_b in "\\PC{0,40}",
-            tail in "\\PC{4}",
-        ) {
-            let (a, b) = (format!("{head_a}{tail}"), format!("{head_b}{tail}"));
-            for secret in [&a, &b] {
-                let masked = mask_secret(secret);
-                let shown = masked.strip_prefix(MASK).expect("starts with the dots");
-                prop_assert!(shown.chars().count() <= 4);
-                prop_assert!(secret.ends_with(shown));
-                if secret.chars().count() < 12 {
-                    prop_assert_eq!(shown, "");
-                }
-            }
-            if a.chars().count() >= 12 && b.chars().count() >= 12 {
-                prop_assert_eq!(mask_secret(&a), mask_secret(&b));
+        fn prop_problem_help_says_what_to_do(problem in strategies::problem()) {
+            let help = problem_help(&problem, |at| format!("at zq{at}"));
+            prop_assert!(help.ends_with('.'), "{}", help);
+            prop_assert_eq!(
+                help.contains("zq"),
+                matches!(problem, SyncProblem::Paused { .. }),
+                "{}",
+                help
+            );
+            if let SyncProblem::SignedOut(_) = problem {
+                prop_assert!(help.ends_with("Sign in again to keep syncing."), "{}", help);
             }
         }
     }
@@ -2131,33 +1976,44 @@ mod tests {
     proptest! {
         #![proptest_config(config())]
 
-        /// The Sync page says what the sidebar says, with the same color,
-        /// and never repeats a failure's raw reason.
+        /// The Account page says what the sidebar says, with the same
+        /// color, except that signed out it reads "Not signed in"; and it
+        /// promises syncing on its own only when it will.
         #[test]
         fn prop_sync_status_agrees_with_the_sidebar(
-            state in sync_state(),
-            endpoint: bool,
+            state in strategies::sync_state(),
+            account in strategies::account(),
             enabled: bool,
             minutes in 1u64..2000,
             ago in 0i64..100_000_000,
         ) {
-            let settings = sync_settings(endpoint, enabled, minutes);
+            let settings = sync_settings(enabled, minutes);
             let now = match &state { SyncState::Synced { at_ms, .. } => at_ms + ago, _ => ago };
-            let line = sync_status_line(&state, &settings, utc_label(now), None);
-            prop_assert_eq!((line.tone, line.label.clone()), sync_line(&state, utc_label(now)));
+            let line = sync_status_line(&state, &account, &settings, utc_label(now), resume, None);
+            let (tone, label) = sync_line(&state, &account, utc_label(now));
+            prop_assert_eq!(line.tone, tone);
+            if account == AccountState::SignedOut {
+                prop_assert_eq!(line.label.as_str(), NOT_SIGNED_IN);
+                prop_assert_eq!(line.detail.as_str(), SIGNED_OUT_DETAIL);
+            } else {
+                prop_assert_eq!(line.label, label);
+            }
             prop_assert!(!line.detail.is_empty());
-            prop_assert!(!line.detail.contains("zq"), "{}", line.detail);
-            // It promises syncing on its own only when it will, and then
-            // says how often.
             let promises = line.detail.contains("Kanso syncs");
-            prop_assert!(!promises || (endpoint && enabled), "{}", line.detail);
-            let settled = matches!(state, SyncState::Off | SyncState::Synced { conflicts: 0, .. });
-            if settled && endpoint && enabled {
+            let signed_in = matches!(account, AccountState::SignedIn { .. });
+            prop_assert!(!promises || (enabled && signed_in), "{}", line.detail);
+            let settled = matches!(
+                state,
+                SyncState::Off | SyncState::Synced { conflicts: 0, problem: None, .. }
+            );
+            if settled && enabled && signed_in {
                 prop_assert!(promises && line.detail.contains(&sync_every(minutes)), "{}", line.detail);
             }
-            // With nothing to sync with, it says what is missing.
-            if state == SyncState::Off && !endpoint {
-                prop_assert!(line.detail.contains("Worker URL"), "{}", line.detail);
+            // A problem's help shows exactly while signed in with it.
+            if signed_in
+                && let SyncState::Failed(problem) | SyncState::Synced { problem: Some(problem), .. } = &state
+            {
+                prop_assert_eq!(line.detail, problem_help(problem, resume));
             }
         }
 
@@ -2231,25 +2087,6 @@ mod tests {
                 && (FONT_SIZES.0..=FONT_SIZES.1).contains(&(start + step as f32))
             {
                 prop_assert_eq!(step_font_size(stepped, -step), start);
-            }
-        }
-
-        /// A message becomes one sentence: its first letter capitalized,
-        /// the rest as it was, ending in a stop.
-        #[test]
-        fn prop_sentences_keep_the_words(message in "\\PC{0,40}") {
-            let out = sentence(&message);
-            let trimmed = message.trim();
-            if trimmed.is_empty() {
-                prop_assert_eq!(out, "");
-            } else {
-                let mut chars = trimmed.chars();
-                let first = chars.next().unwrap();
-                let rest: String = chars.collect();
-                prop_assert!(out.starts_with(&first.to_uppercase().collect::<String>()));
-                prop_assert!(out.contains(rest.as_str()));
-                prop_assert!(out.ends_with(['.', '!', '?']));
-                prop_assert!(out.chars().count() <= trimmed.chars().count() + 3);
             }
         }
     }
