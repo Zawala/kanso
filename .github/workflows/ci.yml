@@ -37,3 +37,18 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
+
+  # The Worker under wrangler dev (Miniflare, no Cloudflare credentials) and
+  # the Rust client against it: cloud/scripts/e2e-local.sh.
+  e2e:
+    runs-on: self-hosted
+    needs: [rust, worker]
+    env:
+      KANSO_E2E_PORT: "18787"
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show active-toolchain || rustup toolchain install
+      - run: npm ci --no-audit --no-fund
+        working-directory: cloud
+      - run: cloud/scripts/e2e-local.sh

@@ -1838,27 +1838,35 @@ Existing tests that must change:
 
 **End to end.** `cloud/scripts/e2e-local.sh`:
 
-1. Make a temporary state directory.
+1. Make a temporary state directory, and beside it a directory for the canary list.
 2. Apply the migrations with `wrangler d1 migrations apply kanso-sync --local --persist-to $dir`.
 3. Set `signup` to `open` with `wrangler d1 execute --local`.
-4. Start `wrangler dev --local --persist-to $dir --port 8787 --test-scheduled --var
-   AUTH_PEPPER:<test>`. This is all Miniflare: no Cloudflare credentials.
-5. Run `KANSO_SYNC_E2E_ENDPOINT=http://127.0.0.1:8787 KANSO_SYNC_E2E_STATE=$dir cargo test -p
-   kanso-sync --test e2e -- --nocapture`.
+4. Start `wrangler dev --local --persist-to $dir --port $KANSO_E2E_PORT --test-scheduled --var
+   AUTH_PEPPER:<test>` (port 8787 by default; a port something already listens on is refused, so
+   the test never talks to another server). This is all Miniflare: no Cloudflare credentials.
+5. Run `KANSO_SYNC_E2E_ENDPOINT=http://127.0.0.1:$port KANSO_SYNC_E2E_CANARIES=$list cargo test
+   -p kanso-sync --test e2e -- --nocapture`.
+6. Stop `wrangler dev`, then run the ignored test `the_stopped_state_holds_no_canary` with
+   `KANSO_SYNC_E2E_STATE=$dir`. While the Worker runs, D1's recent writes aren't in its files yet;
+   the scan's positive control caught that.
 
 The test runs at production KDF parameters:
 
 1. Two libraries sign up and sign in, then exchange notes, a conflict, a 2 MB image and deletions.
 2. A password change gives the other device 401 `password_changed`.
 3. Recovery rotates the key: the old key gets 401.
-4. Wrong passwords end in 429.
+4. Wrong passwords end in 429 with `limit` `login-user` (the binding's 429s are waited out), and the
+   known Mac then signs in anyway: its device proof exempts it.
 5. A full-size push (4 MiB) and an 8 MiB changes page complete; their wall time is printed as the
    CPU bench.
-6. Deleting the account gives 401, and its R2 objects are gone after `/__scheduled`.
-7. Finally, every file under the state directory (D1's SQLite and R2's blobs) is scanned for the
-   canary markers.
+6. Deleting the account gives 401, and its R2 objects are gone after `/__scheduled`. A second
+   account, the witness, stays, with one file.
+7. Finally, once the Worker has stopped, every file under the state directory (D1's SQLite and R2's
+   blobs) is scanned for the canaries: the marker, the password, the recovery key, the local
+   revision hashes and the deleted account's sealed files. As a positive control the scan must find
+   the witness's username (stored as it is in D1) and its sealed file (in R2).
 
-CI gains an `e2e` job. After deploy, the Workers dashboard's CPU-time metric for `/v2/push` and
+The `e2e` CI job runs the script on port 18787. After deploy, the Workers dashboard's CPU-time metric for `/v2/push` and
 `/v2/changes` during the owner's first upload confirms the bench (expected well under 100 ms,
 against a 30 s limit).
 

@@ -3,13 +3,18 @@
 //! open and runs:
 //!
 //! ```text
-//! KANSO_SYNC_E2E_ENDPOINT=http://127.0.0.1:8787 KANSO_SYNC_E2E_STATE=$dir \
+//! KANSO_SYNC_E2E_ENDPOINT=http://127.0.0.1:8787 KANSO_SYNC_E2E_CANARIES=$list \
 //!     cargo test -p kanso-sync --test e2e -- --nocapture
+//! # then, once wrangler dev has exited:
+//! KANSO_SYNC_E2E_STATE=$dir KANSO_SYNC_E2E_CANARIES=$list \
+//!     cargo test -p kanso-sync --test e2e -- --ignored the_stopped_state_holds_no_canary
 //! ```
 //!
 //! It runs at production KDF parameters (`HttpBackend`) and passes without
 //! doing anything when `KANSO_SYNC_E2E_ENDPOINT` is unset. Sessions stay in
-//! memory; nothing touches the Keychain.
+//! memory; nothing touches the Keychain. The canary scan reads the state
+//! only after the Worker stops: while it runs, D1's recent writes aren't in
+//! its files yet (the scan's positive control caught that).
 
 mod common;
 
@@ -17,8 +22,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use common::*;
 use kanso_store::Origin;
+use kanso_sync::api::{LoginDevice, LoginRequest};
 use kanso_sync::wire::{
     MAX_CHANGES_LIMIT, MAX_PUSH_BODY, MAX_PUSH_DOCS, WirePage, WirePushDoc, WirePushResult,
     WireRemote,
@@ -73,13 +81,17 @@ impl Backend for Recording {
     }
 }
 
-/// Runs an account call, waiting out the auth front filter (20 requests a
-/// minute per IP) when it answers 429.
+/// The auth front filter's window (`AUTH_LIMITER`: 20 requests a minute per
+/// IP), which is also its `retry_after`.
+const BINDING_SECS: u64 = 60;
+
+/// Runs an account call, waiting out the auth front filter when it answers
+/// 429. A longer `retry_after` is a D1 rule's, and comes back as it is.
 fn patiently<T>(call: impl Fn() -> Result<T, AccountError>) -> Result<T, AccountError> {
     for _ in 0..3 {
         match call() {
-            Err(AccountError::RateLimited { retry_after }) => {
-                eprintln!("rate limited; waiting {retry_after} s");
+            Err(AccountError::RateLimited { retry_after }) if retry_after <= BINDING_SECS => {
+                eprintln!("rate limited by the binding; waiting {retry_after} s");
                 std::thread::sleep(Duration::from_secs(retry_after + 1));
             }
             other => return other,
@@ -114,6 +126,10 @@ fn two_macs_sync_through_a_local_worker() {
         return;
     };
     let backend = Recording {
+        uploads: Mutex::new(Vec::new()),
+    };
+    // A second account that stays, for the canary scan's positive control.
+    let witness_backend = Recording {
         uploads: Mutex::new(Vec::new()),
     };
     let run = format!("{:x}", kanso_core::now_ms());
@@ -268,21 +284,77 @@ fn two_macs_sync_through_a_local_worker() {
     };
     b.sync(&backend);
 
-    // 4. Wrong passwords end in 429 (login-user: 10 in 15 minutes).
+    // 4. Wrong passwords end in 429 from login-user (10 in 15 minutes per
+    //    account), not just from the binding, whose 429s are waited out.
+    //    The raw route takes any well-formed auth key, so no KDF runs.
+    let origin = kanso_sync::origin(&endpoint).unwrap();
+    let account_id = b.session.account_id.clone();
     let stranger = identity(9, "Stranger");
-    let wrong = Password::new("definitely not the password", &username).unwrap();
-    let mut limited = false;
-    for _ in 0..15 {
-        match kanso_sync::sign_in(&backend, &endpoint, &username, &wrong, &stranger, &|_| {}) {
-            Err(AccountError::InvalidCredentials) => {}
-            Err(AccountError::RateLimited { .. }) => {
-                limited = true;
-                break;
+    let wrong_login = LoginRequest {
+        username: username.clone(),
+        auth_key: URL_SAFE_NO_PAD.encode([7u8; 32]),
+        device: LoginDevice {
+            id: stranger.device_id(&account_id),
+            proof: stranger.device_proof(&origin, &account_id).to_base64url(),
+        },
+    };
+    let api = HttpBackend.api(&endpoint);
+    let mut refused_by = None;
+    let mut attempts = 0;
+    while attempts < 15 && refused_by.is_none() {
+        match api.login(&wrong_login) {
+            Err(ApiError::InvalidCredentials) => attempts += 1,
+            Err(ApiError::RateLimited { limit, retry_after }) if limit == "binding" => {
+                eprintln!("binding 429; waiting {retry_after} s");
+                std::thread::sleep(Duration::from_secs(retry_after + 1));
+            }
+            Err(ApiError::RateLimited { limit, retry_after }) => {
+                refused_by = Some((limit, retry_after))
             }
             other => panic!("unexpected {other:?}"),
         }
     }
-    assert!(limited, "wrong passwords never hit the limit");
+    let (limit, retry_after) = refused_by.expect("wrong passwords never hit a D1 rule");
+    assert_eq!(limit, "login-user", "after {attempts} wrong passwords");
+    assert!(
+        retry_after > BINDING_SECS && retry_after <= 15 * 60,
+        "{retry_after}"
+    );
+    // A Mac that already has a session for the account is exempt (M8): its
+    // device proof matches that session's row.
+    let exempt = patiently(|| {
+        kanso_sync::sign_in(&backend, &endpoint, &username, &third, &device_b, &|_| {})
+    })
+    .expect("the known Mac signs in past login-user");
+    let b = Mac {
+        session: exempt.session,
+        ..b
+    };
+    b.sync(&backend);
+    eprintln!(
+        "login-user refused a stranger after {attempts} wrong passwords; the known Mac got in"
+    );
+
+    // The witness: an account that stays, with one note and one file.
+    let witness_name = format!("w{run}");
+    let witness_password = Password::new(&format!("{PASSWORD} witness"), &witness_name).unwrap();
+    let witness_session = patiently(|| {
+        kanso_sync::sign_up(
+            &witness_backend,
+            &endpoint,
+            &witness_name,
+            &witness_password,
+            &identity(3, "Witness"),
+            &|_| {},
+        )
+    })
+    .expect("witness sign-up")
+    .session;
+    let w = Mac::new(witness_session);
+    book(&w.store, "book:witnessb", "witness notebook");
+    file(&w.store, "file:witnessf", &image[..64 * 1024]);
+    let report = w.sync(&witness_backend);
+    assert_eq!(report.files_up, 1, "{report:?}");
 
     // 6. Deleting the account gives 401; its R2 objects go with the cron.
     patiently(|| kanso_sync::delete_account(&backend, &b.session, &third, &username, &|_| {}))
@@ -296,39 +368,107 @@ fn two_macs_sync_through_a_local_worker() {
         eprintln!("/__scheduled: {:?}", scheduled.map(|r| r.status()));
     }
 
-    // 7. Every file under the state directory (D1's SQLite and R2's blobs)
-    //    is scanned for the canary markers.
-    let Ok(state) = std::env::var("KANSO_SYNC_E2E_STATE") else {
-        eprintln!("KANSO_SYNC_E2E_STATE unset: no on-disk canary scan");
+    // 7. What the scan of the stopped Worker's state looks for, written for
+    //    `the_stopped_state_holds_no_canary` (the script runs it once
+    //    `wrangler dev` has exited, so D1 has checkpointed everything into
+    //    its files). The file lives outside the state directory.
+    let Ok(canaries) = std::env::var("KANSO_SYNC_E2E_CANARIES") else {
+        eprintln!("KANSO_SYNC_E2E_CANARIES unset: no on-disk canary scan");
         return;
     };
-    let mut secrets: Vec<(String, Vec<u8>)> = vec![
-        ("the marker".into(), marker.clone().into_bytes()),
-        ("the password".into(), password_text.into_bytes()),
+    let hex = |bytes: &[u8]| -> String { bytes.iter().map(|b| format!("{b:02x}")).collect() };
+    let mut secrets: Vec<(String, String)> = vec![
+        ("the marker".into(), hex(marker.as_bytes())),
+        ("the password".into(), hex(password_text.as_bytes())),
         (
             "the recovery key".into(),
-            recovery_key.display().into_bytes(),
+            hex(recovery_key.display().as_bytes()),
         ),
     ];
     for doc in a.store.sync_docs().unwrap() {
         let hash = doc.rev.split_once('-').unwrap().1.to_owned();
-        secrets.push((format!("the revision {}", doc.rev), hash.into_bytes()));
+        secrets.push((format!("the revision {}", doc.rev), hex(hash.as_bytes())));
     }
-    let uploads = backend.uploads.lock().unwrap();
+    let middle = |sealed: &[u8]| hex(&sealed[sealed.len() / 2..sealed.len() / 2 + 32]);
+    let deleted_files: Vec<String> = backend
+        .uploads
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|sealed| sealed.len() >= 64)
+        .map(|sealed| middle(sealed))
+        .collect();
+    let witness_file = middle(&witness_backend.uploads.lock().unwrap()[0]);
+    let list = serde_json::json!({
+        "secrets": secrets,
+        "deleted_files": deleted_files,
+        "witness_name": hex(witness_name.as_bytes()),
+        "witness_file": witness_file,
+    });
+    std::fs::write(&canaries, list.to_string()).expect("write the canary list");
+    eprintln!("canary list written for the scan of the stopped state");
+}
+
+/// The state directory of the stopped Worker (D1's SQLite files and R2's
+/// blobs, everything under it) holds none of the canaries
+/// `two_macs_sync_through_a_local_worker` listed, and does hold the live
+/// witness account's username and sealed file, so the scan is known to read
+/// both. `cloud/scripts/e2e-local.sh` runs it after `wrangler dev` exits.
+#[test]
+#[ignore = "run by cloud/scripts/e2e-local.sh once the Worker has stopped"]
+fn the_stopped_state_holds_no_canary() {
+    let (Ok(state), Ok(canaries)) = (
+        std::env::var("KANSO_SYNC_E2E_STATE"),
+        std::env::var("KANSO_SYNC_E2E_CANARIES"),
+    ) else {
+        panic!(
+            "set KANSO_SYNC_E2E_STATE and KANSO_SYNC_E2E_CANARIES (see cloud/scripts/e2e-local.sh)"
+        );
+    };
+    let list: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&canaries).expect("the canary list"))
+            .unwrap();
+    let unhex = |text: &serde_json::Value| -> Vec<u8> {
+        let text = text.as_str().unwrap();
+        (0..text.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
+            .collect()
+    };
+    let secrets: Vec<(String, Vec<u8>)> = list["secrets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|pair| (pair[0].as_str().unwrap().to_owned(), unhex(&pair[1])))
+        .collect();
+    let deleted_files: Vec<Vec<u8>> = list["deleted_files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(unhex)
+        .collect();
+    let witness_name = unhex(&list["witness_name"]);
+    let witness_file = unhex(&list["witness_file"]);
+    assert!(!secrets.is_empty() && !deleted_files.is_empty());
+
+    let (mut saw_witness_name, mut saw_witness_file) = (false, false);
     let mut files = Vec::new();
     files_under(Path::new(&state), &mut files);
     assert!(!files.is_empty(), "{state} is empty");
-    for path in files {
-        let Ok(bytes) = std::fs::read(&path) else {
+    for path in &files {
+        let Ok(bytes) = std::fs::read(path) else {
             continue;
         };
+        // Positive controls: D1's database stores usernames as they are,
+        // and R2's blobs hold the witness's sealed file.
+        saw_witness_name |= contains(&bytes, &witness_name);
+        saw_witness_file |= contains(&bytes, &witness_file);
         for (what, secret) in &secrets {
             for form in encodings(secret) {
                 assert!(!contains(&bytes, &form), "{what} is in {}", path.display());
             }
         }
-        for sealed in uploads.iter().filter(|s| s.len() >= 64) {
-            let middle = &sealed[sealed.len() / 2..sealed.len() / 2 + 32];
+        for middle in &deleted_files {
             assert!(
                 !contains(&bytes, middle),
                 "a deleted account's file is still in {}",
@@ -336,5 +476,10 @@ fn two_macs_sync_through_a_local_worker() {
             );
         }
     }
-    eprintln!("no canary on disk");
+    assert!(saw_witness_name, "the scan never read D1's database");
+    assert!(saw_witness_file, "the scan never read R2's blobs");
+    eprintln!(
+        "no canary in {} files; the scan found the live witness in D1 and R2",
+        files.len()
+    );
 }
