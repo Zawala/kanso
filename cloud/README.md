@@ -120,9 +120,13 @@ npm run -s admin -- --local accounts        # the local database (wrangler dev's
 (20,000) per UTC day, and upload at most `upload_bytes_per_day` (1 GiB, 1,073,741,824 bytes) of
 file bytes, refused uploads and replacements included. The server as a whole stores at most
 `global_writes_per_day` (300,000) document writes and `global_upload_bytes_per_day`
-(5,000,000,000) upload bytes a day. So fifteen accounts at their write budget, or five at their
-upload budget, use up the server's day for everyone until UTC midnight; each daily command prints
-that count. Past its budget an account's Macs show "Sync paused" and carry on after UTC midnight.
+(5,000,000,000) upload bytes a day, shared fairly: past a server-wide cap only accounts above their
+fair share (the cap ÷ `max_accounts`, 6,000 writes and 100,000,000 bytes by default) are refused,
+so fifteen accounts at their write budget, or five at their upload budget, can no longer pause
+everyone else until UTC midnight. The price is that a day's total stays under about twice each cap.
+Each daily command, and `max-accounts`, prints the fair shares and how many accounts reach each
+cap; `accounts` shows them beside today's counts. Past its budget an account's Macs show "Sync
+paused" and carry on after UTC midnight.
 A library that needs more in one day (a first upload or a re-merge of a large library) can be given
 its own budget with `quota <username> --writes-per-day N`; the owner does this for their own
 account rather than raising the default. The daily commands refuse, unless given `--force`, a

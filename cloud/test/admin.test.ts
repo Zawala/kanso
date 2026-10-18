@@ -125,16 +125,26 @@ describe("commands", () => {
 			expect((await runAdmin([command, "123"])).ok).toBe(true);
 			expect(await setting(name)).toBe("123");
 		}
-		// The per-account budgets against the server's: how many accounts it takes to use the day up.
+		// The per-account budgets against the server's: each cap's fair share, how many accounts it
+		// takes to reach the cap, and the day's bound of about twice the cap.
 		expect((await runAdmin(["global-writes-per-day", "300000"])).ok).toBe(true);
 		expect((await runAdmin(["global-upload-bytes-per-day", "5000000000"])).ok).toBe(true);
 		expect((await runAdmin(["upload-bytes-per-day", "1073741824"])).ok).toBe(true);
 		expect((await runAdmin(["writes-per-day", "20000"])).message).toBe(
-			"writes_per_day = 20000. 15 accounts using their whole writes_per_day (20000) use up global_writes_per_day (300000) for everyone until UTC midnight. " +
-				"5 accounts using their whole upload_bytes_per_day (1073741824) use up global_upload_bytes_per_day (5000000000) for everyone until UTC midnight.",
+			"writes_per_day = 20000. global_writes_per_day (300000) ÷ max_accounts (50): a fair share of 6000 writes per account, which it never refuses. " +
+				"15 accounts using their whole writes_per_day (20000) reach it, after which only accounts above their fair share wait for UTC midnight. " +
+				"A day's total stays under about 600000. " +
+				"global_upload_bytes_per_day (5000000000) ÷ max_accounts (50): a fair share of 100000000 bytes per account, which it never refuses. " +
+				"5 accounts using their whole upload_bytes_per_day (1073741824) reach it, after which only accounts above their fair share wait for UTC midnight. " +
+				"A day's total stays under about 10000000000.",
 		);
-		expect((await runAdmin(["max-accounts", "40"])).ok).toBe(true);
+		// The fair shares follow max_accounts.
+		const max = await runAdmin(["max-accounts", "40"]);
+		expect(max.ok).toBe(true);
+		expect(max.message).toContain("max_accounts = 40. global_writes_per_day (300000) ÷ max_accounts (40): a fair share of 7500 writes");
+		expect(max.message).toContain("a fair share of 125000000 bytes per account");
 		expect(await setting("max_accounts")).toBe("40");
+		expect((await runAdmin(["accounts"])).message).toContain("accounts within their fair share (7500 writes, 125000000 upload bytes) carry on");
 	});
 
 	it("quota --writes-per-day raises one account's daily write budget; no single account's budget may exceed the server's", async () => {

@@ -207,13 +207,22 @@ CREATE TABLE account_docs (
     UNIQUE (account_id, seq)
 );
 
--- Server-wide document writes per UTC day (global_writes_per_day). The push's upsert fires
--- BEFORE INSERT on both of its paths, then AFTER INSERT or AFTER UPDATE, so every stored
--- write is checked and counted once.
+-- Server-wide document writes per UTC day (global_writes_per_day), shared fairly: once the
+-- day's count reaches the cap, a write is refused only for an account above its fair share
+-- (global_writes_per_day / max_accounts), judged by its own `writes-account` count today, which
+-- the Worker takes before the batch (this push included). An account at or below its fair share
+-- is never refused here, so a few accounts at their own budgets can't pause everyone; a day's
+-- total stays under about twice the cap. Fails closed: a missing setting, max_accounts 0, or no
+-- `writes-account` row for today counts as above the fair share. The push's upsert fires BEFORE
+-- INSERT on both of its paths, then AFTER INSERT or AFTER UPDATE, so every stored write is
+-- checked and counted once.
 CREATE TRIGGER writes_global BEFORE INSERT ON account_docs
 WHEN coalesce((SELECT CASE WHEN day >= NEW.updated_at / 86400000 THEN count ELSE 0 END
                FROM daily WHERE name = 'writes'), 9223372036854775807)
      >= coalesce((SELECT global_writes_per_day FROM defaults), 0)
+ AND coalesce((SELECT CASE WHEN window_start = NEW.updated_at / 86400000 * 86400000 THEN count END
+               FROM limits WHERE key = 'writes-account:' || NEW.account_id), 9223372036854775807)
+     > coalesce((SELECT global_writes_per_day / max_accounts FROM defaults WHERE max_accounts > 0), -1)
 BEGIN SELECT RAISE(ABORT, 'rate_limited:writes-global'); END;
 
 CREATE TRIGGER writes_count_insert AFTER INSERT ON account_docs
@@ -242,11 +251,16 @@ CREATE TABLE account_files (
 );
 
 -- Server-wide upload bytes per UTC day (global_upload_bytes_per_day), weighted by size and
--- counted on every upload, replacements included.
+-- counted on every upload, replacements included. Shared fairly as document writes are: past
+-- the cap, only an account whose own `uploads-account` count today (this upload included) is
+-- above global_upload_bytes_per_day / max_accounts is refused, and the same things fail closed.
 CREATE TRIGGER uploads_global BEFORE INSERT ON account_files
 WHEN coalesce((SELECT CASE WHEN day >= NEW.uploaded_at / 86400000 THEN count ELSE 0 END
                FROM daily WHERE name = 'upload_bytes'), 9223372036854775807)
      > coalesce((SELECT global_upload_bytes_per_day FROM defaults), 0) - NEW.size
+ AND coalesce((SELECT CASE WHEN window_start = NEW.uploaded_at / 86400000 * 86400000 THEN count END
+               FROM limits WHERE key = 'uploads-account:' || NEW.account_id), 9223372036854775807)
+     > coalesce((SELECT global_upload_bytes_per_day / max_accounts FROM defaults WHERE max_accounts > 0), -1)
 BEGIN SELECT RAISE(ABORT, 'rate_limited:uploads-global'); END;
 
 CREATE TRIGGER uploads_count_insert AFTER INSERT ON account_files

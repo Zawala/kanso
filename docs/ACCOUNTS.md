@@ -80,6 +80,10 @@ nothing was deployed yet):
    doesn't read the text. A second write-free binding, `SESSION_LIMITER`, allows about 120
    requests a minute per account on the session routes (429 `session-account`). A push refused as
    malformed or too large counts one write.
+3. **Fair shares of the server-wide daily caps.** Past `global_writes_per_day` or
+   `global_upload_bytes_per_day`, the triggers refuse only accounts above their fair share (the cap
+   ÷ `max_accounts`), so five accounts at their own budgets can't pause a sixth. A day's total
+   stays under about twice each cap. The admin script prints the shares.
 4. **Only signed-in devices are exempt from `login-user`.** A device signed out for any reason
    counts like a stranger. `DELETE /v2/account/devices/<id>` on a row that is already signed out
    marks it `revoked` and answers 204 instead of 404.
@@ -106,7 +110,7 @@ Two places go beyond the reviews:
 | Topic | Decision |
 |---|---|
 | Sign-up | Open to anyone with the app, once the owner opens it; the migration seeds it closed. A `signup` setting (`open`, `closed`, or `only:<username>`), `max_accounts` and `signups_per_day` are enforced by D1 triggers. No CAPTCHA. |
-| Abuse controls | A write-free Workers rate-limit binding in front, then fixed-window counters in D1 (sign-up per IP; sign-ins per account and per IP; recovery per IP; password checks per account; writes per account per day). Per-account quotas on live documents, document bytes, files and file bytes, plus global caps and server-wide daily caps on sign-ups, document writes and upload bytes, all enforced by triggers that fail closed. |
+| Abuse controls | A write-free Workers rate-limit binding in front, then fixed-window counters in D1 (sign-up per IP; sign-ins per account and per IP; recovery per IP; password checks per account; writes per account per day). Per-account quotas on live documents, document bytes, files and file bytes, plus global caps and server-wide daily caps on sign-ups, document writes and upload bytes, all enforced by triggers that fail closed. The daily write and upload caps are shared fairly: an account within its fair share (the cap ÷ `max_accounts`) is never refused by them. |
 | Identifier | A username: ASCII, case-folded, 3–32 characters. There is no email anywhere. |
 | Keys | Argon2id(password, salt bound to the server's origin and the username) → HKDF splits it into an auth key (sent) and a key-encryption key (never leaves). A random data key encrypts everything. It is wrapped by the password KEK and, separately, by a recovery key that rotates on use. |
 | Server secrets | The server keeps SHA-256(auth key) and compares in constant time. It hands out a wrapped data key only after the matching proof. |
@@ -520,7 +524,20 @@ an account doesn't give one back) gets 403 `signup_closed` with reason `busy`. T
 daily caps are counted by triggers in `daily`, not here: stored document writes
 (`global_writes_per_day`) and uploaded file bytes (`global_upload_bytes_per_day`). Past either, a
 push or upload gets 429 with `limit` `writes-global` or `uploads-global` and `retry_after` up to the
-next UTC midnight (security re-check 2).
+next UTC midnight (security re-check 2), but only for an account above its fair share.
+
+**Fair shares** (security review 2, finding 3). First come, first served, five accounts at their
+own upload budgets, or fifteen at their write budgets, could use a cap up by noon and pause every
+other Mac until midnight. So each cap has a fair share per account: the cap ÷ `max_accounts`, in
+SQLite's integer division (6,000 writes and 100,000,000 upload bytes by default). Past the cap, the
+trigger refuses a write only when the account's own count today is above its fair share:
+`writes-account` for documents, `uploads-account` for upload bytes, both counted by the Worker
+before the batch, this request included. An account at or below its fair share is never refused
+by a server-wide cap. Fail closed: a missing setting, `max_accounts` 0, or no row for today in
+`limits` counts as above the fair share. The price is the bound: once the cap is reached, every
+account may still use its fair share, so a day's total stays under about twice the cap (the cap,
+plus `max_accounts` fair shares, plus the request that crossed it, plus a fair share for each
+account created that day).
 
 Login keys `login-user` by account, so attempts on many unknown names share one row. That tells a
 prober whether a name exists, which sign-up's `username_taken` already does.
@@ -790,8 +807,9 @@ WRITE   = INSERT INTO account_docs (account_id, id, rev, seq, deleted, sealed, u
    account's usage and answers 413
    `quota_exceeded` with `used` and `limit`. Shrinking writes always pass, so an account over quota
    can still delete. There is no check-then-act anywhere (H1). Every stored write (new or updated)
-   also counts towards `global_writes_per_day`; past it a trigger raises
-   `rate_limited:writes-global`, the batch rolls back, and the answer is 429 (security re-check 2).
+   also counts towards `global_writes_per_day`; past it, for an account above its fair share (see
+   "Rate limits"), a trigger raises `rate_limited:writes-global`, the batch rolls back, and the
+   answer is 429 (security re-check 2).
 3. **File tombstones.** For accepted file tombstones, delete their R2 objects (one call). Then one
    batch: subtract their `account_files` sizes (plus 1,024 each) and count from the account, and
    delete those rows.
@@ -834,8 +852,8 @@ hex is 400. Steps:
       coalesce(old size + 1024, 0)`, computed in SQL. The statement must affect the account row;
       if it doesn't, the account is gone, and the answer is 401.
    3. Upsert `account_files` with `uploaded_at` = now. A trigger counts the size towards
-      `global_upload_bytes_per_day`, replacements included, and refuses past it with
-      `rate_limited:uploads-global` (429; security re-check 2).
+      `global_upload_bytes_per_day`, replacements included, and refuses past it, for an account
+      above its fair share, with `rate_limited:uploads-global` (429; security re-check 2).
 
    Triggers refuse growth past quotas with 413.
 5. `FILES.put(key, body, {sha256})`. If R2 fails, a compensating batch restores the old row and
@@ -1069,13 +1087,22 @@ CREATE TABLE account_docs (
     UNIQUE (account_id, seq)
 );
 
--- Server-wide document writes per UTC day (global_writes_per_day). The push's upsert fires
--- BEFORE INSERT on both of its paths, then AFTER INSERT or AFTER UPDATE, so every stored
--- write is checked and counted once.
+-- Server-wide document writes per UTC day (global_writes_per_day), shared fairly: once the
+-- day's count reaches the cap, a write is refused only for an account above its fair share
+-- (global_writes_per_day / max_accounts), judged by its own `writes-account` count today, which
+-- the Worker takes before the batch (this push included). An account at or below its fair share
+-- is never refused here, so a few accounts at their own budgets can't pause everyone; a day's
+-- total stays under about twice the cap. Fails closed: a missing setting, max_accounts 0, or no
+-- `writes-account` row for today counts as above the fair share. The push's upsert fires BEFORE
+-- INSERT on both of its paths, then AFTER INSERT or AFTER UPDATE, so every stored write is
+-- checked and counted once.
 CREATE TRIGGER writes_global BEFORE INSERT ON account_docs
 WHEN coalesce((SELECT CASE WHEN day >= NEW.updated_at / 86400000 THEN count ELSE 0 END
                FROM daily WHERE name = 'writes'), 9223372036854775807)
      >= coalesce((SELECT global_writes_per_day FROM defaults), 0)
+ AND coalesce((SELECT CASE WHEN window_start = NEW.updated_at / 86400000 * 86400000 THEN count END
+               FROM limits WHERE key = 'writes-account:' || NEW.account_id), 9223372036854775807)
+     > coalesce((SELECT global_writes_per_day / max_accounts FROM defaults WHERE max_accounts > 0), -1)
 BEGIN SELECT RAISE(ABORT, 'rate_limited:writes-global'); END;
 
 CREATE TRIGGER writes_count_insert AFTER INSERT ON account_docs
@@ -1104,11 +1131,16 @@ CREATE TABLE account_files (
 );
 
 -- Server-wide upload bytes per UTC day (global_upload_bytes_per_day), weighted by size and
--- counted on every upload, replacements included.
+-- counted on every upload, replacements included. Shared fairly as document writes are: past
+-- the cap, only an account whose own `uploads-account` count today (this upload included) is
+-- above global_upload_bytes_per_day / max_accounts is refused, and the same things fail closed.
 CREATE TRIGGER uploads_global BEFORE INSERT ON account_files
 WHEN coalesce((SELECT CASE WHEN day >= NEW.uploaded_at / 86400000 THEN count ELSE 0 END
                FROM daily WHERE name = 'upload_bytes'), 9223372036854775807)
      > coalesce((SELECT global_upload_bytes_per_day FROM defaults), 0) - NEW.size
+ AND coalesce((SELECT CASE WHEN window_start = NEW.uploaded_at / 86400000 * 86400000 THEN count END
+               FROM limits WHERE key = 'uploads-account:' || NEW.account_id), 9223372036854775807)
+     > coalesce((SELECT global_upload_bytes_per_day / max_accounts FROM defaults WHERE max_accounts > 0), -1)
 BEGIN SELECT RAISE(ABORT, 'rate_limited:uploads-global'); END;
 
 CREATE TRIGGER uploads_count_insert AFTER INSERT ON account_files
@@ -1176,12 +1208,12 @@ refuses rather than allows (security re-check 1).
 | `quota_doc_bytes` | 100 MiB (104,857,600) | `length(sealed) + 512` per row, tombstones included. Real cost. |
 | `quota_files` | 10,000 | Stored file objects |
 | `quota_file_bytes` | 500 MiB (524,288,000) | `size + 1,024` per file |
-| `writes_per_day` | 20,000 | Pushed documents plus file uploads, per account, unless the account's `quota_writes_per_day` says otherwise (`quota <user> --writes-per-day`). A fifteenth of `global_writes_per_day`, so no one account can spend the server's day. A library that needs more in one day, like the owner's first upload or a re-merge of a large library, pauses at the cap and finishes after UTC midnight; the owner raises their own account instead. |
+| `writes_per_day` | 20,000 | Pushed documents plus file uploads (and refused push bodies), per account, unless the account's `quota_writes_per_day` says otherwise (`quota <user> --writes-per-day`). A fifteenth of `global_writes_per_day`, so no one account can spend the server's day. A library that needs more in one day, like the owner's first upload or a re-merge of a large library, pauses at the cap and finishes after UTC midnight; the owner raises their own account instead. |
 | `upload_bytes_per_day` | 1 GiB (1,073,741,824) | Uploaded file bytes per account per UTC day, refused uploads included. Twice the default file bytes quota, under a fifth of `global_upload_bytes_per_day`. |
 | `global_doc_bytes` | 6,000,000,000 | Sum over all accounts |
 | `global_file_bytes` | 50,000,000,000 | Sum over all accounts |
-| `global_writes_per_day` | 300,000 | Stored document writes (new and updated) per UTC day, all accounts together |
-| `global_upload_bytes_per_day` | 5,000,000,000 | File bytes uploaded per UTC day, all accounts, replacements included |
+| `global_writes_per_day` | 300,000 | Stored document writes (new and updated) per UTC day, all accounts together. Past it, only accounts above their fair share (÷ `max_accounts`: 6,000 writes) are refused, so a day's total stays under about 600,000. |
+| `global_upload_bytes_per_day` | 5,000,000,000 | File bytes uploaded per UTC day, all accounts, replacements included. Past it, only accounts above their fair share (÷ `max_accounts`: 100,000,000 bytes) are refused, so a day's total stays under about 10,000,000,000. |
 
 **The 512-byte row cost** covers the row's other columns and its entries in both indexes. A
 tombstone measures about 300 B with indexes. `quota.test.ts` pins the figure: it inserts 10,000
@@ -1208,22 +1240,26 @@ cap, which only overrides can approach, and costs at most 50 GB × $0.015 = $0.7
 **Rows written:** an accepted document writes about 5 rows (the account row, the document row, its
 two index entries and the `daily` counter). One account at the daily maximum writes 20,000 × 5 =
 100,000 rows a day, which is 3,100,000 in a 31-day month, inside the included 50 million. It takes
-seventeen accounts at the maximum all month to exceed it, and `global_writes_per_day` bounds the whole server
-at 300,000 × 5 = 1,500,000 rows a day, about 46.5 million in a 31-day month. Beyond the included
-rows it costs $1 per million, and the `accounts` command shows `writes_today` for each account. The owner's first upload is about 909 documents, roughly 3,600
-rows.
+seventeen accounts at the maximum all month to exceed it. With fair shares, `global_writes_per_day`
+bounds the whole server at about twice 300,000 × 5, 3,000,000 rows a day, about 93 million in a
+31-day month in the worst case (every account at its fair share after the heavy ones have used
+the cap up, every day). Beyond the included rows it costs $1 per million, so that worst case is
+about $43 a month; and the `accounts` command shows `writes_today` for each account. The owner's
+first upload is about 909 documents, roughly 3,600 rows.
 
 **Requests:** 50 accounts × 3 Macs × about 400 requests a day is about 1.8 million a month, against
 10 million included.
 
 **Admin overcommit rule:** `max-accounts`, `quota` and `default-quota` refuse, unless given
 `--force`, any change after which `Σ effective quotas of existing accounts + (max_accounts −
-accounts) × default` exceeds a global cap. The daily budgets are shared first come, first served,
-so their rule is per account: `writes-per-day`, `upload-bytes-per-day`, `global-writes-per-day`,
-`global-upload-bytes-per-day` and `quota --writes-per-day` refuse, unless given `--force`, any
-change after which one account's daily budget (the default, an override, or the upload budget) is
-over its server-wide cap. Each prints how many accounts at their whole budget use the server's day
-up.
+accounts) × default` exceeds a global cap. The daily budgets have a per-account rule:
+`writes-per-day`, `upload-bytes-per-day`, `global-writes-per-day`, `global-upload-bytes-per-day`
+and `quota --writes-per-day` refuse, unless given `--force`, any change after which one account's
+daily budget (the default, an override, or the upload budget) is over its server-wide cap. Each,
+and `max-accounts`, prints each cap's fair share (cap ÷ `max_accounts`), how many accounts at their
+whole budget reach the cap (after which only accounts above their fair share wait for midnight),
+and the day's bound of about twice the cap. `accounts` shows the fair shares beside today's
+counts.
 
 ### R2 layout, purges and the cron
 
@@ -1821,15 +1857,16 @@ CLOUDFLARE_API_TOKEN="$IMNGONII_CLOUDFLARE_API_TOKEN" npm run -s admin -- accoun
 | `default-quota [--docs N] [--doc-mib N] [--files N] [--file-mib N]` | Defaults; overcommit check |
 | `writes-per-day <n>` / `upload-bytes-per-day <n>` | `settings.writes_per_day` / `settings.upload_bytes_per_day`, the per-account daily budgets |
 | `global-writes-per-day <n>` / `global-upload-bytes-per-day <n>` | The server-wide daily caps |
-
-The four daily commands refuse, unless given `--force`, a value after which one account's budget
-(the default, any override, or the upload budget) is over its server-wide cap, and print how many
-accounts at their whole budget use up the server's day.
 | `recount [<username>]` | Recompute the counters from the tables, setting `recounted_at` |
 | `restored [<username> \| --all]` | After a Time Travel restore: a new epoch (`lower(hex(randomblob(8)))`), so Macs re-merge (M1) |
 | `legacy-status` | Whether `docs`/`counter` exist, their live document and file counts and size, and the `files/` purge state |
 | `legacy-export --dir DIR` | `manifest.json` (`{"exported_at", "rows": [id, rev, deleted, md5digest]}`), `legacy.sql` (`wrangler d1 export --table docs --table counter`), and every live legacy file from R2 into `DIR/files/` |
 | `purge-legacy --account <username> --verified R.json` | Refuses unless `R.json` is `ok`, names that account, and its `manifest_sha256` equals the manifest hash (under "Command line") of a fresh export of the legacy rows (nothing changed since). Then drops `docs` and `counter`, queues the `files/` purge, and runs `wrangler secret delete SYNC_TOKEN` with stdin attached. |
+
+The four daily commands refuse, unless given `--force`, a value after which one account's budget
+(the default, any override, or the upload budget) is over its server-wide cap. They and
+`max-accounts` print each server-wide cap's fair share (the cap ÷ `max_accounts`), how many
+accounts at their whole budget reach the cap, and the day's bound of about twice the cap.
 
 ## Tests
 
@@ -2208,7 +2245,10 @@ Residual risks:
   Mac, a password change, recovery, eviction or expiry) counts like a stranger until it signs in
   again, so an old copy of its library can't be used to guess passwords past the limit.
 - **Floods and cost.** Without a custom domain and a WAF rule, a large flood can drive Workers
-  request costs. Per-account write budgets cap D1 write costs, and the global caps bound storage.
+  request costs. Per-account write budgets and `SESSION_LIMITER` cap what one account costs, the
+  global caps bound storage, and the server-wide daily caps bound a day's writes and uploads at
+  about twice each cap. A few accounts at their own budgets can no longer pause everyone else's
+  sync: an account within its fair share is never refused by a server-wide cap.
 - **Unaudited crates.** The crypto crates are recent RustCrypto releases (argon2 0.6,
   chacha20poly1305 0.11), pinned in `Cargo.lock`.
 

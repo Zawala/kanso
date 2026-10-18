@@ -49,7 +49,9 @@ export const USAGE = `Usage: npm run -s admin -- [--local [--persist-to DIR]] <c
 Runs against the deployed database unless --local is given. max-accounts, quota and
 default-quota refuse a change that would overcommit a global cap unless --force is given, and
 the daily commands (and quota --writes-per-day) refuse one that would let a single account's
-daily budget exceed the server-wide one.`;
+daily budget exceed the server-wide one. The server-wide daily caps are shared fairly: an
+account within its fair share (the cap ÷ max_accounts) is never refused by them, so a day's
+total stays under about twice each cap; the daily commands and max-accounts print the shares.`;
 
 export class UsageError extends Error {}
 
@@ -231,6 +233,8 @@ function overcommitRefusal(after: Capacity, force: boolean): Report | null {
 
 /** The per-account and server-wide daily budgets, as the settings and overrides hold them. */
 export interface DailyCaps {
+	/** The fair share of a server-wide cap is the cap ÷ max_accounts. */
+	maxAccounts: number;
 	writesPerDay: number;
 	uploadBytesPerDay: number;
 	globalWritesPerDay: number;
@@ -259,21 +263,36 @@ export function dailyOvercommitted(c: DailyCaps): string[] {
 	return problems;
 }
 
-/** How many accounts spending their whole default budget use up the server's day, in words. */
+/** A server-wide cap's fair share per account: cap ÷ max_accounts, rounded down, as the triggers compute it; 0 without accounts. */
+export function fairShare(global: number, maxAccounts: number): number {
+	return maxAccounts > 0 ? Math.floor(global / maxAccounts) : 0;
+}
+
+/**
+ * The daily arithmetic, in words: each server-wide cap's fair share per
+ * account (an account at or below it is never refused by that cap), how many
+ * accounts at their whole default budget reach the cap (after which only
+ * accounts above their fair share wait for UTC midnight), and the day's
+ * bound of about twice the cap.
+ */
 export function dailyShares(c: DailyCaps): string {
-	const share = (perAccount: number, global: number, what: string, globalName: string) => {
-		if (perAccount <= 0) return "";
-		const n = Math.ceil(global / perAccount);
-		return ` ${n === 1 ? "1 account using its" : `${n} accounts using their`} whole ${what} (${perAccount}) use${n === 1 ? "s" : ""} up ${globalName} (${global}) for everyone until UTC midnight.`;
+	const share = (perAccount: number, global: number, what: string, globalName: string, unit: string) => {
+		const fair = fairShare(global, c.maxAccounts);
+		let reach = "";
+		if (perAccount > 0) {
+			const n = Math.ceil(global / perAccount);
+			reach = ` ${n === 1 ? "1 account using its" : `${n} accounts using their`} whole ${what} (${perAccount}) reach${n === 1 ? "es" : ""} it, after which only accounts above their fair share wait for UTC midnight.`;
+		}
+		return ` ${globalName} (${global}) ÷ max_accounts (${c.maxAccounts}): a fair share of ${fair} ${unit} per account, which it never refuses.${reach} A day's total stays under about ${2 * global}.`;
 	};
 	return (
-		share(c.writesPerDay, c.globalWritesPerDay, "writes_per_day", "global_writes_per_day") +
-		share(c.uploadBytesPerDay, c.globalUploadBytesPerDay, "upload_bytes_per_day", "global_upload_bytes_per_day")
+		share(c.writesPerDay, c.globalWritesPerDay, "writes_per_day", "global_writes_per_day", "writes") +
+		share(c.uploadBytesPerDay, c.globalUploadBytesPerDay, "upload_bytes_per_day", "global_upload_bytes_per_day", "bytes")
 	);
 }
 
 const DAILY_SQL = [
-	"SELECT name, value FROM settings WHERE name IN ('writes_per_day', 'upload_bytes_per_day', 'global_writes_per_day', 'global_upload_bytes_per_day')",
+	"SELECT name, value FROM settings WHERE name IN ('max_accounts', 'writes_per_day', 'upload_bytes_per_day', 'global_writes_per_day', 'global_upload_bytes_per_day')",
 	"SELECT username, quota_writes_per_day FROM accounts WHERE quota_writes_per_day IS NOT NULL ORDER BY username",
 ];
 
@@ -283,6 +302,7 @@ async function dailyCaps(io: AdminIO): Promise<DailyCaps> {
 	// A missing setting reads as 0, as the Worker reads it (it then refuses).
 	const n = (name: string) => settings.get(name) ?? 0;
 	return {
+		maxAccounts: n("max_accounts"),
 		writesPerDay: n("writes_per_day"),
 		uploadBytesPerDay: n("upload_bytes_per_day"),
 		globalWritesPerDay: n("global_writes_per_day"),
@@ -505,8 +525,10 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 			const { capacity: before } = await capacity(io);
 			const refusal = overcommitRefusal({ ...before, maxAccounts: n }, flags.has("--force"));
 			if (refusal) return refusal;
+			// The fair shares of the server-wide daily caps follow max_accounts.
+			const daily = { ...(await dailyCaps(io)), maxAccounts: n };
 			await io.sql([`UPDATE settings SET value = ${sqlText(String(n))} WHERE name = 'max_accounts'`]);
-			return ok(`max_accounts = ${n}.`);
+			return ok(`max_accounts = ${n}.${dailyShares(daily)}`);
 		}
 		case "quota": {
 			const { positional, flags } = parse(rest, ["--default", "--force"], ACCOUNT_QUOTA_FLAGS);
@@ -626,6 +648,9 @@ async function accounts(rest: string[], io: AdminIO, now: number): Promise<Repor
 	const setting = new Map(settings.results.map((r) => [String(r.name), String(r.value)]));
 	const day = Math.floor(now / DAY);
 	const dailyText = daily.results.map((r) => `${r.name} ${Number(r.day) >= day ? r.count : 0}`).join(", ");
+	const max = Number(setting.get("max_accounts") ?? 0);
+	const fairWrites = fairShare(Number(setting.get("global_writes_per_day") ?? 0), max);
+	const fairUploads = fairShare(Number(setting.get("global_upload_bytes_per_day") ?? 0), max);
 	return ok(
 		[
 			accountRows.length > 0
@@ -638,7 +663,7 @@ async function accounts(rest: string[], io: AdminIO, now: number): Promise<Repor
 			table([["SETTING", "VALUE"], ...settings.results.map((r) => [String(r.name), String(r.value)])]),
 			"",
 			`Accounts: ${s.accounts} of ${setting.get("max_accounts")}. Documents: ${size(s.doc_bytes)} of ${size(Number(setting.get("global_doc_bytes")))}. Files: ${size(s.file_bytes)} of ${size(Number(setting.get("global_file_bytes")))}.`,
-			`Today (UTC): ${dailyText}.`,
+			`Today (UTC): ${dailyText}. Past a server-wide cap, accounts within their fair share (${fairWrites} writes, ${fairUploads} upload bytes) carry on.`,
 			purges.results.length > 0
 				? `Pending purges: ${purges.results.map((p) => `${p.prefix} (since ${time(p.requested_at)})`).join(", ")}.`
 				: "No pending purges.",
