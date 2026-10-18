@@ -13,7 +13,9 @@ use gpui_kit::*;
 use kanso_core::NoteStatus;
 use kanso_store::{NoteSummary, Sort};
 
+use crate::clock::Clock;
 use crate::library::{Filter, Library, LibraryEvent};
+use crate::theme::Colors;
 
 const SEARCH_DELAY: Duration = Duration::from_millis(120);
 const ROW_HEIGHT: f32 = 76.;
@@ -116,6 +118,11 @@ impl NoteList {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let theme = cx.theme();
+        let colors = Colors::get(cx);
+        // Dates read in local time: shifting both instants by the note's
+        // UTC offset keeps their difference and moves the date.
+        let offset_ms = i64::from(Clock::utc_offset_secs(cx, note.updated_at)) * 1000;
+        let updated = relative_time(note.updated_at + offset_ms, Clock::now_ms(cx) + offset_ms);
         let id = note.id.clone();
         let library = self.library.clone();
         let focus = self.focus.clone();
@@ -136,10 +143,10 @@ impl NoteList {
             .py_2()
             .gap_0p5()
             .border_b_1()
-            .border_color(theme.border.opacity(0.6))
+            .border_color(colors.divider)
             .cursor_pointer()
-            .when(selected, |el| el.bg(theme.list_active))
-            .when(!selected, |el| el.hover(|el| el.bg(theme.list_hover)))
+            .when(selected, |el| el.bg(colors.row_active))
+            .when(!selected, |el| el.hover(|el| el.bg(colors.row_hover)))
             .child(
                 h_flex()
                     .gap_1()
@@ -163,7 +170,7 @@ impl NoteList {
             .child(
                 div()
                     .text_xs()
-                    .text_color(theme.muted_foreground)
+                    .text_color(colors.text_secondary)
                     .line_clamp(2)
                     .child(note.snippet.clone()),
             )
@@ -171,14 +178,15 @@ impl NoteList {
                 h_flex()
                     .gap_2()
                     .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(relative_time(note.updated_at, kanso_core::now_ms()))
+                    .text_color(colors.text_muted)
+                    .child(updated)
                     .when(note.status != NoteStatus::None, |el| {
                         el.child(
                             div()
                                 .px_1()
                                 .rounded_sm()
-                                .bg(theme.muted)
+                                .bg(colors.elevated)
+                                .text_color(colors.text_secondary)
                                 .child(note.status.label()),
                         )
                     }),
@@ -302,9 +310,8 @@ impl Render for NoteList {
                 this.library
                     .update(cx, |library, cx| library.select_relative(-1, cx));
             }))
-            .bg(cx.theme().background)
-            .border_r_1()
-            .border_color(cx.theme().border)
+            // The resize handle draws the divider on the right.
+            .bg(Colors::get(cx).list)
             .child(
                 h_flex()
                     .h_10()
@@ -321,7 +328,7 @@ impl Render for NoteList {
                     .child(
                         div()
                             .text_xs()
-                            .text_color(cx.theme().muted_foreground)
+                            .text_color(Colors::get(cx).text_muted)
                             .child(count.to_string()),
                     )
                     .child(sort_menu)

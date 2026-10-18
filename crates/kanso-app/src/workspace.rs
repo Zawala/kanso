@@ -22,6 +22,7 @@ use crate::note_list::{NoteList, NoteListEvent};
 use crate::paths;
 use crate::services::Services;
 use crate::sidebar::{Sidebar, SidebarEvent};
+use crate::theme::Colors;
 
 actions!(
     kanso,
@@ -180,6 +181,7 @@ pub fn for_each_workspace(
 }
 
 pub fn apply_theme(preference: ThemePreference, window: Option<&mut Window>, cx: &mut App) {
+    crate::theme::ensure_installed(cx);
     match preference {
         ThemePreference::System => Theme::sync_system_appearance(window, cx),
         ThemePreference::Light => Theme::change(ThemeMode::Light, window, cx),
@@ -214,8 +216,7 @@ impl Workspace {
                 store.clone(),
                 library.clone(),
                 links_tx,
-                appearance.view_mode,
-                appearance.editor_font_size,
+                &appearance,
                 window,
                 cx,
             )
@@ -689,15 +690,16 @@ impl Workspace {
         let services = cx.global::<Services>();
         let api = services.api_status();
         let sync = services.sync_status();
+        let colors = Colors::get(cx);
         h_flex()
             .h_6()
             .px_3()
             .gap_4()
             .text_xs()
-            .text_color(cx.theme().muted_foreground)
+            .text_color(colors.text_secondary)
             .border_t_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().sidebar)
+            .border_color(colors.divider)
+            .bg(colors.app)
             .child(api)
             .child(sync)
             .child(div().flex_1())
@@ -718,7 +720,7 @@ impl Render for Workspace {
         v_flex()
             .size_full()
             .key_context("Workspace")
-            .bg(cx.theme().background)
+            .bg(Colors::get(cx).app)
             .text_color(cx.theme().foreground)
             .on_action(cx.listener(|this, _: &NewNote, window, cx| this.new_note(window, cx)))
             .on_action(cx.listener(|this, _: &NewNotebook, window, cx| {

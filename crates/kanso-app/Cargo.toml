@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 async-channel.workspace = true
+chrono.workspace = true
 fastrand.workspace = true
 gpui-kit.workspace = true
 kanso-core.workspace = true

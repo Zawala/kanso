@@ -2,6 +2,8 @@
 //!
 //! `kanso` opens the app. Other commands run without a window; see `--help`.
 
+mod assets;
+mod clock;
 mod config;
 mod dialogs;
 mod editor;
@@ -18,6 +20,7 @@ mod settings;
 mod sidebar;
 #[cfg(test)]
 mod snapshots;
+mod theme;
 #[cfg(test)]
 mod ui_tests;
 mod workspace;
@@ -126,12 +129,14 @@ fn serve(data_dir: PathBuf) -> Result<()> {
     }
 }
 
-/// Loads the settings, filling in API credentials on first run.
+/// Loads the settings, bringing an older file up to date and filling in API
+/// credentials on first run.
 fn load_config(data_dir: &std::path::Path) -> Result<AppConfig> {
     let path = paths::config_path(data_dir);
     let mut config =
         AppConfig::load(&path).with_context(|| format!("reading {}", path.display()))?;
-    if config.ensure_credentials() {
+    let migrated = config.migrate();
+    if config.ensure_credentials() || migrated {
         config.save(&path)?;
     }
     Ok(config)
@@ -158,7 +163,7 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
         }
     });
 
-    let app = application();
+    let app = application().with_assets(assets::KansoAssets);
     app.on_reopen(|cx| {
         if cx.windows().is_empty() {
             open_main_window(cx);
@@ -190,14 +195,14 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
 }
 
 fn open_main_window(cx: &mut App) {
-    let bounds = Bounds::centered(None, size(px(1360.), px(860.)), cx);
+    let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(TitlebarOptions {
             title: Some("Kanso".into()),
             ..Default::default()
         }),
-        window_min_size: Some(size(px(720.), px(420.))),
+        window_min_size: Some(size(px(1100.), px(720.))),
         ..Default::default()
     };
     let theme = cx.global::<AppState>().config.appearance.theme;

@@ -19,6 +19,7 @@ anyhow = "1"
 async-channel = "2.5"
 base64 = "0.22"
 cbc = { version = "0.1", features = ["alloc"] }
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 fastrand = "2"
 md-5 = "0.10"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }

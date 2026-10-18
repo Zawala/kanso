@@ -21,12 +21,15 @@ use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::{DocType, Note, NoteStatus, now_ms};
 use kanso_store::{Change, Origin, Put, Store, StoreError};
 
-use crate::config::ViewMode;
+use crate::config::{Appearance, EditorFont, ViewMode};
 use crate::library::Library;
 use crate::preview::{LinkSender, Preview};
+use crate::theme::{Colors, muted_tag_color};
 
 const AUTOSAVE_DELAY: Duration = Duration::from_millis(600);
 const PREVIEW_DELAY: Duration = Duration::from_millis(150);
+/// Line height of the Markdown source, relative to its size.
+const BODY_LINE_HEIGHT: f32 = 1.6;
 
 pub enum EditorEvent {
     /// Something worth telling the user, such as a failed save.
@@ -50,7 +53,10 @@ pub struct NoteEditor {
     body: Entity<EditorState>,
     preview: Entity<Preview>,
     pub view_mode: ViewMode,
+    pub editor_font: EditorFont,
     pub font_size: f32,
+    /// Whether the body shows line numbers now; see [`EditorFont::face`].
+    line_numbers: bool,
     autosave: Option<Task<()>>,
     preview_task: Option<Task<()>>,
     /// A change from elsewhere that arrived over unsaved edits.
@@ -68,17 +74,25 @@ impl NoteEditor {
         store: Arc<Store>,
         library: Entity<Library>,
         links: LinkSender,
-        view_mode: ViewMode,
-        font_size: f32,
+        appearance: &Appearance,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let Appearance {
+            view_mode,
+            editor_font,
+            editor_font_size: font_size,
+            ..
+        } = *appearance;
         let title = cx.new(|cx| InputState::new(window, cx).placeholder("Untitled"));
+        let line_numbers = editor_font.face(view_mode).line_numbers;
         let body = cx.new(|cx| {
             EditorState::new(window, cx)
                 .language("markdown")
-                .line_number(false)
-                .folding(false)
+                .line_number(line_numbers)
+                // Folding comes with line numbers: its column is what keeps
+                // the numbers clear of the text.
+                .folding(line_numbers)
                 .indent_guides(false)
                 .soft_wrap(true)
         });
@@ -111,7 +125,9 @@ impl NoteEditor {
             body,
             preview,
             view_mode,
+            editor_font,
             font_size,
+            line_numbers,
             autosave: None,
             preview_task: None,
             incoming: None,
@@ -530,6 +546,8 @@ impl NoteEditor {
         let current_book = note.book_id.clone();
         let status = note.status;
         let view = cx.entity();
+        let colors = Colors::get(cx);
+        let dark = cx.theme().is_dark();
 
         let tag_chips = note_tags.iter().filter_map(|id| {
             let (_, name, rgb) = tags.iter().find(|(tid, _, _)| tid == id)?;
@@ -542,8 +560,14 @@ impl NoteEditor {
                     .py_0p5()
                     .rounded_md()
                     .text_xs()
-                    .bg(cx.theme().muted)
-                    .child(div().size_2().rounded_full().bg(rgb_color(*rgb)))
+                    .bg(colors.elevated)
+                    .text_color(colors.text_secondary)
+                    .child(
+                        div()
+                            .size_2()
+                            .rounded_full()
+                            .bg(rgb_color(muted_tag_color(*rgb, dark))),
+                    )
                     .child(name.clone()),
             )
         });
@@ -788,24 +812,40 @@ pub fn rgb_color(rgb: u32) -> Hsla {
 }
 
 impl Render for NoteEditor {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The face follows the view mode and the font setting, however they
+        // changed.
+        let face = self.editor_font.face(self.view_mode);
+        if face.line_numbers != self.line_numbers {
+            self.line_numbers = face.line_numbers;
+            self.body.update(cx, |body, cx| {
+                body.set_line_number(face.line_numbers, window, cx);
+                body.set_folding(face.line_numbers, window, cx);
+            });
+        }
+        let colors = Colors::get(cx);
         let Some(note) = self.note.clone() else {
             return v_flex()
                 .size_full()
                 .items_center()
                 .justify_center()
                 .gap_2()
-                .bg(cx.theme().background)
-                .text_color(cx.theme().muted_foreground)
+                .bg(colors.editor)
+                .text_color(colors.text_muted)
                 .child("No note selected")
                 .child(div().text_xs().child("⌘N creates a note"))
                 .into_any_element();
         };
         let trashed = note.is_trashed();
         let mode = self.view_mode;
+        let family = if face.mono {
+            cx.theme().mono_font_family.clone()
+        } else {
+            cx.theme().font_family.clone()
+        };
         v_flex()
             .size_full()
-            .bg(cx.theme().background)
+            .bg(colors.editor)
             .child(
                 div().px_4().pt_3().pb_1().child(
                     Input::new(&self.title)
@@ -822,7 +862,7 @@ impl Render for NoteEditor {
                         .py_1()
                         .gap_2()
                         .text_sm()
-                        .bg(cx.theme().muted)
+                        .bg(colors.elevated)
                         .child(div().flex_1().child("This note is in the trash."))
                         .child(
                             Button::new("restore-from-trash")
@@ -855,7 +895,9 @@ impl Render for NoteEditor {
                                 Editor::new(&self.body)
                                     .bordered(false)
                                     .h_full()
-                                    .text_size(px(self.font_size)),
+                                    .font_family(family)
+                                    .text_size(px(self.font_size))
+                                    .line_height(relative(BODY_LINE_HEIGHT)),
                             ),
                         )
                     })

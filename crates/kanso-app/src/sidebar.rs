@@ -11,6 +11,7 @@ use kanso_core::NoteStatus;
 
 use crate::editor::rgb_color;
 use crate::library::{Filter, Library};
+use crate::theme::{Colors, muted_tag_color};
 
 /// Things only the workspace can do (it owns dialogs and the editor).
 pub enum SidebarEvent {
@@ -57,7 +58,7 @@ impl Sidebar {
     ) -> Stateful<Div> {
         let Entry { icon, label, count } = entry;
         let selected = self.library.read(cx).filter == filter;
-        let theme = cx.theme();
+        let colors = Colors::get(cx);
         let library = self.library.clone();
         div()
             .id(id)
@@ -71,16 +72,14 @@ impl Sidebar {
             .rounded_md()
             .text_sm()
             .cursor_pointer()
-            .when(selected, |el| el.bg(theme.sidebar_accent).font_medium())
-            .when(!selected, |el| {
-                el.hover(|el| el.bg(theme.sidebar_accent.opacity(0.5)))
-            })
+            .when(selected, |el| el.bg(colors.sidebar_active).font_medium())
+            .when(!selected, |el| el.hover(|el| el.bg(colors.sidebar_hover)))
             .child(icon)
             .child(div().flex_1().min_w_0().truncate().child(label))
             .child(
                 div()
                     .text_xs()
-                    .text_color(theme.muted_foreground)
+                    .text_color(colors.text_muted)
                     .child(count.to_string()),
             )
             .on_click(move |_, _, cx| {
@@ -102,7 +101,7 @@ impl Sidebar {
             .h_6()
             .text_xs()
             .font_semibold()
-            .text_color(cx.theme().muted_foreground)
+            .text_color(Colors::get(cx).text_muted)
             .child(div().flex_1().child(label))
             .children(action)
     }
@@ -110,7 +109,7 @@ impl Sidebar {
     fn icon(&self, name: IconName, cx: &mut Context<Self>) -> AnyElement {
         Icon::new(name)
             .small()
-            .text_color(cx.theme().muted_foreground)
+            .text_color(Colors::get(cx).text_secondary)
             .into_any_element()
     }
 }
@@ -233,6 +232,7 @@ impl Render for Sidebar {
             .on_click(cx.listener(|_, _, _, cx| cx.emit(SidebarEvent::NewTag)))
             .into_any_element();
         list = list.child(self.heading("TAGS", Some(add_tag), cx));
+        let dark = cx.theme().is_dark();
         for (id, name, count, color) in tags {
             let view = cx.entity();
             let tag_id = id.clone();
@@ -240,7 +240,7 @@ impl Render for Sidebar {
                 .size_2()
                 .mx_1()
                 .rounded_full()
-                .bg(rgb_color(color.rgb()))
+                .bg(rgb_color(muted_tag_color(color.rgb(), dark)))
                 .into_any_element();
             let row = self
                 .row(
@@ -308,11 +308,12 @@ impl Render for Sidebar {
             }),
         );
 
+        let colors = Colors::get(cx);
         div()
             .id("sidebar")
             .size_full()
-            .bg(cx.theme().sidebar)
-            .text_color(cx.theme().sidebar_foreground)
+            .bg(colors.sidebar)
+            .text_color(colors.text)
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .child(list)

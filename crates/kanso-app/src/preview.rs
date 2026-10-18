@@ -4,10 +4,17 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use gpui_kit::base::text::TextView;
-use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::base::text::{TextView, TextViewStyle};
 use gpui_kit::*;
 use kanso_store::Store;
+
+use crate::theme::Colors;
+
+/// The rendered text's size, line height and widest measure: about 75
+/// characters a line, however wide the window.
+const TEXT_SIZE: f32 = 16.;
+const LINE_HEIGHT: f32 = 1.65;
+const READABLE_WIDTH: f32 = 720.;
 
 /// Where clicks on `inkdrop://note/<id>` links go.
 pub type LinkSender = async_channel::Sender<String>;
@@ -84,28 +91,56 @@ pub fn is_openable(url: &str) -> bool {
     }
 }
 
+/// Body text in the theme's colors; code is set apart by a quiet fill rather
+/// than by color. Quotes and finished tasks, which the text view draws in its
+/// muted color, get the secondary text color: they are still read.
+// no-prop-test: maps theme colors onto a style; the snapshots show it.
+fn text_style(colors: &Colors) -> TextViewStyle {
+    TextViewStyle::default()
+        .with_foreground(colors.text.into())
+        .with_muted_foreground(colors.text_secondary.into())
+        .with_link(colors.link.into())
+        .with_selection(Hsla::from(colors.accent).opacity(0.3))
+        .with_code_background(colors.code.into())
+        .with_border(colors.divider.into())
+        .with_paragraph_gap(rems(0.9))
+        .with_code_block(StyleRefinement::default().rounded(px(6.)))
+        .with_inline_code(HighlightStyle {
+            color: Some(colors.code_text.into()),
+            background_color: Some(colors.code.into()),
+            ..Default::default()
+        })
+}
+
 impl Render for Preview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let links = self.links.clone();
+        let colors = Colors::get(cx);
         div()
             .id("preview")
             .size_full()
-            .px_6()
-            .py_4()
+            .px_8()
+            .py_6()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
-            .bg(cx.theme().background)
+            .bg(colors.editor)
             .child(
-                TextView::markdown("preview-text", self.text.clone())
-                    .selectable(true)
-                    .image_source(self.image_resolver())
-                    .on_link_click(move |url, _, _, cx| match linked_note(url) {
-                        Some(id) => {
-                            links.try_send(id).ok();
-                        }
-                        None if is_openable(url) => cx.open_url(url),
-                        None => {}
-                    }),
+                div().w_full().max_w(px(READABLE_WIDTH)).mx_auto().child(
+                    TextView::markdown("preview-text", self.text.clone())
+                        .style(text_style(colors))
+                        .text_size(px(TEXT_SIZE))
+                        .line_height(relative(LINE_HEIGHT))
+                        .text_color(colors.text)
+                        .selectable(true)
+                        .image_source(self.image_resolver())
+                        .on_link_click(move |url, _, _, cx| match linked_note(url) {
+                            Some(id) => {
+                                links.try_send(id).ok();
+                            }
+                            None if is_openable(url) => cx.open_url(url),
+                            None => {}
+                        }),
+                ),
             )
     }
 }

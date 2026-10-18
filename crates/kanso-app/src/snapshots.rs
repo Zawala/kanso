@@ -3,29 +3,45 @@
 //!
 //! ```text
 //! KANSO_SNAPSHOT_DIR=/tmp/shots [KANSO_SNAPSHOT_DB=copy-of-kanso.db] \
+//!     [KANSO_SNAPSHOT_ONLY=dark-split,light-edit] \
 //!     cargo test -p kanso-app snapshots -- --ignored --nocapture
 //! ```
 //!
-//! Without `KANSO_SNAPSHOT_DB` a small demo library is used. The database is
-//! copied first, so the original is never written.
+//! Without `KANSO_SNAPSHOT_DB` a demo library is used, with the clock fixed
+//! so every run draws the same picture. The database is copied first, so the
+//! original is never written. Each shot also checks that the panes are
+//! painted in their theme's surface colors.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use gpui_kit::assets::Assets;
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Bounds, HeadlessAppContext, WindowBounds, WindowOptions, px,
-    size,
+    AnyWindowHandle, AppContext as _, Bounds, Entity, HeadlessAppContext, Pixels, Size,
+    WindowBounds, WindowOptions, px, size,
 };
 use kanso_core::DocType;
+use kanso_core::model::TRASH_BOOK_ID;
 use kanso_store::{Origin, Put, Store};
 use serde_json::json;
 
-use crate::config::{AppConfig, ThemePreference, ViewMode};
+use crate::assets::KansoAssets;
+use crate::clock::Clock;
+use crate::config::{AppConfig, EditorFont, ThemePreference, ViewMode};
 use crate::services::Services;
+use crate::theme::{Colors, DARK, LIGHT, Rgb};
 use crate::workspace::{AppState, Workspace, apply_theme};
 
-/// A demo library for when no real database is given.
+/// The demo's "now": Thursday 28 May 2026, 09:45 in a zone two hours ahead
+/// of UTC.
+const DEMO_NOW_MS: i64 = 1_779_954_300_000;
+const DEMO_UTC_OFFSET_SECS: i32 = 2 * 3600;
+const MINUTE: i64 = 60_000;
+const DAY: i64 = 24 * 60 * MINUTE;
+
+const ROADMAP: &str = "# MCP support model\n\nKanso acts as an MCP host. Clients connect to Kanso, discover the tools it offers, and ask before they act. See the [protocol overview](https://modelcontextprotocol.io) for the wire format.\n\n## Goals\n\n- Enable secure, discoverable access to notes through MCP.\n- A first-party experience that is *simple* and **reliable**.\n- Protect notes with clear permissions and an activity log.\n- Work offline when possible; degrade gracefully.\n\n## Core components\n\n1. MCP server (in Kanso)\n2. Tool registry\n3. Permission manager\n\n## Example tool definition\n\n```json\n{\n  \"name\": \"search_notes\",\n  \"description\": \"Search notes by keyword\",\n  \"inputSchema\": {\n    \"type\": \"object\",\n    \"properties\": { \"query\": { \"type\": \"string\" }, \"limit\": { \"type\": \"integer\", \"default\": 20 } }\n  }\n}\n```\n\nEach tool declares its `inputSchema`; the registry validates calls against it.\n\n## Permissions\n\n- [x] User approves each new client\n- [x] Scopes are explicit\n- [ ] Always ask for write operations\n\n> Destructive actions need review unless a client is explicitly trusted.\n\n| Permission | Default |\n|---|---|\n| Read notes | Allowed |\n| Update notes | Ask |\n| Delete notes | Ask |\n";
+
+/// A demo library for when no real database is given, with edits spread
+/// over today, yesterday and older days.
 fn demo_store(path: &Path) -> Store {
     let store = Store::open(path).unwrap();
     let book = |name: &str, parent: Option<&str>| {
@@ -39,10 +55,12 @@ fn demo_store(path: &Path) -> Store {
             .unwrap()
             .id
     };
-    let work = book("Work", None);
-    let projects = book("Projects", Some(&work));
-    let personal = book("Personal", None);
+    let engineering = book("Engineering", None);
+    let platform = book("Platform", Some(&engineering));
+    let product = book("Product", None);
     book("Research", None);
+    let design = book("Design", None);
+    let personal = book("Personal", None);
     let tag = |name: &str, color: &str| {
         store
             .put(
@@ -54,47 +72,111 @@ fn demo_store(path: &Path) -> Store {
             .unwrap()
             .id
     };
-    let rust = tag("rust", "orange");
-    let idea = tag("idea", "blue");
+    let mcp = tag("mcp", "blue");
+    let agents = tag("agents", "green");
+    let security = tag("security", "red");
+    let roadmap = tag("roadmap", "orange");
+    let rust = tag("rust", "brown");
+    let today = DEMO_NOW_MS;
     let notes = [
         (
-            &projects,
-            "Kanso roadmap",
-            "# Kanso roadmap\n\nA calm, local-first notes app.\n\n## Next\n\n- [x] Import from Inkdrop\n- [x] Local API on port 19840\n- [ ] Command palette\n- [ ] Outline view\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n\n> Simplicity is the ultimate sophistication.\n",
-            vec![rust.clone()],
+            &engineering,
+            "MCP support model",
+            ROADMAP.to_owned(),
+            vec![mcp.clone(), agents.clone(), security.clone()],
             "active",
-            true,
+            false,
+            today - 4 * MINUTE,
         ),
         (
-            &work,
-            "Weekly sync notes",
-            "# Weekly sync\n\n| Topic | Owner |\n|---|---|\n| Release | Ngoni |\n| Docs | Team |\n\nAction items are tracked in the tracker.",
-            vec![],
+            &engineering,
+            "Agent integration plan",
+            "# Agent integration plan\n\nHow Kanso works with local agents and external tools.\n\n- Read-only by default\n- Writes go through review\n".to_owned(),
+            vec![agents.clone()],
+            "active",
+            false,
+            today - 33 * MINUTE,
+        ),
+        (
+            &platform,
+            "Tool registry schema",
+            "Schema and capabilities for discoverability.\n\n```rust\npub struct Tool {\n    pub name: String,\n    pub schema: serde_json::Value,\n}\n```\n".to_owned(),
+            vec![mcp, rust.clone()],
             "onHold",
             false,
+            today - 51 * MINUTE,
+        ),
+        (
+            &product,
+            "Kanso roadmap",
+            "# Kanso roadmap\n\nA calm, local-first notes app.\n\n## Next\n\n- [x] Import from Inkdrop\n- [x] Local API on port 19840\n- [ ] Command palette\n- [ ] Focus mode\n".to_owned(),
+            vec![roadmap.clone()],
+            "active",
+            true,
+            today - DAY - 3 * 60 * MINUTE,
+        ),
+        (
+            &engineering,
+            "Weekly sync notes",
+            "# Weekly sync\n\n| Topic | Owner | Status |\n|---|---|---|\n| Release | Ngoni | On track |\n| Docs | Team | Drafting |\n\nAction items live in the tracker.".to_owned(),
+            vec![],
+            "none",
+            false,
+            today - DAY - 7 * 60 * MINUTE,
+        ),
+        (
+            &product,
+            "Release checklist",
+            "---\ntitle: Release checklist\ndate: 2026-05-25\n---\n\n# Release checklist\n\n- [x] Bump the version\n- [ ] Notarize the build\n- [ ] Write the release notes\n".to_owned(),
+            vec![roadmap],
+            "completed",
+            false,
+            today - 3 * DAY,
+        ),
+        (
+            &platform,
+            "Sync design",
+            "# Sync design\n\nDocuments live in D1, attachments in R2. Last writer wins by `updatedAt`; the loser stays in history.".to_owned(),
+            vec![rust, security],
+            "completed",
+            false,
+            today - 4 * DAY,
+        ),
+        (
+            &design,
+            "Notes on a deliberately long title that has to truncate cleanly in the list",
+            "Rows, not cards. The active row gets a subtle filled state.".to_owned(),
+            vec![],
+            "dropped",
+            false,
+            today - 8 * DAY,
         ),
         (
             &personal,
             "Reading list",
-            "# Reading list\n\n1. *The Design of Everyday Things*\n2. **Shape Up**\n3. Crafting Interpreters\n",
-            vec![idea.clone()],
+            "# Reading list\n\n1. *The Design of Everyday Things*\n2. **Shape Up**\n3. Crafting Interpreters\n".to_owned(),
+            vec![],
             "none",
             false,
+            today - 176 * DAY,
         ),
         (
-            &projects,
-            "Sync design",
-            "# Sync design\n\nDocuments live in D1, attachments in R2. Last writer wins by `updatedAt`; the loser stays in history.",
-            vec![rust, idea],
-            "completed",
+            &TRASH_BOOK_ID.to_owned(),
+            "Old meeting notes",
+            "Superseded by the weekly sync.".to_owned(),
+            vec![],
+            "none",
             false,
+            today - 30 * DAY,
         ),
     ];
-    for (book, title, body, tags, status, pinned) in notes {
+    for (book, title, body, tags, status, pinned, updated) in notes {
         store
             .put(
                 DocType::Note,
-                json!({"title": title, "body": body, "bookId": book, "tags": tags, "status": status, "pinned": pinned}),
+                json!({"title": title, "body": body, "bookId": book, "tags": tags,
+                    "status": status, "pinned": pinned,
+                    "createdAt": updated - 2 * DAY, "updatedAt": updated}),
                 Put::Upsert,
                 Origin::Ui,
             )
@@ -103,32 +185,67 @@ fn demo_store(path: &Path) -> Store {
     store
 }
 
-fn context() -> HeadlessAppContext {
+fn context(clock: Option<Clock>) -> HeadlessAppContext {
     let mut cx = HeadlessAppContext::with_platform(
         Arc::new(gpui_apple::AppleTextSystem::new()),
-        Arc::new(Assets),
+        Arc::new(KansoAssets),
         gpui_kit::platform::current_headless_renderer,
     );
-    cx.update(gpui_kit::init);
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        if let Some(clock) = clock {
+            cx.set_global(clock);
+        }
+    });
     cx
 }
 
-/// What to show before drawing.
-#[derive(Clone, Copy)]
-enum Scene {
-    /// The most recently edited note.
-    Note,
-    /// An empty notebook.
-    EmptyNotebook,
-    /// Search results for a word.
-    Search(&'static str),
-}
+/// Puts the workspace in the shot's state before drawing.
+type Prepare = fn(&mut HeadlessAppContext, &Entity<Workspace>, &Store);
 
 struct Shot {
     name: &'static str,
     theme: ThemePreference,
     view_mode: ViewMode,
-    scene: Scene,
+    /// The window's size in points; the PNG is twice that.
+    size: Size<Pixels>,
+    prepare: Prepare,
+}
+
+/// The most recently edited note, as after a restart.
+fn open_latest(_: &mut HeadlessAppContext, _: &Entity<Workspace>, _: &Store) {}
+
+/// An empty notebook, "Research" when there is one.
+fn empty_notebook(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, store: &Store) {
+    let books = store.books().unwrap();
+    let empty = books
+        .iter()
+        .find(|b| b.count == 0 && b.name == "Research")
+        .or_else(|| books.iter().find(|b| b.count == 0));
+    if let Some(book) = empty {
+        let library = cx.update(|cx| workspace.read(cx).library.clone());
+        cx.update(|cx| {
+            library.update(cx, |library, cx| {
+                library.set_filter(crate::library::Filter::Book(book.id.clone()), cx);
+                library.select(None, cx);
+            })
+        });
+    }
+}
+
+fn search_sync(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, _: &Store) {
+    let library = cx.update(|cx| workspace.read(cx).library.clone());
+    cx.update(|cx| library.update(cx, |library, cx| library.set_search("sync".into(), cx)));
+}
+
+fn mono_font(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, _: &Store) {
+    cx.update(|cx| {
+        let editor = workspace.read(cx).editor.clone();
+        editor.update(cx, |editor, cx| {
+            editor.editor_font = EditorFont::Mono;
+            cx.notify();
+        });
+    });
 }
 
 fn open(
@@ -136,11 +253,10 @@ fn open(
     store: Arc<Store>,
     data_dir: PathBuf,
     shot: &Shot,
-) -> (AnyWindowHandle, gpui_kit::Entity<Workspace>) {
+) -> (AnyWindowHandle, Entity<Workspace>) {
     let mut config = AppConfig::default();
     config.appearance.theme = shot.theme;
     config.appearance.view_mode = shot.view_mode;
-    // Open the most recently edited note, as after a restart.
     config.last_note = store
         .search_summaries(&Default::default())
         .ok()
@@ -156,60 +272,82 @@ fn open(
         cx.set_global(Services::default());
         apply_theme(theme, None, cx);
     });
-    let (window, workspace) = cx
-        .update(|cx| {
-            gpui_kit::open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(Bounds {
-                        origin: Default::default(),
-                        size: size(px(1440.), px(900.)),
-                    })),
-                    focus: false,
-                    show: false,
-                    ..Default::default()
-                },
-                cx,
-                |window, cx| {
-                    apply_theme(theme, Some(window), cx);
-                    cx.new(|cx| Workspace::new(window, cx))
-                },
-            )
-        })
-        .unwrap();
-    (window, workspace)
+    cx.update(|cx| {
+        gpui_kit::open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Default::default(),
+                    size: shot.size,
+                })),
+                focus: false,
+                show: false,
+                ..Default::default()
+            },
+            cx,
+            |window, cx| {
+                apply_theme(theme, Some(window), cx);
+                cx.new(|cx| Workspace::new(window, cx))
+            },
+        )
+    })
+    .unwrap()
 }
 
-/// Puts the workspace in the shot's scene.
-fn set_scene(
-    cx: &mut HeadlessAppContext,
-    workspace: &gpui_kit::Entity<Workspace>,
-    store: &Store,
-    scene: Scene,
+/// Checks that the pixel at point `at` (in window points) is `expected`,
+/// within `tolerance` per channel.
+fn assert_surface(
+    image: &image::RgbaImage,
+    scale: f32,
+    at: (f32, f32),
+    expected: Rgb,
+    tolerance: u8,
+    what: &str,
 ) {
-    let library = cx.update(|cx| workspace.read(cx).library.clone());
-    match scene {
-        Scene::Note => {}
-        Scene::EmptyNotebook => {
-            let empty = store
-                .books()
-                .unwrap()
-                .into_iter()
-                .find(|b| b.count == 0 && b.name == "Research")
-                .or_else(|| store.books().unwrap().into_iter().find(|b| b.count == 0));
-            if let Some(book) = empty {
-                cx.update(|cx| {
-                    library.update(cx, |library, cx| {
-                        library.set_filter(crate::library::Filter::Book(book.id), cx);
-                        library.select(None, cx);
-                    })
-                });
-            }
-        }
-        Scene::Search(text) => {
-            cx.update(|cx| {
-                library.update(cx, |library, cx| library.set_search(text.to_owned(), cx))
-            });
-        }
+    let (x, y) = ((at.0 * scale) as u32, (at.1 * scale) as u32);
+    let pixel = image.get_pixel(x, y).0;
+    let want = [16, 8, 0].map(|shift| ((expected.0 >> shift) & 0xFF) as u8);
+    let close = (0..3).all(|i| pixel[i].abs_diff(want[i]) <= tolerance);
+    assert!(
+        close,
+        "{what} at {at:?}: got #{:02X}{:02X}{:02X}, want {}",
+        pixel[0],
+        pixel[1],
+        pixel[2],
+        expected.hex()
+    );
+}
+
+/// Each pane is painted in its own surface color. The points sit in
+/// padding that no content reaches.
+fn check_surfaces(image: &image::RgbaImage, shot: &Shot) {
+    let colors: &Colors = match shot.theme {
+        ThemePreference::Dark => &DARK,
+        _ => &LIGHT,
+    };
+    let width = f32::from(shot.size.width);
+    let height = f32::from(shot.size.height);
+    let scale = image.width() as f32 / width;
+    // The sidebar is 230 wide and the note list 320.
+    let checks = [
+        ((4., height / 2.), colors.sidebar, "sidebar"),
+        ((236., 4.), colors.list, "note list"),
+        ((560., 4.), colors.editor, "editor"),
+        (
+            (width - 12., height / 2.),
+            colors.editor,
+            "editor or preview",
+        ),
+        ((width / 2., height - 3.), colors.app, "status bar"),
+    ];
+    for (at, expected, what) in checks {
+        assert_surface(
+            image,
+            scale,
+            at,
+            expected,
+            2,
+            &format!("{}: {what}", shot.name),
+        );
     }
 }
 
@@ -220,44 +358,39 @@ fn snapshots() {
     std::fs::create_dir_all(&out).unwrap();
     use ThemePreference::{Dark, Light};
     use ViewMode::{Edit, Preview, Split};
+    let full = size(px(1440.), px(900.));
+    let shot = |name, theme, view_mode, prepare: Prepare| Shot {
+        name,
+        theme,
+        view_mode,
+        size: full,
+        prepare,
+    };
     let shots = [
+        shot("dark-split", Dark, Split, open_latest),
+        shot("light-split", Light, Split, open_latest),
+        shot("dark-edit", Dark, Edit, open_latest),
+        shot("light-edit", Light, Edit, open_latest),
+        shot("dark-preview", Dark, Preview, open_latest),
+        shot("light-preview", Light, Preview, open_latest),
+        shot("dark-edit-mono", Dark, Edit, mono_font),
+        shot("dark-empty", Dark, Split, empty_notebook),
+        shot("dark-search", Dark, Edit, search_sync),
         Shot {
-            name: "dark-split",
-            theme: Dark,
-            view_mode: Split,
-            scene: Scene::Note,
+            size: size(px(1100.), px(720.)),
+            ..shot("dark-split-min", Dark, Split, open_latest)
+        },
+        // Tall enough for the whole demo note.
+        Shot {
+            size: size(px(1440.), px(1700.)),
+            ..shot("dark-preview-long", Dark, Preview, open_latest)
         },
         Shot {
-            name: "light-split",
-            theme: Light,
-            view_mode: Split,
-            scene: Scene::Note,
-        },
-        Shot {
-            name: "dark-edit",
-            theme: Dark,
-            view_mode: Edit,
-            scene: Scene::Note,
-        },
-        Shot {
-            name: "light-preview",
-            theme: Light,
-            view_mode: Preview,
-            scene: Scene::Note,
-        },
-        Shot {
-            name: "dark-empty",
-            theme: Dark,
-            view_mode: Split,
-            scene: Scene::EmptyNotebook,
-        },
-        Shot {
-            name: "dark-search",
-            theme: Dark,
-            view_mode: Edit,
-            scene: Scene::Search("sync"),
+            size: size(px(1440.), px(1700.)),
+            ..shot("light-preview-long", Light, Preview, open_latest)
         },
     ];
+    let real_db = std::env::var_os("KANSO_SNAPSHOT_DB");
     let only = std::env::var("KANSO_SNAPSHOT_ONLY").ok();
     for shot in shots.iter().filter(|s| {
         only.as_deref()
@@ -265,18 +398,21 @@ fn snapshots() {
     }) {
         let dir = tempfile::tempdir().unwrap();
         let db = dir.path().join("kanso.db");
-        let store = match std::env::var_os("KANSO_SNAPSHOT_DB") {
+        let (store, clock) = match &real_db {
             Some(source) => {
-                std::fs::copy(&source, &db).unwrap();
-                Store::open(&db).unwrap()
+                std::fs::copy(source, &db).unwrap();
+                (Store::open(&db).unwrap(), None)
             }
-            None => demo_store(&db),
+            None => (
+                demo_store(&db),
+                Some(Clock::fixed(DEMO_NOW_MS, DEMO_UTC_OFFSET_SECS)),
+            ),
         };
         let store = Arc::new(store);
-        let mut cx = context();
+        let mut cx = context(clock);
         let (window, workspace) = open(&mut cx, store.clone(), dir.path().to_path_buf(), shot);
         cx.run_until_parked();
-        set_scene(&mut cx, &workspace, &store, shot.scene);
+        (shot.prepare)(&mut cx, &workspace, &store);
         // Search waits for typing to pause.
         cx.advance_clock(std::time::Duration::from_secs(1));
         // Let background work (backlinks, image decoding) settle, then draw.
@@ -297,5 +433,6 @@ fn snapshots() {
             image.width(),
             image.height()
         );
+        check_surfaces(&image, shot);
     }
 }
