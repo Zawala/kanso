@@ -33,6 +33,7 @@ use crate::editor::{NoteEditor, rgb_color};
 use crate::fuzzy;
 use crate::keys::keycap;
 use crate::library::{Filter, Library, RECENT_DAYS, search_params};
+use crate::services::Services;
 use crate::theme::{
     Colors, PALETTE_SELECTED_ALPHA, Rgb, muted_tag_color, section_label, status_glyph,
 };
@@ -477,14 +478,14 @@ impl Palette {
             Some(Mode::Commands) => {
                 let mut sections: Vec<Section> = [Group::Note, Group::View]
                     .into_iter()
-                    .map(|group| section(group.label(), self.commands(group, query), false))
+                    .map(|group| section(group.label(), self.commands(group, query, cx), false))
                     .collect();
                 let mut places = self.places(query, cx);
-                places.extend(self.commands(Group::GoTo, query));
+                places.extend(self.commands(Group::GoTo, query, cx));
                 sections.push(section(Group::GoTo.label(), places, false));
                 sections.push(section(
                     Group::App.label(),
-                    self.commands(Group::App, query),
+                    self.commands(Group::App, query, cx),
                     false,
                 ));
                 if !query.is_empty() {
@@ -619,8 +620,11 @@ impl Palette {
     }
 
     /// The registry's commands in `group` that apply now.
-    fn commands(&self, group: Group, query: &str) -> Vec<(Item, Option<i64>)> {
+    fn commands(&self, group: Group, query: &str, cx: &App) -> Vec<(Item, Option<i64>)> {
         let note = self.note.as_ref();
+        let signed_in = cx
+            .try_global::<Services>()
+            .is_some_and(|services| services.signed_in());
         let in_trash = note.is_some_and(|n| n.book_id == TRASH_BOOK_ID);
         commands::all()
             .iter()
@@ -630,6 +634,8 @@ impl Palette {
                 Needs::Note => note.is_some(),
                 Needs::LiveNote => note.is_some() && !in_trash,
                 Needs::Settings => self.notes_hidden,
+                Needs::SignedIn => signed_in,
+                Needs::SignedOut => !signed_in,
             })
             .map(|command| {
                 let (label, icon) = match command.label_when_pinned {
@@ -2147,6 +2153,12 @@ mod tests {
     #[gpui_kit::test]
     fn typing_ranks_commands_and_finds_notes(cx: &mut TestAppContext) {
         let f = setup(cx);
+        // Sync now is there while signed in.
+        cx.update(|cx| {
+            cx.global_mut::<Services>().account = crate::services::AccountState::SignedIn {
+                username: "ngoni".into(),
+            }
+        });
         f.keys(cx, "cmd-k");
         f.type_query(cx, "sync");
         let labels = f.labels(cx);
@@ -2384,23 +2396,47 @@ mod tests {
     /// where the palette sends it (the note being written, inside the
     /// workspace), whatever the layout. Quit is the app's own: main.rs
     /// registers it with `cx.on_action`. Settings open in the window.
+    /// Account commands have a handler only in the state they fit, so
+    /// the menu greys out Sync Now while signed out; each is checked in
+    /// that state.
     #[gpui_kit::test]
     fn every_command_reaches_a_handler(cx: &mut TestAppContext) {
         let f = setup(cx);
         let app_wide = ["kanso::Quit"];
-        let missing: Vec<&str> = f.update(cx, |_, window, cx| {
-            crate::commands::all()
-                .iter()
-                .filter(|command| {
-                    command.action().is_some_and(|action| {
-                        !window.is_action_available(action.as_ref(), cx)
-                            && !app_wide.contains(&action.name())
+        for signed_in in [false, true] {
+            cx.update(|cx| {
+                cx.global_mut::<Services>().account = if signed_in {
+                    crate::services::AccountState::SignedIn {
+                        username: "ngoni".into(),
+                    }
+                } else {
+                    crate::services::AccountState::SignedOut
+                };
+                cx.refresh_windows();
+            });
+            cx.run_until_parked();
+            let missing: Vec<&str> = f.update(cx, |_, window, cx| {
+                crate::commands::all()
+                    .iter()
+                    .filter(|command| match command.needs {
+                        crate::commands::Needs::SignedIn => signed_in,
+                        crate::commands::Needs::SignedOut => !signed_in,
+                        _ => true,
                     })
-                })
-                .map(|command| command.id)
-                .collect()
-        });
-        assert!(missing.is_empty(), "no handler for {missing:?}");
+                    .filter(|command| {
+                        command.action().is_some_and(|action| {
+                            !window.is_action_available(action.as_ref(), cx)
+                                && !app_wide.contains(&action.name())
+                        })
+                    })
+                    .map(|command| command.id)
+                    .collect()
+            });
+            assert!(
+                missing.is_empty(),
+                "signed in {signed_in}: no handler for {missing:?}"
+            );
+        }
         // The exceptions are real commands, so the list can't go stale.
         for name in app_wide {
             assert!(

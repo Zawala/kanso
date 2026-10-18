@@ -18,12 +18,15 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::NoteStatus;
+use kanso_sync::SyncProblem;
 
+use crate::account_words::step_label;
 use crate::clock::Clock;
 use crate::editor::rgb_color;
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library};
-use crate::services::{ApiState, Services, SyncState};
+use crate::services::{AccountState, ApiState, Services, SyncState};
+use crate::settings::OpenAccountSettings;
 use crate::theme::{Colors, Rgb, muted_tag_color, section_label, status_glyph};
 use crate::workspace::{AppState, NewNote, OpenSettings, ToggleSidebar};
 
@@ -529,27 +532,41 @@ impl Sidebar {
     }
 
     /// The local API's and sync's states, with what their tooltips say.
-    fn service_states(cx: &App) -> (ApiState, SharedString, SyncState, SharedString) {
+    fn service_states(cx: &App) -> ServiceStates {
         match cx.try_global::<Services>() {
-            Some(services) => (
-                services.api.clone(),
-                services.api_status().into(),
-                services.sync.clone(),
-                services.sync_status(cx).into(),
-            ),
-            None => (
-                ApiState::Off,
-                "API off".into(),
-                SyncState::Off,
-                "Sync off".into(),
-            ),
+            Some(services) => ServiceStates {
+                api: services.api.clone(),
+                api_tip: services.api_status().into(),
+                sync: services.sync.clone(),
+                account: services.account_state(),
+                sync_tip: services.sync_status(cx).into(),
+            },
+            None => ServiceStates {
+                api: ApiState::Off,
+                api_tip: "API off".into(),
+                sync: SyncState::Off,
+                account: AccountState::SignedOut,
+                sync_tip: SIGN_IN_TO_SYNC.into(),
+            },
         }
     }
 
     fn render_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
-        let (api, api_tip, sync, sync_tip) = Self::service_states(cx);
-        let (tone, sync_label) = sync_line(&sync, |at| Clock::edited_label(cx, at));
+        let ServiceStates {
+            api,
+            api_tip,
+            sync,
+            account,
+            sync_tip,
+        } = Self::service_states(cx);
+        let (tone, sync_label) = sync_line(&sync, &account, |at| Clock::edited_label(cx, at));
+        // Signed out, the line is the way in: a click opens the Account page.
+        let opens_account = !matches!(
+            account,
+            AccountState::SignedIn { .. } | AccountState::Busy(_)
+        );
+        let name = SharedString::from(footer_name(&account, &self.user).to_owned());
         let dot = tone_color(tone, colors);
         // The shape says whether the API is listening, off, or failing to
         // listen; the color only repeats it.
@@ -579,20 +596,26 @@ impl Sidebar {
                     .text_size(px(10.5))
                     .font_semibold()
                     .text_color(colors.text_secondary)
-                    .child(initials(&self.user)),
+                    .child(initials(&name)),
             )
             .child(
                 v_flex()
                     .id("sync-status")
+                    .debug_selector(|| "sync-status".into())
                     .flex_1()
                     .min_w_0()
+                    .when(opens_account, |el| {
+                        el.cursor_pointer().on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(OpenAccountSettings), cx)
+                        })
+                    })
                     .child(
                         div()
                             .text_size(px(12.5))
                             .line_height(px(15.))
                             .font_medium()
                             .truncate()
-                            .child(self.user.clone()),
+                            .child(name),
                     )
                     .child(
                         h_flex()
@@ -649,6 +672,15 @@ impl Sidebar {
                     .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx)),
             )
     }
+}
+
+/// What the footer and the rail show about the services.
+struct ServiceStates {
+    api: ApiState,
+    api_tip: SharedString,
+    sync: SyncState,
+    account: AccountState,
+    sync_tip: SharedString,
 }
 
 /// The rail's buttons: one square for each icon.
@@ -765,8 +797,18 @@ impl Sidebar {
     fn render_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
         let filter = self.library.read(cx).filter.clone();
-        let (api, api_tip, sync, sync_tip) = Self::service_states(cx);
-        let (tone, sync_label) = sync_line(&sync, |at| Clock::edited_label(cx, at));
+        let ServiceStates {
+            api,
+            api_tip,
+            sync,
+            account,
+            sync_tip,
+        } = Self::service_states(cx);
+        let (tone, _) = sync_line(&sync, &account, |at| Clock::edited_label(cx, at));
+        let opens_account = !matches!(
+            account,
+            AccountState::SignedIn { .. } | AccountState::Busy(_)
+        );
         let sync_color = tone_color(tone, colors);
         let api_warning = matches!(api, ApiState::PortInUse(_) | ApiState::Failed(_));
         let api_glyph = api_icon(&api);
@@ -824,10 +866,8 @@ impl Sidebar {
                     }),
                 )
             });
-        // The sync line's words, then the details.
-        let sync_tip: SharedString = format!("{sync_label}\n{sync_tip}").into();
         // The shape says how sync is, not only the color: no state is told
-        // apart by hue alone.
+        // apart by hue alone. The tooltip starts with the sync line's words.
         let sync_icon = div()
             .id("rail-sync")
             .flex()
@@ -835,6 +875,11 @@ impl Sidebar {
             .items_center()
             .justify_center()
             .size(px(RAIL_BUTTON))
+            .when(opens_account, |el| {
+                el.cursor_pointer().on_click(|_, window, cx| {
+                    window.dispatch_action(Box::new(OpenAccountSettings), cx)
+                })
+            })
             .child(
                 Icon::new(tone_icon(tone))
                     .size(px(15.))
@@ -1162,61 +1207,71 @@ pub(crate) fn tone_color(tone: Tone, colors: &Colors) -> Rgb {
     }
 }
 
-/// What a failed sync says in the sidebar. The reason itself (an error from
-/// the network or the Keychain) only shows in the tooltip.
-pub const SYNC_PROBLEMS: [&str; 5] = [
-    "Sync not set up",
-    "Sync token needed",
-    "Token rejected",
-    "Offline",
-    "Couldn't sync",
-];
+/// What a sync problem says in the sidebar (docs/ACCOUNTS.md › Problems):
+/// a few fixed words for each; what to do is in Settings › Account and the
+/// tooltip.
+pub fn problem_label(problem: &SyncProblem) -> &'static str {
+    match problem {
+        SyncProblem::SignedOut(_) => "Signed out",
+        SyncProblem::AccountDisabled => "Account turned off",
+        SyncProblem::Paused { .. } => "Sync paused",
+        SyncProblem::QuotaExceeded(_) => "Account full",
+        SyncProblem::ServerFull => "Server full",
+        SyncProblem::Skipped { .. } => "Some items skipped",
+        SyncProblem::UpdateKanso => "Update Kanso",
+        SyncProblem::WrongKey => "Keys don't match",
+        SyncProblem::ServerOutdated => "Server needs an update",
+        SyncProblem::Offline => "Offline",
+        SyncProblem::Other => "Couldn't sync",
+    }
+}
 
-/// The sidebar's sync line: "Synced just now", "Synced yesterday",
-/// "Syncing…", "Sync off", or a problem in plain words. `when` says when an
+/// The sync line while signed out: quiet, and a click away from signing in.
+pub const SIGN_IN_TO_SYNC: &str = "Sign in to sync";
+
+/// The sidebar's sync line: "Sign in to sync" while signed out, the step of
+/// a running account task, "Synced just now", "Synced yesterday",
+/// "Syncing…", "Sync off", or a problem's label. `when` says when an
 /// instant was, as the editor's header says when a note was edited
 /// ([`Clock::edited_label`]), so the line and the list name a day alike.
-pub fn sync_line(state: &SyncState, when: impl FnOnce(i64) -> String) -> (Tone, String) {
-    match state {
-        SyncState::Off => (Tone::Quiet, "Sync off".into()),
-        SyncState::Syncing => (Tone::Busy, "Syncing…".into()),
-        SyncState::Synced {
-            conflicts: 0,
-            at_ms,
-            ..
-        } => (Tone::Good, format!("Synced {}", when(*at_ms))),
-        SyncState::Synced { .. } => (Tone::Warning, "Conflict detected".into()),
-        SyncState::Failed(reason) => {
-            let reason = reason.to_lowercase();
-            let has = |words: &[&str]| words.iter().any(|w| reason.contains(w));
-            // A token the Worker turned down is there but wrong; one that
-            // can't be read or was never set is needed.
-            let label = if has(&["worker url"]) {
-                SYNC_PROBLEMS[0]
-            } else if has(&["rejected the token", "401", "403", "unauthorized"]) {
-                SYNC_PROBLEMS[2]
-            } else if has(&["token", "keychain"]) {
-                SYNC_PROBLEMS[1]
-            } else if has(&[
-                "could not reach",
-                "connect",
-                "dns",
-                "resolve",
-                "lookup",
-                "host not found",
-                "name resolution",
-                "timed out",
-                "timeout",
-                "network",
-                "offline",
-                "unreachable",
-            ]) {
-                SYNC_PROBLEMS[3]
-            } else {
-                SYNC_PROBLEMS[4]
-            };
-            (Tone::Warning, label.into())
+pub fn sync_line(
+    state: &SyncState,
+    account: &AccountState,
+    when: impl FnOnce(i64) -> String,
+) -> (Tone, String) {
+    match account {
+        AccountState::SignedOut => (Tone::Quiet, SIGN_IN_TO_SYNC.into()),
+        AccountState::SessionEnded { reason, .. } => (
+            Tone::Warning,
+            problem_label(&SyncProblem::SignedOut(*reason)).into(),
+        ),
+        AccountState::Busy(step) => (Tone::Busy, step_label(*step).into()),
+        AccountState::SignedIn { .. } => match state {
+            SyncState::Off => (Tone::Quiet, "Sync off".into()),
+            SyncState::Syncing => (Tone::Busy, "Syncing…".into()),
+            SyncState::Failed(problem)
+            | SyncState::Synced {
+                problem: Some(problem),
+                ..
+            } => (Tone::Warning, problem_label(problem).into()),
+            SyncState::Synced {
+                conflicts: 0,
+                at_ms,
+                ..
+            } => (Tone::Good, format!("Synced {}", when(*at_ms))),
+            SyncState::Synced { .. } => (Tone::Warning, "Conflict detected".into()),
+        },
+    }
+}
+
+/// Who the footer names: the account while signed in (or asked to sign in
+/// again), else this Mac's user.
+pub fn footer_name<'a>(account: &'a AccountState, user: &'a str) -> &'a str {
+    match account {
+        AccountState::SignedIn { username } | AccountState::SessionEnded { username, .. } => {
+            username
         }
+        AccountState::SignedOut | AccountState::Busy(_) => user,
     }
 }
 
@@ -1255,10 +1310,28 @@ pub fn visible_tags(
 #[cfg(test)]
 mod tests {
     use super::{
-        SYNC_PROBLEMS, SyncState, Tone, api_icon, initials, status_choice_after, status_group_open,
-        sync_line, tone_icon, visible_tags,
+        SIGN_IN_TO_SYNC, SyncState, Tone, api_icon, footer_name, initials, problem_label,
+        status_choice_after, status_group_open, sync_line, tone_icon, visible_tags,
     };
+    use crate::account_words::step_label;
     use crate::grouping::utc_label;
+    use crate::services::{AccountState, strategies};
+    use kanso_sync::{QuotaKind, SignOutReason, SyncProblem};
+
+    /// Every label in the problems table, in its order.
+    const SYNC_PROBLEMS: [&str; 11] = [
+        "Signed out",
+        "Account turned off",
+        "Sync paused",
+        "Account full",
+        "Server full",
+        "Some items skipped",
+        "Update Kanso",
+        "Keys don't match",
+        "Server needs an update",
+        "Offline",
+        "Couldn't sync",
+    ];
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
 
@@ -1305,13 +1378,25 @@ mod tests {
             }
         }
 
-        /// Plain language: whatever a failed sync reports, the sidebar says
-        /// one of a few fixed phrases and never the raw error.
+        /// The problems table: every problem has its own label, a failed
+        /// sync and a sync that finished with the problem read alike, with a
+        /// warning, and signed out reads "Sign in to sync" whatever the last
+        /// state was.
         #[test]
-        fn prop_sync_failures_read_plainly(reason in "\\PC{0,60}") {
-            let (tone, label) = sync_line(&SyncState::Failed(reason.clone()), utc_label(0));
-            prop_assert_eq!(tone, Tone::Warning);
-            prop_assert!(SYNC_PROBLEMS.contains(&label.as_str()), "{}", label);
+        fn prop_sync_problems_read_from_the_table(problem in strategies::problem(), conflicts in 0usize..3, at in 0i64..1_000_000) {
+            let signed_in = AccountState::SignedIn { username: "ngoni".into() };
+            let label = problem_label(&problem);
+            prop_assert!(SYNC_PROBLEMS.contains(&label), "{}", label);
+            let failed = sync_line(&SyncState::Failed(problem.clone()), &signed_in, utc_label(at));
+            prop_assert_eq!(failed.clone(), (Tone::Warning, label.to_owned()));
+            let finished = SyncState::Synced { at_ms: at, conflicts, conflicted: Vec::new(), problem: Some(problem.clone()) };
+            prop_assert_eq!(sync_line(&finished, &signed_in, utc_label(at)), failed);
+            for state in [SyncState::Failed(problem), finished] {
+                prop_assert_eq!(
+                    sync_line(&state, &AccountState::SignedOut, utc_label(at)),
+                    (Tone::Quiet, SIGN_IN_TO_SYNC.to_owned())
+                );
+            }
         }
 
     }
@@ -1323,14 +1408,37 @@ mod tests {
         /// long ago; one with conflicts warns.
         #[test]
         fn prop_synced_reads_synced(at in 0i64..1_000_000_000_000, ago in 0i64..100_000_000_000, conflicts in 0usize..3) {
-            let synced = SyncState::Synced { at_ms: at, conflicts, conflicted: Vec::new() };
-            let (tone, label) = sync_line(&synced, utc_label(at + ago));
+            let synced = SyncState::Synced { at_ms: at, conflicts, conflicted: Vec::new(), problem: None };
+            let signed_in = AccountState::SignedIn { username: "ngoni".into() };
+            let (tone, label) = sync_line(&synced, &signed_in, utc_label(at + ago));
             if conflicts == 0 {
                 prop_assert_eq!(tone, Tone::Good);
                 prop_assert!(label.starts_with("Synced "), "{}", label);
             } else {
                 prop_assert_eq!(tone, Tone::Warning);
             }
+        }
+
+        /// The footer names the account exactly while one is signed in or
+        /// asked to sign in again, and this Mac's user otherwise.
+        #[test]
+        fn prop_the_footer_names_the_account(account in strategies::account(), user in "[a-z]{1,12}") {
+            let name = footer_name(&account, &user);
+            match &account {
+                AccountState::SignedIn { username } | AccountState::SessionEnded { username, .. } => {
+                    prop_assert_eq!(name, username.as_str())
+                }
+                _ => prop_assert_eq!(name, user.as_str()),
+            }
+        }
+
+        /// While an account task runs, the line says its step, busy.
+        #[test]
+        fn prop_running_tasks_show_their_step(state in strategies::sync_state(), step in strategies::step()) {
+            prop_assert_eq!(
+                sync_line(&state, &AccountState::Busy(step), utc_label(0)),
+                (Tone::Busy, step_label(step).to_owned())
+            );
         }
 
     }
@@ -1388,93 +1496,88 @@ mod tests {
     fn sync_line_examples() {
         let minute = 60_000;
         let day = 24 * 60 * minute;
+        let signed_in = AccountState::SignedIn {
+            username: "ngoni".into(),
+        };
+        let line = |state: &SyncState, now: i64| sync_line(state, &signed_in, utc_label(now));
         let synced = |at_ms| SyncState::Synced {
             at_ms,
             conflicts: 0,
             conflicted: Vec::new(),
+            problem: None,
         };
         assert_eq!(
-            sync_line(&synced(0), utc_label(10_000)),
+            line(&synced(0), 10_000),
             (Tone::Good, "Synced just now".into())
         );
         assert_eq!(
-            sync_line(&synced(0), utc_label(3 * minute)),
+            line(&synced(0), 3 * minute),
             (Tone::Good, "Synced 3 min ago".into())
         );
         // A day or more ago, the day as the note list names it, never
         // "1 d ago" or a date in another form.
         // 2026-05-28 09:45 UTC.
         let now = 1_779_961_500_000;
+        assert_eq!(line(&synced(now - day), now).1, "Synced yesterday");
+        assert_eq!(line(&synced(now - 4 * day), now).1, "Synced May 24");
+        assert_eq!(line(&synced(now - 400 * day), now).1, "Synced Apr 23, 2025");
+        assert_eq!(line(&SyncState::Off, 0), (Tone::Quiet, "Sync off".into()));
+        assert_eq!(line(&SyncState::Syncing, 0).1, "Syncing…");
+        let failed = |problem| line(&SyncState::Failed(problem), 0).1;
         assert_eq!(
-            sync_line(&synced(now - day), utc_label(now)).1,
-            "Synced yesterday"
+            failed(SyncProblem::SignedOut(SignOutReason::PasswordChanged)),
+            "Signed out"
+        );
+        assert_eq!(failed(SyncProblem::AccountDisabled), "Account turned off");
+        assert_eq!(failed(SyncProblem::Paused { until: 1 }), "Sync paused");
+        assert_eq!(
+            failed(SyncProblem::QuotaExceeded(QuotaKind::FileBytes)),
+            "Account full"
+        );
+        assert_eq!(failed(SyncProblem::ServerFull), "Server full");
+        assert_eq!(
+            failed(SyncProblem::Skipped { count: 3 }),
+            "Some items skipped"
+        );
+        assert_eq!(failed(SyncProblem::UpdateKanso), "Update Kanso");
+        assert_eq!(failed(SyncProblem::WrongKey), "Keys don't match");
+        assert_eq!(
+            failed(SyncProblem::ServerOutdated),
+            "Server needs an update"
+        );
+        assert_eq!(failed(SyncProblem::Offline), "Offline");
+        assert_eq!(failed(SyncProblem::Other), "Couldn't sync");
+        // A sync that finished with a problem says the problem, not when.
+        let skipped = SyncState::Synced {
+            at_ms: 0,
+            conflicts: 0,
+            conflicted: Vec::new(),
+            problem: Some(SyncProblem::Skipped { count: 2 }),
+        };
+        assert_eq!(
+            line(&skipped, 0),
+            (Tone::Warning, "Some items skipped".into())
+        );
+        // Signed out, the line asks to sign in; an ended session says so.
+        assert_eq!(
+            sync_line(&synced(0), &AccountState::SignedOut, utc_label(0)),
+            (Tone::Quiet, "Sign in to sync".into())
+        );
+        let ended = AccountState::SessionEnded {
+            username: "ngoni".into(),
+            reason: SignOutReason::Revoked,
+        };
+        assert_eq!(
+            sync_line(&SyncState::Off, &ended, utc_label(0)),
+            (Tone::Warning, "Signed out".into())
         );
         assert_eq!(
-            sync_line(&synced(now - 4 * day), utc_label(now)).1,
-            "Synced May 24"
-        );
-        assert_eq!(
-            sync_line(&synced(now - 400 * day), utc_label(now)).1,
-            "Synced Apr 23, 2025"
-        );
-        assert_eq!(
-            sync_line(&SyncState::Off, utc_label(0)),
-            (Tone::Quiet, "Sync off".into())
-        );
-        assert_eq!(sync_line(&SyncState::Syncing, utc_label(0)).1, "Syncing…");
-        let failed = |reason: &str| sync_line(&SyncState::Failed(reason.into()), utc_label(0)).1;
-        assert_eq!(
-            failed("set the Worker URL in Settings › Sync"),
-            "Sync not set up"
-        );
-        assert_eq!(
-            failed("no access token; set one in Settings › Sync"),
-            "Sync token needed"
-        );
-        assert_eq!(
-            failed("error sending request: connection refused"),
-            "Offline"
-        );
-        assert_eq!(failed("the server said 500"), "Couldn't sync");
-        // The words sync really reports (kanso-sync's errors, with ureq's
-        // reasons inside), as `sync_now` passes them on.
-        assert_eq!(
-            failed(
-                "could not reach the sync server: io: failed to lookup address information: nodename nor servname provided, or not known"
+            sync_line(
+                &SyncState::Off,
+                &AccountState::Busy(kanso_sync::Step::DerivingKeys),
+                utc_label(0)
             ),
-            "Offline"
-        );
-        assert_eq!(
-            failed("could not reach the sync server: io: Temporary failure in name resolution"),
-            "Offline"
-        );
-        assert_eq!(
-            failed("could not reach the sync server: io: Connection refused (os error 61)"),
-            "Offline"
-        );
-        assert_eq!(
-            failed("the sync server rejected the token"),
-            "Token rejected"
-        );
-        assert_eq!(
-            failed("the sync server answered 403: forbidden"),
-            "Token rejected"
-        );
-        assert_eq!(
-            failed("couldn't read the access token: keychain: Platform secure storage failure"),
-            "Sync token needed"
-        );
-        assert_eq!(
-            failed("the Worker URL is refused: that isn't a URL"),
-            "Sync not set up"
-        );
-        assert_eq!(
-            failed("the sync server answered 500: internal error"),
-            "Couldn't sync"
-        );
-        assert_eq!(
-            failed("unexpected answer from the sync server: missing field `docs`"),
-            "Couldn't sync"
+            (Tone::Busy, "Securing your keys…".into())
         );
     }
 
@@ -1508,6 +1611,14 @@ mod tests {
 
     #[test]
     fn initials_examples() {
+        let signed_in = AccountState::SignedIn {
+            username: "ngoni".into(),
+        };
+        assert_eq!(footer_name(&signed_in, "modestnerd"), "ngoni");
+        assert_eq!(
+            footer_name(&AccountState::SignedOut, "modestnerd"),
+            "modestnerd"
+        );
         assert_eq!(initials("modestnerd"), "M");
         assert_eq!(initials("ngoni mangudya"), "NM");
         assert_eq!(initials("jane.q.public"), "JQ");

@@ -17,14 +17,19 @@ use std::sync::Arc;
 
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Bounds, Entity, HeadlessAppContext, Pixels, Size,
+    AnyWindowHandle, AppContext as _, Bounds, Entity, HeadlessAppContext, Pixels, Size, Window,
     WindowBounds, WindowOptions, px, size,
 };
 use kanso_core::DocType;
 use kanso_core::model::TRASH_BOOK_ID;
 use kanso_store::{Origin, Put, Store};
+use kanso_sync::{
+    DeviceInfo, Plan, Quota, QuotaKind, RecoveryKey, SignOutReason, SignupState, Step, SyncProblem,
+    Usage,
+};
 use serde_json::json;
 
+use crate::account_page::{AccountPage, SignedOutForm};
 use crate::assets::KansoAssets;
 use crate::clock::Clock;
 use crate::commands::Picker;
@@ -33,8 +38,10 @@ use crate::editor::EditorEvent;
 use crate::layout::{BOTTOM_BAND_HEIGHT, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, rail_width};
 use crate::library::{Filter, has_notes_inside};
 use crate::palette::{Mode, PANEL_HEIGHT, PANEL_WIDTH};
-use crate::services::{ApiState, Services, SyncState, TokenState};
-use crate::settings::{NAV_WIDTH, SettingsPage, mask_secret};
+use crate::services::{
+    AccountDetails, AccountState, ApiState, PendingKey, RunningTask, Services, SyncState, TaskKind,
+};
+use crate::settings::{NAV_WIDTH, SettingsPage};
 use crate::theme::{Colors, DARK, LIGHT, Rgb};
 use crate::workspace::{AppState, Workspace, apply_theme};
 
@@ -234,6 +241,8 @@ struct Shot {
     size: Size<Pixels>,
     prepare: Prepare,
     left: Left,
+    /// How wide a dialog in the shot is, for its surface check.
+    dialog_width: f32,
 }
 
 /// The most recently edited note, as after a restart.
@@ -260,7 +269,7 @@ fn status_and_warnings(
     cx.update(|cx| {
         let services = cx.global_mut::<Services>();
         services.api = ApiState::PortInUse(crate::config::DEFAULT_PORT);
-        services.sync = SyncState::Failed("error sending request: connection refused".into());
+        services.sync = SyncState::Failed(SyncProblem::Offline);
     });
 }
 
@@ -468,11 +477,8 @@ fn rail_offline(
     store: &Store,
 ) {
     collapse_sidebar(cx, window, workspace, store);
-    set_sync(cx, SyncState::Failed(OFFLINE.into()));
+    set_sync(cx, SyncState::Failed(SyncProblem::Offline));
 }
-
-/// What sync reports with no network: kanso-sync's words around ureq's.
-const OFFLINE: &str = "could not reach the sync server: io: failed to lookup address information: nodename nor servname provided, or not known";
 
 /// The keyboard in the note list: its selected row wears the focus ring.
 fn list_focused(
@@ -548,7 +554,7 @@ fn split_scrolled(
     .unwrap();
 }
 
-/// The first launch: no notes, notebooks or tags, and sync never set up.
+/// The first launch: no notes, notebooks or tags, and signed out.
 fn first_run(
     cx: &mut HeadlessAppContext,
     _: AnyWindowHandle,
@@ -568,7 +574,7 @@ fn first_run(
     for book in store.books().unwrap() {
         store.delete(&book.id, Origin::Ui).ok();
     }
-    set_sync(cx, SyncState::Off);
+    sign_out_demo(cx);
     cx.run_until_parked();
 }
 
@@ -888,8 +894,8 @@ fn mono_font(
     });
 }
 
-/// Settings at `page`, with demo values in place of the user's: a Worker,
-/// a saved token and API credentials, none of them real.
+/// Settings at `page`, with demo values in place of the user's: an account
+/// signed in and API credentials, none of them real.
 fn show_settings(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
@@ -898,17 +904,20 @@ fn show_settings(
 ) {
     cx.update(|cx| {
         let config = &mut cx.global_mut::<AppState>().config;
-        config.sync.endpoint = Some("https://kanso-sync.example.workers.dev".into());
+        config.sync.server = None;
         config.sync.enabled = true;
         config.server.username = "kanso".into();
         config.server.password = "demo-password-not-real-7Q2x".into();
         let now = Clock::now_ms(cx);
         let services = cx.global_mut::<Services>();
-        services.sync_token = TokenState::Saved(mask_secret("demo-token-not-real-9f3c"));
+        services.account = AccountState::SignedIn {
+            username: DEMO_USER.into(),
+        };
         services.sync = SyncState::Synced {
             at_ms: now,
             conflicts: 0,
             conflicted: Vec::new(),
+            problem: None,
         };
     });
     cx.update_window(window, |_, window, cx| {
@@ -953,81 +962,131 @@ fn settings_appearance(
     show_settings(cx, window, workspace, SettingsPage::Appearance);
 }
 
-/// Sync, synced a moment ago.
-fn settings_sync(
+/// The demo account's name.
+const DEMO_USER: &str = "ngoni";
+
+fn sign_out_demo(cx: &mut HeadlessAppContext) {
+    cx.update(|cx| {
+        let services = cx.global_mut::<Services>();
+        services.account = AccountState::SignedOut;
+        services.sync = SyncState::Off;
+    });
+}
+
+/// What the server says about the demo account: its storage, and three
+/// Macs, this one first.
+fn demo_details(cx: &mut HeadlessAppContext) {
+    let now = cx.update(|cx| Clock::now_ms(cx));
+    let device = |id: &str, name: Option<&str>, ago: i64, current: bool| DeviceInfo {
+        id: id.into(),
+        name: name.map(Into::into),
+        created_at: now - 90 * DAY,
+        last_seen_at: now - ago,
+        current,
+    };
+    cx.update(|cx| {
+        cx.global_mut::<Services>().details = AccountDetails {
+            usage: Some(Usage {
+                docs: 850,
+                doc_bytes: 3_250_586,
+                files: 15,
+                file_bytes: 14 * 1024 * 1024,
+                writes_today: 120,
+                quota: Quota {
+                    docs: 100_000,
+                    doc_bytes: 100 * 1024 * 1024,
+                    files: 10_000,
+                    file_bytes: 500 * 1024 * 1024,
+                    writes_per_day: 10_000,
+                },
+            }),
+            devices: Some(vec![
+                device("d_1", Some("Ngoni's MacBook Pro"), 0, true),
+                device("d_2", Some("Studio"), 2 * 60 * MINUTE, false),
+                device("d_3", None, 3 * DAY, false),
+            ]),
+            loading: false,
+            failed: None,
+        };
+    });
+}
+
+/// The Account page, signed in, synced a moment ago.
+fn settings_account(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
     workspace: &Entity<Workspace>,
     _: &Store,
 ) {
-    show_settings(cx, window, workspace, SettingsPage::Sync);
+    show_settings(cx, window, workspace, SettingsPage::Account);
+    demo_details(cx);
 }
 
-fn settings_sync_syncing(
-    cx: &mut HeadlessAppContext,
-    window: AnyWindowHandle,
-    workspace: &Entity<Workspace>,
-    _: &Store,
-) {
-    show_settings(cx, window, workspace, SettingsPage::Sync);
-    set_sync(cx, SyncState::Syncing);
-}
-
-fn settings_sync_offline(
-    cx: &mut HeadlessAppContext,
-    window: AnyWindowHandle,
-    workspace: &Entity<Workspace>,
-    _: &Store,
-) {
-    show_settings(cx, window, workspace, SettingsPage::Sync);
-    set_sync(cx, SyncState::Failed(OFFLINE.into()));
-}
-
-/// The Worker turned the saved token down.
-fn settings_sync_rejected(
-    cx: &mut HeadlessAppContext,
-    window: AnyWindowHandle,
-    workspace: &Entity<Workspace>,
-    _: &Store,
-) {
-    show_settings(cx, window, workspace, SettingsPage::Sync);
-    set_sync(
-        cx,
-        SyncState::Failed("the sync server rejected the token".into()),
-    );
-}
-
-/// The Keychain wouldn't say whether a token is saved (locked, or access
-/// denied): one can still be set.
-fn settings_sync_unreadable(
-    cx: &mut HeadlessAppContext,
-    window: AnyWindowHandle,
-    workspace: &Entity<Workspace>,
-    _: &Store,
-) {
-    show_settings(cx, window, workspace, SettingsPage::Sync);
-    cx.update(|cx| cx.global_mut::<Services>().sync_token = TokenState::Unreadable);
-}
-
-/// The Worker refused the sync for a reason of its own.
-fn settings_sync_error(
-    cx: &mut HeadlessAppContext,
-    window: AnyWindowHandle,
-    workspace: &Entity<Workspace>,
-    _: &Store,
-) {
-    show_settings(cx, window, workspace, SettingsPage::Sync);
-    set_sync(cx, SyncState::Failed("the server said 500".into()));
-}
-
-/// A note changed on two Macs at once: the page names it and opens it.
-fn settings_sync_conflict(
+fn settings_account_syncing(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
     workspace: &Entity<Workspace>,
     store: &Store,
 ) {
-    show_settings(cx, window, workspace, SettingsPage::Sync);
+    settings_account(cx, window, workspace, store);
+    set_sync(cx, SyncState::Syncing);
+}
+
+fn settings_account_offline(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
+    set_sync(cx, SyncState::Failed(SyncProblem::Offline));
+}
+
+/// Too many changes today: sync waits, and says until when.
+fn settings_account_paused(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
+    let now = cx.update(|cx| Clock::now_ms(cx));
+    set_sync(
+        cx,
+        SyncState::Failed(SyncProblem::Paused {
+            until: now + 3 * 60 * MINUTE,
+        }),
+    );
+}
+
+/// A sync that finished with a full account.
+fn settings_account_full(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
+    let now = cx.update(|cx| Clock::now_ms(cx));
+    set_sync(
+        cx,
+        SyncState::Synced {
+            at_ms: now - MINUTE,
+            conflicts: 0,
+            conflicted: Vec::new(),
+            problem: Some(SyncProblem::QuotaExceeded(QuotaKind::FileBytes)),
+        },
+    );
+}
+
+/// A note changed on two Macs at once: the page names it and opens it.
+fn settings_account_conflict(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
     let now = cx.update(|cx| Clock::now_ms(cx));
     let first = store
         .search_summaries(&Default::default())
@@ -1041,26 +1100,409 @@ fn settings_sync_conflict(
             at_ms: now - 3 * MINUTE,
             conflicts: 1,
             conflicted: first.into_iter().collect(),
+            problem: None,
         },
     );
 }
 
-/// Sync never set up: no Worker, no token.
-fn settings_sync_off(
+/// The storage and devices aren't fetched yet.
+fn settings_account_loading(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
     workspace: &Entity<Workspace>,
     _: &Store,
 ) {
-    show_settings(cx, window, workspace, SettingsPage::Sync);
+    show_settings(cx, window, workspace, SettingsPage::Account);
     cx.update(|cx| {
-        let config = &mut cx.global_mut::<AppState>().config;
-        config.sync.endpoint = None;
-        config.sync.enabled = false;
-        let services = cx.global_mut::<Services>();
-        services.sync = SyncState::Off;
-        services.sync_token = TokenState::Missing;
+        cx.global_mut::<Services>().details = AccountDetails {
+            loading: true,
+            ..AccountDetails::default()
+        }
     });
+}
+
+/// Signed out: the two ways in.
+fn settings_signed_out(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_signed_out(cx, window, workspace);
+}
+
+fn show_signed_out(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Account);
+    sign_out_demo(cx);
+}
+
+/// The Account page's own view.
+fn account_page(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>) -> Entity<AccountPage> {
+    cx.update(|cx| workspace.read(cx).settings.read(cx).account.clone())
+}
+
+/// Signed out with `form` open and filled in.
+fn open_account_form(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    form: SignedOutForm,
+    values: [&str; 4],
+) -> Entity<AccountPage> {
+    show_signed_out(cx, window, workspace);
+    let page = account_page(cx, workspace);
+    cx.update_window(window, |_, window, cx| {
+        page.update(cx, |page, cx| {
+            page.open_form(form, window, cx);
+            page.set_notes(9);
+            page.fill(values, window, cx);
+        });
+    })
+    .unwrap();
+    page
+}
+
+fn settings_create_account(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    open_account_form(
+        cx,
+        window,
+        workspace,
+        SignedOutForm::CreateAccount,
+        [DEMO_USER, "correct horse battery staple", "", ""],
+    );
+}
+
+/// The server takes no new accounts: the line says so and the button waits.
+fn settings_create_account_closed(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_create_account(cx, window, workspace, store);
+    cx.update(|cx| {
+        cx.global_mut::<Services>().signup =
+            Some((kanso_sync::DEFAULT_SERVER.to_owned(), SignupState::Closed));
+    });
+}
+
+/// A server of the owner's own, picked with "Use a different server…".
+fn settings_create_account_custom(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_create_account(cx, window, workspace, store);
+    cx.update(|cx| {
+        cx.global_mut::<AppState>().config.sync.server = Some("https://sync.example.com".into());
+    });
+}
+
+/// Creating the account: the keys are being derived.
+fn settings_create_account_busy(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    open_account_form(
+        cx,
+        window,
+        workspace,
+        SignedOutForm::CreateAccount,
+        [DEMO_USER, "", "", ""],
+    );
+    cx.update(|cx| {
+        cx.global_mut::<Services>().task = Some(RunningTask {
+            kind: TaskKind::SignUp,
+            step: Step::DerivingKeys,
+        });
+    });
+}
+
+/// Sign in, after a wrong password.
+fn settings_sign_in_error(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    let page = open_account_form(
+        cx,
+        window,
+        workspace,
+        SignedOutForm::SignIn,
+        [DEMO_USER, "", "", ""],
+    );
+    cx.update(|cx| {
+        page.update(cx, |page, cx| {
+            page.show_error("That username and password don't match.", cx)
+        })
+    });
+}
+
+/// "Forgot your password?", signed out.
+fn settings_recover(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    open_account_form(
+        cx,
+        window,
+        workspace,
+        SignedOutForm::Recover,
+        [DEMO_USER, "", "", "K7Q2-9F3C-XXXX"],
+    );
+}
+
+/// Another Mac changed the password: the reason over the Sign in form.
+fn settings_session_ended(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Account);
+    cx.update(|cx| {
+        let services = cx.global_mut::<Services>();
+        services.account = AccountState::SessionEnded {
+            username: DEMO_USER.into(),
+            reason: SignOutReason::PasswordChanged,
+        };
+        services.sync = SyncState::Off;
+    });
+}
+
+/// A made-up recovery key: the bytes are no one's.
+fn demo_key() -> RecoveryKey {
+    RecoveryKey::from_bytes([
+        0x3a, 0x91, 0x5c, 0x07, 0xe2, 0x48, 0xbd, 0x16, 0x6f, 0xd0, 0x29, 0x84, 0x73, 0xc5, 0x1e,
+        0x0b,
+    ])
+}
+
+/// Right after creating the account: the key to save.
+fn settings_recovery_key(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
+    cx.update(|cx| {
+        cx.global_mut::<Services>().pending_key = Some(PendingKey {
+            key: demo_key(),
+            username: DEMO_USER.into(),
+            server: kanso_sync::DEFAULT_SERVER.into(),
+        });
+    });
+}
+
+/// The key screen with "I've saved my recovery key" ticked.
+fn settings_recovery_key_saved(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_recovery_key(cx, window, workspace, store);
+    let page = account_page(cx, workspace);
+    cx.update(|cx| page.update(cx, |page, cx| page.set_key_saved(true, cx)));
+}
+
+/// Opens a dialog over the Account page, at rest.
+fn account_dialog(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+    open: impl FnOnce(&mut Window, &mut gpui_kit::App),
+) {
+    settings_account(cx, window, workspace, store);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| open(window, cx))
+        .unwrap();
+}
+
+/// The question a sign-in asks when this Mac already has notes.
+fn binding_question(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    open_account_form(
+        cx,
+        window,
+        workspace,
+        SignedOutForm::SignIn,
+        [DEMO_USER, "", "", ""],
+    );
+    cx.update(|cx| cx.set_reduce_motion(true));
+    let question = crate::account_words::binding_question(
+        &Plan::Ask {
+            from: None,
+            notes: 9,
+            unsynced: 3,
+        },
+        DEMO_USER,
+    )
+    .unwrap();
+    cx.update_window(window, |_, window, cx| {
+        let choices = question
+            .answers
+            .iter()
+            .map(|answer| crate::dialogs::Described {
+                label: answer.label.clone().into(),
+                description: answer.description.clone().into(),
+            })
+            .collect();
+        crate::dialogs::choose(
+            question.title.clone(),
+            question.body.clone(),
+            choices,
+            window,
+            cx,
+            |_, _, _| {},
+        );
+    })
+    .unwrap();
+}
+
+fn change_password_form(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    account_dialog(cx, window, workspace, store, |window, cx| {
+        if let Some(form) = crate::account_page::change_password_dialog(window, cx) {
+            form.update(cx, |form, cx| {
+                form.fill(
+                    &["old password here", "a new passphrase", "a new passphrase!"],
+                    window,
+                    cx,
+                );
+                form.show_error(crate::account_words::PASSWORDS_DIFFER, cx);
+            });
+        }
+    });
+}
+
+/// The change running: fields disabled, the step on the button.
+fn change_password_busy(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    account_dialog(cx, window, workspace, store, |window, cx| {
+        if let Some(form) = crate::account_page::change_password_dialog(window, cx) {
+            form.update(cx, |form, cx| form.show_step(Step::DerivingKeys, cx));
+        }
+    });
+}
+
+fn new_recovery_key_form(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    account_dialog(cx, window, workspace, store, |window, cx| {
+        crate::account_page::new_recovery_key_dialog(window, cx);
+    });
+}
+
+fn recover_form(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    account_dialog(cx, window, workspace, store, |window, cx| {
+        crate::account_page::recover_dialog(window, cx);
+    });
+}
+
+fn delete_account_form(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    account_dialog(cx, window, workspace, store, |window, cx| {
+        if let Some(form) = crate::account_page::delete_account_dialog(window, cx) {
+            form.update(cx, |form, cx| {
+                form.fill(&[DEMO_USER, "my password"], window, cx)
+            });
+        }
+    });
+}
+
+fn sign_out_confirm(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    account_dialog(cx, window, workspace, store, |window, cx| {
+        crate::account_page::sign_out_dialog(window, cx);
+    });
+}
+
+fn server_form(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_create_account(cx, window, workspace, store);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        let form = crate::account_page::server_dialog(window, cx);
+        form.update(cx, |form, cx| {
+            form.fill(&["http://sync.example.com"], window, cx);
+            form.show_error(
+                "Use an https:// address. Plain http:// only reaches this Mac (127.0.0.1 or localhost).",
+                cx,
+            );
+        });
+    })
+    .unwrap();
+}
+
+/// The notes with this Mac signed out: the footer asks to sign in.
+fn signed_out_footer(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    sign_out_demo(cx);
+}
+
+/// The rail signed out, its sync icon quiet.
+fn rail_signed_out(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    collapse_sidebar(cx, window, workspace, store);
+    sign_out_demo(cx);
 }
 
 fn settings_api(
@@ -1094,7 +1536,8 @@ fn settings_rail(
     store: &Store,
 ) {
     collapse_sidebar(cx, window, workspace, store);
-    show_settings(cx, window, workspace, SettingsPage::Sync);
+    show_settings(cx, window, workspace, SettingsPage::Account);
+    demo_details(cx);
 }
 
 /// ⌘, in focus mode: Settings come up beside the sidebar, out of focus mode.
@@ -1254,13 +1697,18 @@ fn open(
             data_dir,
             config,
         });
-        // The footer as it usually reads; nothing is listening or syncing.
+        // The footer as it usually reads, signed in; nothing is listening
+        // or syncing, and no server or Keychain is reached.
         let mut services = Services::default();
         services.api = ApiState::Running("http://127.0.0.1:19840".into());
+        services.account = AccountState::SignedIn {
+            username: DEMO_USER.into(),
+        };
         services.sync = SyncState::Synced {
             at_ms: now - 2 * MINUTE,
             conflicts: 0,
             conflicted: Vec::new(),
+            problem: None,
         };
         cx.set_global(services);
         apply_theme(theme, None, cx);
@@ -1515,6 +1963,12 @@ fn snapshots() {
         size: full,
         prepare,
         left: Left::Sidebar,
+        dialog_width: crate::history::DIALOG_WIDTH,
+    };
+    // A shot with one of the account's dialogs open.
+    let form = |name, theme, prepare: Prepare| Shot {
+        dialog_width: crate::dialogs::FORM_WIDTH,
+        ..shot(name, theme, Edit, prepare)
     };
     let shots = [
         shot("dark-split", Dark, Split, open_latest),
@@ -1663,40 +2117,168 @@ fn snapshots() {
         shot("light-settings-general", Light, Edit, settings_general),
         shot("dark-settings-editor", Dark, Edit, settings_editor),
         shot("dark-settings-appearance", Dark, Edit, settings_appearance),
-        shot("dark-settings-sync", Dark, Edit, settings_sync),
-        shot("light-settings-sync", Light, Edit, settings_sync),
+        // The Account page, signed in.
+        Shot {
+            size: size(px(1440.), px(1400.)),
+            ..shot("dark-settings-account", Dark, Edit, settings_account)
+        },
+        Shot {
+            size: size(px(1440.), px(1400.)),
+            ..shot("light-settings-account", Light, Edit, settings_account)
+        },
         shot(
-            "dark-settings-sync-syncing",
+            "dark-settings-account-syncing",
             Dark,
             Edit,
-            settings_sync_syncing,
+            settings_account_syncing,
         ),
         shot(
-            "dark-settings-sync-offline",
+            "dark-settings-account-offline",
             Dark,
             Edit,
-            settings_sync_offline,
-        ),
-        shot("dark-settings-sync-error", Dark, Edit, settings_sync_error),
-        shot(
-            "dark-settings-sync-conflict",
-            Dark,
-            Edit,
-            settings_sync_conflict,
-        ),
-        shot("dark-settings-sync-off", Dark, Edit, settings_sync_off),
-        shot(
-            "dark-settings-sync-rejected",
-            Dark,
-            Edit,
-            settings_sync_rejected,
+            settings_account_offline,
         ),
         shot(
-            "dark-settings-sync-unreadable",
+            "dark-settings-account-paused",
             Dark,
             Edit,
-            settings_sync_unreadable,
+            settings_account_paused,
         ),
+        shot(
+            "light-settings-account-full",
+            Light,
+            Edit,
+            settings_account_full,
+        ),
+        shot(
+            "dark-settings-account-conflict",
+            Dark,
+            Edit,
+            settings_account_conflict,
+        ),
+        shot(
+            "dark-settings-account-loading",
+            Dark,
+            Edit,
+            settings_account_loading,
+        ),
+        // Signed out: the ways in, each form, and a running sign-up.
+        shot("dark-settings-signed-out", Dark, Edit, settings_signed_out),
+        shot(
+            "light-settings-signed-out",
+            Light,
+            Edit,
+            settings_signed_out,
+        ),
+        shot(
+            "dark-settings-create-account",
+            Dark,
+            Edit,
+            settings_create_account,
+        ),
+        shot(
+            "light-settings-create-account",
+            Light,
+            Edit,
+            settings_create_account,
+        ),
+        shot(
+            "dark-settings-create-account-closed",
+            Dark,
+            Edit,
+            settings_create_account_closed,
+        ),
+        shot(
+            "dark-settings-create-account-custom",
+            Dark,
+            Edit,
+            settings_create_account_custom,
+        ),
+        shot(
+            "dark-settings-create-account-busy",
+            Dark,
+            Edit,
+            settings_create_account_busy,
+        ),
+        shot(
+            "light-settings-create-account-busy",
+            Light,
+            Edit,
+            settings_create_account_busy,
+        ),
+        shot("dark-settings-sign-in", Dark, Edit, settings_sign_in_error),
+        shot(
+            "light-settings-sign-in",
+            Light,
+            Edit,
+            settings_sign_in_error,
+        ),
+        shot("dark-settings-recover", Dark, Edit, settings_recover),
+        shot("light-settings-recover", Light, Edit, settings_recover),
+        shot(
+            "dark-settings-session-ended",
+            Dark,
+            Edit,
+            settings_session_ended,
+        ),
+        shot(
+            "light-settings-session-ended",
+            Light,
+            Edit,
+            settings_session_ended,
+        ),
+        // The recovery key, after sign-up, recovery or a new key.
+        shot(
+            "dark-settings-recovery-key",
+            Dark,
+            Edit,
+            settings_recovery_key,
+        ),
+        shot(
+            "light-settings-recovery-key",
+            Light,
+            Edit,
+            settings_recovery_key,
+        ),
+        shot(
+            "dark-settings-recovery-key-saved",
+            Dark,
+            Edit,
+            settings_recovery_key_saved,
+        ),
+        // The account's dialogs.
+        form("dark-account-binding-question", Dark, binding_question),
+        form("light-account-binding-question", Light, binding_question),
+        form("dark-account-change-password", Dark, change_password_form),
+        form("light-account-change-password", Light, change_password_form),
+        form(
+            "dark-account-change-password-busy",
+            Dark,
+            change_password_busy,
+        ),
+        form("dark-account-new-recovery-key", Dark, new_recovery_key_form),
+        form(
+            "light-account-new-recovery-key",
+            Light,
+            new_recovery_key_form,
+        ),
+        form("dark-account-recover", Dark, recover_form),
+        form("dark-account-delete", Dark, delete_account_form),
+        form("light-account-delete", Light, delete_account_form),
+        // A plain confirmation, at the dialogs' own width.
+        Shot {
+            dialog_width: 448.,
+            ..shot("dark-account-sign-out", Dark, Edit, sign_out_confirm)
+        },
+        form("dark-account-server", Dark, server_form),
+        form("light-account-server", Light, server_form),
+        // Signed out, in the notes: the footer and the rail.
+        shot("dark-signed-out", Dark, Edit, signed_out_footer),
+        shot("light-signed-out", Light, Split, signed_out_footer),
+        Shot {
+            left: Left::Rail,
+            ..shot("dark-rail-signed-out", Dark, Edit, rail_signed_out)
+        },
         shot("dark-settings-api", Dark, Edit, settings_api),
         shot(
             "dark-settings-api-port-in-use",
@@ -1781,7 +2363,7 @@ fn snapshots() {
             .update_window(window, |_, window, cx| window.has_active_dialog(cx))
             .unwrap();
         if dialog_open {
-            check_dialog(&image, shot, crate::history::DIALOG_WIDTH);
+            check_dialog(&image, shot, shot.dialog_width);
         } else if palette_open {
             check_palette(&image, shot);
         } else if settings_open {
