@@ -9,7 +9,7 @@
 use std::sync::OnceLock;
 
 use gpui_kit::component::{Theme, ThemeRegistry};
-use gpui_kit::{App, Fill, Hsla};
+use gpui_kit::{App, Fill, Hsla, TextSystem, font, px};
 use serde_json::{Value, json};
 
 pub const LIGHT_NAME: &str = "Kanso Light";
@@ -69,6 +69,9 @@ pub struct Colors {
     pub sidebar_hover: Rgb,
     /// Menu items and ghost buttons under the pointer.
     pub hover: Rgb,
+    /// A selected ghost button, such as the current view mode: plainly
+    /// stronger than a hover, in both themes.
+    pub selected: Rgb,
     /// The row with the cursor, when line numbers show.
     pub active_line: Rgb,
     /// Primary buttons and the text on them.
@@ -103,6 +106,7 @@ pub const DARK: Colors = Colors {
     sidebar_active: Rgb(0x2E2E2A),
     sidebar_hover: Rgb(0x252522),
     hover: Rgb(0x3A3933),
+    selected: Rgb(0x3A3933),
     active_line: Rgb(0x2D2D29),
     button: Rgb(0x4A6385),
     button_text: Rgb(0xF1EFE7),
@@ -134,6 +138,7 @@ pub const LIGHT: Colors = Colors {
     sidebar_active: Rgb(0xE2DDD0),
     sidebar_hover: Rgb(0xE5E0D5),
     hover: Rgb(0xF0ECE3),
+    selected: Rgb(0xE6E0D4),
     active_line: Rgb(0xF6F3EB),
     button: Rgb(0x4D6684),
     button_text: Rgb(0xFFFDF8),
@@ -182,19 +187,32 @@ pub fn ensure_installed(cx: &mut App) {
     theme.dark_theme = dark;
 }
 
-/// SF Mono when the system has it. Laying out text in a missing family
-/// panics, so it is looked for rather than assumed; without it the library
-/// keeps its own installed default.
+/// SF Mono, the system's monospaced face, by the name Core Text knows it
+/// by. It isn't installed as a family called "SF Mono", so it never shows in
+/// the font list.
+const SYSTEM_MONO: &str = ".AppleSystemUIFontMonospaced";
+
+/// SF Mono when it loads. A family that doesn't load quietly becomes a
+/// proportional fallback, so it is checked rather than assumed; without it
+/// the library keeps its own default, Menlo.
 fn mono_font(cx: &App) -> Option<&'static str> {
     static FOUND: OnceLock<bool> = OnceLock::new();
     FOUND
-        .get_or_init(|| {
-            cx.text_system()
-                .all_font_names()
-                .iter()
-                .any(|name| name == "SF Mono")
-        })
-        .then_some("SF Mono")
+        .get_or_init(|| loads_monospaced(cx.text_system(), SYSTEM_MONO))
+        .then_some(SYSTEM_MONO)
+}
+
+/// Whether `family` loads as itself, rather than as a fallback, and is
+/// monospaced.
+// no-prop-test: asks the platform's text system; `system_mono_font_loads`
+// checks it against real fonts.
+fn loads_monospaced(text_system: &TextSystem, family: &str) -> bool {
+    let id = text_system.resolve_font(&font(family));
+    let itself = text_system
+        .get_font_for_id(id)
+        .is_some_and(|loaded| loaded.family.as_ref() == family);
+    let width = |c| text_system.advance(id, px(16.), c).ok().map(|s| s.width);
+    itself && width('i').is_some() && width('i') == width('m')
 }
 
 // no-prop-test: a fixed document; `themes_parse` checks it loads as written.
@@ -228,7 +246,7 @@ fn theme_config(name: &str, dark: bool, c: &Colors, mono: Option<&str>) -> Value
 fn theme_colors(dark: bool, c: &Colors) -> Value {
     // Text on the status colors.
     let on_status = if dark { c.app } else { c.text };
-    let colors: [(&str, String); 57] = [
+    let colors: [(&str, String); 60] = [
         ("background", c.editor.hex()),
         ("foreground", c.text.hex()),
         ("border", c.divider.hex()),
@@ -237,6 +255,15 @@ fn theme_colors(dark: bool, c: &Colors) -> Value {
         ("accent.foreground", c.text.hex()),
         ("secondary.background", c.hover.hex()),
         ("secondary.foreground", c.text.hex()),
+        // A selected ghost button; the library would darken the secondary
+        // color, which all but vanishes on the dark editor. Hover sits
+        // between the surface and the selected fill.
+        ("secondary.active.background", c.selected.hex()),
+        (
+            "secondary.hover.background",
+            (if dark { c.elevated } else { c.hover }).hex(),
+        ),
+        ("button.active.background", c.selected.hex()),
         ("muted.background", c.elevated.hex()),
         ("muted.foreground", c.text_muted.hex()),
         ("popover.background", c.elevated.hex()),
@@ -272,9 +299,14 @@ fn theme_colors(dark: bool, c: &Colors) -> Value {
         ("scrollbar.thumb.hover.background", c.text.hex_alpha(0x55)),
         ("drag.border", c.accent.hex()),
         ("drop_target.background", c.accent.hex_alpha(0x33)),
+        // A warm dim, never black.
         (
             "overlay",
-            (if dark { "#00000059" } else { "#26241F26" }).into(),
+            if dark {
+                c.app.hex_alpha(0x99)
+            } else {
+                c.text.hex_alpha(0x26)
+            },
         ),
         ("success.background", c.success.hex()),
         ("success.foreground", on_status.hex()),
@@ -345,12 +377,12 @@ fn highlight(c: &Colors) -> Value {
     if let (Value::Object(syntax), Value::Object(code)) = (&mut syntax, code) {
         syntax.extend(code);
     }
+    // There are no line number keys: the gutter draws numbers in the
+    // theme's `muted.foreground`, and the current line's in `foreground`.
     json!({
         "editor.background": c.editor.hex(),
         "editor.foreground": c.text.hex(),
         "editor.active_line.background": c.active_line.hex(),
-        "editor.line_number": c.text_muted.hex(),
-        "editor.active_line_number": c.text_secondary.hex(),
         "editor.invisible": c.text_muted.hex_alpha(0x66),
         "error": c.danger.hex(),
         "warning": c.warning.hex(),
@@ -386,25 +418,40 @@ pub fn contrast_ratio(a: u32, b: u32) -> f64 {
 }
 
 /// The most saturated a tag color gets.
-const TAG_SATURATION_MAX: f32 = 0.38;
+const TAG_SATURATION_MAX: f32 = 0.42;
 /// The lightness band tag colors are kept in, on dark and light surfaces.
-const TAG_LIGHTNESS_DARK: (f32, f32) = (0.58, 0.72);
-const TAG_LIGHTNESS_LIGHT: (f32, f32) = (0.36, 0.50);
+const TAG_LIGHTNESS_DARK: (f32, f32) = (0.50, 0.76);
+const TAG_LIGHTNESS_LIGHT: (f32, f32) = (0.32, 0.50);
+/// The input lightness that is spread across the band. Tag palettes sit in
+/// it; lighter and darker colors take the band's ends.
+const TAG_LIGHTNESS_SPREAD: (f32, f32) = (0.40, 0.60);
 
 /// A tag's color calmed for display: the same hue, no more saturated than
 /// it was or than [`TAG_SATURATION_MAX`], and light or dark enough to read on
-/// the theme's surfaces. The stored color doesn't change.
+/// the theme's surfaces. Differences between colors survive it, so Orange
+/// and Brown, or Violet and Purple, stay apart. The stored color doesn't
+/// change.
 pub fn muted_tag_color(rgb: u32, dark: bool) -> u32 {
     let (hue, saturation, lightness) = to_hsl(rgb);
+    let (saturation, lightness) = calm(saturation, lightness, dark);
+    from_hsl(hue, saturation, lightness)
+}
+
+/// The saturation and lightness [`muted_tag_color`] gives a color. Both keep
+/// their order instead of being cut off: saturation is compressed toward the
+/// cap by a square root, so a stronger color stays stronger, and lightness is
+/// stretched across the band, so a darker color stays darker.
+fn calm(saturation: f32, lightness: f32, dark: bool) -> (f32, f32) {
     let (low, high) = if dark {
         TAG_LIGHTNESS_DARK
     } else {
         TAG_LIGHTNESS_LIGHT
     };
-    from_hsl(
-        hue,
-        saturation.min(TAG_SATURATION_MAX),
-        lightness.clamp(low, high),
+    let (from, to) = TAG_LIGHTNESS_SPREAD;
+    let spread = ((lightness - from) / (to - from)).clamp(0., 1.);
+    (
+        saturation.min(TAG_SATURATION_MAX * saturation.sqrt()),
+        low + (high - low) * spread,
     )
 }
 
@@ -511,17 +558,101 @@ mod tests {
             }
         }
 
-        /// Idempotence: calming a calmed color changes it by at most one
-        /// rounding step per channel.
+        /// Order preservation: a more saturated or lighter color never
+        /// comes out less saturated or darker, and saturation doesn't depend
+        /// on lightness or the other way round.
         #[test]
-        fn prop_muted_tag_color_is_idempotent(color in rgb(), dark in any::<bool>()) {
-            let once = muted_tag_color(color, dark);
-            let twice = muted_tag_color(once, dark);
-            for shift in [16, 8, 0] {
-                let (a, b) = ((once >> shift) & 0xFF, (twice >> shift) & 0xFF);
-                prop_assert!(a.abs_diff(b) <= 1, "{once:06x} -> {twice:06x}");
+        fn prop_calming_keeps_order(a in unit(), b in unit(), other in unit(), dark in any::<bool>()) {
+            let (less, more) = (a.min(b), a.max(b));
+            let (s_less, l_less) = calm(less, other, dark);
+            let (s_more, l_more) = calm(more, other, dark);
+            prop_assert!(s_less <= s_more, "{less} -> {s_less}, {more} -> {s_more}");
+            prop_assert_eq!(l_less, l_more);
+            let (s_less, l_less) = calm(other, less, dark);
+            let (s_more, l_more) = calm(other, more, dark);
+            prop_assert!(l_less <= l_more, "{less} -> {l_less}, {more} -> {l_more}");
+            prop_assert_eq!(s_less, s_more);
+        }
+
+        /// Strictness: different saturations stay different all the way up,
+        /// and so do lightnesses across the spread, rather than meeting at
+        /// the cap or the band's edge.
+        #[test]
+        fn prop_calming_keeps_colors_apart(a in unit(), gap in 0.01f32..1., dark in any::<bool>()) {
+            let b = (a + gap).min(1.);
+            prop_assume!(b - a >= 0.01);
+            prop_assert!(calm(a, 0.5, dark).0 < calm(b, 0.5, dark).0, "{a} {b}");
+            let (from, to) = TAG_LIGHTNESS_SPREAD;
+            let (l1, l2) = (from + (to - from) * a, from + (to - from) * b);
+            prop_assert!(calm(0.5, l1, dark).1 < calm(0.5, l2, dark).1, "{l1} {l2}");
+        }
+    }
+
+    fn unit() -> impl Strategy<Value = f32> {
+        0f32..=1.
+    }
+
+    /// CIE L*a*b* of an sRGB color (D65), for color differences.
+    fn lab(rgb: u32) -> [f64; 3] {
+        let [r, g, b] = [16, 8, 0].map(|shift| {
+            let c = f64::from((rgb >> shift) & 0xFF) / 255.;
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        });
+        let x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+        let y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        let z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+        let f = |t: f64| {
+            if t > 0.008856 {
+                t.cbrt()
+            } else {
+                7.787 * t + 16. / 116.
+            }
+        };
+        let (fx, fy, fz) = (f(x), f(y), f(z));
+        [116. * fy - 16., 500. * (fx - fy), 200. * (fy - fz)]
+    }
+
+    /// The CIE76 difference of two colors: about 2 is just noticeable, 10
+    /// tells two small dots apart at a glance.
+    fn delta_e(a: u32, b: u32) -> f64 {
+        let (a, b) = (lab(a), lab(b));
+        (0..3).map(|i| (a[i] - b[i]).powi(2)).sum::<f64>().sqrt()
+    }
+
+    /// Every tag color stays distinct from every other in both themes, and
+    /// readable as a dot on the surfaces tags sit on. The chromatic colors
+    /// stay clearly apart; the three neutrals only differ in lightness, so
+    /// they get a lower bar.
+    #[test]
+    fn tag_colors_stay_apart() {
+        use kanso_core::TagColor;
+        let neutral =
+            |c: TagColor| matches!(c, TagColor::Default | TagColor::Grey | TagColor::Black);
+        for (name, dark, c) in [("dark", true, &DARK), ("light", false, &LIGHT)] {
+            for (ix, a) in TagColor::ALL.iter().enumerate() {
+                let shown = muted_tag_color(a.rgb(), dark);
+                for bg in [c.sidebar, c.list, c.editor, c.elevated] {
+                    let ratio = contrast_ratio(shown, bg.0);
+                    assert!(ratio >= 3.0, "{name}: {a:?} on {bg:?} is {ratio:.2}");
+                }
+                for b in &TagColor::ALL[ix + 1..] {
+                    let min = if neutral(*a) && neutral(*b) {
+                        5.0
+                    } else {
+                        10.0
+                    };
+                    let diff = delta_e(shown, muted_tag_color(b.rgb(), dark));
+                    assert!(diff >= min, "{name}: {a:?} and {b:?} are {diff:.1} apart");
+                }
             }
         }
+        // The pair that used to come out the same.
+        let (orange, brown) = (TagColor::Orange.rgb(), TagColor::Brown.rgb());
+        assert!(delta_e(muted_tag_color(orange, true), muted_tag_color(brown, true)) > 10.);
     }
 
     #[test]
@@ -592,7 +723,40 @@ mod tests {
                 contrast_ratio(c.sidebar_active.0, c.sidebar.0) >= 1.08,
                 "{name}: sidebar row"
             );
+            // A selected ghost button shows on the editor, more than one
+            // under the pointer does (the library hovers a ghost button with
+            // the accent fill, at half strength in dark mode).
+            let ghost_hover = if name == "dark" {
+                mix(c.hover, c.editor, 0.5)
+            } else {
+                c.hover
+            };
+            let selected = contrast_ratio(c.selected.0, c.editor.0);
+            assert!(selected >= 1.2, "{name}: selected is {selected:.2}");
+            for hover in [
+                ghost_hover,
+                if name == "dark" { c.elevated } else { c.hover },
+            ] {
+                assert!(
+                    selected > contrast_ratio(hover.0, c.editor.0),
+                    "{name}: selected vs {hover:?}"
+                );
+            }
+            assert!(contrast_ratio(c.text.0, c.selected.0) >= 7.0, "{name}");
+            assert!(
+                contrast_ratio(c.text_secondary.0, c.selected.0) >= 4.5,
+                "{name}"
+            );
         }
+    }
+
+    /// `top` over `bottom` at `alpha`.
+    fn mix(top: Rgb, bottom: Rgb, alpha: f64) -> Rgb {
+        let channel = |shift: u32| {
+            let (t, b) = ((top.0 >> shift) & 0xFF, (bottom.0 >> shift) & 0xFF);
+            (f64::from(t) * alpha + f64::from(b) * (1. - alpha)).round() as u32
+        };
+        Rgb((channel(16) << 16) | (channel(8) << 8) | channel(0))
     }
 
     /// The spec's own light muted text and accent fall short as text, which
@@ -612,26 +776,47 @@ mod tests {
         // Orange stays orange, and black becomes a readable grey.
         let (hue, saturation, _) = to_hsl(muted_tag_color(TagColor::Orange.rgb(), true));
         assert!(
-            (20.0..30.0).contains(&hue) && saturation <= 0.39,
+            (20.0..30.0).contains(&hue) && saturation <= TAG_SATURATION_MAX + 0.01,
             "{hue} {saturation}"
         );
+        // A grey keeps no tint, and a weak color isn't calmed further.
+        assert_eq!(calm(0., 0.5, true).0, 0.);
+        assert_eq!(calm(0.1, 0.5, true).0, 0.1);
         let black = muted_tag_color(TagColor::Black.rgb(), true);
         assert!(contrast_ratio(black, DARK.sidebar.0) >= 3.0);
         assert_eq!(from_hsl(0., 0., 1.), 0xFF_FFFF);
         assert_eq!(from_hsl(120., 1., 0.5), 0x00_FF00);
     }
 
+    /// SF Mono loads under its system name, and the check tells a
+    /// monospaced face from a proportional one or a missing family.
+    #[test]
+    fn system_mono_font_loads() {
+        let text_system = TextSystem::new(std::sync::Arc::new(gpui_apple::AppleTextSystem::new()));
+        assert!(loads_monospaced(&text_system, SYSTEM_MONO));
+        assert!(loads_monospaced(&text_system, "Menlo"));
+        assert!(!loads_monospaced(&text_system, "Helvetica"));
+        assert!(!loads_monospaced(&text_system, "No Such Family Kanso"));
+    }
+
     /// The theme files load with the colors as written.
     #[test]
     fn themes_parse() {
-        let set: ThemeSet = serde_json::from_value(theme_set(Some("SF Mono"))).unwrap();
+        let set: ThemeSet = serde_json::from_value(theme_set(Some(SYSTEM_MONO))).unwrap();
         assert_eq!(set.themes.len(), 2);
         let dark = &set.themes[1];
         assert_eq!(dark.name.as_ref(), DARK_NAME);
         assert!(dark.mode.is_dark());
-        assert_eq!(dark.mono_font_family.as_deref(), Some("SF Mono"));
+        assert_eq!(dark.mono_font_family.as_deref(), Some(SYSTEM_MONO));
         assert_eq!(dark.colors.background.as_deref(), Some("#282824"));
         assert_eq!(dark.colors.sidebar.as_deref(), Some("#1D1D1A"));
+        assert_eq!(dark.colors.secondary_active.as_deref(), Some("#3A3933"));
+        assert_eq!(dark.colors.secondary_hover.as_deref(), Some("#30302B"));
+        assert_eq!(dark.colors.button_active.as_deref(), Some("#3A3933"));
+        assert_eq!(dark.colors.overlay.as_deref(), Some("#18181699"));
+        let light = &set.themes[0].colors;
+        assert_eq!(light.secondary_active.as_deref(), Some("#E6E0D4"));
+        assert_eq!(light.secondary_hover.as_deref(), Some("#F0ECE3"));
         let highlight = dark.highlight.as_ref().expect("highlight");
         assert_eq!(highlight.editor_background, Some(Hsla::from(DARK.editor)));
         assert!(highlight.syntax.title.is_some());

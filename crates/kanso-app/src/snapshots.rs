@@ -201,7 +201,7 @@ fn context(clock: Option<Clock>) -> HeadlessAppContext {
 }
 
 /// Puts the workspace in the shot's state before drawing.
-type Prepare = fn(&mut HeadlessAppContext, &Entity<Workspace>, &Store);
+type Prepare = fn(&mut HeadlessAppContext, AnyWindowHandle, &Entity<Workspace>, &Store);
 
 struct Shot {
     name: &'static str,
@@ -213,10 +213,15 @@ struct Shot {
 }
 
 /// The most recently edited note, as after a restart.
-fn open_latest(_: &mut HeadlessAppContext, _: &Entity<Workspace>, _: &Store) {}
+fn open_latest(_: &mut HeadlessAppContext, _: AnyWindowHandle, _: &Entity<Workspace>, _: &Store) {}
 
 /// An empty notebook, "Research" when there is one.
-fn empty_notebook(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, store: &Store) {
+fn empty_notebook(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
     let books = store.books().unwrap();
     let empty = books
         .iter()
@@ -233,12 +238,26 @@ fn empty_notebook(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, st
     }
 }
 
-fn search_sync(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, _: &Store) {
-    let library = cx.update(|cx| workspace.read(cx).library.clone());
-    cx.update(|cx| library.update(cx, |library, cx| library.set_search("sync".into(), cx)));
+/// Types "sync" into the search box, so the field and the list agree.
+fn search_sync(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update_window(window, |_, window, cx| {
+        let search = workspace.read(cx).note_list.read(cx).search.clone();
+        search.update(cx, |search, cx| search.replace_all("sync", window, cx));
+    })
+    .unwrap();
 }
 
-fn mono_font(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, _: &Store) {
+fn mono_font(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
     cx.update(|cx| {
         let editor = workspace.read(cx).editor.clone();
         editor.update(cx, |editor, cx| {
@@ -412,11 +431,15 @@ fn snapshots() {
         let mut cx = context(clock);
         let (window, workspace) = open(&mut cx, store.clone(), dir.path().to_path_buf(), shot);
         cx.run_until_parked();
-        (shot.prepare)(&mut cx, &workspace, &store);
+        (shot.prepare)(&mut cx, window, &workspace, &store);
         // Search waits for typing to pause.
         cx.advance_clock(std::time::Duration::from_secs(1));
         // Let background work (backlinks, image decoding) settle, then draw.
+        // Each round moves the clock on too, so work a draw schedules after
+        // a pause, such as Markdown highlighting that ran out of time, is
+        // done before the picture is taken.
         for _ in 0..3 {
+            cx.advance_clock(std::time::Duration::from_millis(500));
             cx.run_until_parked();
             cx.update_window(window, |_, window, cx| {
                 window.refresh();

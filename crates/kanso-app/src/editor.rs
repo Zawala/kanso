@@ -23,13 +23,26 @@ use kanso_store::{Change, Origin, Put, Store, StoreError};
 
 use crate::config::{Appearance, EditorFont, ViewMode};
 use crate::library::Library;
-use crate::preview::{LinkSender, Preview};
+use crate::preview::{LinkSender, Preview, READABLE_WIDTH, TEXT_INSET};
 use crate::theme::{Colors, muted_tag_color};
 
 const AUTOSAVE_DELAY: Duration = Duration::from_millis(600);
 const PREVIEW_DELAY: Duration = Duration::from_millis(150);
 /// Line height of the Markdown source, relative to its size.
 const BODY_LINE_HEIGHT: f32 = 1.6;
+/// The monospaced face is sized optically: at the same size it runs about a
+/// fifth wider than the proportional one, so beside the preview it is set a
+/// step smaller (14 at the default 16), with rows to match.
+const MONO_SCALE: f32 = 0.875;
+const MONO_LINE_HEIGHT: f32 = 1.5;
+/// Where the source editor's text starts inside it, without line numbers:
+/// its padding and the gap its gutter keeps. The pane's padding makes up the
+/// rest of [`TEXT_INSET`].
+const SOURCE_TEXT_LEFT: f32 = 12.;
+/// What the source editor adds around its text beyond the readable measure:
+/// that, its right padding, and the line number column when it shows.
+const SOURCE_EDGES: f32 = SOURCE_TEXT_LEFT + 10.;
+const LINE_NUMBER_COLUMN: f32 = 44.;
 
 pub enum EditorEvent {
     /// Something worth telling the user, such as a failed save.
@@ -838,11 +851,29 @@ impl Render for NoteEditor {
         };
         let trashed = note.is_trashed();
         let mode = self.view_mode;
-        let family = if face.mono {
-            cx.theme().mono_font_family.clone()
+        let (family, size, line_height) = if face.mono {
+            (
+                cx.theme().mono_font_family.clone(),
+                self.font_size * MONO_SCALE,
+                MONO_LINE_HEIGHT,
+            )
         } else {
-            cx.theme().font_family.clone()
+            (
+                cx.theme().font_family.clone(),
+                self.font_size,
+                BODY_LINE_HEIGHT,
+            )
         };
+        // Alone, the source keeps to the preview's measure, starting under
+        // the title; beside the preview it takes its half.
+        let measure = (mode == ViewMode::Edit).then(|| {
+            let numbers = if face.line_numbers {
+                LINE_NUMBER_COLUMN
+            } else {
+                0.
+            };
+            px(READABLE_WIDTH + SOURCE_EDGES + numbers)
+        });
         v_flex()
             .size_full()
             .bg(colors.editor)
@@ -891,14 +922,42 @@ impl Render for NoteEditor {
                     .w_full()
                     .when(mode != ViewMode::Preview, |el| {
                         el.child(
-                            div().flex_1().h_full().min_w_0().px_4().py_2().child(
-                                Editor::new(&self.body)
-                                    .bordered(false)
-                                    .h_full()
-                                    .font_family(family)
-                                    .text_size(px(self.font_size))
-                                    .line_height(relative(BODY_LINE_HEIGHT)),
-                            ),
+                            div()
+                                .flex_1()
+                                .h_full()
+                                .min_w_0()
+                                .pl(px(TEXT_INSET - SOURCE_TEXT_LEFT))
+                                .pr_4()
+                                .py_2()
+                                // The margin beside a narrowed source scrolls
+                                // it too; over the text, the editor takes the
+                                // wheel first.
+                                .when(measure.is_some(), |el| {
+                                    el.on_scroll_wheel(cx.listener(
+                                        |this, event: &ScrollWheelEvent, _, cx| {
+                                            this.body.update(cx, |body, cx| {
+                                                let line = body.line_height().unwrap_or(px(24.));
+                                                let offset = body.scroll_offset()
+                                                    + event.delta.pixel_delta(line);
+                                                body.set_scroll_offset(offset, cx);
+                                            });
+                                        },
+                                    ))
+                                })
+                                .child(
+                                    div()
+                                        .h_full()
+                                        .w_full()
+                                        .when_some(measure, |el, width| el.max_w(width))
+                                        .child(
+                                            Editor::new(&self.body)
+                                                .bordered(false)
+                                                .h_full()
+                                                .font_family(family)
+                                                .text_size(px(size))
+                                                .line_height(relative(line_height)),
+                                        ),
+                                ),
                         )
                     })
                     .when(mode != ViewMode::Edit, |el| {

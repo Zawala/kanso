@@ -45,7 +45,7 @@ pub enum NoteListEvent {
 
 pub struct NoteList {
     library: Entity<Library>,
-    search: Entity<InputState>,
+    pub(crate) search: Entity<InputState>,
     scroll: UniformListScrollHandle,
     focus: FocusHandle,
     search_task: Option<Task<()>>,

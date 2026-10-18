@@ -5,16 +5,21 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use gpui_kit::base::text::{TextView, TextViewStyle};
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::*;
 use kanso_store::Store;
 
 use crate::theme::Colors;
 
-/// The rendered text's size, line height and widest measure: about 75
-/// characters a line, however wide the window.
+/// The rendered text's size and line height.
 const TEXT_SIZE: f32 = 16.;
 const LINE_HEIGHT: f32 = 1.65;
-const READABLE_WIDTH: f32 = 720.;
+/// The widest the text runs: about 75 characters a line, however wide the
+/// window. The source in Edit mode keeps to the same measure.
+pub const READABLE_WIDTH: f32 = 720.;
+/// How far text sits from the pane's left edge: under the note's title, like
+/// the source in Edit mode.
+pub const TEXT_INSET: f32 = 28.;
 
 /// Where clicks on `inkdrop://note/<id>` links go.
 pub type LinkSender = async_channel::Sender<String>;
@@ -92,11 +97,15 @@ pub fn is_openable(url: &str) -> bool {
 }
 
 /// Body text in the theme's colors; code is set apart by a quiet fill rather
-/// than by color. Quotes and finished tasks, which the text view draws in its
-/// muted color, get the secondary text color: they are still read.
+/// than by color, and so is a table's header row, which is also set heavier.
+/// Table rows sit on the page itself. Quotes and finished tasks, which the
+/// text view draws in its muted color, get the secondary text color: they are
+/// still read. `dark` picks the check mark that reads on the dark theme's
+/// task boxes.
 // no-prop-test: maps theme colors onto a style; the snapshots show it.
-fn text_style(colors: &Colors) -> TextViewStyle {
+fn text_style(colors: &Colors, dark: bool) -> TextViewStyle {
     TextViewStyle::default()
+        .with_dark(dark)
         .with_foreground(colors.text.into())
         .with_muted_foreground(colors.text_secondary.into())
         .with_link(colors.link.into())
@@ -106,28 +115,31 @@ fn text_style(colors: &Colors) -> TextViewStyle {
         .with_paragraph_gap(rems(0.9))
         .with_code_block(StyleRefinement::default().rounded(px(6.)))
         .with_inline_code(HighlightStyle {
-            color: Some(colors.code_text.into()),
             background_color: Some(colors.code.into()),
             ..Default::default()
         })
+        .with_table(StyleRefinement::default().bg(colors.editor))
+        .with_table_head(StyleRefinement::default().font_weight(FontWeight::SEMIBOLD))
 }
 
 impl Render for Preview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let links = self.links.clone();
         let colors = Colors::get(cx);
+        let dark = cx.theme().is_dark();
         div()
             .id("preview")
             .size_full()
-            .px_8()
+            .pl(px(TEXT_INSET))
+            .pr_8()
             .py_6()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .bg(colors.editor)
             .child(
-                div().w_full().max_w(px(READABLE_WIDTH)).mx_auto().child(
+                div().w_full().max_w(px(READABLE_WIDTH)).child(
                     TextView::markdown("preview-text", self.text.clone())
-                        .style(text_style(colors))
+                        .style(text_style(colors, dark))
                         .text_size(px(TEXT_SIZE))
                         .line_height(relative(LINE_HEIGHT))
                         .text_color(colors.text)

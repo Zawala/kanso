@@ -193,7 +193,7 @@ pub struct Workspace {
     store: Arc<Store>,
     pub(crate) library: Entity<Library>,
     sidebar: Entity<Sidebar>,
-    note_list: Entity<NoteList>,
+    pub(crate) note_list: Entity<NoteList>,
     pub editor: Entity<NoteEditor>,
     show_sidebar: bool,
     _subscriptions: Vec<Subscription>,
