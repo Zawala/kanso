@@ -201,6 +201,8 @@ pub struct Services {
     pub machine: Option<Machine>,
     /// The library's ID once known, naming its Keychain items.
     pub library_id: Option<String>,
+    /// The launch check is reading the Keychain: account tasks wait (A4).
+    pub restoring: bool,
     session: Option<Arc<Session>>,
     hold: Option<Hold>,
     server: Option<ServerHandle>,

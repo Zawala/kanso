@@ -329,7 +329,7 @@ fn backups_in(dir: &std::path::Path) -> Vec<PathBuf> {
 fn begin(tx: &Sender<Progress>, cx: &App) -> Option<Seams> {
     if cx
         .try_global::<Services>()
-        .is_some_and(|services| services.task.is_some())
+        .is_some_and(|services| services.task.is_some() || services.restoring)
     {
         done(tx, Err(BUSY.to_owned()));
         return None;
@@ -1310,13 +1310,17 @@ pub fn refresh_details(cx: &mut App) {
 // MARK: Launch
 
 /// At launch: signed in only when the config's account, the library's
-/// binding and the Keychain item agree (security re-check 3). Retries
-/// pending logouts too.
+/// binding and the Keychain item agree (security re-check 3). An unsaved
+/// recovery key shows whatever the account. Account tasks wait while it
+/// reads (`restoring`), and its answer is dropped if a session appeared or
+/// the config's account changed meanwhile (A4). Pending logouts are retried
+/// after the answer is sent.
 pub fn restore(cx: &mut App) {
     let Some(seams) = Seams::get(cx) else {
         return;
     };
     let account = cx.global::<AppState>().config.sync.account.clone();
+    let asked = account.clone();
     let (tx, rx) = async_channel::bounded(1);
     let spawned = std::thread::Builder::new()
         .name("kanso-account".into())
@@ -1325,14 +1329,10 @@ pub fn restore(cx: &mut App) {
                 Ok(device) => device,
                 Err(failure) => {
                     eprintln!("kanso: this Mac's identity: {}", failure.words);
+                    tx.try_send(None).ok();
                     return;
                 }
             };
-            kanso_sync::flush_pending_logouts(
-                seams.backend.as_ref(),
-                seams.secrets.as_ref(),
-                &device.library_id,
-            );
             // An unsaved recovery key shows whatever this Mac is signed in
             // to: a cancelled recovery's, or one whose answer was lost.
             let kept = keychain::load_any_recovery_key(seams.secrets.as_ref(), &device.library_id)
@@ -1340,36 +1340,61 @@ pub fn restore(cx: &mut App) {
                     eprintln!("kanso: reading the unsaved recovery key: {err}");
                     None
                 });
-            let Some(account) = account else {
-                tx.try_send((device.library_id, Ok(None), kept)).ok();
-                return;
+            let loaded = match &account {
+                Some(account) => {
+                    let bound = |key| seams.store.meta(key).ok().flatten();
+                    let agree = bound(meta_keys::ORIGIN).as_deref()
+                        == Some(account.origin.as_str())
+                        && bound(meta_keys::ACCOUNT_ID).as_deref() == Some(account.id.as_str());
+                    if agree {
+                        keychain::load_session(
+                            seams.secrets.as_ref(),
+                            &device.library_id,
+                            &account.origin,
+                            &account.id,
+                        )
+                    } else {
+                        Ok(None)
+                    }
+                }
+                None => Ok(None),
             };
-            let bound = |key| seams.store.meta(key).ok().flatten();
-            let agree = bound(meta_keys::ORIGIN).as_deref() == Some(account.origin.as_str())
-                && bound(meta_keys::ACCOUNT_ID).as_deref() == Some(account.id.as_str());
-            let loaded = if agree {
-                keychain::load_session(
-                    seams.secrets.as_ref(),
-                    &device.library_id,
-                    &account.origin,
-                    &account.id,
-                )
-            } else {
-                Ok(None)
-            };
-            tx.try_send((device.library_id, loaded, kept)).ok();
+            tx.try_send(Some((device.library_id.clone(), loaded, kept)))
+                .ok();
+            // The session is in; old tokens can take their time.
+            kanso_sync::flush_pending_logouts(
+                seams.backend.as_ref(),
+                seams.secrets.as_ref(),
+                &device.library_id,
+            );
         });
     if spawned.is_err() {
         return;
     }
+    cx.global_mut::<Services>().restoring = true;
     cx.spawn(async move |cx| {
-        let Ok((library_id, loaded, kept)) = rx.recv().await else {
-            return;
-        };
+        let answer = rx.recv().await.ok().flatten();
         cx.update(|cx| {
-            cx.global_mut::<Services>().library_id = Some(library_id);
-            if let Some(item) = kept {
+            cx.global_mut::<Services>().restoring = false;
+            let Some((library_id, loaded, kept)) = answer else {
+                cx.refresh_windows();
+                return;
+            };
+            let services = cx.global_mut::<Services>();
+            services.library_id = Some(library_id);
+            if let Some(item) = kept
+                && services.pending_key.is_none()
+            {
                 show_pending(PendingKey::kept(item, words::KEY_UNCONFIRMED), cx);
+            }
+            // Something signed in or out meanwhile: its state stands.
+            let services = cx.global::<Services>();
+            let moved = services.session().is_some()
+                || services.task.is_some()
+                || cx.global::<AppState>().config.sync.account != asked;
+            if moved {
+                cx.refresh_windows();
+                return;
             }
             match loaded {
                 Ok(Some(session)) => {

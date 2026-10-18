@@ -1203,3 +1203,98 @@ fn a_sign_up_whose_binding_fails_leaves_no_session_item(cx: &mut TestAppContext)
     );
     assert!(pending_key(cx).is_some(), "the key still shows");
 }
+
+// MARK: The launch check
+
+/// Fresh services over the same Keychain and server, as at launch.
+fn relaunched(cx: &mut TestAppContext, server: &Arc<MemoryServer>, a: &Mac) {
+    let backend: Arc<dyn Backend> = Arc::new(Quick(server.clone()));
+    let secrets: Arc<dyn SecretStore> = a.secrets.clone();
+    cx.update(|cx| {
+        let machine = cx.global::<Services>().machine.clone().unwrap();
+        cx.set_global(services(backend, secrets, machine));
+    });
+}
+
+fn restored(cx: &mut TestAppContext) {
+    wait_until(cx, "the launch check", |cx| {
+        cx.read(|cx| !cx.global::<Services>().restoring)
+    });
+}
+
+/// While the launch check reads the Keychain, account tasks wait: they are
+/// refused as busy, and work once it is done (A4).
+#[gpui_kit::test]
+fn account_tasks_wait_for_the_launch_check(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+    assert_eq!(sign_out(cx), Ok(()));
+
+    relaunched(cx, &server, &a);
+    let (window, pw) = (a.window, password(PASSWORD, "alice"));
+    let rx = cx.update(|cx| {
+        account_flow::restore(cx);
+        account_flow::sign_in(SERVER.into(), "alice".into(), pw, window, cx)
+    });
+    assert_eq!(
+        finish(cx, rx),
+        Err("Kanso is still busy with your account. Try again in a moment.".to_owned())
+    );
+    restored(cx);
+    let rx = a.sign_in(cx, "alice", PASSWORD);
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert_eq!(account(cx), signed_in_as("alice"));
+}
+
+/// The launch check's answer never replaces a session that appeared, or a
+/// config account that changed, while it read (A4).
+#[gpui_kit::test]
+fn the_launch_check_never_overwrites_a_newer_state(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+    let newer = session(cx);
+
+    // A session set while the check reads stays.
+    relaunched(cx, &server, &a);
+    let kept = newer.clone();
+    cx.update(|cx| {
+        account_flow::restore(cx);
+        cx.global_mut::<Services>().set_signed_in(kept);
+    });
+    restored(cx);
+    assert!(Arc::ptr_eq(&session(cx), &newer), "the newer session stays");
+
+    // The config's account forgotten while the check reads: not signed in
+    // again, and the config stays as it was made.
+    relaunched(cx, &server, &a);
+    cx.update(|cx| {
+        account_flow::restore(cx);
+        AppState::update_config(cx, |config| config.sync.account = None);
+    });
+    restored(cx);
+    assert_eq!(account(cx), AccountState::SignedOut);
+    let config = cx.read(|cx| cx.global::<AppState>().config.sync.account.clone());
+    assert!(config.is_none());
+
+    // Unchanged, the check signs in as before.
+    let saved = crate::config::AccountRef {
+        origin: newer.origin.clone(),
+        id: newer.account_id.clone(),
+        username: newer.username.clone(),
+    };
+    cx.update(|cx| AppState::update_config(cx, |config| config.sync.account = Some(saved)));
+    relaunched(cx, &server, &a);
+    cx.update(account_flow::restore);
+    restored(cx);
+    assert_eq!(account(cx), signed_in_as("alice"));
+    assert!(
+        !Arc::ptr_eq(&session(cx), &newer),
+        "loaded from the Keychain"
+    );
+}
