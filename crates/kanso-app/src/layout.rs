@@ -2,6 +2,10 @@
 //! top band and a bottom band of the same height in every pane, and the room
 //! macOS's traffic lights take in the leftmost pane's top band.
 //!
+//! The sidebar and the note list keep their widths, set by dragging their
+//! edges; the editor takes whatever the window has left, so a wider window
+//! or a hidden sidebar gives the editor the room ([`PaneWidths`]).
+//!
 //! The title bar is transparent and the app moves the window itself: a press
 //! in a top band that no control claims, then a move, drags the window, and
 //! a double-click there does what the system setting says (zoom or
@@ -16,6 +20,11 @@ pub const BOTTOM_BAND_HEIGHT: f32 = 36.;
 
 pub const SIDEBAR_WIDTH: f32 = 220.;
 pub const NOTE_LIST_WIDTH: f32 = 320.;
+/// How narrow and how wide dragging can make the sidebar and the list.
+pub const SIDEBAR_RANGE: (f32, f32) = (180., 320.);
+pub const NOTE_LIST_RANGE: (f32, f32) = (260., 480.);
+/// The editor's own minimum: dragging a pane wider stops short of it.
+pub const EDITOR_MIN_WIDTH: f32 = 560.;
 
 /// Where macOS puts the close button, from the window's top left. The three
 /// buttons are about 14 points across, 20 apart.
@@ -35,6 +44,53 @@ pub fn leading_inset(leftmost: bool, fullscreen: bool) -> f32 {
         TRAFFIC_LIGHT_INSET
     } else {
         0.
+    }
+}
+
+/// The pane edge a drag moves: the sidebar's right edge or the list's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaneEdge {
+    Sidebar,
+    NoteList,
+}
+
+/// The sidebar's and the note list's widths in points.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PaneWidths {
+    pub sidebar: f32,
+    pub list: f32,
+}
+
+impl Default for PaneWidths {
+    fn default() -> Self {
+        PaneWidths {
+            sidebar: SIDEBAR_WIDTH,
+            list: NOTE_LIST_WIDTH,
+        }
+    }
+}
+
+impl PaneWidths {
+    /// The widths once `edge` is dragged to `x` points from the window's
+    /// left, in a window `window` wide, with the sidebar shown or hidden.
+    /// The pane follows the pointer within its range, and short of leaving
+    /// the editor less than its minimum; the other pane stays as it is.
+    pub fn dragged(self, edge: PaneEdge, x: f32, window: f32, sidebar_shown: bool) -> PaneWidths {
+        let clamp =
+            |width: f32, (min, max): (f32, f32), room: f32| width.min(max.min(room)).max(min);
+        match edge {
+            PaneEdge::Sidebar => PaneWidths {
+                sidebar: clamp(x, SIDEBAR_RANGE, window - self.list - EDITOR_MIN_WIDTH),
+                ..self
+            },
+            PaneEdge::NoteList => {
+                let left = if sidebar_shown { self.sidebar } else { 0. };
+                PaneWidths {
+                    list: clamp(x - left, NOTE_LIST_RANGE, window - left - EDITOR_MIN_WIDTH),
+                    ..self
+                }
+            }
+        }
     }
 }
 
@@ -146,17 +202,28 @@ mod tests {
         Up,
     }
 
+    /// Heights all over the window, and right at the band's edges.
+    fn height() -> impl Strategy<Value = f32> {
+        prop_oneof![
+            4 => -10f32..120.,
+            1 => Just(TOP_BAND_HEIGHT),
+            1 => Just(TOP_BAND_HEIGHT - 0.5),
+            1 => Just(0.),
+            1 => Just(-0.5),
+        ]
+    }
+
     fn event() -> impl Strategy<Value = Event> {
         prop_oneof![
-            (0f32..400., -10f32..120., 1usize..4, any::<bool>()).prop_map(
-                |(x, y, clicks, claimed)| Event::Down {
+            (0f32..400., height(), 1usize..4, any::<bool>()).prop_map(|(x, y, clicks, claimed)| {
+                Event::Down {
                     x,
                     y,
                     clicks,
-                    claimed
+                    claimed,
                 }
-            ),
-            (0f32..400., -10f32..120., any::<bool>()).prop_map(|(x, y, pressed)| Event::Move {
+            }),
+            (0f32..400., height(), any::<bool>()).prop_map(|(x, y, pressed)| Event::Move {
                 x,
                 y,
                 pressed
@@ -168,41 +235,100 @@ mod tests {
     proptest! {
         #![proptest_config(config())]
 
-        /// Model-based: a window move starts only after a single, unclaimed
-        /// press inside a top band, while the button stays down with no
-        /// release or other press in between, once the pointer is at least
-        /// the threshold away from the press; and at most once per press.
-        /// A double-click acts only inside a band and when unclaimed.
+        /// Invariants over any run of events, independent of how the drag
+        /// keeps its state: a claimed press, or one outside the band (the
+        /// top 52 points), never acts; a double-click acts only unclaimed in
+        /// the band; a window move follows only a single unclaimed press in
+        /// the band, at most once per press, never on the press itself and
+        /// never once the button came up (by an Up or a move without it).
         #[test]
-        fn prop_moves_start_only_from_unclaimed_band_presses(events in prop::collection::vec(event(), 0..40)) {
+        fn prop_window_moves_only_follow_single_band_presses(events in prop::collection::vec(event(), 0..40)) {
+            let in_band = |y: f32| (0. ..TOP_BAND_HEIGHT).contains(&y);
             let mut drag = BandDrag::default();
-            // The model: the live press, and whether it has moved the window.
-            let mut press: Option<(f32, f32)> = None;
+            // The last press: whether it may start a move, and whether a
+            // move or a release has used it up.
+            let mut press_may_move = false;
+            let mut used_up = true;
             for event in events {
                 match event {
                     Event::Down { x, y, clicks, claimed } => {
                         let action = drag.down(point_at(x, y), clicks, claimed);
-                        let in_band = (0. ..TOP_BAND_HEIGHT).contains(&y);
-                        let double = in_band && !claimed && clicks == 2;
-                        prop_assert_eq!(action == BandAction::TitlebarDoubleClick, double);
                         prop_assert!(action != BandAction::StartMove);
-                        press = (in_band && !claimed && clicks == 1).then_some((x, y));
+                        if claimed || !in_band(y) {
+                            prop_assert_eq!(action, BandAction::None);
+                            prop_assert!(!drag.is_armed());
+                        }
+                        if action == BandAction::TitlebarDoubleClick {
+                            prop_assert!(clicks == 2 && !claimed && in_band(y));
+                        }
+                        press_may_move = clicks == 1 && !claimed && in_band(y);
+                        used_up = false;
                     }
                     Event::Move { x, y, pressed } => {
                         let action = drag.moved(point_at(x, y), pressed);
-                        let far = press.is_some_and(|(px, py)| (x - px).hypot(y - py) >= DRAG_THRESHOLD);
-                        let expected = pressed && far;
-                        prop_assert_eq!(action == BandAction::StartMove, expected, "{:?}", press);
-                        if !pressed || expected {
-                            press = None;
+                        prop_assert!(action != BandAction::TitlebarDoubleClick);
+                        if action == BandAction::StartMove {
+                            prop_assert!(press_may_move && !used_up && pressed);
+                            used_up = true;
+                        }
+                        if !pressed {
+                            used_up = true;
                         }
                     }
                     Event::Up => {
                         drag.up();
-                        press = None;
+                        prop_assert!(!drag.is_armed());
+                        used_up = true;
                     }
                 }
-                prop_assert_eq!(drag.is_armed(), press.is_some());
+            }
+        }
+
+        /// Invariants: a dragged pane stays within its range, the other
+        /// pane keeps its width, and the editor keeps its minimum whenever
+        /// the window has room for it.
+        #[test]
+        fn prop_pane_drags_stay_in_bounds(
+            sidebar in SIDEBAR_RANGE.0..=SIDEBAR_RANGE.1,
+            list in NOTE_LIST_RANGE.0..=NOTE_LIST_RANGE.1,
+            sidebar_edge: bool,
+            shown: bool,
+            x in -100f32..2000.,
+            window in 900f32..2400.,
+        ) {
+            let before = PaneWidths { sidebar, list };
+            let edge = if sidebar_edge { PaneEdge::Sidebar } else { PaneEdge::NoteList };
+            let after = before.dragged(edge, x, window, shown);
+            prop_assert!((SIDEBAR_RANGE.0..=SIDEBAR_RANGE.1).contains(&after.sidebar));
+            prop_assert!((NOTE_LIST_RANGE.0..=NOTE_LIST_RANGE.1).contains(&after.list));
+            let left = if shown || sidebar_edge { after.sidebar } else { 0. };
+            match edge {
+                PaneEdge::Sidebar => prop_assert_eq!(after.list, before.list),
+                PaneEdge::NoteList => prop_assert_eq!(after.sidebar, before.sidebar),
+            }
+            let (other, min) = match edge {
+                PaneEdge::Sidebar => (after.list, SIDEBAR_RANGE.0),
+                PaneEdge::NoteList => (left, NOTE_LIST_RANGE.0),
+            };
+            let editor = window - left - after.list;
+            if window - other - min >= EDITOR_MIN_WIDTH {
+                prop_assert!(editor >= EDITOR_MIN_WIDTH - 1e-3, "{:?} leaves {}", after, editor);
+            }
+        }
+
+        /// Monotonicity, and the pane follows the pointer wherever the
+        /// pointer asks for an allowed width.
+        #[test]
+        fn prop_pane_drags_follow_the_pointer(a in 0f32..900., b in 0f32..900., shown: bool) {
+            let start = PaneWidths::default();
+            let window = 1800.;
+            let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+            let left = if shown { start.sidebar } else { 0. };
+            let at = |x| start.dragged(PaneEdge::NoteList, x, window, shown).list;
+            prop_assert!(at(lo) <= at(hi));
+            let wanted = lo - left;
+            if (NOTE_LIST_RANGE.0..=NOTE_LIST_RANGE.1).contains(&wanted) {
+                prop_assert_eq!(at(lo), wanted);
             }
         }
     }
@@ -259,6 +385,42 @@ mod tests {
         assert_eq!(
             drag.down(point_at(100., 51.), 2, false),
             BandAction::TitlebarDoubleClick
+        );
+    }
+
+    #[test]
+    fn pane_drag_examples() {
+        let widths = PaneWidths::default();
+        assert_eq!(
+            widths,
+            PaneWidths {
+                sidebar: 220.,
+                list: 320.
+            }
+        );
+        // The list's right edge to x = 600 with the sidebar beside it.
+        assert_eq!(
+            widths.dragged(PaneEdge::NoteList, 600., 1440., true).list,
+            380.
+        );
+        // Without the sidebar the list starts at the window's edge.
+        assert_eq!(
+            widths.dragged(PaneEdge::NoteList, 300., 1440., false).list,
+            300.
+        );
+        // Too far either way stops at the range.
+        assert_eq!(
+            widths.dragged(PaneEdge::Sidebar, 50., 1440., true).sidebar,
+            180.
+        );
+        assert_eq!(
+            widths.dragged(PaneEdge::Sidebar, 900., 1440., true).sidebar,
+            320.
+        );
+        // In the smallest window the editor keeps its 560 points.
+        assert_eq!(
+            widths.dragged(PaneEdge::NoteList, 900., 1100., true).list,
+            320.
         );
     }
 

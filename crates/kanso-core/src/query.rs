@@ -102,6 +102,36 @@ pub fn contains_ci(haystack: &str, needle: &str) -> bool {
     haystack.to_lowercase().contains(&needle.to_lowercase())
 }
 
+/// Where `needle` first occurs in `haystack`, ignoring case, as a byte
+/// offset into `haystack`: the first character boundary whose rest of the
+/// text, lowercased character by character, starts with the lowercased
+/// needle. An empty needle is found at 0.
+pub fn find_ci(haystack: &str, needle: &str) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    if needle.is_ascii() && haystack.is_ascii() {
+        let needle = needle.as_bytes();
+        return haystack
+            .as_bytes()
+            .windows(needle.len())
+            .position(|w| w.eq_ignore_ascii_case(needle));
+    }
+    let needle: String = needle.chars().flat_map(char::to_lowercase).collect();
+    // The text folded, and where each character's folded form starts in it
+    // and in the original.
+    let mut folded = String::with_capacity(haystack.len());
+    let mut starts = Vec::with_capacity(haystack.len());
+    for (byte, c) in haystack.char_indices() {
+        starts.push((folded.len(), byte));
+        folded.extend(c.to_lowercase());
+    }
+    starts
+        .into_iter()
+        .find(|&(at, _)| folded[at..].starts_with(&needle))
+        .map(|(_, byte)| byte)
+}
+
 impl Query {
     pub fn parse(input: &str) -> Query {
         Parser {
@@ -129,6 +159,15 @@ impl Query {
 
     pub fn matches(&self, note: &NoteFacts) -> bool {
         self.clauses.iter().all(|c| c.matches(note) != c.negated)
+    }
+
+    /// The words that can match `field` (the title or the body): free text
+    /// and that field's own clauses, but not negated ones.
+    pub fn terms_for(&self, field: Field) -> impl Iterator<Item = &str> {
+        self.clauses
+            .iter()
+            .filter(move |c| !c.negated && (c.field.is_none() || c.field == Some(field)))
+            .map(|c| c.value.as_str())
     }
 }
 
@@ -422,6 +461,30 @@ mod tests {
         for q in no {
             assert!(!Query::parse(q).matches(&note), "{q}");
         }
+    }
+
+    #[test]
+    fn find_ci_examples() {
+        assert_eq!(
+            find_ci("Last writer wins by updatedAt", "UPDATED"),
+            Some(20)
+        );
+        assert_eq!(find_ci("abc", ""), Some(0));
+        assert_eq!(find_ci("abc", "d"), None);
+        // Offsets are into the original text, after a multi-byte character.
+        assert_eq!(find_ci("Über Sync", "sync"), Some(6));
+        assert_eq!(find_ci("ÉCOLE école", "éco"), Some(0));
+        // A Kelvin sign folds to an ASCII k.
+        assert_eq!(find_ci("Ok", "\u{212A}"), Some(1));
+    }
+
+    #[test]
+    fn terms_for_examples() {
+        let query = Query::parse("sync -draft title:plan body:\"two words\" tag:x");
+        let body: Vec<&str> = query.terms_for(Field::Body).collect();
+        assert_eq!(body, ["sync", "two words"]);
+        let title: Vec<&str> = query.terms_for(Field::Title).collect();
+        assert_eq!(title, ["sync", "plan"]);
     }
 
     #[test]

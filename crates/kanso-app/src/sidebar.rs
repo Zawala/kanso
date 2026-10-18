@@ -54,9 +54,11 @@ const TICK: Duration = Duration::from_secs(30);
 pub struct Sidebar {
     library: Entity<Library>,
     scroll: ScrollHandle,
-    /// Whether the Status group is open; it starts closed, and opens by
-    /// itself while a status is the filter.
-    pub(crate) status_open: bool,
+    /// Whether the user opened or closed the Status group; until they do,
+    /// it is open exactly while a status is the filter.
+    status_choice: Option<bool>,
+    /// Whether a status was the filter when the library last changed.
+    status_filter: bool,
     /// Whether every tag shows, rather than the most used.
     all_tags: bool,
     user: SharedString,
@@ -67,7 +69,14 @@ impl EventEmitter<SidebarEvent> for Sidebar {}
 
 impl Sidebar {
     pub fn new(library: Entity<Library>, cx: &mut Context<Self>) -> Self {
-        cx.observe(&library, |_, _, cx| cx.notify()).detach();
+        cx.observe(&library, |this, library, cx| {
+            let is_status = matches!(library.read(cx).filter, Filter::Status(_));
+            this.status_choice =
+                status_choice_after(this.status_choice, this.status_filter, is_status);
+            this.status_filter = is_status;
+            cx.notify();
+        })
+        .detach();
         let tick = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(TICK).await;
@@ -83,7 +92,8 @@ impl Sidebar {
         Sidebar {
             library,
             scroll: ScrollHandle::new(),
-            status_open: false,
+            status_choice: None,
+            status_filter: false,
             all_tags: false,
             user: user.into(),
             _tick: tick,
@@ -346,7 +356,10 @@ impl Sidebar {
 
     fn render_status(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let library = self.library.read(cx);
-        let open = self.status_open || matches!(library.filter, Filter::Status(_));
+        let open = status_group_open(
+            self.status_choice,
+            matches!(library.filter, Filter::Status(_)),
+        );
         let counts = library.counts.by_status.clone();
         let colors = Colors::get(cx);
         let header = h_flex()
@@ -373,8 +386,8 @@ impl Sidebar {
                 .size(px(14.))
                 .text_color(colors.text_muted),
             )
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.status_open = !this.status_open;
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.status_choice = Some(!open);
                 cx.notify();
             }));
         let rows = open.then(|| {
@@ -673,6 +686,23 @@ impl Render for Sidebar {
     }
 }
 
+/// Whether the Status group is open: as the user left it, or, until they
+/// choose, while a status is the filter.
+fn status_group_open(choice: Option<bool>, status_filter: bool) -> bool {
+    choice.unwrap_or(status_filter)
+}
+
+/// The user's choice about the Status group once the filter changes:
+/// picking a status from elsewhere opens a group they had closed; other
+/// changes keep what they chose.
+fn status_choice_after(choice: Option<bool>, was_status: bool, is_status: bool) -> Option<bool> {
+    if is_status && !was_status && choice == Some(false) {
+        None
+    } else {
+        choice
+    }
+}
+
 fn status_icon(status: NoteStatus) -> Icon {
     match status {
         NoteStatus::Active => Lucide::CircleDot.into(),
@@ -784,7 +814,10 @@ pub fn visible_tags(
 
 #[cfg(test)]
 mod tests {
-    use super::{SYNC_PROBLEMS, SyncState, Tone, initials, sync_line, visible_tags};
+    use super::{
+        SYNC_PROBLEMS, SyncState, Tone, initials, status_choice_after, status_group_open,
+        sync_line, visible_tags,
+    };
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
 
@@ -796,8 +829,40 @@ mod tests {
         }
     }
 
+    /// The bug this replaces: while a status was the filter, a click on
+    /// the header changed nothing.
+    #[test]
+    fn status_group_examples() {
+        assert!(!status_group_open(None, false));
+        assert!(status_group_open(None, true));
+        // Closed by the user while Active is the filter.
+        assert!(!status_group_open(Some(false), true));
+        // Leaving the status keeps it closed; picking one opens it again.
+        assert_eq!(status_choice_after(Some(false), true, false), Some(false));
+        assert_eq!(status_choice_after(Some(false), false, true), None);
+        // Opened by hand, it stays open after a status comes and goes.
+        let picked = status_choice_after(Some(true), false, true);
+        assert_eq!(status_choice_after(picked, true, false), Some(true));
+    }
+
     proptest! {
         #![proptest_config(config())]
+
+        /// Invariants: clicking the Status header always shows or hides its
+        /// rows, whatever the filter; a status picked from elsewhere opens
+        /// it; and leaving a status never undoes what the user chose.
+        #[test]
+        fn prop_the_status_header_always_toggles(choice in prop::option::of(any::<bool>()), was: bool, is: bool) {
+            let open = status_group_open(choice, is);
+            prop_assert_eq!(status_group_open(Some(!open), is), !open);
+            let after = status_choice_after(choice, was, is);
+            if is && !was {
+                prop_assert!(status_group_open(after, is));
+            }
+            if choice.is_some() && !is {
+                prop_assert_eq!(after, choice);
+            }
+        }
 
         /// Plain language: whatever a failed sync reports, the sidebar says
         /// one of a few fixed phrases and never the raw error.

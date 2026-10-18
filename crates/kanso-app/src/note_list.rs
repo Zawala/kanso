@@ -111,8 +111,10 @@ pub struct NoteList {
     focus: FocusHandle,
     search_task: Option<Task<()>>,
     layout: ListLayout,
-    /// Brought into view once the rows for the current list are laid out.
-    scroll_to: Option<String>,
+    /// Brought into view once the rows for the current list are laid out,
+    /// with the library's list version when it was asked for: a note that
+    /// is selected as it is made shows only after the next reload.
+    scroll_to: Option<(String, u64)>,
     /// The note under the pointer. Hover is kept as state rather than a
     /// style so a snapshot can show it.
     pub(crate) hovered: Option<String>,
@@ -141,9 +143,9 @@ impl NoteList {
             cx.observe(&library, |_, _, cx| cx.notify()),
             // Follow the selection when it moves, but not on every reload,
             // which would pull the list back while it's being scrolled.
-            cx.subscribe(&library, |this, _, event, cx| {
+            cx.subscribe(&library, |this, library, event, cx| {
                 if let LibraryEvent::Selected(Some(id)) = event {
-                    this.scroll_to = Some(id.clone());
+                    this.scroll_to = Some((id.clone(), library.read(cx).notes_version));
                     cx.notify();
                 }
             }),
@@ -222,7 +224,7 @@ impl NoteList {
                     note.updated_at
                 },
             }),
-            |at| day_of(local_ms(at, cx)),
+            |at| day_of(Clock::local_ms(cx, at)),
             by_date,
         );
         self.layout = ListLayout {
@@ -231,6 +233,13 @@ impl NoteList {
             grouped,
             status_column: library.notes.iter().any(|n| n.status != NoteStatus::None),
         };
+        // A note that left the list (trashed from its hover button, say)
+        // leaves nothing hovered; the row now under the pointer picks it up.
+        if let Some(id) = &self.hovered
+            && !library.notes.iter().any(|n| &n.id == id)
+        {
+            self.hovered = None;
+        }
     }
 
     /// How long laying out the current list takes, for the snapshot
@@ -246,16 +255,24 @@ impl NoteList {
     /// Scrolls the note asked for into view, with its date header when it
     /// is the first under one and the list moves up to it.
     fn scroll_to_pending(&mut self, cx: &App) {
-        let Some(id) = self.scroll_to.take() else {
+        let Some((id, asked_at)) = self.scroll_to.clone() else {
             return;
         };
         let library = self.library.read(cx);
-        let Some(row) = library
+        let row = library
             .notes
             .iter()
             .position(|n| n.id == id)
-            .and_then(|ix| self.layout.grouped.note_row(ix))
-        else {
+            .and_then(|ix| self.layout.grouped.note_row(ix));
+        match pending_scroll(row.is_some(), asked_at, library.notes_version) {
+            PendingScroll::Scroll => self.scroll_to = None,
+            PendingScroll::Wait => return,
+            PendingScroll::Drop => {
+                self.scroll_to = None;
+                return;
+            }
+        }
+        let Some(row) = row else {
             return;
         };
         let header_above = row
@@ -280,7 +297,7 @@ impl NoteList {
 
     fn row_context(&self, cx: &App) -> RowContext {
         let library = self.library.read(cx);
-        let now_local_ms = local_ms(Clock::now_ms(cx), cx);
+        let now_local_ms = Clock::local_ms(cx, Clock::now_ms(cx));
         let query = Query::parse(&library.search);
         RowContext {
             now_local_ms,
@@ -301,24 +318,20 @@ impl NoteList {
         let library = self.library.read(cx);
         let selected = library.selected.clone();
         // Copied out first: drawing a row needs the context mutably.
-        let rows: Vec<(usize, Visible)> = range
+        let rows: Vec<Visible> = range
             .filter_map(|ix| {
-                let row = *self.layout.grouped.rows.get(ix)?;
-                Some((
-                    ix,
-                    match row {
-                        Row::Header(bucket) => Visible::Header(bucket_label(bucket, context.today)),
-                        Row::Note(note) => Visible::Note(library.notes.get(note)?.clone()),
-                    },
-                ))
+                Some(match *self.layout.grouped.rows.get(ix)? {
+                    Row::Header(bucket) => Visible::Header(bucket_label(bucket, context.today)),
+                    Row::Note(note) => Visible::Note(library.notes.get(note)?.clone()),
+                })
             })
             .collect();
         rows.into_iter()
-            .map(|(ix, row)| match row {
-                Visible::Header(label) => render_header(ix, label, cx).into_any_element(),
+            .map(|row| match row {
+                Visible::Header(label) => render_header(label, cx).into_any_element(),
                 Visible::Note(note) => {
                     let is_selected = selected.as_deref() == Some(note.id.as_str());
-                    self.render_row(ix, &note, is_selected, &context, cx)
+                    self.render_row(&note, is_selected, &context, cx)
                         .into_any_element()
                 }
             })
@@ -327,7 +340,6 @@ impl NoteList {
 
     fn render_row(
         &self,
-        ix: usize,
         note: &NoteSummary,
         selected: bool,
         context: &RowContext,
@@ -347,7 +359,7 @@ impl NoteList {
         } else {
             note.updated_at
         };
-        let time = row_time_label(local_ms(at, cx), context.now_local_ms);
+        let time = row_time_label(Clock::local_ms(cx, at), context.now_local_ms);
         let highlight = HighlightStyle {
             background_color: Some(Hsla::from(colors.accent).opacity(0.32)),
             color: Some(colors.text.into()),
@@ -384,7 +396,9 @@ impl NoteList {
         };
 
         div()
-            .id(("note", ix))
+            // Keyed by the note, so the pointer's hover belongs to the note
+            // under it, not to whichever note last had this row.
+            .id(SharedString::from(format!("note-{}", note.id)))
             .h(px(ROW_HEIGHT))
             .w_full()
             .px(px(ROW_INSET_X))
@@ -552,6 +566,7 @@ impl NoteList {
         let title = library.filter_title();
         let count = library.notes.len();
         let refined = library.is_refined();
+        let narrowing = narrowing_label(library.status_only, library.pinned_only);
         let switch_library = self.library.clone();
         let filter_library = self.library.clone();
 
@@ -601,6 +616,19 @@ impl NoteList {
                     .text_color(colors.text_muted)
                     .child(count.to_string()),
             )
+            // What the filter menu narrowed the list to, so a short list
+            // doesn't read as the whole notebook.
+            .when_some(narrowing, |el, narrowing| {
+                el.child(
+                    div()
+                        .min_w_0()
+                        .flex_shrink(1000.)
+                        .truncate()
+                        .text_size(px(12.))
+                        .text_color(colors.text_muted)
+                        .child(narrowing),
+                )
+            })
             .child(div().flex_1())
             .child(filter_menu)
     }
@@ -639,6 +667,7 @@ impl NoteList {
         let colors = Colors::get(cx);
         let library = self.library.read(cx);
         let in_trash = library.filter == Filter::Trash;
+        let sortable = sorts(&library.filter);
         let sort_library = self.library.clone();
         h_flex()
             .h(px(BOTTOM_BAND_HEIGHT))
@@ -660,16 +689,18 @@ impl NoteList {
                 )
             })
             .child(div().flex_1())
-            .child(
-                Button::new("list-sort")
-                    .ghost()
-                    .small()
-                    .icon(Icon::new(Lucide::ArrowUpDown).size(px(15.)))
-                    .tooltip("Sort")
-                    .dropdown_menu_with_anchor(Anchor::BottomRight, move |menu, _, cx| {
-                        sort_items(menu, &sort_library, cx)
-                    }),
-            )
+            .when(sortable, |el| {
+                el.child(
+                    Button::new("list-sort")
+                        .ghost()
+                        .small()
+                        .icon(Icon::new(Lucide::ArrowUpDown).size(px(15.)))
+                        .tooltip("Sort")
+                        .dropdown_menu_with_anchor(Anchor::BottomRight, move |menu, _, cx| {
+                            sort_items(menu, &sort_library, cx)
+                        }),
+                )
+            })
     }
 
     /// What the list says when it has no notes to show.
@@ -736,11 +767,19 @@ impl NoteList {
             .into_any_element();
         }
         match &library.filter {
-            // The editor beside it shows the full block with the actions.
-            Filter::All | Filter::Book(_) => {
-                quiet_empty(IconName::FileText, "No notes yet".into(), None, colors)
-                    .into_any_element()
-            }
+            // The editor beside it shows the full block with the actions;
+            // this one sits in the middle of the list, as in the design.
+            Filter::All | Filter::Book(_) => quiet_empty(
+                IconName::FileText,
+                "No notes yet".into(),
+                Some("Create your first note to get started."),
+                colors,
+            )
+            .size_full()
+            .justify_center()
+            .pt_0()
+            .pb(px(TOP_BAND_HEIGHT))
+            .into_any_element(),
             Filter::Pinned => quiet_empty(
                 Lucide::Pin,
                 "No pinned notes".into(),
@@ -776,11 +815,6 @@ impl NoteList {
     }
 }
 
-/// Local time for an instant, in milliseconds, in the zone in force then.
-fn local_ms(at_ms: i64, cx: &App) -> i64 {
-    at_ms + i64::from(Clock::utc_offset_secs(cx, at_ms)) * 1000
-}
-
 /// Each row's height for the virtual list (only heights are read).
 fn item_sizes(rows: &[Row]) -> Vec<Size<Pixels>> {
     rows.iter()
@@ -794,11 +828,56 @@ fn item_sizes(rows: &[Row]) -> Vec<Size<Pixels>> {
         .collect()
 }
 
+/// Whether the list can be sorted: Recent is always newest first.
+// no-prop-test: one comparison; `the_list_menus_build` covers Recent.
+fn sorts(filter: &Filter) -> bool {
+    *filter != Filter::Recent
+}
+
+/// What the filter menu narrowed the list to, after its count: "· On hold",
+/// "· Pinned" or both.
+// no-prop-test: a finite domain; `narrowing_labels` checks every case.
+fn narrowing_label(status: Option<NoteStatus>, pinned: bool) -> Option<String> {
+    let mut label = String::new();
+    if let Some(status) = status {
+        label.push_str(" · ");
+        label.push_str(status.label());
+    }
+    if pinned {
+        label.push_str(" · Pinned");
+    }
+    (!label.is_empty()).then(|| label.trim_start().to_owned())
+}
+
+/// What becomes of a request to bring a note into view.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PendingScroll {
+    /// The note is listed: scroll to it.
+    Scroll,
+    /// Not listed yet; a reload may still bring it.
+    Wait,
+    /// Two newer lists came without it: it isn't coming.
+    Drop,
+}
+
+/// Whether to scroll to a note asked for at list version `asked_at`, now
+/// that the list is at `version` and has the note or not. A note selected
+/// as it is made arrives with the reload after next at the latest.
+fn pending_scroll(listed: bool, asked_at: u64, version: u64) -> PendingScroll {
+    if listed {
+        PendingScroll::Scroll
+    } else if version > asked_at.saturating_add(1) {
+        PendingScroll::Drop
+    } else {
+        PendingScroll::Wait
+    }
+}
+
 // no-prop-test: layout only; the snapshots show it.
-fn render_header(ix: usize, label: String, cx: &App) -> impl IntoElement {
+fn render_header(label: String, cx: &App) -> impl IntoElement {
     let colors = Colors::get(cx);
     v_flex()
-        .id(("header", ix))
+        .id(SharedString::from(format!("header-{label}")))
         .h(px(HEADER_HEIGHT))
         .w_full()
         .px(px(ROW_INSET_X + ROW_PAD_X))
@@ -986,28 +1065,29 @@ fn filter_menu(
         )
     };
     let status_library = library.clone();
-    let menu = sort_items(menu, library, cx).separator().submenu(
-        "Status",
-        window,
-        cx,
-        move |mut menu, _, _| {
-            let choices = [None]
-                .into_iter()
-                .chain(NoteStatus::ALL[1..].iter().copied().map(Some));
-            for choice in choices {
-                let library = status_library.clone();
-                let label = choice.map_or("Any Status", |s| s.label());
-                menu = menu.item(
-                    PopupMenuItem::new(label)
-                        .checked(status_only == choice)
-                        .on_click(move |_, _, cx| {
-                            library.update(cx, |library, cx| library.set_status_only(choice, cx));
-                        }),
-                );
-            }
-            menu
-        },
-    );
+    // Recent is always newest first by edit time: nothing to sort.
+    let menu = if sorts(&filter) {
+        sort_items(menu, library, cx).separator()
+    } else {
+        menu
+    };
+    let menu = menu.submenu("Status", window, cx, move |mut menu, _, _| {
+        let choices = [None]
+            .into_iter()
+            .chain(NoteStatus::ALL[1..].iter().copied().map(Some));
+        for choice in choices {
+            let library = status_library.clone();
+            let label = choice.map_or("Any Status", |s| s.label());
+            menu = menu.item(
+                PopupMenuItem::new(label)
+                    .checked(status_only == choice)
+                    .on_click(move |_, _, cx| {
+                        library.update(cx, |library, cx| library.set_status_only(choice, cx));
+                    }),
+            );
+        }
+        menu
+    });
     if filter == Filter::Pinned {
         return menu;
     }
@@ -1116,10 +1196,11 @@ mod tests {
     // one inside `proptest!`.
     use super::{
         DIVIDER, EXCERPT_LINE, EXCERPT_LINES, HEADER_HEIGHT, HEADER_LINE, HEADER_PAD_BOTTOM,
-        HEADER_PAD_TOP, ROW_GAP, ROW_HEIGHT, ROW_INSET_Y, ROW_PAD_Y, TITLE_LINE, format_date,
-        item_sizes, relative_time,
+        HEADER_PAD_TOP, PendingScroll, ROW_GAP, ROW_HEIGHT, ROW_INSET_Y, ROW_PAD_Y, TITLE_LINE,
+        format_date, item_sizes, narrowing_label, pending_scroll, relative_time,
     };
     use crate::grouping::{Bucket, Row, RowKey, group_rows};
+    use kanso_core::NoteStatus;
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
 
@@ -1164,20 +1245,40 @@ mod tests {
             ..ProptestConfig::default()
         })]
 
-        /// The list is exactly as tall as its notes and headers, so the
-        /// virtual list's scroll range and positions match what it draws.
+        /// Invariants: a listed note is scrolled to whenever it shows up;
+        /// one that isn't is waited for a reload or two and then given up,
+        /// for good.
         #[test]
-        fn prop_item_sizes_add_up(keys in prop::collection::vec((any::<bool>(), 0i64..40 * 86_400_000), 0..50), by_date: bool) {
-            let grouped = group_rows(
-                keys.iter().map(|&(pinned, at_ms)| RowKey { pinned, at_ms }),
-                |at| at / 86_400_000,
-                by_date,
-            );
-            let sizes = item_sizes(&grouped.rows);
-            prop_assert_eq!(sizes.len(), grouped.rows.len());
-            let total: f32 = sizes.iter().map(|s| f32::from(s.height)).sum();
-            let expected = keys.len() as f32 * ROW_HEIGHT + grouped.header_count() as f32 * HEADER_HEIGHT;
-            prop_assert_eq!(total, expected);
+        fn prop_pending_scrolls_wait_then_give_up(asked_at in 0u64..1_000, later in 0u64..6) {
+            let version = asked_at + later;
+            prop_assert_eq!(pending_scroll(true, asked_at, version), PendingScroll::Scroll);
+            let waiting = pending_scroll(false, asked_at, version);
+            prop_assert_eq!(waiting == PendingScroll::Wait, later <= 1);
+            if waiting == PendingScroll::Drop {
+                prop_assert_eq!(pending_scroll(false, asked_at, version + 1), PendingScroll::Drop);
+            }
+        }
+    }
+
+    /// A new note shows only after the store's next reload, so asking for it
+    /// at once mustn't lose the request.
+    #[test]
+    fn pending_scroll_examples() {
+        assert_eq!(pending_scroll(false, 7, 7), PendingScroll::Wait);
+        assert_eq!(pending_scroll(false, 7, 8), PendingScroll::Wait);
+        assert_eq!(pending_scroll(true, 7, 8), PendingScroll::Scroll);
+        assert_eq!(pending_scroll(false, 7, 9), PendingScroll::Drop);
+    }
+
+    #[test]
+    fn narrowing_labels() {
+        assert_eq!(narrowing_label(None, false), None);
+        assert_eq!(narrowing_label(None, true).as_deref(), Some("· Pinned"));
+        for status in NoteStatus::ALL {
+            let alone = narrowing_label(Some(status), false).unwrap();
+            assert_eq!(alone, format!("· {}", status.label()));
+            let both = narrowing_label(Some(status), true).unwrap();
+            assert_eq!(both, format!("· {} · Pinned", status.label()));
         }
     }
 
@@ -1502,6 +1603,72 @@ mod tests {
                     }
                 })
                 .unwrap();
+            // Recent has no sort: its menu starts at the status.
+            library.update(cx, |library, cx| library.set_filter(Filter::Recent, cx));
+            cx.run_until_parked();
+            assert!(!super::super::sorts(&Filter::Recent));
+            assert!(super::super::sorts(&Filter::All));
+            f.window
+                .update(cx, |_, window, cx| {
+                    let filter = PopupMenu::build(window, cx, |menu, window, cx| {
+                        super::super::filter_menu(menu, &library, window, cx)
+                    });
+                    assert!(!filter.read(cx).is_empty());
+                })
+                .unwrap();
+        }
+
+        /// Right after launch nothing inside has been clicked; the window's
+        /// shortcuts still work.
+        #[gpui_kit::test]
+        fn shortcuts_work_at_launch(cx: &mut TestAppContext) {
+            let f = setup(cx);
+            cx.update(crate::workspace::bind_keys);
+            f.draw(cx);
+            let palette = cx.read(|cx| f.workspace.read(cx).palette.clone());
+            cx.simulate_keystrokes(f.window, "cmd-k");
+            cx.run_until_parked();
+            assert_eq!(cx.read(|cx| palette.read(cx).mode()), Some(Mode::Commands));
+            // With nothing at all focused, the workspace takes the keyboard
+            // back at the next frame.
+            cx.simulate_keystrokes(f.window, "escape");
+            f.window
+                .update(cx, |_, window, cx| window.blur(cx))
+                .unwrap();
+            f.draw(cx);
+            cx.simulate_keystrokes(f.window, "cmd-p");
+            cx.run_until_parked();
+            assert_eq!(cx.read(|cx| palette.read(cx).mode()), Some(Mode::Notes));
+        }
+
+        /// A hovered note that leaves the list, trashed from its own hover
+        /// button, leaves nothing hovered: its actions don't stay on the
+        /// note that moves up under the pointer.
+        #[gpui_kit::test]
+        fn hover_leaves_with_its_note(cx: &mut TestAppContext) {
+            let f = setup(cx);
+            let library = f.library(cx);
+            let list = cx.read(|cx| f.workspace.read(cx).note_list.clone());
+            let first = cx.read(|cx| library.read(cx).notes[0].id.clone());
+            list.update(cx, |list, cx| {
+                list.hovered = Some(first.clone());
+                cx.notify();
+            });
+            f.draw(cx);
+            assert_eq!(
+                cx.read(|cx| list.read(cx).hovered.clone()),
+                Some(first.clone())
+            );
+            f.store
+                .put(
+                    DocType::Note,
+                    json!({"_id": first, "bookId": "trash"}),
+                    Put::Merge,
+                    Origin::Ui,
+                )
+                .unwrap();
+            f.draw(cx);
+            assert_eq!(cx.read(|cx| list.read(cx).hovered.clone()), None);
         }
 
         #[gpui_kit::test]

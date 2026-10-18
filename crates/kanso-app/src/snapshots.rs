@@ -736,15 +736,34 @@ fn check_surfaces(image: &image::RgbaImage, shot: &Shot) {
                 "sidebar's top band",
             ),
             ((SIDEBAR_WIDTH + 6., 4.), colors.list, "note list"),
+            // The panes keep their widths whatever the window's size.
+            (
+                (SIDEBAR_WIDTH + NOTE_LIST_WIDTH - 6., 4.),
+                colors.list,
+                "note list's right edge",
+            ),
+            (
+                (SIDEBAR_WIDTH + NOTE_LIST_WIDTH + 8., 4.),
+                colors.editor,
+                "editor's left edge",
+            ),
         ]);
     } else {
-        // Leftmost, the list starts below the traffic lights' band.
-        checks.push(((8., TOP_BAND_HEIGHT - 4.), colors.list, "note list"));
-        checks.push((
-            (NOTE_LIST_WIDTH, TOP_BAND_HEIGHT - 4.),
-            colors.list,
-            "note list",
-        ));
+        // Leftmost, the list starts below the traffic lights' band and
+        // keeps its width.
+        checks.extend([
+            ((8., TOP_BAND_HEIGHT - 4.), colors.list, "note list"),
+            (
+                (NOTE_LIST_WIDTH - 6., TOP_BAND_HEIGHT - 4.),
+                colors.list,
+                "note list's right edge",
+            ),
+            (
+                (NOTE_LIST_WIDTH + 8., height / 2.),
+                colors.editor,
+                "editor's left edge",
+            ),
+        ]);
     }
     for (at, expected, what) in checks {
         assert_surface(
@@ -813,6 +832,11 @@ fn snapshots() {
         Shot {
             size: size(px(1440.), px(1100.)),
             ..shot("dark-list-grouped", Dark, Edit, open_latest)
+        },
+        // A wide window gives the room to the editor, not the panes.
+        Shot {
+            size: size(px(1800.), px(1000.)),
+            ..shot("dark-wide", Dark, Split, open_latest)
         },
         shot("dark-palette", Dark, Edit, palette),
         shot("dark-palette-query", Dark, Edit, palette_query),

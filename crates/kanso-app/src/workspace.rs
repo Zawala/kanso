@@ -2,13 +2,14 @@
 //! need more than one of them (dialogs, moving notes, deleting notebooks).
 
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use gpui_kit::base::GlobalState;
+use gpui_kit::base::{GlobalState, resize_handle};
 use gpui_kit::component::notification::Notification;
-use gpui_kit::component::resizable::{h_resizable, resizable_panel};
-use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode, WindowExt as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode, WindowExt as _, h_flex, v_flex};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::{DocType, TagColor};
@@ -18,7 +19,7 @@ use serde_json::{Value, json};
 use crate::config::{AppConfig, ThemePreference, ViewMode};
 use crate::dialogs::{confirm, prompt_text};
 use crate::editor::{EditorEvent, NoteEditor};
-use crate::layout::{BandAction, BandDrag, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, leading_inset};
+use crate::layout::{BandAction, BandDrag, PaneEdge, PaneWidths, leading_inset};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::{NoteList, NoteListEvent};
 use crate::palette::{Mode, Palette};
@@ -208,6 +209,12 @@ pub struct Workspace {
     /// The command palette, drawn over the rest when open.
     pub(crate) palette: Entity<Palette>,
     pub(crate) show_sidebar: bool,
+    /// The sidebar's and the list's widths; the editor takes the rest.
+    pub(crate) pane_widths: PaneWidths,
+    /// The workspace's own focus. It always has a place in the window, so
+    /// the window's shortcuts work whenever nothing inside has the keyboard:
+    /// at launch, or after the focused element stops being drawn.
+    pub(crate) focus: FocusHandle,
     /// A press in a top band that may become a window drag.
     band_drag: BandDrag,
     /// Draws stand-ins for the traffic lights, which the system draws over
@@ -240,8 +247,19 @@ impl Workspace {
             )
         });
 
-        let palette =
-            cx.new(|cx| Palette::new(store.clone(), library.clone(), editor.clone(), window, cx));
+        let focus = cx.focus_handle();
+        let list_focus = note_list.read(cx).focus_handle(cx);
+        let palette = cx.new(|cx| {
+            Palette::new(
+                store.clone(),
+                library.clone(),
+                editor.clone(),
+                focus.clone(),
+                list_focus,
+                window,
+                cx,
+            )
+        });
 
         let subscriptions = vec![
             cx.subscribe_in(&library, window, |this, _, event, window, cx| match event {
@@ -278,7 +296,11 @@ impl Workspace {
                     Theme::sync_system_appearance(Some(window), cx);
                 }
             }),
+            // The preview alone hides the text that had the keyboard, say:
+            // the keyboard comes back here rather than going nowhere.
+            cx.on_focus_lost(window, |this, window, cx| window.focus(&this.focus, cx)),
         ];
+        window.focus(&focus, cx);
 
         let links = cx.spawn_in(window, async move |this, cx| {
             while let Ok(id) = links_rx.recv().await {
@@ -304,6 +326,8 @@ impl Workspace {
             editor,
             palette,
             show_sidebar: appearance.show_sidebar,
+            pane_widths: PaneWidths::default(),
+            focus,
             band_drag: BandDrag::default(),
             #[cfg(test)]
             placeholder_traffic_lights: false,
@@ -734,6 +758,18 @@ impl Workspace {
         }
     }
 
+    /// A pane's edge followed the pointer.
+    fn on_pane_drag(&mut self, event: &DragMoveEvent<Rc<PaneEdge>>, cx: &mut Context<Self>) {
+        let edge = **event.drag(cx);
+        let x = f32::from(event.event.position.x - event.bounds.left());
+        let window = f32::from(event.bounds.size.width);
+        let widths = self.pane_widths.dragged(edge, x, window, self.show_sidebar);
+        if widths != self.pane_widths {
+            self.pane_widths = widths;
+            cx.notify();
+        }
+    }
+
     /// The three traffic lights where the system draws them, for snapshots.
     #[cfg(test)]
     fn render_placeholder_traffic_lights(&self) -> Option<impl IntoElement> {
@@ -758,6 +794,27 @@ impl Workspace {
     }
 }
 
+/// The divider on a pane's left edge, which drags `edge`: the pane before
+/// it, the sidebar or the list.
+// no-prop-test: drawing; the widths a drag makes are tested in `layout`.
+fn pane_handle(edge: PaneEdge) -> impl IntoElement {
+    let id = match edge {
+        PaneEdge::Sidebar => "sidebar-edge",
+        PaneEdge::NoteList => "list-edge",
+    };
+    resize_handle::<PaneEdge, PaneEdge>(id, Axis::Horizontal).on_drag(edge, |edge, _, _, cx| {
+        cx.stop_propagation();
+        cx.new(|_| *edge)
+    })
+}
+
+/// What a pane drag shows under the pointer: nothing, the divider moves.
+impl Render for PaneEdge {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        Empty
+    }
+}
+
 /// The JSON name of a tag color.
 pub fn tag_color_name(color: TagColor) -> String {
     serde_json::to_value(color)
@@ -774,10 +831,12 @@ impl Render for Workspace {
         let list_inset = px(leading_inset(!self.show_sidebar, window.is_fullscreen()));
         self.note_list
             .update(cx, |list, cx| list.set_leading_inset(list_inset, cx));
+        let widths = self.pane_widths;
         v_flex()
             .size_full()
             .relative()
             .key_context("Workspace")
+            .track_focus(&self.focus)
             .bg(colors.app)
             .text_color(cx.theme().foreground)
             // Controls mark the presses they take; start each press clean.
@@ -886,25 +945,48 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|_, _: &SyncNow, _, cx| crate::services::sync_now(cx)))
             // The panes run the full height: each has its own top band
-            // (the title bar's row) and bottom band.
+            // (the title bar's row) and bottom band. The sidebar and the
+            // list keep their widths and the editor takes the rest; each
+            // pane's left edge drags the pane before it.
             .child(
-                div().flex_1().min_h_0().child(
-                    h_resizable("workspace")
-                        .child(
-                            resizable_panel()
-                                .size(px(SIDEBAR_WIDTH))
-                                .size_range(px(180.)..px(320.))
-                                .visible(self.show_sidebar)
+                h_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .on_drag_move(cx.listener(
+                        |this, event: &DragMoveEvent<Rc<PaneEdge>>, _, cx| {
+                            this.on_pane_drag(event, cx)
+                        },
+                    ))
+                    .when(self.show_sidebar, |el| {
+                        el.child(
+                            div()
+                                .h_full()
+                                .w(px(widths.sidebar))
+                                .flex_none()
                                 .child(self.sidebar.clone()),
                         )
-                        .child(
-                            resizable_panel()
-                                .size(px(NOTE_LIST_WIDTH))
-                                .size_range(px(260.)..px(480.))
-                                .child(self.note_list.clone()),
-                        )
-                        .child(resizable_panel().child(self.editor.clone())),
-                ),
+                    })
+                    .child(
+                        div()
+                            .relative()
+                            .h_full()
+                            .w(px(widths.list))
+                            .flex_none()
+                            .child(self.note_list.clone())
+                            .when(self.show_sidebar, |el| {
+                                el.child(pane_handle(PaneEdge::Sidebar))
+                            }),
+                    )
+                    .child(
+                        div()
+                            .relative()
+                            .h_full()
+                            .flex_1()
+                            .min_w_0()
+                            .child(self.editor.clone())
+                            .child(pane_handle(PaneEdge::NoteList)),
+                    ),
             )
             // Over everything else when open.
             .child(self.palette.clone())

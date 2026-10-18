@@ -5,6 +5,8 @@
 use chrono::{Local, TimeZone as _};
 use gpui_kit::{App, Global};
 
+use crate::grouping::edited_label;
+
 /// Set as a global to fix the time; without one, the system clock is used.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Clock {
@@ -30,6 +32,24 @@ impl Clock {
     /// Now, in milliseconds since the epoch.
     pub fn now_ms(cx: &App) -> i64 {
         Self::fixed_in(cx).map_or_else(kanso_core::now_ms, |(now, _)| now)
+    }
+
+    /// The instant `at_ms` in local time, in milliseconds, in the zone in
+    /// force then.
+    pub fn local_ms(cx: &App, at_ms: i64) -> i64 {
+        at_ms + i64::from(Self::utc_offset_secs(cx, at_ms)) * 1000
+    }
+
+    /// When a note last changed at `updated_ms` was edited, as the editor's
+    /// header and the palette say it: see [`edited_label`].
+    pub fn edited_label(cx: &App, updated_ms: i64) -> String {
+        let now = Self::now_ms(cx);
+        edited_label(
+            updated_ms,
+            now,
+            Self::local_ms(cx, updated_ms),
+            Self::local_ms(cx, now),
+        )
     }
 
     /// How far local time is ahead of UTC at the instant `at_ms`, in seconds.

@@ -2,9 +2,10 @@
 
 use std::collections::HashMap;
 
+use kanso_core::query::{contains_ci, find_ci};
 use kanso_core::tasks::count_tasks;
 use kanso_core::{Clause, DocType, Field, NoteFacts, NoteStatus, Query, Rev};
-use kanso_store::{Origin, Put, SearchParams, Store, StoreError};
+use kanso_store::{Origin, Put, SearchParams, Sort, Store, StoreError};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 use serde_json::json;
@@ -230,6 +231,48 @@ proptest! {
             .collect();
         found.sort();
         prop_assert_eq!(found, oracle(&store, &ids, &query), "query: {}", query);
+    }
+
+    /// Invariant: sorted by title, blank titles come last in both
+    /// directions, and the rest are in order ignoring ASCII case.
+    #[test]
+    fn prop_title_sort_puts_blank_titles_last(notes in prop::collection::vec(gen_note(), 0..16), descending: bool) {
+        let (_dir, store) = temp_store();
+        seed(&store, &notes);
+        let params = SearchParams { sort: Sort::Title, descending, ..SearchParams::default() };
+        let titles: Vec<String> = store.search_summaries(&params).unwrap().into_iter().map(|s| s.title).collect();
+        let named = titles.iter().take_while(|t| !t.trim().is_empty()).count();
+        prop_assert!(titles[named..].iter().all(|t| t.trim().is_empty()), "{:?}", titles);
+        for pair in titles[..named].windows(2) {
+            let (a, b) = (pair[0].to_ascii_lowercase(), pair[1].to_ascii_lowercase());
+            prop_assert!(if descending { a >= b } else { a <= b }, "{:?}", titles);
+        }
+    }
+
+    /// Oracle: Recent's count is the live notes outside the trash changed
+    /// at or after the cut.
+    #[test]
+    fn prop_count_recent_counts_recent_live_notes(notes in prop::collection::vec(gen_note(), 0..16), since in 0i64..18) {
+        let (_dir, store) = temp_store();
+        seed(&store, &notes);
+        // `seed` dates each note by its position.
+        let expected = notes.iter().enumerate().filter(|(i, n)| n.book != 3 && *i as i64 >= since).count();
+        prop_assert_eq!(store.count_recent(since).unwrap() as usize, expected);
+    }
+
+    /// Invariant: a search's snippet shows the word it searched for whenever
+    /// the note's body has it.
+    #[test]
+    fn prop_search_snippets_hold_body_matches(notes in prop::collection::vec(gen_note(), 0..12), term in gen_term()) {
+        let (_dir, store) = temp_store();
+        seed(&store, &notes);
+        let params = SearchParams { query: Query { clauses: vec![Clause::text(term.clone())] }, ..SearchParams::default() };
+        for summary in store.search_summaries(&params).unwrap() {
+            let body = store.note(&summary.id).unwrap().unwrap().body;
+            if contains_ci(&body, &term) {
+                prop_assert!(find_ci(&summary.snippet, &term).is_some(), "{:?} lacks {:?}", summary.snippet, term);
+            }
+        }
     }
 
     /// Model-based (state machine): replacing a note succeeds only with its

@@ -82,6 +82,18 @@ pub fn connect(path: &Path) -> Result<Connection> {
             Ok(kanso_core::query::contains_ci(&haystack, &needle))
         },
     )?;
+    // The part of a body around a search term's first match, when its
+    // excerpt can't reach it from the start.
+    conn.create_scalar_function(
+        "kanso_window",
+        2,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            let body = ctx.get::<Option<String>>(0)?.unwrap_or_default();
+            let term = ctx.get::<Option<String>>(1)?.unwrap_or_default();
+            Ok(kanso_core::excerpt::match_window(&body, &term).map(str::to_owned))
+        },
+    )?;
     Ok(conn)
 }
 

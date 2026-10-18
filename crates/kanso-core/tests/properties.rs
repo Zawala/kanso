@@ -1,7 +1,7 @@
 //! Property tests for kanso-core. CI pins the seed with `PROPTEST_RNG_SEED`.
 
 use kanso_core::id::{is_valid_id, with_prefix};
-use kanso_core::query::contains_ci;
+use kanso_core::query::{contains_ci, find_ci};
 use kanso_core::tasks::{count_tasks, toggle_task};
 use kanso_core::{Clause, DocType, Field, NoteFacts, Query, Rev, new_id};
 use proptest::prelude::*;
@@ -159,6 +159,44 @@ proptest! {
     #[test]
     fn prop_contains_ci_matches_oracle(h in "[a-zA-Z0-9 ]{0,30}", n in "[a-zA-Z0-9 ]{0,4}") {
         prop_assert_eq!(contains_ci(&h, &n), h.to_lowercase().contains(&n.to_lowercase()));
+    }
+
+    /// Oracle: for ASCII text `find_ci` agrees with `contains_ci`, and what
+    /// it finds is the first position where the needle sits, in any case.
+    #[test]
+    fn prop_find_ci_finds_the_first_ascii_match(h in "[aAbB ]{0,30}", n in "[aAbB ]{0,4}") {
+        let found = find_ci(&h, &n);
+        prop_assert_eq!(found.is_some(), contains_ci(&h, &n));
+        if let Some(at) = found {
+            prop_assert!(h[at..at + n.len()].eq_ignore_ascii_case(&n));
+            prop_assert!((0..at).all(|i| !h[i..].to_lowercase().starts_with(&n.to_lowercase())));
+        }
+    }
+
+    /// Oracle (brute force): in any text, `find_ci` returns the first
+    /// character boundary where the folded rest of the text starts with the
+    /// folded needle, and nothing when there is none.
+    #[test]
+    fn prop_find_ci_matches_a_brute_force_search(h in "[aAéÉßΣσςİi K\u{212A}k]{0,16}", n in "[aAéÉΣσİi K\u{212A}k]{1,3}") {
+        let fold = |s: &str| s.chars().flat_map(char::to_lowercase).collect::<String>();
+        let needle = fold(&n);
+        let expected = h.char_indices().map(|(i, _)| i).find(|&i| fold(&h[i..]).starts_with(&needle));
+        prop_assert_eq!(find_ci(&h, &n), expected);
+    }
+
+    /// Invariant: the terms for a field are exactly the clauses that can
+    /// match it, in order: free text and that field's own, never negated.
+    #[test]
+    fn prop_terms_for_a_field_are_its_positive_text_clauses(query in gen_query(), field in prop::sample::select(vec![Field::Title, Field::Body])) {
+        let terms: Vec<&str> = query.terms_for(field).collect();
+        let mut expected = Vec::new();
+        for clause in &query.clauses {
+            let can_match = clause.field.is_none() || clause.field == Some(field);
+            if can_match && !clause.negated {
+                expected.push(clause.value.as_str());
+            }
+        }
+        prop_assert_eq!(terms, expected);
     }
 
     /// Metamorphic: a substring of the title always matches as free text, in any case.

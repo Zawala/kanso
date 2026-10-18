@@ -50,6 +50,8 @@ const SOURCE_TEXT_LEFT: f32 = 12.;
 /// that, its right padding, and the line number column when it shows.
 const SOURCE_EDGES: f32 = SOURCE_TEXT_LEFT + 10.;
 const LINE_NUMBER_COLUMN: f32 = 44.;
+/// One line of the header's save state; a second line is clipped away.
+const SAVE_LABEL_HEIGHT: f32 = 20.;
 
 pub enum EditorEvent {
     /// Something worth telling the user, such as a failed save.
@@ -274,7 +276,9 @@ impl NoteEditor {
     }
 
     fn schedule_autosave(&mut self, cx: &mut Context<Self>) {
-        if self.note.is_none() {
+        // With the question about a change made elsewhere open, nothing is
+        // written until it is answered.
+        if self.note.is_none() || self.incoming.is_some() {
             return;
         }
         let was_saved = self.autosave.is_none();
@@ -601,23 +605,30 @@ impl NoteEditor {
         self.save(cx);
     }
 
+    /// Whether the open note's text is saved, as the header says it.
+    pub(crate) fn save_state(&self, cx: &App) -> SaveState {
+        save_state(self.incoming.is_some(), self.autosave.is_some(), || {
+            self.has_unsaved_edits(cx)
+        })
+    }
+
     /// The top band: where the note lives (click it to move the note),
     /// whether it is saved, linked-from notes, the view mode and the note's
     /// actions. Its empty middle moves the window.
     fn render_band(&self, note: &Note, cx: &mut Context<Self>) -> impl IntoElement {
         let library = self.library.read(cx);
-        let path = if note.book_id == TRASH_BOOK_ID {
-            "Trash".to_owned()
+        let path: Vec<String> = if note.book_id == TRASH_BOOK_ID {
+            vec!["Trash".to_owned()]
         } else {
-            let names: Vec<&str> = library
+            let names: Vec<String> = library
                 .book_path(&note.book_id)
                 .iter()
-                .map(|b| b.name.as_str())
+                .map(|b| b.name.clone())
                 .collect();
             if names.is_empty() {
-                "No notebook".to_owned()
+                vec!["No notebook".to_owned()]
             } else {
-                names.join(" / ")
+                names
             }
         };
         let books: Vec<(String, String, usize)> = library
@@ -632,31 +643,52 @@ impl NoteEditor {
         } else {
             title
         };
-        let saved = if self.autosave.is_some() {
-            "Saving…".to_owned()
-        } else {
-            let now = Clock::now_ms(cx);
-            format!(
-                "Edited {}",
-                crate::note_list::relative_time(note.updated_at, now)
-            )
+        let colors = Colors::get(cx);
+        let (saved, saved_color) = match self.save_state(cx) {
+            SaveState::Saving => ("Saving…".to_owned(), colors.text_muted),
+            SaveState::NotSaved => ("Not saved".to_owned(), colors.warning),
+            SaveState::Saved => (
+                format!("Edited {}", Clock::edited_label(cx, note.updated_at)),
+                colors.text_muted,
+            ),
         };
         let view = cx.entity();
-        let colors = Colors::get(cx);
+        // One separator for the notebook path and before the title, the
+        // same size as the words and the same room on either side.
+        let separator = || {
+            div()
+                .flex_none()
+                .text_size(px(13.))
+                .text_color(colors.text_muted)
+                .child("/")
+        };
         let mode = self.view_mode;
         let pinned = note.pinned;
         let status = note.status;
 
+        let segments = path.into_iter().enumerate().flat_map(|(ix, name)| {
+            let name = div()
+                .min_w_0()
+                .truncate()
+                .text_size(px(13.))
+                .text_color(colors.text_secondary)
+                .child(name)
+                .into_any_element();
+            let before = (ix > 0).then(|| separator().mx(px(8.)).into_any_element());
+            before.into_iter().chain([name])
+        });
         let move_menu = Button::new("breadcrumb")
             .ghost()
             .small()
+            // Buttons don't shrink by default; a long path truncates.
+            .flex_shrink(1.)
+            .min_w_0()
             .child(
-                div()
+                h_flex()
+                    .min_w_0()
                     .max_w(px(240.))
-                    .truncate()
-                    .text_size(px(13.))
-                    .text_color(colors.text_secondary)
-                    .child(path),
+                    .overflow_hidden()
+                    .children(segments),
             )
             .tooltip("Move to notebook")
             .dropdown_menu({
@@ -750,28 +782,44 @@ impl NoteEditor {
             .pl(px(TEXT_INSET - 8.))
             .pr(px(12.))
             .gap(px(4.))
-            .child(move_menu)
-            .child(div().text_color(colors.text_muted).child("/"))
             // When the pane is narrow the save state gives way first, then
-            // the title down to a few letters.
+            // the path and the title down to a few letters. The button's
+            // own padding is the room before the separator.
             .child(
-                div()
-                    .min_w(px(64.))
-                    .px_1()
-                    .truncate()
-                    .text_size(px(13.))
-                    .child(title),
-            )
-            .child(div().flex_1().min_w(px(12.)))
-            .child(
-                div()
+                h_flex()
                     .min_w_0()
-                    .flex_shrink(1000.)
-                    .mr(px(8.))
-                    .truncate()
-                    .text_size(px(12.))
-                    .text_color(colors.text_muted)
-                    .child(saved),
+                    .child(move_menu)
+                    .child(separator().mr(px(8.)))
+                    .child(
+                        div()
+                            .min_w(px(64.))
+                            .truncate()
+                            .text_size(px(13.))
+                            .child(title),
+                    ),
+            )
+            // The save state shows whole or not at all: when it doesn't fit
+            // beside the title it wraps onto a second line the band clips.
+            // Shrinking it instead left a stub such as "Edi…" while the
+            // title was cut short.
+            .child(
+                h_flex()
+                    .flex_1()
+                    .min_w(px(12.))
+                    .h(px(SAVE_LABEL_HEIGHT))
+                    .flex_wrap()
+                    .overflow_hidden()
+                    .child(div().flex_1().h(px(SAVE_LABEL_HEIGHT)))
+                    .child(
+                        div()
+                            .flex_none()
+                            .mr(px(8.))
+                            .whitespace_nowrap()
+                            .line_height(px(SAVE_LABEL_HEIGHT))
+                            .text_size(px(12.))
+                            .text_color(saved_color)
+                            .child(saved),
+                    ),
             )
             .children(backlinks)
             .child(div().flex_none().mx_1().child(mode_group))
@@ -1133,6 +1181,33 @@ impl NoteEditor {
     }
 }
 
+/// What the header says about saving the open note.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SaveState {
+    /// Typing paused; the save is about to run.
+    Saving,
+    /// The editor holds text the note doesn't: a change made elsewhere is
+    /// waiting for an answer, or a save failed.
+    NotSaved,
+    Saved,
+}
+
+/// What the header says, from whether a change made elsewhere is waiting,
+/// whether a save is pending, and (asked only when neither) whether the
+/// editor's text differs from the note's.
+// no-prop-test: three flags; `save_states` checks all of them.
+fn save_state(conflict: bool, pending: bool, unsaved: impl FnOnce() -> bool) -> SaveState {
+    if conflict {
+        SaveState::NotSaved
+    } else if pending {
+        SaveState::Saving
+    } else if unsaved() {
+        SaveState::NotSaved
+    } else {
+        SaveState::Saved
+    }
+}
+
 fn status_icon(status: NoteStatus) -> Icon {
     match status {
         NoteStatus::Active => Lucide::CircleDot.into(),
@@ -1320,6 +1395,10 @@ impl NoteEditor {
     pub fn has_incoming(&self) -> bool {
         self.incoming.is_some()
     }
+
+    pub fn title_focused(&self, window: &Window, cx: &App) -> bool {
+        self.title.read(cx).focus_handle(cx).is_focused(window)
+    }
 }
 
 /// Notes outside the trash whose body links to note `id`, as (id, title).
@@ -1359,7 +1438,7 @@ pub fn backlinks(store: &Store, id: &str) -> Vec<(String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{NoteEditor, backlinks};
+    use super::{NoteEditor, SaveState, backlinks, save_state};
     use crate::config::Appearance;
     use crate::library::Library;
     use crate::markdown_edit::Format;
@@ -1439,6 +1518,105 @@ mod tests {
         assert_eq!(store.note(&id).unwrap().unwrap().body, "## Goals\n**next**");
         let label = cx.read(|cx| editor.read(cx).footer.read(cx).label());
         assert!(label.ends_with("2 words · 17 chars"), "{label}");
+    }
+
+    #[test]
+    fn save_states() {
+        for unsaved in [false, true] {
+            for pending in [false, true] {
+                assert_eq!(save_state(true, pending, || unsaved), SaveState::NotSaved);
+            }
+            assert_eq!(save_state(false, true, || unsaved), SaveState::Saving);
+        }
+        assert_eq!(save_state(false, false, || true), SaveState::NotSaved);
+        assert_eq!(save_state(false, false, || false), SaveState::Saved);
+    }
+
+    /// While a change made elsewhere waits for an answer the header says
+    /// the typing isn't saved, and no autosave pretends otherwise; keeping
+    /// the editor's text saves it.
+    #[gpui_kit::test]
+    fn a_waiting_conflict_reads_not_saved(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(dir.path().join("k.db")).unwrap());
+        let book = store
+            .put(DocType::Book, json!({"name": "B"}), Put::Upsert, Origin::Ui)
+            .unwrap()
+            .id;
+        let id = store
+            .put(
+                DocType::Note,
+                json!({"title": "t", "body": "one", "bookId": book}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let editor_store = store.clone();
+        let (window, editor) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            gpui_kit::open_window(Default::default(), cx, |window, cx| {
+                let library = cx.new(|cx| Library::new(editor_store.clone(), cx));
+                let (links, _) = async_channel::unbounded();
+                cx.new(|cx| {
+                    NoteEditor::new(
+                        editor_store,
+                        library,
+                        links,
+                        &Appearance::default(),
+                        window,
+                        cx,
+                    )
+                })
+            })
+            .unwrap()
+        });
+        let state = |cx: &mut TestAppContext| cx.read(|cx| editor.read(cx).save_state(cx));
+        window
+            .update(cx, |_, window, cx| {
+                editor.update(cx, |editor, cx| {
+                    editor.open(Some(&id), window, cx);
+                    editor.edit_for_test("one, typed", window, cx);
+                })
+            })
+            .unwrap();
+        assert_eq!(state(cx), SaveState::Saving);
+        // Saved elsewhere before the pause ends.
+        store
+            .put(
+                DocType::Note,
+                json!({"_id": id, "body": "theirs"}),
+                Put::Merge,
+                Origin::Api,
+            )
+            .unwrap();
+        window
+            .update(cx, |_, window, cx| {
+                let change = kanso_store::Change {
+                    id: id.clone(),
+                    rev: store.note(&id).unwrap().unwrap().rev.unwrap(),
+                    seq: 0,
+                    deleted: false,
+                    origin: Origin::Api,
+                };
+                editor.update(cx, |editor, cx| editor.on_store_change(&change, window, cx));
+            })
+            .unwrap();
+        assert_eq!(state(cx), SaveState::NotSaved);
+        window
+            .update(cx, |_, window, cx| {
+                editor.update(cx, |editor, cx| {
+                    editor.edit_for_test("one, typed more", window, cx)
+                })
+            })
+            .unwrap();
+        cx.executor().advance_clock(Duration::from_secs(2));
+        cx.run_until_parked();
+        assert_eq!(state(cx), SaveState::NotSaved);
+        assert_eq!(store.note(&id).unwrap().unwrap().body, "theirs");
+        editor.update(cx, |editor, cx| editor.keep_mine(cx));
+        assert_eq!(state(cx), SaveState::Saved);
+        assert_eq!(store.note(&id).unwrap().unwrap().body, "one, typed more");
     }
 
     proptest! {

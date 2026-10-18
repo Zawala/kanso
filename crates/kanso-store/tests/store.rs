@@ -334,6 +334,100 @@ fn search_follows_inkdrop_syntax() {
     assert_eq!(titles, vec!["Links", "Go"]);
 }
 
+/// Sorted by title, notes without one ("Untitled" in the list) come after
+/// the named ones, whichever the direction.
+#[test]
+fn blank_titles_sort_last() {
+    let (_dir, store) = store();
+    let book = create(&store, DocType::Book, json!({"name": "B"}));
+    for title in ["", "b", "A", " "] {
+        create(
+            &store,
+            DocType::Note,
+            json!({"bookId": book, "title": title}),
+        );
+    }
+    let titles = |descending: bool| -> Vec<String> {
+        let params = SearchParams {
+            sort: Sort::Title,
+            descending,
+            ..SearchParams::default()
+        };
+        store
+            .search_summaries(&params)
+            .unwrap()
+            .into_iter()
+            .map(|s| s.title)
+            .collect()
+    };
+    let ascending = titles(false);
+    assert_eq!(ascending[..2], ["A", "b"]);
+    assert!(ascending[2..].iter().all(|t| t.trim().is_empty()));
+    let descending = titles(true);
+    assert_eq!(descending[..2], ["b", "A"]);
+    assert!(descending[2..].iter().all(|t| t.trim().is_empty()));
+}
+
+#[test]
+fn recent_notes_are_counted_without_the_trash() {
+    let (_dir, store) = store();
+    let book = create(&store, DocType::Book, json!({"name": "B"}));
+    for (at, book_id) in [(100, book.as_str()), (200, book.as_str()), (300, "trash")] {
+        create(
+            &store,
+            DocType::Note,
+            json!({"bookId": book_id, "title": "n", "updatedAt": at}),
+        );
+    }
+    assert_eq!(store.count_recent(0).unwrap(), 2);
+    assert_eq!(store.count_recent(150).unwrap(), 1);
+    assert_eq!(store.count_recent(201).unwrap(), 0);
+}
+
+/// A search's snippet starts near the match, even far into a long note;
+/// without a search it is the note's start.
+#[test]
+fn search_snippets_show_the_match() {
+    let (_dir, store) = store();
+    let book = create(&store, DocType::Book, json!({"name": "B"}));
+    let body = format!(
+        "Intro.\n\n{}\n\nThe Sync engine pushes changes.",
+        "x ".repeat(1500)
+    );
+    create(
+        &store,
+        DocType::Note,
+        json!({"bookId": book, "title": "Far", "body": body}),
+    );
+    let near = "We sync on launch.";
+    create(
+        &store,
+        DocType::Note,
+        json!({"bookId": book, "title": "Near", "body": near}),
+    );
+    let snippets = |query: &str| -> Vec<(String, String)> {
+        let params = SearchParams {
+            query: Query::parse(query),
+            sort: Sort::Title,
+            descending: false,
+            ..SearchParams::default()
+        };
+        store
+            .search_summaries(&params)
+            .unwrap()
+            .into_iter()
+            .map(|s| (s.title, s.snippet))
+            .collect()
+    };
+    let found = snippets("sync");
+    assert_eq!(found[0].0, "Far");
+    assert_eq!(found[0].1, "…The Sync engine pushes changes.");
+    assert_eq!(found[1].1, near);
+    // Title-only and negated words don't move the snippet.
+    let titled = snippets("title:far");
+    assert!(titled[0].1.starts_with("Intro. x x"), "{}", titled[0].1);
+}
+
 #[test]
 fn files_store_bytes_and_return_them_on_request() {
     let (_dir, store) = store();

@@ -137,6 +137,33 @@ pub fn row_time_label(at_local_ms: i64, now_local_ms: i64) -> String {
     }
 }
 
+/// When a note was last edited, for the editor's header and the palette:
+/// "just now", "5 min ago" or "3 h ago" within a day, then the day as the
+/// note list names it, so the two never disagree: "yesterday", "May 25",
+/// "May 25, 2025". `*_ms` are instants, `*_local_ms` the same instants in
+/// local time.
+pub fn edited_label(
+    updated_ms: i64,
+    now_ms: i64,
+    updated_local_ms: i64,
+    now_local_ms: i64,
+) -> String {
+    let secs = (now_ms - updated_ms).max(0) / 1000;
+    match secs {
+        0..60 => "just now".into(),
+        60..3600 => format!("{} min ago", secs / 60),
+        3600..86_400 => format!("{} h ago", secs / 3600),
+        _ => {
+            let label = day_label(day_of(updated_local_ms), day_of(now_local_ms));
+            match label.as_str() {
+                "Today" => "today".into(),
+                "Yesterday" => "yesterday".into(),
+                _ => label,
+            }
+        }
+    }
+}
+
 fn civil(day: i64) -> Option<NaiveDate> {
     NaiveDate::from_num_days_from_ce_opt(i32::try_from(day + UNIX_EPOCH_CE_DAYS).ok()?)
 }
@@ -308,6 +335,32 @@ mod tests {
                 prop_assert_eq!(la.contains(", "), year(today + a) != year(today), "{}", la);
             }
         }
+
+        /// Invariants: a day or more ago, the editor names the same day the
+        /// note list does, in any zone; within a day it counts back, and an
+        /// older edit never reads as more recent than a newer one.
+        #[test]
+        fn prop_edited_labels_agree_with_the_list(
+            now in 1_000_000_000_000i64..2_000_000_000_000,
+            age in 0i64..400 * DAY_MS,
+            older in 0i64..2 * DAY_MS,
+            offset in gen_offset(),
+        ) {
+            let local = |at: i64| at + i64::from(offset) * 1000;
+            let updated = now - age;
+            let label = edited_label(updated, now, local(updated), local(now));
+            if age >= DAY_MS {
+                let listed = row_time_label(local(updated), local(now));
+                prop_assert!(label.eq_ignore_ascii_case(&listed) || label == "today", "{} / {}", label, listed);
+            } else {
+                prop_assert!(label == "just now" || label.ends_with(" ago"), "{}", label);
+            }
+            let rank = |s: &str| {
+                if s == "just now" { 0 } else if s.ends_with("min ago") { 1 } else if s.ends_with(" h ago") { 2 } else { 3 }
+            };
+            let before = updated - older;
+            prop_assert!(rank(&edited_label(before, now, local(before), local(now))) >= rank(&label));
+        }
     }
 
     #[test]
@@ -393,5 +446,42 @@ mod tests {
         );
         // A clock that runs ahead shows the date, never a time.
         assert_eq!(row_time_label(local(2026, 5, 29, 8, 0), now), "May 29");
+    }
+
+    /// The header's "Edited …" at the edges: a day, and midnight.
+    #[test]
+    fn edited_labels() {
+        let local = |y, m, d, h, min| {
+            NaiveDate::from_ymd_opt(y, m, d)
+                .unwrap()
+                .and_hms_opt(h, min, 0)
+                .unwrap()
+                .and_utc()
+                .timestamp_millis()
+        };
+        // In UTC, so instants and local times are the same numbers.
+        let label = |at: i64, now: i64| edited_label(at, now, at, now);
+        let now = local(2026, 5, 28, 9, 45);
+        assert_eq!(label(now - 30_000, now), "just now");
+        assert_eq!(label(now - 3 * 60_000, now), "3 min ago");
+        assert_eq!(label(now - 23 * 3_600_000, now), "23 h ago");
+        assert_eq!(label(now - DAY_MS, now), "yesterday");
+        assert_eq!(label(local(2026, 5, 25, 12, 0), now), "May 25");
+        assert_eq!(label(local(2025, 5, 25, 12, 0), now), "May 25, 2025");
+        // Across midnight within the day it still counts back.
+        let after_midnight = local(2026, 5, 28, 0, 10);
+        assert_eq!(
+            label(local(2026, 5, 27, 23, 50), after_midnight),
+            "20 min ago"
+        );
+        // Two hours ahead of UTC: 23:30 UTC on the 26th is the 27th locally,
+        // which the list calls yesterday on the 28th.
+        let offset = 2 * 3_600_000;
+        let at = local(2026, 5, 26, 23, 30);
+        assert_eq!(
+            edited_label(at, now, at + offset, now + offset),
+            "yesterday"
+        );
+        assert_eq!(edited_label(at, now, at, now), "May 26");
     }
 }

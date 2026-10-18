@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use kanso_core::excerpt::{HEAD_CHARS, excerpt_around};
 use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::query::{Clause, Field};
 use kanso_core::{Book, DocType, FileMeta, Note, NoteStatus, Query, Tag};
@@ -232,8 +233,15 @@ fn clause_sql(clause: &Clause, fts_allowed: bool, params: &mut Vec<SqlValue>) ->
 fn search_sql(columns: &str, params: &SearchParams) -> (String, Vec<SqlValue>) {
     let (where_sql, mut values) = search_where(&params.query);
     let direction = if params.descending { "DESC" } else { "ASC" };
+    // Notes without a title read "Untitled"; they go after the named ones
+    // in either direction rather than first.
+    let blank_last = if params.sort == Sort::Title {
+        "(trim(IFNULL(d.title, ''), ' ' || char(9) || char(10) || char(13)) = '') ASC, "
+    } else {
+        ""
+    };
     let sql = format!(
-        "SELECT {columns} FROM docs d WHERE {where_sql} ORDER BY {} {direction}, d.id {direction} LIMIT ? OFFSET ?",
+        "SELECT {columns} FROM docs d WHERE {where_sql} ORDER BY {blank_last}{} {direction}, d.id {direction} LIMIT ? OFFSET ?",
         params.sort.sql()
     );
     values.push(SqlValue::Integer(params.limit.map_or(-1, |n| n as i64)));
@@ -338,24 +346,38 @@ impl Store {
             .collect())
     }
 
-    /// Notes matching a search, as list rows with a short snippet.
+    /// Notes matching a search, as list rows with a short snippet. For a
+    /// search with words to find in the body, the snippet starts near the
+    /// first of them, so the list can show why a note matched.
     pub fn search_summaries(&self, params: &SearchParams) -> Result<Vec<NoteSummary>> {
+        let terms: Vec<&str> = params.query.terms_for(Field::Body).collect();
         self.read(|conn| {
-            // Enough of the body to get past front matter, a title heading
-            // and a code block or two.
-            let columns = "d.id, d.rev, d.title, substr(json_extract(d.json, '$.body'), 1, 2000), \
-                           d.book_id, d.status, json_extract(d.json, '$.tags'), d.pinned, d.updated_at, d.created_at";
-            let (sql, values) = search_sql(columns, params);
+            let window = if terms.is_empty() {
+                "NULL"
+            } else {
+                "kanso_window(json_extract(d.json, '$.body'), ?)"
+            };
+            let columns = format!(
+                "d.id, d.rev, d.title, substr(json_extract(d.json, '$.body'), 1, {HEAD_CHARS}), \
+                 d.book_id, d.status, json_extract(d.json, '$.tags'), d.pinned, d.updated_at, d.created_at, \
+                 {window}"
+            );
+            let (sql, mut values) = search_sql(&columns, params);
+            // The window's term comes first: its column is before the rest.
+            if let Some(first) = terms.first() {
+                values.insert(0, SqlValue::Text((*first).to_owned()));
+            }
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt.query_map(params_from_iter(values), |row| {
                 let tags: Option<String> = row.get(6)?;
                 let status: Option<String> = row.get(5)?;
                 let title = row.get::<_, Option<String>>(2)?.unwrap_or_default();
-                let body = row.get::<_, Option<String>>(3)?.unwrap_or_default();
+                let head = row.get::<_, Option<String>>(3)?.unwrap_or_default();
+                let window = row.get::<_, Option<String>>(10)?;
                 Ok(NoteSummary {
                     id: row.get(0)?,
                     rev: row.get(1)?,
-                    snippet: kanso_core::excerpt(&title, &body),
+                    snippet: excerpt_around(&title, &head, window.as_deref(), &terms),
                     title,
                     book_id: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
                     status: status.as_deref().and_then(NoteStatus::parse).unwrap_or_default(),
@@ -368,6 +390,19 @@ impl Store {
                 })
             })?;
             Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })
+    }
+
+    /// How many live notes outside the trash changed at or after
+    /// `since_ms`: what Recent lists.
+    pub fn count_recent(&self, since_ms: i64) -> Result<u32> {
+        self.read(|conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM docs WHERE type = 'note' AND deleted = 0 \
+                 AND IFNULL(book_id, '') != 'trash' AND updated_at >= ?",
+                [since_ms],
+                |row| row.get(0),
+            )?)
         })
     }
 

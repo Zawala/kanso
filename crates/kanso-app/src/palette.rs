@@ -2,11 +2,14 @@
 //! commands, the places in the library and the notes, drawn over the window
 //! with the selected entry explained beside the list.
 //!
-//! It is part of the main window's view rather than a dialog, so a command
-//! reaches the window's own handlers exactly as its shortcut would. Closing
-//! it, by Escape, a click outside or a command, gives the keyboard back to
-//! whatever had it before, and a command that moves the keyboard on purpose
-//! (into the search box, or the title of a new note) does so afterwards.
+//! It is part of the main window's view rather than a dialog, and a command
+//! is sent from the workspace itself, so it reaches the window's own
+//! handlers whatever had the keyboard. Closing it, by Escape, a click
+//! outside or a command, gives the keyboard back to whatever had it before,
+//! and a command that moves the keyboard on purpose (into the search box, or
+//! the title of a new note) does so afterwards. When something else takes
+//! the keyboard while it is open, such as a shortcut for a new note, it
+//! closes.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,12 +23,12 @@ use gpui_kit::component::{ActiveTheme as _, Icon, StyledExt as _, WindowExt as _
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::model::TRASH_BOOK_ID;
-use kanso_core::{DocType, Note, NoteStatus};
-use kanso_store::{NoteSummary, Origin, Put, Sort, Store};
+use kanso_core::{Clause, DocType, Field, Note, NoteStatus};
+use kanso_store::{NoteSummary, Origin, Put, SearchParams, Sort, Store};
 use serde_json::json;
 
-use crate::clock::Clock;
 use crate::commands::{self, Command, Group, Needs, Picker, Run};
+use crate::config::ViewMode;
 use crate::editor::{NoteEditor, rgb_color};
 use crate::fuzzy;
 use crate::library::{Filter, Library, RECENT_DAYS, search_params};
@@ -168,6 +171,12 @@ pub struct Palette {
     store: Arc<Store>,
     library: Entity<Library>,
     editor: Entity<NoteEditor>,
+    /// The workspace's own focus, always drawn: commands are sent from
+    /// here, and the keyboard goes here when nothing else should have it.
+    home: FocusHandle,
+    /// The note list's focus, for opening a note while the editor shows
+    /// only its preview.
+    list_focus: FocusHandle,
     input: Entity<InputState>,
     /// `None` while closed.
     mode: Option<Mode>,
@@ -194,15 +203,23 @@ impl Palette {
         store: Arc<Store>,
         library: Entity<Library>,
         editor: Entity<NoteEditor>,
+        home: FocusHandle,
+        list_focus: FocusHandle,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let input = cx.new(|cx| InputState::new(window, cx));
         let subscriptions = vec![
-            cx.subscribe(&input, |this, _, event, cx| {
-                if matches!(event, InputEvent::Change) {
-                    this.query_changed(cx);
+            cx.subscribe_in(&input, window, |this, _, event, window, cx| match event {
+                InputEvent::Change => this.query_changed(cx),
+                // Something else took the keyboard, a shortcut for a new
+                // note or the search box say: the palette gives way rather
+                // than cover what is now being typed into. Switching apps
+                // keeps it.
+                InputEvent::Blur if this.mode.is_some() && window.is_window_active() => {
+                    this.close(window, cx);
                 }
+                _ => {}
             }),
             // Notebooks and tags can change while the palette is open, by
             // sync or the API.
@@ -217,6 +234,8 @@ impl Palette {
             store,
             library,
             editor,
+            home,
+            list_focus,
             input,
             mode: None,
             restore_focus: None,
@@ -284,10 +303,9 @@ impl Palette {
         self.selected = None;
         let restore = self.restore_focus.take();
         if self.input.read(cx).focus_handle(cx).is_focused(window) {
-            match restore {
-                Some(focus) => window.focus(&focus, cx),
-                None => window.blur(cx),
-            }
+            // A handle that is no longer drawn gives way to the workspace
+            // once the next frame shows it missing.
+            window.focus(restore.as_ref().unwrap_or(&self.home), cx);
         }
         cx.notify();
     }
@@ -331,7 +349,9 @@ impl Palette {
     }
 
     /// Searches the store for notes when the mode lists them, in the
-    /// background. Results for an older query never replace newer ones.
+    /// background: notes whose titles have the words first, then notes that
+    /// have them anywhere. Results for another query never replace the
+    /// current one's.
     fn search_notes(&mut self, cx: &mut Context<Self>) {
         let query = self.query(cx);
         let wanted = match self.mode {
@@ -346,6 +366,9 @@ impl Palette {
             return;
         }
         if self.notes_for.as_deref() == Some(query.as_str()) {
+            // Back to the query already shown: a search for another one
+            // still on its way would replace it.
+            self.search_task = None;
             return;
         }
         let store = self.store.clone();
@@ -355,11 +378,22 @@ impl Palette {
             }
             let mut params = search_params(&Filter::All, &query, Sort::UpdatedAt, true);
             params.limit = Some(NOTE_LIMIT);
+            let by_title = title_search(&params);
             let found = cx
                 .background_executor()
-                .spawn(async move { store.search_summaries(&params) })
+                .spawn(async move {
+                    let titled = match by_title {
+                        Some(params) => store.search_summaries(&params)?,
+                        None => Vec::new(),
+                    };
+                    let anywhere = store.search_summaries(&params)?;
+                    Ok::<_, kanso_store::StoreError>(merge_by_id(titled, anywhere, NOTE_LIMIT))
+                })
                 .await;
             this.update(cx, |this, cx| {
+                if this.mode.is_none() || this.query(cx) != query {
+                    return;
+                }
                 // A query the store can't run finds nothing.
                 this.notes = found.unwrap_or_default();
                 this.notes_for = Some(query);
@@ -744,9 +778,14 @@ impl Palette {
                 Run::Pick(picker) => self.show(Mode::Pick(picker), window, cx),
                 Run::Action(action) => {
                     self.close(window, cx);
-                    // From what has the keyboard again, inside the window's
-                    // view, the action finds the window's handlers.
-                    window.dispatch_action(action(), cx);
+                    // From the workspace, which is always drawn, the action
+                    // finds the window's handlers whatever has the keyboard;
+                    // after this one, so a handler can open the palette.
+                    let home = self.home.clone();
+                    let action = action();
+                    window.defer(cx, move |window, cx| {
+                        home.dispatch_action(action.as_ref(), window, cx);
+                    });
                 }
             },
             Target::Show(filter) => {
@@ -758,8 +797,14 @@ impl Palette {
                 self.close(window, cx);
                 self.library
                     .update(cx, |library, cx| library.select(Some(note.id), cx));
-                self.editor
-                    .update(cx, |editor, cx| editor.focus_body(window, cx));
+                // The preview alone has no text to type into; the list keeps
+                // the keyboard then.
+                if self.editor.read(cx).view_mode == ViewMode::Preview {
+                    window.focus(&self.list_focus, cx);
+                } else {
+                    self.editor
+                        .update(cx, |editor, cx| editor.focus_body(window, cx));
+                }
             }
             Target::Book(id) => {
                 self.close(window, cx);
@@ -1030,12 +1075,8 @@ impl Palette {
                         .map_or_else(|| "No notebook".to_owned(), |b| b.name.clone())
                 };
                 detail.meta.push((IconName::Notebook, book.into()));
-                // Dates read in local time, as in the note list.
-                let offset_ms = i64::from(Clock::utc_offset_secs(cx, note.updated_at)) * 1000;
-                let edited = crate::note_list::relative_time(
-                    note.updated_at + offset_ms,
-                    Clock::now_ms(cx) + offset_ms,
-                );
+                // The day as the note list names it.
+                let edited = crate::clock::Clock::edited_label(cx, note.updated_at);
                 detail
                     .meta
                     .push((IconName::Clock, format!("Edited {edited}").into()));
@@ -1308,6 +1349,35 @@ impl Render for Palette {
     }
 }
 
+/// The search for notes whose titles have the query's words, or `None` when
+/// it has none: its free text, asked of the title instead.
+fn title_search(params: &SearchParams) -> Option<SearchParams> {
+    let mut titled = params.clone();
+    let mut any = false;
+    for clause in &mut titled.query.clauses {
+        if clause.field.is_none() && !clause.negated {
+            *clause = Clause::field(Field::Title, std::mem::take(&mut clause.value));
+            any = true;
+        }
+    }
+    any.then_some(titled)
+}
+
+/// `first`, then the notes of `then` not already in it, at most `limit` in
+/// all.
+fn merge_by_id(first: Vec<NoteSummary>, then: Vec<NoteSummary>, limit: usize) -> Vec<NoteSummary> {
+    let mut merged: Vec<NoteSummary> = Vec::with_capacity(limit);
+    for note in first.into_iter().chain(then) {
+        if merged.len() == limit {
+            break;
+        }
+        if !merged.iter().any(|m| m.id == note.id) {
+            merged.push(note);
+        }
+    }
+    merged
+}
+
 /// How well `query` fits an entry: its label, or a little less, one of its
 /// keywords.
 fn item_score(query: &str, label: &str, keywords: &[&str]) -> Option<i64> {
@@ -1495,7 +1565,9 @@ mod tests {
     use proptest::test_runner::FileFailurePersistence;
     use serde_json::json;
 
-    use super::{MODIFIER_SYMBOLS, Mode, Palette, shortcut, shortcut_parts};
+    use super::{
+        MODIFIER_SYMBOLS, Mode, Palette, merge_by_id, shortcut, shortcut_parts, title_search,
+    };
     use crate::config::AppConfig;
     use crate::library::Filter;
     use crate::services::Services;
@@ -1527,6 +1599,90 @@ mod tests {
                 prop_assert!(!MODIFIER_SYMBOLS.contains(&first) || chars.next().is_none(), "{:?}", parts);
             }
         }
+    }
+
+    fn summary(id: usize) -> kanso_store::NoteSummary {
+        kanso_store::NoteSummary {
+            id: format!("note:{id}"),
+            rev: String::new(),
+            title: String::new(),
+            snippet: String::new(),
+            book_id: String::new(),
+            status: NoteStatus::None,
+            tags: Vec::new(),
+            pinned: false,
+            updated_at: 0,
+            created_at: 0,
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 256,
+            failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
+            ..ProptestConfig::default()
+        })]
+
+        /// Invariants: the merge lists each note once, the first list's
+        /// notes first and in their order, then the second's in theirs, as
+        /// many as the limit allows of the notes in either.
+        #[test]
+        fn prop_merge_puts_the_first_list_first(
+            first in prop::collection::vec(0usize..30, 0..25),
+            then in prop::collection::vec(0usize..30, 0..25),
+            limit in 0usize..30,
+        ) {
+            let dedup = |ids: &[usize]| {
+                let mut seen = Vec::new();
+                for id in ids {
+                    if !seen.contains(id) {
+                        seen.push(*id);
+                    }
+                }
+                seen
+            };
+            let (first, then) = (dedup(&first), dedup(&then));
+            let merged: Vec<String> = merge_by_id(
+                first.iter().map(|&i| summary(i)).collect(),
+                then.iter().map(|&i| summary(i)).collect(),
+                limit,
+            )
+            .into_iter()
+            .map(|n| n.id)
+            .collect();
+            let union = dedup(&[first.clone(), then.clone()].concat());
+            prop_assert_eq!(merged.len(), union.len().min(limit));
+            for (ix, id) in merged.iter().enumerate() {
+                prop_assert!(!merged[..ix].contains(id));
+            }
+            let lead: Vec<String> = first.iter().take(limit).map(|&i| format!("note:{i}")).collect();
+            prop_assert_eq!(&merged[..lead.len()], &lead[..]);
+            let rest: Vec<String> = then.iter().map(|&i| format!("note:{i}")).filter(|id| !lead.contains(id)).collect();
+            prop_assert_eq!(&merged[lead.len()..], &rest[..merged.len() - lead.len()]);
+        }
+    }
+
+    #[test]
+    fn title_searches_ask_the_title() {
+        let params = crate::library::search_params(
+            &Filter::All,
+            "sync -draft tag:x",
+            Default::default(),
+            true,
+        );
+        let titled = title_search(&params).unwrap();
+        assert_eq!(titled.query.to_string(), "title:sync -draft tag:x");
+        let none = crate::library::search_params(&Filter::All, "tag:x", Default::default(), true);
+        assert!(title_search(&none).is_none());
+        let merged: Vec<String> = merge_by_id(
+            vec![summary(1), summary(2)],
+            vec![summary(2), summary(3)],
+            3,
+        )
+        .into_iter()
+        .map(|n| n.id)
+        .collect();
+        assert_eq!(merged, ["note:1", "note:2", "note:3"]);
     }
 
     #[test]
@@ -1596,6 +1752,10 @@ mod tests {
             })
             .unwrap()
         });
+        // Active, as the window in front is: focus changes report blurs.
+        window
+            .update(cx, |_, window, _| window.activate_window())
+            .unwrap();
         cx.run_until_parked();
         let library = cx.read(|cx| workspace.read(cx).library.clone());
         let id = open.clone();
@@ -1696,6 +1856,18 @@ mod tests {
         fn body_focused(&self, cx: &mut TestAppContext) -> bool {
             let body = self.body.clone();
             self.update(cx, |_, window, _| body.is_focused(window))
+        }
+
+        /// Draws, so focus changes reach their listeners and actions find
+        /// what is on screen.
+        fn draw(&self, cx: &mut TestAppContext) {
+            self.window
+                .update(cx, |_, window, cx| {
+                    window.refresh();
+                    window.draw(cx).clear(cx);
+                })
+                .unwrap();
+            cx.run_until_parked();
         }
 
         fn open(&self, cx: &mut TestAppContext, mode: Mode) {
@@ -1956,5 +2128,174 @@ mod tests {
                 "{hidden} in {labels:?}"
             );
         }
+    }
+
+    /// Notes with the words in their titles come first, even when many newer
+    /// notes only mention them.
+    #[gpui_kit::test]
+    fn titled_notes_beat_newer_mentions(cx: &mut TestAppContext) {
+        let f = setup(cx);
+        let book = f.store.books().unwrap()[0].id.clone();
+        f.store
+            .put(
+                DocType::Note,
+                json!({"title": "Sync design", "body": "D1 and R2", "bookId": book,
+                    "createdAt": 1_000, "updatedAt": 1_000}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap();
+        for n in 0..25 {
+            f.store
+                .put(
+                    DocType::Note,
+                    json!({"title": format!("Task {n}"), "body": "rechecked after the sync", "bookId": book}),
+                    Put::Upsert,
+                    Origin::Ui,
+                )
+                .unwrap();
+        }
+        f.keys(cx, "cmd-p");
+        f.type_query(cx, "sync");
+        let labels = f.labels(cx);
+        let at = labels.iter().position(|l| l == "Sync design");
+        assert!(at.is_some_and(|at| at < 2), "{labels:?}");
+    }
+
+    /// Going back to the query already shown drops the search for the one
+    /// in between, so its results never replace the right ones.
+    #[gpui_kit::test]
+    fn an_abandoned_search_never_lands(cx: &mut TestAppContext) {
+        let f = setup(cx);
+        f.keys(cx, "cmd-p");
+        f.type_query(cx, "sync");
+        let shown = f.labels(cx);
+        assert_eq!(shown, ["Weekly sync notes"]);
+        let palette = f.palette(cx);
+        let set = |cx: &mut TestAppContext, query: &str| {
+            f.window
+                .update(cx, |_, window, cx| {
+                    palette.update(cx, |palette, cx| palette.set_query(query, window, cx))
+                })
+                .unwrap();
+            cx.run_until_parked();
+        };
+        set(cx, "syncx");
+        set(cx, "sync");
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(200));
+        cx.run_until_parked();
+        assert_eq!(f.labels(cx), shown);
+        assert!(!cx.read(|cx| palette.read(cx).searching(cx)));
+    }
+
+    /// A shortcut that moves the keyboard elsewhere closes the palette
+    /// rather than leaving it over what is being typed into.
+    #[gpui_kit::test]
+    fn a_shortcut_that_takes_the_keyboard_closes_the_palette(cx: &mut TestAppContext) {
+        let f = setup(cx);
+        f.keys(cx, "cmd-k");
+        assert_eq!(f.mode(cx), Some(Mode::Commands));
+        f.keys(cx, "cmd-n");
+        f.draw(cx);
+        assert_eq!(f.mode(cx), None);
+        let editor = cx.read(|cx| f.workspace.read(cx).editor.clone());
+        assert!(f.update(cx, |_, window, cx| {
+            editor.read(cx).title_focused(window, cx)
+        }));
+        // Typing goes into the new note's title.
+        f.keys(cx, "h i");
+        let id = cx
+            .read(|cx| editor.read(cx).note_id().map(str::to_owned))
+            .unwrap();
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        cx.run_until_parked();
+        assert_eq!(f.store.note(&id).unwrap().unwrap().title, "hi");
+    }
+
+    /// The empty notebook's palette row, with the keyboard last in a note's
+    /// text that is no longer drawn: New note still makes a note there.
+    #[gpui_kit::test]
+    fn commands_run_whatever_had_the_keyboard(cx: &mut TestAppContext) {
+        let f = setup(cx);
+        let library = cx.read(|cx| f.workspace.read(cx).library.clone());
+        let research = f
+            .store
+            .put(
+                DocType::Book,
+                json!({"name": "Research"}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        cx.run_until_parked();
+        library.update(cx, |library, cx| {
+            library.set_filter(Filter::Book(research.clone()), cx)
+        });
+        cx.run_until_parked();
+        assert!(f.update(cx, |workspace, _, cx| {
+            workspace.editor.read(cx).note_id().is_none()
+        }));
+        let empty = cx.read(|cx| f.workspace.read(cx).editor.read(cx).empty_focus.clone());
+        f.draw(cx);
+        f.window
+            .update(cx, |_, window, cx| {
+                empty.dispatch_action(&crate::workspace::OpenCommandPalette, window, cx)
+            })
+            .unwrap();
+        cx.run_until_parked();
+        assert_eq!(f.mode(cx), Some(Mode::Commands));
+        f.type_query(cx, "new note");
+        assert_eq!(f.selected_label(cx).as_deref(), Some("New note"));
+        f.keys(cx, "enter");
+        let in_research = f
+            .store
+            .search_summaries(&Default::default())
+            .unwrap()
+            .into_iter()
+            .filter(|n| n.book_id == research)
+            .count();
+        assert_eq!(in_research, 1);
+    }
+
+    /// Opening a note from ⌘P while only the preview shows leaves the
+    /// keyboard somewhere drawn, so the shortcuts keep working.
+    #[gpui_kit::test]
+    fn shortcuts_work_after_opening_a_note_in_preview(cx: &mut TestAppContext) {
+        let f = setup(cx);
+        f.update(cx, |workspace, _, cx| {
+            workspace.editor.update(cx, |editor, cx| {
+                editor.set_view_mode(crate::config::ViewMode::Preview, cx)
+            });
+        });
+        f.draw(cx);
+        f.keys(cx, "cmd-p");
+        assert_eq!(f.mode(cx), Some(Mode::Notes));
+        f.keys(cx, "enter");
+        assert_eq!(f.mode(cx), None);
+        f.draw(cx);
+        f.keys(cx, "cmd-p");
+        assert_eq!(f.mode(cx), Some(Mode::Notes));
+        // And choosing Preview from the palette, which hides the text that
+        // gets the keyboard back.
+        f.keys(cx, "escape");
+        f.update(cx, |workspace, _, cx| {
+            workspace.editor.update(cx, |editor, cx| {
+                editor.set_view_mode(crate::config::ViewMode::Edit, cx)
+            });
+        });
+        f.update(cx, |workspace, window, cx| {
+            workspace
+                .editor
+                .update(cx, |editor, cx| editor.focus_body(window, cx));
+        });
+        f.keys(cx, "cmd-k");
+        f.type_query(cx, "preview");
+        f.keys(cx, "enter");
+        f.draw(cx);
+        f.keys(cx, "cmd-k");
+        assert_eq!(f.mode(cx), Some(Mode::Commands));
     }
 }

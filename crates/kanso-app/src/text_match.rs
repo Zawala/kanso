@@ -8,12 +8,7 @@ use kanso_core::{Field, Query};
 /// The words of `query` that can match `field` (the title or the body):
 /// free text and that field's own clauses, but not negated ones.
 pub fn highlight_terms(query: &Query, field: Field) -> Vec<String> {
-    query
-        .clauses
-        .iter()
-        .filter(|c| !c.negated && (c.field.is_none() || c.field == Some(field)))
-        .map(|c| c.value.clone())
-        .collect()
+    query.terms_for(field).map(str::to_owned).collect()
 }
 
 /// The byte ranges of `text` where any of `terms` occurs, ignoring case.

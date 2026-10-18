@@ -209,6 +209,9 @@ impl Library {
         refine_status(&mut params, self.status_only);
         let filter = self.filter.clone();
         let pinned_only = filter == Filter::Pinned || self.pinned_only;
+        // Recent as listed, unnarrowed, is the count itself.
+        let recent_is_listed =
+            filter == Filter::Recent && self.search.trim().is_empty() && !self.is_refined();
         let recent_since = Clock::now_ms(cx) - RECENT_DAYS * DAY_MS;
         let task = cx.background_executor().spawn(async move {
             let mut notes = match filter {
@@ -222,12 +225,16 @@ impl Library {
             if pinned_only {
                 notes.retain(|note| note.pinned);
             }
-            let recent = recent_notes(&store, &SearchParams::default(), recent_since)?.len();
+            let recent = if recent_is_listed {
+                u32::try_from(notes.len()).unwrap_or(u32::MAX)
+            } else {
+                store.count_recent(recent_since)?
+            };
             Ok::<_, StoreError>(Loaded {
                 books: store.books()?,
                 tags: store.tags()?,
                 counts: store.status_counts()?,
-                recent: u32::try_from(recent).unwrap_or(u32::MAX),
+                recent,
                 notes,
             })
         });
