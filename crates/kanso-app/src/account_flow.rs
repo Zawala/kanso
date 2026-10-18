@@ -52,6 +52,8 @@ struct Failure {
     words: String,
     signed_out: Option<SignOutReason>,
     recovery: Option<PendingKey>,
+    /// The backup a Replace made before it failed: said all the same.
+    backup: Option<PathBuf>,
 }
 
 impl Failure {
@@ -66,6 +68,7 @@ impl Failure {
             words: words::error_words(&err, context),
             signed_out,
             recovery: None,
+            backup: None,
         }
     }
 
@@ -84,13 +87,13 @@ impl Failure {
     fn after_key(self, words: &'static str, session: &Session, key: RecoveryKey) -> Failure {
         Failure {
             words: words.to_owned(),
-            signed_out: self.signed_out,
             recovery: Some(PendingKey {
                 key,
                 username: session.username.clone(),
                 server: session.server.clone(),
                 note: Some(words),
             }),
+            ..self
         }
     }
 
@@ -104,6 +107,7 @@ impl Failure {
             words: LIBRARY_TROUBLE.to_owned(),
             signed_out: None,
             recovery: None,
+            backup: None,
         }
     }
 
@@ -266,7 +270,59 @@ fn failed(tx: &Sender<Progress>, failure: Option<Failure>, cx: &mut App) {
     if let Some(key) = failure.recovery {
         show_pending(key, cx);
     }
+    if let Some(path) = failure.backup {
+        notify_backup(path, cx);
+    }
     done(tx, Err(failure.words));
+}
+
+/// Saves `session` as the library's Keychain item, then binds the library
+/// with `choice` (A1, sync 7): a library is never bound to an account whose
+/// item is missing. When binding fails the item is put back as it was (gone,
+/// or another account's), and a backup a Replace made first comes back with
+/// the failure. `None` leaves the binding as it is.
+fn save_and_bind(
+    s: &Seams,
+    library_id: &str,
+    session: &Session,
+    choice: Option<Choice>,
+) -> Result<Option<PathBuf>, Failure> {
+    let item = keychain::account_item(library_id);
+    let before = s.secrets.get(&item).map_err(Failure::keychain)?;
+    keychain::save_session(s.secrets.as_ref(), library_id, session).map_err(Failure::keychain)?;
+    let Some(choice) = choice else {
+        return Ok(None);
+    };
+    let backups_before = backups_in(&s.backups);
+    match kanso_sync::bind(&s.store, session, choice, &s.backups, s.now) {
+        Ok(backup) => Ok(backup),
+        Err(err) => {
+            let put_back = match &before {
+                Some(raw) => s.secrets.set(&item, raw),
+                None => s.secrets.delete(&item),
+            };
+            if let Err(err) = put_back {
+                eprintln!("kanso: putting the library's Keychain item back: {err}");
+            }
+            let mut failure = Failure::bind(err);
+            if choice == Choice::Replace {
+                failure.backup = backups_in(&s.backups)
+                    .into_iter()
+                    .find(|path| !backups_before.contains(path));
+            }
+            Err(failure)
+        }
+    }
+}
+
+/// The files in the backups folder, to find the one a failed Replace made.
+fn backups_in(dir: &std::path::Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
+    paths.sort();
+    paths
 }
 
 /// The seams, or the task's end when there are none or a task runs.
@@ -507,12 +563,7 @@ fn create(
                 Failure::rotation(err, ErrorContext::SignUp, words::KEY_UNCONFIRMED_SIGN_UP)
             })?;
             step(Step::Saving);
-            let bound = kanso_sync::bind(&s.store, &signed.session, Choice::Add, &s.backups, s.now)
-                .map_err(Failure::bind)
-                .and_then(|_| {
-                    keychain::save_session(s.secrets.as_ref(), &device.library_id, &signed.session)
-                        .map_err(Failure::keychain)
-                });
+            let bound = save_and_bind(&s, &device.library_id, &signed.session, Some(Choice::Add));
             if let Err(failure) = bound {
                 // Nothing here uses the new session: the server forgets it.
                 // The account stays, and so does its recovery key, in the
@@ -780,29 +831,14 @@ fn bind_and_save(
         move |step| {
             let s = thread;
             step(Step::Saving);
-            let saved = match choice {
-                Some(choice) => kanso_sync::bind(&s.store, &session, choice, &s.backups, s.now)
-                    .map_err(Failure::bind),
-                None => Ok(None),
-            }
-            .and_then(|backup| {
-                keychain::save_session(s.secrets.as_ref(), &library_id, &session)
-                    .map_err(Failure::keychain)
-                    .map(|()| backup)
-            });
-            match saved {
+            match save_and_bind(&s, &library_id, &session, choice) {
                 Ok(backup) => Ok((session, library_id, backup)),
                 Err(failure) => {
-                    if choice.is_some() {
-                        // Nothing here uses the new session. The library's
-                        // Keychain items may still be another account's.
-                        kanso_sync::discard_session(
-                            s.backend.as_ref(),
-                            s.secrets.as_ref(),
-                            &session,
-                        )
+                    // Nothing here uses the new session. The library's
+                    // Keychain items are as they were: maybe another
+                    // account's.
+                    kanso_sync::discard_session(s.backend.as_ref(), s.secrets.as_ref(), &session)
                         .ok();
-                    }
                     // The password changed all the same.
                     Err(match recovery_key {
                         Some(key) => failure.after_key(words::CHANGED_NOT_SIGNED_IN, &session, key),

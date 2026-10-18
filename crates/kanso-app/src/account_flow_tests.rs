@@ -974,7 +974,9 @@ fn a_sign_up_that_cant_finish_still_shows_the_key(cx: &mut TestAppContext) {
         Some(shown.clone())
     );
     assert!(holds(&server, "alice", &shown));
+    assert_eq!(a.bound_to(), None, "never bound without its Keychain item");
     let rx = a.sign_in(cx, "alice", PASSWORD);
+    a.answer(cx, "choice-0");
     assert_eq!(finish(cx, rx), Ok(()), "the account is there to sign in to");
 }
 
@@ -1098,4 +1100,106 @@ fn signing_out_with_a_stuck_keychain_still_logs_out(cx: &mut TestAppContext) {
     );
     let config = cx.read(|cx| cx.global::<AppState>().config.sync.account.clone());
     assert!(config.is_none(), "the leftover item is never loaded");
+}
+
+// MARK: Saving, then binding
+
+/// Makes the library refuse `statement`'s writes until the trigger is
+/// dropped, as a full disk or a damaged file would.
+fn refuse(mac: &Mac, trigger: &str) -> rusqlite::Connection {
+    let conn = rusqlite::Connection::open(mac.dir.path().join("kanso.db")).unwrap();
+    conn.execute_batch(trigger).unwrap();
+    conn
+}
+
+/// A Replace that fails after its backup leaves this Mac as it was: still
+/// signed in to the first account with its Keychain item, its notes and its
+/// binding, and syncing again; the backup made first is said all the same
+/// (A1, sync 7).
+#[gpui_kit::test]
+fn a_failed_replace_keeps_this_account_and_says_where_the_backup_is(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let elsewhere = DeviceIdentity::from_parts(&format!("l_{:032x}", 9), "Elsewhere", [9; 32]);
+    let bob = kanso_sync::sign_up(
+        server.as_ref(),
+        &MemorySecrets::new(),
+        SERVER,
+        "bob",
+        &password(PASSWORD, "bob"),
+        &elsewhere,
+        &|_| {},
+    )
+    .unwrap();
+    let a = mac(cx, &server, "Studio", 2);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+    assert!(ok(&synced(cx)));
+    let alice = session(cx);
+    let library = library_id(cx);
+    let item = kanso_sync::keychain::account_item(&library);
+    let kept = a.secrets.get(&item).unwrap().expect("alice's item");
+    let before = a.notifications(cx);
+
+    let conn = refuse(
+        &a,
+        "CREATE TRIGGER refuse BEFORE DELETE ON docs BEGIN SELECT RAISE(ABORT, 'refused'); END;",
+    );
+    let rx = a.sign_in(cx, "bob", PASSWORD);
+    a.answer(cx, "choice-1");
+    let failed = finish(cx, rx);
+    conn.execute_batch("DROP TRIGGER refuse").unwrap();
+    assert!(failed.is_err(), "{failed:?}");
+
+    assert_eq!(account(cx), signed_in_as("alice"));
+    assert!(Arc::ptr_eq(&session(cx), &alice));
+    assert_eq!(
+        a.secrets.get(&item).unwrap().map(|now| now.to_string()),
+        Some(kept.to_string()),
+        "alice's item is back"
+    );
+    assert_eq!(a.bound_to(), Some(alice.account_id.clone()));
+    assert_eq!(a.notes(), 2);
+    let backups: Vec<_> = std::fs::read_dir(crate::paths::backups_dir(a.dir.path()))
+        .expect("a backups folder")
+        .collect();
+    assert_eq!(backups.len(), 1, "the backup was made first");
+    assert_eq!(a.notifications(cx), before + 1, "and is said");
+    let devices = kanso_sync::devices(server.as_ref(), &bob.session).unwrap();
+    assert_eq!(devices.len(), 1, "bob's new session is logged out");
+    assert!(ok(&sync_now(cx)), "alice syncs");
+}
+
+/// A sign-up whose binding fails deletes the session's Keychain item again:
+/// a library is never left with an item for an account it isn't bound to.
+#[gpui_kit::test]
+fn a_sign_up_whose_binding_fails_leaves_no_session_item(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 1);
+    // The library has its ID; binding writes the account's.
+    cx.update(|cx| {
+        let machine = cx.global::<Services>().machine.clone().unwrap();
+        kanso_sync::device_identity(&a.store, &machine).unwrap();
+    });
+    let conn = refuse(
+        &a,
+        &format!(
+            "CREATE TRIGGER refuse BEFORE INSERT ON meta WHEN NEW.key = '{}' \
+             BEGIN SELECT RAISE(ABORT, 'refused'); END;",
+            meta_keys::ACCOUNT_ID
+        ),
+    );
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Err(words::CREATED_NOT_SIGNED_IN.to_owned()));
+    conn.execute_batch("DROP TRIGGER refuse").unwrap();
+    assert_eq!(account(cx), AccountState::SignedOut);
+    assert_eq!(a.bound_to(), None);
+    assert!(
+        a.items()
+            .iter()
+            .all(|item| !item.starts_with("sync-account:")),
+        "{:?}",
+        a.items()
+    );
+    assert!(pending_key(cx).is_some(), "the key still shows");
 }

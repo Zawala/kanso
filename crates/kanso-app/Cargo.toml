@@ -35,4 +35,6 @@ gpui-base = { version = "=0.7.3", features = ["test-support"] }
 gpui-component = { version = "=0.7.3", features = ["test-support"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 proptest.workspace = true
+# Makes the library refuse a write, to test a binding that fails.
+rusqlite.workspace = true
 tempfile.workspace = true
