@@ -15,6 +15,11 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 
+[features]
+# Test support for kanso-sync's rollback test only: `Store::apply_remote_legacy`,
+# the old app's conflict rules. No shipped build enables it.
+legacy-v1-rules = []
+
 [dev-dependencies]
 proptest.workspace = true
 tempfile.workspace = true

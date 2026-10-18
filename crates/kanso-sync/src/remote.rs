@@ -1,32 +1,13 @@
 //! The engine's plaintext side of sync: documents with local IDs and
-//! revisions, and the v1 [`Remote`] trait.
-//!
-//! Legacy (v1): [`Remote`], [`ChangesPage`], [`RemoteFile`] and the v1
-//! limits are today's protocol, which the Cloudflare Worker's `/v1` routes,
-//! [`crate::HttpRemote`] and [`crate::MemoryRemote`] implement
-//! (`cloud/test/fixtures/conformance-v1.json`); they stay until step 3 of
-//! docs/ACCOUNTS.md › Build order. Accounts sync through `Sealed`
-//! (`sealed.rs`), which opens v2 documents into [`RemoteDoc`] and
-//! [`PushResult`].
+//! revisions. `Sealed` (`sealed.rs`) opens v2 documents into [`RemoteDoc`]
+//! and [`PushResult`], and `PlainView` uses them to show tests the server's
+//! documents in plaintext.
 
 use kanso_core::DocType;
 use kanso_core::id::is_valid_id;
 use kanso_store::SyncDoc;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-
-/// Largest accepted push request body (bytes).
-pub const MAX_PUSH_BYTES: usize = 16 * 1024 * 1024;
-/// Most documents in one push. The Worker runs three D1 statements per
-/// document in one batch and an invocation may run 1,000.
-pub const MAX_PUSH_DOCS: usize = 200;
-/// Largest serialized `fields` of one document (bytes). D1 rows top out at 2 MB.
-pub const MAX_FIELDS_BYTES: usize = 1_900_000;
-/// Largest attachment (bytes), the store's own limit.
-pub const MAX_FILE_BYTES: usize = kanso_core::model::MAX_ATTACHMENT_SIZE;
-/// Page size of `changes` when none is given, and the largest allowed.
-pub const DEFAULT_CHANGES_LIMIT: usize = 100;
-pub const MAX_CHANGES_LIMIT: usize = 500;
 
 /// The outcome of pushing one document, with local IDs and revisions.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -35,20 +16,19 @@ pub enum PushResult {
     /// The server stored the document under change sequence `seq`.
     Ok { id: String, seq: i64 },
     /// The document's `base_rev` is not the server's current revision.
-    /// `current` is the server's version. A v1 server sends `None` when it
-    /// has no copy although the client sent a `base_rev`; v2 says
-    /// [`PushResult::Lost`] instead.
+    /// `current` is the server's version, opened (always `Some` from
+    /// `Sealed`; a server that lost the document says [`PushResult::Lost`]).
     Conflict {
         id: String,
         current: Option<SyncDoc>,
     },
-    /// v2: the client sent a `base_rev`, but the server has no such
+    /// The client sent a `base_rev`, but the server has no such
     /// document. The engine pushes it again with no base (M1).
     Lost { id: String },
-    /// v2: a conflict whose current version didn't fit the response's
+    /// A conflict whose current version didn't fit the response's
     /// budget. The engine pulls before the next round.
     Behind { id: String },
-    /// v2: a conflict whose current version couldn't be opened:
+    /// A conflict whose current version couldn't be opened:
     /// undecryptable (format 1), or a newer format.
     Unreadable { id: String, newer_format: bool },
 }
@@ -89,25 +69,9 @@ impl RemoteDoc {
     }
 }
 
-/// One page of `GET /v1/changes`: documents with `seq > since`, in order.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ChangesPage {
-    pub docs: Vec<RemoteDoc>,
-    /// The `seq` of the last document, or `since` for an empty page.
-    pub last_seq: i64,
-}
-
-/// Attachment bytes as the server stores them.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RemoteFile {
-    pub md5_hex: String,
-    pub content_type: String,
-    pub bytes: Vec<u8>,
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum RemoteError {
-    #[error("the sync server rejected the token")]
+    #[error("the sync server ended the session")]
     Unauthorized,
     #[error("the sync server answered {status}: {message}")]
     Status { status: u16, message: String },
@@ -124,48 +88,6 @@ impl RemoteError {
             RemoteError::Status { status, .. } => Some(*status),
             _ => None,
         }
-    }
-}
-
-/// A v1 sync server.
-///
-/// Legacy (v1): kept until step 3 of docs/ACCOUNTS.md › Build order.
-pub trait Remote {
-    /// `POST /v1/push`: one result per document, in order. Documents are
-    /// applied one after another, so a later one may build on an earlier one.
-    fn push(&self, docs: &[SyncDoc]) -> Result<Vec<PushResult>, RemoteError>;
-    /// `GET /v1/changes?since=&limit=`.
-    fn changes(&self, since: i64, limit: usize) -> Result<ChangesPage, RemoteError>;
-    /// `PUT /v1/files/<id>`; the server checks the bytes against `md5_hex`.
-    fn put_file(
-        &self,
-        id: &str,
-        md5_hex: &str,
-        content_type: &str,
-        bytes: &[u8],
-    ) -> Result<(), RemoteError>;
-    /// `GET /v1/files/<id>`; `None` when the server has no bytes for `id`.
-    fn get_file(&self, id: &str) -> Result<Option<RemoteFile>, RemoteError>;
-}
-
-impl<R: Remote + ?Sized> Remote for &R {
-    fn push(&self, docs: &[SyncDoc]) -> Result<Vec<PushResult>, RemoteError> {
-        (**self).push(docs)
-    }
-    fn changes(&self, since: i64, limit: usize) -> Result<ChangesPage, RemoteError> {
-        (**self).changes(since, limit)
-    }
-    fn put_file(
-        &self,
-        id: &str,
-        md5_hex: &str,
-        content_type: &str,
-        bytes: &[u8],
-    ) -> Result<(), RemoteError> {
-        (**self).put_file(id, md5_hex, content_type, bytes)
-    }
-    fn get_file(&self, id: &str) -> Result<Option<RemoteFile>, RemoteError> {
-        (**self).get_file(id)
     }
 }
 
@@ -201,35 +123,6 @@ pub fn md5_hex(bytes: &[u8]) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
-}
-
-/// The push validation the Worker applies, as an error message.
-pub fn validate_push(docs: &[SyncDoc]) -> Result<(), (u16, String)> {
-    if docs.len() > MAX_PUSH_DOCS {
-        return Err((
-            413,
-            format!("A push carries at most {MAX_PUSH_DOCS} documents."),
-        ));
-    }
-    for (i, doc) in docs.iter().enumerate() {
-        if !is_doc_id(&doc.id) {
-            return Err((400, format!("docs[{i}].id is not a document ID.")));
-        }
-        if !is_rev(&doc.rev) {
-            return Err((400, format!("docs[{i}].rev is not a revision.")));
-        }
-        if doc.base_rev.as_deref().is_some_and(|b| !is_rev(b)) {
-            return Err((400, format!("docs[{i}].base_rev is not a revision.")));
-        }
-        let size = serde_json::to_string(&doc.fields).map_or(usize::MAX, |s| s.len());
-        if size > MAX_FIELDS_BYTES {
-            return Err((
-                413,
-                format!("docs[{i}].fields is larger than {MAX_FIELDS_BYTES} bytes."),
-            ));
-        }
-    }
-    Ok(())
 }
 
 /// Percent-encodes one URL path segment.

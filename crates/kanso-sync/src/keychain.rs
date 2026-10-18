@@ -1,5 +1,6 @@
 //! Secrets in the macOS Keychain (docs/ACCOUNTS.md › Keychain items).
-//! Replaces `credentials.rs` (deleted in step 2a).
+//! The old app's `sync-token` item is never read, written or deleted here;
+//! the owner removes it after the legacy purge.
 //!
 //! The service is `Kanso`; item names carry the library ID, so data
 //! directories never share secrets. [`SecretStore`] is the seam: [`Keychain`]
@@ -37,9 +38,6 @@ pub fn recovery_item(library_id: &str) -> String {
 pub fn logout_item(library_id: &str) -> String {
     format!("sync-logout:{library_id}")
 }
-
-/// The legacy shared token. Never read or deleted by the new app.
-pub const LEGACY_TOKEN_ITEM: &str = "sync-token";
 
 /// A Keychain failure.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]

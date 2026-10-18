@@ -11,15 +11,10 @@
 //! server: [`HttpBackend`] (the Cloudflare Worker's `/v2` routes) or
 //! [`MemoryServer`] (tests). [`verify()`] and [`estimate()`] back the
 //! `kanso-sync` command line.
-//!
-//! Legacy (v1), kept until step 3 of docs/ACCOUNTS.md › Build order moves
-//! the app over: [`sync_once`] syncs one plaintext library behind one shared
-//! token ([`HttpRemote`], [`MemoryRemote`], [`credentials`], [`SyncConfig`]).
 
 pub mod account;
 pub mod api;
 pub mod binding;
-pub mod credentials;
 pub mod crypto;
 mod engine;
 mod http;
@@ -43,20 +38,18 @@ pub use binding::{
 };
 pub use crypto::{KdfParams, Password, PasswordError, RecoveryKey, RecoveryKeyError};
 pub use engine::{
-    CURSOR_KEY, Schedule, SyncError, SyncOptions, SyncProblem, SyncReport, batches, cursor,
-    problem, report_problem, reset_cursor, sync, sync_once, sync_with,
+    Schedule, SyncError, SyncOptions, SyncProblem, SyncReport, batches, problem, report_problem,
+    sync,
 };
-pub use http::{HttpBackend, HttpRemote};
+pub use http::HttpBackend;
 pub use kanso_store::SyncDoc;
 pub use keychain::{Keychain, MemorySecrets, SecretError, SecretStore};
 pub use memory::{
-    AccountSnapshot, DEFAULT_SETTINGS, Limits, MemoryRemote, MemoryServer, MemoryStats,
-    QuotaOverride, ServerDevice, ServerStats, Signup, is_valid_setting,
+    AccountSnapshot, DEFAULT_SETTINGS, Limits, MemoryServer, QuotaOverride, ServerDevice,
+    ServerStats, Signup, is_valid_setting,
 };
 pub use remote::{
-    ChangesPage, DEFAULT_CHANGES_LIMIT, MAX_CHANGES_LIMIT, MAX_FIELDS_BYTES, MAX_FILE_BYTES,
-    MAX_PUSH_BYTES, MAX_PUSH_DOCS, PushResult, Remote, RemoteDoc, RemoteError, RemoteFile,
-    is_doc_id, is_file_id, is_md5_hex, is_rev, md5_hex, validate_push,
+    PushResult, RemoteDoc, RemoteError, is_doc_id, is_file_id, is_md5_hex, is_rev, md5_hex,
 };
 pub use sealed::PlainView;
 pub use username::{UsernameError, check_new_username, is_reserved_username, normalize_username};
@@ -105,7 +98,7 @@ pub fn origin(server: &str) -> Result<String, EndpointError> {
 
 /// Checks a Worker URL and returns it normalized, without a trailing slash.
 /// Only https is accepted, apart from plain http to this Mac (for `wrangler
-/// dev`), so the access token never crosses the network unencrypted. A host
+/// dev`), so proofs and session tokens never cross the network unencrypted. A host
 /// ending in a dot is refused: it would give the same server a second origin
 /// (docs/ACCOUNTS.md › Conventions).
 pub fn check_endpoint(input: &str) -> Result<String, EndpointError> {
@@ -132,35 +125,6 @@ pub fn check_endpoint(input: &str) -> Result<String, EndpointError> {
         _ => return Err(EndpointError::Insecure),
     }
     Ok(url.as_str().trim_end_matches('/').to_owned())
-}
-
-/// Where the app syncs to. The token is kept separately, in the Keychain.
-///
-/// Legacy (v1, one shared token): kept until the app moves to accounts;
-/// step 3 of docs/ACCOUNTS.md › Build order removes it.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct SyncConfig {
-    /// The Worker's base URL, e.g. `https://kanso-sync.example.workers.dev`.
-    pub endpoint: String,
-}
-
-impl SyncConfig {
-    /// A config for `endpoint`, which must pass [`check_endpoint`].
-    pub fn new(endpoint: &str) -> Result<Self, EndpointError> {
-        Ok(SyncConfig {
-            endpoint: check_endpoint(endpoint)?,
-        })
-    }
-
-    /// A client for this endpoint using `token`.
-    pub fn remote(&self, token: impl Into<String>) -> HttpRemote {
-        HttpRemote::new(self.endpoint.clone(), token)
-    }
-
-    /// A client for this endpoint using the token in the Keychain, if any.
-    pub fn remote_from_keychain(&self) -> Result<Option<HttpRemote>, credentials::CredentialError> {
-        Ok(credentials::load_token()?.map(|token| self.remote(token)))
-    }
 }
 
 #[cfg(test)]

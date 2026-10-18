@@ -256,21 +256,6 @@ fn a_local_win_beats_the_remote_generation() {
     let pending = store.pending_push(10).unwrap();
     assert_eq!(pending[0].rev, new_rev);
     assert_eq!(pending[0].base_rev.as_deref(), Some(remote.rev.as_str()));
-    // Under the legacy rules the local revision stays as it was.
-    let (_dir2, legacy) = temp_store();
-    let id2 = book(&legacy, "mine");
-    let first = legacy.pending_push(10).unwrap().remove(0);
-    legacy.mark_synced(&id2, &first.rev, None).unwrap();
-    rename(&legacy, &id2, "edited", 9_000_000_000_000);
-    let local = legacy.get(&id2).unwrap().unwrap().rev;
-    let remote = SyncDoc {
-        id: id2.clone(),
-        ..remote
-    };
-    assert_eq!(
-        legacy.apply_remote_legacy(&remote, None).unwrap(),
-        ApplyOutcome::LocalWon { new_rev: local }
-    );
 }
 
 /// A replayed older revision or tombstone is `Stale`: the Mac keeps its

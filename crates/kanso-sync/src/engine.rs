@@ -1,15 +1,12 @@
 //! One sync pass: pull the server's changes, then push local ones; and what
 //! a sync reports (docs/ACCOUNTS.md › Sync with encryption, › Problems).
 //!
-//! [`sync`] is the app's entry point: the v2 rules over `Sealed` (sealed
+//! [`sync`] is the only engine: the v2 rules over `Sealed` (sealed
 //! documents, opaque IDs, the guard, re-merge, repair, quotas and pauses).
-//! `sync_once`/`sync_with` are the legacy v1 engine over the plaintext
-//! [`Remote`] (v1 rules, legacy cursor), kept until step 3 of
-//! docs/ACCOUNTS.md › Build order. [`SyncReport`], [`SyncOptions`],
-//! [`SyncError`], [`SyncProblem`], [`problem`] and [`report_problem`] are
-//! frozen by step 1.
+//! [`SyncReport`], [`SyncOptions`], [`SyncError`], [`SyncProblem`],
+//! [`problem`] and [`report_problem`] are frozen by step 1.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -20,15 +17,9 @@ use serde_json::Value;
 use crate::account::Session;
 use crate::api::Backend;
 use crate::binding::meta_keys;
-use crate::remote::{MAX_FIELDS_BYTES, PushResult, Remote, RemoteError, is_file_id, md5_hex};
+use crate::remote::{is_file_id, md5_hex};
 use crate::sealed::{Entry, FileBytes, Pushed, Sealed};
 use crate::wire::{ApiError, QuotaKind, SignOutReason, WireChange};
-
-/// The `meta` key holding the last change sequence pulled from a v1 server.
-///
-/// Legacy (v1): `sync_once`/`sync_with` use it until step 3; [`sync`] uses
-/// [`SyncOptions::cursor_key`].
-pub const CURSOR_KEY: &str = meta_keys::LEGACY_LAST_SEQ;
 
 #[derive(Clone, Debug)]
 pub struct SyncOptions {
@@ -44,9 +35,6 @@ pub struct SyncOptions {
     /// files and returns [`SyncError::Cancelled`]. Every re-bind and
     /// sign-out cancels and joins the running sync first (fix 2).
     pub cancel: Option<Arc<AtomicBool>>,
-    /// The `meta` key of the cursor: `sync.v2.last_seq`. Only the rollback
-    /// test sets the legacy `sync.last_seq`, to run the old rules.
-    pub cursor_key: &'static str,
 }
 
 impl Default for SyncOptions {
@@ -57,7 +45,6 @@ impl Default for SyncOptions {
             batch_bytes: 1024 * 1024,
             max_rounds: 4,
             cancel: None,
-            cursor_key: meta_keys::LAST_SEQ,
         }
     }
 }
@@ -82,8 +69,8 @@ pub struct SyncReport {
     pub pending: usize,
     /// Documents that had a conflict this sync, for the UI to flag.
     pub conflicted: Vec<String>,
-    /// Documents too large for the server (more than [`MAX_FIELDS_BYTES`]
-    /// today; `fields` JSON over 1,400,000 bytes under v2).
+    /// Documents too large for the server: `fields` JSON over 1,400,000
+    /// bytes (`wire::MAX_FIELDS_JSON`).
     pub too_large: Vec<String>,
     /// Remote documents the store could not accept, with the reason.
     pub invalid: Vec<(String, String)>,
@@ -124,9 +111,6 @@ impl SyncReport {
 pub enum SyncError {
     #[error(transparent)]
     Store(#[from] StoreError),
-    /// From the plaintext [`Remote`] (today's v1 servers and test remotes).
-    #[error(transparent)]
-    Remote(#[from] RemoteError),
     /// From a v2 route. A 401 ends the session; a 404 means the server isn't
     /// v2 (`ServerOutdated`).
     #[error(transparent)]
@@ -140,35 +124,11 @@ pub enum SyncError {
     Cancelled,
 }
 
-fn protocol(message: String) -> SyncError {
-    SyncError::Remote(RemoteError::Protocol(message))
-}
-
-/// The last change sequence this store pulled from a v1 server.
-///
-/// Legacy (v1): see [`CURSOR_KEY`].
-pub fn cursor(store: &Store) -> Result<i64, StoreError> {
-    Ok(store
-        .meta(CURSOR_KEY)?
-        .and_then(|v| v.parse::<i64>().ok())
-        .filter(|v| *v >= 0)
-        .unwrap_or(0))
-}
-
-/// Makes the next v1 sync pull every document again. Safe at any time: what
-/// the store already has comes back as unchanged, and missing attachment
-/// bytes are fetched.
-///
-/// Legacy (v1): see [`CURSOR_KEY`].
-pub fn reset_cursor(store: &Store) -> Result<(), StoreError> {
-    store.set_meta(CURSOR_KEY, "0")
-}
-
 /// The app's sync: one pass of `session`'s account over `b`, with every v2
 /// rule (docs/ACCOUNTS.md › Sync with encryption, the order below).
 ///
 /// 1. **Pull.** Pages through the feed after the cursor
-///    ([`SyncOptions::cursor_key`]), opening each document. The first page
+///    (`sync.v2.last_seq`), opening each document. The first page
 ///    is checked before anything is written: a key ID other than this
 ///    Mac's is [`SyncError::WrongKey`]; an epoch other than the saved one,
 ///    or a `head_seq` below the cursor, means the server's copy was
@@ -299,7 +259,7 @@ impl Run<'_> {
     fn cursor(&self) -> Result<i64, SyncError> {
         Ok(self
             .store
-            .meta(self.options.cursor_key)?
+            .meta(meta_keys::LAST_SEQ)?
             .and_then(|v| v.parse::<i64>().ok())
             .filter(|v| *v >= 0)
             .unwrap_or(0))
@@ -327,7 +287,7 @@ impl Run<'_> {
                     let restored =
                         saved.as_deref().is_some_and(|e| e != page.epoch) || page.head_seq < since;
                     if restored {
-                        self.set_meta(self.options.cursor_key, "0")?;
+                        self.set_meta(meta_keys::LAST_SEQ, "0")?;
                         self.set_meta(meta_keys::EPOCH, REMERGING)?;
                         self.remerging = true;
                         self.present.clear();
@@ -368,7 +328,7 @@ impl Run<'_> {
                 last = seq;
             }
             if last > since {
-                self.set_meta(self.options.cursor_key, &last.to_string())?;
+                self.set_meta(meta_keys::LAST_SEQ, &last.to_string())?;
                 since = last;
             }
             if too_new {
@@ -785,11 +745,7 @@ pub fn problem(err: &SyncError) -> Option<SyncProblem> {
             ApiError::Transport(_) => SyncProblem::Offline,
             _ => SyncProblem::Other,
         },
-        SyncError::Remote(RemoteError::Unauthorized) => {
-            SyncProblem::SignedOut(SignOutReason::Unknown)
-        }
-        SyncError::Remote(RemoteError::Transport(_)) => SyncProblem::Offline,
-        SyncError::Remote(_) | SyncError::Store(_) => SyncProblem::Other,
+        SyncError::Store(_) => SyncProblem::Other,
     })
 }
 
@@ -815,234 +771,6 @@ pub fn report_problem(report: &SyncReport) -> Option<SyncProblem> {
         });
     }
     None
-}
-
-/// Pulls, then pushes, with the default options.
-///
-/// Legacy (v1 rules, plaintext, one shared token): kept until step 3 of
-/// docs/ACCOUNTS.md › Build order; accounts use [`sync()`].
-pub fn sync_once<R: Remote + ?Sized>(store: &Store, remote: &R) -> Result<SyncReport, SyncError> {
-    sync_with(store, remote, &SyncOptions::default())
-}
-
-/// One sync pass.
-///
-/// 1. Pull: pages through the server's changes after the stored cursor,
-///    fetching the bytes of live files the store lacks, and applies each
-///    document (last writer by `updatedAt` wins; the loser is kept in
-///    revisions). The cursor is saved after each page.
-/// 2. Push: sends every pending document in batches, uploading file bytes
-///    first. Accepted documents are marked synced; on a conflict the server's
-///    version is applied, and a local version that won goes again in the
-///    next round.
-///
-/// Legacy (v1): see [`sync_once`].
-pub fn sync_with<R: Remote + ?Sized>(
-    store: &Store,
-    remote: &R,
-    options: &SyncOptions,
-) -> Result<SyncReport, SyncError> {
-    let mut report = SyncReport::default();
-    pull(store, remote, options, &mut report)?;
-    push(store, remote, options, &mut report)?;
-    Ok(report)
-}
-
-fn pull<R: Remote + ?Sized>(
-    store: &Store,
-    remote: &R,
-    options: &SyncOptions,
-    report: &mut SyncReport,
-) -> Result<(), SyncError> {
-    let page_size = options.page_size.max(1);
-    let mut since = cursor(store)?;
-    loop {
-        let page = remote.changes(since, page_size)?;
-        let mut last = since;
-        for doc in &page.docs {
-            if doc.seq <= last {
-                return Err(protocol(format!(
-                    "the change feed went from seq {last} to {}",
-                    doc.seq
-                )));
-            }
-            apply(store, remote, &doc.to_sync_doc(), report)?;
-            last = doc.seq;
-        }
-        if last > since {
-            store.set_meta(CURSOR_KEY, &last.to_string())?;
-            since = last;
-        }
-        if page.docs.len() < page_size {
-            return Ok(());
-        }
-    }
-}
-
-/// Applies one server document, fetching its attachment bytes when needed.
-fn apply<R: Remote + ?Sized>(
-    store: &Store,
-    remote: &R,
-    doc: &SyncDoc,
-    report: &mut SyncReport,
-) -> Result<(), SyncError> {
-    let attachment = if !doc.deleted && is_file_id(&doc.id) {
-        fetch_blob(store, remote, doc, report)?
-    } else {
-        None
-    };
-    let outcome = match store.apply_remote_legacy(doc, attachment) {
-        Ok(outcome) => outcome,
-        Err(StoreError::Invalid(reason)) => {
-            report.invalid.push((doc.id.clone(), reason));
-            return Ok(());
-        }
-        Err(err) => return Err(err.into()),
-    };
-    match outcome {
-        ApplyOutcome::Applied => report.pulled += 1,
-        ApplyOutcome::Unchanged => {}
-        ApplyOutcome::RemoteWon => {
-            report.pulled += 1;
-            report.conflicts_remote += 1;
-            report.note_conflict(&doc.id);
-        }
-        ApplyOutcome::LocalWon { .. } => {
-            report.conflicts_local += 1;
-            report.note_conflict(&doc.id);
-        }
-        ApplyOutcome::Stale { .. } => report.stale.push(doc.id.clone()),
-    }
-    Ok(())
-}
-
-fn fetch_blob<R: Remote + ?Sized>(
-    store: &Store,
-    remote: &R,
-    doc: &SyncDoc,
-    report: &mut SyncReport,
-) -> Result<Option<Attachment>, SyncError> {
-    if let Some(md5) = doc.fields.get("md5digest").and_then(Value::as_str)
-        && store.has_blob(&doc.id, &md5.to_ascii_lowercase())?
-    {
-        return Ok(None);
-    }
-    let Some(file) = remote.get_file(&doc.id)? else {
-        report.files_missing += 1;
-        return Ok(None);
-    };
-    if md5_hex(&file.bytes) != file.md5_hex.to_ascii_lowercase() {
-        return Err(protocol(format!(
-            "the bytes of {} do not match their MD5",
-            doc.id
-        )));
-    }
-    report.files_down += 1;
-    Ok(Some(Attachment::new(file.bytes)))
-}
-
-fn push<R: Remote + ?Sized>(
-    store: &Store,
-    remote: &R,
-    options: &SyncOptions,
-    report: &mut SyncReport,
-) -> Result<(), SyncError> {
-    let mut lost = BTreeSet::new();
-    for _ in 0..options.max_rounds.max(1) {
-        let mut docs = Vec::new();
-        let mut sizes = Vec::new();
-        report.too_large.clear();
-        for doc in store.pending_push(usize::MAX)? {
-            if lost.contains(&doc.id) {
-                continue;
-            }
-            let fields = serde_json::to_string(&doc.fields).map_or(usize::MAX, |s| s.len());
-            if fields > MAX_FIELDS_BYTES {
-                report.too_large.push(doc.id);
-                continue;
-            }
-            sizes.push(serde_json::to_vec(&doc).map_or(usize::MAX, |s| s.len()));
-            docs.push(doc);
-        }
-        if docs.is_empty() {
-            break;
-        }
-        let mut conflicts = 0;
-        for range in batches(&sizes, options.batch_docs, options.batch_bytes) {
-            let batch = &docs[range];
-            upload_files(store, remote, batch, report)?;
-            let results = remote.push(batch)?;
-            if results.len() != batch.len() {
-                return Err(protocol(format!(
-                    "a push of {} documents got {} results",
-                    batch.len(),
-                    results.len()
-                )));
-            }
-            for (doc, result) in batch.iter().zip(results) {
-                if result.id() != doc.id {
-                    return Err(protocol(format!(
-                        "the result for {} names {}",
-                        doc.id,
-                        result.id()
-                    )));
-                }
-                match result {
-                    PushResult::Ok { .. } => {
-                        store.mark_synced(&doc.id, &doc.rev, None)?;
-                        report.pushed += 1;
-                    }
-                    PushResult::Conflict {
-                        current: Some(current),
-                        ..
-                    } => {
-                        if current.id != doc.id {
-                            return Err(protocol(format!(
-                                "the conflict for {} carries {}",
-                                doc.id, current.id
-                            )));
-                        }
-                        conflicts += 1;
-                        apply(store, remote, &current, report)?;
-                    }
-                    PushResult::Conflict { current: None, .. }
-                    | PushResult::Lost { .. }
-                    | PushResult::Behind { .. }
-                    | PushResult::Unreadable { .. } => {
-                        // The server lost it (v1 rules keep it pending; the
-                        // v2 engine pushes it again with no base), or a v2
-                        // answer a v1 server never sends.
-                        lost.insert(doc.id.clone());
-                    }
-                }
-            }
-        }
-        if conflicts == 0 {
-            break;
-        }
-    }
-    report.pending = store.pending_push(usize::MAX)?.len();
-    Ok(())
-}
-
-/// Uploads the bytes of the live files in `batch` so they are on the server
-/// before any device can see the documents.
-fn upload_files<R: Remote + ?Sized>(
-    store: &Store,
-    remote: &R,
-    batch: &[SyncDoc],
-    report: &mut SyncReport,
-) -> Result<(), SyncError> {
-    for doc in batch.iter().filter(|d| !d.deleted && is_file_id(&d.id)) {
-        match store.attachment(&doc.id)? {
-            Some((content_type, blob)) => {
-                remote.put_file(&doc.id, &blob.md5_hex(), &content_type, &blob.data)?;
-                report.files_up += 1;
-            }
-            None => report.files_missing += 1,
-        }
-    }
-    Ok(())
 }
 
 /// Splits items of the given sizes into consecutive batches of at most
@@ -1093,10 +821,6 @@ mod problem_tests {
         );
         assert_eq!(
             problem(&SyncError::Api(ApiError::Transport("dns".into()))),
-            Some(SyncProblem::Offline)
-        );
-        assert_eq!(
-            problem(&SyncError::Remote(RemoteError::Transport("dns".into()))),
             Some(SyncProblem::Offline)
         );
         assert_eq!(

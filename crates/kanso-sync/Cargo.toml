@@ -34,5 +34,7 @@ keyring = { version = "3.6", features = ["apple-native"] }
 
 [dev-dependencies]
 async-channel.workspace = true
+# The rollback test replays the old app's store rules (tests/common/legacy.rs).
+kanso-store = { workspace = true, features = ["legacy-v1-rules"] }
 proptest.workspace = true
 tempfile.workspace = true

@@ -58,8 +58,8 @@ pub enum ApplyOutcome {
     /// `new_rev` is the local version's revision after the conflict. Under M2
     /// (docs/ACCOUNTS.md › Revision generations only grow) it is a new
     /// revision with generation `max(local, remote) + 1` and the same content
-    /// hash. Under the legacy v1 rules ([`Store::apply_remote_legacy`]) it is
-    /// the unchanged local revision.
+    /// hash. (Only the rollback test's stand-in for the old app, behind the
+    /// `legacy-v1-rules` feature, keeps the local revision unchanged.)
     LocalWon { new_rev: String },
     /// A replayed older version (M2, security re-check 4): the remote
     /// revision's generation is at or below the generation of the local
@@ -68,7 +68,7 @@ pub enum ApplyOutcome {
     /// it gets `new_rev` (generation `max(local, remote) + 1`, same content
     /// hash), `synced_rev` becomes the remote revision, the remote version is
     /// kept as a snapshot when its content differs, and the local version is
-    /// pushed again. Never produced under the legacy v1 rules.
+    /// pushed again. Never produced by the old app's rules.
     Stale { new_rev: String },
 }
 
@@ -344,11 +344,13 @@ impl Store {
         self.apply(remote, attachment, guard, Rules::V2)
     }
 
-    /// Legacy: [`Store::apply_remote`] under the v1 rules, for the v1 engine
-    /// (`kanso_sync::sync_once`) until step 3 of docs/ACCOUNTS.md removes it.
-    /// A local win keeps its revision and nothing is ever `Stale`, exactly as
-    /// the app before accounts behaved, so a rolled-back library syncs with
-    /// a v1 server the way the old app would.
+    /// [`Store::apply_remote`] under the old app's rules (before accounts):
+    /// a local win keeps its revision and nothing is ever `Stale`. Test
+    /// support only, behind the `legacy-v1-rules` feature, which no shipped
+    /// build enables: the rollback test (docs/ACCOUNTS.md › Rollback)
+    /// replays the old app's sync with it, so a rolled-back library is
+    /// checked against the rules the old app really runs.
+    #[cfg(feature = "legacy-v1-rules")]
     pub fn apply_remote_legacy(
         &self,
         remote: &SyncDoc,
@@ -412,7 +414,7 @@ impl Store {
             let local_rev = parse_rev(&local.rev)?;
             // M2: a revision at or below the one this Mac last synced is a
             // replay (or a rewound server). Never revert; rebase and push.
-            if rules == Rules::V2
+            if !rules.legacy()
                 && let Some(synced) = &local.synced_rev
                 && remote_rev.generation <= parse_rev(synced)?.generation
             {
@@ -442,7 +444,7 @@ impl Store {
             if !remote.deleted {
                 keep_remote(tx, &remote.id, &remote.rev, &fields)?;
             }
-            if rules == Rules::Legacy {
+            if rules.legacy() {
                 tx.execute(
                     "UPDATE docs SET synced_rev = ?2 WHERE id = ?1",
                     params![remote.id, remote.rev],
@@ -461,8 +463,19 @@ impl Store {
 enum Rules {
     /// Accounts (M2): local wins and replays get a higher generation.
     V2,
-    /// The v1 engine's rules, unchanged (legacy, until step 3).
+    /// The old app's rules, for the rollback test only.
+    #[cfg(feature = "legacy-v1-rules")]
     Legacy,
+}
+
+impl Rules {
+    /// Whether these are the old app's rules (never, without the feature).
+    fn legacy(self) -> bool {
+        #[cfg(feature = "legacy-v1-rules")]
+        return self == Rules::Legacy;
+        #[cfg(not(feature = "legacy-v1-rules"))]
+        return false;
+    }
 }
 
 fn parse_rev(rev: &str) -> Result<kanso_core::Rev> {
