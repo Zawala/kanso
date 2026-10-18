@@ -13,27 +13,67 @@
 //! (about 2,900 styled paragraphs) reaches it, and the combined parse cut
 //! that note short too. Highlighting every note of that library took 3.9 s
 //! this way against 4.9 s combined.
+//!
+//! The library's queries also leave some markers uncaptured, so they took
+//! the text color while every other marker receded: table pipes and
+//! delimiter rows, task boxes, and the brackets around links and images.
+//! Link reference definitions used capture names no theme styles. Kanso adds
+//! the missing captures.
 
 use std::sync::Once;
 
 use gpui_kit::component::highlighter::LanguageRegistry;
 
-/// Makes the editor's Markdown parse each paragraph's inline text on its own.
-/// Only editors created afterwards pick it up; it does nothing the second
-/// time.
+/// Block markers the library's Markdown query leaves in the text color.
+/// Node names are tree-sitter-md 0.5.3's; a misspelled one fails the whole
+/// query, which the tests below would catch as missing colors.
+const BLOCK_MARKERS: &str = r#"
+(pipe_table_header "|" @punctuation.delimiter)
+(pipe_table_row "|" @punctuation.delimiter)
+(pipe_table_delimiter_row "|" @punctuation.delimiter)
+(pipe_table_delimiter_cell) @punctuation.delimiter
+[(task_list_marker_checked) (task_list_marker_unchecked)] @punctuation.list_marker
+(link_reference_definition ":" @punctuation.delimiter)
+(link_label ["[" "]"] @punctuation.delimiter)
+"#;
+
+/// The brackets around links and images, which the inline query leaves in
+/// the text color between the link text and its muted destination.
+const INLINE_MARKERS: &str = r#"
+(inline_link ["[" "]" "(" ")"] @punctuation.delimiter)
+(image ["!" "[" "]" "(" ")"] @punctuation.delimiter)
+(full_reference_link ["[" "]"] @punctuation.delimiter)
+(collapsed_reference_link ["[" "]"] @punctuation.delimiter)
+(shortcut_link ["[" "]"] @punctuation.delimiter)
+"#;
+
+/// Makes the editor's Markdown parse each paragraph's inline text on its own
+/// and mute every marker. Only editors created afterwards pick it up; it does
+/// nothing the second time.
 pub fn ensure_registered() {
     static DONE: Once = Once::new();
     DONE.call_once(|| {
         let registry = LanguageRegistry::singleton();
+        // no-prop-test: fixed edits to the library's queries; the tests below
+        // check what they highlight.
+        if let Some(mut inline) = registry.language("markdown_inline") {
+            inline.highlights = format!("{}\n{INLINE_MARKERS}", inline.highlights).into();
+            registry.register("markdown_inline", &inline);
+        }
         let Some(mut config) = registry.language("markdown") else {
             return;
         };
-        // no-prop-test: a fixed edit to the library's query; the tests below
-        // check what it highlights.
         config.injections = config
             .injections
             .replace("(#set! injection.combined)", "")
             .into();
+        // Reference definitions' labels and destinations, named the way the
+        // inline query names a link's.
+        let highlights = config
+            .highlights
+            .replace("@text.uri", "@link_uri")
+            .replace("@text.reference", "@link_text");
+        config.highlights = format!("{highlights}\n{BLOCK_MARKERS}").into();
         registry.register("markdown", &config);
     });
 }
@@ -97,6 +137,48 @@ mod tests {
                 vec![color(c.code_text); 3]
             );
             assert_eq!(colors_of(source, &colors, "*a*")[0], muted);
+        }
+    }
+
+    /// Table pipes and delimiter rows, task boxes and the brackets around
+    /// links, images and reference definitions recede like every other
+    /// marker, while link text keeps the link color, in both themes.
+    #[test]
+    fn table_task_and_link_markers_recede() {
+        ensure_registered();
+        let source = "| a |\n|:--|\n| b |\n\n- [x] done\n- [ ] todo\n\n\
+                      [t](u) ![i](p) [f][r] [s]\n\n[r]: https://e.x\n";
+        for (dark, c) in [(true, &DARK), (false, &LIGHT)] {
+            let colors = colors(source, dark);
+            let muted = Some(Hsla::from(c.text_muted));
+            let link = Some(Hsla::from(c.link));
+            // `m` marks a muted byte, `l` a link-colored one, and `.` one in
+            // the text color.
+            let expect = |needle: &str, pattern: &str| {
+                let expected: Vec<_> = pattern
+                    .bytes()
+                    .map(|b| match b {
+                        b'm' => muted,
+                        b'l' => link,
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(
+                    colors_of(source, &colors, needle),
+                    expected,
+                    "{dark}: {needle}"
+                );
+            };
+            expect("| a |", "m...m");
+            expect("|:--|", "mmmmm");
+            expect("| b |", "m...m");
+            expect("[x]", "mmm");
+            expect("[ ]", "mmm");
+            expect("[t](u)", "mlmmmm");
+            expect("![i](p)", "mmlmmmm");
+            expect("[f][r]", "mlmlll");
+            expect("[s]", "mlm");
+            expect("[r]: https://e.x", "mlmm.mmmmmmmmmmm");
         }
     }
 

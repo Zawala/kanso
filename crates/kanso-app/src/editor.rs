@@ -28,14 +28,10 @@ use crate::theme::{Colors, muted_tag_color};
 
 const AUTOSAVE_DELAY: Duration = Duration::from_millis(600);
 const PREVIEW_DELAY: Duration = Duration::from_millis(150);
-/// Line height of the Markdown source, relative to its size.
+/// Line height of the Markdown source, relative to its size. Every face and
+/// view mode sets the source at the chosen size with this line height:
+/// beside the preview it wraps sooner rather than getting smaller.
 const BODY_LINE_HEIGHT: f32 = 1.6;
-/// Beside the preview, where it shares the width, the monospaced face is set
-/// a step smaller (14 at the default 16), with rows to match: at the same
-/// size it runs about two fifths wider than the proportional one. Alone, it
-/// keeps the body size. See `EditorFace::compact`.
-const COMPACT_SCALE: f32 = 0.875;
-const COMPACT_LINE_HEIGHT: f32 = 1.5;
 /// Where the source editor's text starts inside it, without line numbers:
 /// its padding and the gap its gutter keeps. The pane's padding makes up the
 /// rest of [`TEXT_INSET`].
@@ -857,11 +853,7 @@ impl Render for NoteEditor {
         } else {
             cx.theme().font_family.clone()
         };
-        let (size, line_height) = if face.compact {
-            (self.font_size * COMPACT_SCALE, COMPACT_LINE_HEIGHT)
-        } else {
-            (self.font_size, BODY_LINE_HEIGHT)
-        };
+        let size = self.font_size;
         // Alone, the source keeps to a readable measure for its face and
         // size, starting under the title; beside the preview it takes its
         // half.
@@ -954,7 +946,7 @@ impl Render for NoteEditor {
                                                 .h_full()
                                                 .font_family(family)
                                                 .text_size(px(size))
-                                                .line_height(relative(line_height)),
+                                                .line_height(relative(BODY_LINE_HEIGHT)),
                                         ),
                                 ),
                         )
