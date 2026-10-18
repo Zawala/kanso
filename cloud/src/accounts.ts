@@ -23,6 +23,10 @@ export const USAGE = `Usage: npm run -s admin -- [--local [--persist-to DIR]] <c
                                     Delete the account's rows and queue its R2 purge.
   signups open | close | only <username>
                                     Open sign-ups, close them, or reserve them for one name.
+                                    Run only immediately before that name signs up: anyone
+                                    who guesses the name can take it first. If someone did,
+                                    delete <username> --confirm <username>, run only again,
+                                    and sign up at once.
   max-accounts <n> [--force]        At most n accounts.
   quota <username> [--docs N] [--doc-mib N] [--files N] [--file-mib N] [--writes-per-day N]
         [--force]
@@ -513,8 +517,10 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 					`SELECT id FROM accounts WHERE username = ${sqlText(user)}`,
 				]);
 				return existing.results.length > 0
-					? ok(`Sign-ups are reserved for ${user}, but ${user} already has an account: the reservation is spent. Run \`signups close\` or \`signups open\`.`)
-					: ok(`Sign-ups are reserved for ${user} until that account exists.`);
+					? ok(
+							`Sign-ups are reserved for ${user}, but ${user} already has an account: the reservation is spent. Run \`signups close\` or \`signups open\`. If that account isn't the one you meant to create, someone took the name first: run \`delete ${user} --confirm ${user}\`, then \`signups only ${user}\` again, and sign up at once.`,
+						)
+					: ok(`Sign-ups are reserved for ${user} until that account exists. Sign up now: anyone who guesses the name can take it first.`);
 			}
 			throw new UsageError(USAGE);
 		}

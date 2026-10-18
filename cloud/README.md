@@ -78,8 +78,11 @@ which has every command; in outline:
    and `npm run -s admin -- legacy-export --dir ~/KansoLegacy-<date>` (the old plaintext; keep it).
 3. Set `AUTH_PEPPER`, `npm run migrate:remote` (adds `0002_accounts`, sign-ups closed), then
    `npm run deploy`. From here `/v1` answers 404.
-4. Install the new app, run `kanso-sync estimate`, then `npm run -s admin -- signups only <you>`
-   and create your account in Settings › Account. Save the recovery key. If the estimate is over a
+4. Install the new app and run `kanso-sync estimate`. Then, immediately before you create your
+   account in Settings › Account, run `npm run -s admin -- signups only <you>`: until your account
+   exists, anyone who guesses the name can take it. If the app says the name is taken, run
+   `npm run -s admin -- delete <you> --confirm <you>`, then `signups only <you>` again, and create
+   the account at once. Save the recovery key. If the estimate is over a
    default quota, raise your own account (`quota <you> …`); the daily budget of 20,000 writes
    covers a first upload of the current library several times over.
 5. Wait for "Synced", quit Kanso, and run `kanso-sync verify --legacy …/manifest.json --out
@@ -102,7 +105,7 @@ npm run -s admin -- --local accounts        # the local database (wrangler dev's
 |---|---|
 | `accounts` | Every account's usage against its quotas, writes today against its budget, bytes uploaded today, devices, last seen and status; the settings, global sums and pending purges |
 | `settings` | The settings |
-| `signups open` / `signups close` / `signups only <username>` | Open sign-ups, close them, or reserve them for one name |
+| `signups open` / `signups close` / `signups only <username>` | Open sign-ups, close them, or reserve them for one name. Run `only` immediately before that name signs up; if someone took the name first, `delete` it and run `only` again |
 | `disable <username>` / `enable <username>` | Refuse, or allow again, the account's sign-ins and sessions |
 | `delete <username> --confirm <username>` | Delete the account's rows and queue its R2 purge |
 | `max-accounts <n> [--force]` | At most n accounts |

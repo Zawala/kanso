@@ -90,6 +90,9 @@ nothing was deployed yet):
 5. **Logs and traces pinned.** `wrangler.jsonc` sets `observability.logs.enabled: true` with
    `invocation_logs: false`, and `observability.traces.enabled: false`, so a changed default
    can't start recording requests. `cloud/DEPLOYED.md` says what `wrangler tail` still shows.
+6. **`signups only` right before the sign-up.** The deploy steps, the README and the admin help
+   say to run it immediately before the owner's sign-up, since anyone who guesses the name can
+   take it while it is reserved, and what to do if they did: `delete`, then `signups only` again.
 8. **Day rollover.** Tests now send requests at different times of one UTC day and on both sides
    of midnight, for the server-wide writes cap and `signups_per_day`. They found one fault: a
    request stamped just before a window's boundary but counted just after it reset that row of
@@ -1871,7 +1874,7 @@ CLOUDFLARE_API_TOKEN="$IMNGONII_CLOUDFLARE_API_TOKEN" npm run -s admin -- accoun
 | `accounts` | Each account's username, ID, created date, usage against quotas, writes today against its budget, bytes uploaded today, active devices, last seen and status. Also the settings, global sums and pending purges. |
 | `disable <username>` / `enable <username>` | Set or clear `disabled_at`. |
 | `delete <username> --confirm <username>` | The deletion batch, plus the purge row. |
-| `signups open` / `signups close` / `signups only <username>` | `settings.signup`. `only` then checks whether that name already has an account, and says so: the reservation is spent once it does. |
+| `signups open` / `signups close` / `signups only <username>` | `settings.signup`. `only` then checks whether that name already has an account, and says so: the reservation is spent once it does. Its help and answers say to run it immediately before that name signs up, and, if someone took the name first, to `delete <username> --confirm <username>` and run `only` again (security review 2, finding 6). |
 | `max-accounts <n>` | Subject to the overcommit check unless `--force` |
 | `quota <username> [--docs N] [--doc-mib N] [--files N] [--file-mib N] [--writes-per-day N]`, `quota <username> --default` | Overrides, in MiB; overcommit check. `--writes-per-day` sets `quota_writes_per_day`, refused over `global_writes_per_day` unless `--force` |
 | `default-quota [--docs N] [--doc-mib N] [--files N] [--file-mib N]` | Defaults; overcommit check |
@@ -2171,9 +2174,14 @@ e2e.
    It opens signed out with every note in place. Run `kanso-sync estimate` and compare it with the
    quotas.
 6. **Create the owner's account.**
-   1. `npm run -s admin -- signups only <you>`.
-   2. In the app: Settings › Account › Create account. Save the recovery key, then Done.
-   3. If the estimate exceeded a default, run `quota <you> …` and Sync now.
+   1. Open Settings › Account › Create account and fill it in, but don't submit yet.
+   2. Immediately before submitting: `npm run -s admin -- signups only <you>`. Until the account
+      exists, anyone who guesses the name can take it, so leave no gap.
+   3. Submit. Save the recovery key, then Done.
+   4. If the name was taken (the app says so, or `signups only` said the reservation is spent
+      before you signed up), someone else got it first: `npm run -s admin -- delete <you> --confirm
+      <you>`, then repeat from 2.
+   5. If the estimate exceeded a default, run `quota <you> …` and Sync now.
 7. **Verify.** Wait for "Synced". Quit Kanso, then run `cargo run --release -p kanso-sync -- verify
    --data-dir ~/Library/Application\ Support/Kanso --legacy ~/KansoLegacy-<date>/manifest.json
    --out ~/KansoLegacy-<date>/verified.json`. It must exit 0.

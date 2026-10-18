@@ -96,9 +96,12 @@ describe("commands", () => {
 		expect((await runAdmin(["signups", "close"])).ok).toBe(true);
 		expect(await setting("signup")).toBe("closed");
 		expect((await callJson("/v2/health")).body.signup).toBe("closed");
-		expect((await runAdmin(["signups", "only", "Carol"])).message).toContain("until that account exists");
+		expect((await runAdmin(["signups", "only", "Carol"])).message).toContain("until that account exists. Sign up now");
 		expect(await setting("signup")).toBe("only:carol");
-		expect((await runAdmin(["signups", "only", "bob"])).message).toContain("spent");
+		// Taken already (by someone else, if the owner hasn't signed up yet): the way back is named.
+		const spent = (await runAdmin(["signups", "only", "bob"])).message;
+		expect(spent).toContain("spent");
+		expect(spent).toContain("`delete bob --confirm bob`, then `signups only bob` again");
 		expect((await runAdmin(["signups", "open"])).ok).toBe(true);
 		expect(await setting("signup")).toBe("open");
 		await expect(runAdmin(["signups", "maybe"])).rejects.toThrow(UsageError);
