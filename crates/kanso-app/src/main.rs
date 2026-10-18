@@ -7,7 +7,9 @@ mod clock;
 mod config;
 mod dialogs;
 mod editor;
+mod empty_state;
 mod export;
+mod grouping;
 mod history;
 mod inkdrop;
 mod launch;
@@ -21,6 +23,7 @@ mod settings;
 mod sidebar;
 #[cfg(test)]
 mod snapshots;
+mod text_match;
 mod theme;
 #[cfg(test)]
 mod ui_tests;

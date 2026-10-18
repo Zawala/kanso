@@ -284,6 +284,127 @@ fn search_sync(
     .unwrap();
 }
 
+/// Searches for something no note has: the zero-results state.
+fn search_nothing(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update_window(window, |_, window, cx| {
+        let search = workspace.read(cx).note_list.read(cx).search.clone();
+        search.update(cx, |search, cx| {
+            search.replace_all("quarterly okr", window, cx)
+        });
+    })
+    .unwrap();
+}
+
+/// The empty search box with focus, which shows the search syntax.
+fn focus_search(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update_window(window, |_, window, cx| {
+        let list = workspace.read(cx).note_list.clone();
+        list.update(cx, |list, cx| list.focus_search(window, cx));
+    })
+    .unwrap();
+}
+
+/// The pointer over the third note, revealing its actions.
+fn hover_third(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let library = workspace.read(cx).library.clone();
+        let third = library.read(cx).notes.get(2).map(|n| n.id.clone());
+        let list = workspace.read(cx).note_list.clone();
+        list.update(cx, |list, cx| {
+            list.hovered = third;
+            cx.notify();
+        });
+    });
+}
+
+/// Sorted by title: no date headers.
+fn sort_by_title(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| {
+        let library = workspace.read(cx).library.clone();
+        library.update(cx, |library, cx| {
+            library.set_sort(kanso_store::Sort::Title, false, cx)
+        });
+    });
+}
+
+/// Narrowed to completed notes from the list's filter menu.
+fn only_completed(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| {
+        let library = workspace.read(cx).library.clone();
+        library.update(cx, |library, cx| {
+            library.set_status_only(Some(kanso_core::NoteStatus::Completed), cx)
+        });
+    });
+}
+
+/// Notes whose titles and excerpts run long, edited just now.
+fn long_titles(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    store: &Store,
+) {
+    let book = store.books().unwrap()[0].id.clone();
+    let now = cx.update(|cx| Clock::now_ms(cx));
+    let notes = [
+        (
+            "A very long note title that keeps going well past the width of the note list column",
+            "An excerpt long enough to need two lines in the list and then some more words so that it has to stop with an ellipsis at the end of the second line.",
+            "active",
+            true,
+        ),
+        (
+            "Überlange Überschrift mit Umlauten, die ebenfalls abgeschnitten werden muss",
+            "Kurz.",
+            "onHold",
+            false,
+        ),
+        (
+            "Supercalifragilisticexpialidocious_without_any_spaces_at_all_in_the_title",
+            "Averyveryverylongwordwithoutspacesthatmustnotpushtherowwiderthanthecolumn",
+            "none",
+            false,
+        ),
+    ];
+    for (ix, (title, body, status, pinned)) in notes.into_iter().enumerate() {
+        store
+            .put(
+                DocType::Note,
+                json!({"title": title, "body": body, "bookId": book, "status": status,
+                    "pinned": pinned, "createdAt": now - DAY, "updatedAt": now - ix as i64 * MINUTE}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap();
+    }
+}
+
 fn mono_font(
     cx: &mut HeadlessAppContext,
     _: AnyWindowHandle,
@@ -426,7 +547,27 @@ fn snapshots() {
         shot("light-preview", Light, Preview, open_latest),
         shot("dark-edit-mono", Dark, Edit, mono_font),
         shot("dark-empty", Dark, Split, empty_notebook),
+        shot("light-empty", Light, Split, empty_notebook),
         shot("dark-search", Dark, Edit, search_sync),
+        shot("light-search", Light, Edit, search_sync),
+        shot("dark-list-no-results", Dark, Edit, search_nothing),
+        shot("dark-list-search-focus", Dark, Edit, focus_search),
+        shot("dark-list-hover", Dark, Edit, hover_third),
+        shot("dark-list-title-sort", Dark, Edit, sort_by_title),
+        shot("dark-list-filtered", Dark, Edit, only_completed),
+        Shot {
+            size: size(px(1100.), px(720.)),
+            ..shot("dark-list-long-titles", Dark, Edit, long_titles)
+        },
+        Shot {
+            size: size(px(1100.), px(720.)),
+            ..shot("light-list-long-titles", Light, Edit, long_titles)
+        },
+        // Every date group of the demo at once.
+        Shot {
+            size: size(px(1440.), px(1100.)),
+            ..shot("dark-list-grouped", Dark, Edit, open_latest)
+        },
         Shot {
             size: size(px(1100.), px(720.)),
             ..shot("dark-split-min", Dark, Split, open_latest)
@@ -483,6 +624,15 @@ fn snapshots() {
                 window.draw(cx).clear(cx);
             })
             .unwrap();
+        }
+        if real_db.is_some() {
+            // What a reload costs the list on the main thread: grouping the
+            // notes by local day and sizing the rows.
+            let (rows, took) = cx.update(|cx| {
+                let list = workspace.read(cx).note_list.clone();
+                list.update(cx, |list, cx| list.time_layout(cx))
+            });
+            println!("{}: laid out {rows} rows in {took:?}", shot.name);
         }
         let image = cx.capture_screenshot(window).expect("Metal rendering");
         let path = out.join(format!("{}.png", shot.name));
