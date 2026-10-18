@@ -85,6 +85,20 @@ pub enum EditorEvent {
     Pick(Picker),
 }
 
+/// Whether two versions of a note say the same thing: equal apart from the
+/// revision and the task counts the store derives from the body. A sync that
+/// only moved the revision (a local win, a stale rebase, a repair) leaves the
+/// two versions the same. Pure.
+pub(crate) fn same_content(a: &Note, b: &Note) -> bool {
+    let plain = |note: &Note| Note {
+        rev: None,
+        num_of_tasks: 0,
+        num_of_checked_tasks: 0,
+        ..note.clone()
+    };
+    plain(a) == plain(b)
+}
+
 /// What happened elsewhere to the open note while it had unsaved edits.
 enum Incoming {
     /// A newer version was saved.
@@ -623,44 +637,56 @@ impl NoteEditor {
     /// only changes once the write succeeds.
     fn write_over(
         &mut self,
-        mut note: Note,
+        base: Note,
         change: impl FnOnce(&mut Note, &App),
         origin: Origin,
         cx: &mut Context<Self>,
     ) -> bool {
+        let mut note = base.clone();
         let (title, body) = self.current_text(cx);
         note.title = title;
         note.body = body;
         change(&mut note, cx);
         note.updated_at = now_ms();
-        let value = match serde_json::to_value(&note) {
-            Ok(value) => value,
-            Err(err) => {
-                cx.emit(EditorEvent::Notice(format!("Couldn't save: {err}")));
-                return false;
-            }
-        };
-        match self.store.put(DocType::Note, value, Put::Upsert, origin) {
-            Ok(result) => {
-                note.rev = Some(result.rev);
-                self.note = Some(note);
-                // The write was based on the current version, so there is
-                // nothing left to choose between.
-                self.incoming = None;
-                cx.notify();
-                true
-            }
-            Err(StoreError::Conflict) => {
-                // Someone else saved first; show their version next to ours.
-                if let Ok(Some(latest)) = self.store.note(&note.id) {
+        // A sync can move the revision between reading and writing without
+        // changing the note: then the write goes on top of the new revision.
+        let mut retried = false;
+        loop {
+            let value = match serde_json::to_value(&note) {
+                Ok(value) => value,
+                Err(err) => {
+                    cx.emit(EditorEvent::Notice(format!("Couldn't save: {err}")));
+                    return false;
+                }
+            };
+            match self.store.put(DocType::Note, value, Put::Upsert, origin) {
+                Ok(result) => {
+                    note.rev = Some(result.rev);
+                    self.note = Some(note);
+                    // The write was based on the current version, so there is
+                    // nothing left to choose between.
+                    self.incoming = None;
+                    cx.notify();
+                    return true;
+                }
+                Err(StoreError::Conflict) => {
+                    let Ok(Some(latest)) = self.store.note(&note.id) else {
+                        return false;
+                    };
+                    if !retried && same_content(&base, &latest) {
+                        retried = true;
+                        note.rev = latest.rev;
+                        continue;
+                    }
+                    // Someone else saved first; show their version next to ours.
                     self.incoming = Some(Incoming::Changed(Box::new(latest)));
                     cx.notify();
+                    return false;
                 }
-                false
-            }
-            Err(err) => {
-                cx.emit(EditorEvent::Notice(format!("Couldn't save: {err}")));
-                false
+                Err(err) => {
+                    cx.emit(EditorEvent::Notice(format!("Couldn't save: {err}")));
+                    return false;
+                }
             }
         }
     }
@@ -684,6 +710,14 @@ impl NoteEditor {
             let Ok(Some(latest)) = self.store.note(&change.id) else {
                 return;
             };
+            if same_content(note, &latest) {
+                // Only the revision moved (a sync): the editor takes it and
+                // carries on, unsaved typing and all.
+                if let Some(note) = &mut self.note {
+                    note.rev = latest.rev;
+                }
+                return;
+            }
             Incoming::Changed(Box::new(latest))
         };
         if self.has_unsaved_edits(cx) {
@@ -1889,7 +1923,7 @@ pub fn backlinks(store: &Store, id: &str) -> Vec<(String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{NoteEditor, SaveState, backlinks, save_state};
+    use super::{NoteEditor, SaveState, backlinks, same_content, save_state};
     use crate::config::Appearance;
     use crate::library::Library;
     use crate::markdown_edit::Format;
@@ -2068,6 +2102,193 @@ mod tests {
         editor.update(cx, |editor, cx| editor.keep_mine(cx));
         assert_eq!(state(cx), SaveState::Saved);
         assert_eq!(store.note(&id).unwrap().unwrap().body, "one, typed more");
+    }
+
+    /// A note with these fields, as the store returns one.
+    fn note(title: &str, body: &str, rev: &str, tasks: u32) -> kanso_core::Note {
+        serde_json::from_value(json!({
+            "_id": "note:n1",
+            "_rev": rev,
+            "title": title,
+            "body": body,
+            "bookId": "book:b1",
+            "tags": ["tag:t1"],
+            "status": "active",
+            "pinned": false,
+            "createdAt": 1,
+            "updatedAt": 2,
+            "timestamp": 2,
+            "numOfTasks": tasks,
+            "numOfCheckedTasks": 0,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn same_content_examples() {
+        let a = note("t", "- [ ] one", "1-a", 1);
+        assert!(same_content(&a, &a));
+        // A sync's new revision, and task counts the editor hadn't derived.
+        assert!(same_content(&a, &note("t", "- [ ] one", "2-b", 0)));
+        assert!(!same_content(&a, &note("t", "- [ ] two", "1-a", 1)));
+        assert!(!same_content(&a, &note("T", "- [ ] one", "1-a", 1)));
+        let mut moved = a.clone();
+        moved.book_id = "book:b2".into();
+        assert!(!same_content(&a, &moved));
+        let mut pinned = a.clone();
+        pinned.pinned = true;
+        assert!(!same_content(&a, &pinned));
+    }
+
+    /// Over unsaved typing, a sync that only gave the open note a new
+    /// revision asks nothing: the editor takes the revision and its autosave
+    /// writes on top of it. A save that meets such a revision before the
+    /// editor heard of it goes on top of it too.
+    #[gpui_kit::test]
+    fn a_sync_revision_keeps_the_typing(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(dir.path().join("k.db")).unwrap());
+        let book = store
+            .put(DocType::Book, json!({"name": "B"}), Put::Upsert, Origin::Ui)
+            .unwrap()
+            .id;
+        let id = store
+            .put(
+                DocType::Note,
+                json!({"title": "t", "body": "- [ ] one", "bookId": book}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let editor_store = store.clone();
+        let (window, editor) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            gpui_kit::open_window(Default::default(), cx, |window, cx| {
+                let library = cx.new(|cx| Library::new(editor_store.clone(), cx));
+                let (links, _) = async_channel::unbounded();
+                cx.new(|cx| {
+                    NoteEditor::new(
+                        editor_store,
+                        library,
+                        links,
+                        &Appearance::default(),
+                        window,
+                        cx,
+                    )
+                })
+            })
+            .unwrap()
+        });
+        let state = |cx: &mut TestAppContext| cx.read(|cx| editor.read(cx).save_state(cx));
+        let type_text = |cx: &mut TestAppContext, text: &str| {
+            window
+                .update(cx, |_, window, cx| {
+                    editor.update(cx, |editor, cx| editor.edit_for_test(text, window, cx))
+                })
+                .unwrap();
+        };
+        window
+            .update(cx, |_, window, cx| {
+                editor.update(cx, |editor, cx| editor.open(Some(&id), window, cx))
+            })
+            .unwrap();
+        type_text(cx, "- [ ] one\n- [x] two");
+        assert_eq!(state(cx), SaveState::Saving);
+
+        // The sync's new revision arrives before the pause ends.
+        let rev = store.bump_revision(&id, None).unwrap().unwrap();
+        window
+            .update(cx, |_, window, cx| {
+                let change = kanso_store::Change {
+                    id: id.clone(),
+                    rev: rev.clone(),
+                    seq: 0,
+                    deleted: false,
+                    origin: Origin::Sync,
+                };
+                editor.update(cx, |editor, cx| editor.on_store_change(&change, window, cx));
+            })
+            .unwrap();
+        assert!(!cx.read(|cx| editor.read(cx).has_incoming()));
+        assert_eq!(
+            cx.read(|cx| editor.read(cx).body_for_test(cx)),
+            "- [ ] one\n- [x] two"
+        );
+        cx.executor().advance_clock(Duration::from_secs(2));
+        cx.run_until_parked();
+        assert_eq!(state(cx), SaveState::Saved);
+        assert_eq!(
+            store.note(&id).unwrap().unwrap().body,
+            "- [ ] one\n- [x] two"
+        );
+
+        // Again, but the save comes first: it goes on top of the new revision.
+        type_text(cx, "- [ ] one\n- [x] two\nthree");
+        store.bump_revision(&id, None).unwrap().unwrap();
+        cx.executor().advance_clock(Duration::from_secs(2));
+        cx.run_until_parked();
+        assert!(!cx.read(|cx| editor.read(cx).has_incoming()));
+        assert_eq!(state(cx), SaveState::Saved);
+        assert_eq!(
+            store.note(&id).unwrap().unwrap().body,
+            "- [ ] one\n- [x] two\nthree"
+        );
+    }
+
+    fn gen_note() -> impl Strategy<Value = kanso_core::Note> {
+        (
+            "[a-z ]{0,8}",
+            "(- \\[[ x]\\] [a-z]{1,4}\n){0,3}[a-z ]{0,8}",
+            "[0-9]-[a-f]{4}",
+            prop::sample::select(vec!["book:b1", "book:b2", "trash"]),
+            prop::collection::vec(prop::sample::select(vec!["tag:t1", "tag:t2"]), 0..2),
+            prop::sample::select(kanso_core::NoteStatus::ALL.to_vec()),
+            any::<bool>(),
+            0i64..1_000,
+            0u32..4,
+        )
+            .prop_map(
+                |(title, body, rev, book, tags, status, pinned, updated, tasks)| {
+                    let mut n = note(&title, &body, &rev, tasks);
+                    n.book_id = book.to_owned();
+                    n.tags = tags.into_iter().map(str::to_owned).collect();
+                    n.status = status;
+                    n.pinned = pinned;
+                    n.updated_at = updated;
+                    n
+                },
+            )
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(256))]
+
+        /// Invariant: a new revision and other task counts (what a sync's
+        /// revision bump and the store's derivation change) keep the content
+        /// the same; the relation is symmetric.
+        #[test]
+        fn prop_revisions_and_derived_counts_dont_change_content(
+            n in gen_note(), rev in "[0-9]-[a-f]{4}", tasks in 0u32..4, checked in 0u32..4,
+        ) {
+            let mut bumped = n.clone();
+            bumped.rev = Some(rev);
+            bumped.num_of_tasks = tasks;
+            bumped.num_of_checked_tasks = checked;
+            prop_assert!(same_content(&n, &bumped));
+            prop_assert!(same_content(&bumped, &n));
+        }
+
+        /// Metamorphic: two notes have the same content exactly when every
+        /// field the user can change is equal.
+        #[test]
+        fn prop_same_content_compares_what_the_user_changes(a in gen_note(), b in gen_note()) {
+            let visible = |n: &kanso_core::Note| (
+                n.title.clone(), n.body.clone(), n.book_id.clone(), n.tags.clone(),
+                n.status, n.pinned, n.updated_at,
+            );
+            prop_assert_eq!(same_content(&a, &b), visible(&a) == visible(&b));
+        }
     }
 
     proptest! {
