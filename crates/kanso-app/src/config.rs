@@ -112,6 +112,16 @@ impl EditorFont {
     }
 }
 
+impl EditorFace {
+    /// The face with line numbers only where the setting allows them.
+    pub fn with_line_numbers(self, allowed: bool) -> EditorFace {
+        EditorFace {
+            line_numbers: self.line_numbers && allowed,
+            ..self
+        }
+    }
+}
+
 /// The editor text size before version 1, kept by anyone who never changed it.
 const OLD_DEFAULT_FONT_SIZE: f32 = 14.0;
 pub const DEFAULT_FONT_SIZE: f32 = 16.0;
@@ -122,6 +132,8 @@ pub struct Appearance {
     pub theme: ThemePreference,
     pub editor_font: EditorFont,
     pub editor_font_size: f32,
+    /// Whether monospace text shows line numbers beside it.
+    pub line_numbers: bool,
     pub view_mode: ViewMode,
     pub show_sidebar: bool,
 }
@@ -132,6 +144,7 @@ impl Default for Appearance {
             theme: ThemePreference::System,
             editor_font: EditorFont::Auto,
             editor_font_size: DEFAULT_FONT_SIZE,
+            line_numbers: true,
             view_mode: ViewMode::Split,
             show_sidebar: true,
         }
@@ -258,6 +271,7 @@ mod tests {
                     Just(DEFAULT_FONT_SIZE),
                     8.0f32..32.0
                 ],
+                any::<bool>(),
                 gen_mode(),
                 any::<bool>(),
             ),
@@ -273,7 +287,7 @@ mod tests {
                     user,
                     pass,
                     (s_on, endpoint, interval),
-                    (theme, font, size, mode, sidebar),
+                    (theme, font, size, numbers, mode, sidebar),
                     login,
                     last,
                     version,
@@ -295,6 +309,7 @@ mod tests {
                         theme,
                         editor_font: font,
                         editor_font_size: size,
+                        line_numbers: numbers,
                         view_mode: mode,
                         show_sidebar: sidebar,
                     },
@@ -341,6 +356,17 @@ mod tests {
             let mut again = migrated.clone();
             prop_assert!(!again.migrate());
             prop_assert_eq!(again, migrated);
+        }
+
+        /// Line numbers only ever come with the monospace face, and turning
+        /// the setting off removes them without changing the face.
+        #[test]
+        fn prop_line_numbers_need_mono_and_the_setting(font in gen_font(), mode in gen_mode(), allowed: bool) {
+            let face = font.face(mode);
+            let shown = face.with_line_numbers(allowed);
+            prop_assert_eq!(shown.mono, face.mono);
+            prop_assert_eq!(shown.line_numbers, face.mono && allowed);
+            prop_assert_eq!(face.with_line_numbers(true), face);
         }
 
         /// A file without a version (written before versions existed) loads
@@ -425,6 +451,8 @@ mod tests {
         assert_eq!(config.server.port, 1234);
         assert_eq!(config.server.bind_address, "127.0.0.1");
         assert_eq!(config.appearance.view_mode, ViewMode::Split);
+        // Files from before the setting keep their line numbers.
+        assert!(config.appearance.line_numbers);
         assert!(config.ensure_credentials());
         assert!(!config.ensure_credentials());
         config.save(&path).unwrap();

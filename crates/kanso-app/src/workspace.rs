@@ -24,6 +24,7 @@ use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::{NoteList, NoteListEvent};
 use crate::palette::{Mode, Palette};
 use crate::paths;
+use crate::settings::{SettingsReturn, SettingsView};
 use crate::sidebar::{Sidebar, SidebarEvent};
 use crate::theme::Colors;
 
@@ -130,6 +131,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-p", OpenNotePicker, None),
     ]);
     crate::palette::bind_keys(cx);
+    crate::settings::bind_keys(cx);
 }
 
 pub fn set_menus(cx: &mut App) {
@@ -209,6 +211,10 @@ pub struct Workspace {
     pub editor: Entity<NoteEditor>,
     /// The command palette, drawn over the rest when open.
     pub(crate) palette: Entity<Palette>,
+    /// Settings, drawn in place of the list and the editor while open.
+    pub(crate) settings: Entity<SettingsView>,
+    /// While Settings are open: where the notes were, to go back to.
+    pub(crate) settings_return: Option<SettingsReturn>,
     pub(crate) show_sidebar: bool,
     /// The sidebar's and the list's widths; the editor takes the rest.
     pub(crate) pane_widths: PaneWidths,
@@ -262,9 +268,13 @@ impl Workspace {
             )
         });
 
+        let settings = cx.new(SettingsView::new);
+
         let subscriptions = vec![
             cx.subscribe_in(&library, window, |this, _, event, window, cx| match event {
+                LibraryEvent::Shown => this.leave_settings(window, cx),
                 LibraryEvent::Selected(id) => {
+                    this.leave_settings(window, cx);
                     let id = id.clone();
                     this.editor
                         .update(cx, |editor, cx| editor.open(id.as_deref(), window, cx));
@@ -331,6 +341,8 @@ impl Workspace {
             note_list,
             editor,
             palette,
+            settings,
+            settings_return: None,
             show_sidebar: appearance.show_sidebar,
             pane_widths: PaneWidths::default(),
             focus,
@@ -848,6 +860,9 @@ impl Render for Workspace {
         let list_inset = px(leading_inset(!self.show_sidebar, window.is_fullscreen()));
         self.note_list
             .update(cx, |list, cx| list.set_leading_inset(list_inset, cx));
+        self.settings.update(cx, |settings, cx| {
+            settings.set_leading_inset(list_inset, cx)
+        });
         let widths = self.pane_widths;
         v_flex()
             .size_full()
@@ -898,6 +913,7 @@ impl Render for Workspace {
                 this.on_sidebar_event(&SidebarEvent::NewBook { parent: None }, window, cx);
             }))
             .on_action(cx.listener(|this, _: &FocusSearch, window, cx| {
+                this.leave_settings(window, cx);
                 this.note_list
                     .update(cx, |list, cx| list.focus_search(window, cx));
             }))
@@ -969,6 +985,7 @@ impl Render for Workspace {
                     .update(cx, |palette, cx| palette.open(Mode::Notes, window, cx));
             }))
             .on_action(cx.listener(|_, _: &SyncNow, _, cx| crate::services::sync_now(cx)))
+            .map(|el| crate::settings::on_actions(el, cx))
             // The panes run the full height: each has its own top band
             // (the title bar's row) and bottom band. The sidebar and the
             // list keep their widths and the editor takes the rest; each
@@ -992,26 +1009,42 @@ impl Render for Workspace {
                                 .child(self.sidebar.clone()),
                         )
                     })
-                    .child(
-                        div()
-                            .relative()
-                            .h_full()
-                            .w(px(widths.list))
-                            .flex_none()
-                            .child(self.note_list.clone())
-                            .when(self.show_sidebar, |el| {
-                                el.child(pane_handle(PaneEdge::Sidebar))
-                            }),
-                    )
-                    .child(
-                        div()
-                            .relative()
-                            .h_full()
-                            .flex_1()
-                            .min_w_0()
-                            .child(self.editor.clone())
-                            .child(pane_handle(PaneEdge::NoteList)),
-                    ),
+                    // Settings take the list's and the editor's place.
+                    .when(self.settings_open(), |el| {
+                        el.child(
+                            div()
+                                .relative()
+                                .h_full()
+                                .flex_1()
+                                .min_w_0()
+                                .child(self.settings.clone())
+                                .when(self.show_sidebar, |el| {
+                                    el.child(pane_handle(PaneEdge::Sidebar))
+                                }),
+                        )
+                    })
+                    .when(!self.settings_open(), |el| {
+                        el.child(
+                            div()
+                                .relative()
+                                .h_full()
+                                .w(px(widths.list))
+                                .flex_none()
+                                .child(self.note_list.clone())
+                                .when(self.show_sidebar, |el| {
+                                    el.child(pane_handle(PaneEdge::Sidebar))
+                                }),
+                        )
+                        .child(
+                            div()
+                                .relative()
+                                .h_full()
+                                .flex_1()
+                                .min_w_0()
+                                .child(self.editor.clone())
+                                .child(pane_handle(PaneEdge::NoteList)),
+                        )
+                    }),
             )
             // Over everything else when open.
             .child(self.palette.clone())

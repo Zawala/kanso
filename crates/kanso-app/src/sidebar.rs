@@ -61,6 +61,9 @@ pub struct Sidebar {
     status_filter: bool,
     /// Whether every tag shows, rather than the most used.
     all_tags: bool,
+    /// Settings fill the window beside the sidebar: the gear is the place
+    /// shown, not the filter.
+    settings_open: bool,
     user: SharedString,
     _tick: Task<()>,
 }
@@ -95,9 +98,23 @@ impl Sidebar {
             status_choice: None,
             status_filter: false,
             all_tags: false,
+            settings_open: false,
             user: user.into(),
             _tick: tick,
         }
+    }
+
+    pub fn set_settings_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        if self.settings_open != open {
+            self.settings_open = open;
+            cx.notify();
+        }
+    }
+
+    /// Whether the gear shows as the place on screen.
+    #[cfg(test)]
+    pub fn settings_open_for_test(&self) -> bool {
+        self.settings_open
     }
 
     fn row(
@@ -113,7 +130,7 @@ impl Sidebar {
             count,
             depth,
         } = entry;
-        let selected = self.library.read(cx).filter == filter;
+        let selected = !self.settings_open && self.library.read(cx).filter == filter;
         let colors = Colors::get(cx);
         let library = self.library.clone();
         div()
@@ -242,7 +259,7 @@ impl Sidebar {
             let view = cx.entity();
             let library = self.library.clone();
             let filter = Filter::Tag(id.clone());
-            let selected = self.library.read(cx).filter == filter;
+            let selected = !self.settings_open && self.library.read(cx).filter == filter;
             let tag_id = id.clone();
             div()
                 .id(SharedString::from(format!("tag-{id}")))
@@ -515,12 +532,20 @@ impl Sidebar {
                     .size(px(24.))
                     .rounded(px(6.))
                     .cursor_pointer()
-                    .hover(|el| el.bg(colors.sidebar_hover))
-                    .child(
-                        Icon::new(IconName::Settings)
-                            .size(px(15.))
-                            .text_color(colors.text_secondary),
-                    )
+                    .map(|el| {
+                        if self.settings_open {
+                            el.bg(colors.sidebar_active)
+                        } else {
+                            el.hover(|el| el.bg(colors.sidebar_hover))
+                        }
+                    })
+                    .child(Icon::new(IconName::Settings).size(px(15.)).text_color(
+                        if self.settings_open {
+                            colors.text
+                        } else {
+                            colors.text_secondary
+                        },
+                    ))
                     .tooltip(|window, cx| Tooltip::new("Settings (⌘,)").build(window, cx))
                     .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx)),
             )
@@ -724,7 +749,7 @@ pub enum Tone {
     Warning,
 }
 
-fn tone_color(tone: Tone, colors: &Colors) -> Rgb {
+pub(crate) fn tone_color(tone: Tone, colors: &Colors) -> Rgb {
     match tone {
         Tone::Good => colors.success,
         Tone::Busy => colors.accent,

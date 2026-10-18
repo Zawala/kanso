@@ -85,6 +85,8 @@ pub struct NoteEditor {
     pub view_mode: ViewMode,
     pub editor_font: EditorFont,
     pub font_size: f32,
+    /// Whether monospace text may show line numbers (a setting).
+    pub allow_line_numbers: bool,
     /// Whether the body shows line numbers now; see [`EditorFont::face`].
     line_numbers: bool,
     autosave: Option<Task<()>>,
@@ -115,10 +117,14 @@ impl NoteEditor {
             view_mode,
             editor_font,
             editor_font_size: font_size,
+            line_numbers: allow_line_numbers,
             ..
         } = *appearance;
         let title = cx.new(|cx| InputState::new(window, cx).placeholder("Untitled"));
-        let line_numbers = editor_font.face(view_mode).line_numbers;
+        let line_numbers = editor_font
+            .face(view_mode)
+            .with_line_numbers(allow_line_numbers)
+            .line_numbers;
         let body = cx.new(|cx| {
             EditorState::new(window, cx)
                 .language("markdown")
@@ -177,6 +183,7 @@ impl NoteEditor {
             view_mode,
             editor_font,
             font_size,
+            allow_line_numbers,
             line_numbers,
             autosave: None,
             preview_task: None,
@@ -1200,7 +1207,10 @@ impl Render for NoteEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The face follows the view mode and the font setting, however they
         // changed.
-        let face = self.editor_font.face(self.view_mode);
+        let face = self
+            .editor_font
+            .face(self.view_mode)
+            .with_line_numbers(self.allow_line_numbers);
         if face.line_numbers != self.line_numbers {
             self.line_numbers = face.line_numbers;
             self.body.update(cx, |body, cx| {
@@ -1380,6 +1390,16 @@ impl NoteEditor {
 
     pub fn body_for_test(&self, cx: &App) -> String {
         self.current_text(cx).1
+    }
+
+    /// How far the body is scrolled.
+    pub fn body_scroll_for_test(&self, cx: &App) -> Point<Pixels> {
+        self.body.read(cx).scroll_offset()
+    }
+
+    pub fn scroll_body_for_test(&self, offset: Point<Pixels>, cx: &mut App) {
+        self.body
+            .update(cx, |body, cx| body.set_scroll_offset(offset, cx));
     }
 
     pub fn has_incoming(&self) -> bool {

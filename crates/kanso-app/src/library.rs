@@ -112,6 +112,9 @@ fn recent_notes(
 pub enum LibraryEvent {
     /// The selected note changed.
     Selected(Option<String>),
+    /// A place was asked for (a notebook, tag, status or list), even the
+    /// one already showing: the notes should be in view.
+    Shown,
     /// A document changed in the store.
     Changed(Change),
 }
@@ -273,6 +276,7 @@ impl Library {
     }
 
     pub fn set_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
+        cx.emit(LibraryEvent::Shown);
         if self.filter != filter {
             self.filter = filter;
             self.status_only = None;

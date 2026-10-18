@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc bd1d63e9b94a40ee791d3f46abd0ddcb5c8accf12096083a0ceef8145f089d8f # shrinks to state = Synced { at_ms: 0, conflicts: 0 }, endpoint = false, enabled = true, minutes = 1, ago = 0
