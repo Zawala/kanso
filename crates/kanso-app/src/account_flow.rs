@@ -1215,20 +1215,19 @@ pub fn form_server(cx: &App) -> String {
 }
 
 /// Asks the forms' server whether it takes new accounts, for the Create
-/// account form, unless it has answered already.
+/// account form: again each time the form opens, since a server's answer
+/// changes as it fills (A6). One question per server at a time; an answer
+/// is kept only if the form still shows that server.
 pub fn check_signup(cx: &mut App) {
     let server = form_server(cx);
     let services = cx.global_mut::<Services>();
     let Some(backend) = services.backend.clone() else {
         return;
     };
-    if services
-        .signup
-        .as_ref()
-        .is_some_and(|(asked, _)| *asked == server)
-    {
+    if services.signup_asking.as_deref() == Some(server.as_str()) {
         return;
     }
+    services.signup_asking = Some(server.clone());
     let (tx, rx) = async_channel::bounded(1);
     let asked = server.clone();
     let spawned = std::thread::Builder::new()
@@ -1238,15 +1237,24 @@ pub fn check_signup(cx: &mut App) {
                 .ok();
         });
     if spawned.is_err() {
+        cx.global_mut::<Services>().signup_asking = None;
         return;
     }
     cx.spawn(async move |cx| {
-        if let Ok(Ok(signup)) = rx.recv().await {
-            cx.update(|cx| {
-                cx.global_mut::<Services>().signup = Some((server, signup));
-                cx.refresh_windows();
-            });
-        }
+        let answer = rx.recv().await.ok();
+        cx.update(|cx| {
+            let shown = form_server(cx);
+            let services = cx.global_mut::<Services>();
+            if services.signup_asking.as_deref() == Some(server.as_str()) {
+                services.signup_asking = None;
+            }
+            if let Some(Ok(signup)) = answer
+                && shown == server
+            {
+                services.signup = Some((server, signup));
+            }
+            cx.refresh_windows();
+        });
     })
     .detach();
 }

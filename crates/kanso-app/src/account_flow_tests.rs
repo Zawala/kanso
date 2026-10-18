@@ -1346,3 +1346,53 @@ fn signing_another_mac_out_says_how_it_went(cx: &mut TestAppContext, cx_b: &mut 
     assert_eq!(a.notifications(cx), before + 3);
     assert_eq!(account(cx), signed_in_as("alice"));
 }
+
+// MARK: New accounts
+
+fn signup_answer(cx: &mut TestAppContext) -> Option<(String, kanso_sync::SignupState)> {
+    cx.read(|cx| cx.global::<Services>().signup.clone())
+}
+
+/// Each time the Create account form opens, its server is asked again
+/// whether it takes new accounts; an answer about a server the form no
+/// longer shows is dropped (A6).
+#[gpui_kit::test]
+fn the_sign_up_answer_is_asked_again_each_time(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let _a = mac(cx, &server, "Studio", 0);
+    let asked = |cx: &mut TestAppContext| {
+        cx.update(account_flow::check_signup);
+        wait_until(cx, "the answer", |cx| {
+            cx.read(|cx| cx.global::<Services>().signup_asking.is_none())
+        });
+    };
+    asked(cx);
+    assert_eq!(
+        signup_answer(cx),
+        Some((SERVER.to_owned(), kanso_sync::SignupState::Open))
+    );
+    server.set_signup(kanso_sync::Signup::Closed);
+    asked(cx);
+    assert_eq!(
+        signup_answer(cx),
+        Some((SERVER.to_owned(), kanso_sync::SignupState::Closed)),
+        "the newer answer"
+    );
+
+    // The form moves to another server before the answer comes.
+    server.set_signup(kanso_sync::Signup::Open);
+    cx.update(|cx| {
+        account_flow::check_signup(cx);
+        AppState::update_config(cx, |config| {
+            config.sync.server = Some("https://other.example".into())
+        });
+    });
+    wait_until(cx, "the answer", |cx| {
+        cx.read(|cx| cx.global::<Services>().signup_asking.is_none())
+    });
+    assert_eq!(
+        signup_answer(cx),
+        Some((SERVER.to_owned(), kanso_sync::SignupState::Closed)),
+        "an answer about a server no longer shown is dropped"
+    );
+}

@@ -191,6 +191,8 @@ pub struct Services {
     /// What a server last said about new accounts, for the Create account
     /// form: the server's URL and its answer.
     pub signup: Option<(String, SignupState)>,
+    /// The server being asked about new accounts right now.
+    pub signup_asking: Option<String>,
     /// The servers' seam: `HttpBackend` in the app, `MemoryServer` in tests.
     /// Without one, nothing reaches a server.
     pub backend: Option<Arc<dyn Backend>>,
