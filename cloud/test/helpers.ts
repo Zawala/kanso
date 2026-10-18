@@ -3,7 +3,7 @@
 // commands run against the test database.
 
 import { env } from "cloudflare:workers";
-import { type AdminIO, type Report, type StatementResult, admin } from "../src/accounts";
+import { type AdminIO, type Report, type RestoreTarget, type StatementResult, admin } from "../src/accounts";
 import { hashToken, sha256Hex } from "../src/crypto";
 import { type Env, handle } from "../src/index";
 import { base64url, fromBase64url } from "../src/protocol";
@@ -279,16 +279,24 @@ export { hashToken, base64url, fromBase64url };
 
 // --------------------------------------------------------------------- admin
 
-/** An AdminIO over a test database, with files and deleted secrets kept in memory. */
-export function testIO(options: { db?: D1Database; local?: boolean } = {}) {
+/**
+ * An AdminIO over a test database, with files and deleted secrets kept in
+ * memory. A Time Travel restore is only recorded, never run: it answers
+ * `restoreAnswer`, or throws it if it is an Error.
+ */
+export function testIO(options: { db?: D1Database; local?: boolean; restoreAnswer?: { bookmark: string; previousBookmark: string } | Error } = {}) {
 	const db = options.db ?? env.DB;
 	const files = new Map<string, string | Uint8Array>();
 	const dirs: string[] = [];
 	const secretsDeleted: string[] = [];
 	const exports: { tables: string[]; file: string }[] = [];
+	const restores: RestoreTarget[] = [];
+	/** Every call that reaches the outside world, in order. */
+	const calls: string[] = [];
 	const io: AdminIO = {
 		local: options.local ?? true,
 		async sql(statements: string[]): Promise<StatementResult[]> {
+			calls.push(`sql ${statements.join("; ")}`);
 			const results = await db.batch(statements.map((sql) => db.prepare(sql)));
 			return results.map((r) => ({ results: r.results as Record<string, unknown>[] }));
 		},
@@ -317,8 +325,15 @@ export function testIO(options: { db?: D1Database; local?: boolean } = {}) {
 		async deleteSecret(name) {
 			secretsDeleted.push(name);
 		},
+		async timeTravelRestore(target) {
+			calls.push(`restore ${target.kind}=${target.value}`);
+			restores.push(target);
+			const answer = options.restoreAnswer ?? { bookmark: "00000001-00000002-00000003-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", previousBookmark: "00000001-00000002-00000003-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" };
+			if (answer instanceof Error) throw answer;
+			return answer;
+		},
 	};
-	return { io, files, dirs, secretsDeleted, exports };
+	return { io, files, dirs, secretsDeleted, exports, restores, calls };
 }
 
 /** An admin command against the test database. */

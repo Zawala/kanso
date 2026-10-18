@@ -104,6 +104,9 @@ nothing was deployed yet):
    as the `daily` counters do.
 9. **IPv6 per /48 everywhere.** `login-ip` and `recover-ip` count IPv6 per /48, as `signup-ip`
    and the binding already did, so one subscriber's 256 /56s are one group.
+10. **`admin restore`.** D1 is restored only through `restore <time | bookmark>`, which runs the
+    Time Travel restore and then, at once, the epoch rotation of `restored --all`. Without
+    `--confirm` it prints the commands; the tests never run wrangler.
 
 Rejected: no finding. Where the result differs from a review's suggestion:
 
@@ -1872,7 +1875,8 @@ Sync problems use the words in the problems table.
 
 `npm run -s admin -- [--local] <command>` (`cloud/scripts/admin.ts`, planning in
 `src/accounts.ts`). It runs through `wrangler d1 execute` (plus `wrangler d1 export`, `wrangler r2
-object get` and `wrangler secret delete` where stated), with every value validated and quoted:
+object get`, `wrangler secret delete` and `wrangler d1 time-travel restore` where stated), with
+every value validated and quoted:
 
 ```bash
 CLOUDFLARE_API_TOKEN="$IMNGONII_CLOUDFLARE_API_TOKEN" npm run -s admin -- accounts
@@ -1890,7 +1894,8 @@ CLOUDFLARE_API_TOKEN="$IMNGONII_CLOUDFLARE_API_TOKEN" npm run -s admin -- accoun
 | `writes-per-day <n>` / `upload-bytes-per-day <n>` | `settings.writes_per_day` / `settings.upload_bytes_per_day`, the per-account daily budgets |
 | `global-writes-per-day <n>` / `global-upload-bytes-per-day <n>` | The server-wide daily caps |
 | `recount [<username>]` | Recompute the counters from the tables, setting `recounted_at` |
-| `restored [<username> \| --all]` | After a Time Travel restore: a new epoch (`lower(hex(randomblob(8)))`), so Macs re-merge (M1) |
+| `restore <time \| bookmark> [--confirm <time \| bookmark>]` | The only way to restore D1 (security review 2, finding 10). The point is a Unix time in seconds or an RFC 3339 time with a zone, within the last 30 days, or a bookmark as `wrangler d1 time-travel info` prints it (8-8-8-32 lowercase hex). Refused with `--local`. Without `--confirm` repeating the point, it only prints what it would run. With it, it runs `wrangler d1 time-travel restore kanso-sync --timestamp=… \| --bookmark=… --json`, then at once `restored --all`, and prints the bookmark to undo with. If the new epochs fail, it says to run `restored --all` before any Mac syncs. It also says what a restore undoes: accounts and devices added since are gone, and every sign-out, deletion and password or recovery key change since is undone. |
+| `restored [<username> \| --all]` | A new epoch (`lower(hex(randomblob(8)))`), so Macs re-merge (M1). `restore` runs it for every account; alone, it is for a restore that went wrong halfway. |
 | `legacy-status` | Whether `docs`/`counter` exist, their live document and file counts and size, and the `files/` purge state |
 | `legacy-export --dir DIR` | `manifest.json` (`{"exported_at", "rows": [id, rev, deleted, md5digest]}`), `legacy.sql` (`wrangler d1 export --table docs --table counter`), and every live legacy file from R2 into `DIR/files/` |
 | `purge-legacy --account <username> --verified R.json` | Refuses unless `R.json` is `ok`, names that account, and its `manifest_sha256` equals the manifest hash (under "Command line") of a fresh export of the legacy rows (nothing changed since). Then drops `docs` and `counter`, queues the `files/` purge, and runs `wrangler secret delete SYNC_TOKEN` with stdin attached. |
@@ -2229,9 +2234,17 @@ e2e.
   The old app pulls everything and pushes every change made during the v2 window. Newer edits win,
   and both versions are kept. Notes deleted during the v2 window come back; delete them again. The
   v2 tables stay, unused.
-- **After step 9.** There is no return to plaintext sync; fix forward. D1 Time Travel can restore
-  the database to the step 1 bookmark within 30 days, and `admin restored --all` then makes every
-  Mac re-merge. The files are in `~/KansoLegacy-<date>`.
+- **After step 9.** There is no return to plaintext sync; fix forward. `npm run -s admin --
+  restore <step 1 bookmark>` (within 30 days) restores the database and then makes every Mac
+  re-merge. The files are in `~/KansoLegacy-<date>`.
+- **Restoring D1, at any time.** Only through `admin restore <time | bookmark>`, never with
+  `wrangler d1 time-travel restore` or the dashboard. A restore alone rewinds every account's feed
+  while each Mac still trusts its cursor and epoch, so pushes and pulls would go wrong silently;
+  `restore` gives every account a new epoch at once, which makes each Mac re-merge (M1). A
+  restore also brings back the sessions, passwords and recovery keys of that time: a device token
+  revoked since works again until it is revoked again, and anyone who changed a password or
+  recovery key since must change it again. Run it first without `--confirm` to see what it would
+  do.
 - **Client-only problems.** Sign out (notes stay), install a fixed build, and sign in. "Same"
   resumes.
 

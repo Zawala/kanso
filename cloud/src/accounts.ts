@@ -1,7 +1,8 @@
 // The admin commands (docs/ACCOUNTS.md › Admin script), planned here and run
 // by scripts/admin.ts through `wrangler d1 execute` (plus `wrangler d1
-// export`, `wrangler r2 object get` and `wrangler secret delete` where a
-// command needs them). There is no admin HTTP route.
+// export`, `wrangler r2 object get`, `wrangler secret delete` and `wrangler d1
+// time-travel restore` where a command needs them). There is no admin HTTP
+// route.
 //
 // `wrangler d1 execute` takes SQL text but no bound parameters, so every
 // value is validated before it reaches SQL and quoted when it does. Commands
@@ -43,7 +44,12 @@ export const USAGE = `Usage: npm run -s admin -- [--local [--persist-to DIR]] <c
   global-upload-bytes-per-day <n> [--force]
                                     Uploaded file bytes per UTC day, all accounts together.
   recount [<username>]              Recompute usage counters from the tables.
-  restored [<username> | --all]     After a Time Travel restore: a new epoch, so Macs re-merge.
+  restore <time | bookmark> [--confirm <time | bookmark>]
+                                    The only way to restore D1: Time Travel back to a Unix time
+                                    in seconds, an RFC 3339 time or a bookmark, then at once a
+                                    new epoch for every account (restored --all). Without
+                                    --confirm, prints what it would run. Deployed database only.
+  restored [<username> | --all]     A new epoch, so Macs re-merge; restore runs it for you.
   legacy-status                     The single-user tables and the files/ purge.
   legacy-export --dir DIR           manifest.json, legacy.sql and every live legacy file.
   purge-legacy --account <username> --verified R.json
@@ -79,7 +85,27 @@ export interface AdminIO {
 	readFile(file: string): Promise<string>;
 	/** `wrangler secret delete <name>`, with stdin attached so wrangler can ask. */
 	deleteSecret(name: string): Promise<void>;
+	/**
+	 * `wrangler <restoreArgs(target)>`: D1 Time Travel on the deployed database.
+	 * Answers the bookmark restored and the one before it (to undo).
+	 */
+	timeTravelRestore(target: RestoreTarget): Promise<{ bookmark: string; previousBookmark: string }>;
 }
+
+/** The deployed D1 database's name, as wrangler.jsonc gives it. */
+export const D1_DATABASE = "kanso-sync";
+
+/** A point to restore D1 to: a Unix time in seconds or an RFC 3339 time (`timestamp`), or a bookmark. */
+export interface RestoreTarget {
+	kind: "timestamp" | "bookmark";
+	value: string;
+}
+
+/** wrangler's arguments for the restore; `--json` skips its prompt and answers the bookmarks. */
+export const restoreArgs = (target: RestoreTarget): string[] => ["d1", "time-travel", "restore", D1_DATABASE, `--${target.kind}=${target.value}`, "--json"];
+
+/** New epochs, so each Mac re-merges: every account's (`restored --all`, and `restore`'s second step), or those `where` picks. */
+const newEpochs = (where = ""): string => `UPDATE accounts SET epoch = lower(hex(randomblob(8)))${where} RETURNING username`;
 
 export interface Report {
 	ok: boolean;
@@ -585,13 +611,15 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 		}
 		case "recount":
 			return recount(rest, io, now);
+		case "restore":
+			return restore(rest, io, now);
 		case "restored": {
 			const { positional, flags } = parse(rest, ["--all"], []);
 			arity(positional, 0, 1);
 			const all = flags.has("--all");
 			if (all === (positional.length === 1)) throw new UsageError("Name one account, or give --all.");
 			const where = all ? "" : ` WHERE username = ${sqlText(username(positional[0]))}`;
-			const [result] = await io.sql([`UPDATE accounts SET epoch = lower(hex(randomblob(8)))${where} RETURNING username`]);
+			const [result] = await io.sql([newEpochs(where)]);
 			if (result.results.length === 0) return refused(all ? "There are no accounts." : `No account is named ${positional[0]}.`);
 			return ok(`New epoch for ${result.results.map((r) => String(r.username)).join(", ")}: each Mac re-merges on its next sync.`);
 		}
@@ -616,6 +644,81 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 		default:
 			throw new UsageError(USAGE);
 	}
+}
+
+// ------------------------------------------------------------------ restore
+
+/** RFC 3339 with a zone, to the minute, second or fraction (what wrangler accepts). */
+const RFC3339 = /^\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?(?:Z|[+-][0-2]\d:[0-5]\d)$/;
+/** A D1 bookmark as `wrangler d1 time-travel info` prints it: 8-8-8-32 lowercase hex digits. */
+const BOOKMARK = /^[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{32}$/;
+
+function restoreTarget(value: string, now: number): RestoreTarget {
+	if (BOOKMARK.test(value)) return { kind: "bookmark", value };
+	const ms = /^[0-9]{10}$/.test(value) ? Number(value) * 1000 : RFC3339.test(value) ? Date.parse(value) : Number.NaN;
+	if (!Number.isFinite(ms)) {
+		throw new UsageError(
+			`"${value}" is not a restore point: give a Unix time in seconds, an RFC 3339 time such as 2026-10-17T08:00:00Z, or a bookmark from \`npx wrangler d1 time-travel info ${D1_DATABASE}\`.`,
+		);
+	}
+	if (ms > now) throw new UsageError(`${value} is in the future.`);
+	if (ms < now - 30 * DAY) throw new UsageError(`${value} is more than 30 days ago, past what D1 Time Travel keeps.`);
+	return { kind: "timestamp", value };
+}
+
+const RESTORE_EFFECTS = `Everything in D1 goes back to that point, sessions, passwords and recovery keys included:
+accounts and devices added since are gone (their Macs must create the account or sign in
+again), and every sign-out, deletion and password or recovery key change since is undone. So
+revoke again any device revoked since, and anyone who changed a password or recovery key since
+must change it again. R2 isn't restored: the cron drops rows whose file is gone and deletes
+files that have no row.`;
+
+/**
+ * `restore <time | bookmark>`: the only way to restore D1 (docs/ACCOUNTS.md ›
+ * Rollback). A restore alone would leave each Mac trusting its cursor against
+ * an older feed, so the epoch rotation of `restored --all` follows at once.
+ * Without `--confirm` it only prints what it would run.
+ */
+async function restore(rest: string[], io: AdminIO, now: number): Promise<Report> {
+	const { positional, flags } = parse(rest, [], ["--confirm"]);
+	arity(positional, 1, 1);
+	if (io.local) throw new UsageError("restore works on the deployed database only: D1 Time Travel keeps no local history.");
+	const target = restoreTarget(positional[0], now);
+	const confirm = flag(flags, "--confirm");
+	if (confirm === undefined) {
+		return ok(
+			[
+				`Dry run: nothing changed. With --confirm ${target.value}, this runs against the deployed database:`,
+				`  1. npx wrangler ${restoreArgs(target).join(" ")}`,
+				`  2. at once, as restored --all: ${newEpochs()}`,
+				RESTORE_EFFECTS,
+			].join("\n"),
+		);
+	}
+	if (confirm !== target.value) throw new UsageError(`Repeat the restore point to confirm: restore ${target.value} --confirm ${target.value}`);
+	const restored = await io.timeTravelRestore(target);
+	const undo = `To undo the restore: npm run -s admin -- restore ${restored.previousBookmark} --confirm ${restored.previousBookmark}`;
+	let rotated: StatementResult;
+	try {
+		[rotated] = await io.sql([newEpochs()]);
+	} catch (err) {
+		return refused(
+			[
+				`Restored ${D1_DATABASE} to bookmark ${restored.bookmark}, but the new epochs failed (${(err as Error).message}).`,
+				"Run `npm run -s admin -- restored --all` now, before any Mac syncs.",
+				undo,
+			].join("\n"),
+		);
+	}
+	const names = rotated.results.map((r) => String(r.username));
+	return ok(
+		[
+			`Restored ${D1_DATABASE} to bookmark ${restored.bookmark}.`,
+			names.length > 0 ? `New epoch for ${names.join(", ")}: each Mac re-merges on its next sync.` : "There are no accounts at that point.",
+			undo,
+			RESTORE_EFFECTS,
+		].join("\n"),
+	);
 }
 
 async function accounts(rest: string[], io: AdminIO, now: number): Promise<Report> {

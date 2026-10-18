@@ -115,7 +115,8 @@ npm run -s admin -- --local accounts        # the local database (wrangler dev's
 | `upload-bytes-per-day <n> [--force]` | Uploaded file bytes, per account per UTC day |
 | `global-writes-per-day <n> [--force]` / `global-upload-bytes-per-day <n> [--force]` | Server-wide daily caps |
 | `recount [<username>]` | Recompute the usage counters from the tables |
-| `restored [<username> \| --all]` | After a D1 Time Travel restore: a new epoch, so each Mac re-merges |
+| `restore <time \| bookmark> [--confirm <time \| bookmark>]` | The only way to restore D1: Time Travel back to a Unix time in seconds, an RFC 3339 time or a bookmark, then at once a new epoch for every account. Without `--confirm`, prints what it would run |
+| `restored [<username> \| --all]` | A new epoch, so each Mac re-merges; `restore` runs it for you |
 | `legacy-status` | The single-user tables and the `files/` purge |
 | `legacy-export --dir DIR` | `manifest.json`, `legacy.sql` and every live legacy file, into DIR |
 | `purge-legacy --account <username> --verified R.json` | Drop the single-user tables, queue the `files/` purge and delete `SYNC_TOKEN`, once `R.json` (from `kanso-sync verify --legacy`) proves everything arrived |
