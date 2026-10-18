@@ -452,6 +452,70 @@ impl Store {
         })
     }
 
+    /// Live file documents whose bytes this Mac lacks (no blob matches their
+    /// `md5digest`), as `(id, rev, md5digest)` in ID order, starting after
+    /// `after`. Documents without an `md5digest` can't be checked and are
+    /// left out. The engine fetches a few of them again at each sync
+    /// (docs/ACCOUNTS.md › Sync with encryption › Files).
+    pub fn files_without_bytes(
+        &self,
+        after: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, String, String)>> {
+        self.read(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT d.id, d.rev, lower(json_extract(d.json, '$.md5digest')) FROM docs d
+                 WHERE d.type = 'file' AND d.deleted = 0 AND d.id > ?1
+                   AND json_type(d.json, '$.md5digest') = 'text'
+                   AND NOT EXISTS (SELECT 1 FROM blobs b WHERE b.file_id = d.id
+                                   AND b.md5 = lower(json_extract(d.json, '$.md5digest')))
+                 ORDER BY d.id LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![after, limit as i64], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })
+    }
+
+    /// Stores bytes fetched again for file `id` (docs/ACCOUNTS.md › Sync
+    /// with encryption › Files), only if `id` is still live at `rev` and the
+    /// bytes match its `md5digest`, checked in the same transaction as the
+    /// `guard`. Returns whether they were stored. The document's revision
+    /// doesn't change, so nothing is broadcast.
+    pub fn fill_blob(
+        &self,
+        id: &str,
+        rev: &str,
+        blob: Attachment,
+        guard: Option<&SyncGuard>,
+    ) -> Result<bool> {
+        self.write(|tx, _| {
+            check_guard(tx, guard)?;
+            let Some(local) = load_row(tx, id)? else {
+                return Ok(false);
+            };
+            let md5 = local
+                .fields
+                .get("md5digest")
+                .and_then(Value::as_str)
+                .map(str::to_ascii_lowercase);
+            if local.deleted
+                || local.doc_type != DocType::File
+                || local.rev != rev
+                || md5.as_deref() != Some(blob.md5_hex().as_str())
+            {
+                return Ok(false);
+            }
+            tx.execute(
+                "INSERT INTO blobs (file_id, md5, data) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (file_id) DO UPDATE SET md5 = excluded.md5, data = excluded.data",
+                params![id, blob.md5_hex(), blob.data],
+            )?;
+            Ok(true)
+        })
+    }
+
     /// Whether the store has the bytes of attachment `id` with this MD5 (hex).
     pub fn has_blob(&self, id: &str, md5_hex: &str) -> Result<bool> {
         self.read(|conn| {
@@ -1044,6 +1108,56 @@ mod tests {
         let after = state(&store, &note.id);
         assert_eq!((after.sent_rev, after.synced_gen), (None, 2));
         assert!(store.revisions(&note.id).unwrap().iter().all(|r| r.origin != "sync"));
+    }
+
+    /// Review-sync 5: files without their bytes are listed, and fetched
+    /// bytes land only for the revision they were fetched for and only when
+    /// they match its `md5digest`.
+    #[test]
+    fn missing_bytes_are_listed_and_filled_only_for_their_revision() {
+        let (_dir, store) = store();
+        let bytes = b"\x89PNG later".to_vec();
+        let blob = Attachment::new(bytes.clone());
+        let doc = |id: &str, rev: &str, md5: &str| SyncDoc {
+            id: id.into(),
+            rev: rev.into(),
+            deleted: false,
+            fields: json!({"name": "a.png", "contentType": "image/png", "md5digest": md5, "createdAt": 1})
+                .as_object()
+                .unwrap()
+                .clone(),
+            base_rev: None,
+        };
+        let md5 = blob.md5_hex().to_uppercase();
+        for id in ["file:b", "file:a", "file:c"] {
+            store.apply_remote(&doc(id, "1-aa", &md5), None, None).unwrap();
+        }
+        store
+            .apply_remote(&doc("file:d", "1-aa", &md5), Some(blob.clone()), None)
+            .unwrap();
+        let ids = |after: &str, limit: usize| -> Vec<String> {
+            store
+                .files_without_bytes(after, limit)
+                .unwrap()
+                .into_iter()
+                .map(|(id, _, _)| id)
+                .collect()
+        };
+        assert_eq!(ids("", usize::MAX), ["file:a", "file:b", "file:c"]);
+        assert_eq!(ids("file:a", 1), ["file:b"]);
+
+        let wrong = Attachment::new(b"other".to_vec());
+        assert!(!store.fill_blob("file:a", "1-aa", wrong, None).unwrap());
+        assert!(!store.fill_blob("file:a", "2-bb", blob.clone(), None).unwrap());
+        assert!(store.fill_blob("file:a", "1-aa", blob.clone(), None).unwrap());
+        assert_eq!(store.attachment("file:a").unwrap().unwrap().1.data, bytes);
+        assert_eq!(ids("", usize::MAX), ["file:b", "file:c"]);
+        let guard_pairs = [("sync.v2.account_id", "a_1")];
+        let guard = SyncGuard { expect: &guard_pairs };
+        assert!(matches!(
+            store.fill_blob("file:b", "1-aa", blob, Some(&guard)),
+            Err(StoreError::GuardFailed)
+        ));
     }
 
     /// Migration 2 starts each floor at the generation of `synced_rev`.

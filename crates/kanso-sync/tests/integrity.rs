@@ -13,7 +13,7 @@ use common::*;
 use kanso_core::DocType;
 use kanso_store::{Origin, Store, StoreError, SyncDoc};
 use kanso_sync::wire::{WireChange, WireDoc, WirePushResult};
-use kanso_sync::{Choice, MemoryServer, SyncOptions, SyncReport};
+use kanso_sync::{Choice, MemoryServer, Route, SyncOptions, SyncReport};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 use serde_json::json;
@@ -820,5 +820,202 @@ proptest! {
         prop_assert_eq!(pending(&a.store), 0);
         prop_assert_eq!(&live_docs(&b.store), &last);
         prop_assert_eq!(server_live(&server, &a.session), last);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// e. Missing attachment bytes come back
+// ---------------------------------------------------------------------------
+
+/// What `store`'s blob for `id` holds, if anything.
+fn bytes(store: &Store, id: &str) -> Option<Vec<u8>> {
+    store.attachment(id).unwrap().map(|(_, blob)| blob.data)
+}
+
+/// Writes file `id` with `data`, replacing whatever version `store` has.
+fn write_file(store: &Store, id: &str, data: &[u8]) {
+    let mut body = file_body(id, "image.png", data);
+    if let Some((rev, _)) = all_docs(store).remove(id) {
+        body["_rev"] = json!(rev);
+    }
+    put(store, DocType::File, body).unwrap();
+}
+
+/// A backend that loses every file's bytes.
+fn losing_bytes(server: &MemoryServer) -> Tap<'_, impl FnMut(Event) -> Result<(), kanso_sync::ApiError> + Send> {
+    Tap::new(server, |event| {
+        if let Event::File(bytes) = event {
+            *bytes = None;
+        }
+        Ok(())
+    })
+}
+
+/// Review-sync P4: a file whose bytes didn't come with the first pull is
+/// fetched by the next ordinary sync, with nothing new in the feed, and not
+/// asked for again once it is there.
+#[test]
+fn missing_bytes_are_fetched_by_the_next_sync() {
+    let server = MemoryServer::new();
+    let a = Mac::new(sign_up(&server, "alice", 1));
+    let b = Mac::new(sign_in(&server, "alice", 2));
+    file(&a.store, "file:f1", b"\x89PNG bytes");
+    a.sync(&server);
+    assert_eq!(b.sync(&losing_bytes(&server)).files_missing, 1);
+    assert_eq!(bytes(&b.store, "file:f1"), None);
+    let report = b.sync(&server);
+    assert_eq!((report.files_down, report.files_missing), (1, 0));
+    assert_eq!(bytes(&b.store, "file:f1").as_deref(), Some(&b"\x89PNG bytes"[..]));
+    let gets = server.stats().count(Route::GetFile);
+    assert_eq!(b.sync(&server).files_down, 0);
+    assert_eq!(server.stats().count(Route::GetFile), gets);
+}
+
+/// Bytes fetched again for one revision never land on a newer one: the file
+/// is replaced on this Mac while its old bytes are on the way. The guarded
+/// write sees the new revision and keeps the new bytes, which then reach
+/// the account.
+#[test]
+fn refetched_bytes_never_replace_a_newer_versions_bytes() {
+    let server = MemoryServer::new();
+    let a = Mac::new(sign_up(&server, "alice", 1));
+    let b = Mac::new(sign_in(&server, "alice", 2));
+    file(&a.store, "file:f1", b"old bytes");
+    a.sync(&server);
+    assert_eq!(b.sync(&losing_bytes(&server)).files_missing, 1);
+    let race = Tap::new(&server, |event| {
+        if let Event::File(_) = event {
+            write_file(&b.store, "file:f1", b"new bytes");
+        }
+        Ok(())
+    });
+    let report = b.sync(&race);
+    assert_eq!(report.files_down, 0, "{report:?}");
+    assert_eq!(bytes(&b.store, "file:f1").as_deref(), Some(&b"new bytes"[..]));
+    assert_eq!(pending(&b.store), 0);
+    a.sync(&server);
+    assert_eq!(bytes(&a.store, "file:f1").as_deref(), Some(&b"new bytes"[..]));
+}
+
+/// Too many missing files: each sync asks for at most
+/// `SyncOptions::refetch_files`, going round from where the last stopped.
+#[test]
+fn refetching_is_bounded_and_goes_round() {
+    let server = MemoryServer::new();
+    let a = Mac::new(sign_up(&server, "alice", 1));
+    let b = Mac::new(sign_in(&server, "alice", 2));
+    for i in 0..5 {
+        file(&a.store, &format!("file:f{i}"), format!("bytes {i}").as_bytes());
+    }
+    a.sync(&server);
+    let options = SyncOptions {
+        refetch_files: 2,
+        ..SyncOptions::default()
+    };
+    let lose = losing_bytes(&server);
+    assert_eq!(b.sync_with(&lose, &options).unwrap().files_missing, 5);
+    let gets = server.stats().count(Route::GetFile);
+    assert_eq!(b.sync_with(&lose, &options).unwrap().files_missing, 2);
+    assert_eq!(server.stats().count(Route::GetFile), gets + 2);
+    // f0 and f1 were asked for last: f2 to f4 come first, then round again.
+    for (want, got, not_yet) in [
+        (2, ["file:f2", "file:f3"], "file:f4"),
+        (2, ["file:f4", "file:f0"], "file:f1"),
+    ] {
+        let report = b.sync_with(&server, &options).unwrap();
+        assert_eq!(report.files_down, want, "{report:?}");
+        for id in got {
+            assert_eq!(bytes(&b.store, id), bytes(&a.store, id), "{id}");
+        }
+        assert_eq!(bytes(&b.store, not_yet), None, "{not_yet}");
+    }
+    assert_eq!(b.sync_with(&server, &options).unwrap().files_down, 1);
+    for i in 0..5 {
+        let id = format!("file:f{i}");
+        assert_eq!(bytes(&b.store, &id), bytes(&a.store, &id), "{id}");
+    }
+}
+
+#[derive(Clone, Debug)]
+struct BytesRound {
+    /// A replaces file `.0`'s bytes (version `.1`) and syncs first.
+    edit: Option<(usize, u8)>,
+    /// What happens to each `GET /v2/files` of B's sync, in order: 0
+    /// delivers, 1 loses the bytes, 2 answers garbage. Past the end: deliver.
+    faults: Vec<u8>,
+}
+
+fn gen_bytes_rounds() -> impl Strategy<Value = (usize, Vec<BytesRound>)> {
+    (1usize..=5).prop_flat_map(|files| {
+        let round = (
+            proptest::option::of((0..files, any::<u8>())),
+            prop::collection::vec(0u8..3, 0..8),
+        )
+            .prop_map(|(edit, faults)| BytesRound { edit, faults });
+        (Just(files), prop::collection::vec(round, 1..6))
+    })
+}
+
+proptest! {
+    #![proptest_config(config(64))]
+
+    /// Invariant (e): whatever bytes the server loses or garbles, B only
+    /// ever holds bytes A wrote for that file and never asks for more than
+    /// every file plus `refetch_files` in one sync. Once the server answers
+    /// honestly B catches up within a bounded number of ordinary syncs, and
+    /// then stops asking.
+    #[test]
+    fn prop_missing_bytes_come_back((files, rounds) in gen_bytes_rounds()) {
+        let server = MemoryServer::new();
+        let a = Mac::new(sign_up(&server, "alice", 1));
+        let b = Mac::new(sign_in(&server, "alice", 2));
+        let ids: Vec<String> = (0..files).map(|i| format!("file:f{i}")).collect();
+        let mut written: BTreeMap<String, BTreeSet<Vec<u8>>> = BTreeMap::new();
+        let write = |written: &mut BTreeMap<String, BTreeSet<Vec<u8>>>, i: usize, v: u16| {
+            let data = format!("bytes of {i}, version {v}").into_bytes();
+            write_file(&a.store, &ids[i], &data);
+            written.entry(ids[i].clone()).or_default().insert(data);
+        };
+        for i in 0..files {
+            write(&mut written, i, 0);
+        }
+        a.sync(&server);
+        let options = SyncOptions { refetch_files: 2, ..SyncOptions::default() };
+        for round in &rounds {
+            if let Some((i, v)) = round.edit {
+                write(&mut written, i, u16::from(v) + 1);
+                a.sync(&server);
+            }
+            let gets = std::sync::atomic::AtomicUsize::new(0);
+            let mut faults = round.faults.clone().into_iter();
+            let tap = Tap::new(&server, |event| {
+                if let Event::File(bytes) = event {
+                    gets.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    match faults.next() {
+                        Some(1) => *bytes = None,
+                        Some(2) => *bytes = Some(vec![7; 64]),
+                        _ => {}
+                    }
+                }
+                Ok(())
+            });
+            b.sync_with(&tap, &options).unwrap();
+            drop(tap);
+            prop_assert!(gets.into_inner() <= files + 2);
+            for id in &ids {
+                if let Some(held) = bytes(&b.store, id) {
+                    prop_assert!(written[id].contains(&held), "{} holds bytes A never wrote", id);
+                }
+            }
+        }
+        for _ in 0..files / 2 + 2 {
+            b.sync_with(&server, &options).unwrap();
+        }
+        for id in &ids {
+            prop_assert_eq!(bytes(&b.store, id), bytes(&a.store, id), "{}", id);
+        }
+        let gets = server.stats().count(Route::GetFile);
+        b.sync_with(&server, &options).unwrap();
+        prop_assert_eq!(server.stats().count(Route::GetFile), gets, "asked again after catching up");
     }
 }

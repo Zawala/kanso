@@ -351,10 +351,10 @@ pub fn sync_meta(store: &Store) -> Vec<(String, Option<String>)> {
         k::USERNAME,
         k::SERVER,
         k::LAST_SEQ,
-        k::EPOCH,
         k::LEGACY_LAST_SEQ,
     ]
     .into_iter()
+    .chain(k::PER_ACCOUNT.iter().copied())
     .map(|k| (k.to_owned(), store.meta(k).unwrap()))
     .collect()
 }

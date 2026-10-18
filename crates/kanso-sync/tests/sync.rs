@@ -269,7 +269,7 @@ fn file_doc(id: &str, rev: &str, bytes: &[u8]) -> SyncDoc {
 }
 
 #[test]
-fn a_missing_attachment_is_reported_and_fetched_by_a_full_resync() {
+fn a_missing_attachment_is_reported_and_fetched_by_a_later_sync() {
     let server = MemoryServer::new();
     let a = sign_up(&server, "alice", 1);
     let b = Mac::new(sign_in(&server, "alice", 2));
@@ -278,14 +278,44 @@ fn a_missing_attachment_is_reported_and_fetched_by_a_full_resync() {
     // Another device pushed the document but its upload never arrived.
     view.push(&[file_doc("file:late", "1-ab", &bytes)]).unwrap();
     let report = b.sync(&server);
-    assert_eq!(report.files_missing, 1);
+    assert_eq!((report.files_missing, report.files_down), (1, 0));
+    assert_eq!(server.stats().count(Route::GetFile), 1, "asked once");
     assert!(b.store.get("file:late").unwrap().is_some());
     assert!(b.store.attachment("file:late").unwrap().is_none());
-
-    view.put_file("file:late", &bytes).unwrap();
-    assert_eq!(b.sync(&server).files_down, 0, "nothing new in the feed");
-    b.store.set_meta(meta_keys::LAST_SEQ, "0").unwrap();
     let report = b.sync(&server);
+    assert_eq!((report.files_missing, report.files_down), (1, 0));
+
+    // Nothing new in the feed, but the next ordinary sync asks again.
+    view.put_file("file:late", &bytes).unwrap();
+    let report = b.sync(&server);
+    assert_eq!((report.files_missing, report.files_down), (0, 1));
+    assert!(!report.remerged);
+    assert_eq!(
+        b.store.attachment("file:late").unwrap().unwrap().1.data,
+        bytes
+    );
+    let gets = server.stats().count(Route::GetFile);
+    assert_eq!(b.sync(&server).files_down, 0);
+    assert_eq!(server.stats().count(Route::GetFile), gets, "not asked again");
+}
+
+#[test]
+fn a_missing_attachment_is_fetched_by_a_full_resync() {
+    let server = MemoryServer::new();
+    let a = sign_up(&server, "alice", 1);
+    let b = Mac::new(sign_in(&server, "alice", 2));
+    let view = server.plain_view(&a);
+    let bytes = b"late bytes".to_vec();
+    view.push(&[file_doc("file:late", "1-ab", &bytes)]).unwrap();
+    let off = SyncOptions {
+        refetch_files: 0,
+        ..SyncOptions::default()
+    };
+    assert_eq!(b.sync_with(&server, &off).unwrap().files_missing, 1);
+    view.put_file("file:late", &bytes).unwrap();
+    assert_eq!(b.sync_with(&server, &off).unwrap().files_down, 0);
+    b.store.set_meta(meta_keys::LAST_SEQ, "0").unwrap();
+    let report = b.sync_with(&server, &off).unwrap();
     assert_eq!(report.files_down, 1);
     assert!(!report.remerged, "a full resync isn't a restore");
     assert_eq!(

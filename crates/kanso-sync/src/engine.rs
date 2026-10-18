@@ -35,6 +35,10 @@ pub struct SyncOptions {
     /// files and returns [`SyncError::Cancelled`]. Every re-bind and
     /// sign-out cancels and joins the running sync first (fix 2).
     pub cancel: Option<Arc<AtomicBool>>,
+    /// Most live files whose bytes this Mac lacks that one sync fetches
+    /// again, after the pull (docs/ACCOUNTS.md › Sync with encryption ›
+    /// Files). 0 turns it off.
+    pub refetch_files: usize,
 }
 
 impl Default for SyncOptions {
@@ -45,6 +49,7 @@ impl Default for SyncOptions {
             batch_bytes: 1024 * 1024,
             max_rounds: 4,
             cancel: None,
+            refetch_files: 8,
         }
     }
 }
@@ -138,7 +143,9 @@ pub enum SyncError {
 ///    feed lacked are marked unsynced and pushed again with no base.
 ///    Undecryptable documents never stop the pull; one is repaired only
 ///    when it is the version this Mac last synced (M3), else skipped. A
-///    newer format stops the pull before it.
+///    newer format stops the pull before it. Then up to
+///    [`SyncOptions::refetch_files`] live files whose bytes this Mac lacks
+///    are fetched again.
 /// 2. **Push.** Sends pending documents in batches, sealed, uploading file
 ///    bytes first; up to [`SyncOptions::max_rounds`] rounds resolve
 ///    conflicts, lost documents and `behind` answers (which pull first). A
@@ -168,12 +175,14 @@ pub fn sync(
         remerging: false,
         present: HashSet::new(),
         wire_ids: None,
+        fetched: HashSet::new(),
         stopped: false,
         tombstones_only: false,
     };
     run.check_cancel()?;
     run.check_bound()?;
     run.pull()?;
+    run.refetch()?;
     run.push()?;
     run.report.pending = store.pending_count()?;
     Ok(run.report)
@@ -228,6 +237,8 @@ struct Run<'r> {
     /// Wire ID → (local ID, `synced_rev`) of every local document, built
     /// when the first undecryptable document of a pull shows up.
     wire_ids: Option<HashMap<String, (String, Option<String>)>>,
+    /// File IDs whose bytes this sync already asked the server for.
+    fetched: HashSet<String>,
     /// Pushing stopped for this sync (a second 413, or a 429).
     stopped: bool,
     /// After a 413: push only tombstones.
@@ -434,6 +445,7 @@ impl Run<'_> {
             return Ok(None);
         }
         self.check_cancel()?;
+        self.fetched.insert(doc.id.clone());
         match self.sealed.get_file(&doc.id)? {
             FileBytes::Opened(bytes) if md5.as_deref() == Some(md5_hex(&bytes).as_str()) => {
                 self.report.files_down += 1;
@@ -444,6 +456,61 @@ impl Run<'_> {
                 Ok(None)
             }
         }
+    }
+
+    /// Fetches again the bytes of up to [`SyncOptions::refetch_files`] live
+    /// files this Mac lacks (review-sync 5), going on in ID order from where
+    /// the last sync stopped and skipping files this sync already asked for.
+    /// Bytes are kept only when they open, match the document's `md5digest`
+    /// and the document still has the revision they were fetched for
+    /// (`Store::fill_blob`, guarded).
+    fn refetch(&mut self) -> Result<(), SyncError> {
+        let limit = self.options.refetch_files;
+        if limit == 0 {
+            return Ok(());
+        }
+        let after = self
+            .store
+            .meta(meta_keys::REFETCH_AFTER)?
+            .unwrap_or_default();
+        // Enough rows that skipping the ones this sync fetched still leaves
+        // `limit`, from where the last sync stopped, then from the start.
+        let window = limit + self.fetched.len();
+        let mut todo = self.store.files_without_bytes(&after, window)?;
+        if todo.len() < window && !after.is_empty() {
+            todo.extend(
+                self.store
+                    .files_without_bytes("", window)?
+                    .into_iter()
+                    .filter(|(id, ..)| *id <= after),
+            );
+        }
+        todo.retain(|(id, ..)| !self.fetched.contains(id));
+        todo.truncate(limit);
+        let mut last = None;
+        for (id, rev, md5) in todo {
+            self.check_cancel()?;
+            self.fetched.insert(id.clone());
+            match self.sealed.get_file(&id)? {
+                FileBytes::Opened(bytes) if md5_hex(&bytes) == md5 => {
+                    if self
+                        .store
+                        .fill_blob(&id, &rev, Attachment::new(bytes), Some(&self.guard))
+                        .map_err(guarded)?
+                    {
+                        self.report.files_down += 1;
+                    }
+                }
+                FileBytes::Opened(_) | FileBytes::Missing | FileBytes::Unreadable => {
+                    self.report.files_missing += 1;
+                }
+            }
+            last = Some(id);
+        }
+        if let Some(last) = last {
+            self.set_meta(meta_keys::REFETCH_AFTER, &last)?;
+        }
+        Ok(())
     }
 
     /// A feed document that didn't open (M3, security re-check 10).
