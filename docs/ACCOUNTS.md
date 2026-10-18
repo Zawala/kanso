@@ -93,6 +93,10 @@ nothing was deployed yet):
 6. **`signups only` right before the sign-up.** The deploy steps, the README and the admin help
    say to run it immediately before the owner's sign-up, since anyone who guesses the name can
    take it while it is reserved, and what to do if they did: `delete`, then `signups only` again.
+7. **Accuracy.** The Decisions row on deletion names what Time Travel keeps (ciphertext, the
+   username and the password-protected key, for up to 30 days). The migration's comment on
+   `recounted_at` names both corrections that set it, and the cron's reconciliation is described
+   as it is: it doesn't set `recounted_at`.
 8. **Day rollover.** Tests now send requests at different times of one UTC day and on both sides
    of midnight, for the server-wide writes cap and `signups_per_day`. They found one fault: a
    request stamped just before a window's boundary but counted just after it reset that row of
@@ -132,7 +136,7 @@ Two places go beyond the reviews:
 | Mac storage | The Keychain holds the session token, the data key, any pending logouts, and the recovery key until the user confirms they saved it. The Mac never stores the password, master key or KEKs. |
 | Server choice | The owner's Worker is compiled in as the default. "Use a different server…" points at another deployment. Accounts are bound to their server's origin. |
 | Signing out | Keychain items go (a logout is retried until the server accepts it). Local notes and the library's link to the account stay. |
-| Deleting the account | Removes the account's D1 rows, R2 objects and sessions. Local notes stay. Cloudflare Time Travel still holds the deleted rows (ciphertext) for its 30-day window. |
+| Deleting the account | Removes the account's D1 rows, R2 objects and sessions. Local notes stay. Cloudflare D1 Time Travel still holds what the deleted rows held: ciphertext, your username and your password-protected key, for up to 30 days. |
 | Protocol | `/v2/`. The new Worker drops `/v1/` and the shared token; the client has one mode. |
 | Legacy data | The migration only adds tables. Legacy plaintext is removed only by an explicit admin command, which requires a verified manifest. |
 | Server CPU | On Workers Paid (30 s of CPU per request), the Worker still never runs Argon2 and never decodes document or file payloads. It does hash file bodies (about 25 ms for 10 MiB). |
@@ -876,7 +880,8 @@ hex is 400. Steps:
 
    Triggers refuse growth past quotas with 413.
 5. `FILES.put(key, body, {sha256})`. If R2 fails, a compensating batch restores the old row and
-   counters, if the row still holds this upload's size, and the answer is 500.
+   counters, if the row still holds this upload's size, and the answer is 500. Restoring a larger
+   old size sets `recounted_at`, so the quota triggers let the correction through.
 6. 200 `{"ok": true, "size": n}`.
 
 Two concurrent uploads of the same ID can leave the counter off by their size difference. `recount`
@@ -966,8 +971,10 @@ BEGIN SELECT RAISE(ABORT, 'daily_required'); END;
 -- `docs` counts live documents; `doc_bytes` is the sum of length(sealed) + 512 over all of
 -- the account's rows, tombstones included; `files` and `file_bytes` count account_files rows
 -- and their size + 1024. NULL quotas use `defaults`; a NULL `quota_writes_per_day` uses the
--- `writes_per_day` setting (the Worker reads it; no trigger does). `recounted_at` changes
--- only in the admin recount, which the quota triggers exempt.
+-- `writes_per_day` setting (the Worker reads it; no trigger does). The quota triggers exempt
+-- an update that changes `recounted_at`, which only two corrections do: the admin recount, and
+-- an upload's compensation when R2 fails and the row's old, larger size comes back (sync.ts).
+-- The cron's size reconciliation doesn't, so a growing correction meets the quotas.
 CREATE TABLE accounts (
     id TEXT PRIMARY KEY NOT NULL
         CHECK (length(id) = 34 AND substr(id, 1, 2) = 'a_' AND substr(id, 3) NOT GLOB '*[^0-9a-f]*'),
@@ -1292,8 +1299,10 @@ counts.
   - reconciles R2 with `account_files` (security re-check 8): it lists a bounded number of
     accounts' prefixes per run, taking accounts in turn, deletes objects that have no row and were
     uploaded more than an hour ago, and sets a row's `size` to its object's size where they differ,
-    adjusting `file_bytes` in the same batch with `recounted_at` set, as `recount` does, so no quota
-    refuses the correction;
+    adjusting `file_bytes` in the same batch. It doesn't set `recounted_at`: a correction that grows
+    `file_bytes` meets the quota triggers like an upload, because two racing uploads of one ID can
+    leave a small row over a large object. If a quota refuses it, the row goes (refunded) and then
+    the object;
   - revokes active sessions unseen for 180 days (`expired`);
   - deletes revoked sessions more than 90 days old.
 
