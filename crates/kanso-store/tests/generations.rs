@@ -138,6 +138,9 @@ enum Op {
     Delete(usize, usize),
     Sync(usize),
     Replay(usize, usize),
+    /// The server claims it lost a document (`Lost`, or left out of a
+    /// re-merge when the flag is set), then offers an older version of it.
+    LoseThenReplay(usize, usize, bool),
 }
 
 fn op() -> impl Strategy<Value = Op> {
@@ -147,6 +150,7 @@ fn op() -> impl Strategy<Value = Op> {
         1 => (0..3usize, any::<usize>()).prop_map(|(m, k)| Op::Delete(m, k)),
         3 => (0..3usize).prop_map(Op::Sync),
         2 => (0..3usize, any::<usize>()).prop_map(|(m, k)| Op::Replay(m, k)),
+        2 => (0..3usize, any::<usize>(), any::<bool>()).prop_map(|(m, k, missing)| Op::LoseThenReplay(m, k, missing)),
     ]
 }
 
@@ -206,6 +210,39 @@ proptest! {
                     prop_assert!(matches!(outcome, ApplyOutcome::Stale { .. }), "{outcome:?} for a replay");
                     let (_, deleted_after, fields_after) = all_docs(mac)[&replay.id].clone();
                     prop_assert_eq!(deleted_after, deleted);
+                    prop_assert_eq!(fields_after, fields);
+                }
+                Op::LoseThenReplay(m, k, missing) => {
+                    let mac = &macs[m].1;
+                    server.sync(mac)?;
+                    let held = all_docs(mac);
+                    let old: Vec<&SyncDoc> = server
+                        .history
+                        .iter()
+                        .filter(|d| {
+                            held.contains_key(&d.id)
+                                && generation(&d.rev) < generation(&server.docs[&d.id].rev)
+                        })
+                        .collect();
+                    if old.is_empty() {
+                        continue;
+                    }
+                    let replay = old[k % old.len()].clone();
+                    let floor = |mac: &Store| {
+                        mac.sync_states().unwrap().into_iter().find(|s| s.id == replay.id).unwrap().synced_gen
+                    };
+                    let before = floor(mac);
+                    if missing {
+                        mac.mark_missing_unsynced(&Default::default(), None).unwrap();
+                    } else {
+                        mac.mark_unsynced(&replay.id, None).unwrap();
+                    }
+                    prop_assert_eq!(floor(mac), before, "a reported loss lowered the floor");
+                    let (_, deleted, fields) = held[&replay.id].clone();
+                    let outcome = mac.apply_remote(&replay, None, None).unwrap();
+                    prop_assert!(matches!(outcome, ApplyOutcome::Stale { .. }), "{outcome:?} for a replay after a loss");
+                    let (_, deleted_after, fields_after) = all_docs(mac)[&replay.id].clone();
+                    prop_assert_eq!(deleted_after, deleted, "a loss let a replay change a deletion");
                     prop_assert_eq!(fields_after, fields);
                 }
             }

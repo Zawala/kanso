@@ -22,7 +22,7 @@ use rusqlite::Connection;
 pub use backup::BackupPolicy;
 pub use doc::{Attachment, Doc};
 pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
-pub use sync::{ApplyOutcome, SyncDoc, SyncGuard};
+pub use sync::{ApplyOutcome, SyncDoc, SyncGuard, SyncState};
 pub use write::{Put, WriteResult};
 
 #[derive(Debug, thiserror::Error)]
