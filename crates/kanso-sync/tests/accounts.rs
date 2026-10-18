@@ -571,10 +571,23 @@ fn devices_eviction_and_revocation() {
             reason: SignOutReason::Revoked
         }
     );
-    assert!(matches!(
-        kanso_sync::revoke_device(&server, &eleventh.session, &sessions[1].device_id),
-        Err(AccountError::NotFound)
-    ));
+    // Revoking it again, or a device already signed out another way (the
+    // evicted one), succeeds and marks it revoked, so the owner can always
+    // say "that Mac is gone" (security review 4).
+    kanso_sync::revoke_device(&server, &eleventh.session, &sessions[1].device_id).unwrap();
+    kanso_sync::revoke_device(&server, &eleventh.session, &sessions[0].device_id).unwrap();
+    assert_eq!(
+        check(&server, &sessions[0]).unwrap_err(),
+        ApiError::Unauthorized {
+            reason: SignOutReason::Revoked
+        }
+    );
+    assert_eq!(
+        kanso_sync::devices(&server, &eleventh.session)
+            .unwrap()
+            .len(),
+        9
+    );
 }
 
 #[test]

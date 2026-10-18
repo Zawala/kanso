@@ -124,9 +124,7 @@ impl ServerStats {
 const HOUR_MS: i64 = 3_600_000;
 const DAY_MS: i64 = 86_400_000;
 const QUARTER_HOUR_MS: i64 = 900_000;
-/// How long a revoked session row still identifies a known device, and how
-/// many revoked rows an account keeps.
-const REVOKED_KEEP_MS: i64 = 90 * DAY_MS;
+/// How many revoked session rows an account keeps.
 const MAX_REVOKED_ROWS: usize = 90;
 /// The subject of every IP rule: one client, like the Worker without
 /// `CF-Connecting-IP`.
@@ -773,7 +771,7 @@ impl ServerState {
             self.sessions.iter().any(|s| {
                 s.account_id == a.id
                     && s.device_id == device.id
-                    && s.revoked_at.is_none_or(|at| at > now - REVOKED_KEEP_MS)
+                    && s.revoked_at.is_none()
                     && s.proof_hash == device.proof_hash
             })
         });
@@ -1148,14 +1146,22 @@ impl ServerState {
             self.revoke_self(&caller, now);
             return Ok(());
         }
-        match self.sessions.iter_mut().find(|s| {
-            s.account_id == caller.account_id && s.device_id == device_id && s.revoked.is_none()
-        }) {
-            Some(row) => {
-                Self::revoke(row, now, SignOutReason::Revoked);
-                Ok(())
-            }
-            None => Err(ApiError::NotFound),
+        // A row already signed out, for any reason, is marked `revoked`
+        // too, keeping its time; 404 only when the account has no row.
+        let mut found = false;
+        for row in self
+            .sessions
+            .iter_mut()
+            .filter(|s| s.account_id == caller.account_id && s.device_id == device_id)
+        {
+            row.revoked_at = Some(row.revoked_at.unwrap_or(now));
+            row.revoked = Some(SignOutReason::Revoked);
+            found = true;
+        }
+        if found {
+            Ok(())
+        } else {
+            Err(ApiError::NotFound)
         }
     }
 
@@ -1192,13 +1198,8 @@ impl ServerState {
         }
     }
 
-    fn push(
-        &mut self,
-        token: &SessionToken,
-        r: &PushRequest,
-        now: i64,
-    ) -> Result<PushResponse, ApiError> {
-        let caller = self.authenticate(token, now, false)?;
+    /// The push body's shape and sizes, checked before anything is stored.
+    fn check_push(r: &PushRequest) -> Result<(), ApiError> {
         let body = serde_json::to_vec(r).map_err(|e| ApiError::Protocol(e.to_string()))?;
         if body.len() > MAX_PUSH_BODY || r.docs.len() > MAX_PUSH_DOCS {
             return Err(ApiError::TooLarge);
@@ -1213,6 +1214,43 @@ impl ServerState {
             if doc.base_rev.as_deref().is_some_and(|b| !is_wire_rev(b)) {
                 return Err(ApiError::BadRequest);
             }
+        }
+        Ok(())
+    }
+
+    /// Whether the account's own count today under `key` (this request
+    /// included) is above its fair share of the server-wide daily cap
+    /// `cap` (cap / max_accounts). Fails closed like the trigger: no row for
+    /// today, or `max_accounts` 0, counts as above.
+    fn above_fair_share(&self, key: &str, now: i64, cap: &str) -> bool {
+        let max_accounts = self.setting("max_accounts");
+        let today = now.div_euclid(DAY_MS) * DAY_MS;
+        match self.limits.get(key) {
+            Some(&(start, count)) if max_accounts > 0 && start == today => {
+                count > self.setting(cap) / max_accounts
+            }
+            _ => true,
+        }
+    }
+
+    fn push(
+        &mut self,
+        token: &SessionToken,
+        r: &PushRequest,
+        now: i64,
+    ) -> Result<PushResponse, ApiError> {
+        let caller = self.authenticate(token, now, false)?;
+        if let Err(refused) = Self::check_push(r) {
+            // A refused body still cost a read and a parse: one write.
+            let id = &caller.account_id;
+            self.count(
+                Rule::WritesAccount,
+                &format!("writes-account:{id}"),
+                now,
+                1,
+                self.quota_writes_per_day(&self.accounts[id]),
+            )?;
+            return Err(refused);
         }
         if r.docs.is_empty() {
             return Ok(PushResponse { results: vec![] });
@@ -1283,7 +1321,13 @@ impl ServerState {
                 break;
             }
             // WRITE: the global daily cap, then the sealed alphabet CHECK.
-            if self.writes.today(now) >= self.setting("global_writes_per_day") {
+            if self.writes.today(now) >= self.setting("global_writes_per_day")
+                && self.above_fair_share(
+                    &format!("writes-account:{id}"),
+                    now,
+                    "global_writes_per_day",
+                )
+            {
                 self.undo_push(&id, saved_account, saved_writes, undo);
                 return Err(rate_limited("writes-global", until_midnight(now)));
             }
@@ -1481,6 +1525,11 @@ impl ServerState {
         }
         if self.uploads.today(now) as i64
             > self.setting("global_upload_bytes_per_day") as i64 - size
+            && self.above_fair_share(
+                &format!("uploads-account:{id}"),
+                now,
+                "global_upload_bytes_per_day",
+            )
         {
             return Err(rate_limited("uploads-global", until_midnight(now)));
         }
