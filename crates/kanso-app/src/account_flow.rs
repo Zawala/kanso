@@ -161,8 +161,9 @@ impl Seams {
 
 /// Starts `work` on its own thread as the task `kind`, at step `first`.
 /// With `stop_sync`, the running sync is cancelled and joined there first,
-/// and started again afterwards if the task left the same session signed in
-/// (a failure, or a cancelled question). Steps reach [`Services`] and
+/// and started again once the task, and any task its `finish` started, has
+/// left the same session signed in (a failure, or a cancelled question).
+/// Steps reach [`Services`] and
 /// `progress`; `finish` gets the result on the main thread (`None` if the
 /// thread stopped without one).
 fn run<T: Send + 'static>(
@@ -180,7 +181,10 @@ fn run<T: Send + 'static>(
     } else {
         None
     };
-    let stopped_for = sync.as_ref().and_then(|_| services.session());
+    // A chain of tasks remembers the session of the first stop.
+    if sync.is_some() && services.stopped_for.is_none() {
+        services.stopped_for = services.session();
+    }
     let first = if sync.is_some() {
         Step::StoppingSync
     } else {
@@ -209,6 +213,7 @@ fn run<T: Send + 'static>(
         eprintln!("kanso: couldn't start an account task: {err}");
         cx.global_mut::<Services>().task = None;
         finish(None, cx);
+        resume_stopped_sync(cx);
         cx.refresh_windows();
         return;
     }
@@ -237,18 +242,30 @@ fn run<T: Send + 'static>(
         cx.update(|cx| {
             cx.global_mut::<Services>().task = None;
             finish(result, cx);
-            if let Some(before) = stopped_for
-                && cx
-                    .global::<Services>()
-                    .session()
-                    .is_some_and(|now| Arc::ptr_eq(&now, &before))
-            {
-                services::resume_sync(cx);
-            }
+            resume_stopped_sync(cx);
             cx.refresh_windows();
         });
     })
     .detach();
+}
+
+/// Once no task runs (a task's `finish` may have started the next of its
+/// chain), the sync a task stopped starts again if its session is still
+/// signed in (A8).
+fn resume_stopped_sync(cx: &mut App) {
+    let services = cx.global_mut::<Services>();
+    if services.task.is_some() {
+        return;
+    }
+    let Some(before) = services.stopped_for.take() else {
+        return;
+    };
+    if services
+        .session()
+        .is_some_and(|now| Arc::ptr_eq(&now, &before))
+    {
+        services::resume_sync(cx);
+    }
 }
 
 fn done(tx: &Sender<Progress>, result: Result<(), String>) {

@@ -212,8 +212,16 @@ pub struct Services {
     sync_tasks: Vec<Task<()>>,
     sync_after_edit: Option<Task<()>>,
     sync_running: bool,
-    sync_again: bool,
+    /// A sync asked for while one ran, to run right after it: `Some(true)`
+    /// when any of the requests was Sync now (sync 8).
+    sync_again: Option<bool>,
     sync_handle: Option<SyncHandle>,
+    /// The session whose sync an account task stopped: it starts again
+    /// when the last task of the chain ends with it still signed in (A8).
+    pub(crate) stopped_for: Option<Arc<Session>>,
+    /// How many syncs started, for tests.
+    #[cfg(test)]
+    pub(crate) sync_starts: usize,
 }
 
 impl Global for Services {}
@@ -498,7 +506,7 @@ fn start_sync(manual: bool, cx: &mut App) {
         services.hold = None;
     }
     if services.sync_running {
-        services.sync_again = true;
+        services.sync_again = Some(queued_again(services.sync_again, manual));
         return;
     }
     let secrets = services.secrets.clone();
@@ -523,7 +531,13 @@ fn start_sync(manual: bool, cx: &mut App) {
             tx.try_send(result).ok();
         });
     match thread {
-        Ok(thread) => services.sync_handle = Some(SyncHandle { cancel, thread }),
+        Ok(thread) => {
+            services.sync_handle = Some(SyncHandle { cancel, thread });
+            #[cfg(test)]
+            {
+                services.sync_starts += 1;
+            }
+        }
         Err(err) => {
             eprintln!("kanso: couldn't start the sync thread: {err}");
             services.sync_running = false;
@@ -557,10 +571,14 @@ fn finish_sync(session: Arc<Session>, result: Option<Result<SyncReport, SyncErro
         .session
         .as_ref()
         .is_some_and(|s| Arc::ptr_eq(s, &session));
-    let again = std::mem::take(&mut services.sync_again);
+    let again = services.sync_again.take();
     if !current {
-        // Signed out or in again meanwhile: this sync's news is stale.
+        // Signed out or in again meanwhile: this sync's news is stale, but
+        // a sync asked for meanwhile is the current session's.
         cx.refresh_windows();
+        if let Some(manual) = again {
+            start_sync(manual, cx);
+        }
         return;
     }
     let remerged = matches!(&result, Some(Ok(report)) if report.remerged);
@@ -595,8 +613,27 @@ fn finish_sync(session: Arc<Session>, result: Option<Result<SyncReport, SyncErro
         );
     }
     cx.refresh_windows();
-    if again {
-        start_sync(true, cx);
+    // Automatic requests stay automatic: the holds this sync just set
+    // apply to them.
+    if let Some(manual) = again {
+        start_sync(manual, cx);
+    }
+}
+
+/// The sync to run after the current one, given what was queued and a new
+/// request: manual if any request was.
+fn queued_again(queued: Option<bool>, manual: bool) -> bool {
+    queued.unwrap_or(false) || manual
+}
+
+#[cfg(test)]
+impl Services {
+    pub fn set_hold(&mut self, hold: Option<Hold>) {
+        self.hold = hold;
+    }
+
+    pub fn hold(&self) -> Option<Hold> {
+        self.hold
     }
 }
 
@@ -714,7 +751,7 @@ pub(crate) mod strategies {
 mod tests {
     use super::{
         AccountState, ApiState, Hold, SyncState, api_state, hold_after, holds_at, is_local_edit,
-        server_config, state_problem, sync_outcome,
+        queued_again, server_config, state_problem, sync_outcome,
     };
     use crate::config::ServerSettings;
     use kanso_sync::{ApiError, SignOutReason, SyncError, SyncProblem, SyncReport};
@@ -726,6 +763,14 @@ mod tests {
 
         /// Round-trip: the listen address keeps the configured IP and port,
         /// IPv6 included.
+        #[test]
+        fn prop_queued_syncs_are_manual_only_if_one_was(requests in prop::collection::vec(any::<bool>(), 1..12)) {
+            let queued = requests
+                .iter()
+                .fold(None, |queued, &manual| Some(queued_again(queued, manual)));
+            prop_assert_eq!(queued, Some(requests.iter().any(|&manual| manual)));
+        }
+
         #[test]
         fn prop_server_config_keeps_ip_and_port(ip in any::<IpAddr>(), port in any::<u16>()) {
             let settings = ServerSettings {

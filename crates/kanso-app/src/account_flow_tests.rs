@@ -1396,3 +1396,131 @@ fn the_sign_up_answer_is_asked_again_each_time(cx: &mut TestAppContext) {
         "an answer about a server no longer shown is dropped"
     );
 }
+
+// MARK: Sync around account tasks
+
+/// A sign-in to another account that stops the sync, then fails in the
+/// task it chained without a question (saving bob's session into an empty
+/// library), starts alice's stopped sync again at once (A8).
+#[gpui_kit::test]
+fn a_chained_task_that_fails_starts_the_stopped_sync_again(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let elsewhere = DeviceIdentity::from_parts(&format!("l_{:032x}", 9), "Elsewhere", [9; 32]);
+    kanso_sync::sign_up(
+        server.as_ref(),
+        &MemorySecrets::new(),
+        SERVER,
+        "bob",
+        &password(PASSWORD, "bob"),
+        &elsewhere,
+        &|_| {},
+    )
+    .unwrap();
+    // No notes: signing in to bob asks nothing and chains the binding.
+    let a = mac(cx, &server, "Studio", 0);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+    assert!(ok(&synced(cx)));
+    let alice = session(cx);
+
+    a.secrets.fail_writes_to(Some("sync-account:"));
+    let (window, pw) = (a.window, password(PASSWORD, "bob"));
+    let (rx, started) = cx.update(|cx| {
+        services::sync_now(cx);
+        let started = cx.global::<Services>().sync_starts;
+        let rx = account_flow::sign_in(SERVER.into(), "bob".into(), pw, window, cx);
+        (rx, started)
+    });
+    assert!(finish(cx, rx).is_err());
+    a.secrets.heal();
+    assert!(!a.asking(cx), "no question was asked");
+    assert!(Arc::ptr_eq(&session(cx), &alice), "still alice's session");
+    assert_eq!(
+        cx.read(|cx| cx.global::<Services>().sync_starts),
+        started + 1,
+        "the stopped sync started again"
+    );
+    assert!(ok(&synced(cx)));
+}
+
+/// An automatic sync asked for while one runs stays automatic: when the
+/// running sync ends on a problem that holds automatic syncs (a disabled
+/// account), the queued one waits too, instead of running as if Sync now had
+/// been pressed (sync 8). A queued Sync now still runs.
+#[gpui_kit::test]
+fn a_queued_automatic_sync_respects_the_hold(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+    assert!(ok(&synced(cx)));
+    let tries = || server.stats().count(Route::Changes) + server.stats().count(Route::Push);
+
+    server.disable("alice");
+    let before = tries();
+    cx.update(|cx| {
+        cx.global_mut::<Services>().sync = SyncState::Syncing;
+        services::resume_sync(cx);
+        // Asked for while the first runs: queued, automatic.
+        services::resume_sync(cx);
+    });
+    let state = synced(cx);
+    for _ in 0..20 {
+        cx.run_until_parked();
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(matches!(state, SyncState::Failed(_)), "{state:?}");
+    assert_eq!(tries() - before, 1, "the queued sync waits for Sync now");
+    assert_eq!(
+        cx.read(|cx| cx.global::<Services>().hold()),
+        Some(services::Hold::UntilSyncNow)
+    );
+
+    // Sync now queued behind an automatic sync runs.
+    let before = tries();
+    cx.update(|cx| {
+        cx.global_mut::<Services>().set_hold(None);
+        services::resume_sync(cx);
+        services::sync_now(cx);
+    });
+    synced(cx);
+    wait_until(cx, "the queued Sync now", |_| tries() - before == 2);
+}
+
+/// A sync asked for while a stale one (of a session since replaced) still
+/// runs is run for the new session once the stale one ends (sync 8).
+#[gpui_kit::test]
+fn a_sync_asked_for_during_a_stale_one_still_runs(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+    assert!(ok(&synced(cx)));
+    let elsewhere = DeviceIdentity::from_parts(&library_id(cx), "Studio", [7; 32]);
+    let newer = kanso_sync::sign_in(
+        server.as_ref(),
+        SERVER,
+        "alice",
+        &password(PASSWORD, "alice"),
+        &elsewhere,
+        &|_| {},
+    )
+    .unwrap()
+    .session;
+
+    let started = cx.update(|cx| {
+        services::resume_sync(cx);
+        let started = cx.global::<Services>().sync_starts;
+        // Signed in again while it runs, and a sync asked for at once.
+        cx.global_mut::<Services>().set_signed_in(Arc::new(newer));
+        services::resume_sync(cx);
+        started
+    });
+    wait_until(cx, "the queued sync", |cx| {
+        cx.read(|cx| cx.global::<Services>().sync_starts) == started + 1
+    });
+    assert!(ok(&synced(cx)), "the new session syncs");
+}
