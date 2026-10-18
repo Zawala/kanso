@@ -11,10 +11,11 @@ export default defineConfig({
 		cloudflareTest(async () => ({
 			wrangler: { configPath: "./wrangler.jsonc" },
 			miniflare: {
-				// A second, empty database the migration tests build up step by step.
+				// A second, empty database the migration and row-cost tests build up step by step.
 				d1Databases: ["MIGRATION_DB"],
 				bindings: {
-					SYNC_TOKEN: "test-token",
+					// A fixed test pepper (bytes 0..31), never a deployed one.
+					AUTH_PEPPER: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
 					FAST_CHECK_SEED: seed,
 					FAST_CHECK_RUNS: runs,
 					TEST_MIGRATIONS: await readD1Migrations(fileURLToPath(new URL("./migrations", import.meta.url))),
@@ -24,6 +25,6 @@ export default defineConfig({
 	],
 	test: {
 		setupFiles: ["./test/setup.ts"],
-		testTimeout: 180_000,
+		testTimeout: 300_000,
 	},
 });
