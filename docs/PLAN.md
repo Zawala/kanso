@@ -152,6 +152,32 @@ All milestones are built and tested.
   model-based test (`prop_typed_text_is_never_lost`) runs random sequences of typing, outside
   edits and deletions, switching, answers and quitting against the real views.
 
+### UI redesign (2026-10-18)
+
+The app now follows the design spec and mockups from May 2026 (macOS desktop spec; mockups 01 sync
+settings, 05 command palette, 06 split editor, 07 empty notebook):
+
+- Warm graphite (dark) and paper (light) themes from the spec's palette, SF Pro body text at 16 px,
+  SF Mono in split mode, and restrained Markdown highlighting.
+- A transparent title bar with shared 52 pt top and 36 pt bottom bands across the panes. The global
+  status bar is gone: sync and the local API show in the sidebar footer, and cursor and word counts
+  in the editor footer.
+- Sidebar: All Notes, Pinned, Recent (last 7 days), notebooks, `#tag` chips, a Status group and
+  Trash. ⌘\ folds it to an icon rail.
+- Note list grouped by day, with status glyphs, two-line excerpts (`kanso_core::excerpt`), match
+  highlighting, one filter/sort menu and the empty-notebook block.
+- Editor header with breadcrumb, Edit/Preview/Split, status and tag chips, a formatting toolbar,
+  and a backlinks menu. Split has a draggable divider and loose scroll sync.
+- Command palette (⌘K) and Open Note (⌘P) drawn inside the workspace so commands reach its handlers.
+- Focus mode (⇧⌘D) and a first-run welcome.
+- Settings moved into the main window (General, Editor, Appearance, Sync, Local API); the separate
+  settings window is gone.
+
+Left out on purpose, because Kanso has no such features yet: sketch blocks, skills, MCP
+permissions, accounts and devices, templates and a Tasks view. The UI is checked headlessly by an
+ignored snapshot test that renders PNGs (`KANSO_SNAPSHOT_DIR=<dir> cargo test -p kanso-app
+snapshots -- --ignored`, optionally with `KANSO_SNAPSHOT_DB` pointing at a copy of a library).
+
 ### M0 go/no-go
 
 - The 253 KB note opens in under 200 ms.

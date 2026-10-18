@@ -23,11 +23,11 @@ scripts/bundle-macos.sh
 Builds an ad-hoc signed `target/release/Kanso.app`; copy it to `/Applications`. On first run with an
 empty library, Kanso offers to import from Inkdrop.
 
-**Taking over from Inkdrop.** Quit Inkdrop so Kanso can use port 19840 (until then the status bar
-says the port is in use, and Kanso keeps trying). In Settings › Local API, **Copy from Inkdrop…**
-takes Inkdrop's port, username and password; macOS asks you to allow access to the Keychain item
-"inkdrop Safe Storage", which Inkdrop uses to encrypt them. MCP clients configured for Inkdrop then
-work without changes.
+**Taking over from Inkdrop.** Quit Inkdrop so Kanso can use port 19840 (until then the plug icon at
+the bottom of the sidebar turns amber and says the port is in use, and Kanso keeps trying). In
+Settings › Local API, **Copy from Inkdrop…** takes Inkdrop's port, username and password; macOS asks
+you to allow access to the Keychain item "inkdrop Safe Storage", which Inkdrop uses to encrypt them.
+MCP clients configured for Inkdrop then work without changes.
 
 **Sync.** Deploy the Worker (see [cloud/README.md](cloud/README.md)), then in Settings › Sync set the
 Worker URL and access token and turn on **Sync automatically**.
@@ -36,15 +36,20 @@ Worker URL and access token and turn on **Sync automatically**.
 
 | | |
 |---|---|
+| ⌘K | Command palette: every command, notebook, tag and status, plus note search |
+| ⌘P | Open a note by title |
 | ⌘N / ⇧⌘N | New note / notebook |
-| ⇧⌘F or ⌘L | Search notes (`book:`, `tag:`, `status:`, `title:`, `body:`, `"phrases"`, `-exclude`) |
+| ⇧⌘F | Search all notes (`book:`, `tag:`, `status:`, `title:`, `body:`, `"phrases"`, `-exclude`) |
+| ⌘L | Search the list that is showing |
 | ↑ ↓ or J K in the list, Return | Move through notes, edit the selected one |
+| ⇧⌘L | Back to the note list |
 | ⌥⌘↓ / ⌥⌘↑ | Next / previous note from anywhere |
-| ⌘1 / ⌘2 / ⌘3 | Editor only / editor and preview / preview only |
-| ⌘\ | Toggle the sidebar |
+| ⌘1 / ⌘2 / ⌘3 | Edit / split (drag the divider) / preview |
+| ⇧⌘D | Focus mode: only the note; Escape leaves it |
+| ⌘\ | Fold the sidebar to icons, or open it again |
 | ⇧⌘P | Pin or unpin |
 | ⌘S | Save now (notes also save on their own) |
-| ⌘, | Settings |
+| ⌘, | Settings, inside the window; Escape goes back to the notes |
 
 ### Command line
 
