@@ -11,7 +11,9 @@
 //!   flips bits, swaps sealed values between documents and accounts, forges
 //!   tombstones, relabels revisions, replays old versions, rewinds, changes
 //!   the epoch, answers `current: null`, sends unknown formats and another
-//!   key ID.
+//!   key ID, omits documents from a re-read, and answers pushes with older
+//!   versions; up to three of these in one sync. Whatever the mix, the
+//!   replay floor never drops and content only moves to versions above it.
 
 mod common;
 
@@ -22,7 +24,7 @@ use base64::Engine as _;
 use common::*;
 use kanso_core::DocType;
 use kanso_store::{Change, Origin, Store, StoreError};
-use kanso_sync::wire::{WireChange, WirePushResult};
+use kanso_sync::wire::{WireChange, WireDoc, WirePushResult};
 use kanso_sync::{MemoryServer, Route, SyncError, SyncReport, meta_keys};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
@@ -561,6 +563,12 @@ enum Attack {
     Lost { pick: usize },
     NewFormat { pick: usize, format: u8 },
     WrongKey,
+    /// While the victim re-reads the feed from 0 (a re-merge or full
+    /// resync), leaves one document out, as a restored copy that lacks it.
+    OmitInRemerge { pick: usize },
+    /// Answers a push with a conflict whose `current` is an older version
+    /// of that document the account once held (`behind` the real one).
+    ConflictReplay { pick: usize },
 }
 
 fn gen_attack() -> impl Strategy<Value = Attack> {
@@ -578,7 +586,47 @@ fn gen_attack() -> impl Strategy<Value = Attack> {
         1 => pick.clone().prop_map(|pick| Attack::Lost { pick }),
         1 => (pick.clone(), 2u8..=255).prop_map(|(pick, format)| Attack::NewFormat { pick, format }),
         1 => Just(Attack::WrongKey),
+        1 => pick.clone().prop_map(|pick| Attack::OmitInRemerge { pick }),
+        2 => pick.clone().prop_map(|pick| Attack::ConflictReplay { pick }),
     ]
+}
+
+/// One to three attacks on the same sync. Page attacks apply in order to
+/// every page; answer attacks (`Lost`, `ConflictReplay`) take the push
+/// answers in turn, one each. Besides random mixes, the sequences the
+/// review confirmed come up often: an answer lost, then an older version as
+/// the next answer's `current`; and a new epoch whose re-read omits a
+/// document, then an older version of it as a push answer's `current`.
+fn gen_attacks() -> impl Strategy<Value = Vec<Attack>> {
+    let pick = 0..8usize;
+    prop_oneof![
+        4 => gen_attack().prop_map(|attack| vec![attack]),
+        3 => prop::collection::vec(gen_attack(), 2..=3),
+        1 => (pick.clone(), pick.clone()).prop_map(|(p, q)| vec![
+            Attack::Lost { pick: p },
+            Attack::ConflictReplay { pick: q },
+        ]),
+        1 => (pick.clone(), pick.clone()).prop_map(|(p, q)| vec![
+            Attack::Epoch,
+            Attack::OmitInRemerge { pick: p },
+            Attack::ConflictReplay { pick: q },
+        ]),
+    ]
+}
+
+/// Whether an attack rewrites a push answer rather than a page.
+fn on_answer(attack: &Attack) -> bool {
+    matches!(attack, Attack::Lost { .. } | Attack::ConflictReplay { .. })
+}
+
+/// Per document: (rev, deleted, replay floor), for the floor checks.
+fn floors(store: &Store) -> BTreeMap<String, (String, bool, u64)> {
+    store
+        .sync_states()
+        .unwrap()
+        .into_iter()
+        .map(|s| (s.id, (s.rev, s.deleted, s.synced_gen)))
+        .collect()
 }
 
 /// Writes on the victim (A) and an honest Mac (B) of the same account, B's
@@ -595,7 +643,7 @@ enum HostileOp {
         pick: usize,
     },
     SyncB,
-    SyncA(Attack),
+    SyncA(Vec<Attack>),
 }
 
 fn gen_hostile_op() -> impl Strategy<Value = HostileOp> {
@@ -603,7 +651,7 @@ fn gen_hostile_op() -> impl Strategy<Value = HostileOp> {
         4 => (0..2usize, 0..4usize, 0..WORDS.len()).prop_map(|(mac, pick, word)| HostileOp::Write { mac, pick, word }),
         1 => (0..2usize, 0..4usize).prop_map(|(mac, pick)| HostileOp::Delete { mac, pick }),
         2 => Just(HostileOp::SyncB),
-        4 => gen_attack().prop_map(HostileOp::SyncA),
+        4 => gen_attacks().prop_map(HostileOp::SyncA),
     ]
 }
 
@@ -652,9 +700,13 @@ proptest! {
 
     /// Invariants: the victim's content for an ID is always some client's
     /// write for that same ID (never another account's, never a forgery);
-    /// replays of versions older than the synced one are `Stale`; rewinds
-    /// and epoch changes re-merge; another key ID writes nothing; a newer
-    /// format never overwrites and stops the pull before it; and after the
+    /// its replay floor never drops, and its content only changes to a
+    /// version above the floor it had before the sync, under any mix of
+    /// attacks (review-sync: a lost answer or an omitted document, then an
+    /// older version, brought deleted notes back). Alone, replays of
+    /// versions older than the synced one are `Stale`; rewinds and epoch
+    /// changes re-merge; a newer format never overwrites and stops the pull
+    /// before it; another key ID writes nothing in any mix; and after the
     /// attacks, honest syncs converge with nothing pending lost.
     #[test]
     fn prop_a_hostile_server_never_changes_local_data_wrongly(
@@ -683,7 +735,7 @@ proptest! {
         // Every row the account ever held, with its local ID and revision.
         let mut history: Vec<(WireChange, String, String)> = Vec::new();
         let mut clock = 0i64;
-        let mut attacks = 0u64;
+        let mut rounds = 0u64;
 
         let record = |history: &mut Vec<(WireChange, String, String)>| {
             let plain = view.docs();
@@ -710,138 +762,205 @@ proptest! {
                 HostileOp::SyncB => {
                     b.sync(&server);
                 }
-                HostileOp::SyncA(attack) => {
-                    attacks += 1;
+                HostileOp::SyncA(attacks) => {
+                    rounds += 1;
                     let before = snapshot(&a.store);
                     let revs_before = revs(&a.store);
+                    let floors_before = floors(&a.store);
                     let pending_before: BTreeSet<String> =
                         a.store.pending_push(usize::MAX).unwrap().into_iter().map(|d| d.id).collect();
                     let saved_epoch = a.store.meta(meta_keys::EPOCH).unwrap();
                     let cursor = a.cursor();
-                    // What the attack aimed at, for the checks below.
+                    // What an attack aimed at, for the checks below.
                     let target: Mutex<Option<(String, String, i64)>> = Mutex::new(None);
                     let mut changes_calls = 0;
-                    let fake_epoch = format!("{attacks:016x}");
-                    let tap = Tap::new(&server, |event| {
-                        match (attack, event) {
-                            (Attack::FlipBit { pick, byte, bit }, Event::Page(page)) if !page.docs.is_empty() => {
-                                let n = page.docs.len();
-                                let doc = &mut page.docs[pick % n];
-                                doc.sealed = reseal(&doc.sealed, |raw| {
-                                    let i = byte % raw.len();
-                                    raw[i] ^= 1 << bit;
-                                });
-                            }
-                            (Attack::SwapSealed { a, b }, Event::Page(page)) if page.docs.len() > 1 => {
-                                let n = page.docs.len();
-                                let (i, j) = (a % n, b % n);
-                                if i != j {
-                                    let sealed = page.docs[i].sealed.clone();
-                                    page.docs[i].sealed = std::mem::replace(&mut page.docs[j].sealed, sealed);
+                    let mut since = 0;
+                    let mut answers = attacks.iter().filter(|a| on_answer(a));
+                    let fake_epoch = format!("{rounds:016x}");
+                    let tap = Tap::new(&server, |mut event| {
+                        if let Event::Changes { since: s } = event {
+                            since = s;
+                            changes_calls += 1;
+                        }
+                        let answer = match event {
+                            Event::Pushed(_) => answers.next(),
+                            _ => None,
+                        };
+                        let pages = attacks.iter().filter(|a| !on_answer(a));
+                        for attack in pages.chain(answer) {
+                            match (attack, &mut event) {
+                                (Attack::FlipBit { pick, byte, bit }, Event::Page(page)) if !page.docs.is_empty() => {
+                                    let n = page.docs.len();
+                                    let doc = &mut page.docs[pick % n];
+                                    doc.sealed = reseal(&doc.sealed, |raw| {
+                                        let i = byte % raw.len();
+                                        raw[i] ^= 1 << bit;
+                                    });
                                 }
-                            }
-                            (Attack::OtherAccount { pick }, Event::Page(page)) if !page.docs.is_empty() => {
-                                let n = page.docs.len();
-                                page.docs[pick % n].sealed = zed_rows[pick % zed_rows.len()].sealed.clone();
-                            }
-                            (Attack::ForgeTombstone { pick }, Event::Page(page)) if !page.docs.is_empty() => {
-                                let n = page.docs.len();
-                                page.docs[pick % n].deleted = true;
-                            }
-                            (Attack::Relabel { pick }, Event::Page(page)) if !page.docs.is_empty() => {
-                                let n = page.docs.len();
-                                let other = page.docs[(pick + 1) % n].rev.clone();
-                                let doc = &mut page.docs[pick % n];
-                                doc.rev = if other != doc.rev { other } else { "0".repeat(32) };
-                            }
-                            (Attack::Replay { pick }, Event::Page(page)) if !history.is_empty() => {
-                                let (wire, id, rev) = &history[pick % history.len()];
-                                let mut replay = wire.clone();
-                                replay.seq = page.head_seq.max(page.last_seq) + 1;
-                                page.head_seq = replay.seq;
-                                page.last_seq = replay.seq;
-                                page.more = false;
-                                *target.lock().unwrap() = Some((id.clone(), rev.clone(), replay.seq));
-                                page.docs.push(replay);
-                            }
-                            (Attack::Rewind, Event::Page(page)) => {
-                                changes_calls += 1;
-                                if changes_calls == 1 && cursor > 0 {
-                                    page.docs.clear();
-                                    page.last_seq = cursor;
-                                    page.head_seq = cursor - 1;
-                                    page.more = false;
-                                }
-                            }
-                            (Attack::Epoch, Event::Page(page)) => page.epoch = fake_epoch.clone(),
-                            (Attack::Lost { pick }, Event::Pushed(results)) if !results.is_empty() => {
-                                let n = results.len();
-                                let id = results[pick % n].id().to_owned();
-                                results[pick % n] = WirePushResult::Lost { id };
-                            }
-                            (Attack::NewFormat { pick, format }, Event::Page(page)) if !page.docs.is_empty() => {
-                                let n = page.docs.len();
-                                let doc = &mut page.docs[pick % n];
-                                doc.sealed = reseal(&doc.sealed, |raw| raw[0] = *format);
-                                if let Some((_, id, rev)) = history.iter().find(|(w, ..)| w.id == doc.id) {
-                                    let mut target = target.lock().unwrap();
-                                    if target.is_none() {
-                                        *target = Some((id.clone(), rev.clone(), doc.seq));
+                                (Attack::SwapSealed { a, b }, Event::Page(page)) if page.docs.len() > 1 => {
+                                    let n = page.docs.len();
+                                    let (i, j) = (a % n, b % n);
+                                    if i != j {
+                                        let sealed = page.docs[i].sealed.clone();
+                                        page.docs[i].sealed = std::mem::replace(&mut page.docs[j].sealed, sealed);
                                     }
                                 }
+                                (Attack::OtherAccount { pick }, Event::Page(page)) if !page.docs.is_empty() => {
+                                    let n = page.docs.len();
+                                    page.docs[pick % n].sealed = zed_rows[pick % zed_rows.len()].sealed.clone();
+                                }
+                                (Attack::ForgeTombstone { pick }, Event::Page(page)) if !page.docs.is_empty() => {
+                                    let n = page.docs.len();
+                                    page.docs[pick % n].deleted = true;
+                                }
+                                (Attack::Relabel { pick }, Event::Page(page)) if !page.docs.is_empty() => {
+                                    let n = page.docs.len();
+                                    let other = page.docs[(pick + 1) % n].rev.clone();
+                                    let doc = &mut page.docs[pick % n];
+                                    doc.rev = if other != doc.rev { other } else { "0".repeat(32) };
+                                }
+                                (Attack::Replay { pick }, Event::Page(page)) if !history.is_empty() => {
+                                    let (wire, id, rev) = &history[pick % history.len()];
+                                    let mut replay = wire.clone();
+                                    replay.seq = page.head_seq.max(page.last_seq) + 1;
+                                    page.head_seq = replay.seq;
+                                    page.last_seq = replay.seq;
+                                    page.more = false;
+                                    *target.lock().unwrap() = Some((id.clone(), rev.clone(), replay.seq));
+                                    page.docs.push(replay);
+                                }
+                                (Attack::Rewind, Event::Page(page)) => {
+                                    if changes_calls == 1 && cursor > 0 {
+                                        page.docs.clear();
+                                        page.last_seq = cursor;
+                                        page.head_seq = cursor - 1;
+                                        page.more = false;
+                                    }
+                                }
+                                (Attack::Epoch, Event::Page(page)) => page.epoch = fake_epoch.clone(),
+                                (Attack::Lost { pick }, Event::Pushed(results)) if !results.is_empty() => {
+                                    let n = results.len();
+                                    let id = results[pick % n].id().to_owned();
+                                    results[pick % n] = WirePushResult::Lost { id };
+                                }
+                                (Attack::NewFormat { pick, format }, Event::Page(page)) if !page.docs.is_empty() => {
+                                    let n = page.docs.len();
+                                    let doc = &mut page.docs[pick % n];
+                                    doc.sealed = reseal(&doc.sealed, |raw| raw[0] = *format);
+                                    if let Some((_, id, rev)) = history.iter().find(|(w, ..)| w.id == doc.id) {
+                                        let mut target = target.lock().unwrap();
+                                        if target.is_none() {
+                                            *target = Some((id.clone(), rev.clone(), doc.seq));
+                                        }
+                                    }
+                                }
+                                (Attack::WrongKey, Event::Page(page)) => page.key_id = "00000000000000ff".into(),
+                                (Attack::OmitInRemerge { pick }, Event::Page(page))
+                                    if since == 0 && cursor > 0 && !page.docs.is_empty() =>
+                                {
+                                    let n = page.docs.len();
+                                    page.docs.remove(pick % n);
+                                    page.last_seq = page.docs.last().map_or(since, |d| d.seq);
+                                    page.more = page.more && !page.docs.is_empty();
+                                }
+                                (Attack::ConflictReplay { pick }, Event::Pushed(results)) if !results.is_empty() => {
+                                    let n = results.len();
+                                    let id = results[pick % n].id().to_owned();
+                                    let older: Vec<&WireChange> =
+                                        history.iter().filter(|(w, ..)| w.id == id).map(|(w, ..)| w).collect();
+                                    if !older.is_empty() {
+                                        let old = older[pick % older.len()];
+                                        results[pick % n] = WirePushResult::Conflict {
+                                            id: id.clone(),
+                                            current: WireDoc {
+                                                id,
+                                                rev: old.rev.clone(),
+                                                deleted: old.deleted,
+                                                sealed: old.sealed.clone(),
+                                            },
+                                        };
+                                    }
+                                }
+                                _ => {}
                             }
-                            (Attack::WrongKey, Event::Page(page)) => page.key_id = "00000000000000ff".into(),
-                            _ => {}
                         }
                         Ok(())
                     });
                     let result = a.try_sync(&tap);
                     drop(tap);
-                    match attack {
-                        Attack::WrongKey => {
-                            prop_assert!(matches!(result, Err(SyncError::WrongKey)), "{:?}", result);
-                            prop_assert_eq!(&snapshot(&a.store), &before, "a wrong key ID wrote something");
+
+                    // Whatever the attacks, the replay floor never drops, and
+                    // a document's content only changes to a version above
+                    // the floor it had: a replay never reverts.
+                    let floors_after = floors(&a.store);
+                    for (id, (rev, deleted, floor)) in &floors_before {
+                        let Some((after_rev, after_deleted, after_floor)) = floors_after.get(id) else {
+                            prop_assert!(false, "{} vanished", id);
+                            continue;
+                        };
+                        prop_assert!(after_floor >= floor, "{}'s floor fell from {} to {}", id, floor, after_floor);
+                        if hash(after_rev) != hash(rev) || after_deleted != deleted {
+                            prop_assert!(
+                                generation(after_rev) > *floor,
+                                "{} went from {} to {}, not above its floor {}", id, rev, after_rev, floor
+                            );
                         }
-                        Attack::Rewind if cursor > 0 => {
-                            let report = result.expect("sync");
-                            prop_assert!(report.remerged, "a rewind must re-merge");
-                        }
-                        Attack::Epoch if saved_epoch.is_some() => {
-                            let report = result.expect("sync");
-                            prop_assert!(report.remerged, "a new epoch must re-merge");
-                        }
-                        Attack::Replay { .. } => {
-                            let report = result.expect("sync");
-                            // A replay of a version older than the one this
-                            // Mac synced never reverts it: it is stale.
-                            if let Some((id, replayed, _)) = target.lock().unwrap().clone()
-                                && let Some((_, Some(synced))) = revs_before.get(&id)
-                                && replayed != *synced
-                                && generation(&replayed) <= generation(synced)
-                            {
-                                prop_assert!(report.stale.contains(&id), "{} replayed at {} over {}: {:?}", id, replayed, synced, report);
+                    }
+
+                    let wrong_key = attacks.iter().any(|a| matches!(a, Attack::WrongKey));
+                    if wrong_key {
+                        prop_assert!(matches!(result, Err(SyncError::WrongKey)), "{:?}", result);
+                        prop_assert_eq!(&snapshot(&a.store), &before, "a wrong key ID wrote something");
+                    } else if let [attack] = attacks.as_slice() {
+                        match attack {
+                            Attack::Rewind if cursor > 0 => {
+                                let report = result.expect("sync");
+                                prop_assert!(report.remerged, "a rewind must re-merge");
                             }
-                        }
-                        Attack::NewFormat { .. } => {
-                            if let Ok(report) = &result
-                                && let Some((id, _, seq)) = target.lock().unwrap().clone()
-                                && seq > cursor
-                            {
-                                prop_assert!(report.too_new);
-                                prop_assert!(a.cursor() < seq, "the pull went past a newer format");
-                                if !pending_before.contains(&id) {
-                                    let after = revs(&a.store);
-                                    prop_assert_eq!(after.get(&id), revs_before.get(&id), "a newer format overwrote {}", id);
+                            Attack::Epoch if saved_epoch.is_some() => {
+                                let report = result.expect("sync");
+                                prop_assert!(report.remerged, "a new epoch must re-merge");
+                            }
+                            Attack::Replay { .. } => {
+                                let report = result.expect("sync");
+                                // A replay of a version older than the one this
+                                // Mac synced never reverts it: it is stale.
+                                if let Some((id, replayed, _)) = target.lock().unwrap().clone()
+                                    && let Some((_, Some(synced))) = revs_before.get(&id)
+                                    && replayed != *synced
+                                    && generation(&replayed) <= generation(synced)
+                                {
+                                    prop_assert!(report.stale.contains(&id), "{} replayed at {} over {}: {:?}", id, replayed, synced, report);
+                                }
+                            }
+                            Attack::NewFormat { .. } => {
+                                if let Ok(report) = &result
+                                    && let Some((id, _, seq)) = target.lock().unwrap().clone()
+                                    && seq > cursor
+                                {
+                                    prop_assert!(report.too_new);
+                                    prop_assert!(a.cursor() < seq, "the pull went past a newer format");
+                                    if !pending_before.contains(&id) {
+                                        let after = revs(&a.store);
+                                        prop_assert_eq!(after.get(&id), revs_before.get(&id), "a newer format overwrote {}", id);
+                                    }
+                                }
+                            }
+                            _ => {
+                                // Undecryptable rows are skipped or repaired, a
+                                // lost answer pushed again; none of it fails.
+                                if let Err(err) = &result {
+                                    prop_assert!(false, "{:?}: {}", attack, err);
                                 }
                             }
                         }
-                        _ => {
-                            // Undecryptable rows are skipped or repaired, a
-                            // lost answer pushed again; none of it fails.
-                            if let Err(err) = &result {
-                                prop_assert!(false, "{:?}: {}", attack, err);
-                            }
-                        }
+                    } else if let Err(err) = &result {
+                        // Combined, the attacks may only make a page the
+                        // client rejects as malformed.
+                        prop_assert!(
+                            matches!(err, SyncError::Api(kanso_sync::ApiError::Protocol(_))),
+                            "{:?}: {}", attacks, err
+                        );
                     }
                 }
             }
