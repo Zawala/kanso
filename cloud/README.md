@@ -42,5 +42,5 @@ npm test          # vitest in the Workers runtime, with fast-check seed 20261017
 npm run typecheck
 ```
 
-`test/fixtures/conformance.json` holds cases that the Worker and the Rust client's in-memory
+`test/fixtures/conformance-v1.json` holds cases that the Worker and the Rust client's in-memory
 remote (`kanso_sync::MemoryRemote`) must both pass.

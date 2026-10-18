@@ -1,5 +1,5 @@
 // The sync protocol's limits and validation. Mirrors
-// crates/kanso-sync/src/remote.rs; test/fixtures/conformance.json holds the
+// crates/kanso-sync/src/remote.rs; test/fixtures/conformance-v1.json holds the
 // cases both sides run.
 
 export const MAX_PUSH_BYTES = 16 * 1024 * 1024;

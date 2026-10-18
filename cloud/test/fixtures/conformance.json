@@ -1,334 +1,4874 @@
 {
-  "about": [
-    "Sync protocol cases shared by the Worker (cloud/test/conformance.test.ts) and MemoryRemote",
-    "(crates/kanso-sync/tests/conformance.rs). Every case starts from an empty server.",
-    "Steps: push (the docs array; results or an error status), changes (since, limit; page or status),",
-    "put_file (id, md5, base64; status), get_file (id; status, md5, base64).",
-    "push_body and changes_query steps send raw HTTP input a typed client cannot produce; MemoryRemote skips them."
-  ],
-  "cases": [
+ "about": [
+  "The v2 sync routes for protocol v2 (docs/ACCOUNTS.md › POST /v2/push, GET /v2/changes, PUT and GET /v2/files,",
+  "Quotas and capacity). Owner: the Worker builder; frozen by step 1. Runners: cloud/test/conformance.test.ts (the",
+  "Worker) and crates/kanso-sync/tests/conformance.rs (MemoryServer). Sealed values are opaque to the server; every",
+  "case signs up alice first. The v1 cases are in conformance-v1.json.",
+  "Each case starts from an empty server: the settings 0002_accounts.sql seeds, except signup = \"open\"; no accounts;",
+  "the clock at `start` (a UTC midnight, Unix ms); one client IP (Worker: no CF-Connecting-IP, so \"unknown\", and no",
+  "AUTH_LIMITER binding). Values: any JSON string exactly \"$name\" stands for values[name] (any JSON value) or for the",
+  "value last captured under that name.",
+  "Steps, exactly one kind each; `note` is for readers and ignored:",
+  "  {settings: {name: value}} sets settings rows (D1 UPDATE; MemoryServer::set_setting).",
+  "  {admin: \"disable\" | \"enable\", username} and {admin: \"quota\", username, quota: {docs?, doc_bytes?, files?,",
+  "    file_bytes?}} (a number, or null for the default) act as the admin script does.",
+  "  {request: <route>, t?, as?, token?, body?, query?, path?, file?, status, response?, capture?} sends one request.",
+  "    route: a kanso_sync::Route name (health, prelogin, signup, login, recover_start, recover_finish, logout, account,",
+  "    password, recovery_key, delete, set_device, devices, revoke_device, push, changes, put_file, get_file).",
+  "    t: ms since start, never decreasing; default the previous step's. as: the captured token to send as",
+  "    Authorization: Bearer; token: a literal token; neither: no header (the typed client sends an empty token, which",
+  "    is malformed the same way). body: the JSON body. query: {since?, limit?} for changes (numbers). path:",
+  "    {device_id} or {wire_id}. file: the PUT body as base64url; x-kanso-sha256 is its SHA-256. status: the HTTP",
+  "    status. response: a pattern for the JSON body; get_file's body is matched as {bytes: base64url}. capture:",
+  "    {name: dotted path into the response}.",
+  "  {raw: {method, path, headers?, body?}, as?, t?, status, response?, response_headers?, runner: \"worker\"} sends",
+  "    input no typed client can produce. \"$name\" inside path is replaced; a body that is exactly \"$name\" is sent as",
+  "    that value's base64url-decoded bytes, any other body as its UTF-8 text.",
+  "runner: \"worker\" on a step or a case: only the Worker runs it; MemoryServer skips it. No such step changes",
+  "state, except rate-limit counts that later steps in its case don't depend on.",
+  "Patterns: objects match key by key (other keys are ignored, and null also matches a missing key); arrays match",
+  "element by element and must have the same length; \"*\" matches any non-null value; \"$name\" must equal that value;",
+  "\"!$name\" must differ from it; anything else must be equal. An error body's message is never compared.",
+  "Expected values were cross-checked against an independent model of the spec before freezing."
+ ],
+ "protocol": 2,
+ "start": 1800057600000,
+ "values": {
+  "kdf": {
+   "alg": "argon2id",
+   "version": 19,
+   "m_kib": 1048576,
+   "t": 3,
+   "p": 4
+  },
+  "acct_alice": "a_71ac8434d35527f7fe9df6b2092298a2",
+  "kid_alice": "a7ef1cd126ac39f3",
+  "salt_alice1": "XFz_zcKcbbljBy5QTJPG1A",
+  "auth_alice1": "VbK-gGRzW6fPpViu3LzfyqbJTWbOsbCJX65ofaYNBqI",
+  "wrap_alice1": "Ft-uqbUOGswP9SfO0gG3pXJc6eUSf4V4CaV7DH0VzCY_101t4ZAuI3gjRs7I0XmhFd8o1qV5bVCnPT1JlH2QVTSoQLTtNbDW4g",
+  "salt_alice2": "jeXRSTI9-f98FZCdCZ_gsA",
+  "auth_alice2": "IpJ1vhQqsMfLC0vp7ReTj1WLsCzebCd9r_dsIkoFA_0",
+  "wrap_alice2": "Ey0JcbHqbt7uEwieiXsk7BTAgRYs9oyygGQTn1EylQKmmdxtvZQaxl5hI6HhiY1POas9OPyW_za-sry-ec-bbV8YamCk_5cj3g",
+  "rauth_alice1": "NkQdk2zuzNux3XbKWEpvpXiAxu4fuvDVVU992MrPPhM",
+  "rwrap_alice1": "YNrE7F0L-9g0CjqEFxDcef8EnXq8KsbHmhz9EAuwTI_7H04xLNqIip8Xt0hBbJh4BGrIWtqwb8oRg5cNQu5sZNU85D-tl0ANZg",
+  "rauth_alice2": "T237GKaG5oA3mjJ862vgtV5Y3hkDmS0iJR17hhwpoTk",
+  "rwrap_alice2": "8aAi3sZAwG3BcV__0wBeaotz9sfpLzcMYmORfniDa2xZZnkNS1AiTj1ETUQdI2sBy150Ou3iQ_319jOBQZpy6-MyWhsFF2QrTQ",
+  "rauth_alice3": "OJxNO14FkQGN9RyhJhb3_pYVW6Ovq3qcmvXIGCji918",
+  "rwrap_alice3": "kJPRpliMDjIcNUMbeBdUU4UvKK66Z6nqL2mUZoL2pYnD4raNR3HL08YwVRb4Ko9geMPxnEyiesFBzqx7VeueLIPvuJn0Eoam0g",
+  "acct_bob": "a_f105677d7b711a4fbf9f8ff403000790",
+  "kid_bob": "ca43df1c2552d8c2",
+  "salt_bob1": "mIPkF1IWq3rzM4QhW_8lUQ",
+  "auth_bob1": "rvvFKxtFcBEodmaFAoA8nBHlx_lu7Po4LT-4tyRopmY",
+  "wrap_bob1": "W23XIPfuBHGIxjXUnT0VUigCgG90jGXq4g7nWZjduyDNpDMKLBplB8JPMp-Nmm1RPJIBO54u2-dnIhwrlMWcb5c81coo88_-qw",
+  "salt_bob2": "NNRgirwKweTSXEfyD3q0LA",
+  "auth_bob2": "egAoHKCEFNTEMUVP6DqTUTs3Iu6lUGOTqTWQYPcCcPY",
+  "wrap_bob2": "Rd-r4iMzNFQSo1h1PeRyxPdxdlbfaTRnsObYeldgsea3msLHHi4LosQ4SeSkdJ6kfSYXVdVX7d3GJlgkZFU-0LXgWpINy3skHQ",
+  "rauth_bob1": "AgreP7yft0rXLPKkAbeWcSsEzqUSG6BGFbmW8cJuM2M",
+  "rwrap_bob1": "NpVgx2-JdMhTcgaLwfg64zgfG6wgwSAy9pvcGSNORBgWtmBLSDSyHxqq7YyZfiFt6Tz5xEAsKT3PE4YbgnoQ2DxRyIvxD4skkA",
+  "rauth_bob2": "hXAlztEhkLTEcL5TNmhvdeQun8Ju03U0rHg_BNbMGW8",
+  "rwrap_bob2": "nPI3I1uQYsSsoXQW2xwSZR4NCFJcxD7xEKccBbdQbkYyhNiwRhchtTZXK1LlaXyhooKu4Qi3Dmxfox-1U5bzS_J0vmhjOyfcRA",
+  "rauth_bob3": "kcKebUZ2gWgqvWop7QKqEaOqd-0N9x8NWGgv4fEcU8c",
+  "rwrap_bob3": "z1-Wjp3eRoWND5Fe8iPRr9SPPoD7o0vWRnQw638aQ1BrpeCGQJ0rLDgUyAMl7XCtTohiRnAruunnTOpSVSWWfhWdj5bhmaDH0w",
+  "dev_1": "d_f20d7bb39072c3cc11783e60e22377f6",
+  "proof_1": "I8I_meZb0ibchEgIpnDftnz9bOMQy8v1KrqkbcIgeSw",
+  "name_1": "NTmYeTyOn1PZIpw059nwG__M2e3sIGkRgA3n6uJdMgcM2DyhuXfntkf7Tajxmwsz6p_o4ul2DX-jJN5A",
+  "dev_2": "d_add0c5988e58a95e1c366d3a8c7cf6eb",
+  "proof_2": "hgQv4XKAxEH4ZL1RpsesNrse2VeDJFz-IvOzG5GjdyI",
+  "name_2": "K3eY8Oe7vvP_wktdB0DB0wu_MjCqEA7KipwTEFeYxbeyniNdvWmE2reDfppyd1OrwKvxCGF-EPUHm35Q",
+  "w_F": "file:jhPxXtsVhJ6eCAjh1lWS_w",
+  "w_G": "file:sOp-y91nerCSx7ObwuyOlg",
+  "w_A": "note:ZH_mxCCdrautzYwruQ_OAA",
+  "r_A1": "dd7a4497a0a09834f42d6b8e7861ced8",
+  "s_A1": "4tEM4-0-Rfyy9O7trQhvyF58djGRS_Z7gzb5F7zQ9mhmQhFyRQP1cW2rlAiWCq8p",
+  "w_B": "note:47G84FF1TxRgSxvmedsMGQ",
+  "r_B1": "9334fc45b6a3710e35bbf2627aeb9fa2",
+  "s_B1": "ad-nGGDdLGhSQ7n6HWBV2h6Ql3Vx2Aogo0zuw3Mer5I6KijQybZTvi2BUkzyfg1c",
+  "r_A2": "4635f4c71decee058302997614f84a28",
+  "s_A2": "rFZNqheOuV6m2JxalR-0tRTgp110Rc3guWRciHHryuTEYZQgM-E6ZFB3DDVwt--E",
+  "r_A3": "704bcc122778509c9a985b680bd0e4d4",
+  "s_A3": "sdKCtJgwI5O3vKlhvwKxGv_0dGZQ55t4lEwxYqkR4U9s4FCMYDdQJ0fxiWL0QYw0",
+  "r_B9": "0c45ff4ab8771d016c601135eda0fba2",
+  "r_B2": "cd4402d5ccdfdc2612ec66f3a98b7167",
+  "s_B2": "4xR2RaZHPEn_yyA5lYA6trhG43lPxYuvcmx3-R-WN4z_R_5TJYqcASDbqqJJszzg",
+  "s_A2_55": "rFZNqheOuV6m2JxalR-0tRTgp110Rc3guWRciHHryuTEYZQgM-E6ZFB",
+  "w_C": "note:3gJvCvXELOoIWTRUjqFkXg",
+  "r_C1": "318bd589541b3b2a114257007b040a57",
+  "s_C1": "dERVBw5npOm8l5I8pWu-iRes_n6EFrOGrf8nkzY-3jRls3yNTJJmey2vduQqyd6H",
+  "w_D": "note:-IH0w7SsMBdRxJdxwKvGzg",
+  "r_D1": "db255d57c2dee7145a95ce7406ccfd70",
+  "s_D1": "QSeFYm8g5wJ1acsB-EZYg7xKtE4eDdM0FlqPIic0N59qJuW5DGxVDj0Wy1ZM35De",
+  "w_E": "note:hwFzJ0Wx4u2T6P94CIy-sQ",
+  "r_E1": "b292fd50c144382c051f804013ce62f6",
+  "s_E1": "GhjIbQiCLpGgEAnq7Ehlb2d5zvG4_PA8F8yJ3JpN5i1gylEF8QZUd1tQ6tpEltHu",
+  "s_C1_55": "dERVBw5npOm8l5I8pWu-iRes_n6EFrOGrf8nkzY-3jRls3yNTJJmey2",
+  "s_A3_100": "sdKCtJgwI5O3vKlhvwKxGv_0dGZQ55t4lEwxYqkR4U9s4FCMYDdQJ0fxiWL0QYw0JvxbxsyD1VzMEWklAe1--isd50Zs6qkwIBpi",
+  "s_B2_90": "4xR2RaZHPEn_yyA5lYA6trhG43lPxYuvcmx3-R-WN4z_R_5TJYqcASDbqqJJszzgaBDH_V08AJZMM1NxIANJ1NcvHp",
+  "f_F100": "Ov4etzTBJuveXef4hpan51caH26qo7CSuQGkYwtSgsjvvBJy3XcJXxxN1gk9soMPJ6UrAVGXvexq-2hQhHiMO5qGyvz4hABsbcYGx9hEAJg8E_xcu4hPSKHBVgrKpqt2iWBfuA",
+  "f_F200": "ryRycPtCWn8eMVxtmnR-BsDT8J1UOh0cDnwCsiqPqC-4W-Bzr8osLWWTzWVWlhfiGuXGmZXq3PaLJwLlG7yhpDlfmRFftqYSsc7wTcke8pmY-0Ysk96yp7bdVZd-UNhUlwqlKT6Nht7GgDFL0sY1rZxlP8efsWvAHOlkMqb6VqP1ApDX7jjvB2oePae_Jw4NiMCVL4ufN9I4soqBAzFijVAyLzFBZm-60r3tjo9-fokRH8HXIdMd_G3NmhYaK9eNqE0k6WKPhic",
+  "f_A100": "6hUBUvUmWcZLW5GrbykM4iFcftU4gH2cUjOdW3R9H4y2tMl5KHMwQV8OdizfaNLctl279ulh9kciTbdBy5-NzgYyeg65Hsj24JosrBr1oX9hwermli1t-MfLVMvfcb7uPyR31g",
+  "f_G40": "dMIrcSj4oeVSKfljMBrRYPre-aeUr4kr8fb1QG4P9hOtl5EFPHfeBA",
+  "f_F300": "9hI1uSjIKSXQ7jm2nPKEqLnJMvrVOkOV3d8EM2Rvyq2lpeEfsOG-g9PlIYvl-PBO-wV7rP9FoNoWfum6ZU9Rbeyet8wOk9WviTTX5C8vA4XPu4hheIy309b5ecGiraPd7N2T2hcKXs7JqfV6dJgzVESDu6i__pIaGHKsLfvSWm8fjjTh_CfmCPpNw4YWw4oK51UnIjcauIFGtqhODZUvD0fi1Ckz0EWR7xewFEASEbM_mGlJzV91hMEaG7I3wsdb03-av7CTAjXHuKZuaJNlMLCqe6O_RMfLuD5j31NQMqECT1d6I9054Gku6tmWAI0ruga-paKAD70FbjN6ErzIQkMgP6VTcFF5VWbAzi-U84r3U6SXeLtzdl0XQLMsvyQn6JHuwOTvy6t5C-II",
+  "f_G100": "JH-m-uROV3ds_aFfQNlrDDdjtH7JB3JKmBqZZlMxN6BawqxieZAAFGC4EZNe-XMjgU0qcDuSjATe70E2vi7YfNQYHdAs2peCV_eRdUR0SWmrWyUIJYkF9U3Q0WiFpOCR9WOuww",
+  "f_G300": "gxV4f8SzgySYvtdJPRpvm-D1ZKv0EibvtBSJTaNqSNQjJ5T37iaXHOfGMgDinSi-yt3jPhXz5i3EdNKHXO-bLzG0VAr2S2tMmtWWgQzhf6p3EW_bQqKzN_BEgWTHODca3fmRVQTFmv7wABT58ZtfYm2l12IjvYadiydFvW-SAvUL7CD8tvdcl8DGrWAfgPKUtzHySXSw5yAjj0EwjciehQyH_uBTKDH5pAJIlDXwk1U6NQ2lXk5ixz5HV99mnW6pmayEGiAFuAo0TyPJUSTpRmLx1G7cvBmxivG6wYL_UZK83nsFbWwoZV5nESC9rP8QuDnTfaR-A2Db1GIvSr376DCRy-Nl6tlPuyaThT5GCzeSjx944vavPM7HFErzj-Wp-GvfyPcOHKyr9F6T",
+  "f_G200": "1zE2EGx3VDxnEY8RC0CakYH1qCK-oUEvaHSRQxeqAqYJMNZr7SVyZLhk_kBqUot_hkbt2uLSrAJCOvvUc7qaJQy_YJf8LTSA9WPMOqvUz_xw-1I_bIzpNoquZp5HCenZ0zaY8iKd5UJHiMzMJLR8TOwJtMGqfDqx53VtVtCJVLeCsjQ32ZJRKPCMIeDbeGxoyOKkrUTwi5VkFeYKiAK_BuOoqKriB33esvTHE_vR_-5Lx2BcCxEtr5GrWwQwi83CAZyPbAfbHpM",
+  "r_F1": "765a4f7fa554a53c2706be55d5584711",
+  "s_F1": "iBLvsfM1zqwTx1udvdpGecMFv4t2XHImBF6QL5vAnCdH2fxs6C5-7V6j08upRB2K",
+  "r_F2": "c6b54e48ff1ccf1cf62f48f4a75d8e65",
+  "s_F2_55": "L0F7-VKzqA1khz16Z-IkzVPeigjx1MPkW2ISJAXjvMeKsL1bDAXCoxE",
+  "f_G60": "4mL_weeANvmNn3oXDpvOc_RJoIyK9DoDgJFnQGHlGSf1y-dEzeLqAT_keFXPJQ1mbYOJfRXzf2kSE17-",
+  "f_G50": "D1Osz6nWAvFhQvl4uDJ8FyrIJoKK3pEbedNupJ1MPMu6veAaRaoBCq-nHnOoY4QzRMI",
+  "f_F41": "6G2wVYrvb3AioBKGqOU7JYjpMpac0rnOidvdT-rTbMhsnF_3_oqMr6w",
+  "r_Ab1": "dec7494c43da8f404c8ed15c09b5176b",
+  "s_Ab1": "0JS9WoY6wywZCcmiwJKRhuLjZpYELl9T_Kz0sBEFHo_WGj86XzlPuzyx8tqbv5D6",
+  "r_Ab2": "19bcd7b9f08e414cc8fb15e48a142841",
+  "s_Ab2": "5FTbOSA2m5gVaNAg_1TnE_P3EM8IeLX8T6XHaZOpUCgh7Wu-LbAfRK4gkCQdht0W"
+ },
+ "cases": [
+  {
+   "name": "documents the server has never seen are accepted with a null base_rev",
+   "steps": [
     {
-      "name": "a document the server has never seen is accepted with a null or absent base_rev",
-      "steps": [
-        {
-          "push": [{ "id": "note:a", "rev": "1-aa", "deleted": false, "fields": { "title": "A", "updatedAt": 10 }, "base_rev": null }],
-          "results": [{ "id": "note:a", "status": "ok", "seq": 1 }]
-        },
-        {
-          "push": [{ "id": "note:b", "rev": "1-bb", "fields": { "title": "B" } }],
-          "results": [{ "id": "note:b", "status": "ok", "seq": 2 }]
-        },
-        {
-          "changes": { "since": 0, "limit": 100 },
-          "page": {
-            "docs": [
-              { "id": "note:a", "rev": "1-aa", "deleted": false, "fields": { "title": "A", "updatedAt": 10 }, "seq": 1 },
-              { "id": "note:b", "rev": "1-bb", "deleted": false, "fields": { "title": "B" }, "seq": 2 }
-            ],
-            "last_seq": 2
-          }
-        }
-      ]
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
     },
     {
-      "name": "an update is accepted only on top of the server's current revision",
-      "steps": [
-        {
-          "push": [{ "id": "note:a", "rev": "1-aa", "fields": { "title": "A" } }],
-          "results": [{ "id": "note:a", "status": "ok", "seq": 1 }]
-        },
-        {
-          "push": [{ "id": "note:a", "rev": "2-ab", "fields": { "title": "A2" }, "base_rev": "1-aa" }],
-          "results": [{ "id": "note:a", "status": "ok", "seq": 2 }]
-        },
-        {
-          "push": [{ "id": "note:a", "rev": "3-ac", "fields": { "title": "stale" }, "base_rev": "1-aa" }],
-          "results": [
-            { "id": "note:a", "status": "conflict", "current": { "id": "note:a", "rev": "2-ab", "deleted": false, "fields": { "title": "A2" } } }
-          ]
-        },
-        {
-          "push": [{ "id": "note:a", "rev": "1-ff", "fields": { "title": "new elsewhere" }, "base_rev": null }],
-          "results": [
-            { "id": "note:a", "status": "conflict", "current": { "id": "note:a", "rev": "2-ab", "deleted": false, "fields": { "title": "A2" } } }
-          ]
-        },
-        {
-          "push": [{ "id": "note:b", "rev": "1-bb" }],
-          "results": [{ "id": "note:b", "status": "ok", "seq": 3 }]
-        },
-        {
-          "changes": { "since": 0, "limit": 100 },
-          "page": {
-            "docs": [
-              { "id": "note:a", "rev": "2-ab", "deleted": false, "fields": { "title": "A2" }, "seq": 2 },
-              { "id": "note:b", "rev": "1-bb", "deleted": false, "fields": {}, "seq": 3 }
-            ],
-            "last_seq": 3
-          }
-        }
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
       ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       },
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     }
     },
     {
-      "name": "a base_rev for a document the server never had is a conflict without a current version",
-      "steps": [
-        {
-          "push": [{ "id": "note:x", "rev": "2-cc", "fields": {}, "base_rev": "1-bb" }],
-          "results": [{ "id": "note:x", "status": "conflict", "current": null }]
-        },
-        { "changes": { "since": 0, "limit": 10 }, "page": { "docs": [], "last_seq": 0 } }
-      ]
+     "request": "changes",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "seq": 1
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "seq": 2
+       }
+      ],
+      "last_seq": 2,
+      "more": false,
+      "head_seq": 2,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
     },
     {
-      "name": "documents in one push are applied in order",
-      "steps": [
-        {
-          "push": [
-            { "id": "note:a", "rev": "1-aa", "fields": { "v": 1 } },
-            { "id": "note:a", "rev": "2-ab", "fields": { "v": 2 }, "base_rev": "1-aa" },
-            { "id": "note:a", "rev": "3-ac", "fields": { "v": 3 }, "base_rev": "1-aa" },
-            { "id": "note:a", "rev": "3-ad", "fields": { "v": 4 }, "base_rev": "2-ab" },
-            { "id": "book:b", "rev": "1-bb", "fields": { "name": "B" } },
-            { "id": "book:b", "rev": "1-bc", "fields": { "name": "B again" } }
-          ],
-          "results": [
-            { "id": "note:a", "status": "ok", "seq": 1 },
-            { "id": "note:a", "status": "ok", "seq": 2 },
-            { "id": "note:a", "status": "conflict", "current": { "id": "note:a", "rev": "2-ab", "deleted": false, "fields": { "v": 2 } } },
-            { "id": "note:a", "status": "ok", "seq": 3 },
-            { "id": "book:b", "status": "ok", "seq": 4 },
-            { "id": "book:b", "status": "conflict", "current": { "id": "book:b", "rev": "1-bb", "deleted": false, "fields": { "name": "B" } } }
-          ]
-        },
-        {
-          "changes": { "since": 0, "limit": 100 },
-          "page": {
-            "docs": [
-              { "id": "note:a", "rev": "3-ad", "deleted": false, "fields": { "v": 4 }, "seq": 3 },
-              { "id": "book:b", "rev": "1-bb", "deleted": false, "fields": { "name": "B" }, "seq": 4 }
-            ],
-            "last_seq": 4
-          }
-        }
-      ]
-    },
-    {
-      "name": "tombstones are documents: deleting needs the current base and a new version builds on the tombstone",
-      "steps": [
-        {
-          "push": [{ "id": "tag:t", "rev": "1-aa", "fields": { "name": "t" } }],
-          "results": [{ "id": "tag:t", "status": "ok", "seq": 1 }]
-        },
-        {
-          "push": [{ "id": "tag:t", "rev": "2-dd", "deleted": true, "fields": {}, "base_rev": "1-aa" }],
-          "results": [{ "id": "tag:t", "status": "ok", "seq": 2 }]
-        },
-        {
-          "push": [{ "id": "tag:t", "rev": "1-ee", "fields": { "name": "again" } }],
-          "results": [
-            { "id": "tag:t", "status": "conflict", "current": { "id": "tag:t", "rev": "2-dd", "deleted": true, "fields": {} } }
-          ]
-        },
-        {
-          "push": [{ "id": "tag:t", "rev": "3-ee", "fields": { "name": "back" }, "base_rev": "2-dd" }],
-          "results": [{ "id": "tag:t", "status": "ok", "seq": 3 }]
-        },
-        {
-          "changes": { "since": 1, "limit": 100 },
-          "page": {
-            "docs": [{ "id": "tag:t", "rev": "3-ee", "deleted": false, "fields": { "name": "back" }, "seq": 3 }],
-            "last_seq": 3
-          }
-        }
-      ]
-    },
-    {
-      "name": "each accepted write takes the next seq and the feed lists a document once, at its latest write",
-      "steps": [
-        {
-          "push": [
-            { "id": "note:a", "rev": "1-aa" },
-            { "id": "note:b", "rev": "1-bb" },
-            { "id": "note:c", "rev": "1-cc" }
-          ],
-          "results": [
-            { "id": "note:a", "status": "ok", "seq": 1 },
-            { "id": "note:b", "status": "ok", "seq": 2 },
-            { "id": "note:c", "status": "ok", "seq": 3 }
-          ]
-        },
-        {
-          "push": [{ "id": "note:a", "rev": "2-ab", "base_rev": "1-aa" }],
-          "results": [{ "id": "note:a", "status": "ok", "seq": 4 }]
-        },
-        {
-          "changes": { "since": 0, "limit": 100 },
-          "page": {
-            "docs": [
-              { "id": "note:b", "rev": "1-bb", "deleted": false, "fields": {}, "seq": 2 },
-              { "id": "note:c", "rev": "1-cc", "deleted": false, "fields": {}, "seq": 3 },
-              { "id": "note:a", "rev": "2-ab", "deleted": false, "fields": {}, "seq": 4 }
-            ],
-            "last_seq": 4
-          }
-        },
-        {
-          "changes": { "since": 2, "limit": 100 },
-          "page": {
-            "docs": [
-              { "id": "note:c", "rev": "1-cc", "deleted": false, "fields": {}, "seq": 3 },
-              { "id": "note:a", "rev": "2-ab", "deleted": false, "fields": {}, "seq": 4 }
-            ],
-            "last_seq": 4
-          }
-        },
-        { "changes": { "since": 4, "limit": 100 }, "page": { "docs": [], "last_seq": 4 } },
-        { "changes": { "since": 99, "limit": 100 }, "page": { "docs": [], "last_seq": 99 } }
-      ]
-    },
-    {
-      "name": "conflicts do not take a seq",
-      "steps": [
-        {
-          "push": [{ "id": "note:a", "rev": "1-aa" }],
-          "results": [{ "id": "note:a", "status": "ok", "seq": 1 }]
-        },
-        {
-          "push": [{ "id": "note:a", "rev": "1-ab" }, { "id": "note:b", "rev": "1-bb" }],
-          "results": [
-            { "id": "note:a", "status": "conflict", "current": { "id": "note:a", "rev": "1-aa", "deleted": false, "fields": {} } },
-            { "id": "note:b", "status": "ok", "seq": 2 }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "the feed pages by limit",
-      "steps": [
-        {
-          "push": [
-            { "id": "note:n1", "rev": "1-01" },
-            { "id": "note:n2", "rev": "1-02" },
-            { "id": "note:n3", "rev": "1-03" },
-            { "id": "note:n4", "rev": "1-04" },
-            { "id": "note:n5", "rev": "1-05" }
-          ],
-          "results": [
-            { "id": "note:n1", "status": "ok", "seq": 1 },
-            { "id": "note:n2", "status": "ok", "seq": 2 },
-            { "id": "note:n3", "status": "ok", "seq": 3 },
-            { "id": "note:n4", "status": "ok", "seq": 4 },
-            { "id": "note:n5", "status": "ok", "seq": 5 }
-          ]
-        },
-        {
-          "changes": { "since": 0, "limit": 2 },
-          "page": {
-            "docs": [
-              { "id": "note:n1", "rev": "1-01", "deleted": false, "fields": {}, "seq": 1 },
-              { "id": "note:n2", "rev": "1-02", "deleted": false, "fields": {}, "seq": 2 }
-            ],
-            "last_seq": 2
-          }
-        },
-        {
-          "changes": { "since": 2, "limit": 2 },
-          "page": {
-            "docs": [
-              { "id": "note:n3", "rev": "1-03", "deleted": false, "fields": {}, "seq": 3 },
-              { "id": "note:n4", "rev": "1-04", "deleted": false, "fields": {}, "seq": 4 }
-            ],
-            "last_seq": 4
-          }
-        },
-        {
-          "changes": { "since": 4, "limit": 2 },
-          "page": { "docs": [{ "id": "note:n5", "rev": "1-05", "deleted": false, "fields": {}, "seq": 5 }], "last_seq": 5 }
-        },
-        { "changes": { "since": 5, "limit": 2 }, "page": { "docs": [], "last_seq": 5 } }
-      ]
-    },
-    {
-      "name": "a malformed document rejects the whole push",
-      "steps": [
-        { "push": [{ "id": "page:x", "rev": "1-aa" }], "status": 400 },
-        { "push": [{ "id": "note:", "rev": "1-aa" }], "status": 400 },
-        { "push": [{ "id": "note:a/b", "rev": "1-aa" }], "status": 400 },
-        { "push": [{ "id": "note:x", "rev": "abc" }], "status": 400 },
-        { "push": [{ "id": "note:x", "rev": "1-xyz" }], "status": 400 },
-        { "push": [{ "id": "note:x", "rev": "1-aa", "base_rev": "nope" }], "status": 400 },
-        { "push": [{ "id": "note:x", "rev": "1-aa", "fields": [] }], "status": 400 },
-        { "push": [{ "id": "note:x", "rev": "1-aa", "fields": null }], "status": 400 },
-        { "push": [{ "id": "note:x", "rev": "1-aa", "deleted": "yes" }], "status": 400 },
-        { "push": [{ "id": "note:x", "rev": "1-aa", "deleted": null }], "status": 400 },
-        { "push": [{ "id": 5, "rev": "1-aa" }], "status": 400 },
-        { "push": [{ "id": "note:ok", "rev": "1-aa" }, { "id": "bad", "rev": "1-aa" }], "status": 400 },
-        { "push_body": "{\"docs\": {}}", "status": 400 },
-        { "push_body": "not json", "status": 400 },
-        { "push_body": "[]", "status": 400 },
-        { "changes": { "since": 0, "limit": 10 }, "page": { "docs": [], "last_seq": 0 } }
-      ]
-    },
-    {
-      "name": "an empty push is fine",
-      "steps": [{ "push": [], "results": [] }]
-    },
-    {
-      "name": "the feed rejects bad parameters",
-      "steps": [
-        { "changes": { "since": -1, "limit": 10 }, "status": 400 },
-        { "changes": { "since": 0, "limit": 0 }, "status": 400 },
-        { "changes": { "since": 0, "limit": 501 }, "status": 400 },
-        { "changes": { "since": 0, "limit": 500 }, "page": { "docs": [], "last_seq": 0 } },
-        { "changes_query": "since=abc", "status": 400 },
-        { "changes_query": "since=1.5", "status": 400 },
-        { "changes_query": "limit=x", "status": 400 },
-        { "changes_query": "", "status": 200 }
-      ]
-    },
-    {
-      "name": "file bytes must match x-kanso-md5",
-      "steps": [
-        { "put_file": { "id": "file:f1", "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" }, "status": 200 },
-        { "get_file": "file:f1", "status": 200, "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" },
-        { "put_file": { "id": "file:f1", "md5": "7d793037a0760186574b0282f2f435e7", "base64": "aGVsbG8=" }, "status": 400 },
-        { "get_file": "file:f1", "status": 200, "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" },
-        { "put_file": { "id": "file:f1", "md5": "7D793037A0760186574B0282F2F435E7", "base64": "d29ybGQ=" }, "status": 200 },
-        { "get_file": "file:f1", "status": 200, "md5": "7d793037a0760186574b0282f2f435e7", "base64": "d29ybGQ=" },
-        { "put_file": { "id": "file:empty", "md5": "d41d8cd98f00b204e9800998ecf8427e", "base64": "" }, "status": 200 },
-        { "get_file": "file:empty", "status": 200, "md5": "d41d8cd98f00b204e9800998ecf8427e", "base64": "" },
-        { "get_file": "file:missing", "status": 404 },
-        { "put_file": { "id": "note:x", "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" }, "status": 400 },
-        { "put_file": { "id": "file:f2", "md5": "xyz", "base64": "aGVsbG8=" }, "status": 400 },
-        { "get_file": "file:f2", "status": 404 }
-      ]
-    },
-    {
-      "name": "accepting a file tombstone drops its bytes",
-      "steps": [
-        { "put_file": { "id": "file:f1", "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" }, "status": 200 },
-        {
-          "push": [{ "id": "file:f1", "rev": "1-aa", "fields": { "name": "a.png", "contentType": "image/png", "md5digest": "5d41402abc4b2a76b9719d911017c592" } }],
-          "results": [{ "id": "file:f1", "status": "ok", "seq": 1 }]
-        },
-        { "get_file": "file:f1", "status": 200, "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" },
-        {
-          "push": [{ "id": "file:f1", "rev": "2-dd", "deleted": true, "base_rev": "9-ff" }],
-          "results": [
-            {
-              "id": "file:f1",
-              "status": "conflict",
-              "current": { "id": "file:f1", "rev": "1-aa", "deleted": false, "fields": { "name": "a.png", "contentType": "image/png", "md5digest": "5d41402abc4b2a76b9719d911017c592" } }
-            }
-          ]
-        },
-        { "get_file": "file:f1", "status": 200, "md5": "5d41402abc4b2a76b9719d911017c592", "base64": "aGVsbG8=" },
-        {
-          "push": [{ "id": "file:f1", "rev": "2-dd", "deleted": true, "base_rev": "1-aa" }],
-          "results": [{ "id": "file:f1", "status": "ok", "seq": 2 }]
-        },
-        { "get_file": "file:f1", "status": 404 }
-      ]
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "usage": {
+       "docs": 2,
+       "doc_bytes": 1152,
+       "files": 0,
+       "file_bytes": 0,
+       "writes_today": 2
+      },
+      "quota": {
+       "docs": 50000,
+       "doc_bytes": 104857600,
+       "files": 10000,
+       "file_bytes": 524288000,
+       "writes_per_day": 100000
+      }
+     }
     }
-  ]
+   ]
+  },
+  {
+   "name": "an update is accepted only on top of the current revision",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": false,
+        "sealed": "$s_A2",
+        "base_rev": "$r_A1"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A3",
+        "deleted": false,
+        "sealed": "$s_A3",
+        "base_rev": "$r_A1"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "conflict",
+        "current": {
+         "id": "$w_A",
+         "rev": "$r_A2",
+         "deleted": false,
+         "sealed": "$s_A2"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A3",
+        "deleted": false,
+        "sealed": "$s_A3",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "conflict",
+        "current": {
+         "id": "$w_A",
+         "rev": "$r_A2",
+         "deleted": false,
+         "sealed": "$s_A2"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 0
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": false,
+        "sealed": "$s_A2",
+        "seq": 2
+       }
+      ],
+      "last_seq": 2,
+      "more": false,
+      "head_seq": 2,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    }
+   ]
+  },
+  {
+   "name": "a base_rev for a document the server doesn't have comes back as conflict with current null",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": "$r_B9"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_B",
+        "status": "conflict",
+        "current": null
+       }
+      ]
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 0
+     },
+     "status": 200,
+     "response": {
+      "docs": [],
+      "last_seq": 0,
+      "more": false,
+      "head_seq": 0,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    }
+   ]
+  },
+  {
+   "name": "documents in one push apply in order",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": false,
+        "sealed": "$s_A2",
+        "base_rev": "$r_A1"
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B2",
+        "deleted": false,
+        "sealed": "$s_B2",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       },
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 2
+       },
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 3
+       },
+       {
+        "id": "$w_B",
+        "status": "conflict",
+        "current": {
+         "id": "$w_B",
+         "rev": "$r_B1",
+         "deleted": false,
+         "sealed": "$s_B1"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 0
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": false,
+        "sealed": "$s_A2",
+        "seq": 2
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "seq": 3
+       }
+      ],
+      "last_seq": 3,
+      "more": false,
+      "head_seq": 3,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    }
+   ]
+  },
+  {
+   "name": "a tombstone replaces its document and frees a live slot, and its bytes still count",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": true,
+        "sealed": "$s_A2_55",
+        "base_rev": "$r_A1"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 0
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": true,
+        "sealed": "$s_A2_55",
+        "seq": 2
+       }
+      ],
+      "last_seq": 2,
+      "more": false,
+      "head_seq": 2,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "usage": {
+       "docs": 0,
+       "doc_bytes": 567,
+       "files": 0,
+       "file_bytes": 0,
+       "writes_today": 2
+      }
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A3",
+        "deleted": false,
+        "sealed": "$s_A3",
+        "base_rev": "$r_A2"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 3
+       }
+      ]
+     }
+    },
+    {
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "usage": {
+       "docs": 1,
+       "doc_bytes": 576
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "the feed pages by limit and since",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_D",
+        "rev": "$r_D1",
+        "deleted": false,
+        "sealed": "$s_D1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_E",
+        "rev": "$r_E1",
+        "deleted": false,
+        "sealed": "$s_E1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       },
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 2
+       },
+       {
+        "id": "$w_C",
+        "status": "ok",
+        "seq": 3
+       },
+       {
+        "id": "$w_D",
+        "status": "ok",
+        "seq": 4
+       },
+       {
+        "id": "$w_E",
+        "status": "ok",
+        "seq": 5
+       }
+      ]
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "limit": 2
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "seq": 1
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "seq": 2
+       }
+      ],
+      "last_seq": 2,
+      "more": true,
+      "head_seq": 5,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 2,
+      "limit": 2
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1",
+        "seq": 3
+       },
+       {
+        "id": "$w_D",
+        "rev": "$r_D1",
+        "deleted": false,
+        "sealed": "$s_D1",
+        "seq": 4
+       }
+      ],
+      "last_seq": 4,
+      "more": true,
+      "head_seq": 5,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "note": "a page that returns limit rows says more, even at the end",
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 3,
+      "limit": 2
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_D",
+        "rev": "$r_D1",
+        "deleted": false,
+        "sealed": "$s_D1",
+        "seq": 4
+       },
+       {
+        "id": "$w_E",
+        "rev": "$r_E1",
+        "deleted": false,
+        "sealed": "$s_E1",
+        "seq": 5
+       }
+      ],
+      "last_seq": 5,
+      "more": true,
+      "head_seq": 5,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 4,
+      "limit": 2
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_E",
+        "rev": "$r_E1",
+        "deleted": false,
+        "sealed": "$s_E1",
+        "seq": 5
+       }
+      ],
+      "last_seq": 5,
+      "more": false,
+      "head_seq": 5,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 5
+     },
+     "status": 200,
+     "response": {
+      "docs": [],
+      "last_seq": 5,
+      "more": false,
+      "head_seq": 5,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 9
+     },
+     "status": 200,
+     "response": {
+      "docs": [],
+      "last_seq": 9,
+      "more": false,
+      "head_seq": 5,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": false,
+        "sealed": "$s_A2",
+        "base_rev": "$r_A1"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 6
+       }
+      ]
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 0
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "seq": 2
+       },
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1",
+        "seq": 3
+       },
+       {
+        "id": "$w_D",
+        "rev": "$r_D1",
+        "deleted": false,
+        "sealed": "$s_D1",
+        "seq": 4
+       },
+       {
+        "id": "$w_E",
+        "rev": "$r_E1",
+        "deleted": false,
+        "sealed": "$s_E1",
+        "seq": 5
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": false,
+        "sealed": "$s_A2",
+        "seq": 6
+       }
+      ],
+      "last_seq": 6,
+      "more": false,
+      "head_seq": 6,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    }
+   ]
+  },
+  {
+   "name": "the feed refuses a limit outside 1–500 and a negative since",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "limit": 0
+     },
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "limit": 501
+     },
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": -1
+     },
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 0,
+      "limit": 500
+     },
+     "status": 200,
+     "response": {
+      "docs": [],
+      "last_seq": 0,
+      "more": false,
+      "head_seq": 0,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "raw": {
+      "method": "GET",
+      "path": "/v2/changes?since=abc"
+     },
+     "as": "alice",
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     },
+     "runner": "worker"
+    },
+    {
+     "raw": {
+      "method": "GET",
+      "path": "/v2/changes?since=0&limit=1.5"
+     },
+     "as": "alice",
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     },
+     "runner": "worker"
+    }
+   ]
+  },
+  {
+   "name": "push checks every document",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "note": "more than 200 documents",
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 413,
+     "response": {
+      "error": "too_large"
+     }
+    },
+    {
+     "note": "an ID too short",
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "note:short",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "note": "an ID of an unknown kind",
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "page:ZH_mxCCdrautzYwruQ_OAA",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "note": "a revision that isn't 32 hex digits",
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "1-aa",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "note": "a base_rev that isn't 32 hex digits",
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": "ABCDEF"
+       }
+      ]
+     },
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "note": "sealed under 55 characters",
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "4tEM4-0-Rfyy9O7trQhvyF58djGRS_Z7gzb5F7zQ9mhmQhFyRQP1cW",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "note": "sealed outside base64url",
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "4tEM4-0-Rfyy9O7trQhvyF58djGRS_Z7gzb5F7zQ9mhmQhFyRQP1cW2rlAiWCq8+",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "raw": {
+      "method": "POST",
+      "path": "/v2/push",
+      "headers": {
+       "content-type": "application/json"
+      },
+      "body": "{\"docs\":[{\"id\":\"note:ZH_mxCCdrautzYwruQ_OAA\",\"rev\":\"dd7a4497a0a09834f42d6b8e7861ced8\",\"deleted\":false,\"sealed\":\"4tEM4-0-Rfyy9O7trQhvyF58djGRS_Z7gzb5F7zQ9mhmQhFyRQP1cW2rlAiWCq8p\"}]}"
+     },
+     "as": "alice",
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     },
+     "runner": "worker"
+    },
+    {
+     "raw": {
+      "method": "POST",
+      "path": "/v2/push",
+      "headers": {
+       "content-type": "application/json"
+      },
+      "body": "{\"docs\":[{\"id\":\"note:ZH_mxCCdrautzYwruQ_OAA\",\"rev\":\"dd7a4497a0a09834f42d6b8e7861ced8\",\"deleted\":\"no\",\"sealed\":\"4tEM4-0-Rfyy9O7trQhvyF58djGRS_Z7gzb5F7zQ9mhmQhFyRQP1cW2rlAiWCq8p\",\"base_rev\":null}]}"
+     },
+     "as": "alice",
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     },
+     "runner": "worker"
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": []
+     },
+     "status": 200,
+     "response": {
+      "results": []
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 0
+     },
+     "status": 200,
+     "response": {
+      "docs": [],
+      "last_seq": 0,
+      "more": false,
+      "head_seq": 0,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "the docs quota stops growth; deleting still works and a refused push changes nothing",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "admin": "quota",
+     "username": "alice",
+     "quota": {
+      "docs": 2
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       },
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 413,
+     "response": {
+      "error": "quota_exceeded",
+      "quota": "docs",
+      "used": 2,
+      "limit": 2
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": true,
+        "sealed": "$s_A2_55",
+        "base_rev": "$r_A1"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 3
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_D",
+        "rev": "$r_D1",
+        "deleted": false,
+        "sealed": "$s_D1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 413,
+     "response": {
+      "error": "quota_exceeded",
+      "quota": "docs",
+      "used": 1,
+      "limit": 2
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 0
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "seq": 2
+       },
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": true,
+        "sealed": "$s_A2_55",
+        "seq": 3
+       }
+      ],
+      "last_seq": 3,
+      "more": false,
+      "head_seq": 3,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_C",
+        "status": "ok",
+        "seq": 4
+       }
+      ]
+     }
+    },
+    {
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "usage": {
+       "docs": 2
+      },
+      "quota": {
+       "docs": 2,
+       "doc_bytes": 104857600
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "the doc_bytes quota charges length(sealed) + 512 per row, tombstones included",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "admin": "quota",
+     "username": "alice",
+     "quota": {
+      "doc_bytes": 1200
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1_55",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 413,
+     "response": {
+      "error": "quota_exceeded",
+      "quota": "doc_bytes",
+      "used": 1152,
+      "limit": 1200
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": true,
+        "sealed": "$s_A2_55",
+        "base_rev": "$r_A1"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 3
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A3",
+        "deleted": false,
+        "sealed": "$s_A3_100",
+        "base_rev": "$r_A2"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 4
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B2",
+        "deleted": false,
+        "sealed": "$s_B2_90",
+        "base_rev": "$r_B1"
+       }
+      ]
+     },
+     "status": 413,
+     "response": {
+      "error": "quota_exceeded",
+      "quota": "doc_bytes",
+      "used": 1188,
+      "limit": 1200
+     }
+    },
+    {
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "usage": {
+       "docs": 2,
+       "doc_bytes": 1188
+      },
+      "quota": {
+       "doc_bytes": 1200
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "when several quotas apply, docs is reported before doc_bytes",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "admin": "quota",
+     "username": "alice",
+     "quota": {
+      "docs": 1,
+      "doc_bytes": 600
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 413,
+     "response": {
+      "error": "quota_exceeded",
+      "quota": "docs",
+      "used": 1,
+      "limit": 1
+     }
+    },
+    {
+     "admin": "quota",
+     "username": "alice",
+     "quota": {
+      "docs": null,
+      "doc_bytes": null
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "the server-wide document bytes cap refuses growth as quota server",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "settings": {
+      "global_doc_bytes": "1000"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 413,
+     "response": {
+      "error": "quota_exceeded",
+      "quota": "server",
+      "used": 576,
+      "limit": 1000
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": false,
+        "sealed": "$s_A2_55",
+        "base_rev": "$r_A1"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "files: upload, fetch and replace, charged size + 1024",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F100",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 100
+     }
+    },
+    {
+     "request": "get_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "status": 200,
+     "response": {
+      "bytes": "$f_F100"
+     }
+    },
+    {
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "usage": {
+       "files": 1,
+       "file_bytes": 1124,
+       "writes_today": 1
+      }
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F200",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 200
+     }
+    },
+    {
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "usage": {
+       "files": 1,
+       "file_bytes": 1224,
+       "writes_today": 2
+      }
+     }
+    },
+    {
+     "request": "get_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "status": 200,
+     "response": {
+      "bytes": "$f_F200"
+     }
+    },
+    {
+     "request": "get_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "status": 404,
+     "response": {
+      "error": "not_found"
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_A"
+     },
+     "file": "$f_A100",
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "request": "get_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "file:short"
+     },
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G40",
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "raw": {
+      "method": "PUT",
+      "path": "/v2/files/$w_G",
+      "headers": {
+       "content-type": "application/octet-stream",
+       "x-kanso-sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "body": "$f_G100"
+     },
+     "as": "alice",
+     "status": 400,
+     "response": {
+      "error": "checksum_mismatch"
+     },
+     "runner": "worker"
+    },
+    {
+     "raw": {
+      "method": "PUT",
+      "path": "/v2/files/$w_G",
+      "headers": {
+       "content-type": "application/json",
+       "x-kanso-sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "body": "$f_G100"
+     },
+     "as": "alice",
+     "status": 415,
+     "response": {
+      "error": "unsupported_media_type"
+     },
+     "runner": "worker"
+    },
+    {
+     "request": "get_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "status": 404,
+     "response": {
+      "error": "not_found"
+     }
+    }
+   ]
+  },
+  {
+   "name": "file quotas: files, then file_bytes",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F300",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 300
+     }
+    },
+    {
+     "admin": "quota",
+     "username": "alice",
+     "quota": {
+      "files": 1
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G100",
+     "status": 413,
+     "response": {
+      "error": "quota_exceeded",
+      "quota": "files",
+      "used": 1,
+      "limit": 1
+     }
+    },
+    {
+     "request": "get_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "status": 404,
+     "response": {
+      "error": "not_found"
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F200",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 200
+     }
+    },
+    {
+     "admin": "quota",
+     "username": "alice",
+     "quota": {
+      "files": null,
+      "file_bytes": 2500
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G300",
+     "status": 413,
+     "response": {
+      "error": "quota_exceeded",
+      "quota": "file_bytes",
+      "used": 1224,
+      "limit": 2500
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G200",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 200
+     }
+    },
+    {
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "usage": {
+       "files": 2,
+       "file_bytes": 2448
+      },
+      "quota": {
+       "files": 10000,
+       "file_bytes": 2500
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "an accepted file tombstone deletes the stored bytes and frees the file quota",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F100",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 100
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_F",
+        "rev": "$r_F1",
+        "deleted": false,
+        "sealed": "$s_F1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_F",
+        "status": "ok",
+        "seq": 1
+       }
+      ]
+     }
+    },
+    {
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "usage": {
+       "docs": 1,
+       "doc_bytes": 576,
+       "files": 1,
+       "file_bytes": 1124
+      }
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_F",
+        "rev": "$r_F2",
+        "deleted": true,
+        "sealed": "$s_F2_55",
+        "base_rev": "$r_F1"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_F",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     }
+    },
+    {
+     "request": "get_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "status": 404,
+     "response": {
+      "error": "not_found"
+     }
+    },
+    {
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "usage": {
+       "docs": 0,
+       "doc_bytes": 567,
+       "files": 0,
+       "file_bytes": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "writes_per_day counts pushed documents and file uploads per account and UTC day",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "settings": {
+      "writes_per_day": "3"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       },
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F100",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 100
+     }
+    },
+    {
+     "request": "push",
+     "t": 1000,
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "writes-account",
+      "retry_after": 86399
+     }
+    },
+    {
+     "request": "put_file",
+     "t": 2000,
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G100",
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "writes-account",
+      "retry_after": 86398
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": []
+     },
+     "status": 200,
+     "response": {
+      "results": []
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 0
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "seq": 1
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "seq": 2
+       }
+      ],
+      "last_seq": 2,
+      "more": false,
+      "head_seq": 2,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "request": "push",
+     "t": 86400000,
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_C",
+        "status": "ok",
+        "seq": 3
+       }
+      ]
+     }
+    },
+    {
+     "request": "account",
+     "as": "alice",
+     "status": 200,
+     "response": {
+      "usage": {
+       "writes_today": 1
+      },
+      "quota": {
+       "writes_per_day": 3
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "the server-wide daily document write cap counts updates too and covers every account (security re-check 2)",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "settings": {
+      "global_writes_per_day": "2"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": false,
+        "sealed": "$s_A2",
+        "base_rev": "$r_A1"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "t": 1000,
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "writes-global",
+      "retry_after": 86399
+     }
+    },
+    {
+     "request": "signup",
+     "t": 2000,
+     "body": {
+      "username": "bob",
+      "account_id": "$acct_bob",
+      "kdf": "$kdf",
+      "salt": "$salt_bob1",
+      "auth_key": "$auth_bob1",
+      "wrapped_key": "$wrap_bob1",
+      "recovery_auth_key": "$rauth_bob1",
+      "recovery_wrapped_key": "$rwrap_bob1",
+      "key_id": "$kid_bob",
+      "device": {
+       "id": "$dev_2",
+       "sealed_name": "$name_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_bob",
+      "username": "bob",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "bob": "token",
+      "epoch_bob": "epoch"
+     }
+    },
+    {
+     "request": "push",
+     "t": 3000,
+     "as": "bob",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "writes-global",
+      "retry_after": 86397
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 0
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A2",
+        "deleted": false,
+        "sealed": "$s_A2",
+        "seq": 2
+       }
+      ],
+      "last_seq": 2,
+      "more": false,
+      "head_seq": 2,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "request": "push",
+     "t": 86400000,
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 3
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "bob",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "the server-wide daily upload cap counts bytes, replacements included (security re-check 2)",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "settings": {
+      "global_upload_bytes_per_day": "150"
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F100",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 100
+     }
+    },
+    {
+     "request": "put_file",
+     "t": 1000,
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G60",
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "uploads-global",
+      "retry_after": 86399
+     }
+    },
+    {
+     "request": "get_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "status": 404,
+     "response": {
+      "error": "not_found"
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G50",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 50
+     }
+    },
+    {
+     "request": "put_file",
+     "t": 2000,
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F41",
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "uploads-global",
+      "retry_after": 86398
+     }
+    },
+    {
+     "request": "get_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "status": 200,
+     "response": {
+      "bytes": "$f_F100"
+     }
+    },
+    {
+     "request": "put_file",
+     "t": 86400000,
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F41",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 41
+     }
+    }
+   ]
+  },
+  {
+   "name": "accounts are isolated: their own sequence, revisions, quotas and files",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "signup",
+     "t": 1000,
+     "body": {
+      "username": "bob",
+      "account_id": "$acct_bob",
+      "kdf": "$kdf",
+      "salt": "$salt_bob1",
+      "auth_key": "$auth_bob1",
+      "wrapped_key": "$wrap_bob1",
+      "recovery_auth_key": "$rauth_bob1",
+      "recovery_wrapped_key": "$rwrap_bob1",
+      "key_id": "$kid_bob",
+      "device": {
+       "id": "$dev_2",
+       "sealed_name": "$name_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_bob",
+      "username": "bob",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "bob": "token",
+      "epoch_bob": "epoch"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       }
+      ]
+     }
+    },
+    {
+     "request": "push",
+     "as": "bob",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_Ab1",
+        "deleted": false,
+        "sealed": "$s_Ab1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       }
+      ]
+     }
+    },
+    {
+     "request": "changes",
+     "as": "bob",
+     "query": {
+      "since": 0
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_Ab1",
+        "deleted": false,
+        "sealed": "$s_Ab1",
+        "seq": 1
+       }
+      ],
+      "last_seq": 1,
+      "head_seq": 1,
+      "epoch": "$epoch_bob",
+      "key_id": "$kid_bob"
+     }
+    },
+    {
+     "request": "changes",
+     "as": "alice",
+     "query": {
+      "since": 0
+     },
+     "status": 200,
+     "response": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "seq": 1
+       }
+      ],
+      "last_seq": 1,
+      "more": false,
+      "head_seq": 1,
+      "epoch": "$epoch_alice",
+      "key_id": "$kid_alice"
+     }
+    },
+    {
+     "request": "push",
+     "as": "bob",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_Ab2",
+        "deleted": false,
+        "sealed": "$s_Ab2",
+        "base_rev": "$r_A1"
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "conflict",
+        "current": {
+         "id": "$w_A",
+         "rev": "$r_Ab1",
+         "deleted": false,
+         "sealed": "$s_Ab1"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F100",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 100
+     }
+    },
+    {
+     "request": "get_file",
+     "as": "bob",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "status": 404,
+     "response": {
+      "error": "not_found"
+     }
+    },
+    {
+     "admin": "quota",
+     "username": "bob",
+     "quota": {
+      "docs": 1
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     }
+    },
+    {
+     "request": "account",
+     "as": "bob",
+     "status": 200,
+     "response": {
+      "usage": {
+       "docs": 1,
+       "doc_bytes": 576,
+       "files": 0,
+       "file_bytes": 0
+      },
+      "quota": {
+       "docs": 1
+      }
+     }
+    }
+   ]
+  }
+ ]
 }

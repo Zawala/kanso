@@ -1,0 +1,495 @@
+{
+  "about": [
+    "Username normalization cases (docs/ACCOUNTS.md › Usernames). Owner: the Worker builder; frozen by step 1.",
+    "Runners: cloud/test/usernames.test.ts (cloud/src/usernames.ts) and crates/kanso-sync/src/username.rs.",
+    "Each case is {input, normalized, error[, note]}. normalized is the normalized form, filled for reserved names too, or null when invalid.",
+    "error is invalid_username, reserved_username (sign-up only; every other route takes the normalized name) or null.",
+    "Normalizing: strip leading and trailing U+0009, U+000A, U+000C, U+000D and U+0020 only; refuse any other character outside U+0021–U+007E;",
+    "ASCII-lowercase; require ^[a-z0-9][a-z0-9_-]{1,30}[a-z0-9]$. Validity is checked before the reserved list."
+  ],
+  "reserved": [
+    "abuse",
+    "admin",
+    "administrator",
+    "anonymous",
+    "api",
+    "everyone",
+    "guest",
+    "help",
+    "hostmaster",
+    "kanso",
+    "me",
+    "null",
+    "owner",
+    "postmaster",
+    "root",
+    "security",
+    "server",
+    "support",
+    "sync",
+    "system",
+    "undefined",
+    "webmaster",
+    "www"
+  ],
+  "cases": [
+    {
+      "input": "alice",
+      "normalized": "alice",
+      "error": null
+    },
+    {
+      "input": "Alice",
+      "normalized": "alice",
+      "error": null,
+      "note": "ASCII-lowercased"
+    },
+    {
+      "input": "ALICE_99",
+      "normalized": "alice_99",
+      "error": null
+    },
+    {
+      "input": "aLiCe",
+      "normalized": "alice",
+      "error": null
+    },
+    {
+      "input": "abc",
+      "normalized": "abc",
+      "error": null,
+      "note": "shortest"
+    },
+    {
+      "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "normalized": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "error": null,
+      "note": "longest"
+    },
+    {
+      "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "33 characters"
+    },
+    {
+      "input": "ab",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "too short"
+    },
+    {
+      "input": "a",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "too short"
+    },
+    {
+      "input": "",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "empty"
+    },
+    {
+      "input": "123",
+      "normalized": "123",
+      "error": null,
+      "note": "digits only"
+    },
+    {
+      "input": "0-0",
+      "normalized": "0-0",
+      "error": null
+    },
+    {
+      "input": "a-b_c",
+      "normalized": "a-b_c",
+      "error": null
+    },
+    {
+      "input": "kanso-sync",
+      "normalized": "kanso-sync",
+      "error": null,
+      "note": "not reserved"
+    },
+    {
+      "input": "rootx",
+      "normalized": "rootx",
+      "error": null,
+      "note": "not reserved"
+    },
+    {
+      "input": "-abc",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "must start with a letter or digit"
+    },
+    {
+      "input": "_abc",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "must start with a letter or digit"
+    },
+    {
+      "input": "abc-",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "must end with a letter or digit"
+    },
+    {
+      "input": "abc_",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "must end with a letter or digit"
+    },
+    {
+      "input": "a.b",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "dot"
+    },
+    {
+      "input": "a@b",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "at sign"
+    },
+    {
+      "input": "a b",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "inner space"
+    },
+    {
+      "input": "al ice",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "inner space"
+    },
+    {
+      "input": "a+b",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "plus"
+    },
+    {
+      "input": " alice",
+      "normalized": "alice",
+      "error": null,
+      "note": "U+0020 leading"
+    },
+    {
+      "input": "alice ",
+      "normalized": "alice",
+      "error": null,
+      "note": "U+0020 trailing"
+    },
+    {
+      "input": "\talice",
+      "normalized": "alice",
+      "error": null,
+      "note": "U+0009 leading"
+    },
+    {
+      "input": "alice\t",
+      "normalized": "alice",
+      "error": null,
+      "note": "U+0009 trailing"
+    },
+    {
+      "input": "\nalice",
+      "normalized": "alice",
+      "error": null,
+      "note": "U+000A leading"
+    },
+    {
+      "input": "alice\n",
+      "normalized": "alice",
+      "error": null,
+      "note": "U+000A trailing"
+    },
+    {
+      "input": "\falice",
+      "normalized": "alice",
+      "error": null,
+      "note": "U+000C leading"
+    },
+    {
+      "input": "alice\f",
+      "normalized": "alice",
+      "error": null,
+      "note": "U+000C trailing"
+    },
+    {
+      "input": "\ralice",
+      "normalized": "alice",
+      "error": null,
+      "note": "U+000D leading"
+    },
+    {
+      "input": "alice\r",
+      "normalized": "alice",
+      "error": null,
+      "note": "U+000D trailing"
+    },
+    {
+      "input": "\r\n\t\f alice \f\t\n\r",
+      "normalized": "alice",
+      "error": null,
+      "note": "all five, both ends"
+    },
+    {
+      "input": "   bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\t",
+      "normalized": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "error": null,
+      "note": "32 characters inside whitespace"
+    },
+    {
+      "input": " \t\n\f\r",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "nothing left after trimming"
+    },
+    {
+      "input": "\u000balice",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+000B VERTICAL TAB is not trimmed"
+    },
+    {
+      "input": "alice\u000b",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+000B VERTICAL TAB is not trimmed"
+    },
+    {
+      "input": " alice",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+00A0 NO-BREAK SPACE is not trimmed"
+    },
+    {
+      "input": "alice ",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+00A0 NO-BREAK SPACE is not trimmed"
+    },
+    {
+      "input": "alice ",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+2028 LINE SEPARATOR is not trimmed"
+    },
+    {
+      "input": " alice",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+2028 LINE SEPARATOR is not trimmed"
+    },
+    {
+      "input": "﻿alice",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+FEFF BYTE ORDER MARK is not trimmed"
+    },
+    {
+      "input": "　alice",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+3000 IDEOGRAPHIC SPACE (JS trim strips it)"
+    },
+    {
+      "input": "alice",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+0085 NEXT LINE"
+    },
+    {
+      "input": "alice\u0000",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "NUL"
+    },
+    {
+      "input": "Kanso",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+212A KELVIN SIGN: refused before lowercasing (JS toLowerCase gives k)"
+    },
+    {
+      "input": "K",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+212A KELVIN SIGN alone"
+    },
+    {
+      "input": "ALİCE",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+0130 LATIN CAPITAL LETTER I WITH DOT ABOVE"
+    },
+    {
+      "input": "ålice",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "non-ASCII letter"
+    },
+    {
+      "input": "café",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "NFC é"
+    },
+    {
+      "input": "café",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "NFD é (e + U+0301)"
+    },
+    {
+      "input": "ｋａｎｓｏ",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "fullwidth letters"
+    },
+    {
+      "input": "al​ice",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "U+200B ZERO WIDTH SPACE"
+    },
+    {
+      "input": "me",
+      "normalized": null,
+      "error": "invalid_username",
+      "note": "reserved, but too short to be valid: invalid first"
+    },
+    {
+      "input": "abuse",
+      "normalized": "abuse",
+      "error": "reserved_username"
+    },
+    {
+      "input": "admin",
+      "normalized": "admin",
+      "error": "reserved_username"
+    },
+    {
+      "input": "administrator",
+      "normalized": "administrator",
+      "error": "reserved_username"
+    },
+    {
+      "input": "anonymous",
+      "normalized": "anonymous",
+      "error": "reserved_username"
+    },
+    {
+      "input": "api",
+      "normalized": "api",
+      "error": "reserved_username"
+    },
+    {
+      "input": "everyone",
+      "normalized": "everyone",
+      "error": "reserved_username"
+    },
+    {
+      "input": "guest",
+      "normalized": "guest",
+      "error": "reserved_username"
+    },
+    {
+      "input": "help",
+      "normalized": "help",
+      "error": "reserved_username"
+    },
+    {
+      "input": "hostmaster",
+      "normalized": "hostmaster",
+      "error": "reserved_username"
+    },
+    {
+      "input": "kanso",
+      "normalized": "kanso",
+      "error": "reserved_username"
+    },
+    {
+      "input": "null",
+      "normalized": "null",
+      "error": "reserved_username"
+    },
+    {
+      "input": "owner",
+      "normalized": "owner",
+      "error": "reserved_username"
+    },
+    {
+      "input": "postmaster",
+      "normalized": "postmaster",
+      "error": "reserved_username"
+    },
+    {
+      "input": "root",
+      "normalized": "root",
+      "error": "reserved_username"
+    },
+    {
+      "input": "security",
+      "normalized": "security",
+      "error": "reserved_username"
+    },
+    {
+      "input": "server",
+      "normalized": "server",
+      "error": "reserved_username"
+    },
+    {
+      "input": "support",
+      "normalized": "support",
+      "error": "reserved_username"
+    },
+    {
+      "input": "sync",
+      "normalized": "sync",
+      "error": "reserved_username"
+    },
+    {
+      "input": "system",
+      "normalized": "system",
+      "error": "reserved_username"
+    },
+    {
+      "input": "undefined",
+      "normalized": "undefined",
+      "error": "reserved_username"
+    },
+    {
+      "input": "webmaster",
+      "normalized": "webmaster",
+      "error": "reserved_username"
+    },
+    {
+      "input": "www",
+      "normalized": "www",
+      "error": "reserved_username"
+    },
+    {
+      "input": "Admin",
+      "normalized": "admin",
+      "error": "reserved_username",
+      "note": "reserved after lowercasing"
+    },
+    {
+      "input": " KANSO\t",
+      "normalized": "kanso",
+      "error": "reserved_username",
+      "note": "reserved after trimming and lowercasing"
+    },
+    {
+      "input": "Www",
+      "normalized": "www",
+      "error": "reserved_username"
+    }
+  ]
+}

@@ -11,6 +11,8 @@ export default defineConfig({
 		cloudflareTest(async () => ({
 			wrangler: { configPath: "./wrangler.jsonc" },
 			miniflare: {
+				// A second, empty database the migration tests build up step by step.
+				d1Databases: ["MIGRATION_DB"],
 				bindings: {
 					SYNC_TOKEN: "test-token",
 					FAST_CHECK_SEED: seed,

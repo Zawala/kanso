@@ -1,7 +1,7 @@
-// The protocol cases shared with MemoryRemote (crates/kanso-sync/tests/conformance.rs).
+// The v1 protocol cases shared with MemoryRemote (crates/kanso-sync/tests/conformance.rs).
 
 import { beforeEach, describe, expect, it } from "vitest";
-import fixture from "./fixtures/conformance.json";
+import fixture from "./fixtures/conformance-v1.json";
 import { base64ToBytes, call, changes, getFile, push, putFile, resetServer } from "./helpers";
 
 type Step = Record<string, any>;
