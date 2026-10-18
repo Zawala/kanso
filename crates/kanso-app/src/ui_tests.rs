@@ -130,6 +130,31 @@ impl Fixture {
         cx.run_until_parked();
     }
 
+    /// Draws, so focus, actions and element bounds find the views.
+    fn draw(&self, cx: &mut TestAppContext) {
+        cx.run_until_parked();
+        self.window
+            .update(cx, |_, window, cx| {
+                window.refresh();
+                window.draw(cx).clear(cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+    }
+
+    fn workspace<R>(
+        &self,
+        cx: &mut TestAppContext,
+        f: impl FnOnce(&Workspace, &gpui_kit::App) -> R,
+    ) -> R {
+        cx.read(|cx| f(self.workspace.read(cx), cx))
+    }
+
+    /// The settings as written to disk.
+    fn saved_config(&self) -> AppConfig {
+        AppConfig::load(&crate::paths::config_path(self._dir.path())).unwrap()
+    }
+
     fn open_note(&self, cx: &mut TestAppContext) -> Option<String> {
         self.editor(cx, |e, _| e.note_id().map(str::to_owned))
     }
@@ -556,4 +581,342 @@ fn a_press_on_the_chrome_keeps_the_keyboard(cx: &mut TestAppContext) {
     vcx.simulate_input("!");
     let typed = f.editor(cx, |e, cx| e.body_for_test(cx));
     assert!(typed.contains('!'), "{typed:?}");
+}
+
+/// A second window, as on the next launch, reading the settings the first
+/// one wrote.
+fn reopen(cx: &mut TestAppContext) -> Entity<Workspace> {
+    let (_, workspace) = cx.update(|cx| {
+        gpui_kit::open_window(Default::default(), cx, |window, cx| {
+            cx.new(|cx| Workspace::new(window, cx))
+        })
+        .unwrap()
+    });
+    cx.run_until_parked();
+    workspace
+}
+
+/// ⌘⇧D leaves the note alone in the window, with the keyboard in its text,
+/// and the next launch starts the same way. The palette still opens.
+// no-prop-test: drives one window through keystrokes.
+#[gpui_kit::test]
+fn focus_mode_leaves_the_note_alone_and_is_kept(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    cx.update(crate::workspace::bind_keys);
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    f.select(cx, &f.notes[0]);
+    f.draw(cx);
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    assert!(vcx.debug_bounds("sidebar-pane").is_some());
+    assert!(vcx.debug_bounds("list-pane").is_some());
+
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    assert!(f.workspace(&mut vcx, |w, _| w.focus_mode));
+    assert!(f.saved_config().layout.focus_mode);
+    assert_eq!(vcx.debug_bounds("sidebar-pane"), None);
+    assert_eq!(vcx.debug_bounds("list-pane"), None);
+    let editor = vcx.debug_bounds("editor-pane").unwrap();
+    let width = vcx.update(|window, _| window.viewport_size().width);
+    assert_eq!(editor.size.width, width, "the editor has the window");
+    let editor_view = f.workspace(&mut vcx, |w, _| w.editor.clone());
+    assert!(
+        vcx.update(|window, cx| editor_view.read(cx).body_focused(window, cx)),
+        "the keyboard goes to the text"
+    );
+    // Typing reaches the note.
+    vcx.simulate_input("!");
+    assert!(
+        f.editor(&mut vcx, |e, cx| e.body_for_test(cx))
+            .contains('!')
+    );
+
+    // The palette still opens, over the note.
+    let palette = f.workspace(&mut vcx, |w, _| w.palette.clone());
+    vcx.simulate_keystrokes("cmd-k");
+    assert!(vcx.read(|cx| palette.read(cx).is_open()));
+
+    // The next launch starts in focus mode.
+    let next = reopen(&mut vcx);
+    assert!(vcx.read(|cx| next.read(cx).focus_mode));
+
+    vcx.simulate_keystrokes("escape");
+    assert!(!vcx.read(|cx| palette.read(cx).is_open()));
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    assert!(!f.workspace(&mut vcx, |w, _| w.focus_mode));
+    assert!(!f.saved_config().layout.focus_mode);
+    assert!(vcx.debug_bounds("sidebar-pane").is_some());
+    assert!(vcx.debug_bounds("list-pane").is_some());
+}
+
+/// Escape leaves focus mode only once nothing else wants it: the first
+/// Escape with the palette open closes the palette; the next, from the
+/// text, leaves focus mode.
+// no-prop-test: drives one window through keystrokes.
+#[gpui_kit::test]
+fn escape_leaves_focus_mode_last(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    cx.update(crate::workspace::bind_keys);
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    f.select(cx, &f.notes[0]);
+    f.draw(cx);
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    let palette = f.workspace(&mut vcx, |w, _| w.palette.clone());
+    vcx.simulate_keystrokes("cmd-k");
+    f.draw(&mut vcx);
+    assert!(vcx.read(|cx| palette.read(cx).is_open()));
+
+    vcx.simulate_keystrokes("escape");
+    f.draw(&mut vcx);
+    assert!(
+        !vcx.read(|cx| palette.read(cx).is_open()),
+        "the palette closes"
+    );
+    assert!(
+        f.workspace(&mut vcx, |w, _| w.focus_mode),
+        "focus mode stays"
+    );
+    let editor = f.workspace(&mut vcx, |w, _| w.editor.clone());
+    assert!(vcx.update(|window, cx| editor.read(cx).body_focused(window, cx)));
+
+    vcx.simulate_keystrokes("escape");
+    f.draw(&mut vcx);
+    assert!(
+        !f.workspace(&mut vcx, |w, _| w.focus_mode),
+        "the next one leaves"
+    );
+    assert!(!f.saved_config().layout.focus_mode);
+    // Out of focus mode, Escape in the text leaves things as they are.
+    vcx.simulate_keystrokes("escape");
+    assert!(!f.workspace(&mut vcx, |w, _| w.focus_mode));
+}
+
+/// ⌘\ folds the sidebar to its icon rail rather than hiding it, keeps that
+/// for next time, and from focus mode brings everything back.
+// no-prop-test: drives one window through keystrokes; the widths' rules
+// are properties in layout.rs.
+#[gpui_kit::test]
+fn the_sidebar_folds_to_its_rail(cx: &mut TestAppContext) {
+    use crate::layout::rail_width;
+
+    let f = setup(cx);
+    cx.update(crate::workspace::bind_keys);
+    f.select(cx, &f.notes[0]);
+    f.draw(cx);
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    let sidebar = f.workspace(&mut vcx, |w, _| w.sidebar.clone());
+    let full = vcx.debug_bounds("sidebar-pane").unwrap().size.width;
+
+    vcx.simulate_keystrokes("cmd-\\");
+    f.draw(&mut vcx);
+    assert!(!f.workspace(&mut vcx, |w, _| w.show_sidebar));
+    assert!(!f.saved_config().appearance.show_sidebar);
+    assert!(vcx.read(|cx| sidebar.read(cx).is_collapsed()));
+    let rail = vcx.debug_bounds("sidebar-pane").expect("the rail stays");
+    assert_eq!(f32::from(rail.size.width), rail_width(false));
+    assert!(rail.size.width < full);
+    // The list starts where the rail ends.
+    let list = vcx.debug_bounds("list-pane").unwrap();
+    assert_eq!(list.left(), rail.right());
+
+    vcx.simulate_keystrokes("cmd-\\");
+    f.draw(&mut vcx);
+    assert!(f.workspace(&mut vcx, |w, _| w.show_sidebar));
+    assert!(f.saved_config().appearance.show_sidebar);
+    assert!(!vcx.read(|cx| sidebar.read(cx).is_collapsed()));
+    assert_eq!(vcx.debug_bounds("sidebar-pane").unwrap().size.width, full);
+
+    // Folded, then in focus mode: ⌘\ brings the whole sidebar back.
+    vcx.simulate_keystrokes("cmd-\\ cmd-shift-d");
+    f.draw(&mut vcx);
+    assert_eq!(vcx.debug_bounds("sidebar-pane"), None);
+    vcx.simulate_keystrokes("cmd-\\");
+    f.draw(&mut vcx);
+    assert!(!f.workspace(&mut vcx, |w, _| w.focus_mode));
+    assert!(f.workspace(&mut vcx, |w, _| w.show_sidebar));
+    assert_eq!(vcx.debug_bounds("sidebar-pane").unwrap().size.width, full);
+}
+
+/// Opening or closing the Status group is kept for the next launch.
+// no-prop-test: one toggle through the settings file; the open rule is a
+// property in the sidebar's tests.
+#[gpui_kit::test]
+fn the_status_group_remembers(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let sidebar = f.workspace(cx, |w, _| w.sidebar.clone());
+    assert_eq!(f.saved_config().layout.status_open, None);
+    let before = cx.read(|cx| sidebar.read(cx).is_status_open(cx));
+    sidebar.update(cx, |sidebar, cx| sidebar.toggle_status_group(cx));
+    cx.run_until_parked();
+    assert_eq!(cx.read(|cx| sidebar.read(cx).is_status_open(cx)), !before);
+    assert_eq!(f.saved_config().layout.status_open, Some(!before));
+    let next = reopen(cx);
+    let next_sidebar = cx.read(|cx| next.read(cx).sidebar.clone());
+    assert_eq!(
+        cx.read(|cx| next_sidebar.read(cx).is_status_open(cx)),
+        !before
+    );
+    sidebar.update(cx, |sidebar, cx| sidebar.toggle_status_group(cx));
+    assert_eq!(f.saved_config().layout.status_open, Some(before));
+}
+
+/// Opens the first note in Split in a window wide enough for both sides.
+fn split_fixture(cx: &mut TestAppContext, body: &str) -> Fixture {
+    let f = setup(cx);
+    cx.update(crate::workspace::bind_keys);
+    f.edit_elsewhere(cx, &f.notes[0], body);
+    f.select(cx, &f.notes[0]);
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    vcx.simulate_resize(gpui_kit::size(gpui_kit::px(1600.), gpui_kit::px(1000.)));
+    vcx.simulate_keystrokes("cmd-2");
+    // The preview renders after a pause; the divider is placed once the
+    // editor has been measured.
+    vcx.executor().advance_clock(Duration::from_secs(1));
+    for _ in 0..3 {
+        f.draw(&mut vcx);
+    }
+    f
+}
+
+/// Dragging the divider moves it, keeps where it was left as a share of
+/// the editor for next time, and neither side gets under its minimum, from
+/// a drag or from a kept share.
+// no-prop-test: drives the real divider with the pointer; the placement
+// rules are properties in split.rs.
+#[gpui_kit::test]
+fn a_dragged_divider_is_kept_and_both_sides_keep_room(cx: &mut TestAppContext) {
+    use crate::split::SPLIT_MIN_SIDE;
+    use gpui_kit::{Modifiers, MouseButton, point, px};
+
+    let f = split_fixture(cx, "one\ntwo");
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    let pane = vcx.debug_bounds("editor-pane").unwrap();
+    let width = f32::from(pane.size.width);
+    let sizes = f.editor(&mut vcx, |e, cx| e.split_sizes(cx));
+    assert_eq!(sizes.len(), 2, "{sizes:?}");
+    assert!((sizes[0] - width / 2.).abs() <= 1., "{sizes:?} of {width}");
+    assert!(
+        (sizes[0] + sizes[1] - width).abs() <= 1.,
+        "{sizes:?} of {width}"
+    );
+
+    let y = pane.top() + pane.size.height / 2.;
+    let drag = |vcx: &mut gpui_kit::VisualTestContext, from: f32, to: f32| {
+        let from = point(pane.left() + px(from), y);
+        vcx.simulate_mouse_down(from, MouseButton::Left, Modifiers::none());
+        // Past the drag threshold, then in steps to where it is let go.
+        for step in 1..=4 {
+            let x = from.x + (pane.left() + px(to) - from.x) * (step as f32 / 4.);
+            vcx.simulate_mouse_move(point(x, y), MouseButton::Left, Modifiers::none());
+            f.draw(vcx);
+        }
+        vcx.simulate_mouse_up(
+            point(pane.left() + px(to), y),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        f.draw(vcx);
+    };
+    let left = sizes[0];
+    drag(&mut vcx, left, width * 0.3);
+    let sizes = f.editor(&mut vcx, |e, cx| e.split_sizes(cx));
+    assert!((sizes[0] - width * 0.3).abs() <= 2., "{sizes:?} of {width}");
+    let kept = f.saved_config().layout.split_ratio;
+    assert!((kept - 0.3).abs() < 0.01, "kept {kept}");
+    assert!((f.editor(&mut vcx, |e, _| e.split_ratio()) - kept).abs() < 1e-6);
+
+    // Dragged nearly to the edge, the source keeps its minimum.
+    drag(&mut vcx, sizes[0], 40.);
+    let sizes = f.editor(&mut vcx, |e, cx| e.split_sizes(cx));
+    assert!((sizes[0] - SPLIT_MIN_SIDE).abs() <= 1., "{sizes:?}");
+    let kept = f.saved_config().layout.split_ratio;
+    assert!((kept * width - SPLIT_MIN_SIDE).abs() <= 2., "kept {kept}");
+
+    // Shares kept from a wider window still leave both sides room.
+    for (ratio, left) in [
+        (0.02, SPLIT_MIN_SIDE),
+        (0.98, width - SPLIT_MIN_SIDE),
+        (0.6, width * 0.6),
+    ] {
+        f.update_editor(&mut vcx, |e, _, cx| e.keep_split_ratio(ratio, cx));
+        f.draw(&mut vcx);
+        f.draw(&mut vcx);
+        let sizes = f.editor(&mut vcx, |e, cx| e.split_sizes(cx));
+        assert!(
+            (sizes[0] - left).abs() <= 1.,
+            "{ratio}: {sizes:?} of {width}"
+        );
+        assert!(sizes[1] >= SPLIT_MIN_SIDE - 1., "{ratio}: {sizes:?}");
+    }
+
+    // The next launch puts the divider where it was left.
+    let next = reopen(&mut vcx);
+    let next_editor = vcx.read(|cx| next.read(cx).editor.clone());
+    let saved = f.saved_config().layout.split_ratio;
+    assert_eq!(vcx.read(|cx| next_editor.read(cx).split_ratio()), saved);
+}
+
+/// Scrolling the source scrolls the preview beside it by the same share:
+/// top to top, middle to middle, end to end.
+// no-prop-test: the mapping is a property in split.rs; this checks the
+// views are wired to it.
+#[gpui_kit::test]
+fn the_preview_follows_the_source(cx: &mut TestAppContext) {
+    use gpui_kit::{Modifiers, ScrollDelta, ScrollWheelEvent, TouchPhase, point, px};
+
+    let body = (1..=300)
+        .map(|n| {
+            if n % 20 == 1 {
+                format!("# Part {n}")
+            } else {
+                format!("Line {n} of the note.")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let f = split_fixture(cx, &body);
+    let (top, max) = f.editor(cx, |e, cx| e.preview_scroll(cx));
+    assert_eq!(top, 0.);
+    assert!(max > 1000., "the preview can scroll: {max}");
+    let scroll = |cx: &mut TestAppContext, share: f32| {
+        f.update_editor(cx, |e, _, cx| e.scroll_source_for_test(share, cx));
+        for _ in 0..2 {
+            f.draw(cx);
+        }
+        let source = f.editor(cx, |e, cx| e.source_scroll(cx));
+        let (top, max) = f.editor(cx, |e, cx| e.preview_scroll(cx));
+        (source, top / max)
+    };
+    // A scroll set from outside the wheel, as by the scrollbar.
+    let (source, share) = scroll(cx, 0.5);
+    assert!(source > 0., "the source scrolled");
+    assert!((share - 0.5).abs() < 0.05, "the preview is {share} down");
+    let (_, share) = scroll(cx, 1.);
+    assert!(share > 0.95, "the preview is {share} down");
+    let (source, share) = scroll(cx, 0.);
+    assert_eq!((source, share), (0., 0.));
+
+    // The wheel over the source.
+    let pane = gpui_kit::VisualTestContext::from_window(f.window, cx)
+        .debug_bounds("editor-pane")
+        .unwrap();
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    vcx.simulate_event(ScrollWheelEvent {
+        position: pane.origin + point(px(150.), pane.size.height / 2.),
+        delta: ScrollDelta::Pixels(point(px(0.), px(-600.))),
+        modifiers: Modifiers::none(),
+        touch_phase: TouchPhase::Moved,
+    });
+    f.draw(&mut vcx);
+    let source = f.editor(&mut vcx, |e, cx| e.source_scroll(cx));
+    let (top, max) = f.editor(&mut vcx, |e, cx| e.preview_scroll(cx));
+    assert_eq!(source, 600.);
+    assert!(top > 0. && top < max / 2., "{top} of {max}");
 }

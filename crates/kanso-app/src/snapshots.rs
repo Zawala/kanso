@@ -29,7 +29,7 @@ use crate::clock::Clock;
 use crate::commands::Picker;
 use crate::config::{AppConfig, EditorFont, ThemePreference, ViewMode};
 use crate::editor::EditorEvent;
-use crate::layout::{BOTTOM_BAND_HEIGHT, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, TOP_BAND_HEIGHT};
+use crate::layout::{BOTTOM_BAND_HEIGHT, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, rail_width};
 use crate::library::{Filter, has_notes_inside};
 use crate::palette::{Mode, PANEL_HEIGHT, PANEL_WIDTH};
 use crate::services::{ApiState, Services, SyncState};
@@ -213,6 +213,17 @@ fn context(clock: Option<Clock>) -> HeadlessAppContext {
 /// Puts the workspace in the shot's state before drawing.
 type Prepare = fn(&mut HeadlessAppContext, AnyWindowHandle, &Entity<Workspace>, &Store);
 
+/// What is left of the editor, for the surface checks.
+#[derive(Clone, Copy, PartialEq)]
+enum Left {
+    /// The sidebar and the note list.
+    Sidebar,
+    /// The icon rail and the note list.
+    Rail,
+    /// Nothing: focus mode.
+    Nothing,
+}
+
 struct Shot {
     name: &'static str,
     theme: ThemePreference,
@@ -220,8 +231,7 @@ struct Shot {
     /// The window's size in points; the PNG is twice that.
     size: Size<Pixels>,
     prepare: Prepare,
-    /// Whether the sidebar shows, for the surface checks.
-    sidebar: bool,
+    left: Left,
 }
 
 /// The most recently edited note, as after a restart.
@@ -266,8 +276,8 @@ fn recent_all_tags(
     });
 }
 
-/// The sidebar hidden: the note list is leftmost, below the traffic lights.
-fn hide_sidebar(
+/// The sidebar collapsed to its rail, the traffic lights in its top band.
+fn collapse_sidebar(
     cx: &mut HeadlessAppContext,
     _: AnyWindowHandle,
     workspace: &Entity<Workspace>,
@@ -279,6 +289,113 @@ fn hide_sidebar(
             cx.notify();
         })
     });
+}
+
+/// The rail's notebooks button: the palette lists the notebooks to go to.
+fn rail_notebooks(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    collapse_sidebar(cx, window, workspace, store);
+    cx.update_window(window, |_, _, cx| {
+        let sidebar = workspace.read(cx).sidebar.clone();
+        sidebar.update(cx, |_, cx| {
+            cx.emit(crate::sidebar::SidebarEvent::GoToNotebook)
+        });
+    })
+    .unwrap();
+}
+
+/// Focus mode, as after ⌘⇧D: the note alone, its header out of sight.
+fn focus_mode(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update_window(window, |_, window, cx| {
+        workspace.update(cx, |workspace, cx| {
+            workspace.set_focus_mode(true, window, cx)
+        });
+    })
+    .unwrap();
+}
+
+/// Focus mode with the pointer near the top: the header shows.
+fn focus_mode_hover(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    focus_mode(cx, window, workspace, store);
+    cx.update(|cx| {
+        let editor = workspace.read(cx).editor.clone();
+        editor.update(cx, |editor, cx| {
+            editor.reveal_chrome = true;
+            cx.notify();
+        });
+    });
+}
+
+/// The divider left at 38% of the editor, as a drag in an earlier session
+/// keeps it.
+fn split_dragged(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| {
+        let editor = workspace.read(cx).editor.clone();
+        editor.update(cx, |editor, cx| editor.keep_split_ratio(0.38, cx));
+    });
+}
+
+/// The source scrolled about halfway: the preview beside it follows.
+fn split_scrolled(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    // The editor knows how tall its lines are once it has been drawn.
+    cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))
+        .unwrap();
+    cx.update_window(window, |_, _, cx| {
+        let editor = workspace.read(cx).editor.clone();
+        editor.update(cx, |editor, cx| editor.scroll_source_for_test(0.5, cx));
+    })
+    .unwrap();
+}
+
+/// A library with no notes at all, as on first run.
+fn first_run(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    store: &Store,
+) {
+    for filter in [Filter::All, Filter::Trash] {
+        let params = crate::library::search_params(&filter, "", Default::default(), true);
+        for note in store.search_summaries(&params).unwrap() {
+            store.delete(&note.id, Origin::Ui).unwrap();
+        }
+    }
+    cx.run_until_parked();
+}
+
+/// All notes with none open: what the editor says, with the real shortcut.
+fn no_note_open(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    let library = cx.update(|cx| workspace.read(cx).library.clone());
+    cx.update(|cx| library.update(cx, |library, cx| library.select(None, cx)));
 }
 
 /// A note in the trash, with its banner.
@@ -828,65 +945,56 @@ fn check_surfaces(image: &image::RgbaImage, shot: &Shot) {
             "editor's bottom band",
         ),
     ];
-    if shot.sidebar {
-        checks.extend([
-            ((4., height / 2.), colors.sidebar, "sidebar"),
-            (
-                (SIDEBAR_WIDTH - 6., 4.),
-                colors.sidebar,
-                "sidebar's top band",
-            ),
-            ((SIDEBAR_WIDTH + 6., 4.), colors.list, "note list"),
-            // The panes keep their widths whatever the window's size.
-            (
-                (SIDEBAR_WIDTH + NOTE_LIST_WIDTH - 6., 4.),
-                colors.list,
-                "note list's right edge",
-            ),
-            (
-                (SIDEBAR_WIDTH + NOTE_LIST_WIDTH + 8., 4.),
-                colors.editor,
-                "editor's left edge",
-            ),
-        ]);
-    } else {
-        // Leftmost, the list starts below the traffic lights' band and
-        // keeps its width.
-        checks.extend([
-            ((8., TOP_BAND_HEIGHT - 4.), colors.list, "note list"),
-            (
-                (NOTE_LIST_WIDTH - 6., TOP_BAND_HEIGHT - 4.),
-                colors.list,
-                "note list's right edge",
-            ),
-            (
-                (NOTE_LIST_WIDTH + 8., height / 2.),
-                colors.editor,
-                "editor's left edge",
-            ),
-        ]);
-    }
-    // The bottom band's top edge runs across every pane, with a note open
-    // or not.
     let band_top = height - BOTTOM_BAND_HEIGHT;
-    let left_pane = if shot.sidebar {
-        vec![
-            ((4., band_top), colors.divider, "sidebar's bottom divider"),
-            (
-                (SIDEBAR_WIDTH + 6., band_top),
-                colors.divider,
-                "note list's bottom divider",
-            ),
-        ]
-    } else {
-        vec![((8., band_top), colors.divider, "note list's bottom divider")]
+    // The panes keep their widths whatever the window's size; the sidebar
+    // and its rail are the same surface.
+    let leading = match shot.left {
+        Left::Sidebar => Some(SIDEBAR_WIDTH),
+        Left::Rail => Some(rail_width(false)),
+        Left::Nothing => None,
     };
-    checks.extend(left_pane);
-    checks.push((
-        (width - 4., band_top),
-        colors.divider,
-        "editor's bottom divider",
-    ));
+    match leading {
+        Some(leading) => {
+            checks.extend([
+                ((4., height / 2.), colors.sidebar, "sidebar"),
+                ((leading - 6., 4.), colors.sidebar, "sidebar's top band"),
+                ((leading + 6., 4.), colors.list, "note list"),
+                (
+                    (leading + NOTE_LIST_WIDTH - 6., 4.),
+                    colors.list,
+                    "note list's right edge",
+                ),
+                (
+                    (leading + NOTE_LIST_WIDTH + 8., 4.),
+                    colors.editor,
+                    "editor's left edge",
+                ),
+                // The bottom band's top edge runs across every pane, with a
+                // note open or not.
+                ((4., band_top), colors.divider, "sidebar's bottom divider"),
+                (
+                    (leading + 6., band_top),
+                    colors.divider,
+                    "note list's bottom divider",
+                ),
+                (
+                    (width - 4., band_top),
+                    colors.divider,
+                    "editor's bottom divider",
+                ),
+            ]);
+        }
+        // Focus mode: the editor's surface edge to edge, and a quiet footer.
+        None => checks.extend([
+            ((4., 4.), colors.editor, "focus mode's top band"),
+            ((4., height / 2.), colors.editor, "focus mode's left margin"),
+            (
+                (4., band_top),
+                colors.editor,
+                "focus mode's footer, without a divider",
+            ),
+        ]),
+    }
     for (at, expected, what) in checks {
         assert_surface(
             image,
@@ -913,7 +1021,7 @@ fn snapshots() {
         view_mode,
         size: full,
         prepare,
-        sidebar: true,
+        left: Left::Sidebar,
     };
     let shots = [
         shot("dark-split", Dark, Split, open_latest),
@@ -936,10 +1044,45 @@ fn snapshots() {
         shot("dark-status-warnings", Dark, Edit, status_and_warnings),
         shot("light-status-warnings", Light, Split, status_and_warnings),
         shot("dark-recent-tags", Dark, Preview, recent_all_tags),
+        // The sidebar collapsed to its rail.
         Shot {
-            sidebar: false,
-            ..shot("dark-no-sidebar", Dark, Edit, hide_sidebar)
+            left: Left::Rail,
+            ..shot("dark-rail", Dark, Edit, collapse_sidebar)
         },
+        Shot {
+            left: Left::Rail,
+            ..shot("light-rail", Light, Split, collapse_sidebar)
+        },
+        Shot {
+            left: Left::Rail,
+            ..shot("dark-rail-notebooks", Dark, Edit, rail_notebooks)
+        },
+        // Focus mode, at rest and with the pointer near the top.
+        Shot {
+            left: Left::Nothing,
+            ..shot("dark-focus", Dark, Edit, focus_mode)
+        },
+        Shot {
+            left: Left::Nothing,
+            ..shot("dark-focus-hover", Dark, Edit, focus_mode_hover)
+        },
+        Shot {
+            left: Left::Nothing,
+            ..shot("light-focus", Light, Edit, focus_mode)
+        },
+        Shot {
+            left: Left::Nothing,
+            ..shot("dark-focus-split", Dark, Split, focus_mode_hover)
+        },
+        // The divider where a drag left it, and the preview following the
+        // source's scrolling.
+        shot("dark-split-dragged", Dark, Split, split_dragged),
+        shot("light-split-dragged", Light, Split, split_dragged),
+        shot("dark-split-scrolled", Dark, Split, split_scrolled),
+        // An empty library, and a library with no note open.
+        shot("dark-first-run", Dark, Split, first_run),
+        shot("light-first-run", Light, Split, first_run),
+        shot("dark-no-note", Dark, Edit, no_note_open),
         shot("dark-trash", Dark, Edit, open_trashed),
         shot("dark-conflict", Dark, Edit, conflict),
         shot("light-search", Light, Edit, search_sync),

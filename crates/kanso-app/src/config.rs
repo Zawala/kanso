@@ -123,6 +123,7 @@ pub struct Appearance {
     pub editor_font: EditorFont,
     pub editor_font_size: f32,
     pub view_mode: ViewMode,
+    /// The full sidebar, or (false) the icon rail it collapses to.
     pub show_sidebar: bool,
 }
 
@@ -134,6 +135,31 @@ impl Default for Appearance {
             editor_font_size: DEFAULT_FONT_SIZE,
             view_mode: ViewMode::Split,
             show_sidebar: true,
+        }
+    }
+}
+
+/// The source side's share of the split before it is first dragged.
+pub const DEFAULT_SPLIT_RATIO: f32 = 0.5;
+
+/// How the window's panes were left: focus mode, where the split divides,
+/// and whether the sidebar's Status group is open.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct WindowLayout {
+    pub focus_mode: bool,
+    /// The source's share of the editor in Split mode, between 0 and 1.
+    pub split_ratio: f32,
+    /// Open or closed by the user; `None` until they choose.
+    pub status_open: Option<bool>,
+}
+
+impl Default for WindowLayout {
+    fn default() -> Self {
+        WindowLayout {
+            focus_mode: false,
+            split_ratio: DEFAULT_SPLIT_RATIO,
+            status_open: None,
         }
     }
 }
@@ -152,6 +178,7 @@ pub struct AppConfig {
     pub appearance: Appearance,
     pub launch_at_login: bool,
     pub last_note: Option<String>,
+    pub layout: WindowLayout,
 }
 
 impl Default for AppConfig {
@@ -163,6 +190,7 @@ impl Default for AppConfig {
             appearance: Appearance::default(),
             launch_at_login: false,
             last_note: None,
+            layout: WindowLayout::default(),
         }
     }
 }
@@ -234,7 +262,22 @@ mod tests {
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
 
+    /// Any config, with the window layout too.
     fn gen_config() -> impl Strategy<Value = AppConfig> {
+        (gen_settings(), gen_layout()).prop_map(|(config, layout)| AppConfig { layout, ..config })
+    }
+
+    fn gen_layout() -> impl Strategy<Value = WindowLayout> {
+        (any::<bool>(), 0.0f32..=1.0, prop::option::of(any::<bool>())).prop_map(
+            |(focus_mode, split_ratio, status_open)| WindowLayout {
+                focus_mode,
+                split_ratio,
+                status_open,
+            },
+        )
+    }
+
+    fn gen_settings() -> impl Strategy<Value = AppConfig> {
         (
             any::<bool>(),
             any::<u16>(),
@@ -300,6 +343,7 @@ mod tests {
                     },
                     launch_at_login: login,
                     last_note: last,
+                    layout: WindowLayout::default(),
                 },
             )
     }
@@ -437,6 +481,23 @@ mod tests {
             AppConfig::load(&dir.path().join("missing.json")).unwrap(),
             AppConfig::default()
         );
+    }
+
+    /// Files from before the window layout was kept load with its defaults,
+    /// and a partial one keeps what it has.
+    #[test]
+    fn older_files_take_the_default_layout() {
+        let old: AppConfig =
+            serde_json::from_str(r#"{"version": 1, "appearance": {"showSidebar": false}}"#)
+                .unwrap();
+        assert_eq!(old.layout, WindowLayout::default());
+        assert!(!old.appearance.show_sidebar);
+        assert_eq!(old.layout.split_ratio, DEFAULT_SPLIT_RATIO);
+        let partial: AppConfig =
+            serde_json::from_str(r#"{"layout": {"focusMode": true}}"#).unwrap();
+        assert!(partial.layout.focus_mode);
+        assert_eq!(partial.layout.split_ratio, DEFAULT_SPLIT_RATIO);
+        assert_eq!(partial.layout.status_open, None);
     }
 
     #[test]

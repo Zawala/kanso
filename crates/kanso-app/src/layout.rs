@@ -47,6 +47,23 @@ pub fn leading_inset(leftmost: bool, fullscreen: bool) -> f32 {
     }
 }
 
+/// The narrowest the icon rail gets: one column of icon buttons.
+pub const RAIL_MIN_WIDTH: f32 = 52.;
+
+/// The icon rail the sidebar collapses to. It is the leftmost pane, so it
+/// is wide enough to keep the traffic lights in its top band, and narrows
+/// to one column of icons in full screen, where they hide.
+pub fn rail_width(fullscreen: bool) -> f32 {
+    RAIL_MIN_WIDTH.max(leading_inset(true, fullscreen))
+}
+
+/// The traffic lights' room still to leave at the start of the top band of
+/// a pane whose left edge is `left` points from the window's: what the
+/// panes before it don't already cover.
+pub fn inset_after(left: f32, fullscreen: bool) -> f32 {
+    (leading_inset(true, fullscreen) - left.max(0.)).max(0.)
+}
+
 /// The pane edge a drag moves: the sidebar's right edge or the list's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneEdge {
@@ -72,10 +89,11 @@ impl Default for PaneWidths {
 
 impl PaneWidths {
     /// The widths once `edge` is dragged to `x` points from the window's
-    /// left, in a window `window` wide, with the sidebar shown or hidden.
-    /// The pane follows the pointer within its range, and short of leaving
-    /// the editor less than its minimum; the other pane stays as it is.
-    pub fn dragged(self, edge: PaneEdge, x: f32, window: f32, sidebar_shown: bool) -> PaneWidths {
+    /// left, in a window `window` wide, with the full sidebar (`rail` is
+    /// `None`) or a rail that wide before the list. The pane follows the
+    /// pointer within its range, and short of leaving the editor less than
+    /// its minimum; the other pane stays as it is.
+    pub fn dragged(self, edge: PaneEdge, x: f32, window: f32, rail: Option<f32>) -> PaneWidths {
         let clamp =
             |width: f32, (min, max): (f32, f32), room: f32| width.min(max.min(room)).max(min);
         match edge {
@@ -84,7 +102,7 @@ impl PaneWidths {
                 ..self
             },
             PaneEdge::NoteList => {
-                let left = if sidebar_shown { self.sidebar } else { 0. };
+                let left = rail.unwrap_or(self.sidebar);
                 PaneWidths {
                     list: clamp(x - left, NOTE_LIST_RANGE, window - left - EDITOR_MIN_WIDTH),
                     ..self
@@ -293,15 +311,20 @@ mod tests {
             list in NOTE_LIST_RANGE.0..=NOTE_LIST_RANGE.1,
             sidebar_edge: bool,
             shown: bool,
+            rail in prop_oneof![Just(0f32), Just(RAIL_MIN_WIDTH), Just(TRAFFIC_LIGHT_INSET)],
             x in -100f32..2000.,
             window in 900f32..2400.,
         ) {
             let before = PaneWidths { sidebar, list };
             let edge = if sidebar_edge { PaneEdge::Sidebar } else { PaneEdge::NoteList };
-            let after = before.dragged(edge, x, window, shown);
+            let rail = (!shown).then_some(rail);
+            let after = before.dragged(edge, x, window, rail);
             prop_assert!((SIDEBAR_RANGE.0..=SIDEBAR_RANGE.1).contains(&after.sidebar));
             prop_assert!((NOTE_LIST_RANGE.0..=NOTE_LIST_RANGE.1).contains(&after.list));
-            let left = if shown || sidebar_edge { after.sidebar } else { 0. };
+            let left = match rail {
+                Some(rail) if !sidebar_edge => rail,
+                _ => after.sidebar,
+            };
             match edge {
                 PaneEdge::Sidebar => prop_assert_eq!(after.list, before.list),
                 PaneEdge::NoteList => prop_assert_eq!(after.sidebar, before.sidebar),
@@ -323,8 +346,9 @@ mod tests {
             let start = PaneWidths::default();
             let window = 1800.;
             let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
-            let left = if shown { start.sidebar } else { 0. };
-            let at = |x| start.dragged(PaneEdge::NoteList, x, window, shown).list;
+            let rail = (!shown).then_some(rail_width(false));
+            let left = rail.unwrap_or(start.sidebar);
+            let at = |x| start.dragged(PaneEdge::NoteList, x, window, rail).list;
             prop_assert!(at(lo) <= at(hi));
             let wanted = lo - left;
             if (NOTE_LIST_RANGE.0..=NOTE_LIST_RANGE.1).contains(&wanted) {
@@ -400,28 +424,63 @@ mod tests {
         );
         // The list's right edge to x = 600 with the sidebar beside it.
         assert_eq!(
-            widths.dragged(PaneEdge::NoteList, 600., 1440., true).list,
+            widths.dragged(PaneEdge::NoteList, 600., 1440., None).list,
             380.
         );
-        // Without the sidebar the list starts at the window's edge.
+        // Beside the rail the list starts at the rail's edge.
         assert_eq!(
-            widths.dragged(PaneEdge::NoteList, 300., 1440., false).list,
+            widths
+                .dragged(PaneEdge::NoteList, 376., 1440., Some(76.))
+                .list,
             300.
         );
         // Too far either way stops at the range.
         assert_eq!(
-            widths.dragged(PaneEdge::Sidebar, 50., 1440., true).sidebar,
+            widths.dragged(PaneEdge::Sidebar, 50., 1440., None).sidebar,
             180.
         );
         assert_eq!(
-            widths.dragged(PaneEdge::Sidebar, 900., 1440., true).sidebar,
+            widths.dragged(PaneEdge::Sidebar, 900., 1440., None).sidebar,
             320.
         );
         // In the smallest window the editor keeps its 560 points.
         assert_eq!(
-            widths.dragged(PaneEdge::NoteList, 900., 1100., true).list,
+            widths.dragged(PaneEdge::NoteList, 900., 1100., None).list,
             320.
         );
+    }
+
+    proptest! {
+        #![proptest_config(config())]
+
+        /// The room left for the traffic lights: all of it at the window's
+        /// edge, none in full screen, less the further right a pane starts,
+        /// and never so little that a pane's band starts under a light.
+        #[test]
+        fn prop_inset_after_clears_the_lights(a in -50f32..400., b in -50f32..400., fullscreen: bool) {
+            let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+            prop_assert!(inset_after(lo, fullscreen) >= inset_after(hi, fullscreen));
+            prop_assert!(inset_after(lo, fullscreen) >= 0.);
+            prop_assert_eq!(inset_after(0., fullscreen), leading_inset(true, fullscreen));
+            if fullscreen {
+                prop_assert_eq!(inset_after(lo, true), 0.);
+            } else {
+                prop_assert!(lo.max(0.) + inset_after(lo, false) >= TRAFFIC_LIGHT_INSET);
+            }
+            // The rail covers the lights, so whatever follows it starts flush.
+            prop_assert_eq!(inset_after(rail_width(fullscreen), fullscreen), 0.);
+        }
+    }
+
+    #[test]
+    fn rail_examples() {
+        assert_eq!(rail_width(false), TRAFFIC_LIGHT_INSET);
+        assert_eq!(rail_width(true), RAIL_MIN_WIDTH);
+        assert_eq!(inset_after(0., false), TRAFFIC_LIGHT_INSET);
+        assert_eq!(inset_after(52., false), 24.);
+        assert_eq!(inset_after(220., false), 0.);
+        // A 52 point rail would leave the third light over the next pane.
+        assert!(TRAFFIC_LIGHTS.0 + 2. * 20. + 14. > RAIL_MIN_WIDTH);
     }
 
     #[test]

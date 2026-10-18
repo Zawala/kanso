@@ -28,6 +28,8 @@ pub struct EditorFooter {
     /// Whether there is a note, and a cursor in it to report.
     has_note: bool,
     show_cursor: bool,
+    /// In focus mode: no divider above it.
+    quiet: bool,
     count_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -55,6 +57,7 @@ impl EditorFooter {
             chars: 0,
             has_note: false,
             show_cursor: true,
+            quiet: false,
             count_task: None,
             _subscriptions: subscriptions,
         }
@@ -72,6 +75,14 @@ impl EditorFooter {
     pub fn set_show_cursor(&mut self, show: bool, cx: &mut Context<Self>) {
         if self.show_cursor != show {
             self.show_cursor = show;
+            cx.notify();
+        }
+    }
+
+    /// Focus mode keeps the counts but drops the divider above them.
+    pub fn set_quiet(&mut self, quiet: bool, cx: &mut Context<Self>) {
+        if self.quiet != quiet {
+            self.quiet = quiet;
             cx.notify();
         }
     }
@@ -131,8 +142,9 @@ impl Render for EditorFooter {
             .flex_none()
             .px(px(TEXT_INSET))
             .gap_4()
-            .border_t_1()
-            .border_color(colors.divider)
+            .when(!self.quiet, |el| {
+                el.border_t_1().border_color(colors.divider)
+            })
             .bg(colors.editor)
             .text_size(px(12.))
             .text_color(colors.text_muted)

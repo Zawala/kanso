@@ -16,10 +16,11 @@ use kanso_core::{DocType, TagColor};
 use kanso_store::{Origin, Put, Store};
 use serde_json::{Value, json};
 
+use crate::commands::Picker;
 use crate::config::{AppConfig, ThemePreference, ViewMode};
 use crate::dialogs::{confirm, prompt_text};
 use crate::editor::{EditorEvent, NoteEditor};
-use crate::layout::{BandAction, BandDrag, PaneEdge, PaneWidths, leading_inset};
+use crate::layout::{BandAction, BandDrag, PaneEdge, PaneWidths, inset_after, rail_width};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::{NoteList, NoteListEvent};
 use crate::palette::{Mode, Palette};
@@ -56,6 +57,9 @@ actions!(
         OpenNotePicker,
     ]
 );
+
+// Focus mode: ⌘⇧D in and out, and Escape out once nothing inside wants it.
+actions!(kanso, [ToggleFocusMode, ExitFocusMode]);
 
 /// Process-wide state: the store, the data folder and the settings.
 pub struct AppState {
@@ -115,6 +119,10 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-l", FocusSearch, None),
         KeyBinding::new("cmd-shift-f", SearchAllNotes, None),
         KeyBinding::new("cmd-\\", ToggleSidebar, None),
+        KeyBinding::new("cmd-shift-d", ToggleFocusMode, None),
+        // After anything inside that takes Escape (an open menu, extra
+        // cursors, the palette), so the first Escape left over leaves.
+        KeyBinding::new("escape", ExitFocusMode, Some("FocusMode")),
         KeyBinding::new("cmd-1", ShowEditor, None),
         KeyBinding::new("cmd-2", ShowSplit, None),
         KeyBinding::new("cmd-3", ShowPreview, None),
@@ -165,6 +173,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Preview Only", ShowPreview),
             MenuItem::separator(),
             MenuItem::action("Toggle Sidebar", ToggleSidebar),
+            MenuItem::action("Focus Mode", ToggleFocusMode),
             MenuItem::action("Search All Notes", SearchAllNotes),
             MenuItem::action("Search This List", FocusSearch),
         ]),
@@ -209,7 +218,10 @@ pub struct Workspace {
     pub editor: Entity<NoteEditor>,
     /// The command palette, drawn over the rest when open.
     pub(crate) palette: Entity<Palette>,
+    /// The full sidebar, or the icon rail it collapses to.
     pub(crate) show_sidebar: bool,
+    /// Only the note, centred: no sidebar and no list.
+    pub(crate) focus_mode: bool,
     /// The sidebar's and the list's widths; the editor takes the rest.
     pub(crate) pane_widths: PaneWidths,
     /// The workspace's own focus. It always has a place in the window, so
@@ -232,6 +244,7 @@ impl Workspace {
         let store = state.store.clone();
         let appearance = state.config.appearance.clone();
         let last_note = state.config.last_note.clone();
+        let focus_mode = state.config.layout.focus_mode;
 
         let library = cx.new(|cx| Library::new(store.clone(), cx));
         let sidebar = cx.new(|cx| Sidebar::new(library.clone(), cx));
@@ -332,6 +345,7 @@ impl Workspace {
             editor,
             palette,
             show_sidebar: appearance.show_sidebar,
+            focus_mode,
             pane_widths: PaneWidths::default(),
             focus,
             band_drag: BandDrag::default(),
@@ -529,6 +543,11 @@ impl Workspace {
             };
         match event {
             SidebarEvent::NewNote => self.new_note(window, cx),
+            SidebarEvent::GoToNotebook => {
+                let mode = Mode::Pick(Picker::GoToNotebook);
+                self.palette
+                    .update(cx, |palette, cx| palette.open(mode, window, cx));
+            }
             SidebarEvent::NewBook { parent } => {
                 let parent = parent.clone();
                 prompt_text(
@@ -775,12 +794,42 @@ impl Workspace {
         }
     }
 
+    /// Turns focus mode on or off, and keeps it for next time. Going in,
+    /// the keyboard goes to the note's text, for writing.
+    pub(crate) fn set_focus_mode(&mut self, on: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.focus_mode == on {
+            return;
+        }
+        self.focus_mode = on;
+        AppState::update_config(cx, |config| config.layout.focus_mode = on);
+        if on {
+            self.editor
+                .update(cx, |editor, cx| editor.focus_for_writing(window, cx));
+        }
+        cx.notify();
+    }
+
+    /// The width of what is left of the note list: the sidebar or its rail.
+    fn leading_width(&self, window: &Window) -> f32 {
+        if self.show_sidebar {
+            self.pane_widths.sidebar
+        } else {
+            rail_width(window.is_fullscreen())
+        }
+    }
+
     /// A pane's edge followed the pointer.
-    fn on_pane_drag(&mut self, event: &DragMoveEvent<Rc<PaneEdge>>, cx: &mut Context<Self>) {
+    fn on_pane_drag(
+        &mut self,
+        event: &DragMoveEvent<Rc<PaneEdge>>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
         let edge = **event.drag(cx);
         let x = f32::from(event.event.position.x - event.bounds.left());
+        let rail = (!self.show_sidebar).then(|| self.leading_width(window));
         let window = f32::from(event.bounds.size.width);
-        let widths = self.pane_widths.dragged(edge, x, window, self.show_sidebar);
+        let widths = self.pane_widths.dragged(edge, x, window, rail);
         if widths != self.pane_widths {
             self.pane_widths = widths;
             cx.notify();
@@ -843,16 +892,27 @@ pub fn tag_color_name(color: TagColor) -> String {
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
-        // With the sidebar hidden the note list is leftmost, so its top band
-        // keeps the traffic lights' room free (none in full screen).
-        let list_inset = px(leading_inset(!self.show_sidebar, window.is_fullscreen()));
+        // The sidebar or its rail is leftmost and keeps the traffic lights'
+        // room; the list's top band leaves whatever is left of it free.
+        let leading = self.leading_width(window);
+        let list_inset = px(inset_after(leading, window.is_fullscreen()));
         self.note_list
             .update(cx, |list, cx| list.set_leading_inset(list_inset, cx));
+        let collapsed = !self.show_sidebar;
+        self.sidebar
+            .update(cx, |sidebar, cx| sidebar.set_collapsed(collapsed, cx));
+        let focus_mode = self.focus_mode;
+        self.editor
+            .update(cx, |editor, cx| editor.set_focus_mode(focus_mode, cx));
         let widths = self.pane_widths;
         v_flex()
             .size_full()
             .relative()
-            .key_context("Workspace")
+            .key_context(if focus_mode {
+                "Workspace FocusMode"
+            } else {
+                "Workspace"
+            })
             .track_focus(&self.focus)
             .bg(colors.app)
             .text_color(cx.theme().foreground)
@@ -912,11 +972,19 @@ impl Render for Workspace {
                 this.editor
                     .update(cx, |editor, cx| editor.focus_body(window, cx));
             }))
-            .on_action(cx.listener(|this, _: &ToggleSidebar, _, cx| {
-                this.show_sidebar = !this.show_sidebar;
-                let show = this.show_sidebar;
+            .on_action(cx.listener(|this, _: &ToggleSidebar, window, cx| {
+                // In focus mode there is no sidebar to toggle: it comes back.
+                let show = this.focus_mode || !this.show_sidebar;
+                this.set_focus_mode(false, window, cx);
+                this.show_sidebar = show;
                 AppState::update_config(cx, |config| config.appearance.show_sidebar = show);
                 cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &ToggleFocusMode, window, cx| {
+                this.set_focus_mode(!this.focus_mode, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ExitFocusMode, window, cx| {
+                this.set_focus_mode(false, window, cx);
             }))
             .on_action(
                 cx.listener(|this, _: &ShowEditor, _, cx| this.set_view_mode(ViewMode::Edit, cx)),
@@ -979,38 +1047,43 @@ impl Render for Workspace {
                     .min_h_0()
                     .w_full()
                     .on_drag_move(cx.listener(
-                        |this, event: &DragMoveEvent<Rc<PaneEdge>>, _, cx| {
-                            this.on_pane_drag(event, cx)
+                        |this, event: &DragMoveEvent<Rc<PaneEdge>>, window, cx| {
+                            this.on_pane_drag(event, window, cx)
                         },
                     ))
-                    .when(self.show_sidebar, |el| {
+                    // Focus mode leaves the note alone in the window.
+                    .when(!focus_mode, |el| {
                         el.child(
                             div()
                                 .h_full()
-                                .w(px(widths.sidebar))
+                                .w(px(leading))
                                 .flex_none()
+                                .debug_selector(|| "sidebar-pane".into())
                                 .child(self.sidebar.clone()),
+                        )
+                        .child(
+                            div()
+                                .relative()
+                                .h_full()
+                                .w(px(widths.list))
+                                .flex_none()
+                                .debug_selector(|| "list-pane".into())
+                                .child(self.note_list.clone())
+                                // The rail keeps its width.
+                                .when(self.show_sidebar, |el| {
+                                    el.child(pane_handle(PaneEdge::Sidebar))
+                                }),
                         )
                     })
                     .child(
                         div()
                             .relative()
                             .h_full()
-                            .w(px(widths.list))
-                            .flex_none()
-                            .child(self.note_list.clone())
-                            .when(self.show_sidebar, |el| {
-                                el.child(pane_handle(PaneEdge::Sidebar))
-                            }),
-                    )
-                    .child(
-                        div()
-                            .relative()
-                            .h_full()
                             .flex_1()
                             .min_w_0()
+                            .debug_selector(|| "editor-pane".into())
                             .child(self.editor.clone())
-                            .child(pane_handle(PaneEdge::NoteList)),
+                            .when(!focus_mode, |el| el.child(pane_handle(PaneEdge::NoteList))),
                     ),
             )
             // Over everything else when open.

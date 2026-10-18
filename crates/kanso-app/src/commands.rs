@@ -10,7 +10,8 @@ use gpui_kit::assets::IconName;
 use crate::workspace::{
     ExportLibrary, ExportNote, FocusSearch, ImportInkdrop, NewNote, NewNotebook, NextNote,
     OpenNotePicker, OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes, ShowEditor,
-    ShowHistory, ShowPreview, ShowSplit, SyncNow, TogglePinned, ToggleSidebar, TrashNote,
+    ShowHistory, ShowPreview, ShowSplit, SyncNow, ToggleFocusMode, TogglePinned, ToggleSidebar,
+    TrashNote,
 };
 
 /// The palette's sections, in the order they appear with nothing typed.
@@ -36,9 +37,12 @@ impl Group {
 /// A second list the palette shows to choose from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Picker {
+    /// The notebook to move the open note into.
     Notebook,
     Tag,
     Status,
+    /// A notebook for the note list to show.
+    GoToNotebook,
 }
 
 /// What choosing a command does.
@@ -276,14 +280,36 @@ static COMMANDS: &[Command] = &[
         id: "sidebar",
         label: "Toggle sidebar",
         label_when_pinned: None,
-        description: "Hides or shows the sidebar with the notebooks and tags.",
+        description: "Collapses the sidebar to a column of icons, or opens it again with the notebooks and tags.",
         icon: IconName::PanelLeft,
-        keywords: &["hide", "show", "panel"],
+        keywords: &["hide", "show", "panel", "collapse", "expand", "icons"],
         group: Group::View,
         run: action!(ToggleSidebar),
         needs: Needs::Nothing,
     },
+    Command {
+        id: "focus-mode",
+        label: "Focus mode",
+        label_when_pinned: None,
+        description: "Hides the sidebar and the note list and centres the note, for writing. The note's header shows when the pointer is near the top. Escape leaves it.",
+        icon: IconName::Focus,
+        keywords: &["zen", "distraction free", "writing", "full", "hide panes"],
+        group: Group::View,
+        run: action!(ToggleFocusMode),
+        needs: Needs::Nothing,
+    },
     // Go to; the library adds its places before these.
+    Command {
+        id: "go-to-notebook",
+        label: "Go to notebook…",
+        label_when_pinned: None,
+        description: "Lists the notebooks; the one chosen shows in the note list.",
+        icon: IconName::Notebook,
+        keywords: &["notebooks", "folder", "open", "switch", "show"],
+        group: Group::GoTo,
+        run: Run::Pick(Picker::GoToNotebook),
+        needs: Needs::Nothing,
+    },
     Command {
         id: "next-note",
         label: "Next note",

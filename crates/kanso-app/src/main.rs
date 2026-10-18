@@ -29,6 +29,7 @@ mod settings;
 mod sidebar;
 #[cfg(test)]
 mod snapshots;
+mod split;
 mod text_match;
 mod text_stats;
 mod theme;

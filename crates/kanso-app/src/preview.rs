@@ -63,6 +63,26 @@ impl Preview {
         }
     }
 
+    /// How far the preview can scroll, as of its last layout.
+    pub fn scroll_max(&self) -> f32 {
+        f32::from(self.scroll.max_offset().y).max(0.)
+    }
+
+    /// Scrolls `top` points down from the start.
+    pub fn scroll_to(&mut self, top: f32, cx: &mut Context<Self>) {
+        let offset = point(px(0.), px(-top.max(0.)));
+        if self.scroll.offset() != offset {
+            self.scroll.set_offset(offset);
+            cx.notify();
+        }
+    }
+
+    /// Where the preview is scrolled to, in points from the start.
+    #[cfg(test)]
+    pub fn scroll_top(&self) -> f32 {
+        -f32::from(self.scroll.offset().y)
+    }
+
     /// Resolves `inkdrop://file:<id>` from the store, caching decoded images.
     fn image_resolver(&self) -> impl Fn(&SharedUri) -> ImageSource + Send + Sync + 'static {
         let store = self.store.clone();

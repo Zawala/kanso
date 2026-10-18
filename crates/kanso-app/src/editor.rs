@@ -2,6 +2,11 @@
 //! the view mode and note actions), the title, status and tags, the
 //! formatting toolbar, the Markdown body and preview, and a footer band.
 //!
+//! In Split mode a draggable divider shares the editor between source and
+//! preview, and the preview follows the source's scrolling loosely. In focus
+//! mode the note sits alone in a centred column, and its header band and
+//! toolbar wait for the pointer near the top.
+//!
 //! Edits autosave after a short pause. A change to the open note from
 //! elsewhere (the API, sync) reloads it quietly when there are no unsaved
 //! edits, and otherwise asks which version to keep. The losing version is
@@ -14,10 +19,12 @@ use std::time::Duration;
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::input::{Editor, EditorState, Input, InputEvent, InputState, Position};
+use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex,
+    ActiveTheme as _, Icon, IconName, ResizableState, Selectable as _, Sizable as _,
+    StyledExt as _, h_flex, h_resizable, resizable_panel, v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -30,12 +37,15 @@ use crate::commands::Picker;
 use crate::config::{Appearance, EditorFont, ViewMode};
 use crate::editor_footer::EditorFooter;
 use crate::empty_state::EmptyNotebook;
-use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
+use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT, leading_inset};
 use crate::library::{Filter, Library};
 use crate::markdown_edit::{self, Format};
 use crate::preview::{LinkSender, Preview, TEXT_INSET, readable_width};
+use crate::split::{
+    SPLIT_MIN_SIDE, scroll_sync, source_scroll_max, split_left, split_ratio, wrapped_rows,
+};
 use crate::theme::{Colors, muted_tag_color};
-use crate::workspace::AppState;
+use crate::workspace::{AppState, NewNote};
 
 const AUTOSAVE_DELAY: Duration = Duration::from_millis(600);
 const PREVIEW_DELAY: Duration = Duration::from_millis(150);
@@ -53,6 +63,17 @@ const SOURCE_EDGES: f32 = SOURCE_TEXT_LEFT + 10.;
 const LINE_NUMBER_COLUMN: f32 = 44.;
 /// One line of the header's save state; a second line is clipped away.
 const SAVE_LABEL_HEIGHT: f32 = 20.;
+/// The widest column the note keeps in focus mode, each side of it in
+/// Split.
+const FOCUS_COLUMN: f32 = 760.;
+/// The top of the editor in focus mode: hovering it shows the header.
+const TOP_GROUP: &str = "editor-top";
+/// About how wide a character of the source is, in ems, to estimate where
+/// its lines wrap: SF Mono's advance, and a little under SF Pro's average
+/// in prose. Under rather than over, so the preview reaches its end no
+/// later than the source.
+const MONO_EM: f32 = 0.6;
+const SANS_EM: f32 = 0.44;
 
 pub enum EditorEvent {
     /// Something worth telling the user, such as a failed save.
@@ -97,6 +118,23 @@ pub struct NoteEditor {
     /// Where the empty-notebook block sends its actions from while no note
     /// is open.
     pub(crate) empty_focus: FocusHandle,
+    /// The note alone, centred, with its header shown on hover.
+    focus_mode: bool,
+    /// The source's share of the editor in Split mode, as last dragged.
+    split_ratio: f32,
+    pub(crate) split: Entity<ResizableState>,
+    /// The editor width the divider was last placed for.
+    split_placed_for: Pixels,
+    /// The source's scroll position the preview last followed.
+    followed_scroll: Option<Pixels>,
+    /// The source's line lengths in characters, for the text of the byte
+    /// length kept beside them: an edit clears them, and a new text set
+    /// without one (opening a note, a reload) has another length or the
+    /// same lines.
+    source_lines: Option<(usize, Vec<usize>)>,
+    /// Shows the hidden header in focus mode, as a hover would.
+    #[cfg(test)]
+    pub(crate) reveal_chrome: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -130,6 +168,12 @@ impl NoteEditor {
                 .soft_wrap(true)
         });
         let preview = cx.new(|_| Preview::new(store.clone(), links));
+        let split = cx.new(|_| ResizableState::default());
+        let split_ratio = cx
+            .try_global::<AppState>()
+            .map_or(crate::config::DEFAULT_SPLIT_RATIO, |state| {
+                state.config.layout.split_ratio
+            });
         let footer = cx.new(|cx| {
             let mut footer = EditorFooter::new(body.clone(), cx);
             footer.set_show_cursor(view_mode != ViewMode::Preview, cx);
@@ -149,10 +193,15 @@ impl NoteEditor {
             }),
             cx.subscribe_in(&body, window, |this, _, event, window, cx| {
                 if matches!(event, InputEvent::Change) {
+                    this.source_lines = None;
                     this.schedule_autosave(cx);
                     this.schedule_preview(window, cx);
                 }
             }),
+            // The text editor notifies when the wheel scrolls it (and when
+            // its caret blinks): the preview beside it follows at once. Other
+            // scrolling is caught as the split is painted.
+            cx.observe(&body, |this, _, cx| this.follow_source_scroll(cx)),
             // Quitting from the Dock, at logout or from the menu.
             cx.on_app_quit(|this, cx| {
                 this.flush(cx);
@@ -184,8 +233,160 @@ impl NoteEditor {
             backlinks: Vec::new(),
             backlinks_task: None,
             empty_focus: cx.focus_handle(),
+            focus_mode: false,
+            split_ratio,
+            split,
+            split_placed_for: px(0.),
+            followed_scroll: None,
+            source_lines: None,
+            #[cfg(test)]
+            reveal_chrome: false,
             _subscriptions: subscriptions,
         }
+    }
+
+    /// Focus mode on or off, as the workspace has it.
+    pub fn set_focus_mode(&mut self, on: bool, cx: &mut Context<Self>) {
+        if self.focus_mode != on {
+            self.focus_mode = on;
+            self.footer
+                .update(cx, |footer, cx| footer.set_quiet(on, cx));
+            cx.notify();
+        }
+    }
+
+    /// Puts the keyboard in the note's text for writing, unless the title
+    /// or the text already has it. The preview alone has nothing to type in.
+    // no-prop-test: three conditions; the focus mode window test checks the
+    // keyboard lands in the text.
+    pub fn focus_for_writing(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let in_note = self.title.read(cx).focus_handle(cx).is_focused(window)
+            || self.body.read(cx).focus_handle(cx).is_focused(window);
+        if self.note.is_some() && !in_note && self.view_mode != ViewMode::Preview {
+            self.focus_body(window, cx);
+        }
+    }
+
+    /// Whether the header band and toolbar show in focus mode without a
+    /// hover: only in pictures of the hovered state.
+    fn chrome_revealed(&self) -> bool {
+        #[cfg(test)]
+        {
+            self.reveal_chrome
+        }
+        #[cfg(not(test))]
+        {
+            false
+        }
+    }
+
+    /// The divider was dragged: keep where it was left, as a share of the
+    /// editor, for this and the next launch.
+    // no-prop-test: glue; `split_ratio` has the properties and
+    // `a_dragged_divider_is_kept_and_both_sides_keep_room` drags it.
+    fn split_dragged(&mut self, left: Option<Pixels>, width: Pixels, cx: &mut Context<Self>) {
+        let Some(left) = left else {
+            return;
+        };
+        let ratio = split_ratio(f32::from(left), f32::from(width));
+        self.split_placed_for = width;
+        if (ratio - self.split_ratio).abs() > 1e-4 {
+            self.split_ratio = ratio;
+            if cx.has_global::<AppState>() {
+                AppState::update_config(cx, |config| config.layout.split_ratio = ratio);
+            }
+        }
+    }
+
+    /// Puts the divider at the kept share of an editor whose width changed
+    /// (or was first measured), keeping each side its minimum. While the
+    /// width holds, a drag moves it freely.
+    // no-prop-test: glue; `split_left` has the properties and the drag test
+    // checks kept shares are placed.
+    fn place_split(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let state = self.split.read(cx);
+        let width = state.container_size();
+        if width <= px(0.) || width == self.split_placed_for {
+            return;
+        }
+        self.split_placed_for = width;
+        let target = split_left(self.split_ratio, f32::from(width));
+        let current = state.sizes().first().map(|size| f32::from(*size));
+        if current.is_some_and(|current| (current - target).abs() > 0.5) {
+            self.split.update(cx, |state, cx| {
+                state.resize_panel(0, px(target), window, cx)
+            });
+        }
+    }
+
+    /// Scrolls the preview beside the source to the same share of its
+    /// length as the source shows. The source's full height isn't known,
+    /// so it is estimated from its lines and width; a loose match is enough.
+    // no-prop-test: glue; `scroll_sync` has the properties and
+    // `the_preview_follows_the_source` scrolls the real views.
+    fn follow_source_scroll(&mut self, cx: &mut Context<Self>) {
+        if self.view_mode != ViewMode::Split || self.note.is_none() {
+            self.followed_scroll = None;
+            return;
+        }
+        let offset = self.body.read(cx).scroll_offset().y;
+        if self.followed_scroll == Some(offset) {
+            return;
+        }
+        let Some(src_max) = self.source_scroll_estimate(cx) else {
+            return;
+        };
+        self.followed_scroll = Some(offset);
+        let src = -f32::from(offset);
+        self.preview.update(cx, |preview, cx| {
+            let to = scroll_sync(src, src_max, preview.scroll_max());
+            preview.scroll_to(to, cx);
+        });
+    }
+
+    /// About how far the source can scroll, from its lines, its width and
+    /// its face; `None` before it has been laid out.
+    // no-prop-test: reads the editor's layout into `wrapped_rows` and
+    // `source_scroll_max`, which have the properties.
+    fn source_scroll_estimate(&mut self, cx: &App) -> Option<f32> {
+        let body = self.body.read(cx);
+        let line_height = body.line_height()?;
+        let bounds = body.input_bounds();
+        let numbers = if self.line_numbers {
+            LINE_NUMBER_COLUMN
+        } else {
+            0.
+        };
+        let text_width = f32::from(bounds.size.width) - numbers - SOURCE_EDGES;
+        let em = if self.editor_font.face(self.view_mode).mono {
+            MONO_EM
+        } else {
+            SANS_EM
+        };
+        let columns = (text_width / (em * self.font_size)).floor().max(1.) as usize;
+        let len = body.text().len();
+        if self
+            .source_lines
+            .as_ref()
+            .is_none_or(|(kept, _)| *kept != len)
+        {
+            let lines = body
+                .value()
+                .split('\n')
+                .map(|line| line.chars().count())
+                .collect();
+            self.source_lines = Some((len, lines));
+        }
+        let lines = self
+            .source_lines
+            .as_ref()
+            .map(|(_, lines)| lines.as_slice());
+        let rows = wrapped_rows(lines.unwrap_or_default().iter().copied(), columns);
+        Some(source_scroll_max(
+            rows,
+            f32::from(line_height),
+            f32::from(bounds.size.height),
+        ))
     }
 
     pub fn note_id(&self) -> Option<&str> {
@@ -1209,6 +1410,7 @@ impl Render for NoteEditor {
             });
         }
         let colors = Colors::get(cx);
+        let focus_mode = self.focus_mode;
         let Some(note) = self.note.clone() else {
             let pane = v_flex()
                 .flex_1()
@@ -1217,18 +1419,32 @@ impl Render for NoteEditor {
                 .items_center()
                 .justify_center()
                 .track_focus(&self.empty_focus);
-            let content = match self.library.read(cx).empty_place() {
+            let library = self.library.read(cx);
+            let first_run = library.is_empty_library();
+            let place = library.empty_place();
+            // An empty notebook offers its first note; an empty library,
+            // whatever shows, its very first.
+            let content = if first_run || place.is_some() {
+                let title = place.unwrap_or_else(|| "No notes yet".into());
+                let block = EmptyNotebook::titled(title, self.empty_focus.clone());
                 // Centred a little above the middle, as the list's is: the
                 // top band's room less the bottom band's.
-                Some(title) => pane
-                    .px(px(24.))
+                pane.px(px(24.))
                     .pb(px(TOP_BAND_HEIGHT - BOTTOM_BAND_HEIGHT))
-                    .child(EmptyNotebook::titled(title, self.empty_focus.clone())),
-                None => pane
-                    .gap_2()
+                    .child(if first_run { block.first_run() } else { block })
+            } else {
+                // The shortcut as bound, so the hint never shows a stale one.
+                let new_note = Kbd::global_binding_for_action(&NewNote, window);
+                pane.gap_2()
                     .text_color(colors.text_muted)
                     .child("No note selected")
-                    .child(div().text_xs().child("⌘N creates a note")),
+                    .children(new_note.map(|key| {
+                        h_flex()
+                            .gap_1p5()
+                            .text_xs()
+                            .child(key)
+                            .child("creates a note")
+                    }))
             };
             // The bottom band runs on under the editor with no note too, so
             // the bands line up across the panes.
@@ -1256,7 +1472,7 @@ impl Render for NoteEditor {
         let size = self.font_size;
         // Alone, the source keeps to a readable measure for its face and
         // size, starting under the title; beside the preview it takes its
-        // half.
+        // side of the divider.
         let measure = (mode == ViewMode::Edit).then(|| {
             let numbers = if face.line_numbers {
                 LINE_NUMBER_COLUMN
@@ -1265,10 +1481,19 @@ impl Render for NoteEditor {
             };
             px(readable_width(size, face.mono) + SOURCE_EDGES + numbers)
         });
-        v_flex()
-            .size_full()
-            .bg(colors.editor)
-            .child(self.render_band(&note, cx))
+        // In focus mode the header band and the toolbar wait, invisible but
+        // in place so nothing moves, until the pointer comes near the top.
+        let hide_chrome = focus_mode && !self.chrome_revealed();
+        let chrome = |el: Div| {
+            el.flex_none().when(hide_chrome, |el| {
+                el.opacity(0.)
+                    .group_hover(TOP_GROUP, |style| style.opacity(1.))
+            })
+        };
+        let top = v_flex()
+            .flex_none()
+            .group(TOP_GROUP)
+            .child(chrome(v_flex()).child(self.render_band(&note, cx)))
             .child(
                 div()
                     .flex_none()
@@ -1287,75 +1512,106 @@ impl Render for NoteEditor {
             )
             .child(self.render_meta(&note, cx))
             .when(mode == ViewMode::Edit && !trashed, |el| {
-                el.child(self.render_format_bar(cx))
+                el.child(chrome(v_flex()).child(self.render_format_bar(cx)))
+            });
+
+        let source = div()
+            .flex_1()
+            .h_full()
+            .min_w_0()
+            .pl(px(TEXT_INSET - SOURCE_TEXT_LEFT))
+            .pr_4()
+            .py_2()
+            // The margin beside a narrowed source scrolls it too; over the
+            // text, the editor takes the wheel first.
+            .when(measure.is_some(), |el| {
+                el.on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _, cx| {
+                    this.body.update(cx, |body, cx| {
+                        let line = body.line_height().unwrap_or(px(24.));
+                        let offset = body.scroll_offset() + event.delta.pixel_delta(line);
+                        body.set_scroll_offset(offset, cx);
+                    });
+                }))
             })
+            .child(
+                div()
+                    .h_full()
+                    .w_full()
+                    .when_some(measure, |el, width| el.max_w(width))
+                    .child(
+                        Editor::new(&self.body)
+                            .bordered(false)
+                            .h_full()
+                            .font_family(family)
+                            .text_size(px(size))
+                            .line_height(relative(BODY_LINE_HEIGHT)),
+                    ),
+            );
+        let preview = div().flex_1().h_full().min_w_0().child(
+            self.preview
+                .clone()
+                .cached(StyleRefinement::default().size_full()),
+        );
+        let body = match mode {
+            ViewMode::Edit => h_flex().size_full().child(source).into_any_element(),
+            ViewMode::Preview => h_flex().size_full().child(preview).into_any_element(),
+            ViewMode::Split => {
+                self.place_split(window, cx);
+                let editor = cx.entity().downgrade();
+                // Until the divider is placed for a measured width, the
+                // sides grow in the kept proportion from nothing.
+                let ratio = self.split_ratio.clamp(0., 1.);
+                let side = |share: f32| {
+                    let mut panel = resizable_panel()
+                        .size_range(px(SPLIT_MIN_SIDE)..px(f32::MAX))
+                        .min_w_0()
+                        .flex_basis(px(0.));
+                    panel.style().flex_grow = Some(share);
+                    panel
+                };
+                // Painted after the source, which by then has taken any
+                // scroll set for this frame (from its scrollbar, or the
+                // margin's wheel), which it doesn't announce.
+                let follow = {
+                    let editor = editor.clone();
+                    canvas(
+                        |_, _, _| {},
+                        move |_, _, _, cx| {
+                            editor
+                                .update(cx, |this, cx| this.follow_source_scroll(cx))
+                                .ok();
+                        },
+                    )
+                    .absolute()
+                    .size_0()
+                };
+                h_resizable("split")
+                    .with_state(&self.split)
+                    .on_resize(move |state, _, cx| {
+                        let (left, width) = {
+                            let state = state.read(cx);
+                            (state.sizes().first().copied(), state.container_size())
+                        };
+                        editor
+                            .update(cx, |this, cx| this.split_dragged(left, width, cx))
+                            .ok();
+                    })
+                    .child(side(ratio).child(source).child(follow))
+                    .child(side(1. - ratio).child(preview))
+                    .into_any_element()
+            }
+        };
+
+        let column = v_flex()
+            .size_full()
+            .bg(colors.editor)
+            .child(top)
             .when(trashed, |el| el.child(self.render_trash_banner(cx)))
             .when_some(self.incoming.as_ref(), |el, incoming| {
                 let deleted = matches!(incoming, Incoming::Deleted);
                 el.child(self.render_incoming_banner(deleted, cx))
             })
-            .child(
-                h_flex()
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
-                    .when(mode != ViewMode::Preview, |el| {
-                        el.child(
-                            div()
-                                .flex_1()
-                                .h_full()
-                                .min_w_0()
-                                .pl(px(TEXT_INSET - SOURCE_TEXT_LEFT))
-                                .pr_4()
-                                .py_2()
-                                // The margin beside a narrowed source scrolls
-                                // it too; over the text, the editor takes the
-                                // wheel first.
-                                .when(measure.is_some(), |el| {
-                                    el.on_scroll_wheel(cx.listener(
-                                        |this, event: &ScrollWheelEvent, _, cx| {
-                                            this.body.update(cx, |body, cx| {
-                                                let line = body.line_height().unwrap_or(px(24.));
-                                                let offset = body.scroll_offset()
-                                                    + event.delta.pixel_delta(line);
-                                                body.set_scroll_offset(offset, cx);
-                                            });
-                                        },
-                                    ))
-                                })
-                                .child(
-                                    div()
-                                        .h_full()
-                                        .w_full()
-                                        .when_some(measure, |el, width| el.max_w(width))
-                                        .child(
-                                            Editor::new(&self.body)
-                                                .bordered(false)
-                                                .h_full()
-                                                .font_family(family)
-                                                .text_size(px(size))
-                                                .line_height(relative(BODY_LINE_HEIGHT)),
-                                        ),
-                                ),
-                        )
-                    })
-                    .when(mode != ViewMode::Edit, |el| {
-                        el.child(
-                            div()
-                                .flex_1()
-                                .h_full()
-                                .min_w_0()
-                                .when(mode == ViewMode::Split, |el| {
-                                    el.border_l_1().border_color(cx.theme().border)
-                                })
-                                .child(
-                                    self.preview
-                                        .clone()
-                                        .cached(StyleRefinement::default().size_full()),
-                                ),
-                        )
-                    }),
-            )
+            .child(div().flex_1().min_h_0().w_full().child(body))
             // Redrawn only when the cursor or the counts change.
             .child(
                 AnyView::from(self.footer.clone()).cached(
@@ -1364,7 +1620,33 @@ impl Render for NoteEditor {
                         .flex_none()
                         .h(px(BOTTOM_BAND_HEIGHT)),
                 ),
-            )
+            );
+        if !focus_mode {
+            return column.into_any_element();
+        }
+        // Focus mode: one centred column. Alone, the text keeps its
+        // readable measure with the same room either side of it, so the
+        // text itself is centred; beside the preview each side gets as much.
+        let width = match mode {
+            ViewMode::Split => 2. * FOCUS_COLUMN,
+            _ => {
+                let numbers = if face.line_numbers {
+                    LINE_NUMBER_COLUMN
+                } else {
+                    0.
+                };
+                (readable_width(size, face.mono) + numbers + 2. * TEXT_INSET).min(FOCUS_COLUMN)
+            }
+        };
+        // The note is leftmost now: a column as wide as the window leaves
+        // the traffic lights their room on both sides.
+        let lights = leading_inset(true, window.is_fullscreen());
+        let width = width.min(f32::from(window.viewport_size().width) - 2. * lights);
+        h_flex()
+            .size_full()
+            .justify_center()
+            .bg(colors.editor)
+            .child(column.w_full().max_w(px(width)))
             .into_any_element()
     }
 }
@@ -1386,8 +1668,50 @@ impl NoteEditor {
         self.incoming.is_some()
     }
 
+    /// The divider's share as a drag in an earlier session left it; it is
+    /// placed on the next draw.
+    pub fn keep_split_ratio(&mut self, ratio: f32, cx: &mut Context<Self>) {
+        self.split_ratio = ratio;
+        self.split_placed_for = px(0.);
+        cx.notify();
+    }
+
+    /// Scrolls the source `share` of the way down, as the wheel would.
+    pub fn scroll_source_for_test(&mut self, share: f32, cx: &mut Context<Self>) {
+        let top = self.source_scroll_estimate(cx).unwrap_or(0.) * share;
+        self.body.update(cx, |body, cx| {
+            body.set_scroll_offset(point(px(0.), px(-top)), cx)
+        });
+    }
+
+    pub fn split_ratio(&self) -> f32 {
+        self.split_ratio
+    }
+
+    pub fn preview_scroll(&self, cx: &App) -> (f32, f32) {
+        let preview = self.preview.read(cx);
+        (preview.scroll_top(), preview.scroll_max())
+    }
+
+    pub fn source_scroll(&self, cx: &App) -> f32 {
+        -f32::from(self.body.read(cx).scroll_offset().y)
+    }
+
     pub fn title_focused(&self, window: &Window, cx: &App) -> bool {
         self.title.read(cx).focus_handle(cx).is_focused(window)
+    }
+
+    pub fn body_focused(&self, window: &Window, cx: &App) -> bool {
+        self.body.read(cx).focus_handle(cx).is_focused(window)
+    }
+
+    pub fn split_sizes(&self, cx: &App) -> Vec<f32> {
+        self.split
+            .read(cx)
+            .sizes()
+            .iter()
+            .map(|s| f32::from(*s))
+            .collect()
     }
 }
 

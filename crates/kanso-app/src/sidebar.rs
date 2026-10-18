@@ -1,6 +1,9 @@
 //! The left column: the app's name and a compose button, the library
 //! sections, notebooks, tags, statuses and trash, and a footer with who is
 //! using it, sync, the local API and settings.
+//!
+//! Collapsed (⌘\), it is a rail of icons: compose, the library places, the
+//! notebooks (a list in the palette), trash, sync and settings.
 
 use std::time::Duration;
 
@@ -21,12 +24,14 @@ use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library};
 use crate::services::{ApiState, Services, SyncState};
 use crate::theme::{Colors, Rgb, muted_tag_color};
-use crate::workspace::OpenSettings;
+use crate::workspace::{AppState, NewNote, OpenSettings};
 
 /// Things only the workspace can do (it owns dialogs and the editor).
 pub enum SidebarEvent {
     NewNote,
-    NewBook { parent: Option<String> },
+    NewBook {
+        parent: Option<String>,
+    },
     RenameBook(String),
     DeleteBook(String),
     RenameTag(String),
@@ -34,6 +39,8 @@ pub enum SidebarEvent {
     DeleteTag(String),
     NewTag,
     EmptyTrash,
+    /// The rail's notebooks button: the palette lists them to go to one.
+    GoToNotebook,
 }
 
 const ROW_HEIGHT: f32 = 28.;
@@ -61,6 +68,8 @@ pub struct Sidebar {
     status_filter: bool,
     /// Whether every tag shows, rather than the most used.
     all_tags: bool,
+    /// Collapsed to the icon rail.
+    collapsed: bool,
     user: SharedString,
     _tick: Task<()>,
 }
@@ -71,8 +80,8 @@ impl Sidebar {
     pub fn new(library: Entity<Library>, cx: &mut Context<Self>) -> Self {
         cx.observe(&library, |this, library, cx| {
             let is_status = matches!(library.read(cx).filter, Filter::Status(_));
-            this.status_choice =
-                status_choice_after(this.status_choice, this.status_filter, is_status);
+            let choice = status_choice_after(this.status_choice, this.status_filter, is_status);
+            this.set_status_choice(choice, cx);
             this.status_filter = is_status;
             cx.notify();
         })
@@ -89,14 +98,53 @@ impl Sidebar {
             .ok()
             .filter(|name| !name.trim().is_empty())
             .unwrap_or_else(|| "This Mac".into());
+        // The Status group as the user last left it.
+        let status_choice = cx
+            .try_global::<AppState>()
+            .and_then(|state| state.config.layout.status_open);
         Sidebar {
             library,
             scroll: ScrollHandle::new(),
-            status_choice: None,
+            status_choice,
             status_filter: false,
             all_tags: false,
+            collapsed: false,
             user: user.into(),
             _tick: tick,
+        }
+    }
+
+    /// Collapses the sidebar to its icon rail, or opens it again.
+    pub fn set_collapsed(&mut self, collapsed: bool, cx: &mut Context<Self>) {
+        if self.collapsed != collapsed {
+            self.collapsed = collapsed;
+            cx.notify();
+        }
+    }
+
+    /// Whether the Status group shows its rows now.
+    fn status_open(&self, cx: &App) -> bool {
+        let filter = &self.library.read(cx).filter;
+        status_group_open(self.status_choice, matches!(filter, Filter::Status(_)))
+    }
+
+    /// A click on the Status header: it opens or closes, for good.
+    // no-prop-test: `status_group_open` has the properties and
+    // `the_status_group_remembers` checks it is kept.
+    pub fn toggle_status_group(&mut self, cx: &mut Context<Self>) {
+        let open = self.status_open(cx);
+        self.set_status_choice(Some(!open), cx);
+        cx.notify();
+    }
+
+    /// Opens or closes the Status group, and keeps the choice for next time.
+    fn set_status_choice(&mut self, choice: Option<bool>, cx: &mut Context<Self>) {
+        if self.status_choice == choice {
+            return;
+        }
+        self.status_choice = choice;
+        if cx.has_global::<AppState>() {
+            AppState::update_config(cx, |config| config.layout.status_open = choice);
         }
     }
 
@@ -355,12 +403,8 @@ impl Sidebar {
     }
 
     fn render_status(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let library = self.library.read(cx);
-        let open = status_group_open(
-            self.status_choice,
-            matches!(library.filter, Filter::Status(_)),
-        );
-        let counts = library.counts.by_status.clone();
+        let open = self.status_open(cx);
+        let counts = self.library.read(cx).counts.by_status.clone();
         let colors = Colors::get(cx);
         let header = h_flex()
             .id("status-group")
@@ -386,10 +430,7 @@ impl Sidebar {
                 .size(px(14.))
                 .text_color(colors.text_muted),
             )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.status_choice = Some(!open);
-                cx.notify();
-            }));
+            .on_click(cx.listener(|this, _, _, cx| this.toggle_status_group(cx)));
         let rows = open.then(|| {
             [
                 NoteStatus::Active,
@@ -421,15 +462,14 @@ impl Sidebar {
             .children(rows.into_iter().flatten())
     }
 
-    fn render_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let colors = Colors::get(cx);
-        let now = Clock::now_ms(cx);
-        let (api, api_tip, sync, sync_tip) = match cx.try_global::<Services>() {
+    /// The local API's and sync's states, with what their tooltips say.
+    fn service_states(cx: &App) -> (ApiState, SharedString, SyncState, SharedString) {
+        match cx.try_global::<Services>() {
             Some(services) => (
                 services.api.clone(),
-                services.api_status(),
+                services.api_status().into(),
                 services.sync.clone(),
-                services.sync_status(),
+                services.sync_status().into(),
             ),
             None => (
                 ApiState::Off,
@@ -437,7 +477,13 @@ impl Sidebar {
                 SyncState::Off,
                 "Sync off".into(),
             ),
-        };
+        }
+    }
+
+    fn render_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let colors = Colors::get(cx);
+        let now = Clock::now_ms(cx);
+        let (api, api_tip, sync, sync_tip) = Self::service_states(cx);
         let (tone, sync_label) = sync_line(&sync, now);
         let dot = tone_color(tone, colors);
         // The shape says whether the API is listening; the warning color
@@ -527,8 +573,220 @@ impl Sidebar {
     }
 }
 
+/// The rail's buttons: one square for each icon.
+const RAIL_BUTTON: f32 = 34.;
+
+impl Sidebar {
+    /// One of the rail's icon buttons, named by its tooltip (with the
+    /// shortcut of `action`, when it has one), filled while `active`.
+    // no-prop-test: drawing; the rail snapshots show it.
+    fn rail_button(
+        &self,
+        id: &'static str,
+        icon: impl Into<Icon>,
+        label: &'static str,
+        action: Option<Box<dyn Action>>,
+        active: bool,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let colors = Colors::get(cx);
+        div()
+            .id(id)
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .size(px(RAIL_BUTTON))
+            .rounded(px(6.))
+            .cursor_pointer()
+            .when(active, |el| el.bg(colors.sidebar_active))
+            .when(!active, |el| el.hover(|el| el.bg(colors.sidebar_hover)))
+            .child(Icon::new(icon).size(px(16.)).text_color(if active {
+                colors.text
+            } else {
+                colors.text_secondary
+            }))
+            .tooltip(move |window, cx| {
+                Tooltip::new(label)
+                    .when_some(action.as_ref(), |tooltip, action| {
+                        tooltip.action(action.as_ref(), None)
+                    })
+                    .build(window, cx)
+            })
+    }
+
+    /// A rail button that shows a place in the note list.
+    // no-prop-test: drawing; the rail snapshots show it.
+    fn rail_place(
+        &self,
+        id: &'static str,
+        icon: impl Into<Icon>,
+        label: &'static str,
+        filter: Filter,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let active = self.library.read(cx).filter == filter;
+        let library = self.library.clone();
+        self.rail_button(id, icon, label, None, active, cx)
+            .on_click(move |_, _, cx| {
+                library.update(cx, |library, cx| library.set_filter(filter.clone(), cx));
+            })
+    }
+
+    /// The sidebar collapsed to icons. The top band keeps the traffic
+    /// lights' room; the bottom band holds settings, with sync just above.
+    // no-prop-test: drawing; the rail snapshots show it in both themes.
+    fn render_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let colors = Colors::get(cx);
+        let filter = self.library.read(cx).filter.clone();
+        let (api, api_tip, sync, sync_tip) = Self::service_states(cx);
+        let (tone, sync_label) = sync_line(&sync, Clock::now_ms(cx));
+        let dot = tone_color(tone, colors);
+        let api_warning = matches!(api, ApiState::PortInUse(_) | ApiState::Failed(_));
+        let trash_view = cx.entity();
+
+        let compose = self
+            .rail_button(
+                "rail-compose",
+                Lucide::SquarePen,
+                "New note",
+                Some(Box::new(NewNote)),
+                false,
+                cx,
+            )
+            .on_click(cx.listener(|_, _, _, cx| cx.emit(SidebarEvent::NewNote)));
+        let notebooks = self
+            .rail_button(
+                "rail-notebooks",
+                Lucide::Notebook,
+                "Notebooks",
+                None,
+                matches!(filter, Filter::Book(_)),
+                cx,
+            )
+            .on_click(cx.listener(|_, _, _, cx| cx.emit(SidebarEvent::GoToNotebook)));
+        let trash = self
+            .rail_place("rail-trash", Lucide::Trash, "Trash", Filter::Trash, cx)
+            .context_menu(move |menu, _, _| {
+                let view = trash_view.clone();
+                menu.item(
+                    PopupMenuItem::new("Empty Trash…").on_click(move |_, _, cx| {
+                        view.update(cx, |_, cx| cx.emit(SidebarEvent::EmptyTrash));
+                    }),
+                )
+            });
+        // The sync line's words, then the details.
+        let sync_tip: SharedString = format!("{sync_label}\n{sync_tip}").into();
+        let sync_dot = div()
+            .id("rail-sync")
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .size(px(RAIL_BUTTON))
+            .child(div().size(px(8.)).rounded_full().bg(dot))
+            .tooltip(move |window, cx| Tooltip::new(sync_tip.clone()).build(window, cx));
+        let api_icon = api_warning.then(|| {
+            div()
+                .id("rail-api")
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(px(RAIL_BUTTON))
+                .child(
+                    Icon::new(Lucide::Unplug)
+                        .size(px(15.))
+                        .text_color(colors.warning),
+                )
+                .tooltip(move |window, cx| Tooltip::new(api_tip.clone()).build(window, cx))
+        });
+        let settings = self
+            .rail_button(
+                "rail-settings",
+                IconName::Settings,
+                "Settings",
+                Some(Box::new(OpenSettings)),
+                false,
+                cx,
+            )
+            .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx));
+
+        v_flex()
+            .size_full()
+            .items_center()
+            .bg(colors.sidebar)
+            .text_color(colors.text)
+            // The traffic lights' row, empty so the window drags from it.
+            .child(div().flex_none().h(px(TOP_BAND_HEIGHT)))
+            .child(compose)
+            .child(
+                v_flex()
+                    .id("rail")
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .items_center()
+                    .gap(px(2.))
+                    .pt(px(12.))
+                    .overflow_y_scroll()
+                    .child(self.rail_place(
+                        "rail-all",
+                        IconName::FileText,
+                        "All Notes",
+                        Filter::All,
+                        cx,
+                    ))
+                    .child(self.rail_place(
+                        "rail-pinned",
+                        Lucide::Pin,
+                        "Pinned",
+                        Filter::Pinned,
+                        cx,
+                    ))
+                    .child(self.rail_place(
+                        "rail-recent",
+                        Lucide::Clock,
+                        "Recent",
+                        Filter::Recent,
+                        cx,
+                    ))
+                    .child(
+                        div()
+                            .flex_none()
+                            .w(px(20.))
+                            .h(px(1.))
+                            .my(px(8.))
+                            .bg(colors.divider),
+                    )
+                    .child(notebooks)
+                    .child(trash),
+            )
+            .children(api_icon)
+            .child(sync_dot)
+            .child(
+                h_flex()
+                    .flex_none()
+                    .w_full()
+                    .h(px(BOTTOM_BAND_HEIGHT))
+                    .justify_center()
+                    .border_t_1()
+                    .border_color(colors.divider)
+                    .child(settings),
+            )
+    }
+}
+
 #[cfg(test)]
 impl Sidebar {
+    pub fn is_collapsed(&self) -> bool {
+        self.collapsed
+    }
+
+    pub fn is_status_open(&self, cx: &App) -> bool {
+        self.status_open(cx)
+    }
+
     /// Every tag, as after clicking "…", scrolled into view below a long
     /// notebook tree.
     pub fn show_all_tags(&mut self, cx: &mut Context<Self>) {
@@ -540,6 +798,9 @@ impl Sidebar {
 
 impl Render for Sidebar {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.collapsed {
+            return self.render_rail(cx).into_any_element();
+        }
         let library = self.library.read(cx);
         let counts = library.counts.clone();
         let recent = library.recent;
@@ -685,6 +946,7 @@ impl Render for Sidebar {
                     .child(list),
             )
             .child(self.render_footer(cx))
+            .into_any_element()
     }
 }
 

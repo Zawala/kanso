@@ -483,6 +483,27 @@ impl Palette {
                     .collect();
                 vec![section("Move to notebook", entries, false)]
             }
+            Some(Mode::Pick(Picker::GoToNotebook)) => {
+                let library = self.library.read(cx);
+                let showing = &library.filter;
+                let entries = library
+                    .book_tree()
+                    .into_iter()
+                    .map(|(depth, book)| {
+                        let filter = Filter::Book(book.id.clone());
+                        let item = Item::new(
+                            Target::Show(filter.clone()),
+                            book.name.clone(),
+                            IconName::Notebook,
+                        )
+                        .depth(if query.is_empty() { depth } else { 0 })
+                        .checked(*showing == filter)
+                        .hint(book.count.to_string());
+                        fit(item, &[])
+                    })
+                    .collect();
+                vec![section("Notebooks", entries, false)]
+            }
             Some(Mode::Pick(Picker::Tag)) => {
                 let library = self.library.read(cx);
                 let on_note = self.note.as_ref().map_or(&[][..], |n| &n.tags[..]);
@@ -998,7 +1019,9 @@ impl Palette {
             } else {
                 match self.mode {
                     Some(Mode::Notes) => "No matching notes",
-                    Some(Mode::Pick(Picker::Notebook)) => "No matching notebooks",
+                    Some(Mode::Pick(Picker::Notebook | Picker::GoToNotebook)) => {
+                        "No matching notebooks"
+                    }
                     // Only with nothing typed: a name typed offers to make it.
                     Some(Mode::Pick(Picker::Tag)) => "No tags yet. Type a name to create one.",
                     Some(Mode::Pick(Picker::Status)) => "No matching status",
@@ -1533,6 +1556,7 @@ fn placeholder(mode: Mode) -> &'static str {
         Mode::Pick(Picker::Notebook) => "Move to notebook…",
         Mode::Pick(Picker::Tag) => "Add or create a tag…",
         Mode::Pick(Picker::Status) => "Set status…",
+        Mode::Pick(Picker::GoToNotebook) => "Go to notebook…",
     }
 }
 

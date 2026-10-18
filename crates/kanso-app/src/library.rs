@@ -410,6 +410,17 @@ impl Library {
         }
     }
 
+    /// Whether the library has no notes at all, not even in the trash, as
+    /// on first run: the editor then offers the first note or an import.
+    // no-prop-test: a conjunction of loaded counts; `first_run_cases` in
+    // the note list tests covers it.
+    pub fn is_empty_library(&self) -> bool {
+        self.notes_version > 0
+            && self.load_error.is_none()
+            && self.counts.all == 0
+            && self.counts.trash == 0
+    }
+
     pub fn filter_title(&self) -> String {
         match &self.filter {
             Filter::All => "All Notes".into(),

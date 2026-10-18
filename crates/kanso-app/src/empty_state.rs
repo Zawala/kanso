@@ -1,6 +1,7 @@
-//! What the editor pane shows when a notebook has no notes yet: what is
-//! missing, the two ways to fill it, the command palette, and that notes
-//! stay plain Markdown. The note list beside it says so quietly.
+//! What the editor pane shows when a notebook has no notes yet, or the
+//! library none at all: what is missing, the two ways to fill it, the
+//! command palette, and that notes stay plain Markdown. The note list beside
+//! it says so quietly.
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::kbd::Kbd;
@@ -18,6 +19,7 @@ use gpui_kit::assets::IconName as Lucide;
 #[derive(IntoElement)]
 pub struct EmptyNotebook {
     title: SharedString,
+    message: &'static str,
     focus: FocusHandle,
 }
 
@@ -26,7 +28,16 @@ impl EmptyNotebook {
     pub fn titled(title: impl Into<SharedString>, focus: FocusHandle) -> Self {
         EmptyNotebook {
             title: title.into(),
+            message: "Create your first note or import notes.",
             focus,
+        }
+    }
+
+    /// The words for a library with no notes at all, as on first run.
+    pub fn first_run(self) -> Self {
+        EmptyNotebook {
+            message: "Create your first note or import Markdown files.",
+            ..self
         }
     }
 }
@@ -68,7 +79,7 @@ impl RenderOnce for EmptyNotebook {
                     .line_height(px(20.))
                     .text_color(colors.text_secondary)
                     .text_center()
-                    .child("Create your first note or import notes."),
+                    .child(self.message),
             )
             .child(
                 h_flex()

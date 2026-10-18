@@ -26,7 +26,7 @@ use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::text_match::{highlight_terms, match_ranges};
 use crate::theme::{Colors, Rgb};
-use crate::workspace::{FocusSearch, SearchAllNotes};
+use crate::workspace::SearchAllNotes;
 
 const SEARCH_DELAY: Duration = Duration::from_millis(120);
 
@@ -682,15 +682,9 @@ impl NoteList {
         let colors = Colors::get(cx);
         let empty = self.search.read(cx).value().is_empty();
         let focused = self.search.read(cx).focus_handle(cx).is_focused(window);
-        // The key that brings the keyboard here and searches what this box
-        // searches: over all notes, global search's; in a narrower place,
-        // the one that keeps to it.
-        let library = self.library.read(cx);
-        let key = if library.filter == Filter::All && !library.is_refined() {
-            Kbd::global_binding_for_action(&SearchAllNotes, window)
-        } else {
-            Kbd::global_binding_for_action(&FocusSearch, window)
-        };
+        // Global search's key, the same in every place: it brings the
+        // keyboard here over all notes.
+        let key = Kbd::global_binding_for_action(&SearchAllNotes, window);
         v_flex()
             .flex_shrink_0()
             .px(px(12.))
@@ -1873,6 +1867,56 @@ mod tests {
             });
             cx.run_until_parked();
             assert_eq!(place(cx).as_deref(), Some("No notes in Projects"));
+        }
+
+        /// First run is a library with no notes anywhere: not one whose
+        /// notes are all in the trash, nor a place or search that is empty.
+        #[gpui_kit::test]
+        fn first_run_cases(cx: &mut TestAppContext) {
+            let f = setup(cx);
+            let library = f.library(cx);
+            let empty = |cx: &mut TestAppContext| cx.read(|cx| library.read(cx).is_empty_library());
+            assert!(!empty(cx), "three notes");
+            let research = f.research.clone();
+            library.update(cx, |library, cx| {
+                library.set_filter(Filter::Book(research), cx);
+                library.set_search("nothing matches".into(), cx);
+            });
+            cx.run_until_parked();
+            assert!(cx.read(|cx| library.read(cx).notes.is_empty()));
+            assert!(!empty(cx), "an empty notebook and search");
+            let params = crate::library::search_params(&Filter::All, "", Default::default(), true);
+            let ids = f.store.search_summaries(&params).unwrap();
+            assert_eq!(ids.len(), 3);
+            for note in &ids {
+                f.store
+                    .put(
+                        DocType::Note,
+                        json!({"_id": note.id, "bookId": "trash"}),
+                        Put::Merge,
+                        Origin::Ui,
+                    )
+                    .unwrap();
+            }
+            cx.run_until_parked();
+            assert!(!empty(cx), "every note in the trash");
+            for note in &ids {
+                f.store.delete(&note.id, Origin::Ui).unwrap();
+            }
+            cx.run_until_parked();
+            assert!(empty(cx), "nothing left anywhere");
+            // Notebooks alone don't count as notes.
+            assert!(cx.read(|cx| !library.read(cx).books.is_empty()));
+            f.store
+                .put(
+                    DocType::Note,
+                    json!({"title": "First", "body": "", "bookId": f.research}),
+                    Put::Upsert,
+                    Origin::Ui,
+                )
+                .unwrap();
+            cx.run_until_parked();
+            assert!(!empty(cx), "the first note");
         }
 
         #[gpui_kit::test]
