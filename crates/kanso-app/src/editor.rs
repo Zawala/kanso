@@ -438,6 +438,11 @@ impl NoteEditor {
         if self.note_id() == id {
             return;
         }
+        // While a Replace holds writes, edits can't be saved yet: the editor
+        // stays on its note rather than drop them (A10).
+        if writes_held(cx) && self.has_unsaved_edits(cx) {
+            return;
+        }
         self.flush(cx);
         let note = match id.map(|id| self.store.note(id)) {
             Some(Ok(note)) => note,
@@ -612,12 +617,33 @@ impl NoteEditor {
         }
     }
 
-    /// Writes the title and body if they changed since the last save.
+    /// Writes the title and body if they changed since the last save. While
+    /// a Replace holds writes, the edits wait (A10).
     fn save(&mut self, cx: &mut Context<Self>) {
-        if self.incoming.is_some() || !self.has_unsaved_edits(cx) {
+        if self.incoming.is_some() || !self.has_unsaved_edits(cx) || writes_held(cx) {
             return;
         }
         self.write(|_, _| {}, Origin::Ui, cx);
+    }
+
+    /// Saves what waited while writes were held. When the Replace took the
+    /// note away, its edits are not written into the new library: the
+    /// editor asks about them as it does for a note deleted elsewhere,
+    /// whichever comes first, this or the store's change.
+    pub fn save_held(&mut self, cx: &mut Context<Self>) {
+        let Some(note) = &self.note else {
+            return;
+        };
+        if self.incoming.is_none()
+            && self.has_unsaved_edits(cx)
+            && matches!(self.store.note(&note.id), Ok(None))
+        {
+            self.autosave = None;
+            self.incoming = Some(Incoming::Deleted);
+            cx.notify();
+            return;
+        }
+        self.save(cx);
     }
 
     /// Writes the open note with the editor's text and `change` applied.
@@ -1500,6 +1526,12 @@ pub(crate) enum SaveState {
     /// waiting for an answer, or a save failed.
     NotSaved,
     Saved,
+}
+
+/// Whether a Replace holds the editors' saves (A10).
+fn writes_held(cx: &App) -> bool {
+    cx.try_global::<crate::services::Services>()
+        .is_some_and(|services| services.writes_held)
 }
 
 /// What the header says, from whether a change made elsewhere is waiting,

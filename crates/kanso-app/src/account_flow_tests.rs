@@ -61,6 +61,7 @@ struct Mac {
     store: Arc<Store>,
     secrets: Arc<MemorySecrets>,
     window: AnyWindowHandle,
+    workspace: gpui_kit::Entity<Workspace>,
 }
 
 /// A Mac called `name` with `notes` notes, using `server`.
@@ -99,7 +100,7 @@ fn mac(cx: &mut TestAppContext, server: &Arc<MemoryServer>, name: &str, notes: u
         hardware_uuid: Some(format!("UUID-{name}")),
         computer_name: name.to_owned(),
     };
-    let (window, _) = cx.update(|cx| {
+    let (window, workspace) = cx.update(|cx| {
         gpui_kit::init(cx);
         cx.set_global(AppState {
             store: app_store,
@@ -119,6 +120,7 @@ fn mac(cx: &mut TestAppContext, server: &Arc<MemoryServer>, name: &str, notes: u
         store,
         secrets,
         window,
+        workspace,
     }
 }
 
@@ -290,6 +292,31 @@ impl Mac {
             .iter()
             .find_map(|item| item.strip_prefix("sync-recovery-key:").map(str::to_owned))?;
         kanso_sync::keychain::load_any_recovery_key(self.secrets.as_ref(), &library).unwrap()
+    }
+
+    /// The first note's ID.
+    fn first_note(&self) -> String {
+        let conn = rusqlite::Connection::open(self.dir.path().join("kanso.db")).unwrap();
+        conn.query_row(
+            "SELECT id FROM docs WHERE id LIKE 'note:%' ORDER BY seq LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    /// Opens `id` in the editor and types `body` over it, not yet saved.
+    fn type_into(&self, cx: &mut TestAppContext, id: &str, body: &str) {
+        let library = cx.read(|cx| self.workspace.read(cx).library.clone());
+        let id = id.to_owned();
+        library.update(cx, |library, cx| library.select(Some(id), cx));
+        cx.run_until_parked();
+        let editor = cx.read(|cx| self.workspace.read(cx).editor.clone());
+        self.window
+            .update(cx, |_, window, cx| {
+                editor.update(cx, |editor, cx| editor.edit_for_test(body, window, cx))
+            })
+            .unwrap();
     }
 
     fn notifications(&self, cx: &mut TestAppContext) -> usize {
@@ -515,6 +542,51 @@ fn replacing_the_notes_keeps_a_backup_first(cx: &mut TestAppContext, cx_b: &mut 
     assert_eq!(b.notes(), 1, "the account's notes, and only those");
     assert!(ok(&sync_now(cx)));
     assert_eq!(a.notes(), 1, "the replaced notes never reach the account");
+}
+
+/// An edit not saved yet when Replace is chosen is saved first, so the
+/// backup has it; the Replace then empties the library with it (A10).
+#[gpui_kit::test]
+fn an_edit_typed_before_a_replace_is_in_its_backup(
+    cx: &mut TestAppContext,
+    cx_b: &mut TestAppContext,
+) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 1);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert!(ok(&synced(cx)));
+
+    let b = mac(cx_b, &server, "Laptop", 2);
+    let id = b.first_note();
+    let rx = b.sign_in(cx_b, "alice", PASSWORD);
+    wait_until(cx_b, "the binding question", |cx| b.asking(cx));
+    b.type_into(cx_b, &id, "typed just before Replace");
+    assert_eq!(
+        b.store.note(&id).unwrap().unwrap().body,
+        "text",
+        "not saved yet"
+    );
+    b.answer(cx_b, "choice-1");
+    assert_eq!(finish(cx_b, rx), Ok(()));
+
+    let backups: Vec<_> = std::fs::read_dir(crate::paths::backups_dir(b.dir.path()))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(backups.len(), 1);
+    let backup = Store::open(&backups[0]).unwrap();
+    assert_eq!(
+        backup.note(&id).unwrap().map(|note| note.body),
+        Some("typed just before Replace".into()),
+        "the backup has the edit"
+    );
+    assert!(
+        b.store.note(&id).unwrap().is_none(),
+        "the library was replaced"
+    );
+    let writes_held = cx_b.read(|cx| cx.global::<Services>().writes_held);
+    assert!(!writes_held, "saves go on after the Replace");
 }
 
 /// Signing in to another account on a Mac bound to the first asks about

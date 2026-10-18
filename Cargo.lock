@@ -3692,6 +3692,7 @@ dependencies = [
  "kanso-store",
  "kanso-sync",
  "proptest",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",

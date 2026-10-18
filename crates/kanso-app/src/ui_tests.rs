@@ -1391,3 +1391,54 @@ fn the_rail_goes_to_a_tag(cx: &mut TestAppContext) {
     );
     assert_eq!(cx.read(|cx| palette.read(cx).mode()), None);
 }
+
+/// While a Replace holds writes (A10), typing waits unsaved and the editor
+/// stays on its note; afterwards the edits are saved, unless the Replace
+/// took the note away: then the editor asks about them rather than write
+/// the note into the new library.
+#[gpui_kit::test]
+fn edits_wait_while_a_replace_holds_writes(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let [first, second] = f.notes.clone();
+    f.select(cx, &first);
+    f.type_body(cx, "before the hold");
+    let (api, restart) = cx.update(crate::services::hold_writes);
+    assert!(api.is_none() && !restart, "no API ran here");
+    assert_eq!(
+        note_body(&f.store, &first),
+        "before the hold",
+        "saved first"
+    );
+
+    f.type_body(cx, "during the hold");
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(5));
+    cx.run_until_parked();
+    assert_eq!(
+        note_body(&f.store, &first),
+        "before the hold",
+        "the autosave waits"
+    );
+    f.select(cx, &second);
+    let open = f.editor(cx, |editor, _| editor.note_id().map(str::to_owned));
+    assert_eq!(open.as_deref(), Some(first.as_str()), "the editor stays");
+
+    cx.update(|cx| crate::services::release_writes(false, cx));
+    cx.run_until_parked();
+    assert_eq!(note_body(&f.store, &first), "during the hold");
+
+    // The Replace empties the library while the edit waits.
+    cx.update(crate::services::hold_writes);
+    f.type_body(cx, "the note goes");
+    f.store.replace_library(&[]).unwrap();
+    cx.run_until_parked();
+    cx.update(|cx| crate::services::release_writes(false, cx));
+    cx.run_until_parked();
+    assert!(f.store.note(&first).unwrap().is_none(), "not written back");
+    assert!(f.editor(cx, |editor, _| editor.has_incoming()), "it asks");
+    assert_eq!(
+        f.editor(cx, |editor, cx| editor.body_for_test(cx)),
+        "the note goes",
+        "with the edit on screen"
+    );
+}

@@ -51,7 +51,7 @@ const BUSY: &str = "Kanso is still busy with your account. Try again in a moment
 struct Failure {
     words: String,
     signed_out: Option<SignOutReason>,
-    recovery: Option<PendingKey>,
+    recovery: Option<Box<PendingKey>>,
     /// The backup a Replace made before it failed: said all the same.
     backup: Option<PathBuf>,
 }
@@ -77,7 +77,9 @@ impl Failure {
     /// it.
     fn rotation(err: RotationError, context: ErrorContext, note: &'static str) -> Failure {
         Failure {
-            recovery: err.recovery_key.map(|item| PendingKey::kept(*item, note)),
+            recovery: err
+                .recovery_key
+                .map(|item| Box::new(PendingKey::kept(*item, note))),
             ..Failure::account(err.error, context)
         }
     }
@@ -87,12 +89,12 @@ impl Failure {
     fn after_key(self, words: &'static str, session: &Session, key: RecoveryKey) -> Failure {
         Failure {
             words: words.to_owned(),
-            recovery: Some(PendingKey {
+            recovery: Some(Box::new(PendingKey {
                 key,
                 username: session.username.clone(),
                 server: session.server.clone(),
                 note: Some(words),
-            }),
+            })),
             ..self
         }
     }
@@ -285,7 +287,7 @@ fn failed(tx: &Sender<Progress>, failure: Option<Failure>, cx: &mut App) {
         services::end_session(reason, cx);
     }
     if let Some(key) = failure.recovery {
-        show_pending(key, cx);
+        show_pending(*key, cx);
     }
     if let Some(path) = failure.backup {
         notify_backup(path, cx);
@@ -838,48 +840,97 @@ fn bind_and_save(
         recovery_key,
         ..
     } = auth;
-    let thread = seams.clone();
-    run(
-        kind,
-        Step::Saving,
-        true,
-        Some(tx.clone()),
-        cx,
-        move |step| {
-            let s = thread;
-            step(Step::Saving);
-            match save_and_bind(&s, &library_id, &session, choice) {
-                Ok(backup) => Ok((session, library_id, backup)),
-                Err(failure) => {
-                    // Nothing here uses the new session. The library's
-                    // Keychain items are as they were: maybe another
-                    // account's.
-                    kanso_sync::discard_session(s.backend.as_ref(), s.secrets.as_ref(), &session)
+    // A Replace backs the library up, then empties it: a write in between
+    // would be in neither. Edits so far are saved into the backup first;
+    // the editors and the local API wait until it is done (A10). The
+    // editors are reached once the window that chose Replace has finished
+    // its update.
+    let replacing = choice == Some(Choice::Replace);
+    let begin = move |cx: &mut App| {
+        let (api, restart_api) = if replacing {
+            services::hold_writes(cx)
+        } else {
+            (None, false)
+        };
+        let thread = seams.clone();
+        run(
+            kind,
+            Step::Saving,
+            true,
+            Some(tx.clone()),
+            cx,
+            move |step| {
+                let s = thread;
+                step(Step::Saving);
+                if let Some(api) = api
+                    && let Err(err) = api.stop()
+                {
+                    eprintln!("kanso: the API server stopped with an error: {err:#}");
+                }
+                match save_and_bind(&s, &library_id, &session, choice) {
+                    Ok(backup) => Ok((session, library_id, backup)),
+                    Err(failure) => {
+                        // Nothing here uses the new session. The library's
+                        // Keychain items are as they were: maybe another
+                        // account's.
+                        kanso_sync::discard_session(
+                            s.backend.as_ref(),
+                            s.secrets.as_ref(),
+                            &session,
+                        )
                         .ok();
-                    // The password changed all the same.
-                    Err(match recovery_key {
-                        Some(key) => failure.after_key(words::CHANGED_NOT_SIGNED_IN, &session, key),
-                        None => failure,
-                    })
+                        // The password changed all the same.
+                        Err(match recovery_key {
+                            Some(key) => {
+                                failure.after_key(words::CHANGED_NOT_SIGNED_IN, &session, key)
+                            }
+                            None => failure,
+                        })
+                    }
                 }
+            },
+            move |result, cx| {
+                if replacing {
+                    services::release_writes(restart_api, cx);
+                }
+                bound(result, evicted, was_signed_in, tx, cx)
+            },
+        );
+    };
+    if replacing {
+        cx.defer(begin);
+    } else {
+        begin(cx);
+    }
+}
+
+/// What binding gives: the session, the library's ID, and a Replace's
+/// backup.
+type Bound = (Session, String, Option<PathBuf>);
+
+/// The end of [`bind_and_save`]: signed in, or the failure.
+fn bound(
+    result: Option<Result<Bound, Failure>>,
+    evicted: Option<DeviceInfo>,
+    was_signed_in: bool,
+    tx: Sender<Progress>,
+    cx: &mut App,
+) {
+    match result {
+        Some(Ok((session, library_id, backup))) => {
+            signed_in(session, library_id, !was_signed_in, cx);
+            if let Some(device) = evicted {
+                let notice = words::evicted_notice(&device);
+                notify_windows(move || Notification::info(notice.clone()), cx);
             }
-        },
-        move |result, cx| match result {
-            Some(Ok((session, library_id, backup))) => {
-                signed_in(session, library_id, !was_signed_in, cx);
-                if let Some(device) = evicted {
-                    let notice = words::evicted_notice(&device);
-                    notify_windows(move || Notification::info(notice.clone()), cx);
-                }
-                if let Some(path) = backup {
-                    notify_backup(path, cx);
-                }
-                done(&tx, Ok(()));
+            if let Some(path) = backup {
+                notify_backup(path, cx);
             }
-            Some(Err(failure)) => failed(&tx, Some(failure), cx),
-            None => failed(&tx, None, cx),
-        },
-    );
+            done(&tx, Ok(()));
+        }
+        Some(Err(failure)) => failed(&tx, Some(failure), cx),
+        None => failed(&tx, None, cx),
+    }
 }
 
 /// The binding question was cancelled: the new session is logged out, and

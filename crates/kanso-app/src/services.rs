@@ -205,6 +205,9 @@ pub struct Services {
     pub library_id: Option<String>,
     /// The launch check is reading the Keychain: account tasks wait (A4).
     pub restoring: bool,
+    /// A Replace is backing the library up and emptying it: the editors
+    /// keep their edits unsaved until it is done (A10).
+    pub writes_held: bool,
     session: Option<Arc<Session>>,
     hold: Option<Hold>,
     server: Option<ServerHandle>,
@@ -389,6 +392,36 @@ pub fn apply_server_settings(cx: &mut App) {
         cx.global_mut::<Services>().port_retry = Some(retry);
     }
     cx.refresh_windows();
+}
+
+/// Before a Replace backs the library up and empties it (A10): every
+/// editor saves now, so its edits are in the backup; then editor saves are
+/// held, and the local API (with MCP) is taken out to be stopped off the
+/// main thread. Returns it, and whether it is started again afterwards.
+pub fn hold_writes(cx: &mut App) -> (Option<ServerHandle>, bool) {
+    crate::workspace::for_each_workspace(cx, |workspace, cx| {
+        workspace.editor.update(cx, |editor, cx| editor.flush(cx));
+    });
+    let services = cx.global_mut::<Services>();
+    services.writes_held = true;
+    let restart = services.server.is_some() || services.port_retry.is_some();
+    services.port_retry = None;
+    (services.server.take(), restart)
+}
+
+/// After the Replace: the API starts again if it ran, and the editors save
+/// what was typed meanwhile, unless their note went with the old library
+/// (they ask about that themselves).
+pub fn release_writes(restart: bool, cx: &mut App) {
+    cx.global_mut::<Services>().writes_held = false;
+    if restart {
+        apply_server_settings(cx);
+    }
+    crate::workspace::for_each_workspace(cx, |workspace, cx| {
+        workspace
+            .editor
+            .update(cx, |editor, cx| editor.save_held(cx));
+    });
 }
 
 /// Stops the API before quitting.
