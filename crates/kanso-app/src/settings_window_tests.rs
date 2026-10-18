@@ -226,6 +226,36 @@ fn escape_returns_to_the_notes_as_they_were(cx: &mut TestAppContext) {
     assert!(f.focused(cx, &f.body));
 }
 
+/// The page column is in the Tab order: Tab goes on into the page's
+/// controls, and Shift-Tab comes back to the column, where the arrows
+/// still move between pages.
+#[gpui_kit::test]
+fn tab_comes_back_to_the_page_column(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let settings = cx.read(|cx| f.workspace.read(cx).settings.clone());
+    let nav_focused = |cx: &mut TestAppContext| {
+        f.window
+            .update(cx, |_, window, cx| settings.read(cx).nav_focused(window))
+            .unwrap()
+    };
+    f.keys(cx, "cmd-,");
+    assert!(f.open(cx));
+    assert!(nav_focused(cx), "Settings open with the column's keyboard");
+    let page = f.page(cx);
+
+    f.keys(cx, "tab");
+    assert!(!nav_focused(cx), "Tab leaves the column");
+    f.keys(cx, "tab");
+    assert!(!nav_focused(cx));
+    f.keys(cx, "shift-tab");
+    f.keys(cx, "shift-tab");
+    assert!(nav_focused(cx), "Shift-Tab comes back to the column");
+    assert!(f.open(cx));
+    assert_eq!(f.page(cx), page, "Tab moves the keyboard, not the page");
+    f.keys(cx, "down");
+    assert_eq!(f.page(cx), page.step(1), "the arrows move between pages");
+}
+
 /// Each page has its command, and the palette runs it.
 #[gpui_kit::test]
 fn the_palette_opens_each_page(cx: &mut TestAppContext) {

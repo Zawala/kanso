@@ -164,6 +164,23 @@ pub fn edited_label(
     }
 }
 
+/// [`edited_label`] as of `now_ms` in UTC, where instants and local times
+/// are the same numbers.
+#[cfg(test)]
+pub fn utc_label(now_ms: i64) -> impl Fn(i64) -> String + Copy {
+    move |at| edited_label(at, now_ms, at, now_ms)
+}
+
+/// A label from [`edited_label`] as the start of a line, such as a version
+/// in a note's history: "Just now", "12 min ago", "Yesterday", "May 24".
+pub fn as_title(label: &str) -> String {
+    let mut chars = label.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
 fn civil(day: i64) -> Option<NaiveDate> {
     NaiveDate::from_num_days_from_ce_opt(i32::try_from(day + UNIX_EPOCH_CE_DAYS).ok()?)
 }
@@ -361,6 +378,28 @@ mod tests {
             let before = updated - older;
             prop_assert!(rank(&edited_label(before, now, local(before), local(now))) >= rank(&label));
         }
+
+        /// A label as a title says the same, with a capital where it had a
+        /// small letter and the rest untouched; twice is once. Every label
+        /// the editor writes starts with a capital or a digit as a title.
+        #[test]
+        fn prop_titles_only_capitalize(
+            label in "\\PC{0,24}",
+            now in 1_000_000_000_000i64..2_000_000_000_000,
+            age in 0i64..400 * DAY_MS,
+        ) {
+            let title = as_title(&label);
+            let mut chars = label.chars();
+            if let Some(first) = chars.next() {
+                prop_assert!(title.starts_with(&first.to_uppercase().collect::<String>()));
+                prop_assert!(title.ends_with(chars.as_str()));
+            } else {
+                prop_assert_eq!(&title, "");
+            }
+            prop_assert_eq!(as_title(&title), title.clone());
+            let edited = as_title(&edited_label(now - age, now, now - age, now));
+            prop_assert!(edited.starts_with(|c: char| c.is_ascii_uppercase() || c.is_ascii_digit()), "{}", edited);
+        }
     }
 
     #[test]
@@ -483,5 +522,15 @@ mod tests {
             "yesterday"
         );
         assert_eq!(edited_label(at, now, at, now), "May 26");
+    }
+
+    #[test]
+    fn titles() {
+        assert_eq!(as_title("yesterday"), "Yesterday");
+        assert_eq!(as_title("just now"), "Just now");
+        assert_eq!(as_title("12 min ago"), "12 min ago");
+        assert_eq!(as_title("May 24"), "May 24");
+        assert_eq!(as_title(""), "");
+        assert_eq!(as_title("ödön"), "Ödön");
     }
 }

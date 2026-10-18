@@ -8,8 +8,10 @@
 
 use std::sync::OnceLock;
 
+use gpui_kit::assets::IconName;
 use gpui_kit::component::{Theme, ThemeRegistry};
 use gpui_kit::{App, Fill, FontWeight, Hsla, Styled, TextSystem, font, px};
+use kanso_core::NoteStatus;
 use serde_json::{Value, json};
 
 pub const LIGHT_NAME: &str = "Kanso Light";
@@ -190,6 +192,23 @@ pub const PALETTE_SELECTED_ALPHA: (f32, f32) = (0.22, 0.18);
 
 /// The size of a section's label.
 pub const SECTION_LABEL_SIZE: f32 = 12.;
+
+/// A status's glyph and its color, the same in the note list, the editor,
+/// the sidebar and the palette. The shape says which status it is, not
+/// only the color: Active in the accent, On hold in warning, Completed in
+/// success, and Dropped in `quiet`, the quiet color of wherever it sits. A
+/// note without a status has no glyph.
+// no-prop-test: a table of five values; `status_glyphs_differ_and_read`
+// checks every one on every surface.
+pub fn status_glyph(status: NoteStatus, colors: &Colors, quiet: Rgb) -> Option<(IconName, Rgb)> {
+    match status {
+        NoteStatus::Active => Some((IconName::CircleDot, colors.accent)),
+        NoteStatus::OnHold => Some((IconName::CirclePause, colors.warning)),
+        NoteStatus::Completed => Some((IconName::CircleCheck, colors.success)),
+        NoteStatus::Dropped => Some((IconName::CircleX, quiet)),
+        NoteStatus::None => None,
+    }
+}
 
 /// A section's label, in one quiet style in every pane: the sidebar's
 /// "Notebooks", the list's "Today", the palette's "Note actions".
@@ -897,6 +916,59 @@ mod tests {
             (f64::from(t) * alpha + f64::from(b) * (1. - alpha)).round() as u32
         };
         Rgb((channel(16) << 16) | (channel(8) << 8) | channel(0))
+    }
+
+    /// A status reads by its shape and its color alike: each has its own
+    /// glyph, none for no status, and the colored ones read at 3:1 on every
+    /// surface a glyph sits on, the palette's selected row included; Dropped
+    /// takes the quiet color it is given.
+    #[test]
+    fn status_glyphs_differ_and_read() {
+        for (name, c) in [("dark", &DARK), ("light", &LIGHT)] {
+            let quiet = Rgb(0x123456);
+            let glyphs: Vec<_> = NoteStatus::ALL
+                .into_iter()
+                .filter_map(|status| status_glyph(status, c, quiet).map(|g| (status, g)))
+                .collect();
+            assert_eq!(glyphs.len(), NoteStatus::ALL.len() - 1, "{name}");
+            assert_eq!(status_glyph(NoteStatus::None, c, quiet), None);
+            for (ix, (status, (icon, _))) in glyphs.iter().enumerate() {
+                assert!(
+                    glyphs[ix + 1..].iter().all(|(_, (other, _))| other != icon),
+                    "{name}: {status:?} shares its glyph"
+                );
+            }
+            let alpha = if name == "dark" {
+                PALETTE_SELECTED_ALPHA.0
+            } else {
+                PALETTE_SELECTED_ALPHA.1
+            };
+            let surfaces = [
+                ("sidebar", c.sidebar),
+                ("sidebar_active", c.sidebar_active),
+                ("list", c.list),
+                ("row_active", c.row_active),
+                ("fill", c.fill),
+                ("elevated", c.elevated),
+                (
+                    "palette_selected",
+                    mix(c.accent, c.elevated, f64::from(alpha)),
+                ),
+            ];
+            for (status, (_, tint)) in glyphs {
+                if status == NoteStatus::Dropped {
+                    assert_eq!(tint, quiet, "{name}");
+                    continue;
+                }
+                for (surface, bg) in surfaces {
+                    let ratio = contrast_ratio(tint.0, bg.0);
+                    assert!(
+                        ratio >= 3.0,
+                        "{name}: {status:?} on {surface} is {ratio:.2}, wants 3"
+                    );
+                }
+            }
+        }
     }
 
     /// The spec's own light muted text and accent fall short as text, and

@@ -24,7 +24,7 @@ use crate::grouping::{Grouped, Row, RowKey, bucket_label, day_of, group_rows, ro
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::text_match::{highlight_terms, match_ranges};
-use crate::theme::{Colors, Rgb, section_label};
+use crate::theme::{Colors, section_label, status_glyph};
 use crate::workspace::SearchAllNotes;
 
 const SEARCH_DELAY: Duration = Duration::from_millis(120);
@@ -408,7 +408,9 @@ impl NoteList {
         let press_id = note.id.clone();
         let release_id = note.id.clone();
 
-        let glyph = status_glyph(note.status, colors);
+        // Dropped is as quiet as the row's time.
+        let glyph = status_glyph(note.status, colors, colors.quiet(selected))
+            .map(|(icon, tint)| Icon::new(icon).size(px(12.)).text_color(tint));
         let trailing = if hovered {
             self.render_row_actions(note, in_trash, cx)
                 .into_any_element()
@@ -956,18 +958,6 @@ fn render_header(label: String, cx: &App) -> impl IntoElement {
         )
 }
 
-/// A status's glyph: its shape says which, not only its color.
-fn status_glyph(status: NoteStatus, colors: &Colors) -> Option<Icon> {
-    let (icon, color): (Lucide, Rgb) = match status {
-        NoteStatus::Active => (Lucide::CircleDot, colors.accent),
-        NoteStatus::OnHold => (Lucide::CirclePause, colors.warning),
-        NoteStatus::Completed => (Lucide::CircleCheck, colors.success),
-        NoteStatus::Dropped => (Lucide::CircleX, colors.text_muted),
-        NoteStatus::None => return None,
-    };
-    Some(Icon::new(icon).size(px(12.)).text_color(color))
-}
-
 /// The search language's qualifiers, under the empty search box and after a
 /// search that found nothing.
 fn query_tokens(colors: &Colors, cx: &App) -> impl IntoElement {
@@ -1161,19 +1151,7 @@ fn filter_menu(
     )
 }
 
-/// "just now", "5 min ago", "3 h ago", "2 d ago", then the date.
-pub fn relative_time(then_ms: i64, now_ms: i64) -> String {
-    let secs = (now_ms - then_ms).max(0) / 1000;
-    match secs {
-        0..60 => "just now".into(),
-        60..3600 => format!("{} min ago", secs / 60),
-        3600..86_400 => format!("{} h ago", secs / 3600),
-        86_400..2_592_000 => format!("{} d ago", secs / 86_400),
-        _ => format_date(then_ms),
-    }
-}
-
-/// `YYYY-MM-DD` in UTC.
+/// `YYYY-MM-DD` in UTC, as an export's front matter dates a note.
 pub fn format_date(ms: i64) -> String {
     let days = ms.div_euclid(86_400_000);
     // Civil-from-days (Howard Hinnant).
@@ -1260,7 +1238,7 @@ mod tests {
     use super::{
         DIVIDER, EXCERPT_LINE, EXCERPT_LINES, HEADER_HEIGHT, HEADER_LINE, HEADER_PAD_BOTTOM,
         HEADER_PAD_TOP, PendingScroll, ROW_GAP, ROW_HEIGHT, ROW_INSET_Y, ROW_PAD_Y, TITLE_LINE,
-        format_date, item_sizes, narrowing_label, pending_scroll, relative_time,
+        format_date, item_sizes, narrowing_label, pending_scroll,
     };
     use crate::grouping::{Bucket, Row, RowKey, group_rows};
     use kanso_core::NoteStatus;
@@ -1289,15 +1267,6 @@ mod tests {
                 }
             }
             prop_assert_eq!(format_date(days * 86_400_000 + 3_600_000), format!("{y:04}-{m:02}-{d:02}"));
-        }
-
-        /// Monotonicity: an older time never reads as more recent.
-        #[test]
-        fn prop_relative_time_is_monotonic(a in 0i64..5_000_000_000, b in 0i64..5_000_000_000) {
-            let rank = |s: &str| if s == "just now" { 0 } else if s.ends_with("min ago") { 1 } else if s.ends_with(" h ago") { 2 } else if s.ends_with(" d ago") { 3 } else { 4 };
-            let now = 10_000_000_000i64;
-            let (older, newer) = if a < b { (a, b) } else { (b, a) };
-            prop_assert!(rank(&relative_time(older, now)) >= rank(&relative_time(newer, now)));
         }
     }
 
@@ -1391,8 +1360,6 @@ mod tests {
     fn dates() {
         assert_eq!(format_date(0), "1970-01-01");
         assert_eq!(format_date(951_782_400_000), "2000-02-29");
-        assert_eq!(relative_time(1_000, 30_000), "just now");
-        assert_eq!(relative_time(0, 3 * 3_600_000), "3 h ago");
     }
 
     /// The list in a real window: a workspace over a store with notes on

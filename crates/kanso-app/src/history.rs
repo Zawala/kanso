@@ -9,7 +9,7 @@ use kanso_store::Revision;
 
 use crate::clock::Clock;
 use crate::editor::NoteEditor;
-use crate::note_list::relative_time;
+use crate::grouping::as_title;
 use crate::theme::Colors;
 
 /// Why a version was kept, from the origin of the write that replaced it.
@@ -62,7 +62,6 @@ impl Render for HistoryView {
                 .child("No earlier versions yet. Kanso keeps one every few minutes while you edit, and one before every change made elsewhere.")
                 .into_any_element();
         }
-        let now = Clock::now_ms(cx);
         let rows = self.revisions.iter().enumerate().map(|(ix, revision)| {
             let selected = ix == self.selected;
             v_flex()
@@ -81,7 +80,9 @@ impl Render for HistoryView {
                         .line_height(px(18.))
                         .font_medium()
                         .text_color(colors.text)
-                        .child(relative_time(revision.saved_at, now)),
+                        // As the editor's header says when the note was
+                        // edited, and the list names the day.
+                        .child(as_title(&Clock::edited_label(cx, revision.saved_at))),
                 )
                 .child(
                     div()

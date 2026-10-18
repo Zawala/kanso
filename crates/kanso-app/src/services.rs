@@ -88,14 +88,16 @@ impl Services {
         }
     }
 
-    pub fn sync_status(&self) -> String {
+    /// Sync's state in a few words, for a tooltip: the last sync's time as
+    /// the sidebar's line says it, by the app's clock.
+    pub fn sync_status(&self, cx: &App) -> String {
         match &self.sync {
             SyncState::Off => "Sync off".into(),
             SyncState::Syncing => "Syncing…".into(),
             SyncState::Synced {
                 at_ms, conflicts, ..
             } => {
-                let when = crate::note_list::relative_time(*at_ms, kanso_core::now_ms());
+                let when = crate::clock::Clock::edited_label(cx, *at_ms);
                 match conflicts {
                     0 => format!("Synced {when}"),
                     1 => format!("Synced {when}; 1 conflict kept in history"),

@@ -169,16 +169,17 @@ const SYNC_PROBLEM_HELP: [&str; 5] = [
 
 /// The Sync page's status: the sidebar's words ("Synced just now",
 /// "Syncing…", "Offline", "Conflict detected", "Sync off") and what they
-/// mean here. A conflict names the note it was in, by `conflicted_title`
-/// when that is known. A failure's own reason (from the network or the
-/// Keychain) never shows.
+/// mean here, with `when` naming the last sync's time as the sidebar does
+/// (see [`sync_line`]). A conflict names the note it was in, by
+/// `conflicted_title` when that is known. A failure's own reason (from the
+/// network or the Keychain) never shows.
 pub fn sync_status_line(
     state: &SyncState,
     settings: &SyncSettings,
-    now_ms: i64,
+    when: impl FnOnce(i64) -> String,
     conflicted_title: Option<&str>,
 ) -> StatusLine {
-    let (tone, label) = sync_line(state, now_ms);
+    let (tone, label) = sync_line(state, when);
     let every = sync_every((settings.interval_secs / 60).max(1));
     let detail = match state {
         SyncState::Off if settings.endpoint.is_none() => {
@@ -614,7 +615,9 @@ impl SettingsView {
         SettingsView {
             library,
             page: SettingsPage::default(),
-            nav_focus: cx.focus_handle(),
+            // In the Tab order, so the keyboard can come back to it from
+            // a page's controls to switch pages.
+            nav_focus: cx.focus_handle().tab_stop(true),
             root_focus: cx.focus_handle(),
             scroll: ScrollHandle::new(),
             leading_inset: px(0.),
@@ -649,6 +652,12 @@ impl SettingsView {
 
     pub fn contains_focus(&self, window: &Window, cx: &App) -> bool {
         self.root_focus.contains_focused(window, cx)
+    }
+
+    /// Whether the page column has the keyboard.
+    #[cfg(test)]
+    pub fn nav_focused(&self, window: &Window) -> bool {
+        self.nav_focus.is_focused(window)
     }
 
     pub fn set_leading_inset(&mut self, inset: Pixels, cx: &mut Context<Self>) {
@@ -1003,7 +1012,7 @@ fn sync_page(library: Entity<Library>, cx: &mut Context<SettingsView>) -> Vec<An
         Some(services) => (
             services.sync.clone(),
             services.sync_token.clone(),
-            services.sync_status(),
+            services.sync_status(cx),
         ),
         None => (SyncState::Off, TokenState::Unknown, "Sync off".to_owned()),
     };
@@ -1028,7 +1037,7 @@ fn sync_page(library: Entity<Library>, cx: &mut Context<SettingsView>) -> Vec<An
     let status = sync_status_line(
         &state,
         &settings,
-        Clock::now_ms(cx),
+        |at| Clock::edited_label(cx, at),
         conflicted_title.as_deref(),
     );
     let open_note = conflicted.map(|note| {
@@ -1797,6 +1806,7 @@ mod tests {
         sentence, step_font_size, sync_every, sync_status_line,
     };
     use crate::config::{DEFAULT_FONT_SIZE, SyncSettings};
+    use crate::grouping::utc_label;
     use crate::services::{ApiState, SyncState};
     use crate::sidebar::{SYNC_PROBLEMS, Tone, sync_line};
 
@@ -1846,7 +1856,7 @@ mod tests {
             conflicts,
             conflicted: Vec::new(),
         };
-        let line = sync_status_line(&synced(0), &on, 10_000, None);
+        let line = sync_status_line(&synced(0), &on, utc_label(10_000), None);
         assert_eq!(
             (line.tone, line.label.as_str()),
             (Tone::Good, "Synced just now")
@@ -1856,10 +1866,10 @@ mod tests {
             "Kanso syncs every 5 minutes and soon after you edit."
         );
         assert_eq!(
-            sync_status_line(&SyncState::Syncing, &on, 0, None).label,
+            sync_status_line(&SyncState::Syncing, &on, utc_label(0), None).label,
             "Syncing…"
         );
-        let conflict = sync_status_line(&synced(2), &on, 0, None);
+        let conflict = sync_status_line(&synced(2), &on, utc_label(0), None);
         assert_eq!(
             (conflict.tone, conflict.label.as_str()),
             (Tone::Warning, "Conflict detected")
@@ -1870,19 +1880,19 @@ mod tests {
             conflict.detail
         );
         // A conflict names its note when the note is known.
-        let named = sync_status_line(&synced(1), &on, 0, Some("Plans"));
+        let named = sync_status_line(&synced(1), &on, utc_label(0), Some("Plans"));
         assert!(
             named.detail.starts_with("“Plans” changed on two Macs"),
             "{}",
             named.detail
         );
-        let named = sync_status_line(&synced(2), &on, 0, Some("Plans"));
+        let named = sync_status_line(&synced(2), &on, utc_label(0), Some("Plans"));
         assert!(
             named.detail.starts_with("“Plans” and 1 other note changed"),
             "{}",
             named.detail
         );
-        let named = sync_status_line(&synced(3), &on, 0, Some("Plans"));
+        let named = sync_status_line(&synced(3), &on, utc_label(0), Some("Plans"));
         assert!(
             named
                 .detail
@@ -1893,7 +1903,7 @@ mod tests {
         let offline = sync_status_line(
             &SyncState::Failed("error sending request: connection refused".into()),
             &on,
-            0,
+            utc_label(0),
             None,
         );
         assert_eq!(offline.label, "Offline");
@@ -1902,20 +1912,41 @@ mod tests {
             "{}",
             offline.detail
         );
-        let off = sync_status_line(&SyncState::Off, &sync_settings(false, false, 5), 0, None);
+        let off = sync_status_line(
+            &SyncState::Off,
+            &sync_settings(false, false, 5),
+            utc_label(0),
+            None,
+        );
         assert_eq!((off.tone, off.label.as_str()), (Tone::Quiet, "Sync off"));
         assert!(off.detail.contains("Worker URL"), "{}", off.detail);
-        let paused = sync_status_line(&synced(0), &sync_settings(true, false, 5), 0, None);
+        let paused = sync_status_line(
+            &synced(0),
+            &sync_settings(true, false, 5),
+            utc_label(0),
+            None,
+        );
         assert!(
             paused.detail.contains("Automatic sync is off"),
             "{}",
             paused.detail
         );
         // Synced once, then the Worker URL was taken away.
-        let unset = sync_status_line(&synced(0), &sync_settings(false, true, 5), 0, None);
+        let unset = sync_status_line(
+            &synced(0),
+            &sync_settings(false, true, 5),
+            utc_label(0),
+            None,
+        );
         assert_eq!(unset.detail, "Add a Worker URL to sync again.");
         assert_eq!(
-            sync_status_line(&synced(0), &sync_settings(true, true, 60), 0, None).detail,
+            sync_status_line(
+                &synced(0),
+                &sync_settings(true, true, 60),
+                utc_label(0),
+                None
+            )
+            .detail,
             "Kanso syncs every hour and soon after you edit."
         );
     }
@@ -2016,7 +2047,12 @@ mod tests {
         ];
         let settings = sync_settings(true, true, 5);
         for (ix, reason) in reasons.into_iter().enumerate() {
-            let line = sync_status_line(&SyncState::Failed(reason.into()), &settings, 0, None);
+            let line = sync_status_line(
+                &SyncState::Failed(reason.into()),
+                &settings,
+                utc_label(0),
+                None,
+            );
             assert_eq!(line.label, SYNC_PROBLEMS[ix]);
             assert_eq!(line.detail, SYNC_PROBLEM_HELP[ix]);
         }
@@ -2107,8 +2143,8 @@ mod tests {
         ) {
             let settings = sync_settings(endpoint, enabled, minutes);
             let now = match &state { SyncState::Synced { at_ms, .. } => at_ms + ago, _ => ago };
-            let line = sync_status_line(&state, &settings, now, None);
-            prop_assert_eq!((line.tone, line.label.clone()), sync_line(&state, now));
+            let line = sync_status_line(&state, &settings, utc_label(now), None);
+            prop_assert_eq!((line.tone, line.label.clone()), sync_line(&state, utc_label(now)));
             prop_assert!(!line.detail.is_empty());
             prop_assert!(!line.detail.contains("zq"), "{}", line.detail);
             // It promises syncing on its own only when it will, and then

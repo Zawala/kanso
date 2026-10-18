@@ -740,6 +740,51 @@ fn escape_leaves_focus_mode_last(cx: &mut TestAppContext) {
     );
 }
 
+/// Focus mode hides the header band, the status and tags and the toolbar,
+/// and takes their controls out of the Tab order with them: Tab and
+/// Shift-Tab from the title stay in the note, where before Shift-Tab landed
+/// on the invisible band. Out of focus mode Shift-Tab from the title does
+/// reach the band.
+// no-prop-test: drives one window through keystrokes.
+#[gpui_kit::test]
+fn tab_in_focus_mode_never_lands_on_hidden_controls(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    cx.update(crate::workspace::bind_keys);
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    f.select(cx, &f.notes[0]);
+    f.draw(cx);
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    let editor = f.workspace(&mut vcx, |w, _| w.editor.clone());
+    // Where the keyboard is after `key` from the title: in the note or not.
+    let from_title = |vcx: &mut gpui_kit::VisualTestContext, key: &str| {
+        f.update_editor(vcx, |e, window, cx| e.focus_title(window, cx));
+        f.draw(vcx);
+        assert!(vcx.update(|window, cx| editor.read(cx).title_focused(window, cx)));
+        vcx.simulate_keystrokes(key);
+        f.draw(vcx);
+        vcx.update(|window, cx| {
+            let editor = editor.read(cx);
+            editor.title_focused(window, cx) || editor.body_focused(window, cx)
+        })
+    };
+    assert!(
+        !from_title(&mut vcx, "shift-tab"),
+        "out of focus mode the band's controls are in the Tab order"
+    );
+
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    assert!(f.workspace(&mut vcx, |w, _| w.focus_mode));
+    for key in ["tab", "shift-tab", "tab tab", "shift-tab shift-tab"] {
+        assert!(
+            from_title(&mut vcx, key),
+            "{key} from the title stays in the note"
+        );
+    }
+}
+
 /// ⌘⇧D with the palette open closes the palette on the way into focus mode
 /// (its field loses the keyboard to the note's text): left open, it would
 /// hide the note being typed into, out of Escape's reach.
@@ -1067,6 +1112,56 @@ fn the_preview_follows_the_source(cx: &mut TestAppContext) {
     let (top, max) = f.editor(&mut vcx, |e, cx| e.preview_scroll(cx));
     assert_eq!(source, 600.);
     assert!(top > 0. && top < max / 2., "{top} of {max}");
+}
+
+/// Split opened on a long note already scrolled in Edit shows the preview
+/// at the same share: the preview parses a long note in the background
+/// once Split shows it, and the follow tried before it has a length must
+/// not leave it at the top for good.
+// no-prop-test: drives one window; the mapping is a property in split.rs.
+#[gpui_kit::test]
+fn split_opened_on_a_scrolled_note_follows_it(cx: &mut TestAppContext) {
+    let body = (1..=300)
+        .map(|n| format!("Line {n} of a note long enough to parse apart."))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        body.len() > 8 * 1024,
+        "past the preview's synchronous parse"
+    );
+    let f = setup(cx);
+    cx.update(crate::workspace::bind_keys);
+    f.edit_elsewhere(cx, &f.notes[0], &body);
+    f.select(cx, &f.notes[0]);
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    vcx.simulate_resize(gpui_kit::size(gpui_kit::px(1600.), gpui_kit::px(1000.)));
+    vcx.simulate_keystrokes("cmd-1");
+    for _ in 0..2 {
+        f.draw(&mut vcx);
+    }
+    f.update_editor(&mut vcx, |e, _, cx| e.scroll_source_for_test(0.5, cx));
+    f.draw(&mut vcx);
+    assert!(f.editor(&mut vcx, |e, cx| e.source_scroll(cx)) > 0.);
+
+    vcx.simulate_keystrokes("cmd-2");
+    vcx.executor().advance_clock(Duration::from_secs(1));
+    for _ in 0..3 {
+        f.draw(&mut vcx);
+    }
+    let source = f.editor(&mut vcx, |e, cx| e.source_scroll(cx));
+    let mut source_max = None;
+    f.update_editor(&mut vcx, |e, _, cx| {
+        source_max = e.estimate_source_for_test(cx);
+    });
+    let source_share = source / source_max.expect("the source is laid out");
+    let (top, max) = f.editor(&mut vcx, |e, cx| e.preview_scroll(cx));
+    assert!(max > 1000., "the preview can scroll: {max}");
+    assert!(source_share > 0.2, "the source is {source_share} down");
+    assert!(
+        (top / max - source_share).abs() < 0.05,
+        "the preview is {} down beside a source {source_share} down",
+        top / max
+    );
 }
 
 /// A window too narrow for the panes as they were left gives the editor

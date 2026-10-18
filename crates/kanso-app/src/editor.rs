@@ -43,7 +43,7 @@ use crate::preview::{LinkSender, Preview, TEXT_INSET, readable_width};
 use crate::split::{
     scroll_sync, source_scroll_max, split_left, split_min_side, split_ratio, wrapped_rows,
 };
-use crate::theme::{Colors, muted_tag_color};
+use crate::theme::{Colors, muted_tag_color, status_glyph};
 use crate::workspace::{AppState, NewNote};
 
 const AUTOSAVE_DELAY: Duration = Duration::from_millis(600);
@@ -278,6 +278,15 @@ impl NoteEditor {
         }
     }
 
+    /// Whether focus mode hides the header band, the status and tags and the
+    /// toolbar until the pointer comes near the top. Hidden, their controls
+    /// leave the Tab order, so the keyboard never lands on one nobody can
+    /// see; every one of them is also in the palette, which focus mode
+    /// keeps.
+    fn chrome_hidden(&self) -> bool {
+        self.focus_mode && !self.chrome_revealed()
+    }
+
     /// Whether the header band and toolbar show in focus mode without a
     /// hover: only in pictures of the hovered state.
     fn chrome_revealed(&self) -> bool {
@@ -344,14 +353,20 @@ impl NoteEditor {
         if self.followed_scroll == Some(offset) {
             return;
         }
+        let src = -f32::from(offset);
+        let dst_max = self.preview.read(cx).scroll_max();
+        // A preview with no length yet (a long note parses in the background
+        // once Split shows it) can't follow a scrolled source: it is tried
+        // again on the next frame, rather than kept at the top as followed.
+        if dst_max <= 0. && src > 0. {
+            return;
+        }
         let Some(src_max) = self.source_scroll_estimate(cx) else {
             return;
         };
         self.followed_scroll = Some(offset);
-        let src = -f32::from(offset);
         self.preview.update(cx, |preview, cx| {
-            let to = scroll_sync(src, src_max, preview.scroll_max());
-            preview.scroll_to(to, cx);
+            preview.scroll_to(scroll_sync(src, src_max, dst_max), cx);
         });
     }
 
@@ -900,9 +915,12 @@ impl NoteEditor {
             let before = (ix > 0).then(|| separator().mx(px(8.)).into_any_element());
             before.into_iter().chain([name])
         });
+        // Out of the Tab order while focus mode hides them.
+        let tab_stop = !self.chrome_hidden();
         let move_menu = Button::new("breadcrumb")
             .ghost()
             .small()
+            .tab_stop(tab_stop)
             // Buttons don't shrink by default; a long path truncates.
             .flex_shrink(1.)
             .min_w_0()
@@ -926,6 +944,7 @@ impl NoteEditor {
             Button::new("backlinks")
                 .ghost()
                 .small()
+                .tab_stop(tab_stop)
                 .icon(Icon::new(Lucide::Link).text_color(colors.text_secondary))
                 .child(
                     div()
@@ -967,7 +986,7 @@ impl NoteEditor {
             .small()
             .children(modes.map(|(id, label, option)| {
                 let selected = mode == option;
-                Button::new(id).selected(selected).child(
+                Button::new(id).selected(selected).tab_stop(tab_stop).child(
                     div()
                         .px_0p5()
                         .text_size(px(12.5))
@@ -1037,6 +1056,7 @@ impl NoteEditor {
                 Button::new("pin")
                     .ghost()
                     .small()
+                    .tab_stop(tab_stop)
                     .icon(Icon::new(Lucide::Pin).text_color(if pinned {
                         colors.text
                     } else {
@@ -1050,6 +1070,7 @@ impl NoteEditor {
                 Button::new("history")
                     .ghost()
                     .small()
+                    .tab_stop(tab_stop)
                     .icon(Icon::new(Lucide::Clock).text_color(colors.text_secondary))
                     .tooltip("Show history")
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(EditorEvent::ShowHistory))),
@@ -1058,6 +1079,7 @@ impl NoteEditor {
                 Button::new("note-menu")
                     .ghost()
                     .small()
+                    .tab_stop(tab_stop)
                     .icon(Icon::new(IconName::Ellipsis).text_color(colors.text_secondary))
                     .tooltip("More")
                     .dropdown_menu(move |menu, window, cx| {
@@ -1148,34 +1170,38 @@ impl NoteEditor {
         let colors = Colors::get(cx);
         let dark = cx.theme().is_dark();
 
-        let status_chip = (status != NoteStatus::None).then(|| {
-            let view = view.clone();
-            Button::new("status")
-                .ghost()
-                .xsmall()
-                .icon(status_icon(status).text_color(colors.text_secondary))
-                .child(
-                    div()
-                        .text_size(px(12.5))
-                        .text_color(colors.text_secondary)
-                        .child(status.label()),
-                )
-                .bg(colors.fill)
-                .tooltip("Status")
-                .dropdown_menu(move |mut menu, _, _| {
-                    for option in NoteStatus::ALL {
-                        let view = view.clone();
-                        menu = menu.item(
-                            PopupMenuItem::new(option.label())
-                                .checked(option == status)
-                                .on_click(move |_, _, cx| {
-                                    view.update(cx, |this, cx| this.set_status(option, cx));
-                                }),
-                        );
-                    }
-                    menu
-                })
-        });
+        // Out of the Tab order while focus mode hides them.
+        let tab_stop = !self.chrome_hidden();
+        let status_chip =
+            status_glyph(status, colors, colors.text_secondary).map(|(icon, tint)| {
+                let view = view.clone();
+                Button::new("status")
+                    .ghost()
+                    .xsmall()
+                    .tab_stop(tab_stop)
+                    .icon(Icon::new(icon).text_color(tint))
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .text_color(colors.text_secondary)
+                            .child(status.label()),
+                    )
+                    .bg(colors.fill)
+                    .tooltip("Status")
+                    .dropdown_menu(move |mut menu, _, _| {
+                        for option in NoteStatus::ALL {
+                            let view = view.clone();
+                            menu = menu.item(
+                                PopupMenuItem::new(option.label())
+                                    .checked(option == status)
+                                    .on_click(move |_, _, cx| {
+                                        view.update(cx, |this, cx| this.set_status(option, cx));
+                                    }),
+                            );
+                        }
+                        menu
+                    })
+            });
 
         let chips = note
             .tags
@@ -1224,6 +1250,7 @@ impl NoteEditor {
         let add_tag = Button::new("tags")
             .ghost()
             .xsmall()
+            .tab_stop(tab_stop)
             .icon(Icon::new(IconName::Plus).text_color(colors.text_muted))
             .child(
                 div()
@@ -1252,10 +1279,13 @@ impl NoteEditor {
     /// and quotes, each a toggle or a template at the cursor.
     fn render_format_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
+        // Out of the Tab order while focus mode hides them.
+        let tab_stop = !self.chrome_hidden();
         let button = |id: &'static str, icon: Icon, tooltip: &'static str, format: Format| {
             Button::new(id)
                 .ghost()
                 .small()
+                .tab_stop(tab_stop)
                 .icon(icon.text_color(colors.text_secondary))
                 .tooltip(tooltip)
                 .on_click(
@@ -1339,6 +1369,7 @@ impl NoteEditor {
                 Button::new("format-more")
                     .ghost()
                     .small()
+                    .tab_stop(tab_stop)
                     .icon(Icon::new(IconName::Ellipsis).text_color(colors.text_secondary))
                     .tooltip("More formatting")
                     .dropdown_menu(move |mut menu, _, _| {
@@ -1453,16 +1484,6 @@ fn save_state(conflict: bool, pending: bool, unsaved: impl FnOnce() -> bool) -> 
     }
 }
 
-fn status_icon(status: NoteStatus) -> Icon {
-    match status {
-        NoteStatus::Active => Lucide::CircleDot.into(),
-        NoteStatus::OnHold => Lucide::CirclePause.into(),
-        NoteStatus::Completed => IconName::CircleCheck.into(),
-        NoteStatus::Dropped => IconName::CircleX.into(),
-        NoteStatus::None => IconName::File.into(),
-    }
-}
-
 pub fn rgb_color(rgb: u32) -> Hsla {
     gpui_kit::rgb(rgb).into()
 }
@@ -1556,7 +1577,7 @@ impl Render for NoteEditor {
         });
         // In focus mode the header band and the toolbar wait, invisible but
         // in place so nothing moves, until the pointer comes near the top.
-        let hide_chrome = focus_mode && !self.chrome_revealed();
+        let hide_chrome = self.chrome_hidden();
         let chrome = |el: Div| {
             el.flex_none().when(hide_chrome, |el| {
                 el.opacity(0.)

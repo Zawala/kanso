@@ -24,7 +24,7 @@ use crate::editor::rgb_color;
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library};
 use crate::services::{ApiState, Services, SyncState};
-use crate::theme::{Colors, Rgb, muted_tag_color, section_label};
+use crate::theme::{Colors, Rgb, muted_tag_color, section_label, status_glyph};
 use crate::workspace::{AppState, NewNote, OpenSettings, ToggleSidebar};
 
 /// Things only the workspace can do (it owns dialogs and the editor).
@@ -498,12 +498,21 @@ impl Sidebar {
             .into_iter()
             .map(|status| {
                 let count = counts.get(&status).copied().unwrap_or(0);
-                let icon = self.icon(status_icon(status), cx);
+                // Colored as in the note list; Dropped as quiet as the
+                // other rows' icons.
+                let colors = Colors::get(cx);
+                let icon =
+                    status_glyph(status, colors, colors.text_secondary).map(|(icon, tint)| {
+                        Icon::new(icon)
+                            .size(px(15.))
+                            .text_color(tint)
+                            .into_any_element()
+                    });
                 self.row(
                     SharedString::from(format!("status-{}", status.as_str())),
                     Filter::Status(status),
                     Entry {
-                        icon: Some(icon),
+                        icon,
                         label: status.label().into(),
                         count,
                         depth: 0,
@@ -526,7 +535,7 @@ impl Sidebar {
                 services.api.clone(),
                 services.api_status().into(),
                 services.sync.clone(),
-                services.sync_status().into(),
+                services.sync_status(cx).into(),
             ),
             None => (
                 ApiState::Off,
@@ -539,9 +548,8 @@ impl Sidebar {
 
     fn render_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
-        let now = Clock::now_ms(cx);
         let (api, api_tip, sync, sync_tip) = Self::service_states(cx);
-        let (tone, sync_label) = sync_line(&sync, now);
+        let (tone, sync_label) = sync_line(&sync, |at| Clock::edited_label(cx, at));
         let dot = tone_color(tone, colors);
         // The shape says whether the API is listening, off, or failing to
         // listen; the color only repeats it.
@@ -758,7 +766,7 @@ impl Sidebar {
         let colors = Colors::get(cx);
         let filter = self.library.read(cx).filter.clone();
         let (api, api_tip, sync, sync_tip) = Self::service_states(cx);
-        let (tone, sync_label) = sync_line(&sync, Clock::now_ms(cx));
+        let (tone, sync_label) = sync_line(&sync, |at| Clock::edited_label(cx, at));
         let sync_color = tone_color(tone, colors);
         let api_warning = matches!(api, ApiState::PortInUse(_) | ApiState::Failed(_));
         let api_glyph = api_icon(&api);
@@ -1114,16 +1122,6 @@ fn status_choice_after(choice: Option<bool>, was_status: bool, is_status: bool) 
     }
 }
 
-fn status_icon(status: NoteStatus) -> Icon {
-    match status {
-        NoteStatus::Active => Lucide::CircleDot.into(),
-        NoteStatus::OnHold => Lucide::CirclePause.into(),
-        NoteStatus::Completed => IconName::CircleCheck.into(),
-        NoteStatus::Dropped => IconName::CircleX.into(),
-        NoteStatus::None => IconName::File.into(),
-    }
-}
-
 /// How a status line reads at a glance, as the color of its dot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tone {
@@ -1174,9 +1172,11 @@ pub const SYNC_PROBLEMS: [&str; 5] = [
     "Couldn't sync",
 ];
 
-/// The sidebar's sync line: "Synced just now", "Syncing…", "Sync off", or a
-/// problem in plain words.
-pub fn sync_line(state: &SyncState, now_ms: i64) -> (Tone, String) {
+/// The sidebar's sync line: "Synced just now", "Synced yesterday",
+/// "Syncing…", "Sync off", or a problem in plain words. `when` says when an
+/// instant was, as the editor's header says when a note was edited
+/// ([`Clock::edited_label`]), so the line and the list name a day alike.
+pub fn sync_line(state: &SyncState, when: impl FnOnce(i64) -> String) -> (Tone, String) {
     match state {
         SyncState::Off => (Tone::Quiet, "Sync off".into()),
         SyncState::Syncing => (Tone::Busy, "Syncing…".into()),
@@ -1184,10 +1184,7 @@ pub fn sync_line(state: &SyncState, now_ms: i64) -> (Tone, String) {
             conflicts: 0,
             at_ms,
             ..
-        } => (
-            Tone::Good,
-            format!("Synced {}", crate::note_list::relative_time(*at_ms, now_ms)),
-        ),
+        } => (Tone::Good, format!("Synced {}", when(*at_ms))),
         SyncState::Synced { .. } => (Tone::Warning, "Conflict detected".into()),
         SyncState::Failed(reason) => {
             let reason = reason.to_lowercase();
@@ -1261,6 +1258,7 @@ mod tests {
         SYNC_PROBLEMS, SyncState, Tone, api_icon, initials, status_choice_after, status_group_open,
         sync_line, tone_icon, visible_tags,
     };
+    use crate::grouping::utc_label;
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
 
@@ -1311,7 +1309,7 @@ mod tests {
         /// one of a few fixed phrases and never the raw error.
         #[test]
         fn prop_sync_failures_read_plainly(reason in "\\PC{0,60}") {
-            let (tone, label) = sync_line(&SyncState::Failed(reason.clone()), 0);
+            let (tone, label) = sync_line(&SyncState::Failed(reason.clone()), utc_label(0));
             prop_assert_eq!(tone, Tone::Warning);
             prop_assert!(SYNC_PROBLEMS.contains(&label.as_str()), "{}", label);
         }
@@ -1326,7 +1324,7 @@ mod tests {
         #[test]
         fn prop_synced_reads_synced(at in 0i64..1_000_000_000_000, ago in 0i64..100_000_000_000, conflicts in 0usize..3) {
             let synced = SyncState::Synced { at_ms: at, conflicts, conflicted: Vec::new() };
-            let (tone, label) = sync_line(&synced, at + ago);
+            let (tone, label) = sync_line(&synced, utc_label(at + ago));
             if conflicts == 0 {
                 prop_assert_eq!(tone, Tone::Good);
                 prop_assert!(label.starts_with("Synced "), "{}", label);
@@ -1389,34 +1387,42 @@ mod tests {
     #[test]
     fn sync_line_examples() {
         let minute = 60_000;
+        let day = 24 * 60 * minute;
+        let synced = |at_ms| SyncState::Synced {
+            at_ms,
+            conflicts: 0,
+            conflicted: Vec::new(),
+        };
         assert_eq!(
-            sync_line(
-                &SyncState::Synced {
-                    at_ms: 0,
-                    conflicts: 0,
-                    conflicted: Vec::new(),
-                },
-                10_000
-            ),
+            sync_line(&synced(0), utc_label(10_000)),
             (Tone::Good, "Synced just now".into())
         );
         assert_eq!(
-            sync_line(
-                &SyncState::Synced {
-                    at_ms: 0,
-                    conflicts: 0,
-                    conflicted: Vec::new(),
-                },
-                3 * minute
-            ),
+            sync_line(&synced(0), utc_label(3 * minute)),
             (Tone::Good, "Synced 3 min ago".into())
         );
+        // A day or more ago, the day as the note list names it, never
+        // "1 d ago" or a date in another form.
+        // 2026-05-28 09:45 UTC.
+        let now = 1_779_961_500_000;
         assert_eq!(
-            sync_line(&SyncState::Off, 0),
+            sync_line(&synced(now - day), utc_label(now)).1,
+            "Synced yesterday"
+        );
+        assert_eq!(
+            sync_line(&synced(now - 4 * day), utc_label(now)).1,
+            "Synced May 24"
+        );
+        assert_eq!(
+            sync_line(&synced(now - 400 * day), utc_label(now)).1,
+            "Synced Apr 23, 2025"
+        );
+        assert_eq!(
+            sync_line(&SyncState::Off, utc_label(0)),
             (Tone::Quiet, "Sync off".into())
         );
-        assert_eq!(sync_line(&SyncState::Syncing, 0).1, "Syncing…");
-        let failed = |reason: &str| sync_line(&SyncState::Failed(reason.into()), 0).1;
+        assert_eq!(sync_line(&SyncState::Syncing, utc_label(0)).1, "Syncing…");
+        let failed = |reason: &str| sync_line(&SyncState::Failed(reason.into()), utc_label(0)).1;
         assert_eq!(
             failed("set the Worker URL in Settings › Sync"),
             "Sync not set up"

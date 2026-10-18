@@ -33,7 +33,9 @@ use crate::editor::{NoteEditor, rgb_color};
 use crate::fuzzy;
 use crate::keys::keycap;
 use crate::library::{Filter, Library, RECENT_DAYS, search_params};
-use crate::theme::{Colors, PALETTE_SELECTED_ALPHA, muted_tag_color, section_label};
+use crate::theme::{
+    Colors, PALETTE_SELECTED_ALPHA, Rgb, muted_tag_color, section_label, status_glyph,
+};
 
 actions!(
     palette,
@@ -102,6 +104,9 @@ struct Item {
     target: Target,
     label: SharedString,
     icon: IconName,
+    /// A status entry's status: its glyph and color stand in for `icon`,
+    /// as the note list draws them.
+    status: NoteStatus,
     /// Indent, for notebooks inside other notebooks.
     depth: usize,
     /// The current choice: the open note's notebook, tags and status, or the
@@ -117,6 +122,7 @@ impl Item {
             target,
             label: label.into(),
             icon,
+            status: NoteStatus::None,
             depth: 0,
             checked: false,
             hint: None,
@@ -131,6 +137,16 @@ impl Item {
     fn checked(mut self, checked: bool) -> Self {
         self.checked = checked;
         self
+    }
+
+    fn status(mut self, status: NoteStatus) -> Self {
+        self.status = status;
+        self
+    }
+
+    /// The entry's icon and its color, `quiet` unless it is a status's.
+    fn glyph(&self, colors: &Colors, quiet: Rgb) -> (IconName, Rgb) {
+        status_glyph(self.status, colors, quiet).unwrap_or((self.icon, quiet))
     }
 
     fn hint(mut self, hint: impl Into<SharedString>) -> Self {
@@ -590,8 +606,9 @@ impl Palette {
                         let item = Item::new(
                             Target::Status(status),
                             status_label(status),
-                            status_icon(status),
+                            IconName::Minus,
                         )
+                        .status(status)
                         .checked(current == Some(status));
                         fit(item, &[])
                     })
@@ -676,13 +693,14 @@ impl Palette {
             .filter(|s| *s != NoteStatus::None)
         {
             let count = counts.by_status.get(&status).copied().unwrap_or(0);
-            places.push(place(
+            let (item, score) = place(
                 Filter::Status(status),
                 status.label().into(),
-                status_icon(status),
+                IconName::Minus,
                 count,
                 &["status"],
-            ));
+            );
+            places.push((item.status(status), score));
         }
         places.push(place(
             Filter::Trash,
@@ -988,12 +1006,10 @@ impl Palette {
             .rounded(px(6.))
             .cursor_default()
             .when(selected, |el| el.bg(selected_fill(cx)))
-            .child(
-                Icon::new(item.icon)
-                    .size_4()
-                    .flex_none()
-                    .text_color(colors.quiet(selected)),
-            )
+            .child({
+                let (icon, color) = item.glyph(colors, colors.quiet(selected));
+                Icon::new(icon).size_4().flex_none().text_color(color)
+            })
             .child(
                 div()
                     .flex_1()
@@ -1093,7 +1109,7 @@ impl Palette {
         };
         let library = self.library.read(cx);
         let mut detail = Detail {
-            icon: item.icon,
+            icon: item.glyph(colors, colors.text_secondary),
             title: item.label.clone(),
             meta: Vec::new(),
             description: None,
@@ -1142,7 +1158,9 @@ impl Palette {
                     .into(),
                 );
                 if let Some(count) = &item.hint {
-                    detail.meta.push((IconName::FileText, notes_count(count)));
+                    detail
+                        .meta
+                        .push((Icon::new(IconName::FileText), notes_count(count)));
                 }
                 if let Filter::Book(id) = filter
                     && let Some(parent) = library
@@ -1150,9 +1168,10 @@ impl Palette {
                         .and_then(|b| b.parent_book_id.as_deref())
                         .and_then(|p| library.book(p))
                 {
-                    detail
-                        .meta
-                        .push((IconName::Notebook, format!("In {}", parent.name).into()));
+                    detail.meta.push((
+                        Icon::new(IconName::Notebook),
+                        format!("In {}", parent.name).into(),
+                    ));
                 }
             }
             Target::Note(note) => {
@@ -1163,16 +1182,20 @@ impl Palette {
                         .book(&note.book_id)
                         .map_or_else(|| "No notebook".to_owned(), |b| b.name.clone())
                 };
-                detail.meta.push((IconName::Notebook, book.into()));
-                // The day as the note list names it.
-                let edited = crate::clock::Clock::edited_label(cx, note.updated_at);
                 detail
                     .meta
-                    .push((IconName::Clock, format!("Edited {edited}").into()));
-                if note.status != NoteStatus::None {
+                    .push((Icon::new(IconName::Notebook), book.into()));
+                // The day as the note list names it.
+                let edited = crate::clock::Clock::edited_label(cx, note.updated_at);
+                detail.meta.push((
+                    Icon::new(IconName::Clock),
+                    format!("Edited {edited}").into(),
+                ));
+                // As the note list shows it, Dropped as quiet as the lines.
+                if let Some((icon, tint)) = status_glyph(note.status, colors, colors.text_muted) {
                     detail
                         .meta
-                        .push((status_icon(note.status), note.status.label().into()));
+                        .push((Icon::new(icon).text_color(tint), note.status.label().into()));
                 }
                 let dark = cx.theme().is_dark();
                 let tags: Vec<AnyElement> = note
@@ -1211,7 +1234,9 @@ impl Palette {
                     .into(),
                 );
                 if let Some(count) = &item.hint {
-                    detail.meta.push((IconName::FileText, notes_count(count)));
+                    detail
+                        .meta
+                        .push((Icon::new(IconName::FileText), notes_count(count)));
                 }
                 if let Some(title) = note_title.clone() {
                     detail
@@ -1233,7 +1258,9 @@ impl Palette {
                     .into(),
                 );
                 if let Some(count) = &item.hint {
-                    detail.meta.push((IconName::FileText, notes_count(count)));
+                    detail
+                        .meta
+                        .push((Icon::new(IconName::FileText), notes_count(count)));
                 }
                 if let Some(title) = note_title.clone() {
                     detail
@@ -1267,9 +1294,9 @@ impl Palette {
             .p(px(22.))
             .gap_2()
             .child(
-                Icon::new(detail.icon)
+                Icon::new(detail.icon.0)
                     .size(px(28.))
-                    .text_color(colors.text_secondary),
+                    .text_color(detail.icon.1),
             )
             .child(
                 div()
@@ -1289,7 +1316,7 @@ impl Palette {
                         .children(detail.meta.into_iter().map(|(icon, text)| {
                             h_flex()
                                 .gap_1p5()
-                                .child(Icon::new(icon).size(px(13.)).flex_none())
+                                .child(icon.size(px(13.)).flex_none())
                                 .child(div().min_w_0().truncate().child(text))
                         })),
                 )
@@ -1357,10 +1384,11 @@ impl Palette {
 
 /// What the detail pane shows for an entry.
 struct Detail {
-    icon: IconName,
+    /// The entry's glyph and its color.
+    icon: (IconName, Rgb),
     title: SharedString,
     /// Small lines under the title: where a note lives, when it changed.
-    meta: Vec<(IconName, SharedString)>,
+    meta: Vec<(Icon, SharedString)>,
     description: Option<SharedString>,
     /// At most this many lines of the description show.
     description_lines: usize,
@@ -1611,16 +1639,6 @@ fn status_label(status: NoteStatus) -> &'static str {
     match status {
         NoteStatus::None => "No status",
         other => other.label(),
-    }
-}
-
-fn status_icon(status: NoteStatus) -> IconName {
-    match status {
-        NoteStatus::None => IconName::Minus,
-        NoteStatus::Active => IconName::CircleDot,
-        NoteStatus::OnHold => IconName::CirclePause,
-        NoteStatus::Completed => IconName::CircleCheck,
-        NoteStatus::Dropped => IconName::CircleX,
     }
 }
 
