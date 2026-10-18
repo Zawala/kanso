@@ -341,18 +341,22 @@ impl Store {
     /// Notes matching a search, as list rows with a short snippet.
     pub fn search_summaries(&self, params: &SearchParams) -> Result<Vec<NoteSummary>> {
         self.read(|conn| {
-            let columns = "d.id, d.rev, d.title, substr(json_extract(d.json, '$.body'), 1, 300), \
+            // Enough of the body to get past front matter, a title heading
+            // and a code block or two.
+            let columns = "d.id, d.rev, d.title, substr(json_extract(d.json, '$.body'), 1, 2000), \
                            d.book_id, d.status, json_extract(d.json, '$.tags'), d.pinned, d.updated_at, d.created_at";
             let (sql, values) = search_sql(columns, params);
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt.query_map(params_from_iter(values), |row| {
                 let tags: Option<String> = row.get(6)?;
                 let status: Option<String> = row.get(5)?;
+                let title = row.get::<_, Option<String>>(2)?.unwrap_or_default();
+                let body = row.get::<_, Option<String>>(3)?.unwrap_or_default();
                 Ok(NoteSummary {
                     id: row.get(0)?,
                     rev: row.get(1)?,
-                    title: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                    snippet: snippet(&row.get::<_, Option<String>>(3)?.unwrap_or_default()),
+                    snippet: kanso_core::excerpt(&title, &body),
+                    title,
                     book_id: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
                     status: status.as_deref().and_then(NoteStatus::parse).unwrap_or_default(),
                     tags: tags
@@ -511,26 +515,4 @@ impl Store {
             Ok(counts)
         })
     }
-}
-
-/// The first lines of a body as plain text for the note list.
-fn snippet(body: &str) -> String {
-    let mut out = String::new();
-    for line in body.lines() {
-        let line = line
-            .trim()
-            .trim_start_matches(['#', '>', '-', '*', ' '])
-            .trim();
-        if line.is_empty() || line.starts_with("```") {
-            continue;
-        }
-        if !out.is_empty() {
-            out.push(' ');
-        }
-        out.push_str(line);
-        if out.len() > 160 {
-            break;
-        }
-    }
-    out.chars().take(160).collect()
 }

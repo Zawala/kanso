@@ -4,12 +4,14 @@
 //! `file:…`) so links inside note bodies, API clients and imported data keep
 //! working unchanged.
 
+pub mod excerpt;
 pub mod id;
 pub mod model;
 pub mod query;
 pub mod rev;
 pub mod tasks;
 
+pub use excerpt::excerpt;
 pub use id::{DocType, new_id};
 pub use model::{Book, FileMeta, Note, NoteShare, NoteStatus, TRASH_BOOK_ID, Tag, TagColor};
 pub use query::{Clause, Field, NoteFacts, Query};

@@ -17,6 +17,8 @@ mod services;
 mod settings;
 mod sidebar;
 #[cfg(test)]
+mod snapshots;
+#[cfg(test)]
 mod ui_tests;
 mod workspace;
 
