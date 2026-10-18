@@ -704,17 +704,86 @@ pub fn end_session(reason: SignOutReason, cx: &mut App) {
     };
     let secrets = services.secrets.clone();
     let library_id = services.library_id.clone();
+    let ended = services.session.clone();
     services.clear_session(AccountState::SessionEnded { username, reason });
     if let (Some(secrets), Some(library_id)) = (secrets, library_id) {
-        cx.background_spawn(async move {
-            if let Err(err) = kanso_sync::keychain::delete_session(secrets.as_ref(), &library_id) {
-                eprintln!("kanso: couldn't remove the ended session: {err}");
+        cx.spawn(async move |cx| {
+            let stale = cx
+                .background_spawn(async move {
+                    if let Err(err) =
+                        kanso_sync::keychain::delete_session(secrets.as_ref(), &library_id)
+                    {
+                        eprintln!("kanso: couldn't remove the ended session: {err}");
+                    }
+                    drop_stale_key(secrets.as_ref(), &library_id, reason, ended.as_deref())
+                })
+                .await;
+            if let Some(stale) = stale {
+                cx.update(|cx| {
+                    let services = cx.global_mut::<Services>();
+                    if services
+                        .pending_key
+                        .as_ref()
+                        .is_some_and(|shown| shown.key == stale)
+                    {
+                        services.pending_key = None;
+                    }
+                    cx.refresh_windows();
+                });
             }
         })
         .detach();
     }
     AppState::update_config(cx, |config| config.sync.account = None);
     cx.refresh_windows();
+}
+
+/// Whether `kept` is a recovery key the server no longer holds, because the
+/// session of `origin`'s `account_id` ended with `reason`: another device
+/// recovered the account or changed its password, and either replaced the
+/// key. A key the server took before that is stale. One whose request went
+/// unanswered stays: the server may have taken it after, so it may be the
+/// only working key (sec-client 3).
+pub fn stale_key(
+    kept: &PendingRecoveryKey,
+    reason: SignOutReason,
+    origin: &str,
+    account_id: &str,
+) -> bool {
+    matches!(
+        reason,
+        SignOutReason::PasswordChanged | SignOutReason::Recovered
+    ) && !kept.unconfirmed
+        && kept.origin == origin
+        && kept.account_id == account_id
+}
+
+/// Deletes the library's unsaved recovery key when it is [`stale_key`];
+/// returns the key it deleted.
+fn drop_stale_key(
+    secrets: &dyn SecretStore,
+    library_id: &str,
+    reason: SignOutReason,
+    ended: Option<&Session>,
+) -> Option<RecoveryKey> {
+    let ended = ended?;
+    let kept = match kanso_sync::keychain::load_any_recovery_key(secrets, library_id) {
+        Ok(kept) => kept?,
+        Err(err) => {
+            eprintln!("kanso: reading the unsaved recovery key: {err}");
+            return None;
+        }
+    };
+    if !stale_key(&kept, reason, &ended.origin, &ended.account_id) {
+        return None;
+    }
+    match kanso_sync::keychain::delete_recovery_key(secrets, library_id) {
+        Ok(()) => Some(kept.recovery_key),
+        Err(err) => {
+            eprintln!("kanso: removing a recovery key replaced elsewhere: {err}");
+            None
+        }
+    }
 }
 
 /// Strategies for the account's and sync's states, shared by the tests of
@@ -784,9 +853,11 @@ pub(crate) mod strategies {
 mod tests {
     use super::{
         AccountState, ApiState, Hold, SyncState, api_state, hold_after, holds_at, is_local_edit,
-        queued_again, server_config, state_problem, sync_outcome,
+        queued_again, server_config, stale_key, state_problem, sync_outcome,
     };
     use crate::config::ServerSettings;
+    use kanso_sync::RecoveryKey;
+    use kanso_sync::keychain::PendingRecoveryKey;
     use kanso_sync::{ApiError, SignOutReason, SyncError, SyncProblem, SyncReport};
     use proptest::prelude::*;
     use std::net::IpAddr;
@@ -794,8 +865,8 @@ mod tests {
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(256))]
 
-        /// Round-trip: the listen address keeps the configured IP and port,
-        /// IPv6 included.
+        /// A sync asked for during another runs once after it, manual if
+        /// any of the requests was.
         #[test]
         fn prop_queued_syncs_are_manual_only_if_one_was(requests in prop::collection::vec(any::<bool>(), 1..12)) {
             let queued = requests
@@ -804,6 +875,8 @@ mod tests {
             prop_assert_eq!(queued, Some(requests.iter().any(|&manual| manual)));
         }
 
+        /// Round-trip: the listen address keeps the configured IP and port,
+        /// IPv6 included.
         #[test]
         fn prop_server_config_keeps_ip_and_port(ip in any::<IpAddr>(), port in any::<u16>()) {
             let settings = ServerSettings {
@@ -815,6 +888,33 @@ mod tests {
             };
             let config = server_config(&settings).unwrap();
             prop_assert_eq!((config.bind.ip(), config.bind.port()), (ip, port));
+        }
+
+        /// Sec-client 3: an unsaved key is dropped only when the session of
+        /// its own account ended because another device replaced the key,
+        /// and only when the server had taken it.
+        #[test]
+        fn prop_only_a_key_replaced_elsewhere_is_stale(
+            reason in prop::sample::select(SignOutReason::ALL.to_vec()),
+            unconfirmed: bool,
+            same_origin: bool,
+            same_account: bool,
+        ) {
+            let kept = PendingRecoveryKey {
+                origin: "https://a.example".into(),
+                account_id: "acct".into(),
+                username: "alice".into(),
+                server: "https://a.example".into(),
+                recovery_key: RecoveryKey::from_bytes([7; 16]),
+                unconfirmed,
+            };
+            let origin = if same_origin { "https://a.example" } else { "https://b.example" };
+            let account = if same_account { "acct" } else { "other" };
+            let replaced = matches!(reason, SignOutReason::PasswordChanged | SignOutReason::Recovered);
+            prop_assert_eq!(
+                stale_key(&kept, reason, origin, account),
+                replaced && !unconfirmed && same_origin && same_account
+            );
         }
 
         /// Refinement: text that isn't an IP address is refused.

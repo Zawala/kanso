@@ -589,6 +589,40 @@ fn an_edit_typed_before_a_replace_is_in_its_backup(
     assert!(!writes_held, "saves go on after the Replace");
 }
 
+/// Another Mac changes the password, which replaces the recovery key: this
+/// Mac's unsaved key from sign-up no longer works, so it goes when this
+/// Mac hears its session ended (sec-client 3). An unconfirmed key stays
+/// (`a_lost_password_change_still_shows_the_key`).
+#[gpui_kit::test]
+fn a_key_replaced_on_another_mac_is_dropped(cx: &mut TestAppContext, cx_b: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 1);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    let unsaved = pending_key(cx).expect("the sign-up key shows");
+    assert!(a.kept_key().is_some_and(|kept| !kept.unconfirmed));
+
+    let b = mac(cx_b, &server, "Laptop", 0);
+    let rx = b.sign_in(cx_b, "alice", PASSWORD);
+    assert_eq!(finish(cx_b, rx), Ok(()));
+    let rx = cx_b.update(|cx| {
+        account_flow::change_password(
+            password(PASSWORD, "alice"),
+            password(NEW_PASSWORD, "alice"),
+            cx,
+        )
+    });
+    assert_eq!(finish(cx_b, rx), Ok(()));
+    assert!(!holds(&server, "alice", &unsaved), "replaced");
+
+    cx.update(account_flow::refresh_details);
+    wait_until(cx, "this Mac to hear", |cx| {
+        matches!(account(cx), AccountState::SessionEnded { .. })
+    });
+    wait_until(cx, "the stale key to go", |cx| pending_key(cx).is_none());
+    assert!(a.kept_key().is_none(), "and its Keychain item");
+}
+
 /// Signing in to another account on a Mac bound to the first asks about
 /// that account's notes; Cancel signs the new session out and changes
 /// nothing here.
