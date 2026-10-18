@@ -10,7 +10,7 @@
 //! server and the other Macs, and that account tasks stop a running sync
 //! first.
 
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use async_channel::Receiver;
@@ -20,7 +20,7 @@ use kanso_core::DocType;
 use kanso_store::{Origin, Put, Store};
 use kanso_sync::{
     AccountError, Api, Backend, DeviceIdentity, KdfParams, Machine, MemorySecrets, MemoryServer,
-    Password, RecoveryKey, Route, SecretStore, Session, SignOutReason, meta_keys,
+    Password, RecoveryKey, Route, SecretError, SecretStore, Session, SignOutReason, meta_keys,
 };
 use serde_json::json;
 
@@ -621,6 +621,116 @@ fn a_key_replaced_on_another_mac_is_dropped(cx: &mut TestAppContext, cx_b: &mut 
     });
     wait_until(cx, "the stale key to go", |cx| pending_key(cx).is_none());
     assert!(a.kept_key().is_none(), "and its Keychain item");
+}
+
+/// A Keychain whose next save of a session item, once saved, waits: it
+/// says so on the first channel, then waits for the second.
+struct Gated {
+    inner: Arc<MemorySecrets>,
+    gate: std::sync::Mutex<Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>>,
+}
+
+impl SecretStore for Gated {
+    fn get(&self, item: &str) -> Result<Option<zeroize::Zeroizing<String>>, SecretError> {
+        self.inner.get(item)
+    }
+    fn set(&self, item: &str, value: &str) -> Result<(), SecretError> {
+        self.inner.set(item, value)?;
+        if item.starts_with("sync-account:") {
+            let gate = self.gate.lock().unwrap().take();
+            if let Some((entered, release)) = gate {
+                entered.send(()).unwrap();
+                release.recv().unwrap();
+            }
+        }
+        Ok(())
+    }
+    fn delete(&self, item: &str) -> Result<(), SecretError> {
+        self.inner.delete(item)
+    }
+}
+
+/// Review-verify 3: "Forgot your password?" while signed in ends this Mac's
+/// own session too. The Account page's details, asked for on that session,
+/// get a 401 after the recovery took the new key and saved the new
+/// session's item, before it signed in again. That 401 ends the old
+/// session, but never drops the recovery's new key, and never removes the
+/// new session's item: a relaunch signs in with it.
+#[gpui_kit::test]
+fn a_401_from_this_macs_own_recovery_keeps_its_new_key(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 1);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    let first = pending_key(cx).unwrap();
+    key_saved(cx);
+    details_loaded(cx);
+    let old = session(cx);
+    let library = library_id(cx);
+    let (entered_tx, entered) = mpsc::channel();
+    let (release, release_rx) = mpsc::channel();
+    let gated: Arc<dyn SecretStore> = Arc::new(Gated {
+        inner: a.secrets.clone(),
+        gate: std::sync::Mutex::new(Some((entered_tx, release_rx))),
+    });
+    cx.update(|cx| cx.global_mut::<Services>().secrets = Some(gated));
+
+    let rx = cx.update(|cx| {
+        account_flow::recover_signed_in(first.clone(), password(NEW_PASSWORD, "alice"), cx)
+    });
+    wait_until(cx, "the recovery to save its session", |_| {
+        entered.try_recv().is_ok()
+    });
+    let new_key = pending_key(cx).expect("the new key shows");
+    assert!(new_key != first);
+    assert!(
+        a.kept_key()
+            .is_some_and(|kept| kept.recovery_key == new_key && !kept.unconfirmed),
+        "the server took it"
+    );
+    assert!(Arc::ptr_eq(&session(cx), &old), "not signed in again yet");
+
+    cx.update(account_flow::refresh_details);
+    wait_until(cx, "the old session's 401", |cx| {
+        matches!(account(cx), AccountState::SessionEnded { .. })
+    });
+    for _ in 0..10 {
+        cx.run_until_parked();
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert_eq!(pending_key(cx), Some(new_key.clone()), "still on screen");
+    assert!(
+        a.kept_key()
+            .is_some_and(|kept| kept.recovery_key == new_key),
+        "still in the Keychain"
+    );
+    assert!(
+        a.items().contains(&format!("sync-account:{library}")),
+        "the new session's item stays"
+    );
+
+    release.send(()).unwrap();
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert_eq!(account(cx), signed_in_as("alice"));
+    assert_eq!(pending_key(cx), Some(new_key.clone()));
+    assert!(
+        a.kept_key()
+            .is_some_and(|kept| kept.recovery_key == new_key)
+    );
+    assert!(holds(&server, "alice", &new_key));
+    let now = session(cx);
+    let saved = kanso_sync::keychain::load_session(
+        a.secrets.as_ref(),
+        &library,
+        &now.origin,
+        &now.account_id,
+    )
+    .unwrap()
+    .expect("a relaunch finds a session");
+    assert!(
+        kanso_sync::usage(server.as_ref(), &saved).is_ok(),
+        "the new one, which the server accepts"
+    );
 }
 
 /// Signing in to another account on a Mac bound to the first asks about

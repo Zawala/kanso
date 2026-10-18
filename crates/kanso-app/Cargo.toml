@@ -38,3 +38,5 @@ proptest.workspace = true
 # Makes the library refuse a write, to test a binding that fails.
 rusqlite.workspace = true
 tempfile.workspace = true
+# Names the item type of a test Keychain that wraps MemorySecrets.
+zeroize.workspace = true

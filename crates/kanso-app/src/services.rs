@@ -691,8 +691,20 @@ pub fn notify_windows(
 
 /// The server ended this Mac's session (a 401): the Keychain item goes,
 /// the page shows the reason over the Sign in form, and syncing stops.
+///
+/// This Mac's own "Forgot your password?" ends every session the account
+/// had, this one too, so a request still in flight on it gets a 401
+/// (`unknown` once the new session replaced its row, or `recovered`)
+/// before the recovery has signed in again (review-verify 3). The
+/// recovery's new key is then no stale key: while a recovery runs, the key
+/// stays, in the Keychain and on screen. And the session item goes only
+/// while it still holds the ended session, never the one the recovery
+/// saved meanwhile.
 pub fn end_session(reason: SignOutReason, cx: &mut App) {
     let services = cx.global_mut::<Services>();
+    let own_recovery = services
+        .task
+        .is_some_and(|task| task.kind == TaskKind::Recover);
     let username = match &services.account {
         AccountState::SignedIn { username } => username.clone(),
         AccountState::SessionEnded { username, .. } => username.clone(),
@@ -710,10 +722,19 @@ pub fn end_session(reason: SignOutReason, cx: &mut App) {
         cx.spawn(async move |cx| {
             let stale = cx
                 .background_spawn(async move {
-                    if let Err(err) =
-                        kanso_sync::keychain::delete_session(secrets.as_ref(), &library_id)
-                    {
+                    let deleted = match ended.as_deref() {
+                        Some(ended) => kanso_sync::keychain::delete_ended_session(
+                            secrets.as_ref(),
+                            &library_id,
+                            ended,
+                        ),
+                        None => kanso_sync::keychain::delete_session(secrets.as_ref(), &library_id),
+                    };
+                    if let Err(err) = deleted {
                         eprintln!("kanso: couldn't remove the ended session: {err}");
+                    }
+                    if own_recovery {
+                        return None;
                     }
                     drop_stale_key(secrets.as_ref(), &library_id, reason, ended.as_deref())
                 })

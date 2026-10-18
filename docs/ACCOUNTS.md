@@ -1984,6 +1984,14 @@ starts signed out with its notes intact. Older app builds ignore the new fields.
   schedule. With `password_changed` or `recovered`, a confirmed unsaved recovery key is deleted
   too, and leaves the key screen: the server no longer holds it (sec-client 3). An unconfirmed one
   stays, since it may be the only working key.
+- **This Mac's own recovery** (review-verify 3). "Forgot your password?" while signed in ends this
+  Mac's old session too, so a request still in flight on it (the Account page's storage and
+  devices) gets a 401 before the recovery has signed in again: `unknown` once the new session
+  replaced the device's row, or `recovered`. While a recovery task runs, such a 401 never deletes
+  the unsaved recovery key, which is the recovery's own new one. And whatever the reason, the
+  session item is deleted only while it still holds the ended session
+  (`keychain::delete_ended_session`), so a session the recovery saved meanwhile stays for the next
+  launch.
 - **The launch check** (`restore`) reads the Keychain on a background thread. Account tasks wait for
   it (`restoring`), and its answer is dropped if a session appeared, a task started or the config's
   account changed meanwhile, so it never overwrites a newer state (A4). Pending logouts are retried

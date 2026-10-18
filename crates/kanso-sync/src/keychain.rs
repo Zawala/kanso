@@ -316,6 +316,22 @@ pub fn delete_session(secrets: &dyn SecretStore, library_id: &str) -> Result<(),
     secrets.delete(&account_item(library_id))
 }
 
+/// Removes `sync-account:<library_id>` after the server ended `ended`,
+/// unless the item holds a newer session of the same account by now: one
+/// a recovery on this Mac saved meanwhile (review-verify 3).
+pub fn delete_ended_session(
+    secrets: &dyn SecretStore,
+    library_id: &str,
+    ended: &Session,
+) -> Result<(), SecretError> {
+    if let Some(saved) = load_session(secrets, library_id, &ended.origin, &ended.account_id)?
+        && saved.token() != ended.token()
+    {
+        return Ok(());
+    }
+    delete_session(secrets, library_id)
+}
+
 /// A recovery key the user hasn't confirmed saving yet.
 #[derive(Clone, Debug)]
 pub struct PendingRecoveryKey {
