@@ -343,6 +343,22 @@ where
     }
 }
 
+/// A day goes by for the files a refetch missed: they may be asked for
+/// again.
+pub fn a_day_later(store: &Store) {
+    let Some(saved) = store.meta(kanso_sync::meta_keys::REFETCH_MISSED).unwrap() else {
+        return;
+    };
+    let waits: BTreeMap<String, i64> = serde_json::from_str(&saved).unwrap();
+    let due: BTreeMap<String, i64> = waits.into_keys().map(|id| (id, 1)).collect();
+    store
+        .set_meta(
+            kanso_sync::meta_keys::REFETCH_MISSED,
+            &serde_json::to_string(&due).unwrap(),
+        )
+        .unwrap();
+}
+
 /// Every meta entry the sync bookkeeping uses, for before/after checks.
 pub fn sync_meta(store: &Store) -> Vec<(String, Option<String>)> {
     use kanso_sync::meta_keys as k;

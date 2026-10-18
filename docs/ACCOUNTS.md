@@ -1665,6 +1665,16 @@ sync pulls first:
   - They are stored in a guarded write that also checks the document still has the revision they
     were fetched for (`Store::fill_blob`).
   - A hit counts in `files_down`, a miss in `files_missing`.
+  - It never stops the sync or the push after it (review-verify 4). A request that fails (offline,
+    a 5xx, an answer over the cap) counts as a miss and ends this sync's refetching, since the
+    rest would likely fail too and each can take minutes. Only a 429 `session-account` stops the
+    sync, as on every route (`BackOff`).
+  - A file it missed (gone from the server, not matching its `md5digest`, unreadable, or a failed
+    request) waits a day before it is asked for again: `sync.v2.refetch_missed` maps its ID to that
+    time. Bytes gone for good, such as imported attachments without them, cost one request a day,
+    not eight a sync. At most 512 files wait, and past that the ones due soonest are forgotten.
+    A wait already due, or more than a day and an hour ahead (saved while the clock ran ahead), is
+    dropped. The pull's own fetch of a new version's bytes doesn't wait.
 - **Push.** Before each push request, `mark_sent` records the batch's revisions (guarded). Results:
   - `Conflict` with a current version that opens: applied by the rules above. A local win gets the bumped generation and goes in the next round.
   - `Lost` (`current: null` with a `base_rev`): `mark_unsynced` (the floor stays), then pushed again with `base_rev = null` in the next round (M1).
@@ -1791,6 +1801,7 @@ data key stays in memory once loaded, and is zeroized on sign-out or quit.
 | `sync.v2.quota.files` | The same for file quotas |
 | `sync.v2.uploads_until` | Uploads held until this time (ms) after an `uploads-global` 429 |
 | `sync.v2.refetch_after` | The file ID where the last sync's search for missing bytes stopped |
+| `sync.v2.refetch_missed` | The files a refetch missed, as a JSON object of file ID to the time (ms) each may be asked for again |
 | `sync.v2.library_id` | Device identity |
 | `sync.v2.device_secret` | Device identity |
 | `sync.v2.hardware` | Device identity |

@@ -13,7 +13,7 @@ use common::*;
 use kanso_core::DocType;
 use kanso_store::{Origin, Store, StoreError, SyncDoc};
 use kanso_sync::wire::{WireChange, WireDoc, WirePushResult};
-use kanso_sync::{Choice, MemoryServer, QuotaOverride, Route, SyncOptions, SyncReport};
+use kanso_sync::{Choice, MemoryServer, QuotaOverride, Route, SyncOptions, SyncReport, meta_keys};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 use serde_json::json;
@@ -1123,7 +1123,8 @@ fn refetched_bytes_never_replace_a_newer_versions_bytes() {
 }
 
 /// Too many missing files: each sync asks for at most
-/// `SyncOptions::refetch_files`, going round from where the last stopped.
+/// `SyncOptions::refetch_files`, going round from where the last stopped,
+/// and a file a refetch missed waits a day (review-verify 4).
 #[test]
 fn refetching_is_bounded_and_goes_round() {
     let server = MemoryServer::new();
@@ -1146,23 +1147,143 @@ fn refetching_is_bounded_and_goes_round() {
     let gets = server.stats().count(Route::GetFile);
     assert_eq!(b.sync_with(&lose, &options).unwrap().files_missing, 2);
     assert_eq!(server.stats().count(Route::GetFile), gets + 2);
-    // f0 and f1 were asked for last: f2 to f4 come first, then round again.
-    for (want, got, not_yet) in [
-        (2, ["file:f2", "file:f3"], "file:f4"),
-        (2, ["file:f4", "file:f0"], "file:f1"),
-    ] {
+    // The refetch missed f0 and f1: they wait a day while f2 to f4 come.
+    let rounds: [(usize, &[&str], &[&str]); 3] = [
+        (
+            2,
+            &["file:f2", "file:f3"],
+            &["file:f0", "file:f1", "file:f4"],
+        ),
+        (1, &["file:f4"], &["file:f0", "file:f1"]),
+        (0, &[], &["file:f0", "file:f1"]),
+    ];
+    for (want, got, not_yet) in rounds {
         let report = b.sync_with(&server, &options).unwrap();
         assert_eq!(report.files_down, want, "{report:?}");
         for id in got {
             assert_eq!(bytes(&b.store, id), bytes(&a.store, id), "{id}");
         }
-        assert_eq!(bytes(&b.store, not_yet), None, "{not_yet}");
+        for id in not_yet {
+            assert_eq!(bytes(&b.store, id), None, "{id}");
+        }
     }
-    assert_eq!(b.sync_with(&server, &options).unwrap().files_down, 1);
+    a_day_later(&b.store);
+    assert_eq!(b.sync_with(&server, &options).unwrap().files_down, 2);
+    assert_eq!(b.store.meta(meta_keys::REFETCH_MISSED).unwrap(), None);
     for i in 0..5 {
         let id = format!("file:f{i}");
         assert_eq!(bytes(&b.store, &id), bytes(&a.store, &id), "{id}");
     }
+}
+
+/// Review-verify 4: a file missed by a refetch (gone from the server, or
+/// not matching its document) is asked for at most once a day, not by
+/// every sync.
+#[test]
+fn a_file_a_refetch_missed_is_asked_for_once_a_day() {
+    let server = MemoryServer::new();
+    let a = Mac::new(sign_up(&server, "alice", 1));
+    let b = Mac::new(sign_in(&server, "alice", 2));
+    file(&a.store, "file:f1", b"\x89PNG bytes");
+    a.sync(&server);
+    let lose = losing_bytes(&server);
+    assert_eq!(b.sync(&lose).files_missing, 1, "the pull's own try");
+    let gets = server.stats().count(Route::GetFile);
+    assert_eq!(b.sync(&lose).files_missing, 1, "the refetch's");
+    assert_eq!(server.stats().count(Route::GetFile), gets + 1);
+    for _ in 0..3 {
+        let report = b.sync(&server);
+        assert_eq!((report.files_down, report.files_missing), (0, 0));
+    }
+    assert_eq!(server.stats().count(Route::GetFile), gets + 1, "it waits");
+    assert_eq!(bytes(&b.store, "file:f1"), None);
+    a_day_later(&b.store);
+    assert_eq!(b.sync(&server).files_down, 1);
+    assert_eq!(
+        bytes(&b.store, "file:f1").as_deref(),
+        Some(&b"\x89PNG bytes"[..])
+    );
+    assert_eq!(b.store.meta(meta_keys::REFETCH_MISSED).unwrap(), None);
+}
+
+/// Review-verify 4: a refetch whose request fails (offline, a 5xx, an
+/// answer over the cap) never stops the sync or its push. The file counts
+/// as missing and waits a day, and the rest of the refetch waits for the
+/// next sync. A 429 `session-account` still backs off, as on every route.
+#[test]
+fn a_failed_refetch_never_stops_the_sync_or_its_push() {
+    let errors: [fn() -> kanso_sync::ApiError; 3] = [
+        || kanso_sync::ApiError::Transport("connection reset".into()),
+        || kanso_sync::ApiError::Internal,
+        || kanso_sync::ApiError::Protocol("over the cap".into()),
+    ];
+    for error in errors {
+        let server = MemoryServer::new();
+        let a = Mac::new(sign_up(&server, "alice", 1));
+        let b = Mac::new(sign_in(&server, "alice", 2));
+        for i in 0..3 {
+            file(
+                &a.store,
+                &format!("file:f{i}"),
+                format!("bytes {i}").as_bytes(),
+            );
+        }
+        a.sync(&server);
+        assert_eq!(b.sync(&losing_bytes(&server)).files_missing, 3);
+        note(
+            &b.store,
+            "note:x",
+            "trash",
+            "typed while files were missing",
+            100,
+        );
+        let mut gets = 0;
+        let failing = Tap::new(&server, |event| {
+            if let Event::File(_) = event {
+                gets += 1;
+                return Err(error());
+            }
+            Ok(())
+        });
+        let report = b.sync(&failing);
+        drop(failing);
+        let case = format!("{}", error());
+        assert_eq!(gets, 1, "{case}: the rest waits for the next sync");
+        assert_eq!(report.files_missing, 1, "{case}");
+        assert_eq!(report.pushed, 1, "{case}: the push went");
+        assert!(
+            server_docs(&server, &a.session).contains_key("note:x"),
+            "{case}"
+        );
+        // The failed file waits a day; the others come at the next sync.
+        let report = b.sync(&server);
+        assert_eq!(report.files_down, 2, "{case}: {report:?}");
+        assert_eq!(bytes(&b.store, "file:f0"), None, "{case}");
+        a_day_later(&b.store);
+        assert_eq!(b.sync(&server).files_down, 1, "{case}");
+    }
+
+    let server = MemoryServer::new();
+    let a = Mac::new(sign_up(&server, "alice", 1));
+    let b = Mac::new(sign_in(&server, "alice", 2));
+    file(&a.store, "file:f0", b"bytes");
+    a.sync(&server);
+    b.sync(&losing_bytes(&server));
+    let busy = Tap::new(&server, |event| {
+        if let Event::File(_) = event {
+            return Err(kanso_sync::ApiError::RateLimited {
+                retry_after: 30,
+                limit: "session-account".into(),
+            });
+        }
+        Ok(())
+    });
+    assert!(matches!(
+        b.try_sync(&busy),
+        Err(kanso_sync::SyncError::BackOff { .. })
+    ));
+    drop(busy);
+    assert_eq!(b.sync(&server).files_down, 1, "it didn't wait a day");
 }
 
 #[derive(Clone, Debug)]
@@ -1191,7 +1312,8 @@ proptest! {
     /// Invariant (e): whatever bytes the server loses or garbles, B only
     /// ever holds bytes A wrote for that file and never asks for more than
     /// every file plus `refetch_files` in one sync. Once the server answers
-    /// honestly B catches up within a bounded number of ordinary syncs, and
+    /// honestly and a day has gone by (a file a refetch missed waits that
+    /// long), B catches up within a bounded number of ordinary syncs, and
     /// then stops asking.
     #[test]
     fn prop_missing_bytes_come_back((files, rounds) in gen_bytes_rounds()) {
@@ -1237,6 +1359,7 @@ proptest! {
                 }
             }
         }
+        a_day_later(&b.store);
         for _ in 0..files / 2 + 2 {
             b.sync_with(&server, &options).unwrap();
         }

@@ -33,6 +33,9 @@ pub mod meta_keys {
     /// The file ID where the last sync's search for missing attachment bytes
     /// stopped; the next one goes on after it.
     pub const REFETCH_AFTER: &str = "sync.v2.refetch_after";
+    /// The files whose bytes a refetch missed, as a JSON object of file ID
+    /// to the time (ms) it may ask again: a day later (review-verify 4).
+    pub const REFETCH_MISSED: &str = "sync.v2.refetch_missed";
     /// A remembered 413 on a push: `<kind> <used> <limit> <at_ms> <level>`
     /// (docs/ACCOUNTS.md › Sync with encryption › Quota).
     pub const QUOTA_DOCS: &str = "sync.v2.quota.docs";
@@ -52,8 +55,14 @@ pub mod meta_keys {
 
     /// The sync state that belongs to one account and goes when the library
     /// is bound to another or unbound (the cursor aside).
-    pub const PER_ACCOUNT: &[&str] =
-        &[EPOCH, REFETCH_AFTER, QUOTA_DOCS, QUOTA_FILES, UPLOADS_UNTIL];
+    pub const PER_ACCOUNT: &[&str] = &[
+        EPOCH,
+        REFETCH_AFTER,
+        REFETCH_MISSED,
+        QUOTA_DOCS,
+        QUOTA_FILES,
+        UPLOADS_UNTIL,
+    ];
 }
 
 /// The guard every sync write of `session` carries: the library must still

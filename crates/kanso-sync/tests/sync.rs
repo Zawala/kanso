@@ -285,8 +285,13 @@ fn a_missing_attachment_is_reported_and_fetched_by_a_later_sync() {
     let report = b.sync(&server);
     assert_eq!((report.files_missing, report.files_down), (1, 0));
 
-    // Nothing new in the feed, but the next ordinary sync asks again.
+    // Nothing new in the feed: the refetch missed it, so it waits a day
+    // (review-verify 4), then an ordinary sync asks again.
     view.put_file("file:late", &bytes).unwrap();
+    let report = b.sync(&server);
+    assert_eq!((report.files_missing, report.files_down), (0, 0));
+    assert_eq!(server.stats().count(Route::GetFile), 2, "it waits");
+    a_day_later(&b.store);
     let report = b.sync(&server);
     assert_eq!((report.files_missing, report.files_down), (0, 1));
     assert!(!report.remerged);

@@ -6,7 +6,7 @@
 //! [`SyncReport`], [`SyncOptions`], [`SyncError`], [`SyncProblem`],
 //! [`problem`] and [`report_problem`] are frozen by step 1.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -242,6 +242,45 @@ fn guarded(err: StoreError) -> SyncError {
     match err {
         StoreError::GuardFailed => SyncError::Cancelled,
         err => SyncError::Store(err),
+    }
+}
+
+/// How long a file whose bytes a refetch missed waits before it is asked
+/// for again (review-verify 4): bytes gone for good, or not matching the
+/// document, would otherwise be fetched by every sync.
+const REFETCH_EVERY_MS: i64 = 24 * 60 * 60 * 1000;
+
+/// Most files [`meta_keys::REFETCH_MISSED`] remembers. Past it, those due
+/// soonest are forgotten, and may be asked for again before their day.
+const REFETCH_MISSED_MAX: usize = 512;
+
+/// The furthest ahead a saved wait may be. One further ahead was saved
+/// while the clock ran ahead, and is dropped.
+const MISSED_AHEAD_MAX_MS: i64 = REFETCH_EVERY_MS + 60 * 60 * 1000;
+
+/// The files still waiting after a missed refetch, from the
+/// [`meta_keys::REFETCH_MISSED`] value: each with the time (ms) it may be
+/// asked for again, all after `now` and at most [`MISSED_AHEAD_MAX_MS`]
+/// ahead. A damaged value counts as none.
+fn missed_files(value: Option<&str>, now: i64) -> BTreeMap<String, i64> {
+    let mut missed: BTreeMap<String, i64> = value
+        .and_then(|value| serde_json::from_str(value).ok())
+        .unwrap_or_default();
+    missed.retain(|_, at| *at > now && *at <= now.saturating_add(MISSED_AHEAD_MAX_MS));
+    missed
+}
+
+/// Keeps at most [`REFETCH_MISSED_MAX`] waiting files: those due latest.
+fn bound_missed(missed: &mut BTreeMap<String, i64>) {
+    while missed.len() > REFETCH_MISSED_MAX {
+        let soonest = missed
+            .iter()
+            .min_by_key(|(id, at)| (**at, id.as_str()))
+            .map(|(id, _)| id.clone());
+        match soonest {
+            Some(id) => missed.remove(&id),
+            None => break,
+        };
     }
 }
 
@@ -701,18 +740,29 @@ impl Run<'_> {
     /// Bytes are kept only when they open, match the document's `md5digest`
     /// and the document still has the revision they were fetched for
     /// (`Store::fill_blob`, guarded).
+    ///
+    /// It never stops the sync, nor the push after it (review-verify 4): a
+    /// file the server doesn't have, whose bytes don't match, or whose
+    /// request fails counts in `files_missing` and waits a day
+    /// ([`meta_keys::REFETCH_MISSED`]); a failed request also ends this
+    /// sync's refetching. Only a 429 `session-account` stops the sync, as
+    /// on every route ([`SyncError::BackOff`]).
     fn refetch(&mut self) -> Result<(), SyncError> {
         let limit = self.options.refetch_files;
         if limit == 0 {
             return Ok(());
         }
+        let now = now_ms();
+        let saved = self.store.meta(meta_keys::REFETCH_MISSED)?;
+        let mut missed = missed_files(saved.as_deref(), now);
         let after = self
             .store
             .meta(meta_keys::REFETCH_AFTER)?
             .unwrap_or_default();
-        // Enough rows that skipping the ones this sync fetched still leaves
-        // `limit`, from where the last sync stopped, then from the start.
-        let window = limit + self.fetched.len();
+        // Enough rows that skipping the ones this sync fetched, and the
+        // ones waiting, still leaves `limit`, from where the last sync
+        // stopped, then from the start.
+        let window = limit + self.fetched.len() + missed.len();
         let mut todo = self.store.files_without_bytes(&after, window)?;
         if todo.len() < window && !after.is_empty() {
             todo.extend(
@@ -722,14 +772,18 @@ impl Run<'_> {
                     .filter(|(id, ..)| *id <= after),
             );
         }
-        todo.retain(|(id, ..)| !self.fetched.contains(id));
+        todo.retain(|(id, ..)| !self.fetched.contains(id) && !missed.contains_key(id));
         todo.truncate(limit);
         let mut last = None;
+        // A 429 `session-account`: the sync stops, once this is saved.
+        let mut slow_down = None;
         for (id, rev, md5) in todo {
             self.check_cancel()?;
             self.fetched.insert(id.clone());
-            match self.sealed.get_file(&id)? {
-                FileBytes::Opened(bytes) if md5_hex(&bytes) == md5 => {
+            last = Some(id.clone());
+            let mut failed = false;
+            let found = match self.sealed.get_file(&id) {
+                Ok(FileBytes::Opened(bytes)) if md5_hex(&bytes) == md5 => {
                     if self
                         .store
                         .fill_blob(&id, &rev, Attachment::new(bytes), Some(&self.guard))
@@ -737,17 +791,44 @@ impl Run<'_> {
                     {
                         self.report.files_down += 1;
                     }
+                    true
                 }
-                FileBytes::Opened(_) | FileBytes::Missing | FileBytes::Unreadable => {
-                    self.report.files_missing += 1;
+                Ok(FileBytes::Opened(_) | FileBytes::Missing | FileBytes::Unreadable) => false,
+                Err(ApiError::RateLimited { retry_after, limit }) if limit == SESSION_LIMIT => {
+                    slow_down = Some(back_off(retry_after));
+                    break;
                 }
+                Err(_) => {
+                    // Offline, or the server failed: the rest would most
+                    // likely fail too, and each can take minutes.
+                    failed = true;
+                    false
+                }
+            };
+            if !found {
+                self.report.files_missing += 1;
+                missed.insert(id, now.saturating_add(REFETCH_EVERY_MS));
             }
-            last = Some(id);
+            if failed {
+                break;
+            }
         }
+        bound_missed(&mut missed);
         if let Some(last) = last {
             self.set_meta(meta_keys::REFETCH_AFTER, &last)?;
         }
-        Ok(())
+        let value = (!missed.is_empty())
+            .then(|| serde_json::to_string(&missed).expect("a map of strings to numbers"));
+        if value != saved {
+            match &value {
+                Some(value) => self.set_meta(meta_keys::REFETCH_MISSED, value)?,
+                None => self
+                    .store
+                    .remove_meta_if(meta_keys::REFETCH_MISSED, &self.guard)
+                    .map_err(guarded)?,
+            }
+        }
+        slow_down.map_or(Ok(()), Err)
     }
 
     /// A feed document that didn't open (M3, security re-check 10).
@@ -1550,6 +1631,64 @@ mod problem_tests {
             prop_assert_eq!(report_problem(&report), model.first().cloned());
             if let Some(SyncProblem::QuotaExceeded(kind)) = report_problem(&report) {
                 prop_assert_ne!(kind, QuotaKind::Server);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod refetch_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    const NOW: i64 = 1_800_000_000_000;
+
+    /// Due waits, waits too far ahead and a damaged value are dropped.
+    #[test]
+    fn saved_waits_are_checked_on_load() {
+        let saved = serde_json::json!({
+            "file:due": NOW,
+            "file:waiting": NOW + 1,
+            "file:tomorrow": NOW + REFETCH_EVERY_MS,
+            "file:far": NOW + MISSED_AHEAD_MAX_MS + 1,
+        })
+        .to_string();
+        let missed = missed_files(Some(&saved), NOW);
+        assert_eq!(
+            missed.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["file:tomorrow", "file:waiting"]
+        );
+        assert!(missed_files(Some("not json"), NOW).is_empty());
+        assert!(missed_files(None, NOW).is_empty());
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(256))]
+
+        /// Invariant: whatever was saved, the files still waiting are due
+        /// after now and at most a day and an hour ahead, there are at
+        /// most `REFETCH_MISSED_MAX` of them, and bounding keeps those due
+        /// latest.
+        #[test]
+        fn prop_waits_stay_bounded(
+            saved in prop::collection::btree_map("file:[a-z0-9]{1,6}", -2 * REFETCH_EVERY_MS..3 * REFETCH_EVERY_MS, 0..700),
+        ) {
+            let value = serde_json::to_string(
+                &saved.iter().map(|(id, at)| (id.clone(), NOW + at)).collect::<BTreeMap<_, _>>(),
+            )
+            .unwrap();
+            let mut missed = missed_files(Some(&value), NOW);
+            let loaded = missed.clone();
+            bound_missed(&mut missed);
+            prop_assert!(missed.len() <= REFETCH_MISSED_MAX);
+            prop_assert_eq!(missed.len(), loaded.len().min(REFETCH_MISSED_MAX));
+            for at in missed.values() {
+                prop_assert!(*at > NOW && *at <= NOW + MISSED_AHEAD_MAX_MS);
+            }
+            let dropped = loaded.iter().filter(|(id, _)| !missed.contains_key(*id));
+            let kept_soonest = missed.values().min().copied().unwrap_or(i64::MAX);
+            for (_, at) in dropped {
+                prop_assert!(*at <= kept_soonest);
             }
         }
     }
