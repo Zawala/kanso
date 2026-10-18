@@ -289,11 +289,13 @@ fn offer_first_import(window: &mut Window, cx: &mut App) {
 }
 
 /// Cleans up on any quit, including ones without the Quit action (the
-/// Dock, logging out). Open notes save themselves.
+/// Dock, logging out): a recovery key copied in the last minute leaves the
+/// clipboard. Open notes save themselves.
 fn watch_for_quit(cx: &mut App) {
     cx.on_app_quit(|cx| {
         services::stop_server(cx);
         AppState::save_pending_config(cx);
+        clipboard::clear_secret_on_quit();
         async {}
     })
     .detach();

@@ -1677,7 +1677,9 @@ account] [Sign in].
   It calls `prepareForNewContentsWithOptions(NSPasteboardContentsCurrentHostOnly)` so Universal
   Clipboard doesn't send the key to other devices. It adds the `org.nspasteboard.ConcealedType` and
   `org.nspasteboard.TransientType` markers, and clears the pasteboard after 60 s if its change count
-  is still ours. It notifies "Copied. It leaves the clipboard in a minute."
+  is still ours. Quitting sooner clears it too, on the same condition
+  (`clipboard::clear_secret_on_quit`, from `on_app_quit`). It notifies "Copied. It leaves the
+  clipboard in a minute."
 - **[Save as file…]** opens a save panel suggesting `Kanso recovery key.txt` and writes a 0600 file
   holding the key, username, server, date and warning. It never overwrites silently. If the chosen
   folder syncs to iCloud (`NSURLIsUbiquitousItemKey`, or a path under `~/Library/Mobile

@@ -1,9 +1,11 @@
 //! Copying a secret (the recovery key) so it stays on this Mac and doesn't
-//! stay long (docs/ACCOUNTS.md › Recovery key screen), and asking macOS
+//! stay long, nor outlast the app (docs/ACCOUNTS.md › Recovery key screen,
+//! A12), and asking macOS
 //! whether a folder syncs to iCloud. A few calls into AppKit and Foundation
 //! through the Objective-C runtime; GPUI links both frameworks already.
 
 use std::path::Path;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use gpui_kit::*;
@@ -11,10 +13,47 @@ use gpui_kit::*;
 /// How long a copied secret stays on the clipboard.
 pub const SECRET_LIFETIME: Duration = Duration::from_secs(60);
 
+/// The clipboard's change count after the last secret copied, until it is
+/// cleared or something else replaces it.
+static LAST_SECRET: Mutex<Option<isize>> = Mutex::new(None);
+
 /// Whether the clipboard still holds what was copied: nothing was copied
 /// over it since (its change count is still the one after copying).
 pub fn still_ours(copied: isize, now: isize) -> bool {
     copied == now
+}
+
+/// Whether to clear the clipboard now. `timer` is the copy whose minute is
+/// up, or `None` at quit for whichever secret was copied last; `now` is the
+/// clipboard's change count. Only the last secret is ever cleared, and only
+/// while the clipboard still holds it; once its time comes it is forgotten,
+/// cleared or not.
+fn should_clear(last: &mut Option<isize>, timer: Option<isize>, now: Option<isize>) -> bool {
+    let Some(copied) = *last else {
+        return false;
+    };
+    if timer.is_some_and(|timer| timer != copied) {
+        return false;
+    }
+    *last = None;
+    now.is_some_and(|now| still_ours(copied, now))
+}
+
+/// Clears `timer`'s copy, or at quit (`None`) the last secret copied, if
+/// the clipboard still holds it. On the main thread: AppKit's pasteboard.
+fn clear_secret(timer: Option<isize>) {
+    let mut last = LAST_SECRET
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    if last.is_some() && should_clear(&mut last, timer, mac::change_count()) {
+        mac::clear();
+    }
+}
+
+/// At quit: a recovery key copied less than a minute ago doesn't stay on
+/// the clipboard after Kanso is gone.
+pub fn clear_secret_on_quit() {
+    clear_secret(None);
 }
 
 /// Copies `secret` to the clipboard for this Mac only (Universal Clipboard
@@ -26,14 +65,13 @@ pub fn copy_secret(secret: &str, cx: &mut App) -> bool {
     let Some(copied) = mac::copy_secret(secret) else {
         return false;
     };
+    *LAST_SECRET
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner()) = Some(copied);
     cx.spawn(async move |cx| {
         cx.background_executor().timer(SECRET_LIFETIME).await;
         // AppKit's pasteboard, from the main thread.
-        cx.update(|_| {
-            if mac::change_count().is_some_and(|now| still_ours(copied, now)) {
-                mac::clear();
-            }
-        });
+        cx.update(|_| clear_secret(Some(copied)));
     })
     .detach();
     true
@@ -220,13 +258,43 @@ mod mac {
 
 #[cfg(test)]
 mod tests {
-    use super::still_ours;
+    use super::{should_clear, still_ours};
     use proptest::prelude::*;
 
     #[test]
     fn examples() {
         assert!(still_ours(7, 7));
         assert!(!still_ours(7, 8));
+    }
+
+    /// A12: the key copied a moment before quitting is cleared at quit, once;
+    /// one replaced since, or already cleared by its minute, is left alone.
+    #[test]
+    fn quitting_clears_the_last_secret_copied() {
+        let mut last = Some(7);
+        assert!(
+            should_clear(&mut last, None, Some(7)),
+            "still on the clipboard"
+        );
+        assert_eq!(last, None);
+        assert!(!should_clear(&mut last, None, Some(7)), "only once");
+
+        let mut last = Some(7);
+        assert!(!should_clear(&mut last, None, Some(8)), "copied over since");
+        assert_eq!(last, None);
+
+        // A second key copied: the first one's minute leaves it alone.
+        let mut last = Some(9);
+        assert!(!should_clear(&mut last, Some(7), Some(9)));
+        assert_eq!(last, Some(9), "still cleared at quit");
+        assert!(should_clear(&mut last, Some(9), Some(9)), "its own minute");
+        assert!(
+            !should_clear(&mut last, None, Some(9)),
+            "then nothing at quit"
+        );
+
+        let mut last = Some(7);
+        assert!(!should_clear(&mut last, None, None), "no clipboard to read");
     }
 
     proptest! {
@@ -237,6 +305,23 @@ mod tests {
         fn prop_only_our_copy_is_cleared(copied in any::<isize>(), later in 0isize..3) {
             let now = copied.wrapping_add(later);
             prop_assert_eq!(still_ours(copied, now), later == 0);
+        }
+
+        /// Only the last secret is cleared, only while the clipboard holds
+        /// it, and at most once: its own timer or the quit forgets it, an
+        /// older copy's timer leaves it.
+        #[test]
+        fn prop_the_last_secret_is_cleared_at_most_once(
+            last in proptest::option::of(0isize..4),
+            timer in proptest::option::of(0isize..4),
+            now in proptest::option::of(0isize..4),
+        ) {
+            let mut slot = last;
+            let cleared = should_clear(&mut slot, timer, now);
+            let due = last.is_some() && (timer.is_none() || timer == last);
+            prop_assert_eq!(cleared, due && now == last);
+            prop_assert_eq!(slot, if due { None } else { last });
+            prop_assert!(!should_clear(&mut slot, timer, now), "at most once");
         }
     }
 }
