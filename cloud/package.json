@@ -3,18 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Kanso's sync server: a Cloudflare Worker over D1 (documents, change sequence) and R2 (attachment bytes).",
+  "description": "Kanso's sync server, protocol v2: accounts with end-to-end encrypted libraries, on a Cloudflare Worker over D1 (accounts, sessions, sealed documents) and R2 (sealed file bytes).",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "migrate:local": "wrangler d1 migrations apply kanso-sync --local",
     "migrate:remote": "wrangler d1 migrations apply kanso-sync --remote",
+    "admin": "node scripts/admin.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.4.4",
     "@cloudflare/workers-types": "5.20261016.1",
+    "@types/node": "26.6.4",
     "fast-check": "4.10.2",
     "typescript": "5.9.3",
     "vitest": "5.0.5",

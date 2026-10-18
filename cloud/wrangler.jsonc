@@ -4,7 +4,13 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
-  "observability": { "enabled": true },
+  // Metrics stay on; invocation logs (which would record every request) are off. The Worker
+  // itself logs only route names and error codes.
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
+  // Purges, expired rate-limit rows and sessions, and R2 reconciliation (src/purge.ts).
+  "triggers": { "crons": ["*/15 * * * *"] },
+  // The write-free front filter for /v2/auth/* and /v2/health, keyed by IP group.
+  "ratelimits": [{ "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }],
   "d1_databases": [
     {
       "binding": "DB",
@@ -19,5 +25,6 @@
       "bucket_name": "kanso-files"
     }
   ]
-  // SYNC_TOKEN is a secret: `wrangler secret put SYNC_TOKEN` (reads stdin).
+  // AUTH_PEPPER (required) is a secret: `wrangler secret put AUTH_PEPPER` (reads stdin; see README.md).
+  // SYNC_TOKEN is no longer read; `admin purge-legacy` deletes it.
 }

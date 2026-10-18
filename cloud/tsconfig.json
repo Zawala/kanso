@@ -8,6 +8,8 @@
 		"strict": true,
 		"noEmit": true,
 		"isolatedModules": true,
+		// src/accounts.ts and src/usernames.ts also run on Node, which needs the .ts extension.
+		"allowImportingTsExtensions": true,
 		"resolveJsonModule": true,
 		"skipLibCheck": true
 	},
