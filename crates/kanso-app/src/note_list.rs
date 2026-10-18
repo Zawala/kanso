@@ -118,6 +118,12 @@ pub struct NoteList {
     /// The note under the pointer. Hover is kept as state rather than a
     /// style so a snapshot can show it.
     pub(crate) hovered: Option<String>,
+    /// The note whose row has a press inside it held down. GPUI calls a row
+    /// unhovered while a press inside it is held and the pointer moves, so
+    /// without this its actions went away under a slightly wobbly click and
+    /// the release selected the note instead of pinning or trashing it.
+    /// The release settles the hover.
+    pressed: Option<String>,
     /// Room kept at the left of the top band, for the window's traffic
     /// lights when the sidebar is hidden.
     leading_inset: Pixels,
@@ -173,6 +179,7 @@ impl NoteList {
             layout: ListLayout::default(),
             scroll_to: None,
             hovered: None,
+            pressed: None,
             leading_inset: px(0.),
             _subscriptions: subscriptions,
         }
@@ -235,10 +242,15 @@ impl NoteList {
         };
         // A note that left the list (trashed from its hover button, say)
         // leaves nothing hovered; the row now under the pointer picks it up.
-        if let Some(id) = &self.hovered
-            && !library.notes.iter().any(|n| &n.id == id)
-        {
+        let listed = |id: &Option<String>| {
+            id.as_ref()
+                .is_none_or(|id| library.notes.iter().any(|n| &n.id == id))
+        };
+        if !listed(&self.hovered) {
             self.hovered = None;
+        }
+        if !listed(&self.pressed) {
+            self.pressed = None;
         }
     }
 
@@ -379,6 +391,8 @@ impl NoteList {
         };
         let excerpt_matches = match_ranges(&note.snippet, &context.body_terms);
         let hover_id = note.id.clone();
+        let press_id = note.id.clone();
+        let release_id = note.id.clone();
 
         let glyph = status_glyph(note.status, colors);
         let trailing = if hovered {
@@ -464,7 +478,13 @@ impl NoteList {
             .cursor_pointer()
             .on_hover(cx.listener(move |this, hovering: &bool, _, cx| {
                 if *hovering {
+                    // Hovering any row also ends a press whose release never
+                    // arrived, say when the window lost focus mid-press.
+                    this.pressed = None;
                     this.hovered = Some(hover_id.clone());
+                } else if this.pressed.as_deref() == Some(hover_id.as_str()) {
+                    // Only the press hides the pointer; its release decides.
+                    return;
                 } else if this.hovered.as_deref() == Some(hover_id.as_str()) {
                     this.hovered = None;
                 } else {
@@ -472,6 +492,30 @@ impl NoteList {
                 }
                 cx.notify();
             }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _: &MouseDownEvent, _, _| {
+                    this.pressed = Some(press_id.clone());
+                }),
+            )
+            // Both on the way in, before a hover button's click stops the
+            // release going further: inside, the row stays hovered; outside,
+            // the pointer has left it.
+            .capture_any_mouse_up(cx.listener(|this, _: &MouseUpEvent, _, _| {
+                this.pressed = None;
+            }))
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(move |this, _: &MouseUpEvent, _, cx| {
+                    if this.pressed.as_deref() == Some(release_id.as_str()) {
+                        this.pressed = None;
+                        if this.hovered.as_deref() == Some(release_id.as_str()) {
+                            this.hovered = None;
+                        }
+                        cx.notify();
+                    }
+                }),
+            )
             .on_click(move |_, window, cx| {
                 window.focus(&focus, cx);
                 library.update(cx, |library, cx| library.select(Some(id.clone()), cx));
@@ -522,6 +566,7 @@ impl NoteList {
                 .xsmall()
                 .icon(icon.size(px(13.)))
                 .tooltip(tooltip)
+                .debug_selector(|| name.into())
                 .on_click(cx.listener(move |_, _, _, cx| {
                     cx.stop_propagation();
                     cx.emit(event(id.clone()));
@@ -1681,6 +1726,87 @@ mod tests {
                 .unwrap();
             f.draw(cx);
             assert_eq!(cx.read(|cx| list.read(cx).hovered.clone()), None);
+        }
+
+        /// A click on a row's hover button counts though the pointer moves a
+        /// pixel while it is held. GPUI calls the row unhovered then; that
+        /// used to take the buttons away, and the release selected the note
+        /// instead. A press that ends outside the row leaves it unhovered.
+        #[gpui_kit::test]
+        fn a_wobbly_click_on_a_row_button_still_counts(cx: &mut TestAppContext) {
+            use gpui_kit::{Modifiers, MouseButton, VisualTestContext, point, px};
+            use kanso_core::model::TRASH_BOOK_ID;
+
+            let f = setup(cx);
+            f.window
+                .update(cx, |_, window, _| window.activate_window())
+                .unwrap();
+            let library = f.library(cx);
+            let list = cx.read(|cx| f.workspace.read(cx).note_list.clone());
+            let first_note =
+                |cx: &mut TestAppContext| cx.read(|cx| library.read(cx).notes[0].id.clone());
+            let state = |cx: &mut TestAppContext| {
+                cx.read(|cx| {
+                    let list = list.read(cx);
+                    (list.hovered.clone(), list.pressed.clone())
+                })
+            };
+            let book = |cx: &mut TestAppContext, id: &str| {
+                cx.run_until_parked();
+                f.store.note(id).unwrap().unwrap().book_id
+            };
+            // Shows the first row's buttons to find its trash button, then
+            // puts the pointer on it, as moving there would.
+            let point_at_trash = |cx: &mut TestAppContext, id: &str| {
+                list.update(cx, |list, cx| {
+                    list.hovered = Some(id.to_owned());
+                    cx.notify();
+                });
+                f.draw(cx);
+                let mut vcx = VisualTestContext::from_window(f.window, cx);
+                let trash = vcx
+                    .debug_bounds("row-trash")
+                    .expect("the hovered row's buttons are drawn")
+                    .center();
+                vcx.simulate_mouse_move(trash, None, Modifiers::none());
+                f.draw(cx);
+                trash
+            };
+
+            let first = first_note(cx);
+            // Another note open, so a click that reached the row would show.
+            let other = cx.read(|cx| library.read(cx).notes[1].id.clone());
+            library.update(cx, |library, cx| library.select(Some(other.clone()), cx));
+            let trash = point_at_trash(cx, &first);
+            let mut vcx = VisualTestContext::from_window(f.window, cx);
+            vcx.simulate_mouse_down(trash, MouseButton::Left, Modifiers::none());
+            let wobble = point(trash.x + px(1.), trash.y);
+            vcx.simulate_mouse_move(wobble, MouseButton::Left, Modifiers::none());
+            // A frame between the move and the release, as on screen.
+            f.draw(cx);
+            vcx.simulate_mouse_up(wobble, MouseButton::Left, Modifiers::none());
+            assert_eq!(book(cx, &first), TRASH_BOOK_ID, "trashed, not selected");
+            assert_eq!(cx.read(|cx| library.read(cx).selected.clone()), Some(other));
+
+            // Pressed, dragged off the row and let go: nothing happens, and
+            // the row the pointer left isn't hovered any more.
+            f.draw(cx);
+            let next = first_note(cx);
+            let trash = point_at_trash(cx, &next);
+            vcx.simulate_mouse_down(trash, MouseButton::Left, Modifiers::none());
+            assert_eq!(state(cx), (Some(next.clone()), Some(next.clone())));
+            let away = point(trash.x + px(400.), trash.y);
+            vcx.simulate_mouse_move(away, MouseButton::Left, Modifiers::none());
+            f.draw(cx);
+            assert_eq!(
+                state(cx),
+                (Some(next.clone()), Some(next.clone())),
+                "held: the press keeps the row's buttons"
+            );
+            vcx.simulate_mouse_up(away, MouseButton::Left, Modifiers::none());
+            f.draw(cx);
+            assert_ne!(book(cx, &next), TRASH_BOOK_ID);
+            assert_eq!(state(cx), (None, None));
         }
 
         #[gpui_kit::test]

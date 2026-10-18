@@ -26,6 +26,7 @@ use kanso_core::{DocType, Note, NoteStatus, now_ms};
 use kanso_store::{Change, Origin, Put, Store, StoreError};
 
 use crate::clock::Clock;
+use crate::commands::Picker;
 use crate::config::{Appearance, EditorFont, ViewMode};
 use crate::editor_footer::EditorFooter;
 use crate::empty_state::EmptyNotebook;
@@ -58,6 +59,10 @@ pub enum EditorEvent {
     Notice(String),
     /// The history button: the workspace opens the note's history.
     ShowHistory,
+    /// The notebook path or "Add tag": the workspace opens the palette's
+    /// list of notebooks or tags, which filters as you type and makes new
+    /// tags.
+    Pick(Picker),
 }
 
 /// What happened elsewhere to the open note while it had unsaved edits.
@@ -631,12 +636,6 @@ impl NoteEditor {
                 names
             }
         };
-        let books: Vec<(String, String, usize)> = library
-            .book_tree()
-            .into_iter()
-            .map(|(depth, b)| (b.id.clone(), b.name.clone(), depth))
-            .collect();
-        let current_book = note.book_id.clone();
         let title = self.title.read(cx).value();
         let title: SharedString = if title.trim().is_empty() {
             "Untitled".into()
@@ -691,24 +690,10 @@ impl NoteEditor {
                     .children(segments),
             )
             .tooltip("Move to notebook")
-            .dropdown_menu({
-                let view = view.clone();
-                move |mut menu, _, _| {
-                    for (id, name, depth) in &books {
-                        let view = view.clone();
-                        let book_id = id.clone();
-                        let label = format!("{}{name}", "   ".repeat(*depth));
-                        menu = menu.item(
-                            PopupMenuItem::new(label)
-                                .checked(*id == current_book)
-                                .on_click(move |_, _, cx| {
-                                    view.update(cx, |this, cx| this.set_book(book_id.clone(), cx));
-                                }),
-                        );
-                    }
-                    menu
-                }
-            });
+            .debug_selector(|| "breadcrumb".into())
+            // The palette's list rather than a menu: a library can have more
+            // notebooks than a menu shows, and typing finds one.
+            .on_click(cx.listener(|_, _, _, cx| cx.emit(EditorEvent::Pick(Picker::Notebook))));
 
         let backlinks = (!self.backlinks.is_empty()).then(|| {
             let links = self.backlinks.clone();
@@ -730,7 +715,8 @@ impl NoteEditor {
                     format!("Linked from {count} notes")
                 })
                 .dropdown_menu(move |mut menu, _, _| {
-                    menu = menu.label("Linked from");
+                    // Room for about a dozen; more scroll.
+                    menu = menu.max_h(px(420.)).scrollable(true).label("Linked from");
                     for (id, title) in &links {
                         let library = library.clone();
                         let id = id.clone();
@@ -886,7 +872,6 @@ impl NoteEditor {
             .iter()
             .map(|t| (t.id.clone(), t.name.clone(), t.color.rgb()))
             .collect();
-        let note_tags = note.tags.clone();
         let status = note.status;
         let view = cx.entity();
         let colors = Colors::get(cx);
@@ -921,7 +906,8 @@ impl NoteEditor {
                 })
         });
 
-        let chips = note_tags
+        let chips = note
+            .tags
             .iter()
             .filter_map(|id| {
                 let (_, name, rgb) = tags.iter().find(|(tid, _, _)| tid == id)?;
@@ -974,23 +960,11 @@ impl NoteEditor {
                     .text_color(colors.text_muted)
                     .child("Add tag"),
             )
-            .dropdown_menu(move |mut menu, _, _| {
-                if tags.is_empty() {
-                    return menu.item(PopupMenuItem::new("No tags yet").disabled(true));
-                }
-                for (id, name, _) in &tags {
-                    let view = view.clone();
-                    let tag_id = id.clone();
-                    menu = menu.item(
-                        PopupMenuItem::new(name.clone())
-                            .checked(note_tags.contains(id))
-                            .on_click(move |_, _, cx| {
-                                view.update(cx, |this, cx| this.toggle_tag(tag_id.clone(), cx));
-                            }),
-                    );
-                }
-                menu
-            });
+            .debug_selector(|| "add-tag".into())
+            // The palette's list: it takes a tag off or puts one on, finds
+            // one as you type, and makes a new one from what was typed, even
+            // in a library with no tags yet.
+            .on_click(cx.listener(|_, _, _, cx| cx.emit(EditorEvent::Pick(Picker::Tag))));
 
         h_flex()
             .flex_none()

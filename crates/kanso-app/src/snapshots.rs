@@ -28,6 +28,7 @@ use crate::assets::KansoAssets;
 use crate::clock::Clock;
 use crate::commands::Picker;
 use crate::config::{AppConfig, EditorFont, ThemePreference, ViewMode};
+use crate::editor::EditorEvent;
 use crate::layout::{BOTTOM_BAND_HEIGHT, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, TOP_BAND_HEIGHT};
 use crate::library::{Filter, has_notes_inside};
 use crate::palette::{Mode, PANEL_HEIGHT, PANEL_WIDTH};
@@ -633,14 +634,59 @@ fn palette_query(
     });
 }
 
-/// Move to notebook, the second list a command opens.
+/// What a click on the editor header's notebook path or "Add tag" does:
+/// the palette's list opens, and `query` is typed into it.
+fn pick_from_header(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    picker: Picker,
+    query: &str,
+) {
+    cx.update_window(window, |_, _, cx| {
+        let editor = workspace.read(cx).editor.clone();
+        editor.update(cx, |_, cx| cx.emit(EditorEvent::Pick(picker)));
+    })
+    .unwrap();
+    // The workspace opens the palette once the event is delivered, after
+    // the update above.
+    if !query.is_empty() {
+        cx.update_window(window, |_, window, cx| {
+            let palette = workspace.read(cx).palette.clone();
+            palette.update(cx, |palette, cx| palette.set_query(query, window, cx));
+        })
+        .unwrap();
+    }
+}
+
+/// Move to notebook, from the header's notebook path.
 fn palette_move(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
     workspace: &Entity<Workspace>,
     _: &Store,
 ) {
-    open_palette(cx, window, workspace, Mode::Pick(Picker::Notebook), "");
+    pick_from_header(cx, window, workspace, Picker::Notebook, "");
+}
+
+/// The tag list, from the header's "Add tag": the note's tags checked.
+fn palette_tag(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    pick_from_header(cx, window, workspace, Picker::Tag, "");
+}
+
+/// A name no tag has, typed into the tag list: it offers to make it.
+fn palette_new_tag(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    pick_from_header(cx, window, workspace, Picker::Tag, "ru");
 }
 
 /// Open Note (⌘P): the most recently edited notes.
@@ -924,6 +970,8 @@ fn snapshots() {
         shot("dark-palette-query", Dark, Edit, palette_query),
         shot("light-palette-query", Light, Edit, palette_query),
         shot("dark-palette-move", Dark, Edit, palette_move),
+        shot("dark-palette-tag", Dark, Edit, palette_tag),
+        shot("light-palette-new-tag", Light, Edit, palette_new_tag),
         shot("dark-open-note", Dark, Split, note_picker),
         Shot {
             size: size(px(1100.), px(720.)),

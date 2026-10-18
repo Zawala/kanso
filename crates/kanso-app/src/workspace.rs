@@ -291,6 +291,11 @@ impl Workspace {
                     window.push_notification(Notification::error(message.clone()), cx);
                 }
                 EditorEvent::ShowHistory => this.show_history(window, cx),
+                EditorEvent::Pick(picker) => {
+                    let mode = Mode::Pick(*picker);
+                    this.palette
+                        .update(cx, |palette, cx| palette.open(mode, window, cx));
+                }
             }),
             cx.observe_window_appearance(window, |_, window, cx| {
                 if cx.global::<AppState>().config.appearance.theme == ThemePreference::System {

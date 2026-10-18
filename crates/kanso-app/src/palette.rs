@@ -180,6 +180,10 @@ pub struct Palette {
     input: Entity<InputState>,
     /// `None` while closed.
     mode: Option<Mode>,
+    /// Whether the second list was opened from the commands, so Escape goes
+    /// back to them. The editor's header opens one straight away; Escape
+    /// closes that.
+    from_commands: bool,
     /// What had the keyboard before the palette opened.
     restore_focus: Option<FocusHandle>,
     /// The note that was open when the palette opened.
@@ -238,6 +242,7 @@ impl Palette {
             list_focus,
             input,
             mode: None,
+            from_commands: false,
             restore_focus: None,
             note: None,
             items: Vec::new(),
@@ -272,7 +277,14 @@ impl Palette {
             self.restore_focus = window.focused(cx);
             self.note = self.open_note(cx);
         }
+        self.from_commands = false;
         self.show(mode, window, cx);
+    }
+
+    /// Whether Escape, or Backspace in the empty field, goes back to the
+    /// commands rather than closing.
+    fn leads_back(&self) -> bool {
+        matches!(self.mode, Some(Mode::Pick(_))) && self.from_commands
     }
 
     /// Switches to `mode` with an empty field.
@@ -753,18 +765,20 @@ impl Palette {
         }
     }
 
-    /// Escape leaves a second list for the commands, and otherwise closes.
+    /// Escape leaves a second list for the commands it came from, and
+    /// otherwise closes.
     fn dismiss(&mut self, _: &Dismiss, window: &mut Window, cx: &mut Context<Self>) {
-        match self.mode {
-            Some(Mode::Pick(_)) => self.show(Mode::Commands, window, cx),
-            _ => self.close(window, cx),
+        if self.leads_back() {
+            self.show(Mode::Commands, window, cx);
+        } else {
+            self.close(window, cx);
         }
     }
 
-    /// Backspace in an empty field leaves a second list; otherwise it
-    /// deletes as usual.
+    /// Backspace in an empty field leaves a second list for the commands it
+    /// came from; otherwise it deletes as usual.
     fn back(&mut self, _: &Back, window: &mut Window, cx: &mut Context<Self>) {
-        if matches!(self.mode, Some(Mode::Pick(_))) && self.input.read(cx).value().is_empty() {
+        if self.leads_back() && self.input.read(cx).value().is_empty() {
             self.show(Mode::Commands, window, cx);
         } else {
             cx.propagate();
@@ -778,7 +792,10 @@ impl Palette {
         };
         match item.target {
             Target::Command(command) => match command.run {
-                Run::Pick(picker) => self.show(Mode::Pick(picker), window, cx),
+                Run::Pick(picker) => {
+                    self.from_commands = true;
+                    self.show(Mode::Pick(picker), window, cx);
+                }
                 Run::Action(action) => {
                     self.close(window, cx);
                     // From the workspace, which is always drawn, the action
@@ -982,7 +999,8 @@ impl Palette {
                 match self.mode {
                     Some(Mode::Notes) => "No matching notes",
                     Some(Mode::Pick(Picker::Notebook)) => "No matching notebooks",
-                    Some(Mode::Pick(Picker::Tag)) => "No tags yet",
+                    // Only with nothing typed: a name typed offers to make it.
+                    Some(Mode::Pick(Picker::Tag)) => "No tags yet. Type a name to create one.",
                     Some(Mode::Pick(Picker::Status)) => "No matching status",
                     _ => "No matching commands or notes",
                 }
@@ -1238,11 +1256,7 @@ impl Palette {
 
     fn render_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
-        let leave = if matches!(self.mode, Some(Mode::Pick(_))) {
-            "Back"
-        } else {
-            "Close"
-        };
+        let leave = if self.leads_back() { "Back" } else { "Close" };
         let cell = |glyph: AnyElement, label: &'static str| {
             h_flex()
                 .flex_1()
@@ -1922,6 +1936,17 @@ mod tests {
                     .update(cx, |palette, cx| palette.open(mode, window, cx));
             });
         }
+
+        /// Clicks the middle of what is drawn with `selector`.
+        fn click(&self, cx: &mut TestAppContext, selector: &'static str) {
+            self.draw(cx);
+            let mut vcx = gpui_kit::VisualTestContext::from_window(self.window, cx);
+            let bounds = vcx
+                .debug_bounds(selector)
+                .unwrap_or_else(|| panic!("{selector} is drawn"));
+            vcx.simulate_click(bounds.center(), gpui_kit::Modifiers::none());
+            cx.run_until_parked();
+        }
     }
 
     #[gpui_kit::test]
@@ -2191,6 +2216,50 @@ mod tests {
         let tags = f.store.tags().unwrap();
         assert!(tags.iter().any(|t| t.name == "garden"), "{tags:?}");
         assert!(!tags.iter().any(|t| t.name.contains('#')), "{tags:?}");
+    }
+
+    /// The note's notebook path and "Add tag" open the palette's lists
+    /// straight away, which filter, scroll and make new tags. Escape closes
+    /// them rather than going back to commands that were never shown, and a
+    /// library with no tags yet can make its first one from there.
+    #[gpui_kit::test]
+    fn the_header_opens_the_notebook_and_tag_lists(cx: &mut TestAppContext) {
+        use crate::commands::Picker;
+
+        let f = setup(cx);
+        f.click(cx, "add-tag");
+        assert_eq!(f.mode(cx), Some(Mode::Pick(Picker::Tag)));
+        assert!(f.labels(cx).is_empty(), "no tags yet");
+        // Backspace in the empty field has no list to go back to.
+        f.keys(cx, "backspace");
+        assert_eq!(f.mode(cx), Some(Mode::Pick(Picker::Tag)));
+        f.keys(cx, "escape");
+        assert_eq!(f.mode(cx), None);
+        assert!(f.body_focused(cx), "back to the note");
+
+        f.click(cx, "add-tag");
+        f.type_query(cx, "errands");
+        assert_eq!(f.labels(cx), ["Create tag “errands”"]);
+        f.keys(cx, "enter");
+        assert_eq!(f.mode(cx), None);
+        let tags = f.store.tags().unwrap();
+        let errands = tags.iter().find(|t| t.name == "errands").expect("created");
+        assert_eq!(
+            f.store.note(&f.note).unwrap().unwrap().tags,
+            std::slice::from_ref(&errands.id)
+        );
+        assert!(f.body_focused(cx));
+
+        f.click(cx, "breadcrumb");
+        assert_eq!(f.mode(cx), Some(Mode::Pick(Picker::Notebook)));
+        assert_eq!(f.labels(cx), ["Garden", "Work"]);
+        f.type_query(cx, "gard");
+        f.keys(cx, "enter");
+        assert_eq!(f.mode(cx), None);
+        assert_eq!(
+            f.store.note(&f.note).unwrap().unwrap().book_id,
+            f.other_book
+        );
     }
 
     #[gpui_kit::test]
