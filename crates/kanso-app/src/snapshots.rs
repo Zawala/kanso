@@ -1301,13 +1301,41 @@ fn settings_recovery_key(
     store: &Store,
 ) {
     settings_account(cx, window, workspace, store);
+    show_demo_key(cx, None);
+}
+
+fn show_demo_key(cx: &mut HeadlessAppContext, note: Option<&'static str>) {
     cx.update(|cx| {
         cx.global_mut::<Services>().pending_key = Some(PendingKey {
             key: demo_key(),
             username: DEMO_USER.into(),
             server: kanso_sync::DEFAULT_SERVER.into(),
+            note,
         });
     });
+}
+
+/// A sign-up whose account was created but whose Mac couldn't finish
+/// signing in: the key shows with what happened.
+fn settings_recovery_key_failed(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_create_account(cx, window, workspace, store);
+    show_demo_key(cx, Some(crate::account_words::CREATED_NOT_SIGNED_IN));
+}
+
+/// "New recovery key" whose answer was lost.
+fn settings_recovery_key_unconfirmed(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
+    show_demo_key(cx, Some(crate::account_words::KEY_UNCONFIRMED));
 }
 
 /// The key screen with "I've saved my recovery key" ticked.
@@ -1459,6 +1487,24 @@ fn sign_out_confirm(
     store: &Store,
 ) {
     account_dialog(cx, window, workspace, store, |window, cx| {
+        crate::account_page::sign_out_dialog(window, cx);
+    });
+}
+
+/// Signing out with a new recovery key still unsaved.
+fn sign_out_unsaved_key(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    account_dialog(cx, window, workspace, store, |window, cx| {
+        cx.global_mut::<Services>().pending_key = Some(PendingKey {
+            key: demo_key(),
+            username: DEMO_USER.into(),
+            server: kanso_sync::DEFAULT_SERVER.into(),
+            note: None,
+        });
         crate::account_page::sign_out_dialog(window, cx);
     });
 }
@@ -2246,6 +2292,19 @@ fn snapshots() {
             Edit,
             settings_recovery_key_saved,
         ),
+        // A key that came with a failure, or whose answer was lost.
+        shot(
+            "dark-settings-recovery-key-failed",
+            Dark,
+            Edit,
+            settings_recovery_key_failed,
+        ),
+        shot(
+            "light-settings-recovery-key-unconfirmed",
+            Light,
+            Edit,
+            settings_recovery_key_unconfirmed,
+        ),
         // The account's dialogs.
         form("dark-account-binding-question", Dark, binding_question),
         form("light-account-binding-question", Light, binding_question),
@@ -2269,6 +2328,15 @@ fn snapshots() {
         Shot {
             dialog_width: 448.,
             ..shot("dark-account-sign-out", Dark, Edit, sign_out_confirm)
+        },
+        Shot {
+            dialog_width: 448.,
+            ..shot(
+                "dark-account-sign-out-unsaved-key",
+                Dark,
+                Edit,
+                sign_out_unsaved_key,
+            )
         },
         form("dark-account-server", Dark, server_form),
         form("light-account-server", Light, server_form),

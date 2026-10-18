@@ -139,7 +139,7 @@ impl HttpApi {
                 }
             }
         };
-        let mut response = response.map_err(|err| ApiError::Transport(err.to_string()))?;
+        let mut response = response.map_err(transport_error)?;
         let status = response.status().as_u16();
         if (300..400).contains(&status) {
             return Err(ApiError::Protocol(format!(
@@ -202,6 +202,34 @@ impl HttpApi {
         };
         self.send(route, path, Some(token), payload, MAX_AUTH_RESPONSE)
             .map(|_| ())
+    }
+}
+
+/// A request that got no answer. Failures before anything was sent (the
+/// name didn't resolve, the connection was refused or never opened) are
+/// [`ApiError::unsent`]: the server can't have acted on them. Anything later
+/// (a reset, a timeout waiting for the answer, TLS trouble) may have reached
+/// it.
+fn transport_error(err: ureq::Error) -> ApiError {
+    use std::io::ErrorKind;
+    use ureq::Timeout;
+    let unsent = match &err {
+        ureq::Error::HostNotFound | ureq::Error::ConnectionFailed | ureq::Error::BadUri(_) => true,
+        ureq::Error::Timeout(Timeout::Resolve | Timeout::Connect) => true,
+        ureq::Error::Io(io) => matches!(
+            io.kind(),
+            ErrorKind::ConnectionRefused
+                | ErrorKind::HostUnreachable
+                | ErrorKind::NetworkUnreachable
+                | ErrorKind::AddrNotAvailable
+                | ErrorKind::NotConnected
+        ),
+        _ => false,
+    };
+    if unsent {
+        ApiError::unsent(err)
+    } else {
+        ApiError::Transport(err.to_string())
     }
 }
 

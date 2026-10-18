@@ -32,8 +32,8 @@ use kanso_sync::wire::{
     WireRemote,
 };
 use kanso_sync::{
-    AccountError, Api, ApiError, Backend, DeviceIdentity, HttpBackend, KdfParams, Password,
-    Session, SignOutReason, SyncError, SyncOptions,
+    AccountError, Api, ApiError, Backend, DeviceIdentity, HttpBackend, KdfParams, MemorySecrets,
+    Password, Session, SignOutReason, SyncError, SyncOptions,
 };
 
 /// `HttpBackend`, keeping a copy of every sealed file it uploads so the
@@ -146,12 +146,14 @@ fn two_macs_sync_through_a_local_worker() {
     let signed_up = patiently(|| {
         kanso_sync::sign_up(
             &backend,
+            &MemorySecrets::new(),
             &endpoint,
             &username,
             &password,
             &device_a,
             &|_| {},
         )
+        .map_err(|err| err.error)
     })
     .expect("sign up");
     eprintln!("sign-up at production parameters: {:?}", start.elapsed());
@@ -256,6 +258,7 @@ fn two_macs_sync_through_a_local_worker() {
         patiently(|| {
             kanso_sync::recover(
                 &backend,
+                &MemorySecrets::new(),
                 &endpoint,
                 &username,
                 &recovery_key,
@@ -263,6 +266,7 @@ fn two_macs_sync_through_a_local_worker() {
                 &device_b,
                 &|_| {},
             )
+            .map_err(|err| err.error)
         })
     };
     let recovered = recover().expect("recover");
@@ -341,12 +345,14 @@ fn two_macs_sync_through_a_local_worker() {
     let witness_session = patiently(|| {
         kanso_sync::sign_up(
             &witness_backend,
+            &MemorySecrets::new(),
             &endpoint,
             &witness_name,
             &witness_password,
             &identity(3, "Witness"),
             &|_| {},
         )
+        .map_err(|err| err.error)
     })
     .expect("witness sign-up")
     .session;

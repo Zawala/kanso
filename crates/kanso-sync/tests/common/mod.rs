@@ -130,6 +130,7 @@ pub fn password(username: &str) -> Password {
 pub fn sign_up(server: &MemoryServer, username: &str, n: u8) -> Session {
     kanso_sync::sign_up(
         server,
+        &kanso_sync::MemorySecrets::new(),
         SERVER,
         username,
         &password(username),

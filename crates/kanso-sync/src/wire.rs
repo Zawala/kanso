@@ -487,7 +487,37 @@ pub enum ApiError {
     Protocol(String),
 }
 
+/// How an [`ApiError::Transport`] message starts when the request never left
+/// this Mac.
+const UNSENT: &str = "not sent: ";
+
 impl ApiError {
+    /// A transport error from before the request left this Mac: the name
+    /// didn't resolve, the connection was refused or never opened. The server
+    /// can't have acted on it. It is still [`ApiError::Transport`], so
+    /// everything that treats a transport error as "offline" keeps doing so.
+    pub fn unsent(message: impl fmt::Display) -> ApiError {
+        ApiError::Transport(format!("{UNSENT}{message}"))
+    }
+
+    /// Whether this is an [`ApiError::unsent`] error.
+    pub fn was_unsent(&self) -> bool {
+        matches!(self, ApiError::Transport(message) if message.starts_with(UNSENT))
+    }
+
+    /// Whether the server may have carried out the request although the
+    /// client got no clean answer: an answer lost on the way (a transport
+    /// error after sending), a 5xx, or a 2xx the client couldn't read.
+    /// Every 4xx refused it, and an unsent request never arrived.
+    pub fn may_have_applied(&self) -> bool {
+        match self {
+            ApiError::Transport(_) => !self.was_unsent(),
+            ApiError::Internal | ApiError::Protocol(_) => true,
+            ApiError::Unrecognized { status, .. } => *status >= 500,
+            _ => false,
+        }
+    }
+
     /// The HTTP status, when the error came from an answer.
     pub fn status(&self) -> Option<u16> {
         Some(match self {
@@ -741,6 +771,30 @@ mod tests {
             );
             assert_eq!(read, error);
         }
+    }
+
+    /// Only an answer lost after sending, a 5xx or an unreadable 2xx may
+    /// have changed the server; every coded 4xx refused the request, and an
+    /// unsent one never arrived.
+    #[test]
+    fn which_errors_may_have_applied() {
+        // 503 misconfigured is answered before the Worker does anything.
+        for error in every_error() {
+            let applied = matches!(error, ApiError::Internal);
+            assert_eq!(error.may_have_applied(), applied, "{error}");
+            assert!(!error.was_unsent());
+        }
+        let lost = ApiError::Transport("connection reset".into());
+        assert!(lost.may_have_applied() && !lost.was_unsent());
+        let unsent = ApiError::unsent("dns failed");
+        assert!(matches!(unsent, ApiError::Transport(_)));
+        assert!(unsent.was_unsent() && !unsent.may_have_applied());
+        assert!(ApiError::Protocol("bad json".into()).may_have_applied());
+        let newer = |status| ApiError::Unrecognized {
+            status,
+            code: "new".into(),
+        };
+        assert!(newer(502).may_have_applied() && !newer(422).may_have_applied());
     }
 
     #[test]

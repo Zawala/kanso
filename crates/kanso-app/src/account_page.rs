@@ -667,6 +667,17 @@ impl AccountPage {
                         .text_color(colors.text)
                         .child("Save your recovery key"),
                 )
+                .when_some(pending.note, |el, note| {
+                    el.child(
+                        div()
+                            .debug_selector(|| "recovery-key-note".into())
+                            .text_size(px(13.5))
+                            .line_height(px(20.))
+                            .font_medium()
+                            .text_color(colors.warning)
+                            .child(note),
+                    )
+                })
                 .child(
                     div()
                         .text_size(px(13.5))
@@ -1144,7 +1155,8 @@ pub fn sign_out_dialog(window: &mut Window, cx: &mut App) {
 }
 
 fn sign_out_dialog_for(username: &str, window: &mut Window, cx: &mut App) {
-    let (title, body) = words::sign_out_question(username);
+    let unsaved_key = cx.global::<Services>().pending_key.is_some();
+    let (title, body) = words::sign_out_question(username, unsaved_key);
     dialogs::confirm(title, body, "Sign out", window, cx, |_, cx| {
         account_flow::sign_out(cx);
     });

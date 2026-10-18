@@ -18,11 +18,11 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::*;
 use kanso_store::Store;
-use kanso_sync::keychain::{self, PendingRecoveryKey};
+use kanso_sync::keychain;
 use kanso_sync::{
     AccountError, Backend, BindError, Choice, DeviceIdentity, DeviceInfo, Flow, LocalLibrary,
-    Machine, Password, Plan, RecoveryKey, SecretError, SecretStore, Session, SignOutReason,
-    SignedUp, Step, meta_keys,
+    Machine, Password, Plan, RecoveryKey, RotationError, SecretError, SecretStore, Session,
+    SignOutReason, SignedUp, Step, meta_keys,
 };
 
 use crate::account_words::{self as words, Answer, ErrorContext, Question};
@@ -32,6 +32,7 @@ use crate::dialogs::{self, Described, Progress};
 use crate::services::{
     self, AccountDetails, AccountState, PendingKey, RunningTask, Services, TaskKind, notify_windows,
 };
+use crate::settings::{OpenAccountSettings, SettingsPage};
 use crate::workspace::AppState;
 
 /// When the library itself couldn't be changed.
@@ -43,12 +44,14 @@ const BUSY: &str = "Kanso is still busy with your account. Try again in a moment
 
 // MARK: Running a task
 
-/// Why a task failed: the words to show, and the reason when the server
-/// ended this Mac's session on the way.
+/// Why a task failed: the words to show, the reason when the server ended
+/// this Mac's session on the way, and a new recovery key the server took
+/// or may have taken, which shows all the same.
 #[derive(Debug)]
 struct Failure {
     words: String,
     signed_out: Option<SignOutReason>,
+    recovery: Option<PendingKey>,
 }
 
 impl Failure {
@@ -62,6 +65,32 @@ impl Failure {
         Failure {
             words: words::error_words(&err, context),
             signed_out,
+            recovery: None,
+        }
+    }
+
+    /// A call that sets a new recovery key failed. The key it returns
+    /// shows, with `note` when Kanso couldn't tell whether the server took
+    /// it.
+    fn rotation(err: RotationError, context: ErrorContext, note: &'static str) -> Failure {
+        Failure {
+            recovery: err.recovery_key.map(|item| PendingKey::kept(*item, note)),
+            ..Failure::account(err.error, context)
+        }
+    }
+
+    /// The server took `key`, then this Mac failed: `words` say what
+    /// happened instead, and the key shows with them.
+    fn after_key(self, words: &'static str, session: &Session, key: RecoveryKey) -> Failure {
+        Failure {
+            words: words.to_owned(),
+            signed_out: self.signed_out,
+            recovery: Some(PendingKey {
+                key,
+                username: session.username.clone(),
+                server: session.server.clone(),
+                note: Some(words),
+            }),
         }
     }
 
@@ -74,6 +103,7 @@ impl Failure {
         Failure {
             words: LIBRARY_TROUBLE.to_owned(),
             signed_out: None,
+            recovery: None,
         }
     }
 
@@ -122,24 +152,6 @@ impl Seams {
     fn device(&self) -> Result<DeviceIdentity, Failure> {
         let machine = self.machine.clone().unwrap_or_else(Machine::this_mac);
         kanso_sync::device_identity(&self.store, &machine).map_err(Failure::library)
-    }
-
-    /// Keeps a new recovery key in the Keychain until "I've saved it", so a
-    /// crash before then doesn't lose it (fix 3).
-    fn save_key(
-        &self,
-        library_id: &str,
-        session: &Session,
-        key: &RecoveryKey,
-    ) -> Result<(), Failure> {
-        let pending = PendingRecoveryKey {
-            origin: session.origin.clone(),
-            account_id: session.account_id.clone(),
-            username: session.username.clone(),
-            recovery_key: key.clone(),
-        };
-        keychain::save_recovery_key(self.secrets.as_ref(), library_id, &pending)
-            .map_err(Failure::keychain)
     }
 }
 
@@ -240,7 +252,7 @@ fn done(tx: &Sender<Progress>, result: Result<(), String>) {
 }
 
 /// Ends a task with its failure; a session the server ended is ended here
-/// too.
+/// too, and a new recovery key that came with the failure shows.
 fn failed(tx: &Sender<Progress>, failure: Option<Failure>, cx: &mut App) {
     let Some(failure) = failure else {
         done(tx, Err(SOMETHING_WRONG.to_owned()));
@@ -250,6 +262,9 @@ fn failed(tx: &Sender<Progress>, failure: Option<Failure>, cx: &mut App) {
         && cx.global::<Services>().signed_in()
     {
         services::end_session(reason, cx);
+    }
+    if let Some(key) = failure.recovery {
+        show_pending(key, cx);
     }
     done(tx, Err(failure.words));
 }
@@ -327,11 +342,54 @@ fn ask(
 
 /// The new recovery key, shown on the Account page until "I've saved it".
 fn show_key(session: &Session, key: RecoveryKey, cx: &mut App) {
-    cx.global_mut::<Services>().pending_key = Some(PendingKey {
-        key,
-        username: session.username.clone(),
-        server: session.server.clone(),
+    show_pending(
+        PendingKey {
+            key,
+            username: session.username.clone(),
+            server: session.server.clone(),
+            note: None,
+        },
+        cx,
+    );
+}
+
+/// Shows `key` on the Account page until "I've saved it". When that page
+/// isn't showing, a notification leads there.
+fn show_pending(key: PendingKey, cx: &mut App) {
+    cx.global_mut::<Services>().pending_key = Some(key);
+    // Windows can't be read from inside their own updates.
+    cx.defer(|cx| {
+        if !account_page_showing(cx) {
+            notify_windows(
+                || {
+                    Notification::warning(words::KEY_READY)
+                        .id::<KeyReady>()
+                        .action(|_, _, _| {
+                            Button::new("show-recovery-key")
+                                .label("Show key")
+                                .debug_selector(|| "show-recovery-key".into())
+                                .on_click(|_, window, cx| {
+                                    window.dispatch_action(Box::new(OpenAccountSettings), cx)
+                                })
+                        })
+                },
+                cx,
+            );
+        }
     });
+}
+
+/// The "Show key" notification's ID: a second key replaces it.
+struct KeyReady;
+
+/// Whether a window shows Settings › Account.
+fn account_page_showing(cx: &mut App) -> bool {
+    let mut showing = false;
+    crate::workspace::for_each_workspace(cx, |workspace, cx| {
+        showing |= workspace.settings_open()
+            && workspace.settings.read(cx).page() == SettingsPage::Account;
+    });
+    showing
 }
 
 /// After the binding and the Keychain item: the config, the window, and
@@ -435,16 +493,19 @@ fn create(
         move |step| {
             let s = thread;
             let device = s.device()?;
+            // The new key is in the Keychain before the request goes.
             let signed = kanso_sync::sign_up(
                 s.backend.as_ref(),
+                s.secrets.as_ref(),
                 &server,
                 &username,
                 &password,
                 &device,
                 step,
             )
-            .map_err(|err| Failure::account(err, ErrorContext::SignUp))?;
-            s.save_key(&device.library_id, &signed.session, &signed.recovery_key)?;
+            .map_err(|err| {
+                Failure::rotation(err, ErrorContext::SignUp, words::KEY_UNCONFIRMED_SIGN_UP)
+            })?;
             step(Step::Saving);
             let bound = kanso_sync::bind(&s.store, &signed.session, Choice::Add, &s.backups, s.now)
                 .map_err(Failure::bind)
@@ -453,16 +514,24 @@ fn create(
                         .map_err(Failure::keychain)
                 });
             if let Err(failure) = bound {
-                // Nothing here uses the new session: the server forgets it,
-                // and so does the Keychain its recovery key, which nobody saw.
+                // Nothing here uses the new session: the server forgets it.
+                // The account stays, and so does its recovery key, in the
+                // Keychain and on screen.
                 kanso_sync::discard_session(
                     s.backend.as_ref(),
                     s.secrets.as_ref(),
                     &signed.session,
                 )
                 .ok();
-                keychain::delete_recovery_key(s.secrets.as_ref(), &device.library_id).ok();
-                return Err(failure);
+                let SignedUp {
+                    session,
+                    recovery_key,
+                } = signed;
+                return Err(failure.after_key(
+                    words::CREATED_NOT_SIGNED_IN,
+                    &session,
+                    recovery_key,
+                ));
             }
             Ok((signed, device.library_id))
         },
@@ -488,6 +557,8 @@ struct Authenticated {
     evicted: Option<DeviceInfo>,
     library: LocalLibrary,
     library_id: String,
+    /// A recovery's new key, in the Keychain already.
+    recovery_key: Option<RecoveryKey>,
 }
 
 type Authenticate = Box<
@@ -556,8 +627,10 @@ pub fn recover(
         tx,
         cx,
         Box::new(move |s, device, step| {
+            // The new key is in the Keychain before the request goes.
             let recovered = kanso_sync::recover(
                 s.backend.as_ref(),
+                s.secrets.as_ref(),
                 &server,
                 &username,
                 &key,
@@ -565,7 +638,9 @@ pub fn recover(
                 device,
                 step,
             )
-            .map_err(|err| Failure::account(err, ErrorContext::Recovery))?;
+            .map_err(|err| {
+                Failure::rotation(err, ErrorContext::Recovery, words::KEY_UNCONFIRMED_RECOVERY)
+            })?;
             Ok((recovered.session, None, Some(recovered.recovery_key)))
         }),
     );
@@ -615,32 +690,44 @@ fn authenticate(
         move |step| {
             let s = thread;
             let device = s.device()?;
-            let (session, evicted, key) = auth(&s, &device, step)?;
-            if let Some(key) = &key {
-                s.save_key(&device.library_id, &session, key)?;
-            }
-            let library = kanso_sync::local_library(&s.store, &session.origin, &session.account_id)
-                .map_err(Failure::library)?;
-            Ok((
-                Authenticated {
-                    session,
-                    evicted,
-                    library,
-                    library_id: device.library_id,
-                },
-                key,
-            ))
+            let (session, evicted, recovery_key) = auth(&s, &device, step)?;
+            let library =
+                match kanso_sync::local_library(&s.store, &session.origin, &session.account_id) {
+                    Ok(library) => library,
+                    Err(err) => {
+                        let failure = Failure::library(err);
+                        kanso_sync::discard_session(
+                            s.backend.as_ref(),
+                            s.secrets.as_ref(),
+                            &session,
+                        )
+                        .ok();
+                        return Err(match recovery_key {
+                            Some(key) => {
+                                failure.after_key(words::CHANGED_NOT_SIGNED_IN, &session, key)
+                            }
+                            None => failure,
+                        });
+                    }
+                };
+            Ok(Authenticated {
+                session,
+                evicted,
+                library,
+                library_id: device.library_id,
+                recovery_key,
+            })
         },
         move |result, cx| {
-            let (auth, key) = match result {
+            let auth = match result {
                 Some(Ok(authenticated)) => authenticated,
                 Some(Err(failure)) => return failed(&tx, Some(failure), cx),
                 None => return failed(&tx, None, cx),
             };
             // A used recovery key is gone: the new one shows at once, even if
             // the binding question is cancelled.
-            if let Some(key) = key {
-                show_key(&auth.session, key, cx);
+            if let Some(key) = &auth.recovery_key {
+                show_key(&auth.session, key.clone(), cx);
             }
             let plan = kanso_sync::plan(flow, &auth.library);
             let question = words::binding_question(&plan, &auth.session.username);
@@ -680,6 +767,7 @@ fn bind_and_save(
         session,
         evicted,
         library_id,
+        recovery_key,
         ..
     } = auth;
     let thread = seams.clone();
@@ -715,7 +803,11 @@ fn bind_and_save(
                         )
                         .ok();
                     }
-                    Err(failure)
+                    // The password changed all the same.
+                    Err(match recovery_key {
+                        Some(key) => failure.after_key(words::CHANGED_NOT_SIGNED_IN, &session, key),
+                        None => failure,
+                    })
                 }
             }
         },
@@ -841,7 +933,7 @@ pub fn change_password(current: Password, new: Password, cx: &mut App) -> Receiv
 /// Replaces the recovery key; the Account page then shows the new one.
 pub fn new_recovery_key(current: Password, cx: &mut App) -> Receiver<Progress> {
     let (tx, rx) = async_channel::unbounded();
-    let Some((seams, session, library_id)) = begin_signed_in(&tx, cx) else {
+    let Some((seams, session, _)) = begin_signed_in(&tx, cx) else {
         return rx;
     };
     let shown = session.clone();
@@ -852,11 +944,17 @@ pub fn new_recovery_key(current: Password, cx: &mut App) -> Receiver<Progress> {
         Some(tx.clone()),
         cx,
         move |step| {
-            let key =
-                kanso_sync::new_recovery_key(seams.backend.as_ref(), &session, &current, step)
-                    .map_err(|err| Failure::account(err, ErrorContext::CurrentPassword))?;
-            seams.save_key(&library_id, &session, &key)?;
-            Ok(key)
+            // The new key is in the Keychain before the request goes.
+            kanso_sync::new_recovery_key(
+                seams.backend.as_ref(),
+                seams.secrets.as_ref(),
+                &session,
+                &current,
+                step,
+            )
+            .map_err(|err| {
+                Failure::rotation(err, ErrorContext::CurrentPassword, words::KEY_UNCONFIRMED)
+            })
         },
         move |result, cx| match result {
             Some(Ok(key)) => {
@@ -940,15 +1038,31 @@ pub fn revoke_device(device_id: String, cx: &mut App) -> Receiver<Progress> {
     rx
 }
 
-/// "I've saved my recovery key": the key screen and its Keychain item go.
+/// "I've saved my recovery key": the key screen and its Keychain item go,
+/// unless the item holds another key by then.
 pub fn key_saved(cx: &mut App) {
     let services = cx.global_mut::<Services>();
-    services.pending_key = None;
-    if let (Some(secrets), Some(library_id)) =
-        (services.secrets.clone(), services.library_id.clone())
-    {
+    let saved = services.pending_key.take();
+    let library_id = services.library_id.clone();
+    if let (Some(saved), Some(seams)) = (saved, Seams::get(cx)) {
         cx.background_spawn(async move {
-            if let Err(err) = keychain::delete_recovery_key(secrets.as_ref(), &library_id) {
+            // Before the launch check, as after a failed sign-up in tests.
+            let library_id = match library_id {
+                Some(library_id) => library_id,
+                None => match seams.device() {
+                    Ok(device) => device.library_id,
+                    Err(_) => return,
+                },
+            };
+            let secrets = seams.secrets.as_ref();
+            let removed =
+                keychain::load_any_recovery_key(secrets, &library_id).and_then(|kept| match kept {
+                    Some(kept) if kept.recovery_key == saved.key => {
+                        keychain::delete_recovery_key(secrets, &library_id)
+                    }
+                    _ => Ok(()),
+                });
+            if let Err(err) = removed {
                 eprintln!("kanso: removing the saved recovery key: {err}");
             }
         })
@@ -1153,8 +1267,15 @@ pub fn restore(cx: &mut App) {
                 seams.secrets.as_ref(),
                 &device.library_id,
             );
+            // An unsaved recovery key shows whatever this Mac is signed in
+            // to: a cancelled recovery's, or one whose answer was lost.
+            let kept = keychain::load_any_recovery_key(seams.secrets.as_ref(), &device.library_id)
+                .unwrap_or_else(|err| {
+                    eprintln!("kanso: reading the unsaved recovery key: {err}");
+                    None
+                });
             let Some(account) = account else {
-                tx.try_send((device.library_id, Ok(None))).ok();
+                tx.try_send((device.library_id, Ok(None), kept)).ok();
                 return;
             };
             let bound = |key| seams.store.meta(key).ok().flatten();
@@ -1167,38 +1288,25 @@ pub fn restore(cx: &mut App) {
                     &account.origin,
                     &account.id,
                 )
-                .map(|session| {
-                    session.map(|session| {
-                        let key = keychain::load_recovery_key(
-                            seams.secrets.as_ref(),
-                            &device.library_id,
-                            &account.origin,
-                            &account.id,
-                        )
-                        .ok()
-                        .flatten();
-                        (session, key)
-                    })
-                })
             } else {
                 Ok(None)
             };
-            tx.try_send((device.library_id, loaded)).ok();
+            tx.try_send((device.library_id, loaded, kept)).ok();
         });
     if spawned.is_err() {
         return;
     }
     cx.spawn(async move |cx| {
-        let Ok((library_id, loaded)) = rx.recv().await else {
+        let Ok((library_id, loaded, kept)) = rx.recv().await else {
             return;
         };
         cx.update(|cx| {
             cx.global_mut::<Services>().library_id = Some(library_id);
+            if let Some(item) = kept {
+                show_pending(PendingKey::kept(item, words::KEY_UNCONFIRMED), cx);
+            }
             match loaded {
-                Ok(Some((session, key))) => {
-                    if let Some(key) = key {
-                        show_key(&session, key.recovery_key, cx);
-                    }
+                Ok(Some(session)) => {
                     let services = cx.global_mut::<Services>();
                     services.set_signed_in(Arc::new(session));
                     services::apply_sync_settings(cx);

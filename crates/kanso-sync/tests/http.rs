@@ -273,7 +273,30 @@ fn no_answer_is_a_transport_error() {
     let url = format!("http://{}", listener.local_addr().unwrap());
     drop(listener);
     let api = HttpBackend.api(&url);
-    assert!(matches!(api.health(), Err(ApiError::Transport(_))));
+    let refused = api.health().unwrap_err();
+    assert!(matches!(refused, ApiError::Transport(_)));
+    assert!(refused.was_unsent(), "a refused connection sent nothing");
+    assert!(!refused.may_have_applied());
+}
+
+/// A connection that took the request and closed without an answer may
+/// have reached the server: the request may have been carried out.
+#[test]
+fn a_lost_answer_may_have_been_carried_out() {
+    use std::io::Read;
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let hold = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0u8; 512];
+        let _ = stream.read(&mut request);
+        // Closed without an answer.
+    });
+    let lost = HttpBackend.api(&url).health().unwrap_err();
+    hold.join().unwrap();
+    assert!(matches!(lost, ApiError::Transport(_)));
+    assert!(!lost.was_unsent());
+    assert!(lost.may_have_applied());
 }
 
 #[test]

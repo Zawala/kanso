@@ -7,6 +7,7 @@
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use kanso_sync::api::{
     AccountResponse, Api, DeleteRequest, DeleteResponse, DeviceNameRequest, DevicesResponse,
@@ -35,6 +36,77 @@ fn config(cases: u32) -> ProptestConfig {
     }
 }
 
+/// The rotating account functions with a Keychain of their own each time
+/// and the error alone: for the tests that aren't about the new recovery
+/// key's item.
+mod plain {
+    use kanso_sync::{
+        AccountError, Backend, DeviceIdentity, MemorySecrets, Password, Recovered, RecoveryKey,
+        Session, SignedUp, Step,
+    };
+
+    pub fn sign_up(
+        b: &dyn Backend,
+        server: &str,
+        username: &str,
+        password: &Password,
+        device: &DeviceIdentity,
+        progress: &dyn Fn(Step),
+    ) -> Result<SignedUp, AccountError> {
+        let secrets = MemorySecrets::new();
+        kanso_sync::sign_up(b, &secrets, server, username, password, device, progress)
+            .map_err(|err| err.error)
+    }
+
+    pub fn recover(
+        b: &dyn Backend,
+        server: &str,
+        username: &str,
+        key: &RecoveryKey,
+        password: &Password,
+        device: &DeviceIdentity,
+        progress: &dyn Fn(Step),
+    ) -> Result<Recovered, AccountError> {
+        let secrets = MemorySecrets::new();
+        kanso_sync::recover(
+            b, &secrets, server, username, key, password, device, progress,
+        )
+        .map_err(|err| err.error)
+    }
+
+    pub fn new_recovery_key(
+        b: &dyn Backend,
+        session: &Session,
+        current: &Password,
+        progress: &dyn Fn(Step),
+    ) -> Result<RecoveryKey, AccountError> {
+        let secrets = MemorySecrets::new();
+        kanso_sync::new_recovery_key(b, &secrets, session, current, progress)
+            .map_err(|err| err.error)
+    }
+}
+
+/// `MemoryServer` without the pause before a lost request is sent again.
+struct Quick(MemoryServer);
+
+impl Backend for Quick {
+    fn api(&self, server: &str) -> Box<dyn Api + '_> {
+        self.0.api(server)
+    }
+
+    fn kdf_floor(&self) -> KdfParams {
+        self.0.kdf_floor()
+    }
+
+    fn kdf_default(&self) -> KdfParams {
+        self.0.kdf_default()
+    }
+
+    fn retry_pause(&self, _: usize) -> Duration {
+        Duration::ZERO
+    }
+}
+
 fn mac(n: u8) -> DeviceIdentity {
     DeviceIdentity::from_parts(&format!("l_{:032x}", n), &format!("Mac {n}"), [n; 32])
 }
@@ -46,7 +118,7 @@ fn password(text: &str) -> Password {
 fn quiet(_: Step) {}
 
 fn sign_up(b: &dyn Backend, username: &str, device: &DeviceIdentity) -> kanso_sync::SignedUp {
-    kanso_sync::sign_up(
+    plain::sign_up(
         b,
         SERVER,
         username,
@@ -95,7 +167,7 @@ fn sign_up_then_sign_in_on_another_mac() {
         SignupState::Open
     );
     let steps = Mutex::new(Vec::new());
-    let up = kanso_sync::sign_up(
+    let up = plain::sign_up(
         &server,
         SERVER,
         " Alice ",
@@ -142,7 +214,7 @@ fn sign_up_then_sign_in_on_another_mac() {
         Err(AccountError::InvalidCredentials)
     ));
     assert!(matches!(
-        kanso_sync::sign_up(
+        plain::sign_up(
             &server,
             SERVER,
             "alice",
@@ -153,7 +225,7 @@ fn sign_up_then_sign_in_on_another_mac() {
         Err(AccountError::UsernameTaken)
     ));
     assert!(matches!(
-        kanso_sync::sign_up(
+        plain::sign_up(
             &server,
             SERVER,
             "admin",
@@ -164,7 +236,7 @@ fn sign_up_then_sign_in_on_another_mac() {
         Err(AccountError::Username(_))
     ));
     assert!(matches!(
-        kanso_sync::sign_up(
+        plain::sign_up(
             &server,
             SERVER,
             "alice",
@@ -188,7 +260,7 @@ fn sign_up_is_refused_offline_and_when_closed() {
         SignupState::Closed
     );
     assert!(matches!(
-        kanso_sync::sign_up(
+        plain::sign_up(
             &server,
             SERVER,
             "alice",
@@ -201,7 +273,7 @@ fn sign_up_is_refused_offline_and_when_closed() {
     // Offline checks send nothing.
     let before = server.stats();
     assert!(matches!(
-        kanso_sync::sign_up(
+        plain::sign_up(
             &server,
             SERVER,
             "a",
@@ -212,7 +284,7 @@ fn sign_up_is_refused_offline_and_when_closed() {
         Err(AccountError::Username(_))
     ));
     assert!(matches!(
-        kanso_sync::sign_up(
+        plain::sign_up(
             &server,
             "http://example.com",
             "alice",
@@ -223,7 +295,7 @@ fn sign_up_is_refused_offline_and_when_closed() {
         Err(AccountError::Endpoint(_))
     ));
     assert!(matches!(
-        kanso_sync::sign_up(
+        plain::sign_up(
             &server,
             SERVER,
             "correct-horse-bat",
@@ -243,7 +315,7 @@ fn recovery_rotates_the_key_and_signs_everyone_out() {
     let other = sign_in(&server, "alice", "correct horse battery", &mac(2))
         .unwrap()
         .session;
-    let recovered = kanso_sync::recover(
+    let recovered = plain::recover(
         &server,
         SERVER,
         "alice",
@@ -266,7 +338,7 @@ fn recovery_rotates_the_key_and_signs_everyone_out() {
     assert!(check(&server, &recovered.session).is_ok());
     // The used key stops working; the new one works; the new password signs in.
     assert!(matches!(
-        kanso_sync::recover(
+        plain::recover(
             &server,
             SERVER,
             "alice",
@@ -286,7 +358,7 @@ fn recovery_rotates_the_key_and_signs_everyone_out() {
         .map(|d| d.name)
         .collect();
     assert!(names.contains(&Some("Mac 3".into())));
-    kanso_sync::recover(
+    plain::recover(
         &server,
         SERVER,
         "alice",
@@ -350,7 +422,7 @@ fn a_password_change_signs_out_the_others_and_keeps_the_data_key() {
 fn a_new_recovery_key_replaces_the_old_one() {
     let server = MemoryServer::new();
     let up = sign_up(&server, "alice", &mac(1));
-    let key = kanso_sync::new_recovery_key(
+    let key = plain::new_recovery_key(
         &server,
         &up.session,
         &password("correct horse battery"),
@@ -359,7 +431,7 @@ fn a_new_recovery_key_replaces_the_old_one() {
     .unwrap();
     assert!(check(&server, &up.session).is_ok());
     assert!(matches!(
-        kanso_sync::recover(
+        plain::recover(
             &server,
             SERVER,
             "alice",
@@ -370,7 +442,7 @@ fn a_new_recovery_key_replaces_the_old_one() {
         ),
         Err(AccountError::InvalidCredentials)
     ));
-    kanso_sync::recover(
+    plain::recover(
         &server,
         SERVER,
         "alice",
@@ -384,15 +456,16 @@ fn a_new_recovery_key_replaces_the_old_one() {
 
 #[test]
 fn deleting_the_account() {
-    let server = MemoryServer::new();
-    let up = sign_up(&server, "alice", &mac(1));
-    let other = sign_in(&server, "alice", "correct horse battery", &mac(2))
+    let quick = Quick(MemoryServer::new());
+    let server = &quick.0;
+    let up = sign_up(&quick, "alice", &mac(1));
+    let other = sign_in(&quick, "alice", "correct horse battery", &mac(2))
         .unwrap()
         .session;
     // A typed username that isn't the account's is refused before sending.
     assert!(matches!(
         kanso_sync::delete_account(
-            &server,
+            &quick,
             &up.session,
             &password("correct horse battery"),
             "bob",
@@ -403,7 +476,7 @@ fn deleting_the_account() {
     assert_eq!(server.stats().count(Route::Delete), 0);
     assert!(matches!(
         kanso_sync::delete_account(
-            &server,
+            &quick,
             &up.session,
             &password("wrong horse battery"),
             "alice",
@@ -415,7 +488,7 @@ fn deleting_the_account() {
     // The answer is lost; the retry gets 401 unknown, which is success.
     server.drop_next_responses(Route::Delete, 1);
     kanso_sync::delete_account(
-        &server,
+        &quick,
         &up.session,
         &password("correct horse battery"),
         " ALICE ",
@@ -424,18 +497,18 @@ fn deleting_the_account() {
     .unwrap();
     assert_eq!(server.stats().count(Route::Delete), before + 2);
     assert_eq!(
-        check(&server, &other).unwrap_err(),
+        check(server, &other).unwrap_err(),
         ApiError::Unauthorized {
             reason: SignOutReason::Unknown
         }
     );
     assert!(server.account_id("alice").is_none());
     // Any other 401 means the session ended first: that is reported.
-    let again = sign_up(&server, "alice", &mac(1));
+    let again = sign_up(&quick, "alice", &mac(1));
     server.revoke_all("alice", SignOutReason::Revoked);
     assert!(matches!(
         kanso_sync::delete_account(
-            &server,
+            &quick,
             &again.session,
             &password("correct horse battery"),
             "alice",
@@ -494,15 +567,16 @@ fn devices_eviction_and_revocation() {
 
 #[test]
 fn lost_responses_are_recovered_by_the_documented_retry() {
-    let server = MemoryServer::new();
+    let quick = Quick(MemoryServer::new());
+    let server = &quick.0;
     server.drop_next_responses(Route::Signup, 1);
-    let up = sign_up(&server, "alice", &mac(1));
+    let up = sign_up(&quick, "alice", &mac(1));
     assert_eq!(server.stats().count(Route::Signup), 2);
-    assert!(check(&server, &up.session).is_ok());
+    assert!(check(server, &up.session).is_ok());
 
     server.drop_next_responses(Route::Password, 1);
     kanso_sync::change_password(
-        &server,
+        &quick,
         &up.session,
         &password("correct horse battery"),
         &password("new long passphrase"),
@@ -510,11 +584,11 @@ fn lost_responses_are_recovered_by_the_documented_retry() {
     )
     .unwrap();
     assert_eq!(server.stats().count(Route::Password), 2);
-    assert!(sign_in(&server, "alice", "new long passphrase", &mac(2)).is_ok());
+    assert!(sign_in(&quick, "alice", "new long passphrase", &mac(2)).is_ok());
 
     server.drop_next_responses(Route::RecoveryKey, 1);
-    let key = kanso_sync::new_recovery_key(
-        &server,
+    let key = plain::new_recovery_key(
+        &quick,
         &up.session,
         &password("new long passphrase"),
         &quiet,
@@ -523,8 +597,8 @@ fn lost_responses_are_recovered_by_the_documented_retry() {
     assert_eq!(server.stats().count(Route::RecoveryKey), 2);
 
     server.drop_next_responses(Route::RecoverFinish, 1);
-    let recovered = kanso_sync::recover(
-        &server,
+    let recovered = plain::recover(
+        &quick,
         SERVER,
         "alice",
         &key,
@@ -534,9 +608,9 @@ fn lost_responses_are_recovered_by_the_documented_retry() {
     )
     .unwrap();
     assert_eq!(server.stats().count(Route::RecoverFinish), 2);
-    assert!(check(&server, &recovered.session).is_ok());
-    kanso_sync::recover(
-        &server,
+    assert!(check(server, &recovered.session).is_ok());
+    plain::recover(
+        &quick,
         SERVER,
         "alice",
         &recovered.recovery_key,
@@ -549,8 +623,8 @@ fn lost_responses_are_recovered_by_the_documented_retry() {
     // Three lost answers in a row surface as a transport error.
     server.drop_next_responses(Route::Signup, 3);
     assert!(matches!(
-        kanso_sync::sign_up(
-            &server,
+        plain::sign_up(
+            &quick,
             SERVER,
             "bob",
             &password("correct horse battery"),
@@ -577,6 +651,8 @@ struct Faults {
     login_key_id: Mutex<Option<String>>,
     /// Every request fails with a transport error, unapplied.
     unreachable: std::sync::atomic::AtomicBool,
+    /// Every request fails before it leaves the Mac (`ApiError::unsent`).
+    unsent: std::sync::atomic::AtomicBool,
     /// Health answers 404, like a v1 Worker.
     outdated: std::sync::atomic::AtomicBool,
     logins: AtomicUsize,
@@ -610,11 +686,17 @@ impl Backend for Hostile {
     fn kdf_default(&self) -> KdfParams {
         KdfParams::TEST
     }
+
+    fn retry_pause(&self, _: usize) -> Duration {
+        Duration::ZERO
+    }
 }
 
 impl Wrapped<'_> {
     fn reach(&self) -> Result<(), ApiError> {
-        if self.faults.unreachable.load(Ordering::SeqCst) {
+        if self.faults.unsent.load(Ordering::SeqCst) {
+            Err(ApiError::unsent("connection refused"))
+        } else if self.faults.unreachable.load(Ordering::SeqCst) {
             Err(ApiError::Transport("unreachable".into()))
         } else {
             Ok(())
@@ -763,7 +845,7 @@ fn a_taken_account_id_is_replaced_and_the_keys_rewrapped() {
     sign_in(&b, "alice", "correct horse battery", &mac(2)).unwrap();
     b.faults.taken.store(10, Ordering::SeqCst);
     assert!(matches!(
-        kanso_sync::sign_up(
+        plain::sign_up(
             &b,
             SERVER,
             "bob",
@@ -802,7 +884,7 @@ fn an_outdated_server_and_an_unreachable_one() {
         Err(AccountError::ServerOutdated)
     ));
     assert!(matches!(
-        kanso_sync::sign_up(
+        plain::sign_up(
             &b,
             SERVER,
             "alice",
@@ -832,7 +914,7 @@ fn the_production_floor_refuses_test_parameters() {
     assert_eq!(b.faults.logins.load(Ordering::SeqCst), 0);
     // A default below the floor is refused before anything is derived.
     assert!(matches!(
-        kanso_sync::sign_up(
+        plain::sign_up(
             &b,
             SERVER,
             "bob",
@@ -934,6 +1016,8 @@ fn keychain_items_round_trip_and_ignore_other_accounts() {
 
     let pending = PendingRecoveryKey {
         origin: ORIGIN.into(),
+        server: SERVER.into(),
+        unconfirmed: false,
         account_id: up.session.account_id.clone(),
         username: "alice".into(),
         recovery_key: up.recovery_key.clone(),
@@ -968,6 +1052,8 @@ fn discarding_a_session_keeps_the_librarys_items_and_queues_a_failed_logout() {
         &library,
         &PendingRecoveryKey {
             origin: ORIGIN.into(),
+            server: SERVER.into(),
+            unconfirmed: false,
             account_id: alice.session.account_id.clone(),
             username: "alice".into(),
             recovery_key: alice.recovery_key.clone(),
@@ -1018,6 +1104,8 @@ fn sign_out_deletes_the_items_and_queues_a_failed_logout() {
         &library,
         &PendingRecoveryKey {
             origin: ORIGIN.into(),
+            server: SERVER.into(),
+            unconfirmed: false,
             account_id: up.session.account_id.clone(),
             username: "alice".into(),
             recovery_key: up.recovery_key.clone(),
@@ -1095,4 +1183,499 @@ fn sign_out_deletes_the_items_and_queues_a_failed_logout() {
             reason: SignOutReason::SignedOut
         }
     );
+}
+
+// ---------------------------------------------------------------------------
+// New recovery keys are never lost (sec-client 1)
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    /// The test server's clock: every probe and every step moves it an hour
+    /// on, past `recover-ip` and `password-account`.
+    static CLOCK: std::cell::Cell<i64> = const { std::cell::Cell::new(1_800_000_000_000) };
+}
+
+fn tick(server: &MemoryServer) {
+    let now = CLOCK.with(|clock| {
+        clock.set(clock.get() + 3_600_001);
+        clock.get()
+    });
+    server.set_now(now);
+}
+
+/// Whether `key` is the account's recovery key on the server now.
+fn holds(server: &MemoryServer, username: &str, key: &RecoveryKey) -> bool {
+    tick(server);
+    let auth = kanso_sync::crypto::recovery_keys(key, ORIGIN, username).auth_key;
+    server
+        .api(SERVER)
+        .recover_start(&RecoverStartRequest {
+            username: username.into(),
+            recovery_auth_key: auth.to_base64url(),
+        })
+        .is_ok()
+}
+
+/// The library's unsaved key, as the Keychain holds it.
+fn kept(secrets: &MemorySecrets) -> Option<PendingRecoveryKey> {
+    keychain::load_any_recovery_key(secrets, &mac(1).library_id).unwrap()
+}
+
+/// Every rotation saves its key in the Keychain, unconfirmed, before the
+/// request goes; the server's yes confirms it.
+#[test]
+fn each_new_key_is_in_the_keychain_before_its_request_is_sent() {
+    struct Watching<'a> {
+        server: MemoryServer,
+        secrets: &'a MemorySecrets,
+        /// What the Keychain held as each rotating request was sent.
+        seen: Mutex<Vec<(Route, Option<PendingRecoveryKey>, String)>>,
+    }
+    struct WatchingApi<'a> {
+        inner: Box<dyn Api + 'a>,
+        watching: &'a Watching<'a>,
+    }
+    impl Backend for Watching<'_> {
+        fn api(&self, server: &str) -> Box<dyn Api + '_> {
+            Box::new(WatchingApi {
+                inner: self.server.api(server),
+                watching: self,
+            })
+        }
+        fn kdf_floor(&self) -> KdfParams {
+            KdfParams::TEST
+        }
+        fn kdf_default(&self) -> KdfParams {
+            KdfParams::TEST
+        }
+    }
+    impl WatchingApi<'_> {
+        fn saw(&self, route: Route, recovery_auth_key: &str) {
+            self.watching.seen.lock().unwrap().push((
+                route,
+                kept(self.watching.secrets),
+                recovery_auth_key.to_owned(),
+            ));
+        }
+    }
+    impl Api for WatchingApi<'_> {
+        fn health(&self) -> Result<Health, ApiError> {
+            self.inner.health()
+        }
+        fn prelogin(&self, r: &PreloginRequest) -> Result<PreloginResponse, ApiError> {
+            self.inner.prelogin(r)
+        }
+        fn signup(&self, r: &SignupRequest) -> Result<SessionResponse, ApiError> {
+            self.saw(Route::Signup, &r.recovery_auth_key);
+            self.inner.signup(r)
+        }
+        fn login(&self, r: &LoginRequest) -> Result<LoginResponse, ApiError> {
+            self.inner.login(r)
+        }
+        fn recover_start(&self, r: &RecoverStartRequest) -> Result<RecoverStartResponse, ApiError> {
+            self.inner.recover_start(r)
+        }
+        fn recover_finish(&self, r: &RecoverFinishRequest) -> Result<SessionResponse, ApiError> {
+            self.saw(Route::RecoverFinish, &r.recovery_auth_key_new);
+            self.inner.recover_finish(r)
+        }
+        fn logout(&self, t: &SessionToken) -> Result<(), ApiError> {
+            self.inner.logout(t)
+        }
+        fn account(&self, t: &SessionToken) -> Result<AccountResponse, ApiError> {
+            self.inner.account(t)
+        }
+        fn change_password(
+            &self,
+            t: &SessionToken,
+            r: &PasswordRequest,
+        ) -> Result<PasswordResponse, ApiError> {
+            self.inner.change_password(t, r)
+        }
+        fn replace_recovery_key(
+            &self,
+            t: &SessionToken,
+            r: &RecoveryKeyRequest,
+        ) -> Result<RecoveryKeyResponse, ApiError> {
+            self.saw(Route::RecoveryKey, &r.recovery_auth_key);
+            self.inner.replace_recovery_key(t, r)
+        }
+        fn delete_account(
+            &self,
+            t: &SessionToken,
+            r: &DeleteRequest,
+        ) -> Result<DeleteResponse, ApiError> {
+            self.inner.delete_account(t, r)
+        }
+        fn set_device_name(&self, t: &SessionToken, r: &DeviceNameRequest) -> Result<(), ApiError> {
+            self.inner.set_device_name(t, r)
+        }
+        fn devices(&self, t: &SessionToken) -> Result<DevicesResponse, ApiError> {
+            self.inner.devices(t)
+        }
+        fn revoke_device(&self, t: &SessionToken, id: &str) -> Result<(), ApiError> {
+            self.inner.revoke_device(t, id)
+        }
+        fn push(&self, t: &SessionToken, r: &PushRequest) -> Result<PushResponse, ApiError> {
+            self.inner.push(t, r)
+        }
+        fn changes(
+            &self,
+            t: &SessionToken,
+            since: Option<i64>,
+            limit: Option<usize>,
+        ) -> Result<WirePage, ApiError> {
+            self.inner.changes(t, since, limit)
+        }
+        fn put_file(
+            &self,
+            t: &SessionToken,
+            id: &str,
+            sealed: &[u8],
+        ) -> Result<PutFileResponse, ApiError> {
+            self.inner.put_file(t, id, sealed)
+        }
+        fn get_file(&self, t: &SessionToken, id: &str) -> Result<Option<Vec<u8>>, ApiError> {
+            self.inner.get_file(t, id)
+        }
+    }
+
+    let secrets = MemorySecrets::new();
+    let b = Watching {
+        server: MemoryServer::new(),
+        secrets: &secrets,
+        seen: Mutex::new(Vec::new()),
+    };
+    let pw = password("correct horse battery");
+    let up = kanso_sync::sign_up(&b, &secrets, SERVER, "alice", &pw, &mac(1), &quiet).unwrap();
+    assert!(!kept(&secrets).unwrap().unconfirmed, "confirmed once taken");
+    let newer = kanso_sync::new_recovery_key(&b, &secrets, &up.session, &pw, &quiet).unwrap();
+    assert_eq!(newer, up.recovery_key, "the unsaved key is set again");
+    keychain::delete_recovery_key(&secrets, &mac(1).library_id).unwrap();
+    let fresh = kanso_sync::new_recovery_key(&b, &secrets, &up.session, &pw, &quiet).unwrap();
+    assert_ne!(
+        fresh, up.recovery_key,
+        "a saved key is replaced by a new one"
+    );
+    let recovered = kanso_sync::recover(
+        &b,
+        &secrets,
+        SERVER,
+        "alice",
+        &fresh,
+        &password("a brand new passphrase"),
+        &mac(1),
+        &quiet,
+    )
+    .unwrap();
+    assert_ne!(recovered.recovery_key, fresh, "the used key always changes");
+
+    let seen = b.seen.lock().unwrap();
+    let routes: Vec<Route> = seen.iter().map(|(route, ..)| *route).collect();
+    assert_eq!(
+        routes,
+        [
+            Route::Signup,
+            Route::RecoveryKey,
+            Route::RecoveryKey,
+            Route::RecoverFinish
+        ]
+    );
+    for (route, item, sent) in seen.iter() {
+        let item = item
+            .as_ref()
+            .unwrap_or_else(|| panic!("{route:?}: no item"));
+        assert!(item.unconfirmed, "{route:?}");
+        assert_eq!(item.username, "alice");
+        assert_eq!(item.account_id, up.session.account_id);
+        let auth = kanso_sync::crypto::recovery_keys(&item.recovery_key, ORIGIN, "alice").auth_key;
+        assert_eq!(
+            &auth.to_base64url(),
+            sent,
+            "{route:?}: the kept key is the sent one"
+        );
+    }
+}
+
+/// Three lost answers in a row: every flow returns its key with the error,
+/// the Keychain keeps it unconfirmed, and it is the key the server holds.
+#[test]
+fn lost_answers_keep_the_new_key_and_return_it() {
+    let quick = Quick(MemoryServer::new());
+    let server = &quick.0;
+    let secrets = MemorySecrets::new();
+    let pw = password("correct horse battery");
+
+    server.drop_next_responses(Route::Signup, 3);
+    let lost =
+        kanso_sync::sign_up(&quick, &secrets, SERVER, "alice", &pw, &mac(1), &quiet).unwrap_err();
+    assert!(matches!(lost.error, AccountError::Transport(_)));
+    let key = lost.recovery_key.expect("the key comes back");
+    assert!(key.unconfirmed);
+    assert_eq!(kept(&secrets).unwrap().recovery_key, key.recovery_key);
+    assert!(holds(server, "alice", &key.recovery_key));
+    // The account exists: its password signs in.
+    let session = sign_in(&quick, "alice", "correct horse battery", &mac(1))
+        .unwrap()
+        .session;
+
+    // A new key whose answer is lost is the server's.
+    server.drop_next_responses(Route::RecoveryKey, 3);
+    let lost = kanso_sync::new_recovery_key(&quick, &secrets, &session, &pw, &quiet).unwrap_err();
+    let shown = lost.recovery_key.unwrap();
+    assert!(holds(server, "alice", &shown.recovery_key));
+    assert_eq!(
+        shown.recovery_key, key.recovery_key,
+        "the unsaved key again"
+    );
+    keychain::delete_recovery_key(&secrets, &mac(1).library_id).unwrap();
+    server.drop_next_responses(Route::RecoveryKey, 3);
+    let lost = kanso_sync::new_recovery_key(&quick, &secrets, &session, &pw, &quiet).unwrap_err();
+    let second = lost.recovery_key.unwrap().recovery_key;
+    assert_ne!(second, key.recovery_key);
+    assert!(holds(server, "alice", &second));
+    assert_eq!(kept(&secrets).unwrap().recovery_key, second);
+
+    // Recovery: the password changed and the key rotated, unseen.
+    server.drop_next_responses(Route::RecoverFinish, 3);
+    let lost = kanso_sync::recover(
+        &quick,
+        &secrets,
+        SERVER,
+        "alice",
+        &second,
+        &password("a brand new passphrase"),
+        &mac(1),
+        &quiet,
+    )
+    .unwrap_err();
+    let third = lost.recovery_key.unwrap();
+    assert!(third.unconfirmed);
+    assert_ne!(third.recovery_key, second);
+    assert!(holds(server, "alice", &third.recovery_key));
+    assert!(sign_in(&quick, "alice", "a brand new passphrase", &mac(1)).is_ok());
+}
+
+/// A refused rotation, or one that never left this Mac, puts the item back
+/// as it was: gone, or the unsaved key from before.
+#[test]
+fn a_refused_or_unsent_rotation_puts_the_item_back() {
+    let b = hostile();
+    let secrets = MemorySecrets::new();
+    let pw = password("correct horse battery");
+    let up = kanso_sync::sign_up(&b, &secrets, SERVER, "alice", &pw, &mac(1), &quiet).unwrap();
+    keychain::delete_recovery_key(&secrets, &mac(1).library_id).unwrap();
+
+    let wrong = password("wrong horse battery");
+    let refused =
+        kanso_sync::new_recovery_key(&b, &secrets, &up.session, &wrong, &quiet).unwrap_err();
+    assert!(matches!(refused.error, AccountError::InvalidCredentials));
+    assert!(refused.recovery_key.is_none());
+    assert!(kept(&secrets).is_none(), "no item was left behind");
+    assert!(holds(&b.server, "alice", &up.recovery_key));
+
+    // With an unsaved key from before, that one stays and comes back.
+    let unsaved = kanso_sync::new_recovery_key(&b, &secrets, &up.session, &pw, &quiet).unwrap();
+    let refused =
+        kanso_sync::new_recovery_key(&b, &secrets, &up.session, &wrong, &quiet).unwrap_err();
+    assert_eq!(refused.recovery_key.unwrap().recovery_key, unsaved);
+    let item = kept(&secrets).unwrap();
+    assert_eq!(item.recovery_key, unsaved);
+    assert!(!item.unconfirmed);
+
+    // Unsent: the server never saw it.
+    keychain::delete_recovery_key(&secrets, &mac(1).library_id).unwrap();
+    b.faults.unsent.store(true, Ordering::SeqCst);
+    let unsent = kanso_sync::new_recovery_key(&b, &secrets, &up.session, &pw, &quiet);
+    b.faults.unsent.store(false, Ordering::SeqCst);
+    let unsent = unsent.unwrap_err();
+    assert!(matches!(unsent.error, AccountError::Transport(_)));
+    assert!(unsent.recovery_key.is_none());
+    assert!(kept(&secrets).is_none());
+    assert!(holds(&b.server, "alice", &unsaved));
+}
+
+/// The Keychain refusing before the request means nothing is sent; refusing
+/// to mark the key confirmed afterwards still returns the key, which stays
+/// in the Keychain unconfirmed.
+#[test]
+fn the_keychain_refusing_never_loses_a_key() {
+    let quick = Quick(MemoryServer::new());
+    let server = &quick.0;
+    let secrets = MemorySecrets::new();
+    let pw = password("correct horse battery");
+
+    secrets.fail_write(0);
+    let refused =
+        kanso_sync::sign_up(&quick, &secrets, SERVER, "alice", &pw, &mac(1), &quiet).unwrap_err();
+    assert!(matches!(refused.error, AccountError::Keychain(_)));
+    assert!(refused.recovery_key.is_none());
+    assert_eq!(server.stats().count(Route::Signup), 0, "nothing was sent");
+    assert!(server.account_id("alice").is_none());
+
+    secrets.fail_write(1);
+    let up = kanso_sync::sign_up(&quick, &secrets, SERVER, "alice", &pw, &mac(1), &quiet).unwrap();
+    let item = kept(&secrets).unwrap();
+    assert_eq!(item.recovery_key, up.recovery_key);
+    assert!(
+        item.unconfirmed,
+        "the confirmation didn't save, the key did"
+    );
+    assert!(holds(server, "alice", &up.recovery_key));
+
+    // A refused request whose putting back fails still returns the key the
+    // server holds.
+    secrets.fail_write(1);
+    let wrong = password("wrong horse battery");
+    let refused =
+        kanso_sync::new_recovery_key(&quick, &secrets, &up.session, &wrong, &quiet).unwrap_err();
+    assert_eq!(refused.recovery_key.unwrap().recovery_key, up.recovery_key);
+}
+
+/// An unsaved key of another account is never replaced: the rotation is
+/// refused before anything is sent.
+#[test]
+fn another_accounts_unsaved_key_is_never_replaced() {
+    let quick = Quick(MemoryServer::new());
+    let secrets = MemorySecrets::new();
+    let bob = kanso_sync::sign_up(
+        &quick,
+        &secrets,
+        SERVER,
+        "bob",
+        &Password::new("correct horse battery", "bob").unwrap(),
+        &mac(1),
+        &quiet,
+    )
+    .unwrap();
+    let before = quick.0.stats().count(Route::Signup);
+    let refused = kanso_sync::sign_up(
+        &quick,
+        &secrets,
+        SERVER,
+        "alice",
+        &password("correct horse battery"),
+        &mac(1),
+        &quiet,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        refused.error,
+        AccountError::UnsavedRecoveryKey { ref username } if username == "bob"
+    ));
+    assert_eq!(quick.0.stats().count(Route::Signup), before);
+    assert_eq!(kept(&secrets).unwrap().recovery_key, bob.recovery_key);
+    let shown = refused
+        .recovery_key
+        .expect("bob's key comes back to be shown");
+    assert_eq!(shown.recovery_key, bob.recovery_key);
+    assert_eq!(shown.username, "bob");
+}
+
+#[derive(Clone, Debug)]
+enum KeyOp {
+    /// "New recovery key", its answer lost `drops` times, the Keychain
+    /// refusing its write number `fails`, maybe with a wrong password.
+    NewKey {
+        drops: usize,
+        fails: Option<usize>,
+        wrong: bool,
+    },
+    /// Recovery with the key the server holds.
+    Recover { drops: usize, fails: Option<usize> },
+    /// The user saves the key on screen ("I've saved my recovery key").
+    Save,
+}
+
+fn key_op() -> impl Strategy<Value = KeyOp> {
+    let fails = prop::option::of(0usize..3);
+    prop_oneof![
+        3 => (0usize..4, fails.clone(), prop::bool::weighted(0.2))
+            .prop_map(|(drops, fails, wrong)| KeyOp::NewKey { drops, fails, wrong }),
+        2 => (0usize..4, fails).prop_map(|(drops, fails)| KeyOp::Recover { drops, fails }),
+        1 => Just(KeyOp::Save),
+    ]
+}
+
+proptest! {
+    #![proptest_config(config(32))]
+
+    /// Invariant: whatever fails and wherever, the recovery key the server
+    /// holds is one the user can still get: in the Keychain item, on screen
+    /// (the last key a call returned, with or without an error), or saved
+    /// by the user.
+    #[test]
+    fn prop_a_key_the_server_holds_is_always_kept_or_shown(ops in prop::collection::vec(key_op(), 1..7)) {
+        let quick = Quick(MemoryServer::new());
+        let server = &quick.0;
+        let secrets = MemorySecrets::new();
+        tick(server);
+        let mut passwords = vec!["correct horse battery".to_owned()];
+        let up = kanso_sync::sign_up(&quick, &secrets, SERVER, "alice", &password(&passwords[0]), &mac(1), &quiet).unwrap();
+        let mut session = up.session;
+        let mut shown = Some(up.recovery_key.clone());
+        let mut saved: Vec<RecoveryKey> = Vec::new();
+        let mut known = vec![up.recovery_key];
+        for (n, op) in ops.into_iter().enumerate() {
+            tick(server);
+            let result = match op {
+                KeyOp::Save => {
+                    if let Some(key) = shown.take() {
+                        saved.push(key);
+                    }
+                    keychain::delete_recovery_key(&secrets, &mac(1).library_id).unwrap();
+                    None
+                }
+                KeyOp::NewKey { drops, fails, wrong } => {
+                    server.drop_next_responses(Route::RecoveryKey, drops);
+                    if let Some(at) = fails {
+                        secrets.fail_write(at);
+                    }
+                    let text = if wrong { "wrong horse battery" } else { passwords.last().unwrap().as_str() };
+                    Some(kanso_sync::new_recovery_key(&quick, &secrets, &session, &password(text), &quiet)
+                        .map_err(|err| err.recovery_key.map(|k| k.recovery_key)))
+                }
+                KeyOp::Recover { drops, fails } => {
+                    let current = known.iter().chain(&saved).find(|k| holds(server, "alice", k)).cloned();
+                    let current = current.expect("the server's key is known");
+                    server.drop_next_responses(Route::RecoverFinish, drops);
+                    if let Some(at) = fails {
+                        secrets.fail_write(at);
+                    }
+                    let text = format!("passphrase number {n} here");
+                    let result = kanso_sync::recover(&quick, &secrets, SERVER, "alice", &current, &password(&text), &mac(1), &quiet)
+                        .map(|r| { session = r.session; r.recovery_key })
+                        .map_err(|err| err.recovery_key.map(|k| k.recovery_key));
+                    passwords.push(text);
+                    Some(result)
+                }
+            };
+            server.drop_next_responses(Route::RecoveryKey, 0);
+            server.drop_next_responses(Route::RecoverFinish, 0);
+            secrets.heal();
+            match result {
+                Some(Ok(key)) => shown = Some(key),
+                Some(Err(Some(key))) => shown = Some(key),
+                Some(Err(None)) | None => {}
+            }
+            // A recovery may have ended this session: sign in again with
+            // whichever password is now the account's.
+            if check(server, &session).is_err() {
+                session = passwords.iter().rev()
+                    .find_map(|text| sign_in(&quick, "alice", text, &mac(1)).ok())
+                    .expect("one of the passwords works")
+                    .session;
+            }
+            let item = kept(&secrets).map(|k| k.recovery_key);
+            known.extend(item.clone());
+            known.extend(shown.clone());
+            let current = known.iter().chain(&saved).find(|k| holds(server, "alice", k)).cloned();
+            prop_assert!(current.is_some(), "after {op:?}: the server holds a key nobody has");
+            let current = current.unwrap();
+            prop_assert!(
+                item.as_ref() == Some(&current) || shown.as_ref() == Some(&current) || saved.contains(&current),
+                "after {op:?}: the server's key is neither kept, shown nor saved"
+            );
+        }
+    }
 }

@@ -45,9 +45,17 @@ fn machine(uuid: Option<&str>) -> Machine {
 /// Signs `username` up on `server` from `device`.
 fn account(server: &MemoryServer, username: &str, device: &DeviceIdentity) -> Session {
     let password = Password::new("correct horse battery", username).unwrap();
-    kanso_sync::sign_up(server, SERVER, username, &password, device, &|_| {})
-        .unwrap()
-        .session
+    kanso_sync::sign_up(
+        server,
+        &kanso_sync::MemorySecrets::new(),
+        SERVER,
+        username,
+        &password,
+        device,
+        &|_| {},
+    )
+    .unwrap()
+    .session
 }
 
 fn binding(store: &Store) -> (Option<String>, Option<String>) {

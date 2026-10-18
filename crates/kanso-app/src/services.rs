@@ -15,6 +15,7 @@ use std::time::Duration;
 use gpui_kit::*;
 use kanso_server::{ServerConfig, ServerHandle};
 use kanso_store::{Change, Origin};
+use kanso_sync::keychain::PendingRecoveryKey;
 use kanso_sync::{
     Backend, DeviceInfo, Machine, RecoveryKey, Schedule, SecretStore, Session, SignOutReason,
     SignupState, Step, SyncError, SyncOptions, SyncProblem, SyncReport, Usage,
@@ -97,11 +98,27 @@ pub struct RunningTask {
 
 /// A recovery key the user hasn't confirmed saving: the Account page shows
 /// it until "I've saved it" (its Keychain item lasts as long).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PendingKey {
     pub key: RecoveryKey,
     pub username: String,
     pub server: String,
+    /// What else the screen says: the task that made the key failed, or
+    /// Kanso couldn't tell whether the server took it.
+    pub note: Option<&'static str>,
+}
+
+impl PendingKey {
+    /// The Keychain's unsaved key; `note` shows when the server may not
+    /// have taken it.
+    pub fn kept(item: PendingRecoveryKey, note: &'static str) -> PendingKey {
+        PendingKey {
+            note: item.unconfirmed.then_some(note),
+            key: item.recovery_key,
+            username: item.username,
+            server: item.server,
+        }
+    }
 }
 
 /// The signed-in account's storage and devices, as last fetched.
@@ -860,9 +877,17 @@ mod tests {
         let password = kanso_sync::Password::new("correct horse battery", username).unwrap();
         let server_url = kanso_sync::DEFAULT_SERVER;
         let session = if sign_up {
-            kanso_sync::sign_up(server, server_url, username, &password, &device, &|_| {})
-                .unwrap()
-                .session
+            kanso_sync::sign_up(
+                server,
+                &kanso_sync::MemorySecrets::new(),
+                server_url,
+                username,
+                &password,
+                &device,
+                &|_| {},
+            )
+            .unwrap()
+            .session
         } else {
             kanso_sync::sign_in(server, server_url, username, &password, &device, &|_| {})
                 .unwrap()

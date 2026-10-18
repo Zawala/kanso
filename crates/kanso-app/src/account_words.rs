@@ -91,6 +91,11 @@ pub fn error_words(err: &AccountError, context: ErrorContext) -> String {
         AccountError::Keychain(_) => {
             "Kanso couldn't use the Keychain. Unlock it, or allow Kanso when macOS asks, then try again."
         }
+        AccountError::UnsavedRecoveryKey { username } => {
+            return format!(
+                "Save the new recovery key for {username} first. Kanso shows it on the Account page."
+            );
+        }
         AccountError::BadRequest
         | AccountError::ChecksumMismatch
         | AccountError::MethodNotAllowed
@@ -383,12 +388,21 @@ pub fn evicted_notice(device: &DeviceInfo) -> String {
     )
 }
 
-pub fn sign_out_question(username: &str) -> (String, String) {
+/// "Sign out of …?"; `unsaved_key` when a new recovery key is still on
+/// screen, which signing out deletes.
+pub fn sign_out_question(username: &str, unsaved_key: bool) -> (String, String) {
+    let body = "Notes stay on this Mac. Sync stops until you sign in again.";
     (
         format!("Sign out of {username}?"),
-        "Notes stay on this Mac. Sync stops until you sign in again.".to_owned(),
+        match unsaved_key {
+            true => format!("{UNSAVED_KEY_WARNING} {body}"),
+            false => body.to_owned(),
+        },
     )
 }
+
+pub const UNSAVED_KEY_WARNING: &str =
+    "Your new recovery key hasn't been saved yet; signing out deletes it.";
 
 pub fn delete_account_words(username: &str) -> String {
     format!(
@@ -502,6 +516,18 @@ pub fn upload_question(from: &str) -> (String, String, &'static str) {
 // MARK: The recovery key
 
 pub const RECOVERY_KEY_TEXT: &str = "If you forget your password, this key and your username are the only way back into your account. Kanso and the server's owner can't reset it. Anyone with it can take over your account and read your notes, so keep it somewhere safe, like a password manager or on paper. Each time it's used, Kanso gives you a new one.";
+/// When a new key shows while the Account page doesn't.
+pub const KEY_READY: &str = "Save your new recovery key. It's on the Account page.";
+/// Over a key "New recovery key" made, when the answer was lost.
+pub const KEY_UNCONFIRMED: &str = "Kanso couldn't tell whether the server took this key. Save it anyway: if it did, it's your recovery key now, and the old one no longer works.";
+/// Over a sign-up's key, when the answer was lost.
+pub const KEY_UNCONFIRMED_SIGN_UP: &str = "Kanso couldn't tell whether your account was created. Save this key anyway: if it was, it's the account's recovery key. Then sign in with your password.";
+/// Over a recovery's key, when the answer was lost.
+pub const KEY_UNCONFIRMED_RECOVERY: &str = "Kanso couldn't tell whether your password was changed. Save this key anyway: if it was, it's your recovery key now, and the old one no longer works.";
+/// The account exists, but this Mac isn't signed in to it.
+pub const CREATED_NOT_SIGNED_IN: &str = "Your account was created, but this Mac couldn't finish signing in. Sign in with your password.";
+/// The password changed, but this Mac isn't signed in with it.
+pub const CHANGED_NOT_SIGNED_IN: &str = "Your password was changed, but this Mac couldn't finish signing in. Sign in with the new password.";
 pub const RECOVERY_KEY_FILE_NAME: &str = "Kanso recovery key.txt";
 pub const COPIED_KEY: &str = "Copied. It leaves the clipboard in a minute.";
 pub const ICLOUD_WARNING: &str = "This folder syncs to iCloud. Save the key there anyway?";
@@ -566,6 +592,10 @@ mod tests {
             AccountError::UnsafeKdf,
             AccountError::KeyMismatch,
             AccountError::Keychain(kanso_sync::SecretError(text)),
+            // The username is this Mac's own, from the Keychain.
+            AccountError::UnsavedRecoveryKey {
+                username: "bob".into(),
+            },
             AccountError::Endpoint(EndpointError::Invalid),
             AccountError::Endpoint(EndpointError::Insecure),
             AccountError::Endpoint(EndpointError::Extra),
@@ -776,6 +806,30 @@ mod tests {
         assert_eq!(format_count(999), "999");
         assert_eq!(format_count(1000), "1,000");
         assert_eq!(format_count(1_234_567), "1,234,567");
+    }
+
+    #[test]
+    fn unsaved_key_examples() {
+        assert_eq!(
+            error_words(
+                &AccountError::UnsavedRecoveryKey {
+                    username: "bob".into()
+                },
+                ErrorContext::SignUp
+            ),
+            "Save the new recovery key for bob first. Kanso shows it on the Account page."
+        );
+        assert_eq!(
+            sign_out_question("ngoni", false),
+            (
+                "Sign out of ngoni?".to_owned(),
+                "Notes stay on this Mac. Sync stops until you sign in again.".to_owned()
+            )
+        );
+        assert_eq!(
+            sign_out_question("ngoni", true).1,
+            "Your new recovery key hasn't been saved yet; signing out deletes it. Notes stay on this Mac. Sync stops until you sign in again."
+        );
     }
 
     #[test]

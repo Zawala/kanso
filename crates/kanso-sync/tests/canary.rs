@@ -192,7 +192,7 @@ proptest! {
         let device = DeviceIdentity::from_parts(&format!("l_{:032x}", 7), &device_name, secret);
         let other = DeviceIdentity::from_parts(&format!("l_{:032x}", 8), &format!("Laptop {marker}"), [9; 32]);
 
-        let signed_up = kanso_sync::sign_up(&capture, SERVER, username, &password, &device, &|_| {}).unwrap();
+        let signed_up = kanso_sync::sign_up(&capture, &MemorySecrets::new(), SERVER, username, &password, &device, &|_| {}).unwrap();
         let recovery = signed_up.recovery_key;
         let a = Mac::new(signed_up.session);
         let b = Mac::new(kanso_sync::sign_in(&capture, SERVER, username, &password, &other, &|_| {}).unwrap().session);
@@ -226,7 +226,7 @@ proptest! {
         // Account requests carry wrapped keys and proofs.
         let new_password = Password::new(&format!("{PASSWORD} new {marker}"), username).unwrap();
         kanso_sync::change_password(&capture, &a.session, &password, &new_password, &|_| {}).unwrap();
-        let new_recovery = kanso_sync::new_recovery_key(&capture, &a.session, &new_password, &|_| {}).unwrap();
+        let new_recovery = kanso_sync::new_recovery_key(&capture, &MemorySecrets::new(), &a.session, &new_password, &|_| {}).unwrap();
 
         let secrets = MemorySecrets::new();
         keychain::save_session(&secrets, "l_canary", &a.session).unwrap();

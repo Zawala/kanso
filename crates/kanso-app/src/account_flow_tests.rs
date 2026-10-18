@@ -19,21 +19,41 @@ use gpui_kit::{AnyWindowHandle, AppContext as _, Modifiers, TestAppContext, Visu
 use kanso_core::DocType;
 use kanso_store::{Origin, Put, Store};
 use kanso_sync::{
-    AccountError, Backend, DeviceIdentity, Machine, MemorySecrets, MemoryServer, Password,
-    RecoveryKey, SecretStore, Session, SignOutReason, meta_keys,
+    AccountError, Api, Backend, DeviceIdentity, KdfParams, Machine, MemorySecrets, MemoryServer,
+    Password, RecoveryKey, Route, SecretStore, Session, SignOutReason, meta_keys,
 };
 use serde_json::json;
 
 use crate::account_flow;
+use crate::account_words as words;
 use crate::config::AppConfig;
 use crate::dialogs::Progress;
 use crate::services::{self, AccountState, Services, SyncState};
+use crate::settings::SettingsPage;
 use crate::workspace::{AppState, Workspace};
 
 /// The forms' server; `MemoryServer` answers for any.
 const SERVER: &str = kanso_sync::DEFAULT_SERVER;
 const PASSWORD: &str = "correct horse battery staple";
 const NEW_PASSWORD: &str = "a different long passphrase";
+
+/// The shared server, resending a request whose answer was lost at once.
+struct Quick(Arc<MemoryServer>);
+
+impl Backend for Quick {
+    fn api(&self, server: &str) -> Box<dyn Api + '_> {
+        self.0.api(server)
+    }
+    fn kdf_floor(&self) -> KdfParams {
+        self.0.kdf_floor()
+    }
+    fn kdf_default(&self) -> KdfParams {
+        self.0.kdf_default()
+    }
+    fn retry_pause(&self, _: usize) -> Duration {
+        Duration::ZERO
+    }
+}
 
 /// One Mac: its library, its Keychain and its window.
 struct Mac {
@@ -72,7 +92,7 @@ fn mac(cx: &mut TestAppContext, server: &Arc<MemoryServer>, name: &str, notes: u
         }
     }
     let secrets = Arc::new(MemorySecrets::new());
-    let backend: Arc<dyn Backend> = server.clone();
+    let backend: Arc<dyn Backend> = Arc::new(Quick(server.clone()));
     let (app_store, data_dir, keychain) =
         (store.clone(), dir.path().to_path_buf(), secrets.clone());
     let machine = Machine {
@@ -186,6 +206,35 @@ fn session(cx: &mut TestAppContext) -> Arc<Session> {
         .expect("signed in")
 }
 
+/// The key screen's words over the key, if any.
+fn key_note(cx: &mut TestAppContext) -> Option<&'static str> {
+    cx.read(|cx| {
+        cx.global::<Services>()
+            .pending_key
+            .as_ref()
+            .and_then(|pending| pending.note)
+    })
+}
+
+/// Whether `key` is the account's recovery key on `server` now.
+fn holds(server: &MemoryServer, username: &str, key: &RecoveryKey) -> bool {
+    let origin = kanso_sync::origin(SERVER).unwrap();
+    let auth = kanso_sync::crypto::recovery_keys(key, &origin, username).auth_key;
+    server
+        .api(SERVER)
+        .recover_start(&kanso_sync::api::RecoverStartRequest {
+            username: username.into(),
+            recovery_auth_key: auth.to_base64url(),
+        })
+        .is_ok()
+}
+
+/// "I've saved my recovery key", and its Keychain item's removal.
+fn key_saved(cx: &mut TestAppContext) {
+    cx.update(account_flow::key_saved);
+    cx.run_until_parked();
+}
+
 fn pending_key(cx: &mut TestAppContext) -> Option<RecoveryKey> {
     cx.read(|cx| {
         cx.global::<Services>()
@@ -231,6 +280,44 @@ impl Mac {
                 window.draw(cx).clear(cx);
             })
             .unwrap();
+        cx.run_until_parked();
+    }
+
+    /// The library's unsaved recovery key, as the Keychain holds it.
+    fn kept_key(&self) -> Option<kanso_sync::keychain::PendingRecoveryKey> {
+        let library = self
+            .items()
+            .iter()
+            .find_map(|item| item.strip_prefix("sync-recovery-key:").map(str::to_owned))?;
+        kanso_sync::keychain::load_any_recovery_key(self.secrets.as_ref(), &library).unwrap()
+    }
+
+    fn notifications(&self, cx: &mut TestAppContext) -> usize {
+        self.window
+            .update(cx, |_, window, cx| window.notifications(cx).len())
+            .unwrap()
+    }
+
+    /// Whether the window shows Settings › Account.
+    fn showing_account(&self, cx: &mut TestAppContext) -> bool {
+        cx.update(|cx| {
+            let mut showing = false;
+            crate::workspace::for_each_workspace(cx, |workspace, cx| {
+                showing |= workspace.settings_open()
+                    && workspace.settings.read(cx).page() == SettingsPage::Account;
+            });
+            showing
+        })
+    }
+
+    /// Clicks what `selector` names in the window.
+    fn click(&self, cx: &mut TestAppContext, selector: &'static str) {
+        self.draw(cx);
+        let mut vcx = VisualTestContext::from_window(self.window, cx);
+        let bounds = vcx
+            .debug_bounds(selector)
+            .unwrap_or_else(|| panic!("{selector} is drawn"));
+        vcx.simulate_click(bounds.center(), Modifiers::none());
         cx.run_until_parked();
     }
 
@@ -331,7 +418,7 @@ fn signing_up_binds_this_library_and_shows_the_key(cx: &mut TestAppContext) {
     assert!(config.enabled, "signing up turns sync on");
     assert!(pending_key(cx).is_some(), "the key screen shows");
 
-    cx.update(account_flow::key_saved);
+    key_saved(cx);
     cx.run_until_parked();
     assert!(pending_key(cx).is_none());
     assert_eq!(a.items(), [format!("sync-account:{library}")]);
@@ -439,6 +526,7 @@ fn another_accounts_notes_are_asked_about(cx: &mut TestAppContext) {
     let elsewhere = DeviceIdentity::from_parts(&format!("l_{:032x}", 9), "Elsewhere", [9; 32]);
     let bob = kanso_sync::sign_up(
         server.as_ref(),
+        &MemorySecrets::new(),
         SERVER,
         "bob",
         &password(PASSWORD, "bob"),
@@ -450,7 +538,7 @@ fn another_accounts_notes_are_asked_about(cx: &mut TestAppContext) {
     let a = mac(cx, &server, "Studio", 2);
     let rx = a.sign_up(cx, "alice");
     assert_eq!(finish(cx, rx), Ok(()));
-    cx.update(account_flow::key_saved);
+    key_saved(cx);
     let alice = a.bound_to();
     assert_eq!(sign_out(cx), Ok(()));
 
@@ -474,6 +562,7 @@ fn cancelling_another_account_keeps_this_one(cx: &mut TestAppContext) {
     let elsewhere = DeviceIdentity::from_parts(&format!("l_{:032x}", 9), "Elsewhere", [9; 32]);
     let bob = kanso_sync::sign_up(
         server.as_ref(),
+        &MemorySecrets::new(),
         SERVER,
         "bob",
         &password(PASSWORD, "bob"),
@@ -528,6 +617,7 @@ fn a_cancelled_recovery_keeps_the_new_key(cx: &mut TestAppContext) {
     let elsewhere = DeviceIdentity::from_parts(&format!("l_{:032x}", 9), "Elsewhere", [9; 32]);
     let bob = kanso_sync::sign_up(
         server.as_ref(),
+        &MemorySecrets::new(),
         SERVER,
         "bob",
         &password(PASSWORD, "bob"),
@@ -538,7 +628,7 @@ fn a_cancelled_recovery_keeps_the_new_key(cx: &mut TestAppContext) {
     let a = mac(cx, &server, "Studio", 2);
     let rx = a.sign_up(cx, "alice");
     assert_eq!(finish(cx, rx), Ok(()));
-    cx.update(account_flow::key_saved);
+    key_saved(cx);
     assert_eq!(sign_out(cx), Ok(()));
     let library = library_id(cx);
 
@@ -548,9 +638,25 @@ fn a_cancelled_recovery_keeps_the_new_key(cx: &mut TestAppContext) {
     assert_eq!(account(cx), AccountState::SignedOut);
     let shown = pending_key(cx).expect("the new key shows");
     assert!(shown != bob.recovery_key);
+    assert!(holds(&server, "bob", &shown));
     assert_eq!(a.items(), [format!("sync-recovery-key:{library}")]);
     let devices = kanso_sync::devices(server.as_ref(), &bob.session);
     assert!(devices.is_err(), "recovery signed bob's other session out");
+
+    // A relaunch, signed out, shows it again.
+    let backend: Arc<dyn Backend> = Arc::new(Quick(server.clone()));
+    let secrets: Arc<dyn SecretStore> = a.secrets.clone();
+    cx.update(|cx| {
+        let machine = cx.global::<Services>().machine.clone().unwrap();
+        cx.set_global(services(backend, secrets, machine));
+        account_flow::restore(cx);
+    });
+    wait_until(cx, "the launch check", |cx| {
+        cx.read(|cx| cx.global::<Services>().library_id.is_some())
+    });
+    assert_eq!(account(cx), AccountState::SignedOut);
+    assert_eq!(pending_key(cx), Some(shown));
+    assert_eq!(key_note(cx), None, "the server took it");
 }
 
 /// Signing out while a sync runs stops it first ("Stopping sync…"), and its
@@ -691,7 +797,7 @@ fn recovery_replaces_the_key(cx: &mut TestAppContext) {
     let rx = a.sign_up(cx, "alice");
     assert_eq!(finish(cx, rx), Ok(()));
     let first = pending_key(cx).unwrap();
-    cx.update(account_flow::key_saved);
+    key_saved(cx);
     assert_eq!(sign_out(cx), Ok(()));
 
     let rx = a.recover(cx, "alice", first.clone(), NEW_PASSWORD);
@@ -701,13 +807,13 @@ fn recovery_replaces_the_key(cx: &mut TestAppContext) {
     assert!(second != first);
     let library = library_id(cx);
     assert!(a.items().contains(&format!("sync-recovery-key:{library}")));
-    cx.update(account_flow::key_saved);
+    key_saved(cx);
 
     let rx = cx.update(|cx| account_flow::new_recovery_key(password(NEW_PASSWORD, "alice"), cx));
     assert_eq!(finish(cx, rx), Ok(()));
     let third = pending_key(cx).expect("the new key shows");
     assert!(third != second);
-    cx.update(account_flow::key_saved);
+    key_saved(cx);
 
     assert_eq!(sign_out(cx), Ok(()));
     for used in [first, second] {
@@ -767,7 +873,7 @@ fn relaunching_restores_the_session(cx: &mut TestAppContext) {
     let library = library_id(cx);
 
     let relaunch = |cx: &mut TestAppContext| {
-        let backend: Arc<dyn Backend> = server.clone();
+        let backend: Arc<dyn Backend> = Arc::new(Quick(server.clone()));
         let secrets: Arc<dyn SecretStore> = a.secrets.clone();
         cx.update(|cx| {
             let machine = cx.global::<Services>().machine.clone().unwrap();
@@ -792,4 +898,140 @@ fn relaunching_restores_the_session(cx: &mut TestAppContext) {
     let config = cx.read(|cx| cx.global::<AppState>().config.sync.account.clone());
     assert!(config.is_none());
     assert_eq!(a.notes(), 1);
+}
+
+// MARK: New recovery keys are never lost
+
+/// Sign-up's answer is lost three times: the account may exist, so its key
+/// shows anyway (saying so), stays in the Keychain, and is the key the
+/// server holds. The Account page isn't showing, so a notification's "Show
+/// key" leads there.
+#[gpui_kit::test]
+fn a_lost_sign_up_answer_still_shows_the_key(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    // No notes: signing in later asks nothing.
+    let a = mac(cx, &server, "Studio", 0);
+    let before = a.notifications(cx);
+    server.drop_next_responses(Route::Signup, 3);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Err(words::CANT_REACH.to_owned()));
+    assert_eq!(account(cx), AccountState::SignedOut);
+    let shown = pending_key(cx).expect("the key shows");
+    assert_eq!(key_note(cx), Some(words::KEY_UNCONFIRMED_SIGN_UP));
+    let kept = a.kept_key().expect("the Keychain keeps it");
+    assert!(kept.unconfirmed);
+    assert_eq!(kept.recovery_key, shown);
+    assert!(holds(&server, "alice", &shown), "the account was created");
+
+    assert_eq!(a.notifications(cx), before + 1, "a notification says so");
+    assert!(!a.showing_account(cx));
+    a.click(cx, "show-recovery-key");
+    assert!(a.showing_account(cx), "Show key opens the Account page");
+
+    // On the Account page, the next key needs no notification.
+    key_saved(cx);
+    let rx = a.sign_in(cx, "alice", PASSWORD);
+    assert_eq!(finish(cx, rx), Ok(()));
+    a.window
+        .update(cx, |_, window, cx| window.clear_notifications(cx))
+        .unwrap();
+    cx.executor().advance_clock(Duration::from_secs(2));
+    cx.run_until_parked();
+    assert_eq!(a.notifications(cx), 0);
+    let rx = cx.update(|cx| account_flow::new_recovery_key(password(PASSWORD, "alice"), cx));
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert!(pending_key(cx).is_some());
+    assert!(a.showing_account(cx));
+    assert_eq!(a.notifications(cx), 0);
+}
+
+/// The account is created but this Mac can't keep its session: the key
+/// still shows and stays in the Keychain, and the words say the account
+/// exists.
+#[gpui_kit::test]
+fn a_sign_up_that_cant_finish_still_shows_the_key(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 1);
+    a.secrets.fail_writes_to(Some("sync-account:"));
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Err(words::CREATED_NOT_SIGNED_IN.to_owned()));
+    a.secrets.heal();
+    assert_eq!(account(cx), AccountState::SignedOut);
+    let shown = pending_key(cx).expect("the key shows");
+    assert_eq!(key_note(cx), Some(words::CREATED_NOT_SIGNED_IN));
+    assert_eq!(
+        a.kept_key().map(|kept| kept.recovery_key),
+        Some(shown.clone())
+    );
+    assert!(holds(&server, "alice", &shown));
+    let rx = a.sign_in(cx, "alice", PASSWORD);
+    assert_eq!(finish(cx, rx), Ok(()), "the account is there to sign in to");
+}
+
+/// A recovery that changed the password but couldn't finish signing in says
+/// so, and its new key stays on screen and in the Keychain.
+#[gpui_kit::test]
+fn a_recovery_that_cant_finish_says_the_password_changed(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 1);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    let first = pending_key(cx).unwrap();
+    key_saved(cx);
+    assert_eq!(sign_out(cx), Ok(()));
+
+    a.secrets.fail_writes_to(Some("sync-account:"));
+    let rx = a.recover(cx, "alice", first.clone(), NEW_PASSWORD);
+    assert_eq!(finish(cx, rx), Err(words::CHANGED_NOT_SIGNED_IN.to_owned()));
+    a.secrets.heal();
+    assert_eq!(account(cx), AccountState::SignedOut);
+    let second = pending_key(cx).expect("the new key shows");
+    assert!(second != first);
+    assert_eq!(key_note(cx), Some(words::CHANGED_NOT_SIGNED_IN));
+    assert_eq!(
+        a.kept_key().map(|kept| kept.recovery_key),
+        Some(second.clone())
+    );
+    assert!(holds(&server, "alice", &second));
+    let rx = a.sign_in(cx, "alice", NEW_PASSWORD);
+    assert_eq!(finish(cx, rx), Ok(()), "the new password works");
+}
+
+/// "New recovery key" whose answer is lost shows the key, saying Kanso
+/// couldn't tell; a Keychain that refuses the new key sends nothing.
+#[gpui_kit::test]
+fn a_new_key_is_kept_before_it_is_sent(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 1);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    let first = pending_key(cx).unwrap();
+    key_saved(cx);
+
+    a.secrets.fail_writes_to(Some("sync-recovery-key:"));
+    let rx = cx.update(|cx| account_flow::new_recovery_key(password(PASSWORD, "alice"), cx));
+    let refused = finish(cx, rx);
+    a.secrets.heal();
+    assert_eq!(
+        refused,
+        Err(words::error_words(
+            &AccountError::Keychain(kanso_sync::SecretError(String::new())),
+            words::ErrorContext::CurrentPassword
+        ))
+    );
+    assert_eq!(
+        server.stats().count(Route::RecoveryKey),
+        0,
+        "nothing was sent"
+    );
+    assert!(pending_key(cx).is_none());
+    assert!(holds(&server, "alice", &first));
+
+    server.drop_next_responses(Route::RecoveryKey, 3);
+    let rx = cx.update(|cx| account_flow::new_recovery_key(password(PASSWORD, "alice"), cx));
+    assert_eq!(finish(cx, rx), Err(words::CANT_REACH.to_owned()));
+    let shown = pending_key(cx).expect("the key shows");
+    assert_eq!(key_note(cx), Some(words::KEY_UNCONFIRMED));
+    assert!(holds(&server, "alice", &shown), "the server took it");
+    assert_eq!(account(cx), signed_in_as("alice"));
 }

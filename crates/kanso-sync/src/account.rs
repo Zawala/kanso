@@ -19,7 +19,7 @@ use crate::crypto::{
     RecoveryKeyError, WrapPurpose, b64, hex, key_id, password_keys, random, recovery_keys, unb64,
     unwrap, wrap,
 };
-use crate::keychain::{self, PendingLogout, SecretError, SecretStore};
+use crate::keychain::{self, PendingLogout, PendingRecoveryKey, SecretError, SecretStore};
 use crate::username::{UsernameError, check_new_username, normalize_username};
 use crate::wire::{
     ApiError, PROTOCOL_VERSION, QuotaKind, SessionToken, SignOutReason, SignupClosedReason,
@@ -269,9 +269,38 @@ pub enum AccountError {
     Username(#[from] UsernameError),
     #[error("recovery key: {0}")]
     RecoveryKey(#[from] RecoveryKeyError),
-    /// The Keychain refused (sign-out and pending logouts only).
+    /// The Keychain refused. Before a request that sets a new recovery key
+    /// this means nothing was sent.
     #[error("{0}")]
     Keychain(#[from] SecretError),
+    /// The library's Keychain still holds another account's recovery key
+    /// that nobody confirmed saving; a new one would replace it. Nothing was
+    /// sent.
+    #[error("the recovery key for {username} isn't saved yet")]
+    UnsavedRecoveryKey { username: String },
+}
+
+/// Why a call that sets a new recovery key (sign-up, recovery, a password
+/// change, "New recovery key") failed, with that key whenever the server
+/// may hold it: show it, and never drop it.
+#[derive(Debug, thiserror::Error)]
+#[error("{error}")]
+pub struct RotationError {
+    pub error: AccountError,
+    /// The unsaved key left in `sync-recovery-key:<library>`: this call's,
+    /// when its request may have reached the server (the answer was lost,
+    /// garbled or a 5xx; `unconfirmed` is set), or one an earlier call left
+    /// there. `None` when the Keychain holds none.
+    pub recovery_key: Option<Box<PendingRecoveryKey>>,
+}
+
+impl From<AccountError> for RotationError {
+    fn from(error: AccountError) -> RotationError {
+        RotationError {
+            error,
+            recovery_key: None,
+        }
+    }
 }
 
 impl From<ApiError> for AccountError {
@@ -326,13 +355,142 @@ impl From<CryptoError> for AccountError {
 /// (docs/ACCOUNTS.md › Routes, "Retrying").
 const ATTEMPTS: usize = 3;
 
-fn retrying<T>(mut send: impl FnMut() -> Result<T, ApiError>) -> Result<T, ApiError> {
+/// Sends the identical request again after a transport error, pausing as
+/// the backend says first (about 1 s, then 4 s).
+fn retrying<T>(
+    b: &dyn Backend,
+    mut send: impl FnMut() -> Result<T, ApiError>,
+) -> Result<T, ApiError> {
     let mut attempt = 1;
     loop {
         match send() {
-            Err(ApiError::Transport(_)) if attempt < ATTEMPTS => attempt += 1,
+            Err(ApiError::Transport(_)) if attempt < ATTEMPTS => {
+                std::thread::sleep(b.retry_pause(attempt));
+                attempt += 1;
+            }
             result => return result,
         }
+    }
+}
+
+/// A new recovery key on its way to the server (sec-client 1). It is chosen
+/// before the request is built and saved in `sync-recovery-key:<library>`,
+/// marked unconfirmed, before the request is sent; nothing is sent when the
+/// Keychain refuses. A key the server may hold is never dropped:
+///
+/// - The server says yes: the item is marked confirmed.
+/// - The server refuses (a 4xx), or the request never left this Mac: the
+///   item goes back to what it was.
+/// - The answer is lost, garbled or a 5xx: the item stays, and the error
+///   carries the key so the app shows it.
+///
+/// While the Keychain holds an unsaved key for the same account, a new
+/// rotation sets that same key again (unless it is the key a recovery
+/// proves), so a retried or repeated change can never leave the server
+/// with a key the Mac no longer has.
+struct Rotation<'a> {
+    secrets: &'a dyn SecretStore,
+    library_id: String,
+    /// The item before this rotation.
+    before: Option<PendingRecoveryKey>,
+    /// The item this rotation writes.
+    item: PendingRecoveryKey,
+    /// Whether the item was written yet.
+    written: bool,
+}
+
+impl<'a> Rotation<'a> {
+    /// Chooses the key, reading the Keychain; writes nothing yet. `used` is
+    /// the key a recovery proves, which has to change.
+    #[allow(clippy::too_many_arguments, reason = "the item's fields")]
+    fn choose(
+        secrets: &'a dyn SecretStore,
+        library_id: &str,
+        server: &str,
+        origin: &str,
+        account_id: &str,
+        username: &str,
+        used: Option<&RecoveryKey>,
+    ) -> Result<Rotation<'a>, RotationError> {
+        let before =
+            keychain::load_any_recovery_key(secrets, library_id).map_err(AccountError::Keychain)?;
+        // Another account's key nobody saved yet stays, and comes back with
+        // the error to be shown again. Usernames are unique on a server; a
+        // sign-up's account ID changes between tries.
+        if let Some(other) = &before
+            && (other.origin != origin || other.username != username)
+        {
+            let username = other.username.clone();
+            return Err(RotationError {
+                error: AccountError::UnsavedRecoveryKey { username },
+                recovery_key: before.map(Box::new),
+            });
+        }
+        let kept = before
+            .as_ref()
+            .map(|kept| kept.recovery_key.clone())
+            .filter(|key| Some(key) != used);
+        Ok(Rotation {
+            secrets,
+            library_id: library_id.to_owned(),
+            before,
+            item: PendingRecoveryKey {
+                origin: origin.to_owned(),
+                account_id: account_id.to_owned(),
+                username: username.to_owned(),
+                server: server.to_owned(),
+                recovery_key: kept.unwrap_or_else(RecoveryKey::generate),
+                unconfirmed: true,
+            },
+            written: false,
+        })
+    }
+
+    fn key(&self) -> &RecoveryKey {
+        &self.item.recovery_key
+    }
+
+    /// Saves the key, unconfirmed, for `account_id`: right before sending.
+    fn keep(&mut self, account_id: &str) -> Result<(), SecretError> {
+        self.item.account_id = account_id.to_owned();
+        keychain::save_recovery_key(self.secrets, &self.library_id, &self.item)?;
+        self.written = true;
+        Ok(())
+    }
+
+    /// The server took it. Marking it confirmed may fail: the key stays in
+    /// the Keychain, unconfirmed, and the app shows it either way.
+    fn accepted(mut self) -> RecoveryKey {
+        self.item.unconfirmed = false;
+        keychain::save_recovery_key(self.secrets, &self.library_id, &self.item).ok();
+        self.item.recovery_key
+    }
+
+    /// The request failed with `error`; `maybe_applied` says whether the
+    /// server may have carried it out.
+    fn failed(self, error: AccountError, maybe_applied: bool) -> RotationError {
+        if maybe_applied {
+            return RotationError {
+                error,
+                recovery_key: Some(Box::new(self.item)),
+            };
+        }
+        if self.written {
+            let _ = match &self.before {
+                Some(before) => keychain::save_recovery_key(self.secrets, &self.library_id, before),
+                None => keychain::delete_recovery_key(self.secrets, &self.library_id),
+            };
+        }
+        RotationError {
+            error,
+            recovery_key: self.before.map(Box::new),
+        }
+    }
+
+    /// The request got `error` back instead of an answer.
+    fn failed_api(self, error: ApiError) -> RotationError {
+        let maybe_applied = error.may_have_applied();
+        self.failed(error.into(), maybe_applied)
     }
 }
 
@@ -380,8 +538,8 @@ impl Prelogin {
     }
 }
 
-fn prelogin(api: &dyn Api, username: &str) -> Result<Prelogin, AccountError> {
-    let answer = retrying(|| {
+fn prelogin(b: &dyn Backend, api: &dyn Api, username: &str) -> Result<Prelogin, AccountError> {
+    let answer = retrying(b, || {
         api.prelogin(&PreloginRequest {
             username: username.to_owned(),
         })
@@ -467,19 +625,21 @@ pub fn server_info(b: &dyn Backend, server: &str) -> Result<SignupState, Account
 
 /// Creates an account and this device's session (docs/ACCOUNTS.md › Account
 /// flows › Sign up). Refuses invalid and reserved names and bad passwords
-/// offline. A lost 201 is retried with the identical body, which the server
-/// answers idempotently (security re-check 7); an account ID someone else
-/// took is replaced and the keys rewrapped. The caller saves
-/// `result.recovery_key` in the Keychain at once (fix 3), then binds.
+/// offline. The new recovery key is saved in `sync-recovery-key:<library>`
+/// before the request is sent ([`Rotation`]). A lost 201 is retried with the
+/// identical body, which the server answers idempotently (security re-check
+/// 7); an account ID someone else took is replaced and the keys rewrapped.
+/// The caller then saves the session and binds.
 pub fn sign_up(
     b: &dyn Backend,
+    secrets: &dyn SecretStore,
     server: &str,
     username: &str,
     password: &Password,
     device: &DeviceIdentity,
     progress: &dyn Fn(Step),
-) -> Result<SignedUp, AccountError> {
-    let username = check_new_username(username)?;
+) -> Result<SignedUp, RotationError> {
+    let username = check_new_username(username).map_err(AccountError::from)?;
     check_not_username(password, &username)?;
     let (server, origin) = checked_server(server)?;
     progress(Step::Contacting);
@@ -488,26 +648,37 @@ pub fn sign_up(
         SignupState::Closed => {
             return Err(AccountError::SignupClosed {
                 reason: SignupClosedReason::Closed,
-            });
+            }
+            .into());
         }
         SignupState::Full => {
             return Err(AccountError::SignupClosed {
                 reason: SignupClosedReason::Full,
-            });
+            }
+            .into());
         }
     }
     let params = default_params(b)?;
     let salt = random::<16>();
     let data_key = DataKey::generate();
-    let recovery_key = RecoveryKey::generate();
+    let mut account_id = new_account_id();
+    let mut rotation = Rotation::choose(
+        secrets,
+        &device.library_id,
+        &server,
+        &origin,
+        &account_id,
+        &username,
+        None,
+    )?;
     progress(Step::DerivingKeys);
-    let keys = password_keys(password, &origin, &username, &salt, params)?;
-    let recovery = recovery_keys(&recovery_key, &origin, &username);
+    let keys =
+        password_keys(password, &origin, &username, &salt, params).map_err(AccountError::from)?;
+    let recovery = recovery_keys(rotation.key(), &origin, &username);
     let content = ContentKeys::derive(&data_key);
     let api = b.api(&server);
     let mut fresh_ids = 0;
     loop {
-        let account_id = new_account_id();
         let request = SignupRequest {
             username: username.clone(),
             account_id: account_id.clone(),
@@ -526,19 +697,25 @@ pub fn sign_up(
             device: new_device(device, &content, &origin, &account_id),
         };
         progress(Step::Contacting);
-        match retrying(|| api.signup(&request)) {
+        if let Err(err) = rotation.keep(&account_id) {
+            return Err(rotation.failed(err.into(), false));
+        }
+        match retrying(b, || api.signup(&request)) {
             Ok(answer) => {
-                check_answer(
+                if let Err(err) = check_answer(
                     &account_id,
                     &username,
                     (&answer.account_id, &answer.username, &answer.token),
-                )?;
+                ) {
+                    return Err(rotation.failed(err, true));
+                }
+                let recovery_key = rotation.accepted();
                 let mut session = Session::new(
                     server,
                     origin,
                     account_id,
                     username,
-                    request.device.id,
+                    request.device.id.clone(),
                     answer.token,
                     data_key,
                 );
@@ -548,8 +725,11 @@ pub fn sign_up(
                     recovery_key,
                 });
             }
-            Err(ApiError::AccountIdTaken) if fresh_ids < 3 => fresh_ids += 1,
-            Err(err) => return Err(err.into()),
+            Err(ApiError::AccountIdTaken) if fresh_ids < 3 => {
+                fresh_ids += 1;
+                account_id = new_account_id();
+            }
+            Err(err) => return Err(rotation.failed_api(err)),
         }
     }
 }
@@ -570,7 +750,7 @@ pub fn sign_in(
     let (server, origin) = checked_server(server)?;
     let api = b.api(&server);
     progress(Step::Contacting);
-    let pre = prelogin(&*api, &username)?;
+    let pre = prelogin(b, &*api, &username)?;
     let params = pre.params(b)?;
     progress(Step::DerivingKeys);
     let keys = password_keys(password, &origin, &username, &pre.salt, params)?;
@@ -585,7 +765,7 @@ pub fn sign_in(
         },
     };
     progress(Step::Contacting);
-    let answer = retrying(|| api.login(&request))?;
+    let answer = retrying(b, || api.login(&request))?;
     let fail = |err: AccountError| {
         let _ = api.logout(&answer.token);
         Err(err)
@@ -641,34 +821,36 @@ pub fn sign_in(
 }
 
 /// Recovers the account with its recovery key and sets `new_password`. The
-/// used key stops working; the result carries the new one, which the caller
-/// saves in the Keychain before binding.
+/// used key stops working; the new one is saved in
+/// `sync-recovery-key:<library>` before `recover/finish` is sent
+/// ([`Rotation`]), and the result carries it.
+#[allow(clippy::too_many_arguments, reason = "the flow's inputs")]
 pub fn recover(
     b: &dyn Backend,
+    secrets: &dyn SecretStore,
     server: &str,
     username: &str,
     key: &RecoveryKey,
     new_password: &Password,
     device: &DeviceIdentity,
     progress: &dyn Fn(Step),
-) -> Result<Recovered, AccountError> {
-    let username = normalize_username(username)?;
+) -> Result<Recovered, RotationError> {
+    let username = normalize_username(username).map_err(AccountError::from)?;
     check_not_username(new_password, &username)?;
     let (server, origin) = checked_server(server)?;
     let api = b.api(&server);
     progress(Step::Contacting);
-    let pre = prelogin(&*api, &username)?;
+    let pre = prelogin(b, &*api, &username)?;
     let used = recovery_keys(key, &origin, &username);
-    let start = retrying(|| {
+    let start = retrying(b, || {
         api.recover_start(&RecoverStartRequest {
             username: username.clone(),
             recovery_auth_key: used.auth_key.to_base64url(),
         })
-    })?;
+    })
+    .map_err(AccountError::from)?;
     if start.account_id != pre.account_id {
-        return Err(AccountError::Protocol(
-            "recovery answered for another account".into(),
-        ));
+        return Err(AccountError::Protocol("recovery answered for another account".into()).into());
     }
     let account_id = start.account_id;
     let data_key = match unwrap(
@@ -678,14 +860,23 @@ pub fn recover(
         &start.recovery_wrapped_key,
     ) {
         Ok(data_key) if key_id(&data_key) == start.key_id => data_key,
-        _ => return Err(AccountError::KeyMismatch),
+        _ => return Err(AccountError::KeyMismatch.into()),
     };
     let params = default_params(b)?;
     let salt = random::<16>();
-    let recovery_key = RecoveryKey::generate();
+    let mut rotation = Rotation::choose(
+        secrets,
+        &device.library_id,
+        &server,
+        &origin,
+        &account_id,
+        &username,
+        Some(key),
+    )?;
     progress(Step::DerivingKeys);
-    let keys = password_keys(new_password, &origin, &username, &salt, params)?;
-    let next = recovery_keys(&recovery_key, &origin, &username);
+    let keys = password_keys(new_password, &origin, &username, &salt, params)
+        .map_err(AccountError::from)?;
+    let next = recovery_keys(rotation.key(), &origin, &username);
     let content = ContentKeys::derive(&data_key);
     let request = RecoverFinishRequest {
         username: username.clone(),
@@ -699,18 +890,27 @@ pub fn recover(
         device: new_device(device, &content, &origin, &account_id),
     };
     progress(Step::Contacting);
-    let answer = retrying(|| api.recover_finish(&request))?;
-    check_answer(
+    if let Err(err) = rotation.keep(&account_id) {
+        return Err(rotation.failed(err.into(), false));
+    }
+    let answer = match retrying(b, || api.recover_finish(&request)) {
+        Ok(answer) => answer,
+        Err(err) => return Err(rotation.failed_api(err)),
+    };
+    if let Err(err) = check_answer(
         &account_id,
         &username,
         (&answer.account_id, &answer.username, &answer.token),
-    )?;
+    ) {
+        return Err(rotation.failed(err, true));
+    }
+    let recovery_key = rotation.accepted();
     let mut session = Session::new(
         server,
         origin,
         account_id,
         username,
-        request.device.id,
+        request.device.id.clone(),
         answer.token,
         data_key,
     );
@@ -812,7 +1012,7 @@ fn current_auth(
     progress: &dyn Fn(Step),
 ) -> Result<crate::crypto::DerivedKeys, AccountError> {
     progress(Step::Contacting);
-    let pre = prelogin(api, &session.username)?;
+    let pre = prelogin(b, api, &session.username)?;
     let params = pre.params(b)?;
     progress(Step::DerivingKeys);
     Ok(password_keys(
@@ -852,22 +1052,40 @@ pub fn change_password(
         ),
     };
     progress(Step::Contacting);
-    let answer = retrying(|| api.change_password(session.token(), &request))?;
+    let answer = retrying(b, || api.change_password(session.token(), &request))?;
     Ok(usize::try_from(answer.signed_out_devices).unwrap_or(usize::MAX))
 }
 
-/// Replaces the recovery key while signed in; returns the new one, which
-/// the caller saves in the Keychain and shows.
+/// The library whose Keychain items hold `session`.
+fn session_library(session: &Session) -> Result<&str, AccountError> {
+    session
+        .library_id()
+        .ok_or_else(|| AccountError::Keychain(SecretError("the session names no library".into())))
+}
+
+/// Replaces the recovery key while signed in and returns the new one. It is
+/// saved in `sync-recovery-key:<library>` before the request is sent
+/// ([`Rotation`]).
 pub fn new_recovery_key(
     b: &dyn Backend,
+    secrets: &dyn SecretStore,
     session: &Session,
     current: &Password,
     progress: &dyn Fn(Step),
-) -> Result<RecoveryKey, AccountError> {
+) -> Result<RecoveryKey, RotationError> {
+    let library_id = session_library(session)?;
     let api = b.api(&session.server);
     let current_keys = current_auth(b, &*api, session, current, progress)?;
-    let recovery_key = RecoveryKey::generate();
-    let next = recovery_keys(&recovery_key, &session.origin, &session.username);
+    let mut rotation = Rotation::choose(
+        secrets,
+        library_id,
+        &session.server,
+        &session.origin,
+        &session.account_id,
+        &session.username,
+        None,
+    )?;
+    let next = recovery_keys(rotation.key(), &session.origin, &session.username);
     let request = RecoveryKeyRequest {
         current_auth_key: current_keys.auth_key.to_base64url(),
         recovery_auth_key: next.auth_key.to_base64url(),
@@ -879,8 +1097,13 @@ pub fn new_recovery_key(
         ),
     };
     progress(Step::Contacting);
-    retrying(|| api.replace_recovery_key(session.token(), &request))?;
-    Ok(recovery_key)
+    if let Err(err) = rotation.keep(&session.account_id) {
+        return Err(rotation.failed(err.into(), false));
+    }
+    match retrying(b, || api.replace_recovery_key(session.token(), &request)) {
+        Ok(_) => Ok(rotation.accepted()),
+        Err(err) => Err(rotation.failed_api(err)),
+    }
 }
 
 /// Deletes the account and its server data. A retry whose response was lost
@@ -905,7 +1128,7 @@ pub fn delete_account(
         username: typed,
     };
     progress(Step::Contacting);
-    match retrying(|| api.delete_account(session.token(), &request)) {
+    match retrying(b, || api.delete_account(session.token(), &request)) {
         Ok(_)
         | Err(ApiError::Unauthorized {
             reason: SignOutReason::Unknown,

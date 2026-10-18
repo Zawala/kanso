@@ -7,6 +7,8 @@
 //! written in these shapes, and the Rust conformance runner (step 2a) drives
 //! `MemoryServer` through [`Api`] with them.
 
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 
 use crate::account::{Session, SignupState};
@@ -38,6 +40,17 @@ pub trait Backend: Send + Sync {
 
     /// The parameters new accounts and password changes use.
     fn kdf_default(&self) -> KdfParams;
+
+    /// How long to wait before sending a request again after its answer was
+    /// lost (`retry` is 1 for the first resend): about 1 s, then 4 s, so a
+    /// Wi-Fi link that dropped has time to come back. Tests that drop
+    /// answers on purpose shorten it.
+    fn retry_pause(&self, retry: usize) -> Duration {
+        match retry {
+            0 | 1 => Duration::from_secs(1),
+            _ => Duration::from_secs(4),
+        }
+    }
 }
 
 /// [`Backend::remote`]'s default: [`Api`]'s sync routes with one token.

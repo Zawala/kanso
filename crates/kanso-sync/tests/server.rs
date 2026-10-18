@@ -26,9 +26,17 @@ fn account(server: &MemoryServer, n: u8) -> Session {
     let username = format!("user{n}");
     let device = DeviceIdentity::from_parts(&format!("l_{:032x}", n), "Mac", [n; 32]);
     let password = Password::new("correct horse battery", &username).unwrap();
-    kanso_sync::sign_up(server, SERVER, &username, &password, &device, &|_| {})
-        .unwrap()
-        .session
+    kanso_sync::sign_up(
+        server,
+        &kanso_sync::MemorySecrets::new(),
+        SERVER,
+        &username,
+        &password,
+        &device,
+        &|_| {},
+    )
+    .unwrap()
+    .session
 }
 
 const IDS: [&str; 4] = [
