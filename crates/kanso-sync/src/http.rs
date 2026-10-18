@@ -49,8 +49,29 @@ impl Backend for HttpBackend {
     }
 }
 
-/// How long a logout may take: sign-out never waits on a slow server.
-const LOGOUT_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long `route` may take, connecting included (A7). A logout never
+/// keeps a sign-out waiting; the account routes, which a person waits on
+/// behind a spinner, give up after 30 s; pushes and files carry up to the
+/// size caps and keep 300 s.
+fn timeout(route: Route) -> Duration {
+    match route {
+        Route::Logout => Duration::from_secs(5),
+        Route::Push | Route::Changes | Route::PutFile | Route::GetFile => Duration::from_secs(300),
+        Route::Health
+        | Route::Prelogin
+        | Route::Signup
+        | Route::Login
+        | Route::RecoverStart
+        | Route::RecoverFinish
+        | Route::Account
+        | Route::Password
+        | Route::RecoveryKey
+        | Route::Delete
+        | Route::SetDevice
+        | Route::Devices
+        | Route::RevokeDevice => Duration::from_secs(30),
+    }
+}
 
 /// The v2 routes of one server.
 struct HttpApi {
@@ -95,7 +116,7 @@ impl HttpApi {
         let (method, _) = route.http();
         let url = format!("{}{path}", self.base);
         let auth = token.map(|t| format!("Bearer {}", t.expose()));
-        let timeout = (route == Route::Logout).then_some(LOGOUT_TIMEOUT);
+        let timeout = Some(timeout(route));
         let response = match method {
             "GET" | "DELETE" => {
                 let mut request = if method == "GET" {
@@ -106,11 +127,7 @@ impl HttpApi {
                 if let Some(auth) = &auth {
                     request = request.header("authorization", auth);
                 }
-                request
-                    .config()
-                    .timeout_global(timeout.or(Some(Duration::from_secs(300))))
-                    .build()
-                    .call()
+                request.config().timeout_global(timeout).build().call()
             }
             _ => {
                 let mut request = if method == "POST" {
@@ -121,10 +138,7 @@ impl HttpApi {
                 if let Some(auth) = &auth {
                     request = request.header("authorization", auth);
                 }
-                let request = request
-                    .config()
-                    .timeout_global(timeout.or(Some(Duration::from_secs(300))))
-                    .build();
+                let request = request.config().timeout_global(timeout).build();
                 match payload {
                     Payload::None => request
                         .header("content-type", "application/json")
@@ -452,6 +466,26 @@ impl Api for HttpApi {
             Ok((_, bytes)) => Ok(Some(bytes)),
             Err(ApiError::NotFound) => Ok(None),
             Err(err) => Err(err),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every route has its limit: 5 s for a logout, 300 s for what carries
+    /// notes and files, 30 s for the rest.
+    #[test]
+    fn each_route_has_its_timeout() {
+        for route in Route::ALL {
+            let secs = timeout(route).as_secs();
+            let expected = match route {
+                Route::Logout => 5,
+                Route::Push | Route::Changes | Route::PutFile | Route::GetFile => 300,
+                _ => 30,
+            };
+            assert_eq!(secs, expected, "{route:?}");
         }
     }
 }
