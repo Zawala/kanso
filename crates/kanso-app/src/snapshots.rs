@@ -26,9 +26,11 @@ use serde_json::json;
 
 use crate::assets::KansoAssets;
 use crate::clock::Clock;
+use crate::commands::Picker;
 use crate::config::{AppConfig, EditorFont, ThemePreference, ViewMode};
 use crate::layout::{BOTTOM_BAND_HEIGHT, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, TOP_BAND_HEIGHT};
 use crate::library::Filter;
+use crate::palette::{Mode, PANEL_HEIGHT, PANEL_WIDTH};
 use crate::services::{ApiState, Services, SyncState};
 use crate::theme::{Colors, DARK, LIGHT, Rgb};
 use crate::workspace::{AppState, Workspace, apply_theme};
@@ -525,6 +527,76 @@ fn mono_font(
     });
 }
 
+/// Opens the palette in `mode` and types `query`, as from the keyboard. The
+/// keymap is loaded so the rows show their real shortcuts.
+fn open_palette(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    mode: Mode,
+    query: &str,
+) {
+    cx.update(crate::workspace::bind_keys);
+    cx.update_window(window, |_, window, cx| {
+        let palette = workspace.read(cx).palette.clone();
+        palette.update(cx, |palette, cx| {
+            palette.open(mode, window, cx);
+            if !query.is_empty() {
+                palette.set_query(query, window, cx);
+            }
+        });
+    })
+    .unwrap();
+}
+
+/// ⌘K with nothing typed.
+fn palette(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    open_palette(cx, window, workspace, Mode::Commands, "");
+}
+
+/// ⌘K with "sync" typed: commands and notes together, with the first note
+/// selected so the detail pane shows a note.
+fn palette_query(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    open_palette(cx, window, workspace, Mode::Commands, "sync");
+    // The notes arrive after a pause in typing.
+    cx.advance_clock(std::time::Duration::from_millis(500));
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let palette = workspace.read(cx).palette.clone();
+        palette.update(cx, |palette, cx| palette.select_first_note(cx));
+    });
+}
+
+/// Move to notebook, the second list a command opens.
+fn palette_move(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    open_palette(cx, window, workspace, Mode::Pick(Picker::Notebook), "");
+}
+
+/// Open Note (⌘P): the most recently edited notes.
+fn note_picker(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    open_palette(cx, window, workspace, Mode::Notes, "");
+}
+
 fn open(
     cx: &mut HeadlessAppContext,
     store: Arc<Store>,
@@ -603,6 +675,30 @@ fn assert_surface(
         pixel[1],
         pixel[2],
         expected.hex()
+    );
+}
+
+/// The palette's panel is painted in the elevated color, centred in the
+/// window. The point sits in its padding, left of the search field.
+fn check_palette(image: &image::RgbaImage, shot: &Shot) {
+    let colors: &Colors = match shot.theme {
+        ThemePreference::Dark => &DARK,
+        _ => &LIGHT,
+    };
+    let width = f32::from(shot.size.width);
+    let height = f32::from(shot.size.height);
+    let scale = image.width() as f32 / width;
+    let corner = (
+        (width - PANEL_WIDTH) / 2.,
+        ((height - PANEL_HEIGHT) / 2.).floor(),
+    );
+    assert_surface(
+        image,
+        scale,
+        (corner.0 + 6., corner.1 + 6.),
+        colors.elevated,
+        2,
+        &format!("{}: palette", shot.name),
     );
 }
 
@@ -717,6 +813,11 @@ fn snapshots() {
             size: size(px(1440.), px(1100.)),
             ..shot("dark-list-grouped", Dark, Edit, open_latest)
         },
+        shot("dark-palette", Dark, Edit, palette),
+        shot("dark-palette-query", Dark, Edit, palette_query),
+        shot("light-palette-query", Light, Edit, palette_query),
+        shot("dark-palette-move", Dark, Edit, palette_move),
+        shot("dark-open-note", Dark, Split, note_picker),
         Shot {
             size: size(px(1100.), px(720.)),
             ..shot("dark-split-min", Dark, Split, open_latest)
@@ -792,6 +893,11 @@ fn snapshots() {
             image.width(),
             image.height()
         );
-        check_surfaces(&image, shot);
+        let palette_open = cx.update(|cx| workspace.read(cx).palette.read(cx).is_open());
+        if palette_open {
+            check_palette(&image, shot);
+        } else {
+            check_surfaces(&image, shot);
+        }
     }
 }

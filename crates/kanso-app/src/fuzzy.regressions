@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc fbd3b53e307e49a77891d879763a4cc7838d2ad3c26b3dfe6121b2d655f01747 # shrinks to query = "C", candidate = "C"
+cc 3c107b058777586f407d009996a0d757257a8d3171fc9eca2680882c4f5874bc # shrinks to scores = [Some(-1), Some(-1)]
+cc e75c860d89fe06989a36226806bca4c47b6de7b371a4d2e418505ccf19d7fb0a # shrinks to query = "ad", candidate = " A  -AAD  -aa"
+cc c92e65d9c044fe354092efd449a59f78da3ca1d30779e1844e360cf02f1e5236 # shrinks to query = "a", before = "a  a", after = "  a a  a", fillers = ["n", "n", "n", "n", "n", "n"]
+cc 4241fc96c7c12f8cdbb7f1c4a42c1abb16b41f29094d0bb2e628257aaed8891c # shrinks to query = "p", candidate = "p"
+cc 21712860b83e004f20f9a7347f09cc69fdcb770c90994b397f74d9af528c797d # shrinks to query = "ka", before = "k", after = "", fillers = ["n", "n", "n", "n", "n", "n"], word_starts = true

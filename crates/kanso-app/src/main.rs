@@ -4,12 +4,14 @@
 
 mod assets;
 mod clock;
+mod commands;
 mod config;
 mod dialogs;
 mod editor;
 mod editor_footer;
 mod empty_state;
 mod export;
+mod fuzzy;
 mod grouping;
 mod history;
 mod inkdrop;
@@ -19,6 +21,7 @@ mod library;
 mod markdown_edit;
 mod markdown_source;
 mod note_list;
+mod palette;
 mod paths;
 mod preview;
 mod services;

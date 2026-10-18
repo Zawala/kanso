@@ -23,6 +23,7 @@ use crate::layout::{
 };
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::{NoteList, NoteListEvent};
+use crate::palette::{Mode, Palette};
 use crate::paths;
 use crate::sidebar::{Sidebar, SidebarEvent};
 use crate::theme::Colors;
@@ -51,6 +52,8 @@ actions!(
         SyncNow,
         ImportInkdrop,
         Quit,
+        OpenCommandPalette,
+        OpenNotePicker,
     ]
 );
 
@@ -108,8 +111,10 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-n", NewNote, None),
         KeyBinding::new("cmd-shift-n", NewNotebook, None),
-        KeyBinding::new("cmd-shift-f", FocusSearch, None),
+        // The last binding for an action is the one menus and the palette
+        // show.
         KeyBinding::new("cmd-l", FocusSearch, None),
+        KeyBinding::new("cmd-shift-f", FocusSearch, None),
         KeyBinding::new("cmd-\\", ToggleSidebar, None),
         KeyBinding::new("cmd-1", ShowEditor, None),
         KeyBinding::new("cmd-2", ShowSplit, None),
@@ -122,7 +127,10 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-q", Quit, None),
         KeyBinding::new("enter", FocusEditor, Some("NoteList")),
         KeyBinding::new("escape", FocusNoteList, Some("NoteEditor")),
+        KeyBinding::new("cmd-k", OpenCommandPalette, None),
+        KeyBinding::new("cmd-p", OpenNotePicker, None),
     ]);
+    crate::palette::bind_keys(cx);
 }
 
 pub fn set_menus(cx: &mut App) {
@@ -199,6 +207,8 @@ pub struct Workspace {
     pub(crate) sidebar: Entity<Sidebar>,
     pub(crate) note_list: Entity<NoteList>,
     pub editor: Entity<NoteEditor>,
+    /// The command palette, drawn over the rest when open.
+    pub(crate) palette: Entity<Palette>,
     pub(crate) show_sidebar: bool,
     /// A press in a top band that may become a window drag.
     band_drag: BandDrag,
@@ -231,6 +241,9 @@ impl Workspace {
                 cx,
             )
         });
+
+        let palette =
+            cx.new(|cx| Palette::new(store.clone(), library.clone(), editor.clone(), window, cx));
 
         let subscriptions = vec![
             cx.subscribe_in(&library, window, |this, _, event, window, cx| match event {
@@ -291,6 +304,7 @@ impl Workspace {
             sidebar,
             note_list,
             editor,
+            palette,
             show_sidebar: appearance.show_sidebar,
             band_drag: BandDrag::default(),
             #[cfg(test)]
@@ -860,6 +874,15 @@ impl Render for Workspace {
                 this.library
                     .update(cx, |library, cx| library.select_relative(-1, cx));
             }))
+            .on_action(cx.listener(|this, _: &OpenCommandPalette, window, cx| {
+                this.palette
+                    .update(cx, |palette, cx| palette.open(Mode::Commands, window, cx));
+            }))
+            .on_action(cx.listener(|this, _: &OpenNotePicker, window, cx| {
+                this.palette
+                    .update(cx, |palette, cx| palette.open(Mode::Notes, window, cx));
+            }))
+            .on_action(cx.listener(|_, _: &SyncNow, _, cx| crate::services::sync_now(cx)))
             // The panes run the full height: each has its own top band
             // (the title bar's row) and bottom band.
             .child(
@@ -887,6 +910,9 @@ impl Render for Workspace {
                         .child(resizable_panel().child(self.editor.clone())),
                 ),
             )
+            // Over everything else when open.
+            .child(self.palette.clone())
+            // The system draws the real traffic lights above the palette too.
             .children(self.render_placeholder_traffic_lights())
     }
 }
