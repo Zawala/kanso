@@ -621,8 +621,18 @@ impl Run<'_> {
         batch: Vec<SyncDoc>,
     ) -> Result<Option<(Vec<SyncDoc>, Vec<Pushed>)>, SyncError> {
         // Right before the request: an upload just before it writes nothing
-        // locally, so no guarded write would have noticed a re-bind.
+        // locally, so no guarded write would have noticed a re-bind. The
+        // guarded `mark_sent` checks the binding again in its transaction,
+        // and records what is in flight so that, if the answer is lost, its
+        // echo is recognised as ours.
         self.check_bound()?;
+        let sent: Vec<(&str, &str)> = batch
+            .iter()
+            .map(|d| (d.id.as_str(), d.rev.as_str()))
+            .collect();
+        self.store
+            .mark_sent(&sent, Some(&self.guard))
+            .map_err(guarded)?;
         match self.sealed.push(&batch) {
             Ok(results) => return Ok(Some((batch, results))),
             Err(ApiError::QuotaExceeded { quota, .. }) => {

@@ -8,6 +8,9 @@
 //!   on this account for the document. Every write that learns a revision
 //!   from the server raises it; a server-reported loss and a re-merge clear
 //!   `synced_rev` but never lower it. Only binding resets it.
+//! - `sent_rev`: the revision in a push whose answer this Mac hasn't
+//!   processed. Its echo is our own push, never a conflict. Every write that
+//!   sets or clears `synced_rev` clears it.
 //!
 //! A tombstone with `synced_rev = rev` and `synced_gen = 0` was left by
 //! [`Store::reset_sync`] and was never on this account: it is never pushed,
@@ -101,6 +104,8 @@ pub struct SyncState {
     pub synced_rev: Option<String>,
     /// The replay floor.
     pub synced_gen: u64,
+    /// The revision in a push whose answer this Mac hasn't processed.
+    pub sent_rev: Option<String>,
 }
 
 impl SyncState {
@@ -129,7 +134,7 @@ fn sql_gen(generation: u64) -> i64 {
 fn learned(tx: &rusqlite::Transaction, id: &str, rev: &str) -> Result<()> {
     let generation = parse_rev(rev)?.generation;
     tx.execute(
-        "UPDATE docs SET synced_rev = ?2, synced_gen = max(synced_gen, ?3) WHERE id = ?1",
+        "UPDATE docs SET synced_rev = ?2, synced_gen = max(synced_gen, ?3), sent_rev = NULL WHERE id = ?1",
         params![id, rev, sql_gen(generation)],
     )?;
     Ok(())
@@ -231,7 +236,7 @@ impl Store {
     pub fn sync_states(&self) -> Result<Vec<SyncState>> {
         self.read(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, rev, deleted, synced_rev, synced_gen FROM docs ORDER BY seq",
+                "SELECT id, rev, deleted, synced_rev, synced_gen, sent_rev FROM docs ORDER BY seq",
             )?;
             let rows = stmt.query_map([], |row| {
                 Ok(SyncState {
@@ -240,6 +245,7 @@ impl Store {
                     deleted: row.get(2)?,
                     synced_rev: row.get(3)?,
                     synced_gen: u64::try_from(row.get::<_, i64>(4)?).unwrap_or(0),
+                    sent_rev: row.get(5)?,
                 })
             })?;
             Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -275,6 +281,25 @@ impl Store {
         })
     }
 
+    /// Records, right before a push request, which revision of each document
+    /// it carries (`sent_rev`), in one transaction. If the answer is lost
+    /// and the document is edited again, the server's copy coming back
+    /// through the feed is recognised as our own push, never a conflict
+    /// (docs/ACCOUNTS.md › POST /v2/push › Retrying). With a `guard`,
+    /// nothing is written unless it holds.
+    pub fn mark_sent(&self, docs: &[(&str, &str)], guard: Option<&SyncGuard>) -> Result<()> {
+        self.write(|tx, _| {
+            check_guard(tx, guard)?;
+            for (id, rev) in docs {
+                tx.execute(
+                    "UPDATE docs SET sent_rev = ?2 WHERE id = ?1",
+                    params![id, rev],
+                )?;
+            }
+            Ok(())
+        })
+    }
+
     /// Records that the server says it has no `id`: its `synced_rev` becomes
     /// NULL, so it is pending and its next push carries `base_rev = null`.
     /// The replay floor stays, so a server that claims a loss and then
@@ -287,7 +312,7 @@ impl Store {
     pub fn mark_unsynced(&self, id: &str, guard: Option<&SyncGuard>) -> Result<()> {
         self.write(|tx, _| {
             check_guard(tx, guard)?;
-            tx.execute("UPDATE docs SET synced_rev = NULL WHERE id = ?", [id])?;
+            tx.execute("UPDATE docs SET synced_rev = NULL, sent_rev = NULL WHERE id = ?", [id])?;
             Ok(())
         })
     }
@@ -317,7 +342,7 @@ impl Store {
                 .filter(|id| !present.contains(id))
                 .collect();
             for id in &missing {
-                tx.execute("UPDATE docs SET synced_rev = NULL WHERE id = ?", [id])?;
+                tx.execute("UPDATE docs SET synced_rev = NULL, sent_rev = NULL WHERE id = ?", [id])?;
             }
             Ok(missing)
         })
@@ -345,11 +370,11 @@ impl Store {
     pub fn reset_sync(&self, meta: &[(&str, Option<&str>)]) -> Result<()> {
         self.write(|tx, _| {
             tx.execute(
-                "UPDATE docs SET synced_rev = NULL, synced_gen = 0 WHERE deleted = 0",
+                "UPDATE docs SET synced_rev = NULL, synced_gen = 0, sent_rev = NULL WHERE deleted = 0",
                 [],
             )?;
             tx.execute(
-                "UPDATE docs SET synced_rev = rev, synced_gen = 0 WHERE deleted != 0",
+                "UPDATE docs SET synced_rev = rev, synced_gen = 0, sent_rev = NULL WHERE deleted != 0",
                 [],
             )?;
             write_meta(tx, meta)
@@ -528,6 +553,14 @@ impl Store {
             // (typically our own push coming back through the change feed):
             // nothing new on the remote side, so it is not a conflict.
             if local.synced_rev.as_deref() == Some(remote.rev.as_str()) {
+                return Ok(ApplyOutcome::Unchanged);
+            }
+            // Our own push, whose answer was lost, coming back after a
+            // newer local edit: the server has it, and the edit stays
+            // pending on top of it. Never a conflict, whatever `updatedAt`
+            // says (an API merge keeps it).
+            if local.sent_rev.as_deref() == Some(remote.rev.as_str()) {
+                learned(tx, &remote.id, &remote.rev)?;
                 return Ok(ApplyOutcome::Unchanged);
             }
             let local_rev = parse_rev(&local.rev)?;
@@ -981,6 +1014,36 @@ mod tests {
         create_note(&store, "note:reset2");
         let again = pending(&store, "note:reset2").unwrap();
         assert_eq!(again.base_rev, None, "the account never had the tombstone");
+    }
+
+    /// Review-sync 3: a push whose answer was lost, then an API merge that
+    /// keeps `updatedAt`. The echo of the push is ours: the server has it,
+    /// the newer merge stays pending on top of it, and nothing conflicts.
+    #[test]
+    fn the_echo_of_a_sent_revision_is_ours() {
+        let (_dir, store) = store();
+        let note = create_note(&store, "note:sent1");
+        let first = pending(&store, &note.id).unwrap();
+        store.mark_synced(&note.id, &first.rev, None).unwrap();
+        let sent = merge_body(&store, &note.id, "v2");
+        store.mark_sent(&[(&sent.id, &sent.rev)], None).unwrap();
+        assert_eq!(state(&store, &note.id).sent_rev.as_deref(), Some(sent.rev.as_str()));
+        let newer = merge_body(&store, &note.id, "v3");
+        let echo = SyncDoc {
+            rev: sent.rev.clone(),
+            fields: store.revisions(&note.id).unwrap().into_iter().find(|r| r.rev == sent.rev).unwrap().fields,
+            ..first.clone()
+        };
+        assert_eq!(
+            store.apply_remote(&echo, None, None).unwrap(),
+            ApplyOutcome::Unchanged
+        );
+        assert_eq!(store.note(&note.id).unwrap().unwrap().body, "v3");
+        let next = pending(&store, &note.id).unwrap();
+        assert_eq!((next.rev, next.base_rev), (newer.rev, Some(sent.rev.clone())));
+        let after = state(&store, &note.id);
+        assert_eq!((after.sent_rev, after.synced_gen), (None, 2));
+        assert!(store.revisions(&note.id).unwrap().iter().all(|r| r.origin != "sync"));
     }
 
     /// Migration 2 starts each floor at the generation of `synced_rev`.

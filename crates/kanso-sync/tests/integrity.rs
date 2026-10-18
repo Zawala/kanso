@@ -696,3 +696,129 @@ proptest! {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// d. Our own echo after a lost push answer
+// ---------------------------------------------------------------------------
+
+/// Review-sync P3: the push of an API merge (which keeps `updatedAt`) is
+/// stored but its answer is lost; another merge follows. The echo is
+/// recognised as ours: the later merge isn't reverted and nothing is
+/// flagged. Also with editor-style edits that move `updatedAt`.
+#[test]
+fn a_lost_push_answer_then_another_edit_keeps_the_edit() {
+    for editor in [false, true] {
+        let server = MemoryServer::new();
+        let a = Mac::new(sign_up(&server, "alice", 1));
+        let b = Mac::new(sign_in(&server, "alice", 2));
+        note(&a.store, "note:x", "trash", "v1", 100);
+        a.sync(&server);
+        let write = |text: &str, at: i64| {
+            if editor {
+                edit_note(&a.store, "note:x", text, Some(at));
+            } else {
+                merge(&a.store, DocType::Note, json!({"_id": "note:x", "body": text})).unwrap();
+            }
+        };
+        write("v2", 200);
+        server.drop_next_responses(kanso_sync::Route::Push, 1);
+        assert!(a.try_sync(&server).is_err());
+        write("v3", 300);
+        let report = a.sync(&server);
+        let case = if editor { "editor" } else { "API merge" };
+        assert_eq!(body(&a.store, "note:x").as_deref(), Some("v3"), "{case}: the later edit was reverted");
+        assert!(report.conflicted.is_empty(), "{case}: a false conflict: {report:?}");
+        assert_eq!(report.conflicts(), 0, "{case}");
+        assert_eq!(pending(&a.store), 0, "{case}");
+        b.sync(&server);
+        assert_eq!(body(&b.store, "note:x").as_deref(), Some("v3"), "{case}");
+        assert!(a.store.revisions("note:x").unwrap().iter().all(|r| r.origin != "sync"), "{case}");
+    }
+}
+
+#[derive(Clone, Debug)]
+enum EchoOp {
+    /// Edit note `pick` on A; `bump` moves `updatedAt` (editor), else an
+    /// API merge keeps it.
+    Edit { pick: usize, bump: bool },
+    Delete { pick: usize },
+    Sync,
+    /// A syncs, and the server applies its push but the answer is lost.
+    SyncLosingTheAnswer,
+    /// B (the account's other Mac) syncs: it only reads.
+    SyncB,
+}
+
+fn gen_echo_op() -> impl Strategy<Value = EchoOp> {
+    prop_oneof![
+        5 => (0..3usize, any::<bool>()).prop_map(|(pick, bump)| EchoOp::Edit { pick, bump }),
+        1 => (0..3usize).prop_map(|pick| EchoOp::Delete { pick }),
+        2 => Just(EchoOp::Sync),
+        3 => Just(EchoOp::SyncLosingTheAnswer),
+        1 => Just(EchoOp::SyncB),
+    ]
+}
+
+proptest! {
+    #![proptest_config(config(64))]
+
+    /// Invariant (d): with one writer whose push answers get lost at random,
+    /// no sync ever flags a conflict (there is none), and after honest syncs
+    /// every note holds the writer's last version, on both Macs and the
+    /// server. Our own echo never reverts a newer edit.
+    #[test]
+    fn prop_our_own_echo_never_reverts_an_edit(ops in prop::collection::vec(gen_echo_op(), 1..30)) {
+        let server = MemoryServer::new();
+        let a = Mac::new(sign_up(&server, "alice", 1));
+        let b = Mac::new(sign_in(&server, "alice", 2));
+        let ids = ["note:e0", "note:e1", "note:e2"];
+        for id in ids {
+            note(&a.store, id, "trash", "seed", 1);
+        }
+        a.sync(&server);
+        let mut clock = 1_000;
+        for op in &ops {
+            clock += 1;
+            match op {
+                EchoOp::Edit { pick, bump } => {
+                    let id = ids[*pick];
+                    if a.store.get(id).unwrap().is_some() {
+                        if *bump {
+                            edit_note(&a.store, id, &format!("at {clock}"), Some(clock));
+                        } else {
+                            merge(&a.store, DocType::Note, json!({"_id": id, "body": format!("at {clock}")})).unwrap();
+                        }
+                    }
+                }
+                EchoOp::Delete { pick } => {
+                    let _ = a.store.delete(ids[*pick], Origin::Api);
+                }
+                EchoOp::Sync => {
+                    let report = a.sync(&server);
+                    prop_assert!(report.conflicted.is_empty(), "{:?}", report);
+                }
+                EchoOp::SyncLosingTheAnswer => {
+                    server.drop_next_responses(kanso_sync::Route::Push, 1);
+                    if let Ok(report) = a.try_sync(&server) {
+                        prop_assert!(report.conflicted.is_empty(), "{:?}", report);
+                    }
+                    server.drop_next_responses(kanso_sync::Route::Push, 0);
+                }
+                EchoOp::SyncB => {
+                    let report = b.sync(&server);
+                    prop_assert!(report.conflicted.is_empty(), "{:?}", report);
+                }
+            }
+        }
+        let last = live_docs(&a.store);
+        for _ in 0..2 {
+            let report = a.sync(&server);
+            prop_assert!(report.conflicted.is_empty(), "{:?}", report);
+        }
+        b.sync(&server);
+        prop_assert_eq!(&live_docs(&a.store), &last, "a sync changed A's own notes");
+        prop_assert_eq!(pending(&a.store), 0);
+        prop_assert_eq!(&live_docs(&b.store), &last);
+        prop_assert_eq!(server_live(&server, &a.session), last);
+    }
+}

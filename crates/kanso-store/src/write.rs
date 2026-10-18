@@ -42,6 +42,8 @@ pub(crate) struct Row {
     pub synced_rev: Option<String>,
     /// The replay floor (`docs.synced_gen`).
     pub synced_gen: u64,
+    /// The revision in a push whose answer wasn't processed (`docs.sent_rev`).
+    pub sent_rev: Option<String>,
 }
 
 /// What happens to `synced_rev` when a row is written.
@@ -54,7 +56,7 @@ pub(crate) enum Synced<'a> {
 pub(crate) fn load_row(tx: &Transaction, id: &str) -> Result<Option<Row>> {
     let row = tx
         .query_row(
-            "SELECT type, rev, deleted, json, synced_rev, synced_gen FROM docs WHERE id = ?",
+            "SELECT type, rev, deleted, json, synced_rev, synced_gen, sent_rev FROM docs WHERE id = ?",
             [id],
             |row| {
                 Ok((
@@ -64,11 +66,12 @@ pub(crate) fn load_row(tx: &Transaction, id: &str) -> Result<Option<Row>> {
                     row.get::<_, String>(3)?,
                     row.get::<_, Option<String>>(4)?,
                     row.get::<_, i64>(5)?,
+                    row.get::<_, Option<String>>(6)?,
                 ))
             },
         )
         .optional()?;
-    let Some((doc_type, rev, deleted, json, synced_rev, synced_gen)) = row else {
+    let Some((doc_type, rev, deleted, json, synced_rev, synced_gen, sent_rev)) = row else {
         return Ok(None);
     };
     let doc_type = DocType::from_name(&doc_type)
@@ -84,6 +87,7 @@ pub(crate) fn load_row(tx: &Transaction, id: &str) -> Result<Option<Row>> {
         fields,
         synced_rev,
         synced_gen: u64::try_from(synced_gen).unwrap_or(0),
+        sent_rev,
     }))
 }
 

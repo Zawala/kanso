@@ -76,6 +76,11 @@ ALTER TABLE docs ADD COLUMN synced_gen INTEGER NOT NULL DEFAULT 0;
 UPDATE docs SET synced_gen = CAST(substr(synced_rev, 1, instr(synced_rev, '-') - 1) AS INTEGER)
     WHERE synced_rev IS NOT NULL AND instr(synced_rev, '-') > 1;
 "#,
+    // The revision in a push whose answer hasn't been processed: its echo
+    // is our own, never a conflict.
+    r#"
+ALTER TABLE docs ADD COLUMN sent_rev TEXT;
+"#,
 ];
 
 pub fn connect(path: &Path) -> Result<Connection> {
