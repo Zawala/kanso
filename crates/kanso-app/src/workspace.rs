@@ -19,6 +19,7 @@ use crate::dialogs::{confirm, prompt_text};
 use crate::editor::{EditorEvent, NoteEditor};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::{NoteList, NoteListEvent};
+use crate::palette::{Mode, Palette};
 use crate::paths;
 use crate::services::Services;
 use crate::sidebar::{Sidebar, SidebarEvent};
@@ -48,6 +49,8 @@ actions!(
         SyncNow,
         ImportInkdrop,
         Quit,
+        OpenCommandPalette,
+        OpenNotePicker,
     ]
 );
 
@@ -105,8 +108,10 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-n", NewNote, None),
         KeyBinding::new("cmd-shift-n", NewNotebook, None),
-        KeyBinding::new("cmd-shift-f", FocusSearch, None),
+        // The last binding for an action is the one menus and the palette
+        // show.
         KeyBinding::new("cmd-l", FocusSearch, None),
+        KeyBinding::new("cmd-shift-f", FocusSearch, None),
         KeyBinding::new("cmd-\\", ToggleSidebar, None),
         KeyBinding::new("cmd-1", ShowEditor, None),
         KeyBinding::new("cmd-2", ShowSplit, None),
@@ -119,7 +124,10 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-q", Quit, None),
         KeyBinding::new("enter", FocusEditor, Some("NoteList")),
         KeyBinding::new("escape", FocusNoteList, Some("NoteEditor")),
+        KeyBinding::new("cmd-k", OpenCommandPalette, None),
+        KeyBinding::new("cmd-p", OpenNotePicker, None),
     ]);
+    crate::palette::bind_keys(cx);
 }
 
 pub fn set_menus(cx: &mut App) {
@@ -196,6 +204,8 @@ pub struct Workspace {
     sidebar: Entity<Sidebar>,
     pub(crate) note_list: Entity<NoteList>,
     pub editor: Entity<NoteEditor>,
+    /// The command palette, drawn over the rest when open.
+    pub(crate) palette: Entity<Palette>,
     show_sidebar: bool,
     _subscriptions: Vec<Subscription>,
     _links: Task<()>,
@@ -222,6 +232,9 @@ impl Workspace {
                 cx,
             )
         });
+
+        let palette =
+            cx.new(|cx| Palette::new(store.clone(), library.clone(), editor.clone(), window, cx));
 
         let subscriptions = vec![
             cx.subscribe_in(&library, window, |this, _, event, window, cx| match event {
@@ -281,6 +294,7 @@ impl Workspace {
             sidebar,
             note_list,
             editor,
+            palette,
             show_sidebar: appearance.show_sidebar,
             _subscriptions: subscriptions,
             _links: links,
@@ -788,6 +802,15 @@ impl Render for Workspace {
                 this.library
                     .update(cx, |library, cx| library.select_relative(-1, cx));
             }))
+            .on_action(cx.listener(|this, _: &OpenCommandPalette, window, cx| {
+                this.palette
+                    .update(cx, |palette, cx| palette.open(Mode::Commands, window, cx));
+            }))
+            .on_action(cx.listener(|this, _: &OpenNotePicker, window, cx| {
+                this.palette
+                    .update(cx, |palette, cx| palette.open(Mode::Notes, window, cx));
+            }))
+            .on_action(cx.listener(|_, _: &SyncNow, _, cx| crate::services::sync_now(cx)))
             // The panes take the height that is left, so a long sidebar
             // scrolls instead of pushing the status bar out of the window.
             .child(
@@ -810,5 +833,7 @@ impl Render for Workspace {
                 ),
             )
             .child(self.render_status_bar(cx))
+            // Last, so it covers everything else when open.
+            .child(self.palette.clone())
     }
 }
