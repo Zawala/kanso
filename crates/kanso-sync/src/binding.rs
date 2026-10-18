@@ -30,6 +30,16 @@ pub mod meta_keys {
     pub const LAST_SEQ: &str = "sync.v2.last_seq";
     /// The epoch last seen (M1).
     pub const EPOCH: &str = "sync.v2.epoch";
+    /// The file ID where the last sync's search for missing attachment bytes
+    /// stopped; the next one goes on after it.
+    pub const REFETCH_AFTER: &str = "sync.v2.refetch_after";
+    /// A remembered 413 on a push: `<kind> <used> <limit> <at_ms> <level>`
+    /// (docs/ACCOUNTS.md › Sync with encryption › Quota).
+    pub const QUOTA_DOCS: &str = "sync.v2.quota.docs";
+    /// A remembered 413 on an upload, in the same form.
+    pub const QUOTA_FILES: &str = "sync.v2.quota.files";
+    /// After a 429 `uploads-global`: uploads wait until this time (ms).
+    pub const UPLOADS_UNTIL: &str = "sync.v2.uploads_until";
     /// Device identity: `l_` + 32 hex; names the Keychain items.
     pub const LIBRARY_ID: &str = "sync.v2.library_id";
     /// Device identity: 32 random bytes as hex.
@@ -39,6 +49,11 @@ pub mod meta_keys {
     pub const HARDWARE: &str = "sync.v2.hardware";
     /// The v1 cursor, which the rollback path resets to 0.
     pub const LEGACY_LAST_SEQ: &str = "sync.last_seq";
+
+    /// The sync state that belongs to one account and goes when the library
+    /// is bound to another or unbound (the cursor aside).
+    pub const PER_ACCOUNT: &[&str] =
+        &[EPOCH, REFETCH_AFTER, QUOTA_DOCS, QUOTA_FILES, UPLOADS_UNTIL];
 }
 
 /// The guard every sync write of `session` carries: the library must still
@@ -287,16 +302,17 @@ pub fn local_library(
 }
 
 /// The meta entries a bind writes: the account's origin, ID, username and
-/// server, a cursor of 0, and no epoch.
-fn bound_meta(session: &Session) -> [(&'static str, Option<&str>); 6] {
-    [
+/// server, a cursor of 0, and none of the previous account's sync state.
+fn bound_meta(session: &Session) -> Vec<(&'static str, Option<&str>)> {
+    let mut meta = vec![
         (meta_keys::ORIGIN, Some(session.origin.as_str())),
         (meta_keys::ACCOUNT_ID, Some(session.account_id.as_str())),
         (meta_keys::USERNAME, Some(session.username.as_str())),
         (meta_keys::SERVER, Some(session.server.as_str())),
         (meta_keys::LAST_SEQ, Some("0")),
-        (meta_keys::EPOCH, None),
-    ]
+    ];
+    meta.extend(meta_keys::PER_ACCOUNT.iter().map(|key| (*key, None)));
+    meta
 }
 
 /// The flow that is about to bind the library.
@@ -430,15 +446,16 @@ pub fn bind(
 /// keeping the device identity, and setting the legacy `sync.last_seq = 0`;
 /// then deletes `sync-account:<library>`.
 pub fn unbind(store: &Store, secrets: &dyn SecretStore) -> Result<(), BindError> {
-    store.reset_sync(&[
+    let mut meta = vec![
         (meta_keys::ORIGIN, None),
         (meta_keys::ACCOUNT_ID, None),
         (meta_keys::USERNAME, None),
         (meta_keys::SERVER, None),
         (meta_keys::LAST_SEQ, None),
-        (meta_keys::EPOCH, None),
         (meta_keys::LEGACY_LAST_SEQ, Some("0")),
-    ])?;
+    ];
+    meta.extend(meta_keys::PER_ACCOUNT.iter().map(|key| (*key, None)));
+    store.reset_sync(&meta)?;
     if let Some(library_id) = store.meta(meta_keys::LIBRARY_ID)? {
         crate::keychain::delete_session(secrets, &library_id)?;
     }

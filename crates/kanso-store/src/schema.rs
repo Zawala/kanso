@@ -7,7 +7,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::Result;
 
-const MIGRATIONS: &[&str] = &[r#"
+pub(crate) const MIGRATIONS: &[&str] = &[
+    r#"
 CREATE TABLE docs (
     id TEXT PRIMARY KEY NOT NULL,
     type TEXT NOT NULL,
@@ -65,7 +66,23 @@ CREATE TABLE archive (
 );
 
 CREATE VIRTUAL TABLE notes_fts USING fts5(note_id UNINDEXED, title, body, tokenize = 'trigram');
-"#];
+"#,
+    // The replay floor (docs/ACCOUNTS.md › Sync with encryption › What a Mac
+    // remembers per document): the highest generation this Mac has seen on
+    // its account for the document. A server-reported loss and a re-merge
+    // clear `synced_rev` but never this. Existing rows start at the
+    // generation of their `synced_rev`.
+    r#"
+ALTER TABLE docs ADD COLUMN synced_gen INTEGER NOT NULL DEFAULT 0;
+UPDATE docs SET synced_gen = CAST(substr(synced_rev, 1, instr(synced_rev, '-') - 1) AS INTEGER)
+    WHERE synced_rev IS NOT NULL AND instr(synced_rev, '-') > 1;
+"#,
+    // The revision in a push whose answer hasn't been processed: its echo
+    // is our own, never a conflict.
+    r#"
+ALTER TABLE docs ADD COLUMN sent_rev TEXT;
+"#,
+];
 
 pub fn connect(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path)?;

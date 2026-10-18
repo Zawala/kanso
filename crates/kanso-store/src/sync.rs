@@ -1,6 +1,20 @@
-//! Sync bookkeeping. Each document remembers the revision last known to
-//! match the server (`synced_rev`); a document whose current revision differs
-//! has local changes to push.
+//! Sync bookkeeping (docs/ACCOUNTS.md › Sync with encryption › What a Mac
+//! remembers per document). Each document keeps one fact per question:
+//!
+//! - `synced_rev`: the revision this account's server holds, as far as this
+//!   Mac knows; the next push's `base_rev`. A document whose current revision
+//!   differs has local changes to push.
+//! - `synced_gen`: the replay floor, the highest generation this Mac has seen
+//!   on this account for the document. Every write that learns a revision
+//!   from the server raises it; a server-reported loss and a re-merge clear
+//!   `synced_rev` but never lower it. Only binding resets it.
+//! - `sent_rev`: the revision in a push whose answer this Mac hasn't
+//!   processed. Its echo is our own push, never a conflict. Every write that
+//!   sets or clears `synced_rev` clears it.
+//!
+//! A tombstone with `synced_rev = rev` and `synced_gen = 0` was left by
+//! [`Store::reset_sync`] and was never on this account: it is never pushed,
+//! never protected by the floor, and never "missing" in a re-merge.
 
 use kanso_core::DocType;
 use rusqlite::params;
@@ -61,15 +75,93 @@ pub enum ApplyOutcome {
     /// hash. (Only the rollback test's stand-in for the old app, behind the
     /// `legacy-v1-rules` feature, keeps the local revision unchanged.)
     LocalWon { new_rev: String },
-    /// A replayed older version (M2, security re-check 4): the remote
-    /// revision's generation is at or below the generation of the local
-    /// `synced_rev`, and it isn't that same revision. It never reverts the
+    /// A remote revision at or below the replay floor (M2, security re-check
+    /// 4): its generation is at most the document's `synced_gen`, and it
+    /// isn't the revision the Mac holds or last synced. It never reverts the
     /// Mac. Instead the local version is rebased onto it like a local win:
     /// it gets `new_rev` (generation `max(local, remote) + 1`, same content
-    /// hash), `synced_rev` becomes the remote revision, the remote version is
-    /// kept as a snapshot when its content differs, and the local version is
-    /// pushed again. Never produced by the old app's rules.
-    Stale { new_rev: String },
+    /// hash), `synced_rev` becomes the remote revision, and the local version
+    /// is pushed again. Never produced by the old app's rules.
+    ///
+    /// `conflict`: the remote version was live, differed from the local
+    /// content, and its content hash was neither the local one nor in the
+    /// document's history. It was kept as a snapshot, and the engine flags
+    /// the document, so no edit is discarded silently: after a restore,
+    /// another Mac's newer offline edit can fall below this Mac's floor. A
+    /// replayed version the Mac already holds adds nothing.
+    Stale { new_rev: String, conflict: bool },
+}
+
+/// One document's sync facts (docs/ACCOUNTS.md › Sync with encryption ›
+/// What a Mac remembers per document). Tests and `kanso-sync verify` read
+/// them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SyncState {
+    pub id: String,
+    pub rev: String,
+    pub deleted: bool,
+    /// The revision the account's server holds, as far as this Mac knows.
+    pub synced_rev: Option<String>,
+    /// The replay floor.
+    pub synced_gen: u64,
+    /// The revision in a push whose answer this Mac hasn't processed.
+    pub sent_rev: Option<String>,
+}
+
+impl SyncState {
+    /// The server lacks this Mac's version.
+    pub fn pending(&self) -> bool {
+        self.synced_rev.as_deref() != Some(self.rev.as_str())
+    }
+
+    /// A tombstone `reset_sync` left behind: never on this account, so never
+    /// pushed, never protected by the floor and never missing.
+    pub fn never_on_account(&self) -> bool {
+        self.deleted && self.synced_gen == 0 && !self.pending()
+    }
+}
+
+/// SQL for [`SyncState::never_on_account`] over a `docs` row.
+const NEVER_ON_ACCOUNT: &str = "(deleted != 0 AND synced_gen = 0 AND synced_rev = rev)";
+
+/// A generation as SQLite stores it.
+fn sql_gen(generation: u64) -> i64 {
+    i64::try_from(generation).unwrap_or(i64::MAX)
+}
+
+/// Records, inside a write, that the account's server holds `rev` of `id`:
+/// `synced_rev` becomes it and the floor rises to its generation.
+fn learned(tx: &rusqlite::Transaction, id: &str, rev: &str) -> Result<()> {
+    let generation = parse_rev(rev)?.generation;
+    tx.execute(
+        "UPDATE docs SET synced_rev = ?2, synced_gen = max(synced_gen, ?3), sent_rev = NULL WHERE id = ?1",
+        params![id, rev, sql_gen(generation)],
+    )?;
+    Ok(())
+}
+
+/// Whether `local` already holds the content of `rev`: it is the current
+/// content, or a snapshot in the document's history.
+fn holds_content(
+    tx: &rusqlite::Transaction,
+    id: &str,
+    local: &crate::write::Row,
+    rev: &kanso_core::Rev,
+) -> Result<bool> {
+    if parse_rev(&local.rev)?.hash == rev.hash {
+        return Ok(true);
+    }
+    Ok(tx
+        .query_row(
+            "SELECT 1 FROM revisions WHERE doc_id = ?1 AND substr(rev, instr(rev, '-') + 1) = ?2 LIMIT 1",
+            params![id, rev.hash],
+            |_| Ok(()),
+        )
+        .map(|_| true)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(false),
+            e => Err(e),
+        })?)
 }
 
 /// Fails with [`StoreError::GuardFailed`] unless `guard` (when given) holds.
@@ -88,12 +180,14 @@ fn updated_at(fields: &Map<String, Value>) -> i64 {
 }
 
 impl Store {
-    /// Local changes the server doesn't have yet, oldest first.
+    /// Local changes the server doesn't have yet, oldest first, each with
+    /// `base_rev` = its `synced_rev`. A document re-created over a tombstone
+    /// that was never on this account goes with no base.
     pub fn pending_push(&self, limit: usize) -> Result<Vec<SyncDoc>> {
         self.read(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, rev, deleted, json, synced_rev FROM docs
-                 WHERE synced_rev IS NULL OR synced_rev != rev ORDER BY seq LIMIT ?",
+                "SELECT id, rev, deleted, json, CASE WHEN synced_gen = 0 THEN NULL ELSE synced_rev END
+                 FROM docs WHERE synced_rev IS NULL OR synced_rev != rev ORDER BY seq LIMIT ?",
             )?;
             let rows = stmt.query_map([limit as i64], |row| {
                 let json: String = row.get(3)?;
@@ -137,6 +231,26 @@ impl Store {
         })
     }
 
+    /// Every document's sync facts, in `seq` order.
+    pub fn sync_states(&self) -> Result<Vec<SyncState>> {
+        self.read(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, rev, deleted, synced_rev, synced_gen, sent_rev FROM docs ORDER BY seq",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(SyncState {
+                    id: row.get(0)?,
+                    rev: row.get(1)?,
+                    deleted: row.get(2)?,
+                    synced_rev: row.get(3)?,
+                    synced_gen: u64::try_from(row.get::<_, i64>(4)?).unwrap_or(0),
+                    sent_rev: row.get(5)?,
+                })
+            })?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })
+    }
+
     /// The number of documents with changes that never reached any server:
     /// the length of [`Store::pending_push`]. `binding::local_library` reports
     /// it as `unsynced`.
@@ -162,24 +276,45 @@ impl Store {
     pub fn mark_synced(&self, id: &str, rev: &str, guard: Option<&SyncGuard>) -> Result<()> {
         self.write(|tx, _| {
             check_guard(tx, guard)?;
-            tx.execute(
-                "UPDATE docs SET synced_rev = ?2 WHERE id = ?1",
-                params![id, rev],
-            )?;
+            learned(tx, id, rev)
+        })
+    }
+
+    /// Records, right before a push request, which revision of each document
+    /// it carries (`sent_rev`), in one transaction. If the answer is lost
+    /// and the document is edited again, the server's copy coming back
+    /// through the feed is recognised as our own push, never a conflict
+    /// (docs/ACCOUNTS.md › POST /v2/push › Retrying). With a `guard`,
+    /// nothing is written unless it holds.
+    pub fn mark_sent(&self, docs: &[(&str, &str)], guard: Option<&SyncGuard>) -> Result<()> {
+        self.write(|tx, _| {
+            check_guard(tx, guard)?;
+            for (id, rev) in docs {
+                tx.execute(
+                    "UPDATE docs SET sent_rev = ?2 WHERE id = ?1",
+                    params![id, rev],
+                )?;
+            }
             Ok(())
         })
     }
 
-    /// Forgets that `id` was ever on the server: its `synced_rev` becomes NULL,
-    /// so it is pending and its next push carries `base_rev = null`. The
-    /// engine calls it for a document the server lost (`Lost`, M1). A repair
-    /// of an undecryptable server copy (M3) instead pushes a new generation
-    /// on the broken revision (docs/ACCOUNTS.md › Sync with encryption). With
-    /// a `guard`, nothing is written unless it holds.
+    /// Records that the server says it has no `id`: its `synced_rev` becomes
+    /// NULL, so it is pending and its next push carries `base_rev = null`.
+    /// The replay floor stays, so a server that claims a loss and then
+    /// answers with an old version gets [`ApplyOutcome::Stale`] (security
+    /// review, M2 bypass). The engine calls it for a document the server lost
+    /// (`Lost`, M1). A repair of an undecryptable server copy (M3) instead
+    /// pushes a new generation on the broken revision (docs/ACCOUNTS.md ›
+    /// Sync with encryption). With a `guard`, nothing is written unless it
+    /// holds.
     pub fn mark_unsynced(&self, id: &str, guard: Option<&SyncGuard>) -> Result<()> {
         self.write(|tx, _| {
             check_guard(tx, guard)?;
-            tx.execute("UPDATE docs SET synced_rev = NULL WHERE id = ?", [id])?;
+            tx.execute(
+                "UPDATE docs SET synced_rev = NULL, sent_rev = NULL WHERE id = ?",
+                [id],
+            )?;
             Ok(())
         })
     }
@@ -187,8 +322,10 @@ impl Store {
     /// After a re-merge's full pull (M1, security re-check 4): every document
     /// that has a `synced_rev` (tombstones included) but whose ID isn't in
     /// `present`, the local IDs the server's whole feed carried, gets
-    /// `synced_rev = NULL`, so it is pushed again with `base_rev = null`.
-    /// Returns those IDs, sorted. Nothing is written unless `guard` holds.
+    /// `synced_rev = NULL`, so it is pushed again with `base_rev = null`. The
+    /// replay floor stays. A tombstone that was never on this account isn't
+    /// missing and stays as it is. Returns those IDs, sorted. Nothing is
+    /// written unless `guard` holds.
     pub fn mark_missing_unsynced(
         &self,
         present: &std::collections::HashSet<String>,
@@ -197,7 +334,9 @@ impl Store {
         self.write(|tx, _| {
             check_guard(tx, guard)?;
             let synced: Vec<String> = tx
-                .prepare("SELECT id FROM docs WHERE synced_rev IS NOT NULL ORDER BY id")?
+                .prepare(&format!(
+                    "SELECT id FROM docs WHERE synced_rev IS NOT NULL AND NOT {NEVER_ON_ACCOUNT} ORDER BY id"
+                ))?
                 .query_map([], |row| row.get(0))?
                 .collect::<rusqlite::Result<_>>()?;
             let missing: Vec<String> = synced
@@ -205,7 +344,7 @@ impl Store {
                 .filter(|id| !present.contains(id))
                 .collect();
             for id in &missing {
-                tx.execute("UPDATE docs SET synced_rev = NULL WHERE id = ?", [id])?;
+                tx.execute("UPDATE docs SET synced_rev = NULL, sent_rev = NULL WHERE id = ?", [id])?;
             }
             Ok(missing)
         })
@@ -220,18 +359,35 @@ impl Store {
         })
     }
 
+    /// Removes a `meta` entry only while `guard` holds, checked in the same
+    /// transaction. The engine clears a quota entry or upload hold with it.
+    pub fn remove_meta_if(&self, key: &str, guard: &SyncGuard) -> Result<()> {
+        self.write(|tx, _| {
+            check_guard(tx, Some(guard))?;
+            write_meta(tx, &[(key, None)])
+        })
+    }
+
     /// Prepares the library for a different sync binding, in one transaction
     /// (docs/ACCOUNTS.md › Library binding): live documents get
     /// `synced_rev = NULL`; tombstones get `synced_rev = rev`, so they are
-    /// never pushed to an account that never had them; then each meta entry
-    /// is written (`Some`) or removed (`None`). Used by bind fresh, merge
-    /// (add) and unbind: binding to a different account. A re-merge with the
-    /// same account (M1) doesn't use it; it keeps `synced_rev` (security
-    /// re-check 4).
+    /// never pushed to an account that never had them; every replay floor
+    /// goes to 0, so a tombstone this account never had doesn't count as a
+    /// version it had (the account's live copy wins over it); then each meta
+    /// entry is written (`Some`) or removed (`None`). Used by bind fresh,
+    /// merge (add) and unbind: binding to a different account. A re-merge
+    /// with the same account (M1) doesn't use it; it keeps `synced_rev` and
+    /// the floor (security re-check 4).
     pub fn reset_sync(&self, meta: &[(&str, Option<&str>)]) -> Result<()> {
         self.write(|tx, _| {
-            tx.execute("UPDATE docs SET synced_rev = NULL WHERE deleted = 0", [])?;
-            tx.execute("UPDATE docs SET synced_rev = rev WHERE deleted != 0", [])?;
+            tx.execute(
+                "UPDATE docs SET synced_rev = NULL, synced_gen = 0, sent_rev = NULL WHERE deleted = 0",
+                [],
+            )?;
+            tx.execute(
+                "UPDATE docs SET synced_rev = rev, synced_gen = 0, sent_rev = NULL WHERE deleted != 0",
+                [],
+            )?;
             write_meta(tx, meta)
         })
     }
@@ -307,6 +463,70 @@ impl Store {
         })
     }
 
+    /// Live file documents whose bytes this Mac lacks (no blob matches their
+    /// `md5digest`), as `(id, rev, md5digest)` in ID order, starting after
+    /// `after`. Documents without an `md5digest` can't be checked and are
+    /// left out. The engine fetches a few of them again at each sync
+    /// (docs/ACCOUNTS.md › Sync with encryption › Files).
+    pub fn files_without_bytes(
+        &self,
+        after: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, String, String)>> {
+        self.read(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT d.id, d.rev, lower(json_extract(d.json, '$.md5digest')) FROM docs d
+                 WHERE d.type = 'file' AND d.deleted = 0 AND d.id > ?1
+                   AND json_type(d.json, '$.md5digest') = 'text'
+                   AND NOT EXISTS (SELECT 1 FROM blobs b WHERE b.file_id = d.id
+                                   AND b.md5 = lower(json_extract(d.json, '$.md5digest')))
+                 ORDER BY d.id LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![after, limit as i64], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })
+    }
+
+    /// Stores bytes fetched again for file `id` (docs/ACCOUNTS.md › Sync
+    /// with encryption › Files), only if `id` is still live at `rev` and the
+    /// bytes match its `md5digest`, checked in the same transaction as the
+    /// `guard`. Returns whether they were stored. The document's revision
+    /// doesn't change, so nothing is broadcast.
+    pub fn fill_blob(
+        &self,
+        id: &str,
+        rev: &str,
+        blob: Attachment,
+        guard: Option<&SyncGuard>,
+    ) -> Result<bool> {
+        self.write(|tx, _| {
+            check_guard(tx, guard)?;
+            let Some(local) = load_row(tx, id)? else {
+                return Ok(false);
+            };
+            let md5 = local
+                .fields
+                .get("md5digest")
+                .and_then(Value::as_str)
+                .map(str::to_ascii_lowercase);
+            if local.deleted
+                || local.doc_type != DocType::File
+                || local.rev != rev
+                || md5.as_deref() != Some(blob.md5_hex().as_str())
+            {
+                return Ok(false);
+            }
+            tx.execute(
+                "INSERT INTO blobs (file_id, md5, data) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (file_id) DO UPDATE SET md5 = excluded.md5, data = excluded.data",
+                params![id, blob.md5_hex(), blob.data],
+            )?;
+            Ok(true)
+        })
+    }
+
     /// Whether the store has the bytes of attachment `id` with this MD5 (hex).
     pub fn has_blob(&self, id: &str, md5_hex: &str) -> Result<bool> {
         self.read(|conn| {
@@ -332,9 +552,10 @@ impl Store {
     /// The M2 rules hold (docs/ACCOUNTS.md › Revision generations only grow):
     /// a local win gets a new revision, generation `max(local, remote) + 1`
     /// with the same content hash, pushed on top of the remote one; and a
-    /// remote revision at or below the generation of `synced_rev` (and not
+    /// remote revision at or below the replay floor `synced_gen` (and not
     /// `synced_rev` itself) never reverts the Mac: the local version is
-    /// rebased onto it the same way ([`ApplyOutcome::Stale`]).
+    /// rebased onto it the same way ([`ApplyOutcome::Stale`]). Every
+    /// outcome that takes a revision from the server raises the floor.
     pub fn apply_remote(
         &self,
         remote: &SyncDoc,
@@ -391,6 +612,7 @@ impl Store {
             let Some(local) = local else {
                 store_blob(tx)?;
                 store_row(tx, &remote.id, doc_type, &remote.rev, remote.deleted, &fields, None, Synced::Set(&remote.rev), Origin::Sync, changes)?;
+                learned(tx, &remote.id, &remote.rev)?;
                 return Ok(ApplyOutcome::Applied);
             };
             if local.rev == remote.rev {
@@ -399,10 +621,7 @@ impl Store {
                 if !remote.deleted {
                     store_blob(tx)?;
                 }
-                tx.execute(
-                    "UPDATE docs SET synced_rev = rev WHERE id = ?",
-                    [&remote.id],
-                )?;
+                learned(tx, &remote.id, &remote.rev)?;
                 return Ok(ApplyOutcome::Unchanged);
             }
             // The server's version is the one the local edits are based on
@@ -411,20 +630,36 @@ impl Store {
             if local.synced_rev.as_deref() == Some(remote.rev.as_str()) {
                 return Ok(ApplyOutcome::Unchanged);
             }
+            // Our own push, whose answer was lost, coming back after a
+            // newer local edit: the server has it, and the edit stays
+            // pending on top of it. Never a conflict, whatever `updatedAt`
+            // says (an API merge keeps it).
+            if local.sent_rev.as_deref() == Some(remote.rev.as_str()) {
+                learned(tx, &remote.id, &remote.rev)?;
+                return Ok(ApplyOutcome::Unchanged);
+            }
             let local_rev = parse_rev(&local.rev)?;
-            // M2: a revision at or below the one this Mac last synced is a
-            // replay (or a rewound server). Never revert; rebase and push.
-            if !rules.legacy()
-                && let Some(synced) = &local.synced_rev
-                && remote_rev.generation <= parse_rev(synced)?.generation
-            {
+            // M2: a revision at or below the floor (the highest generation
+            // this Mac has seen on this account) is a replay or a rewound
+            // server. Never revert; rebase and push. The floor survives a
+            // reported loss and a re-merge, so neither can open the way for
+            // an old version. A tombstone `reset_sync` left has floor 0: the
+            // account's versions aren't replays of it.
+            if !rules.legacy() && remote_rev.generation <= local.synced_gen {
+                // A live version this Mac has never held is kept and
+                // flagged: it may be another Mac's edit made after a restore
+                // (generations from different Macs stop comparing then).
                 let differs = local.deleted || local.fields != fields;
-                if !remote.deleted && differs {
+                let conflict = !remote.deleted
+                    && differs
+                    && !holds_content(tx, &remote.id, &local, &remote_rev)?;
+                if conflict {
                     keep_remote(tx, &remote.id, &remote.rev, &fields)?;
                 }
                 let new_rev = rebased(&local_rev, local_rev.generation.max(remote_rev.generation));
                 set_rev(tx, &remote.id, &local, &new_rev, Some(&remote.rev), changes)?;
-                return Ok(ApplyOutcome::Stale { new_rev });
+                learned(tx, &remote.id, &remote.rev)?;
+                return Ok(ApplyOutcome::Stale { new_rev, conflict });
             }
             let local_dirty = local.synced_rev.as_deref() != Some(local.rev.as_str());
             let remote_wins = !local_dirty
@@ -437,6 +672,7 @@ impl Store {
             if remote_wins {
                 store_blob(tx)?;
                 store_row(tx, &remote.id, doc_type, &remote.rev, remote.deleted, &fields, Some(&local), Synced::Set(&remote.rev), Origin::Sync, changes)?;
+                learned(tx, &remote.id, &remote.rev)?;
                 return Ok(if local_dirty { ApplyOutcome::RemoteWon } else { ApplyOutcome::Applied });
             }
             // Keep the local version; base it on the server's revision so the
@@ -445,14 +681,12 @@ impl Store {
                 keep_remote(tx, &remote.id, &remote.rev, &fields)?;
             }
             if rules.legacy() {
-                tx.execute(
-                    "UPDATE docs SET synced_rev = ?2 WHERE id = ?1",
-                    params![remote.id, remote.rev],
-                )?;
+                learned(tx, &remote.id, &remote.rev)?;
                 return Ok(ApplyOutcome::LocalWon { new_rev: local.rev });
             }
             let new_rev = rebased(&local_rev, local_rev.generation.max(remote_rev.generation));
             set_rev(tx, &remote.id, &local, &new_rev, Some(&remote.rev), changes)?;
+            learned(tx, &remote.id, &remote.rev)?;
             Ok(ApplyOutcome::LocalWon { new_rev })
         })
     }
@@ -760,6 +994,255 @@ mod tests {
         store.mark_unsynced(&note.id, None).unwrap();
         let again = pending(&store, &note.id).unwrap();
         assert_eq!((again.rev, again.base_rev), (rev, None));
+    }
+
+    fn state(store: &Store, id: &str) -> SyncState {
+        store
+            .sync_states()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id == id)
+            .unwrap()
+    }
+
+    fn live(id: &str, rev: &str, body: &str) -> SyncDoc {
+        SyncDoc {
+            id: id.into(),
+            rev: rev.into(),
+            deleted: false,
+            fields: json!({"bookId": "trash", "body": body, "updatedAt": 9_000})
+                .as_object()
+                .unwrap()
+                .clone(),
+            base_rev: None,
+        }
+    }
+
+    /// Security review, M2 bypass: a server that answers `Lost`, or leaves a
+    /// document out of a re-merge, and then offers an old version can't
+    /// bring a deleted note back. The floor survives both.
+    #[test]
+    fn lost_and_missing_keep_the_floor() {
+        for missing in [false, true] {
+            let (_dir, store) = store();
+            let id = "note:floor1";
+            let old = format!("3-{}", "a".repeat(32));
+            store
+                .apply_remote(&live(id, &old, "months old"), None, None)
+                .unwrap();
+            store
+                .apply_remote(
+                    &live(id, &format!("5-{}", "b".repeat(32)), "current"),
+                    None,
+                    None,
+                )
+                .unwrap();
+            store.delete(id, Origin::Api).unwrap();
+            let tombstone = pending(&store, id).unwrap().rev;
+            store.mark_synced(id, &tombstone, None).unwrap();
+            assert_eq!(state(&store, id).synced_gen, 6);
+            if missing {
+                let gone = store
+                    .mark_missing_unsynced(&std::collections::HashSet::new(), None)
+                    .unwrap();
+                assert_eq!(gone, vec![id.to_owned()]);
+            } else {
+                store.mark_unsynced(id, None).unwrap();
+            }
+            let after = state(&store, id);
+            assert_eq!((after.synced_rev, after.synced_gen), (None, 6));
+            let outcome = store
+                .apply_remote(&live(id, &old, "months old"), None, None)
+                .unwrap();
+            assert!(matches!(outcome, ApplyOutcome::Stale { .. }), "{outcome:?}");
+            assert!(
+                store.get(id).unwrap().is_none(),
+                "the deleted note came back"
+            );
+            assert_eq!(state(&store, id).synced_gen, 6);
+        }
+    }
+
+    /// Review-sync 1: a tombstone `reset_sync` leaves was never on the new
+    /// account. It isn't pending, the account's live copy beats it at any
+    /// generation, a re-merge doesn't count it missing, and a note
+    /// re-created over it is pushed with no base.
+    #[test]
+    fn a_reset_tombstone_was_never_on_the_account() {
+        for remote_gen in 1..=4u64 {
+            let (_dir, store) = store();
+            let id = "note:reset1";
+            create_note(&store, id);
+            let first = pending(&store, id).unwrap().rev;
+            store.mark_synced(id, &first, None).unwrap();
+            store.delete(id, Origin::Api).unwrap();
+            store.reset_sync(&[]).unwrap();
+            let reset = state(&store, id);
+            assert!(reset.never_on_account() && !reset.pending());
+            assert!(pending(&store, id).is_none());
+            assert!(
+                store
+                    .mark_missing_unsynced(&std::collections::HashSet::new(), None)
+                    .unwrap()
+                    .is_empty()
+            );
+            let theirs = live(
+                id,
+                &format!("{remote_gen}-{}", "c".repeat(32)),
+                "the account's",
+            );
+            assert_eq!(
+                store.apply_remote(&theirs, None, None).unwrap(),
+                ApplyOutcome::Applied,
+                "generation {remote_gen}"
+            );
+            assert_eq!(store.note(id).unwrap().unwrap().body, "the account's");
+        }
+
+        let (_dir, store) = store();
+        create_note(&store, "note:reset2");
+        store.delete("note:reset2", Origin::Api).unwrap();
+        store.reset_sync(&[]).unwrap();
+        create_note(&store, "note:reset2");
+        let again = pending(&store, "note:reset2").unwrap();
+        assert_eq!(again.base_rev, None, "the account never had the tombstone");
+    }
+
+    /// Review-sync 3: a push whose answer was lost, then an API merge that
+    /// keeps `updatedAt`. The echo of the push is ours: the server has it,
+    /// the newer merge stays pending on top of it, and nothing conflicts.
+    #[test]
+    fn the_echo_of_a_sent_revision_is_ours() {
+        let (_dir, store) = store();
+        let note = create_note(&store, "note:sent1");
+        let first = pending(&store, &note.id).unwrap();
+        store.mark_synced(&note.id, &first.rev, None).unwrap();
+        let sent = merge_body(&store, &note.id, "v2");
+        store.mark_sent(&[(&sent.id, &sent.rev)], None).unwrap();
+        assert_eq!(
+            state(&store, &note.id).sent_rev.as_deref(),
+            Some(sent.rev.as_str())
+        );
+        let newer = merge_body(&store, &note.id, "v3");
+        let echo = SyncDoc {
+            rev: sent.rev.clone(),
+            fields: store
+                .revisions(&note.id)
+                .unwrap()
+                .into_iter()
+                .find(|r| r.rev == sent.rev)
+                .unwrap()
+                .fields,
+            ..first.clone()
+        };
+        assert_eq!(
+            store.apply_remote(&echo, None, None).unwrap(),
+            ApplyOutcome::Unchanged
+        );
+        assert_eq!(store.note(&note.id).unwrap().unwrap().body, "v3");
+        let next = pending(&store, &note.id).unwrap();
+        assert_eq!(
+            (next.rev, next.base_rev),
+            (newer.rev, Some(sent.rev.clone()))
+        );
+        let after = state(&store, &note.id);
+        assert_eq!((after.sent_rev, after.synced_gen), (None, 2));
+        assert!(
+            store
+                .revisions(&note.id)
+                .unwrap()
+                .iter()
+                .all(|r| r.origin != "sync")
+        );
+    }
+
+    /// Review-sync 5: files without their bytes are listed, and fetched
+    /// bytes land only for the revision they were fetched for and only when
+    /// they match its `md5digest`.
+    #[test]
+    fn missing_bytes_are_listed_and_filled_only_for_their_revision() {
+        let (_dir, store) = store();
+        let bytes = b"\x89PNG later".to_vec();
+        let blob = Attachment::new(bytes.clone());
+        let doc = |id: &str, rev: &str, md5: &str| {
+            SyncDoc {
+            id: id.into(),
+            rev: rev.into(),
+            deleted: false,
+            fields: json!({"name": "a.png", "contentType": "image/png", "md5digest": md5, "createdAt": 1})
+                .as_object()
+                .unwrap()
+                .clone(),
+            base_rev: None,
+        }
+        };
+        let md5 = blob.md5_hex().to_uppercase();
+        for id in ["file:b", "file:a", "file:c"] {
+            store
+                .apply_remote(&doc(id, "1-aa", &md5), None, None)
+                .unwrap();
+        }
+        store
+            .apply_remote(&doc("file:d", "1-aa", &md5), Some(blob.clone()), None)
+            .unwrap();
+        let ids = |after: &str, limit: usize| -> Vec<String> {
+            store
+                .files_without_bytes(after, limit)
+                .unwrap()
+                .into_iter()
+                .map(|(id, _, _)| id)
+                .collect()
+        };
+        assert_eq!(ids("", usize::MAX), ["file:a", "file:b", "file:c"]);
+        assert_eq!(ids("file:a", 1), ["file:b"]);
+
+        let wrong = Attachment::new(b"other".to_vec());
+        assert!(!store.fill_blob("file:a", "1-aa", wrong, None).unwrap());
+        assert!(
+            !store
+                .fill_blob("file:a", "2-bb", blob.clone(), None)
+                .unwrap()
+        );
+        assert!(
+            store
+                .fill_blob("file:a", "1-aa", blob.clone(), None)
+                .unwrap()
+        );
+        assert_eq!(store.attachment("file:a").unwrap().unwrap().1.data, bytes);
+        assert_eq!(ids("", usize::MAX), ["file:b", "file:c"]);
+        let guard_pairs = [("sync.v2.account_id", "a_1")];
+        let guard = SyncGuard {
+            expect: &guard_pairs,
+        };
+        assert!(matches!(
+            store.fill_blob("file:b", "1-aa", blob, Some(&guard)),
+            Err(StoreError::GuardFailed)
+        ));
+    }
+
+    /// Migration 2 starts each floor at the generation of `synced_rev`.
+    #[test]
+    fn the_migration_fills_the_floor_from_synced_rev() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("kanso.db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(&format!(
+                "{}; PRAGMA user_version = 1;",
+                crate::schema::MIGRATIONS[0]
+            ))
+            .unwrap();
+            conn.execute(
+                "INSERT INTO docs (id, type, rev, seq, deleted, json, synced_rev) VALUES
+                 ('note:m1', 'note', '7-aa', 1, 0, '{}', '12-bb'),
+                 ('note:m2', 'note', '2-aa', 2, 0, '{}', NULL)",
+                [],
+            )
+            .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        assert_eq!(state(&store, "note:m1").synced_gen, 12);
+        assert_eq!(state(&store, "note:m2").synced_gen, 0);
     }
 
     use proptest::prelude::*;

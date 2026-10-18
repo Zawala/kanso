@@ -209,6 +209,14 @@ pub fn verify(
         .keys()
         .map(|id| (sealed.wire_id(id), id.clone()))
         .collect();
+    // Tombstones binding left behind were never on this account: neither
+    // pending nor missing.
+    let never_on_account: BTreeSet<String> = store
+        .sync_states()?
+        .into_iter()
+        .filter(|s| s.never_on_account())
+        .map(|s| s.id)
+        .collect();
 
     let mut report = VerifyReport::default();
     if repair {
@@ -230,6 +238,9 @@ pub fn verify(
 
     let mut matched = BTreeSet::new();
     for (id, doc) in &local {
+        if never_on_account.contains(id) {
+            continue;
+        }
         if doc.base_rev.as_deref() != Some(doc.rev.as_str()) {
             report.pending += 1;
             continue;

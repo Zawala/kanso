@@ -121,7 +121,7 @@ impl Server {
 
 /// A local win or a stale replay is rebased above the remote revision.
 fn check_rebase(outcome: &ApplyOutcome, remote: &SyncDoc) -> Result<(), TestCaseError> {
-    if let ApplyOutcome::LocalWon { new_rev } | ApplyOutcome::Stale { new_rev } = outcome {
+    if let ApplyOutcome::LocalWon { new_rev } | ApplyOutcome::Stale { new_rev, .. } = outcome {
         prop_assert!(
             generation(new_rev) > generation(&remote.rev),
             "{new_rev} isn't above {}",
@@ -138,6 +138,9 @@ enum Op {
     Delete(usize, usize),
     Sync(usize),
     Replay(usize, usize),
+    /// The server claims it lost a document (`Lost`, or left out of a
+    /// re-merge when the flag is set), then offers an older version of it.
+    LoseThenReplay(usize, usize, bool),
 }
 
 fn op() -> impl Strategy<Value = Op> {
@@ -147,6 +150,7 @@ fn op() -> impl Strategy<Value = Op> {
         1 => (0..3usize, any::<usize>()).prop_map(|(m, k)| Op::Delete(m, k)),
         3 => (0..3usize).prop_map(Op::Sync),
         2 => (0..3usize, any::<usize>()).prop_map(|(m, k)| Op::Replay(m, k)),
+        2 => (0..3usize, any::<usize>(), any::<bool>()).prop_map(|(m, k, missing)| Op::LoseThenReplay(m, k, missing)),
     ]
 }
 
@@ -206,6 +210,39 @@ proptest! {
                     prop_assert!(matches!(outcome, ApplyOutcome::Stale { .. }), "{outcome:?} for a replay");
                     let (_, deleted_after, fields_after) = all_docs(mac)[&replay.id].clone();
                     prop_assert_eq!(deleted_after, deleted);
+                    prop_assert_eq!(fields_after, fields);
+                }
+                Op::LoseThenReplay(m, k, missing) => {
+                    let mac = &macs[m].1;
+                    server.sync(mac)?;
+                    let held = all_docs(mac);
+                    let old: Vec<&SyncDoc> = server
+                        .history
+                        .iter()
+                        .filter(|d| {
+                            held.contains_key(&d.id)
+                                && generation(&d.rev) < generation(&server.docs[&d.id].rev)
+                        })
+                        .collect();
+                    if old.is_empty() {
+                        continue;
+                    }
+                    let replay = old[k % old.len()].clone();
+                    let floor = |mac: &Store| {
+                        mac.sync_states().unwrap().into_iter().find(|s| s.id == replay.id).unwrap().synced_gen
+                    };
+                    let before = floor(mac);
+                    if missing {
+                        mac.mark_missing_unsynced(&Default::default(), None).unwrap();
+                    } else {
+                        mac.mark_unsynced(&replay.id, None).unwrap();
+                    }
+                    prop_assert_eq!(floor(mac), before, "a reported loss lowered the floor");
+                    let (_, deleted, fields) = held[&replay.id].clone();
+                    let outcome = mac.apply_remote(&replay, None, None).unwrap();
+                    prop_assert!(matches!(outcome, ApplyOutcome::Stale { .. }), "{outcome:?} for a replay after a loss");
+                    let (_, deleted_after, fields_after) = all_docs(mac)[&replay.id].clone();
+                    prop_assert_eq!(deleted_after, deleted, "a loss let a replay change a deletion");
                     prop_assert_eq!(fields_after, fields);
                 }
             }
@@ -274,21 +311,47 @@ fn replayed_older_revisions_and_tombstones_are_stale() {
         base_rev: None,
         ..v1.clone()
     };
-    let ApplyOutcome::Stale { new_rev } = store.apply_remote(&replay, None, None).unwrap() else {
+    let ApplyOutcome::Stale {
+        new_rev,
+        conflict: false,
+    } = store.apply_remote(&replay, None, None).unwrap()
+    else {
         panic!("a replay must be stale");
     };
     assert_eq!(store.get(&id).unwrap().unwrap().fields["name"], "v2");
     assert!(generation(&new_rev) > generation(&v2.rev));
     let pending = store.pending_push(10).unwrap();
     assert_eq!(pending[0].base_rev.as_deref(), Some(v1.rev.as_str()));
-    // The replayed version differed, so it was kept as a snapshot.
-    assert!(
+    // The replayed version was already in history (this Mac wrote it), so
+    // it isn't kept twice and isn't a conflict.
+    let copies = |store: &Store, name: &str| {
         store
             .revisions(&id)
             .unwrap()
             .iter()
-            .any(|r| r.fields["name"] == "v1")
-    );
+            .filter(|r| r.fields["name"] == name)
+            .count()
+    };
+    assert_eq!(copies(&store, "v1"), 1);
+
+    // A stale version this Mac never held is kept and flagged: after a
+    // restore it can be another Mac's newer edit.
+    let unseen = SyncDoc {
+        id: id.clone(),
+        rev: format!("2-{}", "c".repeat(32)),
+        deleted: false,
+        fields: json!({ "name": "edited elsewhere", "updatedAt": 9_000 })
+            .as_object()
+            .unwrap()
+            .clone(),
+        base_rev: None,
+    };
+    assert!(matches!(
+        store.apply_remote(&unseen, None, None).unwrap(),
+        ApplyOutcome::Stale { conflict: true, .. }
+    ));
+    assert_eq!(store.get(&id).unwrap().unwrap().fields["name"], "v2");
+    assert_eq!(copies(&store, "edited elsewhere"), 1);
 
     let (_dir2, other) = temp_store();
     let id2 = book(&other, "alive");

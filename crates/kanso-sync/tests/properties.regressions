@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 2d5af27f4ea5a479cf22002fd4a596e1caad14f1fce180ba288391f0ea8dcdda # shrinks to ops = [Write { mac: 0, pick: 0, word: 0 }, SyncA(None), SyncA(Replay { pick: 0 }), SyncA(Replay { pick: 0 })]
+cc 3e90ab6d0aaa7d65833fec887cb0841133668acbcaf2d60a12bf1401ea11c5d4 # shrinks to ops = [Write { mac: 0, pick: 3, word: 0 }, SyncA([None]), SyncA([None]), Delete { mac: 0, pick: 3 }, SyncA([Lost { pick: 0 }, ConflictReplay { pick: 0 }])]
