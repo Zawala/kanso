@@ -786,7 +786,7 @@ mod tests {
             ..book(id, parent, "b")
         };
         let books = vec![
-            // GridOps holds its notes in Fleet orchestration.
+            // Clients holds its notes in a sub-notebook.
             counted(1, None, 0),
             counted(2, Some(1), 17),
             // Projects holds one empty notebook.
