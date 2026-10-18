@@ -1,0 +1,107 @@
+{
+  "about": [
+    "Golden vectors for docs/ACCOUNTS.md › Constructions, format 1. Owner: the Rust builder (step 2a).",
+    "Written by an independent Node implementation (node:crypto Argon2id, HKDF, HMAC and ChaCha20-Poly1305, with",
+    "HChaCha20 in JavaScript checked against draft-irtf-cfrg-xchacha-03); crypto.rs's tests check that kanso-sync",
+    "gives every output from the inputs. Hex is lowercase; base64url is unpadded. Sealed values use the fixed",
+    "nonces given. A document's plaintext is canonical JSON: id, rev, fields, with object keys sorted.",
+    "`production` repeats the password derivation at the production parameters (an #[ignore] test: 1 GiB)."
+  ],
+  "inputs": {
+    "origin": "https://kanso.example",
+    "username": "alice",
+    "password": "correct horse battery staple",
+    "salt": "000102030405060708090a0b0c0d0e0f",
+    "kdf": {
+      "m_kib": 64,
+      "t": 1,
+      "p": 1
+    },
+    "data_key": "101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+    "recovery_key_bytes": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+    "device_secret": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+    "account_id": "a_0123456789abcdef0123456789abcdef",
+    "nonces": {
+      "wrap_password": "010101010101010101010101010101010101010101010101",
+      "wrap_recovery": "020202020202020202020202020202020202020202020202",
+      "doc": "303132333435363738393a3b3c3d3e3f4041424344454647",
+      "tombstone": "040404040404040404040404040404040404040404040404",
+      "file": "050505050505050505050505050505050505050505050505",
+      "name": "060606060606060606060606060606060606060606060606"
+    },
+    "doc": {
+      "id": "note:Gold3nNote",
+      "rev": "3-0123456789abcdef0123456789abcdef",
+      "fields": {
+        "title": "Golden",
+        "bookId": "book:Gold3nBook",
+        "body": "Sealed body ü ☃ \"quoted\"\n",
+        "tags": [
+          "tag:b",
+          "tag:a"
+        ],
+        "updatedAt": 1800057600000,
+        "share": {
+          "zeta": true,
+          "alpha": null
+        }
+      }
+    },
+    "tombstone": {
+      "id": "book:Gold3nBook",
+      "rev": "4-fedcba9876543210fedcba9876543210"
+    },
+    "file": {
+      "id": "file:Gold3nFile",
+      "bytes": "89504e470d0a1a0a000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
+    },
+    "device_name": "Golden Mac"
+  },
+  "outputs": {
+    "salt_input": "6b616e736f2f76312f73616c74001568747470733a2f2f6b616e736f2e6578616d706c650005616c696365000102030405060708090a0b0c0d0e0f",
+    "auth_key": "bq5dIR_DQ-G8MBi31LAY6-9uJZ7aXsgjns1Oc2_mj0c",
+    "kek": "11b92a16b264841d4f6282616288b609bdefdd3147ae2f83d9fb655797d294cb",
+    "recovery_salt": "6b616e736f2f76312f7265636f76657279001568747470733a2f2f6b616e736f2e6578616d706c650005616c696365",
+    "recovery_auth_key": "a29OPlAL3SQ9viDbTqINyWhzD2RCVRwxukIYU0EKj3U",
+    "recovery_kek": "98d6f81627124945647d4a547553494c51fc6bbd31a7073efc6b8812d3563b2a",
+    "wrap_password": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAeZHRXhAoEmg3UunDk4osnYSDUpvO2RaGeGYloG5c9N8E2NhDZSI1efvtDJBIA19bA",
+    "wrap_recovery": "AQICAgICAgICAgICAgICAgICAgICAgICAhn6YelHE6jMO4WOmTIaem1CjEqGIaNgtnCvl89J9sPv36e-Xuy0ox4E5UX-0OxByg",
+    "key_id": "92ecbe49a0c9ddc6",
+    "content_keys": {
+      "doc": "80379a05e33b7d9630ca07249e76594174df7156c506d6d7dc1e725399e73079",
+      "file": "b1bf3a5024eb63f455033dc7288bf351c63aa0efe0d32fc4cd9cd99b817f0e9e",
+      "wire-id": "faf2c4ddfcc292cf8958a151c6a12a7c7eab7aafb44d08328808276e0886e5b8",
+      "wire-rev": "473299022317a09b1f629a873175fb9fa7120faa685d5a886bf9c77471de9b7e",
+      "device-name": "118913356dc62a6b5e4b359399921a3f71948f5536aee0f1205fde413b59b664"
+    },
+    "doc_plaintext": "{\"id\":\"note:Gold3nNote\",\"rev\":\"3-0123456789abcdef0123456789abcdef\",\"fields\":{\"body\":\"Sealed body ü ☃ \\\"quoted\\\"\\n\",\"bookId\":\"book:Gold3nBook\",\"share\":{\"alpha\":null,\"zeta\":true},\"tags\":[\"tag:b\",\"tag:a\"],\"title\":\"Golden\",\"updatedAt\":1800057600000}}",
+    "sealed_doc": {
+      "id": "note:upy9-ODBJrdz65Id7cYApg",
+      "rev": "214d736114cc6ee6dc6aee8de82ddc06",
+      "deleted": false,
+      "sealed": "ATAxMjM0NTY3ODk6Ozw9Pj9AQUJDREVGR2iw4y2fKikkaRzvDyrKGfPgvwT_7ASJK8eMSEMQ1yNn-MH6N7G7v99IdbY_844kvb0nYZodhbQSJqdhq3k-WdMuJ1fAJXj1UCA28KeLMkKNV1r6C3mtNo6MCnKuzCNmEZUOO6DNpd8YxiTFta_3F9B-HK6UwpcVO8flK1WHYsIjbO9g4Iinl1Dohyl9KGqQNGT-t5BswG2exY27aHiR1QsWJvDDrvj9Dce6ikGGGCbM4NcuACAv1MQ4eMnuSEoXt0p9RA0mVSMBqyovNk5oBQLI4BzVIoi5q3-888B5SfXqkV47z_yE2VEhU82vppBoOHY_e0Q3go9M0R1OmOUQ2fplmNks4pewSFI"
+    },
+    "tombstone_plaintext": "{\"id\":\"book:Gold3nBook\",\"rev\":\"4-fedcba9876543210fedcba9876543210\",\"fields\":{}}",
+    "sealed_tombstone": {
+      "id": "book:amlr_W8c_Rx7jtYVdKe6pQ",
+      "rev": "62e1deaed7183117ad9af5442a62df88",
+      "deleted": true,
+      "sealed": "AQQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBGVqI-vC8Iggf9va--rKfB4cvP4SgU_D7af2FMVs1aRufInl1Kl7wnbw3Cjf2hMTOYBnn5Qmu8lDt2rCq91erJk8ZK5omtwI95dl6hm-Oz5eU9bLKtXOspuEMR5gV0w-"
+    },
+    "file_wire_id": "file:agwcmuX3zIN-rGak_Hb48Q",
+    "sealed_file": "AQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBe5Dy2I-zKtk5lPjJlDkrXoHIppAVse3Bh4-c-LmJ1RZ9SMNpkFs5Up3wFxLs5mOjB9EdRK3ZG93jszwdeby9lhKMv-ua4FoIhrdr0GHc-NLm3iVqkgqqBc",
+    "device_id": "d_3474d387541d07f79f542947bfd19a4c",
+    "device_proof": "VDzcMTunQVTYKYKHJYZgJnjOLsMSh4XgKtY87qxB1-8",
+    "sealed_name": "AQYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBsQFrBCaYWQkE5wi6r6vGV_h90FJ54ORuILy",
+    "recovery_key": "50M6-HA79-55MT-KTHA-DANE-PAVB-NFVF"
+  },
+  "production": {
+    "kdf": {
+      "m_kib": 1048576,
+      "t": 3,
+      "p": 4
+    },
+    "auth_key": "hv49YP9ZUL2uCFzIt-XhqhQeIHTHADMsb7edFHTM33c",
+    "kek": "99dd15018be3d06527af87024669c0a4f1a5f266b695441f2c8c94b3387f414f"
+  }
+}

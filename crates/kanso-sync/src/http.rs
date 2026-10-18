@@ -21,6 +21,9 @@ use crate::remote::{
 const MAX_JSON_RESPONSE: u64 = 512 * 1024 * 1024;
 
 /// The sync Worker at `endpoint`, authenticated with a bearer token.
+///
+/// Legacy (v1): kept until step 3 of docs/ACCOUNTS.md › Build order moves
+/// the app to [`HttpBackend`].
 pub struct HttpRemote {
     endpoint: String,
     token: String,

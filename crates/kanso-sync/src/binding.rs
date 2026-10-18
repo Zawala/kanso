@@ -6,11 +6,13 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use kanso_core::DocType;
 use kanso_store::{Store, StoreError, SyncGuard};
+use sha2::{Digest as _, Sha256};
 use zeroize::Zeroizing;
 
 use crate::account::Session;
-use crate::crypto::DeviceProof;
+use crate::crypto::{DeviceProof, hex, random};
 use crate::keychain::{SecretError, SecretStore};
 
 /// The library's `meta` keys for v2 sync (H5). Only `unbind` touches the
@@ -63,11 +65,56 @@ pub struct Machine {
     pub computer_name: String,
 }
 
+// no-prop-test: runs two system commands; the parsing below is tested.
 impl Machine {
-    /// Reads this Mac (step 2a).
+    /// Reads this Mac: `ioreg -rd1 -c IOPlatformExpertDevice` for the
+    /// hardware UUID (none when it doesn't answer) and `scutil --get
+    /// ComputerName` for the name.
     pub fn this_mac() -> Machine {
-        crate::stub!("2a")
+        let run = |program: &str, args: &[&str]| {
+            std::process::Command::new(program)
+                .args(args)
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+                .unwrap_or_default()
+        };
+        Machine {
+            hardware_uuid: platform_uuid(&run(
+                "/usr/sbin/ioreg",
+                &["-rd1", "-c", "IOPlatformExpertDevice"],
+            )),
+            computer_name: run("/usr/sbin/scutil", &["--get", "ComputerName"])
+                .trim_end_matches('\n')
+                .to_owned(),
+        }
     }
+
+    /// `hex(SHA-256("kanso-hw" || IOPlatformUUID))[0..32]`, or empty when
+    /// there is no UUID.
+    pub fn hardware_hash(&self) -> String {
+        match &self.hardware_uuid {
+            Some(uuid) if !uuid.is_empty() => {
+                let digest = Sha256::new()
+                    .chain_update(b"kanso-hw")
+                    .chain_update(uuid.as_bytes())
+                    .finalize();
+                hex(&digest)[..32].to_owned()
+            }
+            _ => String::new(),
+        }
+    }
+}
+
+/// The `"IOPlatformUUID" = "…"` value in `ioreg` output.
+fn platform_uuid(ioreg: &str) -> Option<String> {
+    ioreg.lines().find_map(|line| {
+        let (key, value) = line.split_once('=')?;
+        (key.trim() == "\"IOPlatformUUID\"")
+            .then(|| value.trim().trim_matches('"').to_owned())
+            .filter(|uuid| !uuid.is_empty())
+    })
 }
 
 /// The device name rule (docs/ACCOUNTS.md › Sealed device names): control
@@ -90,23 +137,50 @@ pub struct DeviceIdentity {
     pub library_id: String,
     /// [`device_name`] of this Mac, sealed before it is sent.
     pub name: String,
-    #[allow(dead_code, reason = "read by the step 2a bodies")]
     device_secret: Zeroizing<[u8; 32]>,
 }
 
 impl DeviceIdentity {
+    /// An identity from its parts (tests and golden vectors; the app uses
+    /// [`device_identity`]).
+    pub fn from_parts(library_id: &str, name: &str, device_secret: [u8; 32]) -> DeviceIdentity {
+        DeviceIdentity {
+            library_id: library_id.to_owned(),
+            name: device_name(name),
+            device_secret: Zeroizing::new(device_secret),
+        }
+    }
+
     /// This Mac's ID in `account_id`: `d_ + hex(HMAC-SHA256(device_secret,
     /// account_id)[0..16])`, unlinkable across accounts (L2).
     pub fn device_id(&self, account_id: &str) -> String {
-        crate::stub!("2a", self, account_id)
+        crate::crypto::device_id(&self.device_secret, account_id)
     }
 
     /// This Mac's proof for `(origin, account_id)`: HKDF(ikm device_secret,
     /// info "kanso/v1/device-proof" || lp(origin) || lp(account_id)). Only
     /// a matching proof exempts a sign-in from `login-user` (re-check 5).
     pub fn device_proof(&self, origin: &str, account_id: &str) -> DeviceProof {
-        crate::stub!("2a", self, origin, account_id)
+        crate::crypto::device_proof(&self.device_secret, origin, account_id)
     }
+}
+
+/// `l_` and 32 lowercase hex digits.
+fn is_library_id(id: &str) -> bool {
+    id.strip_prefix("l_").is_some_and(|hex| {
+        hex.len() == 32 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    })
+}
+
+fn parse_secret(text: &str) -> Option<Zeroizing<[u8; 32]>> {
+    if text.len() != 64 {
+        return None;
+    }
+    let mut secret = Zeroizing::new([0u8; 32]);
+    for (i, byte) in secret.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(text.get(2 * i..2 * i + 2)?, 16).ok()?;
+    }
+    Some(secret)
 }
 
 impl fmt::Debug for DeviceIdentity {
@@ -124,7 +198,44 @@ impl fmt::Debug for DeviceIdentity {
 /// device secret are regenerated (the copy is then signed out) and the
 /// binding and cursor stay. Sign-out and unbind keep all three values.
 pub fn device_identity(store: &Store, machine: &Machine) -> Result<DeviceIdentity, StoreError> {
-    crate::stub!("2a", store, machine)
+    let hardware = machine.hardware_hash();
+    let library_id = store.meta(meta_keys::LIBRARY_ID)?;
+    let secret = store
+        .meta(meta_keys::DEVICE_SECRET)?
+        .as_deref()
+        .and_then(parse_secret);
+    let stored_hardware = store.meta(meta_keys::HARDWARE)?.unwrap_or_default();
+    let copied = !stored_hardware.is_empty() && !hardware.is_empty() && stored_hardware != hardware;
+    match (library_id, secret) {
+        (Some(library_id), Some(device_secret)) if is_library_id(&library_id) && !copied => {
+            if stored_hardware.is_empty() && !hardware.is_empty() {
+                store.set_meta(meta_keys::HARDWARE, &hardware)?;
+            }
+            Ok(DeviceIdentity {
+                library_id,
+                name: device_name(&machine.computer_name),
+                device_secret,
+            })
+        }
+        _ => {
+            // New, unreadable, or copied from another Mac: a new identity.
+            // The binding and cursor stay, so signing in resumes as a new
+            // device of the same account.
+            let library_id = format!("l_{}", hex(&random::<16>()));
+            let device_secret = Zeroizing::new(random::<32>());
+            let secret_hex = Zeroizing::new(hex(&device_secret[..]));
+            store.set_metas(&[
+                (meta_keys::LIBRARY_ID, Some(library_id.as_str())),
+                (meta_keys::DEVICE_SECRET, Some(secret_hex.as_str())),
+                (meta_keys::HARDWARE, Some(hardware.as_str())),
+            ])?;
+            Ok(DeviceIdentity {
+                library_id,
+                name: device_name(&machine.computer_name),
+                device_secret,
+            })
+        }
+    }
 }
 
 /// What the library holds, relative to the `(origin, account_id)` being
@@ -147,13 +258,45 @@ pub enum LocalLibrary {
     },
 }
 
-/// Reads the library's binding and counts (step 2a).
+/// Reads the library's binding and counts. `notes` counts live notes;
+/// "empty" means no live documents of any kind.
 pub fn local_library(
     store: &Store,
     origin: &str,
     account_id: &str,
 ) -> Result<LocalLibrary, StoreError> {
-    crate::stub!("2a", store, origin, account_id)
+    let bound_origin = store.meta(meta_keys::ORIGIN)?;
+    let bound_account = store.meta(meta_keys::ACCOUNT_ID)?;
+    if bound_origin.as_deref() == Some(origin) && bound_account.as_deref() == Some(account_id) {
+        return Ok(LocalLibrary::Same);
+    }
+    let counts = store.counts()?;
+    if counts.values().all(|&n| n == 0) {
+        return Ok(LocalLibrary::Empty);
+    }
+    let notes = counts.get(&DocType::Note).copied().unwrap_or(0);
+    let unsynced = store.pending_count()?;
+    if bound_origin.is_some() || bound_account.is_some() {
+        return Ok(LocalLibrary::Other {
+            username: store.meta(meta_keys::USERNAME)?.unwrap_or_default(),
+            notes,
+            unsynced,
+        });
+    }
+    Ok(LocalLibrary::Unbound { notes, unsynced })
+}
+
+/// The meta entries a bind writes: the account's origin, ID, username and
+/// server, a cursor of 0, and no epoch.
+fn bound_meta(session: &Session) -> [(&'static str, Option<&str>); 6] {
+    [
+        (meta_keys::ORIGIN, Some(session.origin.as_str())),
+        (meta_keys::ACCOUNT_ID, Some(session.account_id.as_str())),
+        (meta_keys::USERNAME, Some(session.username.as_str())),
+        (meta_keys::SERVER, Some(session.server.as_str())),
+        (meta_keys::LAST_SEQ, Some("0")),
+        (meta_keys::EPOCH, None),
+    ]
 }
 
 /// The flow that is about to bind the library.
@@ -242,14 +385,18 @@ pub enum BindError {
     Keychain(#[from] SecretError),
 }
 
-/// Binds the library to `session`'s account (step 2a). The caller has
-/// cancelled and joined the running sync.
+/// Binds the library to `session`'s account. The caller has cancelled and
+/// joined the running sync.
 ///
 /// - [`Choice::Add`] (and fresh binds): `reset_sync` writing the origin,
 ///   account, username and server, `last_seq = 0`, and removing the epoch.
 /// - [`Choice::Replace`]: `Store::backup_now(backups_dir, now)`, then
 ///   `replace_library` with the same meta; returns the backup's path.
 /// - [`Choice::Cancel`]: changes nothing and returns `None`.
+///
+/// Binding a library already bound to the session's `(origin, account_id)`
+/// with [`Choice::Add`] only refreshes the username and server: it is
+/// [`Plan::Resume`], and resetting it would push the whole library again.
 pub fn bind(
     store: &Store,
     session: &Session,
@@ -257,15 +404,45 @@ pub fn bind(
     backups_dir: &Path,
     now_ms: i64,
 ) -> Result<Option<PathBuf>, BindError> {
-    crate::stub!("2a", store, session, choice, backups_dir, now_ms)
+    match choice {
+        Choice::Cancel => Ok(None),
+        Choice::Add => {
+            if local_library(store, &session.origin, &session.account_id)? == LocalLibrary::Same {
+                store.set_metas(&[
+                    (meta_keys::USERNAME, Some(session.username.as_str())),
+                    (meta_keys::SERVER, Some(session.server.as_str())),
+                ])?;
+            } else {
+                store.reset_sync(&bound_meta(session))?;
+            }
+            Ok(None)
+        }
+        Choice::Replace => {
+            let backup = store.backup_now(backups_dir, now_ms)?;
+            store.replace_library(&bound_meta(session))?;
+            Ok(Some(backup))
+        }
+    }
 }
 
 /// Unbinds (after deleting the account, and for rollback): `reset_sync`
 /// removing the origin, account, username, server, cursor and epoch,
 /// keeping the device identity, and setting the legacy `sync.last_seq = 0`;
-/// then deletes `sync-account:<library>` (step 2a).
+/// then deletes `sync-account:<library>`.
 pub fn unbind(store: &Store, secrets: &dyn SecretStore) -> Result<(), BindError> {
-    crate::stub!("2a", store, secrets)
+    store.reset_sync(&[
+        (meta_keys::ORIGIN, None),
+        (meta_keys::ACCOUNT_ID, None),
+        (meta_keys::USERNAME, None),
+        (meta_keys::SERVER, None),
+        (meta_keys::LAST_SEQ, None),
+        (meta_keys::EPOCH, None),
+        (meta_keys::LEGACY_LAST_SEQ, Some("0")),
+    ])?;
+    if let Some(library_id) = store.meta(meta_keys::LIBRARY_ID)? {
+        crate::keychain::delete_session(secrets, &library_id)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

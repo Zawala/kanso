@@ -1,20 +1,144 @@
 //! Key derivation, wrapping and sealing (docs/ACCOUNTS.md › Constructions).
 //! Pure: no I/O, no clock; randomness only from `getrandom`.
 //!
-//! Step 1 implements the pure validators the app's forms need: [`Password`]
-//! and [`RecoveryKey`] parsing and display, and [`KdfParams`] checks.
-//! Everything else is the Rust builder's step 2a, pinned by
-//! `tests/fixtures/crypto-v1.json`. The signatures below are the contract;
-//! items the app never calls (everything but `Password`, `RecoveryKey` and
-//! `KdfParams`) may be refined by the Rust builder within the spec.
+//! Argon2id, HKDF-SHA256, HMAC-SHA256 and XChaCha20-Poly1305, all from
+//! RustCrypto; there are no custom primitives. Every value is pinned by
+//! `tests/fixtures/crypto-v1.json`, which the tests below check and which was
+//! cross-checked against Node's own `crypto` (Argon2, HKDF, HMAC and
+//! ChaCha20-Poly1305 with HChaCha20 for the extended nonce).
 
 use std::fmt;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use chacha20poly1305::aead::{Aead, KeyInit, Payload};
+use chacha20poly1305::{XChaCha20Poly1305, XNonce};
+use hmac::{Hmac, Mac};
+use serde_json::{Map, Value};
+use sha2::{Digest as _, Sha256};
 use unicode_normalization::UnicodeNormalization as _;
 use zeroize::Zeroizing;
 
-use crate::wire::WireDoc;
+use crate::wire::{WireDoc, is_wire_id, is_wire_rev};
 use kanso_store::SyncDoc;
+
+// ---------------------------------------------------------------------------
+// Encodings and primitives
+// ---------------------------------------------------------------------------
+
+/// The format byte of every wrap and sealed value (format version 1).
+pub const FORMAT_V1: u8 = 0x01;
+const NONCE_LEN: usize = 24;
+const TAG_LEN: usize = 16;
+/// What sealing adds to a plaintext: the format byte, the nonce and the tag.
+pub const SEAL_OVERHEAD: usize = 1 + NONCE_LEN + TAG_LEN;
+
+/// `N` bytes from the system's random source (`getrandom`).
+pub(crate) fn random<const N: usize>() -> [u8; N] {
+    let mut bytes = [0u8; N];
+    getrandom::fill(&mut bytes).expect("the system's random source failed");
+    bytes
+}
+
+/// Unpadded base64url (RFC 4648 §5).
+pub(crate) fn b64(bytes: &[u8]) -> String {
+    URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// Strict unpadded base64url: no padding, no other alphabet, and canonical
+/// (re-encoding gives the same text).
+pub(crate) fn unb64(text: &str) -> Option<Vec<u8>> {
+    let bytes = URL_SAFE_NO_PAD.decode(text).ok()?;
+    (b64(&bytes) == text).then_some(bytes)
+}
+
+/// Lowercase hex.
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// `hex(SHA-256(bytes))`: how the server stores auth keys, tokens and proofs.
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    hex(&Sha256::digest(bytes))
+}
+
+/// Appends `lp(x)`: a 2-byte big-endian byte length, then the UTF-8 bytes.
+/// Every caller passes a value checked against its wire pattern (or this
+/// client's own), all far below 65,535 bytes; a longer one is clamped, which
+/// only makes its AAD differ from any real one.
+pub(crate) fn lp(out: &mut Vec<u8>, x: &str) {
+    let len = u16::try_from(x.len()).unwrap_or(u16::MAX);
+    out.extend_from_slice(&len.to_be_bytes());
+    out.extend_from_slice(x.as_bytes());
+}
+
+/// HKDF-SHA256 with the default all-zero salt unless one is given.
+fn hkdf(ikm: &[u8], salt: Option<&[u8]>, info: &[u8], out: &mut [u8]) {
+    hkdf::Hkdf::<Sha256>::new(salt, ikm)
+        .expand(info, out)
+        .expect("HKDF-SHA256 gives up to 8,160 bytes");
+}
+
+pub(crate) fn hkdf32(ikm: &[u8], salt: Option<&[u8]>, info: &[u8]) -> Zeroizing<[u8; 32]> {
+    let mut out = Zeroizing::new([0u8; 32]);
+    hkdf(ikm, salt, info, &mut out[..]);
+    out
+}
+
+/// HMAC-SHA256 over the concatenation of `parts`.
+pub(crate) fn hmac(key: &[u8], parts: &[&[u8]]) -> [u8; 32] {
+    let mut mac =
+        <Hmac<Sha256> as KeyInit>::new_from_slice(key).expect("HMAC takes keys of any length");
+    for part in parts {
+        mac.update(part);
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&mac.finalize().into_bytes());
+    out
+}
+
+/// `0x01 || nonce || XChaCha20-Poly1305(key, nonce, aad, plaintext)`.
+fn seal_raw(key: &[u8; 32], nonce: &[u8; NONCE_LEN], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = XChaCha20Poly1305::new_from_slice(key).expect("a 32-byte key");
+    let body = cipher
+        .encrypt(
+            &XNonce::from(*nonce),
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .expect("XChaCha20-Poly1305 seals every length used here");
+    let mut out = Vec::with_capacity(1 + NONCE_LEN + body.len());
+    out.push(FORMAT_V1);
+    out.extend_from_slice(nonce);
+    out.extend_from_slice(&body);
+    out
+}
+
+/// Opens [`seal_raw`]'s output: a format byte above 1 is too new; anything
+/// else that doesn't open under this key and AAD is undecryptable.
+fn open_raw(key: &[u8; 32], aad: &[u8], sealed: &[u8]) -> Opened<Zeroizing<Vec<u8>>> {
+    match sealed.first() {
+        Some(&format) if format > FORMAT_V1 => Opened::TooNew,
+        Some(&FORMAT_V1) if sealed.len() >= SEAL_OVERHEAD => {
+            let mut nonce = [0u8; NONCE_LEN];
+            nonce.copy_from_slice(&sealed[1..=NONCE_LEN]);
+            let cipher = XChaCha20Poly1305::new_from_slice(key).expect("a 32-byte key");
+            match cipher.decrypt(
+                &XNonce::from(nonce),
+                Payload {
+                    msg: &sealed[1 + NONCE_LEN..],
+                    aad,
+                },
+            ) {
+                Ok(plaintext) => Opened::Opened(Zeroizing::new(plaintext)),
+                Err(_) => Opened::Undecryptable,
+            }
+        }
+        _ => Opened::Undecryptable,
+    }
+}
 
 // ---------------------------------------------------------------------------
 // KDF parameters
@@ -112,7 +236,6 @@ impl Password {
     }
 
     /// The NFC text, as UTF-8 bytes for Argon2.
-    #[allow(dead_code, reason = "read by the step 2a bodies")]
     pub(crate) fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
@@ -157,9 +280,9 @@ pub enum RecoveryKeyError {
 pub struct RecoveryKey(Zeroizing<[u8; 16]>);
 
 impl RecoveryKey {
-    /// A new random key (step 2a).
+    /// A new random key.
     pub fn generate() -> RecoveryKey {
-        crate::stub!("2a")
+        RecoveryKey::from_bytes(random())
     }
 
     /// The key holding exactly these bytes (golden vectors and tests).
@@ -167,7 +290,6 @@ impl RecoveryKey {
         RecoveryKey(Zeroizing::new(bytes))
     }
 
-    #[allow(dead_code, reason = "read by the step 2a bodies")]
     pub(crate) fn bytes(&self) -> &[u8; 16] {
         &self.0
     }
@@ -245,7 +367,7 @@ macro_rules! secret32 {
                 $name(Zeroizing::new(bytes))
             }
 
-            #[allow(dead_code, reason = "read by the step 2a bodies")]
+            #[allow(dead_code, reason = "not every key type reads its bytes back")]
             pub(crate) fn bytes(&self) -> &[u8; 32] {
                 &self.0
             }
@@ -283,23 +405,23 @@ secret32!(
 );
 
 impl DataKey {
-    /// A new random data key (step 2a).
+    /// A new random data key.
     pub fn generate() -> DataKey {
-        crate::stub!("2a")
+        DataKey::from_bytes(random())
     }
 }
 
 impl AuthKey {
     /// 43 unpadded base64url characters, as the wire carries it.
     pub fn to_base64url(&self) -> String {
-        crate::stub!("2a", self)
+        b64(&self.0[..])
     }
 }
 
 impl DeviceProof {
     /// 43 unpadded base64url characters, as the wire carries it.
     pub fn to_base64url(&self) -> String {
-        crate::stub!("2a", self)
+        b64(&self.0[..])
     }
 }
 
@@ -321,6 +443,15 @@ pub enum WrapPurpose {
     Recovery,
 }
 
+impl WrapPurpose {
+    fn byte(self) -> u8 {
+        match self {
+            WrapPurpose::Password => b'P',
+            WrapPurpose::Recovery => b'R',
+        }
+    }
+}
+
 /// Why opening keys failed.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum CryptoError {
@@ -333,10 +464,20 @@ pub enum CryptoError {
     Kdf(String),
 }
 
+/// `"kanso/v1/salt" || lp(origin) || lp(username) || salt16`.
+fn salt_input(origin: &str, username: &str, salt: &[u8; 16]) -> Vec<u8> {
+    let mut input = b"kanso/v1/salt".to_vec();
+    lp(&mut input, origin);
+    lp(&mut input, username);
+    input.extend_from_slice(salt);
+    input
+}
+
 /// `Argon2id(password, salt_input)` then HKDF into the auth key and the KEK,
 /// zeroizing the master key. `salt_input = "kanso/v1/salt" || lp(origin) ||
 /// lp(username) || salt16`; `username` is normalized (docs/ACCOUNTS.md ›
-/// Password and KDF, › Keys).
+/// Password and KDF, › Keys). The caller checks `params` against its
+/// backend's floor and the ceilings first.
 pub fn password_keys(
     password: &Password,
     origin: &str,
@@ -344,21 +485,76 @@ pub fn password_keys(
     salt: &[u8; 16],
     params: KdfParams,
 ) -> Result<DerivedKeys, CryptoError> {
-    crate::stub!("2a", password, origin, username, salt, params)
+    let kdf = |e: argon2::Error| CryptoError::Kdf(e.to_string());
+    let argon = argon2::Argon2::new(
+        argon2::Algorithm::Argon2id,
+        argon2::Version::V0x13,
+        argon2::Params::new(params.m_kib, params.t, params.p, Some(32)).map_err(kdf)?,
+    );
+    let mut master = Zeroizing::new([0u8; 32]);
+    argon
+        .hash_password_into(
+            password.as_bytes(),
+            &salt_input(origin, username, salt),
+            &mut master[..],
+        )
+        .map_err(kdf)?;
+    Ok(DerivedKeys {
+        auth_key: AuthKey(hkdf32(&master[..], None, b"kanso/v1/auth")),
+        kek: Kek(hkdf32(&master[..], None, b"kanso/v1/kek")),
+    })
 }
 
 /// The recovery auth key and recovery KEK: HKDF(ikm = recovery secret, salt
 /// = "kanso/v1/recovery" || lp(origin) || lp(username), info
 /// "kanso/v1/recovery-auth" / "kanso/v1/recovery-kek").
 pub fn recovery_keys(key: &RecoveryKey, origin: &str, username: &str) -> DerivedKeys {
-    crate::stub!("2a", key, origin, username)
+    let mut salt = b"kanso/v1/recovery".to_vec();
+    lp(&mut salt, origin);
+    lp(&mut salt, username);
+    DerivedKeys {
+        auth_key: AuthKey(hkdf32(
+            &key.bytes()[..],
+            Some(&salt),
+            b"kanso/v1/recovery-auth",
+        )),
+        kek: Kek(hkdf32(
+            &key.bytes()[..],
+            Some(&salt),
+            b"kanso/v1/recovery-kek",
+        )),
+    }
+}
+
+/// `"kanso-wrap" || 0x01 || purpose || lp(account_id)`.
+fn wrap_aad(purpose: WrapPurpose, account_id: &str) -> Vec<u8> {
+    let mut aad = b"kanso-wrap".to_vec();
+    aad.push(FORMAT_V1);
+    aad.push(purpose.byte());
+    lp(&mut aad, account_id);
+    aad
 }
 
 /// `0x01 || nonce(24) || XChaCha20-Poly1305(kek, nonce, aad, data_key)` as 98
 /// base64url characters, where `aad = "kanso-wrap" || 0x01 || purpose ||
 /// lp(account_id)` (the account ID binding is security re-check 3).
 pub fn wrap(kek: &Kek, purpose: WrapPurpose, account_id: &str, data_key: &DataKey) -> String {
-    crate::stub!("2a", kek, purpose, account_id, data_key)
+    wrap_with_nonce(kek, purpose, account_id, data_key, &random())
+}
+
+pub(crate) fn wrap_with_nonce(
+    kek: &Kek,
+    purpose: WrapPurpose,
+    account_id: &str,
+    data_key: &DataKey,
+    nonce: &[u8; NONCE_LEN],
+) -> String {
+    b64(&seal_raw(
+        &kek.0,
+        nonce,
+        &wrap_aad(purpose, account_id),
+        &data_key.0[..],
+    ))
 }
 
 /// Opens a wrap made by [`wrap`] with the same KEK, purpose and account ID;
@@ -369,12 +565,48 @@ pub fn unwrap(
     account_id: &str,
     wrapped: &str,
 ) -> Result<DataKey, CryptoError> {
-    crate::stub!("2a", kek, purpose, account_id, wrapped)
+    let sealed = unb64(wrapped).ok_or(CryptoError::KeyMismatch)?;
+    if sealed.len() != SEAL_OVERHEAD + 32 {
+        return Err(CryptoError::KeyMismatch);
+    }
+    match open_raw(&kek.0, &wrap_aad(purpose, account_id), &sealed) {
+        Opened::Opened(plain) if plain.len() == 32 => {
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&plain);
+            let key = DataKey::from_bytes(key);
+            Ok(key)
+        }
+        _ => Err(CryptoError::KeyMismatch),
+    }
 }
 
 /// HKDF(data_key, "kanso/v1/key-id", 8 bytes) as 16 hex digits.
 pub fn key_id(data_key: &DataKey) -> String {
-    crate::stub!("2a", data_key)
+    let mut id = [0u8; 8];
+    hkdf(&data_key.0[..], None, b"kanso/v1/key-id", &mut id);
+    hex(&id)
+}
+
+/// This Mac's device ID in an account: `d_ + hex(HMAC-SHA256(device_secret,
+/// account_id)[0..16])` (L2).
+pub(crate) fn device_id(device_secret: &[u8; 32], account_id: &str) -> String {
+    format!(
+        "d_{}",
+        hex(&hmac(device_secret, &[account_id.as_bytes()])[..16])
+    )
+}
+
+/// HKDF(ikm device_secret, info "kanso/v1/device-proof" || lp(origin) ||
+/// lp(account_id)), 32 bytes (security re-check 5).
+pub(crate) fn device_proof(
+    device_secret: &[u8; 32],
+    origin: &str,
+    account_id: &str,
+) -> DeviceProof {
+    let mut info = b"kanso/v1/device-proof".to_vec();
+    lp(&mut info, origin);
+    lp(&mut info, account_id);
+    DeviceProof(hkdf32(device_secret, None, &info))
 }
 
 /// What opening a sealed value gave (docs/ACCOUNTS.md › Sealed documents).
@@ -388,59 +620,267 @@ pub enum Opened<T> {
     TooNew,
 }
 
-/// The content keys, derived from the data key with HKDF.
+impl<T> Opened<T> {
+    fn map<U>(self, f: impl FnOnce(T) -> Option<U>) -> Opened<U> {
+        match self {
+            Opened::Opened(value) => f(value).map_or(Opened::Undecryptable, Opened::Opened),
+            Opened::Undecryptable => Opened::Undecryptable,
+            Opened::TooNew => Opened::TooNew,
+        }
+    }
+}
+
+/// The content keys, derived from the data key with HKDF. Zeroized on drop.
 pub struct ContentKeys {
-    #[allow(dead_code, reason = "read by the step 2a bodies")]
-    data_key: DataKey,
+    doc_key: Zeroizing<[u8; 32]>,
+    file_key: Zeroizing<[u8; 32]>,
+    id_key: Zeroizing<[u8; 32]>,
+    rev_key: Zeroizing<[u8; 32]>,
+    device_name_key: Zeroizing<[u8; 32]>,
+}
+
+impl fmt::Debug for ContentKeys {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ContentKeys(<redacted>)")
+    }
+}
+
+/// Writes `value` as canonical JSON: no spaces, object keys sorted by their
+/// UTF-8 bytes, strings and numbers as `serde_json` writes them. A sealed
+/// document's plaintext is `{"id":…,"rev":…,"fields":…}` in that order, so
+/// its bytes don't depend on whether `serde_json` keeps insertion order (a
+/// feature some workspace crates turn on) and the golden vectors hold for
+/// every build.
+fn canonical_json(value: &Value, out: &mut String) {
+    match value {
+        Value::Object(map) => canonical_object(map, out),
+        Value::Array(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                canonical_json(item, out);
+            }
+            out.push(']');
+        }
+        other => out.push_str(&serde_json::to_string(other).expect("JSON values always serialize")),
+    }
+}
+
+fn canonical_object(map: &Map<String, Value>, out: &mut String) {
+    let mut entries: Vec<(&String, &Value)> = map.iter().collect();
+    entries.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    out.push('{');
+    for (i, (key, value)) in entries.into_iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&serde_json::to_string(key).expect("strings always serialize"));
+        out.push(':');
+        canonical_json(value, out);
+    }
+    out.push('}');
+}
+
+/// The kind prefix of a local or wire ID (`note`, `book`, `tag`, `file`).
+fn kind_of(id: &str) -> &str {
+    id.split_once(':').map_or("", |(kind, _)| kind)
+}
+
+/// `"kanso-doc" || 0x01 || lp(account_id) || lp(wire_id) || lp(wire_rev) || deleted`.
+fn doc_aad(account_id: &str, wire_id: &str, wire_rev: &str, deleted: bool) -> Vec<u8> {
+    let mut aad = b"kanso-doc".to_vec();
+    aad.push(FORMAT_V1);
+    lp(&mut aad, account_id);
+    lp(&mut aad, wire_id);
+    lp(&mut aad, wire_rev);
+    aad.push(u8::from(deleted));
+    aad
+}
+
+/// `"kanso-file" || 0x01 || lp(account_id) || lp(wire_id)`.
+fn file_aad(account_id: &str, wire_id: &str) -> Vec<u8> {
+    let mut aad = b"kanso-file".to_vec();
+    aad.push(FORMAT_V1);
+    lp(&mut aad, account_id);
+    lp(&mut aad, wire_id);
+    aad
+}
+
+/// `"kanso-device" || 0x01 || lp(account_id) || lp(device_id)`.
+fn name_aad(account_id: &str, device_id: &str) -> Vec<u8> {
+    let mut aad = b"kanso-device".to_vec();
+    aad.push(FORMAT_V1);
+    lp(&mut aad, account_id);
+    lp(&mut aad, device_id);
+    aad
 }
 
 impl ContentKeys {
     /// Derives `doc_key`, `file_key`, `id_key`, `rev_key` and
     /// `device_name_key` from the data key.
     pub fn derive(data_key: &DataKey) -> ContentKeys {
-        crate::stub!("2a", data_key)
+        let key = |info: &[u8]| hkdf32(&data_key.0[..], None, info);
+        ContentKeys {
+            doc_key: key(b"kanso/v1/doc"),
+            file_key: key(b"kanso/v1/file"),
+            id_key: key(b"kanso/v1/wire-id"),
+            rev_key: key(b"kanso/v1/wire-rev"),
+            device_name_key: key(b"kanso/v1/device-name"),
+        }
     }
 
     /// `kind + ":" + base64url(HMAC-SHA256(id_key, local_id)[0..16])`.
     pub fn wire_id(&self, local_id: &str) -> String {
-        crate::stub!("2a", self, local_id)
+        let mac = hmac(&self.id_key[..], &[local_id.as_bytes()]);
+        format!("{}:{}", kind_of(local_id), b64(&mac[..16]))
     }
 
     /// `hex(HMAC-SHA256(rev_key, lp(local_id) || local_rev)[0..16])`.
     pub fn wire_rev(&self, local_id: &str, local_rev: &str) -> String {
-        crate::stub!("2a", self, local_id, local_rev)
+        let mut id = Vec::new();
+        lp(&mut id, local_id);
+        let mac = hmac(&self.rev_key[..], &[&id, local_rev.as_bytes()]);
+        hex(&mac[..16])
     }
 
     /// Seals a local document for `account_id`: its wire ID and revision, its
     /// deleted flag, and the sealed text with AAD `"kanso-doc" || 0x01 ||
-    /// lp(account_id) || lp(wire_id) || lp(wire_rev) || deleted`.
+    /// lp(account_id) || lp(wire_id) || lp(wire_rev) || deleted`. The
+    /// plaintext is `{"id", "rev", "fields"}` as canonical JSON (see
+    /// `canonical_json`); a tombstone's fields are `{}`.
     pub fn seal_doc(&self, account_id: &str, doc: &SyncDoc) -> WireDoc {
-        crate::stub!("2a", self, account_id, doc)
+        self.seal_doc_with_nonce(account_id, doc, &random())
     }
 
-    /// Opens a stored document, checking everything [`Opened::Undecryptable`] lists.
+    pub(crate) fn seal_doc_with_nonce(
+        &self,
+        account_id: &str,
+        doc: &SyncDoc,
+        nonce: &[u8; NONCE_LEN],
+    ) -> WireDoc {
+        let id = self.wire_id(&doc.id);
+        let rev = self.wire_rev(&doc.id, &doc.rev);
+        let empty = Map::new();
+        let fields = if doc.deleted { &empty } else { &doc.fields };
+        let mut text = Zeroizing::new(String::from("{\"id\":"));
+        canonical_json(&Value::String(doc.id.clone()), &mut text);
+        text.push_str(",\"rev\":");
+        canonical_json(&Value::String(doc.rev.clone()), &mut text);
+        text.push_str(",\"fields\":");
+        canonical_object(fields, &mut text);
+        text.push('}');
+        let plaintext = Zeroizing::new(std::mem::take(&mut *text).into_bytes());
+        let aad = doc_aad(account_id, &id, &rev, doc.deleted);
+        let sealed = b64(&seal_raw(&self.doc_key, nonce, &aad, &plaintext));
+        WireDoc {
+            id,
+            rev,
+            deleted: doc.deleted,
+            sealed,
+        }
+    }
+
+    /// Opens a stored document, checking everything [`Opened::Undecryptable`]
+    /// lists: the AEAD under this account, wire ID, revision and deleted
+    /// flag; the JSON shape (unknown top-level keys are ignored); that the
+    /// local ID and revision give the wire ID and revision back; that the
+    /// kinds agree; and that a tombstone has no fields. A format byte above
+    /// 1 is [`Opened::TooNew`].
     pub fn open_doc(&self, account_id: &str, wire: &WireDoc) -> Opened<SyncDoc> {
-        crate::stub!("2a", self, account_id, wire)
+        let Some(sealed) = unb64(&wire.sealed) else {
+            return Opened::Undecryptable;
+        };
+        if sealed.first().is_some_and(|&format| format > FORMAT_V1) {
+            return Opened::TooNew;
+        }
+        if !is_wire_id(&wire.id) || !is_wire_rev(&wire.rev) {
+            return Opened::Undecryptable;
+        }
+        let aad = doc_aad(account_id, &wire.id, &wire.rev, wire.deleted);
+        open_raw(&self.doc_key, &aad, &sealed).map(|plaintext| {
+            let Ok(Value::Object(mut plain)) = serde_json::from_slice::<Value>(&plaintext) else {
+                return None;
+            };
+            let (Some(Value::String(id)), Some(Value::String(rev)), Some(Value::Object(fields))) = (
+                plain.remove("id"),
+                plain.remove("rev"),
+                plain.remove("fields"),
+            ) else {
+                return None;
+            };
+            let kind_ok =
+                kanso_core::DocType::of_id(&id).is_some_and(|t| t.as_str() == kind_of(&wire.id));
+            let ok = kind_ok
+                && self.wire_id(&id) == wire.id
+                && self.wire_rev(&id, &rev) == wire.rev
+                && (!wire.deleted || fields.is_empty());
+            ok.then_some(SyncDoc {
+                id,
+                rev,
+                deleted: wire.deleted,
+                fields,
+                base_rev: None,
+            })
+        })
     }
 
     /// `0x01 || nonce(24) || XChaCha20-Poly1305(file_key, nonce, "kanso-file"
     /// || 0x01 || lp(account_id) || lp(wire_id), bytes)`.
     pub fn seal_file(&self, account_id: &str, wire_id: &str, bytes: &[u8]) -> Vec<u8> {
-        crate::stub!("2a", self, account_id, wire_id, bytes)
+        self.seal_file_with_nonce(account_id, wire_id, bytes, &random())
+    }
+
+    pub(crate) fn seal_file_with_nonce(
+        &self,
+        account_id: &str,
+        wire_id: &str,
+        bytes: &[u8],
+        nonce: &[u8; NONCE_LEN],
+    ) -> Vec<u8> {
+        seal_raw(&self.file_key, nonce, &file_aad(account_id, wire_id), bytes)
     }
 
     pub fn open_file(&self, account_id: &str, wire_id: &str, sealed: &[u8]) -> Opened<Vec<u8>> {
-        crate::stub!("2a", self, account_id, wire_id, sealed)
+        open_raw(&self.file_key, &file_aad(account_id, wire_id), sealed)
+            .map(|plain| Some(plain.to_vec()))
     }
 
     /// Seals a device name with AAD `"kanso-device" || 0x01 ||
-    /// lp(account_id) || lp(device_id)`: 55–400 base64url characters.
+    /// lp(account_id) || lp(device_id)`: 55–400 base64url characters. The
+    /// name passes [`crate::device_name`] first, so it is at most 64 scalar
+    /// values.
     pub fn seal_name(&self, account_id: &str, device_id: &str, name: &str) -> String {
-        crate::stub!("2a", self, account_id, device_id, name)
+        self.seal_name_with_nonce(account_id, device_id, name, &random())
+    }
+
+    pub(crate) fn seal_name_with_nonce(
+        &self,
+        account_id: &str,
+        device_id: &str,
+        name: &str,
+        nonce: &[u8; NONCE_LEN],
+    ) -> String {
+        let name = crate::binding::device_name(name);
+        b64(&seal_raw(
+            &self.device_name_key,
+            nonce,
+            &name_aad(account_id, device_id),
+            name.as_bytes(),
+        ))
     }
 
     pub fn open_name(&self, account_id: &str, device_id: &str, sealed: &str) -> Opened<String> {
-        crate::stub!("2a", self, account_id, device_id, sealed)
+        let Some(sealed) = unb64(sealed) else {
+            return Opened::Undecryptable;
+        };
+        open_raw(
+            &self.device_name_key,
+            &name_aad(account_id, device_id),
+            &sealed,
+        )
+        .map(|plain| String::from_utf8(plain.to_vec()).ok())
     }
 }
 
@@ -549,6 +989,180 @@ mod tests {
             }
             .is_within(&KdfParams::TEST)
         );
+    }
+
+    fn unhex<const N: usize>(text: &Value) -> [u8; N] {
+        let text = text.as_str().expect("a hex string");
+        let bytes: Vec<u8> = (0..text.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&text[i..i + 2], 16).expect("hex"))
+            .collect();
+        bytes.try_into().expect("the right length")
+    }
+
+    fn golden() -> Value {
+        serde_json::from_str(include_str!("../tests/fixtures/crypto-v1.json"))
+            .expect("crypto-v1.json")
+    }
+
+    fn golden_password(v: &Value) -> (String, String, Password, [u8; 16]) {
+        let i = &v["inputs"];
+        let origin = i["origin"].as_str().unwrap().to_owned();
+        let username = i["username"].as_str().unwrap().to_owned();
+        let password = Password::new(i["password"].as_str().unwrap(), &username).unwrap();
+        (origin, username, password, unhex(&i["salt"]))
+    }
+
+    fn params(v: &Value) -> KdfParams {
+        KdfParams {
+            m_kib: v["m_kib"].as_u64().unwrap() as u32,
+            t: v["t"].as_u64().unwrap() as u32,
+            p: v["p"].as_u64().unwrap() as u32,
+        }
+    }
+
+    /// Golden vectors (`tests/fixtures/crypto-v1.json`, written by an
+    /// independent Node implementation): every derivation, wrap, seal and
+    /// encoding of format 1 gives exactly the recorded output.
+    #[test]
+    fn golden_vectors_match_crypto_v1() {
+        let v = golden();
+        let (i, o) = (&v["inputs"], &v["outputs"]);
+        let (origin, username, password, salt) = golden_password(&v);
+        let account = i["account_id"].as_str().unwrap();
+        let nonce = |name: &str| unhex::<24>(&i["nonces"][name]);
+
+        assert_eq!(hex(&salt_input(&origin, &username, &salt)), o["salt_input"]);
+        let keys = password_keys(&password, &origin, &username, &salt, params(&i["kdf"])).unwrap();
+        assert_eq!(keys.auth_key.to_base64url(), o["auth_key"]);
+        assert_eq!(hex(keys.kek.bytes()), o["kek"]);
+
+        let recovery_key = RecoveryKey::from_bytes(unhex(&i["recovery_key_bytes"]));
+        assert_eq!(recovery_key.display(), o["recovery_key"]);
+        assert_eq!(
+            RecoveryKey::parse(o["recovery_key"].as_str().unwrap()).unwrap(),
+            recovery_key
+        );
+        let mut recovery_salt = b"kanso/v1/recovery".to_vec();
+        lp(&mut recovery_salt, &origin);
+        lp(&mut recovery_salt, &username);
+        assert_eq!(hex(&recovery_salt), o["recovery_salt"]);
+        let recovery = recovery_keys(&recovery_key, &origin, &username);
+        assert_eq!(recovery.auth_key.to_base64url(), o["recovery_auth_key"]);
+        assert_eq!(hex(recovery.kek.bytes()), o["recovery_kek"]);
+
+        let data_key = DataKey::from_bytes(unhex(&i["data_key"]));
+        let wrapped = wrap_with_nonce(
+            &keys.kek,
+            WrapPurpose::Password,
+            account,
+            &data_key,
+            &nonce("wrap_password"),
+        );
+        assert_eq!(wrapped, o["wrap_password"]);
+        assert_eq!(wrapped.len(), 98);
+        let wrapped_r = wrap_with_nonce(
+            &recovery.kek,
+            WrapPurpose::Recovery,
+            account,
+            &data_key,
+            &nonce("wrap_recovery"),
+        );
+        assert_eq!(wrapped_r, o["wrap_recovery"]);
+        assert_eq!(
+            unwrap(&keys.kek, WrapPurpose::Password, account, &wrapped).unwrap(),
+            data_key
+        );
+        assert_eq!(
+            unwrap(&recovery.kek, WrapPurpose::Recovery, account, &wrapped_r).unwrap(),
+            data_key
+        );
+        assert_eq!(key_id(&data_key), o["key_id"]);
+
+        let content = ContentKeys::derive(&data_key);
+        let derived = [
+            ("doc", &content.doc_key),
+            ("file", &content.file_key),
+            ("wire-id", &content.id_key),
+            ("wire-rev", &content.rev_key),
+            ("device-name", &content.device_name_key),
+        ];
+        for (name, key) in derived {
+            assert_eq!(hex(&key[..]), o["content_keys"][name], "{name}");
+        }
+
+        let doc = SyncDoc {
+            id: i["doc"]["id"].as_str().unwrap().to_owned(),
+            rev: i["doc"]["rev"].as_str().unwrap().to_owned(),
+            deleted: false,
+            fields: i["doc"]["fields"].as_object().unwrap().clone(),
+            base_rev: None,
+        };
+        let sealed = content.seal_doc_with_nonce(account, &doc, &nonce("doc"));
+        let expected: WireDoc = serde_json::from_value(o["sealed_doc"].clone()).unwrap();
+        assert_eq!(sealed, expected);
+        assert_eq!(content.wire_id(&doc.id), expected.id);
+        assert_eq!(content.wire_rev(&doc.id, &doc.rev), expected.rev);
+        assert_eq!(content.open_doc(account, &sealed), Opened::Opened(doc));
+
+        let tombstone = SyncDoc {
+            id: i["tombstone"]["id"].as_str().unwrap().to_owned(),
+            rev: i["tombstone"]["rev"].as_str().unwrap().to_owned(),
+            deleted: true,
+            fields: Map::new(),
+            base_rev: None,
+        };
+        let sealed = content.seal_doc_with_nonce(account, &tombstone, &nonce("tombstone"));
+        let expected: WireDoc = serde_json::from_value(o["sealed_tombstone"].clone()).unwrap();
+        assert_eq!(sealed, expected);
+        assert_eq!(
+            content.open_doc(account, &sealed),
+            Opened::Opened(tombstone)
+        );
+
+        let file_id = i["file"]["id"].as_str().unwrap();
+        let file_wire = content.wire_id(file_id);
+        assert_eq!(file_wire, o["file_wire_id"]);
+        let bytes = unhex::<72>(&i["file"]["bytes"]);
+        let sealed = content.seal_file_with_nonce(account, &file_wire, &bytes, &nonce("file"));
+        assert_eq!(b64(&sealed), o["sealed_file"]);
+        assert_eq!(
+            content.open_file(account, &file_wire, &sealed),
+            Opened::Opened(bytes.to_vec())
+        );
+
+        let secret: [u8; 32] = unhex(&i["device_secret"]);
+        let device = device_id(&secret, account);
+        assert_eq!(device, o["device_id"]);
+        assert_eq!(
+            device_proof(&secret, &origin, account).to_base64url(),
+            o["device_proof"]
+        );
+        let name = i["device_name"].as_str().unwrap();
+        let sealed = content.seal_name_with_nonce(account, &device, name, &nonce("name"));
+        assert_eq!(sealed, o["sealed_name"]);
+        assert_eq!(
+            content.open_name(account, &device, &sealed),
+            Opened::Opened(name.to_owned())
+        );
+    }
+
+    /// The golden password vector at the production parameters.
+    #[test]
+    #[ignore = "Argon2id at the production parameters needs 1 GiB and about a second"]
+    fn golden_vector_at_production_parameters() {
+        let v = golden();
+        let (origin, username, password, salt) = golden_password(&v);
+        let keys = password_keys(
+            &password,
+            &origin,
+            &username,
+            &salt,
+            params(&v["production"]["kdf"]),
+        )
+        .unwrap();
+        assert_eq!(keys.auth_key.to_base64url(), v["production"]["auth_key"]);
+        assert_eq!(hex(keys.kek.bytes()), v["production"]["kek"]);
     }
 
     fn key_bytes() -> impl Strategy<Value = [u8; 16]> {

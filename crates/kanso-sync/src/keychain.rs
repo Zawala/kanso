@@ -8,11 +8,12 @@
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
+use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
 use crate::account::Session;
-use crate::crypto::RecoveryKey;
-use crate::wire::SessionToken;
+use crate::crypto::{DataKey, RecoveryKey, b64, unb64};
+use crate::wire::{SessionToken, is_account_id, is_device_id, is_token};
 
 /// The Keychain service of every Kanso item.
 pub const SERVICE: &str = "Kanso";
@@ -55,21 +56,43 @@ pub trait SecretStore: Send + Sync {
     fn delete(&self, item: &str) -> Result<(), SecretError>;
 }
 
-/// The macOS Keychain, service [`SERVICE`] (step 2a).
+/// The macOS Keychain, service [`SERVICE`]: generic passwords whose account
+/// is the item name. Tests never construct it; they use [`MemorySecrets`].
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Keychain;
 
+// no-prop-test: a thin wrapper over the system Keychain, which tests must
+// never touch; the item formats above it are tested through `MemorySecrets`.
+impl Keychain {
+    fn entry(item: &str) -> Result<keyring::Entry, SecretError> {
+        keyring::Entry::new(SERVICE, item).map_err(keychain_error)
+    }
+}
+
+fn keychain_error(err: keyring::Error) -> SecretError {
+    SecretError(err.to_string())
+}
+
 impl SecretStore for Keychain {
     fn get(&self, item: &str) -> Result<Option<Zeroizing<String>>, SecretError> {
-        crate::stub!("2a", item)
+        match Keychain::entry(item)?.get_password() {
+            Ok(value) => Ok(Some(Zeroizing::new(value))),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(err) => Err(keychain_error(err)),
+        }
     }
 
     fn set(&self, item: &str, value: &str) -> Result<(), SecretError> {
-        crate::stub!("2a", item, value)
+        Keychain::entry(item)?
+            .set_password(value)
+            .map_err(keychain_error)
     }
 
     fn delete(&self, item: &str) -> Result<(), SecretError> {
-        crate::stub!("2a", item)
+        match Keychain::entry(item)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(err) => Err(keychain_error(err)),
+        }
     }
 }
 
@@ -119,13 +142,58 @@ impl SecretStore for MemorySecrets {
     }
 }
 
+/// The `sync-account` item's JSON.
+#[derive(Serialize, Deserialize)]
+struct AccountItem {
+    v: u32,
+    server: String,
+    origin: String,
+    account_id: String,
+    username: String,
+    device_id: String,
+    token: SessionToken,
+    /// 43 base64url characters.
+    #[serde(with = "zeroizing_string")]
+    data_key: Zeroizing<String>,
+}
+
+/// Serde for a `Zeroizing<String>` (zeroize's `serde` feature is off).
+mod zeroizing_string {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use zeroize::Zeroizing;
+
+    pub fn serialize<S: Serializer>(
+        value: &Zeroizing<String>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(value)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Zeroizing<String>, D::Error> {
+        String::deserialize(deserializer).map(Zeroizing::new)
+    }
+}
+
 /// Saves the session as `sync-account:<library_id>`.
 pub fn save_session(
     secrets: &dyn SecretStore,
     library_id: &str,
     session: &Session,
 ) -> Result<(), SecretError> {
-    crate::stub!("2a", secrets, library_id, session)
+    let item = AccountItem {
+        v: 1,
+        server: session.server.clone(),
+        origin: session.origin.clone(),
+        account_id: session.account_id.clone(),
+        username: session.username.clone(),
+        device_id: session.device_id.clone(),
+        token: session.token().clone(),
+        data_key: Zeroizing::new(b64(session.data_key().bytes())),
+    };
+    let json = Zeroizing::new(serde_json::to_string(&item).expect("the item serializes"));
+    secrets.set(&account_item(library_id), &json)
 }
 
 /// The library's session, if its item exists and names this `(origin,
@@ -138,12 +206,43 @@ pub fn load_session(
     origin: &str,
     account_id: &str,
 ) -> Result<Option<Session>, SecretError> {
-    crate::stub!("2a", secrets, library_id, origin, account_id)
+    let Some(json) = secrets.get(&account_item(library_id))? else {
+        return Ok(None);
+    };
+    let Ok(item) = serde_json::from_str::<AccountItem>(&json) else {
+        return Ok(None);
+    };
+    let data_key = unb64(&item.data_key)
+        .map(Zeroizing::new)
+        .and_then(|bytes| <[u8; 32]>::try_from(bytes.as_slice()).ok());
+    let valid = item.v == 1
+        && item.origin == origin
+        && item.account_id == account_id
+        && is_account_id(&item.account_id)
+        && is_device_id(&item.device_id)
+        && is_token(item.token.expose())
+        && crate::origin(&item.server).as_deref() == Ok(origin);
+    match data_key {
+        Some(data_key) if valid => {
+            let mut session = Session::new(
+                item.server,
+                item.origin,
+                item.account_id,
+                item.username,
+                item.device_id,
+                item.token,
+                DataKey::from_bytes(data_key),
+            );
+            session.set_library_id(library_id);
+            Ok(Some(session))
+        }
+        _ => Ok(None),
+    }
 }
 
 /// Removes `sync-account:<library_id>`.
 pub fn delete_session(secrets: &dyn SecretStore, library_id: &str) -> Result<(), SecretError> {
-    crate::stub!("2a", secrets, library_id)
+    secrets.delete(&account_item(library_id))
 }
 
 /// A recovery key the user hasn't confirmed saving yet.
@@ -155,6 +254,17 @@ pub struct PendingRecoveryKey {
     pub recovery_key: RecoveryKey,
 }
 
+/// The `sync-recovery-key` item's JSON; the key as it is shown.
+#[derive(Serialize, Deserialize)]
+struct RecoveryItem {
+    v: u32,
+    origin: String,
+    account_id: String,
+    username: String,
+    #[serde(with = "zeroizing_string")]
+    recovery_key: Zeroizing<String>,
+}
+
 /// Saves `sync-recovery-key:<library_id>` (right after sign-up, recovery or
 /// "New recovery key" succeeds, before binding).
 pub fn save_recovery_key(
@@ -162,38 +272,77 @@ pub fn save_recovery_key(
     library_id: &str,
     key: &PendingRecoveryKey,
 ) -> Result<(), SecretError> {
-    crate::stub!("2a", secrets, library_id, key)
+    let item = RecoveryItem {
+        v: 1,
+        origin: key.origin.clone(),
+        account_id: key.account_id.clone(),
+        username: key.username.clone(),
+        recovery_key: Zeroizing::new(key.recovery_key.display()),
+    };
+    let json = Zeroizing::new(serde_json::to_string(&item).expect("the item serializes"));
+    secrets.set(&recovery_item(library_id), &json)
 }
 
 /// The unconfirmed recovery key for this `(origin, account_id)`, if any:
-/// while it exists the Account page shows the key screen again.
+/// while it exists the Account page shows the key screen again. An item for
+/// another account is ignored.
 pub fn load_recovery_key(
     secrets: &dyn SecretStore,
     library_id: &str,
     origin: &str,
     account_id: &str,
 ) -> Result<Option<PendingRecoveryKey>, SecretError> {
-    crate::stub!("2a", secrets, library_id, origin, account_id)
+    let Some(json) = secrets.get(&recovery_item(library_id))? else {
+        return Ok(None);
+    };
+    let Ok(item) = serde_json::from_str::<RecoveryItem>(&json) else {
+        return Ok(None);
+    };
+    if item.v != 1 || item.origin != origin || item.account_id != account_id {
+        return Ok(None);
+    }
+    Ok(RecoveryKey::parse(&item.recovery_key)
+        .ok()
+        .map(|recovery_key| PendingRecoveryKey {
+            origin: item.origin,
+            account_id: item.account_id,
+            username: item.username,
+            recovery_key,
+        }))
 }
 
 /// Removes `sync-recovery-key:<library_id>` ("I've saved it", or sign-out).
 pub fn delete_recovery_key(secrets: &dyn SecretStore, library_id: &str) -> Result<(), SecretError> {
-    crate::stub!("2a", secrets, library_id)
+    secrets.delete(&recovery_item(library_id))
 }
 
 /// A logout the server hasn't accepted yet.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingLogout {
     pub server: String,
     pub token: SessionToken,
 }
 
-/// The library's pending logouts.
+/// The `sync-logout` item's JSON.
+#[derive(Serialize, Deserialize)]
+struct LogoutItem {
+    v: u32,
+    pending: Vec<PendingLogout>,
+}
+
+/// The library's pending logouts. An unreadable item counts as none.
 pub fn pending_logouts(
     secrets: &dyn SecretStore,
     library_id: &str,
 ) -> Result<Vec<PendingLogout>, SecretError> {
-    crate::stub!("2a", secrets, library_id)
+    let Some(json) = secrets.get(&logout_item(library_id))? else {
+        return Ok(Vec::new());
+    };
+    Ok(serde_json::from_str::<LogoutItem>(&json)
+        .ok()
+        .filter(|item| item.v == 1)
+        .map(|item| item.pending)
+        .unwrap_or_default())
 }
 
 /// Replaces the library's pending logouts (an empty list deletes the item).
@@ -202,7 +351,15 @@ pub fn set_pending_logouts(
     library_id: &str,
     pending: &[PendingLogout],
 ) -> Result<(), SecretError> {
-    crate::stub!("2a", secrets, library_id, pending)
+    if pending.is_empty() {
+        return secrets.delete(&logout_item(library_id));
+    }
+    let item = LogoutItem {
+        v: 1,
+        pending: pending.to_vec(),
+    };
+    let json = Zeroizing::new(serde_json::to_string(&item).expect("the item serializes"));
+    secrets.set(&logout_item(library_id), &json)
 }
 
 #[cfg(test)]

@@ -1,4 +1,7 @@
 //! The sync token in the macOS Keychain (service "Kanso", account "sync-token").
+//!
+//! Legacy (v1, one shared token): kept while the app still uses it; step 3
+//! of docs/ACCOUNTS.md › Build order replaces it with [`crate::keychain`].
 
 // no-prop-test: thin wrapper over the system keychain with no observable
 // oracle beyond the keychain itself; exercised by the deploy and e2e steps.
