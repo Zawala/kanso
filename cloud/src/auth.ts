@@ -638,6 +638,25 @@ async function checkCurrentPassword(
 	return { ok: true, body: body.value, account, current };
 }
 
+/**
+ * The `recovery_auth_key` and `recovery_wrapped_key` fields, which a new
+ * recovery key and a password change both carry: the new recovery hash and
+ * wrap, or the 400 that ends the request.
+ */
+async function newRecoveryKey(b: Record<string, unknown>): Promise<{ ok: true; hash: string; wrap: string } | { ok: false; response: Response }> {
+	const recoveryAuthKey = proof32(b.recovery_auth_key);
+	if (!recoveryAuthKey) return { ok: false, response: badRequest("recovery_auth_key must be 32 bytes of canonical base64url.") };
+	if (typeof b.recovery_wrapped_key !== "string" || !isWrappedKey(b.recovery_wrapped_key)) {
+		return { ok: false, response: badRequest("recovery_wrapped_key must be 98 base64url characters.") };
+	}
+	return { ok: true, hash: await sha256Hex(recoveryAuthKey), wrap: b.recovery_wrapped_key };
+}
+
+/**
+ * Changes the password and replaces the recovery key in one compare-and-swap
+ * update, so a password change always ends every older recovery key,
+ * including one planted by someone who once knew the password.
+ */
 export const password = withSession(async (request, env, now, session) => {
 	const checked = await checkCurrentPassword(request, env, now, session, "current_auth_key");
 	if (!checked.ok) return checked.response;
@@ -649,6 +668,8 @@ export const password = withSession(async (request, env, now, session) => {
 	const authKey = proof32(b.auth_key);
 	if (!authKey) return badRequest("auth_key must be 32 bytes of canonical base64url.");
 	if (typeof b.wrapped_key !== "string" || !isWrappedKey(b.wrapped_key)) return badRequest("wrapped_key must be 98 base64url characters.");
+	const recovery = await newRecoveryKey(b);
+	if (!recovery.ok) return recovery.response;
 	const authHash = await sha256Hex(authKey);
 
 	if (await proofMatches(current, account.auth_hash)) {
@@ -660,15 +681,34 @@ export const password = withSession(async (request, env, now, session) => {
   RETURNING device_id`,
 			).bind(account.id, now, session.tokenHash, account.auth_hash),
 			env.DB.prepare(
-				`UPDATE accounts SET kdf_m_kib = ?3, kdf_t = ?4, kdf_p = ?5, salt = ?6, auth_hash = ?7, wrapped_key = ?8
+				`UPDATE accounts SET kdf_m_kib = ?3, kdf_t = ?4, kdf_p = ?5, salt = ?6, auth_hash = ?7, wrapped_key = ?8,
+  recovery_hash = ?9, recovery_wrapped_key = ?10
   WHERE id = ?1 AND auth_hash = ?2 RETURNING id`,
-			).bind(account.id, account.auth_hash, kdf.value.m_kib, kdf.value.t, kdf.value.p, b.salt, authHash, b.wrapped_key),
+			).bind(
+				account.id,
+				account.auth_hash,
+				kdf.value.m_kib,
+				kdf.value.t,
+				kdf.value.p,
+				b.salt,
+				authHash,
+				b.wrapped_key,
+				recovery.hash,
+				recovery.wrap,
+			),
 		]);
 		if (results[1].results.length === 1) return json({ signed_out_devices: results[0].results.length });
 		account = (await env.DB.prepare(ACCOUNT_BY_ID).bind(session.accountId).first<AccountRow>()) ?? account;
 	}
-	// A retry after a lost answer: the new key and wrap are already stored.
-	if (account.auth_hash === authHash && account.wrapped_key === b.wrapped_key) return json({ signed_out_devices: 0 });
+	// A retry after a lost answer: the new password material and recovery key are already stored.
+	if (
+		account.auth_hash === authHash &&
+		account.wrapped_key === b.wrapped_key &&
+		account.recovery_hash === recovery.hash &&
+		account.recovery_wrapped_key === recovery.wrap
+	) {
+		return json({ signed_out_devices: 0 });
+	}
 	return invalidCredentials();
 });
 
@@ -676,17 +716,14 @@ export const recoveryKey = withSession(async (request, env, now, session) => {
 	const checked = await checkCurrentPassword(request, env, now, session, "current_auth_key");
 	if (!checked.ok) return checked.response;
 	const { body: b, account, current } = checked;
-	const recoveryAuthKey = proof32(b.recovery_auth_key);
-	if (!recoveryAuthKey) return badRequest("recovery_auth_key must be 32 bytes of canonical base64url.");
-	if (typeof b.recovery_wrapped_key !== "string" || !isWrappedKey(b.recovery_wrapped_key)) {
-		return badRequest("recovery_wrapped_key must be 98 base64url characters.");
-	}
+	const recovery = await newRecoveryKey(b);
+	if (!recovery.ok) return recovery.response;
 	if (!(await proofMatches(current, account.auth_hash))) return invalidCredentials();
 	// Setting the same values again (a retry) changes the row just the same.
 	const updated = await env.DB.prepare(
 		"UPDATE accounts SET recovery_hash = ?3, recovery_wrapped_key = ?4 WHERE id = ?1 AND auth_hash = ?2 RETURNING id",
 	)
-		.bind(account.id, account.auth_hash, await sha256Hex(recoveryAuthKey), b.recovery_wrapped_key)
+		.bind(account.id, account.auth_hash, recovery.hash, recovery.wrap)
 		.first();
 	return updated ? json({}) : invalidCredentials();
 });

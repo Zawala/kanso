@@ -15,6 +15,7 @@ import {
 	login,
 	newCreds,
 	newDevice,
+	passwordBody,
 	resetServer,
 	signUp,
 	signupBody,
@@ -131,7 +132,7 @@ describe("the D1 layer", () => {
 						r = await callJson("/v2/account/password", {
 							now,
 							token: account.token,
-							json: { current_auth_key: next.authKey, kdf: KDF, salt: next.salt, auth_key: next.authKey, wrapped_key: next.wrappedKey },
+							json: passwordBody(next.authKey, next),
 						});
 						refused = model.count("password-account", account.creds.accountId, now);
 						success = 401;
@@ -241,7 +242,7 @@ describe("keys", () => {
 		const next = newCreds("alice");
 		await callJson("/v2/account/password", {
 			token: a.token,
-			json: { current_auth_key: next.authKey, kdf: KDF, salt: next.salt, auth_key: next.authKey, wrapped_key: next.wrappedKey },
+			json: passwordBody(next.authKey, next),
 		});
 		await client(a.token).push([]);
 		const keys = (await env.DB.prepare("SELECT key FROM limits ORDER BY key").all<{ key: string }>()).results.map((r) => r.key);

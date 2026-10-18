@@ -15,6 +15,7 @@ import {
 	login,
 	newCreds,
 	newDevice,
+	passwordBody,
 	r2Keys,
 	recomputed,
 	resetServer,
@@ -117,7 +118,7 @@ describe("sign-in", () => {
 			const [changed, signedIn] = await Promise.all([
 				callJson("/v2/account/password", {
 					token: a.token,
-					json: { current_auth_key: a.creds.authKey, kdf: KDF, salt: next.salt, auth_key: next.authKey, wrapped_key: next.wrappedKey },
+					json: passwordBody(a.creds.authKey, next),
 				}),
 				login(a.creds, other, { ip: "198.51.100.1" }),
 			]);

@@ -70,6 +70,13 @@ Security review (all applied):
 - **L7.** No test feature to misuse. Device revocation is scoped to the account.
 - **L8. Invocation logs off** and no D1 read replicas.
 
+Security review 2 of the Worker (2026-10-18, all applied; the migration was edited in place, as
+nothing was deployed yet):
+
+1. **A password change replaces the recovery key** in the same compare-and-swap update, so a
+   recovery key planted by someone who once knew the password can't outlive the owner's password
+   change. `POST /v2/account/password` gains `recovery_auth_key` and `recovery_wrapped_key`.
+
 Rejected: no finding. Where the result differs from a review's suggestion:
 
 - **The global document cap is 6 GB, not the suggested 5 GB.** 50 accounts × 100 MiB is 5.24 GB,
@@ -208,8 +215,8 @@ uses the default all-zero salt (RFC 5869).
 | `master` | Argon2id as above | Input only; zeroized right after HKDF |
 | `auth_key` | HKDF(`master`, info `"kanso/v1/auth"`) | Sent at sign-up, sign-in, password change, new recovery key and deletion |
 | `kek` | HKDF(`master`, info `"kanso/v1/kek"`) | Wraps the data key; never leaves the Mac |
-| `recovery_secret` (16) | Random | Shown as the recovery key; replaced on every use |
-| `recovery_auth_key` | HKDF(ikm `recovery_secret`, salt `"kanso/v1/recovery" \|\| lp(origin) \|\| lp(username)`, info `"kanso/v1/recovery-auth"`) | Sent at sign-up, recovery and new recovery key |
+| `recovery_secret` (16) | Random | Shown as the recovery key; replaced on every use and every password change |
+| `recovery_auth_key` | HKDF(ikm `recovery_secret`, salt `"kanso/v1/recovery" \|\| lp(origin) \|\| lp(username)`, info `"kanso/v1/recovery-auth"`) | Sent at sign-up, recovery, new recovery key and password change |
 | `recovery_kek` | HKDF(same ikm and salt, info `"kanso/v1/recovery-kek"`) | Wraps the data key |
 | `data_key` | Random at sign-up (rekey, deferred, would replace it) | Root of the content keys; kept in the Keychain |
 | `doc_key` | HKDF(`data_key`, info `"kanso/v1/doc"`) | Seals documents |
@@ -253,7 +260,7 @@ of 4, for example `0K7M-QX9P-3J2H-ZD8W-5TNB-1RGV-E6CA` (layout only; its checksu
   `U` and every other character. Then require exactly 28 characters, a first character below `8`, a
   check value below 1021, and a matching checksum.
 - **Rotation.** Recovery replaces the key: the used key stops working and the new one is shown. "New
-  recovery key…" replaces it while signed in.
+  recovery key…" replaces it while signed in, and so does every password change.
 
 ### Sealed documents
 
@@ -657,13 +664,22 @@ Revokes this session (`signed_out`) and answers 204, for disabled accounts too. 
 
 #### POST /v2/account/password
 
-Request `{"current_auth_key", "kdf", "salt", "auth_key", "wrapped_key"}`. 200 `{"signed_out_devices": n}`.
+Request `{"current_auth_key", "kdf", "salt", "auth_key", "wrapped_key", "recovery_auth_key",
+"recovery_wrapped_key"}`. 200 `{"signed_out_devices": n}`.
 
-Counts `password-account`. 401 `invalid_credentials` on a wrong current key. On success the
-password material is replaced, and every other active session is revoked (`password_changed`).
+The two recovery fields are a new recovery key, in the formats `POST /v2/account/recovery-key`
+takes and checked the same way (400 `bad_request` when missing or malformed). The client makes a
+fresh recovery secret, derives them as it does for "New recovery key…", and shows the new key once
+the change succeeds (security review 2, finding 1).
 
-Retrying: if the current key fails but `auth_key` and `wrapped_key` already match what's stored,
-the answer is 200 with 0.
+Counts `password-account`. 401 `invalid_credentials` on a wrong current key. On success one
+compare-and-swap `UPDATE accounts … WHERE auth_hash = <the checked hash>` replaces the password
+material, `recovery_hash` (SHA-256 of `recovery_auth_key`) and `recovery_wrapped_key` together. A
+password change therefore always ends every older recovery key, including one set by someone who
+once knew the password. Every other active session is revoked (`password_changed`).
+
+Retrying: if the current key fails but `auth_hash`, `wrapped_key`, `recovery_hash` and
+`recovery_wrapped_key` already equal the request's new values, the answer is 200 with 0.
 
 #### POST /v2/account/recovery-key
 
@@ -2138,7 +2154,10 @@ Residual risks:
   hint, and memory-hard parameters.
 - **Password changes don't replace the data key (M4).** Anyone who once knew the password and
   fetched the wrapped key, or who read the data key from a signed-in Mac, can decrypt anything they
-  later obtain from the server, until a rekey. v1 has no rekey; see "Deferred".
+  later obtain from the server, until a rekey. v1 has no rekey; see "Deferred". A password change
+  does replace the recovery key, in the same update (security review 2, finding 1): a recovery key
+  that such a person set while they knew the password stops working, so they can't take the
+  account over by recovery after the owner changes it. What remains is reading, not control.
 - **Stale reads and withholding.** A malicious server can withhold changes, delete data, or replay
   an old version to a Mac that never saw a newer one. It can't fabricate content, and every
   replaced local version is kept in history.
@@ -2151,7 +2170,7 @@ Residual risks:
   - It is as powerful as the password. It sits in the Keychain until the user confirms it's saved,
     and wherever the user puts it after that. The clipboard copy stays on this Mac and is cleared
     after a minute, and saving to iCloud warns.
-  - A used key stops working.
+  - A used key stops working, and so does every key from before a password change.
 - **A compromised Mac.** The local library is plaintext, and the Keychain holds the data key and the session.
 - **Lost password and recovery key.** The server copy is unrecoverable, by design. Local copies remain.
 - **Lockout.** Up to 10 sign-in attempts per account per 15 minutes from devices the account

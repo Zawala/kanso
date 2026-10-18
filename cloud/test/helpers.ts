@@ -130,6 +130,23 @@ export function signupBody(c: Creds, d: Device) {
 	};
 }
 
+/**
+ * A password change from `currentAuthKey` to `next`'s salt, auth key and
+ * wrap, with `next`'s recovery key as the new one (a password change always
+ * replaces the recovery key).
+ */
+export function passwordBody(currentAuthKey: string, next: Creds) {
+	return {
+		current_auth_key: currentAuthKey,
+		kdf: KDF,
+		salt: next.salt,
+		auth_key: next.authKey,
+		wrapped_key: next.wrappedKey,
+		recovery_auth_key: next.recoveryAuthKey,
+		recovery_wrapped_key: next.recoveryWrappedKey,
+	};
+}
+
 export interface Account {
 	creds: Creds;
 	device: Device;

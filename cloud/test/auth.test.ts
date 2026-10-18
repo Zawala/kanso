@@ -18,6 +18,7 @@ import {
 	login,
 	newCreds,
 	newDevice,
+	passwordBody,
 	r2Keys,
 	resetServer,
 	sealed,
@@ -140,6 +141,7 @@ describe("browser and broken requests", () => {
 				["/v2/auth/signup", { ...signupBody(newCreds("bob"), device), auth_key: bad }],
 				["/v2/account/delete", { auth_key: bad, username: "alice" }, a.token],
 				["/v2/account/recovery-key", { current_auth_key: bad, recovery_auth_key: good, recovery_wrapped_key: a.creds.wrappedKey }, a.token],
+				["/v2/account/password", { ...passwordBody(good, newCreds("alice")), recovery_auth_key: bad }, a.token],
 			];
 			for (const [path, json, token] of cases) {
 				const r = await callJson(path, { json, token, now, ip: `10.9.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` });
@@ -272,16 +274,15 @@ describe("secrets at rest", () => {
 		const a = await signUp("alice");
 		const d2 = newDevice();
 		const second = await login(a.creds, d2);
+		// A password change (which brings a new recovery key), then a recovery with that key.
+		const changedTo = newCreds("alice");
+		expect((await callJson("/v2/account/password", { token: a.token, json: passwordBody(a.creds.authKey, changedTo) })).status).toBe(200);
 		const next = newCreds("alice");
-		await callJson("/v2/account/password", {
-			token: a.token,
-			json: { current_auth_key: a.creds.authKey, kdf: KDF, salt: next.salt, auth_key: next.authKey, wrapped_key: next.wrappedKey },
-		});
 		const d3 = newDevice();
 		const recovered = await callJson("/v2/auth/recover/finish", {
 			json: {
 				username: "alice",
-				recovery_auth_key: a.creds.recoveryAuthKey,
+				recovery_auth_key: changedTo.recoveryAuthKey,
 				kdf: KDF,
 				salt: next.salt,
 				auth_key: next.authKey,
@@ -298,6 +299,8 @@ describe("secrets at rest", () => {
 			recovered.body.token,
 			a.creds.authKey,
 			a.creds.recoveryAuthKey,
+			changedTo.authKey,
+			changedTo.recoveryAuthKey,
 			next.authKey,
 			next.recoveryAuthKey,
 			a.device.proof,
@@ -461,10 +464,7 @@ describe("sign-in", () => {
 						if (!token) continue;
 						const want = expected(token, op.device);
 						const next = newCreds("alice");
-						const r = await callJson("/v2/account/password", {
-							token,
-							json: { current_auth_key: creds.authKey, kdf: KDF, salt: next.salt, auth_key: next.authKey, wrapped_key: next.wrappedKey },
-						});
+						const r = await callJson("/v2/account/password", { token, json: passwordBody(creds.authKey, next) });
 						if (want.status !== 200) {
 							expect(r.body.reason).toBe(want.reason);
 							continue;
@@ -477,7 +477,8 @@ describe("sign-in", () => {
 							}
 						}
 						expect(r.body).toEqual({ signed_out_devices: signedOut });
-						creds = { ...creds, authKey: next.authKey, salt: next.salt, wrappedKey: next.wrappedKey };
+						// The password change replaced the recovery key too; the recover step uses the new one.
+						creds = { ...next, accountId: creds.accountId, keyId: creds.keyId };
 					} else {
 						const next = newCreds("alice");
 						const device = devices[op.device];
@@ -517,6 +518,169 @@ describe("sign-in", () => {
 							.map(([d]) => devices[d].id);
 						expect(listed.body.devices.map((x: { id: string }) => x.id)).toEqual(active);
 						expect(active.length).toBeLessThanOrEqual(10);
+					}
+				}
+			}),
+			runs(40),
+		);
+	});
+});
+
+describe("password changes and the recovery key", () => {
+	beforeEach(() => resetServer());
+
+	const recoverStart = (recoveryAuthKey: string, ip: string, now = clock.now) =>
+		callJson("/v2/auth/recover/start", { now, ip, json: { username: "alice", recovery_auth_key: recoveryAuthKey } });
+
+	// Security review 2, finding 1: someone who once knew the password plants a
+	// recovery key; the owner's password change must end it.
+	it("a recovery key planted by someone who knew the password stops working after the owner changes it", async () => {
+		const a = await signUp("alice");
+		const attackerMac = newDevice();
+		const attacker = await login(a.creds, attackerMac, { ip: "203.0.113.66" });
+		expect(attacker.status).toBe(200);
+		const planted = newCreds("alice");
+		const plant = await callJson("/v2/account/recovery-key", {
+			token: attacker.body.token,
+			json: { current_auth_key: a.creds.authKey, recovery_auth_key: planted.recoveryAuthKey, recovery_wrapped_key: planted.recoveryWrappedKey },
+		});
+		expect(plant.status).toBe(200);
+
+		// The owner notices the strange Mac and changes the password; the app sends a fresh recovery key with it.
+		const owner = newCreds("alice");
+		const changed = await callJson("/v2/account/password", { token: a.token, json: passwordBody(a.creds.authKey, owner) });
+		expect(changed.body).toEqual({ signed_out_devices: 1 });
+		expect((await client(attacker.body.token).account()).body).toMatchObject({ error: "unauthorized", reason: "password_changed" });
+
+		// The planted key is now worthless: recovery can't start or finish with it.
+		const start = await recoverStart(planted.recoveryAuthKey, "203.0.113.67");
+		expect(start.status).toBe(401);
+		expect(start.body.error).toBe("invalid_credentials");
+		const takeover = newCreds("alice");
+		const finish = await callJson("/v2/auth/recover/finish", {
+			ip: "203.0.113.68",
+			json: {
+				username: "alice",
+				recovery_auth_key: planted.recoveryAuthKey,
+				kdf: KDF,
+				salt: takeover.salt,
+				auth_key: takeover.authKey,
+				wrapped_key: takeover.wrappedKey,
+				recovery_auth_key_new: takeover.recoveryAuthKey,
+				recovery_wrapped_key_new: takeover.recoveryWrappedKey,
+				device: { id: attackerMac.id, sealed_name: null, proof: attackerMac.proof },
+			},
+		});
+		expect(finish.status).toBe(401);
+		expect(finish.body.error).toBe("invalid_credentials");
+
+		// The owner keeps the account: the session stays, and only the new recovery key works.
+		expect((await client(a.token).account()).status).toBe(200);
+		expect((await recoverStart(a.creds.recoveryAuthKey, "203.0.113.69")).status).toBe(401);
+		const mine = await recoverStart(owner.recoveryAuthKey, "203.0.113.70");
+		expect(mine.status).toBe(200);
+		expect(mine.body.recovery_wrapped_key).toBe(owner.recoveryWrappedKey);
+		const row = await env.DB.prepare("SELECT auth_hash, recovery_hash, recovery_wrapped_key FROM accounts").first<Record<string, string>>();
+		expect(row).toEqual({
+			auth_hash: await sha256Hex(fromBase64url(owner.authKey)!),
+			recovery_hash: await sha256Hex(fromBase64url(owner.recoveryAuthKey)!),
+			recovery_wrapped_key: owner.recoveryWrappedKey,
+		});
+	});
+
+	// Model-based: recovery keys replaced from any session (including a
+	// stranger's that knew the password), password changes, retried password
+	// changes and recoveries, in any order. After every step exactly one
+	// recovery key works, the last one set; so every password change ends
+	// every recovery key from before it.
+	it("prop_a_password_change_always_ends_every_older_recovery_key", async () => {
+		const genOp = fc.constantFrom("plant" as const, "password" as const, "retry" as const, "stale_retry" as const, "recover" as const);
+		await fc.assert(
+			fc.asyncProperty(fc.array(genOp, { minLength: 1, maxLength: 8 }), async (ops) => {
+				await resetServer();
+				clock.now = START;
+				let ip = 0;
+				const nextIp = () => `198.18.${Math.floor(++ip / 250)}.${ip % 250}`;
+				const a = await signUp("alice");
+				let creds: Creds = a.creds;
+				let token = a.token;
+				const device = a.device;
+				const stranger = await login(a.creds, newDevice(), { ip: nextIp() });
+				expect(stranger.status).toBe(200);
+				let strangerToken: string | null = stranger.body.token;
+				const everSet: string[] = [creds.recoveryAuthKey];
+				let lastChange: { current: string; next: Creds } | null = null;
+
+				for (const op of ops) {
+					// Four minutes apart: at most four password-account checks per 15-minute window.
+					clock.now += 4 * 60_000;
+					const label = `${op} after ${JSON.stringify(ops)}`;
+					if (op === "plant") {
+						const planted = newCreds("alice");
+						const r = await callJson("/v2/account/recovery-key", {
+							token: strangerToken ?? token,
+							json: { current_auth_key: creds.authKey, recovery_auth_key: planted.recoveryAuthKey, recovery_wrapped_key: planted.recoveryWrappedKey },
+						});
+						expect(r.status, label).toBe(200);
+						creds = { ...creds, recoveryAuthKey: planted.recoveryAuthKey, recoveryWrappedKey: planted.recoveryWrappedKey };
+						everSet.push(planted.recoveryAuthKey);
+					} else if (op === "password") {
+						const next = newCreds("alice");
+						const r = await callJson("/v2/account/password", { token, json: passwordBody(creds.authKey, next) });
+						expect(r.status, label).toBe(200);
+						expect(r.body.signed_out_devices, label).toBe(strangerToken ? 1 : 0);
+						strangerToken = null;
+						lastChange = { current: creds.authKey, next };
+						creds = { ...next, accountId: creds.accountId, keyId: creds.keyId };
+						everSet.push(next.recoveryAuthKey);
+					} else if (op === "retry" || op === "stale_retry") {
+						if (!lastChange) continue;
+						// The same password change again after a lost answer: the old key fails now.
+						const stale = op === "stale_retry" ? newCreds("alice") : null;
+						const body = passwordBody(lastChange.current, lastChange.next);
+						if (stale) Object.assign(body, { recovery_auth_key: stale.recoveryAuthKey, recovery_wrapped_key: stale.recoveryWrappedKey });
+						const r = await callJson("/v2/account/password", { token, json: body });
+						const stillStored = creds.authKey === lastChange.next.authKey && creds.recoveryAuthKey === lastChange.next.recoveryAuthKey;
+						if (stillStored && !stale) {
+							expect(r.status, label).toBe(200);
+							expect(r.body, label).toEqual({ signed_out_devices: 0 });
+						} else {
+							expect(r.status, label).toBe(401);
+							expect(r.body.error, label).toBe("invalid_credentials");
+						}
+					} else {
+						const next = newCreds("alice");
+						const r = await callJson("/v2/auth/recover/finish", {
+							ip: nextIp(),
+							json: {
+								username: "alice",
+								recovery_auth_key: creds.recoveryAuthKey,
+								kdf: KDF,
+								salt: next.salt,
+								auth_key: next.authKey,
+								wrapped_key: next.wrappedKey,
+								recovery_auth_key_new: next.recoveryAuthKey,
+								recovery_wrapped_key_new: next.recoveryWrappedKey,
+								device: { id: device.id, sealed_name: null, proof: device.proof },
+							},
+						});
+						expect(r.status, label).toBe(200);
+						token = r.body.token;
+						strangerToken = null;
+						lastChange = null;
+						creds = { ...next, accountId: creds.accountId, keyId: creds.keyId };
+						everSet.push(next.recoveryAuthKey);
+					}
+
+					// Exactly one recovery key works: the last one set.
+					for (const key of everSet) {
+						const r = await recoverStart(key, nextIp());
+						if (key === creds.recoveryAuthKey) {
+							expect(r.status, label).toBe(200);
+							expect(r.body.recovery_wrapped_key, label).toBe(creds.recoveryWrappedKey);
+						} else {
+							expect(r.status, `${label}: an older recovery key`).toBe(401);
+						}
 					}
 				}
 			}),
