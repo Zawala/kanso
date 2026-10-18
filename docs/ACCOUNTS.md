@@ -297,10 +297,13 @@ Two store rules keep it, in `apply_remote`:
 - **When the local version wins a conflict,** it gets a new revision: generation `max(local,
   remote) + 1`, with the same content hash. That revision is pushed with `base_rev =` the remote
   revision.
-- **A remote revision is refused as `Stale`** when its generation is at or below the generation of
-  the Mac's `synced_rev` and it isn't that same revision. A replayed older version or tombstone
-  therefore can't revert a Mac that has seen something newer, including a note re-created under the
-  same ID.
+- **A remote revision is refused as `Stale`** when its generation is at or below the document's
+  replay floor, `synced_gen`, and it isn't the revision the Mac holds or last synced. `synced_gen`
+  is the highest generation this Mac has seen on this account for the document. A server-reported
+  loss and an epoch change never lower it (see "Sync with encryption › What a Mac remembers per
+  document"). A replayed older version or tombstone therefore can't revert a Mac that has seen
+  something newer, including a note re-created under the same ID. That holds even after the server
+  claims it lost the document or rotates its epoch.
 
 The report lists stale documents; the cursor moves past them.
 
@@ -313,7 +316,8 @@ sent raw.
 - **Size.** The plaintext limit is 10 MiB (`MAX_ATTACHMENT_SIZE`), so a sealed file is 41 to 10,485,801 bytes.
 - **Content type.** It stays inside the sealed file document. R2 objects are always `application/octet-stream`.
 - **Matching bytes to a version.** The opened bytes must match the file document's `md5digest`. A
-  mismatch counts as missing, and a later sync fetches them again.
+  mismatch counts as missing, and a later ordinary sync fetches them again ("Sync with encryption ›
+  Files").
 
 ### Sealed device names
 
@@ -758,8 +762,11 @@ WRITE   = INSERT INTO account_docs (account_id, id, rev, seq, deleted, sealed, u
    batch: subtract their `account_files` sizes (plus 1,024 each) and count from the account, and
    delete those rows.
 
-Retrying: a lost response is recovered as in v1. The next sync pulls the document back through the
-feed, the echo matches `synced_rev`, and the store marks it synced.
+Retrying: a lost response is recovered through the feed. Right before each push the client records
+each document's `sent_rev` in a guarded write. The next sync pulls the document back. If the echo is
+the Mac's current revision, the store marks it synced. If the note was edited since, the echo equals
+`sent_rev`: it becomes `synced_rev`, the newer edit stays pending on top of it, and nothing counts as a
+conflict, whatever `updatedAt` says.
 
 #### GET /v2/changes?since=&limit=
 
@@ -1360,25 +1367,89 @@ test remote leaves them `None`.
 
 ### Sync with encryption
 
-The engine works on plaintext `SyncDoc`s through `Remote`, with `Sealed<W>` in between. In order:
+The engine works on plaintext `SyncDoc`s through `Remote`, with `Sealed<W>` in between.
+
+#### What a Mac remembers per document
+
+The data-integrity review found one root problem. `synced_rev` was meant to mean "a version this
+account's server actually had", but three paths broke that: binding with Add, a server-reported loss,
+and an epoch re-merge. The M2 stale rule then turned real changes into silent overwrites or
+deletions. Or the other way, a hostile server could clear the floor and bring deleted notes back. So
+each document row now keeps separate facts, one per question, and no rule reads a fact meant for
+another question:
+
+| Column | Question it answers | Set by | Never changed by |
+|---|---|---|---|
+| `synced_rev` | Which revision does this account's server hold, as far as this Mac knows? It is the next push's `base_rev`; NULL means "push with no base". | A guarded write that learned it from the server: an accepted push (`mark_synced`), or a server version that was applied, unchanged, stale, an echo or a conflict (`apply_remote`). Cleared by `Lost` (`mark_unsynced`), the re-merge's missing pass (`mark_missing_unsynced`) and binding (`reset_sync`). | Local writes |
+| `synced_gen` | The replay floor: the highest generation this Mac has seen on this account for the document. | Raised, never lowered, by every write that sets `synced_rev` from the server. Reset to 0 only when binding to an account (`reset_sync`); `replace_library` removes the rows. | `Lost`, `mark_missing_unsynced`, an epoch change, local writes |
+| `sent_rev` | Which revision is in a push whose answer this Mac hasn't processed yet? | `mark_sent`, in one guarded write right before each push request. Cleared by every write that sets or clears `synced_rev`. | Local writes |
+
+A document is pending when `synced_rev IS NULL OR synced_rev != rev`, as before.
+
+A tombstone that `reset_sync` leaves behind (Add, a fresh bind, unbind) gets `synced_rev = rev` and
+`synced_gen = 0`. That pair means "never on this account". The tombstone is never pushed, the floor
+doesn't protect it from the account's versions, a re-merge doesn't count it as missing, `verify`
+skips it, and a note re-created over it is pushed with no base.
+
+`apply_remote` decides in this order:
+
+1. No local row: apply. Same revision: mark it synced (and keep bytes that arrived with it).
+   `synced_rev` already equals the remote revision: unchanged.
+2. **Our own echo.** The remote revision equals `sent_rev`: the server took our push and the answer
+   was lost. `synced_rev` becomes that revision, the newer local revision stays pending on top, and
+   it is `Unchanged`. It is never a conflict, so an API merge that kept `updatedAt` isn't reverted by
+   its own echo, and an editor save isn't falsely flagged.
+3. **The floor (M2).** A remote revision whose generation is at or below `synced_gen` never reverts
+   the Mac. It is `Stale`: the local version is rebased above it and pushed again. `Lost`, the
+   re-merge's missing pass and an epoch change keep `synced_gen`. So a server that claims it lost a
+   document, or rotates its epoch, and then answers with an old sealed version still gets `Stale`. It
+   can't bring back a deleted note or roll back an edit, however many such tricks it plays in one sync.
+4. **Nothing is discarded silently.** A stale remote version can be live, differ from the local
+   content, and have a content hash this Mac doesn't hold (neither current nor in the document's
+   history). Then it is kept as a snapshot and the document is listed in `conflicted`
+   (`Stale { conflict: true }`, counted in `conflicts_local`). After a restore, generations from
+   different Macs no longer compare: another Mac's newer offline edit can fall below this Mac's floor.
+   It loses to the local version, as any conflict loser does, and is kept and flagged. A replayed
+   version this Mac already holds adds nothing and flags nothing.
+5. Otherwise the conflict rules apply as before. A clean local copy takes the remote version. A
+   changed one keeps the newer `updatedAt`, and an edit beats a deletion. The loser is kept as a
+   snapshot and flagged.
+
+**Add** (review-sync 1, sec-client 5). The library's live documents get `synced_rev = NULL` and
+`synced_gen = 0`, and are pushed with no base. Its tombstones are never on this account. The first
+sync pulls first:
+
+- The account's live copy of a note deleted on this Mac comes back: an edit always beats a deletion,
+  however many edits either side made. For a file, its bytes come back with it, on the server and on
+  every Mac.
+- A note deleted in the account but live on this Mac goes back to the account.
+- A note changed on both sides keeps both versions and is flagged.
+
+#### In order
 
 - **Start of a sync** (first page):
   - If `key_id` differs from the Mac's: `WrongKey`. Stop and write nothing.
   - If `epoch` differs from `sync.v2.epoch`, or `head_seq` is below the cursor, the server's copy
     was restored or rewound (M1). The Mac re-merges without forgetting what it synced (security
     re-check 4):
-    1. `synced_rev` stays as it is. The cursor goes to 0 and the new epoch is saved (`set_meta_if`,
-       guarded).
-    2. The engine pulls the whole feed through `apply_remote`, so the generation rule still holds:
-       a revision the Mac has seen superseded comes back `Stale`, and is rebased and pushed (below).
+    1. `synced_rev` and `synced_gen` stay as they are. The cursor goes to 0, and the epoch becomes
+       `remerging` until the re-merge finishes (`set_meta_if`, guarded).
+    2. The engine pulls the whole feed through `apply_remote`, so the rules above still hold. A
+       revision below the floor comes back `Stale`, and is rebased and pushed. A remote version that
+       replaces a different live local version during the re-merge is also flagged in `conflicted`:
+       after a restore the Mac can't tell whether it descends from what the Mac synced. The local one
+       is kept as a snapshot.
     3. After the last page, `mark_missing_unsynced(present)` takes every document with a
-       `synced_rev` (tombstones included) that the feed didn't carry: the server lost it, so it is
-       pushed again with `base_rev = null`. Deletions are never lost.
+       `synced_rev` (tombstones included, except those never on this account) that the feed didn't
+       carry. The server lost it, so it is pushed again with `base_rev = null`, and its floor stays.
+       Deletions are never lost.
     4. A normal push follows. Conflicts keep both versions.
 
     The report sets `remerged`, and the app says "The server's copy was restored from a backup; this
     Mac sent its changes again." The cursor is never just reset, and `reset_sync` is only for
-    binding to a different account.
+    binding to a different account. `head_seq` below the cursor is a best-effort check: it misses a
+    rewind once any Mac has pushed past this Mac's cursor again. A restore must rotate the epoch
+    (`admin restore`).
 - **Paging.** Continue while `page.more`; after applying a page, save `page.last_seq` with
   `set_meta_if` (guarded).
 - **Undecryptable feed documents** (format `0x01` that fails to open) never stop the pull; the
@@ -1392,28 +1463,72 @@ The engine works on plaintext `SyncDoc`s through `Remote`, with `Sealed<W>` in b
 - **Too-new documents** (format above `0x01`) stop the pull before them, keeping the cursor. The
   report sets `too_new`, which gives the problem `UpdateKanso`. Pushing continues, and is never a
   repair.
-- **Stale documents** (M2): `apply_remote` returns `Stale { new_rev }`. The remote version never
-  reverts the Mac. The local version is rebased onto it like a local win: generation `max(local,
-  remote) + 1`, `synced_rev` set to the remote revision, the remote version kept as a snapshot
-  when it differs. The next push sends it. `report.stale` lists them and the cursor moves on.
-- **Push results:**
-  - `Conflict` with a current version that opens: applied as now. A local win gets the bumped generation and goes in the next round.
-  - `Lost` (`current: null` with a `base_rev`): `mark_unsynced`, then pushed again with `base_rev = null` in the next round (M1).
+- **Stale documents** (M2): `apply_remote` returns `Stale { new_rev, conflict }`. The remote version
+  never reverts the Mac. The local version is rebased onto it like a local win: generation
+  `max(local, remote) + 1`, with `synced_rev` set to the remote revision. The remote version is kept
+  as a snapshot and flagged when rule 4 says so. The next push sends it. `report.stale` lists the
+  stale documents and the cursor moves on.
+- **Files.** Opened bytes must match the document's `md5digest`, or they count in `files_missing`.
+  After the pull, the engine fetches again up to `SyncOptions::refetch_files` (default 8) live file
+  documents whose bytes this Mac lacks, meaning no blob matches the document's `md5digest`:
+  - It goes in ID order from where the last sync stopped (`sync.v2.refetch_after`), skipping files
+    this sync already tried.
+  - Bytes are kept only when they open and match the `md5digest`.
+  - They are stored in a guarded write that also checks the document still has the revision they
+    were fetched for (`Store::fill_blob`).
+  - A hit counts in `files_down`, a miss in `files_missing`.
+- **Push.** Before each push request, `mark_sent` records the batch's revisions (guarded). Results:
+  - `Conflict` with a current version that opens: applied by the rules above. A local win gets the bumped generation and goes in the next round.
+  - `Lost` (`current: null` with a `base_rev`): `mark_unsynced` (the floor stays), then pushed again with `base_rev = null` in the next round (M1).
   - `Behind`: kept pending; the engine pulls before the next round.
   - `Unreadable` (old format): repaired, as above. `Unreadable` (newer format): kept pending, and the report sets `too_new`.
 
   None of these lands in `rejected`, which goes away.
-- **Quota and pause:**
-  - 413 `quota_exceeded` on a push: retry that batch with its tombstones only. A second 413 stops
-    pushing for this sync. Either way `report.quota` is set.
-  - A quota error on a file upload: drop that file's document from the batch; it stays pending.
-  - 429 from `writes-account`: stop pushing, and set `report.paused_until`.
-- **Files.** Opened bytes must match the document's `md5digest`, or they count in `files_missing`.
+- **Quota** (review-sync 6). The Worker counts `writes-account` before it runs a batch, so a refused
+  batch still costs the whole day's budget for its documents. A 413 `quota_exceeded` is therefore
+  remembered, per family, in a guarded meta write:
+  - Document quotas (`docs`, `doc_bytes`, and `server` from a push) go in `sync.v2.quota.docs`.
+  - File quotas (`files`, `file_bytes`, and `server` from an upload) go in `sync.v2.quota.files`.
+
+  Each entry is `<kind> <used> <limit> <at_ms> <level>`. It holds documents back from the push
+  until usage drops:
+  - `new` holds what the server doesn't have yet: documents with no `synced_rev` (new IDs and
+    never-synced tombstones), and uploads of new files.
+  - `edits` also holds live documents the server has (and their uploads). The engine moves to it when
+    a batch with no new documents is refused.
+  - `all` holds the whole family. It applies when even a batch of tombstones is refused.
+
+  Tombstones and edits of documents the server has keep going, so a user can delete their way back
+  under quota. A refused batch is retried at once, without what the new level holds; that is the old
+  "tombstones only" retry, generalized.
+
+  At the start of a push with an entry, the engine reads `GET /v2/account` once. Usage dropped when
+  the kind's usage is below the `used` the 413 reported, or its quota rose above `limit`. A `server`
+  entry can't be measured there, so it retries after an hour. When usage dropped, held documents go
+  out again, within the headroom:
+  - new live documents up to `quota.docs − usage.docs`;
+  - their estimated sealed size, plus 512 each, up to the `doc_bytes` headroom;
+  - new uploads up to the file-count and file-bytes headroom.
+
+  If the request fails, the entry stays. A sync that holds nothing back and gets no 413 deletes it.
+  While an entry is in place, `report.quota` stays set, so the app keeps saying "Account full". So
+  writes only grow by what is actually sent: a refused batch is never sent again until usage drops,
+  and then only what fits.
+- **Pauses (429).** `report.paused_limit` keeps the 429's `limit`, so the app can tell the server's
+  cap from the account's own.
+  - `writes-account` or `uploads-account` stops pushing for this sync and sets
+    `report.paused_until`, which gives the problem `Paused`.
+  - `writes-global` does the same, and gives `ServerBusy`.
+  - `uploads-global` on an upload doesn't stop the sync or block pulls. Uploads are held until
+    `retry_after`, in `sync.v2.uploads_until` (guarded), along with the live file documents waiting
+    for them. Everything else keeps syncing, and `report.uploads_held_until` says until when.
 - **The guard** (fix 2 / M6, security re-check 3). Every `apply_remote`, `mark_synced`,
-  `mark_unsynced`, `mark_missing_unsynced` and cursor write carries `SyncGuard { expect: &[
-  ("sync.v2.origin", session.origin), ("sync.v2.account_id", session.account_id)] }`
-  (`binding::guard_pairs`). The store checks every pair inside the same write transaction and fails
-  with `StoreError::GuardFailed` otherwise. The engine then stops with `SyncError::Cancelled`.
+  `mark_sent`, `mark_unsynced`, `mark_missing_unsynced`, `fill_blob` and meta write (cursor, epoch,
+  quota entries, holds) carries `SyncGuard { expect: &[("sync.v2.origin", session.origin),
+  ("sync.v2.account_id", session.account_id)] }` (`binding::guard_pairs`). The store checks every
+  pair inside the same write transaction and fails with `StoreError::GuardFailed` otherwise. The
+  engine then stops with `SyncError::Cancelled`. `check_bound` also runs right before every push and
+  upload.
 
 Every remote write still goes through `apply_remote`, which snapshots the version it replaces.
 
@@ -1423,7 +1538,8 @@ Every remote write still goes through `apply_remote`, which snapshots the versio
 |---|---|---|---|---|
 | `SignedOut(reason)` | 401 | "Signed out" | Reason-specific: "Your password was changed on another Mac." / "This Mac was signed out from another Mac." / "Your account was recovered with its recovery key." / "Signed out to make room for another Mac." / "Signed out after 180 days without syncing." Any other reason: "This Mac was signed out." Each ends "Sign in again to keep syncing." | Stops |
 | `AccountDisabled` | 403 | "Account turned off" | "This account is turned off on the server. Ask the server's owner." | Stops; Sync now retries |
-| `Paused { until }` | 429 writes | "Sync paused" | "This account made a lot of changes today. Sync resumes at *time*." | Waits until then |
+| `Paused { until }` | 429 `writes-account` or `uploads-account` | "Sync paused" | "This account made a lot of changes today. Sync resumes at *time*." | Waits until then |
+| `ServerBusy { until }` | 429 `writes-global` | "Server busy" | "The server has taken all the changes it can for today. Sync resumes at *time*." | Waits until then |
 | `QuotaExceeded(kind)` | report | "Account full" | "Your account is full (*which*: notes and notebooks / attachments / number of attachments / number of items). Delete something or ask the server's owner for more space." | Keeps running |
 | `ServerFull` | report (`server`) | "Server full" | "The server is out of space. Ask its owner." | Keeps running |
 | `Skipped { count }` | report (`skipped`: undecryptable documents not repaired) | "Some items skipped" | "*N* items on the server couldn't be read. They were skipped; your copies here are unchanged." | Keeps running |
@@ -1433,8 +1549,10 @@ Every remote write still goes through `apply_remote`, which snapshots the versio
 | `Offline` | transport | "Offline" | "Can't reach the server. Your notes are safe on this Mac." | Keeps running |
 | `Other` | anything else | "Couldn't sync" | "Something went wrong. Try Sync now." | Keeps running |
 
-`report_problem` picks, in this order of precedence, `UpdateKanso`, `Paused` (from
-`paused_until`), `ServerFull`, `QuotaExceeded`, `Skipped`. Stale and repaired documents aren't
+`report_problem` picks, in this order of precedence, `UpdateKanso`, `Paused` or `ServerBusy` (from
+`paused_until`: `ServerBusy` when `paused_limit` ends with `-global`), `ServerFull`, `QuotaExceeded`,
+`Skipped`. An `uploads-global` hold sets `uploads_held_until` and no problem, so the schedule keeps
+pulling. Stale and repaired documents aren't
 problems: the Mac fixed them. `SyncState::Synced` gains `problem: Option<SyncProblem>`, and `SyncState::Failed`
 carries a `SyncProblem`. `SYNC_PROBLEMS` (sidebar) and `SYNC_PROBLEM_HELP` (settings) become
 functions of `SyncProblem`, which removes substring matching.
@@ -1468,7 +1586,11 @@ data key stays in memory once loaded, and is zeroized on sign-out or quit.
 | `sync.v2.username` | Its username |
 | `sync.v2.server` | The server URL |
 | `sync.v2.last_seq` | The cursor |
-| `sync.v2.epoch` | The epoch last seen |
+| `sync.v2.epoch` | The epoch last seen (`remerging` while a re-merge runs) |
+| `sync.v2.quota.docs` | A document quota hit still holding documents back: `<kind> <used> <limit> <at_ms> <level>` |
+| `sync.v2.quota.files` | The same for file quotas |
+| `sync.v2.uploads_until` | Uploads held until this time (ms) after an `uploads-global` 429 |
+| `sync.v2.refetch_after` | The file ID where the last sync's search for missing bytes stopped |
 | `sync.v2.library_id` | Device identity |
 | `sync.v2.device_secret` | Device identity |
 | `sync.v2.hardware` | Device identity |
@@ -1478,21 +1600,34 @@ data key stays in memory once loaded, and is zeroized on sign-out or quit.
 ```rust
 /// Every (meta key, value) pair must hold; the engine passes origin and account ID.
 pub struct SyncGuard<'a> { pub expect: &'a [(&'a str, &'a str)] }
-pub enum ApplyOutcome { Applied, Unchanged, RemoteWon, LocalWon { new_rev: String }, Stale { new_rev: String } }
+pub enum ApplyOutcome { Applied, Unchanged, RemoteWon, LocalWon { new_rev: String }, Stale { new_rev: String, conflict: bool } }
+/// One row's sync facts (see "Sync with encryption › What a Mac remembers per document").
+pub struct SyncState { pub id: String, pub rev: String, pub deleted: bool, pub synced_rev: Option<String>,
+                       pub synced_gen: u64, pub sent_rev: Option<String> }
+impl SyncState { pub fn pending(&self) -> bool; pub fn never_on_account(&self) -> bool; }
 impl Store {
     /// One transaction: live documents get synced_rev = NULL, tombstones get synced_rev = rev
-    /// (so they are never pushed to an account that never had them), and the meta entries are
-    /// written (Some) or removed (None).
+    /// and synced_gen = 0 (never on this account: never pushed, never protected), every floor
+    /// and sent_rev is cleared, and the meta entries are written (Some) or removed (None).
     pub fn reset_sync(&self, meta: &[(&str, Option<&str>)]) -> Result<()>;
     /// One transaction: removes every document, note-tag row, blob, revision, FTS row and archive
     /// row, then writes the meta entries. Broadcasts a deletion per document (Origin::Sync).
     pub fn replace_library(&self, meta: &[(&str, Option<&str>)]) -> Result<usize>;
     pub fn apply_remote(&self, doc: &SyncDoc, attachment: Option<Attachment>, guard: Option<&SyncGuard>) -> Result<ApplyOutcome>;
     pub fn mark_synced(&self, id: &str, rev: &str, guard: Option<&SyncGuard>) -> Result<()>;
+    /// Right before a push: each (id, rev) is in flight (sent_rev).
+    pub fn mark_sent(&self, docs: &[(&str, &str)], guard: Option<&SyncGuard>) -> Result<()>;
+    /// synced_rev = NULL; the floor stays.
     pub fn mark_unsynced(&self, id: &str, guard: Option<&SyncGuard>) -> Result<()>;
-    /// After a re-merge's full pull: documents with a synced_rev (tombstones included) whose IDs
-    /// aren't in `present` get synced_rev = NULL, so they are pushed with base_rev = null.
+    /// After a re-merge's full pull: documents with a synced_rev (tombstones included, not those
+    /// never on this account) whose IDs aren't in `present` get synced_rev = NULL, so they are
+    /// pushed with base_rev = null. The floor stays.
     pub fn mark_missing_unsynced(&self, present: &HashSet<String>, guard: Option<&SyncGuard>) -> Result<Vec<String>>;
+    pub fn sync_states(&self) -> Result<Vec<SyncState>>;
+    /// Live file documents with no blob matching their md5digest: (id, rev, md5), in ID order after `after`.
+    pub fn files_without_bytes(&self, after: &str, limit: usize) -> Result<Vec<(String, String, String)>>;
+    /// Stores refetched bytes iff `id` is still live at `rev` and they match its md5digest.
+    pub fn fill_blob(&self, id: &str, rev: &str, blob: Attachment, guard: Option<&SyncGuard>) -> Result<bool>;
     pub fn set_meta_if(&self, key: &str, value: &str, guard: &SyncGuard) -> Result<()>;
     pub fn pending_count(&self) -> Result<usize>;
 }
@@ -1534,9 +1669,10 @@ The question in the last row:
 
 What the choices do:
 
-- **Fresh and merge (add).** `reset_sync` with the origin, account, username, server, `last_seq = 0`
-  and epoch removed. The first sync pulls first: identical revisions become `Unchanged`, and the rest
-  resolve as conflicts with both versions kept.
+- **Fresh and merge (add).** `reset_sync` with the origin, account, username, server, `last_seq = 0`,
+  and the epoch, quota entries, upload hold and refetch position removed. The first sync pulls first:
+  identical revisions become `Unchanged`; the account's live copy of a note deleted here comes back
+  (the tombstone was never on this account); the rest resolve as conflicts with both versions kept.
 - **Replace.**
   1. `Store::backup_now(paths::backups_dir(data_dir), now)`: the same manual backup as Settings ›
      Back up now, outside the daily rotation. The path is shown with "Show in Finder".
@@ -1804,15 +1940,16 @@ documents and files under the test session and can push plaintext as another cli
 | Golden vectors | `crypto-v1.json` (owner: Rust builder, step 2a): Argon2 at test parameters with a fixed origin and username, every HKDF info, both wraps, sealed document, file and name with fixed nonces, wire ID and rev, key ID, recovery-key text. One `#[ignore]` vector at production parameters. | `kanso-sync/tests/fixtures/` |
 | KDF | `prop_prelogin_outside_floor_or_ceiling_is_refused` (no auth key is sent) | `tests/accounts.rs` |
 | Usernames | Shared fixture; idempotent; case-insensitive; accepted names match the pattern; non-ASCII refused | Rust and `cloud/test/usernames.test.ts` |
-| Generations (M2) | `prop_accepted_generations_only_grow` over random multi-Mac histories; a local win's new revision beats the remote one; replayed older revisions and tombstones come back `Stale` | `kanso-store` tests, `tests/properties.rs` |
+| Generations (M2) | `prop_accepted_generations_only_grow` over random multi-Mac histories; a local win's new revision beats the remote one; replayed older revisions and tombstones come back `Stale`; `Lost` and the re-merge's missing pass keep the floor | `kanso-store` tests, `tests/properties.rs` |
+| Integrity of `synced_rev` | Add never pushes a tombstone over the account's live copy (`prop_add_never_pushes_a_tombstone_over_a_live_copy`, and the example for 0–3 edits on either side, notes and files); a restore never silently drops an edit (`prop_no_live_edit_is_lost_silently` with restores, and the two-Mac example); our own echo after a lost answer never reverts or flags (`prop_our_own_echo_never_reverts_an_edit`); missing bytes are fetched again within the bound (`prop_missing_bytes_come_back`); over quota, a refused batch isn't sent again until usage drops (`prop_over_quota_writes_only_grow_by_what_is_sent`) | `tests/integrity.rs` |
 | Sync over encryption | The existing convergence and idempotence properties and `sync.rs` cases, run over `Sealed<MemoryServer>` with `PlainView` | `tests/properties.rs`, `tests/sync.rs` |
-| Hostile server | `prop_a_hostile_server_never_changes_local_data_wrongly`. A wrapper flips bits; swaps sealed values between documents and accounts; forges tombstones; relabels revisions; replays old versions; rewinds the account (lower `head_seq`); changes the epoch; returns `current: null`; and sends unknown format bytes. Invariants: local content is always some client's write for that same ID; nothing pending is lost; replays are `Stale`; rewinds re-merge; a wrong key ID writes nothing; too-new never overwrites. | `tests/properties.rs` |
+| Hostile server | `prop_a_hostile_server_never_changes_local_data_wrongly`, with a sequence of attacks per sync. A wrapper flips bits; swaps sealed values between documents and accounts; forges tombstones; relabels revisions; replays old versions; rewinds the account (lower `head_seq`); changes the epoch; leaves documents out of a re-merge; returns `current: null`; answers a push with an old version as the conflict's `current`; and sends unknown format bytes. Invariants: local content is always some client's write for that same ID; the floor never drops; a document's content only changes to a version above the floor it had before the sync; nothing pending is lost; replays are `Stale`; rewinds re-merge; a wrong key ID writes nothing; too-new never overwrites. | `tests/properties.rs` |
 | Repair (M3) | A broken server copy (format 1) is replaced from the local copy; one bad document never stops sync | `tests/sync.rs` |
 | Rebinding (fix 2) | `prop_rebinding_during_a_sync_never_mixes_accounts`: a remote that rebinds the library mid-sync (between any two calls); no write of A's lands after B's binding; B's cursor is never A's | `tests/binding.rs` |
 | Binding | `prop_binding_plan` (model-based): notes reach another account only through an explicit add; Replace always leaves a backup with every document; sign-out never changes the library; sign-up into an empty account pushes no tombstones; a crash between any two steps of Replace leaves either the old library or an empty one bound fresh | `tests/binding.rs` |
 | Rollback (fix 1 / H5) | `v2_then_unbind_then_v1_loses_no_edit`: a library synced under v1 rules, then v2 with edits, creations and deletions, then `unbind`, then v1 rules again. Every v2-window edit and creation reaches the v1 server; v2-window deletions come back (asserted, as the rollback steps say). v1 rules come from a plaintext legacy server in `tests/common/legacy.rs` (today's `MemoryRemote`, conformance-tested against the v1 Worker) and the cursor key `sync.last_seq`, so no live old Worker is needed. | `tests/rollback.rs` |
 | Client retries | A lost response for sign-up, password change, recovery finish, new recovery key, push and file upload is recovered by the documented retry | `tests/accounts.rs` |
-| Client quota and pause | Deletions still go through after a 413; a second 413 stops pushing; a file-upload quota error keeps its document pending; a 429 pauses | `tests/sync.rs` |
+| Client quota and pause | Deletions still go through after a 413; a refused batch isn't sent again until usage drops, and then only what fits; a file-upload quota error holds new uploads; a 429 pauses and keeps its `limit`; `writes-global` is `ServerBusy`; an `uploads-global` 429 holds uploads without blocking pulls | `tests/sync.rs`, `tests/integrity.rs` |
 | Keychain | An item with a different origin or account ID is ignored; sign-out deletes an unconfirmed recovery key; pending logouts are retried until 204 or 401 | `tests/accounts.rs` (with `MemorySecrets`) |
 | Device identity | Same account → same ID; different accounts → unlinkable IDs; a hardware hash mismatch regenerates the identity and leaves the binding | `tests/binding.rs` |
 | Plaintext canary | `prop_nothing_plain_leaves_the_mac`: every byte the client sends (push, files, auth, device name) is captured. No marker string, local ID, local rev, file MD5, password, recovery key, data key or device name appears in it, raw, hex or base64 (all alignments, standard and URL). | `tests/canary.rs` |
@@ -2127,7 +2264,8 @@ Time Travel copy; network observers; malicious web pages (M7); and a malicious s
   tokens are stored hashed.
 - Writes are authenticated, so the server can't forge, alter, relabel, cross-link or move documents,
   files, deletions or device names without the Mac noticing.
-- Replaying an older version is refused once a Mac has seen a newer one (M2).
+- Replaying an older version is refused once a Mac has seen a newer one (M2), also after the server
+  claims it lost the document or rotates its epoch.
 - Rewinding a whole account makes the Macs re-merge rather than lose changes (M1).
 
 Residual risks:
