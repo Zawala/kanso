@@ -785,22 +785,26 @@ impl Render for Workspace {
                 this.library
                     .update(cx, |library, cx| library.select_relative(-1, cx));
             }))
+            // The panes take the height that is left, so a long sidebar
+            // scrolls instead of pushing the status bar out of the window.
             .child(
-                h_resizable("workspace")
-                    .child(
-                        resizable_panel()
-                            .size(px(230.))
-                            .size_range(px(160.)..px(380.))
-                            .visible(self.show_sidebar)
-                            .child(self.sidebar.clone()),
-                    )
-                    .child(
-                        resizable_panel()
-                            .size(px(320.))
-                            .size_range(px(240.)..px(560.))
-                            .child(self.note_list.clone()),
-                    )
-                    .child(resizable_panel().child(self.editor.clone())),
+                div().flex_1().min_h_0().child(
+                    h_resizable("workspace")
+                        .child(
+                            resizable_panel()
+                                .size(px(230.))
+                                .size_range(px(160.)..px(380.))
+                                .visible(self.show_sidebar)
+                                .child(self.sidebar.clone()),
+                        )
+                        .child(
+                            resizable_panel()
+                                .size(px(320.))
+                                .size_range(px(240.)..px(560.))
+                                .child(self.note_list.clone()),
+                        )
+                        .child(resizable_panel().child(self.editor.clone())),
+                ),
             )
             .child(self.render_status_bar(cx))
     }
