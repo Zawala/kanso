@@ -193,6 +193,10 @@ pub struct Services {
     sync_running: bool,
     sync_again: bool,
     sync_handle: Option<SyncHandle>,
+    /// Flow tests sign in before `kanso_sync::sync` exists (step 2b), so
+    /// they keep syncs from starting.
+    #[cfg(test)]
+    pub(crate) no_sync: bool,
 }
 
 impl Global for Services {}
@@ -464,6 +468,10 @@ fn start_sync(manual: bool, cx: &mut App) {
     else {
         return;
     };
+    #[cfg(test)]
+    if services.no_sync {
+        return;
+    }
     if services.task.is_some() || (!manual && holds_at(services.hold, now)) {
         return;
     }

@@ -3,6 +3,8 @@
 //! `kanso` opens the app. Other commands run without a window; see `--help`.
 
 mod account_flow;
+#[cfg(test)]
+mod account_flow_tests;
 mod account_page;
 mod account_words;
 mod assets;
