@@ -1090,6 +1090,98 @@ fn the_servers_upload_cap_holds_uploads_and_nothing_else() {
     assert_eq!(a.store.meta(meta_keys::UPLOADS_UNTIL).unwrap(), None);
 }
 
+const DAY_MS: i64 = 24 * 60 * 60 * 1000;
+
+/// Review-verify 5: a 429's `retry_after` never holds this Mac back more
+/// than a day, wherever it becomes a time: a push's pause, an upload hold
+/// (which is saved), and a back-off.
+#[test]
+fn a_huge_retry_after_holds_at_most_a_day() {
+    let huge = |limit: &str| ApiError::RateLimited {
+        retry_after: u64::MAX,
+        limit: limit.into(),
+    };
+    let server = MemoryServer::new();
+    let a = Mac::new(sign_up(&server, "alice", 1));
+    book(&a.store, "book:b1", "Inbox");
+    let pushing = Tap::new(&server, |event| match event {
+        Event::Push(_) => Err(huge("writes-account")),
+        _ => Ok(()),
+    });
+    let before = kanso_core::now_ms();
+    let until = a.sync(&pushing).paused_until.expect("paused");
+    drop(pushing);
+    assert!(until > before && until <= kanso_core::now_ms() + DAY_MS);
+
+    file(&a.store, "file:img1", b"bytes");
+    let uploading = Tap::new(&server, |event| match event {
+        Event::PutFile { .. } => Err(huge("uploads-global")),
+        _ => Ok(()),
+    });
+    let until = a.sync(&uploading).uploads_held_until.expect("held");
+    drop(uploading);
+    assert!(until <= kanso_core::now_ms() + DAY_MS);
+    assert_eq!(
+        a.store.meta(meta_keys::UPLOADS_UNTIL).unwrap(),
+        Some(until.to_string())
+    );
+
+    let busy = Tap::new(&server, |event| match event {
+        Event::Changes { .. } => Err(huge("session-account")),
+        _ => Ok(()),
+    });
+    match a.try_sync(&busy) {
+        Err(SyncError::BackOff { until }) => {
+            assert!(until <= kanso_core::now_ms() + DAY_MS);
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+/// Review-verify 5: holds saved more than a day and an hour ahead (the
+/// clock ran ahead when they were saved) are dropped when read, so uploads
+/// and pushes go again; within that, they still hold.
+#[test]
+fn holds_saved_too_far_ahead_are_dropped() {
+    let server = MemoryServer::new();
+    let a = Mac::new(sign_up(&server, "alice", 1));
+    let far = kanso_core::now_ms() + 2 * DAY_MS;
+    let keys = [
+        meta_keys::UPLOADS_UNTIL,
+        meta_keys::QUOTA_DOCS,
+        meta_keys::QUOTA_FILES,
+    ];
+    a.store
+        .set_meta(meta_keys::UPLOADS_UNTIL, &far.to_string())
+        .unwrap();
+    for key in &keys[1..] {
+        a.store
+            .set_meta(key, &format!("server 0 0 {far} all"))
+            .unwrap();
+    }
+    file(&a.store, "file:img1", b"bytes");
+    book(&a.store, "book:b1", "Inbox");
+    let report = a.sync(&server);
+    assert_eq!(
+        (report.files_up, report.pending, report.uploads_held_until),
+        (1, 0, None),
+        "{report:?}"
+    );
+    assert_eq!(report.quota, None);
+    for key in keys {
+        assert_eq!(a.store.meta(key).unwrap(), None, "{key}");
+    }
+
+    let near = kanso_core::now_ms() + DAY_MS;
+    a.store
+        .set_meta(meta_keys::QUOTA_DOCS, &format!("server 0 0 {near} all"))
+        .unwrap();
+    book(&a.store, "book:b2", "Later");
+    let report = a.sync(&server);
+    assert_eq!(report.pending, 1, "the entry still holds: {report:?}");
+    assert!(a.store.meta(meta_keys::QUOTA_DOCS).unwrap().is_some());
+}
+
 fn session_limit() -> ApiError {
     ApiError::RateLimited {
         retry_after: 30,

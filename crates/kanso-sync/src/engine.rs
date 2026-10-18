@@ -148,10 +148,33 @@ pub enum SyncError {
 /// The 429 `limit` of the per-account request limit on session routes.
 const SESSION_LIMIT: &str = "session-account";
 
+/// The longest wait a 429's `retry_after` can set (review-verify 5): a
+/// server's answer, however large, never holds this Mac back more than a
+/// day.
+const RETRY_AFTER_MAX_S: u64 = 24 * 60 * 60;
+
+/// The furthest ahead a saved time may be (review-verify 5): a day and an
+/// hour. One further ahead was saved while the clock ran ahead (or before
+/// `retry_after` was bounded), and is dropped when read, so nothing waits
+/// on it.
+const SAVED_AHEAD_MAX_MS: i64 = 25 * 60 * 60 * 1000;
+
+/// When a 429's wait of `retry_after` seconds ends (ms), at most
+/// [`RETRY_AFTER_MAX_S`] from now.
+fn retry_at(retry_after: u64) -> i64 {
+    let secs = i64::try_from(retry_after.min(RETRY_AFTER_MAX_S)).unwrap_or(i64::MAX);
+    now_ms().saturating_add(secs.saturating_mul(1000))
+}
+
+/// Whether a saved time `at` (ms) is within [`SAVED_AHEAD_MAX_MS`] of `now`.
+fn not_too_far_ahead(at: i64, now: i64) -> bool {
+    at <= now.saturating_add(SAVED_AHEAD_MAX_MS)
+}
+
 /// A 429 `session-account`: [`SyncError::BackOff`] for `retry_after` seconds.
 fn back_off(retry_after: u64) -> SyncError {
     SyncError::BackOff {
-        until: now_ms().saturating_add((retry_after as i64).saturating_mul(1000)),
+        until: retry_at(retry_after),
     }
 }
 
@@ -254,19 +277,15 @@ const REFETCH_EVERY_MS: i64 = 24 * 60 * 60 * 1000;
 /// soonest are forgotten, and may be asked for again before their day.
 const REFETCH_MISSED_MAX: usize = 512;
 
-/// The furthest ahead a saved wait may be. One further ahead was saved
-/// while the clock ran ahead, and is dropped.
-const MISSED_AHEAD_MAX_MS: i64 = REFETCH_EVERY_MS + 60 * 60 * 1000;
-
 /// The files still waiting after a missed refetch, from the
 /// [`meta_keys::REFETCH_MISSED`] value: each with the time (ms) it may be
-/// asked for again, all after `now` and at most [`MISSED_AHEAD_MAX_MS`]
+/// asked for again, all after `now` and at most [`SAVED_AHEAD_MAX_MS`]
 /// ahead. A damaged value counts as none.
 fn missed_files(value: Option<&str>, now: i64) -> BTreeMap<String, i64> {
     let mut missed: BTreeMap<String, i64> = value
         .and_then(|value| serde_json::from_str(value).ok())
         .unwrap_or_default();
-    missed.retain(|_, at| *at > now && *at <= now.saturating_add(MISSED_AHEAD_MAX_MS));
+    missed.retain(|_, at| *at > now && not_too_far_ahead(*at, now));
     missed
 }
 
@@ -873,7 +892,7 @@ impl Run<'_> {
     /// A 429 on a push or upload (other than `uploads-global`): pushing
     /// stops for this sync; the report keeps the latest time and its limit.
     fn pause(&mut self, retry_after: u64, limit: String) {
-        let until = now_ms().saturating_add((retry_after as i64).saturating_mul(1000));
+        let until = retry_at(retry_after);
         if self.report.paused_until.is_none_or(|u| until >= u) {
             self.report.paused_until = Some(until);
             self.report.paused_limit = Some(limit);
@@ -884,7 +903,7 @@ impl Run<'_> {
     /// A 429 `uploads-global` on an upload: uploads wait until then, in a
     /// guarded meta write; everything else goes on.
     fn hold_uploads(&mut self, retry_after: u64) -> Result<(), SyncError> {
-        let until = now_ms().saturating_add((retry_after as i64).saturating_mul(1000));
+        let until = retry_at(retry_after);
         let until = self.uploads_until.map_or(until, |u| u.max(until));
         self.set_meta(meta_keys::UPLOADS_UNTIL, &until.to_string())?;
         self.uploads_until = Some(until);
@@ -893,18 +912,32 @@ impl Run<'_> {
     }
 
     /// Reads the quota entries and the upload hold this push starts with,
-    /// removing an upload hold whose time has come.
+    /// removing an upload hold whose time has come. An entry or hold saved
+    /// more than [`SAVED_AHEAD_MAX_MS`] ahead of now goes too
+    /// (review-verify 5): it came from a clock that ran ahead, and would
+    /// hold until then, which only a re-bind cleared. A dropped quota entry
+    /// costs at most one more refused request.
     fn load_holds(&mut self) -> Result<(), SyncError> {
+        let now = now_ms();
         for family in [Family::Docs, Family::Files] {
-            self.holds[family as usize].entry = self
-                .store
-                .meta(family.key())?
-                .as_deref()
-                .and_then(QuotaEntry::parse);
+            let Some(value) = self.store.meta(family.key())? else {
+                continue;
+            };
+            let entry = QuotaEntry::parse(&value);
+            match entry {
+                Some(entry) if not_too_far_ahead(entry.at_ms, now) => {
+                    self.holds[family as usize].entry = Some(entry);
+                }
+                Some(_) => self
+                    .store
+                    .remove_meta_if(family.key(), &self.guard)
+                    .map_err(guarded)?,
+                None => {}
+            }
         }
         if let Some(value) = self.store.meta(meta_keys::UPLOADS_UNTIL)? {
             match value.parse::<i64>() {
-                Ok(until) if until > now_ms() => {
+                Ok(until) if until > now && not_too_far_ahead(until, now) => {
                     self.uploads_until = Some(until);
                     self.report.uploads_held_until = Some(until);
                 }
@@ -1650,7 +1683,7 @@ mod refetch_tests {
             "file:due": NOW,
             "file:waiting": NOW + 1,
             "file:tomorrow": NOW + REFETCH_EVERY_MS,
-            "file:far": NOW + MISSED_AHEAD_MAX_MS + 1,
+            "file:far": NOW + SAVED_AHEAD_MAX_MS + 1,
         })
         .to_string();
         let missed = missed_files(Some(&saved), NOW);
@@ -1662,8 +1695,36 @@ mod refetch_tests {
         assert!(missed_files(None, NOW).is_empty());
     }
 
+    /// A 429's wait is the server's, up to a day (review-verify 5).
+    #[test]
+    fn retry_after_is_bounded_by_a_day() {
+        let before = now_ms();
+        let at = retry_at(60);
+        assert!(at >= before + 60_000 && at <= now_ms() + 60_000);
+        assert!(retry_at(u64::MAX) <= now_ms() + 24 * 60 * 60 * 1000);
+        assert!(not_too_far_ahead(NOW + SAVED_AHEAD_MAX_MS, NOW));
+        assert!(!not_too_far_ahead(NOW + SAVED_AHEAD_MAX_MS + 1, NOW));
+    }
+
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(256))]
+
+        /// Invariant: a 429's wait ends no sooner than now, never more than
+        /// a day ahead, and is the server's own when that is under a day;
+        /// and a time it gives is never dropped as too far ahead.
+        #[test]
+        fn prop_retry_after_waits_at_most_a_day(retry_after in prop_oneof![0u64..200_000, any::<u64>()]) {
+            let before = now_ms();
+            let at = retry_at(retry_after);
+            let after = now_ms();
+            prop_assert!(at >= before);
+            prop_assert!(at <= after + RETRY_AFTER_MAX_S as i64 * 1000);
+            if retry_after <= RETRY_AFTER_MAX_S {
+                let wait = retry_after as i64 * 1000;
+                prop_assert!(at >= before + wait && at <= after + wait);
+            }
+            prop_assert!(not_too_far_ahead(at, after));
+        }
 
         /// Invariant: whatever was saved, the files still waiting are due
         /// after now and at most a day and an hour ahead, there are at
@@ -1683,7 +1744,7 @@ mod refetch_tests {
             prop_assert!(missed.len() <= REFETCH_MISSED_MAX);
             prop_assert_eq!(missed.len(), loaded.len().min(REFETCH_MISSED_MAX));
             for at in missed.values() {
-                prop_assert!(*at > NOW && *at <= NOW + MISSED_AHEAD_MAX_MS);
+                prop_assert!(*at > NOW && *at <= NOW + SAVED_AHEAD_MAX_MS);
             }
             let dropped = loaded.iter().filter(|(id, _)| !missed.contains_key(*id));
             let kept_soonest = missed.values().min().copied().unwrap_or(i64::MAX);

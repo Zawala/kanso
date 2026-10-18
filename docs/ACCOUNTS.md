@@ -1731,6 +1731,13 @@ sync pulls first:
     Nothing after the last finished step is marked done: the cursor stays at the last page applied,
     and a document whose push or bytes didn't go stays pending. `problem` gives `BackOff { until }`,
     whose schedule waits until then.
+  - **Bounded waits** (review-verify 5). Every time a 429 sets (a pause, the upload hold, a back-off,
+    and so the app's schedule) is now plus `retry_after`, clamped to 24 hours: a server's answer,
+    however large, never holds a Mac back longer than a day. The saved times are read back with the
+    clock they were saved by, which may have run ahead: a quota entry whose `at_ms`, or an upload
+    hold whose time, is more than 25 hours ahead of now is deleted when read, so nothing waits on
+    it (before, only a re-bind cleared it). A deleted quota entry costs at most one more refused
+    request, which saves it again with the right time.
 - **The guard** (fix 2 / M6, security re-check 3). Every `apply_remote`, `mark_synced`,
   `mark_sent`, `mark_unsynced`, `mark_missing_unsynced`, `fill_blob` and meta write (cursor, epoch,
   quota entries, holds) carries `SyncGuard { expect: &[("sync.v2.origin", session.origin),
