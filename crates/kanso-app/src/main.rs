@@ -7,11 +7,14 @@ mod clock;
 mod config;
 mod dialogs;
 mod editor;
+mod editor_footer;
 mod export;
 mod history;
 mod inkdrop;
 mod launch;
+mod layout;
 mod library;
+mod markdown_edit;
 mod markdown_source;
 mod note_list;
 mod paths;
@@ -21,6 +24,7 @@ mod settings;
 mod sidebar;
 #[cfg(test)]
 mod snapshots;
+mod text_stats;
 mod theme;
 #[cfg(test)]
 mod ui_tests;
@@ -199,10 +203,18 @@ fn open_main_window(cx: &mut App) {
     let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
+        // The panes run to the top edge; the traffic lights sit in the
+        // leftmost pane's top band, and the app moves the window from the
+        // bands itself (see `layout::BandDrag`).
         titlebar: Some(TitlebarOptions {
             title: Some("Kanso".into()),
-            ..Default::default()
+            appears_transparent: true,
+            traffic_light_position: Some(point(
+                px(layout::TRAFFIC_LIGHTS.0),
+                px(layout::TRAFFIC_LIGHTS.1),
+            )),
         }),
+        app_owns_titlebar_drag: true,
         window_min_size: Some(size(px(1100.), px(720.))),
         ..Default::default()
     };

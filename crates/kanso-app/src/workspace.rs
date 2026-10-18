@@ -5,9 +5,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use gpui_kit::base::GlobalState;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::resizable::{h_resizable, resizable_panel};
-use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode, WindowExt as _, v_flex};
 use gpui_kit::*;
 use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::{DocType, TagColor};
@@ -17,10 +18,12 @@ use serde_json::{Value, json};
 use crate::config::{AppConfig, ThemePreference, ViewMode};
 use crate::dialogs::{confirm, prompt_text};
 use crate::editor::{EditorEvent, NoteEditor};
+use crate::layout::{
+    BandAction, BandDrag, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, TOP_BAND_HEIGHT, leading_inset,
+};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::{NoteList, NoteListEvent};
 use crate::paths;
-use crate::services::Services;
 use crate::sidebar::{Sidebar, SidebarEvent};
 use crate::theme::Colors;
 
@@ -193,10 +196,16 @@ pub fn apply_theme(preference: ThemePreference, window: Option<&mut Window>, cx:
 pub struct Workspace {
     store: Arc<Store>,
     pub(crate) library: Entity<Library>,
-    sidebar: Entity<Sidebar>,
+    pub(crate) sidebar: Entity<Sidebar>,
     pub(crate) note_list: Entity<NoteList>,
     pub editor: Entity<NoteEditor>,
-    show_sidebar: bool,
+    pub(crate) show_sidebar: bool,
+    /// A press in a top band that may become a window drag.
+    band_drag: BandDrag,
+    /// Draws stand-ins for the traffic lights, which the system draws over
+    /// the window and a headless snapshot can't show.
+    #[cfg(test)]
+    pub(crate) placeholder_traffic_lights: bool,
     _subscriptions: Vec<Subscription>,
     _links: Task<()>,
 }
@@ -247,10 +256,11 @@ impl Workspace {
             cx.subscribe_in(&note_list, window, |this, _, event, window, cx| {
                 this.on_note_list_event(event, window, cx);
             }),
-            cx.subscribe_in(&editor, window, |_, _, event, window, cx| match event {
+            cx.subscribe_in(&editor, window, |this, _, event, window, cx| match event {
                 EditorEvent::Notice(message) => {
                     window.push_notification(Notification::error(message.clone()), cx);
                 }
+                EditorEvent::ShowHistory => this.show_history(window, cx),
             }),
             cx.observe_window_appearance(window, |_, window, cx| {
                 if cx.global::<AppState>().config.appearance.theme == ThemePreference::System {
@@ -282,6 +292,9 @@ impl Workspace {
             note_list,
             editor,
             show_sidebar: appearance.show_sidebar,
+            band_drag: BandDrag::default(),
+            #[cfg(test)]
+            placeholder_traffic_lights: false,
             _subscriptions: subscriptions,
             _links: links,
         }
@@ -466,6 +479,7 @@ impl Workspace {
                 }
             };
         match event {
+            SidebarEvent::NewNote => self.new_note(window, cx),
             SidebarEvent::NewBook { parent } => {
                 let parent = parent.clone();
                 prompt_text(
@@ -687,24 +701,41 @@ impl Workspace {
         AppState::update_config(cx, |config| config.appearance.view_mode = mode);
     }
 
-    fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let services = cx.global::<Services>();
-        let api = services.api_status();
-        let sync = services.sync_status();
-        let colors = Colors::get(cx);
-        h_flex()
-            .h_6()
-            .px_3()
-            .gap_4()
-            .text_xs()
-            .text_color(colors.text_secondary)
-            .border_t_1()
-            .border_color(colors.divider)
-            .bg(colors.app)
-            .child(api)
-            .child(sync)
-            .child(div().flex_1())
-            .child(format!("{} notes", self.library.read(cx).counts.all))
+    fn show_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.flush(cx);
+        crate::history::open_history(self.editor.clone(), window, cx);
+    }
+
+    /// Acts on a band drag's verdict.
+    fn on_band(&mut self, action: BandAction, window: &mut Window) {
+        match action {
+            BandAction::None => {}
+            BandAction::StartMove => window.start_window_move(),
+            BandAction::TitlebarDoubleClick => window.titlebar_double_click(),
+        }
+    }
+
+    /// The three traffic lights where the system draws them, for snapshots.
+    #[cfg(test)]
+    fn render_placeholder_traffic_lights(&self) -> Option<impl IntoElement> {
+        use crate::layout::TRAFFIC_LIGHTS;
+        self.placeholder_traffic_lights.then(|| {
+            div()
+                .flex()
+                .absolute()
+                .left(px(TRAFFIC_LIGHTS.0))
+                .top(px(TRAFFIC_LIGHTS.1))
+                .gap(px(8.))
+                .children(
+                    [0xFF5F57, 0xFEBC2E, 0x28C840]
+                        .map(|color| div().size(px(12.)).rounded_full().bg(gpui_kit::rgb(color))),
+                )
+        })
+    }
+
+    #[cfg(not(test))]
+    fn render_placeholder_traffic_lights(&self) -> Option<Div> {
+        None
     }
 }
 
@@ -717,12 +748,54 @@ pub fn tag_color_name(color: TagColor) -> String {
 }
 
 impl Render for Workspace {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let colors = Colors::get(cx);
+        // With the sidebar hidden the note list is leftmost. Its header
+        // has no room for the traffic lights, so it moves down from under
+        // them.
+        let list_inset = if leading_inset(!self.show_sidebar, window.is_fullscreen()) > 0. {
+            TOP_BAND_HEIGHT
+        } else {
+            0.
+        };
         v_flex()
             .size_full()
+            .relative()
             .key_context("Workspace")
-            .bg(Colors::get(cx).app)
+            .bg(colors.app)
             .text_color(cx.theme().foreground)
+            // Controls mark the presses they take; start each press clean.
+            .capture_any_mouse_down(|_, _, cx| {
+                if cx.has_global::<GlobalState>() {
+                    GlobalState::reset_text_selection_suppression(cx);
+                }
+            })
+            // Presses on empty parts of the top bands move the window. A
+            // button prevents the default; an input claims the press for its
+            // own text selection.
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    let claimed = window.default_prevented()
+                        || (cx.has_global::<GlobalState>()
+                            && GlobalState::is_text_selection_suppressed(cx));
+                    let action = this
+                        .band_drag
+                        .down(event.position, event.click_count, claimed);
+                    this.on_band(action, window);
+                }),
+            )
+            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, _| {
+                if this.band_drag.is_armed() {
+                    let pressed = event.pressed_button == Some(MouseButton::Left);
+                    let action = this.band_drag.moved(event.position, pressed);
+                    this.on_band(action, window);
+                }
+            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _: &MouseUpEvent, _, _| this.band_drag.up()),
+            )
             .on_action(cx.listener(|this, _: &NewNote, window, cx| this.new_note(window, cx)))
             .on_action(cx.listener(|this, _: &NewNotebook, window, cx| {
                 this.on_sidebar_event(&SidebarEvent::NewBook { parent: None }, window, cx);
@@ -765,8 +838,7 @@ impl Render for Workspace {
                 this.editor.update(cx, |editor, cx| editor.trash(cx));
             }))
             .on_action(cx.listener(|this, _: &ShowHistory, window, cx| {
-                this.flush(cx);
-                crate::history::open_history(this.editor.clone(), window, cx);
+                this.show_history(window, cx);
             }))
             .on_action(cx.listener(|this, _: &ExportNote, window, cx| {
                 let id = this.editor.read(cx).note_id().map(str::to_owned);
@@ -788,27 +860,33 @@ impl Render for Workspace {
                 this.library
                     .update(cx, |library, cx| library.select_relative(-1, cx));
             }))
-            // The panes take the height that is left, so a long sidebar
-            // scrolls instead of pushing the status bar out of the window.
+            // The panes run the full height: each has its own top band
+            // (the title bar's row) and bottom band.
             .child(
                 div().flex_1().min_h_0().child(
                     h_resizable("workspace")
                         .child(
                             resizable_panel()
-                                .size(px(230.))
-                                .size_range(px(160.)..px(380.))
+                                .size(px(SIDEBAR_WIDTH))
+                                .size_range(px(180.)..px(320.))
                                 .visible(self.show_sidebar)
                                 .child(self.sidebar.clone()),
                         )
                         .child(
                             resizable_panel()
-                                .size(px(320.))
-                                .size_range(px(240.)..px(560.))
-                                .child(self.note_list.clone()),
+                                .size(px(NOTE_LIST_WIDTH))
+                                .size_range(px(260.)..px(480.))
+                                .child(
+                                    div()
+                                        .size_full()
+                                        .bg(colors.list)
+                                        .pt(px(list_inset))
+                                        .child(self.note_list.clone()),
+                                ),
                         )
                         .child(resizable_panel().child(self.editor.clone())),
                 ),
             )
-            .child(self.render_status_bar(cx))
+            .children(self.render_placeholder_traffic_lights())
     }
 }

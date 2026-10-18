@@ -7,7 +7,13 @@ use std::sync::Arc;
 use gpui_kit::*;
 use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::{Book, Clause, Field, NoteStatus, Query, Tag};
-use kanso_store::{Change, NoteSummary, SearchParams, Sort, StatusCounts, Store};
+use kanso_store::{Change, NoteSummary, SearchParams, Sort, StatusCounts, Store, StoreError};
+
+use crate::clock::Clock;
+
+/// How far back Recent reaches.
+pub const RECENT_DAYS: i64 = 7;
+const DAY_MS: i64 = 86_400_000;
 
 /// What the note list shows.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -15,6 +21,8 @@ pub enum Filter {
     #[default]
     All,
     Pinned,
+    /// Notes changed in the last [`RECENT_DAYS`] days, newest first.
+    Recent,
     Book(String),
     Tag(String),
     Status(NoteStatus),
@@ -30,7 +38,7 @@ impl Filter {
             value: value.to_owned(),
         };
         match self {
-            Filter::All | Filter::Pinned => Vec::new(),
+            Filter::All | Filter::Pinned | Filter::Recent => Vec::new(),
             Filter::Book(id) => vec![clause(Field::BookId, id)],
             Filter::Tag(id) => vec![clause(Field::TagId, id)],
             Filter::Status(status) => vec![clause(Field::Status, status.as_str())],
@@ -57,6 +65,40 @@ pub fn pinned_first(notes: &mut [NoteSummary]) {
     notes.sort_by_key(|note| !note.pinned);
 }
 
+/// The notes changed at or after `since_ms`, newest first; notes changed at
+/// the same moment keep their order.
+pub fn recent_first(mut notes: Vec<NoteSummary>, since_ms: i64) -> Vec<NoteSummary> {
+    notes.retain(|note| note.updated_at >= since_ms);
+    notes.sort_by_key(|note| std::cmp::Reverse(note.updated_at));
+    notes
+}
+
+/// The notes matching `params` changed since `since_ms`, newest first. Asks
+/// the store for the newest notes a page at a time, so a large library
+/// isn't read whole for a short list.
+fn recent_notes(
+    store: &Store,
+    params: &SearchParams,
+    since_ms: i64,
+) -> Result<Vec<NoteSummary>, StoreError> {
+    let mut limit = 64;
+    loop {
+        let page = SearchParams {
+            query: params.query.clone(),
+            sort: Sort::UpdatedAt,
+            descending: true,
+            limit: Some(limit),
+            skip: 0,
+        };
+        let notes = store.search_summaries(&page)?;
+        let done = notes.len() < limit || notes.last().is_some_and(|n| n.updated_at < since_ms);
+        if done {
+            return Ok(recent_first(notes, since_ms));
+        }
+        limit *= 4;
+    }
+}
+
 pub enum LibraryEvent {
     /// The selected note changed.
     Selected(Option<String>),
@@ -69,6 +111,8 @@ pub struct Library {
     pub books: Vec<Book>,
     pub tags: Vec<Tag>,
     pub counts: StatusCounts,
+    /// How many notes Recent lists, without the search.
+    pub recent: u32,
     pub filter: Filter,
     pub search: String,
     pub sort: Sort,
@@ -90,6 +134,7 @@ struct Loaded {
     books: Vec<Book>,
     tags: Vec<Tag>,
     counts: StatusCounts,
+    recent: u32,
     notes: Vec<NoteSummary>,
 }
 
@@ -118,6 +163,7 @@ impl Library {
             books: Vec::new(),
             tags: Vec::new(),
             counts: StatusCounts::default(),
+            recent: 0,
             filter: Filter::All,
             search: String::new(),
             sort: Sort::UpdatedAt,
@@ -140,17 +186,26 @@ impl Library {
         let generation = self.generation;
         let store = self.store.clone();
         let params = search_params(&self.filter, &self.search, self.sort, self.descending);
-        let pinned_only = self.filter == Filter::Pinned;
+        let filter = self.filter.clone();
+        let recent_since = Clock::now_ms(cx) - RECENT_DAYS * DAY_MS;
         let task = cx.background_executor().spawn(async move {
-            let mut notes = store.search_summaries(&params)?;
-            if pinned_only {
-                notes.retain(|note| note.pinned);
-            }
-            pinned_first(&mut notes);
-            Ok::<_, kanso_store::StoreError>(Loaded {
+            let notes = match filter {
+                Filter::Recent => recent_notes(&store, &params, recent_since)?,
+                _ => {
+                    let mut notes = store.search_summaries(&params)?;
+                    if filter == Filter::Pinned {
+                        notes.retain(|note| note.pinned);
+                    }
+                    pinned_first(&mut notes);
+                    notes
+                }
+            };
+            let recent = recent_notes(&store, &SearchParams::default(), recent_since)?.len();
+            Ok::<_, StoreError>(Loaded {
                 books: store.books()?,
                 tags: store.tags()?,
                 counts: store.status_counts()?,
+                recent: u32::try_from(recent).unwrap_or(u32::MAX),
                 notes,
             })
         });
@@ -165,6 +220,7 @@ impl Library {
                         this.books = loaded.books;
                         this.tags = loaded.tags;
                         this.counts = loaded.counts;
+                        this.recent = loaded.recent;
                         this.notes = loaded.notes;
                         this.load_error = None;
                     }
@@ -254,10 +310,16 @@ impl Library {
         book_tree(&self.books)
     }
 
+    /// The notebook `id` and the ones it is inside, outermost first.
+    pub fn book_path(&self, id: &str) -> Vec<&Book> {
+        book_path(id, &self.books)
+    }
+
     pub fn filter_title(&self) -> String {
         match &self.filter {
             Filter::All => "All Notes".into(),
             Filter::Pinned => "Pinned".into(),
+            Filter::Recent => "Recent".into(),
             Filter::Book(id) => self.book(id).map_or("Notebook".into(), |b| b.name.clone()),
             Filter::Tag(id) => self
                 .tag(id)
@@ -266,6 +328,26 @@ impl Library {
             Filter::Trash => "Trash".into(),
         }
     }
+}
+
+/// Notebook `id` and its parents, outermost first: the path a breadcrumb
+/// shows. A parent that is missing ends it, and so does a parent already on
+/// it, should the notebooks form a cycle.
+pub fn book_path<'a>(id: &str, books: &'a [Book]) -> Vec<&'a Book> {
+    let mut path: Vec<&Book> = Vec::new();
+    let mut next = Some(id);
+    while let Some(id) = next {
+        let Some(book) = books.iter().find(|b| b.id == id) else {
+            break;
+        };
+        if path.iter().any(|b| b.id == book.id) {
+            break;
+        }
+        path.push(book);
+        next = book.parent_book_id.as_deref();
+    }
+    path.reverse();
+    path
 }
 
 /// Orders notebooks depth-first by name, children under their parent. A book
@@ -311,7 +393,9 @@ pub fn book_tree(books: &[Book]) -> Vec<(usize, &Book)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Filter, book_tree, pinned_first, search_params};
+    use super::{
+        Filter, book_path, book_tree, pinned_first, recent_first, recent_notes, search_params,
+    };
     use kanso_core::{Book, NoteStatus, Query};
     use kanso_store::{NoteSummary, Sort};
     use proptest::prelude::*;
@@ -396,19 +480,153 @@ mod tests {
             prop_assert_eq!(params.query.includes_trash(), filter == Filter::Trash || typed.includes_trash());
         }
 
+        /// Invariants: the path ends at the notebook, each step is the
+        /// previous one's child, nothing repeats, and it is never longer than
+        /// the list of notebooks, even when parents form cycles.
+        #[test]
+        fn prop_book_path_walks_up_to_the_top(
+            parents in prop::collection::vec(prop::option::of(0usize..12), 0..10),
+            target in 0usize..12,
+        ) {
+            // Any parent at all, so cycles and missing parents both occur.
+            let books: Vec<Book> = parents.iter().enumerate().map(|(ix, p)| book(ix, *p, "b")).collect();
+            let id = format!("book:{target}");
+            let path = book_path(&id, &books);
+            prop_assert!(path.len() <= books.len());
+            prop_assert_eq!(path.is_empty(), target >= books.len());
+            if let Some(last) = path.last() {
+                prop_assert_eq!(&last.id, &id);
+            }
+            for pair in path.windows(2) {
+                prop_assert_eq!(pair[1].parent_book_id.as_deref(), Some(pair[0].id.as_str()));
+            }
+            for (ix, b) in path.iter().enumerate() {
+                prop_assert!(path[ix + 1..].iter().all(|other| other.id != b.id));
+            }
+            // The walk stops only at the top, a missing parent, or a cycle.
+            if let Some(first) = path.first() {
+                match first.parent_book_id.as_deref() {
+                    None => {}
+                    Some(parent) => prop_assert!(
+                        !books.iter().any(|b| b.id == parent) || path.iter().any(|b| b.id == parent)
+                    ),
+                }
+            }
+        }
+
+        /// Model: Recent is exactly the notes changed at or after the cut,
+        /// newest first, with ties in their original order.
+        #[test]
+        fn prop_recent_first_keeps_new_notes_newest_first(
+            times in prop::collection::vec(0i64..20, 0..30),
+            since in 0i64..22,
+        ) {
+            let notes: Vec<NoteSummary> = times.iter().enumerate().map(|(ix, &t)| summary(ix, t)).collect();
+            let mut expected: Vec<(i64, usize)> = times.iter().enumerate()
+                .filter(|(_, t)| **t >= since).map(|(ix, t)| (-t, ix)).collect();
+            expected.sort();
+            let got: Vec<String> = recent_first(notes, since).into_iter().map(|n| n.id).collect();
+            let want: Vec<String> = expected.into_iter().map(|(_, ix)| format!("note:{ix}")).collect();
+            prop_assert_eq!(got, want);
+        }
+
         /// Invariant: pinned notes come first and each group keeps its order.
         #[test]
         fn prop_pinned_first_is_a_stable_partition(pins in prop::collection::vec(any::<bool>(), 0..30)) {
-            let mut notes: Vec<NoteSummary> = pins.iter().enumerate().map(|(ix, &pinned)| NoteSummary {
-                id: format!("note:{ix}"), rev: String::new(), title: String::new(), snippet: String::new(),
-                book_id: String::new(), status: NoteStatus::None, tags: Vec::new(), pinned,
-                updated_at: 0, created_at: 0,
-            }).collect();
+            let mut notes: Vec<NoteSummary> = pins.iter().enumerate()
+                .map(|(ix, &pinned)| NoteSummary { pinned, ..summary(ix, 0) }).collect();
             let expected: Vec<String> = notes.iter().filter(|n| n.pinned)
                 .chain(notes.iter().filter(|n| !n.pinned)).map(|n| n.id.clone()).collect();
             pinned_first(&mut notes);
             prop_assert_eq!(notes.into_iter().map(|n| n.id).collect::<Vec<_>>(), expected);
         }
+    }
+
+    fn summary(ix: usize, updated_at: i64) -> NoteSummary {
+        NoteSummary {
+            id: format!("note:{ix}"),
+            rev: String::new(),
+            title: String::new(),
+            snippet: String::new(),
+            book_id: String::new(),
+            status: NoteStatus::None,
+            tags: Vec::new(),
+            pinned: false,
+            updated_at,
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn book_path_examples() {
+        let books = vec![
+            book(1, None, "Work"),
+            book(2, Some(1), "Projects"),
+            book(3, Some(2), "Kanso"),
+            book(4, Some(5), "Loop"),
+            book(5, Some(4), "Back"),
+        ];
+        let names = |id: &str| -> Vec<String> {
+            book_path(id, &books)
+                .into_iter()
+                .map(|b| b.name.clone())
+                .collect()
+        };
+        assert_eq!(names("book:3"), ["Work", "Projects", "Kanso"]);
+        assert_eq!(names("book:1"), ["Work"]);
+        assert_eq!(names("book:4"), ["Back", "Loop"]);
+        assert!(names("book:9").is_empty());
+    }
+
+    /// Recent reads the store a page at a time and still finds every recent
+    /// note past the first page, and none of the old or trashed ones.
+    #[test]
+    fn recent_notes_page_through_the_store() {
+        use kanso_core::DocType;
+        use kanso_store::{Origin, Put, SearchParams, Store};
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().join("k.db")).unwrap();
+        let book = store
+            .put(
+                DocType::Book,
+                serde_json::json!({"name": "B"}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        for ix in 0..150i64 {
+            let book_id = if ix == 100 {
+                "trash".to_owned()
+            } else {
+                book.clone()
+            };
+            store
+                .put(
+                    DocType::Note,
+                    serde_json::json!({"title": format!("n{ix}"), "bookId": book_id, "updatedAt": 1_000 + ix}),
+                    Put::Upsert,
+                    Origin::Ui,
+                )
+                .unwrap();
+        }
+        let recent = recent_notes(&store, &SearchParams::default(), 1_010).unwrap();
+        assert_eq!(recent.len(), 139);
+        assert_eq!(recent.first().unwrap().updated_at, 1_149);
+        assert!(recent.windows(2).all(|w| w[0].updated_at > w[1].updated_at));
+        let typed = search_params(&Filter::Recent, "title:n14", Sort::Title, false);
+        let found: Vec<String> = recent_notes(&store, &typed, 1_010)
+            .unwrap()
+            .into_iter()
+            .map(|n| n.title)
+            .collect();
+        assert_eq!(
+            found,
+            [
+                "n149", "n148", "n147", "n146", "n145", "n144", "n143", "n142", "n141", "n140",
+                "n14"
+            ]
+        );
     }
 
     #[test]

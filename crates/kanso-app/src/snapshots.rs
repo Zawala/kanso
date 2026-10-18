@@ -27,7 +27,9 @@ use serde_json::json;
 use crate::assets::KansoAssets;
 use crate::clock::Clock;
 use crate::config::{AppConfig, EditorFont, ThemePreference, ViewMode};
-use crate::services::Services;
+use crate::layout::{BOTTOM_BAND_HEIGHT, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, TOP_BAND_HEIGHT};
+use crate::library::Filter;
+use crate::services::{ApiState, Services, SyncState};
 use crate::theme::{Colors, DARK, LIGHT, Rgb};
 use crate::workspace::{AppState, Workspace, apply_theme};
 
@@ -39,6 +41,9 @@ const MINUTE: i64 = 60_000;
 const DAY: i64 = 24 * 60 * MINUTE;
 
 const ROADMAP: &str = "# MCP support model\n\nKanso acts as an MCP host. Clients connect to Kanso, discover the tools it offers, and ask before they act. See the [protocol overview](https://modelcontextprotocol.io) for the wire format.\n\n## Goals\n\n- Enable secure, discoverable access to notes through MCP.\n- A first-party experience that is *simple* and **reliable**.\n- Protect notes with clear permissions and an activity log.\n- Work offline when possible; degrade gracefully.\n\n## Core components\n\n1. MCP server (in Kanso)\n2. Tool registry\n3. Permission manager\n\n## Example tool definition\n\n```json\n{\n  \"name\": \"search_notes\",\n  \"description\": \"Search notes by keyword\",\n  \"inputSchema\": {\n    \"type\": \"object\",\n    \"properties\": { \"query\": { \"type\": \"string\" }, \"limit\": { \"type\": \"integer\", \"default\": 20 } }\n  }\n}\n```\n\nEach tool declares its `inputSchema`; the registry validates calls against it.\n\n## Permissions\n\n- [x] User approves each new client\n- [x] Scopes are explicit\n- [ ] Always ask for write operations\n\n> Destructive actions need review unless a client is explicitly trusted.\n\n| Permission | Default |\n|---|---|\n| Read notes | Allowed |\n| Update notes | Ask |\n| Delete notes | Ask |\n";
+
+/// The demo note other notes link to, so its header shows backlinks.
+const LINKED_NOTE: &str = "note:mcp-support";
 
 /// A demo library for when no real database is given, with edits spread
 /// over today, yesterday and older days.
@@ -91,7 +96,7 @@ fn demo_store(path: &Path) -> Store {
         (
             &engineering,
             "Agent integration plan",
-            "# Agent integration plan\n\nHow Kanso works with local agents and external tools.\n\n- Read-only by default\n- Writes go through review\n".to_owned(),
+            "# Agent integration plan\n\nHow Kanso works with local agents and external tools; see the [MCP support model](inkdrop://note/mcp-support).\n\n- Read-only by default\n- Writes go through review\n".to_owned(),
             vec![agents.clone()],
             "active",
             false,
@@ -136,7 +141,7 @@ fn demo_store(path: &Path) -> Store {
         (
             &platform,
             "Sync design",
-            "# Sync design\n\nDocuments live in D1, attachments in R2. Last writer wins by `updatedAt`; the loser stays in history.".to_owned(),
+            "# Sync design\n\nDocuments live in D1, attachments in R2. Last writer wins by `updatedAt`; the loser stays in history. Clients reach it through the [MCP support model](inkdrop://note/mcp-support).".to_owned(),
             vec![rust, security],
             "completed",
             false,
@@ -171,15 +176,14 @@ fn demo_store(path: &Path) -> Store {
         ),
     ];
     for (book, title, body, tags, status, pinned, updated) in notes {
+        let mut note = json!({"title": title, "body": body, "bookId": book, "tags": tags,
+            "status": status, "pinned": pinned,
+            "createdAt": updated - 2 * DAY, "updatedAt": updated});
+        if title == "MCP support model" {
+            note["_id"] = json!(LINKED_NOTE);
+        }
         store
-            .put(
-                DocType::Note,
-                json!({"title": title, "body": body, "bookId": book, "tags": tags,
-                    "status": status, "pinned": pinned,
-                    "createdAt": updated - 2 * DAY, "updatedAt": updated}),
-                Put::Upsert,
-                Origin::Ui,
-            )
+            .put(DocType::Note, note, Put::Upsert, Origin::Ui)
             .unwrap();
     }
     store
@@ -210,10 +214,111 @@ struct Shot {
     /// The window's size in points; the PNG is twice that.
     size: Size<Pixels>,
     prepare: Prepare,
+    /// Whether the sidebar shows, for the surface checks.
+    sidebar: bool,
 }
 
 /// The most recently edited note, as after a restart.
 fn open_latest(_: &mut HeadlessAppContext, _: AnyWindowHandle, _: &Entity<Workspace>, _: &Store) {}
+
+fn set_filter(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, filter: Filter) {
+    let library = cx.update(|cx| workspace.read(cx).library.clone());
+    cx.update(|cx| library.update(cx, |library, cx| library.set_filter(filter, cx)));
+}
+
+/// The Status group open on Active, while the API's port is taken (by
+/// Inkdrop, say) and sync can't reach its server: the footer's warnings.
+fn status_and_warnings(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    set_filter(
+        cx,
+        workspace,
+        Filter::Status(kanso_core::NoteStatus::Active),
+    );
+    cx.update(|cx| {
+        let services = cx.global_mut::<Services>();
+        services.api = ApiState::PortInUse(crate::config::DEFAULT_PORT);
+        services.sync = SyncState::Failed("error sending request: connection refused".into());
+    });
+}
+
+/// Recent, with every tag showing and the Status group closed again.
+fn recent_all_tags(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    set_filter(cx, workspace, Filter::Recent);
+    cx.update(|cx| {
+        let sidebar = workspace.read(cx).sidebar.clone();
+        sidebar.update(cx, |sidebar, cx| sidebar.show_all_tags(cx));
+    });
+}
+
+/// The sidebar hidden: the note list is leftmost, below the traffic lights.
+fn hide_sidebar(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| {
+        workspace.update(cx, |workspace, cx| {
+            workspace.show_sidebar = false;
+            cx.notify();
+        })
+    });
+}
+
+/// A note in the trash, with its banner.
+fn open_trashed(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    set_filter(cx, workspace, Filter::Trash);
+    let params = crate::library::search_params(&Filter::Trash, "", Default::default(), true);
+    if let Some(note) = store.search_summaries(&params).unwrap().into_iter().next() {
+        let library = cx.update(|cx| workspace.read(cx).library.clone());
+        cx.update(|cx| library.update(cx, |library, cx| library.select(Some(note.id), cx)));
+    }
+}
+
+/// Unsaved typing in the open note while another app saves it: the editor
+/// asks which version to keep.
+fn conflict(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let editor = cx.update(|cx| workspace.read(cx).editor.clone());
+    let id = cx.update(|cx| editor.read(cx).note_id().map(str::to_owned));
+    let Some(id) = id else {
+        return;
+    };
+    cx.update_window(window, |_, window, cx| {
+        editor.update(cx, |editor, cx| {
+            let body = format!("{}\nA line typed here.", editor.body_for_test(cx));
+            editor.edit_for_test(&body, window, cx);
+        });
+    })
+    .unwrap();
+    store
+        .put(
+            DocType::Note,
+            json!({"_id": id, "body": "Changed by an agent over the local API."}),
+            Put::Merge,
+            Origin::Api,
+        )
+        .unwrap();
+}
 
 /// An empty notebook, "Research" when there is one.
 fn empty_notebook(
@@ -314,13 +419,21 @@ fn open(
         .and_then(|notes| notes.into_iter().next())
         .map(|n| n.id);
     let theme = shot.theme;
+    let now = cx.update(|cx| Clock::now_ms(cx));
     cx.update(|cx| {
         cx.set_global(AppState {
             store,
             data_dir,
             config,
         });
-        cx.set_global(Services::default());
+        // The footer as it usually reads; nothing is listening or syncing.
+        let mut services = Services::default();
+        services.api = ApiState::Running("http://127.0.0.1:19840".into());
+        services.sync = SyncState::Synced {
+            at_ms: now - 2 * MINUTE,
+            conflicts: 0,
+        };
+        cx.set_global(services);
         apply_theme(theme, None, cx);
     });
     cx.update(|cx| {
@@ -337,7 +450,11 @@ fn open(
             cx,
             |window, cx| {
                 apply_theme(theme, Some(window), cx);
-                cx.new(|cx| Workspace::new(window, cx))
+                cx.new(|cx| {
+                    let mut workspace = Workspace::new(window, cx);
+                    workspace.placeholder_traffic_lights = true;
+                    workspace
+                })
             },
         )
     })
@@ -378,18 +495,39 @@ fn check_surfaces(image: &image::RgbaImage, shot: &Shot) {
     let width = f32::from(shot.size.width);
     let height = f32::from(shot.size.height);
     let scale = image.width() as f32 / width;
-    // The sidebar is 230 wide and the note list 320.
-    let checks = [
-        ((4., height / 2.), colors.sidebar, "sidebar"),
-        ((236., 4.), colors.list, "note list"),
-        ((560., 4.), colors.editor, "editor"),
+    // The bands are part of their panes: one surface from top to bottom.
+    let mut checks = vec![
+        ((width - 4., 4.), colors.editor, "editor's top band"),
         (
             (width - 12., height / 2.),
             colors.editor,
             "editor or preview",
         ),
-        ((width / 2., height - 3.), colors.app, "status bar"),
+        (
+            (width - 4., height - BOTTOM_BAND_HEIGHT / 2.),
+            colors.editor,
+            "editor's bottom band",
+        ),
     ];
+    if shot.sidebar {
+        checks.extend([
+            ((4., height / 2.), colors.sidebar, "sidebar"),
+            (
+                (SIDEBAR_WIDTH - 6., 4.),
+                colors.sidebar,
+                "sidebar's top band",
+            ),
+            ((SIDEBAR_WIDTH + 6., 4.), colors.list, "note list"),
+        ]);
+    } else {
+        // Leftmost, the list starts below the traffic lights' band.
+        checks.push(((8., TOP_BAND_HEIGHT - 4.), colors.list, "note list"));
+        checks.push((
+            (NOTE_LIST_WIDTH, TOP_BAND_HEIGHT - 4.),
+            colors.list,
+            "note list",
+        ));
+    }
     for (at, expected, what) in checks {
         assert_surface(
             image,
@@ -416,6 +554,7 @@ fn snapshots() {
         view_mode,
         size: full,
         prepare,
+        sidebar: true,
     };
     let shots = [
         shot("dark-split", Dark, Split, open_latest),
@@ -427,6 +566,16 @@ fn snapshots() {
         shot("dark-edit-mono", Dark, Edit, mono_font),
         shot("dark-empty", Dark, Split, empty_notebook),
         shot("dark-search", Dark, Edit, search_sync),
+        // The Status group open and the footer's warnings.
+        shot("dark-status-warnings", Dark, Edit, status_and_warnings),
+        shot("light-status-warnings", Light, Split, status_and_warnings),
+        shot("dark-recent-tags", Dark, Preview, recent_all_tags),
+        Shot {
+            sidebar: false,
+            ..shot("dark-no-sidebar", Dark, Edit, hide_sidebar)
+        },
+        shot("dark-trash", Dark, Edit, open_trashed),
+        shot("dark-conflict", Dark, Edit, conflict),
         Shot {
             size: size(px(1100.), px(720.)),
             ..shot("dark-split-min", Dark, Split, open_latest)

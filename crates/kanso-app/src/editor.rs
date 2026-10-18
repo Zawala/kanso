@@ -1,4 +1,6 @@
-//! The note editor: title, metadata toolbar, Markdown body and preview.
+//! The note editor: a header band (where the note is, whether it is saved,
+//! the view mode and note actions), the title, status and tags, the
+//! formatting toolbar, the Markdown body and preview, and a footer band.
 //!
 //! Edits autosave after a short pause. A change to the open note from
 //! elsewhere (the API, sync) reloads it quietly when there are no unsaved
@@ -9,11 +11,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::assets::IconName as Lucide;
+use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::input::{Editor, EditorState, Input, InputEvent, InputState, Position};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{
-    ActiveTheme as _, IconName, Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex,
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -21,10 +25,15 @@ use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::{DocType, Note, NoteStatus, now_ms};
 use kanso_store::{Change, Origin, Put, Store, StoreError};
 
+use crate::clock::Clock;
 use crate::config::{Appearance, EditorFont, ViewMode};
-use crate::library::Library;
+use crate::editor_footer::EditorFooter;
+use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
+use crate::library::{Filter, Library};
+use crate::markdown_edit::{self, Format};
 use crate::preview::{LinkSender, Preview, TEXT_INSET, readable_width};
 use crate::theme::{Colors, muted_tag_color};
+use crate::workspace::AppState;
 
 const AUTOSAVE_DELAY: Duration = Duration::from_millis(600);
 const PREVIEW_DELAY: Duration = Duration::from_millis(150);
@@ -44,6 +53,8 @@ const LINE_NUMBER_COLUMN: f32 = 44.;
 pub enum EditorEvent {
     /// Something worth telling the user, such as a failed save.
     Notice(String),
+    /// The history button: the workspace opens the note's history.
+    ShowHistory,
 }
 
 /// What happened elsewhere to the open note while it had unsaved edits.
@@ -62,6 +73,7 @@ pub struct NoteEditor {
     title: Entity<InputState>,
     body: Entity<EditorState>,
     preview: Entity<Preview>,
+    footer: Entity<EditorFooter>,
     pub view_mode: ViewMode,
     pub editor_font: EditorFont,
     pub font_size: f32,
@@ -107,9 +119,18 @@ impl NoteEditor {
                 .soft_wrap(true)
         });
         let preview = cx.new(|_| Preview::new(store.clone(), links));
+        let footer = cx.new(|cx| {
+            let mut footer = EditorFooter::new(body.clone(), cx);
+            footer.set_show_cursor(view_mode != ViewMode::Preview, cx);
+            footer
+        });
         let subscriptions = vec![
             cx.subscribe_in(&title, window, |this, _, event, window, cx| match event {
-                InputEvent::Change => this.schedule_autosave(cx),
+                // The breadcrumb shows the title as it's typed.
+                InputEvent::Change => {
+                    this.schedule_autosave(cx);
+                    cx.notify();
+                }
                 InputEvent::PressEnter { .. } => {
                     this.body.update(cx, |body, cx| body.focus(window, cx));
                 }
@@ -134,6 +155,7 @@ impl NoteEditor {
             title,
             body,
             preview,
+            footer,
             view_mode,
             editor_font,
             font_size,
@@ -210,6 +232,9 @@ impl NoteEditor {
         let text: SharedString = body.into();
         self.preview
             .update(cx, |preview, cx| preview.set_text(text, cx));
+        let has_note = self.note.is_some();
+        self.footer
+            .update(cx, |footer, cx| footer.note_opened(has_note, cx));
         self.refresh_backlinks(cx);
         cx.notify();
     }
@@ -240,14 +265,20 @@ impl NoteEditor {
         if self.note.is_none() {
             return;
         }
+        let was_saved = self.autosave.is_none();
         self.autosave = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(AUTOSAVE_DELAY).await;
             this.update(cx, |this, cx| {
                 this.autosave = None;
                 this.save(cx);
+                // "Saving…" gives way even when there was nothing to write.
+                cx.notify();
             })
             .ok();
         }));
+        if was_saved {
+            cx.notify();
+        }
     }
 
     fn schedule_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -487,7 +518,32 @@ impl NoteEditor {
         if mode != ViewMode::Edit {
             self.refresh_preview(cx);
         }
+        self.footer.update(cx, |footer, cx| {
+            footer.set_show_cursor(mode != ViewMode::Preview, cx)
+        });
         cx.notify();
+    }
+
+    /// The view mode picked in the header, kept for next time.
+    fn choose_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
+        self.set_view_mode(mode, cx);
+        AppState::update_config(cx, |config| config.appearance.view_mode = mode);
+    }
+
+    /// Applies a toolbar format to the body at its selection, as one edit
+    /// that undoes in one step, and puts the cursor back in the text.
+    pub fn apply_format(&mut self, format: Format, window: &mut Window, cx: &mut Context<Self>) {
+        if self.note.is_none() {
+            return;
+        }
+        self.body.update(cx, |state, cx| {
+            let text = state.value();
+            let edit = markdown_edit::format(format, &text, state.selected_range());
+            state.set_selected_range(edit.range.clone(), cx);
+            state.replace(edit.text, window, cx);
+            state.set_selected_range(edit.selection, cx);
+            state.focus(window, cx);
+        });
     }
 
     /// Finds the notes that link to the open one, in the background.
@@ -533,249 +589,489 @@ impl NoteEditor {
         self.save(cx);
     }
 
-    fn render_toolbar(&self, note: &Note, cx: &mut Context<Self>) -> impl IntoElement {
+    /// The top band: where the note lives (click it to move the note),
+    /// whether it is saved, linked-from notes, the view mode and the note's
+    /// actions. Its empty middle moves the window.
+    fn render_band(&self, note: &Note, cx: &mut Context<Self>) -> impl IntoElement {
         let library = self.library.read(cx);
-        let book_name = if note.book_id == TRASH_BOOK_ID {
-            "Trash".to_string()
+        let path = if note.book_id == TRASH_BOOK_ID {
+            "Trash".to_owned()
         } else {
-            library
-                .book(&note.book_id)
-                .map_or_else(|| "No notebook".to_string(), |b| b.name.clone())
+            let names: Vec<&str> = library
+                .book_path(&note.book_id)
+                .iter()
+                .map(|b| b.name.as_str())
+                .collect();
+            if names.is_empty() {
+                "No notebook".to_owned()
+            } else {
+                names.join(" / ")
+            }
         };
         let books: Vec<(String, String, usize)> = library
             .book_tree()
             .into_iter()
             .map(|(depth, b)| (b.id.clone(), b.name.clone(), depth))
             .collect();
-        let tags: Vec<(String, String, u32)> = library
-            .tags
-            .iter()
-            .map(|t| (t.id.clone(), t.name.clone(), t.color.rgb()))
-            .collect();
-        let note_tags = note.tags.clone();
         let current_book = note.book_id.clone();
-        let status = note.status;
+        let title = self.title.read(cx).value();
+        let title: SharedString = if title.trim().is_empty() {
+            "Untitled".into()
+        } else {
+            title
+        };
+        let saved = if self.autosave.is_some() {
+            "Saving…".to_owned()
+        } else {
+            let now = Clock::now_ms(cx);
+            format!(
+                "Edited {}",
+                crate::note_list::relative_time(note.updated_at, now)
+            )
+        };
         let view = cx.entity();
         let colors = Colors::get(cx);
-        let dark = cx.theme().is_dark();
+        let mode = self.view_mode;
+        let pinned = note.pinned;
+        let status = note.status;
 
-        let tag_chips = note_tags.iter().filter_map(|id| {
-            let (_, name, rgb) = tags.iter().find(|(tid, _, _)| tid == id)?;
-            Some(
+        let move_menu = Button::new("breadcrumb")
+            .ghost()
+            .small()
+            .child(
                 div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .px_2()
-                    .py_0p5()
-                    .rounded_md()
-                    .text_xs()
-                    .bg(colors.fill)
+                    .max_w(px(240.))
+                    .truncate()
+                    .text_size(px(13.))
                     .text_color(colors.text_secondary)
-                    .child(
-                        div()
-                            .size_2()
-                            .rounded_full()
-                            .bg(rgb_color(muted_tag_color(*rgb, dark))),
-                    )
-                    .child(name.clone()),
+                    .child(path),
             )
+            .tooltip("Move to notebook")
+            .dropdown_menu({
+                let view = view.clone();
+                move |mut menu, _, _| {
+                    for (id, name, depth) in &books {
+                        let view = view.clone();
+                        let book_id = id.clone();
+                        let label = format!("{}{name}", "   ".repeat(*depth));
+                        menu = menu.item(
+                            PopupMenuItem::new(label)
+                                .checked(*id == current_book)
+                                .on_click(move |_, _, cx| {
+                                    view.update(cx, |this, cx| this.set_book(book_id.clone(), cx));
+                                }),
+                        );
+                    }
+                    menu
+                }
+            });
+
+        let backlinks = (!self.backlinks.is_empty()).then(|| {
+            let links = self.backlinks.clone();
+            let count = links.len();
+            let library = self.library.clone();
+            Button::new("backlinks")
+                .ghost()
+                .small()
+                .icon(Icon::new(Lucide::Link).text_color(colors.text_secondary))
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .text_color(colors.text_secondary)
+                        .child(count.to_string()),
+                )
+                .tooltip(if count == 1 {
+                    "Linked from 1 note".to_owned()
+                } else {
+                    format!("Linked from {count} notes")
+                })
+                .dropdown_menu(move |mut menu, _, _| {
+                    menu = menu.label("Linked from");
+                    for (id, title) in &links {
+                        let library = library.clone();
+                        let id = id.clone();
+                        let title = if title.trim().is_empty() {
+                            "Untitled".to_owned()
+                        } else {
+                            title.clone()
+                        };
+                        menu = menu.item(PopupMenuItem::new(title).on_click(move |_, _, cx| {
+                            library.update(cx, |library, cx| library.select(Some(id.clone()), cx));
+                        }));
+                    }
+                    menu
+                })
         });
 
+        let modes = [
+            ("mode-edit", "Edit", ViewMode::Edit),
+            ("mode-preview", "Preview", ViewMode::Preview),
+            ("mode-split", "Split", ViewMode::Split),
+        ];
+        let mode_group = ButtonGroup::new("view-mode")
+            .outline()
+            .small()
+            .children(modes.map(|(id, label, option)| {
+                let selected = mode == option;
+                Button::new(id).selected(selected).child(
+                    div()
+                        .px_0p5()
+                        .text_size(px(12.5))
+                        .text_color(if selected {
+                            colors.text
+                        } else {
+                            colors.text_secondary
+                        })
+                        .child(label),
+                )
+            }))
+            .on_click(cx.listener(move |this, clicked: &Vec<usize>, _, cx| {
+                if let Some(&ix) = clicked.first() {
+                    this.choose_view_mode(modes[ix].2, cx);
+                }
+            }));
+
         h_flex()
-            .gap_1()
-            .px_4()
-            .py_1()
-            .border_b_1()
-            .border_color(cx.theme().border)
+            .flex_none()
+            .h(px(TOP_BAND_HEIGHT))
+            // The ghost button's padding lines its text up with the title.
+            .pl(px(TEXT_INSET - 8.))
+            .pr(px(12.))
+            .gap(px(4.))
+            .child(move_menu)
+            .child(div().text_color(colors.text_muted).child("/"))
+            // When the pane is narrow the save state gives way first, then
+            // the title down to a few letters.
             .child(
-                Button::new("book")
-                    .ghost()
-                    .small()
-                    .icon(IconName::BookOpen)
-                    .label(book_name)
-                    .dropdown_caret(true)
-                    .dropdown_menu({
-                        let view = view.clone();
-                        move |mut menu, _, _| {
-                            for (id, name, depth) in &books {
-                                let view = view.clone();
-                                let book_id = id.clone();
-                                let label = format!("{}{name}", "   ".repeat(*depth));
-                                menu = menu.item(
-                                    PopupMenuItem::new(label)
-                                        .checked(*id == current_book)
-                                        .on_click(move |_, _, cx| {
-                                            view.update(cx, |this, cx| {
-                                                this.set_book(book_id.clone(), cx)
-                                            });
-                                        }),
-                                );
-                            }
-                            menu
-                        }
-                    }),
+                div()
+                    .min_w(px(64.))
+                    .px_1()
+                    .truncate()
+                    .text_size(px(13.))
+                    .child(title),
             )
+            .child(div().flex_1().min_w(px(12.)))
             .child(
-                Button::new("status")
-                    .ghost()
-                    .small()
-                    .label(if status == NoteStatus::None {
-                        "No status"
-                    } else {
-                        status.label()
-                    })
-                    .dropdown_caret(true)
-                    .dropdown_menu({
-                        let view = view.clone();
-                        move |mut menu, _, _| {
-                            for option in NoteStatus::ALL {
-                                let view = view.clone();
-                                menu = menu.item(
-                                    PopupMenuItem::new(option.label())
-                                        .checked(option == status)
-                                        .on_click(move |_, _, cx| {
-                                            view.update(cx, |this, cx| this.set_status(option, cx));
-                                        }),
-                                );
-                            }
-                            menu
-                        }
-                    }),
+                div()
+                    .min_w_0()
+                    .flex_shrink(1000.)
+                    .mr(px(8.))
+                    .truncate()
+                    .text_size(px(12.))
+                    .text_color(colors.text_muted)
+                    .child(saved),
             )
-            .children(tag_chips)
-            .child(
-                Button::new("tags")
-                    .ghost()
-                    .xsmall()
-                    .icon(IconName::Plus)
-                    .tooltip("Tags")
-                    .dropdown_menu({
-                        let view = view.clone();
-                        move |mut menu, _, _| {
-                            if tags.is_empty() {
-                                return menu.item(PopupMenuItem::new("No tags yet").disabled(true));
-                            }
-                            for (id, name, _) in &tags {
-                                let view = view.clone();
-                                let tag_id = id.clone();
-                                menu = menu.item(
-                                    PopupMenuItem::new(name.clone())
-                                        .checked(note_tags.contains(id))
-                                        .on_click(move |_, _, cx| {
-                                            view.update(cx, |this, cx| {
-                                                this.toggle_tag(tag_id.clone(), cx)
-                                            });
-                                        }),
-                                );
-                            }
-                            menu
-                        }
-                    }),
-            )
-            .child(div().flex_1())
+            .children(backlinks)
+            .child(div().flex_none().mx_1().child(mode_group))
             .child(
                 Button::new("pin")
                     .ghost()
                     .small()
-                    .icon(if note.pinned {
-                        IconName::StarFill
+                    .icon(Icon::new(Lucide::Pin).text_color(if pinned {
+                        colors.text
                     } else {
-                        IconName::Star
-                    })
-                    .tooltip(if note.pinned { "Unpin" } else { "Pin to top" })
+                        colors.text_secondary
+                    }))
+                    .selected(pinned)
+                    .tooltip(if pinned { "Unpin" } else { "Pin to top" })
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_pinned(cx))),
             )
-            .child(self.view_mode_button(
-                "mode-edit",
-                IconName::FileText,
-                ViewMode::Edit,
-                "Editor only",
-                cx,
-            ))
-            .child(self.view_mode_button(
-                "mode-split",
-                IconName::PanelRight,
-                ViewMode::Split,
-                "Editor and preview",
-                cx,
-            ))
-            .child(self.view_mode_button(
-                "mode-preview",
-                IconName::Eye,
-                ViewMode::Preview,
-                "Preview only",
-                cx,
-            ))
+            .child(
+                Button::new("history")
+                    .ghost()
+                    .small()
+                    .icon(Icon::new(Lucide::Clock).text_color(colors.text_secondary))
+                    .tooltip("History")
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(EditorEvent::ShowHistory))),
+            )
             .child(
                 Button::new("note-menu")
                     .ghost()
                     .small()
-                    .icon(IconName::Ellipsis)
+                    .icon(Icon::new(IconName::Ellipsis).text_color(colors.text_secondary))
                     .tooltip("More")
-                    .dropdown_menu(|menu, _, _| {
+                    .dropdown_menu(move |menu, window, cx| {
+                        let view = view.clone();
                         menu.menu("History…", Box::new(crate::workspace::ShowHistory))
                             .menu(
                                 "Export as Markdown…",
                                 Box::new(crate::workspace::ExportNote),
                             )
+                            .submenu("Status", window, cx, move |mut menu, _, _| {
+                                for option in NoteStatus::ALL {
+                                    let view = view.clone();
+                                    menu = menu.item(
+                                        PopupMenuItem::new(option.label())
+                                            .checked(option == status)
+                                            .on_click(move |_, _, cx| {
+                                                view.update(cx, |this, cx| {
+                                                    this.set_status(option, cx)
+                                                });
+                                            }),
+                                    );
+                                }
+                                menu
+                            })
                             .separator()
                             .menu("Move to Trash", Box::new(crate::workspace::TrashNote))
                     }),
             )
     }
 
-    fn view_mode_button(
-        &self,
-        id: &'static str,
-        icon: IconName,
-        mode: ViewMode,
-        tooltip: &'static str,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        Button::new(id)
-            .ghost()
-            .small()
-            .icon(icon)
-            .tooltip(tooltip)
-            .selected(self.view_mode == mode)
-            .on_click(cx.listener(move |this, _, _, cx| this.set_view_mode(mode, cx)))
-    }
+    /// The status chip, the note's tags and "Add tag".
+    fn render_meta(&self, note: &Note, cx: &mut Context<Self>) -> impl IntoElement {
+        let library = self.library.read(cx);
+        let tags: Vec<(String, String, u32)> = library
+            .tags
+            .iter()
+            .map(|t| (t.id.clone(), t.name.clone(), t.color.rgb()))
+            .collect();
+        let note_tags = note.tags.clone();
+        let status = note.status;
+        let view = cx.entity();
+        let colors = Colors::get(cx);
+        let dark = cx.theme().is_dark();
 
-    fn render_backlinks(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let chips = self.backlinks.iter().enumerate().map(|(ix, (id, title))| {
-            let library = self.library.clone();
-            let id = id.clone();
-            div()
-                .id(("backlink", ix))
-                .px_2()
-                .rounded_md()
-                .cursor_pointer()
-                .text_color(cx.theme().link)
-                .hover(|el| el.bg(cx.theme().muted))
-                .child(if title.trim().is_empty() {
-                    "Untitled".to_owned()
-                } else {
-                    title.clone()
-                })
-                .on_click(move |_, _, cx| {
-                    library.update(cx, |library, cx| library.select(Some(id.clone()), cx));
+        let status_chip = (status != NoteStatus::None).then(|| {
+            let view = view.clone();
+            Button::new("status")
+                .ghost()
+                .xsmall()
+                .icon(status_icon(status).text_color(colors.text_secondary))
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .text_color(colors.text_secondary)
+                        .child(status.label()),
+                )
+                .bg(colors.fill)
+                .tooltip("Status")
+                .dropdown_menu(move |mut menu, _, _| {
+                    for option in NoteStatus::ALL {
+                        let view = view.clone();
+                        menu = menu.item(
+                            PopupMenuItem::new(option.label())
+                                .checked(option == status)
+                                .on_click(move |_, _, cx| {
+                                    view.update(cx, |this, cx| this.set_status(option, cx));
+                                }),
+                        );
+                    }
+                    menu
                 })
         });
-        h_flex()
-            .flex_wrap()
-            .gap_1()
-            .px_4()
-            .py_1()
-            .text_xs()
-            .border_b_1()
-            .border_color(cx.theme().border)
+
+        let chips = note_tags
+            .iter()
+            .filter_map(|id| {
+                let (_, name, rgb) = tags.iter().find(|(tid, _, _)| tid == id)?;
+                let library = self.library.clone();
+                let view = view.clone();
+                let filter = Filter::Tag(id.clone());
+                let tag_id = id.clone();
+                Some(
+                    div()
+                        .id(SharedString::from(format!("note-tag-{id}")))
+                        .cursor_pointer()
+                        .child(
+                            Tag::custom(
+                                colors.fill.into(),
+                                colors.text_secondary.into(),
+                                colors.fill.into(),
+                            )
+                            .text_size(px(12.5))
+                            .px(px(8.))
+                            .py(px(2.))
+                            .child(
+                                div()
+                                    .text_color(rgb_color(muted_tag_color(*rgb, dark)))
+                                    .child("#"),
+                            )
+                            .child(name.clone()),
+                        )
+                        .on_click(move |_, _, cx| {
+                            library
+                                .update(cx, |library, cx| library.set_filter(filter.clone(), cx));
+                        })
+                        .context_menu(move |menu, _, _| {
+                            let view = view.clone();
+                            let tag_id = tag_id.clone();
+                            menu.item(PopupMenuItem::new("Remove Tag").on_click(move |_, _, cx| {
+                                view.update(cx, |this, cx| this.toggle_tag(tag_id.clone(), cx));
+                            }))
+                        }),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let add_tag = Button::new("tags")
+            .ghost()
+            .xsmall()
+            .icon(Icon::new(IconName::Plus).text_color(colors.text_muted))
             .child(
                 div()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Linked from"),
+                    .text_size(px(12.5))
+                    .text_color(colors.text_muted)
+                    .child("Add tag"),
             )
+            .dropdown_menu(move |mut menu, _, _| {
+                if tags.is_empty() {
+                    return menu.item(PopupMenuItem::new("No tags yet").disabled(true));
+                }
+                for (id, name, _) in &tags {
+                    let view = view.clone();
+                    let tag_id = id.clone();
+                    menu = menu.item(
+                        PopupMenuItem::new(name.clone())
+                            .checked(note_tags.contains(id))
+                            .on_click(move |_, _, cx| {
+                                view.update(cx, |this, cx| this.toggle_tag(tag_id.clone(), cx));
+                            }),
+                    );
+                }
+                menu
+            });
+
+        h_flex()
+            .flex_none()
+            .flex_wrap()
+            .gap(px(6.))
+            .px(px(TEXT_INSET))
+            .pb(px(6.))
+            .children(status_chip)
             .children(chips)
+            .child(add_tag)
+    }
+
+    /// The formatting toolbar: headings, lists, code, links, images, tables
+    /// and quotes, each a toggle or a template at the cursor.
+    fn render_format_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let colors = Colors::get(cx);
+        let button = |id: &'static str, icon: Icon, tooltip: &'static str, format: Format| {
+            Button::new(id)
+                .ghost()
+                .small()
+                .icon(icon.text_color(colors.text_secondary))
+                .tooltip(tooltip)
+                .on_click(
+                    cx.listener(move |this, _, window, cx| this.apply_format(format, window, cx)),
+                )
+        };
+        let separator = || {
+            div()
+                .flex_none()
+                .w(px(1.))
+                .h(px(16.))
+                .mx(px(6.))
+                .bg(colors.divider)
+        };
+        let view = cx.entity();
+        h_flex()
+            .id("format-bar")
+            .flex_none()
+            .h(px(34.))
+            .pl(px(TEXT_INSET - 8.))
+            .gap(px(2.))
+            .child(button(
+                "h1",
+                Lucide::Heading1.into(),
+                "Heading 1",
+                Format::Heading(1),
+            ))
+            .child(button(
+                "h2",
+                Lucide::Heading2.into(),
+                "Heading 2",
+                Format::Heading(2),
+            ))
+            .child(button(
+                "h3",
+                Lucide::Heading3.into(),
+                "Heading 3",
+                Format::Heading(3),
+            ))
+            .child(separator())
+            .child(button(
+                "bulleted",
+                Lucide::List.into(),
+                "Bulleted list",
+                Format::Bulleted,
+            ))
+            .child(button(
+                "numbered",
+                Lucide::ListOrdered.into(),
+                "Numbered list",
+                Format::Numbered,
+            ))
+            .child(button(
+                "task",
+                Lucide::ListTodo.into(),
+                "Task",
+                Format::Task,
+            ))
+            .child(button("code", Lucide::Code.into(), "Code", Format::Code))
+            .child(button("link", Lucide::Link.into(), "Link", Format::Link))
+            .child(button(
+                "image",
+                Lucide::Image.into(),
+                "Image",
+                Format::Image,
+            ))
+            .child(button(
+                "table",
+                Lucide::Table.into(),
+                "Table",
+                Format::Table,
+            ))
+            .child(button(
+                "quote",
+                Lucide::TextQuote.into(),
+                "Quote",
+                Format::Quote,
+            ))
+            .child(separator())
+            .child(
+                Button::new("format-more")
+                    .ghost()
+                    .small()
+                    .icon(Icon::new(IconName::Ellipsis).text_color(colors.text_secondary))
+                    .tooltip("More formatting")
+                    .dropdown_menu(move |mut menu, _, _| {
+                        for (label, format) in [
+                            ("Bold", Format::Bold),
+                            ("Italic", Format::Italic),
+                            ("Strikethrough", Format::Strikethrough),
+                            ("Horizontal Rule", Format::Rule),
+                        ] {
+                            let view = view.clone();
+                            menu = menu.item(PopupMenuItem::new(label).on_click(
+                                move |_, window, cx| {
+                                    view.update(cx, |this, cx| {
+                                        this.apply_format(format, window, cx)
+                                    });
+                                },
+                            ));
+                        }
+                        menu
+                    }),
+            )
+    }
+
+    /// A quiet strip above the text with a message and its choices.
+    fn banner(&self, tint: Hsla, message: &'static str, cx: &mut Context<Self>) -> Div {
+        let colors = Colors::get(cx);
+        h_flex()
+            .flex_none()
+            .gap_2()
+            .mx(px(TEXT_INSET - 12.))
+            .my_1()
+            .px(px(12.))
+            .py(px(8.))
+            .rounded(px(6.))
+            .bg(tint)
+            .text_size(px(13.))
+            .text_color(colors.text)
+            .child(div().flex_1().child(message))
     }
 
     fn render_incoming_banner(&self, deleted: bool, cx: &mut Context<Self>) -> impl IntoElement {
@@ -792,15 +1088,8 @@ impl NoteEditor {
                 "Use theirs",
             )
         };
-        h_flex()
-            .gap_2()
-            .px_4()
-            .py_2()
-            .bg(cx.theme().warning.opacity(0.15))
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .text_sm()
-            .child(div().flex_1().child(message))
+        let tint = Hsla::from(Colors::get(cx).warning).opacity(0.16);
+        self.banner(tint, message, cx)
             .child(
                 Button::new("keep-mine")
                     .small()
@@ -814,6 +1103,31 @@ impl NoteEditor {
                     .label(take)
                     .on_click(cx.listener(|this, _, window, cx| this.take_theirs(window, cx))),
             )
+    }
+
+    fn render_trash_banner(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let tint = Colors::get(cx).fill.into();
+        self.banner(tint, "This note is in the trash.", cx).child(
+            Button::new("restore-from-trash")
+                .small()
+                .label("Restore")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    let book = this.library.read(cx).default_book();
+                    if let Some(book) = book {
+                        this.set_book(book, cx);
+                    }
+                })),
+        )
+    }
+}
+
+fn status_icon(status: NoteStatus) -> Icon {
+    match status {
+        NoteStatus::Active => Lucide::CircleDot.into(),
+        NoteStatus::OnHold => Lucide::CirclePause.into(),
+        NoteStatus::Completed => IconName::CircleCheck.into(),
+        NoteStatus::Dropped => IconName::CircleX.into(),
+        NoteStatus::None => IconName::File.into(),
     }
 }
 
@@ -868,43 +1182,31 @@ impl Render for NoteEditor {
         v_flex()
             .size_full()
             .bg(colors.editor)
+            .child(self.render_band(&note, cx))
             .child(
-                div().px_4().pt_3().pb_1().child(
-                    Input::new(&self.title)
-                        .appearance(false)
-                        .text_xl()
-                        .font_semibold(),
-                ),
+                div()
+                    .flex_none()
+                    .pl(px(TEXT_INSET))
+                    .pr_4()
+                    .pb(px(8.))
+                    .child(
+                        Input::new(&self.title)
+                            .appearance(false)
+                            .text_size(px(28.))
+                            .line_height(px(36.))
+                            .h(px(40.))
+                            .p_0()
+                            .font_semibold(),
+                    ),
             )
-            .child(self.render_toolbar(&note, cx))
-            .when(trashed, |el| {
-                el.child(
-                    h_flex()
-                        .px_4()
-                        .py_1()
-                        .gap_2()
-                        .text_sm()
-                        .bg(colors.fill)
-                        .child(div().flex_1().child("This note is in the trash."))
-                        .child(
-                            Button::new("restore-from-trash")
-                                .small()
-                                .label("Restore")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    let book = this.library.read(cx).default_book();
-                                    if let Some(book) = book {
-                                        this.set_book(book, cx);
-                                    }
-                                })),
-                        ),
-                )
+            .child(self.render_meta(&note, cx))
+            .when(mode == ViewMode::Edit && !trashed, |el| {
+                el.child(self.render_format_bar(cx))
             })
+            .when(trashed, |el| el.child(self.render_trash_banner(cx)))
             .when_some(self.incoming.as_ref(), |el, incoming| {
                 let deleted = matches!(incoming, Incoming::Deleted);
                 el.child(self.render_incoming_banner(deleted, cx))
-            })
-            .when(!self.backlinks.is_empty(), |el| {
-                el.child(self.render_backlinks(cx))
             })
             .child(
                 h_flex()
@@ -968,6 +1270,15 @@ impl Render for NoteEditor {
                         )
                     }),
             )
+            // Redrawn only when the cursor or the counts change.
+            .child(
+                AnyView::from(self.footer.clone()).cached(
+                    StyleRefinement::default()
+                        .w_full()
+                        .flex_none()
+                        .h(px(BOTTOM_BAND_HEIGHT)),
+                ),
+            )
             .into_any_element()
     }
 }
@@ -1027,11 +1338,87 @@ pub fn backlinks(store: &Store, id: &str) -> Vec<(String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::backlinks;
+    use super::{NoteEditor, backlinks};
+    use crate::config::Appearance;
+    use crate::library::Library;
+    use crate::markdown_edit::Format;
+    use gpui_kit::{AppContext as _, TestAppContext};
     use kanso_core::DocType;
     use kanso_store::{Origin, Put, Store};
     use proptest::prelude::*;
     use serde_json::json;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    /// The toolbar edits the body the way typing does: at the selection,
+    /// saved after the pause, and counted in the footer once typing rests.
+    // no-prop-test: glue between the toolbar, the text editor and autosave;
+    // the edits themselves are property-tested in `markdown_edit`.
+    #[gpui_kit::test]
+    fn formatting_edits_the_body_and_saves(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(dir.path().join("k.db")).unwrap());
+        let book = store
+            .put(DocType::Book, json!({"name": "B"}), Put::Upsert, Origin::Ui)
+            .unwrap()
+            .id;
+        let id = store
+            .put(
+                DocType::Note,
+                json!({"title": "t", "body": "Goals\nnext", "bookId": book}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let editor_store = store.clone();
+        let (window, editor) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            gpui_kit::open_window(Default::default(), cx, |window, cx| {
+                let library = cx.new(|cx| Library::new(editor_store.clone(), cx));
+                let (links, _) = async_channel::unbounded();
+                cx.new(|cx| {
+                    NoteEditor::new(
+                        editor_store,
+                        library,
+                        links,
+                        &Appearance::default(),
+                        window,
+                        cx,
+                    )
+                })
+            })
+            .unwrap()
+        });
+        let edit = |cx: &mut TestAppContext,
+                    f: &dyn Fn(
+            &mut NoteEditor,
+            &mut gpui_kit::Window,
+            &mut gpui_kit::Context<NoteEditor>,
+        )| {
+            window
+                .update(cx, |_, window, cx| {
+                    editor.update(cx, |editor, cx| f(editor, window, cx))
+                })
+                .unwrap();
+            cx.executor().advance_clock(Duration::from_secs(1));
+            cx.run_until_parked();
+        };
+        edit(cx, &|editor, window, cx| editor.open(Some(&id), window, cx));
+        edit(cx, &|editor, window, cx| {
+            editor.apply_format(Format::Heading(2), window, cx)
+        });
+        assert_eq!(store.note(&id).unwrap().unwrap().body, "## Goals\nnext");
+        edit(cx, &|editor, window, cx| {
+            editor
+                .body
+                .update(cx, |body, cx| body.set_selected_range(9..13, cx));
+            editor.apply_format(Format::Bold, window, cx);
+        });
+        assert_eq!(store.note(&id).unwrap().unwrap().body, "## Goals\n**next**");
+        let label = cx.read(|cx| editor.read(cx).footer.read(cx).label());
+        assert!(label.ends_with("2 words · 17 chars"), "{label}");
+    }
 
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(48))]
