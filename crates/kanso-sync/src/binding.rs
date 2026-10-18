@@ -1,0 +1,379 @@
+//! A library's link to an account, and this Mac's identity in it
+//! (docs/ACCOUNTS.md › Device identity, › Library binding). Frozen by step 1;
+//! the bodies that touch the store or the system are step 2a. "The same
+//! account" always means the same `(origin, account_id)` (security re-check 3).
+
+use std::fmt;
+use std::path::{Path, PathBuf};
+
+use kanso_store::{Store, StoreError, SyncGuard};
+use zeroize::Zeroizing;
+
+use crate::account::Session;
+use crate::crypto::DeviceProof;
+use crate::keychain::{SecretError, SecretStore};
+
+/// The library's `meta` keys for v2 sync (H5). Only `unbind` touches the
+/// legacy cursor.
+pub mod meta_keys {
+    /// The origin of the account's server (`Session::origin`).
+    pub const ORIGIN: &str = "sync.v2.origin";
+    /// The account the library syncs with.
+    pub const ACCOUNT_ID: &str = "sync.v2.account_id";
+    /// Its username.
+    pub const USERNAME: &str = "sync.v2.username";
+    /// The server URL.
+    pub const SERVER: &str = "sync.v2.server";
+    /// The cursor: the last change sequence pulled.
+    pub const LAST_SEQ: &str = "sync.v2.last_seq";
+    /// The epoch last seen (M1).
+    pub const EPOCH: &str = "sync.v2.epoch";
+    /// Device identity: `l_` + 32 hex; names the Keychain items.
+    pub const LIBRARY_ID: &str = "sync.v2.library_id";
+    /// Device identity: 32 random bytes as hex.
+    pub const DEVICE_SECRET: &str = "sync.v2.device_secret";
+    /// Device identity: `hex(SHA-256("kanso-hw" || IOPlatformUUID))[0..32]`,
+    /// or empty when `ioreg` gives no UUID.
+    pub const HARDWARE: &str = "sync.v2.hardware";
+    /// The v1 cursor, which the rollback path resets to 0.
+    pub const LEGACY_LAST_SEQ: &str = "sync.last_seq";
+}
+
+/// The guard every sync write of `session` carries: the library must still
+/// be bound to the session's `(origin, account_id)`, checked inside the
+/// store's write transaction. Use as `SyncGuard { expect: &guard_pairs(&s) }`.
+pub fn guard_pairs(session: &Session) -> [(&'static str, &str); 2] {
+    [
+        (meta_keys::ORIGIN, session.origin.as_str()),
+        (meta_keys::ACCOUNT_ID, session.account_id.as_str()),
+    ]
+}
+
+/// Builds the [`SyncGuard`] over [`guard_pairs`].
+pub fn guard<'a>(pairs: &'a [(&'a str, &'a str)]) -> SyncGuard<'a> {
+    SyncGuard { expect: pairs }
+}
+
+/// What this Mac reports about itself: its hardware UUID (from `ioreg -rd1
+/// -c IOPlatformExpertDevice`) and its ComputerName (`scutil --get
+/// ComputerName`). Tests build it directly.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Machine {
+    pub hardware_uuid: Option<String>,
+    pub computer_name: String,
+}
+
+impl Machine {
+    /// Reads this Mac (step 2a).
+    pub fn this_mac() -> Machine {
+        crate::stub!("2a")
+    }
+}
+
+/// The device name rule (docs/ACCOUNTS.md › Sealed device names): control
+/// characters removed, trimmed, cut to 64 Unicode scalar values (and trimmed
+/// again, so the rule is idempotent), or "Mac" when that leaves nothing. Pure.
+pub fn device_name(computer_name: &str) -> String {
+    let cleaned: String = computer_name.chars().filter(|c| !c.is_control()).collect();
+    let cut: String = cleaned.trim().chars().take(64).collect();
+    let name = cut.trim_end();
+    if name.is_empty() {
+        "Mac".to_owned()
+    } else {
+        name.to_owned()
+    }
+}
+
+/// This library's identity on this Mac. The device secret is private.
+pub struct DeviceIdentity {
+    /// `l_` + 32 hex; names the Keychain items.
+    pub library_id: String,
+    /// [`device_name`] of this Mac, sealed before it is sent.
+    pub name: String,
+    #[allow(dead_code, reason = "read by the step 2a bodies")]
+    device_secret: Zeroizing<[u8; 32]>,
+}
+
+impl DeviceIdentity {
+    /// This Mac's ID in `account_id`: `d_ + hex(HMAC-SHA256(device_secret,
+    /// account_id)[0..16])`, unlinkable across accounts (L2).
+    pub fn device_id(&self, account_id: &str) -> String {
+        crate::stub!("2a", self, account_id)
+    }
+
+    /// This Mac's proof for `(origin, account_id)`: HKDF(ikm device_secret,
+    /// info "kanso/v1/device-proof" || lp(origin) || lp(account_id)). Only
+    /// a matching proof exempts a sign-in from `login-user` (re-check 5).
+    pub fn device_proof(&self, origin: &str, account_id: &str) -> DeviceProof {
+        crate::stub!("2a", self, origin, account_id)
+    }
+}
+
+impl fmt::Debug for DeviceIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DeviceIdentity")
+            .field("library_id", &self.library_id)
+            .field("name", &self.name)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Reads or creates the library's identity (`sync.v2.library_id`,
+/// `sync.v2.device_secret`, `sync.v2.hardware`). When the stored hardware
+/// hash differs from `machine`'s, the library was copied: the library ID and
+/// device secret are regenerated (the copy is then signed out) and the
+/// binding and cursor stay. Sign-out and unbind keep all three values.
+pub fn device_identity(store: &Store, machine: &Machine) -> Result<DeviceIdentity, StoreError> {
+    crate::stub!("2a", store, machine)
+}
+
+/// What the library holds, relative to the `(origin, account_id)` being
+/// signed into. Checked in this order: bound to that pair → `Same`; no live
+/// documents → `Empty`; bound to another pair → `Other`; else `Unbound`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LocalLibrary {
+    /// No live documents (and not bound to this account).
+    Empty,
+    /// Already bound to this `(origin, account_id)`.
+    Same,
+    /// Notes that never belonged to an account. `notes` counts live notes;
+    /// `unsynced` is [`Store::pending_count`].
+    Unbound { notes: usize, unsynced: usize },
+    /// Bound to another account (or the same account ID on another origin).
+    Other {
+        username: String,
+        notes: usize,
+        unsynced: usize,
+    },
+}
+
+/// Reads the library's binding and counts (step 2a).
+pub fn local_library(
+    store: &Store,
+    origin: &str,
+    account_id: &str,
+) -> Result<LocalLibrary, StoreError> {
+    crate::stub!("2a", store, origin, account_id)
+}
+
+/// The flow that is about to bind the library.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Flow {
+    SignUp,
+    SignIn,
+    Recover,
+}
+
+/// What a flow does with the library (docs/ACCOUNTS.md › Library binding,
+/// the plan table).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Plan {
+    /// Bind fresh with no question, then upload (sign-up) or pull.
+    Fresh,
+    /// Already bound to this account: nothing to bind.
+    Resume,
+    /// Sign-up while the notes came from another account: before signing
+    /// up, ask "This Mac's notes came from *from*. Upload them to the new
+    /// account?" [Upload to new account] ([`Choice::Add`]) [Cancel].
+    AskBeforeSignUp { from: String, notes: usize },
+    /// Sign-in or recovery into a library with notes: after authenticating
+    /// and before saving anything, ask "This Mac already has notes"
+    /// [Add them] [Replace them] [Cancel]. `from` is the other account's
+    /// username, when the notes came from one.
+    Ask {
+        from: Option<String>,
+        notes: usize,
+        unsynced: usize,
+    },
+}
+
+/// The user's answer to a [`Plan`] question.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Choice {
+    /// Merge the library into the account (also how [`Plan::Fresh`] binds).
+    Add,
+    /// Back up the library, then replace it with the account's notes.
+    Replace,
+    /// Bind nothing; a new session is signed out.
+    Cancel,
+}
+
+/// The plan for `flow` on `library`. Pure: the table, implemented in step 1.
+pub fn plan(flow: Flow, library: &LocalLibrary) -> Plan {
+    match (flow, library) {
+        (_, LocalLibrary::Same) => Plan::Resume,
+        (_, LocalLibrary::Empty) => Plan::Fresh,
+        (Flow::SignUp, LocalLibrary::Unbound { .. }) => Plan::Fresh,
+        (
+            Flow::SignUp,
+            LocalLibrary::Other {
+                username, notes, ..
+            },
+        ) => Plan::AskBeforeSignUp {
+            from: username.clone(),
+            notes: *notes,
+        },
+        (Flow::SignIn | Flow::Recover, LocalLibrary::Unbound { notes, unsynced }) => Plan::Ask {
+            from: None,
+            notes: *notes,
+            unsynced: *unsynced,
+        },
+        (
+            Flow::SignIn | Flow::Recover,
+            LocalLibrary::Other {
+                username,
+                notes,
+                unsynced,
+            },
+        ) => Plan::Ask {
+            from: Some(username.clone()),
+            notes: *notes,
+            unsynced: *unsynced,
+        },
+    }
+}
+
+/// Why binding failed.
+#[derive(Debug, thiserror::Error)]
+pub enum BindError {
+    #[error(transparent)]
+    Store(#[from] StoreError),
+    #[error(transparent)]
+    Keychain(#[from] SecretError),
+}
+
+/// Binds the library to `session`'s account (step 2a). The caller has
+/// cancelled and joined the running sync.
+///
+/// - [`Choice::Add`] (and fresh binds): `reset_sync` writing the origin,
+///   account, username and server, `last_seq = 0`, and removing the epoch.
+/// - [`Choice::Replace`]: `Store::backup_now(backups_dir, now)`, then
+///   `replace_library` with the same meta; returns the backup's path.
+/// - [`Choice::Cancel`]: changes nothing and returns `None`.
+pub fn bind(
+    store: &Store,
+    session: &Session,
+    choice: Choice,
+    backups_dir: &Path,
+    now_ms: i64,
+) -> Result<Option<PathBuf>, BindError> {
+    crate::stub!("2a", store, session, choice, backups_dir, now_ms)
+}
+
+/// Unbinds (after deleting the account, and for rollback): `reset_sync`
+/// removing the origin, account, username, server, cursor and epoch,
+/// keeping the device identity, and setting the legacy `sync.last_seq = 0`;
+/// then deletes `sync-account:<library>` (step 2a).
+pub fn unbind(store: &Store, secrets: &dyn SecretStore) -> Result<(), BindError> {
+    crate::stub!("2a", store, secrets)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn device_name_examples() {
+        assert_eq!(device_name("Ngoni’s MacBook Pro"), "Ngoni’s MacBook Pro");
+        assert_eq!(device_name("  Studio\n"), "Studio");
+        assert_eq!(device_name("a\u{0}b\u{7f}c"), "abc");
+        assert_eq!(device_name(""), "Mac");
+        assert_eq!(device_name(" \t\u{1b} "), "Mac");
+        assert_eq!(device_name(&"é".repeat(70)).chars().count(), 64);
+    }
+
+    #[test]
+    fn plan_table() {
+        let unbound = LocalLibrary::Unbound {
+            notes: 3,
+            unsynced: 1,
+        };
+        let other = LocalLibrary::Other {
+            username: "alex".into(),
+            notes: 3,
+            unsynced: 1,
+        };
+        assert_eq!(plan(Flow::SignUp, &LocalLibrary::Empty), Plan::Fresh);
+        assert_eq!(plan(Flow::SignUp, &unbound), Plan::Fresh);
+        assert_eq!(
+            plan(Flow::SignUp, &other),
+            Plan::AskBeforeSignUp {
+                from: "alex".into(),
+                notes: 3
+            }
+        );
+        for flow in [Flow::SignIn, Flow::Recover] {
+            assert_eq!(plan(flow, &LocalLibrary::Empty), Plan::Fresh);
+            assert_eq!(plan(flow, &LocalLibrary::Same), Plan::Resume);
+            assert_eq!(
+                plan(flow, &unbound),
+                Plan::Ask {
+                    from: None,
+                    notes: 3,
+                    unsynced: 1
+                }
+            );
+            assert_eq!(
+                plan(flow, &other),
+                Plan::Ask {
+                    from: Some("alex".into()),
+                    notes: 3,
+                    unsynced: 1
+                }
+            );
+        }
+    }
+
+    fn gen_library() -> impl Strategy<Value = LocalLibrary> {
+        prop_oneof![
+            Just(LocalLibrary::Empty),
+            Just(LocalLibrary::Same),
+            (1..50usize, 0..50usize)
+                .prop_map(|(notes, unsynced)| LocalLibrary::Unbound { notes, unsynced }),
+            ("[a-z]{3,8}", 1..50usize, 0..50usize).prop_map(|(username, notes, unsynced)| {
+                LocalLibrary::Other {
+                    username,
+                    notes,
+                    unsynced,
+                }
+            }),
+        ]
+    }
+
+    fn gen_flow() -> impl Strategy<Value = Flow> {
+        prop_oneof![Just(Flow::SignUp), Just(Flow::SignIn), Just(Flow::Recover)]
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(256))]
+
+        /// Invariant: notes reach another account only through a question,
+        /// and only notes that came from elsewhere are asked about.
+        #[test]
+        fn prop_notes_reach_another_account_only_by_asking(flow in gen_flow(), library in gen_library()) {
+            let decided = plan(flow, &library);
+            let has_foreign_notes = match &library {
+                LocalLibrary::Other { .. } => true,
+                LocalLibrary::Unbound { .. } => flow != Flow::SignUp,
+                _ => false,
+            };
+            let asks = matches!(decided, Plan::Ask { .. } | Plan::AskBeforeSignUp { .. });
+            prop_assert_eq!(asks, has_foreign_notes);
+            prop_assert_eq!(decided == Plan::Resume, library == LocalLibrary::Same);
+            if flow == Flow::SignUp {
+                prop_assert!(!matches!(decided, Plan::Ask { .. }), "sign-up asks before, never after");
+            }
+        }
+
+        /// Idempotence and refinement of the device name rule.
+        #[test]
+        fn prop_device_names_are_clean(input in "\\PC{0,80}|[ \t\n\u{1b}\u{7f}a-z]{0,80}") {
+            let name = device_name(&input);
+            prop_assert_eq!(device_name(&name), name.clone());
+            prop_assert!(!name.is_empty() && name.chars().count() <= 64);
+            prop_assert!(!name.chars().any(char::is_control));
+            prop_assert_eq!(name.trim(), name.as_str());
+        }
+    }
+}

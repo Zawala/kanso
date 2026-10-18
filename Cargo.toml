@@ -16,11 +16,18 @@ kanso-sync = { path = "crates/kanso-sync" }
 
 aes = "0.8"
 anyhow = "1"
+# Accounts with end-to-end encryption (docs/ACCOUNTS.md › Rust crates): RustCrypto on the
+# digest 0.11 generation. `parallel` runs Argon2's lanes on rayon (about 3.6 times faster).
+argon2 = { version = "0.6", default-features = false, features = ["alloc", "parallel", "zeroize"] }
 async-channel = "2.5"
 base64 = "0.22"
 cbc = { version = "0.1", features = ["alloc"] }
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 fastrand = "2"
+getrandom = "0.4"
+hkdf = "0.13"
+hmac = "0.13"
 md-5 = "0.10"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 proptest = "1.12"
@@ -28,8 +35,11 @@ rusqlite = { version = "0.40", features = ["bundled", "functions", "backup"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha1 = "0.10"
+sha2 = "0.11"
 thiserror = "2"
 tempfile = "3"
+unicode-normalization = "0.1"
+zeroize = "1.9"
 gpui-kit = { version = "=0.7.3", features = ["tree-sitter-markdown", "tree-sitter-markdown-inline"] }
 
 [profile.dev.package."*"]

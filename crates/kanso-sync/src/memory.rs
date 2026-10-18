@@ -1,15 +1,23 @@
-//! An in-memory sync server with the Worker's semantics, for tests.
+//! In-memory sync servers for tests: [`MemoryRemote`], today's v1 server
+//! (step 2b moves it to `tests/common/legacy.rs`), and [`MemoryServer`], the
+//! v2 server with accounts, frozen by step 1.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use kanso_store::SyncDoc;
 use serde_json::{Map, Value};
 
+use crate::account::Session;
+use crate::api::{Api, Backend, Route};
+use crate::crypto::KdfParams;
 use crate::remote::{
     ChangesPage, MAX_CHANGES_LIMIT, MAX_FILE_BYTES, MAX_PUSH_BYTES, PushResult, Remote, RemoteDoc,
     RemoteError, RemoteFile, is_file_id, is_md5_hex, md5_hex, validate_push,
 };
+use crate::sealed::PlainView;
+use crate::wire::SignOutReason;
 
 #[derive(Clone, Debug)]
 struct Stored {
@@ -232,5 +240,329 @@ impl Remote for MemoryRemote {
         let mut state = self.state();
         state.stats.file_gets += 1;
         Ok(state.files.get(id).cloned())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MemoryServer: the v2 test server (docs/ACCOUNTS.md › Modules, › Build order)
+// ---------------------------------------------------------------------------
+
+/// The `settings` rows `cloud/migrations/0002_accounts.sql` seeds, which
+/// [`MemoryServer::new`] starts from, except that its sign-ups are open.
+pub const DEFAULT_SETTINGS: [(&str, &str); 12] = [
+    ("signup", "closed"),
+    ("max_accounts", "50"),
+    ("signups_per_day", "5"),
+    ("quota_docs", "50000"),
+    ("quota_doc_bytes", "104857600"),
+    ("quota_files", "10000"),
+    ("quota_file_bytes", "524288000"),
+    ("writes_per_day", "100000"),
+    ("global_doc_bytes", "6000000000"),
+    ("global_file_bytes", "50000000000"),
+    ("global_writes_per_day", "300000"),
+    ("global_upload_bytes_per_day", "5000000000"),
+];
+
+/// Whether D1's `CHECK` on `settings` accepts this row.
+pub fn is_valid_setting(name: &str, value: &str) -> bool {
+    if name == "signup" {
+        matches!(value, "open" | "closed")
+            || (value.starts_with("only:") && (8..=37).contains(&value.len()))
+    } else {
+        (1..=15).contains(&value.len()) && value.bytes().all(|b| b.is_ascii_digit())
+    }
+}
+
+/// The sign-up switch.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Signup {
+    Open,
+    Closed,
+    /// Only this (normalized) username may sign up.
+    Only(String),
+}
+
+/// Default per-account quotas.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Limits {
+    pub docs: u64,
+    pub doc_bytes: u64,
+    pub files: u64,
+    pub file_bytes: u64,
+}
+
+impl Limits {
+    /// The migration's defaults.
+    pub const DEFAULT: Limits = Limits {
+        docs: 50_000,
+        doc_bytes: 104_857_600,
+        files: 10_000,
+        file_bytes: 524_288_000,
+    };
+}
+
+/// One account's quota overrides; `None` uses the default (D1's NULL).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct QuotaOverride {
+    pub docs: Option<u64>,
+    pub doc_bytes: Option<u64>,
+    pub files: Option<u64>,
+    pub file_bytes: Option<u64>,
+}
+
+/// A session row as the server holds it (names stay sealed).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServerDevice {
+    pub id: String,
+    pub sealed_name: Option<String>,
+    pub created_at: i64,
+    pub last_seen_at: i64,
+    /// `None` while active.
+    pub revoked: Option<SignOutReason>,
+}
+
+/// Requests answered, per route, and documents pushed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ServerStats {
+    pub requests: BTreeMap<Route, usize>,
+    pub pushed_docs: usize,
+}
+
+impl ServerStats {
+    pub fn count(&self, route: Route) -> usize {
+        self.requests.get(&route).copied().unwrap_or(0)
+    }
+}
+
+#[derive(Default)]
+#[allow(dead_code, reason = "read by the step 2a bodies")]
+struct ServerState {
+    settings: BTreeMap<String, String>,
+    /// `None`: the wall clock.
+    now: Option<i64>,
+    drops: BTreeMap<Route, usize>,
+    stats: ServerStats,
+}
+
+/// The test server: implements [`Backend`] with the Worker's sync, auth,
+/// session, quota and limit rules (the migration's triggers included), in
+/// memory, and runs the shared fixtures. Its auth hashes are SHA-256, as in
+/// the Worker; its KDF floor and default are [`KdfParams::TEST`]. Tests and
+/// snapshots only; `main.rs` never constructs it.
+pub struct MemoryServer {
+    state: Mutex<ServerState>,
+}
+
+impl Default for MemoryServer {
+    fn default() -> Self {
+        MemoryServer::new()
+    }
+}
+
+impl MemoryServer {
+    /// An empty server with the migration's settings, except that sign-ups
+    /// are open, on the wall clock.
+    pub fn new() -> MemoryServer {
+        let mut settings: BTreeMap<String, String> = DEFAULT_SETTINGS
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_string()))
+            .collect();
+        settings.insert("signup".into(), "open".into());
+        MemoryServer {
+            state: Mutex::new(ServerState {
+                settings,
+                ..ServerState::default()
+            }),
+        }
+    }
+
+    fn server(&self) -> std::sync::MutexGuard<'_, ServerState> {
+        self.state.lock().expect("memory server poisoned")
+    }
+
+    /// Pins the server's clock (ms). Fixture steps set it to `start + t`.
+    pub fn set_now(&self, now_ms: i64) {
+        self.server().now = Some(now_ms);
+    }
+
+    /// Writes one `settings` row, as `UPDATE settings SET value = ? WHERE
+    /// name = ?` would. Panics when D1's `CHECK` would refuse it.
+    pub fn set_setting(&self, name: &str, value: &str) {
+        assert!(
+            is_valid_setting(name, value),
+            "D1 refuses settings row {name} = {value}"
+        );
+        self.server()
+            .settings
+            .insert(name.to_owned(), value.to_owned());
+    }
+
+    pub fn set_signup(&self, signup: Signup) {
+        let value = match signup {
+            Signup::Open => "open".to_owned(),
+            Signup::Closed => "closed".to_owned(),
+            Signup::Only(name) => format!("only:{name}"),
+        };
+        self.set_setting("signup", &value);
+    }
+
+    pub fn set_max_accounts(&self, n: u64) {
+        self.set_setting("max_accounts", &n.to_string());
+    }
+
+    pub fn set_default_quota(&self, limits: Limits) {
+        self.set_setting("quota_docs", &limits.docs.to_string());
+        self.set_setting("quota_doc_bytes", &limits.doc_bytes.to_string());
+        self.set_setting("quota_files", &limits.files.to_string());
+        self.set_setting("quota_file_bytes", &limits.file_bytes.to_string());
+    }
+
+    pub fn set_writes_per_day(&self, n: u64) {
+        self.set_setting("writes_per_day", &n.to_string());
+    }
+
+    /// Sets an account's quota overrides (all four columns).
+    pub fn set_quota(&self, username: &str, quota: QuotaOverride) {
+        crate::stub!("2a", username, quota)
+    }
+
+    /// Sets `disabled_at`, like `admin disable`.
+    pub fn disable(&self, username: &str) {
+        crate::stub!("2a", username)
+    }
+
+    /// Clears `disabled_at`.
+    pub fn enable(&self, username: &str) {
+        crate::stub!("2a", username)
+    }
+
+    /// Every session row of the account, active and revoked.
+    pub fn devices(&self, username: &str) -> Vec<ServerDevice> {
+        crate::stub!("2a", username)
+    }
+
+    /// Revokes every active session of the account with `reason`.
+    pub fn revoke_all(&self, username: &str, reason: SignOutReason) {
+        crate::stub!("2a", username, reason)
+    }
+
+    /// The cron's expiry: revokes (`expired`) active sessions unseen for at
+    /// least `unseen_for`.
+    pub fn expire_sessions(&self, unseen_for: Duration) {
+        crate::stub!("2a", unseen_for)
+    }
+
+    /// A new random epoch for the account, like `admin restored` (M1).
+    pub fn set_epoch(&self, username: &str) {
+        crate::stub!("2a", username)
+    }
+
+    /// Rewinds the account as a restore would: writes after `to_seq` are
+    /// gone (documents last written after it disappear) and `last_seq`
+    /// becomes `to_seq`; the epoch stays, so clients see `head_seq` drop.
+    pub fn rewind(&self, username: &str, to_seq: i64) {
+        crate::stub!("2a", username, to_seq)
+    }
+
+    /// The next `n` requests to `route` are applied but answer with a
+    /// transport error, as when the connection drops after the server
+    /// committed.
+    pub fn drop_next_responses(&self, route: Route, n: usize) {
+        self.server().drops.insert(route, n);
+    }
+
+    pub fn stats(&self) -> ServerStats {
+        self.server().stats.clone()
+    }
+
+    /// The account of `session`, decrypted with its keys.
+    pub fn plain_view(&self, session: &Session) -> PlainView {
+        crate::stub!("2b", session)
+    }
+}
+
+impl Backend for MemoryServer {
+    fn api(&self, server: &str) -> Box<dyn Api + '_> {
+        crate::stub!("2a", server)
+    }
+
+    fn kdf_floor(&self) -> KdfParams {
+        KdfParams::TEST
+    }
+
+    fn kdf_default(&self) -> KdfParams {
+        KdfParams::TEST
+    }
+}
+
+#[cfg(test)]
+mod server_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// `DEFAULT_SETTINGS` is exactly what the migration seeds.
+    #[test]
+    fn default_settings_mirror_the_migration() {
+        let sql = include_str!("../../../cloud/migrations/0002_accounts.sql");
+        let start = sql.find("INSERT INTO settings").unwrap();
+        let end = start + sql[start..].find(';').unwrap();
+        let seeded: Vec<(String, String)> = sql[start..end]
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim().trim_end_matches(',');
+                let inner = line.strip_prefix("('")?.strip_suffix("')")?;
+                let (name, value) = inner.split_once("', '")?;
+                Some((name.to_owned(), value.to_owned()))
+            })
+            .collect();
+        let expected: Vec<(String, String)> = DEFAULT_SETTINGS
+            .iter()
+            .map(|(n, v)| (n.to_string(), v.to_string()))
+            .collect();
+        assert_eq!(seeded, expected);
+        let limits = Limits::DEFAULT;
+        for (name, value) in [
+            ("quota_docs", limits.docs),
+            ("quota_doc_bytes", limits.doc_bytes),
+            ("quota_files", limits.files),
+            ("quota_file_bytes", limits.file_bytes),
+        ] {
+            assert!(
+                DEFAULT_SETTINGS.contains(&(name, value.to_string().as_str())),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_new_server_takes_sign_ups() {
+        let server = MemoryServer::new();
+        assert_eq!(server.server().settings["signup"], "open");
+        server.set_signup(Signup::Only("alice".into()));
+        assert_eq!(server.server().settings["signup"], "only:alice");
+        assert_eq!(server.kdf_floor(), KdfParams::TEST);
+        assert_eq!(server.stats(), ServerStats::default());
+    }
+
+    #[test]
+    #[should_panic(expected = "D1 refuses")]
+    fn settings_d1_refuses_are_refused() {
+        MemoryServer::new().set_setting("max_accounts", "12a");
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(256))]
+
+        /// Oracle: the settings check agrees with D1's CHECK, spelled out
+        /// with explicit cases for each branch.
+        #[test]
+        fn prop_settings_check_matches_d1(value in "(only:)?[a-z0-9]{0,40}") {
+            let signup_ok = value == "open" || value == "closed"
+                || (value.starts_with("only:") && value.len() >= 8 && value.len() <= 37);
+            prop_assert_eq!(is_valid_setting("signup", &value), signup_ok);
+            let numeric_ok = !value.is_empty() && value.len() <= 15 && value.chars().all(|c| c.is_ascii_digit());
+            prop_assert_eq!(is_valid_setting("max_accounts", &value), numeric_ok);
+        }
     }
 }

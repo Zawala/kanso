@@ -503,7 +503,7 @@ fn sync_bookkeeping_and_conflicts() {
     assert_eq!(pending.len(), 2);
     assert!(pending.iter().all(|d| d.base_rev.is_none()));
     for doc in &pending {
-        store.mark_synced(&doc.id, &doc.rev).unwrap();
+        store.mark_synced(&doc.id, &doc.rev, None).unwrap();
     }
     assert!(store.pending_push(10).unwrap().is_empty());
 
@@ -520,14 +520,14 @@ fn sync_bookkeeping_and_conflicts() {
     };
     assert_eq!(
         store
-            .apply_remote(&remote("2-aa", "remote", 200), None)
+            .apply_remote(&remote("2-aa", "remote", 200), None, None)
             .unwrap(),
         ApplyOutcome::Applied
     );
     assert_eq!(store.note(&note.id).unwrap().unwrap().body, "remote");
     assert_eq!(
         store
-            .apply_remote(&remote("2-aa", "remote", 200), None)
+            .apply_remote(&remote("2-aa", "remote", 200), None, None)
             .unwrap(),
         ApplyOutcome::Unchanged
     );
@@ -540,12 +540,12 @@ fn sync_bookkeeping_and_conflicts() {
     store
         .put(DocType::Note, doc, Put::Upsert, Origin::Ui)
         .unwrap();
-    assert_eq!(
+    assert!(matches!(
         store
-            .apply_remote(&remote("3-bb", "theirs", 250), None)
+            .apply_remote(&remote("3-bb", "theirs", 250), None, None)
             .unwrap(),
-        ApplyOutcome::LocalWon
-    );
+        ApplyOutcome::LocalWon { .. }
+    ));
     assert_eq!(store.note(&note.id).unwrap().unwrap().body, "mine");
     let pending = store.pending_push(10).unwrap();
     assert_eq!(pending[0].base_rev.as_deref(), Some("3-bb"));
@@ -559,7 +559,7 @@ fn sync_bookkeeping_and_conflicts() {
 
     assert_eq!(
         store
-            .apply_remote(&remote("4-cc", "newest", 400), None)
+            .apply_remote(&remote("4-cc", "newest", 400), None, None)
             .unwrap(),
         ApplyOutcome::RemoteWon
     );

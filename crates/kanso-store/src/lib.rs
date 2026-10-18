@@ -22,7 +22,7 @@ use rusqlite::Connection;
 pub use backup::BackupPolicy;
 pub use doc::{Attachment, Doc};
 pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
-pub use sync::{ApplyOutcome, SyncDoc};
+pub use sync::{ApplyOutcome, SyncDoc, SyncGuard};
 pub use write::{Put, WriteResult};
 
 #[derive(Debug, thiserror::Error)]
@@ -33,6 +33,11 @@ pub enum StoreError {
     Conflict,
     #[error("{0}")]
     Invalid(String),
+    /// A guarded sync write found the library bound to another account (or
+    /// none): its [`SyncGuard`] didn't match `meta`. Nothing was written.
+    /// See docs/ACCOUNTS.md › Sync with encryption › The guard.
+    #[error("the library is no longer bound to the account this sync started with")]
+    GuardFailed,
     #[error("database error: {0}")]
     Sqlite(#[from] rusqlite::Error),
     #[error("invalid JSON: {0}")]

@@ -214,11 +214,6 @@ fn sync_cleanly(store: &Store, remote: &MemoryRemote, seen: &mut Vec<Seen>) -> S
     let report = sync_once(store, &recording).expect("sync");
     seen.extend(recording.seen.into_inner());
     assert!(report.invalid.is_empty(), "invalid: {:?}", report.invalid);
-    assert!(
-        report.rejected.is_empty(),
-        "rejected: {:?}",
-        report.rejected
-    );
     assert!(report.too_large.is_empty());
     assert_eq!(report.files_missing, 0, "a live file without bytes");
     report

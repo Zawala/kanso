@@ -1,6 +1,8 @@
-//! Runs the protocol cases shared with the Worker's tests
-//! (`cloud/test/fixtures/conformance.json`) against `MemoryRemote`, so the
-//! in-memory server used by the sync tests has the Worker's exact rules.
+//! Runs the v1 protocol cases shared with the Worker's tests
+//! (`cloud/test/fixtures/conformance-v1.json`) against `MemoryRemote`, so the
+//! in-memory server used by the sync tests has the v1 Worker's exact rules.
+//! The v2 cases (`conformance.json`, `auth.json`) run against `MemoryServer`
+//! from step 2a.
 
 use base64::Engine as _;
 use kanso_sync::{ChangesPage, MemoryRemote, PushResult, Remote, RemoteError, SyncDoc};
@@ -9,7 +11,7 @@ use serde_json::Value;
 fn fixture() -> Value {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../cloud/test/fixtures/conformance.json"
+        "/../../cloud/test/fixtures/conformance-v1.json"
     );
     serde_json::from_str(&std::fs::read_to_string(path).expect("read the fixture"))
         .expect("parse the fixture")

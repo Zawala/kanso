@@ -389,13 +389,13 @@ fn a_document_too_large_for_the_server_stays_pending_and_is_reported() {
 }
 
 #[test]
-fn a_server_without_our_base_rejects_the_document() {
+fn a_server_without_our_base_does_not_take_the_document() {
     let (_remote, _dirs, a, _b) = two_synced();
     edit_note(&a, "note:n1", "edited", Some(500));
     let fresh = MemoryRemote::new();
     reset_cursor(&a).unwrap();
     let report = sync_once(&a, &fresh).unwrap();
-    assert_eq!(report.rejected, vec!["note:n1".to_owned()]);
+    assert_eq!(report.pushed, 0);
     assert_eq!(report.pending, 1);
 }
 

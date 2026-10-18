@@ -1,4 +1,7 @@
-//! The Cloudflare Worker over HTTPS (blocking; the app has no async runtime).
+//! The Cloudflare Worker over HTTPS (blocking; the app has no async runtime):
+//! [`HttpRemote`], today's v1 client, and [`HttpBackend`], every v2 route
+//! (step 2b) with `max_redirects(0)` and the response caps of
+//! docs/ACCOUNTS.md › Conventions.
 
 use std::fmt;
 use std::time::Duration;
@@ -210,5 +213,31 @@ impl Remote for HttpRemote {
             content_type,
             bytes,
         }))
+    }
+}
+
+/// The app's [`Backend`]: every v2 route over blocking `ureq`, with no
+/// redirects (a redirect could re-send a proof) and the response caps.
+/// Its KDF floor and default are the production constants.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct HttpBackend;
+
+impl HttpBackend {
+    pub fn new() -> HttpBackend {
+        HttpBackend
+    }
+}
+
+impl crate::api::Backend for HttpBackend {
+    fn api(&self, server: &str) -> Box<dyn crate::api::Api + '_> {
+        crate::stub!("2b", server)
+    }
+
+    fn kdf_floor(&self) -> crate::crypto::KdfParams {
+        crate::crypto::KdfParams::FLOOR
+    }
+
+    fn kdf_default(&self) -> crate::crypto::KdfParams {
+        crate::crypto::KdfParams::DEFAULT
     }
 }

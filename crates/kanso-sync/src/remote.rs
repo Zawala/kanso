@@ -1,7 +1,7 @@
 //! The sync protocol: wire types, limits and the [`Remote`] trait.
 //!
 //! The Cloudflare Worker in `cloud/` and [`crate::MemoryRemote`] implement
-//! the same rules; `cloud/test/fixtures/conformance.json` holds the cases
+//! the same rules; `cloud/test/fixtures/conformance-v1.json` holds the cases
 //! both test suites run.
 
 use kanso_core::DocType;
