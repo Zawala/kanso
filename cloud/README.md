@@ -28,10 +28,12 @@ admin route: accounts are administered from the command line (below).
 ## Configuration
 
 `wrangler.jsonc` binds the D1 database `kanso-sync` (`DB`), the R2 bucket `kanso-files` (`FILES`)
-and the rate limiter `AUTH_LIMITER` (20 requests a minute per IP group, in front of `/v2/auth/*`
-and `/v2/health`). It runs the cron every 15 minutes (purges, expired rate-limit rows and
-sessions, R2 reconciliation) and keeps invocation logs off; the Worker itself logs only route
-names and error codes.
+and two rate limiters that write nothing to D1: `AUTH_LIMITER` (20 requests a minute per IP group,
+in front of `/v2/auth/*` and `/v2/health`) and `SESSION_LIMITER` (120 requests a minute per
+account, on every session route but logout). It runs the cron every 15 minutes (purges, expired
+rate-limit rows and sessions, R2 reconciliation). Workers Logs keeps only the Worker's own lines
+(route names and error codes); invocation logs and traces are pinned off. `wrangler tail` still
+shows each request's URL and metadata live to whoever runs it (see `DEPLOYED.md`).
 
 One secret is required, `AUTH_PEPPER`: 32 random bytes as base64url. It keys the fake answers
 `prelogin` gives for unknown names and the rate-limit keys of IP addresses. Without it, health and
@@ -76,8 +78,11 @@ which has every command; in outline:
    and `npm run -s admin -- legacy-export --dir ~/KansoLegacy-<date>` (the old plaintext; keep it).
 3. Set `AUTH_PEPPER`, `npm run migrate:remote` (adds `0002_accounts`, sign-ups closed), then
    `npm run deploy`. From here `/v1` answers 404.
-4. Install the new app, run `kanso-sync estimate`, then `npm run -s admin -- signups only <you>`
-   and create your account in Settings › Account. Save the recovery key. If the estimate is over a
+4. Install the new app and run `kanso-sync estimate`. Then, immediately before you create your
+   account in Settings › Account, run `npm run -s admin -- signups only <you>`: until your account
+   exists, anyone who guesses the name can take it. If the app says the name is taken, run
+   `npm run -s admin -- delete <you> --confirm <you>`, then `signups only <you>` again, and create
+   the account at once. Save the recovery key. If the estimate is over a
    default quota, raise your own account (`quota <you> …`); the daily budget of 20,000 writes
    covers a first upload of the current library several times over.
 5. Wait for "Synced", quit Kanso, and run `kanso-sync verify --legacy …/manifest.json --out
@@ -100,7 +105,7 @@ npm run -s admin -- --local accounts        # the local database (wrangler dev's
 |---|---|
 | `accounts` | Every account's usage against its quotas, writes today against its budget, bytes uploaded today, devices, last seen and status; the settings, global sums and pending purges |
 | `settings` | The settings |
-| `signups open` / `signups close` / `signups only <username>` | Open sign-ups, close them, or reserve them for one name |
+| `signups open` / `signups close` / `signups only <username>` | Open sign-ups, close them, or reserve them for one name. Run `only` immediately before that name signs up; if someone took the name first, `delete` it and run `only` again |
 | `disable <username>` / `enable <username>` | Refuse, or allow again, the account's sign-ins and sessions |
 | `delete <username> --confirm <username>` | Delete the account's rows and queue its R2 purge |
 | `max-accounts <n> [--force]` | At most n accounts |
@@ -110,7 +115,8 @@ npm run -s admin -- --local accounts        # the local database (wrangler dev's
 | `upload-bytes-per-day <n> [--force]` | Uploaded file bytes, per account per UTC day |
 | `global-writes-per-day <n> [--force]` / `global-upload-bytes-per-day <n> [--force]` | Server-wide daily caps |
 | `recount [<username>]` | Recompute the usage counters from the tables |
-| `restored [<username> \| --all]` | After a D1 Time Travel restore: a new epoch, so each Mac re-merges |
+| `restore <time \| bookmark> [--confirm <time \| bookmark>]` | The only way to restore D1: Time Travel back to a Unix time in seconds, an RFC 3339 time or a bookmark, then at once a new epoch for every account. Without `--confirm`, prints what it would run |
+| `restored [<username> \| --all]` | A new epoch, so each Mac re-merges; `restore` runs it for you |
 | `legacy-status` | The single-user tables and the `files/` purge |
 | `legacy-export --dir DIR` | `manifest.json`, `legacy.sql` and every live legacy file, into DIR |
 | `purge-legacy --account <username> --verified R.json` | Drop the single-user tables, queue the `files/` purge and delete `SYNC_TOKEN`, once `R.json` (from `kanso-sync verify --legacy`) proves everything arrived |
@@ -119,9 +125,13 @@ npm run -s admin -- --local accounts        # the local database (wrangler dev's
 (20,000) per UTC day, and upload at most `upload_bytes_per_day` (1 GiB, 1,073,741,824 bytes) of
 file bytes, refused uploads and replacements included. The server as a whole stores at most
 `global_writes_per_day` (300,000) document writes and `global_upload_bytes_per_day`
-(5,000,000,000) upload bytes a day. So fifteen accounts at their write budget, or five at their
-upload budget, use up the server's day for everyone until UTC midnight; each daily command prints
-that count. Past its budget an account's Macs show "Sync paused" and carry on after UTC midnight.
+(5,000,000,000) upload bytes a day, shared fairly: past a server-wide cap only accounts above their
+fair share (the cap ÷ `max_accounts`, 6,000 writes and 100,000,000 bytes by default) are refused,
+so fifteen accounts at their write budget, or five at their upload budget, can no longer pause
+everyone else until UTC midnight. The price is that a day's total stays under about twice each cap.
+Each daily command, and `max-accounts`, prints the fair shares and how many accounts reach each
+cap; `accounts` shows them beside today's counts. Past its budget an account's Macs show "Sync
+paused" and carry on after UTC midnight.
 A library that needs more in one day (a first upload or a re-merge of a large library) can be given
 its own budget with `quota <username> --writes-per-day N`; the owner does this for their own
 account rather than raising the default. The daily commands refuse, unless given `--force`, a

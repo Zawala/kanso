@@ -23,7 +23,7 @@ import {
 	type SignOutReason,
 	unauthorized,
 } from "./http";
-import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, ipGroup, ipKey, windowStart } from "./limits";
+import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, ipGroup, ipKey, sessionFilter, windowStart } from "./limits";
 import {
 	type Checked,
 	DAY,
@@ -35,7 +35,6 @@ import {
 	MAX_REVOKED_ROWS,
 	type NewDevice,
 	PROTOCOL_VERSION,
-	REVOKED_KEEP_MS,
 	SESSION_IDLE_MS,
 	base64url,
 	checkDevice,
@@ -124,11 +123,15 @@ export async function authenticate(request: Request, env: Env, now: number, allo
 	return { tokenHash, accountId: row.account_id, deviceId: row.device_id, username: row.username };
 }
 
-/** Wraps a session route: authenticates, then runs `handler`. */
+/**
+ * Wraps a session route: authenticates, passes SESSION_LIMITER (keyed by the
+ * account), then runs `handler`.
+ */
 export function withSession(handler: (request: Request, env: Env, now: number, session: Session) => Promise<Response>): Handler {
 	return async (request, env, now) => {
 		const session = await authenticate(request, env, now);
-		return session instanceof Response ? session : handler(request, env, now, session);
+		if (session instanceof Response) return session;
+		return (await sessionFilter(env.SESSION_LIMITER, session.accountId)) ?? handler(request, env, now, session);
 	};
 }
 
@@ -295,7 +298,7 @@ function checkSignup(body: Record<string, unknown>): Checked<SignupBody> {
 }
 
 export const signup: PepperHandler = async (request, env, now, keys) => {
-	const limited = await count(env.DB, "signup-ip", await ipKey(keys, "signup-ip", ipGroup(clientIp(request), 48)), now);
+	const limited = await count(env.DB, "signup-ip", await ipKey(keys, "signup-ip", ipGroup(clientIp(request))), now);
 	if (limited) return limited;
 	const body = await readObject(request);
 	if (!body.ok) return body.response;
@@ -426,7 +429,7 @@ const ACCOUNT_BY_NAME = `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE username 
 const ACCOUNT_BY_ID = `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE id = ?1`;
 
 export const login: PepperHandler = async (request, env, now, keys) => {
-	let limited = await count(env.DB, "login-ip", await ipKey(keys, "login-ip", ipGroup(clientIp(request), 56)), now);
+	let limited = await count(env.DB, "login-ip", await ipKey(keys, "login-ip", ipGroup(clientIp(request))), now);
 	if (limited) return limited;
 	const body = await readObject(request);
 	if (!body.ok) return body.response;
@@ -439,13 +442,15 @@ export const login: PepperHandler = async (request, env, now, keys) => {
 
 	const account = await env.DB.prepare(
 		`SELECT a.*, (SELECT s.proof_hash FROM sessions s WHERE s.account_id = a.id AND s.device_id = ?2
-     AND (s.revoked_at IS NULL OR (s.revoked_at > ?3 AND s.revoked_reason != 'revoked'))) AS device_proof_hash
+     AND s.revoked_at IS NULL) AS device_proof_hash
   FROM (${ACCOUNT_BY_NAME}) a`,
 	)
-		.bind(name.value, device.value.id, now - REVOKED_KEEP_MS)
+		.bind(name.value, device.value.id)
 		.first<AccountRow & { device_proof_hash: string | null }>();
-	// A device the account knows, proving itself, doesn't count against the name. One that
-	// another device of the account signed out (`revoked`, say a lost Mac) is a stranger again.
+	// A signed-in device, proving itself, doesn't count against the name. Once signed out, for
+	// any reason (a password change, recovery, eviction, expiry, its own sign-out or another
+	// Mac's), it is a stranger again: an old copy of its library holds the device secret, and the
+	// owner can't remove a row the device list doesn't show.
 	const known = account !== null && account.device_proof_hash !== null && (await proofMatches(device.value.proof, account.device_proof_hash));
 	if (!known) {
 		limited = await count(env.DB, "login-user", account ? accountKey("login-user", account.id) : UNKNOWN_LOGIN_KEY, now);
@@ -477,7 +482,7 @@ export const login: PepperHandler = async (request, env, now, keys) => {
 // ------------------------------------------------------------------ recovery
 
 export const recoverStart: PepperHandler = async (request, env, now, keys) => {
-	const limited = await count(env.DB, "recover-ip", await ipKey(keys, "recover-ip", ipGroup(clientIp(request), 56)), now);
+	const limited = await count(env.DB, "recover-ip", await ipKey(keys, "recover-ip", ipGroup(clientIp(request))), now);
 	if (limited) return limited;
 	const body = await readObject(request);
 	if (!body.ok) return body.response;
@@ -492,7 +497,7 @@ export const recoverStart: PepperHandler = async (request, env, now, keys) => {
 };
 
 export const recoverFinish: PepperHandler = async (request, env, now, keys) => {
-	const limited = await count(env.DB, "recover-ip", await ipKey(keys, "recover-ip", ipGroup(clientIp(request), 56)), now);
+	const limited = await count(env.DB, "recover-ip", await ipKey(keys, "recover-ip", ipGroup(clientIp(request))), now);
 	if (limited) return limited;
 	const body = await readObject(request);
 	if (!body.ok) return body.response;
@@ -638,6 +643,25 @@ async function checkCurrentPassword(
 	return { ok: true, body: body.value, account, current };
 }
 
+/**
+ * The `recovery_auth_key` and `recovery_wrapped_key` fields, which a new
+ * recovery key and a password change both carry: the new recovery hash and
+ * wrap, or the 400 that ends the request.
+ */
+async function newRecoveryKey(b: Record<string, unknown>): Promise<{ ok: true; hash: string; wrap: string } | { ok: false; response: Response }> {
+	const recoveryAuthKey = proof32(b.recovery_auth_key);
+	if (!recoveryAuthKey) return { ok: false, response: badRequest("recovery_auth_key must be 32 bytes of canonical base64url.") };
+	if (typeof b.recovery_wrapped_key !== "string" || !isWrappedKey(b.recovery_wrapped_key)) {
+		return { ok: false, response: badRequest("recovery_wrapped_key must be 98 base64url characters.") };
+	}
+	return { ok: true, hash: await sha256Hex(recoveryAuthKey), wrap: b.recovery_wrapped_key };
+}
+
+/**
+ * Changes the password and replaces the recovery key in one compare-and-swap
+ * update, so a password change always ends every older recovery key,
+ * including one planted by someone who once knew the password.
+ */
 export const password = withSession(async (request, env, now, session) => {
 	const checked = await checkCurrentPassword(request, env, now, session, "current_auth_key");
 	if (!checked.ok) return checked.response;
@@ -649,6 +673,8 @@ export const password = withSession(async (request, env, now, session) => {
 	const authKey = proof32(b.auth_key);
 	if (!authKey) return badRequest("auth_key must be 32 bytes of canonical base64url.");
 	if (typeof b.wrapped_key !== "string" || !isWrappedKey(b.wrapped_key)) return badRequest("wrapped_key must be 98 base64url characters.");
+	const recovery = await newRecoveryKey(b);
+	if (!recovery.ok) return recovery.response;
 	const authHash = await sha256Hex(authKey);
 
 	if (await proofMatches(current, account.auth_hash)) {
@@ -660,15 +686,34 @@ export const password = withSession(async (request, env, now, session) => {
   RETURNING device_id`,
 			).bind(account.id, now, session.tokenHash, account.auth_hash),
 			env.DB.prepare(
-				`UPDATE accounts SET kdf_m_kib = ?3, kdf_t = ?4, kdf_p = ?5, salt = ?6, auth_hash = ?7, wrapped_key = ?8
+				`UPDATE accounts SET kdf_m_kib = ?3, kdf_t = ?4, kdf_p = ?5, salt = ?6, auth_hash = ?7, wrapped_key = ?8,
+  recovery_hash = ?9, recovery_wrapped_key = ?10
   WHERE id = ?1 AND auth_hash = ?2 RETURNING id`,
-			).bind(account.id, account.auth_hash, kdf.value.m_kib, kdf.value.t, kdf.value.p, b.salt, authHash, b.wrapped_key),
+			).bind(
+				account.id,
+				account.auth_hash,
+				kdf.value.m_kib,
+				kdf.value.t,
+				kdf.value.p,
+				b.salt,
+				authHash,
+				b.wrapped_key,
+				recovery.hash,
+				recovery.wrap,
+			),
 		]);
 		if (results[1].results.length === 1) return json({ signed_out_devices: results[0].results.length });
 		account = (await env.DB.prepare(ACCOUNT_BY_ID).bind(session.accountId).first<AccountRow>()) ?? account;
 	}
-	// A retry after a lost answer: the new key and wrap are already stored.
-	if (account.auth_hash === authHash && account.wrapped_key === b.wrapped_key) return json({ signed_out_devices: 0 });
+	// A retry after a lost answer: the new password material and recovery key are already stored.
+	if (
+		account.auth_hash === authHash &&
+		account.wrapped_key === b.wrapped_key &&
+		account.recovery_hash === recovery.hash &&
+		account.recovery_wrapped_key === recovery.wrap
+	) {
+		return json({ signed_out_devices: 0 });
+	}
 	return invalidCredentials();
 });
 
@@ -676,17 +721,14 @@ export const recoveryKey = withSession(async (request, env, now, session) => {
 	const checked = await checkCurrentPassword(request, env, now, session, "current_auth_key");
 	if (!checked.ok) return checked.response;
 	const { body: b, account, current } = checked;
-	const recoveryAuthKey = proof32(b.recovery_auth_key);
-	if (!recoveryAuthKey) return badRequest("recovery_auth_key must be 32 bytes of canonical base64url.");
-	if (typeof b.recovery_wrapped_key !== "string" || !isWrappedKey(b.recovery_wrapped_key)) {
-		return badRequest("recovery_wrapped_key must be 98 base64url characters.");
-	}
+	const recovery = await newRecoveryKey(b);
+	if (!recovery.ok) return recovery.response;
 	if (!(await proofMatches(current, account.auth_hash))) return invalidCredentials();
 	// Setting the same values again (a retry) changes the row just the same.
 	const updated = await env.DB.prepare(
 		"UPDATE accounts SET recovery_hash = ?3, recovery_wrapped_key = ?4 WHERE id = ?1 AND auth_hash = ?2 RETURNING id",
 	)
-		.bind(account.id, account.auth_hash, await sha256Hex(recoveryAuthKey), b.recovery_wrapped_key)
+		.bind(account.id, account.auth_hash, recovery.hash, recovery.wrap)
 		.first();
 	return updated ? json({}) : invalidCredentials();
 });
@@ -761,7 +803,12 @@ export const devices = withSession(async (_request, env, _now, session) => {
 	});
 });
 
-/** Signs out one of the account's devices; the current one is a logout. Scoped to the caller's account. */
+/**
+ * Signs out one of the account's devices; the current one is a logout.
+ * Scoped to the caller's account. A row already signed out, for any reason,
+ * is marked `revoked` too (keeping its time), so the owner can always say
+ * "that Mac is gone"; 404 only for a device the account has no row for.
+ */
 export function revokeDevice(deviceId: string): Handler {
 	return withSession(async (_request, env, now, session) => {
 		if (!isDeviceId(deviceId)) return badRequest("Not a device ID.");
@@ -770,8 +817,8 @@ export function revokeDevice(deviceId: string): Handler {
 			return new Response(null, { status: 204 });
 		}
 		const revoked = await env.DB.prepare(
-			`UPDATE sessions SET revoked_at = ?3, revoked_reason = 'revoked'
-  WHERE account_id = ?1 AND device_id = ?2 AND revoked_at IS NULL RETURNING device_id`,
+			`UPDATE sessions SET revoked_at = coalesce(revoked_at, ?3), revoked_reason = 'revoked'
+  WHERE account_id = ?1 AND device_id = ?2 RETURNING device_id`,
 		)
 			.bind(session.accountId, deviceId, now)
 			.first();

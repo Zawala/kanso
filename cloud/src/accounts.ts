@@ -1,7 +1,8 @@
 // The admin commands (docs/ACCOUNTS.md › Admin script), planned here and run
 // by scripts/admin.ts through `wrangler d1 execute` (plus `wrangler d1
-// export`, `wrangler r2 object get` and `wrangler secret delete` where a
-// command needs them). There is no admin HTTP route.
+// export`, `wrangler r2 object get`, `wrangler secret delete` and `wrangler d1
+// time-travel restore` where a command needs them). There is no admin HTTP
+// route.
 //
 // `wrangler d1 execute` takes SQL text but no bound parameters, so every
 // value is validated before it reaches SQL and quoted when it does. Commands
@@ -23,6 +24,10 @@ export const USAGE = `Usage: npm run -s admin -- [--local [--persist-to DIR]] <c
                                     Delete the account's rows and queue its R2 purge.
   signups open | close | only <username>
                                     Open sign-ups, close them, or reserve them for one name.
+                                    Run only immediately before that name signs up: anyone
+                                    who guesses the name can take it first. If someone did,
+                                    delete <username> --confirm <username>, run only again,
+                                    and sign up at once.
   max-accounts <n> [--force]        At most n accounts.
   quota <username> [--docs N] [--doc-mib N] [--files N] [--file-mib N] [--writes-per-day N]
         [--force]
@@ -39,7 +44,12 @@ export const USAGE = `Usage: npm run -s admin -- [--local [--persist-to DIR]] <c
   global-upload-bytes-per-day <n> [--force]
                                     Uploaded file bytes per UTC day, all accounts together.
   recount [<username>]              Recompute usage counters from the tables.
-  restored [<username> | --all]     After a Time Travel restore: a new epoch, so Macs re-merge.
+  restore <time | bookmark> [--confirm <time | bookmark>]
+                                    The only way to restore D1: Time Travel back to a Unix time
+                                    in seconds, an RFC 3339 time or a bookmark, then at once a
+                                    new epoch for every account (restored --all). Without
+                                    --confirm, prints what it would run. Deployed database only.
+  restored [<username> | --all]     A new epoch, so Macs re-merge; restore runs it for you.
   legacy-status                     The single-user tables and the files/ purge.
   legacy-export --dir DIR           manifest.json, legacy.sql and every live legacy file.
   purge-legacy --account <username> --verified R.json
@@ -49,7 +59,9 @@ export const USAGE = `Usage: npm run -s admin -- [--local [--persist-to DIR]] <c
 Runs against the deployed database unless --local is given. max-accounts, quota and
 default-quota refuse a change that would overcommit a global cap unless --force is given, and
 the daily commands (and quota --writes-per-day) refuse one that would let a single account's
-daily budget exceed the server-wide one.`;
+daily budget exceed the server-wide one. The server-wide daily caps are shared fairly: an
+account within its fair share (the cap ÷ max_accounts) is never refused by them, so a day's
+total stays under about twice each cap; the daily commands and max-accounts print the shares.`;
 
 export class UsageError extends Error {}
 
@@ -73,7 +85,27 @@ export interface AdminIO {
 	readFile(file: string): Promise<string>;
 	/** `wrangler secret delete <name>`, with stdin attached so wrangler can ask. */
 	deleteSecret(name: string): Promise<void>;
+	/**
+	 * `wrangler <restoreArgs(target)>`: D1 Time Travel on the deployed database.
+	 * Answers the bookmark restored and the one before it (to undo).
+	 */
+	timeTravelRestore(target: RestoreTarget): Promise<{ bookmark: string; previousBookmark: string }>;
 }
+
+/** The deployed D1 database's name, as wrangler.jsonc gives it. */
+export const D1_DATABASE = "kanso-sync";
+
+/** A point to restore D1 to: a Unix time in seconds or an RFC 3339 time (`timestamp`), or a bookmark. */
+export interface RestoreTarget {
+	kind: "timestamp" | "bookmark";
+	value: string;
+}
+
+/** wrangler's arguments for the restore; `--json` skips its prompt and answers the bookmarks. */
+export const restoreArgs = (target: RestoreTarget): string[] => ["d1", "time-travel", "restore", D1_DATABASE, `--${target.kind}=${target.value}`, "--json"];
+
+/** New epochs, so each Mac re-merges: every account's (`restored --all`, and `restore`'s second step), or those `where` picks. */
+const newEpochs = (where = ""): string => `UPDATE accounts SET epoch = lower(hex(randomblob(8)))${where} RETURNING username`;
 
 export interface Report {
 	ok: boolean;
@@ -231,6 +263,8 @@ function overcommitRefusal(after: Capacity, force: boolean): Report | null {
 
 /** The per-account and server-wide daily budgets, as the settings and overrides hold them. */
 export interface DailyCaps {
+	/** The fair share of a server-wide cap is the cap ÷ max_accounts. */
+	maxAccounts: number;
 	writesPerDay: number;
 	uploadBytesPerDay: number;
 	globalWritesPerDay: number;
@@ -259,21 +293,36 @@ export function dailyOvercommitted(c: DailyCaps): string[] {
 	return problems;
 }
 
-/** How many accounts spending their whole default budget use up the server's day, in words. */
+/** A server-wide cap's fair share per account: cap ÷ max_accounts, rounded down, as the triggers compute it; 0 without accounts. */
+export function fairShare(global: number, maxAccounts: number): number {
+	return maxAccounts > 0 ? Math.floor(global / maxAccounts) : 0;
+}
+
+/**
+ * The daily arithmetic, in words: each server-wide cap's fair share per
+ * account (an account at or below it is never refused by that cap), how many
+ * accounts at their whole default budget reach the cap (after which only
+ * accounts above their fair share wait for UTC midnight), and the day's
+ * bound of about twice the cap.
+ */
 export function dailyShares(c: DailyCaps): string {
-	const share = (perAccount: number, global: number, what: string, globalName: string) => {
-		if (perAccount <= 0) return "";
-		const n = Math.ceil(global / perAccount);
-		return ` ${n === 1 ? "1 account using its" : `${n} accounts using their`} whole ${what} (${perAccount}) use${n === 1 ? "s" : ""} up ${globalName} (${global}) for everyone until UTC midnight.`;
+	const share = (perAccount: number, global: number, what: string, globalName: string, unit: string) => {
+		const fair = fairShare(global, c.maxAccounts);
+		let reach = "";
+		if (perAccount > 0) {
+			const n = Math.ceil(global / perAccount);
+			reach = ` ${n === 1 ? "1 account using its" : `${n} accounts using their`} whole ${what} (${perAccount}) reach${n === 1 ? "es" : ""} it, after which only accounts above their fair share wait for UTC midnight.`;
+		}
+		return ` ${globalName} (${global}) ÷ max_accounts (${c.maxAccounts}): a fair share of ${fair} ${unit} per account, which it never refuses.${reach} A day's total stays under about ${2 * global}.`;
 	};
 	return (
-		share(c.writesPerDay, c.globalWritesPerDay, "writes_per_day", "global_writes_per_day") +
-		share(c.uploadBytesPerDay, c.globalUploadBytesPerDay, "upload_bytes_per_day", "global_upload_bytes_per_day")
+		share(c.writesPerDay, c.globalWritesPerDay, "writes_per_day", "global_writes_per_day", "writes") +
+		share(c.uploadBytesPerDay, c.globalUploadBytesPerDay, "upload_bytes_per_day", "global_upload_bytes_per_day", "bytes")
 	);
 }
 
 const DAILY_SQL = [
-	"SELECT name, value FROM settings WHERE name IN ('writes_per_day', 'upload_bytes_per_day', 'global_writes_per_day', 'global_upload_bytes_per_day')",
+	"SELECT name, value FROM settings WHERE name IN ('max_accounts', 'writes_per_day', 'upload_bytes_per_day', 'global_writes_per_day', 'global_upload_bytes_per_day')",
 	"SELECT username, quota_writes_per_day FROM accounts WHERE quota_writes_per_day IS NOT NULL ORDER BY username",
 ];
 
@@ -283,6 +332,7 @@ async function dailyCaps(io: AdminIO): Promise<DailyCaps> {
 	// A missing setting reads as 0, as the Worker reads it (it then refuses).
 	const n = (name: string) => settings.get(name) ?? 0;
 	return {
+		maxAccounts: n("max_accounts"),
 		writesPerDay: n("writes_per_day"),
 		uploadBytesPerDay: n("upload_bytes_per_day"),
 		globalWritesPerDay: n("global_writes_per_day"),
@@ -493,8 +543,10 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 					`SELECT id FROM accounts WHERE username = ${sqlText(user)}`,
 				]);
 				return existing.results.length > 0
-					? ok(`Sign-ups are reserved for ${user}, but ${user} already has an account: the reservation is spent. Run \`signups close\` or \`signups open\`.`)
-					: ok(`Sign-ups are reserved for ${user} until that account exists.`);
+					? ok(
+							`Sign-ups are reserved for ${user}, but ${user} already has an account: the reservation is spent. Run \`signups close\` or \`signups open\`. If that account isn't the one you meant to create, someone took the name first: run \`delete ${user} --confirm ${user}\`, then \`signups only ${user}\` again, and sign up at once.`,
+						)
+					: ok(`Sign-ups are reserved for ${user} until that account exists. Sign up now: anyone who guesses the name can take it first.`);
 			}
 			throw new UsageError(USAGE);
 		}
@@ -505,8 +557,10 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 			const { capacity: before } = await capacity(io);
 			const refusal = overcommitRefusal({ ...before, maxAccounts: n }, flags.has("--force"));
 			if (refusal) return refusal;
+			// The fair shares of the server-wide daily caps follow max_accounts.
+			const daily = { ...(await dailyCaps(io)), maxAccounts: n };
 			await io.sql([`UPDATE settings SET value = ${sqlText(String(n))} WHERE name = 'max_accounts'`]);
-			return ok(`max_accounts = ${n}.`);
+			return ok(`max_accounts = ${n}.${dailyShares(daily)}`);
 		}
 		case "quota": {
 			const { positional, flags } = parse(rest, ["--default", "--force"], ACCOUNT_QUOTA_FLAGS);
@@ -557,13 +611,15 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 		}
 		case "recount":
 			return recount(rest, io, now);
+		case "restore":
+			return restore(rest, io, now);
 		case "restored": {
 			const { positional, flags } = parse(rest, ["--all"], []);
 			arity(positional, 0, 1);
 			const all = flags.has("--all");
 			if (all === (positional.length === 1)) throw new UsageError("Name one account, or give --all.");
 			const where = all ? "" : ` WHERE username = ${sqlText(username(positional[0]))}`;
-			const [result] = await io.sql([`UPDATE accounts SET epoch = lower(hex(randomblob(8)))${where} RETURNING username`]);
+			const [result] = await io.sql([newEpochs(where)]);
 			if (result.results.length === 0) return refused(all ? "There are no accounts." : `No account is named ${positional[0]}.`);
 			return ok(`New epoch for ${result.results.map((r) => String(r.username)).join(", ")}: each Mac re-merges on its next sync.`);
 		}
@@ -588,6 +644,81 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 		default:
 			throw new UsageError(USAGE);
 	}
+}
+
+// ------------------------------------------------------------------ restore
+
+/** RFC 3339 with a zone, to the minute, second or fraction (what wrangler accepts). */
+const RFC3339 = /^\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?(?:Z|[+-][0-2]\d:[0-5]\d)$/;
+/** A D1 bookmark as `wrangler d1 time-travel info` prints it: 8-8-8-32 lowercase hex digits. */
+const BOOKMARK = /^[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{32}$/;
+
+function restoreTarget(value: string, now: number): RestoreTarget {
+	if (BOOKMARK.test(value)) return { kind: "bookmark", value };
+	const ms = /^[0-9]{10}$/.test(value) ? Number(value) * 1000 : RFC3339.test(value) ? Date.parse(value) : Number.NaN;
+	if (!Number.isFinite(ms)) {
+		throw new UsageError(
+			`"${value}" is not a restore point: give a Unix time in seconds, an RFC 3339 time such as 2026-10-17T08:00:00Z, or a bookmark from \`npx wrangler d1 time-travel info ${D1_DATABASE}\`.`,
+		);
+	}
+	if (ms > now) throw new UsageError(`${value} is in the future.`);
+	if (ms < now - 30 * DAY) throw new UsageError(`${value} is more than 30 days ago, past what D1 Time Travel keeps.`);
+	return { kind: "timestamp", value };
+}
+
+const RESTORE_EFFECTS = `Everything in D1 goes back to that point, sessions, passwords and recovery keys included:
+accounts and devices added since are gone (their Macs must create the account or sign in
+again), and every sign-out, deletion and password or recovery key change since is undone. So
+revoke again any device revoked since, and anyone who changed a password or recovery key since
+must change it again. R2 isn't restored: the cron drops rows whose file is gone and deletes
+files that have no row.`;
+
+/**
+ * `restore <time | bookmark>`: the only way to restore D1 (docs/ACCOUNTS.md ›
+ * Rollback). A restore alone would leave each Mac trusting its cursor against
+ * an older feed, so the epoch rotation of `restored --all` follows at once.
+ * Without `--confirm` it only prints what it would run.
+ */
+async function restore(rest: string[], io: AdminIO, now: number): Promise<Report> {
+	const { positional, flags } = parse(rest, [], ["--confirm"]);
+	arity(positional, 1, 1);
+	if (io.local) throw new UsageError("restore works on the deployed database only: D1 Time Travel keeps no local history.");
+	const target = restoreTarget(positional[0], now);
+	const confirm = flag(flags, "--confirm");
+	if (confirm === undefined) {
+		return ok(
+			[
+				`Dry run: nothing changed. With --confirm ${target.value}, this runs against the deployed database:`,
+				`  1. npx wrangler ${restoreArgs(target).join(" ")}`,
+				`  2. at once, as restored --all: ${newEpochs()}`,
+				RESTORE_EFFECTS,
+			].join("\n"),
+		);
+	}
+	if (confirm !== target.value) throw new UsageError(`Repeat the restore point to confirm: restore ${target.value} --confirm ${target.value}`);
+	const restored = await io.timeTravelRestore(target);
+	const undo = `To undo the restore: npm run -s admin -- restore ${restored.previousBookmark} --confirm ${restored.previousBookmark}`;
+	let rotated: StatementResult;
+	try {
+		[rotated] = await io.sql([newEpochs()]);
+	} catch (err) {
+		return refused(
+			[
+				`Restored ${D1_DATABASE} to bookmark ${restored.bookmark}, but the new epochs failed (${(err as Error).message}).`,
+				"Run `npm run -s admin -- restored --all` now, before any Mac syncs.",
+				undo,
+			].join("\n"),
+		);
+	}
+	const names = rotated.results.map((r) => String(r.username));
+	return ok(
+		[
+			`Restored ${D1_DATABASE} to bookmark ${restored.bookmark}.`,
+			names.length > 0 ? `New epoch for ${names.join(", ")}: each Mac re-merges on its next sync.` : "There are no accounts at that point.",
+			undo,
+			RESTORE_EFFECTS,
+		].join("\n"),
+	);
 }
 
 async function accounts(rest: string[], io: AdminIO, now: number): Promise<Report> {
@@ -626,6 +757,9 @@ async function accounts(rest: string[], io: AdminIO, now: number): Promise<Repor
 	const setting = new Map(settings.results.map((r) => [String(r.name), String(r.value)]));
 	const day = Math.floor(now / DAY);
 	const dailyText = daily.results.map((r) => `${r.name} ${Number(r.day) >= day ? r.count : 0}`).join(", ");
+	const max = Number(setting.get("max_accounts") ?? 0);
+	const fairWrites = fairShare(Number(setting.get("global_writes_per_day") ?? 0), max);
+	const fairUploads = fairShare(Number(setting.get("global_upload_bytes_per_day") ?? 0), max);
 	return ok(
 		[
 			accountRows.length > 0
@@ -638,7 +772,7 @@ async function accounts(rest: string[], io: AdminIO, now: number): Promise<Repor
 			table([["SETTING", "VALUE"], ...settings.results.map((r) => [String(r.name), String(r.value)])]),
 			"",
 			`Accounts: ${s.accounts} of ${setting.get("max_accounts")}. Documents: ${size(s.doc_bytes)} of ${size(Number(setting.get("global_doc_bytes")))}. Files: ${size(s.file_bytes)} of ${size(Number(setting.get("global_file_bytes")))}.`,
-			`Today (UTC): ${dailyText}.`,
+			`Today (UTC): ${dailyText}. Past a server-wide cap, accounts within their fair share (${fairWrites} writes, ${fairUploads} upload bytes) carry on.`,
 			purges.results.length > 0
 				? `Pending purges: ${purges.results.map((p) => `${p.prefix} (since ${time(p.requested_at)})`).join(", ")}.`
 				: "No pending purges.",
@@ -657,7 +791,7 @@ async function recount(rest: string[], io: AdminIO, now: number): Promise<Report
 		`SELECT ${columns} FROM accounts${where} ORDER BY username`,
 		`UPDATE accounts SET
   docs = (SELECT count(*) FROM account_docs d WHERE d.account_id = accounts.id AND d.deleted = 0),
-  doc_bytes = (SELECT coalesce(sum(length(d.sealed) + ${ROW_COST}), 0) FROM account_docs d WHERE d.account_id = accounts.id),
+  doc_bytes = (SELECT coalesce(sum(octet_length(d.sealed) + ${ROW_COST}), 0) FROM account_docs d WHERE d.account_id = accounts.id),
   files = (SELECT count(*) FROM account_files f WHERE f.account_id = accounts.id),
   file_bytes = (SELECT coalesce(sum(f.size + ${FILE_COST}), 0) FROM account_files f WHERE f.account_id = accounts.id),
   recounted_at = max(${now}, coalesce(recounted_at, 0) + 1)${where}

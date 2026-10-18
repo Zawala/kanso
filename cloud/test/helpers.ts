@@ -3,7 +3,7 @@
 // commands run against the test database.
 
 import { env } from "cloudflare:workers";
-import { type AdminIO, type Report, type StatementResult, admin } from "../src/accounts";
+import { type AdminIO, type Report, type RestoreTarget, type StatementResult, admin } from "../src/accounts";
 import { hashToken, sha256Hex } from "../src/crypto";
 import { type Env, handle } from "../src/index";
 import { base64url, fromBase64url } from "../src/protocol";
@@ -32,7 +32,7 @@ export const SEEDED_SETTINGS: Record<string, string> = {
 /** The test clock every helper uses unless told otherwise. */
 export const clock = { now: START };
 
-/** The Worker's bindings without AUTH_LIMITER, as the fixtures run. */
+/** The Worker's bindings without AUTH_LIMITER and SESSION_LIMITER, as the fixtures run. */
 export function testEnv(overrides: Partial<Env> = {}): Env {
 	return { DB: env.DB, FILES: env.FILES, AUTH_PEPPER: env.AUTH_PEPPER, ...overrides };
 }
@@ -127,6 +127,23 @@ export function signupBody(c: Creds, d: Device) {
 		recovery_wrapped_key: c.recoveryWrappedKey,
 		key_id: c.keyId,
 		device: { id: d.id, sealed_name: d.sealedName, proof: d.proof },
+	};
+}
+
+/**
+ * A password change from `currentAuthKey` to `next`'s salt, auth key and
+ * wrap, with `next`'s recovery key as the new one (a password change always
+ * replaces the recovery key).
+ */
+export function passwordBody(currentAuthKey: string, next: Creds) {
+	return {
+		current_auth_key: currentAuthKey,
+		kdf: KDF,
+		salt: next.salt,
+		auth_key: next.authKey,
+		wrapped_key: next.wrappedKey,
+		recovery_auth_key: next.recoveryAuthKey,
+		recovery_wrapped_key: next.recoveryWrappedKey,
 	};
 }
 
@@ -262,16 +279,24 @@ export { hashToken, base64url, fromBase64url };
 
 // --------------------------------------------------------------------- admin
 
-/** An AdminIO over a test database, with files and deleted secrets kept in memory. */
-export function testIO(options: { db?: D1Database; local?: boolean } = {}) {
+/**
+ * An AdminIO over a test database, with files and deleted secrets kept in
+ * memory. A Time Travel restore is only recorded, never run: it answers
+ * `restoreAnswer`, or throws it if it is an Error.
+ */
+export function testIO(options: { db?: D1Database; local?: boolean; restoreAnswer?: { bookmark: string; previousBookmark: string } | Error } = {}) {
 	const db = options.db ?? env.DB;
 	const files = new Map<string, string | Uint8Array>();
 	const dirs: string[] = [];
 	const secretsDeleted: string[] = [];
 	const exports: { tables: string[]; file: string }[] = [];
+	const restores: RestoreTarget[] = [];
+	/** Every call that reaches the outside world, in order. */
+	const calls: string[] = [];
 	const io: AdminIO = {
 		local: options.local ?? true,
 		async sql(statements: string[]): Promise<StatementResult[]> {
+			calls.push(`sql ${statements.join("; ")}`);
 			const results = await db.batch(statements.map((sql) => db.prepare(sql)));
 			return results.map((r) => ({ results: r.results as Record<string, unknown>[] }));
 		},
@@ -300,8 +325,15 @@ export function testIO(options: { db?: D1Database; local?: boolean } = {}) {
 		async deleteSecret(name) {
 			secretsDeleted.push(name);
 		},
+		async timeTravelRestore(target) {
+			calls.push(`restore ${target.kind}=${target.value}`);
+			restores.push(target);
+			const answer = options.restoreAnswer ?? { bookmark: "00000001-00000002-00000003-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", previousBookmark: "00000001-00000002-00000003-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" };
+			if (answer instanceof Error) throw answer;
+			return answer;
+		},
 	};
-	return { io, files, dirs, secretsDeleted, exports };
+	return { io, files, dirs, secretsDeleted, exports, restores, calls };
 }
 
 /** An admin command against the test database. */

@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { setQuota } from "../src/accounts";
 import { sha256Hex } from "../src/crypto";
 import { handle } from "../src/index";
-import { MAX_SEALED_FILE } from "../src/protocol";
+import { MAX_PUSH_BODY, MAX_SEALED_FILE } from "../src/protocol";
 import {
 	type Account,
 	type Client,
@@ -17,6 +17,7 @@ import {
 	SEEDED_SETTINGS,
 	START,
 	accountRow,
+	call,
 	client,
 	recomputed,
 	resetServer,
@@ -382,6 +383,23 @@ describe("examples", () => {
 		expect((await b.account()).body.quota.writes_per_day).toBe(2);
 	});
 
+	it("a push refused as malformed or too large counts one write, so failed pushes aren't free", async () => {
+		await setSetting("writes_per_day", "3");
+		const raw = (body: string) => call("/v2/push", { token: a.token, headers: { "content-type": "application/json" }, body });
+		expect((await alice.push([{ ...doc(), id: "note:short" }])).status).toBe(400);
+		expect((await raw("{")).status).toBe(400);
+		expect((await raw("x".repeat(MAX_PUSH_BODY + 1))).status).toBe(413);
+		expect((await alice.account()).body.usage.writes_today).toBe(3);
+		// The day's budget is spent: a good push is refused, and so is a bad one, with 429.
+		expect((await alice.push([doc()])).body).toMatchObject({ error: "rate_limited", limit: "writes-account" });
+		expect((await raw("{")).status).toBe(429);
+		// An empty push still counts nothing.
+		await setSetting("writes_per_day", "20000");
+		const before = (await alice.account()).body.usage.writes_today;
+		expect((await alice.push([])).status).toBe(200);
+		expect((await alice.account()).body.usage.writes_today).toBe(before);
+	});
+
 	it("the writes-account rule counts documents and uploads per account per UTC day", async () => {
 		await setSetting("writes_per_day", "5");
 		const b = client((await signUp("bob")).token);
@@ -392,6 +410,273 @@ describe("examples", () => {
 		expect((await alice.putFile(wireId("file"), bytes(41))).body.limit).toBe("writes-account");
 		expect((await b.push([doc(), doc(), doc(), doc(), doc()])).status).toBe(200);
 		expect((await alice.account()).body.usage.writes_today).toBe(7);
+	});
+});
+
+describe("fair shares of the server-wide daily caps", () => {
+	const doc = () => ({ id: wireId(), rev: wireRev(), deleted: false, sealed: sealed(64), base_rev: null as string | null });
+	const docs = (n: number) => Array.from({ length: n }, doc);
+
+	// Security review 2, finding 3: the global caps were first come, first served.
+	it("five accounts at their per-account limits cannot pause a sixth, light account", async () => {
+		// Fair shares: 100 / 10 = 10 writes and 1000 / 10 = 100 upload bytes per account.
+		await resetServer({
+			signup: "open",
+			max_accounts: "10",
+			signups_per_day: "10",
+			writes_per_day: "30",
+			global_writes_per_day: "100",
+			upload_bytes_per_day: "200",
+			global_upload_bytes_per_day: "1000",
+		});
+		const now = START + 9 * 3_600_000;
+		const heavy: Client[] = [];
+		for (const name of ["h1", "h2", "h3", "h4", "h5"]) heavy.push(client((await signUp(`heavy${name}`)).token, { now }));
+		const light = client((await signUp("light")).token, { now });
+		// Five accounts write 20 documents and upload 200 bytes each: the server's day is used up.
+		for (const h of heavy) {
+			expect((await h.push(docs(20))).status).toBe(200);
+			expect((await h.putFile(wireId("file"), bytes(200))).status).toBe(200);
+		}
+		expect(await env.DB.prepare("SELECT name, count FROM daily WHERE name != 'signups' ORDER BY name").all()).toMatchObject({
+			results: [
+				{ name: "upload_bytes", count: 1000 },
+				{ name: "writes", count: 100 },
+			],
+		});
+		// They are refused now, by the server-wide caps (they are within their own budgets).
+		expect((await heavy[0].push(docs(1))).body).toMatchObject({ error: "rate_limited", limit: "writes-global", retry_after: 15 * 3600 });
+		await setSetting("upload_bytes_per_day", "1000");
+		expect((await heavy[1].putFile(wireId("file"), bytes(41))).body).toMatchObject({ error: "rate_limited", limit: "uploads-global" });
+		// The light account isn't paused: up to its fair share (10 writes, two of them uploads, and
+		// 100 bytes), everything passes.
+		expect((await light.push(docs(8))).status).toBe(200);
+		expect((await light.putFile(wireId("file"), bytes(59))).status).toBe(200);
+		expect((await light.putFile(wireId("file"), bytes(41))).status).toBe(200);
+		// Past its fair share (11 writes; then 141 bytes), it waits too.
+		expect((await light.push(docs(1))).body).toMatchObject({ error: "rate_limited", limit: "writes-global" });
+		await setSetting("writes_per_day", "1000");
+		expect((await light.putFile(wireId("file"), bytes(41))).body).toMatchObject({ error: "rate_limited", limit: "uploads-global" });
+		// The next UTC day starts afresh for everyone.
+		const tomorrow = START + 86_400_000;
+		expect((await client(heavy[0].token, { now: tomorrow }).push(docs(20))).status).toBe(200);
+	});
+
+	it("fails closed: no writes-account or uploads-account row for today, or max_accounts 0, counts as over the fair share", async () => {
+		await resetServer({ signup: "open", global_writes_per_day: "1", global_upload_bytes_per_day: "100", max_accounts: "1" });
+		const a = await signUp("alice");
+		const day = START / 86_400_000;
+		await env.DB.prepare("UPDATE daily SET day = ?1, count = 1000 WHERE name != 'signups'").bind(day).run();
+		const insertDoc = (t: number) =>
+			env.DB.prepare("INSERT INTO account_docs (account_id, id, rev, seq, deleted, sealed, updated_at) VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6)")
+				.bind(a.creds.accountId, wireId(), wireRev(), t, sealed(60), START + t)
+				.run();
+		const insertFile = (t: number) =>
+			env.DB.prepare("INSERT INTO account_files (account_id, id, size, uploaded_at) VALUES (?1, ?2, 41, ?3)").bind(a.creds.accountId, wireId("file"), START + t).run();
+		const count = (rule: string, n: number, start = START) =>
+			env.DB.prepare("INSERT OR REPLACE INTO limits (key, window_start, count) VALUES (?1, ?2, ?3)").bind(`${rule}:${a.creds.accountId}`, start, n).run();
+		// With the cap reached and no row for today: refused.
+		await expect(insertDoc(1)).rejects.toThrow(/rate_limited:writes-global/);
+		await expect(insertFile(1)).rejects.toThrow(/rate_limited:uploads-global/);
+		// A row from yesterday proves nothing about today.
+		await count("writes-account", 0, START - 86_400_000);
+		await count("uploads-account", 0, START - 86_400_000);
+		await expect(insertDoc(2)).rejects.toThrow(/rate_limited:writes-global/);
+		await expect(insertFile(2)).rejects.toThrow(/rate_limited:uploads-global/);
+		// Today's rows at the fair share (1 / 1 and 100 / 1): allowed.
+		await count("writes-account", 1);
+		await count("uploads-account", 100);
+		await insertDoc(3);
+		await insertFile(3);
+		// max_accounts 0 leaves no fair share at all.
+		await setSetting("max_accounts", "0");
+		await expect(insertDoc(4)).rejects.toThrow(/rate_limited:writes-global/);
+		await expect(insertFile(4)).rejects.toThrow(/rate_limited:uploads-global/);
+	});
+
+	// Model-based: accounts push and upload in any order against small
+	// server-wide caps. Every answer is the model's: refused by a server-wide
+	// cap exactly when the day's count is at the cap and the account's own
+	// count today (this request included) is above cap / max_accounts. So an
+	// account at or below its fair share is never refused, and a day's total
+	// stays within twice the cap.
+	it("prop_an_account_at_or_below_its_fair_share_is_never_refused_by_a_server_wide_cap", async () => {
+		const genOp = fc.oneof(
+			{ weight: 3, arbitrary: fc.record({ kind: fc.constant("push" as const), who: fc.integer({ min: 0, max: 3 }), n: fc.integer({ min: 1, max: 6 }) }) },
+			{ weight: 2, arbitrary: fc.record({ kind: fc.constant("upload" as const), who: fc.integer({ min: 0, max: 3 }), size: fc.integer({ min: 41, max: 160 }) }) },
+		);
+		// Across all runs, both sides of the rule must come up.
+		const seen = { lightPastTheCap: 0, refused: 0 };
+		await fc.assert(
+			fc.asyncProperty(
+				fc.integer({ min: 4, max: 6 }),
+				fc.integer({ min: 4, max: 30 }),
+				fc.integer({ min: 100, max: 600 }),
+				fc.array(genOp, { minLength: 1, maxLength: 30 }),
+				async (maxAccounts, globalWrites, globalUploads, ops) => {
+					await resetServer({
+						signup: "open",
+						max_accounts: String(maxAccounts),
+						global_writes_per_day: String(globalWrites),
+						global_upload_bytes_per_day: String(globalUploads),
+					});
+					const clients: Client[] = [];
+					for (const name of ["ann", "ben", "cat", "dan"]) clients.push(client((await signUp(name)).token));
+					const own = clients.map(() => ({ writes: 0, uploads: 0 }));
+					let writes = 0;
+					let uploads = 0;
+					let t = START;
+					for (const op of ops) {
+						// Distinct timestamps through one UTC day.
+						t += 60_000;
+						const c = client(clients[op.who].token, { now: t });
+						const mine = own[op.who];
+						const label = JSON.stringify(op);
+						if (op.kind === "push") {
+							mine.writes += op.n;
+							const light = mine.writes * maxAccounts <= globalWrites;
+							const refused = !light && writes + op.n > globalWrites;
+							if (light && writes + op.n > globalWrites) seen.lightPastTheCap += 1;
+							if (refused) seen.refused += 1;
+							const r = await c.push(docs(op.n));
+							if (refused) {
+								expect(r.body, label).toMatchObject({ error: "rate_limited", limit: "writes-global" });
+							} else {
+								expect(r.status, `${label}: ${JSON.stringify(r.body)}`).toBe(200);
+								writes += op.n;
+							}
+						} else {
+							mine.writes += 1;
+							mine.uploads += op.size;
+							const light = mine.uploads * maxAccounts <= globalUploads;
+							const refused = !light && uploads + op.size > globalUploads;
+							if (light && uploads + op.size > globalUploads) seen.lightPastTheCap += 1;
+							if (refused) seen.refused += 1;
+							const r = await c.putFile(wireId("file"), bytes(op.size));
+							if (refused) {
+								expect(r.body, label).toMatchObject({ error: "rate_limited", limit: "uploads-global" });
+							} else {
+								expect(r.status, `${label}: ${JSON.stringify(r.body)}`).toBe(200);
+								uploads += op.size;
+							}
+						}
+					}
+					const daily = await env.DB.prepare("SELECT name, count FROM daily").all<{ name: string; count: number }>();
+					const counted = Object.fromEntries(daily.results.map((r) => [r.name, r.count]));
+					expect(counted.writes).toBe(writes);
+					expect(counted.upload_bytes).toBe(uploads);
+					// About twice the cap at most: the cap, plus every account's fair share, plus the request that crossed it.
+					expect(writes).toBeLessThanOrEqual(2 * globalWrites + 6);
+					expect(uploads).toBeLessThanOrEqual(2 * globalUploads + 160);
+				},
+			),
+			runs(40),
+		);
+		if (Number(env.FAST_CHECK_RUNS) >= 20) {
+			expect(seen.lightPastTheCap).toBeGreaterThan(0);
+			expect(seen.refused).toBeGreaterThan(0);
+		}
+	});
+});
+
+// Security review 2, finding 8: every earlier daily-cap test sent its requests
+// with one timestamp per day, which can't tell a counter keyed by the UTC day
+// from one keyed by the millisecond. These use distinct times through one day,
+// and the last and first milliseconds around midnight.
+describe("the UTC day rollover of the server-wide daily caps", () => {
+	const DAY = 86_400_000;
+	const HOUR = 3_600_000;
+	/** A UTC midnight three days after the fixtures' start. */
+	const DAY0 = START + 3 * DAY;
+	const doc = () => ({ id: wireId(), rev: wireRev(), deleted: false, sealed: sealed(64), base_rev: null as string | null });
+	const docs = (n: number) => Array.from({ length: n }, doc);
+	const daily = (name: string) => env.DB.prepare("SELECT day, count FROM daily WHERE name = ?1").bind(name).first<{ day: number; count: number }>();
+
+	it("writes at different times of one UTC day count against the same global_writes_per_day", async () => {
+		// Fair share 3 / 50 = 0: past the cap every write is refused.
+		await resetServer({ signup: "open", max_accounts: "50", global_writes_per_day: "3" });
+		const token = (await signUp("alice")).token;
+		const at = (offset: number) => client(token, { now: DAY0 + offset });
+		expect((await at(0).push(docs(1))).status).toBe(200);
+		expect((await at(7 * HOUR + 13 * 60_000 + 5_001).push(docs(1))).status).toBe(200);
+		expect((await at(16 * HOUR + 59_999).push(docs(1))).status).toBe(200);
+		expect(await daily("writes")).toEqual({ day: DAY0 / DAY, count: 3 });
+		expect((await at(20 * HOUR + 1).push(docs(1))).body).toMatchObject({ error: "rate_limited", limit: "writes-global", retry_after: 4 * 3600 });
+		expect((await at(DAY - 1).push(docs(1))).body).toMatchObject({ error: "rate_limited", limit: "writes-global", retry_after: 1 });
+		expect(await daily("writes")).toEqual({ day: DAY0 / DAY, count: 3 });
+		expect((await at(23 * HOUR).account()).body.usage.writes_today).toBe(5);
+	});
+
+	it("an account's fair share is judged by its own count for the same UTC day, whatever the time of day", async () => {
+		// Fair share 4 / 2 = 2 writes.
+		await resetServer({ signup: "open", max_accounts: "2", global_writes_per_day: "4" });
+		const alice = (await signUp("alice")).token;
+		const bob = (await signUp("bob")).token;
+		expect((await client(alice, { now: DAY0 + 1 }).push(docs(4))).status).toBe(200);
+		expect((await client(alice, { now: DAY0 + 2 * HOUR }).push(docs(1))).body).toMatchObject({ limit: "writes-global" });
+		// Bob's two writes, hours apart, are within his share although the cap is reached.
+		expect((await client(bob, { now: DAY0 + 9 * HOUR + 1 }).push(docs(1))).status).toBe(200);
+		expect((await client(bob, { now: DAY0 + DAY - 1 }).push(docs(1))).status).toBe(200);
+		expect((await client(bob, { now: DAY0 + DAY - 1 }).push(docs(1))).body).toMatchObject({ limit: "writes-global", retry_after: 1 });
+		expect(await daily("writes")).toEqual({ day: DAY0 / DAY, count: 6 });
+	});
+
+	it("sign-ups at different times of one UTC day count against the same signups_per_day", async () => {
+		await resetServer({ signup: "open", signups_per_day: "3" });
+		const at = (offset: number, ip: number) => ({ now: DAY0 + offset, ip: `203.0.113.${ip}` });
+		await signUp("ann", at(0, 1));
+		await signUp("ben", at(5 * HOUR + 1, 2));
+		await signUp("cat", at(23 * HOUR + 59 * 60_000, 3));
+		expect(await daily("signups")).toEqual({ day: DAY0 / DAY, count: 3 });
+		await expect(signUp("dan", at(DAY - 1, 4))).rejects.toThrow(/403 .*"reason":"busy"/);
+		expect(await daily("signups")).toEqual({ day: DAY0 / DAY, count: 3 });
+		// The first millisecond of the next UTC day starts the count again.
+		await signUp("dan", at(DAY, 5));
+		expect(await daily("signups")).toEqual({ day: DAY0 / DAY + 1, count: 1 });
+		await signUp("eve", at(DAY + 12 * HOUR, 6));
+		expect(await daily("signups")).toEqual({ day: DAY0 / DAY + 1, count: 2 });
+	});
+
+	it("across UTC midnight: refused at 23:59:59.999 with retry_after 1, then counted afresh from 00:00:00.000", async () => {
+		// Fair shares 2 / 50 = 0 writes and 100 / 50 = 2 bytes, so both caps bind.
+		await resetServer({ signup: "open", max_accounts: "50", global_writes_per_day: "2", global_upload_bytes_per_day: "100" });
+		const token = (await signUp("alice")).token;
+		const noon = client(token, { now: DAY0 + 12 * HOUR });
+		const late = client(token, { now: DAY0 + DAY - 1 });
+		const early = client(token, { now: DAY0 + DAY });
+		expect((await noon.push(docs(2))).status).toBe(200);
+		expect((await noon.putFile(wireId("file"), bytes(100))).status).toBe(200);
+		const refused = await late.push(docs(1));
+		expect(refused.body).toMatchObject({ error: "rate_limited", limit: "writes-global", retry_after: 1 });
+		expect(refused.headers.get("retry-after")).toBe("1");
+		expect((await late.putFile(wireId("file"), bytes(41))).body).toMatchObject({ error: "rate_limited", limit: "uploads-global", retry_after: 1 });
+		expect((await early.push(docs(2))).status).toBe(200);
+		expect((await early.putFile(wireId("file"), bytes(100))).status).toBe(200);
+		expect(await daily("writes")).toEqual({ day: DAY0 / DAY + 1, count: 2 });
+		expect(await daily("upload_bytes")).toEqual({ day: DAY0 / DAY + 1, count: 100 });
+		// The new day fills up in its turn, for the whole of it.
+		expect((await early.push(docs(1))).body).toMatchObject({ error: "rate_limited", limit: "writes-global", retry_after: 86_400 });
+		expect((await early.account()).body.usage.writes_today).toBe(4);
+	});
+
+	it("a request stamped before midnight that is counted after the new day's first counts against the new day, never resetting it", async () => {
+		await resetServer({ signup: "open", writes_per_day: "3" });
+		const a = await signUp("alice");
+		const token = a.token;
+		const late = client(token, { now: DAY0 + DAY - 1 });
+		const early = client(token, { now: DAY0 + DAY });
+		expect((await early.push(docs(2))).status).toBe(200);
+		// A Worker that read its clock at 23:59:59.999 (a request begun before midnight, or a
+		// clock a little behind) counts after the new day's first push.
+		expect((await late.push(docs(1))).status).toBe(200);
+		expect(await env.DB.prepare("SELECT window_start, count FROM limits WHERE key = ?1").bind(`writes-account:${a.creds.accountId}`).first()).toEqual({
+			window_start: DAY0 + DAY,
+			count: 3,
+		});
+		// So the new day's budget of 3 is spent.
+		expect((await early.push(docs(1))).body).toMatchObject({ error: "rate_limited", limit: "writes-account" });
+		expect((await early.account()).body.usage.writes_today).toBe(4);
+		expect(await daily("writes")).toEqual({ day: DAY0 / DAY + 1, count: 3 });
 	});
 });
 

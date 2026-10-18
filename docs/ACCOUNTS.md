@@ -70,6 +70,44 @@ Security review (all applied):
 - **L7.** No test feature to misuse. Device revocation is scoped to the account.
 - **L8. Invocation logs off** and no D1 read replicas.
 
+Security review 2 of the Worker (2026-10-18, all applied; the migration was edited in place, as
+nothing was deployed yet):
+
+1. **A password change replaces the recovery key** in the same compare-and-swap update, so a
+   recovery key planted by someone who once knew the password can't outlive the owner's password
+   change. `POST /v2/account/password` gains `recovery_auth_key` and `recovery_wrapped_key`.
+2. **Expensive session reads are bounded.** Lengths are read with `octet_length(sealed)`, which
+   doesn't read the text. A second write-free binding, `SESSION_LIMITER`, allows about 120
+   requests a minute per account on the session routes (429 `session-account`). A push refused as
+   malformed or too large counts one write.
+3. **Fair shares of the server-wide daily caps.** Past `global_writes_per_day` or
+   `global_upload_bytes_per_day`, the triggers refuse only accounts above their fair share (the cap
+   ÷ `max_accounts`), so five accounts at their own budgets can't pause a sixth. A day's total
+   stays under about twice each cap. The admin script prints the shares.
+4. **Only signed-in devices are exempt from `login-user`.** A device signed out for any reason
+   counts like a stranger. `DELETE /v2/account/devices/<id>` on a row that is already signed out
+   marks it `revoked` and answers 204 instead of 404.
+5. **Logs and traces pinned.** `wrangler.jsonc` sets `observability.logs.enabled: true` with
+   `invocation_logs: false`, and `observability.traces.enabled: false`, so a changed default
+   can't start recording requests. `cloud/DEPLOYED.md` says what `wrangler tail` still shows.
+6. **`signups only` right before the sign-up.** The deploy steps, the README and the admin help
+   say to run it immediately before the owner's sign-up, since anyone who guesses the name can
+   take it while it is reserved, and what to do if they did: `delete`, then `signups only` again.
+7. **Accuracy.** The Decisions row on deletion names what Time Travel keeps (ciphertext, the
+   username and the password-protected key, for up to 30 days). The migration's comment on
+   `recounted_at` names both corrections that set it, and the cron's reconciliation is described
+   as it is: it doesn't set `recounted_at`.
+8. **Day rollover.** Tests now send requests at different times of one UTC day and on both sides
+   of midnight, for the server-wide writes cap and `signups_per_day`. They found one fault: a
+   request stamped just before a window's boundary but counted just after it reset that row of
+   `limits` to the old window, losing the new day's count. It now counts against the newer window,
+   as the `daily` counters do.
+9. **IPv6 per /48 everywhere.** `login-ip` and `recover-ip` count IPv6 per /48, as `signup-ip`
+   and the binding already did, so one subscriber's 256 /56s are one group.
+10. **`admin restore`.** D1 is restored only through `restore <time | bookmark>`, which runs the
+    Time Travel restore and then, at once, the epoch rotation of `restored --all`. Without
+    `--confirm` it prints the commands; the tests never run wrangler.
+
 Rejected: no finding. Where the result differs from a review's suggestion:
 
 - **The global document cap is 6 GB, not the suggested 5 GB.** 50 accounts × 100 MiB is 5.24 GB,
@@ -92,16 +130,16 @@ Two places go beyond the reviews:
 | Topic | Decision |
 |---|---|
 | Sign-up | Open to anyone with the app, once the owner opens it; the migration seeds it closed. A `signup` setting (`open`, `closed`, or `only:<username>`), `max_accounts` and `signups_per_day` are enforced by D1 triggers. No CAPTCHA. |
-| Abuse controls | A write-free Workers rate-limit binding in front, then fixed-window counters in D1 (sign-up per IP; sign-ins per account and per IP; recovery per IP; password checks per account; writes per account per day). Per-account quotas on live documents, document bytes, files and file bytes, plus global caps and server-wide daily caps on sign-ups, document writes and upload bytes, all enforced by triggers that fail closed. |
+| Abuse controls | A write-free Workers rate-limit binding in front, then fixed-window counters in D1 (sign-up per IP; sign-ins per account and per IP; recovery per IP; password checks per account; writes per account per day). Per-account quotas on live documents, document bytes, files and file bytes, plus global caps and server-wide daily caps on sign-ups, document writes and upload bytes, all enforced by triggers that fail closed. The daily write and upload caps are shared fairly: an account within its fair share (the cap ÷ `max_accounts`) is never refused by them. |
 | Identifier | A username: ASCII, case-folded, 3–32 characters. There is no email anywhere. |
 | Keys | Argon2id(password, salt bound to the server's origin and the username) → HKDF splits it into an auth key (sent) and a key-encryption key (never leaves). A random data key encrypts everything. It is wrapped by the password KEK and, separately, by a recovery key that rotates on use. |
 | Server secrets | The server keeps SHA-256(auth key) and compares in constant time. It hands out a wrapped data key only after the matching proof. |
 | Content | Documents, files and device names are sealed with XChaCha20-Poly1305. The associated data binds the account, document, revision and deleted flag. Wire IDs and revisions are keyed hashes, and revision generations only grow. |
-| Sessions | One per device; device IDs are per account. Tokens are stored hashed and expire after 180 days unseen. At most 10 active devices; signing in on an 11th signs out the least recently seen. Revoked sessions are kept 90 days to explain 401s and to recognise returning devices, which prove themselves with a per-account device proof. |
+| Sessions | One per device; device IDs are per account. Tokens are stored hashed and expire after 180 days unseen. At most 10 active devices; signing in on an 11th signs out the least recently seen. Revoked sessions are kept 90 days to explain 401s and to keep a returning device's name. Only a signed-in device, proving itself with a per-account device proof, is exempt from the per-account sign-in limit. |
 | Mac storage | The Keychain holds the session token, the data key, any pending logouts, and the recovery key until the user confirms they saved it. The Mac never stores the password, master key or KEKs. |
 | Server choice | The owner's Worker is compiled in as the default. "Use a different server…" points at another deployment. Accounts are bound to their server's origin. |
 | Signing out | Keychain items go (a logout is retried until the server accepts it). Local notes and the library's link to the account stay. |
-| Deleting the account | Removes the account's D1 rows, R2 objects and sessions. Local notes stay. Cloudflare Time Travel still holds the deleted rows (ciphertext) for its 30-day window. |
+| Deleting the account | Removes the account's D1 rows, R2 objects and sessions. Local notes stay. Cloudflare D1 Time Travel still holds what the deleted rows held: ciphertext, your username and your password-protected key, for up to 30 days. |
 | Protocol | `/v2/`. The new Worker drops `/v1/` and the shared token; the client has one mode. |
 | Legacy data | The migration only adds tables. Legacy plaintext is removed only by an explicit admin command, which requires a verified manifest. |
 | Server CPU | On Workers Paid (30 s of CPU per request), the Worker still never runs Argon2 and never decodes document or file payloads. It does hash file bodies (about 25 ms for 10 MiB). |
@@ -147,8 +185,11 @@ The server sees:
   times, the latter to the hour. How many devices there are, and why each was signed out. Not their
   names: those are sealed.
 - **Network:** IP addresses, times and the `kanso-sync/<version>` user agent, in Cloudflare's own
-  request handling. Workers invocation logs are off (`observability.logs.invocation_logs: false`).
-  The Worker logs only route names and error codes. D1 stores IPs and usernames only as keyed
+  request handling. Workers invocation logs and traces are pinned off
+  (`observability.logs.invocation_logs: false`, `observability.traces.enabled: false`), and the
+  Worker logs only route names and error codes. `wrangler tail` (or the dashboard's live logs)
+  still shows each request's URL, headers and Cloudflare metadata live to whoever runs it, with
+  some values redacted by Cloudflare's heuristics; nothing from it is stored unless they save it. D1 stores IPs and usernames only as keyed
   hashes, inside rate-limit rows kept at most 2 days.
 - **Backups:** Cloudflare D1 Time Travel keeps 30 days of history. Deleted accounts' rows and the
   purged legacy plaintext stay restorable by the owner for that window.
@@ -208,8 +249,8 @@ uses the default all-zero salt (RFC 5869).
 | `master` | Argon2id as above | Input only; zeroized right after HKDF |
 | `auth_key` | HKDF(`master`, info `"kanso/v1/auth"`) | Sent at sign-up, sign-in, password change, new recovery key and deletion |
 | `kek` | HKDF(`master`, info `"kanso/v1/kek"`) | Wraps the data key; never leaves the Mac |
-| `recovery_secret` (16) | Random | Shown as the recovery key; replaced on every use |
-| `recovery_auth_key` | HKDF(ikm `recovery_secret`, salt `"kanso/v1/recovery" \|\| lp(origin) \|\| lp(username)`, info `"kanso/v1/recovery-auth"`) | Sent at sign-up, recovery and new recovery key |
+| `recovery_secret` (16) | Random | Shown as the recovery key; replaced on every use and every password change |
+| `recovery_auth_key` | HKDF(ikm `recovery_secret`, salt `"kanso/v1/recovery" \|\| lp(origin) \|\| lp(username)`, info `"kanso/v1/recovery-auth"`) | Sent at sign-up, recovery, new recovery key and password change |
 | `recovery_kek` | HKDF(same ikm and salt, info `"kanso/v1/recovery-kek"`) | Wraps the data key |
 | `data_key` | Random at sign-up (rekey, deferred, would replace it) | Root of the content keys; kept in the Keychain |
 | `doc_key` | HKDF(`data_key`, info `"kanso/v1/doc"`) | Seals documents |
@@ -253,7 +294,7 @@ of 4, for example `0K7M-QX9P-3J2H-ZD8W-5TNB-1RGV-E6CA` (layout only; its checksu
   `U` and every other character. Then require exactly 28 characters, a first character below `8`, a
   check value below 1021, and a matching checksum.
 - **Rotation.** Recovery replaces the key: the used key stops working and the new one is shown. "New
-  recovery key…" replaces it while signed in.
+  recovery key…" replaces it while signed in, and so does every password change.
 
 ### Sealed documents
 
@@ -338,9 +379,10 @@ The server stores and returns it opaquely. A device that has no name yet (just s
 - **The device proof for an account** is `HKDF(ikm device_secret, info "kanso/v1/device-proof" ||
   lp(origin) || lp(account_id))`, 32 bytes, sent as 43 base64url characters as `proof` in every
   `device` object (sign-up, sign-in, recovery). The server keeps only its SHA-256 in the session row
-  (`proof_hash`). A sign-in skips `login-user` only when the proof matches the row of a device the
-  account knows, so knowing a device ID (every Mac of the account sees them) isn't enough (security
-  re-check 5).
+  (`proof_hash`). A sign-in skips `login-user` only when the proof matches the active session row of
+  that device, so knowing a device ID (every Mac of the account sees them) isn't enough (security
+  re-check 5). A signed-out row, whatever signed it out, exempts nothing: an old copy of the library
+  holds the device secret, and the device list doesn't show the row (security review 2, finding 4).
 - **A copied library.** When the stored `sync.v2.hardware` differs from this Mac's, the library was
   copied (Migration Assistant, restoring a backup to new hardware). The library ID and device secret
   are regenerated, which leaves the copy signed out: its Keychain item names change. Its binding and
@@ -453,44 +495,53 @@ primitives.
 | 413 | `too_large` | | More than 200 documents, a push body over 4 MiB, sealed over 1,900,000 characters, a file over 10,485,801 bytes, an auth body over 8 KiB |
 | 413 | `quota_exceeded` | `quota`: `docs`, `doc_bytes`, `files`, `file_bytes` or `server`; `used` (usage before this request); `limit` | When several apply, the first in that order |
 | 415 | `unsupported_media_type` | | Wrong `Content-Type` |
-| 429 | `rate_limited` | `retry_after` (seconds to the end of the window, rounded up), `Retry-After` header, `limit`: the rule name, or `writes-global` or `uploads-global` | A rate-limit rule, or a server-wide daily cap |
+| 429 | `rate_limited` | `retry_after` (seconds to the end of the window, rounded up), `Retry-After` header, `limit`: the rule name, `binding` or `session-account` (the bindings), or `writes-global` or `uploads-global` | A rate-limit rule or binding, or a server-wide daily cap |
 | 500 | `internal` | | |
 | 503 | `misconfigured` | | `AUTH_PEPPER` missing or malformed |
 
 ### Rate limits
 
-- **First layer, the binding.** A Workers rate-limit binding, `AUTH_LIMITER` (namespace `"1001"`, 20
-  requests per 60 s), is keyed by the caller's IP group and covers every `/v2/auth/*` and
-  `/v2/health` request. It writes nothing to D1. Over it, the answer is 429 with `retry_after: 60`.
-  If the binding is missing (unit tests), this layer is skipped.
+- **First layer, the bindings.** Two Workers rate-limit bindings, which write nothing to D1. Over
+  either, the answer is 429 with `retry_after: 60`. If a binding is missing (unit tests), its layer
+  is skipped. Like every Workers rate limit they count per Cloudflare location and settle
+  eventually, so they are a filter in front of D1, not an exact cap.
+  - `AUTH_LIMITER` (namespace `"1001"`, 20 requests per 60 s) is keyed by the caller's IP group and
+    covers every `/v2/auth/*` and `/v2/health` request (`limit` `binding`).
+  - `SESSION_LIMITER` (namespace `"1002"`, 120 requests per 60 s) is keyed by the account ID and
+    covers every session route except logout, right after the session lookup (`limit`
+    `session-account`). One signed-in account can't keep the shared database busy, from however
+    many IPs it uses (security review 2, finding 2). Logout stays behind `AUTH_LIMITER` only.
 - **Second layer, D1.** D1 is the authority, in fixed windows, and counts first (H1):
 
   ```sql
   INSERT INTO limits (key, window_start, count) VALUES (?1, ?2, ?3)
   ON CONFLICT (key) DO UPDATE SET
-    count = CASE WHEN window_start = excluded.window_start THEN count + excluded.count ELSE excluded.count END,
-    window_start = excluded.window_start
+    count = CASE WHEN window_start >= excluded.window_start THEN count + excluded.count ELSE excluded.count END,
+    window_start = max(window_start, excluded.window_start)
   RETURNING count
   ```
 
   Here `?2 = floor(now / window) * window`, and `?3` is the amount (1, or the number of documents in
   a push). The upsert runs before credentials are checked or any work is done. If the returned
   count is over the maximum, the request is refused with 429, so parallel requests can't pass
-  together.
-- **IP groups.** IPv4 counts per address. In D1, IPv6 counts per /56, except sign-up, which counts
-  per /48. The binding keys IPv6 by /48. The value comes from `CF-Connecting-IP`; `unknown` stands in
-  when it's absent (local dev).
+  together. A request stamped with an earlier window than the row's (begun just before the
+  boundary, or from a Worker whose clock is a little behind) counts against the newer window
+  rather than resetting it, as the `daily` counters do (security review 2, finding 8).
+- **IP groups.** IPv4 counts per address and IPv6 per /48, in D1 and in the binding alike. A /48
+  is the smallest block a home or small office is commonly given, so per /56 one subscriber could
+  rotate through 256 groups (security review 2, finding 9). The value comes from `CF-Connecting-IP`;
+  `unknown` stands in when it's absent (local dev).
 - **Expiry.** A rule's rows are deleted once their window has ended (by the cron; the counting
   upsert also overwrites a stale window).
 
 | Rule | Subject | Window | Max | Counts |
 |---|---|---|---|---|
 | `signup-ip` | IP group (/48) | 1 h | 10 | Every sign-up request |
-| `login-user` | account ID; one shared row for names without an account | 15 min | 10 | Every sign-in, unless its device ID has a session row (active, or revoked within 90 days) for that account and SHA-256 of the request's device proof equals that row's `proof_hash` (M8, security re-check 5) |
-| `login-ip` | IP group | 15 min | 30 | Every sign-in |
-| `recover-ip` | IP group | 1 h | 10 | Every `recover/start` and `recover/finish` |
+| `login-user` | account ID; one shared row for names without an account | 15 min | 10 | Every sign-in, unless its device ID has an active session row (`revoked_at IS NULL`) for that account and SHA-256 of the request's device proof equals that row's `proof_hash` (M8, security re-check 5, security review 2) |
+| `login-ip` | IP group (/48) | 15 min | 30 | Every sign-in |
+| `recover-ip` | IP group (/48) | 1 h | 10 | Every `recover/start` and `recover/finish` |
 | `password-account` | account ID | 15 min | 5 | Every current-password check (password change, new recovery key, delete) |
-| `writes-account` | account ID | 1 day | the account's `quota_writes_per_day`, else `settings.writes_per_day` | Documents in each push, plus 1 per file upload |
+| `writes-account` | account ID | 1 day | the account's `quota_writes_per_day`, else `settings.writes_per_day` | Documents in each push, plus 1 per file upload, plus 1 per push refused as malformed or too large (so failed pushes aren't free) |
 | `uploads-account` | account ID | 1 day | `settings.upload_bytes_per_day` | Each upload's `Content-Length` (capped at the largest file plus one byte; the largest file when it's missing), counted before the body is read, after `writes-account` passes; a body longer than it declared counts the rest |
 
 There is no per-username recovery rule, so nobody can lock someone else out of recovery (M8). A
@@ -499,13 +550,27 @@ an account doesn't give one back) gets 403 `signup_closed` with reason `busy`. T
 daily caps are counted by triggers in `daily`, not here: stored document writes
 (`global_writes_per_day`) and uploaded file bytes (`global_upload_bytes_per_day`). Past either, a
 push or upload gets 429 with `limit` `writes-global` or `uploads-global` and `retry_after` up to the
-next UTC midnight (security re-check 2).
+next UTC midnight (security re-check 2), but only for an account above its fair share.
+
+**Fair shares** (security review 2, finding 3). First come, first served, five accounts at their
+own upload budgets, or fifteen at their write budgets, could use a cap up by noon and pause every
+other Mac until midnight. So each cap has a fair share per account: the cap ÷ `max_accounts`, in
+SQLite's integer division (6,000 writes and 100,000,000 upload bytes by default). Past the cap, the
+trigger refuses a write only when the account's own count today is above its fair share:
+`writes-account` for documents, `uploads-account` for upload bytes, both counted by the Worker
+before the batch, this request included. An account at or below its fair share is never refused
+by a server-wide cap. Fail closed: a missing setting, `max_accounts` 0, or no row for today in
+`limits` counts as above the fair share. The price is the bound: once the cap is reached, every
+account may still use its fair share, so a day's total stays under about twice the cap (the cap,
+plus `max_accounts` fair shares, plus the request that crossed it, plus a fair share for each
+account created that day).
 
 Login keys `login-user` by account, so attempts on many unknown names share one row. That tells a
 prober whether a name exists, which sign-up's `username_taken` already does.
 
 **Floods.** A `workers.dev` address can't have WAF rules. Surviving a real flood needs a custom
-domain with a Cloudflare WAF rate-limiting rule in front of the Worker. Accounts are bound to their
+domain with a Cloudflare WAF rate-limiting rule in front of the Worker. Expensive requests from a
+valid session, which an IP-keyed WAF rule can't stop, are bounded by `SESSION_LIMITER` per account. Accounts are bound to their
 server's origin (M5), so the owner must choose the final URL before the first account is created.
 
 ### Routes
@@ -595,7 +660,7 @@ the data key). 200:
 Steps:
 
 1. Count `login-ip`, and `login-user` unless the device is known: its ID has a session row for the
-   account (active, or revoked within 90 days) whose `proof_hash` is SHA-256 of `device.proof`.
+   account that is active (`revoked_at IS NULL`) and whose `proof_hash` is SHA-256 of `device.proof`.
 2. Check the credentials: 401 `invalid_credentials` if wrong.
 3. Check that the account is enabled: 403 if disabled.
 4. One batch:
@@ -657,13 +722,22 @@ Revokes this session (`signed_out`) and answers 204, for disabled accounts too. 
 
 #### POST /v2/account/password
 
-Request `{"current_auth_key", "kdf", "salt", "auth_key", "wrapped_key"}`. 200 `{"signed_out_devices": n}`.
+Request `{"current_auth_key", "kdf", "salt", "auth_key", "wrapped_key", "recovery_auth_key",
+"recovery_wrapped_key"}`. 200 `{"signed_out_devices": n}`.
 
-Counts `password-account`. 401 `invalid_credentials` on a wrong current key. On success the
-password material is replaced, and every other active session is revoked (`password_changed`).
+The two recovery fields are a new recovery key, in the formats `POST /v2/account/recovery-key`
+takes and checked the same way (400 `bad_request` when missing or malformed). The client makes a
+fresh recovery secret, derives them as it does for "New recovery key…", and shows the new key once
+the change succeeds (security review 2, finding 1).
 
-Retrying: if the current key fails but `auth_key` and `wrapped_key` already match what's stored,
-the answer is 200 with 0.
+Counts `password-account`. 401 `invalid_credentials` on a wrong current key. On success one
+compare-and-swap `UPDATE accounts … WHERE auth_hash = <the checked hash>` replaces the password
+material, `recovery_hash` (SHA-256 of `recovery_auth_key`) and `recovery_wrapped_key` together. A
+password change therefore always ends every older recovery key, including one set by someone who
+once knew the password. Every other active session is revoked (`password_changed`).
+
+Retrying: if the current key fails but `auth_hash`, `wrapped_key`, `recovery_hash` and
+`recovery_wrapped_key` already equal the request's new values, the answer is 200 with 0.
 
 #### POST /v2/account/recovery-key
 
@@ -696,9 +770,12 @@ ended before the deletion, so the client reports that instead.
 - **PUT** `{"sealed_name"}` sets the current session's name and answers 204.
 - **GET** `{"devices": [{"id", "sealed_name", "created_at", "last_seen_at", "current"}]}` lists
   active sessions only, most recently seen first.
-- **DELETE** runs `UPDATE sessions SET revoked_at = ?3, revoked_reason = 'revoked' WHERE account_id
-  = ?1 AND device_id = ?2 AND revoked_at IS NULL`. It answers 204, or 404 when no row changes, or
-  400 for a malformed ID. Deleting the current device is a logout (reason `signed_out`).
+- **DELETE** runs `UPDATE sessions SET revoked_at = coalesce(revoked_at, ?3), revoked_reason =
+  'revoked' WHERE account_id = ?1 AND device_id = ?2`. A row already signed out, for any reason, is
+  marked `revoked` too and keeps its time, so the owner can always remove a Mac they no longer
+  trust. It answers 204, or 404 when the account has no row for that device (an unknown ID, or
+  another account's device), or 400 for a malformed ID. Deleting the current device is a logout
+  (reason `signed_out`).
 
 #### POST /v2/push
 
@@ -723,13 +800,17 @@ Semantics are v1's, scoped to the account: a document is accepted iff its `base_
 account's current revision of it, or the account has none and `base_rev` is null. Documents apply
 in order. The client sends at most 200 documents and 4 MiB of body per push. Steps:
 
-1. Validate the body (400, or 413 for size); an empty `docs` answers 200 `{"results": []}` and
-   counts nothing. Then count `writes-account` by the number of documents. Over the day's budget →
-   429. The sealed alphabet is checked only by the `CHECK`, after counting.
+1. Validate the body (400, or 413 for size). A refused body counts 1 against `writes-account`
+   first, and the answer is 429 instead if that is over the day's budget. An empty `docs` answers
+   200 `{"results": []}` and counts nothing. Otherwise count `writes-account` by the number of
+   documents. Over the day's budget → 429. The sealed alphabet is checked only by the `CHECK`,
+   after counting.
 2. One batch, three statements per document, as in v1 and b4e2733, with `ROW_COST = 512`:
 
 ```sql
 -- ?1 account, ?2 wire id, ?3 base_rev, ?4 rev, ?5 deleted (0/1), ?6 sealed, ?7 length(sealed), ?8 now
+-- Stored lengths are read with octet_length(), from the record header; length() on TEXT reads
+-- the whole value. Sealed text is base64url, so bytes equal characters.
 ACCEPT  = ((?3 IS NULL AND NOT EXISTS (SELECT 1 FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2))
            OR EXISTS (SELECT 1 FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2 AND d.rev = ?3))
 BUMP    = UPDATE accounts SET
@@ -737,7 +818,7 @@ BUMP    = UPDATE accounts SET
             docs = docs + (1 - ?5)
                  - coalesce((SELECT 1 - d.deleted FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2), 0),
             doc_bytes = doc_bytes + ?7 + 512
-                 - coalesce((SELECT length(d.sealed) + 512 FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2), 0)
+                 - coalesce((SELECT octet_length(d.sealed) + 512 FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2), 0)
           WHERE accounts.id = ?1 AND ACCEPT RETURNING last_seq AS value
 CURRENT = SELECT id, rev, deleted, sealed FROM account_docs WHERE account_id = ?1 AND id = ?2 AND NOT ACCEPT
 WRITE   = INSERT INTO account_docs (account_id, id, rev, seq, deleted, sealed, updated_at)
@@ -752,8 +833,9 @@ WRITE   = INSERT INTO account_docs (account_id, id, rev, seq, deleted, sealed, u
    account's usage and answers 413
    `quota_exceeded` with `used` and `limit`. Shrinking writes always pass, so an account over quota
    can still delete. There is no check-then-act anywhere (H1). Every stored write (new or updated)
-   also counts towards `global_writes_per_day`; past it a trigger raises
-   `rate_limited:writes-global`, the batch rolls back, and the answer is 429 (security re-check 2).
+   also counts towards `global_writes_per_day`; past it, for an account above its fair share (see
+   "Rate limits"), a trigger raises `rate_limited:writes-global`, the batch rolls back, and the
+   answer is 429 (security re-check 2).
 3. **File tombstones.** For accepted file tombstones, delete their R2 objects (one call). Then one
    batch: subtract their `account_files` sizes (plus 1,024 each) and count from the account, and
    delete those rows.
@@ -772,8 +854,10 @@ feed, the echo matches `synced_rev`, and the store marks it synced.
 
 - **Parameters.** `limit` defaults to 100 and must be 1–500; `since` defaults to 0 and must not be
   negative. Anything else, a non-integer included, is 400.
-- **Two reads keep the page small.** First the sequence numbers and lengths. Then the rows that fit
-  in 8 MiB of sealed text, always at least one.
+- **Two reads keep the page small.** First the sequence numbers and lengths, as
+  `octet_length(sealed)`, which SQLite answers without reading the text (`length()` would read
+  every candidate row in full, overflow pages included; security review 2, finding 2). Then the
+  rows that fit in 8 MiB of sealed text, always at least one.
 - **`more`** is true when that prefix was cut, or when the first read returned `limit` rows.
 - **`last_seq`** is the last document's seq, or `since` when the page is empty.
 - **`head_seq`** is the account's `last_seq`.
@@ -794,12 +878,13 @@ hex is 400. Steps:
       coalesce(old size + 1024, 0)`, computed in SQL. The statement must affect the account row;
       if it doesn't, the account is gone, and the answer is 401.
    3. Upsert `account_files` with `uploaded_at` = now. A trigger counts the size towards
-      `global_upload_bytes_per_day`, replacements included, and refuses past it with
-      `rate_limited:uploads-global` (429; security re-check 2).
+      `global_upload_bytes_per_day`, replacements included, and refuses past it, for an account
+      above its fair share, with `rate_limited:uploads-global` (429; security re-check 2).
 
    Triggers refuse growth past quotas with 413.
 5. `FILES.put(key, body, {sha256})`. If R2 fails, a compensating batch restores the old row and
-   counters, if the row still holds this upload's size, and the answer is 500.
+   counters, if the row still holds this upload's size, and the answer is 500. Restoring a larger
+   old size sets `recounted_at`, so the quota triggers let the correction through.
 6. 200 `{"ok": true, "size": n}`.
 
 Two concurrent uploads of the same ID can leave the counter off by their size difference. `recount`
@@ -889,8 +974,10 @@ BEGIN SELECT RAISE(ABORT, 'daily_required'); END;
 -- `docs` counts live documents; `doc_bytes` is the sum of length(sealed) + 512 over all of
 -- the account's rows, tombstones included; `files` and `file_bytes` count account_files rows
 -- and their size + 1024. NULL quotas use `defaults`; a NULL `quota_writes_per_day` uses the
--- `writes_per_day` setting (the Worker reads it; no trigger does). `recounted_at` changes
--- only in the admin recount, which the quota triggers exempt.
+-- `writes_per_day` setting (the Worker reads it; no trigger does). The quota triggers exempt
+-- an update that changes `recounted_at`, which only two corrections do: the admin recount, and
+-- an upload's compensation when R2 fails and the row's old, larger size comes back (sync.ts).
+-- The cron's size reconciliation doesn't, so a growing correction meets the quotas.
 CREATE TABLE accounts (
     id TEXT PRIMARY KEY NOT NULL
         CHECK (length(id) = 34 AND substr(id, 1, 2) = 'a_' AND substr(id, 3) NOT GLOB '*[^0-9a-f]*'),
@@ -991,9 +1078,10 @@ WHEN NEW.recounted_at IS OLD.recounted_at AND NEW.file_bytes > OLD.file_bytes
      > coalesce((SELECT global_file_bytes FROM defaults), 0)
 BEGIN SELECT RAISE(ABORT, 'quota_exceeded:server'); END;
 
--- One row per device per account. Revoked rows stay 90 days (to explain a 401 and to
--- recognise a returning device by its proof); active rows expire after 180 days unseen.
--- `proof_hash` is SHA-256 of the device's proof, which only that device can derive.
+-- One row per device per account. Revoked rows stay 90 days (to explain a 401 and to keep a
+-- returning device's name); active rows expire after 180 days unseen. `proof_hash` is SHA-256
+-- of the device's proof, which only that device can derive; only an active row's exempts a
+-- sign-in from `login-user`.
 CREATE TABLE sessions (
     account_id TEXT NOT NULL REFERENCES accounts (id),
     device_id TEXT NOT NULL
@@ -1028,13 +1116,22 @@ CREATE TABLE account_docs (
     UNIQUE (account_id, seq)
 );
 
--- Server-wide document writes per UTC day (global_writes_per_day). The push's upsert fires
--- BEFORE INSERT on both of its paths, then AFTER INSERT or AFTER UPDATE, so every stored
--- write is checked and counted once.
+-- Server-wide document writes per UTC day (global_writes_per_day), shared fairly: once the
+-- day's count reaches the cap, a write is refused only for an account above its fair share
+-- (global_writes_per_day / max_accounts), judged by its own `writes-account` count today, which
+-- the Worker takes before the batch (this push included). An account at or below its fair share
+-- is never refused here, so a few accounts at their own budgets can't pause everyone; a day's
+-- total stays under about twice the cap. Fails closed: a missing setting, max_accounts 0, or no
+-- `writes-account` row for today counts as above the fair share. The push's upsert fires BEFORE
+-- INSERT on both of its paths, then AFTER INSERT or AFTER UPDATE, so every stored write is
+-- checked and counted once.
 CREATE TRIGGER writes_global BEFORE INSERT ON account_docs
 WHEN coalesce((SELECT CASE WHEN day >= NEW.updated_at / 86400000 THEN count ELSE 0 END
                FROM daily WHERE name = 'writes'), 9223372036854775807)
      >= coalesce((SELECT global_writes_per_day FROM defaults), 0)
+ AND coalesce((SELECT CASE WHEN window_start = NEW.updated_at / 86400000 * 86400000 THEN count END
+               FROM limits WHERE key = 'writes-account:' || NEW.account_id), 9223372036854775807)
+     > coalesce((SELECT global_writes_per_day / max_accounts FROM defaults WHERE max_accounts > 0), -1)
 BEGIN SELECT RAISE(ABORT, 'rate_limited:writes-global'); END;
 
 CREATE TRIGGER writes_count_insert AFTER INSERT ON account_docs
@@ -1063,11 +1160,16 @@ CREATE TABLE account_files (
 );
 
 -- Server-wide upload bytes per UTC day (global_upload_bytes_per_day), weighted by size and
--- counted on every upload, replacements included.
+-- counted on every upload, replacements included. Shared fairly as document writes are: past
+-- the cap, only an account whose own `uploads-account` count today (this upload included) is
+-- above global_upload_bytes_per_day / max_accounts is refused, and the same things fail closed.
 CREATE TRIGGER uploads_global BEFORE INSERT ON account_files
 WHEN coalesce((SELECT CASE WHEN day >= NEW.uploaded_at / 86400000 THEN count ELSE 0 END
                FROM daily WHERE name = 'upload_bytes'), 9223372036854775807)
      > coalesce((SELECT global_upload_bytes_per_day FROM defaults), 0) - NEW.size
+ AND coalesce((SELECT CASE WHEN window_start = NEW.uploaded_at / 86400000 * 86400000 THEN count END
+               FROM limits WHERE key = 'uploads-account:' || NEW.account_id), 9223372036854775807)
+     > coalesce((SELECT global_upload_bytes_per_day / max_accounts FROM defaults WHERE max_accounts > 0), -1)
 BEGIN SELECT RAISE(ABORT, 'rate_limited:uploads-global'); END;
 
 CREATE TRIGGER uploads_count_insert AFTER INSERT ON account_files
@@ -1135,12 +1237,12 @@ refuses rather than allows (security re-check 1).
 | `quota_doc_bytes` | 100 MiB (104,857,600) | `length(sealed) + 512` per row, tombstones included. Real cost. |
 | `quota_files` | 10,000 | Stored file objects |
 | `quota_file_bytes` | 500 MiB (524,288,000) | `size + 1,024` per file |
-| `writes_per_day` | 20,000 | Pushed documents plus file uploads, per account, unless the account's `quota_writes_per_day` says otherwise (`quota <user> --writes-per-day`). A fifteenth of `global_writes_per_day`, so no one account can spend the server's day. A library that needs more in one day, like the owner's first upload or a re-merge of a large library, pauses at the cap and finishes after UTC midnight; the owner raises their own account instead. |
+| `writes_per_day` | 20,000 | Pushed documents plus file uploads (and refused push bodies), per account, unless the account's `quota_writes_per_day` says otherwise (`quota <user> --writes-per-day`). A fifteenth of `global_writes_per_day`, so no one account can spend the server's day. A library that needs more in one day, like the owner's first upload or a re-merge of a large library, pauses at the cap and finishes after UTC midnight; the owner raises their own account instead. |
 | `upload_bytes_per_day` | 1 GiB (1,073,741,824) | Uploaded file bytes per account per UTC day, refused uploads included. Twice the default file bytes quota, under a fifth of `global_upload_bytes_per_day`. |
 | `global_doc_bytes` | 6,000,000,000 | Sum over all accounts |
 | `global_file_bytes` | 50,000,000,000 | Sum over all accounts |
-| `global_writes_per_day` | 300,000 | Stored document writes (new and updated) per UTC day, all accounts together |
-| `global_upload_bytes_per_day` | 5,000,000,000 | File bytes uploaded per UTC day, all accounts, replacements included |
+| `global_writes_per_day` | 300,000 | Stored document writes (new and updated) per UTC day, all accounts together. Past it, only accounts above their fair share (÷ `max_accounts`: 6,000 writes) are refused, so a day's total stays under about 600,000. |
+| `global_upload_bytes_per_day` | 5,000,000,000 | File bytes uploaded per UTC day, all accounts, replacements included. Past it, only accounts above their fair share (÷ `max_accounts`: 100,000,000 bytes) are refused, so a day's total stays under about 10,000,000,000. |
 
 **The 512-byte row cost** covers the row's other columns and its entries in both indexes. A
 tombstone measures about 300 B with indexes. `quota.test.ts` pins the figure: it inserts 10,000
@@ -1167,22 +1269,26 @@ cap, which only overrides can approach, and costs at most 50 GB × $0.015 = $0.7
 **Rows written:** an accepted document writes about 5 rows (the account row, the document row, its
 two index entries and the `daily` counter). One account at the daily maximum writes 20,000 × 5 =
 100,000 rows a day, which is 3,100,000 in a 31-day month, inside the included 50 million. It takes
-seventeen accounts at the maximum all month to exceed it, and `global_writes_per_day` bounds the whole server
-at 300,000 × 5 = 1,500,000 rows a day, about 46.5 million in a 31-day month. Beyond the included
-rows it costs $1 per million, and the `accounts` command shows `writes_today` for each account. The owner's first upload is about 909 documents, roughly 3,600
-rows.
+seventeen accounts at the maximum all month to exceed it. With fair shares, `global_writes_per_day`
+bounds the whole server at about twice 300,000 × 5, 3,000,000 rows a day, about 93 million in a
+31-day month in the worst case (every account at its fair share after the heavy ones have used
+the cap up, every day). Beyond the included rows it costs $1 per million, so that worst case is
+about $43 a month; and the `accounts` command shows `writes_today` for each account. The owner's
+first upload is about 909 documents, roughly 3,600 rows.
 
 **Requests:** 50 accounts × 3 Macs × about 400 requests a day is about 1.8 million a month, against
 10 million included.
 
 **Admin overcommit rule:** `max-accounts`, `quota` and `default-quota` refuse, unless given
 `--force`, any change after which `Σ effective quotas of existing accounts + (max_accounts −
-accounts) × default` exceeds a global cap. The daily budgets are shared first come, first served,
-so their rule is per account: `writes-per-day`, `upload-bytes-per-day`, `global-writes-per-day`,
-`global-upload-bytes-per-day` and `quota --writes-per-day` refuse, unless given `--force`, any
-change after which one account's daily budget (the default, an override, or the upload budget) is
-over its server-wide cap. Each prints how many accounts at their whole budget use the server's day
-up.
+accounts) × default` exceeds a global cap. The daily budgets have a per-account rule:
+`writes-per-day`, `upload-bytes-per-day`, `global-writes-per-day`, `global-upload-bytes-per-day`
+and `quota --writes-per-day` refuse, unless given `--force`, any change after which one account's
+daily budget (the default, an override, or the upload budget) is over its server-wide cap. Each,
+and `max-accounts`, prints each cap's fair share (cap ÷ `max_accounts`), how many accounts at their
+whole budget reach the cap (after which only accounts above their fair share wait for midnight),
+and the day's bound of about twice the cap. `accounts` shows the fair shares beside today's
+counts.
 
 ### R2 layout, purges and the cron
 
@@ -1196,8 +1302,10 @@ up.
   - reconciles R2 with `account_files` (security re-check 8): it lists a bounded number of
     accounts' prefixes per run, taking accounts in turn, deletes objects that have no row and were
     uploaded more than an hour ago, and sets a row's `size` to its object's size where they differ,
-    adjusting `file_bytes` in the same batch with `recounted_at` set, as `recount` does, so no quota
-    refuses the correction;
+    adjusting `file_bytes` in the same batch. It doesn't set `recounted_at`: a correction that grows
+    `file_bytes` meets the quota triggers like an upload, because two racing uploads of one ID can
+    leave a small row over a large object. If a quota refuses it, the row goes (refunded) and then
+    the object;
   - revokes active sessions unseen for 180 days (`expired`);
   - deletes revoked sessions more than 90 days old.
 
@@ -1206,14 +1314,21 @@ up.
 Changes to `cloud/wrangler.jsonc`:
 
 ```jsonc
-"observability": { "enabled": true, "logs": { "invocation_logs": false } },
+"observability": {
+  "enabled": true,
+  "logs": { "enabled": true, "invocation_logs": false },
+  "traces": { "enabled": false }
+},
 "triggers": { "crons": ["*/15 * * * *"] },
-"ratelimits": [{ "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }]
+"ratelimits": [
+  { "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
+  { "name": "SESSION_LIMITER", "namespace_id": "1002", "simple": { "limit": 120, "period": 60 } }
+]
 // AUTH_PEPPER (required): wrangler secret put AUTH_PEPPER. SYNC_TOKEN is no longer read.
 ```
 
 The Worker's environment type is `Env { DB: D1Database; FILES: R2Bucket; AUTH_PEPPER?: string;
-AUTH_LIMITER?: RateLimit }`. Commands run in `cloud/`, and the deploy token is only referenced by
+AUTH_LIMITER?: RateLimit; SESSION_LIMITER?: RateLimit }`. Commands run in `cloud/`, and the deploy token is only referenced by
 name:
 
 ```bash
@@ -1832,7 +1947,8 @@ Sync problems use the words in the problems table.
 
 `npm run -s admin -- [--local] <command>` (`cloud/scripts/admin.ts`, planning in
 `src/accounts.ts`). It runs through `wrangler d1 execute` (plus `wrangler d1 export`, `wrangler r2
-object get` and `wrangler secret delete` where stated), with every value validated and quoted:
+object get`, `wrangler secret delete` and `wrangler d1 time-travel restore` where stated), with
+every value validated and quoted:
 
 ```bash
 CLOUDFLARE_API_TOKEN="$IMNGONII_CLOUDFLARE_API_TOKEN" npm run -s admin -- accounts
@@ -1843,21 +1959,23 @@ CLOUDFLARE_API_TOKEN="$IMNGONII_CLOUDFLARE_API_TOKEN" npm run -s admin -- accoun
 | `accounts` | Each account's username, ID, created date, usage against quotas, writes today against its budget, bytes uploaded today, active devices, last seen and status. Also the settings, global sums and pending purges. |
 | `disable <username>` / `enable <username>` | Set or clear `disabled_at`. |
 | `delete <username> --confirm <username>` | The deletion batch, plus the purge row. |
-| `signups open` / `signups close` / `signups only <username>` | `settings.signup`. `only` then checks whether that name already has an account, and says so: the reservation is spent once it does. |
+| `signups open` / `signups close` / `signups only <username>` | `settings.signup`. `only` then checks whether that name already has an account, and says so: the reservation is spent once it does. Its help and answers say to run it immediately before that name signs up, and, if someone took the name first, to `delete <username> --confirm <username>` and run `only` again (security review 2, finding 6). |
 | `max-accounts <n>` | Subject to the overcommit check unless `--force` |
 | `quota <username> [--docs N] [--doc-mib N] [--files N] [--file-mib N] [--writes-per-day N]`, `quota <username> --default` | Overrides, in MiB; overcommit check. `--writes-per-day` sets `quota_writes_per_day`, refused over `global_writes_per_day` unless `--force` |
 | `default-quota [--docs N] [--doc-mib N] [--files N] [--file-mib N]` | Defaults; overcommit check |
 | `writes-per-day <n>` / `upload-bytes-per-day <n>` | `settings.writes_per_day` / `settings.upload_bytes_per_day`, the per-account daily budgets |
 | `global-writes-per-day <n>` / `global-upload-bytes-per-day <n>` | The server-wide daily caps |
-
-The four daily commands refuse, unless given `--force`, a value after which one account's budget
-(the default, any override, or the upload budget) is over its server-wide cap, and print how many
-accounts at their whole budget use up the server's day.
 | `recount [<username>]` | Recompute the counters from the tables, setting `recounted_at` |
-| `restored [<username> \| --all]` | After a Time Travel restore: a new epoch (`lower(hex(randomblob(8)))`), so Macs re-merge (M1) |
+| `restore <time \| bookmark> [--confirm <time \| bookmark>]` | The only way to restore D1 (security review 2, finding 10). The point is a Unix time in seconds or an RFC 3339 time with a zone, within the last 30 days, or a bookmark as `wrangler d1 time-travel info` prints it (8-8-8-32 lowercase hex). Refused with `--local`. Without `--confirm` repeating the point, it only prints what it would run. With it, it runs `wrangler d1 time-travel restore kanso-sync --timestamp=… \| --bookmark=… --json`, then at once `restored --all`, and prints the bookmark to undo with. If the new epochs fail, it says to run `restored --all` before any Mac syncs. It also says what a restore undoes: accounts and devices added since are gone, and every sign-out, deletion and password or recovery key change since is undone. |
+| `restored [<username> \| --all]` | A new epoch (`lower(hex(randomblob(8)))`), so Macs re-merge (M1). `restore` runs it for every account; alone, it is for a restore that went wrong halfway. |
 | `legacy-status` | Whether `docs`/`counter` exist, their live document and file counts and size, and the `files/` purge state |
 | `legacy-export --dir DIR` | `manifest.json` (`{"exported_at", "rows": [id, rev, deleted, md5digest]}`), `legacy.sql` (`wrangler d1 export --table docs --table counter`), and every live legacy file from R2 into `DIR/files/` |
 | `purge-legacy --account <username> --verified R.json` | Refuses unless `R.json` is `ok`, names that account, and its `manifest_sha256` equals the manifest hash (under "Command line") of a fresh export of the legacy rows (nothing changed since). Then drops `docs` and `counter`, queues the `files/` purge, and runs `wrangler secret delete SYNC_TOKEN` with stdin attached. |
+
+The four daily commands refuse, unless given `--force`, a value after which one account's budget
+(the default, any override, or the upload budget) is over its server-wide cap. They and
+`max-accounts` print each server-wide cap's fair share (the cap ÷ `max_accounts`), how many
+accounts at their whole budget reach the cap, and the day's bound of about twice the cap.
 
 ## Tests
 
@@ -2030,7 +2148,8 @@ above already say each of them; this list is the index.
   proofs must be canonical like auth keys. `login-ip` counts before `login-user`, and the first
   over its maximum is named. `retry_after` is the seconds to the window's end, rounded up.
   `quota_exceeded` with `server` reports the server-wide sum and cap. Push validates all but the
-  sealed alphabet before counting `writes-account`; an empty push counts nothing; file uploads check
+  sealed alphabet before counting `writes-account`; a refused body counts 1, and an empty push
+  counts nothing (security review 2); file uploads check
   path and headers before counting. `limit` outside 1–500, or a negative `since`, is 400.
 - **`MemoryServer`.** `new()` starts with sign-ups open and the migration's other settings
   (`DEFAULT_SETTINGS`, checked against the migration by a test). `set_setting` panics where D1's
@@ -2141,9 +2260,14 @@ e2e.
    It opens signed out with every note in place. Run `kanso-sync estimate` and compare it with the
    quotas.
 6. **Create the owner's account.**
-   1. `npm run -s admin -- signups only <you>`.
-   2. In the app: Settings › Account › Create account. Save the recovery key, then Done.
-   3. If the estimate exceeded a default, run `quota <you> …` and Sync now.
+   1. Open Settings › Account › Create account and fill it in, but don't submit yet.
+   2. Immediately before submitting: `npm run -s admin -- signups only <you>`. Until the account
+      exists, anyone who guesses the name can take it, so leave no gap.
+   3. Submit. Save the recovery key, then Done.
+   4. If the name was taken (the app says so, or `signups only` said the reservation is spent
+      before you signed up), someone else got it first: `npm run -s admin -- delete <you> --confirm
+      <you>`, then repeat from 2.
+   5. If the estimate exceeded a default, run `quota <you> …` and Sync now.
 7. **Verify.** Wait for "Synced". Quit Kanso, then run `cargo run --release -p kanso-sync -- verify
    --data-dir ~/Library/Application\ Support/Kanso --legacy ~/KansoLegacy-<date>/manifest.json
    --out ~/KansoLegacy-<date>/verified.json`. It must exit 0.
@@ -2182,9 +2306,17 @@ e2e.
   The old app pulls everything and pushes every change made during the v2 window. Newer edits win,
   and both versions are kept. Notes deleted during the v2 window come back; delete them again. The
   v2 tables stay, unused.
-- **After step 9.** There is no return to plaintext sync; fix forward. D1 Time Travel can restore
-  the database to the step 1 bookmark within 30 days, and `admin restored --all` then makes every
-  Mac re-merge. The files are in `~/KansoLegacy-<date>`.
+- **After step 9.** There is no return to plaintext sync; fix forward. `npm run -s admin --
+  restore <step 1 bookmark>` (within 30 days) restores the database and then makes every Mac
+  re-merge. The files are in `~/KansoLegacy-<date>`.
+- **Restoring D1, at any time.** Only through `admin restore <time | bookmark>`, never with
+  `wrangler d1 time-travel restore` or the dashboard. A restore alone rewinds every account's feed
+  while each Mac still trusts its cursor and epoch, so pushes and pulls would go wrong silently;
+  `restore` gives every account a new epoch at once, which makes each Mac re-merge (M1). A
+  restore also brings back the sessions, passwords and recovery keys of that time: a device token
+  revoked since works again until it is revoked again, and anyone who changed a password or
+  recovery key since must change it again. Run it first without `--confirm` to see what it would
+  do.
 - **Client-only problems.** Sign out (notes stay), install a fixed build, and sign in. "Same"
   resumes.
 
@@ -2210,7 +2342,10 @@ Residual risks:
   hint, and memory-hard parameters.
 - **Password changes don't replace the data key (M4).** Anyone who once knew the password and
   fetched the wrapped key, or who read the data key from a signed-in Mac, can decrypt anything they
-  later obtain from the server, until a rekey. v1 has no rekey; see "Deferred".
+  later obtain from the server, until a rekey. v1 has no rekey; see "Deferred". A password change
+  does replace the recovery key, in the same update (security review 2, finding 1): a recovery key
+  that such a person set while they knew the password stops working, so they can't take the
+  account over by recovery after the owner changes it. What remains is reading, not control.
 - **Stale reads and withholding.** A malicious server can withhold changes, delete data, or replay
   an old version to a Mac that never saw a newer one. It can't fabricate content, and every
   replaced local version is kept in history.
@@ -2223,18 +2358,23 @@ Residual risks:
   - It is as powerful as the password. It sits in the Keychain until the user confirms it's saved,
     and wherever the user puts it after that. The clipboard copy stays on this Mac and is cleared
     after a minute, and saving to iCloud warns.
-  - A used key stops working.
+  - A used key stops working, and so does every key from before a password change.
   - A key replaced on another Mac with "New recovery key" can still show on this one as unsaved:
     that change signs no session out, and the Worker gives no key ID to compare. Saving it saves a
     key that no longer works; the one the other Mac showed does. A password change or a recovery
     elsewhere ends this Mac's session, and the unsaved key goes with it (sec-client 3).
 - **A compromised Mac.** The local library is plaintext, and the Keychain holds the data key and the session.
 - **Lost password and recovery key.** The server copy is unrecoverable, by design. Local copies remain.
-- **Lockout.** Up to 10 sign-in attempts per account per 15 minutes from devices the account
-  doesn't know can be used up by anyone. Known devices, which prove themselves with their device
-  proof, and signed-in Macs are unaffected (M8, security re-check 5).
+- **Lockout.** Up to 10 sign-in attempts per account per 15 minutes from devices that aren't
+  signed in can be used up by anyone. Signed-in Macs, which prove themselves with their device
+  proof, are unaffected (M8, security re-check 5). A Mac that was signed out (by itself, another
+  Mac, a password change, recovery, eviction or expiry) counts like a stranger until it signs in
+  again, so an old copy of its library can't be used to guess passwords past the limit.
 - **Floods and cost.** Without a custom domain and a WAF rule, a large flood can drive Workers
-  request costs. Per-account write budgets cap D1 write costs, and the global caps bound storage.
+  request costs. Per-account write budgets and `SESSION_LIMITER` cap what one account costs, the
+  global caps bound storage, and the server-wide daily caps bound a day's writes and uploads at
+  about twice each cap. A few accounts at their own budgets can no longer pause everyone else's
+  sync: an account within its fair share is never refused by a server-wide cap.
 - **Unaudited crates.** The crypto crates are recent RustCrypto releases (argon2 0.6,
   chacha20poly1305 0.11), pinned in `Cargo.lock`.
 

@@ -1,8 +1,10 @@
 // Rate limits (docs/ACCOUNTS.md › Rate limits). Two layers:
 //
-// 1. The Workers rate-limit binding AUTH_LIMITER, keyed by the caller's IP
-//    group, in front of every /v2/auth/* and /v2/health request. It writes
-//    nothing to D1; without the binding (unit tests) the layer is skipped.
+// 1. Workers rate-limit bindings, which write nothing to D1: AUTH_LIMITER,
+//    keyed by the caller's IP group, in front of every /v2/auth/* and
+//    /v2/health request; SESSION_LIMITER, keyed by account ID, on every
+//    session route after the session lookup. Without a binding (unit tests)
+//    its layer is skipped.
 // 2. Fixed-window counters in D1, the authority. The counting upsert runs
 //    before credentials are checked or any work is done, and the request is
 //    refused when the count it returns is over the maximum, so parallel
@@ -50,10 +52,16 @@ export const DAILY_MAX_SQL: Partial<Record<Rule, string>> = {
 /** The binding's window, which is also its `retry_after`. */
 export const BINDING_PERIOD_MS = 60_000;
 
+/**
+ * Counts first, in fixed windows. A request stamped with an earlier window
+ * than the row's (one begun just before the boundary, or a Worker whose clock
+ * is a little behind) counts against the newer window instead of resetting it,
+ * as the `daily` triggers do; only a later window starts the count again.
+ */
 export const COUNT_SQL = `INSERT INTO limits (key, window_start, count) VALUES (?1, ?2, ?3)
 ON CONFLICT (key) DO UPDATE SET
-  count = CASE WHEN window_start = excluded.window_start THEN count + excluded.count ELSE excluded.count END,
-  window_start = excluded.window_start
+  count = CASE WHEN window_start >= excluded.window_start THEN count + excluded.count ELSE excluded.count END,
+  window_start = max(window_start, excluded.window_start)
 RETURNING count`;
 
 export const windowStart = (now: number, window: number): number => Math.floor(now / window) * window;
@@ -141,12 +149,17 @@ function parseIpv4(text: string): number[] | null {
 	return parts.map(Number);
 }
 
+/** IPv6 addresses are grouped by their first 48 bits. */
+const IPV6_PREFIX = 48;
+
 /**
- * The subject a rule counts by: IPv4 per address, IPv6 per `/prefix` (56 in
- * D1, 48 for sign-up and the binding). `CF-Connecting-IP` supplies the
+ * The subject a rule counts by: IPv4 per address, IPv6 per /48, in D1 and in
+ * the binding alike. A /48 is the smallest block a home or small office is
+ * commonly given, so a finer group would let one subscriber rotate through
+ * 256 /56s (security review 2, finding 9). `CF-Connecting-IP` supplies the
  * address; "unknown" stands in when it's absent (local dev).
  */
-export function ipGroup(ip: string | null, prefix: 48 | 56): string {
+export function ipGroup(ip: string | null): string {
 	if (!ip) return "unknown";
 	if (!ip.includes(":")) return parseIpv4(ip) ? ip : ip.toLowerCase();
 	const groups = parseIpv6(ip);
@@ -156,10 +169,10 @@ export function ipGroup(ip: string | null, prefix: 48 | 56): string {
 		return [groups[6] >> 8, groups[6] & 255, groups[7] >> 8, groups[7] & 255].join(".");
 	}
 	const masked = groups.map((g, i) => {
-		const bits = Math.max(0, Math.min(16, prefix - 16 * i));
+		const bits = Math.max(0, Math.min(16, IPV6_PREFIX - 16 * i));
 		return bits === 0 ? 0 : g & ((0xffff << (16 - bits)) & 0xffff);
 	});
-	return `${masked.map((g) => g.toString(16)).join(":")}/${prefix}`;
+	return `${masked.map((g) => g.toString(16)).join(":")}/${IPV6_PREFIX}`;
 }
 
 export const clientIp = (request: Request): string | null => request.headers.get("cf-connecting-ip");
@@ -167,6 +180,19 @@ export const clientIp = (request: Request): string | null => request.headers.get
 /** The binding layer: 429 `binding` when AUTH_LIMITER refuses this IP group, else null. */
 export async function bindingFilter(limiter: RateLimit | undefined, request: Request): Promise<Response | null> {
 	if (!limiter) return null;
-	const { success } = await limiter.limit({ key: ipGroup(clientIp(request), 48) });
+	const { success } = await limiter.limit({ key: ipGroup(clientIp(request)) });
 	return success ? null : rateLimited("binding", BINDING_PERIOD_MS);
+}
+
+/**
+ * The session layer: 429 `session-account` when SESSION_LIMITER (about 120
+ * requests a minute) refuses this account, else null. It runs after the
+ * session lookup, keyed by account ID, so one account can't keep the shared
+ * database busy from any number of IPs. Write-free, like AUTH_LIMITER, and
+ * skipped when the binding is missing (unit tests).
+ */
+export async function sessionFilter(limiter: RateLimit | undefined, accountId: string): Promise<Response | null> {
+	if (!limiter) return null;
+	const { success } = await limiter.limit({ key: accountId });
+	return success ? null : rateLimited("session-account", BINDING_PERIOD_MS);
 }

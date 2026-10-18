@@ -1,17 +1,18 @@
 // Administers the sync Worker's accounts: `npm run -s admin -- [--local] <command>`
 // (commands in USAGE, src/accounts.ts). The commands are planned in
 // src/accounts.ts; this runner gives them the outside world through
-// wrangler: `d1 execute` for SQL, `d1 export`, `r2 object get` and
-// `secret delete`. It works on the deployed database unless --local is given,
-// and wrangler then needs CLOUDFLARE_API_TOKEN (see README.md); with --local
-// it only touches Miniflare's state under .wrangler/ (or --persist-to DIR).
+// wrangler: `d1 execute` for SQL, `d1 export`, `r2 object get`, `secret
+// delete` and `d1 time-travel restore`. It works on the deployed database
+// unless --local is given, and wrangler then needs CLOUDFLARE_API_TOKEN (see
+// README.md); with --local it only touches Miniflare's state under .wrangler/
+// (or --persist-to DIR).
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { type AdminIO, type StatementResult, USAGE, UsageError, admin } from "../src/accounts.ts";
+import { type AdminIO, D1_DATABASE, type StatementResult, USAGE, UsageError, admin, restoreArgs } from "../src/accounts.ts";
 
-const DATABASE = "kanso-sync";
+const DATABASE = D1_DATABASE;
 const BUCKET = "kanso-files";
 const CLOUD = fileURLToPath(new URL("..", import.meta.url));
 const WRANGLER = fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url));
@@ -82,6 +83,21 @@ function io(local: boolean, persistTo: string | undefined): AdminIO {
 		async deleteSecret(name) {
 			const result = spawnSync(process.execPath, [WRANGLER, "secret", "delete", name], { cwd: CLOUD, stdio: "inherit" });
 			if (result.status !== 0) throw new WranglerError(`wrangler secret delete ${name} failed`, "");
+		},
+		async timeTravelRestore(target) {
+			// Time Travel exists only on the deployed database; the planner refuses --local first.
+			if (local) throw new WranglerError("wrangler d1 time-travel has no local database", "");
+			const output = wrangler(restoreArgs(target));
+			let answer: { bookmark?: unknown; previous_bookmark?: unknown } = {};
+			try {
+				answer = JSON.parse(output);
+			} catch {
+				// Reported below.
+			}
+			if (typeof answer.bookmark !== "string" || typeof answer.previous_bookmark !== "string") {
+				throw new WranglerError("unexpected answer from wrangler d1 time-travel restore", output.slice(0, 4000));
+			}
+			return { bookmark: answer.bookmark, previousBookmark: answer.previous_bookmark };
 		},
 	};
 }

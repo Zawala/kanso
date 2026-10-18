@@ -15,6 +15,7 @@ import {
 	login,
 	newCreds,
 	newDevice,
+	passwordBody,
 	resetServer,
 	signUp,
 	signupBody,
@@ -26,15 +27,16 @@ const runs = (n: number) => ({ numRuns: Math.min(n, Number(env.FAST_CHECK_RUNS))
 const ROOMY = { signup: "open", max_accounts: "100000", signups_per_day: "100000" };
 
 /** Test addresses with their groups, worked out by hand. */
-const IPS: { ip: string | undefined; g56: string; g48: string }[] = [
-	{ ip: "203.0.113.5", g56: "203.0.113.5", g48: "203.0.113.5" },
-	{ ip: "::ffff:203.0.113.5", g56: "203.0.113.5", g48: "203.0.113.5" },
-	{ ip: "203.0.113.6", g56: "203.0.113.6", g48: "203.0.113.6" },
-	{ ip: "2001:db8:1:100::1", g56: "2001:db8:1:100", g48: "2001:db8:1" },
-	{ ip: "2001:DB8:1:1ff:ffff::2", g56: "2001:db8:1:100", g48: "2001:db8:1" },
-	{ ip: "2001:db8:1:200::3", g56: "2001:db8:1:200", g48: "2001:db8:1" },
-	{ ip: "2001:db8:2::4", g56: "2001:db8:2:0", g48: "2001:db8:2" },
-	{ ip: undefined, g56: "unknown", g48: "unknown" },
+// Every D1 rule groups IPv6 by /48 (security review 2, finding 9).
+const IPS: { ip: string | undefined; group: string }[] = [
+	{ ip: "203.0.113.5", group: "203.0.113.5" },
+	{ ip: "::ffff:203.0.113.5", group: "203.0.113.5" },
+	{ ip: "203.0.113.6", group: "203.0.113.6" },
+	{ ip: "2001:db8:1:100::1", group: "2001:db8:1" },
+	{ ip: "2001:DB8:1:1ff:ffff::2", group: "2001:db8:1" },
+	{ ip: "2001:db8:1:200::3", group: "2001:db8:1" },
+	{ ip: "2001:db8:2::4", group: "2001:db8:2" },
+	{ ip: undefined, group: "unknown" },
 ];
 
 const WINDOWS = { "signup-ip": 3_600_000, "login-user": 900_000, "login-ip": 900_000, "recover-ip": 3_600_000, "password-account": 900_000 };
@@ -64,7 +66,7 @@ describe("the D1 layer", () => {
 	// clock moving by seconds to hours. Every answer's status, `limit` and
 	// `retry_after` match the model.
 	it("prop_limiter_matches_the_model", async () => {
-		// Mostly addresses that share a group (0 and 1 are one IPv4 address; 3 and 4 one /56; 3 to 5 one /48).
+		// Mostly addresses that share a group (0 and 1 are one IPv4 address; 3 to 5 one /48, in two /56s).
 		const genIp = fc.oneof({ weight: 3, arbitrary: fc.constantFrom(0, 1, 3, 4, 5) }, { weight: 1, arbitrary: fc.integer({ min: 0, max: IPS.length - 1 }) });
 		const genOp = fc.oneof(
 			{ weight: 6, arbitrary: fc.record({ kind: fc.constant("login" as const), user: fc.integer({ min: 0, max: 3 }), good: fc.boolean(), device: fc.constantFrom("known", "misproved", "new"), ip: genIp }) },
@@ -100,7 +102,7 @@ describe("the D1 layer", () => {
 						const device = op.device === "known" && account ? account.device : op.device === "misproved" && account ? { ...account.device, proof: base64url(crypto.getRandomValues(new Uint8Array(32))) } : newDevice();
 						const authKey = op.good && account ? account.creds.authKey : base64url(crypto.getRandomValues(new Uint8Array(32)));
 						r = await callJson("/v2/auth/login", { now, ip: IPS[op.ip].ip, json: { username, auth_key: authKey, device: { id: device.id, proof: device.proof } } });
-						refused = model.count("login-ip", IPS[op.ip].g56, now);
+						refused = model.count("login-ip", IPS[op.ip].group, now);
 						const known = account !== undefined && op.device === "known";
 						if (!refused && !known) refused = model.count("login-user", account?.creds.accountId ?? "unknown", now);
 						success = op.good && account ? 200 : 401;
@@ -116,14 +118,14 @@ describe("the D1 layer", () => {
 						}
 					} else if (op.kind === "signup") {
 						r = await callJson("/v2/auth/signup", { now, ip: IPS[op.ip].ip, json: signupBody(newCreds(`user${++names}`), newDevice()) });
-						refused = model.count("signup-ip", IPS[op.ip].g48, now);
+						refused = model.count("signup-ip", IPS[op.ip].group, now);
 						success = 201;
 					} else if (op.kind === "recover") {
 						const account = accounts[op.user] as Account | undefined;
 						const username = account?.creds.username ?? unknown[op.user - 2];
 						const key = op.good && account ? account.creds.recoveryAuthKey : base64url(crypto.getRandomValues(new Uint8Array(32)));
 						r = await callJson("/v2/auth/recover/start", { now, ip: IPS[op.ip].ip, json: { username, recovery_auth_key: key } });
-						refused = model.count("recover-ip", IPS[op.ip].g56, now);
+						refused = model.count("recover-ip", IPS[op.ip].group, now);
 						success = op.good && account ? 200 : 401;
 					} else {
 						const account = accounts[op.user];
@@ -131,7 +133,7 @@ describe("the D1 layer", () => {
 						r = await callJson("/v2/account/password", {
 							now,
 							token: account.token,
-							json: { current_auth_key: next.authKey, kdf: KDF, salt: next.salt, auth_key: next.authKey, wrapped_key: next.wrappedKey },
+							json: passwordBody(next.authKey, next),
 						});
 						refused = model.count("password-account", account.creds.accountId, now);
 						success = 401;
@@ -167,31 +169,49 @@ describe("the D1 layer", () => {
 		expect((await login(a.creds, a.device, { now, ip: "198.51.100.41" })).status).toBe(200);
 	});
 
-	it("a known device proving itself isn't counted against the name, even signed out; one revoked over 90 days ago is", async () => {
+	it("only a signed-in device proving itself isn't counted against the name; a signed-out one is, whatever signed it out", async () => {
 		await resetServer(ROOMY);
 		const a = await signUp("alice");
 		const spare = newDevice();
-		expect((await login(a.creds, spare, { ip: "198.51.100.1" })).status).toBe(200);
+		const old = newDevice();
+		const spareToken = (await login(a.creds, spare, { now: START + 1000, ip: "198.51.100.1" })).body.token;
+		expect((await client(spareToken, { now: START + 2000 }).logout()).status).toBe(204);
+		const oldToken = (await login(a.creds, old, { now: START + 3000, ip: "198.51.100.2" })).body.token;
+		// A password change signs the old Mac out (security review 2, finding 4: an old copy of its
+		// library still holds the device secret).
+		const next = newCreds("alice");
+		expect((await callJson("/v2/account/password", { now: START + 4000, token: a.token, json: passwordBody(a.creds.authKey, next) })).body).toEqual({
+			signed_out_devices: 1,
+		});
+		const creds = { ...a.creds, authKey: next.authKey };
+
 		const now = START + 15 * 60_000;
 		const wrong = { ...a.creds, authKey: base64url(new Uint8Array(32).fill(9)) };
 		for (let i = 0; i < 10; i += 1) expect((await login(wrong, newDevice(), { now, ip: `198.51.100.${10 + i}` })).status).toBe(401);
-		const locked = await login(a.creds, newDevice(), { now, ip: "198.51.100.40" });
+		const locked = await login(creds, newDevice(), { now, ip: "198.51.100.40" });
 		expect(locked.status).toBe(429);
 		expect(locked.body.limit).toBe("login-user");
-		// The signed-up device, with its proof: not counted, so not refused, and a wrong key is still just 401.
+		// The signed-in device, with its proof: not counted, so not refused, and a wrong key is still just 401.
 		expect((await login(wrong, a.device, { now, ip: "198.51.100.41" })).status).toBe(401);
-		expect((await login(a.creds, a.device, { now, ip: "198.51.100.42" })).status).toBe(200);
+		expect((await login(creds, a.device, { now, ip: "198.51.100.42" })).status).toBe(200);
 		// The same device ID with another proof is a stranger.
-		expect((await login(a.creds, { ...a.device, proof: base64url(new Uint8Array(32).fill(1)) }, { now, ip: "198.51.100.43" })).status).toBe(429);
-		// Signed out: still known for 90 days.
-		const spareToken = (await login(a.creds, spare, { now: START + 1000, ip: "198.51.100.2" })).body.token;
-		expect((await client(spareToken, { now: START + 2000 }).logout()).status).toBe(204);
-		expect((await login(a.creds, spare, { now, ip: "198.51.100.44" })).status).toBe(200);
-		// Revoked 91 days ago: counted again.
-		await env.DB.prepare("UPDATE sessions SET revoked_at = ?2, revoked_reason = 'signed_out' WHERE device_id = ?1")
-			.bind(spare.id, now - 91 * 86_400_000)
-			.run();
-		expect((await login(a.creds, spare, { now, ip: "198.51.100.45" })).status).toBe(429);
+		expect((await login(creds, { ...a.device, proof: base64url(new Uint8Array(32).fill(1)) }, { now, ip: "198.51.100.43" })).status).toBe(429);
+		// Signed out by itself, or by the password change: counted like a stranger, even with its proof.
+		for (const [device, ip] of [[spare, "198.51.100.44"], [old, "198.51.100.45"]] as const) {
+			const r = await login(creds, device, { now, ip });
+			expect(r.status).toBe(429);
+			expect(r.body.limit).toBe("login-user");
+		}
+		// The owner can still revoke the old Mac: 204, not 404, and its token now says revoked.
+		const owner = client((await login(creds, a.device, { now, ip: "198.51.100.46" })).body.token, { now });
+		expect((await owner.revoke(old.id)).status).toBe(204);
+		expect((await client(oldToken, { now }).account()).body).toMatchObject({ error: "unauthorized", reason: "revoked" });
+		expect(await env.DB.prepare("SELECT revoked_at, revoked_reason FROM sessions WHERE device_id = ?1").bind(old.id).first()).toEqual({
+			revoked_at: START + 4000,
+			revoked_reason: "revoked",
+		});
+		// A device ID the account has never seen is still 404.
+		expect((await owner.revoke(newDevice().id)).status).toBe(404);
 	});
 
 	it("sign-ins of every unknown name share one login-user row", async () => {
@@ -241,7 +261,7 @@ describe("keys", () => {
 		const next = newCreds("alice");
 		await callJson("/v2/account/password", {
 			token: a.token,
-			json: { current_auth_key: next.authKey, kdf: KDF, salt: next.salt, auth_key: next.authKey, wrapped_key: next.wrappedKey },
+			json: passwordBody(next.authKey, next),
 		});
 		await client(a.token).push([]);
 		const keys = (await env.DB.prepare("SELECT key FROM limits ORDER BY key").all<{ key: string }>()).results.map((r) => r.key);
@@ -251,7 +271,7 @@ describe("keys", () => {
 				await expectedIpKey("login-ip", "203.0.113.77"),
 				`login-user:${a.creds.accountId}`,
 				"login-user:unknown",
-				await expectedIpKey("recover-ip", "2001:db8:aa:bb00:0:0:0:0/56"),
+				await expectedIpKey("recover-ip", "2001:db8:aa:0:0:0:0:0/48"),
 				`password-account:${a.creds.accountId}`,
 			].sort(),
 		);
@@ -263,39 +283,41 @@ describe("keys", () => {
 });
 
 describe("IP groups", () => {
-	it("IPv4 per address; IPv6 per /56, or /48; mapped IPv4 as IPv4; absent as unknown", () => {
-		expect(ipGroup("203.0.113.5", 56)).toBe("203.0.113.5");
-		expect(ipGroup("203.0.113.5", 48)).toBe("203.0.113.5");
-		expect(ipGroup("::ffff:203.0.113.5", 56)).toBe("203.0.113.5");
-		expect(ipGroup("::FFFF:cb00:7105", 48)).toBe("203.0.113.5");
-		expect(ipGroup("2001:db8:1:1ff:ffff::2", 56)).toBe("2001:db8:1:100:0:0:0:0/56");
-		expect(ipGroup("2001:db8:1:100::1", 56)).toBe("2001:db8:1:100:0:0:0:0/56");
-		expect(ipGroup("2001:db8:1:200::1", 56)).toBe("2001:db8:1:200:0:0:0:0/56");
-		expect(ipGroup("2001:db8:1:200::1", 48)).toBe("2001:db8:1:0:0:0:0:0/48");
-		expect(ipGroup("2001:0db8:0001:02ff:0000:0000:0000:0001", 48)).toBe("2001:db8:1:0:0:0:0:0/48");
-		expect(ipGroup("::1", 56)).toBe("0:0:0:0:0:0:0:0/56");
-		expect(ipGroup("fe80::1%en0", 48)).toBe("fe80:0:0:0:0:0:0:0/48");
-		expect(ipGroup(null, 56)).toBe("unknown");
-		expect(ipGroup("", 48)).toBe("unknown");
+	it("IPv4 per address; IPv6 per /48; mapped IPv4 as IPv4; absent as unknown", () => {
+		expect(ipGroup("203.0.113.5")).toBe("203.0.113.5");
+		expect(ipGroup("::ffff:203.0.113.5")).toBe("203.0.113.5");
+		expect(ipGroup("::FFFF:cb00:7105")).toBe("203.0.113.5");
+		// Two /56s of one /48 are one group.
+		expect(ipGroup("2001:db8:1:1ff:ffff::2")).toBe("2001:db8:1:0:0:0:0:0/48");
+		expect(ipGroup("2001:db8:1:100::1")).toBe("2001:db8:1:0:0:0:0:0/48");
+		expect(ipGroup("2001:db8:1:200::1")).toBe("2001:db8:1:0:0:0:0:0/48");
+		expect(ipGroup("2001:0db8:0001:02ff:0000:0000:0000:0001")).toBe("2001:db8:1:0:0:0:0:0/48");
+		expect(ipGroup("2001:db8:2::1")).toBe("2001:db8:2:0:0:0:0:0/48");
+		expect(ipGroup("::1")).toBe("0:0:0:0:0:0:0:0/48");
+		expect(ipGroup("fe80::1%en0")).toBe("fe80:0:0:0:0:0:0:0/48");
+		expect(ipGroup(null)).toBe("unknown");
+		expect(ipGroup("")).toBe("unknown");
 	});
 
-	// Every spelling of an address in one /56 lands in the same group, and
-	// addresses differing above bit 56 never do.
+	// Every spelling of an address in one /48 lands in the same group, and
+	// addresses differing above bit 48 never do.
 	it("prop_ipv6_groups_follow_the_prefix", () => {
-		const genAddress = fc.array(fc.integer({ min: 0, max: 0xffff }), { minLength: 8, maxLength: 8 }).filter((g) => !(g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff));
+		// An IPv4-mapped address (::ffff:a.b.c.d) is grouped as IPv4, so neither side may be one.
+		const mapped = (g: number[]) => g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff;
+		const genAddress = fc.array(fc.integer({ min: 0, max: 0xffff }), { minLength: 8, maxLength: 8 }).filter((g) => !mapped(g));
 		const spell = (g: number[], upper: boolean) => {
 			const text = g.map((x) => x.toString(16)).join(":");
 			return upper ? text.toUpperCase() : text;
 		};
 		fc.assert(
-			fc.property(genAddress, fc.integer({ min: 0, max: 0xff }), fc.array(fc.integer({ min: 0, max: 0xffff }), { minLength: 4, maxLength: 4 }), fc.boolean(), (g, low, rest, upper) => {
-				const sibling = [...g.slice(0, 3), (g[3] & 0xff00) | low, ...rest];
-				expect(ipGroup(spell(sibling, upper), 56)).toBe(ipGroup(spell(g, false), 56));
-				expect(ipGroup(spell(sibling, upper), 48)).toBe(ipGroup(spell(g, false), 48));
+			fc.property(genAddress, fc.array(fc.integer({ min: 0, max: 0xffff }), { minLength: 5, maxLength: 5 }), fc.integer({ min: 0, max: 47 }), fc.boolean(), (g, rest, bit, upper) => {
+				const sibling = [...g.slice(0, 3), ...rest];
+				fc.pre(!mapped(sibling));
+				expect(ipGroup(spell(sibling, upper))).toBe(ipGroup(spell(g, false)));
+				// One bit flipped among the first 48: another group.
 				const far = [...g];
-				far[3] ^= 0x100;
-				expect(ipGroup(spell(far, false), 56)).not.toBe(ipGroup(spell(g, false), 56));
-				expect(ipGroup(spell(far, false), 48)).toBe(ipGroup(spell(g, false), 48));
+				far[Math.floor(bit / 16)] ^= 0x8000 >> bit % 16;
+				expect(ipGroup(spell(far, false))).not.toBe(ipGroup(spell(g, false)));
 			}),
 		);
 	});

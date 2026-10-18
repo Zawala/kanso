@@ -96,9 +96,12 @@ describe("commands", () => {
 		expect((await runAdmin(["signups", "close"])).ok).toBe(true);
 		expect(await setting("signup")).toBe("closed");
 		expect((await callJson("/v2/health")).body.signup).toBe("closed");
-		expect((await runAdmin(["signups", "only", "Carol"])).message).toContain("until that account exists");
+		expect((await runAdmin(["signups", "only", "Carol"])).message).toContain("until that account exists. Sign up now");
 		expect(await setting("signup")).toBe("only:carol");
-		expect((await runAdmin(["signups", "only", "bob"])).message).toContain("spent");
+		// Taken already (by someone else, if the owner hasn't signed up yet): the way back is named.
+		const spent = (await runAdmin(["signups", "only", "bob"])).message;
+		expect(spent).toContain("spent");
+		expect(spent).toContain("`delete bob --confirm bob`, then `signups only bob` again");
 		expect((await runAdmin(["signups", "open"])).ok).toBe(true);
 		expect(await setting("signup")).toBe("open");
 		await expect(runAdmin(["signups", "maybe"])).rejects.toThrow(UsageError);
@@ -125,16 +128,26 @@ describe("commands", () => {
 			expect((await runAdmin([command, "123"])).ok).toBe(true);
 			expect(await setting(name)).toBe("123");
 		}
-		// The per-account budgets against the server's: how many accounts it takes to use the day up.
+		// The per-account budgets against the server's: each cap's fair share, how many accounts it
+		// takes to reach the cap, and the day's bound of about twice the cap.
 		expect((await runAdmin(["global-writes-per-day", "300000"])).ok).toBe(true);
 		expect((await runAdmin(["global-upload-bytes-per-day", "5000000000"])).ok).toBe(true);
 		expect((await runAdmin(["upload-bytes-per-day", "1073741824"])).ok).toBe(true);
 		expect((await runAdmin(["writes-per-day", "20000"])).message).toBe(
-			"writes_per_day = 20000. 15 accounts using their whole writes_per_day (20000) use up global_writes_per_day (300000) for everyone until UTC midnight. " +
-				"5 accounts using their whole upload_bytes_per_day (1073741824) use up global_upload_bytes_per_day (5000000000) for everyone until UTC midnight.",
+			"writes_per_day = 20000. global_writes_per_day (300000) ÷ max_accounts (50): a fair share of 6000 writes per account, which it never refuses. " +
+				"15 accounts using their whole writes_per_day (20000) reach it, after which only accounts above their fair share wait for UTC midnight. " +
+				"A day's total stays under about 600000. " +
+				"global_upload_bytes_per_day (5000000000) ÷ max_accounts (50): a fair share of 100000000 bytes per account, which it never refuses. " +
+				"5 accounts using their whole upload_bytes_per_day (1073741824) reach it, after which only accounts above their fair share wait for UTC midnight. " +
+				"A day's total stays under about 10000000000.",
 		);
-		expect((await runAdmin(["max-accounts", "40"])).ok).toBe(true);
+		// The fair shares follow max_accounts.
+		const max = await runAdmin(["max-accounts", "40"]);
+		expect(max.ok).toBe(true);
+		expect(max.message).toContain("max_accounts = 40. global_writes_per_day (300000) ÷ max_accounts (40): a fair share of 7500 writes");
+		expect(max.message).toContain("a fair share of 125000000 bytes per account");
 		expect(await setting("max_accounts")).toBe("40");
+		expect((await runAdmin(["accounts"])).message).toContain("accounts within their fair share (7500 writes, 125000000 upload bytes) carry on");
 	});
 
 	it("quota --writes-per-day raises one account's daily write budget; no single account's budget may exceed the server's", async () => {
@@ -195,6 +208,117 @@ describe("commands", () => {
 	});
 });
 
+// Security review 2, finding 10: D1 is restored only through `restore`, which
+// rotates every epoch at once. Wrangler never runs here: testIO records the
+// restore and answers made-up bookmarks.
+describe("restore", () => {
+	const DAY_MS = 86_400_000;
+	const NOW = START + 10 * DAY_MS;
+	/** An hour ago, to the millisecond. */
+	const iso = new Date(NOW - 3_600_000).toISOString();
+	/** Two days ago, in seconds. */
+	const unix = String((NOW - 2 * DAY_MS) / 1000);
+	const bookmark = "00000085-0000024c-00004c6d-8e61117bf38d7adb71b934ebbf891683";
+	const EPOCHS_SQL = "UPDATE accounts SET epoch = lower(hex(randomblob(8))) RETURNING username";
+	const epochs = async () => (await env.DB.prepare("SELECT username, epoch FROM accounts ORDER BY username").all<{ username: string; epoch: string }>()).results;
+
+	it("without --confirm prints the wrangler command and the epoch rotation, and runs neither", async () => {
+		const before = await epochs();
+		for (const [point, arg] of [
+			[iso, `--timestamp=${iso}`],
+			[unix, `--timestamp=${unix}`],
+			[bookmark, `--bookmark=${bookmark}`],
+		]) {
+			const io = testIO({ local: false });
+			const r = await admin(["restore", point], io.io, NOW);
+			expect(r.ok).toBe(true);
+			expect(r.message).toContain(`Dry run: nothing changed. With --confirm ${point}, this runs against the deployed database:`);
+			expect(r.message).toContain(`1. npx wrangler d1 time-travel restore kanso-sync ${arg} --json`);
+			expect(r.message).toContain(`2. at once, as restored --all: ${EPOCHS_SQL}`);
+			expect(r.message).toContain("must change it again");
+			expect(io.calls).toEqual([]);
+		}
+		expect(await epochs()).toEqual(before);
+	});
+
+	it("with --confirm restores, then at once gives every account a new epoch, and says how to undo", async () => {
+		const io = testIO({ local: false });
+		const before = await epochs();
+		const r = await admin(["restore", iso, "--confirm", iso], io.io, NOW);
+		expect(r.ok, r.message).toBe(true);
+		expect(io.restores).toEqual([{ kind: "timestamp", value: iso }]);
+		expect(io.calls).toEqual([`restore timestamp=${iso}`, `sql ${EPOCHS_SQL}`]);
+		const after = await epochs();
+		expect(after.map((a) => a.username)).toEqual(["alice", "bob"]);
+		for (const [i, a] of after.entries()) {
+			expect(a.epoch).toMatch(/^[0-9a-f]{16}$/);
+			expect(a.epoch).not.toBe(before[i].epoch);
+		}
+		expect((await client(alice.token).changes()).body.epoch).toBe(after[0].epoch);
+		expect(r.message).toContain("Restored kanso-sync to bookmark 00000001-00000002-00000003-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.");
+		expect(r.message).toContain("New epoch for alice, bob: each Mac re-merges on its next sync.");
+		expect(r.message).toContain("To undo the restore: npm run -s admin -- restore 00000001-00000002-00000003-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --confirm 00000001-00000002-00000003-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+		// The undo command it prints is one restore accepts.
+		const undo = testIO({ local: false });
+		expect((await admin(["restore", "00000001-00000002-00000003-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"], undo.io, NOW)).ok).toBe(true);
+	});
+
+	it("when the epochs fail after the restore, says to run restored --all now", async () => {
+		const io = testIO({ local: false });
+		const failing: AdminIO = {
+			...io.io,
+			sql: async () => {
+				throw new Error("wrangler d1 execute failed");
+			},
+		};
+		const r = await admin(["restore", bookmark, "--confirm", bookmark], failing, NOW);
+		expect(r.ok).toBe(false);
+		expect(io.restores).toEqual([{ kind: "bookmark", value: bookmark }]);
+		expect(r.message).toContain("but the new epochs failed (wrangler d1 execute failed)");
+		expect(r.message).toContain("Run `npm run -s admin -- restored --all` now, before any Mac syncs.");
+		expect(r.message).toContain("To undo the restore");
+	});
+
+	it("when the restore fails, stops before the epochs", async () => {
+		const io = testIO({ local: false, restoreAnswer: new Error("wrangler d1 time-travel restore failed") });
+		const before = await epochs();
+		await expect(admin(["restore", unix, "--confirm", unix], io.io, NOW)).rejects.toThrow(/time-travel restore failed/);
+		expect(io.calls).toEqual([`restore timestamp=${unix}`]);
+		expect(await epochs()).toEqual(before);
+	});
+
+	it("refuses --local, a malformed or out-of-range point, and a wrong --confirm, touching nothing", async () => {
+		const local = testIO({ local: true });
+		await expect(admin(["restore", iso, "--confirm", iso], local.io, NOW)).rejects.toThrow(/deployed database only/);
+		expect(local.calls).toEqual([]);
+		const cases: [string[], RegExp][] = [
+			[["restore"], /^Usage/],
+			[["restore", iso, unix], /^Usage/],
+			[["restore", "yesterday"], /not a restore point/],
+			[["restore", "2026-10-17"], /not a restore point/],
+			// No zone.
+			[["restore", "2027-01-25T08:00:00"], /not a restore point/],
+			// Milliseconds, not seconds.
+			[["restore", String(NOW - DAY_MS)], /not a restore point/],
+			[["restore", "-1"], /not a restore point/],
+			[["restore", "ABCDEF01-0000024C"], /not a restore point/],
+			// A date alone, or a bookmark cut short or in capitals.
+			[["restore", bookmark.slice(0, -1)], /not a restore point/],
+			[["restore", bookmark.toUpperCase()], /not a restore point/],
+			[["restore", "--bookmark=00000085-0000024c"], /Unknown option/],
+			[["restore", new Date(NOW + 60_000).toISOString()], /in the future/],
+			[["restore", String((NOW - 31 * DAY_MS) / 1000)], /more than 30 days ago/],
+			[["restore", iso, "--confirm", unix], /Repeat the restore point to confirm/],
+			[["restore", iso, "--confirm"], /needs a value/],
+		];
+		for (const [args, why] of cases) {
+			const io = testIO({ local: false });
+			await expect(admin(args, io.io, NOW), JSON.stringify(args)).rejects.toThrow(why);
+			expect(io.calls, JSON.stringify(args)).toEqual([]);
+		}
+	});
+});
+
 describe("refusals before any SQL", () => {
 	/** An AdminIO that fails the test if anything reaches it. */
 	const untouchable = (): { io: AdminIO; touched: string[] } => {
@@ -216,6 +340,7 @@ describe("refusals before any SQL", () => {
 				writeFile: record("writeFile"),
 				readFile: record("readFile"),
 				deleteSecret: record("deleteSecret"),
+				timeTravelRestore: record("timeTravelRestore"),
 			},
 		};
 	};
@@ -446,6 +571,47 @@ describe("properties", () => {
 			}),
 			runs(100),
 		);
+	});
+
+	// Invariant: whatever the argument, `restore` either refuses it before
+	// anything runs, or it is a bookmark, or a time in Time Travel's last 30
+	// days; only with a matching --confirm does it reach wrangler, exactly as given.
+	it("prop_only_a_well_formed_restore_point_reaches_wrangler", async () => {
+		const DAY_MS = 86_400_000;
+		const NOW = START + 10 * DAY_MS;
+		const points = fc.oneof(
+			hostile,
+			fc.integer({ min: 0, max: 9_999_999_999 }).map(String),
+			fc.date({ min: new Date(NOW - 40 * DAY_MS), max: new Date(NOW + DAY_MS), noInvalidDate: true }).map((d) => d.toISOString()),
+			fc.stringMatching(/^[0-9a-fA-F-]{1,40}$/),
+			fc.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{32}$/),
+		);
+		// Across all runs, both kinds must reach wrangler.
+		const reached = { bookmark: 0, timestamp: 0 };
+		await fc.assert(
+			fc.asyncProperty(points, fc.boolean(), async (point, confirm) => {
+				const io = testIO({ local: false });
+				let report;
+				try {
+					report = await admin(["restore", point, ...(confirm ? ["--confirm", point] : [])], io.io, NOW);
+				} catch (err) {
+					expect(err).toBeInstanceOf(UsageError);
+					expect(io.calls).toEqual([]);
+					return;
+				}
+				expect(report.ok).toBe(true);
+				const bookmark = /^[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{32}$/.test(point);
+				const ms = /^[0-9]{10}$/.test(point) ? Number(point) * 1000 : Date.parse(point);
+				expect(bookmark || (ms <= NOW && ms >= NOW - 30 * DAY_MS), point).toBe(true);
+				expect(io.restores).toEqual(confirm ? [{ kind: bookmark ? "bookmark" : "timestamp", value: point }] : []);
+				if (confirm) reached[bookmark ? "bookmark" : "timestamp"] += 1;
+			}),
+			runs(100),
+		);
+		if (Number(env.FAST_CHECK_RUNS) >= 20) {
+			expect(reached.bookmark).toBeGreaterThan(0);
+			expect(reached.timestamp).toBeGreaterThan(0);
+		}
 	});
 
 	// Invariant: whatever the arguments, a command is refused up front or

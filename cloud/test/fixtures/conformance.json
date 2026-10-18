@@ -4973,6 +4973,339 @@
    ]
   },
   {
+   "name": "past a server-wide daily cap, only accounts above their fair share (cap / max_accounts) are refused (security review 2)",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "sealed_name": "$name_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "alice": "token",
+      "epoch_alice": "epoch"
+     }
+    },
+    {
+     "request": "signup",
+     "body": {
+      "username": "bob",
+      "account_id": "$acct_bob",
+      "kdf": "$kdf",
+      "salt": "$salt_bob1",
+      "auth_key": "$auth_bob1",
+      "wrapped_key": "$wrap_bob1",
+      "recovery_auth_key": "$rauth_bob1",
+      "recovery_wrapped_key": "$rwrap_bob1",
+      "key_id": "$kid_bob",
+      "device": {
+       "id": "$dev_2",
+       "sealed_name": "$name_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_bob",
+      "username": "bob",
+      "token": "*",
+      "epoch": "*"
+     },
+     "capture": {
+      "bob": "token",
+      "epoch_bob": "epoch"
+     }
+    },
+    {
+     "note": "fair shares: 4 / 2 = 2 document writes and 200 / 2 = 100 upload bytes per account",
+     "settings": {
+      "max_accounts": "2",
+      "global_writes_per_day": "4",
+      "global_upload_bytes_per_day": "200"
+     }
+    },
+    {
+     "request": "push",
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_D",
+        "rev": "$r_D1",
+        "deleted": false,
+        "sealed": "$s_D1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       },
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 2
+       },
+       {
+        "id": "$w_C",
+        "status": "ok",
+        "seq": 3
+       },
+       {
+        "id": "$w_D",
+        "status": "ok",
+        "seq": 4
+       }
+      ]
+     },
+     "note": "above her fair share, but under the cap: stored"
+    },
+    {
+     "request": "push",
+     "t": 1000,
+     "as": "alice",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_E",
+        "rev": "$r_E1",
+        "deleted": false,
+        "sealed": "$s_E1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "writes-global",
+      "retry_after": 86399
+     },
+     "note": "the cap is reached and she is above her fair share"
+    },
+    {
+     "request": "push",
+     "t": 2000,
+     "as": "bob",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_A",
+        "rev": "$r_A1",
+        "deleted": false,
+        "sealed": "$s_A1",
+        "base_rev": null
+       },
+       {
+        "id": "$w_B",
+        "rev": "$r_B1",
+        "deleted": false,
+        "sealed": "$s_B1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_A",
+        "status": "ok",
+        "seq": 1
+       },
+       {
+        "id": "$w_B",
+        "status": "ok",
+        "seq": 2
+       }
+      ]
+     },
+     "note": "past the cap, but at his fair share: never refused"
+    },
+    {
+     "request": "push",
+     "t": 3000,
+     "as": "bob",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "writes-global",
+      "retry_after": 86397
+     },
+     "note": "now above it"
+    },
+    {
+     "request": "put_file",
+     "t": 4000,
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F100",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 100
+     },
+     "note": "at her fair share of upload bytes"
+    },
+    {
+     "request": "put_file",
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G60",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 60
+     },
+     "note": "above it, but under the cap (160 of 200)"
+    },
+    {
+     "request": "put_file",
+     "t": 5000,
+     "as": "alice",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F41",
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "uploads-global",
+      "retry_after": 86395
+     },
+     "note": "over the cap and above her fair share"
+    },
+    {
+     "request": "put_file",
+     "as": "bob",
+     "path": {
+      "wire_id": "$w_G"
+     },
+     "file": "$f_G60",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "size": 60
+     },
+     "note": "over the cap (220), but within his fair share"
+    },
+    {
+     "request": "put_file",
+     "t": 6000,
+     "as": "bob",
+     "path": {
+      "wire_id": "$w_F"
+     },
+     "file": "$f_F41",
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "uploads-global",
+      "retry_after": 86394
+     },
+     "note": "101 bytes today: above his fair share"
+    },
+    {
+     "note": "refused requests still count: three documents and two uploads",
+     "request": "account",
+     "as": "bob",
+     "status": 200,
+     "response": {
+      "usage": {
+       "writes_today": 5
+      }
+     }
+    },
+    {
+     "request": "push",
+     "t": 86400000,
+     "as": "bob",
+     "body": {
+      "docs": [
+       {
+        "id": "$w_C",
+        "rev": "$r_C1",
+        "deleted": false,
+        "sealed": "$s_C1",
+        "base_rev": null
+       }
+      ]
+     },
+     "status": 200,
+     "response": {
+      "results": [
+       {
+        "id": "$w_C",
+        "status": "ok",
+        "seq": 3
+       }
+      ]
+     },
+     "note": "a new UTC day"
+    }
+   ]
+  },
+  {
    "name": "accounts are isolated: their own sequence, revisions, quotas and files",
    "steps": [
     {
