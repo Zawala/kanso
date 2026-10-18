@@ -8,7 +8,9 @@ mod config;
 mod dialogs;
 mod editor;
 mod editor_footer;
+mod empty_state;
 mod export;
+mod grouping;
 mod history;
 mod inkdrop;
 mod launch;
@@ -24,6 +26,7 @@ mod settings;
 mod sidebar;
 #[cfg(test)]
 mod snapshots;
+mod text_match;
 mod text_stats;
 mod theme;
 #[cfg(test)]

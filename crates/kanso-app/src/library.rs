@@ -60,6 +60,16 @@ pub fn search_params(filter: &Filter, search: &str, sort: Sort, descending: bool
     }
 }
 
+/// Narrows a search to one status, for the note list's filter menu.
+pub fn refine_status(params: &mut SearchParams, status: Option<NoteStatus>) {
+    if let Some(status) = status {
+        params
+            .query
+            .clauses
+            .push(Clause::field(Field::Status, status.as_str()));
+    }
+}
+
 /// Pinned notes first, keeping the sort order within each group.
 pub fn pinned_first(notes: &mut [NoteSummary]) {
     notes.sort_by_key(|note| !note.pinned);
@@ -118,6 +128,13 @@ pub struct Library {
     pub sort: Sort,
     pub descending: bool,
     pub notes: Vec<NoteSummary>,
+    /// Changes whenever `notes` is replaced, so views can tell a new list
+    /// from a repaint.
+    pub notes_version: u64,
+    /// The note list's own narrowing on top of the filter: one status, or
+    /// pinned notes only. A new filter clears both.
+    pub status_only: Option<NoteStatus>,
+    pub pinned_only: bool,
     pub selected: Option<String>,
     pub load_error: Option<String>,
     generation: u64,
@@ -169,6 +186,9 @@ impl Library {
             sort: Sort::UpdatedAt,
             descending: true,
             notes: Vec::new(),
+            notes_version: 0,
+            status_only: None,
+            pinned_only: false,
             selected: None,
             load_error: None,
             generation: 0,
@@ -185,21 +205,23 @@ impl Library {
         self.generation += 1;
         let generation = self.generation;
         let store = self.store.clone();
-        let params = search_params(&self.filter, &self.search, self.sort, self.descending);
+        let mut params = search_params(&self.filter, &self.search, self.sort, self.descending);
+        refine_status(&mut params, self.status_only);
         let filter = self.filter.clone();
+        let pinned_only = filter == Filter::Pinned || self.pinned_only;
         let recent_since = Clock::now_ms(cx) - RECENT_DAYS * DAY_MS;
         let task = cx.background_executor().spawn(async move {
-            let notes = match filter {
+            let mut notes = match filter {
                 Filter::Recent => recent_notes(&store, &params, recent_since)?,
                 _ => {
                     let mut notes = store.search_summaries(&params)?;
-                    if filter == Filter::Pinned {
-                        notes.retain(|note| note.pinned);
-                    }
                     pinned_first(&mut notes);
                     notes
                 }
             };
+            if pinned_only {
+                notes.retain(|note| note.pinned);
+            }
             let recent = recent_notes(&store, &SearchParams::default(), recent_since)?.len();
             Ok::<_, StoreError>(Loaded {
                 books: store.books()?,
@@ -222,6 +244,7 @@ impl Library {
                         this.counts = loaded.counts;
                         this.recent = loaded.recent;
                         this.notes = loaded.notes;
+                        this.notes_version += 1;
                         this.load_error = None;
                     }
                     Err(err) => this.load_error = Some(err.to_string()),
@@ -245,6 +268,38 @@ impl Library {
     pub fn set_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
         if self.filter != filter {
             self.filter = filter;
+            self.status_only = None;
+            self.pinned_only = false;
+            self.reselect = true;
+            self.reload(cx);
+        }
+    }
+
+    pub fn set_status_only(&mut self, status: Option<NoteStatus>, cx: &mut Context<Self>) {
+        if self.status_only != status {
+            self.status_only = status;
+            self.reselect = true;
+            self.reload(cx);
+        }
+    }
+
+    pub fn set_pinned_only(&mut self, pinned_only: bool, cx: &mut Context<Self>) {
+        if self.pinned_only != pinned_only {
+            self.pinned_only = pinned_only;
+            self.reselect = true;
+            self.reload(cx);
+        }
+    }
+
+    /// Whether the note list narrows the filter further.
+    pub fn is_refined(&self) -> bool {
+        self.status_only.is_some() || self.pinned_only
+    }
+
+    pub fn clear_refinements(&mut self, cx: &mut Context<Self>) {
+        if self.is_refined() {
+            self.status_only = None;
+            self.pinned_only = false;
             self.reselect = true;
             self.reload(cx);
         }
@@ -394,9 +449,10 @@ pub fn book_tree(books: &[Book]) -> Vec<(usize, &Book)> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Filter, book_path, book_tree, pinned_first, recent_first, recent_notes, search_params,
+        Filter, book_path, book_tree, pinned_first, recent_first, recent_notes, refine_status,
+        search_params,
     };
-    use kanso_core::{Book, NoteStatus, Query};
+    use kanso_core::{Book, NoteFacts, NoteStatus, Query};
     use kanso_store::{NoteSummary, Sort};
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
@@ -528,6 +584,32 @@ mod tests {
             let got: Vec<String> = recent_first(notes, since).into_iter().map(|n| n.id).collect();
             let want: Vec<String> = expected.into_iter().map(|(_, ix)| format!("note:{ix}")).collect();
             prop_assert_eq!(got, want);
+        }
+
+        /// Metamorphic: narrowing to a status keeps exactly the notes the
+        /// search found that have that status; no status changes nothing.
+        #[test]
+        fn prop_refine_status_narrows_to_that_status(
+            search in "[a-z :-]{0,12}",
+            want in prop::option::of(0usize..5),
+            notes in prop::collection::vec((0usize..5, "[a-z ]{0,8}"), 0..12),
+        ) {
+            let want = want.map(|ix| NoteStatus::ALL[ix]);
+            let plain = search_params(&Filter::All, &search, Sort::UpdatedAt, true);
+            let mut refined = plain.clone();
+            refine_status(&mut refined, want);
+            if want.is_none() {
+                prop_assert_eq!(&refined.query, &plain.query);
+            }
+            for (status, title) in &notes {
+                let status = NoteStatus::ALL[*status];
+                let facts = NoteFacts {
+                    title, body: "", book_id: "book:x", book_name: None,
+                    status: status.as_str(), tag_ids: &[], tag_names: &[],
+                };
+                let expected = plain.query.matches(&facts) && want.is_none_or(|w| w == status);
+                prop_assert_eq!(refined.query.matches(&facts), expected);
+            }
         }
 
         /// Invariant: pinned notes come first and each group keeps its order.
