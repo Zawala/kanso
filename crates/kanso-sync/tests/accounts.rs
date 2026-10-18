@@ -689,7 +689,13 @@ struct Faults {
     logout_gate: Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
     /// A server with the backend's floor and default.
     floor: Mutex<Option<KdfParams>>,
+    /// The route's first request reaches the server; every later one fails
+    /// with the error made here, unapplied (and how many went so far).
+    after_first: Mutex<Option<AfterFirst>>,
 }
+
+/// See [`Faults::after_first`].
+type AfterFirst = (Route, fn() -> ApiError, usize);
 
 struct Wrapped<'a> {
     inner: Box<dyn Api + 'a>,
@@ -732,6 +738,19 @@ impl Wrapped<'_> {
             Ok(())
         }
     }
+
+    /// [`Faults::after_first`] for a request on `route`.
+    fn reach_route(&self, route: Route) -> Result<(), ApiError> {
+        self.reach()?;
+        let mut after_first = self.faults.after_first.lock().unwrap();
+        match after_first.as_mut() {
+            Some((on, make, sent)) if *on == route => {
+                *sent += 1;
+                if *sent > 1 { Err(make()) } else { Ok(()) }
+            }
+            _ => Ok(()),
+        }
+    }
 }
 
 impl Api for Wrapped<'_> {
@@ -751,7 +770,7 @@ impl Api for Wrapped<'_> {
         Ok(answer)
     }
     fn signup(&self, request: &SignupRequest) -> Result<SessionResponse, ApiError> {
-        self.reach()?;
+        self.reach_route(Route::Signup)?;
         if self.faults.taken.load(Ordering::SeqCst) > 0 {
             self.faults.taken.fetch_sub(1, Ordering::SeqCst);
             return Err(ApiError::AccountIdTaken);
@@ -775,7 +794,7 @@ impl Api for Wrapped<'_> {
         self.inner.recover_start(request)
     }
     fn recover_finish(&self, request: &RecoverFinishRequest) -> Result<SessionResponse, ApiError> {
-        self.reach()?;
+        self.reach_route(Route::RecoverFinish)?;
         self.inner.recover_finish(request)
     }
     fn logout(&self, token: &SessionToken) -> Result<(), ApiError> {
@@ -797,7 +816,7 @@ impl Api for Wrapped<'_> {
         token: &SessionToken,
         request: &PasswordRequest,
     ) -> Result<PasswordResponse, ApiError> {
-        self.reach()?;
+        self.reach_route(Route::Password)?;
         self.faults.passwords.lock().unwrap().push(request.clone());
         self.inner.change_password(token, request)
     }
@@ -806,7 +825,7 @@ impl Api for Wrapped<'_> {
         token: &SessionToken,
         request: &RecoveryKeyRequest,
     ) -> Result<RecoveryKeyResponse, ApiError> {
-        self.reach()?;
+        self.reach_route(Route::RecoveryKey)?;
         self.inner.replace_recovery_key(token, request)
     }
     fn delete_account(
@@ -1546,6 +1565,118 @@ fn a_refused_or_unsent_rotation_puts_the_item_back() {
     assert!(unsent.recovery_key.is_none());
     assert!(kept(&secrets).is_none());
     assert!(holds(&b.server, "alice", &unsaved));
+}
+
+/// What a rotation's error must hold when the server may have taken its key:
+/// the key, unconfirmed, also in the Keychain, and the server's.
+fn kept_and_held(
+    server: &MemoryServer,
+    secrets: &MemorySecrets,
+    flow: &str,
+    lost: kanso_sync::RotationError,
+    refused: bool,
+) -> RecoveryKey {
+    if refused {
+        assert!(
+            matches!(lost.error, AccountError::RateLimited { .. }),
+            "{flow}: {:?}",
+            lost.error
+        );
+    } else {
+        assert!(
+            matches!(lost.error, AccountError::Transport(_)),
+            "{flow}: {:?}",
+            lost.error
+        );
+    }
+    let key = lost
+        .recovery_key
+        .unwrap_or_else(|| panic!("{flow}: the key comes back"));
+    assert!(key.unconfirmed, "{flow}: not known to be taken");
+    assert_eq!(
+        kept(secrets).map(|k| k.recovery_key),
+        Some(key.recovery_key.clone()),
+        "{flow}: the Keychain keeps it"
+    );
+    assert!(
+        holds(server, "alice", &key.recovery_key),
+        "{flow}: the server holds it"
+    );
+    key.recovery_key
+}
+
+/// Review-verify 1: the first attempt reaches the server and its answer is lost,
+/// then the retries never leave the Mac (offline), or the server refuses
+/// them (a 429). An earlier attempt may have been carried out, so every
+/// flow keeps the key and returns it, and it is the one the server holds.
+#[test]
+fn a_lost_answer_then_unsent_or_refused_retries_keep_the_key() {
+    let later: [(fn() -> ApiError, bool); 2] = [
+        (|| ApiError::unsent("no route to host"), false),
+        (
+            || ApiError::RateLimited {
+                retry_after: 60,
+                limit: "session-account".into(),
+            },
+            true,
+        ),
+    ];
+    for (make, refused) in later {
+        let b = hostile();
+        let secrets = MemorySecrets::new();
+        let pw = password("correct horse battery");
+        let lose_first = |route: Route| {
+            b.server.drop_next_responses(route, 1);
+            *b.faults.after_first.lock().unwrap() = Some((route, make, 0));
+        };
+        let heal = || {
+            let (route, _, sent) = b.faults.after_first.lock().unwrap().take().unwrap();
+            assert!(sent > 1, "{route:?}: it was retried");
+        };
+        // The user saves the key on screen.
+        let save = || keychain::delete_recovery_key(&secrets, &mac(1).library_id).unwrap();
+
+        lose_first(Route::Signup);
+        let lost = kanso_sync::sign_up(&b, &secrets, SERVER, "alice", &pw, &mac(1), &quiet);
+        heal();
+        let first = kept_and_held(&b.server, &secrets, "sign-up", lost.unwrap_err(), refused);
+        let session = sign_in(&b, "alice", "correct horse battery", &mac(1))
+            .expect("the account exists")
+            .session;
+        save();
+
+        lose_first(Route::RecoveryKey);
+        let lost = kanso_sync::new_recovery_key(&b, &secrets, &session, &pw, &quiet);
+        heal();
+        let second = kept_and_held(&b.server, &secrets, "new key", lost.unwrap_err(), refused);
+        assert_ne!(second, first);
+        save();
+
+        lose_first(Route::Password);
+        let changed = password("a changed passphrase");
+        let lost = kanso_sync::change_password(&b, &secrets, &session, &pw, &changed, &quiet);
+        heal();
+        let third = kept_and_held(&b.server, &secrets, "password", lost.unwrap_err(), refused);
+        assert_ne!(third, second);
+        assert!(sign_in(&b, "alice", "a changed passphrase", &mac(1)).is_ok());
+        save();
+
+        lose_first(Route::RecoverFinish);
+        let lost = kanso_sync::recover(
+            &b,
+            &secrets,
+            SERVER,
+            "alice",
+            &third,
+            &password("a brand new passphrase"),
+            &mac(1),
+            &quiet,
+        );
+        heal();
+        let fourth = kept_and_held(&b.server, &secrets, "recovery", lost.unwrap_err(), refused);
+        assert_ne!(fourth, third);
+        assert!(sign_in(&b, "alice", "a brand new passphrase", &mac(1)).is_ok());
+    }
 }
 
 /// The Keychain refusing before the request means nothing is sent; refusing

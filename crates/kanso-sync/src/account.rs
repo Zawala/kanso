@@ -367,18 +367,39 @@ const ATTEMPTS: usize = 3;
 
 /// Sends the identical request again after a transport error, pausing as
 /// the backend says first (about 1 s, then 4 s).
-fn retrying<T>(
+fn retrying<T>(b: &dyn Backend, send: impl FnMut() -> Result<T, ApiError>) -> Result<T, ApiError> {
+    retrying_noted(b, send).result
+}
+
+/// What a request sent up to [`ATTEMPTS`] times came to.
+struct Attempts<T> {
+    /// The last attempt's result.
+    result: Result<T, ApiError>,
+    /// Whether any attempt may have been carried out by the server: its
+    /// answer was lost, garbled or a 5xx ([`ApiError::may_have_applied`]).
+    /// A later attempt that never left this Mac, or that the server refused
+    /// (a 429), doesn't undo an earlier one that arrived (review-verify 1).
+    reached: bool,
+}
+
+/// [`retrying`], noting whether any attempt may have reached the server.
+fn retrying_noted<T>(
     b: &dyn Backend,
     mut send: impl FnMut() -> Result<T, ApiError>,
-) -> Result<T, ApiError> {
+) -> Attempts<T> {
     let mut attempt = 1;
+    let mut reached = false;
     loop {
-        match send() {
+        let result = send();
+        if let Err(err) = &result {
+            reached |= err.may_have_applied();
+        }
+        match result {
             Err(ApiError::Transport(_)) if attempt < ATTEMPTS => {
                 std::thread::sleep(b.retry_pause(attempt));
                 attempt += 1;
             }
-            result => return result,
+            result => return Attempts { result, reached },
         }
     }
 }
@@ -389,10 +410,12 @@ fn retrying<T>(
 /// Keychain refuses. A key the server may hold is never dropped:
 ///
 /// - The server says yes: the item is marked confirmed.
-/// - The server refuses (a 4xx), or the request never left this Mac: the
-///   item goes back to what it was.
-/// - The answer is lost, garbled or a 5xx: the item stays, and the error
-///   carries the key so the app shows it.
+/// - Every attempt was refused (a 4xx) or never left this Mac: the item
+///   goes back to what it was.
+/// - Any attempt's answer was lost, garbled or a 5xx: the item stays, and
+///   the error carries the key so the app shows it. A later attempt that
+///   was refused or never sent doesn't change that: the earlier one may
+///   have been carried out.
 ///
 /// While the Keychain holds an unsaved key for the same account, a new
 /// rotation sets that same key again (unless it is the key a recovery
@@ -497,9 +520,10 @@ impl<'a> Rotation<'a> {
         }
     }
 
-    /// The request got `error` back instead of an answer.
-    fn failed_api(self, error: ApiError) -> RotationError {
-        let maybe_applied = error.may_have_applied();
+    /// The request got `error` back instead of an answer; `reached` says
+    /// whether an earlier attempt may have been carried out.
+    fn failed_api(self, error: ApiError, reached: bool) -> RotationError {
+        let maybe_applied = reached || error.may_have_applied();
         self.failed(error.into(), maybe_applied)
     }
 }
@@ -687,6 +711,9 @@ pub fn sign_up(
     let content = ContentKeys::derive(&data_key);
     let api = b.api(&server);
     let mut fresh_ids = 0;
+    // Whether any attempt, for any account ID tried, may have created the
+    // account: they all carry this key.
+    let mut reached = false;
     loop {
         let request = SignupRequest {
             username: username.clone(),
@@ -709,7 +736,9 @@ pub fn sign_up(
         if let Err(err) = rotation.keep(&account_id) {
             return Err(rotation.failed(err.into(), false));
         }
-        match retrying(b, || api.signup(&request)) {
+        let sent = retrying_noted(b, || api.signup(&request));
+        reached |= sent.reached;
+        match sent.result {
             Ok(answer) => {
                 if let Err(err) = check_answer(
                     &account_id,
@@ -738,7 +767,7 @@ pub fn sign_up(
                 fresh_ids += 1;
                 account_id = new_account_id();
             }
-            Err(err) => return Err(rotation.failed_api(err)),
+            Err(err) => return Err(rotation.failed_api(err, reached)),
         }
     }
 }
@@ -902,9 +931,10 @@ pub fn recover(
     if let Err(err) = rotation.keep(&account_id) {
         return Err(rotation.failed(err.into(), false));
     }
-    let answer = match retrying(b, || api.recover_finish(&request)) {
+    let sent = retrying_noted(b, || api.recover_finish(&request));
+    let answer = match sent.result {
         Ok(answer) => answer,
-        Err(err) => return Err(rotation.failed_api(err)),
+        Err(err) => return Err(rotation.failed_api(err, sent.reached)),
     };
     if let Err(err) = check_answer(
         &account_id,
@@ -1115,12 +1145,13 @@ pub fn change_password(
     if let Err(err) = rotation.keep(&session.account_id) {
         return Err(rotation.failed(err.into(), false));
     }
-    match retrying(b, || api.change_password(session.token(), &request)) {
+    let sent = retrying_noted(b, || api.change_password(session.token(), &request));
+    match sent.result {
         Ok(answer) => Ok(PasswordChanged {
             signed_out_devices: usize::try_from(answer.signed_out_devices).unwrap_or(usize::MAX),
             recovery_key: rotation.accepted(),
         }),
-        Err(err) => Err(rotation.failed_api(err)),
+        Err(err) => Err(rotation.failed_api(err, sent.reached)),
     }
 }
 
@@ -1168,9 +1199,10 @@ pub fn new_recovery_key(
     if let Err(err) = rotation.keep(&session.account_id) {
         return Err(rotation.failed(err.into(), false));
     }
-    match retrying(b, || api.replace_recovery_key(session.token(), &request)) {
+    let sent = retrying_noted(b, || api.replace_recovery_key(session.token(), &request));
+    match sent.result {
         Ok(_) => Ok(rotation.accepted()),
-        Err(err) => Err(rotation.failed_api(err)),
+        Err(err) => Err(rotation.failed_api(err, sent.reached)),
     }
 }
 

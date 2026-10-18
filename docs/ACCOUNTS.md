@@ -1507,9 +1507,12 @@ recovery key" each choose the key before building the request and save it in
 the Keychain refuses. Then:
 
 - The server says yes: the item is marked confirmed.
-- The server refuses (a 4xx), or the request never left the Mac: the item goes back to what it was.
-- The answer is lost, garbled or a 5xx: the item stays, and `RotationError.recovery_key` carries it,
-  so the app shows it with a note that the server may not have taken it.
+- Every attempt was refused (a 4xx) or never left the Mac: the item goes back to what it was.
+- Any attempt's answer was lost, garbled or a 5xx: the item stays, and `RotationError.recovery_key`
+  carries it, so the app shows it with a note that the server may not have taken it. This is
+  sticky across the retries (review-verify 1): when the first attempt's answer is lost and a retry then
+  never leaves the Mac (offline) or gets a 429, the first one may still have been carried out, so
+  the key is kept, not dropped.
 
 While the item holds an unsaved key for the same account, the next rotation sets that same key
 again (except the key a recovery proves), so a retried or repeated change can't leave the server
