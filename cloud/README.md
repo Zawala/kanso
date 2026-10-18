@@ -28,8 +28,9 @@ admin route: accounts are administered from the command line (below).
 ## Configuration
 
 `wrangler.jsonc` binds the D1 database `kanso-sync` (`DB`), the R2 bucket `kanso-files` (`FILES`)
-and the rate limiter `AUTH_LIMITER` (20 requests a minute per IP group, in front of `/v2/auth/*`
-and `/v2/health`). It runs the cron every 15 minutes (purges, expired rate-limit rows and
+and two rate limiters that write nothing to D1: `AUTH_LIMITER` (20 requests a minute per IP group,
+in front of `/v2/auth/*` and `/v2/health`) and `SESSION_LIMITER` (120 requests a minute per
+account, on every session route but logout). It runs the cron every 15 minutes (purges, expired rate-limit rows and
 sessions, R2 reconciliation) and keeps invocation logs off; the Worker itself logs only route
 names and error codes.
 

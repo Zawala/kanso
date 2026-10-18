@@ -83,6 +83,11 @@ async function refused(env: Env, accountId: string, err: unknown, family: Family
 // --------------------------------------------------------------------- push
 
 // ?1 account, ?2 wire id, ?3 base_rev, ?4 rev, ?5 deleted (0/1), ?6 sealed, ?7 length(sealed), ?8 now
+//
+// Stored lengths are read with octet_length(), which SQLite answers from the record header:
+// length() on TEXT reads the whole value, overflow pages included, so a feed or a conflict
+// over large documents would read every byte of them. `sealed` is base64url (a CHECK
+// enforces it), so its bytes are its characters.
 const ACCEPT = `((?3 IS NULL AND NOT EXISTS (SELECT 1 FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2))
   OR EXISTS (SELECT 1 FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2 AND d.rev = ?3))`;
 /** Takes the account's next seq and charges the document, only when it is accepted. */
@@ -91,7 +96,7 @@ const BUMP = `UPDATE accounts SET
   docs = docs + (1 - ?5)
        - coalesce((SELECT 1 - d.deleted FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2), 0),
   doc_bytes = doc_bytes + ?7 + ${DOC_ROW_COST}
-       - coalesce((SELECT length(d.sealed) + ${DOC_ROW_COST} FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2), 0)
+       - coalesce((SELECT octet_length(d.sealed) + ${DOC_ROW_COST} FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2), 0)
   WHERE accounts.id = ?1 AND ${ACCEPT} RETURNING last_seq AS value`;
 /**
  * On a conflict, the server's version at that point of the batch. Sealed
@@ -99,8 +104,8 @@ const BUMP = `UPDATE accounts SET
  * response's budget, so 200 conflicts can't make one huge D1 result.
  */
 const INLINE_SEALED = Math.floor(PAGE_SEALED_BUDGET / MAX_PUSH_DOCS / 1.05);
-const CURRENT = `SELECT id, rev, deleted, length(sealed) AS len,
-  CASE WHEN length(sealed) <= ${INLINE_SEALED} THEN sealed END AS sealed
+const CURRENT = `SELECT id, rev, deleted, octet_length(sealed) AS len,
+  CASE WHEN octet_length(sealed) <= ${INLINE_SEALED} THEN sealed END AS sealed
   FROM account_docs WHERE account_id = ?1 AND id = ?2 AND NOT ${ACCEPT}`;
 const WRITE = `INSERT INTO account_docs (account_id, id, rev, seq, deleted, sealed, updated_at)
   SELECT ?1, ?2, ?4, last_seq, ?5, ?6, ?8 FROM accounts WHERE accounts.id = ?1 AND ${ACCEPT}
@@ -122,13 +127,17 @@ type PushResult =
 	| { id: string; status: "behind" };
 
 export const push = withSession(async (request, env, now, session) => {
+	const writes = accountKey("writes-account", session.accountId);
+	// A refused body still cost a read of up to 4 MiB and a parse: it counts one write, so
+	// failed pushes aren't free (security review 2, finding 2). Over the budget, the 429 wins.
+	const refuse = async (response: Response): Promise<Response> => (await count(env.DB, "writes-account", writes, now, 1)) ?? response;
 	const body = await readJson(request, MAX_PUSH_BODY);
-	if (!body.ok) return body.response;
+	if (!body.ok) return refuse(body.response);
 	const checked = checkPush(body.value);
-	if (!checked.ok) return error(checked.status, checked.code, checked.message);
+	if (!checked.ok) return refuse(error(checked.status, checked.code, checked.message));
 	const docs = checked.value;
 	if (docs.length === 0) return json({ results: [] });
-	const limited = await count(env.DB, "writes-account", accountKey("writes-account", session.accountId), now, docs.length);
+	const limited = await count(env.DB, "writes-account", writes, now, docs.length);
 	if (limited) return limited;
 
 	// One batch is one transaction; its statements run in order, so each
@@ -240,7 +249,7 @@ export const changes = withSession(async (request, env, _now, session) => {
 	// First the sequence numbers and lengths, then the rows that fit the
 	// budget of sealed text, always at least one.
 	const { results: lengths } = await env.DB.prepare(
-		"SELECT seq, length(sealed) AS len FROM account_docs WHERE account_id = ?1 AND seq > ?2 ORDER BY seq LIMIT ?3",
+		"SELECT seq, octet_length(sealed) AS len FROM account_docs WHERE account_id = ?1 AND seq > ?2 ORDER BY seq LIMIT ?3",
 	)
 		.bind(session.accountId, since, limit)
 		.all<{ seq: number; len: number }>();

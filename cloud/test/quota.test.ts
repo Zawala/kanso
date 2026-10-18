@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { setQuota } from "../src/accounts";
 import { sha256Hex } from "../src/crypto";
 import { handle } from "../src/index";
-import { MAX_SEALED_FILE } from "../src/protocol";
+import { MAX_PUSH_BODY, MAX_SEALED_FILE } from "../src/protocol";
 import {
 	type Account,
 	type Client,
@@ -17,6 +17,7 @@ import {
 	SEEDED_SETTINGS,
 	START,
 	accountRow,
+	call,
 	client,
 	recomputed,
 	resetServer,
@@ -380,6 +381,23 @@ describe("examples", () => {
 		expect((await alice.account()).body.quota.writes_per_day).toBe(4);
 		expect((await b.push([doc(), doc(), doc()])).body.limit).toBe("writes-account");
 		expect((await b.account()).body.quota.writes_per_day).toBe(2);
+	});
+
+	it("a push refused as malformed or too large counts one write, so failed pushes aren't free", async () => {
+		await setSetting("writes_per_day", "3");
+		const raw = (body: string) => call("/v2/push", { token: a.token, headers: { "content-type": "application/json" }, body });
+		expect((await alice.push([{ ...doc(), id: "note:short" }])).status).toBe(400);
+		expect((await raw("{")).status).toBe(400);
+		expect((await raw("x".repeat(MAX_PUSH_BODY + 1))).status).toBe(413);
+		expect((await alice.account()).body.usage.writes_today).toBe(3);
+		// The day's budget is spent: a good push is refused, and so is a bad one, with 429.
+		expect((await alice.push([doc()])).body).toMatchObject({ error: "rate_limited", limit: "writes-account" });
+		expect((await raw("{")).status).toBe(429);
+		// An empty push still counts nothing.
+		await setSetting("writes_per_day", "20000");
+		const before = (await alice.account()).body.usage.writes_today;
+		expect((await alice.push([])).status).toBe(200);
+		expect((await alice.account()).body.usage.writes_today).toBe(before);
 	});
 
 	it("the writes-account rule counts documents and uploads per account per UTC day", async () => {

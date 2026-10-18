@@ -221,6 +221,47 @@ describe("browser and broken requests", () => {
 		expect((await client(a.token, { env: limited }).account()).status).toBe(200);
 		expect(keys).toHaveLength(7);
 	});
+
+	it("the SESSION_LIMITER binding refuses every session route with 429 session-account, keyed by account, writing nothing to D1", async () => {
+		const a = await signUp("alice");
+		const b = await signUp("bob");
+		const keys: string[] = [];
+		const limiter = (success: boolean): RateLimit => ({
+			async limit({ key }) {
+				keys.push(key);
+				return { success };
+			},
+		});
+		const refusing = testEnv({ SESSION_LIMITER: limiter(false) });
+		const sessionRoutes = ROUTES.filter(([, path]) => !path.startsWith("/v2/auth/") && path !== "/v2/health");
+		expect(sessionRoutes).toHaveLength(11);
+		const before = await env.DB.prepare("SELECT * FROM limits ORDER BY key").all();
+		for (const [method, path] of sessionRoutes) {
+			const file = path.startsWith("/v2/files/");
+			const r = await callJson(path, {
+				method,
+				token: a.token,
+				env: refusing,
+				ip: `198.51.100.${keys.length + 1}`,
+				headers: method === "GET" || method === "DELETE" ? {} : { "content-type": file ? "application/octet-stream" : "application/json", "x-kanso-sha256": "0".repeat(64) },
+				body: method === "GET" || method === "DELETE" ? null : file ? new Uint8Array(64) : "{}",
+			});
+			expect(r.status, `${method} ${path}`).toBe(429);
+			expect(r.body, `${method} ${path}`).toMatchObject({ error: "rate_limited", limit: "session-account", retry_after: 60 });
+			expect(r.headers.get("retry-after")).toBe("60");
+		}
+		// One key, the account's, from every IP.
+		expect(new Set(keys)).toEqual(new Set([a.creds.accountId]));
+		expect(keys).toHaveLength(11);
+		expect((await env.DB.prepare("SELECT * FROM limits ORDER BY key").all()).results).toEqual(before.results);
+		// A token that isn't a session never reaches it; the auth routes and logout don't go through it.
+		expect((await callJson("/v2/changes", { token: "kanso_nope", env: refusing })).status).toBe(401);
+		expect((await login(a.creds, a.device, { env: refusing })).status).toBe(200);
+		expect(keys).toHaveLength(11);
+		// Another account is counted under its own key.
+		expect((await client(b.token, { env: testEnv({ SESSION_LIMITER: limiter(true) }) }).changes()).status).toBe(200);
+		expect(keys.at(-1)).toBe(b.creds.accountId);
+	});
 });
 
 describe("prelogin", () => {

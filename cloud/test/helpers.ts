@@ -32,7 +32,7 @@ export const SEEDED_SETTINGS: Record<string, string> = {
 /** The test clock every helper uses unless told otherwise. */
 export const clock = { now: START };
 
-/** The Worker's bindings without AUTH_LIMITER, as the fixtures run. */
+/** The Worker's bindings without AUTH_LIMITER and SESSION_LIMITER, as the fixtures run. */
 export function testEnv(overrides: Partial<Env> = {}): Env {
 	return { DB: env.DB, FILES: env.FILES, AUTH_PEPPER: env.AUTH_PEPPER, ...overrides };
 }

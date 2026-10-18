@@ -9,8 +9,12 @@
   "observability": { "enabled": true, "logs": { "invocation_logs": false } },
   // Purges, expired rate-limit rows and sessions, and R2 reconciliation (src/purge.ts).
   "triggers": { "crons": ["*/15 * * * *"] },
-  // The write-free front filter for /v2/auth/* and /v2/health, keyed by IP group.
-  "ratelimits": [{ "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }],
+  // Write-free filters in front of D1: AUTH_LIMITER for /v2/auth/* and /v2/health, keyed by IP
+  // group; SESSION_LIMITER for every session route, keyed by account ID (src/limits.ts).
+  "ratelimits": [
+    { "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
+    { "name": "SESSION_LIMITER", "namespace_id": "1002", "simple": { "limit": 120, "period": 60 } }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

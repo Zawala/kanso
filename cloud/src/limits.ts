@@ -1,8 +1,10 @@
 // Rate limits (docs/ACCOUNTS.md › Rate limits). Two layers:
 //
-// 1. The Workers rate-limit binding AUTH_LIMITER, keyed by the caller's IP
-//    group, in front of every /v2/auth/* and /v2/health request. It writes
-//    nothing to D1; without the binding (unit tests) the layer is skipped.
+// 1. Workers rate-limit bindings, which write nothing to D1: AUTH_LIMITER,
+//    keyed by the caller's IP group, in front of every /v2/auth/* and
+//    /v2/health request; SESSION_LIMITER, keyed by account ID, on every
+//    session route after the session lookup. Without a binding (unit tests)
+//    its layer is skipped.
 // 2. Fixed-window counters in D1, the authority. The counting upsert runs
 //    before credentials are checked or any work is done, and the request is
 //    refused when the count it returns is over the maximum, so parallel
@@ -169,4 +171,17 @@ export async function bindingFilter(limiter: RateLimit | undefined, request: Req
 	if (!limiter) return null;
 	const { success } = await limiter.limit({ key: ipGroup(clientIp(request), 48) });
 	return success ? null : rateLimited("binding", BINDING_PERIOD_MS);
+}
+
+/**
+ * The session layer: 429 `session-account` when SESSION_LIMITER (about 120
+ * requests a minute) refuses this account, else null. It runs after the
+ * session lookup, keyed by account ID, so one account can't keep the shared
+ * database busy from any number of IPs. Write-free, like AUTH_LIMITER, and
+ * skipped when the binding is missing (unit tests).
+ */
+export async function sessionFilter(limiter: RateLimit | undefined, accountId: string): Promise<Response | null> {
+	if (!limiter) return null;
+	const { success } = await limiter.limit({ key: accountId });
+	return success ? null : rateLimited("session-account", BINDING_PERIOD_MS);
 }

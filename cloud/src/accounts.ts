@@ -657,7 +657,7 @@ async function recount(rest: string[], io: AdminIO, now: number): Promise<Report
 		`SELECT ${columns} FROM accounts${where} ORDER BY username`,
 		`UPDATE accounts SET
   docs = (SELECT count(*) FROM account_docs d WHERE d.account_id = accounts.id AND d.deleted = 0),
-  doc_bytes = (SELECT coalesce(sum(length(d.sealed) + ${ROW_COST}), 0) FROM account_docs d WHERE d.account_id = accounts.id),
+  doc_bytes = (SELECT coalesce(sum(octet_length(d.sealed) + ${ROW_COST}), 0) FROM account_docs d WHERE d.account_id = accounts.id),
   files = (SELECT count(*) FROM account_files f WHERE f.account_id = accounts.id),
   file_bytes = (SELECT coalesce(sum(f.size + ${FILE_COST}), 0) FROM account_files f WHERE f.account_id = accounts.id),
   recounted_at = max(${now}, coalesce(recounted_at, 0) + 1)${where}

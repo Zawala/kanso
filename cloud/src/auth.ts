@@ -23,7 +23,7 @@ import {
 	type SignOutReason,
 	unauthorized,
 } from "./http";
-import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, ipGroup, ipKey, windowStart } from "./limits";
+import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, ipGroup, ipKey, sessionFilter, windowStart } from "./limits";
 import {
 	type Checked,
 	DAY,
@@ -123,11 +123,15 @@ export async function authenticate(request: Request, env: Env, now: number, allo
 	return { tokenHash, accountId: row.account_id, deviceId: row.device_id, username: row.username };
 }
 
-/** Wraps a session route: authenticates, then runs `handler`. */
+/**
+ * Wraps a session route: authenticates, passes SESSION_LIMITER (keyed by the
+ * account), then runs `handler`.
+ */
 export function withSession(handler: (request: Request, env: Env, now: number, session: Session) => Promise<Response>): Handler {
 	return async (request, env, now) => {
 		const session = await authenticate(request, env, now);
-		return session instanceof Response ? session : handler(request, env, now, session);
+		if (session instanceof Response) return session;
+		return (await sessionFilter(env.SESSION_LIMITER, session.accountId)) ?? handler(request, env, now, session);
 	};
 }
 

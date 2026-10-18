@@ -71,7 +71,7 @@ describe("push limits", () => {
 		expect((await alice.push([doc(MAX_SEALED)])).status).toBe(200);
 	});
 
-	it("refuses malformed documents with 400, and counts nothing for them", async () => {
+	it("refuses malformed documents with 400, counting one write for each refused body", async () => {
 		const good = doc();
 		const bad: unknown[] = [
 			{ ...good, rev: "1-abc" },
@@ -88,11 +88,12 @@ describe("push limits", () => {
 			expect(r.status, JSON.stringify(d).slice(0, 80)).toBe(400);
 		}
 		expect((await alice.push({} as unknown as unknown[])).status).toBe(400);
-		expect((await alice.account()).body.usage.writes_today).toBe(0);
-		// Sealed text outside base64url passes validation, is counted, and is refused by the CHECK.
+		// A refused body isn't free: one write each (security review 2, finding 2).
+		expect((await alice.account()).body.usage.writes_today).toBe(bad.length + 1);
+		// Sealed text outside base64url passes validation, is counted by its documents, and is refused by the CHECK.
 		const r = await alice.push([{ ...good, sealed: `${"A".repeat(60)}+/=` }]);
 		expect(r.status).toBe(400);
-		expect((await alice.account()).body.usage).toMatchObject({ docs: 0, writes_today: 1 });
+		expect((await alice.account()).body.usage).toMatchObject({ docs: 0, writes_today: bad.length + 2 });
 		expect((await alice.push([])).body).toEqual({ results: [] });
 	});
 });

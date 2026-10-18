@@ -76,6 +76,10 @@ nothing was deployed yet):
 1. **A password change replaces the recovery key** in the same compare-and-swap update, so a
    recovery key planted by someone who once knew the password can't outlive the owner's password
    change. `POST /v2/account/password` gains `recovery_auth_key` and `recovery_wrapped_key`.
+2. **Expensive session reads are bounded.** Lengths are read with `octet_length(sealed)`, which
+   doesn't read the text. A second write-free binding, `SESSION_LIMITER`, allows about 120
+   requests a minute per account on the session routes (429 `session-account`). A push refused as
+   malformed or too large counts one write.
 4. **Only signed-in devices are exempt from `login-user`.** A device signed out for any reason
    counts like a stranger. `DELETE /v2/account/devices/<id>` on a row that is already signed out
    marks it `revoked` and answers 204 instead of 404.
@@ -464,16 +468,22 @@ primitives.
 | 413 | `too_large` | | More than 200 documents, a push body over 4 MiB, sealed over 1,900,000 characters, a file over 10,485,801 bytes, an auth body over 8 KiB |
 | 413 | `quota_exceeded` | `quota`: `docs`, `doc_bytes`, `files`, `file_bytes` or `server`; `used` (usage before this request); `limit` | When several apply, the first in that order |
 | 415 | `unsupported_media_type` | | Wrong `Content-Type` |
-| 429 | `rate_limited` | `retry_after` (seconds to the end of the window, rounded up), `Retry-After` header, `limit`: the rule name, or `writes-global` or `uploads-global` | A rate-limit rule, or a server-wide daily cap |
+| 429 | `rate_limited` | `retry_after` (seconds to the end of the window, rounded up), `Retry-After` header, `limit`: the rule name, `binding` or `session-account` (the bindings), or `writes-global` or `uploads-global` | A rate-limit rule or binding, or a server-wide daily cap |
 | 500 | `internal` | | |
 | 503 | `misconfigured` | | `AUTH_PEPPER` missing or malformed |
 
 ### Rate limits
 
-- **First layer, the binding.** A Workers rate-limit binding, `AUTH_LIMITER` (namespace `"1001"`, 20
-  requests per 60 s), is keyed by the caller's IP group and covers every `/v2/auth/*` and
-  `/v2/health` request. It writes nothing to D1. Over it, the answer is 429 with `retry_after: 60`.
-  If the binding is missing (unit tests), this layer is skipped.
+- **First layer, the bindings.** Two Workers rate-limit bindings, which write nothing to D1. Over
+  either, the answer is 429 with `retry_after: 60`. If a binding is missing (unit tests), its layer
+  is skipped. Like every Workers rate limit they count per Cloudflare location and settle
+  eventually, so they are a filter in front of D1, not an exact cap.
+  - `AUTH_LIMITER` (namespace `"1001"`, 20 requests per 60 s) is keyed by the caller's IP group and
+    covers every `/v2/auth/*` and `/v2/health` request (`limit` `binding`).
+  - `SESSION_LIMITER` (namespace `"1002"`, 120 requests per 60 s) is keyed by the account ID and
+    covers every session route except logout, right after the session lookup (`limit`
+    `session-account`). One signed-in account can't keep the shared database busy, from however
+    many IPs it uses (security review 2, finding 2). Logout stays behind `AUTH_LIMITER` only.
 - **Second layer, D1.** D1 is the authority, in fixed windows, and counts first (H1):
 
   ```sql
@@ -501,7 +511,7 @@ primitives.
 | `login-ip` | IP group | 15 min | 30 | Every sign-in |
 | `recover-ip` | IP group | 1 h | 10 | Every `recover/start` and `recover/finish` |
 | `password-account` | account ID | 15 min | 5 | Every current-password check (password change, new recovery key, delete) |
-| `writes-account` | account ID | 1 day | the account's `quota_writes_per_day`, else `settings.writes_per_day` | Documents in each push, plus 1 per file upload |
+| `writes-account` | account ID | 1 day | the account's `quota_writes_per_day`, else `settings.writes_per_day` | Documents in each push, plus 1 per file upload, plus 1 per push refused as malformed or too large (so failed pushes aren't free) |
 | `uploads-account` | account ID | 1 day | `settings.upload_bytes_per_day` | Each upload's `Content-Length` (capped at the largest file plus one byte; the largest file when it's missing), counted before the body is read, after `writes-account` passes; a body longer than it declared counts the rest |
 
 There is no per-username recovery rule, so nobody can lock someone else out of recovery (M8). A
@@ -516,7 +526,8 @@ Login keys `login-user` by account, so attempts on many unknown names share one 
 prober whether a name exists, which sign-up's `username_taken` already does.
 
 **Floods.** A `workers.dev` address can't have WAF rules. Surviving a real flood needs a custom
-domain with a Cloudflare WAF rate-limiting rule in front of the Worker. Accounts are bound to their
+domain with a Cloudflare WAF rate-limiting rule in front of the Worker. Expensive requests from a
+valid session, which an IP-keyed WAF rule can't stop, are bounded by `SESSION_LIMITER` per account. Accounts are bound to their
 server's origin (M5), so the owner must choose the final URL before the first account is created.
 
 ### Routes
@@ -746,13 +757,17 @@ Semantics are v1's, scoped to the account: a document is accepted iff its `base_
 account's current revision of it, or the account has none and `base_rev` is null. Documents apply
 in order. The client sends at most 200 documents and 4 MiB of body per push. Steps:
 
-1. Validate the body (400, or 413 for size); an empty `docs` answers 200 `{"results": []}` and
-   counts nothing. Then count `writes-account` by the number of documents. Over the day's budget →
-   429. The sealed alphabet is checked only by the `CHECK`, after counting.
+1. Validate the body (400, or 413 for size). A refused body counts 1 against `writes-account`
+   first, and the answer is 429 instead if that is over the day's budget. An empty `docs` answers
+   200 `{"results": []}` and counts nothing. Otherwise count `writes-account` by the number of
+   documents. Over the day's budget → 429. The sealed alphabet is checked only by the `CHECK`,
+   after counting.
 2. One batch, three statements per document, as in v1 and b4e2733, with `ROW_COST = 512`:
 
 ```sql
 -- ?1 account, ?2 wire id, ?3 base_rev, ?4 rev, ?5 deleted (0/1), ?6 sealed, ?7 length(sealed), ?8 now
+-- Stored lengths are read with octet_length(), from the record header; length() on TEXT reads
+-- the whole value. Sealed text is base64url, so bytes equal characters.
 ACCEPT  = ((?3 IS NULL AND NOT EXISTS (SELECT 1 FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2))
            OR EXISTS (SELECT 1 FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2 AND d.rev = ?3))
 BUMP    = UPDATE accounts SET
@@ -760,7 +775,7 @@ BUMP    = UPDATE accounts SET
             docs = docs + (1 - ?5)
                  - coalesce((SELECT 1 - d.deleted FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2), 0),
             doc_bytes = doc_bytes + ?7 + 512
-                 - coalesce((SELECT length(d.sealed) + 512 FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2), 0)
+                 - coalesce((SELECT octet_length(d.sealed) + 512 FROM account_docs d WHERE d.account_id = ?1 AND d.id = ?2), 0)
           WHERE accounts.id = ?1 AND ACCEPT RETURNING last_seq AS value
 CURRENT = SELECT id, rev, deleted, sealed FROM account_docs WHERE account_id = ?1 AND id = ?2 AND NOT ACCEPT
 WRITE   = INSERT INTO account_docs (account_id, id, rev, seq, deleted, sealed, updated_at)
@@ -795,8 +810,10 @@ feed, the echo matches `synced_rev`, and the store marks it synced.
 
 - **Parameters.** `limit` defaults to 100 and must be 1–500; `since` defaults to 0 and must not be
   negative. Anything else, a non-integer included, is 400.
-- **Two reads keep the page small.** First the sequence numbers and lengths. Then the rows that fit
-  in 8 MiB of sealed text, always at least one.
+- **Two reads keep the page small.** First the sequence numbers and lengths, as
+  `octet_length(sealed)`, which SQLite answers without reading the text (`length()` would read
+  every candidate row in full, overflow pages included; security review 2, finding 2). Then the
+  rows that fit in 8 MiB of sealed text, always at least one.
 - **`more`** is true when that prefix was cut, or when the first read returned `limit` rows.
 - **`last_seq`** is the last document's seq, or `since` when the page is empty.
 - **`head_seq`** is the account's `last_seq`.
@@ -1232,12 +1249,15 @@ Changes to `cloud/wrangler.jsonc`:
 ```jsonc
 "observability": { "enabled": true, "logs": { "invocation_logs": false } },
 "triggers": { "crons": ["*/15 * * * *"] },
-"ratelimits": [{ "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }]
+"ratelimits": [
+  { "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
+  { "name": "SESSION_LIMITER", "namespace_id": "1002", "simple": { "limit": 120, "period": 60 } }
+]
 // AUTH_PEPPER (required): wrangler secret put AUTH_PEPPER. SYNC_TOKEN is no longer read.
 ```
 
 The Worker's environment type is `Env { DB: D1Database; FILES: R2Bucket; AUTH_PEPPER?: string;
-AUTH_LIMITER?: RateLimit }`. Commands run in `cloud/`, and the deploy token is only referenced by
+AUTH_LIMITER?: RateLimit; SESSION_LIMITER?: RateLimit }`. Commands run in `cloud/`, and the deploy token is only referenced by
 name:
 
 ```bash
@@ -1982,7 +2002,8 @@ above already say each of them; this list is the index.
   proofs must be canonical like auth keys. `login-ip` counts before `login-user`, and the first
   over its maximum is named. `retry_after` is the seconds to the window's end, rounded up.
   `quota_exceeded` with `server` reports the server-wide sum and cap. Push validates all but the
-  sealed alphabet before counting `writes-account`; an empty push counts nothing; file uploads check
+  sealed alphabet before counting `writes-account`; a refused body counts 1, and an empty push
+  counts nothing (security review 2); file uploads check
   path and headers before counting. `limit` outside 1–500, or a negative `since`, is 400.
 - **`MemoryServer`.** `new()` starts with sign-ups open and the migration's other settings
   (`DEFAULT_SETTINGS`, checked against the migration by a test). `set_setting` panics where D1's
