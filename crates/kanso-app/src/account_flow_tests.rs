@@ -751,6 +751,8 @@ fn changing_the_password_signs_the_other_macs_out(
         finish(cx, rx),
         Err("That isn't your current password.".to_owned())
     );
+    let first = pending_key(cx).unwrap();
+    key_saved(cx);
     let rx = cx.update(|cx| {
         account_flow::change_password(
             password(PASSWORD, "alice"),
@@ -760,6 +762,14 @@ fn changing_the_password_signs_the_other_macs_out(
     });
     assert_eq!(finish(cx, rx), Ok(()));
     assert_eq!(account(cx), signed_in_as("alice"));
+    // The recovery key changed with the password.
+    let second = pending_key(cx).expect("the new key shows");
+    assert_eq!(key_note(cx), Some(words::KEY_AFTER_PASSWORD));
+    assert!(holds(&server, "alice", &second));
+    assert!(
+        !holds(&server, "alice", &first),
+        "the saved key stops working"
+    );
 
     cx_b.update(account_flow::refresh_details);
     wait_until(cx_b, "the other Mac to hear", |cx| {
@@ -1034,4 +1044,29 @@ fn a_new_key_is_kept_before_it_is_sent(cx: &mut TestAppContext) {
     assert_eq!(key_note(cx), Some(words::KEY_UNCONFIRMED));
     assert!(holds(&server, "alice", &shown), "the server took it");
     assert_eq!(account(cx), signed_in_as("alice"));
+}
+
+/// A password change whose answer is lost shows the new key anyway, saying
+/// Kanso couldn't tell whether the password changed.
+#[gpui_kit::test]
+fn a_lost_password_change_still_shows_the_key(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 1);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+
+    server.drop_next_responses(Route::Password, 3);
+    let rx = cx.update(|cx| {
+        account_flow::change_password(
+            password(PASSWORD, "alice"),
+            password(NEW_PASSWORD, "alice"),
+            cx,
+        )
+    });
+    assert_eq!(finish(cx, rx), Err(words::CANT_REACH.to_owned()));
+    let shown = pending_key(cx).expect("the key shows");
+    assert_eq!(key_note(cx), Some(words::KEY_UNCONFIRMED_PASSWORD));
+    assert!(holds(&server, "alice", &shown), "the change went through");
+    assert!(a.kept_key().is_some_and(|kept| kept.unconfirmed));
 }

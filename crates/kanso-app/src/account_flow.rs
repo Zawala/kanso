@@ -639,7 +639,7 @@ pub fn recover(
                 step,
             )
             .map_err(|err| {
-                Failure::rotation(err, ErrorContext::Recovery, words::KEY_UNCONFIRMED_RECOVERY)
+                Failure::rotation(err, ErrorContext::Recovery, words::KEY_UNCONFIRMED_PASSWORD)
             })?;
             Ok((recovered.session, None, Some(recovered.recovery_key)))
         }),
@@ -902,12 +902,15 @@ pub fn sign_out(cx: &mut App) -> Receiver<Progress> {
     rx
 }
 
-/// Changes the account's password; the other Macs ask for it.
+/// Changes the account's password, and with it the recovery key: the
+/// other Macs ask for the new password, and the Account page shows the new
+/// key.
 pub fn change_password(current: Password, new: Password, cx: &mut App) -> Receiver<Progress> {
     let (tx, rx) = async_channel::unbounded();
     let Some((seams, session, _)) = begin_signed_in(&tx, cx) else {
         return rx;
     };
+    let shown = session.clone();
     run(
         TaskKind::ChangePassword,
         Step::DerivingKeys,
@@ -915,11 +918,34 @@ pub fn change_password(current: Password, new: Password, cx: &mut App) -> Receiv
         Some(tx.clone()),
         cx,
         move |step| {
-            kanso_sync::change_password(seams.backend.as_ref(), &session, &current, &new, step)
-                .map_err(|err| Failure::account(err, ErrorContext::CurrentPassword))
+            // The new key is in the Keychain before the request goes.
+            kanso_sync::change_password(
+                seams.backend.as_ref(),
+                seams.secrets.as_ref(),
+                &session,
+                &current,
+                &new,
+                step,
+            )
+            .map_err(|err| {
+                Failure::rotation(
+                    err,
+                    ErrorContext::CurrentPassword,
+                    words::KEY_UNCONFIRMED_PASSWORD,
+                )
+            })
         },
         move |result, cx| match result {
-            Some(Ok(_)) => {
+            Some(Ok(changed)) => {
+                show_pending(
+                    PendingKey {
+                        key: changed.recovery_key,
+                        username: shown.username.clone(),
+                        server: shown.server.clone(),
+                        note: Some(words::KEY_AFTER_PASSWORD),
+                    },
+                    cx,
+                );
                 notify_windows(|| Notification::success(words::PASSWORD_CHANGED), cx);
                 done(&tx, Ok(()));
             }

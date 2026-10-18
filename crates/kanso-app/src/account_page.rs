@@ -901,7 +901,7 @@ impl AccountPage {
                 "Security",
                 vec![
                     Row::new(Lucide::KeyRound, "Password")
-                        .detail("Your other Macs ask for the new one.")
+                        .detail("Your other Macs ask for the new one, and you get a new recovery key.")
                         .trailing(
                             Button::new("change-account-password")
                                 .outline()
@@ -1072,6 +1072,7 @@ pub fn change_password_dialog(window: &mut Window, cx: &mut App) -> Option<Entit
     let username = account_name(cx)?;
     Some(dialogs::form(
         FormSpec::new("Change password", "Change password")
+            .description(words::CHANGE_PASSWORD_TEXT)
             .field(Field::secret("Current password"))
             .field(
                 Field::secret("New password")

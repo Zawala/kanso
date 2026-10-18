@@ -432,6 +432,8 @@ pub struct WireQuota {
     pub writes_per_day: u64,
 }
 
+/// A new password and, with it, a new recovery key: the old key stops
+/// working, like every proof of the old password (docs/ACCOUNTS.md › Routes).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PasswordRequest {
     pub current_auth_key: String,
@@ -439,6 +441,8 @@ pub struct PasswordRequest {
     pub salt: String,
     pub auth_key: String,
     pub wrapped_key: String,
+    pub recovery_auth_key: String,
+    pub recovery_wrapped_key: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -411,6 +411,8 @@ pub fn delete_account_words(username: &str) -> String {
 }
 
 pub const PASSWORD_CHANGED: &str = "Password changed. Your other Macs will ask for it.";
+/// Over the Change password form.
+pub const CHANGE_PASSWORD_TEXT: &str = "Your other Macs sign out and ask for the new password. Your recovery key changes too: the one you saved stops working, and Kanso shows the new one to save.";
 pub const REMERGED: &str =
     "The server's copy was restored from a backup; this Mac sent its changes again.";
 
@@ -522,8 +524,11 @@ pub const KEY_READY: &str = "Save your new recovery key. It's on the Account pag
 pub const KEY_UNCONFIRMED: &str = "Kanso couldn't tell whether the server took this key. Save it anyway: if it did, it's your recovery key now, and the old one no longer works.";
 /// Over a sign-up's key, when the answer was lost.
 pub const KEY_UNCONFIRMED_SIGN_UP: &str = "Kanso couldn't tell whether your account was created. Save this key anyway: if it was, it's the account's recovery key. Then sign in with your password.";
-/// Over a recovery's key, when the answer was lost.
-pub const KEY_UNCONFIRMED_RECOVERY: &str = "Kanso couldn't tell whether your password was changed. Save this key anyway: if it was, it's your recovery key now, and the old one no longer works.";
+/// Over a recovery's or a password change's key, when the answer was lost.
+pub const KEY_UNCONFIRMED_PASSWORD: &str = "Kanso couldn't tell whether your password was changed. Save this key anyway: if it was, it's your recovery key now, and the old one no longer works.";
+/// Over the key a password change set.
+pub const KEY_AFTER_PASSWORD: &str =
+    "Your password changed, and so did your recovery key: the one you saved no longer works.";
 /// The account exists, but this Mac isn't signed in to it.
 pub const CREATED_NOT_SIGNED_IN: &str = "Your account was created, but this Mac couldn't finish signing in. Sign in with your password.";
 /// The password changed, but this Mac isn't signed in with it.

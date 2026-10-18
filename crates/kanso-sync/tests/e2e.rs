@@ -242,8 +242,18 @@ fn two_macs_sync_through_a_local_worker() {
 
     // 2. A password change gives the other device 401 password_changed.
     let second = Password::new(&format!("{PASSWORD} two {marker}"), &username).unwrap();
-    patiently(|| kanso_sync::change_password(&backend, &a.session, &password, &second, &|_| {}))
-        .expect("change password");
+    patiently(|| {
+        kanso_sync::change_password(
+            &backend,
+            &MemorySecrets::new(),
+            &a.session,
+            &password,
+            &second,
+            &|_| {},
+        )
+        .map_err(|err| err.error)
+    })
+    .expect("change password");
     match b.try_sync(&backend) {
         Err(SyncError::Api(ApiError::Unauthorized { reason })) => {
             assert_eq!(reason, SignOutReason::PasswordChanged)

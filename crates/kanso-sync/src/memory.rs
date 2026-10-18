@@ -990,7 +990,12 @@ impl ServerState {
         if !is_wrap(&r.wrapped_key) {
             return Err(ApiError::BadRequest);
         }
+        let recovery = key32(&r.recovery_auth_key).ok_or(ApiError::BadRequest)?;
+        if !is_wrap(&r.recovery_wrapped_key) {
+            return Err(ApiError::BadRequest);
+        }
         let auth_hash = sha256_hex(&auth);
+        let recovery_hash = sha256_hex(&recovery);
         let account = &self.accounts[&caller.account_id];
         if account.auth_hash == current {
             let mut signed_out_devices = 0;
@@ -1010,9 +1015,16 @@ impl ServerState {
             stored.salt = r.salt.clone();
             stored.auth_hash = auth_hash;
             stored.wrapped_key = r.wrapped_key.clone();
+            stored.recovery_hash = recovery_hash;
+            stored.recovery_wrapped_key = r.recovery_wrapped_key.clone();
             return Ok(PasswordResponse { signed_out_devices });
         }
-        if account.auth_hash == auth_hash && account.wrapped_key == r.wrapped_key {
+        // A retry whose answer was lost: everything it sets is set already.
+        if account.auth_hash == auth_hash
+            && account.wrapped_key == r.wrapped_key
+            && account.recovery_hash == recovery_hash
+            && account.recovery_wrapped_key == r.recovery_wrapped_key
+        {
             return Ok(PasswordResponse {
                 signed_out_devices: 0,
             });

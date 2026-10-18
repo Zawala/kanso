@@ -1327,6 +1327,17 @@ fn settings_recovery_key_failed(
     show_demo_key(cx, Some(crate::account_words::CREATED_NOT_SIGNED_IN));
 }
 
+/// Right after a password change: its new recovery key.
+fn settings_recovery_key_password(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
+    show_demo_key(cx, Some(crate::account_words::KEY_AFTER_PASSWORD));
+}
+
 /// "New recovery key" whose answer was lost.
 fn settings_recovery_key_unconfirmed(
     cx: &mut HeadlessAppContext,
@@ -2291,6 +2302,12 @@ fn snapshots() {
             Dark,
             Edit,
             settings_recovery_key_saved,
+        ),
+        shot(
+            "dark-settings-recovery-key-password",
+            Dark,
+            Edit,
+            settings_recovery_key_password,
         ),
         // A key that came with a failure, or whose answer was lost.
         shot(

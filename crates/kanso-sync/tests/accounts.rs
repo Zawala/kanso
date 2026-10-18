@@ -41,9 +41,21 @@ fn config(cases: u32) -> ProptestConfig {
 /// key's item.
 mod plain {
     use kanso_sync::{
-        AccountError, Backend, DeviceIdentity, MemorySecrets, Password, Recovered, RecoveryKey,
-        Session, SignedUp, Step,
+        AccountError, Backend, DeviceIdentity, MemorySecrets, Password, PasswordChanged, Recovered,
+        RecoveryKey, Session, SignedUp, Step,
     };
+
+    pub fn change_password(
+        b: &dyn Backend,
+        session: &Session,
+        current: &Password,
+        new: &Password,
+        progress: &dyn Fn(Step),
+    ) -> Result<PasswordChanged, AccountError> {
+        let secrets = MemorySecrets::new();
+        kanso_sync::change_password(b, &secrets, session, current, new, progress)
+            .map_err(|err| err.error)
+    }
 
     pub fn sign_up(
         b: &dyn Backend,
@@ -381,7 +393,7 @@ fn a_password_change_signs_out_the_others_and_keeps_the_data_key() {
         .unwrap()
         .session;
     assert!(matches!(
-        kanso_sync::change_password(
+        plain::change_password(
             &server,
             &up.session,
             &password("wrong horse battery"),
@@ -390,7 +402,7 @@ fn a_password_change_signs_out_the_others_and_keeps_the_data_key() {
         ),
         Err(AccountError::InvalidCredentials)
     ));
-    let n = kanso_sync::change_password(
+    let changed = plain::change_password(
         &server,
         &up.session,
         &password("correct horse battery"),
@@ -398,7 +410,7 @@ fn a_password_change_signs_out_the_others_and_keeps_the_data_key() {
         &quiet,
     )
     .unwrap();
-    assert_eq!(n, 2);
+    assert_eq!(changed.signed_out_devices, 2);
     for gone in [&other, &third] {
         assert_eq!(
             check(&server, gone).unwrap_err(),
@@ -575,7 +587,7 @@ fn lost_responses_are_recovered_by_the_documented_retry() {
     assert!(check(server, &up.session).is_ok());
 
     server.drop_next_responses(Route::Password, 1);
-    kanso_sync::change_password(
+    plain::change_password(
         &quick,
         &up.session,
         &password("correct horse battery"),
@@ -657,6 +669,8 @@ struct Faults {
     outdated: std::sync::atomic::AtomicBool,
     logins: AtomicUsize,
     logouts: AtomicUsize,
+    /// Every password change sent, as sent.
+    passwords: Mutex<Vec<PasswordRequest>>,
     /// A server with the backend's floor and default.
     floor: Mutex<Option<KdfParams>>,
 }
@@ -763,6 +777,7 @@ impl Api for Wrapped<'_> {
         request: &PasswordRequest,
     ) -> Result<PasswordResponse, ApiError> {
         self.reach()?;
+        self.faults.passwords.lock().unwrap().push(request.clone());
         self.inner.change_password(token, request)
     }
     fn replace_recovery_key(
@@ -1290,6 +1305,7 @@ fn each_new_key_is_in_the_keychain_before_its_request_is_sent() {
             t: &SessionToken,
             r: &PasswordRequest,
         ) -> Result<PasswordResponse, ApiError> {
+            self.saw(Route::Password, &r.recovery_auth_key);
             self.inner.change_password(t, r)
         }
         fn replace_recovery_key(
@@ -1357,6 +1373,21 @@ fn each_new_key_is_in_the_keychain_before_its_request_is_sent() {
         fresh, up.recovery_key,
         "a saved key is replaced by a new one"
     );
+    keychain::delete_recovery_key(&secrets, &mac(1).library_id).unwrap();
+    let changed = kanso_sync::change_password(
+        &b,
+        &secrets,
+        &up.session,
+        &pw,
+        &password("a changed passphrase"),
+        &quiet,
+    )
+    .unwrap();
+    assert_ne!(
+        changed.recovery_key, fresh,
+        "a password change replaces the key"
+    );
+    let fresh = changed.recovery_key;
     let recovered = kanso_sync::recover(
         &b,
         &secrets,
@@ -1378,6 +1409,7 @@ fn each_new_key_is_in_the_keychain_before_its_request_is_sent() {
             Route::Signup,
             Route::RecoveryKey,
             Route::RecoveryKey,
+            Route::Password,
             Route::RecoverFinish
         ]
     );
@@ -1583,6 +1615,12 @@ enum KeyOp {
     },
     /// Recovery with the key the server holds.
     Recover { drops: usize, fails: Option<usize> },
+    /// A password change, which sets a new recovery key too.
+    ChangePassword {
+        drops: usize,
+        fails: Option<usize>,
+        wrong: bool,
+    },
     /// The user saves the key on screen ("I've saved my recovery key").
     Save,
 }
@@ -1592,7 +1630,9 @@ fn key_op() -> impl Strategy<Value = KeyOp> {
     prop_oneof![
         3 => (0usize..4, fails.clone(), prop::bool::weighted(0.2))
             .prop_map(|(drops, fails, wrong)| KeyOp::NewKey { drops, fails, wrong }),
-        2 => (0usize..4, fails).prop_map(|(drops, fails)| KeyOp::Recover { drops, fails }),
+        2 => (0usize..4, fails.clone()).prop_map(|(drops, fails)| KeyOp::Recover { drops, fails }),
+        2 => (0usize..4, fails, prop::bool::weighted(0.2))
+            .prop_map(|(drops, fails, wrong)| KeyOp::ChangePassword { drops, fails, wrong }),
         1 => Just(KeyOp::Save),
     ]
 }
@@ -1635,6 +1675,19 @@ proptest! {
                     Some(kanso_sync::new_recovery_key(&quick, &secrets, &session, &password(text), &quiet)
                         .map_err(|err| err.recovery_key.map(|k| k.recovery_key)))
                 }
+                KeyOp::ChangePassword { drops, fails, wrong } => {
+                    server.drop_next_responses(Route::Password, drops);
+                    if let Some(at) = fails {
+                        secrets.fail_write(at);
+                    }
+                    let current = if wrong { "wrong horse battery" } else { passwords.last().unwrap().as_str() };
+                    let text = format!("changed passphrase {n} here");
+                    let result = kanso_sync::change_password(&quick, &secrets, &session, &password(current), &password(&text), &quiet)
+                        .map(|changed| changed.recovery_key)
+                        .map_err(|err| err.recovery_key.map(|k| k.recovery_key));
+                    passwords.push(text);
+                    Some(result)
+                }
                 KeyOp::Recover { drops, fails } => {
                     let current = known.iter().chain(&saved).find(|k| holds(server, "alice", k)).cloned();
                     let current = current.expect("the server's key is known");
@@ -1652,6 +1705,7 @@ proptest! {
             };
             server.drop_next_responses(Route::RecoveryKey, 0);
             server.drop_next_responses(Route::RecoverFinish, 0);
+            server.drop_next_responses(Route::Password, 0);
             secrets.heal();
             match result {
                 Some(Ok(key)) => shown = Some(key),
@@ -1678,4 +1732,128 @@ proptest! {
             );
         }
     }
+}
+
+/// A password change sets a new recovery key with it: the old key stops
+/// working at once, and the new one is in the Keychain, then returned.
+#[test]
+fn a_password_change_replaces_the_recovery_key() {
+    let quick = Quick(MemoryServer::new());
+    let server = &quick.0;
+    let secrets = MemorySecrets::new();
+    let pw = password("correct horse battery");
+    let up = kanso_sync::sign_up(&quick, &secrets, SERVER, "alice", &pw, &mac(1), &quiet).unwrap();
+    keychain::delete_recovery_key(&secrets, &mac(1).library_id).unwrap();
+
+    tick(server);
+    let changed = kanso_sync::change_password(
+        &quick,
+        &secrets,
+        &up.session,
+        &pw,
+        &password("new long passphrase"),
+        &quiet,
+    )
+    .unwrap();
+    assert_ne!(changed.recovery_key, up.recovery_key);
+    assert!(
+        !holds(server, "alice", &up.recovery_key),
+        "the old key stops working"
+    );
+    assert!(holds(server, "alice", &changed.recovery_key));
+    let item = kept(&secrets).unwrap();
+    assert_eq!(item.recovery_key, changed.recovery_key);
+    assert!(!item.unconfirmed);
+    assert!(
+        check(server, &up.session).is_ok(),
+        "this Mac stays signed in"
+    );
+
+    // Lost three times: the password and the key changed all the same, and
+    // the error carries the key.
+    keychain::delete_recovery_key(&secrets, &mac(1).library_id).unwrap();
+    tick(server);
+    server.drop_next_responses(Route::Password, 3);
+    let lost = kanso_sync::change_password(
+        &quick,
+        &secrets,
+        &up.session,
+        &password("new long passphrase"),
+        &password("third long passphrase"),
+        &quiet,
+    )
+    .unwrap_err();
+    let shown = lost.recovery_key.expect("the key comes back");
+    assert!(shown.unconfirmed);
+    assert!(holds(server, "alice", &shown.recovery_key));
+    assert!(sign_in(&quick, "alice", "third long passphrase", &mac(2)).is_ok());
+}
+
+/// The password route's recovery fields: malformed ones are refused before
+/// the current key is checked; the same request again after it was carried
+/// out is answered 200 with no devices (its answer was lost); other
+/// recovery values with the old password are refused.
+#[test]
+fn the_password_route_checks_its_recovery_fields_and_retries() {
+    let b = hostile();
+    let secrets = MemorySecrets::new();
+    let pw = password("correct horse battery");
+    let up = kanso_sync::sign_up(&b, &secrets, SERVER, "alice", &pw, &mac(1), &quiet).unwrap();
+    tick(&b.server);
+    let changed = kanso_sync::change_password(
+        &b,
+        &secrets,
+        &up.session,
+        &pw,
+        &password("new long passphrase"),
+        &quiet,
+    )
+    .unwrap();
+    let sent = b.faults.passwords.lock().unwrap().last().cloned().unwrap();
+    let api = b.server.api(SERVER);
+    let token = &token_of(&b.server, &up.session);
+
+    tick(&b.server);
+    let again = api.change_password(token, &sent).unwrap();
+    assert_eq!(again.signed_out_devices, 0);
+
+    let other_key = RecoveryKey::generate();
+    let other = kanso_sync::crypto::recovery_keys(&other_key, ORIGIN, "alice");
+    for (field, bad) in [
+        (
+            "recovery_auth_key",
+            PasswordRequest {
+                recovery_auth_key: "AAAA".into(),
+                ..sent.clone()
+            },
+        ),
+        (
+            "recovery_wrapped_key",
+            PasswordRequest {
+                recovery_wrapped_key: "AAAA".into(),
+                ..sent.clone()
+            },
+        ),
+    ] {
+        tick(&b.server);
+        assert_eq!(
+            api.change_password(token, &bad).unwrap_err(),
+            ApiError::BadRequest,
+            "{field}"
+        );
+    }
+    tick(&b.server);
+    let different = PasswordRequest {
+        recovery_auth_key: other.auth_key.to_base64url(),
+        ..sent.clone()
+    };
+    assert_eq!(
+        api.change_password(token, &different).unwrap_err(),
+        ApiError::InvalidCredentials
+    );
+    assert!(
+        holds(&b.server, "alice", &changed.recovery_key),
+        "the stored key stays"
+    );
+    assert!(!holds(&b.server, "alice", &other_key));
 }

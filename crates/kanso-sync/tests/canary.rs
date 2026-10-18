@@ -225,7 +225,7 @@ proptest! {
         a.sync(&capture);
         // Account requests carry wrapped keys and proofs.
         let new_password = Password::new(&format!("{PASSWORD} new {marker}"), username).unwrap();
-        kanso_sync::change_password(&capture, &a.session, &password, &new_password, &|_| {}).unwrap();
+        let changed = kanso_sync::change_password(&capture, &MemorySecrets::new(), &a.session, &password, &new_password, &|_| {}).unwrap();
         let new_recovery = kanso_sync::new_recovery_key(&capture, &MemorySecrets::new(), &a.session, &new_password, &|_| {}).unwrap();
 
         let secrets = MemorySecrets::new();
@@ -242,6 +242,7 @@ proptest! {
             ("device name".into(), device_name.clone().into_bytes()),
             ("recovery key".into(), recovery.display().into_bytes()),
             ("new recovery key".into(), new_recovery.display().into_bytes()),
+            ("password change's recovery key".into(), changed.recovery_key.display().into_bytes()),
             ("data key".into(), data_key),
             ("device secret".into(), secret.to_vec()),
         ];

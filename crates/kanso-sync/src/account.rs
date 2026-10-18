@@ -187,6 +187,15 @@ pub struct Recovered {
     pub recovery_key: RecoveryKey,
 }
 
+/// A changed password and the new recovery key set with it (the old key
+/// stops working).
+#[derive(Debug)]
+pub struct PasswordChanged {
+    /// How many other devices were signed out.
+    pub signed_out_devices: usize,
+    pub recovery_key: RecoveryKey,
+}
+
 /// Why an account function failed: one variant per server error code, plus
 /// the client's own failures (docs/ACCOUNTS.md › Public API the app calls).
 #[derive(Debug, thiserror::Error)]
@@ -1024,21 +1033,38 @@ fn current_auth(
     )?)
 }
 
-/// Changes the password; returns how many other devices were signed out.
-/// The data key is rewrapped, not replaced (M4).
+/// Changes the password and, with it, the recovery key: a recovery key
+/// that outlived the password would let whoever holds it take the account
+/// back. The data key is rewrapped, not replaced (M4). The new recovery key
+/// is saved in `sync-recovery-key:<library>` before the request is sent
+/// ([`Rotation`]); the result carries it and how many other devices were
+/// signed out.
 pub fn change_password(
     b: &dyn Backend,
+    secrets: &dyn SecretStore,
     session: &Session,
     current: &Password,
     new: &Password,
     progress: &dyn Fn(Step),
-) -> Result<usize, AccountError> {
+) -> Result<PasswordChanged, RotationError> {
     check_not_username(new, &session.username)?;
+    let library_id = session_library(session)?;
     let api = b.api(&session.server);
     let current_keys = current_auth(b, &*api, session, current, progress)?;
     let params = default_params(b)?;
     let salt = random::<16>();
-    let keys = password_keys(new, &session.origin, &session.username, &salt, params)?;
+    let keys = password_keys(new, &session.origin, &session.username, &salt, params)
+        .map_err(AccountError::from)?;
+    let mut rotation = Rotation::choose(
+        secrets,
+        library_id,
+        &session.server,
+        &session.origin,
+        &session.account_id,
+        &session.username,
+        None,
+    )?;
+    let next = recovery_keys(rotation.key(), &session.origin, &session.username);
     let request = PasswordRequest {
         current_auth_key: current_keys.auth_key.to_base64url(),
         kdf: params.into(),
@@ -1050,10 +1076,25 @@ pub fn change_password(
             &session.account_id,
             session.data_key(),
         ),
+        recovery_auth_key: next.auth_key.to_base64url(),
+        recovery_wrapped_key: wrap(
+            &next.kek,
+            WrapPurpose::Recovery,
+            &session.account_id,
+            session.data_key(),
+        ),
     };
     progress(Step::Contacting);
-    let answer = retrying(b, || api.change_password(session.token(), &request))?;
-    Ok(usize::try_from(answer.signed_out_devices).unwrap_or(usize::MAX))
+    if let Err(err) = rotation.keep(&session.account_id) {
+        return Err(rotation.failed(err.into(), false));
+    }
+    match retrying(b, || api.change_password(session.token(), &request)) {
+        Ok(answer) => Ok(PasswordChanged {
+            signed_out_devices: usize::try_from(answer.signed_out_devices).unwrap_or(usize::MAX),
+            recovery_key: rotation.accepted(),
+        }),
+        Err(err) => Err(rotation.failed_api(err)),
+    }
 }
 
 /// The library whose Keychain items hold `session`.
