@@ -658,6 +658,26 @@ describe("the UTC day rollover of the server-wide daily caps", () => {
 		expect((await early.push(docs(1))).body).toMatchObject({ error: "rate_limited", limit: "writes-global", retry_after: 86_400 });
 		expect((await early.account()).body.usage.writes_today).toBe(4);
 	});
+
+	it("a request stamped before midnight that is counted after the new day's first counts against the new day, never resetting it", async () => {
+		await resetServer({ signup: "open", writes_per_day: "3" });
+		const a = await signUp("alice");
+		const token = a.token;
+		const late = client(token, { now: DAY0 + DAY - 1 });
+		const early = client(token, { now: DAY0 + DAY });
+		expect((await early.push(docs(2))).status).toBe(200);
+		// A Worker that read its clock at 23:59:59.999 (a request begun before midnight, or a
+		// clock a little behind) counts after the new day's first push.
+		expect((await late.push(docs(1))).status).toBe(200);
+		expect(await env.DB.prepare("SELECT window_start, count FROM limits WHERE key = ?1").bind(`writes-account:${a.creds.accountId}`).first()).toEqual({
+			window_start: DAY0 + DAY,
+			count: 3,
+		});
+		// So the new day's budget of 3 is spent.
+		expect((await early.push(docs(1))).body).toMatchObject({ error: "rate_limited", limit: "writes-account" });
+		expect((await early.account()).body.usage.writes_today).toBe(4);
+		expect(await daily("writes")).toEqual({ day: DAY0 / DAY + 1, count: 3 });
+	});
 });
 
 describe("the row cost", () => {

@@ -87,6 +87,11 @@ nothing was deployed yet):
 4. **Only signed-in devices are exempt from `login-user`.** A device signed out for any reason
    counts like a stranger. `DELETE /v2/account/devices/<id>` on a row that is already signed out
    marks it `revoked` and answers 204 instead of 404.
+8. **Day rollover.** Tests now send requests at different times of one UTC day and on both sides
+   of midnight, for the server-wide writes cap and `signups_per_day`. They found one fault: a
+   request stamped just before a window's boundary but counted just after it reset that row of
+   `limits` to the old window, losing the new day's count. It now counts against the newer window,
+   as the `daily` counters do.
 
 Rejected: no finding. Where the result differs from a review's suggestion:
 
@@ -493,15 +498,17 @@ primitives.
   ```sql
   INSERT INTO limits (key, window_start, count) VALUES (?1, ?2, ?3)
   ON CONFLICT (key) DO UPDATE SET
-    count = CASE WHEN window_start = excluded.window_start THEN count + excluded.count ELSE excluded.count END,
-    window_start = excluded.window_start
+    count = CASE WHEN window_start >= excluded.window_start THEN count + excluded.count ELSE excluded.count END,
+    window_start = max(window_start, excluded.window_start)
   RETURNING count
   ```
 
   Here `?2 = floor(now / window) * window`, and `?3` is the amount (1, or the number of documents in
   a push). The upsert runs before credentials are checked or any work is done. If the returned
   count is over the maximum, the request is refused with 429, so parallel requests can't pass
-  together.
+  together. A request stamped with an earlier window than the row's (begun just before the
+  boundary, or from a Worker whose clock is a little behind) counts against the newer window
+  rather than resetting it, as the `daily` counters do (security review 2, finding 8).
 - **IP groups.** IPv4 counts per address. In D1, IPv6 counts per /56, except sign-up, which counts
   per /48. The binding keys IPv6 by /48. The value comes from `CF-Connecting-IP`; `unknown` stands in
   when it's absent (local dev).

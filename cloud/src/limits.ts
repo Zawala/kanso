@@ -52,10 +52,16 @@ export const DAILY_MAX_SQL: Partial<Record<Rule, string>> = {
 /** The binding's window, which is also its `retry_after`. */
 export const BINDING_PERIOD_MS = 60_000;
 
+/**
+ * Counts first, in fixed windows. A request stamped with an earlier window
+ * than the row's (one begun just before the boundary, or a Worker whose clock
+ * is a little behind) counts against the newer window instead of resetting it,
+ * as the `daily` triggers do; only a later window starts the count again.
+ */
 export const COUNT_SQL = `INSERT INTO limits (key, window_start, count) VALUES (?1, ?2, ?3)
 ON CONFLICT (key) DO UPDATE SET
-  count = CASE WHEN window_start = excluded.window_start THEN count + excluded.count ELSE excluded.count END,
-  window_start = excluded.window_start
+  count = CASE WHEN window_start >= excluded.window_start THEN count + excluded.count ELSE excluded.count END,
+  window_start = max(window_start, excluded.window_start)
 RETURNING count`;
 
 export const windowStart = (now: number, window: number): number => Math.floor(now / window) * window;
