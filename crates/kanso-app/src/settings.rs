@@ -160,6 +160,14 @@ pub fn problem_help(problem: &SyncProblem, resume: impl FnOnce(i64) -> String) -
             "This account made a lot of changes today. Sync resumes {}.",
             resume(*until)
         ),
+        SyncProblem::ServerBusy { until } => format!(
+            "The server has taken all the changes it can for today. Sync resumes {}.",
+            resume(*until)
+        ),
+        SyncProblem::BackOff { .. } => {
+            "This Mac sent the server a lot of requests at once. Sync resumes in a moment."
+                .to_owned()
+        }
         SyncProblem::QuotaExceeded(QuotaKind::Server) | SyncProblem::ServerFull => {
             "The server is out of space. Ask its owner.".to_owned()
         }
@@ -1955,15 +1963,15 @@ mod tests {
             }
         }
 
-        /// Every problem's help is a sentence of its own, and a pause names
-        /// when it ends.
+        /// Every problem's help is a sentence of its own, and a pause (the
+        /// account's or the server's) names when it ends.
         #[test]
         fn prop_problem_help_says_what_to_do(problem in strategies::problem()) {
             let help = problem_help(&problem, |at| format!("at zq{at}"));
             prop_assert!(help.ends_with('.'), "{}", help);
             prop_assert_eq!(
                 help.contains("zq"),
-                matches!(problem, SyncProblem::Paused { .. }),
+                matches!(problem, SyncProblem::Paused { .. } | SyncProblem::ServerBusy { .. }),
                 "{}",
                 help
             );

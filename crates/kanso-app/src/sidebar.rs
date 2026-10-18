@@ -1215,6 +1215,8 @@ pub fn problem_label(problem: &SyncProblem) -> &'static str {
         SyncProblem::SignedOut(_) => "Signed out",
         SyncProblem::AccountDisabled => "Account turned off",
         SyncProblem::Paused { .. } => "Sync paused",
+        SyncProblem::ServerBusy { .. } => "Server busy",
+        SyncProblem::BackOff { .. } => "Syncing shortly",
         SyncProblem::QuotaExceeded(_) => "Account full",
         SyncProblem::ServerFull => "Server full",
         SyncProblem::Skipped { .. } => "Some items skipped",
@@ -1319,10 +1321,12 @@ mod tests {
     use kanso_sync::{QuotaKind, SignOutReason, SyncProblem};
 
     /// Every label in the problems table, in its order.
-    const SYNC_PROBLEMS: [&str; 11] = [
+    const SYNC_PROBLEMS: [&str; 13] = [
         "Signed out",
         "Account turned off",
         "Sync paused",
+        "Server busy",
+        "Syncing shortly",
         "Account full",
         "Server full",
         "Some items skipped",
@@ -1530,6 +1534,8 @@ mod tests {
         );
         assert_eq!(failed(SyncProblem::AccountDisabled), "Account turned off");
         assert_eq!(failed(SyncProblem::Paused { until: 1 }), "Sync paused");
+        assert_eq!(failed(SyncProblem::ServerBusy { until: 1 }), "Server busy");
+        assert_eq!(failed(SyncProblem::BackOff { until: 1 }), "Syncing shortly");
         assert_eq!(
             failed(SyncProblem::QuotaExceeded(QuotaKind::FileBytes)),
             "Account full"

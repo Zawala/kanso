@@ -799,6 +799,8 @@ pub(crate) mod strategies {
             prop::sample::select(SignOutReason::ALL.to_vec()).prop_map(SyncProblem::SignedOut),
             Just(SyncProblem::AccountDisabled),
             (0i64..1_000_000).prop_map(|until| SyncProblem::Paused { until }),
+            (0i64..1_000_000).prop_map(|until| SyncProblem::ServerBusy { until }),
+            (0i64..1_000_000).prop_map(|until| SyncProblem::BackOff { until }),
             prop::sample::select(QuotaKind::ALL.to_vec()).prop_map(SyncProblem::QuotaExceeded),
             Just(SyncProblem::ServerFull),
             (1usize..100).prop_map(|count| SyncProblem::Skipped { count }),
@@ -1138,6 +1140,49 @@ mod tests {
             Some(SyncState::Synced { problem: None, .. })
         ));
         assert_eq!(b.note(&note.id).unwrap().unwrap().title, "hello");
+    }
+
+    /// The server's own daily cap (`writes-global`) reads "Server busy", not
+    /// the account's "Sync paused", and holds automatic syncs until the time
+    /// the server gave.
+    #[test]
+    fn a_server_wide_writes_429_reads_server_busy() {
+        let server = kanso_sync::MemoryServer::new();
+        let (a, session, _dir) = library(&server, "alice", 1, true);
+        // A cap of 0 leaves every account above its fair share (0 / 50).
+        server.set_setting("global_writes_per_day", "0");
+        a.put(
+            kanso_core::DocType::Book,
+            serde_json::json!({"name": "Inbox"}),
+            kanso_store::Put::Upsert,
+            kanso_store::Origin::Ui,
+        )
+        .unwrap();
+        let now = kanso_core::now_ms();
+        let state = sync_outcome(
+            kanso_sync::sync(&a, &server, &session, &kanso_sync::SyncOptions::default()),
+            now,
+        )
+        .expect("a finished sync");
+        let problem = state_problem(&state).cloned().expect("a problem");
+        let SyncProblem::ServerBusy { until } = problem else {
+            panic!("{problem:?}");
+        };
+        assert!(until > now);
+        let signed_in = AccountState::SignedIn {
+            username: "alice".into(),
+        };
+        let (_, label) = crate::sidebar::sync_line(&state, &signed_in, |_| String::new());
+        assert_eq!(label, "Server busy");
+        let help = crate::settings::problem_help(&problem, |_| "at midnight".into());
+        assert!(
+            help.starts_with("The server has taken all the changes"),
+            "{help}"
+        );
+        let hold = hold_after(Some(&problem));
+        assert_eq!(hold, Some(Hold::Until(until)));
+        assert!(holds_at(hold, until - 1));
+        assert!(!holds_at(hold, until));
     }
 
     /// An account past its day of upload bytes (`uploads-account`) reads
