@@ -1287,6 +1287,7 @@ pub fn sign_up(b: &dyn Backend, server: &str, username: &str, password: &Passwor
 pub fn sign_in(b: &dyn Backend, server: &str, username: &str, password: &Password, device: &DeviceIdentity, progress: &dyn Fn(Step)) -> Result<SignedIn, AccountError>;
 pub fn recover(b: &dyn Backend, server: &str, username: &str, key: &RecoveryKey, new_password: &Password, device: &DeviceIdentity, progress: &dyn Fn(Step)) -> Result<Recovered, AccountError>;
 pub fn sign_out(b: &dyn Backend, secrets: &dyn SecretStore, session: &Session) -> Result<(), AccountError>; // queues a pending logout on failure
+pub fn discard_session(b: &dyn Backend, secrets: &dyn SecretStore, session: &Session) -> Result<(), AccountError>; // logout only: the library's Keychain items stay
 pub fn flush_pending_logouts(b: &dyn Backend, secrets: &dyn SecretStore, library_id: &str);
 pub fn change_password(b: &dyn Backend, session: &Session, current: &Password, new: &Password, progress: &dyn Fn(Step)) -> Result<usize, AccountError>;
 pub fn new_recovery_key(b: &dyn Backend, session: &Session, current: &Password, progress: &dyn Fn(Step)) -> Result<RecoveryKey, AccountError>;
@@ -1516,7 +1517,7 @@ for each flow and library:
 | Sign up | Bound to another account | Before sign-up: "This Mac's notes came from *alex*. Upload them to the new account?" [Upload to new account] [Cancel]. Upload means merge. |
 | Sign in or recover | Empty | Bind fresh, then pull. |
 | Sign in or recover | Same | Resume. |
-| Sign in or recover | Unbound with notes, or bound to another account | After authenticating, before saving anything (below). Cancel signs the new session out. |
+| Sign in or recover | Unbound with notes, or bound to another account | After authenticating, before saving anything (below). Cancel logs the new session out (`discard_session`); the library's Keychain items, which may be the signed-in account's or hold a recovery key still on screen, stay. |
 
 The question in the last row:
 
@@ -1554,6 +1555,9 @@ touches the Keychain item, first cancels the running sync and joins its thread (
 4. Save the Keychain item.
 5. Write the config (`account`, `enabled = true`).
 6. Start sync.
+
+A task that stopped the running sync and leaves the same session signed in (it failed, or its
+question was cancelled) starts an automatic sync again.
 
 Startup counts the Mac as signed in only when the config, the Keychain item and the binding agree.
 
@@ -2005,6 +2009,19 @@ above already say each of them; this list is the index.
   applied anywhere), the fixtures, `MemoryServer` and the Worker together.
 - **Sign-up retry** (note 7) is the same request again, not just the same auth key; `MemoryServer`
   now checks every field as the Worker does.
+- **Cancelled binding questions** log the new session out with `kanso_sync::discard_session`,
+  which leaves `sync-account` and `sync-recovery-key` alone (`sign_out` deleted them: the signed-in
+  account's session, or a cancelled recovery's new key). A failed sign-up still deletes the
+  recovery key it saved, which nobody saw. An account task that stopped the sync and leaves the
+  same session signed in starts it again.
+- **The editor and sync revisions.** A local win, a stale rebase or a repair gives the open note a
+  new `_rev` with the same content (`Change` with `Origin::Sync`). `editor::same_content`
+  compares versions apart from `_rev` and the derived task counts; the editor adopts such a
+  revision without asking, unsaved typing and all, and a save that meets one first retries once
+  on top of it.
+- **Tests.** The account flow tests run the real sync (`Services::no_sync` is gone);
+  `services.rs` has its two-library test back over `MemoryServer`. The e2e canary scan runs after
+  the Worker stops, with a positive control, and the wrong-password step asserts `login-user`.
 
 **Step 2: in parallel.**
 
