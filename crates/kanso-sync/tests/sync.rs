@@ -829,7 +829,7 @@ fn deletions_still_go_through_after_a_413() {
 }
 
 #[test]
-fn a_second_413_stops_pushing() {
+fn a_refused_batch_is_not_sent_again_until_usage_drops() {
     let (server, a, _b) = two_synced();
     let usage = kanso_sync::usage(&server, &a.session).unwrap();
     server.set_quota(
@@ -851,9 +851,112 @@ fn a_second_413_stops_pushing() {
     assert_eq!((report.pushed, report.pending), (0, 2));
     assert_eq!(
         server.stats().count(Route::Push) - pushes,
-        2,
-        "the batch, then its tombstones"
+        1,
+        "the batch only: nothing in it can go"
     );
+    let entry = a.store.meta(meta_keys::QUOTA_DOCS).unwrap().unwrap();
+    assert!(entry.starts_with("doc_bytes ") && entry.ends_with(" new"), "{entry}");
+
+    // Nothing changed on the server: later syncs send nothing and still
+    // say the account is full.
+    let writes = kanso_sync::usage(&server, &a.session).unwrap().writes_today;
+    for _ in 0..2 {
+        let report = a.sync(&server);
+        assert_eq!(report.quota, Some(QuotaKind::DocBytes));
+        assert_eq!((report.pushed, report.pending), (0, 2));
+    }
+    assert_eq!(server.stats().count(Route::Push) - pushes, 1);
+    assert_eq!(
+        kanso_sync::usage(&server, &a.session).unwrap().writes_today,
+        writes
+    );
+
+    // More room: both go, and the entry goes with them.
+    server.set_quota("alice", QuotaOverride::default());
+    let report = a.sync(&server);
+    assert_eq!((report.pushed, report.pending, report.quota), (2, 0, None));
+    assert_eq!(a.store.meta(meta_keys::QUOTA_DOCS).unwrap(), None);
+}
+
+/// Review-sync 6: an account over its document quota with new notes waiting.
+/// Before, every sync sent the refused batch again, spending the day's
+/// writes on documents the server would never take. Now the writes grow only
+/// by what the server stores: the deletion, then one new note in the room it
+/// left, then nothing.
+#[test]
+fn over_quota_syncs_spend_writes_only_on_what_the_server_stores() {
+    let (server, a, _b) = two_synced();
+    let usage = kanso_sync::usage(&server, &a.session).unwrap();
+    server.set_quota(
+        "alice",
+        QuotaOverride {
+            docs: Some(usage.docs),
+            ..QuotaOverride::default()
+        },
+    );
+    for i in 0..3 {
+        note(&a.store, &format!("note:new{i}"), "book:b1", "new", 100);
+    }
+    a.store
+        .delete("note:n1", kanso_store::Origin::Api)
+        .unwrap();
+    let writes = || kanso_sync::usage(&server, &a.session).unwrap().writes_today;
+    let start = writes();
+    // The batch of four is refused, then the deletion goes alone.
+    let report = a.sync(&server);
+    assert_eq!((report.pushed, report.pending), (1, 3));
+    assert_eq!(writes() - start, 4 + 1);
+    // The deletion left room for one.
+    let report = a.sync(&server);
+    assert_eq!((report.pushed, report.pending), (1, 2));
+    assert_eq!(writes() - start, 4 + 1 + 1);
+    for _ in 0..3 {
+        let report = a.sync(&server);
+        assert_eq!(report.quota, Some(QuotaKind::Docs));
+        assert_eq!(
+            report_problem(&report),
+            Some(SyncProblem::QuotaExceeded(QuotaKind::Docs))
+        );
+        assert_eq!((report.pushed, report.pending), (0, 2));
+    }
+    assert_eq!(writes() - start, 6, "syncs with nothing that fits cost nothing");
+    // An edit of a note the server has still goes at level `new`.
+    edit_note(&a.store, "note:new0", "edited", Some(200));
+    let report = a.sync(&server);
+    assert_eq!((report.pushed, report.pending), (1, 2));
+    assert_eq!(writes() - start, 7);
+}
+
+#[test]
+fn a_refused_edit_holds_edits_but_deletions_still_go() {
+    let (server, a, _b) = two_synced();
+    note(&a.store, "note:gone", "book:b1", "to delete", 100);
+    a.sync(&server);
+    let usage = kanso_sync::usage(&server, &a.session).unwrap();
+    server.set_quota(
+        "alice",
+        QuotaOverride {
+            doc_bytes: Some(usage.doc_bytes),
+            ..QuotaOverride::default()
+        },
+    );
+    edit_note(&a.store, "note:n1", &"a much longer body ".repeat(50), Some(200));
+    a.store
+        .delete("note:gone", kanso_store::Origin::Api)
+        .unwrap();
+    let report = a.sync(&server);
+    assert_eq!(report.quota, Some(QuotaKind::DocBytes));
+    assert_eq!((report.pushed, report.pending), (1, 1));
+    assert!(server_docs(&server, &a.session)["note:gone"].1);
+    let entry = a.store.meta(meta_keys::QUOTA_DOCS).unwrap().unwrap();
+    assert!(entry.ends_with(" edits"), "{entry}");
+    let pushes = server.stats().count(Route::Push);
+    let report = a.sync(&server);
+    assert_eq!((report.pushed, report.pending), (0, 1));
+    assert_eq!(server.stats().count(Route::Push), pushes, "the edit doesn't fit the room");
+    server.set_quota("alice", QuotaOverride::default());
+    let report = a.sync(&server);
+    assert_eq!((report.pushed, report.pending, report.quota), (1, 0, None));
 }
 
 #[test]
@@ -873,6 +976,18 @@ fn a_file_upload_quota_error_keeps_its_document_pending() {
     assert_eq!(report.quota, Some(QuotaKind::Files));
     assert_eq!((report.pushed, report.pending, report.files_up), (1, 1, 0));
     assert!(!server_docs(&server, &a.session).contains_key("file:img1"));
+
+    // The upload isn't tried again until there is room; notes still go.
+    let uploads = server.stats().count(Route::PutFile);
+    note(&a.store, "note:n1", "book:b1", "text", 100);
+    let report = a.sync(&server);
+    assert_eq!(report.quota, Some(QuotaKind::Files));
+    assert_eq!((report.pushed, report.pending), (1, 1));
+    assert_eq!(server.stats().count(Route::PutFile), uploads);
+    server.set_quota("alice", QuotaOverride::default());
+    let report = a.sync(&server);
+    assert_eq!((report.files_up, report.pending, report.quota), (1, 0, None));
+    assert!(server_docs(&server, &a.session).contains_key("file:img1"));
 }
 
 #[test]
@@ -886,8 +1001,156 @@ fn a_429_on_a_push_pauses_syncing() {
     let report = a.sync(&server);
     let until = report.paused_until.expect("paused");
     assert!(until > before);
+    assert_eq!(report.paused_limit.as_deref(), Some("writes-account"));
     assert_eq!(report_problem(&report), Some(SyncProblem::Paused { until }));
     assert_eq!((report.pushed, report.pending), (0, 2));
+}
+
+#[test]
+fn the_servers_daily_cap_is_server_busy() {
+    let server = MemoryServer::new();
+    let a = Mac::new(sign_up(&server, "alice", 1));
+    server.set_setting("global_writes_per_day", "0");
+    book(&a.store, "book:b1", "Inbox");
+    let report = a.sync(&server);
+    let until = report.paused_until.expect("paused");
+    assert_eq!(report.paused_limit.as_deref(), Some("writes-global"));
+    assert_eq!(
+        report_problem(&report),
+        Some(SyncProblem::ServerBusy { until })
+    );
+    assert_eq!(
+        SyncProblem::ServerBusy { until }.schedule(),
+        kanso_sync::Schedule::WaitsUntil(until)
+    );
+    assert_eq!((report.pushed, report.pending), (0, 1));
+}
+
+/// Review-sync (j): the server's daily upload cap holds uploads only. The
+/// file waits; notes go and pulls go on, and it is no problem.
+#[test]
+fn the_servers_upload_cap_holds_uploads_and_nothing_else() {
+    let (server, a, b) = two_synced();
+    server.set_setting("global_upload_bytes_per_day", "1");
+    file(&a.store, "file:img1", b"bytes");
+    note(&a.store, "note:a", "book:b1", "from A", 100);
+    let report = a.sync(&server);
+    let until = report.uploads_held_until.expect("held");
+    assert!(until > kanso_core::now_ms());
+    assert_eq!((report.paused_until, report.quota), (None, None));
+    assert_eq!(report_problem(&report), None);
+    assert_eq!((report.pushed, report.pending, report.files_up), (1, 1, 0));
+    assert_eq!(
+        a.store.meta(meta_keys::UPLOADS_UNTIL).unwrap(),
+        Some(until.to_string())
+    );
+
+    // Held: no upload is tried, and changes still come and go.
+    let uploads = server.stats().count(Route::PutFile);
+    note(&b.store, "note:b", "book:b1", "from B", 100);
+    b.sync(&server);
+    let report = a.sync(&server);
+    assert_eq!(report.uploads_held_until, Some(until));
+    assert_eq!((report.pulled, report.pending), (1, 1));
+    assert_eq!(body(&a.store, "note:b").as_deref(), Some("from B"));
+    assert_eq!(server.stats().count(Route::PutFile), uploads);
+
+    // Once the time has come, the hold goes and the file goes up.
+    server.set_setting("global_upload_bytes_per_day", "1073741824");
+    a.store.set_meta(meta_keys::UPLOADS_UNTIL, "1").unwrap();
+    let report = a.sync(&server);
+    assert_eq!((report.files_up, report.pending), (1, 0));
+    assert_eq!(report.uploads_held_until, None);
+    assert_eq!(a.store.meta(meta_keys::UPLOADS_UNTIL).unwrap(), None);
+}
+
+fn session_limit() -> ApiError {
+    ApiError::RateLimited {
+        retry_after: 30,
+        limit: "session-account".into(),
+    }
+}
+
+/// Checks a back-off of about 30 s from `before`.
+fn assert_backs_off(result: Result<SyncReport, SyncError>, before: i64) {
+    let err = result.unwrap_err();
+    let SyncError::BackOff { until } = err else {
+        panic!("not a back-off: {err:?}");
+    };
+    assert!(until >= before + 30_000 && until <= kanso_core::now_ms() + 30_000);
+    let problem = kanso_sync::problem(&err).unwrap();
+    assert_eq!(problem, SyncProblem::BackOff { until });
+    assert_eq!(problem.schedule(), kanso_sync::Schedule::WaitsUntil(until));
+}
+
+/// A 429 `session-account` on the feed: the sync stops after the pages it
+/// applied, keeps the cursor there, and waits about `retry_after`.
+#[test]
+fn a_session_limit_on_the_feed_backs_off_and_keeps_the_cursor() {
+    let (server, a, b) = two_synced();
+    for i in 0..3 {
+        note(&a.store, &format!("note:p{i}"), "book:b1", "x", 100);
+    }
+    a.sync(&server);
+    let start = b.cursor();
+    let pages = AtomicUsize::new(0);
+    let tap = Tap::new(&server, |event| {
+        if matches!(event, Event::Changes { .. }) && pages.fetch_add(1, Ordering::SeqCst) == 1 {
+            return Err(session_limit());
+        }
+        Ok(())
+    });
+    let options = SyncOptions {
+        page_size: 1,
+        ..SyncOptions::default()
+    };
+    let before = kanso_core::now_ms();
+    assert_backs_off(b.sync_with(&tap, &options), before);
+    let first = b.cursor();
+    assert!(first > start, "the first page was applied");
+    assert_eq!(live_docs(&b.store).len(), 3, "and nothing after it");
+    let report = b.sync(&server);
+    assert_eq!(report.pulled, 2);
+    assert_eq!(live_docs(&b.store), live_docs(&a.store));
+}
+
+/// The same on a push, an upload and a download: nothing is marked done,
+/// the cursor stays, and the next sync finishes the work.
+#[test]
+fn a_session_limit_on_a_push_or_a_file_backs_off() {
+    for route in ["push", "upload", "download"] {
+        let (server, a, b) = two_synced();
+        a.sync(&server);
+        file(&a.store, "file:img1", b"bytes");
+        note(&a.store, "note:a", "book:b1", "from A", 100);
+        let (mac, other) = if route == "download" {
+            a.sync(&server);
+            (&b, &a)
+        } else {
+            (&a, &b)
+        };
+        let before_docs = sync_meta(&mac.store);
+        let pending_before = pending(&mac.store);
+        let tap = Tap::new(&server, |event| match (route, event) {
+            ("push", Event::Push(_))
+            | ("upload", Event::PutFile { .. })
+            | ("download", Event::File(_)) => Err(session_limit()),
+            _ => Ok(()),
+        });
+        let before = kanso_core::now_ms();
+        assert_backs_off(mac.try_sync(&tap), before);
+        assert_eq!(sync_meta(&mac.store), before_docs, "{route}: cursor or meta moved");
+        assert_eq!(pending(&mac.store), pending_before, "{route}");
+        let report = mac.sync(&server);
+        assert_eq!(report.pending, 0, "{route}");
+        other.sync(&server);
+        assert_eq!(live_docs(&a.store), live_docs(&b.store), "{route}");
+        assert_eq!(
+            a.store.attachment("file:img1").unwrap().map(|(_, f)| f.data),
+            b.store.attachment("file:img1").unwrap().map(|(_, f)| f.data),
+            "{route}"
+        );
+    }
 }
 
 #[test]

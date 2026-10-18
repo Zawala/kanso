@@ -14,7 +14,7 @@ use std::sync::atomic::AtomicBool;
 use kanso_store::{ApplyOutcome, Attachment, Store, StoreError, SyncDoc, SyncGuard};
 use serde_json::Value;
 
-use crate::account::Session;
+use crate::account::{Session, Usage};
 use crate::api::Backend;
 use crate::binding::meta_keys;
 use crate::remote::{is_file_id, md5_hex};
@@ -94,10 +94,20 @@ pub struct SyncReport {
     /// The server's copy was restored or rewound (epoch or head changed), and
     /// this Mac re-merged (M1).
     pub remerged: bool,
-    /// A push or upload hit this quota (413); deletions still went through.
+    /// A push or upload hit this quota (413), now or in an earlier sync
+    /// whose entry is still in place: what would grow the account is held
+    /// back until usage drops, and deletions still go through.
     pub quota: Option<QuotaKind>,
     /// A 429 on a push or upload: pushing stopped until this time (ms).
     pub paused_until: Option<i64>,
+    /// The `limit` of the 429 behind `paused_until`: `writes-account`,
+    /// `uploads-account` or `writes-global`. One ending in `-global` is the
+    /// server's own daily cap, which gives [`SyncProblem::ServerBusy`].
+    pub paused_limit: Option<String>,
+    /// After a 429 `uploads-global`: file uploads, and the live file
+    /// documents waiting for them, are held until this time (ms). Pulls and
+    /// everything else keep syncing, and it is no problem.
+    pub uploads_held_until: Option<i64>,
 }
 
 impl SyncReport {
@@ -127,6 +137,22 @@ pub enum SyncError {
     /// the sync ran (the store's guard failed).
     #[error("sync cancelled")]
     Cancelled,
+    /// A 429 `session-account` (too many requests a minute) on any sync
+    /// route: the sync stopped where it was, with nothing after it marked
+    /// done and the cursor at the last page applied. The next automatic sync
+    /// waits until `until` (ms) ([`SyncProblem::BackOff`]).
+    #[error("the server asked this Mac to slow down until {until}")]
+    BackOff { until: i64 },
+}
+
+/// The 429 `limit` of the per-account request limit on session routes.
+const SESSION_LIMIT: &str = "session-account";
+
+/// A 429 `session-account`: [`SyncError::BackOff`] for `retry_after` seconds.
+fn back_off(retry_after: u64) -> SyncError {
+    SyncError::BackOff {
+        until: now_ms().saturating_add((retry_after as i64).saturating_mul(1000)),
+    }
 }
 
 /// The app's sync: one pass of `session`'s account over `b`, with every v2
@@ -149,8 +175,11 @@ pub enum SyncError {
 /// 2. **Push.** Sends pending documents in batches, sealed, uploading file
 ///    bytes first; up to [`SyncOptions::max_rounds`] rounds resolve
 ///    conflicts, lost documents and `behind` answers (which pull first). A
-///    413 retries the batch with its tombstones only and pushes nothing but
-///    tombstones afterwards; a second 413, or any 429, stops pushing.
+///    413 is remembered per family (documents, uploads) with a level of
+///    what it holds back (new documents, then edits, then everything): the
+///    batch is retried at once without them, and later syncs send them
+///    only once the account's usage dropped, within the room left. A 429
+///    stops pushing, except `uploads-global`, which only holds uploads.
 ///
 /// Every store write carries the session's guard
 /// ([`crate::binding::guard_pairs`]); if the library was re-bound
@@ -167,6 +196,8 @@ pub fn sync(
     let sealed = Sealed::new(b.remote(session), session);
     let mut run = Run {
         store,
+        backend: b,
+        session,
         sealed: &sealed,
         guard: SyncGuard { expect: &pairs },
         options,
@@ -177,13 +208,26 @@ pub fn sync(
         wire_ids: None,
         fetched: HashSet::new(),
         stopped: false,
-        tombstones_only: false,
+        holds: [Hold::default(), Hold::default()],
+        usage: None,
+        uploads_until: None,
     };
-    run.check_cancel()?;
-    run.check_bound()?;
-    run.pull()?;
-    run.refetch()?;
-    run.push()?;
+    let steps = (|| {
+        run.check_cancel()?;
+        run.check_bound()?;
+        run.pull()?;
+        run.refetch()?;
+        run.push()
+    })();
+    match steps {
+        Err(SyncError::Api(ApiError::RateLimited { retry_after, limit }))
+            if limit == SESSION_LIMIT =>
+        {
+            return Err(back_off(retry_after));
+        }
+        Err(err) => return Err(err),
+        Ok(()) => {}
+    }
     run.report.pending = store.pending_count()?;
     Ok(run.report)
 }
@@ -221,9 +265,199 @@ fn wire_size(doc: &SyncDoc, fields_len: usize) -> usize {
     (plaintext + 41).div_ceil(3) * 4 + 160
 }
 
+/// What a remembered 413 holds back (docs/ACCOUNTS.md › Sync with
+/// encryption › Quota). Each level holds what the ones before it hold.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Level {
+    /// What the server doesn't have yet: documents with no base (new IDs
+    /// and never-synced tombstones), and uploads of new files.
+    New,
+    /// Also live documents the server has, and their uploads.
+    Edits,
+    /// The whole family.
+    All,
+}
+
+impl Level {
+    fn as_str(self) -> &'static str {
+        match self {
+            Level::New => "new",
+            Level::Edits => "edits",
+            Level::All => "all",
+        }
+    }
+}
+
+/// What a pending document is to a quota, in growing order of what it may
+/// add to the account.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Class {
+    /// A tombstone of a document the server has: it never grows the account.
+    Tombstone,
+    /// A live document the server has.
+    Edit,
+    /// A document the server doesn't have (no base).
+    New,
+}
+
+impl Class {
+    fn of(doc: &SyncDoc) -> Class {
+        if doc.base_rev.is_none() {
+            Class::New
+        } else if doc.deleted {
+            Class::Tombstone
+        } else {
+            Class::Edit
+        }
+    }
+
+    /// The level a refused request whose worst document is of this class
+    /// moves to: it holds that class.
+    fn level(self) -> Level {
+        match self {
+            Class::New => Level::New,
+            Class::Edit => Level::Edits,
+            Class::Tombstone => Level::All,
+        }
+    }
+
+    fn held_at(self, level: Level) -> bool {
+        match level {
+            Level::New => self == Class::New,
+            Level::Edits => self != Class::Tombstone,
+            Level::All => true,
+        }
+    }
+}
+
+/// A quota family: a 413 on a push holds documents, one on an upload holds
+/// uploads (and the file documents waiting for them).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Family {
+    Docs = 0,
+    Files = 1,
+}
+
+impl Family {
+    fn key(self) -> &'static str {
+        match self {
+            Family::Docs => meta_keys::QUOTA_DOCS,
+            Family::Files => meta_keys::QUOTA_FILES,
+        }
+    }
+}
+
+/// A remembered 413, as `<kind> <used> <limit> <at_ms> <level>` in
+/// [`Family::key`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct QuotaEntry {
+    kind: QuotaKind,
+    /// The kind's usage before the refused request, as the 413 said.
+    used: u64,
+    /// The kind's quota, as the 413 said.
+    limit: u64,
+    at_ms: i64,
+    level: Level,
+}
+
+/// How long a `server` entry, which `GET /v2/account` can't measure, holds
+/// before the next try.
+const SERVER_HOLD_MS: i64 = 60 * 60 * 1000;
+
+impl QuotaEntry {
+    fn parse(value: &str) -> Option<QuotaEntry> {
+        let mut parts = value.split(' ');
+        let kind = parts.next()?;
+        let kind = QuotaKind::ALL.into_iter().find(|k| k.as_str() == kind)?;
+        let used = parts.next()?.parse().ok()?;
+        let limit = parts.next()?.parse().ok()?;
+        let at_ms = parts.next()?.parse().ok()?;
+        let level = match parts.next()? {
+            "new" => Level::New,
+            "edits" => Level::Edits,
+            "all" => Level::All,
+            _ => return None,
+        };
+        parts.next().is_none().then_some(QuotaEntry {
+            kind,
+            used,
+            limit,
+            at_ms,
+            level,
+        })
+    }
+
+    fn encode(&self) -> String {
+        format!(
+            "{} {} {} {} {}",
+            self.kind.as_str(),
+            self.used,
+            self.limit,
+            self.at_ms,
+            self.level.as_str()
+        )
+    }
+
+    /// The room left in `family` when usage dropped since the 413 (or, for
+    /// a `server` entry, an hour went by); `None` while it hasn't.
+    fn room(&self, family: Family, usage: &Usage, now: i64) -> Option<Room> {
+        let quota = &usage.quota;
+        let dropped = match self.kind {
+            QuotaKind::Docs => usage.docs < self.used || quota.docs > self.limit,
+            QuotaKind::DocBytes => usage.doc_bytes < self.used || quota.doc_bytes > self.limit,
+            QuotaKind::Files => usage.files < self.used || quota.files > self.limit,
+            QuotaKind::FileBytes => {
+                usage.file_bytes < self.used || quota.file_bytes > self.limit
+            }
+            QuotaKind::Server => now >= self.at_ms.saturating_add(SERVER_HOLD_MS),
+        };
+        dropped.then(|| match family {
+            Family::Docs => Room {
+                count: quota.docs.saturating_sub(usage.docs),
+                bytes: quota.doc_bytes.saturating_sub(usage.doc_bytes),
+            },
+            Family::Files => Room {
+                count: quota.files.saturating_sub(usage.files),
+                bytes: quota.file_bytes.saturating_sub(usage.file_bytes),
+            },
+        })
+    }
+}
+
+/// What held documents may still add once usage dropped: new live
+/// documents (or new files) and bytes.
+#[derive(Clone, Copy, Debug)]
+struct Room {
+    count: u64,
+    bytes: u64,
+}
+
+/// What the server charges a document row on top of its sealed text.
+const DOC_ROW_COST: u64 = 512;
+/// What the server charges a file on top of its sealed bytes, plus what
+/// sealing adds.
+const FILE_ROW_COST: u64 = 1024 + 64;
+
+/// One family's quota state in a sync.
+#[derive(Debug, Default)]
+struct Hold {
+    entry: Option<QuotaEntry>,
+    /// The room left, once worked out this sync; `None` inside holds per
+    /// the entry's level.
+    room: Option<Option<Room>>,
+    /// Something of the family was held back this sync.
+    held_back: bool,
+    /// A request of the family got a 413 this sync.
+    refused: bool,
+    /// Documents whose cost was taken from the room this sync.
+    charged: HashSet<String>,
+}
+
 /// One run of [`sync`].
 struct Run<'r> {
     store: &'r Store,
+    backend: &'r dyn Backend,
+    session: &'r Session,
     sealed: &'r Sealed<'r>,
     guard: SyncGuard<'r>,
     options: &'r SyncOptions,
@@ -239,10 +473,15 @@ struct Run<'r> {
     wire_ids: Option<HashMap<String, (String, Option<String>)>>,
     /// File IDs whose bytes this sync already asked the server for.
     fetched: HashSet<String>,
-    /// Pushing stopped for this sync (a second 413, or a 429).
+    /// Pushing stopped for this sync (a 429).
     stopped: bool,
-    /// After a 413: push only tombstones.
-    tombstones_only: bool,
+    /// The quota entries of [`Family::Docs`] and [`Family::Files`].
+    holds: [Hold; 2],
+    /// `GET /v2/account`, read at most once a sync (`None` inside when it
+    /// failed).
+    usage: Option<Option<Usage>>,
+    /// Uploads are held until then (a 429 `uploads-global`).
+    uploads_until: Option<i64>,
 }
 
 impl Run<'_> {
@@ -552,14 +791,179 @@ impl Run<'_> {
         Ok(())
     }
 
-    fn pause(&mut self, retry_after: u64) {
+    /// A 429 on a push or upload (other than `uploads-global`): pushing
+    /// stops for this sync; the report keeps the latest time and its limit.
+    fn pause(&mut self, retry_after: u64, limit: String) {
         let until = now_ms().saturating_add((retry_after as i64).saturating_mul(1000));
-        self.report.paused_until = Some(self.report.paused_until.map_or(until, |u| u.max(until)));
+        if self.report.paused_until.is_none_or(|u| until >= u) {
+            self.report.paused_until = Some(until);
+            self.report.paused_limit = Some(limit);
+        }
         self.stopped = true;
+    }
+
+    /// A 429 `uploads-global` on an upload: uploads wait until then, in a
+    /// guarded meta write; everything else goes on.
+    fn hold_uploads(&mut self, retry_after: u64) -> Result<(), SyncError> {
+        let until = now_ms().saturating_add((retry_after as i64).saturating_mul(1000));
+        let until = self.uploads_until.map_or(until, |u| u.max(until));
+        self.set_meta(meta_keys::UPLOADS_UNTIL, &until.to_string())?;
+        self.uploads_until = Some(until);
+        self.report.uploads_held_until = Some(until);
+        Ok(())
+    }
+
+    /// Reads the quota entries and the upload hold this push starts with,
+    /// removing an upload hold whose time has come.
+    fn load_holds(&mut self) -> Result<(), SyncError> {
+        for family in [Family::Docs, Family::Files] {
+            self.holds[family as usize].entry = self
+                .store
+                .meta(family.key())?
+                .as_deref()
+                .and_then(QuotaEntry::parse);
+        }
+        if let Some(value) = self.store.meta(meta_keys::UPLOADS_UNTIL)? {
+            match value.parse::<i64>() {
+                Ok(until) if until > now_ms() => {
+                    self.uploads_until = Some(until);
+                    self.report.uploads_held_until = Some(until);
+                }
+                _ => self
+                    .store
+                    .remove_meta_if(meta_keys::UPLOADS_UNTIL, &self.guard)
+                    .map_err(guarded)?,
+            }
+        }
+        Ok(())
+    }
+
+    /// The room left in `family` once usage dropped, from one
+    /// `GET /v2/account` a sync; `None` holds per the entry's level. A
+    /// failed read holds too: the entry stays.
+    fn room(&mut self, family: Family) -> Result<Option<Room>, SyncError> {
+        let i = family as usize;
+        if let Some(room) = self.holds[i].room {
+            return Ok(room);
+        }
+        let Some(entry) = self.holds[i].entry else {
+            return Ok(None);
+        };
+        if self.usage.is_none() {
+            self.check_cancel()?;
+            self.usage = Some(crate::account::usage(self.backend, self.session).ok());
+        }
+        let room = self
+            .usage
+            .flatten()
+            .and_then(|usage| entry.room(family, &usage, now_ms()));
+        self.holds[i].room = Some(room);
+        Ok(room)
+    }
+
+    /// Whether `family`'s quota entry holds `doc` back this sync. Once usage
+    /// dropped, what fits in the room goes, and its cost (`count` new items
+    /// and `bytes`) is taken from the room once a sync.
+    fn quota_holds(
+        &mut self,
+        family: Family,
+        doc: &SyncDoc,
+        class: Class,
+        count: u64,
+        bytes: u64,
+    ) -> Result<bool, SyncError> {
+        let i = family as usize;
+        let Some(entry) = self.holds[i].entry else {
+            return Ok(false);
+        };
+        if !class.held_at(entry.level) || self.holds[i].charged.contains(&doc.id) {
+            return Ok(false);
+        }
+        if let Some(room) = self.room(family)? {
+            // A tombstone of a document the server has never grows it.
+            let (count, bytes) = if class == Class::Tombstone {
+                (0, 0)
+            } else {
+                (count, bytes)
+            };
+            if room.count >= count && room.bytes >= bytes {
+                self.holds[i].room = Some(Some(Room {
+                    count: room.count - count,
+                    bytes: room.bytes - bytes,
+                }));
+                self.holds[i].charged.insert(doc.id.clone());
+                return Ok(false);
+            }
+        }
+        self.note_held(doc);
+        Ok(true)
+    }
+
+    /// `doc` stays pending this sync for a quota or an upload hold. Neither
+    /// family's entry can go while something it may concern waits: a held
+    /// document, or a live file whose upload was never tried.
+    fn note_held(&mut self, doc: &SyncDoc) {
+        self.holds[Family::Docs as usize].held_back = true;
+        if !doc.deleted && is_file_id(&doc.id) {
+            self.holds[Family::Files as usize].held_back = true;
+        }
+    }
+
+    /// A 413 on a request of `family` whose worst document is `worst`:
+    /// remembers it (guarded) at the level that holds that class, and stops
+    /// taking from the room for the rest of this sync. Returns the level.
+    fn refused(
+        &mut self,
+        family: Family,
+        kind: QuotaKind,
+        used: u64,
+        limit: u64,
+        worst: Class,
+    ) -> Result<Level, SyncError> {
+        let i = family as usize;
+        let level = self.holds[i]
+            .entry
+            .map_or(worst.level(), |e| e.level.max(worst.level()));
+        let entry = QuotaEntry {
+            kind,
+            used,
+            limit,
+            at_ms: now_ms(),
+            level,
+        };
+        self.set_meta(family.key(), &entry.encode())?;
+        let hold = &mut self.holds[i];
+        hold.entry = Some(entry);
+        hold.room = Some(None);
+        hold.refused = true;
+        hold.held_back = true;
+        self.report.quota = Some(kind);
+        Ok(level)
+    }
+
+    /// After the push: a family's entry goes once a sync that ran to the
+    /// end held nothing of it back and got no 413 for it; one that stays
+    /// keeps `report.quota` set.
+    fn settle_holds(&mut self) -> Result<(), SyncError> {
+        for family in [Family::Docs, Family::Files] {
+            let hold = &self.holds[family as usize];
+            let Some(entry) = hold.entry else { continue };
+            let unchecked = family == Family::Files && self.uploads_until.is_some();
+            if !self.stopped && !hold.held_back && !hold.refused && !unchecked {
+                self.store
+                    .remove_meta_if(family.key(), &self.guard)
+                    .map_err(guarded)?;
+                self.holds[family as usize].entry = None;
+            } else if self.report.quota.is_none() {
+                self.report.quota = Some(entry.kind);
+            }
+        }
+        Ok(())
     }
 
     /// Sends pending documents (see [`sync`]).
     fn push(&mut self) -> Result<(), SyncError> {
+        self.load_holds()?;
         // Documents this sync can't push: their server copy is too new or
         // unreadable.
         let mut held: HashSet<String> = HashSet::new();
@@ -574,7 +978,7 @@ impl Run<'_> {
             let mut sizes = Vec::new();
             self.report.too_large.clear();
             for doc in self.store.pending_push(usize::MAX)? {
-                if held.contains(&doc.id) || (self.tombstones_only && !doc.deleted) {
+                if held.contains(&doc.id) {
                     continue;
                 }
                 let fields = serde_json::to_string(&doc.fields).map_or(usize::MAX, |s| s.len());
@@ -582,7 +986,14 @@ impl Run<'_> {
                     self.report.too_large.push(doc.id);
                     continue;
                 }
-                sizes.push(wire_size(&doc, fields));
+                let size = wire_size(&doc, fields);
+                let class = Class::of(&doc);
+                let count = u64::from(class == Class::New && !doc.deleted);
+                let bytes = size as u64 + DOC_ROW_COST;
+                if self.quota_holds(Family::Docs, &doc, class, count, bytes)? {
+                    continue;
+                }
+                sizes.push(size);
                 docs.push(doc);
             }
             if docs.is_empty() {
@@ -592,12 +1003,7 @@ impl Run<'_> {
             let mut need_pull = false;
             for range in batches(&sizes, max_docs, max_bytes) {
                 self.check_cancel()?;
-                let batch: Vec<SyncDoc> = docs[range]
-                    .iter()
-                    .filter(|d| !self.tombstones_only || d.deleted)
-                    .cloned()
-                    .collect();
-                let batch = self.upload_files(batch)?;
+                let batch = self.upload_files(docs[range].to_vec())?;
                 if self.stopped {
                     break;
                 }
@@ -676,100 +1082,133 @@ impl Run<'_> {
                 self.pull()?;
             }
         }
-        Ok(())
+        self.settle_holds()
     }
 
-    /// Pushes one batch, handling a quota (retry with the tombstones only;
-    /// a second 413 stops pushing) and a pause. `None` when nothing was
-    /// pushed.
+    /// Whether `doc`, picked for this round, still goes once a 413 earlier
+    /// in this sync raised `family`'s level: what the level holds stays,
+    /// even if it was taken from the room.
+    fn still_goes(&mut self, family: Family, doc: &SyncDoc) -> bool {
+        let hold = &self.holds[family as usize];
+        match hold.entry {
+            Some(entry) if hold.refused && Class::of(doc).held_at(entry.level) => {
+                self.note_held(doc);
+                false
+            }
+            _ => true,
+        }
+    }
+
+    /// Pushes one batch, handling a pause and a quota: after a 413 the
+    /// batch is retried at once without what the new level holds, until
+    /// nothing is left. `None` when nothing was pushed.
     #[allow(clippy::type_complexity)]
     fn push_batch(
         &mut self,
-        batch: Vec<SyncDoc>,
+        mut batch: Vec<SyncDoc>,
     ) -> Result<Option<(Vec<SyncDoc>, Vec<Pushed>)>, SyncError> {
-        // Right before the request: an upload just before it writes nothing
-        // locally, so no guarded write would have noticed a re-bind. The
-        // guarded `mark_sent` checks the binding again in its transaction,
-        // and records what is in flight so that, if the answer is lost, its
-        // echo is recognised as ours.
-        self.check_bound()?;
-        let sent: Vec<(&str, &str)> = batch
-            .iter()
-            .map(|d| (d.id.as_str(), d.rev.as_str()))
-            .collect();
-        self.store
-            .mark_sent(&sent, Some(&self.guard))
-            .map_err(guarded)?;
-        match self.sealed.push(&batch) {
-            Ok(results) => return Ok(Some((batch, results))),
-            Err(ApiError::QuotaExceeded { quota, .. }) => {
-                self.report.quota = Some(quota);
-                if self.tombstones_only {
-                    self.stopped = true;
-                    return Ok(None);
-                }
-                self.tombstones_only = true;
-            }
-            Err(ApiError::RateLimited { retry_after, .. }) => {
-                self.pause(retry_after);
+        loop {
+            if batch.is_empty() {
                 return Ok(None);
             }
-            Err(err) => return Err(err.into()),
-        }
-        let tombstones: Vec<SyncDoc> = batch.into_iter().filter(|d| d.deleted).collect();
-        if tombstones.is_empty() {
-            return Ok(None);
-        }
-        self.check_cancel()?;
-        self.check_bound()?;
-        match self.sealed.push(&tombstones) {
-            Ok(results) => Ok(Some((tombstones, results))),
-            Err(ApiError::QuotaExceeded { quota, .. }) => {
-                self.report.quota = Some(quota);
-                self.stopped = true;
-                Ok(None)
+            self.check_cancel()?;
+            // Right before the request: an upload just before it writes
+            // nothing locally, so no guarded write would have noticed a
+            // re-bind. The guarded `mark_sent` checks the binding again in
+            // its transaction, and records what is in flight so that, if the
+            // answer is lost, its echo is recognised as ours.
+            self.check_bound()?;
+            let sent: Vec<(&str, &str)> = batch
+                .iter()
+                .map(|d| (d.id.as_str(), d.rev.as_str()))
+                .collect();
+            self.store
+                .mark_sent(&sent, Some(&self.guard))
+                .map_err(guarded)?;
+            match self.sealed.push(&batch) {
+                Ok(results) => return Ok(Some((batch, results))),
+                Err(ApiError::QuotaExceeded { quota, used, limit }) => {
+                    let worst = batch.iter().map(Class::of).max().unwrap_or(Class::New);
+                    let level = self.refused(Family::Docs, quota, used, limit, worst)?;
+                    let (out, kept): (Vec<_>, Vec<_>) = batch
+                        .into_iter()
+                        .partition(|d| Class::of(d).held_at(level));
+                    for doc in &out {
+                        self.note_held(doc);
+                    }
+                    batch = kept;
+                }
+                Err(ApiError::RateLimited { retry_after, limit }) if limit == SESSION_LIMIT => {
+                    return Err(back_off(retry_after));
+                }
+                Err(ApiError::RateLimited { retry_after, limit }) => {
+                    self.pause(retry_after, limit);
+                    return Ok(None);
+                }
+                Err(err) => return Err(err.into()),
             }
-            Err(ApiError::RateLimited { retry_after, .. }) => {
-                self.pause(retry_after);
-                Ok(None)
-            }
-            Err(err) => Err(err.into()),
         }
     }
 
     /// Uploads the bytes of the live files in `batch`, so they are on the
-    /// server before any device can see the documents. A file whose upload
-    /// hits a quota leaves the batch and stays pending; a 429 stops pushing.
+    /// server before any device can see the documents. Documents a 413
+    /// earlier in this sync now holds leave the batch first. A file whose
+    /// upload is held (a files quota entry, or a 429 `uploads-global`) or
+    /// hits a quota leaves the batch and stays pending; any other 429 stops
+    /// pushing.
     fn upload_files(&mut self, batch: Vec<SyncDoc>) -> Result<Vec<SyncDoc>, SyncError> {
         let mut kept = Vec::with_capacity(batch.len());
         for doc in batch {
+            if !self.still_goes(Family::Docs, &doc) {
+                continue;
+            }
             if doc.deleted || !is_file_id(&doc.id) {
                 kept.push(doc);
                 continue;
             }
-            match self.store.attachment(&doc.id)? {
-                Some((_, blob)) => {
-                    self.check_cancel()?;
-                    self.check_bound()?;
-                    match self.sealed.put_file(&doc.id, &blob.data) {
-                        Ok(()) => {
-                            self.report.files_up += 1;
-                            kept.push(doc);
-                        }
-                        Err(ApiError::QuotaExceeded { quota, .. }) => {
-                            self.report.quota = Some(quota);
-                        }
-                        Err(ApiError::RateLimited { retry_after, .. }) => {
-                            self.pause(retry_after);
-                            return Ok(Vec::new());
-                        }
-                        Err(err) => return Err(err.into()),
-                    }
-                }
-                None => {
-                    self.report.files_missing += 1;
+            let Some((_, blob)) = self.store.attachment(&doc.id)? else {
+                self.report.files_missing += 1;
+                kept.push(doc);
+                continue;
+            };
+            if self.uploads_until.is_some() {
+                self.note_held(&doc);
+                continue;
+            }
+            let class = if doc.base_rev.is_none() {
+                Class::New
+            } else {
+                Class::Edit
+            };
+            let bytes = blob.data.len() as u64 + FILE_ROW_COST;
+            if self.quota_holds(Family::Files, &doc, class, u64::from(class == Class::New), bytes)?
+                || !self.still_goes(Family::Files, &doc)
+            {
+                continue;
+            }
+            self.check_cancel()?;
+            self.check_bound()?;
+            match self.sealed.put_file(&doc.id, &blob.data) {
+                Ok(()) => {
+                    self.report.files_up += 1;
                     kept.push(doc);
                 }
+                Err(ApiError::QuotaExceeded { quota, used, limit }) => {
+                    self.refused(Family::Files, quota, used, limit, class)?;
+                    self.note_held(&doc);
+                }
+                Err(ApiError::RateLimited { retry_after, limit }) if limit == SESSION_LIMIT => {
+                    return Err(back_off(retry_after));
+                }
+                Err(ApiError::RateLimited { retry_after, limit }) if limit == "uploads-global" => {
+                    self.hold_uploads(retry_after)?;
+                    self.note_held(&doc);
+                }
+                Err(ApiError::RateLimited { retry_after, limit }) => {
+                    self.pause(retry_after, limit);
+                    return Ok(Vec::new());
+                }
+                Err(err) => return Err(err.into()),
             }
         }
         Ok(kept)
@@ -786,6 +1225,14 @@ pub enum SyncProblem {
     AccountDisabled,
     /// A 429 on a push or upload: "Sync paused" until `until` (ms).
     Paused { until: i64 },
+    /// A 429 `writes-global`: the server's own daily cap. "Server busy":
+    /// "The server has taken all the changes it can for today. Sync resumes
+    /// at *time*." Waits until `until` (ms).
+    ServerBusy { until: i64 },
+    /// A 429 `session-account` ([`SyncError::BackOff`]): too many requests
+    /// in a minute. A short wait, not a pause: "Syncing shortly". Waits
+    /// until `until` (ms), about `retry_after` seconds.
+    BackOff { until: i64 },
     /// A 413 quota (never `Server`): "Account full". Keeps running.
     QuotaExceeded(QuotaKind),
     /// A 413 on a server-wide cap: "Server full". Keeps running.
@@ -824,7 +1271,9 @@ impl SyncProblem {
             SyncProblem::AccountDisabled
             | SyncProblem::UpdateKanso
             | SyncProblem::ServerOutdated => Schedule::StopsUntilSyncNow,
-            SyncProblem::Paused { until } => Schedule::WaitsUntil(*until),
+            SyncProblem::Paused { until }
+            | SyncProblem::ServerBusy { until }
+            | SyncProblem::BackOff { until } => Schedule::WaitsUntil(*until),
             SyncProblem::QuotaExceeded(_)
             | SyncProblem::ServerFull
             | SyncProblem::Skipped { .. }
@@ -840,6 +1289,7 @@ pub fn problem(err: &SyncError) -> Option<SyncProblem> {
     Some(match err {
         SyncError::Cancelled => return None,
         SyncError::WrongKey => SyncProblem::WrongKey,
+        SyncError::BackOff { until } => SyncProblem::BackOff { until: *until },
         SyncError::Api(api) => match api {
             ApiError::Unauthorized { reason } => SyncProblem::SignedOut(*reason),
             ApiError::AccountDisabled => SyncProblem::AccountDisabled,
@@ -857,15 +1307,24 @@ pub fn problem(err: &SyncError) -> Option<SyncProblem> {
 }
 
 /// The problem a finished sync shows, in this order of precedence:
-/// `UpdateKanso`, `Paused`, `ServerFull`, `QuotaExceeded`, `Skipped`.
-/// Rebased stale documents and repairs aren't problems. Pure; implemented
-/// in step 1.
+/// `UpdateKanso`, `Paused` or `ServerBusy` (from `paused_until`:
+/// `ServerBusy` when `paused_limit` ends with `-global`), `ServerFull`,
+/// `QuotaExceeded`, `Skipped`. Rebased stale documents, repairs and an
+/// upload hold (`uploads_held_until`) aren't problems. Pure.
 pub fn report_problem(report: &SyncReport) -> Option<SyncProblem> {
     if report.too_new {
         return Some(SyncProblem::UpdateKanso);
     }
     if let Some(until) = report.paused_until {
-        return Some(SyncProblem::Paused { until });
+        let global = report
+            .paused_limit
+            .as_deref()
+            .is_some_and(|limit| limit.ends_with("-global"));
+        return Some(if global {
+            SyncProblem::ServerBusy { until }
+        } else {
+            SyncProblem::Paused { until }
+        });
     }
     match report.quota {
         Some(QuotaKind::Server) => return Some(SyncProblem::ServerFull),
@@ -955,43 +1414,115 @@ mod problem_tests {
             SyncProblem::Paused { until: 7 }.schedule(),
             Schedule::WaitsUntil(7)
         );
+        assert_eq!(
+            SyncProblem::ServerBusy { until: 9 }.schedule(),
+            Schedule::WaitsUntil(9)
+        );
+        assert_eq!(
+            SyncProblem::BackOff { until: 11 }.schedule(),
+            Schedule::WaitsUntil(11)
+        );
+        assert_eq!(
+            problem(&SyncError::BackOff { until: 11 }),
+            Some(SyncProblem::BackOff { until: 11 })
+        );
         assert_eq!(SyncProblem::Offline.schedule(), Schedule::KeepsRunning);
         assert_eq!(report_problem(&SyncReport::default()), None);
+    }
+
+    #[test]
+    fn a_global_limit_is_server_busy() {
+        let report = |limit: &str| SyncReport {
+            paused_until: Some(5),
+            paused_limit: Some(limit.to_owned()),
+            ..SyncReport::default()
+        };
+        assert_eq!(
+            report_problem(&report("writes-global")),
+            Some(SyncProblem::ServerBusy { until: 5 })
+        );
+        for limit in ["writes-account", "uploads-account"] {
+            assert_eq!(
+                report_problem(&report(limit)),
+                Some(SyncProblem::Paused { until: 5 })
+            );
+        }
+        let held = SyncReport {
+            uploads_held_until: Some(5),
+            ..SyncReport::default()
+        };
+        assert_eq!(report_problem(&held), None, "an upload hold isn't a problem");
+    }
+
+    #[test]
+    fn quota_entries_round_trip() {
+        for kind in QuotaKind::ALL {
+            for level in [Level::New, Level::Edits, Level::All] {
+                let entry = QuotaEntry {
+                    kind,
+                    used: 10,
+                    limit: 12,
+                    at_ms: 1_700_000_000_000,
+                    level,
+                };
+                assert_eq!(QuotaEntry::parse(&entry.encode()), Some(entry));
+            }
+        }
+        for bad in ["", "docs 1 2 3", "docs 1 2 3 most", "disk 1 2 3 new", "docs 1 2 3 new x"] {
+            assert_eq!(QuotaEntry::parse(bad), None, "{bad:?}");
+        }
     }
 
     fn gen_report() -> impl Strategy<Value = SyncReport> {
         (
             any::<bool>(),
             prop::option::of(0i64..1_000),
+            prop::option::of(prop::sample::select(vec![
+                "writes-account",
+                "uploads-account",
+                "writes-global",
+            ])),
             prop::option::of(prop::sample::select(QuotaKind::ALL.to_vec())),
+            prop::option::of(0i64..1_000),
             0..3usize,
             0..3usize,
             0..3usize,
         )
-            .prop_map(|(too_new, paused_until, quota, skipped, stale, repaired)| {
-                SyncReport {
-                    too_new,
-                    paused_until,
-                    quota,
-                    skipped: (0..skipped).map(|i| format!("note:s{i}")).collect(),
-                    stale: (0..stale).map(|i| format!("note:t{i}")).collect(),
-                    repaired: (0..repaired).map(|i| format!("note:r{i}")).collect(),
-                    ..SyncReport::default()
-                }
-            })
+            .prop_map(
+                |(too_new, paused_until, limit, quota, uploads_held_until, skipped, stale, repaired)| {
+                    SyncReport {
+                        too_new,
+                        paused_until,
+                        paused_limit: paused_until.and(limit.map(str::to_owned)),
+                        quota,
+                        uploads_held_until,
+                        skipped: (0..skipped).map(|i| format!("note:s{i}")).collect(),
+                        stale: (0..stale).map(|i| format!("note:t{i}")).collect(),
+                        repaired: (0..repaired).map(|i| format!("note:r{i}")).collect(),
+                        ..SyncReport::default()
+                    }
+                },
+            )
     }
 
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(256))]
 
         /// Model-based: the reported problem is the first that applies, in
-        /// the order UpdateKanso, Paused, ServerFull, QuotaExceeded, Skipped;
-        /// stale and repaired documents alone are never a problem.
+        /// the order UpdateKanso, Paused or ServerBusy, ServerFull,
+        /// QuotaExceeded, Skipped; stale and repaired documents and an
+        /// upload hold alone are never a problem.
         #[test]
         fn prop_report_problem_follows_the_precedence(report in gen_report()) {
             let mut model = Vec::new();
             if report.too_new { model.push(SyncProblem::UpdateKanso); }
-            if let Some(until) = report.paused_until { model.push(SyncProblem::Paused { until }); }
+            if let Some(until) = report.paused_until {
+                model.push(if report.paused_limit.as_deref() == Some("writes-global") {
+                    SyncProblem::ServerBusy { until }
+                } else {
+                    SyncProblem::Paused { until }
+                });
+            }
             if report.quota == Some(QuotaKind::Server) { model.push(SyncProblem::ServerFull); }
             if let Some(kind) = report.quota.filter(|k| *k != QuotaKind::Server) { model.push(SyncProblem::QuotaExceeded(kind)); }
             if !report.skipped.is_empty() { model.push(SyncProblem::Skipped { count: report.skipped.len() }); }

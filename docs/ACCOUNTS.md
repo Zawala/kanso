@@ -1306,7 +1306,7 @@ pub fn usage(b: &dyn Backend, session: &Session) -> Result<Usage, AccountError>;
 pub fn sync(store: &Store, b: &dyn Backend, session: &Session, options: &SyncOptions) -> Result<SyncReport, SyncError>;
 pub fn verify(store: &Store, b: &dyn Backend, session: &Session, legacy: Option<&Path>, repair: bool) -> Result<VerifyReport, SyncError>;
 pub fn estimate(store: &Store) -> Result<Estimate, StoreError>;   // charged bytes the library needs
-pub fn problem(err: &SyncError) -> Option<SyncProblem>;             // None for Cancelled
+pub fn problem(err: &SyncError) -> Option<SyncProblem>;             // None for Cancelled; BackOff for SyncError::BackOff
 pub fn report_problem(report: &SyncReport) -> Option<SyncProblem>;  // problems in a sync that finished
 ```
 
@@ -1316,6 +1316,12 @@ pub fn report_problem(report: &SyncReport) -> Option<SyncProblem>;  // problems 
   returns `SyncError::Cancelled`.
 - `cursor_key: &'static str`, default `"sync.v2.last_seq"`. Only the rollback test sets the legacy
   `"sync.last_seq"`, to run the old rules against `tests/common/legacy.rs`.
+- `refetch_files: usize`, default 8: the most live files without bytes one sync fetches again
+  (Sync with encryption › Files).
+
+`SyncReport` gains `paused_limit: Option<String>` and `uploads_held_until: Option<i64>` (Sync with
+encryption › Pauses). `SyncError` gains `BackOff { until: i64 }`, and `SyncProblem` gains
+`ServerBusy { until }` and `BackOff { until }`, right after `Paused`.
 
 In `remote.rs`, `ChangesPage.epoch` and `key_id` are `Option`. `Sealed` always fills them, because
 `WirePage` requires both, so a server can't skip the checks by leaving them out. Only the legacy
@@ -1502,18 +1508,23 @@ sync pulls first:
   under quota. A refused batch is retried at once, without what the new level holds; that is the old
   "tombstones only" retry, generalized.
 
-  At the start of a push with an entry, the engine reads `GET /v2/account` once. Usage dropped when
-  the kind's usage is below the `used` the 413 reported, or its quota rose above `limit`. A `server`
-  entry can't be measured there, so it retries after an hour. When usage dropped, held documents go
-  out again, within the headroom:
+  The first time a sync with an entry would hold a document back, the engine reads
+  `GET /v2/account` (once a sync). Usage dropped when the kind's usage is below the `used` the 413
+  reported, or its quota rose above `limit`. A `server` entry can't be measured there, so it retries
+  after an hour. When usage dropped, held documents go out again, within the headroom, each charged
+  once a sync:
   - new live documents up to `quota.docs − usage.docs`;
-  - their estimated sealed size, plus 512 each, up to the `doc_bytes` headroom;
-  - new uploads up to the file-count and file-bytes headroom.
+  - documents the level holds, at their estimated sealed size (an upper bound) plus 512 each, up to
+    the `doc_bytes` headroom (a tombstone of a document the server has costs nothing);
+  - uploads the level holds, at their size plus 1,088 each, up to the file-bytes headroom, and new
+    ones up to the file-count headroom.
 
-  If the request fails, the entry stays. A sync that holds nothing back and gets no 413 deletes it.
-  While an entry is in place, `report.quota` stays set, so the app keeps saying "Account full". So
-  writes only grow by what is actually sent: a refused batch is never sent again until usage drops,
-  and then only what fits.
+  If the request fails, the entry stays. A 413 later in the same sync takes no more from the room.
+  A sync that ran to the end, held nothing back and got no 413 deletes the family's entry. A live
+  file document held for any reason (its document, its upload, or the upload hold) keeps both
+  entries, since its upload was never tried. While an entry is in place, `report.quota` stays set,
+  so the app keeps saying "Account full". So writes only grow by what is actually sent: a refused
+  batch is never sent again until usage drops, and then only what fits.
 - **Pauses (429).** `report.paused_limit` keeps the 429's `limit`, so the app can tell the server's
   cap from the account's own.
   - `writes-account` or `uploads-account` stops pushing for this sync and sets
@@ -1522,6 +1533,12 @@ sync pulls first:
   - `uploads-global` on an upload doesn't stop the sync or block pulls. Uploads are held until
     `retry_after`, in `sync.v2.uploads_until` (guarded), along with the live file documents waiting
     for them. Everything else keeps syncing, and `report.uploads_held_until` says until when.
+  - `session-account` (the per-account request limit on every session route, about a minute) on
+    any sync request (changes, push, upload, download) is a short back-off, not a pause. The sync
+    stops where it is with `SyncError::BackOff { until }`, `until` being now plus `retry_after`.
+    Nothing after the last finished step is marked done: the cursor stays at the last page applied,
+    and a document whose push or bytes didn't go stays pending. `problem` gives `BackOff { until }`,
+    whose schedule waits until then.
 - **The guard** (fix 2 / M6, security re-check 3). Every `apply_remote`, `mark_synced`,
   `mark_sent`, `mark_unsynced`, `mark_missing_unsynced`, `fill_blob` and meta write (cursor, epoch,
   quota entries, holds) carries `SyncGuard { expect: &[("sync.v2.origin", session.origin),
@@ -1540,6 +1557,7 @@ Every remote write still goes through `apply_remote`, which snapshots the versio
 | `AccountDisabled` | 403 | "Account turned off" | "This account is turned off on the server. Ask the server's owner." | Stops; Sync now retries |
 | `Paused { until }` | 429 `writes-account` or `uploads-account` | "Sync paused" | "This account made a lot of changes today. Sync resumes at *time*." | Waits until then |
 | `ServerBusy { until }` | 429 `writes-global` | "Server busy" | "The server has taken all the changes it can for today. Sync resumes at *time*." | Waits until then |
+| `BackOff { until }` | 429 `session-account` (`SyncError::BackOff`) | "Syncing shortly" | "This Mac sent the server a lot of requests at once. Sync resumes in a moment." | Waits until then (about `retry_after`) |
 | `QuotaExceeded(kind)` | report | "Account full" | "Your account is full (*which*: notes and notebooks / attachments / number of attachments / number of items). Delete something or ask the server's owner for more space." | Keeps running |
 | `ServerFull` | report (`server`) | "Server full" | "The server is out of space. Ask its owner." | Keeps running |
 | `Skipped { count }` | report (`skipped`: undecryptable documents not repaired) | "Some items skipped" | "*N* items on the server couldn't be read. They were skipped; your copies here are unchanged." | Keeps running |
@@ -1629,6 +1647,8 @@ impl Store {
     /// Stores refetched bytes iff `id` is still live at `rev` and they match its md5digest.
     pub fn fill_blob(&self, id: &str, rev: &str, blob: Attachment, guard: Option<&SyncGuard>) -> Result<bool>;
     pub fn set_meta_if(&self, key: &str, value: &str, guard: &SyncGuard) -> Result<()>;
+    /// Removes a meta entry (a quota entry, the upload hold) while `guard` holds.
+    pub fn remove_meta_if(&self, key: &str, guard: &SyncGuard) -> Result<()>;
     pub fn pending_count(&self) -> Result<usize>;
 }
 ```
@@ -1949,7 +1969,7 @@ documents and files under the test session and can push plaintext as another cli
 | Binding | `prop_binding_plan` (model-based): notes reach another account only through an explicit add; Replace always leaves a backup with every document; sign-out never changes the library; sign-up into an empty account pushes no tombstones; a crash between any two steps of Replace leaves either the old library or an empty one bound fresh | `tests/binding.rs` |
 | Rollback (fix 1 / H5) | `v2_then_unbind_then_v1_loses_no_edit`: a library synced under v1 rules, then v2 with edits, creations and deletions, then `unbind`, then v1 rules again. Every v2-window edit and creation reaches the v1 server; v2-window deletions come back (asserted, as the rollback steps say). v1 rules come from a plaintext legacy server in `tests/common/legacy.rs` (today's `MemoryRemote`, conformance-tested against the v1 Worker) and the cursor key `sync.last_seq`, so no live old Worker is needed. | `tests/rollback.rs` |
 | Client retries | A lost response for sign-up, password change, recovery finish, new recovery key, push and file upload is recovered by the documented retry | `tests/accounts.rs` |
-| Client quota and pause | Deletions still go through after a 413; a refused batch isn't sent again until usage drops, and then only what fits; a file-upload quota error holds new uploads; a 429 pauses and keeps its `limit`; `writes-global` is `ServerBusy`; an `uploads-global` 429 holds uploads without blocking pulls | `tests/sync.rs`, `tests/integrity.rs` |
+| Client quota and pause | Deletions still go through after a 413; a refused batch isn't sent again until usage drops, and then only what fits; a file-upload quota error holds new uploads; a 429 pauses and keeps its `limit`; `writes-global` is `ServerBusy`; an `uploads-global` 429 holds uploads without blocking pulls; a `session-account` 429 on any sync request backs off briefly with the cursor kept (`prop_over_quota_writes_only_grow_by_what_is_sent`) | `tests/sync.rs`, `tests/integrity.rs` |
 | Keychain | An item with a different origin or account ID is ignored; sign-out deletes an unconfirmed recovery key; pending logouts are retried until 204 or 401 | `tests/accounts.rs` (with `MemorySecrets`) |
 | Device identity | Same account → same ID; different accounts → unlinkable IDs; a hardware hash mismatch regenerates the identity and leaves the binding | `tests/binding.rs` |
 | Plaintext canary | `prop_nothing_plain_leaves_the_mac`: every byte the client sends (push, files, auth, device name) is captured. No marker string, local ID, local rev, file MD5, password, recovery key, data key or device name appears in it, raw, hex or base64 (all alignments, standard and URL). | `tests/canary.rs` |

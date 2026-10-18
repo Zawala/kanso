@@ -13,7 +13,7 @@ use common::*;
 use kanso_core::DocType;
 use kanso_store::{Origin, Store, StoreError, SyncDoc};
 use kanso_sync::wire::{WireChange, WireDoc, WirePushResult};
-use kanso_sync::{Choice, MemoryServer, Route, SyncOptions, SyncReport};
+use kanso_sync::{Choice, MemoryServer, QuotaOverride, Route, SyncOptions, SyncReport};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 use serde_json::json;
@@ -1017,5 +1017,165 @@ proptest! {
         let gets = server.stats().count(Route::GetFile);
         b.sync_with(&server, &options).unwrap();
         prop_assert_eq!(server.stats().count(Route::GetFile), gets, "asked again after catching up");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// f. Over quota, writes only grow by what is sent
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug)]
+enum QuotaOp {
+    /// Creates `note:q<i>` if it isn't there.
+    New(usize),
+    /// Edits `note:q<i>`: a long body when `grow`, else a short one.
+    Edit(usize, bool),
+    Delete(usize),
+    /// Writes `file:f<i>` with `40 × len + 1` bytes.
+    File(usize, u8),
+    /// Sets one quota (0 docs, 1 doc_bytes, 2 files, 3 file_bytes) to the
+    /// account's usage plus `delta` (bytes quotas: `delta × 300`).
+    Squeeze(usize, i8),
+    /// Back to the default quotas.
+    Relax,
+    Sync,
+}
+
+fn gen_quota_op() -> impl Strategy<Value = QuotaOp> {
+    prop_oneof![
+        3 => (0..6usize).prop_map(QuotaOp::New),
+        2 => (0..6usize, any::<bool>()).prop_map(|(i, grow)| QuotaOp::Edit(i, grow)),
+        2 => (0..6usize).prop_map(QuotaOp::Delete),
+        2 => (0..3usize, 0..20u8).prop_map(|(i, len)| QuotaOp::File(i, len)),
+        2 => (0..4usize, -2..4i8).prop_map(|(k, d)| QuotaOp::Squeeze(k, d)),
+        1 => Just(QuotaOp::Relax),
+        5 => Just(QuotaOp::Sync),
+    ]
+}
+
+/// The quota entries a sync left, as written.
+fn quota_entries(store: &Store) -> [Option<String>; 2] {
+    [
+        store.meta(kanso_sync::meta_keys::QUOTA_DOCS).unwrap(),
+        store.meta(kanso_sync::meta_keys::QUOTA_FILES).unwrap(),
+    ]
+}
+
+proptest! {
+    #![proptest_config(config(64))]
+
+    /// Invariant (f) (review-sync 6): with quotas squeezed and relaxed at
+    /// random under one writer,
+    /// - a sync right after another, with nothing changed in between, gets
+    ///   no 413: what was refused isn't sent again until usage drops, and
+    ///   then only what fits;
+    /// - one sync gets at most four refused pushes and three refused
+    ///   uploads, so a refusal costs a bounded number of writes;
+    /// - a deletion of a document the server has always goes, unless even
+    ///   a batch of deletions was refused (level `all`);
+    /// - `report.quota` is set exactly while an entry is in place;
+    /// - once quotas are relaxed, two syncs send everything and clear the
+    ///   entries.
+    #[test]
+    fn prop_over_quota_writes_only_grow_by_what_is_sent(
+        ops in prop::collection::vec(gen_quota_op(), 1..40),
+    ) {
+        let server = MemoryServer::new();
+        let a = Mac::new(sign_up(&server, "alice", 1));
+        book(&a.store, "book:b1", "Inbox");
+        for i in 0..3 {
+            note(&a.store, &format!("note:q{i}"), "book:b1", "seed", 1);
+        }
+        a.sync(&server);
+        let mut quota = QuotaOverride::default();
+        let mut clock = 1_000;
+        let mut idle = false;
+        for op in &ops {
+            clock += 1;
+            match op {
+                QuotaOp::New(i) => {
+                    let id = format!("note:q{i}");
+                    if a.store.get(&id).unwrap().is_none() {
+                        note(&a.store, &id, "book:b1", "new", clock);
+                    }
+                }
+                QuotaOp::Edit(i, grow) => {
+                    let id = format!("note:q{i}");
+                    if a.store.get(&id).unwrap().is_some() {
+                        let text = if *grow { "grown ".repeat(80) } else { format!("short {clock}") };
+                        edit_note(&a.store, &id, &text, Some(clock));
+                    }
+                }
+                QuotaOp::Delete(i) => {
+                    let _ = a.store.delete(&format!("note:q{i}"), Origin::Api);
+                }
+                QuotaOp::File(i, len) => {
+                    let data = vec![b'x' + (clock % 3) as u8; 40 * usize::from(*len) + 1];
+                    write_file(&a.store, &format!("file:f{i}"), &data);
+                }
+                QuotaOp::Squeeze(kind, delta) => {
+                    let usage = kanso_sync::usage(&server, &a.session).unwrap();
+                    let set = |used: u64, step: i64| Some(used.saturating_add_signed(i64::from(*delta) * step).max(1));
+                    match kind {
+                        0 => quota.docs = set(usage.docs, 1),
+                        1 => quota.doc_bytes = set(usage.doc_bytes, 300),
+                        2 => quota.files = set(usage.files, 1),
+                        _ => quota.file_bytes = set(usage.file_bytes, 300),
+                    }
+                    server.set_quota("alice", quota);
+                }
+                QuotaOp::Relax => {
+                    quota = QuotaOverride::default();
+                    server.set_quota("alice", quota);
+                }
+                QuotaOp::Sync => {
+                    let pushes = std::sync::atomic::AtomicUsize::new(0);
+                    let answers = std::sync::atomic::AtomicUsize::new(0);
+                    let uploads = std::sync::atomic::AtomicUsize::new(0);
+                    let tap = Tap::new(&server, |event| {
+                        let counter = match event {
+                            Event::Push(_) => &pushes,
+                            Event::Pushed(_) => &answers,
+                            Event::PutFile { .. } => &uploads,
+                            _ => return Ok(()),
+                        };
+                        counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        Ok(())
+                    });
+                    let report = a.sync(&tap);
+                    drop(tap);
+                    let refused_pushes = pushes.into_inner() - answers.into_inner();
+                    let refused_uploads = uploads.into_inner() - report.files_up;
+                    if idle {
+                        prop_assert_eq!(
+                            (refused_pushes, refused_uploads), (0, 0),
+                            "a sync with nothing new was refused again: {:?}", report
+                        );
+                    }
+                    prop_assert!(refused_pushes <= 4, "{} refused pushes", refused_pushes);
+                    prop_assert!(refused_uploads <= 3, "{} refused uploads", refused_uploads);
+                    let entries = quota_entries(&a.store);
+                    prop_assert_eq!(
+                        report.quota.is_some(),
+                        entries.iter().any(Option::is_some),
+                        "{:?} {:?}", report, entries
+                    );
+                    let level_all = entries[0].as_deref().is_some_and(|e| e.ends_with(" all"));
+                    let on_server = server_docs(&server, &a.session);
+                    for (id, (_, deleted)) in all_docs(&a.store) {
+                        if deleted && on_server.get(&id).is_some_and(|(_, gone)| !gone) {
+                            prop_assert!(level_all, "the deletion of {} was held: {:?}", id, entries);
+                        }
+                    }
+                }
+            }
+            idle = matches!(op, QuotaOp::Sync);
+        }
+        server.set_quota("alice", QuotaOverride::default());
+        a.sync(&server);
+        let report = a.sync(&server);
+        prop_assert_eq!((report.pending, report.quota), (0, None));
+        prop_assert_eq!(quota_entries(&a.store), [None, None]);
+        prop_assert_eq!(server_live(&server, &a.session), live_docs(&a.store));
     }
 }

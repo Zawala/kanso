@@ -357,6 +357,15 @@ impl Store {
         })
     }
 
+    /// Removes a `meta` entry only while `guard` holds, checked in the same
+    /// transaction. The engine clears a quota entry or upload hold with it.
+    pub fn remove_meta_if(&self, key: &str, guard: &SyncGuard) -> Result<()> {
+        self.write(|tx, _| {
+            check_guard(tx, Some(guard))?;
+            write_meta(tx, &[(key, None)])
+        })
+    }
+
     /// Prepares the library for a different sync binding, in one transaction
     /// (docs/ACCOUNTS.md › Library binding): live documents get
     /// `synced_rev = NULL`; tombstones get `synced_rev = rev`, so they are
