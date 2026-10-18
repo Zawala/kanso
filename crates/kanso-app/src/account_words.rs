@@ -401,6 +401,9 @@ pub fn sign_out_question(username: &str, unsaved_key: bool) -> (String, String) 
     )
 }
 
+/// After a sign-out the Keychain wouldn't fully carry out.
+pub const SIGNED_OUT_KEYCHAIN: &str = "Signed out. Kanso couldn't remove this Mac's sign-in from the Keychain, but it won't use it again.";
+
 pub const UNSAVED_KEY_WARNING: &str =
     "Your new recovery key hasn't been saved yet; signing out deletes it.";
 

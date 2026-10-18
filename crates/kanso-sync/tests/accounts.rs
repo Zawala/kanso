@@ -671,6 +671,9 @@ struct Faults {
     logouts: AtomicUsize,
     /// Every password change sent, as sent.
     passwords: Mutex<Vec<PasswordRequest>>,
+    /// The next logout says so on the first channel, then waits for the
+    /// second before it reaches the server.
+    logout_gate: Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
     /// A server with the backend's floor and default.
     floor: Mutex<Option<KdfParams>>,
 }
@@ -765,6 +768,11 @@ impl Api for Wrapped<'_> {
     fn logout(&self, token: &SessionToken) -> Result<(), ApiError> {
         self.reach()?;
         self.faults.logouts.fetch_add(1, Ordering::SeqCst);
+        let gate = self.faults.logout_gate.lock().unwrap().take();
+        if let Some((entered, release)) = gate {
+            entered.send(()).unwrap();
+            release.recv().unwrap();
+        }
         self.inner.logout(token)
     }
     fn account(&self, token: &SessionToken) -> Result<AccountResponse, ApiError> {
@@ -1856,4 +1864,93 @@ fn the_password_route_checks_its_recovery_fields_and_retries() {
         "the stored key stays"
     );
     assert!(!holds(&b.server, "alice", &other_key));
+}
+
+/// The Keychain refusing to delete the session's item doesn't stop the
+/// logout (A14): the server ends the session, and the refusal is the error.
+#[test]
+fn signing_out_logs_out_even_when_the_keychain_refuses() {
+    let b = hostile();
+    let up = sign_up(&b, "alice", &mac(1));
+    let secrets = MemorySecrets::new();
+    let library = mac(1).library_id;
+    keychain::save_session(&secrets, &library, &up.session).unwrap();
+    secrets.fail_writes_to(Some("sync-account:"));
+    let refused = kanso_sync::sign_out(&b, &secrets, &up.session).unwrap_err();
+    assert!(matches!(refused, AccountError::Keychain(_)));
+    assert_eq!(b.faults.logouts.load(Ordering::SeqCst), 1);
+    assert!(matches!(
+        check(&b.server, &up.session).unwrap_err(),
+        ApiError::Unauthorized { .. }
+    ));
+
+    // Unreachable as well: the token is queued all the same.
+    let again = sign_in(&b, "alice", "correct horse battery", &mac(1))
+        .unwrap()
+        .session;
+    b.faults.unreachable.store(true, Ordering::SeqCst);
+    let refused = kanso_sync::sign_out(&b, &secrets, &again).unwrap_err();
+    b.faults.unreachable.store(false, Ordering::SeqCst);
+    secrets.heal();
+    assert!(matches!(refused, AccountError::Keychain(_)));
+    assert_eq!(
+        keychain::pending_logouts(&secrets, &library).unwrap().len(),
+        1
+    );
+    kanso_sync::flush_pending_logouts(&b, &secrets, &library);
+    assert!(
+        keychain::pending_logouts(&secrets, &library)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(check(&b.server, &again).is_err());
+}
+
+/// A token queued while a flush waits on the network stays queued: the
+/// flush takes out only what it sent (sync 9).
+#[test]
+fn a_logout_queued_during_a_flush_is_kept() {
+    let b = hostile();
+    let secrets = MemorySecrets::new();
+    let library = mac(1).library_id;
+    let first = sign_up(&b, "alice", &mac(1)).session;
+    let second = sign_in(&b, "alice", "correct horse battery", &mac(1))
+        .unwrap()
+        .session;
+    b.faults.unreachable.store(true, Ordering::SeqCst);
+    kanso_sync::discard_session(&b, &secrets, &first).unwrap();
+    b.faults.unreachable.store(false, Ordering::SeqCst);
+    assert_eq!(
+        keychain::pending_logouts(&secrets, &library).unwrap().len(),
+        1
+    );
+
+    let (entered_tx, entered) = std::sync::mpsc::channel();
+    let (release, release_rx) = std::sync::mpsc::channel();
+    *b.faults.logout_gate.lock().unwrap() = Some((entered_tx, release_rx));
+    std::thread::scope(|scope| {
+        let flush = scope.spawn(|| kanso_sync::flush_pending_logouts(&b, &secrets, &library));
+        entered.recv().unwrap();
+        // The flush is on the network with the first token; the second is
+        // queued meanwhile.
+        b.faults.unreachable.store(true, Ordering::SeqCst);
+        kanso_sync::discard_session(&b, &secrets, &second).unwrap();
+        b.faults.unreachable.store(false, Ordering::SeqCst);
+        release.send(()).unwrap();
+        flush.join().unwrap();
+    });
+    let queued = keychain::pending_logouts(&secrets, &library).unwrap();
+    assert_eq!(queued.len(), 1, "the second token stays queued");
+    assert!(
+        check(&b.server, &first).is_err(),
+        "the first was logged out"
+    );
+    assert!(check(&b.server, &second).is_ok());
+    kanso_sync::flush_pending_logouts(&b, &secrets, &library);
+    assert!(
+        keychain::pending_logouts(&secrets, &library)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(check(&b.server, &second).is_err());
 }

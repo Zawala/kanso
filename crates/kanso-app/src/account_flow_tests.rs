@@ -1070,3 +1070,32 @@ fn a_lost_password_change_still_shows_the_key(cx: &mut TestAppContext) {
     assert!(holds(&server, "alice", &shown), "the change went through");
     assert!(a.kept_key().is_some_and(|kept| kept.unconfirmed));
 }
+
+/// A Keychain that won't delete the session's item still signs this Mac out
+/// and ends the session on the server, and says so (A14).
+#[gpui_kit::test]
+fn signing_out_with_a_stuck_keychain_still_logs_out(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 1);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+    let old = session(cx);
+    let before = a.notifications(cx);
+
+    a.secrets.fail_writes_to(Some("sync-account:"));
+    assert_eq!(sign_out(cx), Ok(()));
+    a.secrets.heal();
+    assert_eq!(account(cx), AccountState::SignedOut);
+    assert!(matches!(
+        kanso_sync::usage(server.as_ref(), &old),
+        Err(AccountError::Unauthorized { .. })
+    ));
+    assert_eq!(
+        a.notifications(cx),
+        before + 1,
+        "the Keychain trouble is told"
+    );
+    let config = cx.read(|cx| cx.global::<AppState>().config.sync.account.clone());
+    assert!(config.is_none(), "the leftover item is never loaded");
+}

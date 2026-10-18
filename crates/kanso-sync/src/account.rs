@@ -6,6 +6,7 @@
 //! order docs/ACCOUNTS.md › Library binding › Order and cancellation gives.
 
 use std::fmt;
+use std::sync::{Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
 
@@ -933,17 +934,23 @@ pub fn recover(
 /// Deletes `sync-account:<library>` and any `sync-recovery-key:<library>`,
 /// then tries `logout` (the HTTP backend gives it 5 s). On failure it queues
 /// `{server, token}` in `sync-logout:<library>`; a 401 counts as done. The
-/// caller has already cancelled and joined the running sync.
+/// logout is tried even when the Keychain refuses a deletion (A14); that
+/// refusal is the error then. The caller has already cancelled and joined
+/// the running sync.
 pub fn sign_out(
     b: &dyn Backend,
     secrets: &dyn SecretStore,
     session: &Session,
 ) -> Result<(), AccountError> {
+    let mut deleted = Ok(());
     if let Some(library_id) = session.library_id() {
-        keychain::delete_session(secrets, library_id)?;
-        keychain::delete_recovery_key(secrets, library_id)?;
+        let account = keychain::delete_session(secrets, library_id);
+        let key = keychain::delete_recovery_key(secrets, library_id);
+        deleted = account.and(key);
     }
-    logout_or_queue(b, secrets, session)
+    let logged_out = logout_or_queue(b, secrets, session);
+    deleted?;
+    logged_out
 }
 
 /// Logs out a session this Mac never saved or used: one whose binding
@@ -960,6 +967,15 @@ pub fn discard_session(
     logout_or_queue(b, secrets, session)
 }
 
+/// Held around every read-modify-write of a `sync-logout:<library>` item in
+/// this process (sync 9): a sign-out queuing a token while a flush runs on
+/// another thread must not lose it. Never held across a network call.
+static LOGOUT_QUEUE: Mutex<()> = Mutex::new(());
+
+fn logout_queue() -> std::sync::MutexGuard<'static, ()> {
+    LOGOUT_QUEUE.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 /// `logout`; on failure other than a 401, the session's token is queued.
 fn logout_or_queue(
     b: &dyn Backend,
@@ -971,6 +987,7 @@ fn logout_or_queue(
         Err(err) if err.status() == Some(401) => Ok(()),
         Err(_) => {
             if let Some(library_id) = session.library_id() {
+                let _queue = logout_queue();
                 let mut pending = keychain::pending_logouts(secrets, library_id)?;
                 let logout = PendingLogout {
                     server: session.server.clone(),
@@ -988,27 +1005,38 @@ fn logout_or_queue(
 
 /// Retries every pending logout of the library until the server answers 204
 /// or 401. Runs at launch and before each sync; failures stay queued, and
-/// Keychain errors are left for the next run.
+/// Keychain errors are left for the next run. The queue is read, the
+/// logouts sent, then the ones that went are taken out of the queue as it
+/// is by then, so a token queued meanwhile stays.
 pub fn flush_pending_logouts(b: &dyn Backend, secrets: &dyn SecretStore, library_id: &str) {
-    let Ok(pending) = keychain::pending_logouts(secrets, library_id) else {
-        return;
+    let pending = {
+        let _queue = logout_queue();
+        match keychain::pending_logouts(secrets, library_id) {
+            Ok(pending) => pending,
+            Err(_) => return,
+        }
     };
-    if pending.is_empty() {
-        return;
-    }
-    let remaining: Vec<PendingLogout> = pending
+    let gone: Vec<PendingLogout> = pending
         .into_iter()
         .filter(|logout| {
             let Ok(server) = crate::check_endpoint(&logout.server) else {
-                return false;
+                return true;
             };
             match b.api(&server).logout(&logout.token) {
-                Ok(()) => false,
-                Err(err) => err.status() != Some(401),
+                Ok(()) => true,
+                Err(err) => err.status() == Some(401),
             }
         })
         .collect();
-    let _ = keychain::set_pending_logouts(secrets, library_id, &remaining);
+    if gone.is_empty() {
+        return;
+    }
+    let _queue = logout_queue();
+    let Ok(mut pending) = keychain::pending_logouts(secrets, library_id) else {
+        return;
+    };
+    pending.retain(|logout| !gone.contains(logout));
+    let _ = keychain::set_pending_logouts(secrets, library_id, &pending);
 }
 
 /// The current password's auth key: prelogin for the salt and parameters

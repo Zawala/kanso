@@ -891,9 +891,13 @@ pub fn sign_out(cx: &mut App) -> Receiver<Progress> {
         move |_| kanso_sync::sign_out(seams.backend.as_ref(), seams.secrets.as_ref(), &session),
         move |result, cx| {
             // Signed out here whatever the server said: without the config's
-            // account, a leftover Keychain item is never loaded again.
+            // account, a leftover Keychain item is never loaded again. The
+            // logout was tried (or queued) either way.
             if let Some(Err(err)) = &result {
                 eprintln!("kanso: signing out: {err}");
+                if matches!(err, AccountError::Keychain(_)) {
+                    notify_windows(|| Notification::warning(words::SIGNED_OUT_KEYCHAIN), cx);
+                }
             }
             forget_account(cx);
             done(&tx, Ok(()));
