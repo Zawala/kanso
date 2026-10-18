@@ -35,7 +35,6 @@ import {
 	MAX_REVOKED_ROWS,
 	type NewDevice,
 	PROTOCOL_VERSION,
-	REVOKED_KEEP_MS,
 	SESSION_IDLE_MS,
 	base64url,
 	checkDevice,
@@ -439,13 +438,15 @@ export const login: PepperHandler = async (request, env, now, keys) => {
 
 	const account = await env.DB.prepare(
 		`SELECT a.*, (SELECT s.proof_hash FROM sessions s WHERE s.account_id = a.id AND s.device_id = ?2
-     AND (s.revoked_at IS NULL OR (s.revoked_at > ?3 AND s.revoked_reason != 'revoked'))) AS device_proof_hash
+     AND s.revoked_at IS NULL) AS device_proof_hash
   FROM (${ACCOUNT_BY_NAME}) a`,
 	)
-		.bind(name.value, device.value.id, now - REVOKED_KEEP_MS)
+		.bind(name.value, device.value.id)
 		.first<AccountRow & { device_proof_hash: string | null }>();
-	// A device the account knows, proving itself, doesn't count against the name. One that
-	// another device of the account signed out (`revoked`, say a lost Mac) is a stranger again.
+	// A signed-in device, proving itself, doesn't count against the name. Once signed out, for
+	// any reason (a password change, recovery, eviction, expiry, its own sign-out or another
+	// Mac's), it is a stranger again: an old copy of its library holds the device secret, and the
+	// owner can't remove a row the device list doesn't show.
 	const known = account !== null && account.device_proof_hash !== null && (await proofMatches(device.value.proof, account.device_proof_hash));
 	if (!known) {
 		limited = await count(env.DB, "login-user", account ? accountKey("login-user", account.id) : UNKNOWN_LOGIN_KEY, now);
@@ -798,7 +799,12 @@ export const devices = withSession(async (_request, env, _now, session) => {
 	});
 });
 
-/** Signs out one of the account's devices; the current one is a logout. Scoped to the caller's account. */
+/**
+ * Signs out one of the account's devices; the current one is a logout.
+ * Scoped to the caller's account. A row already signed out, for any reason,
+ * is marked `revoked` too (keeping its time), so the owner can always say
+ * "that Mac is gone"; 404 only for a device the account has no row for.
+ */
 export function revokeDevice(deviceId: string): Handler {
 	return withSession(async (_request, env, now, session) => {
 		if (!isDeviceId(deviceId)) return badRequest("Not a device ID.");
@@ -807,8 +813,8 @@ export function revokeDevice(deviceId: string): Handler {
 			return new Response(null, { status: 204 });
 		}
 		const revoked = await env.DB.prepare(
-			`UPDATE sessions SET revoked_at = ?3, revoked_reason = 'revoked'
-  WHERE account_id = ?1 AND device_id = ?2 AND revoked_at IS NULL RETURNING device_id`,
+			`UPDATE sessions SET revoked_at = coalesce(revoked_at, ?3), revoked_reason = 'revoked'
+  WHERE account_id = ?1 AND device_id = ?2 RETURNING device_id`,
 		)
 			.bind(session.accountId, deviceId, now)
 			.first();

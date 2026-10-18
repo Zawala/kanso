@@ -453,7 +453,8 @@ describe("sign-in", () => {
 						if (op.target === op.device) {
 							expect(r.status).toBe(204);
 							target!.revoked = "signed_out";
-						} else if (target && !target.revoked) {
+						} else if (target) {
+							// Active or already signed out (for any reason): either way it ends up revoked.
 							expect(r.status).toBe(204);
 							target.revoked = "revoked";
 						} else {

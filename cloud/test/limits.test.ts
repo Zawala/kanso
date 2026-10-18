@@ -168,31 +168,49 @@ describe("the D1 layer", () => {
 		expect((await login(a.creds, a.device, { now, ip: "198.51.100.41" })).status).toBe(200);
 	});
 
-	it("a known device proving itself isn't counted against the name, even signed out; one revoked over 90 days ago is", async () => {
+	it("only a signed-in device proving itself isn't counted against the name; a signed-out one is, whatever signed it out", async () => {
 		await resetServer(ROOMY);
 		const a = await signUp("alice");
 		const spare = newDevice();
-		expect((await login(a.creds, spare, { ip: "198.51.100.1" })).status).toBe(200);
+		const old = newDevice();
+		const spareToken = (await login(a.creds, spare, { now: START + 1000, ip: "198.51.100.1" })).body.token;
+		expect((await client(spareToken, { now: START + 2000 }).logout()).status).toBe(204);
+		const oldToken = (await login(a.creds, old, { now: START + 3000, ip: "198.51.100.2" })).body.token;
+		// A password change signs the old Mac out (security review 2, finding 4: an old copy of its
+		// library still holds the device secret).
+		const next = newCreds("alice");
+		expect((await callJson("/v2/account/password", { now: START + 4000, token: a.token, json: passwordBody(a.creds.authKey, next) })).body).toEqual({
+			signed_out_devices: 1,
+		});
+		const creds = { ...a.creds, authKey: next.authKey };
+
 		const now = START + 15 * 60_000;
 		const wrong = { ...a.creds, authKey: base64url(new Uint8Array(32).fill(9)) };
 		for (let i = 0; i < 10; i += 1) expect((await login(wrong, newDevice(), { now, ip: `198.51.100.${10 + i}` })).status).toBe(401);
-		const locked = await login(a.creds, newDevice(), { now, ip: "198.51.100.40" });
+		const locked = await login(creds, newDevice(), { now, ip: "198.51.100.40" });
 		expect(locked.status).toBe(429);
 		expect(locked.body.limit).toBe("login-user");
-		// The signed-up device, with its proof: not counted, so not refused, and a wrong key is still just 401.
+		// The signed-in device, with its proof: not counted, so not refused, and a wrong key is still just 401.
 		expect((await login(wrong, a.device, { now, ip: "198.51.100.41" })).status).toBe(401);
-		expect((await login(a.creds, a.device, { now, ip: "198.51.100.42" })).status).toBe(200);
+		expect((await login(creds, a.device, { now, ip: "198.51.100.42" })).status).toBe(200);
 		// The same device ID with another proof is a stranger.
-		expect((await login(a.creds, { ...a.device, proof: base64url(new Uint8Array(32).fill(1)) }, { now, ip: "198.51.100.43" })).status).toBe(429);
-		// Signed out: still known for 90 days.
-		const spareToken = (await login(a.creds, spare, { now: START + 1000, ip: "198.51.100.2" })).body.token;
-		expect((await client(spareToken, { now: START + 2000 }).logout()).status).toBe(204);
-		expect((await login(a.creds, spare, { now, ip: "198.51.100.44" })).status).toBe(200);
-		// Revoked 91 days ago: counted again.
-		await env.DB.prepare("UPDATE sessions SET revoked_at = ?2, revoked_reason = 'signed_out' WHERE device_id = ?1")
-			.bind(spare.id, now - 91 * 86_400_000)
-			.run();
-		expect((await login(a.creds, spare, { now, ip: "198.51.100.45" })).status).toBe(429);
+		expect((await login(creds, { ...a.device, proof: base64url(new Uint8Array(32).fill(1)) }, { now, ip: "198.51.100.43" })).status).toBe(429);
+		// Signed out by itself, or by the password change: counted like a stranger, even with its proof.
+		for (const [device, ip] of [[spare, "198.51.100.44"], [old, "198.51.100.45"]] as const) {
+			const r = await login(creds, device, { now, ip });
+			expect(r.status).toBe(429);
+			expect(r.body.limit).toBe("login-user");
+		}
+		// The owner can still revoke the old Mac: 204, not 404, and its token now says revoked.
+		const owner = client((await login(creds, a.device, { now, ip: "198.51.100.46" })).body.token, { now });
+		expect((await owner.revoke(old.id)).status).toBe(204);
+		expect((await client(oldToken, { now }).account()).body).toMatchObject({ error: "unauthorized", reason: "revoked" });
+		expect(await env.DB.prepare("SELECT revoked_at, revoked_reason FROM sessions WHERE device_id = ?1").bind(old.id).first()).toEqual({
+			revoked_at: START + 4000,
+			revoked_reason: "revoked",
+		});
+		// A device ID the account has never seen is still 404.
+		expect((await owner.revoke(newDevice().id)).status).toBe(404);
 	});
 
 	it("sign-ins of every unknown name share one login-user row", async () => {

@@ -76,6 +76,9 @@ nothing was deployed yet):
 1. **A password change replaces the recovery key** in the same compare-and-swap update, so a
    recovery key planted by someone who once knew the password can't outlive the owner's password
    change. `POST /v2/account/password` gains `recovery_auth_key` and `recovery_wrapped_key`.
+4. **Only signed-in devices are exempt from `login-user`.** A device signed out for any reason
+   counts like a stranger. `DELETE /v2/account/devices/<id>` on a row that is already signed out
+   marks it `revoked` and answers 204 instead of 404.
 
 Rejected: no finding. Where the result differs from a review's suggestion:
 
@@ -104,7 +107,7 @@ Two places go beyond the reviews:
 | Keys | Argon2id(password, salt bound to the server's origin and the username) → HKDF splits it into an auth key (sent) and a key-encryption key (never leaves). A random data key encrypts everything. It is wrapped by the password KEK and, separately, by a recovery key that rotates on use. |
 | Server secrets | The server keeps SHA-256(auth key) and compares in constant time. It hands out a wrapped data key only after the matching proof. |
 | Content | Documents, files and device names are sealed with XChaCha20-Poly1305. The associated data binds the account, document, revision and deleted flag. Wire IDs and revisions are keyed hashes, and revision generations only grow. |
-| Sessions | One per device; device IDs are per account. Tokens are stored hashed and expire after 180 days unseen. At most 10 active devices; signing in on an 11th signs out the least recently seen. Revoked sessions are kept 90 days to explain 401s and to recognise returning devices, which prove themselves with a per-account device proof. |
+| Sessions | One per device; device IDs are per account. Tokens are stored hashed and expire after 180 days unseen. At most 10 active devices; signing in on an 11th signs out the least recently seen. Revoked sessions are kept 90 days to explain 401s and to keep a returning device's name. Only a signed-in device, proving itself with a per-account device proof, is exempt from the per-account sign-in limit. |
 | Mac storage | The Keychain holds the session token, the data key, any pending logouts, and the recovery key until the user confirms they saved it. The Mac never stores the password, master key or KEKs. |
 | Server choice | The owner's Worker is compiled in as the default. "Use a different server…" points at another deployment. Accounts are bound to their server's origin. |
 | Signing out | Keychain items go (a logout is retried until the server accepts it). Local notes and the library's link to the account stay. |
@@ -345,9 +348,10 @@ The server stores and returns it opaquely. A device that has no name yet (just s
 - **The device proof for an account** is `HKDF(ikm device_secret, info "kanso/v1/device-proof" ||
   lp(origin) || lp(account_id))`, 32 bytes, sent as 43 base64url characters as `proof` in every
   `device` object (sign-up, sign-in, recovery). The server keeps only its SHA-256 in the session row
-  (`proof_hash`). A sign-in skips `login-user` only when the proof matches the row of a device the
-  account knows, so knowing a device ID (every Mac of the account sees them) isn't enough (security
-  re-check 5).
+  (`proof_hash`). A sign-in skips `login-user` only when the proof matches the active session row of
+  that device, so knowing a device ID (every Mac of the account sees them) isn't enough (security
+  re-check 5). A signed-out row, whatever signed it out, exempts nothing: an old copy of the library
+  holds the device secret, and the device list doesn't show the row (security review 2, finding 4).
 - **A copied library.** When the stored `sync.v2.hardware` differs from this Mac's, the library was
   copied (Migration Assistant, restoring a backup to new hardware). The library ID and device secret
   are regenerated, which leaves the copy signed out: its Keychain item names change. Its binding and
@@ -493,7 +497,7 @@ primitives.
 | Rule | Subject | Window | Max | Counts |
 |---|---|---|---|---|
 | `signup-ip` | IP group (/48) | 1 h | 10 | Every sign-up request |
-| `login-user` | account ID; one shared row for names without an account | 15 min | 10 | Every sign-in, unless its device ID has a session row (active, or revoked within 90 days) for that account and SHA-256 of the request's device proof equals that row's `proof_hash` (M8, security re-check 5) |
+| `login-user` | account ID; one shared row for names without an account | 15 min | 10 | Every sign-in, unless its device ID has an active session row (`revoked_at IS NULL`) for that account and SHA-256 of the request's device proof equals that row's `proof_hash` (M8, security re-check 5, security review 2) |
 | `login-ip` | IP group | 15 min | 30 | Every sign-in |
 | `recover-ip` | IP group | 1 h | 10 | Every `recover/start` and `recover/finish` |
 | `password-account` | account ID | 15 min | 5 | Every current-password check (password change, new recovery key, delete) |
@@ -602,7 +606,7 @@ the data key). 200:
 Steps:
 
 1. Count `login-ip`, and `login-user` unless the device is known: its ID has a session row for the
-   account (active, or revoked within 90 days) whose `proof_hash` is SHA-256 of `device.proof`.
+   account that is active (`revoked_at IS NULL`) and whose `proof_hash` is SHA-256 of `device.proof`.
 2. Check the credentials: 401 `invalid_credentials` if wrong.
 3. Check that the account is enabled: 403 if disabled.
 4. One batch:
@@ -712,9 +716,12 @@ ended before the deletion, so the client reports that instead.
 - **PUT** `{"sealed_name"}` sets the current session's name and answers 204.
 - **GET** `{"devices": [{"id", "sealed_name", "created_at", "last_seen_at", "current"}]}` lists
   active sessions only, most recently seen first.
-- **DELETE** runs `UPDATE sessions SET revoked_at = ?3, revoked_reason = 'revoked' WHERE account_id
-  = ?1 AND device_id = ?2 AND revoked_at IS NULL`. It answers 204, or 404 when no row changes, or
-  400 for a malformed ID. Deleting the current device is a logout (reason `signed_out`).
+- **DELETE** runs `UPDATE sessions SET revoked_at = coalesce(revoked_at, ?3), revoked_reason =
+  'revoked' WHERE account_id = ?1 AND device_id = ?2`. A row already signed out, for any reason, is
+  marked `revoked` too and keeps its time, so the owner can always remove a Mac they no longer
+  trust. It answers 204, or 404 when the account has no row for that device (an unknown ID, or
+  another account's device), or 400 for a malformed ID. Deleting the current device is a logout
+  (reason `signed_out`).
 
 #### POST /v2/push
 
@@ -1007,9 +1014,10 @@ WHEN NEW.recounted_at IS OLD.recounted_at AND NEW.file_bytes > OLD.file_bytes
      > coalesce((SELECT global_file_bytes FROM defaults), 0)
 BEGIN SELECT RAISE(ABORT, 'quota_exceeded:server'); END;
 
--- One row per device per account. Revoked rows stay 90 days (to explain a 401 and to
--- recognise a returning device by its proof); active rows expire after 180 days unseen.
--- `proof_hash` is SHA-256 of the device's proof, which only that device can derive.
+-- One row per device per account. Revoked rows stay 90 days (to explain a 401 and to keep a
+-- returning device's name); active rows expire after 180 days unseen. `proof_hash` is SHA-256
+-- of the device's proof, which only that device can derive; only an active row's exempts a
+-- sign-in from `login-user`.
 CREATE TABLE sessions (
     account_id TEXT NOT NULL REFERENCES accounts (id),
     device_id TEXT NOT NULL
@@ -2173,9 +2181,11 @@ Residual risks:
   - A used key stops working, and so does every key from before a password change.
 - **A compromised Mac.** The local library is plaintext, and the Keychain holds the data key and the session.
 - **Lost password and recovery key.** The server copy is unrecoverable, by design. Local copies remain.
-- **Lockout.** Up to 10 sign-in attempts per account per 15 minutes from devices the account
-  doesn't know can be used up by anyone. Known devices, which prove themselves with their device
-  proof, and signed-in Macs are unaffected (M8, security re-check 5).
+- **Lockout.** Up to 10 sign-in attempts per account per 15 minutes from devices that aren't
+  signed in can be used up by anyone. Signed-in Macs, which prove themselves with their device
+  proof, are unaffected (M8, security re-check 5). A Mac that was signed out (by itself, another
+  Mac, a password change, recovery, eviction or expiry) counts like a stranger until it signs in
+  again, so an old copy of its library can't be used to guess passwords past the limit.
 - **Floods and cost.** Without a custom domain and a WAF rule, a large flood can drive Workers
   request costs. Per-account write budgets cap D1 write costs, and the global caps bound storage.
 - **Unaudited crates.** The crypto crates are recent RustCrypto releases (argon2 0.6,

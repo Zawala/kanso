@@ -169,9 +169,10 @@ WHEN NEW.recounted_at IS OLD.recounted_at AND NEW.file_bytes > OLD.file_bytes
      > coalesce((SELECT global_file_bytes FROM defaults), 0)
 BEGIN SELECT RAISE(ABORT, 'quota_exceeded:server'); END;
 
--- One row per device per account. Revoked rows stay 90 days (to explain a 401 and to
--- recognise a returning device by its proof); active rows expire after 180 days unseen.
--- `proof_hash` is SHA-256 of the device's proof, which only that device can derive.
+-- One row per device per account. Revoked rows stay 90 days (to explain a 401 and to keep a
+-- returning device's name); active rows expire after 180 days unseen. `proof_hash` is SHA-256
+-- of the device's proof, which only that device can derive; only an active row's exempts a
+-- sign-in from `login-user`.
 CREATE TABLE sessions (
     account_id TEXT NOT NULL REFERENCES accounts (id),
     device_id TEXT NOT NULL
