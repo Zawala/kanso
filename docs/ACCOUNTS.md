@@ -1254,7 +1254,7 @@ AUTH_PEPPER:<value>` on `wrangler dev`. `.dev.vars` and `cloud/.wrangler/` go in
 ```rust
 pub const DEFAULT_SERVER: &str = "https://kanso-sync.imngonii.workers.dev";
 
-pub trait Backend: Send + Sync { /* api, remote, kdf_floor, kdf_default */ }
+pub trait Backend: Send + Sync { /* api, remote, kdf_floor, kdf_default, retry_pause (1 s, then 4 s) */ }
 pub struct HttpBackend;                 // the app
 pub struct MemoryServer { /* … */ }     // tests and snapshots only; never constructed by main.rs
 
@@ -1281,16 +1281,20 @@ pub enum SignupState { Open, Closed, Full }
 pub struct SignedUp { pub session: Session, pub recovery_key: RecoveryKey }
 pub struct SignedIn { pub session: Session, pub evicted: Option<DeviceInfo> }
 pub struct Recovered { pub session: Session, pub recovery_key: RecoveryKey }   // the new key
+pub struct PasswordChanged { pub signed_out_devices: usize, pub recovery_key: RecoveryKey }
+/// A call that sets a new recovery key failed. `recovery_key` is the unsaved key left in
+/// `sync-recovery-key:<library>` whenever the server may hold it: show it, never drop it.
+pub struct RotationError { pub error: AccountError, pub recovery_key: Option<Box<PendingRecoveryKey>> }
 
 pub fn server_info(b: &dyn Backend, server: &str) -> Result<SignupState, AccountError>;
-pub fn sign_up(b: &dyn Backend, server: &str, username: &str, password: &Password, device: &DeviceIdentity, progress: &dyn Fn(Step)) -> Result<SignedUp, AccountError>;
+pub fn sign_up(b: &dyn Backend, secrets: &dyn SecretStore, server: &str, username: &str, password: &Password, device: &DeviceIdentity, progress: &dyn Fn(Step)) -> Result<SignedUp, RotationError>;
 pub fn sign_in(b: &dyn Backend, server: &str, username: &str, password: &Password, device: &DeviceIdentity, progress: &dyn Fn(Step)) -> Result<SignedIn, AccountError>;
-pub fn recover(b: &dyn Backend, server: &str, username: &str, key: &RecoveryKey, new_password: &Password, device: &DeviceIdentity, progress: &dyn Fn(Step)) -> Result<Recovered, AccountError>;
-pub fn sign_out(b: &dyn Backend, secrets: &dyn SecretStore, session: &Session) -> Result<(), AccountError>; // queues a pending logout on failure
+pub fn recover(b: &dyn Backend, secrets: &dyn SecretStore, server: &str, username: &str, key: &RecoveryKey, new_password: &Password, device: &DeviceIdentity, progress: &dyn Fn(Step)) -> Result<Recovered, RotationError>;
+pub fn sign_out(b: &dyn Backend, secrets: &dyn SecretStore, session: &Session) -> Result<(), AccountError>; // always tries the logout; queues it on failure
 pub fn discard_session(b: &dyn Backend, secrets: &dyn SecretStore, session: &Session) -> Result<(), AccountError>; // logout only: the library's Keychain items stay
 pub fn flush_pending_logouts(b: &dyn Backend, secrets: &dyn SecretStore, library_id: &str);
-pub fn change_password(b: &dyn Backend, session: &Session, current: &Password, new: &Password, progress: &dyn Fn(Step)) -> Result<usize, AccountError>;
-pub fn new_recovery_key(b: &dyn Backend, session: &Session, current: &Password, progress: &dyn Fn(Step)) -> Result<RecoveryKey, AccountError>;
+pub fn change_password(b: &dyn Backend, secrets: &dyn SecretStore, session: &Session, current: &Password, new: &Password, progress: &dyn Fn(Step)) -> Result<PasswordChanged, RotationError>;
+pub fn new_recovery_key(b: &dyn Backend, secrets: &dyn SecretStore, session: &Session, current: &Password, progress: &dyn Fn(Step)) -> Result<RecoveryKey, RotationError>;
 pub fn delete_account(b: &dyn Backend, session: &Session, password: &Password, typed_username: &str, progress: &dyn Fn(Step)) -> Result<(), AccountError>;
 pub fn devices(b: &dyn Backend, session: &Session) -> Result<Vec<DeviceInfo>, AccountError>;
 pub fn revoke_device(b: &dyn Backend, session: &Session, device_id: &str) -> Result<(), AccountError>;
@@ -1323,6 +1327,8 @@ test remote leaves them `None`.
 - `Unauthorized { reason }`
 - `Password`, `Username` and `RecoveryKey` validation.
 - `Protocol` (an answer of the wrong shape), `Endpoint` (`check_endpoint`) and `Keychain`.
+- `UnsavedRecoveryKey { username }`: the library's Keychain still holds another account's unsaved
+  recovery key, which a new one would replace. Nothing was sent.
 
 ### Account flows
 
@@ -1331,8 +1337,8 @@ test remote leaves them `None`.
   2. `server_info`, which must say `Open`.
   3. Generate the account ID, salt, data key and recovery secret.
   4. Derive the keys (`Step::DerivingKeys`) and wrap twice. Seal the device name.
-  5. `POST signup` (`Contacting`).
-  6. Save `sync-recovery-key:<library>` at once (fix 3), then bind (`Saving`).
+  5. Save `sync-recovery-key:<library>`, unconfirmed (below), then `POST signup` (`Contacting`).
+  6. Save the session's Keychain item, then bind (`Saving`).
 
   The salt input includes the username, so trying another name after `username_taken` derives again.
 - **Sign in.**
@@ -1347,16 +1353,45 @@ test remote leaves them `None`.
 - **Recover.**
   1. Parse the key, then prelogin.
   2. `recover/start`; unwrap and compare the key ID.
-  3. Make a new salt and a new recovery secret, derive, wrap, and `recover/finish`.
-  4. Show the new recovery key screen. Its Keychain item is saved before binding.
-- **Change password.** Prelogin for the salt, two derivations, `account/password`. Other Macs get
-  401 `password_changed`.
-- **New recovery key.** Derive the current `auth_key`, make a new recovery secret, wrap, then `account/recovery-key`. Show the key screen.
+  3. Make a new salt and a new recovery secret, derive, wrap, save the new key unconfirmed, and
+     `recover/finish`.
+  4. Show the new recovery key screen.
+- **Change password.** Prelogin for the salt, two derivations, and a new recovery secret: a
+  recovery key that outlived the password would let whoever holds it take the account back. The
+  new key is saved unconfirmed, then `account/password` carries `recovery_auth_key` and
+  `recovery_wrapped_key` with the new password's values. Other Macs get 401 `password_changed`;
+  this one shows the key screen over "Your password changed, and so did your recovery key: the one
+  you saved no longer works."
+- **New recovery key.** Derive the current `auth_key`, make a new recovery secret, wrap, save it
+  unconfirmed, then `account/recovery-key`. Show the key screen.
 - **Delete account.** Derive `auth_key`, then `account/delete`, then `unbind`.
 - **Sign out.** First cancel and join the running sync (fix 2). Then delete
   `sync-account:<library>` and any `sync-recovery-key:<library>` (H3). Then try `logout` with a 5 s
-  timeout. On failure, add `{server, token}` to `sync-logout:<library>`. `flush_pending_logouts`
-  retries those at launch and before each sync until the server answers 204 or 401.
+  timeout, even when the Keychain refused a deletion (A14; that refusal is reported after). On
+  failure, add `{server, token}` to `sync-logout:<library>`. `flush_pending_logouts` retries those
+  at launch and before each sync until the server answers 204 or 401. Every read-modify-write of
+  the queue holds one lock in the process, never across a request: a flush reads the queue, sends
+  the logouts, then takes out only those that went, so a token queued meanwhile stays (sync 9).
+
+**A new recovery key on its way** (sec-client 1). Sign-up, recovery, a password change and "New
+recovery key" each choose the key before building the request and save it in
+`sync-recovery-key:<library>` marked `unconfirmed` before the request leaves; nothing is sent if
+the Keychain refuses. Then:
+
+- The server says yes: the item is marked confirmed.
+- The server refuses (a 4xx), or the request never left the Mac: the item goes back to what it was.
+- The answer is lost, garbled or a 5xx: the item stays, and `RotationError.recovery_key` carries it,
+  so the app shows it with a note that the server may not have taken it.
+
+While the item holds an unsaved key for the same account, the next rotation sets that same key
+again (except the key a recovery proves), so a retried or repeated change can't leave the server
+with a key the Mac no longer has. Another account's unsaved key refuses with `UnsavedRecoveryKey`.
+
+**Requests.** A request whose answer is lost is sent again with the identical body, only on routes
+the server answers idempotently, after about 1 s and then 4 s (`Backend::retry_pause`). The HTTP
+backend gives each request, connecting included, 30 s on the auth and account routes, 5 s on
+`logout`, and 300 s on pushes, changes and files (A7). Request bodies and answers that hold keys,
+proofs or tokens are zeroized when dropped, and their `Debug` shows `<redacted>`.
 
 ### Sync with encryption
 
@@ -1446,7 +1481,7 @@ The service is `Kanso`. Item names use the library ID, so data directories never
 | Account (item name) | Value (JSON) | Lifetime |
 |---|---|---|
 | `sync-account:<library_id>` | `{"v":1,"server","origin","account_id","username","device_id","token","data_key"}` | Sign-up, sign-in or recovery until sign-out, deletion, a 401 or unbind |
-| `sync-recovery-key:<library_id>` | `{"v":1,"origin","account_id","username","recovery_key"}` | From the moment sign-up, recovery or "New recovery key" succeeds until "I've saved it", or sign-out. While it exists, the Account page shows the key screen again. |
+| `sync-recovery-key:<library_id>` | `{"v":1,"origin","account_id","username","server","recovery_key","unconfirmed"}` (`server` and `unconfirmed` left out when empty or false) | From just before the request that sets the key leaves (sign-up, recovery, a password change, "New recovery key") until "I've saved it" or sign-out. A refused request puts back what was there. A confirmed key also goes when this Mac's session ends with `password_changed` or `recovered`: another device replaced it. While it exists, the Account page shows the key screen again. |
 | `sync-logout:<library_id>` | `{"v":1,"pending":[{"server","token"}]}` | Until each logout succeeds |
 | `sync-token` (legacy) | The old shared token | Never read or deleted by the new app; the owner removes it after the purge |
 
@@ -1550,14 +1585,22 @@ What the choices do:
 touches the Keychain item, first cancels the running sync and joins its thread (fix 2). On sign-in:
 
 1. Answer the question, if there is one.
-2. Cancel and join the running sync.
-3. Bind.
-4. Save the Keychain item.
+2. Cancel and join the running sync. For Replace, every open editor saves first, so the backup has
+   its edits; editor saves then wait and the local API (with MCP) stops until the bind ends (A10).
+   An editor with edits typed meanwhile stays on its note, saves them afterwards, and asks about
+   them instead when the Replace took the note away.
+3. Save the Keychain item (A1, sync 7): a library is never bound to an account whose item is
+   missing.
+4. Bind. If it fails, the Keychain item is put back as it was (gone, or the previous account's),
+   the new session is logged out, and a backup Replace made first is still shown.
 5. Write the config (`account`, `enabled = true`).
 6. Start sync.
 
-A task that stopped the running sync and leaves the same session signed in (it failed, or its
-question was cancelled) starts an automatic sync again.
+A chain of tasks that stopped the running sync and leaves the same session signed in (it failed,
+or its question was cancelled) starts an automatic sync again once its last task ends (A8). A sync
+asked for while another runs, or while that one is being stopped, runs right after it: as Sync now
+if any of the requests was, otherwise as an automatic sync that respects the schedule's hold
+(A9, sync 8).
 
 Startup counts the Mac as signed in only when the config, the Keychain item and the binding agree.
 
@@ -1635,7 +1678,15 @@ starts signed out with its notes intact. Older app builds ignore the new fields.
   `async_channel`. Any task that re-binds or signs out cancels and joins `SyncHandle` first, on that
   background thread, with "Stopping sync…" as its step.
 - On `SignedOut(reason)`, the app deletes the Keychain item, shows `SessionEnded`, and stops the
-  schedule.
+  schedule. With `password_changed` or `recovered`, a confirmed unsaved recovery key is deleted
+  too, and leaves the key screen: the server no longer holds it (sec-client 3). An unconfirmed one
+  stays, since it may be the only working key.
+- **The launch check** (`restore`) reads the Keychain on a background thread. Account tasks wait for
+  it (`restoring`), and its answer is dropped if a session appeared, a task started or the config's
+  account changed meanwhile, so it never overwrites a newer state (A4). Pending logouts are retried
+  after it answers. An unsaved recovery key shows whatever the account.
+- **Writes held** (`writes_held`, `hold_writes`, `release_writes`): around a Replace, as in Library
+  binding › Order and cancellation. The local API starts again only if it ran.
 
 ### Account page (Settings › Account)
 
@@ -1659,6 +1710,8 @@ account] [Sign in].
   Then the line "Your *N* notes on this Mac will be encrypted and uploaded. Kanso can't reset your
   password; you'll get a recovery key instead." and [Create account]. When `server_info` isn't
   `Open`, the button is disabled and the line reads "This server isn't taking new accounts."
+  `server_info` is asked again each time the form opens, one question per server at a time, and an
+  answer counts only while the form still shows that server (A6).
 - **Sign in.** Username, Password and Server rows, [Sign in], and "Forgot your password?", which
   switches to Username, Recovery key, New password, Confirm and [Set new password].
 - **Session ended.** The Sign in form, prefilled, under the reason's sentence from the problems table.
@@ -1684,7 +1737,17 @@ account] [Sign in].
   holding the key, username, server, date and warning. It never overwrites silently. If the chosen
   folder syncs to iCloud (`NSURLIsUbiquitousItemKey`, or a path under `~/Library/Mobile
   Documents/`), it asks first: "This folder syncs to iCloud. Save the key there anyway?"
-- **"I've saved my recovery key"** enables [Done], which deletes `sync-recovery-key:<library>`.
+- **"I've saved my recovery key"** enables [Done], which deletes `sync-recovery-key:<library>` if it
+  still holds that key.
+- **A note over the key**, in the warning colour, when it needs one: after a password change, "Your
+  password changed, and so did your recovery key: the one you saved no longer works." When the
+  answer was lost, that Kanso couldn't tell whether the server took the key (or created the
+  account, or changed the password), and to save it anyway. When the account was created or the
+  password changed but this Mac couldn't finish signing in, that sentence, with "Sign in with your
+  password" (or the new password).
+- **Elsewhere.** A key that arrives while Settings › Account isn't showing (from a task, a failure
+  carrying one, or the launch check) raises the notification "Save your new recovery key. It's on
+  the Account page." with [Show key]; a second key replaces it.
 
 **Signed in.** Sections:
 
@@ -1696,15 +1759,22 @@ account] [Sign in].
 - **Sync:** Sync automatically and Sync every.
 - **Devices:** active devices with their opened names ("A Mac" while unnamed), "This Mac", and "Last
   active 2 hours ago". Other devices have [Sign out], which confirms: "Sign out *name*? It stops
-  syncing until someone signs in on it again. Its notes stay on it."
+  syncing until someone signs in on it again. Its notes stay on it." Afterwards a notification
+  says how it went: "Signed out *name*.", or the error's words (A5). A device the server no longer
+  knows counts as signed out.
 - **Security:**
-  - Change password… (Current, New, Confirm). Afterwards: "Password changed. Your other Macs will
-    ask for it."
+  - Change password… (Current, New, Confirm), described as "Your other Macs sign out and ask for
+    the new password. Your recovery key changes too: the one you saved stops working, and Kanso
+    shows the new one to save." It leads to the key screen.
   - New recovery key… (Current password), which leads to the key screen.
   - Forgot your password? (Recovery key, New, Confirm).
 - **Conflict handling:** as today.
 - **Footer:**
   - [Sign out]: "Sign out of *ngoni*? Notes stay on this Mac. Sync stops until you sign in again."
+    With an unsaved recovery key, the question starts "Your new recovery key hasn't been saved yet;
+    signing out deletes it." When the Keychain refuses to delete the sign-in, Kanso is signed out
+    all the same and says "Signed out. Kanso couldn't remove this Mac's sign-in from the Keychain,
+    but it won't use it again."
   - [Delete account…]: "This deletes *ngoni*'s encrypted notes, attachments and devices from the
     server. Notes on this Mac stay here, and other Macs keep their copies. The server's backups keep
     a copy for up to 30 days. This can't be undone." Fields: "Type *ngoni* to confirm" and Password.
@@ -2154,6 +2224,10 @@ Residual risks:
     and wherever the user puts it after that. The clipboard copy stays on this Mac and is cleared
     after a minute, and saving to iCloud warns.
   - A used key stops working.
+  - A key replaced on another Mac with "New recovery key" can still show on this one as unsaved:
+    that change signs no session out, and the Worker gives no key ID to compare. Saving it saves a
+    key that no longer works; the one the other Mac showed does. A password change or a recovery
+    elsewhere ends this Mac's session, and the unsaved key goes with it (sec-client 3).
 - **A compromised Mac.** The local library is plaintext, and the Keychain holds the data key and the session.
 - **Lost password and recovery key.** The server copy is unrecoverable, by design. Local copies remain.
 - **Lockout.** Up to 10 sign-in attempts per account per 15 minutes from devices the account
