@@ -193,10 +193,6 @@ pub struct Services {
     sync_running: bool,
     sync_again: bool,
     sync_handle: Option<SyncHandle>,
-    /// Flow tests sign in before `kanso_sync::sync` exists (step 2b), so
-    /// they keep syncs from starting.
-    #[cfg(test)]
-    pub(crate) no_sync: bool,
 }
 
 impl Global for Services {}
@@ -457,6 +453,12 @@ pub fn sync_now(cx: &mut App) {
     start_sync(true, cx);
 }
 
+/// Starts an automatic sync again after an account task stopped one and
+/// left the same session signed in: the holds still apply.
+pub fn resume_sync(cx: &mut App) {
+    start_sync(false, cx);
+}
+
 /// Starts a sync of the signed-in library. Nothing happens while signed
 /// out, while an account task runs, or (for automatic syncs) while a
 /// problem holds them.
@@ -468,10 +470,6 @@ fn start_sync(manual: bool, cx: &mut App) {
     else {
         return;
     };
-    #[cfg(test)]
-    if services.no_sync {
-        return;
-    }
     if services.task.is_some() || (!manual && holds_at(services.hold, now)) {
         return;
     }
@@ -694,8 +692,8 @@ pub(crate) mod strategies {
 #[cfg(test)]
 mod tests {
     use super::{
-        ApiState, Hold, SyncState, api_state, hold_after, holds_at, is_local_edit, server_config,
-        state_problem, sync_outcome,
+        AccountState, ApiState, Hold, SyncState, api_state, hold_after, holds_at, is_local_edit,
+        server_config, state_problem, sync_outcome,
     };
     use crate::config::ServerSettings;
     use kanso_sync::{ApiError, SignOutReason, SyncError, SyncProblem, SyncReport};
@@ -842,6 +840,140 @@ mod tests {
         let handle = kanso_server::spawn(store, server_config(&settings).unwrap());
         assert!(matches!(api_state(&handle, 0), ApiState::Running(_)));
         handle.stop().unwrap();
+    }
+
+    /// A library on `server` for `username`, signed in from Mac `n` and
+    /// bound fresh: its store, session and folder.
+    fn library(
+        server: &kanso_sync::MemoryServer,
+        username: &str,
+        n: u8,
+        sign_up: bool,
+    ) -> (kanso_store::Store, kanso_sync::Session, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = kanso_store::Store::open(dir.path().join("k.db")).unwrap();
+        let device = kanso_sync::DeviceIdentity::from_parts(
+            &format!("l_{n:032x}"),
+            &format!("Mac {n}"),
+            [n; 32],
+        );
+        let password = kanso_sync::Password::new("correct horse battery", username).unwrap();
+        let server_url = kanso_sync::DEFAULT_SERVER;
+        let session = if sign_up {
+            kanso_sync::sign_up(server, server_url, username, &password, &device, &|_| {})
+                .unwrap()
+                .session
+        } else {
+            kanso_sync::sign_in(server, server_url, username, &password, &device, &|_| {})
+                .unwrap()
+                .session
+        };
+        kanso_sync::bind(
+            &store,
+            &session,
+            kanso_sync::Choice::Add,
+            &dir.path().join("backups"),
+            0,
+        )
+        .unwrap();
+        (store, session, dir)
+    }
+
+    /// End to end through the Worker's rules (in memory): two libraries of
+    /// one account sync through `kanso_sync::sync`, encrypted, and the status
+    /// reflects the result.
+    #[test]
+    fn syncing_two_libraries_reports_synced() {
+        use kanso_core::DocType;
+        use kanso_store::{Origin, Put};
+        let server = kanso_sync::MemoryServer::new();
+        let (a, a_session, _a_dir) = library(&server, "alice", 1, true);
+        let (b, b_session, _b_dir) = library(&server, "alice", 2, false);
+        let book = a
+            .put(
+                DocType::Book,
+                serde_json::json!({"name": "B"}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap();
+        let note = a
+            .put(
+                DocType::Note,
+                serde_json::json!({"title": "hello", "bookId": book.id}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap();
+        let options = kanso_sync::SyncOptions::default();
+        let state = sync_outcome(kanso_sync::sync(&a, &server, &a_session, &options), 7);
+        assert_eq!(
+            state,
+            Some(SyncState::Synced {
+                at_ms: 7,
+                conflicts: 0,
+                conflicted: Vec::new(),
+                problem: None,
+            })
+        );
+        // The server holds both, under opaque IDs.
+        let view = server.plain_view(&a_session);
+        assert_eq!(view.docs().len(), 2);
+        assert!(
+            view.wire_docs()
+                .iter()
+                .all(|doc| doc.id != note.id && doc.id != book.id)
+        );
+
+        let state = sync_outcome(kanso_sync::sync(&b, &server, &b_session, &options), 8);
+        assert!(matches!(
+            state,
+            Some(SyncState::Synced { problem: None, .. })
+        ));
+        assert_eq!(b.note(&note.id).unwrap().unwrap().title, "hello");
+    }
+
+    /// An account past its day of upload bytes (`uploads-account`) reads
+    /// "Sync paused" until the time the server gave, and holds automatic
+    /// syncs until then.
+    #[test]
+    fn an_upload_budget_429_reads_sync_paused() {
+        let server = kanso_sync::MemoryServer::new();
+        let (a, session, _dir) = library(&server, "alice", 1, true);
+        server.set_upload_bytes_per_day(1);
+        a.put(
+            kanso_core::DocType::File,
+            serde_json::json!({
+                "_id": "file:img1",
+                "name": "a.png",
+                "contentType": "image/png",
+                "createdAt": 1,
+                "_attachments": {"index": {"content_type": "image/png", "data": "Ynl0ZXM="}},
+            }),
+            kanso_store::Put::Upsert,
+            kanso_store::Origin::Ui,
+        )
+        .unwrap();
+        let now = kanso_core::now_ms();
+        let state = sync_outcome(
+            kanso_sync::sync(&a, &server, &session, &kanso_sync::SyncOptions::default()),
+            now,
+        )
+        .expect("a finished sync");
+        let problem = state_problem(&state).cloned().expect("a problem");
+        let SyncProblem::Paused { until } = problem else {
+            panic!("{problem:?}");
+        };
+        assert!(until > now);
+        let signed_in = AccountState::SignedIn {
+            username: "alice".into(),
+        };
+        let (_, label) = crate::sidebar::sync_line(&state, &signed_in, |_| String::new());
+        assert_eq!(label, "Sync paused");
+        let hold = hold_after(Some(&problem));
+        assert_eq!(hold, Some(Hold::Until(until)));
+        assert!(holds_at(hold, until - 1));
+        assert!(!holds_at(hold, until));
     }
 
     #[test]

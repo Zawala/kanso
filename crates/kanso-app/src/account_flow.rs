@@ -144,9 +144,11 @@ impl Seams {
 }
 
 /// Starts `work` on its own thread as the task `kind`, at step `first`.
-/// With `stop_sync`, the running sync is cancelled and joined there first.
-/// Steps reach [`Services`] and `progress`; `finish` gets the result on the
-/// main thread (`None` if the thread stopped without one).
+/// With `stop_sync`, the running sync is cancelled and joined there first,
+/// and started again afterwards if the task left the same session signed in
+/// (a failure, or a cancelled question). Steps reach [`Services`] and
+/// `progress`; `finish` gets the result on the main thread (`None` if the
+/// thread stopped without one).
 fn run<T: Send + 'static>(
     kind: TaskKind,
     first: Step,
@@ -162,6 +164,7 @@ fn run<T: Send + 'static>(
     } else {
         None
     };
+    let stopped_for = sync.as_ref().and_then(|_| services.session());
     let first = if sync.is_some() {
         Step::StoppingSync
     } else {
@@ -185,6 +188,8 @@ fn run<T: Send + 'static>(
             tx.try_send(Message::Done(result)).ok();
         });
     if let Err(err) = spawned {
+        // The sync handle went with the closure: that sync runs on,
+        // detached, to its end. Nothing was changed.
         eprintln!("kanso: couldn't start an account task: {err}");
         cx.global_mut::<Services>().task = None;
         finish(None, cx);
@@ -216,6 +221,14 @@ fn run<T: Send + 'static>(
         cx.update(|cx| {
             cx.global_mut::<Services>().task = None;
             finish(result, cx);
+            if let Some(before) = stopped_for
+                && cx
+                    .global::<Services>()
+                    .session()
+                    .is_some_and(|now| Arc::ptr_eq(&now, &before))
+            {
+                services::resume_sync(cx);
+            }
             cx.refresh_windows();
         });
     })
@@ -440,8 +453,15 @@ fn create(
                         .map_err(Failure::keychain)
                 });
             if let Err(failure) = bound {
-                // Nothing here uses the new session: the server forgets it.
-                kanso_sync::sign_out(s.backend.as_ref(), s.secrets.as_ref(), &signed.session).ok();
+                // Nothing here uses the new session: the server forgets it,
+                // and so does the Keychain its recovery key, which nobody saw.
+                kanso_sync::discard_session(
+                    s.backend.as_ref(),
+                    s.secrets.as_ref(),
+                    &signed.session,
+                )
+                .ok();
+                keychain::delete_recovery_key(s.secrets.as_ref(), &device.library_id).ok();
                 return Err(failure);
             }
             Ok((signed, device.library_id))
@@ -686,8 +706,14 @@ fn bind_and_save(
                 Ok(backup) => Ok((session, library_id, backup)),
                 Err(failure) => {
                     if choice.is_some() {
-                        // Nothing here uses the new session.
-                        kanso_sync::sign_out(s.backend.as_ref(), s.secrets.as_ref(), &session).ok();
+                        // Nothing here uses the new session. The library's
+                        // Keychain items may still be another account's.
+                        kanso_sync::discard_session(
+                            s.backend.as_ref(),
+                            s.secrets.as_ref(),
+                            &session,
+                        )
+                        .ok();
                     }
                     Err(failure)
                 }
@@ -711,8 +737,10 @@ fn bind_and_save(
     );
 }
 
-/// The binding question was cancelled: the new session is signed out, and
-/// nothing here changes.
+/// The binding question was cancelled: the new session is logged out, and
+/// nothing here changes. The library's Keychain items stay: they hold the
+/// account this Mac may still be signed in to, and a recovery key that may
+/// still be on screen.
 fn abandon(seams: Seams, session: Session, tx: Sender<Progress>, cx: &mut App) {
     run(
         TaskKind::SignOut,
@@ -721,9 +749,11 @@ fn abandon(seams: Seams, session: Session, tx: Sender<Progress>, cx: &mut App) {
         Some(tx.clone()),
         cx,
         move |_| {
-            if let Err(err) =
-                kanso_sync::sign_out(seams.backend.as_ref(), seams.secrets.as_ref(), &session)
-            {
+            if let Err(err) = kanso_sync::discard_session(
+                seams.backend.as_ref(),
+                seams.secrets.as_ref(),
+                &session,
+            ) {
                 eprintln!("kanso: signing out the cancelled session: {err}");
             }
         },

@@ -28,8 +28,9 @@ pub mod wire;
 
 pub use account::{
     AccountError, DEFAULT_SERVER, DeviceInfo, Quota, Recovered, Session, SignedIn, SignedUp,
-    SignupState, Step, Usage, change_password, delete_account, devices, flush_pending_logouts,
-    new_recovery_key, recover, revoke_device, server_info, sign_in, sign_out, sign_up, usage,
+    SignupState, Step, Usage, change_password, delete_account, devices, discard_session,
+    flush_pending_logouts, new_recovery_key, recover, revoke_device, server_info, sign_in,
+    sign_out, sign_up, usage,
 };
 pub use api::{Api, Backend, Route};
 pub use binding::{

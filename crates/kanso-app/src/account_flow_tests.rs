@@ -5,8 +5,10 @@
 //! password change, recovery, a new recovery key, deleting the account, and
 //! a relaunch. Each test context is one Mac with its own library and
 //! Keychain; the server is shared. Nothing here reaches a network or the
-//! real Keychain. Sync itself is step 2b: these tests keep it from starting
-//! (`Services::no_sync`) and check what the flows leave behind.
+//! real Keychain. Signing in starts the real sync (`kanso_sync::sync` on its
+//! own thread, as in the app), so the tests also check what reaches the
+//! server and the other Macs, and that account tasks stop a running sync
+//! first.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -25,7 +27,7 @@ use serde_json::json;
 use crate::account_flow;
 use crate::config::AppConfig;
 use crate::dialogs::Progress;
-use crate::services::{AccountState, Services};
+use crate::services::{self, AccountState, Services, SyncState};
 use crate::workspace::{AppState, Workspace};
 
 /// The forms' server; `MemoryServer` answers for any.
@@ -110,7 +112,6 @@ fn services(
     services.backend = Some(backend);
     services.secrets = Some(secrets);
     services.machine = Some(machine);
-    services.no_sync = true;
     services
 }
 
@@ -145,6 +146,35 @@ fn wait_until(cx: &mut TestAppContext, what: &str, done: impl Fn(&mut TestAppCon
         assert!(Instant::now() < deadline, "waited for {what}");
         std::thread::sleep(Duration::from_millis(2));
     }
+}
+
+/// Waits for the sync that is running (or about to start) to finish, and
+/// returns its state.
+fn synced(cx: &mut TestAppContext) -> SyncState {
+    wait_until(cx, "the sync to finish", |cx| {
+        cx.read(|cx| {
+            let services = cx.global::<Services>();
+            matches!(
+                services.sync,
+                SyncState::Synced { .. } | SyncState::Failed(_)
+            ) && services.task.is_none()
+        })
+    });
+    cx.read(|cx| cx.global::<Services>().sync.clone())
+}
+
+/// Syncs now and waits for it.
+fn sync_now(cx: &mut TestAppContext) -> SyncState {
+    cx.update(|cx| {
+        // The last sync's state goes, so the wait sees this one's.
+        cx.global_mut::<Services>().sync = SyncState::Syncing;
+        services::sync_now(cx);
+    });
+    synced(cx)
+}
+
+fn ok(state: &SyncState) -> bool {
+    matches!(state, SyncState::Synced { problem: None, .. })
 }
 
 fn account(cx: &mut TestAppContext) -> AccountState {
@@ -311,6 +341,23 @@ fn signing_up_binds_this_library_and_shows_the_key(cx: &mut TestAppContext) {
     let devices = devices.expect("the devices load");
     assert_eq!(devices.len(), 1);
     assert!(devices[0].current);
+
+    // The first sync uploads the notes and their book, encrypted.
+    let state = synced(cx);
+    assert!(ok(&state), "{state:?}");
+    let view = server.plain_view(&session);
+    assert_eq!(view.docs().len(), 4);
+    let local: Vec<String> = a
+        .store
+        .changes_since(0, None, false)
+        .unwrap()
+        .into_iter()
+        .map(|doc| doc.id)
+        .collect();
+    assert!(
+        view.wire_docs().iter().all(|doc| !local.contains(&doc.id)),
+        "the server never sees an ID"
+    );
 }
 
 /// A second Mac with notes of its own signs in: it is asked about them, and
@@ -327,6 +374,7 @@ fn a_second_mac_is_asked_about_its_notes(
     let rx = a.sign_up(cx, "alice");
     assert_eq!(finish(cx, rx), Ok(()));
     let account_id = a.bound_to().unwrap();
+    assert!(ok(&synced(cx)));
 
     let b = mac(cx_b, &server, "Laptop", 4);
     let rx = b.sign_in(cx_b, "alice", PASSWORD);
@@ -334,19 +382,26 @@ fn a_second_mac_is_asked_about_its_notes(
     assert_eq!(finish(cx_b, rx), Ok(()));
     assert_eq!(account(cx_b), signed_in_as("alice"));
     assert_eq!(b.bound_to(), Some(account_id.clone()));
-    assert_eq!(b.notes(), 4, "Add keeps this Mac's notes");
     assert!(pending_key(cx_b).is_none(), "signing in makes no new key");
     let config = cx_b.read(|cx| cx.global::<AppState>().config.sync.clone());
     assert!(config.enabled, "signing in turns sync on");
     details_loaded(cx_b);
     let devices = cx_b.read(|cx| cx.global::<Services>().details.devices.clone());
     assert_eq!(devices.map(|d| d.len()), Some(2), "both Macs are devices");
+    // Add keeps this Mac's notes; its first sync brings alice's and sends
+    // its own.
+    assert!(ok(&synced(cx_b)));
+    assert_eq!(b.notes(), 6);
+    assert!(ok(&sync_now(cx)));
+    assert_eq!(a.notes(), 6, "the first Mac gets the second's notes");
 
     let c = mac(cx_c, &server, "Mini", 0);
     let rx = c.sign_in(cx_c, "alice", PASSWORD);
     assert_eq!(finish(cx_c, rx), Ok(()));
     assert!(!c.asking(cx_c), "an empty library needs no question");
     assert_eq!(c.bound_to(), Some(account_id));
+    assert!(ok(&synced(cx_c)));
+    assert_eq!(c.notes(), 6);
 }
 
 /// Replace saves a backup of the library first, then empties it for the
@@ -357,6 +412,7 @@ fn replacing_the_notes_keeps_a_backup_first(cx: &mut TestAppContext, cx_b: &mut 
     let a = mac(cx, &server, "Studio", 1);
     let rx = a.sign_up(cx, "alice");
     assert_eq!(finish(cx, rx), Ok(()));
+    assert!(ok(&synced(cx)));
 
     let b = mac(cx_b, &server, "Laptop", 3);
     let rx = b.sign_in(cx_b, "alice", PASSWORD);
@@ -364,11 +420,14 @@ fn replacing_the_notes_keeps_a_backup_first(cx: &mut TestAppContext, cx_b: &mut 
     assert_eq!(finish(cx_b, rx), Ok(()));
     assert_eq!(account(cx_b), signed_in_as("alice"));
     assert_eq!(b.bound_to(), a.bound_to());
-    assert_eq!(b.notes(), 0, "the account's notes come with sync");
     let backups: Vec<_> = std::fs::read_dir(crate::paths::backups_dir(b.dir.path()))
         .expect("a backups folder")
         .collect();
     assert_eq!(backups.len(), 1, "one backup, made first");
+    assert!(ok(&synced(cx_b)));
+    assert_eq!(b.notes(), 1, "the account's notes, and only those");
+    assert!(ok(&sync_now(cx)));
+    assert_eq!(a.notes(), 1, "the replaced notes never reach the account");
 }
 
 /// Signing in to another account on a Mac bound to the first asks about
@@ -404,6 +463,128 @@ fn another_accounts_notes_are_asked_about(cx: &mut TestAppContext) {
     assert!(a.items().is_empty(), "no session is kept");
     let devices = kanso_sync::devices(server.as_ref(), &bob.session).unwrap();
     assert_eq!(devices.len(), 1, "the cancelled session is gone");
+}
+
+/// Cancelling the question about another account while signed in leaves this
+/// one as it was: its Keychain item, its session on the server, and its
+/// syncing, which starts again.
+#[gpui_kit::test]
+fn cancelling_another_account_keeps_this_one(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let elsewhere = DeviceIdentity::from_parts(&format!("l_{:032x}", 9), "Elsewhere", [9; 32]);
+    let bob = kanso_sync::sign_up(
+        server.as_ref(),
+        SERVER,
+        "bob",
+        &password(PASSWORD, "bob"),
+        &elsewhere,
+        &|_| {},
+    )
+    .unwrap();
+    let a = mac(cx, &server, "Studio", 2);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert!(ok(&synced(cx)));
+    let alice = session(cx);
+    let library = library_id(cx);
+    let items = a.items();
+
+    // Signing in stops the running sync first.
+    let window = a.window;
+    let rx = cx.update(|cx| {
+        services::sync_now(cx);
+        account_flow::sign_in(
+            SERVER.into(),
+            "bob".into(),
+            password(PASSWORD, "bob"),
+            window,
+            cx,
+        )
+    });
+    a.answer(cx, "choice-cancel");
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert_eq!(account(cx), signed_in_as("alice"));
+    assert!(Arc::ptr_eq(&session(cx), &alice));
+    assert_eq!(a.items(), items, "alice's items stay");
+    let kept = kanso_sync::keychain::load_session(
+        a.secrets.as_ref(),
+        &library,
+        &alice.origin,
+        &alice.account_id,
+    )
+    .unwrap();
+    assert!(kept.is_some(), "a relaunch still finds alice");
+    assert!(kanso_sync::usage(server.as_ref(), &alice).is_ok());
+    let devices = kanso_sync::devices(server.as_ref(), &bob.session).unwrap();
+    assert_eq!(devices.len(), 1, "bob's cancelled session is gone");
+    assert!(ok(&synced(cx)), "alice syncs again");
+}
+
+/// A recovery whose binding question is cancelled keeps the new recovery
+/// key on screen and in the Keychain: the used one no longer works.
+#[gpui_kit::test]
+fn a_cancelled_recovery_keeps_the_new_key(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let elsewhere = DeviceIdentity::from_parts(&format!("l_{:032x}", 9), "Elsewhere", [9; 32]);
+    let bob = kanso_sync::sign_up(
+        server.as_ref(),
+        SERVER,
+        "bob",
+        &password(PASSWORD, "bob"),
+        &elsewhere,
+        &|_| {},
+    )
+    .unwrap();
+    let a = mac(cx, &server, "Studio", 2);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    cx.update(account_flow::key_saved);
+    assert_eq!(sign_out(cx), Ok(()));
+    let library = library_id(cx);
+
+    let rx = a.recover(cx, "bob", bob.recovery_key.clone(), NEW_PASSWORD);
+    a.answer(cx, "choice-cancel");
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert_eq!(account(cx), AccountState::SignedOut);
+    let shown = pending_key(cx).expect("the new key shows");
+    assert!(shown != bob.recovery_key);
+    assert_eq!(a.items(), [format!("sync-recovery-key:{library}")]);
+    let devices = kanso_sync::devices(server.as_ref(), &bob.session);
+    assert!(devices.is_err(), "recovery signed bob's other session out");
+}
+
+/// Signing out while a sync runs stops it first ("Stopping sync…"), and its
+/// result changes nothing afterwards.
+#[gpui_kit::test]
+fn signing_out_during_a_sync_stops_it_first(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 40);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert!(ok(&synced(cx)));
+    let old = session(cx);
+
+    let rx = cx.update(|cx| {
+        services::sync_now(cx);
+        account_flow::sign_out(cx)
+    });
+    assert_eq!(
+        rx.try_recv().ok(),
+        Some(Progress::Step(kanso_sync::Step::StoppingSync))
+    );
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert_eq!(account(cx), AccountState::SignedOut);
+    for _ in 0..20 {
+        cx.run_until_parked();
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let state = cx.read(|cx| cx.global::<Services>().sync.clone());
+    assert_eq!(state, SyncState::Off, "the stopped sync's news is dropped");
+    assert!(a.items().is_empty());
+    assert!(matches!(
+        kanso_sync::usage(server.as_ref(), &old),
+        Err(AccountError::Unauthorized { .. })
+    ));
 }
 
 /// Signing out ends the session on the server, forgets it here, and keeps

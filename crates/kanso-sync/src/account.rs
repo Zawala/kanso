@@ -734,6 +734,29 @@ pub fn sign_out(
         keychain::delete_session(secrets, library_id)?;
         keychain::delete_recovery_key(secrets, library_id)?;
     }
+    logout_or_queue(b, secrets, session)
+}
+
+/// Logs out a session this Mac never saved or used: one whose binding
+/// question was cancelled, or whose saving failed. Like [`sign_out`], a
+/// failed logout is queued in `sync-logout:<library>`, but the library's
+/// `sync-account` and `sync-recovery-key` items stay: they may hold the
+/// account this Mac is still signed in to, or a recovery key still on
+/// screen.
+pub fn discard_session(
+    b: &dyn Backend,
+    secrets: &dyn SecretStore,
+    session: &Session,
+) -> Result<(), AccountError> {
+    logout_or_queue(b, secrets, session)
+}
+
+/// `logout`; on failure other than a 401, the session's token is queued.
+fn logout_or_queue(
+    b: &dyn Backend,
+    secrets: &dyn SecretStore,
+    session: &Session,
+) -> Result<(), AccountError> {
     match b.api(&session.server).logout(session.token()) {
         Ok(()) => Ok(()),
         Err(err) if err.status() == Some(401) => Ok(()),

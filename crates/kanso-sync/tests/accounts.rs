@@ -956,6 +956,57 @@ fn keychain_items_round_trip_and_ignore_other_accounts() {
 }
 
 #[test]
+fn discarding_a_session_keeps_the_librarys_items_and_queues_a_failed_logout() {
+    let b = hostile();
+    let alice = sign_up(&b, "alice", &mac(1));
+    let secrets = MemorySecrets::new();
+    let library = mac(1).library_id;
+    // This Mac is signed in to alice, with her new recovery key unsaved.
+    keychain::save_session(&secrets, &library, &alice.session).unwrap();
+    keychain::save_recovery_key(
+        &secrets,
+        &library,
+        &PendingRecoveryKey {
+            origin: ORIGIN.into(),
+            account_id: alice.session.account_id.clone(),
+            username: "alice".into(),
+            recovery_key: alice.recovery_key.clone(),
+        },
+    )
+    .unwrap();
+    let items = secrets.items();
+    // A session for bob that the binding question then cancels.
+    let bob = sign_up(&b, "bob", &mac(1)).session;
+
+    kanso_sync::discard_session(&b, &secrets, &bob).unwrap();
+    assert_eq!(secrets.items(), items, "alice's items stay");
+    assert_eq!(
+        check(&b.server, &bob).unwrap_err(),
+        ApiError::Unauthorized {
+            reason: SignOutReason::SignedOut
+        }
+    );
+    assert!(check(&b.server, &alice.session).is_ok());
+    assert!(
+        keychain::load_session(&secrets, &library, ORIGIN, &alice.session.account_id)
+            .unwrap()
+            .is_some()
+    );
+
+    // Unreachable: the logout is queued, and only that changes.
+    let carol = sign_up(&b, "carol", &mac(1)).session;
+    b.faults.unreachable.store(true, Ordering::SeqCst);
+    kanso_sync::discard_session(&b, &secrets, &carol).unwrap();
+    let queued = keychain::pending_logouts(&secrets, &library).unwrap();
+    assert_eq!(queued.len(), 1);
+    assert_eq!(queued[0].server, SERVER);
+    b.faults.unreachable.store(false, Ordering::SeqCst);
+    kanso_sync::flush_pending_logouts(&b, &secrets, &library);
+    assert_eq!(secrets.items(), items);
+    assert!(check(&b.server, &carol).is_err());
+}
+
+#[test]
 fn sign_out_deletes_the_items_and_queues_a_failed_logout() {
     let b = hostile();
     let up = sign_up(&b, "alice", &mac(1));
