@@ -26,6 +26,8 @@ mod paths;
 mod preview;
 mod services;
 mod settings;
+#[cfg(test)]
+mod settings_window_tests;
 mod sidebar;
 #[cfg(test)]
 mod snapshots;
@@ -194,9 +196,10 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
         workspace::set_menus(cx);
         cx.on_action(|_: &Quit, cx| quit(cx));
         watch_for_quit(cx);
-        cx.on_action(|_: &workspace::OpenSettings, cx| settings::SettingsWindow::open(cx));
+        settings::register_app_actions(cx, open_main_window);
         services::apply_server_settings(cx);
         services::apply_sync_settings(cx);
+        services::load_sync_token(cx);
         open_main_window(cx);
         cx.activate(true);
         // Held until the process exits so no second Kanso opens this folder.

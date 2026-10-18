@@ -1487,7 +1487,7 @@ fn render_keys(keys: &[String], caps: bool, cx: &App) -> impl IntoElement {
         }))
 }
 
-fn keycap(text: impl Into<SharedString>, cx: &App) -> impl IntoElement {
+pub(crate) fn keycap(text: impl Into<SharedString>, cx: &App) -> impl IntoElement {
     let colors = Colors::get(cx);
     div()
         .flex_none()
@@ -2329,12 +2329,12 @@ mod tests {
 
     /// Every command the palette runs as an action finds a handler from
     /// where the palette sends it (the note being written, inside the
-    /// workspace), whatever the layout. Quit and Settings are the app's own:
-    /// main.rs registers them with `cx.on_action`.
+    /// workspace), whatever the layout. Quit is the app's own: main.rs
+    /// registers it with `cx.on_action`. Settings open in the window.
     #[gpui_kit::test]
     fn every_command_reaches_a_handler(cx: &mut TestAppContext) {
         let f = setup(cx);
-        let app_wide = ["kanso::Quit", "kanso::OpenSettings"];
+        let app_wide = ["kanso::Quit"];
         let missing: Vec<&str> = f.update(cx, |_, window, cx| {
             crate::commands::all()
                 .iter()

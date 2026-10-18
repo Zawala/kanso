@@ -32,7 +32,8 @@ use crate::editor::EditorEvent;
 use crate::layout::{BOTTOM_BAND_HEIGHT, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, rail_width};
 use crate::library::{Filter, has_notes_inside};
 use crate::palette::{Mode, PANEL_HEIGHT, PANEL_WIDTH};
-use crate::services::{ApiState, Services, SyncState};
+use crate::services::{ApiState, Services, SyncState, TokenState};
+use crate::settings::{NAV_WIDTH, SettingsPage, mask_secret};
 use crate::theme::{Colors, DARK, LIGHT, Rgb};
 use crate::workspace::{AppState, Workspace, apply_theme};
 
@@ -703,6 +704,205 @@ fn mono_font(
     });
 }
 
+/// Settings at `page`, with demo values in place of the user's: a Worker,
+/// a saved token and API credentials, none of them real.
+fn show_settings(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    page: SettingsPage,
+) {
+    cx.update(|cx| {
+        let config = &mut cx.global_mut::<AppState>().config;
+        config.sync.endpoint = Some("https://kanso-sync.example.workers.dev".into());
+        config.sync.enabled = true;
+        config.server.username = "kanso".into();
+        config.server.password = "demo-password-not-real-7Q2x".into();
+        let now = Clock::now_ms(cx);
+        let services = cx.global_mut::<Services>();
+        services.sync_token = TokenState::Saved(mask_secret("demo-token-not-real-9f3c"));
+        services.sync = SyncState::Synced {
+            at_ms: now,
+            conflicts: 0,
+        };
+    });
+    cx.update_window(window, |_, window, cx| {
+        workspace.update(cx, |workspace, cx| {
+            workspace.settings.update(cx, |settings, _| {
+                settings.data_dir_label = Some("~/Library/Application Support/Kanso".into());
+            });
+            workspace.open_settings(Some(page), window, cx);
+        });
+    })
+    .unwrap();
+}
+
+fn set_sync(cx: &mut HeadlessAppContext, sync: SyncState) {
+    cx.update(|cx| cx.global_mut::<Services>().sync = sync);
+}
+
+fn settings_general(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::General);
+}
+
+fn settings_editor(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Editor);
+}
+
+fn settings_appearance(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Appearance);
+}
+
+/// Sync, synced a moment ago.
+fn settings_sync(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Sync);
+}
+
+fn settings_sync_syncing(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Sync);
+    set_sync(cx, SyncState::Syncing);
+}
+
+fn settings_sync_offline(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Sync);
+    set_sync(
+        cx,
+        SyncState::Failed("error sending request: connection refused".into()),
+    );
+}
+
+/// The Worker refused the sync for a reason of its own.
+fn settings_sync_error(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Sync);
+    set_sync(cx, SyncState::Failed("the server said 500".into()));
+}
+
+fn settings_sync_conflict(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Sync);
+    let now = cx.update(|cx| Clock::now_ms(cx));
+    set_sync(
+        cx,
+        SyncState::Synced {
+            at_ms: now - 3 * MINUTE,
+            conflicts: 1,
+        },
+    );
+}
+
+/// Sync never set up: no Worker, no token.
+fn settings_sync_off(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Sync);
+    cx.update(|cx| {
+        let config = &mut cx.global_mut::<AppState>().config;
+        config.sync.endpoint = None;
+        config.sync.enabled = false;
+        let services = cx.global_mut::<Services>();
+        services.sync = SyncState::Off;
+        services.sync_token = TokenState::Missing;
+    });
+}
+
+fn settings_api(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::LocalApi);
+}
+
+/// Inkdrop holds the API's port.
+fn settings_api_port_in_use(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::LocalApi);
+    cx.update(|cx| {
+        cx.global_mut::<Services>().api = ApiState::PortInUse(crate::config::DEFAULT_PORT);
+    });
+}
+
+/// Settings beside the sidebar's rail, which keeps the traffic lights; the
+/// gear in its bottom band is the place shown.
+fn settings_rail(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    collapse_sidebar(cx, window, workspace, store);
+    show_settings(cx, window, workspace, SettingsPage::Sync);
+}
+
+/// ⌘, in focus mode: Settings come up beside the sidebar, out of focus mode.
+fn settings_from_focus(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    focus_mode(cx, window, workspace, store);
+    show_settings(cx, window, workspace, SettingsPage::Editor);
+}
+
+/// The command palette over Settings, asked for a settings page.
+fn settings_palette(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Appearance);
+    open_palette(cx, window, workspace, Mode::Commands, "settings");
+}
+
 /// Opens the palette in `mode` and types `query`, as from the keyboard.
 fn open_palette(
     cx: &mut HeadlessAppContext,
@@ -921,6 +1121,61 @@ fn check_palette(image: &image::RgbaImage, shot: &Shot) {
     );
 }
 
+/// Settings: the sidebar, then the page column in the list's color and
+/// the page in the editor's, each band running across.
+fn check_settings_surfaces(image: &image::RgbaImage, shot: &Shot) {
+    let colors: &Colors = match shot.theme {
+        ThemePreference::Dark => &DARK,
+        _ => &LIGHT,
+    };
+    let width = f32::from(shot.size.width);
+    let height = f32::from(shot.size.height);
+    let scale = image.width() as f32 / width;
+    let left = match shot.left {
+        Left::Sidebar => SIDEBAR_WIDTH,
+        Left::Rail => rail_width(false),
+        Left::Nothing => 0.,
+    };
+    let band_top = height - BOTTOM_BAND_HEIGHT;
+    let mut checks = vec![
+        ((left + 6., height / 2.), colors.list, "page column"),
+        (
+            (left + NAV_WIDTH - 6., height / 2.),
+            colors.list,
+            "page column's right edge",
+        ),
+        (
+            (left + NAV_WIDTH + 8., 4.),
+            colors.editor,
+            "page's top band",
+        ),
+        ((width - 4., height / 2.), colors.editor, "page"),
+        (
+            (left + 6., band_top),
+            colors.divider,
+            "page column's bottom divider",
+        ),
+        (
+            (width - 4., band_top),
+            colors.divider,
+            "page's bottom divider",
+        ),
+    ];
+    if shot.left != Left::Nothing {
+        checks.push(((4., height / 2.), colors.sidebar, "sidebar"));
+    }
+    for (at, expected, what) in checks {
+        assert_surface(
+            image,
+            scale,
+            at,
+            expected,
+            2,
+            &format!("{}: {what}", shot.name),
+        );
+    }
+}
+
 /// Each pane is painted in its own surface color. The points sit in
 /// padding that no content reaches.
 fn check_surfaces(image: &image::RgbaImage, shot: &Shot) {
@@ -1134,6 +1389,54 @@ fn snapshots() {
             size: size(px(1440.), px(1700.)),
             ..shot("light-preview-long", Light, Preview, open_latest)
         },
+        // Settings, in the main window.
+        shot("dark-settings-general", Dark, Edit, settings_general),
+        shot("light-settings-general", Light, Edit, settings_general),
+        shot("dark-settings-editor", Dark, Edit, settings_editor),
+        shot("dark-settings-appearance", Dark, Edit, settings_appearance),
+        shot("dark-settings-sync", Dark, Edit, settings_sync),
+        shot("light-settings-sync", Light, Edit, settings_sync),
+        shot(
+            "dark-settings-sync-syncing",
+            Dark,
+            Edit,
+            settings_sync_syncing,
+        ),
+        shot(
+            "dark-settings-sync-offline",
+            Dark,
+            Edit,
+            settings_sync_offline,
+        ),
+        shot("dark-settings-sync-error", Dark, Edit, settings_sync_error),
+        shot(
+            "dark-settings-sync-conflict",
+            Dark,
+            Edit,
+            settings_sync_conflict,
+        ),
+        shot("dark-settings-sync-off", Dark, Edit, settings_sync_off),
+        shot("dark-settings-api", Dark, Edit, settings_api),
+        shot(
+            "dark-settings-api-port-in-use",
+            Dark,
+            Edit,
+            settings_api_port_in_use,
+        ),
+        Shot {
+            size: size(px(1100.), px(720.)),
+            ..shot("dark-settings-min", Dark, Edit, settings_api)
+        },
+        Shot {
+            left: Left::Rail,
+            ..shot("dark-settings-rail", Dark, Edit, settings_rail)
+        },
+        Shot {
+            left: Left::Rail,
+            ..shot("light-settings-rail", Light, Edit, settings_rail)
+        },
+        shot("dark-settings-from-focus", Dark, Edit, settings_from_focus),
+        shot("dark-settings-palette", Dark, Edit, settings_palette),
     ];
     let real_db = std::env::var_os("KANSO_SNAPSHOT_DB");
     let only = std::env::var("KANSO_SNAPSHOT_ONLY").ok();
@@ -1192,8 +1495,11 @@ fn snapshots() {
             image.height()
         );
         let palette_open = cx.update(|cx| workspace.read(cx).palette.read(cx).is_open());
+        let settings_open = cx.update(|cx| workspace.read(cx).settings_open());
         if palette_open {
             check_palette(&image, shot);
+        } else if settings_open {
+            check_settings_surfaces(&image, shot);
         } else {
             check_surfaces(&image, shot);
         }

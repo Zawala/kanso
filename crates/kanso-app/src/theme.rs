@@ -255,7 +255,7 @@ fn theme_colors(dark: bool, c: &Colors) -> Value {
     // Text on the status colors: dark on the light dark-theme ones, paper
     // on the shaded light-theme ones.
     let on_status = if dark { c.app } else { c.button_text };
-    let colors: [(&str, String); 60] = [
+    let colors: [(&str, String); 62] = [
         ("background", c.editor.hex()),
         ("foreground", c.text.hex()),
         ("border", c.divider.hex()),
@@ -279,6 +279,13 @@ fn theme_colors(dark: bool, c: &Colors) -> Value {
         ("popover.foreground", c.text.hex()),
         ("primary.background", c.button.hex()),
         ("primary.foreground", c.button_text.hex()),
+        // A switch that is off still reads as a switch: a grey track with a
+        // light thumb, as on macOS. On, the track takes the primary color.
+        ("switch.background", c.text_muted.hex()),
+        (
+            "switch.thumb.background",
+            (if dark { c.text } else { c.elevated }).hex(),
+        ),
         ("ring", c.accent.hex()),
         ("caret", c.accent.hex()),
         ("selection.background", c.accent.hex_alpha(0x4D)),
@@ -746,6 +753,16 @@ mod tests {
                 contrast_ratio(c.button_text.0, c.button.0) >= 4.5,
                 "{name}: button"
             );
+            // A switch's thumb shows on its track, off and on, and an off
+            // track shows on the panes (it is the muted text color, checked
+            // on every surface above).
+            let thumb = if name == "dark" { c.text } else { c.elevated };
+            for track in [c.text_muted, c.button] {
+                assert!(
+                    contrast_ratio(thumb.0, track.0) >= 3.0,
+                    "{name}: switch thumb on {track:?}"
+                );
+            }
             // Text on a status color, as in a destructive button.
             let on_status = if name == "dark" { c.app } else { c.button_text };
             for fill in [c.success, c.warning, c.danger] {
@@ -863,6 +880,8 @@ mod tests {
         assert_eq!(dark.colors.secondary_hover.as_deref(), Some("#30302B"));
         assert_eq!(dark.colors.button_active.as_deref(), Some("#3A3933"));
         assert_eq!(dark.colors.overlay.as_deref(), Some("#18181699"));
+        assert_eq!(dark.colors.switch.as_deref(), Some("#7E7A70"));
+        assert_eq!(dark.colors.switch_thumb.as_deref(), Some("#F1EFE7"));
         assert_eq!(dark.colors.muted.as_deref(), Some("#30302B"));
         let light = &set.themes[0].colors;
         assert_eq!(light.muted.as_deref(), Some("#E6E0D4"));

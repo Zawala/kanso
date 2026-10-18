@@ -70,6 +70,9 @@ pub struct Sidebar {
     all_tags: bool,
     /// Collapsed to the icon rail.
     collapsed: bool,
+    /// Settings fill the window beside the sidebar: the gear is the place
+    /// shown, not the filter.
+    settings_open: bool,
     user: SharedString,
     _tick: Task<()>,
 }
@@ -109,6 +112,7 @@ impl Sidebar {
             status_filter: false,
             all_tags: false,
             collapsed: false,
+            settings_open: false,
             user: user.into(),
             _tick: tick,
         }
@@ -118,6 +122,13 @@ impl Sidebar {
     pub fn set_collapsed(&mut self, collapsed: bool, cx: &mut Context<Self>) {
         if self.collapsed != collapsed {
             self.collapsed = collapsed;
+            cx.notify();
+        }
+    }
+
+    pub fn set_settings_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        if self.settings_open != open {
+            self.settings_open = open;
             cx.notify();
         }
     }
@@ -148,6 +159,12 @@ impl Sidebar {
         }
     }
 
+    /// Whether the gear shows as the place on screen.
+    #[cfg(test)]
+    pub fn settings_open_for_test(&self) -> bool {
+        self.settings_open
+    }
+
     fn row(
         &self,
         id: impl Into<ElementId>,
@@ -161,7 +178,7 @@ impl Sidebar {
             count,
             depth,
         } = entry;
-        let selected = self.library.read(cx).filter == filter;
+        let selected = !self.settings_open && self.library.read(cx).filter == filter;
         let colors = Colors::get(cx);
         let library = self.library.clone();
         div()
@@ -290,7 +307,7 @@ impl Sidebar {
             let view = cx.entity();
             let library = self.library.clone();
             let filter = Filter::Tag(id.clone());
-            let selected = self.library.read(cx).filter == filter;
+            let selected = !self.settings_open && self.library.read(cx).filter == filter;
             let tag_id = id.clone();
             div()
                 .id(SharedString::from(format!("tag-{id}")))
@@ -561,12 +578,20 @@ impl Sidebar {
                     .size(px(24.))
                     .rounded(px(6.))
                     .cursor_pointer()
-                    .hover(|el| el.bg(colors.sidebar_hover))
-                    .child(
-                        Icon::new(IconName::Settings)
-                            .size(px(15.))
-                            .text_color(colors.text_secondary),
-                    )
+                    .map(|el| {
+                        if self.settings_open {
+                            el.bg(colors.sidebar_active)
+                        } else {
+                            el.hover(|el| el.bg(colors.sidebar_hover))
+                        }
+                    })
+                    .child(Icon::new(IconName::Settings).size(px(15.)).text_color(
+                        if self.settings_open {
+                            colors.text
+                        } else {
+                            colors.text_secondary
+                        },
+                    ))
                     .tooltip(|window, cx| Tooltip::new("Settings (⌘,)").build(window, cx))
                     .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx)),
             )
@@ -625,7 +650,7 @@ impl Sidebar {
         filter: Filter,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        let active = self.library.read(cx).filter == filter;
+        let active = !self.settings_open && self.library.read(cx).filter == filter;
         let library = self.library.clone();
         self.rail_button(id, icon, label, None, active, cx)
             .on_click(move |_, _, cx| {
@@ -661,7 +686,7 @@ impl Sidebar {
                 Lucide::Notebook,
                 "Notebooks",
                 None,
-                matches!(filter, Filter::Book(_)),
+                !self.settings_open && matches!(filter, Filter::Book(_)),
                 cx,
             )
             .on_click(cx.listener(|_, _, _, cx| cx.emit(SidebarEvent::GoToNotebook)));
@@ -707,7 +732,7 @@ impl Sidebar {
                 IconName::Settings,
                 "Settings",
                 Some(Box::new(OpenSettings)),
-                false,
+                self.settings_open,
                 cx,
             )
             .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx));
@@ -986,7 +1011,7 @@ pub enum Tone {
     Warning,
 }
 
-fn tone_color(tone: Tone, colors: &Colors) -> Rgb {
+pub(crate) fn tone_color(tone: Tone, colors: &Colors) -> Rgb {
     match tone {
         Tone::Good => colors.success,
         Tone::Busy => colors.accent,

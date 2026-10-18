@@ -264,6 +264,17 @@ impl NoteList {
         (self.layout.grouped.rows.len(), start.elapsed())
     }
 
+    /// How far the list is scrolled.
+    #[cfg(test)]
+    pub(crate) fn scroll_offset(&self) -> Point<Pixels> {
+        self.scroll.base_handle().offset()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_scroll_offset(&self, offset: Point<Pixels>) {
+        self.scroll.base_handle().set_offset(offset);
+    }
+
     /// Scrolls the note asked for into view, with its date header when it
     /// is the first under one and the list moves up to it.
     fn scroll_to_pending(&mut self, cx: &App) {

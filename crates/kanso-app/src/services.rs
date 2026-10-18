@@ -39,10 +39,23 @@ pub enum SyncState {
     Failed(String),
 }
 
+/// Whether a sync access token is in the Keychain. The token itself never
+/// stays in memory here, only its masked form.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum TokenState {
+    /// Not looked up yet.
+    #[default]
+    Unknown,
+    Missing,
+    /// Saved; what Settings shows of it (see [`crate::settings::mask_secret`]).
+    Saved(String),
+}
+
 #[derive(Default)]
 pub struct Services {
     pub api: ApiState,
     pub sync: SyncState,
+    pub sync_token: TokenState,
     server: Option<ServerHandle>,
     port_retry: Option<Task<()>>,
     sync_tasks: Vec<Task<()>>,
@@ -271,10 +284,47 @@ pub fn sync_now(cx: &mut App) {
     .detach();
 }
 
-/// Keeps the sync access token in the Keychain.
-pub fn save_sync_token(token: &str) -> anyhow::Result<()> {
-    kanso_sync::credentials::save_token(token.trim())?;
+/// Keeps the sync access token in the Keychain, and notes that it's there.
+pub fn save_sync_token(token: &str, cx: &mut App) -> anyhow::Result<()> {
+    let token = token.trim();
+    kanso_sync::credentials::save_token(token)?;
+    cx.global_mut::<Services>().sync_token = TokenState::Saved(crate::settings::mask_secret(token));
+    cx.refresh_windows();
     Ok(())
+}
+
+/// Takes the sync access token out of the Keychain; sync stops asking the
+/// server until a new one is set.
+pub fn remove_sync_token(cx: &mut App) -> anyhow::Result<()> {
+    kanso_sync::credentials::delete_token()?;
+    cx.global_mut::<Services>().sync_token = TokenState::Missing;
+    cx.refresh_windows();
+    Ok(())
+}
+
+/// Looks up whether a sync access token is saved, off the main thread, so
+/// Settings can say so. Only the app calls this: reading the Keychain can
+/// make macOS ask for permission.
+pub fn load_sync_token(cx: &mut App) {
+    let lookup = cx.background_spawn(async move {
+        kanso_sync::credentials::load_token()
+            .map(|token| match token {
+                Some(token) => TokenState::Saved(crate::settings::mask_secret(&token)),
+                None => TokenState::Missing,
+            })
+            .map_err(|err| err.to_string())
+    });
+    cx.spawn(async move |cx| {
+        let state = lookup.await;
+        cx.update(|cx| match state {
+            Ok(state) => {
+                cx.global_mut::<Services>().sync_token = state;
+                cx.refresh_windows();
+            }
+            Err(err) => eprintln!("kanso: couldn't look up the sync token: {err}"),
+        });
+    })
+    .detach();
 }
 
 #[cfg(test)]
