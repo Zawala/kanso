@@ -3,6 +3,12 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## [0.1.1](https://github.com/iamngoni/kanso/compare/v0.1.0...v0.1.1) - 2026-10-19
+
+### Fixed
+
+- **release:** Brace variables before an ellipsis in release.sh ([6f819da](https://github.com/iamngoni/kanso/commit/6f819da6a4ae2585478dad4c27d0eceb4c308ab8))
+
 ## [0.1.0](https://github.com/iamngoni/kanso/commits/v0.1.0) - 2026-10-19
 
 The first release: a calm, local-first Markdown notes app that replaces
