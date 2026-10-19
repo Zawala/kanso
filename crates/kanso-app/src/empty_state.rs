@@ -43,7 +43,7 @@ impl EmptyNotebook {
     /// The words for a library with no notes at all, as on first run.
     pub fn first_run(self) -> Self {
         EmptyNotebook {
-            message: "Create your first note, or bring your notes over from Inkdrop.",
+            message: "Create your first note, or import your notes.",
             first_run: true,
             ..self
         }

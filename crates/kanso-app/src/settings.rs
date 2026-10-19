@@ -290,17 +290,17 @@ pub fn api_status_line(state: &ApiState) -> StatusLine {
         ApiState::Off => (
             Tone::Quiet,
             "Off".to_owned(),
-            "Turn it on to let Inkdrop's clients and local agents reach your notes.".to_owned(),
+            "Turn it on to let local agents and other clients reach your notes.".to_owned(),
         ),
         ApiState::Running(addr) => (
             Tone::Good,
             "Running".to_owned(),
-            format!("Listening on {addr}. Clients set up for Inkdrop work unchanged."),
+            format!("Listening on {addr}. Compatible clients and MCP servers can connect."),
         ),
         ApiState::PortInUse(port) => (
             Tone::Warning,
             format!("Port {port} is in use"),
-            "Quit Inkdrop to free it, or choose another port below. Kanso keeps trying.".to_owned(),
+            "Quit the app using it, or choose another port below. Kanso keeps trying.".to_owned(),
         ),
         ApiState::Failed(reason) => {
             let reason = reason.to_lowercase();
@@ -1095,7 +1095,7 @@ fn api_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
             "Server",
             vec![
                 Row::new(Lucide::Plug, "Enable the local API")
-                    .detail("Inkdrop's MCP server (@inkdropapp/mcp-server) and other Inkdrop API clients work unchanged.")
+                    .detail("REST and MCP for local agents. It speaks the same API as Inkdrop's local server, so clients written for that work too.")
                     .trailing(Switch::new("api-enabled").checked(server.enabled).on_click(
                         |on, _, cx| {
                             let on = *on;
@@ -1116,7 +1116,7 @@ fn api_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                         .into_any_element(),
                     ]),
                 Row::new(Lucide::Hash, "Port")
-                    .detail("Inkdrop's is 19840; quit Inkdrop first to use the same one.")
+                    .detail("19840 by default. Only one app can listen on a port at a time.")
                     .trailing_all(vec![
                         value_text(server.port.to_string(), colors).into_any_element(),
                         change_button(
@@ -1152,13 +1152,13 @@ fn api_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                     .into_any_element(),
                 ]),
                 Row::new(Lucide::KeyRound, "Password").trailing_all(password_controls),
-                Row::new(Lucide::Copy, "Inkdrop's settings")
-                    .detail("Lets clients set up for Inkdrop keep their URL and credentials.")
+                Row::new(Lucide::Copy, "Settings from Inkdrop")
+                    .detail("Takes Inkdrop's port, username and password, so clients already set up for it keep working.")
                     .trailing(
                         Button::new("copy-inkdrop")
                             .outline()
                             .small()
-                            .label("Copy from Inkdrop…")
+                            .label("Use settings from Inkdrop…")
                             .on_click(|_, window, cx| copy_from_inkdrop(window, cx)),
                     ),
             ],
@@ -1874,7 +1874,7 @@ mod tests {
         assert!(running.detail.contains("http://127.0.0.1:19840"));
         let taken = api_status_line(&ApiState::PortInUse(19840));
         assert_eq!(taken.label, "Port 19840 is in use");
-        assert!(taken.detail.starts_with("Quit Inkdrop to free it"));
+        assert!(taken.detail.starts_with("Quit the app using it"));
         assert_eq!(api_status_line(&ApiState::Off).tone, Tone::Quiet);
         let unset = api_status_line(&ApiState::Failed(
             "set a username and password first".into(),
@@ -2115,7 +2115,7 @@ mod tests {
         fn prop_api_status_reads_plainly(port in 1024u16.., addr in "http://127\\.0\\.0\\.1:[0-9]{4,5}", reason in "zq[a-z0-9 :._-]{0,40}") {
             let taken = api_status_line(&ApiState::PortInUse(port));
             prop_assert!(taken.label.contains(&port.to_string()));
-            prop_assert!(taken.detail.contains("Quit Inkdrop"));
+            prop_assert!(taken.detail.contains("Quit the app using it"));
             prop_assert_eq!(taken.tone, Tone::Warning);
             let running = api_status_line(&ApiState::Running(addr.clone()));
             prop_assert!(running.detail.contains(&addr));

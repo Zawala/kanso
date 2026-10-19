@@ -245,7 +245,7 @@ impl Services {
             ApiState::Off => "API off".into(),
             ApiState::Running(addr) => format!("API on {addr}"),
             ApiState::PortInUse(port) => {
-                format!("API off: port {port} is in use (quit Inkdrop to free it)")
+                format!("API off: port {port} is in use by another app")
             }
             ApiState::Failed(reason) => format!("API off: {reason}"),
         }
