@@ -349,14 +349,24 @@ fn strip_inline(text: &str) -> String {
                 out.push(c);
             }
             '[' => {
-                // [[wiki link]]
+                // [[wiki link]]: what it reads as in the preview, its
+                // alias or its title (and heading).
                 if chars.get(i + 1) == Some(&'[')
                     && let Some(close) = find(&chars, i + 2, &[']', ']'])
                 {
+                    let inner: String = chars[i + 2..close].iter().collect();
+                    let shown = match crate::links::parse_target(&inner) {
+                        Some((title, heading, alias)) => crate::links::WikiLink {
+                            range: 0..0,
+                            title,
+                            heading,
+                            alias,
+                        }
+                        .label(),
+                        None => inner,
+                    };
                     out.push(REMOVED);
-                    out.push_str(&strip_inline(
-                        &chars[i + 2..close].iter().collect::<String>(),
-                    ));
+                    out.push_str(&strip_inline(&shown));
                     out.push(REMOVED);
                     i = close + 2;
                     continue;
@@ -572,6 +582,16 @@ mod tests {
         );
         assert_eq!(excerpt("x", "a `b` c and x`y`z"), "a b c and x y z");
         assert_eq!(excerpt("x", "see [[Other note]]."), "see Other note.");
+        // A wiki-link reads as its alias, else its title and heading.
+        assert_eq!(
+            excerpt("x", "within its [[MCP support model#Goals|goals]]."),
+            "within its goals."
+        );
+        assert_eq!(
+            excerpt("x", "see [[MCP support model#Goals]]"),
+            "see MCP support model › Goals"
+        );
+        assert_eq!(excerpt("x", "see [[Plan | ]] now"), "see Plan now");
         // Closing the gap would make a link; it stays open.
         assert_eq!(strip_inline("[a`]`(b)"), "[a] (b)");
     }
@@ -725,6 +745,39 @@ mod tests {
             prop_assert_eq!(text.trim(), text.as_str());
             prop_assert!(!text.contains("  "));
             prop_assert!(!text.ends_with('·'));
+        }
+
+        /// Invariant: a wiki-link shows as words, never as `[[`, `]]`, or
+        /// its `#heading` and `|alias` syntax; an alias stands in for the
+        /// title.
+        #[test]
+        fn prop_wiki_links_read_as_their_label(
+            before in prop::collection::vec(gen_word(), 0..4),
+            title in prop::collection::vec(gen_word(), 1..3),
+            heading in prop::option::of(gen_word()),
+            alias in prop::option::of(gen_word()),
+            after in prop::collection::vec(gen_word(), 0..4),
+        ) {
+            let title = title.join(" ");
+            let mut inner = title.clone();
+            if let Some(heading) = &heading {
+                inner.push('#');
+                inner.push_str(heading);
+            }
+            if let Some(alias) = &alias {
+                inner.push('|');
+                inner.push_str(alias);
+            }
+            let body = format!("{} [[{inner}]] {}", before.join(" "), after.join(" "));
+            let text = excerpt("", &body);
+            prop_assert!(!text.contains("[[") && !text.contains("]]"), "{}", text);
+            prop_assert!(!text.contains('#') && !text.contains('|'), "{}", text);
+            let shown = match (&alias, &heading) {
+                (Some(alias), _) => alias.clone(),
+                (None, Some(heading)) => format!("{title} › {heading}"),
+                (None, None) => title.clone(),
+            };
+            prop_assert!(text.contains(&shown), "{} lacks {}", text, shown);
         }
 
         /// Metamorphic: a first heading repeating the title adds nothing.
