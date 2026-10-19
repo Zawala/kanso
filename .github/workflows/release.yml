@@ -37,18 +37,18 @@ jobs:
       matrix:
         include:
           - name: macos-arm64
-            os: macos-14
+            os: [self-hosted, macOS, ARM64]
             target: aarch64-apple-darwin
           - name: windows-x64
-            os: windows-latest
+            os: [self-hosted, Windows, X64]
             target: x86_64-pc-windows-msvc
-          # Ubuntu 22.04's older glibc lets the Linux builds run on more
-          # distributions than a build on 24.04 would.
+          # Every job runs on the owner's self-hosted runners. The Linux
+          # runners' glibc sets the oldest distribution the builds run on.
           - name: linux-x64
-            os: ubuntu-22.04
+            os: [self-hosted, Linux, X64]
             target: x86_64-unknown-linux-gnu
           - name: linux-arm64
-            os: ubuntu-22.04-arm
+            os: [self-hosted, Linux, ARM64]
             target: aarch64-unknown-linux-gnu
     defaults:
       run:
@@ -208,7 +208,7 @@ jobs:
     name: Checksums
     if: github.ref_type != 'tag'
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux]
     steps:
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
@@ -234,7 +234,7 @@ jobs:
     name: Signed update feed
     if: github.ref_type == 'tag'
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux]
     environment: release
     permissions:
       contents: read
@@ -302,7 +302,7 @@ jobs:
   publish:
     name: Draft release
     needs: [build, feed]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux]
     permissions:
       contents: write
     steps:

@@ -41,11 +41,17 @@ jobs:
   # need macOS's fonts and text system.
   portability:
     name: clippy (${{ matrix.os }})
+    # Self-hosted, so never for a fork's pull request.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          - os: linux-x64
+            runner: [self-hosted, Linux, X64]
+          - os: windows-x64
+            runner: [self-hosted, Windows, X64]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: rustup show active-toolchain || rustup toolchain install
