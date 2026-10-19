@@ -733,18 +733,18 @@ fn a_conflicted_note_opens_from_the_sync_page(cx: &mut TestAppContext) {
 /// The readable width can be turned off, for the editor at once and in the
 /// settings file.
 #[gpui_kit::test]
-fn the_readable_width_can_be_turned_off(cx: &mut TestAppContext) {
+fn the_readable_width_can_be_turned_on(cx: &mut TestAppContext) {
     let f = setup(cx);
     f.dispatch(cx, Box::new(OpenEditorSettings));
     let editor = cx.read(|cx| f.workspace.read(cx).editor.clone());
-    assert!(cx.read(|cx| editor.read(cx).readable_width));
-    f.click(cx, "readable-width");
     assert!(!cx.read(|cx| editor.read(cx).readable_width));
+    f.click(cx, "readable-width");
+    assert!(cx.read(|cx| editor.read(cx).readable_width));
     let saved = cx.read(|cx| {
         let state = cx.global::<AppState>();
         AppConfig::load(&crate::paths::config_path(&state.data_dir)).unwrap()
     });
-    assert!(!saved.appearance.readable_width);
+    assert!(saved.appearance.readable_width);
 }
 
 impl Fixture {

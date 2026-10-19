@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use gpui_kit::base::text::{TextView, TextViewStyle};
 use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_store::Store;
 
@@ -43,6 +44,9 @@ pub struct Preview {
     images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>>,
     links: LinkSender,
     scroll: ScrollHandle,
+    /// Whether text keeps to the readable measure (the setting), or fills
+    /// the pane.
+    readable: bool,
 }
 
 impl Preview {
@@ -53,12 +57,21 @@ impl Preview {
             images: Arc::default(),
             links,
             scroll: ScrollHandle::new(),
+            readable: false,
         }
     }
 
     pub fn set_text(&mut self, text: SharedString, cx: &mut Context<Self>) {
         if self.text != text {
             self.text = text;
+            cx.notify();
+        }
+    }
+
+    /// Keeps text to the readable measure, or lets it fill the pane.
+    pub fn set_readable(&mut self, readable: bool, cx: &mut Context<Self>) {
+        if self.readable != readable {
+            self.readable = readable;
             cx.notify();
         }
     }
@@ -175,7 +188,9 @@ impl Render for Preview {
             .child(
                 div()
                     .w_full()
-                    .max_w(px(readable_width(TEXT_SIZE, false)))
+                    .when(self.readable, |el| {
+                        el.max_w(px(readable_width(TEXT_SIZE, false)))
+                    })
                     .child(
                         TextView::markdown("preview-text", self.text.clone())
                             .style(text_style(colors, dark))

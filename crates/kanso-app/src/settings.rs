@@ -945,7 +945,7 @@ fn editor_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                     ),
                 ),
             Row::new(Lucide::Ruler, "Readable width")
-                .detail("Keeps lines to a comfortable length; off lets text fill the pane.")
+                .detail("Keeps lines to a comfortable length in the editor and the preview; off lets text fill the pane.")
                 .trailing(
                     div().debug_selector(|| "readable-width".into()).child(
                         Switch::new("readable-width")

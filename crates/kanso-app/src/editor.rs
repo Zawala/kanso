@@ -1699,6 +1699,9 @@ impl Render for NoteEditor {
                             .line_height(relative(BODY_LINE_HEIGHT)),
                     ),
             );
+        let readable = self.readable_width;
+        self.preview
+            .update(cx, |preview, cx| preview.set_readable(readable, cx));
         let preview = div()
             .flex_1()
             .h_full()

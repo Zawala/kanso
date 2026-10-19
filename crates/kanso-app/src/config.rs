@@ -173,7 +173,7 @@ impl Default for Appearance {
             editor_font: EditorFont::Auto,
             editor_font_size: DEFAULT_FONT_SIZE,
             line_numbers: true,
-            readable_width: true,
+            readable_width: false,
             view_mode: ViewMode::Split,
             show_sidebar: true,
         }
@@ -650,10 +650,10 @@ mod tests {
         assert_eq!(config.server.port, 1234);
         assert_eq!(config.server.bind_address, "127.0.0.1");
         assert_eq!(config.appearance.view_mode, ViewMode::Split);
-        // Files from before the setting keep their line numbers, and their
-        // text to its readable measure.
+        // Files from before the setting keep their line numbers; text fills
+        // the pane unless the readable measure is turned on.
         assert!(config.appearance.line_numbers);
-        assert!(config.appearance.readable_width);
+        assert!(!config.appearance.readable_width);
         assert!(config.ensure_credentials());
         assert!(!config.ensure_credentials());
         config.save(&path).unwrap();
