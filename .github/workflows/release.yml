@@ -28,6 +28,10 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    # The Developer ID certificate and the notarization key are secrets of
+    # the `release` environment (v* tags only), so only a tagged macOS build
+    # sees them; every other build stays ad hoc.
+    environment: ${{ (matrix.name == 'macos-arm64' && github.ref_type == 'tag') && 'release' || '' }}
     strategy:
       fail-fast: false
       matrix:

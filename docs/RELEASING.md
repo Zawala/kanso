@@ -199,8 +199,8 @@ choose File › Export Items…, save as `DeveloperID.p12` and set a password.
 Then:
 
 ```sh
-base64 -i DeveloperID.p12 | gh secret set MACOS_CERT_P12_BASE64 --repo iamngoni/kanso
-gh secret set MACOS_CERT_PASSWORD --repo iamngoni/kanso   # paste the password
+base64 -i DeveloperID.p12 | gh secret set MACOS_CERT_P12_BASE64 --repo iamngoni/kanso --env release
+gh secret set MACOS_CERT_PASSWORD --repo iamngoni/kanso --env release   # paste the password
 rm DeveloperID.p12
 ```
 
@@ -212,9 +212,9 @@ Note the **Key ID** beside it and the **Issuer ID** above the list, and
 download `AuthKey_<KEYID>.p8` (Apple lets you download it once). Then:
 
 ```sh
-base64 -i AuthKey_<KEYID>.p8 | gh secret set APPLE_API_KEY_P8_BASE64 --repo iamngoni/kanso
-gh secret set APPLE_API_KEY_ID --repo iamngoni/kanso --body <KEYID>
-gh secret set APPLE_API_ISSUER --repo iamngoni/kanso --body <issuer-uuid>
+base64 -i AuthKey_<KEYID>.p8 | gh secret set APPLE_API_KEY_P8_BASE64 --repo iamngoni/kanso --env release
+gh secret set APPLE_API_KEY_ID --repo iamngoni/kanso --env release --body <KEYID>
+gh secret set APPLE_API_ISSUER --repo iamngoni/kanso --env release --body <issuer-uuid>
 ```
 
 Keep the `.p8` in the password manager and delete the download. The
