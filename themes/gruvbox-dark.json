@@ -1,0 +1,108 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Gruvbox Dark",
+  "author": "Pavel Pertsev (morhetz)",
+  "license": "MIT",
+  "source": "https://github.com/morhetz/gruvbox",
+  "description": "Morhetz's Gruvbox, dark: the retro groove palette, warm and high in character.",
+  "appearance": "dark",
+  "ui": {
+    "editor": "#282828",
+    "text": "#EBDBB2",
+    "accent": "#FE8019",
+    "app": "#1D2021",
+    "sidebar": "#1D2021",
+    "list": "#222424",
+    "elevated": "#3C3836",
+    "fill": "#3C3836",
+    "text_secondary": "#BDAE93",
+    "text_muted": "#928374",
+    "divider": "#3C3836",
+    "link": "#8BA99A",
+    "row_active": "#3C3836",
+    "row_hover": "#2F2E2D",
+    "sidebar_active": "#3C3836",
+    "sidebar_hover": "#2C2C2C",
+    "hover": "#504945",
+    "selected": "#504945",
+    "active_line": "#3C3836",
+    "button": "#FE8019",
+    "button_text": "#282828",
+    "success": "#B8BB26",
+    "warning": "#FABD2F",
+    "danger": "#FB4934",
+    "selection": "#665C54",
+    "caret": "#EBDBB2"
+  },
+  "syntax": {
+    "text": "#EBDBB2",
+    "heading": {
+      "color": "#B8BB26",
+      "font_weight": 700
+    },
+    "block_marker": "#FE8019",
+    "marker": "#928374",
+    "list_marker": "#928374",
+    "task": "#928374",
+    "hr": "#928374",
+    "quote": {
+      "color": "#928374",
+      "font_style": "italic"
+    },
+    "link": "#83A598",
+    "url": "#D3869B",
+    "code": "#8EC07C",
+    "code_block": "#8EC07C",
+    "emphasis": {
+      "color": "#BDAE93",
+      "font_style": "italic"
+    },
+    "strong": {
+      "font_weight": 700
+    },
+    "front_matter": "#928374",
+    "html": "#8EC07C",
+    "escape": "#FE8019",
+    "comment": {
+      "color": "#928374",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#928374",
+      "font_style": "italic"
+    },
+    "keyword": "#FB4934",
+    "string": "#B8BB26",
+    "string_special": "#FE8019",
+    "function": {
+      "color": "#B8BB26",
+      "font_weight": 700
+    },
+    "type": "#FABD2F",
+    "type_constructor": "#8EC07C",
+    "number": "#D3869B",
+    "boolean": "#D3869B",
+    "constant": "#D3869B",
+    "variable": "#EBDBB2",
+    "variable_special": "#FE8019",
+    "property": "#83A598",
+    "attribute": "#8EC07C",
+    "tag": "#8EC07C",
+    "label": "#FB4934",
+    "operator": "#EBDBB2",
+    "punctuation": "#A89984",
+    "bracket": "#A89984",
+    "embedded": "#EBDBB2"
+  },
+  "preview": {
+    "heading": "#B8BB26",
+    "link": "#83A598",
+    "quote": "#9B8C7A",
+    "border": "#504945",
+    "code_background": "#32302F",
+    "inline_code_background": "#3C3836",
+    "inline_code_text": "#8EC07C",
+    "selection": "#665C54"
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Rosé Pine Dawn",
+  "author": "Rosé Pine",
+  "license": "MIT",
+  "source": "https://github.com/rose-pine/rose-pine-theme",
+  "description": "Rosé Pine Dawn: the light variant, a soft morning of rose and pine.",
+  "appearance": "light",
+  "ui": {
+    "editor": "#FAF4ED",
+    "text": "#464261",
+    "accent": "#D7827E",
+    "app": "#F8F0E7",
+    "sidebar": "#F2E9E1",
+    "list": "#F8F0E7",
+    "elevated": "#FFFAF3",
+    "fill": "#F2E9E1",
+    "text_secondary": "#797593",
+    "text_muted": "#888397",
+    "divider": "#DFDAD9",
+    "link": "#766690",
+    "row_active": "#DFDAD9",
+    "row_hover": "#F4EDE8",
+    "sidebar_active": "#DFDAD9",
+    "sidebar_hover": "#EAE3DE",
+    "hover": "#F4EDE8",
+    "selected": "#DFDAD9",
+    "active_line": "#F4EDE8",
+    "button": "#A1625E",
+    "button_text": "#FFFAF3",
+    "success": "#286983",
+    "warning": "#AC7B45",
+    "danger": "#B4637A",
+    "selection": "#DFDAD9",
+    "caret": "#C1787A"
+  },
+  "syntax": {
+    "text": "#464261",
+    "heading": {
+      "color": "#907AA9",
+      "font_weight": 700
+    },
+    "block_marker": "#907AA9",
+    "marker": "#797593",
+    "list_marker": "#286983",
+    "task": "#56949F",
+    "hr": "#908B9E",
+    "quote": {
+      "color": "#797593",
+      "font_style": "italic"
+    },
+    "link": "#56949F",
+    "url": "#907AA9",
+    "code": "#B98242",
+    "code_block": "#B98242",
+    "emphasis": {
+      "font_style": "italic"
+    },
+    "strong": {
+      "font_weight": 700
+    },
+    "front_matter": "#797593",
+    "html": "#56949F",
+    "escape": "#286983",
+    "comment": {
+      "color": "#797593",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#797593",
+      "font_style": "italic"
+    },
+    "keyword": "#286983",
+    "string": "#B98242",
+    "string_special": "#907AA9",
+    "function": "#C1787A",
+    "type": "#56949F",
+    "type_constructor": "#56949F",
+    "number": "#B98242",
+    "boolean": "#C1787A",
+    "constant": "#B98242",
+    "variable": "#464261",
+    "variable_special": "#B4637A",
+    "property": "#56949F",
+    "attribute": "#907AA9",
+    "tag": "#56949F",
+    "label": "#56949F",
+    "operator": "#797593",
+    "punctuation": "#797593",
+    "bracket": "#797593",
+    "embedded": "#464261"
+  },
+  "preview": {
+    "heading": "#907AA9",
+    "link": "#7A6993",
+    "quote": "#716D8C",
+    "border": "#DFDAD9",
+    "code_background": "#FFFAF3",
+    "inline_code_background": "#F2E9E1",
+    "selection": "#DFDAD9"
+  }
+}

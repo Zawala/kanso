@@ -1,0 +1,104 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Catppuccin Mocha",
+  "author": "Catppuccin",
+  "license": "MIT",
+  "source": "https://github.com/catppuccin/catppuccin",
+  "description": "Catppuccin Mocha: the darkest, coziest of the soothing pastel flavors.",
+  "appearance": "dark",
+  "ui": {
+    "editor": "#1E1E2E",
+    "text": "#CDD6F4",
+    "accent": "#CBA6F7",
+    "app": "#11111B",
+    "sidebar": "#181825",
+    "list": "#1B1B2A",
+    "elevated": "#313244",
+    "fill": "#313244",
+    "text_secondary": "#A6ADC8",
+    "text_muted": "#7F849C",
+    "divider": "#313244",
+    "link": "#89B4FA",
+    "row_active": "#313244",
+    "row_hover": "#262637",
+    "sidebar_active": "#313244",
+    "sidebar_hover": "#242534",
+    "hover": "#45475A",
+    "selected": "#45475A",
+    "active_line": "#292A3B",
+    "button": "#CBA6F7",
+    "button_text": "#11111B",
+    "success": "#A6E3A1",
+    "warning": "#F9E2AF",
+    "danger": "#F38BA8",
+    "selection": "#9399B240",
+    "caret": "#F5E0DC"
+  },
+  "syntax": {
+    "text": "#CDD6F4",
+    "heading": {
+      "color": "#89B4FA",
+      "font_weight": 700
+    },
+    "block_marker": "#FAB387",
+    "marker": "#9399B2",
+    "list_marker": "#94E2D5",
+    "task": "#94E2D5",
+    "hr": "#7F849C",
+    "quote": {
+      "color": "#F5C2E7",
+      "font_style": "italic"
+    },
+    "link": "#B4BEFE",
+    "url": "#89B4FA",
+    "code": "#A6E3A1",
+    "code_block": "#A6E3A1",
+    "emphasis": {
+      "font_style": "italic"
+    },
+    "strong": {
+      "font_weight": 700
+    },
+    "front_matter": "#9399B2",
+    "html": "#89B4FA",
+    "escape": "#F5C2E7",
+    "comment": {
+      "color": "#9399B2",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#9399B2",
+      "font_style": "italic"
+    },
+    "keyword": "#CBA6F7",
+    "string": "#A6E3A1",
+    "string_special": "#F5C2E7",
+    "function": "#89B4FA",
+    "type": "#F9E2AF",
+    "type_constructor": "#74C7EC",
+    "number": "#FAB387",
+    "boolean": "#FAB387",
+    "constant": "#FAB387",
+    "variable": "#CDD6F4",
+    "variable_special": "#F38BA8",
+    "property": "#B4BEFE",
+    "attribute": "#F9E2AF",
+    "tag": "#89B4FA",
+    "label": "#74C7EC",
+    "operator": "#89DCEB",
+    "punctuation": "#9399B2",
+    "bracket": "#9399B2",
+    "embedded": "#CDD6F4"
+  },
+  "preview": {
+    "heading": "#89B4FA",
+    "link": "#89B4FA",
+    "quote": "#F5C2E7",
+    "border": "#45475A",
+    "code_background": "#181825",
+    "inline_code_background": "#313244",
+    "inline_code_text": "#A6E3A1",
+    "selection": "#9399B240"
+  }
+}

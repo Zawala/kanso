@@ -1,0 +1,103 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Kanagawa Lotus",
+  "author": "rebelot",
+  "license": "MIT",
+  "source": "https://github.com/rebelot/kanagawa.nvim",
+  "description": "Rebelot's Kanagawa, Lotus: the light variant on warm rice paper.",
+  "appearance": "light",
+  "ui": {
+    "editor": "#F2ECBC",
+    "text": "#545464",
+    "accent": "#4D699B",
+    "app": "#DCD5AC",
+    "sidebar": "#D5CEA3",
+    "list": "#E5DDB0",
+    "elevated": "#F2ECBC",
+    "fill": "#E7DBA0",
+    "text_secondary": "#716E61",
+    "text_muted": "#737274",
+    "divider": "#E4D794",
+    "link": "#506186",
+    "row_active": "#C9CBD1",
+    "row_hover": "#DCD5AC",
+    "sidebar_active": "#E7DBA0",
+    "sidebar_hover": "#DCD5AC",
+    "hover": "#E7DBA0",
+    "selected": "#C9CBD1",
+    "active_line": "#E7DBA0",
+    "button": "#4D699B",
+    "button_text": "#F2ECBC",
+    "success": "#667855",
+    "warning": "#A26423",
+    "danger": "#D9292A",
+    "selection": "#C9CBD1",
+    "caret": "#43436C"
+  },
+  "syntax": {
+    "text": "#545464",
+    "heading": {
+      "color": "#4D699B",
+      "font_weight": 700
+    },
+    "block_marker": "#4D699B",
+    "marker": "#4E8CA2",
+    "list_marker": "#638AB1",
+    "task": "#638AB1",
+    "hr": "#766B90",
+    "quote": {
+      "color": "#5D57A3",
+      "font_style": "italic"
+    },
+    "link": "#4D699B",
+    "url": "#638AB1",
+    "code": "#6F894E",
+    "code_block": "#6F894E",
+    "emphasis": {
+      "font_style": "italic"
+    },
+    "strong": {
+      "font_weight": 700
+    },
+    "front_matter": "#766B90",
+    "html": "#C84053",
+    "escape": "#836F4A",
+    "comment": {
+      "color": "#87867F",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#87867F",
+      "font_style": "italic"
+    },
+    "keyword": "#624C83",
+    "string": "#6F894E",
+    "string_special": "#836F4A",
+    "function": "#4D699B",
+    "type": "#597B75",
+    "type_constructor": "#638AB1",
+    "number": "#B35B79",
+    "boolean": "#CC6D00",
+    "constant": "#CC6D00",
+    "variable": "#545464",
+    "variable_special": "#C84053",
+    "property": "#77713F",
+    "attribute": "#CC6D00",
+    "tag": "#638AB1",
+    "label": "#624C83",
+    "operator": "#836F4A",
+    "punctuation": "#4E8CA2",
+    "bracket": "#4E8CA2",
+    "embedded": "#545464"
+  },
+  "preview": {
+    "heading": "#4D699B",
+    "link": "#4D699B",
+    "quote": "#5D57A3",
+    "border": "#E4D794",
+    "code_background": "#E7DBA0",
+    "inline_code_background": "#E7DBA0",
+    "selection": "#C9CBD1"
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Default Dark",
+  "author": "Takuya Matsuyama",
+  "license": "MIT",
+  "source": "https://github.com/inkdropapp/default-dark",
+  "description": "Inkdrop's default dark theme, imported from its palette.",
+  "appearance": "dark",
+  "ui": {
+    "editor": "#0A0A0A",
+    "text": "#DBDBDB",
+    "accent": "#61A6FA",
+    "app": "#0A0A0A",
+    "sidebar": "#171717",
+    "list": "#111111",
+    "elevated": "#171717",
+    "text_secondary": "#9D9D9D",
+    "text_muted": "#727272",
+    "divider": "#3F3F46",
+    "link": "#3C83F6",
+    "row_active": "#344256",
+    "row_hover": "#161616",
+    "sidebar_active": "#3C4B5C",
+    "hover": "#292929",
+    "active_line": "#17191C",
+    "button": "#61A6FA",
+    "button_text": "#131922",
+    "success": "#4ADE80",
+    "warning": "#FACC14",
+    "danger": "#F87272",
+    "selection": "#A689FA4D",
+    "caret": "#A689FA"
+  },
+  "syntax": {
+    "text": "#D1D5DB",
+    "heading": {
+      "color": "#F471B5",
+      "font_weight": 700
+    },
+    "block_marker": "#9CA3B0",
+    "marker": "#9CA3B0",
+    "list_marker": "#6467F2",
+    "hr": "#F471B5",
+    "quote": {
+      "color": "#9CA3B0",
+      "font_style": "italic"
+    },
+    "link": "#14B8A5",
+    "url": "#14B8A5",
+    "code": "#D1D5DB",
+    "code_block": "#D1D5DB",
+    "emphasis": {
+      "color": "#D1D5DB",
+      "font_style": "italic"
+    },
+    "strong": {
+      "color": "#D1D5DB",
+      "font_weight": 700
+    },
+    "front_matter": "#9CA3B0",
+    "html": "#61A6FA",
+    "comment": {
+      "color": "#9CA3B0",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#9CA3B0",
+      "font_style": "italic"
+    },
+    "keyword": "#A689FA",
+    "string": "#36D399",
+    "string_special": "#36D399",
+    "function": "#67E8F9",
+    "type": "#F471B5",
+    "number": "#61A6FA",
+    "boolean": "#61A6FA",
+    "constant": "#61A6FA",
+    "variable": "#D1D5DB",
+    "variable_special": "#D1D5DB",
+    "property": "#D1D5DB",
+    "attribute": "#67E8F9",
+    "tag": "#61A6FA",
+    "label": "#F471B5",
+    "operator": "#A689FA",
+    "punctuation": "#61A6FA",
+    "bracket": "#61A6FA"
+  },
+  "preview": {
+    "text": "#DBDBDB",
+    "heading": "#DBDBDB",
+    "link": "#3C83F6",
+    "quote": "#9A9A9A",
+    "border": "#3F3F46",
+    "code_background": "#151515",
+    "code_text": "#DCDCDC",
+    "inline_code_background": "#1D1D1D",
+    "inline_code_text": "#DDDDDD",
+    "table_header_background": "#2F2F2F"
+  }
+}

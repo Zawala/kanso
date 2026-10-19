@@ -1,0 +1,305 @@
+{
+  "schema_version": 1,
+  "themes": [
+    {
+      "file": "catppuccin-latte.json",
+      "name": "Catppuccin Latte",
+      "author": "Catppuccin",
+      "license": "MIT",
+      "source": "https://github.com/catppuccin/catppuccin",
+      "appearance": "light",
+      "colors": {
+        "editor": "#EFF1F5",
+        "text": "#4C4F69",
+        "accent": "#8839EF",
+        "sidebar": "#DCE0E8",
+        "list": "#EAEDF2"
+      }
+    },
+    {
+      "file": "catppuccin-mocha.json",
+      "name": "Catppuccin Mocha",
+      "author": "Catppuccin",
+      "license": "MIT",
+      "source": "https://github.com/catppuccin/catppuccin",
+      "appearance": "dark",
+      "colors": {
+        "editor": "#1E1E2E",
+        "text": "#CDD6F4",
+        "accent": "#CBA6F7",
+        "sidebar": "#181825",
+        "list": "#1B1B2A"
+      }
+    },
+    {
+      "file": "default-dark.json",
+      "name": "Default Dark",
+      "author": "Takuya Matsuyama",
+      "license": "MIT",
+      "source": "https://github.com/inkdropapp/default-dark",
+      "appearance": "dark",
+      "colors": {
+        "editor": "#0A0A0A",
+        "text": "#DBDBDB",
+        "accent": "#61A6FA",
+        "sidebar": "#171717",
+        "list": "#111111"
+      }
+    },
+    {
+      "file": "default-light.json",
+      "name": "Default Light",
+      "author": "Takuya Matsuyama",
+      "license": "MIT",
+      "source": "https://github.com/inkdropapp/default-light",
+      "appearance": "light",
+      "colors": {
+        "editor": "#FFFFFF",
+        "text": "#212121",
+        "accent": "#3C83F6",
+        "sidebar": "#F3F4F6",
+        "list": "#FAFAF9"
+      }
+    },
+    {
+      "file": "dracula.json",
+      "name": "Dracula",
+      "author": "Zeno Rocha",
+      "license": "MIT",
+      "source": "https://github.com/dracula/dracula-theme",
+      "appearance": "dark",
+      "colors": {
+        "editor": "#282A36",
+        "text": "#F8F8F2",
+        "accent": "#BD93F9",
+        "sidebar": "#21222C",
+        "list": "#242631"
+      }
+    },
+    {
+      "file": "github-dark.json",
+      "name": "GitHub Dark",
+      "author": "GitHub",
+      "license": "MIT",
+      "source": "https://github.com/primer/github-vscode-theme",
+      "appearance": "dark",
+      "colors": {
+        "editor": "#0D1117",
+        "text": "#E6EDF3",
+        "accent": "#2F81F7",
+        "sidebar": "#010409",
+        "list": "#0D1117"
+      }
+    },
+    {
+      "file": "github-light.json",
+      "name": "GitHub Light",
+      "author": "GitHub",
+      "license": "MIT",
+      "source": "https://github.com/primer/github-vscode-theme",
+      "appearance": "light",
+      "colors": {
+        "editor": "#FFFFFF",
+        "text": "#1F2328",
+        "accent": "#0969DA",
+        "sidebar": "#F6F8FA",
+        "list": "#FFFFFF"
+      }
+    },
+    {
+      "file": "gruvbox-dark.json",
+      "name": "Gruvbox Dark",
+      "author": "Pavel Pertsev (morhetz)",
+      "license": "MIT",
+      "source": "https://github.com/morhetz/gruvbox",
+      "appearance": "dark",
+      "colors": {
+        "editor": "#282828",
+        "text": "#EBDBB2",
+        "accent": "#FE8019",
+        "sidebar": "#1D2021",
+        "list": "#222424"
+      }
+    },
+    {
+      "file": "gruvbox-light.json",
+      "name": "Gruvbox Light",
+      "author": "Pavel Pertsev (morhetz)",
+      "license": "MIT",
+      "source": "https://github.com/morhetz/gruvbox",
+      "appearance": "light",
+      "colors": {
+        "editor": "#FBF1C7",
+        "text": "#3C3836",
+        "accent": "#AF3A03",
+        "sidebar": "#EBDBB2",
+        "list": "#F2E5BC"
+      }
+    },
+    {
+      "file": "kanagawa-dragon.json",
+      "name": "Kanagawa Dragon",
+      "author": "rebelot",
+      "license": "MIT",
+      "source": "https://github.com/rebelot/kanagawa.nvim",
+      "appearance": "dark",
+      "colors": {
+        "editor": "#181616",
+        "text": "#C5C9C5",
+        "accent": "#8BA4B0",
+        "sidebar": "#12120F",
+        "list": "#151412"
+      }
+    },
+    {
+      "file": "kanagawa-lotus.json",
+      "name": "Kanagawa Lotus",
+      "author": "rebelot",
+      "license": "MIT",
+      "source": "https://github.com/rebelot/kanagawa.nvim",
+      "appearance": "light",
+      "colors": {
+        "editor": "#F2ECBC",
+        "text": "#545464",
+        "accent": "#4D699B",
+        "sidebar": "#D5CEA3",
+        "list": "#E5DDB0"
+      }
+    },
+    {
+      "file": "kanagawa-wave.json",
+      "name": "Kanagawa Wave",
+      "author": "rebelot",
+      "license": "MIT",
+      "source": "https://github.com/rebelot/kanagawa.nvim",
+      "appearance": "dark",
+      "colors": {
+        "editor": "#1F1F28",
+        "text": "#DCD7BA",
+        "accent": "#7E9CD8",
+        "sidebar": "#181820",
+        "list": "#1A1A22"
+      }
+    },
+    {
+      "file": "kanso-dark.json",
+      "name": "Kanso Dark",
+      "author": "Kanso",
+      "license": "MIT",
+      "source": "https://github.com/iamngoni/kanso",
+      "appearance": "dark",
+      "colors": {
+        "editor": "#282824",
+        "text": "#F1EFE7",
+        "accent": "#7E96B3",
+        "sidebar": "#1D1D1A",
+        "list": "#232320"
+      }
+    },
+    {
+      "file": "kanso-light.json",
+      "name": "Kanso Light",
+      "author": "Kanso",
+      "license": "MIT",
+      "source": "https://github.com/iamngoni/kanso",
+      "appearance": "light",
+      "colors": {
+        "editor": "#FCFAF4",
+        "text": "#26241F",
+        "accent": "#5E7895",
+        "sidebar": "#EBE7DD",
+        "list": "#F8F5EF"
+      }
+    },
+    {
+      "file": "nord.json",
+      "name": "Nord",
+      "author": "Arctic Ice Studio & Sven Greb",
+      "license": "MIT",
+      "source": "https://github.com/nordtheme/nord",
+      "appearance": "dark",
+      "colors": {
+        "editor": "#2E3440",
+        "text": "#D8DEE9",
+        "accent": "#88C0D0",
+        "sidebar": "#21252E",
+        "list": "#282E38"
+      }
+    },
+    {
+      "file": "rose-pine-dawn.json",
+      "name": "Rosé Pine Dawn",
+      "author": "Rosé Pine",
+      "license": "MIT",
+      "source": "https://github.com/rose-pine/rose-pine-theme",
+      "appearance": "light",
+      "colors": {
+        "editor": "#FAF4ED",
+        "text": "#464261",
+        "accent": "#D7827E",
+        "sidebar": "#F2E9E1",
+        "list": "#F8F0E7"
+      }
+    },
+    {
+      "file": "rose-pine.json",
+      "name": "Rosé Pine",
+      "author": "Rosé Pine",
+      "license": "MIT",
+      "source": "https://github.com/rose-pine/rose-pine-theme",
+      "appearance": "dark",
+      "colors": {
+        "editor": "#191724",
+        "text": "#E0DEF4",
+        "accent": "#EBBCBA",
+        "sidebar": "#16141F",
+        "list": "#181622"
+      }
+    },
+    {
+      "file": "solarized-dark.json",
+      "name": "Solarized Dark",
+      "author": "Ethan Schoonover",
+      "license": "MIT",
+      "source": "https://github.com/altercation/solarized",
+      "appearance": "dark",
+      "colors": {
+        "editor": "#002B36",
+        "text": "#93A1A1",
+        "accent": "#268BD2",
+        "sidebar": "#00212B",
+        "list": "#002630"
+      }
+    },
+    {
+      "file": "solarized-light.json",
+      "name": "Solarized Light",
+      "author": "Ethan Schoonover",
+      "license": "MIT",
+      "source": "https://github.com/altercation/solarized",
+      "appearance": "light",
+      "colors": {
+        "editor": "#FDF6E3",
+        "text": "#4E676F",
+        "accent": "#268BD2",
+        "sidebar": "#EEE8D5",
+        "list": "#F6EFDC"
+      }
+    },
+    {
+      "file": "tokyo-night.json",
+      "name": "Tokyo Night",
+      "author": "enkia",
+      "license": "MIT",
+      "source": "https://github.com/enkia/tokyo-night-vscode-theme",
+      "appearance": "dark",
+      "colors": {
+        "editor": "#1A1B26",
+        "text": "#A9B1D6",
+        "accent": "#7AA2F7",
+        "sidebar": "#16161E",
+        "list": "#181822"
+      }
+    }
+  ]
+}

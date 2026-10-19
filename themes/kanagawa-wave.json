@@ -1,0 +1,104 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Kanagawa Wave",
+  "author": "rebelot",
+  "license": "MIT",
+  "source": "https://github.com/rebelot/kanagawa.nvim",
+  "description": "Rebelot's Kanagawa, Wave: the dark theme inspired by Hokusai's Great Wave.",
+  "appearance": "dark",
+  "ui": {
+    "editor": "#1F1F28",
+    "text": "#DCD7BA",
+    "accent": "#7E9CD8",
+    "app": "#16161D",
+    "sidebar": "#181820",
+    "list": "#1A1A22",
+    "elevated": "#2A2A37",
+    "fill": "#2A2A37",
+    "text_secondary": "#C8C093",
+    "text_muted": "#75746B",
+    "divider": "#363646",
+    "link": "#7FB4CA",
+    "row_active": "#223249",
+    "row_hover": "#2A2A37",
+    "sidebar_active": "#223249",
+    "sidebar_hover": "#2A2A37",
+    "hover": "#363646",
+    "selected": "#223249",
+    "active_line": "#2A2A37",
+    "button": "#2D4F67",
+    "button_text": "#DCD7BA",
+    "success": "#98BB6C",
+    "warning": "#FF9E3B",
+    "danger": "#E82424",
+    "selection": "#223249",
+    "caret": "#C8C093"
+  },
+  "syntax": {
+    "text": "#DCD7BA",
+    "heading": {
+      "color": "#7E9CD8",
+      "font_weight": 700
+    },
+    "block_marker": "#7E9CD8",
+    "marker": "#9CABCA",
+    "list_marker": "#7FB4CA",
+    "task": "#7FB4CA",
+    "hr": "#938AA9",
+    "quote": {
+      "color": "#B8B4D0",
+      "font_style": "italic"
+    },
+    "link": "#7FB4CA",
+    "url": "#938AA9",
+    "code": "#98BB6C",
+    "code_block": "#98BB6C",
+    "emphasis": {
+      "font_style": "italic"
+    },
+    "strong": {
+      "font_weight": 700
+    },
+    "front_matter": "#938AA9",
+    "html": "#E46876",
+    "escape": "#C0A36E",
+    "comment": {
+      "color": "#727169",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#727169",
+      "font_style": "italic"
+    },
+    "keyword": "#957FB8",
+    "string": "#98BB6C",
+    "string_special": "#C0A36E",
+    "function": "#7E9CD8",
+    "type": "#7AA89F",
+    "type_constructor": "#7FB4CA",
+    "number": "#D27E99",
+    "boolean": "#FFA066",
+    "constant": "#FFA066",
+    "variable": "#DCD7BA",
+    "variable_special": "#E46876",
+    "property": "#E6C384",
+    "attribute": "#FFA066",
+    "tag": "#7FB4CA",
+    "label": "#957FB8",
+    "operator": "#C0A36E",
+    "punctuation": "#9CABCA",
+    "bracket": "#9CABCA",
+    "embedded": "#DCD7BA"
+  },
+  "preview": {
+    "heading": "#7E9CD8",
+    "link": "#7FB4CA",
+    "quote": "#B8B4D0",
+    "border": "#363646",
+    "code_background": "#2A2A37",
+    "inline_code_background": "#2A2A37",
+    "inline_code_text": "#98BB6C",
+    "selection": "#223249"
+  }
+}

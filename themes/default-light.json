@@ -1,0 +1,101 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Default Light",
+  "author": "Takuya Matsuyama",
+  "license": "MIT",
+  "source": "https://github.com/inkdropapp/default-light",
+  "description": "Inkdrop's default light theme, imported from its palette.",
+  "appearance": "light",
+  "ui": {
+    "editor": "#FFFFFF",
+    "text": "#212121",
+    "accent": "#3C83F6",
+    "app": "#FFFFFF",
+    "sidebar": "#F3F4F6",
+    "list": "#FAFAF9",
+    "elevated": "#FFFFFF",
+    "text_secondary": "#646464",
+    "text_muted": "#8C8C8E",
+    "divider": "#D4D4D8",
+    "link": "#376FCB",
+    "row_active": "#C9D9E1",
+    "row_hover": "#F2F2F1",
+    "hover": "#F2F2F2",
+    "active_line": "#E9F3FF",
+    "button": "#326CCB",
+    "button_text": "#ECF3FE",
+    "success": "#16A249",
+    "warning": "#A26107",
+    "danger": "#EF4343",
+    "selection": "#7C3BED4D",
+    "caret": "#7C3BED"
+  },
+  "syntax": {
+    "text": "#1F2937",
+    "heading": {
+      "color": "#DB2979",
+      "font_weight": 700
+    },
+    "block_marker": "#8996A9",
+    "marker": "#8996A9",
+    "list_marker": "#6467F2",
+    "hr": "#DB2979",
+    "quote": {
+      "color": "#48566A",
+      "font_style": "italic"
+    },
+    "link": "#0D968B",
+    "url": "#0D968B",
+    "code": "#1F2937",
+    "code_block": "#1F2937",
+    "emphasis": {
+      "color": "#1F2937",
+      "font_style": "italic"
+    },
+    "strong": {
+      "color": "#1F2937",
+      "font_weight": 700
+    },
+    "front_matter": "#8996A9",
+    "html": "#2463EB",
+    "escape": "#8996A9",
+    "comment": {
+      "color": "#8996A9",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#8996A9",
+      "font_style": "italic"
+    },
+    "keyword": "#7C3BED",
+    "string": "#16A249",
+    "string_special": "#16A249",
+    "function": "#088EAF",
+    "type": "#DB2979",
+    "number": "#2463EB",
+    "boolean": "#2463EB",
+    "constant": "#2463EB",
+    "variable": "#1F2937",
+    "variable_special": "#1F2937",
+    "property": "#1F2937",
+    "attribute": "#088EAF",
+    "tag": "#2463EB",
+    "label": "#DB2979",
+    "operator": "#7C3BED",
+    "punctuation": "#2463EB",
+    "bracket": "#2463EB"
+  },
+  "preview": {
+    "text": "#212121",
+    "heading": "#212121",
+    "link": "#3874D6",
+    "quote": "#666666",
+    "border": "#D4D4D8",
+    "code_background": "#FCFDFD",
+    "code_text": "#212121",
+    "inline_code_background": "#F2F2F2",
+    "inline_code_text": "#1F1F1F",
+    "table_header_background": "#E5E5E5"
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "GitHub Light",
+  "author": "GitHub",
+  "license": "MIT",
+  "source": "https://github.com/primer/github-vscode-theme",
+  "description": "GitHub Light: Primer's colors from GitHub's own VS Code theme.",
+  "appearance": "light",
+  "ui": {
+    "editor": "#FFFFFF",
+    "text": "#1F2328",
+    "accent": "#0969DA",
+    "app": "#F6F8FA",
+    "sidebar": "#F6F8FA",
+    "list": "#FFFFFF",
+    "elevated": "#FFFFFF",
+    "fill": "#EFF1F3",
+    "text_secondary": "#656D76",
+    "text_muted": "#6E7781",
+    "divider": "#D0D7DE",
+    "link": "#0969DA",
+    "row_active": "#EFF1F3",
+    "row_hover": "#F4F6F8",
+    "sidebar_active": "#E8EBEF",
+    "sidebar_hover": "#F0F3F6",
+    "hover": "#F4F6F8",
+    "selected": "#EFF1F3",
+    "active_line": "#F4F6F8",
+    "button": "#1F883D",
+    "button_text": "#FFFFFF",
+    "success": "#1A7F37",
+    "warning": "#9A6700",
+    "danger": "#CF222E",
+    "selection": "#0969DA33",
+    "caret": "#0969DA"
+  },
+  "syntax": {
+    "text": "#1F2328",
+    "heading": {
+      "color": "#0550AE",
+      "font_weight": 700
+    },
+    "block_marker": "#0550AE",
+    "marker": "#6E7781",
+    "list_marker": "#953800",
+    "task": "#953800",
+    "hr": "#6E7781",
+    "quote": {
+      "color": "#116329",
+      "font_style": "italic"
+    },
+    "link": "#0A3069",
+    "url": "#6E7781",
+    "code": "#0550AE",
+    "code_block": "#1F2328",
+    "emphasis": {
+      "font_style": "italic"
+    },
+    "strong": {
+      "font_weight": 700
+    },
+    "front_matter": "#6E7781",
+    "html": "#116329",
+    "escape": "#CF222E",
+    "comment": {
+      "color": "#6E7781",
+      "font_style": "normal"
+    },
+    "comment_doc": {
+      "color": "#6E7781",
+      "font_style": "normal"
+    },
+    "keyword": "#CF222E",
+    "string": "#0A3069",
+    "string_special": "#0A3069",
+    "function": "#8250DF",
+    "type": "#953800",
+    "type_constructor": "#953800",
+    "number": "#0550AE",
+    "boolean": "#0550AE",
+    "constant": "#0550AE",
+    "variable": "#1F2328",
+    "variable_special": "#0550AE",
+    "property": "#0550AE",
+    "attribute": "#0550AE",
+    "tag": "#116329",
+    "label": "#953800",
+    "operator": "#CF222E",
+    "punctuation": "#1F2328",
+    "bracket": "#1F2328",
+    "embedded": "#1F2328"
+  },
+  "preview": {
+    "heading": "#1F2328",
+    "link": "#0969DA",
+    "quote": "#656D76",
+    "border": "#D0D7DE",
+    "code_background": "#F6F8FA",
+    "inline_code_background": "#AFB8C133",
+    "selection": "#0969DA33"
+  }
+}

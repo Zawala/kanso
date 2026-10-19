@@ -1,0 +1,106 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Tokyo Night",
+  "author": "enkia",
+  "license": "MIT",
+  "source": "https://github.com/enkia/tokyo-night-vscode-theme",
+  "description": "Enkia's Tokyo Night: the lights of downtown Tokyo at night, in blues and purples.",
+  "appearance": "dark",
+  "ui": {
+    "editor": "#1A1B26",
+    "text": "#A9B1D6",
+    "accent": "#7AA2F7",
+    "app": "#16161E",
+    "sidebar": "#16161E",
+    "list": "#181822",
+    "elevated": "#16161E",
+    "fill": "#202330",
+    "text_secondary": "#787C99",
+    "text_muted": "#606682",
+    "divider": "#363B54",
+    "link": "#7AA2F7",
+    "row_active": "#202330",
+    "row_hover": "#1C1E29",
+    "sidebar_active": "#202330",
+    "sidebar_hover": "#1B1C27",
+    "hover": "#202330",
+    "selected": "#1E202E",
+    "active_line": "#1E202E",
+    "button": "#3D59A1",
+    "button_text": "#FFFFFF",
+    "success": "#9ECE6A",
+    "warning": "#E0AF68",
+    "danger": "#F7768E",
+    "selection": "#515C7E4D",
+    "caret": "#C0CAF5"
+  },
+  "syntax": {
+    "text": "#A9B1D6",
+    "heading": {
+      "color": "#89DDFF",
+      "font_weight": 700
+    },
+    "block_marker": "#89DDFF",
+    "marker": "#5E6589",
+    "list_marker": "#9ABDF5",
+    "task": "#9ABDF5",
+    "hr": "#5E6589",
+    "quote": {
+      "color": "#9AA5CE",
+      "font_style": "italic"
+    },
+    "link": "#73DACA",
+    "url": "#5C658E",
+    "code": "#BB9AF7",
+    "code_block": "#89DDFF",
+    "emphasis": {
+      "color": "#C0CAF5",
+      "font_style": "italic"
+    },
+    "strong": {
+      "color": "#C0CAF5",
+      "font_weight": 700
+    },
+    "front_matter": "#5E668A",
+    "html": "#F7768E",
+    "escape": "#89DDFF",
+    "comment": {
+      "color": "#5E668A",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#5C658E",
+      "font_style": "italic"
+    },
+    "keyword": "#BB9AF7",
+    "string": "#9ECE6A",
+    "string_special": "#B4F9F8",
+    "function": "#7AA2F7",
+    "type": "#0DB9D7",
+    "type_constructor": "#0DB9D7",
+    "number": "#FF9E64",
+    "boolean": "#FF9E64",
+    "constant": "#FF9E64",
+    "variable": "#C0CAF5",
+    "variable_special": "#F7768E",
+    "property": "#7DCFFF",
+    "attribute": "#BB9AF7",
+    "tag": "#F7768E",
+    "label": "#7DCFFF",
+    "operator": "#89DDFF",
+    "punctuation": "#9ABDF5",
+    "bracket": "#9ABDF5",
+    "embedded": "#7DCFFF"
+  },
+  "preview": {
+    "heading": "#89DDFF",
+    "link": "#73DACA",
+    "quote": "#9AA5CE",
+    "border": "#363B54",
+    "code_background": "#16161E",
+    "inline_code_background": "#16161E",
+    "inline_code_text": "#BB9AF7",
+    "selection": "#515C7E4D"
+  }
+}

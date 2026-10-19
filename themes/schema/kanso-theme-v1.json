@@ -1,0 +1,404 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "title": "Kanso theme",
+  "description": "One Kanso theme: its appearance, and colors for the UI, the editor's syntax and the preview. Only ui.editor, ui.text and ui.accent are required; Kanso derives the rest.",
+  "type": "object",
+  "required": [
+    "name",
+    "appearance",
+    "ui"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "description": "The format version, 1."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The name shown under the theme's card; unique among themes."
+    },
+    "author": {
+      "type": "string"
+    },
+    "license": {
+      "type": "string",
+      "description": "An SPDX license identifier, such as MIT."
+    },
+    "source": {
+      "type": "string",
+      "description": "Where the palette comes from."
+    },
+    "description": {
+      "type": "string"
+    },
+    "appearance": {
+      "enum": [
+        "light",
+        "dark"
+      ]
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "editor",
+        "text",
+        "accent"
+      ],
+      "properties": {
+        "editor": {
+          "$ref": "#/$defs/color",
+          "description": "The editor and preview pane: the main surface. Required."
+        },
+        "text": {
+          "$ref": "#/$defs/color",
+          "description": "Body text on every surface. Required."
+        },
+        "accent": {
+          "$ref": "#/$defs/color",
+          "description": "The theme's accent: focus rings, the caret, the Active status. Required."
+        },
+        "app": {
+          "$ref": "#/$defs/color",
+          "description": "Behind everything: the window's top band."
+        },
+        "sidebar": {
+          "$ref": "#/$defs/color",
+          "description": "The sidebar of notebooks and tags."
+        },
+        "list": {
+          "$ref": "#/$defs/color",
+          "description": "The note list."
+        },
+        "elevated": {
+          "$ref": "#/$defs/color",
+          "description": "Menus, popovers and the command palette."
+        },
+        "fill": {
+          "$ref": "#/$defs/color",
+          "description": "Chips, banners and other quiet fills on the panes."
+        },
+        "text_secondary": {
+          "$ref": "#/$defs/color",
+          "description": "Text that is read but not primary: previews of notes, details."
+        },
+        "text_muted": {
+          "$ref": "#/$defs/color",
+          "description": "Quiet text: times, counts, hints, Markdown markers."
+        },
+        "divider": {
+          "$ref": "#/$defs/color",
+          "description": "Lines between panes and rows, and control borders."
+        },
+        "link": {
+          "$ref": "#/$defs/color",
+          "description": "Link text in the UI."
+        },
+        "row_active": {
+          "$ref": "#/$defs/color",
+          "description": "The selected note in the list."
+        },
+        "row_hover": {
+          "$ref": "#/$defs/color",
+          "description": "A note under the pointer."
+        },
+        "sidebar_active": {
+          "$ref": "#/$defs/color",
+          "description": "The selected sidebar row."
+        },
+        "sidebar_hover": {
+          "$ref": "#/$defs/color",
+          "description": "A sidebar row under the pointer."
+        },
+        "hover": {
+          "$ref": "#/$defs/color",
+          "description": "Menu items and ghost buttons under the pointer."
+        },
+        "selected": {
+          "$ref": "#/$defs/color",
+          "description": "A selected ghost button, such as the current view mode."
+        },
+        "active_line": {
+          "$ref": "#/$defs/color",
+          "description": "The editor line with the cursor, when line numbers show."
+        },
+        "button": {
+          "$ref": "#/$defs/color",
+          "description": "Primary buttons."
+        },
+        "button_text": {
+          "$ref": "#/$defs/color",
+          "description": "Text on primary buttons."
+        },
+        "success": {
+          "$ref": "#/$defs/color",
+          "description": "Success: the Completed status, synced."
+        },
+        "warning": {
+          "$ref": "#/$defs/color",
+          "description": "Warnings: the On hold status."
+        },
+        "danger": {
+          "$ref": "#/$defs/color",
+          "description": "Errors and destructive actions."
+        },
+        "selection": {
+          "$ref": "#/$defs/color",
+          "description": "Selected text in the editor, usually translucent (#RRGGBBAA)."
+        },
+        "caret": {
+          "$ref": "#/$defs/color",
+          "description": "The editor's caret."
+        }
+      }
+    },
+    "syntax": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "$ref": "#/$defs/token",
+          "description": "Plain Markdown text in the editor."
+        },
+        "heading": {
+          "$ref": "#/$defs/token",
+          "description": "Heading text."
+        },
+        "block_marker": {
+          "$ref": "#/$defs/token",
+          "description": "Heading `#` and quote `>` markers."
+        },
+        "marker": {
+          "$ref": "#/$defs/token",
+          "description": "Inline markers: `*`, backticks, code fences, table pipes, link brackets."
+        },
+        "list_marker": {
+          "$ref": "#/$defs/token",
+          "description": "List bullets and numbers."
+        },
+        "task": {
+          "$ref": "#/$defs/token",
+          "description": "Task boxes, `[ ]` and `[x]`."
+        },
+        "hr": {
+          "$ref": "#/$defs/token",
+          "description": "Horizontal rules."
+        },
+        "quote": {
+          "$ref": "#/$defs/token",
+          "description": "Quoted text."
+        },
+        "link": {
+          "$ref": "#/$defs/token",
+          "description": "Link text."
+        },
+        "url": {
+          "$ref": "#/$defs/token",
+          "description": "Link destinations and autolinks."
+        },
+        "code": {
+          "$ref": "#/$defs/token",
+          "description": "Inline code."
+        },
+        "code_block": {
+          "$ref": "#/$defs/token",
+          "description": "Code blocks without a language."
+        },
+        "emphasis": {
+          "$ref": "#/$defs/token",
+          "description": "*Emphasis* (italic by default)."
+        },
+        "strong": {
+          "$ref": "#/$defs/token",
+          "description": "**Strong** text (bold by default)."
+        },
+        "front_matter": {
+          "$ref": "#/$defs/token",
+          "description": "YAML front matter between `---` lines."
+        },
+        "html": {
+          "$ref": "#/$defs/token",
+          "description": "HTML blocks."
+        },
+        "escape": {
+          "$ref": "#/$defs/token",
+          "description": "Backslash escapes."
+        },
+        "comment": {
+          "$ref": "#/$defs/token",
+          "description": "Code: comments."
+        },
+        "comment_doc": {
+          "$ref": "#/$defs/token",
+          "description": "Code: documentation comments."
+        },
+        "keyword": {
+          "$ref": "#/$defs/token",
+          "description": "Code: keywords."
+        },
+        "string": {
+          "$ref": "#/$defs/token",
+          "description": "Code: strings."
+        },
+        "string_special": {
+          "$ref": "#/$defs/token",
+          "description": "Code: special strings, such as regular expressions."
+        },
+        "function": {
+          "$ref": "#/$defs/token",
+          "description": "Code: function names."
+        },
+        "type": {
+          "$ref": "#/$defs/token",
+          "description": "Code: type names."
+        },
+        "type_constructor": {
+          "$ref": "#/$defs/token",
+          "description": "Code: constructors and enum variants. (Not `constructor`, which JavaScript tools trip over.)"
+        },
+        "number": {
+          "$ref": "#/$defs/token",
+          "description": "Code: numbers."
+        },
+        "boolean": {
+          "$ref": "#/$defs/token",
+          "description": "Code: true and false."
+        },
+        "constant": {
+          "$ref": "#/$defs/token",
+          "description": "Code: constants."
+        },
+        "variable": {
+          "$ref": "#/$defs/token",
+          "description": "Code: variables."
+        },
+        "variable_special": {
+          "$ref": "#/$defs/token",
+          "description": "Code: special variables, such as `self`."
+        },
+        "property": {
+          "$ref": "#/$defs/token",
+          "description": "Code: properties and fields."
+        },
+        "attribute": {
+          "$ref": "#/$defs/token",
+          "description": "Code: attributes and annotations."
+        },
+        "tag": {
+          "$ref": "#/$defs/token",
+          "description": "Code: HTML and XML tags."
+        },
+        "label": {
+          "$ref": "#/$defs/token",
+          "description": "Code: labels."
+        },
+        "operator": {
+          "$ref": "#/$defs/token",
+          "description": "Code: operators."
+        },
+        "punctuation": {
+          "$ref": "#/$defs/token",
+          "description": "Code: punctuation."
+        },
+        "bracket": {
+          "$ref": "#/$defs/token",
+          "description": "Code: brackets."
+        },
+        "embedded": {
+          "$ref": "#/$defs/token",
+          "description": "Code: embedded code, such as template expressions."
+        }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "$ref": "#/$defs/color",
+          "description": "Body text."
+        },
+        "heading": {
+          "$ref": "#/$defs/color",
+          "description": "Headings."
+        },
+        "link": {
+          "$ref": "#/$defs/color",
+          "description": "Links."
+        },
+        "quote": {
+          "$ref": "#/$defs/color",
+          "description": "Quoted text and finished tasks."
+        },
+        "border": {
+          "$ref": "#/$defs/color",
+          "description": "Table borders and horizontal rules."
+        },
+        "code_background": {
+          "$ref": "#/$defs/color",
+          "description": "Code blocks."
+        },
+        "code_text": {
+          "$ref": "#/$defs/color",
+          "description": "Text in code blocks without a language."
+        },
+        "inline_code_background": {
+          "$ref": "#/$defs/color",
+          "description": "Inline code."
+        },
+        "inline_code_text": {
+          "$ref": "#/$defs/color",
+          "description": "Inline code's text."
+        },
+        "table_header_background": {
+          "$ref": "#/$defs/color",
+          "description": "A table's header row."
+        },
+        "selection": {
+          "$ref": "#/$defs/color",
+          "description": "Selected text, usually translucent (#RRGGBBAA)."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "string",
+      "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+      "description": "#RRGGBB, or #RRGGBBAA with an alpha."
+    },
+    "token": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/color"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "font_style": {
+              "enum": [
+                "normal",
+                "italic"
+              ]
+            },
+            "font_weight": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 900
+            }
+          }
+        }
+      ]
+    }
+  }
+}

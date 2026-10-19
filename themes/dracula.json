@@ -1,0 +1,116 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Dracula",
+  "author": "Zeno Rocha",
+  "license": "MIT",
+  "source": "https://github.com/dracula/dracula-theme",
+  "description": "Zeno Rocha's Dracula: pink keywords, yellow strings and purple constants after dark.",
+  "appearance": "dark",
+  "ui": {
+    "editor": "#282A36",
+    "text": "#F8F8F2",
+    "accent": "#BD93F9",
+    "app": "#191A21",
+    "sidebar": "#21222C",
+    "list": "#242631",
+    "elevated": "#343746",
+    "fill": "#343746",
+    "text_secondary": "#BEBEBD",
+    "text_muted": "#7583AE",
+    "divider": "#343746",
+    "link": "#8BE9FD",
+    "row_active": "#44475A",
+    "row_hover": "#333544",
+    "sidebar_active": "#44475A",
+    "sidebar_hover": "#313341",
+    "hover": "#44475A",
+    "selected": "#44475A",
+    "active_line": "#353747",
+    "button": "#BD93F9",
+    "button_text": "#282A36",
+    "success": "#50FA7B",
+    "warning": "#FFB86C",
+    "danger": "#FF5555",
+    "selection": "#44475A",
+    "caret": "#F8F8F2"
+  },
+  "syntax": {
+    "text": "#F8F8F2",
+    "heading": {
+      "color": "#BD93F9",
+      "font_weight": 700
+    },
+    "block_marker": "#BD93F9",
+    "marker": "#6272A4",
+    "list_marker": "#8BE9FD",
+    "task": "#8BE9FD",
+    "hr": "#6272A4",
+    "quote": {
+      "color": "#F1FA8C",
+      "font_style": "italic"
+    },
+    "link": "#FF79C6",
+    "url": "#8BE9FD",
+    "code": "#50FA7B",
+    "code_block": "#50FA7B",
+    "emphasis": {
+      "color": "#F1FA8C",
+      "font_style": "italic"
+    },
+    "strong": {
+      "color": "#FFB86C",
+      "font_weight": 700
+    },
+    "front_matter": "#6272A4",
+    "html": "#FF79C6",
+    "escape": "#FF79C6",
+    "comment": {
+      "color": "#6272A4",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#6272A4",
+      "font_style": "italic"
+    },
+    "keyword": "#FF79C6",
+    "string": "#F1FA8C",
+    "string_special": "#FF5555",
+    "function": "#50FA7B",
+    "type": {
+      "color": "#8BE9FD",
+      "font_style": "italic"
+    },
+    "type_constructor": "#BD93F9",
+    "number": "#BD93F9",
+    "boolean": "#BD93F9",
+    "constant": "#BD93F9",
+    "variable": "#F8F8F2",
+    "variable_special": {
+      "color": "#BD93F9",
+      "font_style": "italic"
+    },
+    "property": "#F8F8F2",
+    "attribute": {
+      "color": "#50FA7B",
+      "font_style": "italic"
+    },
+    "tag": "#FF79C6",
+    "label": "#8BE9FD",
+    "operator": "#FF79C6",
+    "punctuation": "#F8F8F2",
+    "bracket": "#F8F8F2",
+    "embedded": "#F8F8F2"
+  },
+  "preview": {
+    "heading": "#BD93F9",
+    "link": "#8BE9FD",
+    "quote": "#F1FA8C",
+    "border": "#44475A",
+    "code_background": "#21222C",
+    "code_text": "#50FA7B",
+    "inline_code_background": "#343746",
+    "inline_code_text": "#50FA7B",
+    "selection": "#44475A"
+  }
+}

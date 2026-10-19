@@ -1,0 +1,89 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Kanso Dark",
+  "author": "Kanso",
+  "license": "MIT",
+  "source": "https://github.com/iamngoni/kanso",
+  "description": "Warm graphite: Kanso's own dark theme.",
+  "appearance": "dark",
+  "ui": {
+    "editor": "#282824",
+    "text": "#F1EFE7",
+    "accent": "#7E96B3",
+    "app": "#181816",
+    "sidebar": "#1D1D1A",
+    "list": "#232320",
+    "elevated": "#30302B",
+    "fill": "#30302B",
+    "text_secondary": "#B7B3A8",
+    "text_muted": "#7E7A70",
+    "divider": "#3A3933",
+    "link": "#869DB9",
+    "row_active": "#30302B",
+    "row_hover": "#2A2A26",
+    "sidebar_active": "#2E2E2A",
+    "sidebar_hover": "#252522",
+    "hover": "#3A3933",
+    "selected": "#3A3933",
+    "active_line": "#2D2D29",
+    "button": "#4A6385",
+    "button_text": "#F1EFE7",
+    "success": "#7BAA78",
+    "warning": "#C49A5A",
+    "danger": "#C96E63"
+  },
+  "syntax": {
+    "text": "#F1EFE7",
+    "heading": {
+      "color": "#F1EFE7",
+      "font_weight": 700
+    },
+    "block_marker": "#7E7A70",
+    "marker": "#7E7A70",
+    "list_marker": "#7E7A70",
+    "task": "#7E7A70",
+    "hr": "#7E7A70",
+    "link": "#869DB9",
+    "url": "#7E7A70",
+    "code": "#CDB892",
+    "code_block": "#B7B3A8",
+    "emphasis": {
+      "font_style": "italic"
+    },
+    "strong": {
+      "font_weight": 700
+    },
+    "escape": "#7E7A70",
+    "comment": {
+      "color": "#7E7A70",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#7E7A70",
+      "font_style": "italic"
+    },
+    "keyword": "#9AACC4",
+    "string": "#A9BC98",
+    "string_special": "#A9BC98",
+    "function": "#F1EFE7",
+    "type": "#B7B3A8",
+    "type_constructor": "#9AACC4",
+    "number": "#CDB892",
+    "boolean": "#CDB892",
+    "constant": "#CDB892",
+    "variable": "#F1EFE7",
+    "variable_special": "#CDB892",
+    "property": "#F1EFE7",
+    "attribute": "#B7B3A8",
+    "tag": "#9AACC4",
+    "label": "#B7B3A8",
+    "operator": "#B7B3A8",
+    "punctuation": "#B7B3A8",
+    "bracket": "#B7B3A8",
+    "embedded": "#F1EFE7"
+  },
+  "preview": {
+    "code_background": "#30302B"
+  }
+}

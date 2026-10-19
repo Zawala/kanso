@@ -1,0 +1,103 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Catppuccin Latte",
+  "author": "Catppuccin",
+  "license": "MIT",
+  "source": "https://github.com/catppuccin/catppuccin",
+  "description": "Catppuccin Latte: the light, milky flavor of the soothing pastel theme.",
+  "appearance": "light",
+  "ui": {
+    "editor": "#EFF1F5",
+    "text": "#4C4F69",
+    "accent": "#8839EF",
+    "app": "#E6E9EF",
+    "sidebar": "#DCE0E8",
+    "list": "#EAEDF2",
+    "elevated": "#EFF1F5",
+    "fill": "#CCD0DA",
+    "text_secondary": "#6C6F85",
+    "text_muted": "#7A7D92",
+    "divider": "#CCD0DA",
+    "link": "#2563E0",
+    "row_active": "#CCD0DA",
+    "row_hover": "#DBDEE6",
+    "sidebar_active": "#CCD0DA",
+    "sidebar_hover": "#D4D8E1",
+    "hover": "#E6E9EF",
+    "selected": "#CCD0DA",
+    "active_line": "#E6E9EF",
+    "button": "#8839EF",
+    "button_text": "#EFF1F5",
+    "success": "#429037",
+    "warning": "#A4753B",
+    "danger": "#D20F39",
+    "selection": "#7C7F9340",
+    "caret": "#B87B74"
+  },
+  "syntax": {
+    "text": "#4C4F69",
+    "heading": {
+      "color": "#1E66F5",
+      "font_weight": 700
+    },
+    "block_marker": "#E86117",
+    "marker": "#7C7F93",
+    "list_marker": "#179299",
+    "task": "#179299",
+    "hr": "#878A9D",
+    "quote": {
+      "color": "#C26CB2",
+      "font_style": "italic"
+    },
+    "link": "#6E81EE",
+    "url": "#1E66F5",
+    "code": "#409E2D",
+    "code_block": "#409E2D",
+    "emphasis": {
+      "font_style": "italic"
+    },
+    "strong": {
+      "font_weight": 700
+    },
+    "front_matter": "#7C7F93",
+    "html": "#1E66F5",
+    "escape": "#C26CB2",
+    "comment": {
+      "color": "#7C7F93",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#7C7F93",
+      "font_style": "italic"
+    },
+    "keyword": "#8839EF",
+    "string": "#409E2D",
+    "string_special": "#C26CB2",
+    "function": "#1E66F5",
+    "type": "#BA7E30",
+    "type_constructor": "#2497AD",
+    "number": "#E86117",
+    "boolean": "#E86117",
+    "constant": "#E86117",
+    "variable": "#4C4F69",
+    "variable_special": "#D20F39",
+    "property": "#6E81EE",
+    "attribute": "#BA7E30",
+    "tag": "#1E66F5",
+    "label": "#2497AD",
+    "operator": "#1294CC",
+    "punctuation": "#7C7F93",
+    "bracket": "#7C7F93",
+    "embedded": "#4C4F69"
+  },
+  "preview": {
+    "heading": "#1E66F5",
+    "link": "#2164EA",
+    "quote": "#875E8E",
+    "border": "#CCD0DA",
+    "code_background": "#E6E9EF",
+    "inline_code_background": "#CCD0DA",
+    "selection": "#7C7F9340"
+  }
+}

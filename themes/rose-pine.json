@@ -1,0 +1,104 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Rosé Pine",
+  "author": "Rosé Pine",
+  "license": "MIT",
+  "source": "https://github.com/rose-pine/rose-pine-theme",
+  "description": "Rosé Pine: all natural pine, faux fur and a bit of soho vibes.",
+  "appearance": "dark",
+  "ui": {
+    "editor": "#191724",
+    "text": "#E0DEF4",
+    "accent": "#EBBCBA",
+    "app": "#16141F",
+    "sidebar": "#16141F",
+    "list": "#181622",
+    "elevated": "#1F1D2E",
+    "fill": "#26233A",
+    "text_secondary": "#908CAA",
+    "text_muted": "#6E6A86",
+    "divider": "#26233A",
+    "link": "#C4A7E7",
+    "row_active": "#26233A",
+    "row_hover": "#21202E",
+    "sidebar_active": "#26233A",
+    "sidebar_hover": "#21202E",
+    "hover": "#403D52",
+    "selected": "#403D52",
+    "active_line": "#21202E",
+    "button": "#EBBCBA",
+    "button_text": "#191724",
+    "success": "#9CCFD8",
+    "warning": "#F6C177",
+    "danger": "#EB6F92",
+    "selection": "#403D52",
+    "caret": "#EBBCBA"
+  },
+  "syntax": {
+    "text": "#E0DEF4",
+    "heading": {
+      "color": "#C4A7E7",
+      "font_weight": 700
+    },
+    "block_marker": "#C4A7E7",
+    "marker": "#908CAA",
+    "list_marker": "#31748F",
+    "task": "#9CCFD8",
+    "hr": "#6E6A86",
+    "quote": {
+      "color": "#908CAA",
+      "font_style": "italic"
+    },
+    "link": "#9CCFD8",
+    "url": "#C4A7E7",
+    "code": "#F6C177",
+    "code_block": "#F6C177",
+    "emphasis": {
+      "font_style": "italic"
+    },
+    "strong": {
+      "font_weight": 700
+    },
+    "front_matter": "#908CAA",
+    "html": "#9CCFD8",
+    "escape": "#31748F",
+    "comment": {
+      "color": "#908CAA",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#908CAA",
+      "font_style": "italic"
+    },
+    "keyword": "#31748F",
+    "string": "#F6C177",
+    "string_special": "#C4A7E7",
+    "function": "#EBBCBA",
+    "type": "#9CCFD8",
+    "type_constructor": "#9CCFD8",
+    "number": "#F6C177",
+    "boolean": "#EBBCBA",
+    "constant": "#F6C177",
+    "variable": "#E0DEF4",
+    "variable_special": "#EB6F92",
+    "property": "#9CCFD8",
+    "attribute": "#C4A7E7",
+    "tag": "#9CCFD8",
+    "label": "#9CCFD8",
+    "operator": "#908CAA",
+    "punctuation": "#908CAA",
+    "bracket": "#908CAA",
+    "embedded": "#E0DEF4"
+  },
+  "preview": {
+    "heading": "#C4A7E7",
+    "link": "#C4A7E7",
+    "quote": "#908CAA",
+    "border": "#403D52",
+    "code_background": "#1F1D2E",
+    "inline_code_background": "#26233A",
+    "inline_code_text": "#F6C177",
+    "selection": "#403D52"
+  }
+}

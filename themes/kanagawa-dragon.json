@@ -1,0 +1,104 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Kanagawa Dragon",
+  "author": "rebelot",
+  "license": "MIT",
+  "source": "https://github.com/rebelot/kanagawa.nvim",
+  "description": "Rebelot's Kanagawa, Dragon: the darker, earthier ink-wash variant.",
+  "appearance": "dark",
+  "ui": {
+    "editor": "#181616",
+    "text": "#C5C9C5",
+    "accent": "#8BA4B0",
+    "app": "#0D0C0C",
+    "sidebar": "#12120F",
+    "list": "#151412",
+    "elevated": "#282727",
+    "fill": "#282727",
+    "text_secondary": "#A6A69C",
+    "text_muted": "#7A8382",
+    "divider": "#393836",
+    "link": "#949FB5",
+    "row_active": "#282727",
+    "row_hover": "#1E1E1C",
+    "sidebar_active": "#282727",
+    "sidebar_hover": "#1D1C19",
+    "hover": "#393836",
+    "selected": "#393836",
+    "active_line": "#282727",
+    "button": "#2D4F67",
+    "button_text": "#C5C9C5",
+    "success": "#87A987",
+    "warning": "#C4B28A",
+    "danger": "#C4746E",
+    "selection": "#223249",
+    "caret": "#C8C093"
+  },
+  "syntax": {
+    "text": "#C5C9C5",
+    "heading": {
+      "color": "#8BA4B0",
+      "font_weight": 700
+    },
+    "block_marker": "#8BA4B0",
+    "marker": "#9E9B93",
+    "list_marker": "#949FB5",
+    "task": "#949FB5",
+    "hr": "#7A8382",
+    "quote": {
+      "color": "#A6A69C",
+      "font_style": "italic"
+    },
+    "link": "#949FB5",
+    "url": "#7A8382",
+    "code": "#8A9A7B",
+    "code_block": "#8A9A7B",
+    "emphasis": {
+      "font_style": "italic"
+    },
+    "strong": {
+      "font_weight": 700
+    },
+    "front_matter": "#7A8382",
+    "html": "#C4746E",
+    "escape": "#C4746E",
+    "comment": {
+      "color": "#737C73",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#737C73",
+      "font_style": "italic"
+    },
+    "keyword": "#8992A7",
+    "string": "#8A9A7B",
+    "string_special": "#C4746E",
+    "function": "#8BA4B0",
+    "type": "#8EA4A2",
+    "type_constructor": "#949FB5",
+    "number": "#A292A3",
+    "boolean": "#B6927B",
+    "constant": "#B6927B",
+    "variable": "#C5C9C5",
+    "variable_special": "#C4746E",
+    "property": "#C4B28A",
+    "attribute": "#B6927B",
+    "tag": "#949FB5",
+    "label": "#8992A7",
+    "operator": "#C4746E",
+    "punctuation": "#9E9B93",
+    "bracket": "#9E9B93",
+    "embedded": "#C5C9C5"
+  },
+  "preview": {
+    "heading": "#8BA4B0",
+    "link": "#949FB5",
+    "quote": "#A6A69C",
+    "border": "#393836",
+    "code_background": "#282727",
+    "inline_code_background": "#282727",
+    "inline_code_text": "#8A9A7B",
+    "selection": "#223249"
+  }
+}

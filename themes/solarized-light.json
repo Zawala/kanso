@@ -1,0 +1,103 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Solarized Light",
+  "author": "Ethan Schoonover",
+  "license": "MIT",
+  "source": "https://github.com/altercation/solarized",
+  "description": "Ethan Schoonover's Solarized, light: base3 paper with the sixteen precise accents.",
+  "appearance": "light",
+  "ui": {
+    "editor": "#FDF6E3",
+    "text": "#4E676F",
+    "accent": "#268BD2",
+    "app": "#EEE8D5",
+    "sidebar": "#EEE8D5",
+    "list": "#F6EFDC",
+    "elevated": "#FDF6E3",
+    "fill": "#EEE8D5",
+    "text_secondary": "#657B83",
+    "text_muted": "#76888C",
+    "divider": "#D3D3C5",
+    "link": "#42728D",
+    "row_active": "#EEE8D5",
+    "row_hover": "#F2ECD8",
+    "sidebar_active": "#E3DFCF",
+    "sidebar_hover": "#E9E4D2",
+    "hover": "#F4EEDB",
+    "selected": "#EEE8D5",
+    "active_line": "#EEE8D5",
+    "button": "#2076B2",
+    "button_text": "#FDF6E3",
+    "success": "#798E19",
+    "warning": "#A08216",
+    "danger": "#DC322F",
+    "selection": "#E3DFCF",
+    "caret": "#586E75"
+  },
+  "syntax": {
+    "text": "#4E676F",
+    "heading": {
+      "color": "#CB4B16",
+      "font_weight": 700
+    },
+    "block_marker": "#CB4B16",
+    "marker": "#829294",
+    "list_marker": "#B28803",
+    "task": "#B28803",
+    "hr": "#829294",
+    "quote": {
+      "color": "#829294",
+      "font_style": "italic"
+    },
+    "link": "#6C71C4",
+    "url": "#829294",
+    "code": "#2C9E96",
+    "code_block": "#073642",
+    "emphasis": {
+      "font_style": "italic"
+    },
+    "strong": {
+      "font_weight": 700
+    },
+    "front_matter": "#829294",
+    "html": "#268BD2",
+    "escape": "#DC322F",
+    "comment": {
+      "color": "#829294",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#829294",
+      "font_style": "italic"
+    },
+    "keyword": "#849803",
+    "string": "#2C9E96",
+    "string_special": "#DC322F",
+    "function": "#268BD2",
+    "type": "#B28803",
+    "type_constructor": "#B28803",
+    "number": "#D33682",
+    "boolean": "#2C9E96",
+    "constant": "#2C9E96",
+    "variable": "#4E676F",
+    "variable_special": "#268BD2",
+    "property": "#4E676F",
+    "attribute": "#6C71C4",
+    "tag": "#268BD2",
+    "label": "#849803",
+    "operator": "#849803",
+    "punctuation": "#829294",
+    "bracket": "#829294",
+    "embedded": "#4E676F"
+  },
+  "preview": {
+    "heading": "#CB4B16",
+    "link": "#3C779C",
+    "quote": "#5E757D",
+    "border": "#D3D3C5",
+    "code_background": "#EEE8D5",
+    "inline_code_background": "#EEE8D5",
+    "selection": "#E3DFCF"
+  }
+}

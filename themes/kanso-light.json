@@ -1,0 +1,89 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/schema/kanso-theme-v1.json",
+  "schema_version": 1,
+  "name": "Kanso Light",
+  "author": "Kanso",
+  "license": "MIT",
+  "source": "https://github.com/iamngoni/kanso",
+  "description": "Soft paper: Kanso's own light theme.",
+  "appearance": "light",
+  "ui": {
+    "editor": "#FCFAF4",
+    "text": "#26241F",
+    "accent": "#5E7895",
+    "app": "#F4F1EA",
+    "sidebar": "#EBE7DD",
+    "list": "#F8F5EF",
+    "elevated": "#FFFDF8",
+    "fill": "#E6E0D4",
+    "text_secondary": "#655F55",
+    "text_muted": "#857C6E",
+    "divider": "#DDD6C9",
+    "link": "#4D6684",
+    "row_active": "#ECE7DC",
+    "row_hover": "#F2EEE6",
+    "sidebar_active": "#E2DDD0",
+    "sidebar_hover": "#E5E0D5",
+    "hover": "#F0ECE3",
+    "selected": "#E6E0D4",
+    "active_line": "#F6F3EB",
+    "button": "#4D6684",
+    "button_text": "#FFFDF8",
+    "success": "#4F7F4C",
+    "warning": "#8A6424",
+    "danger": "#A6493F"
+  },
+  "syntax": {
+    "text": "#26241F",
+    "heading": {
+      "color": "#26241F",
+      "font_weight": 700
+    },
+    "block_marker": "#857C6E",
+    "marker": "#857C6E",
+    "list_marker": "#857C6E",
+    "task": "#857C6E",
+    "hr": "#857C6E",
+    "link": "#4D6684",
+    "url": "#857C6E",
+    "code": "#7D5B32",
+    "code_block": "#655F55",
+    "emphasis": {
+      "font_style": "italic"
+    },
+    "strong": {
+      "font_weight": 700
+    },
+    "escape": "#857C6E",
+    "comment": {
+      "color": "#857C6E",
+      "font_style": "italic"
+    },
+    "comment_doc": {
+      "color": "#857C6E",
+      "font_style": "italic"
+    },
+    "keyword": "#4D6684",
+    "string": "#55704A",
+    "string_special": "#55704A",
+    "function": "#26241F",
+    "type": "#655F55",
+    "type_constructor": "#4D6684",
+    "number": "#7D5B32",
+    "boolean": "#7D5B32",
+    "constant": "#7D5B32",
+    "variable": "#26241F",
+    "variable_special": "#7D5B32",
+    "property": "#26241F",
+    "attribute": "#655F55",
+    "tag": "#4D6684",
+    "label": "#655F55",
+    "operator": "#655F55",
+    "punctuation": "#655F55",
+    "bracket": "#655F55",
+    "embedded": "#26241F"
+  },
+  "preview": {
+    "code_background": "#F4F1EA"
+  }
+}
