@@ -41,7 +41,7 @@ publish() {
 	command -v gh >/dev/null || die "the GitHub CLI (gh) is needed"
 	git rev-parse -q --verify "refs/tags/$tag" >/dev/null || die "there's no tag $tag here"
 
-	echo "Waiting for the release workflow of $tag…"
+	echo "Waiting for the release workflow of ${tag}…"
 	local run=""
 	for _ in $(seq 1 60); do
 		run=$(gh run list --workflow release.yml --branch "$tag" --limit 1 \
