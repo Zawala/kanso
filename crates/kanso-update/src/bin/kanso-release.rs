@@ -6,6 +6,7 @@
 //! kanso-release feed --version <v> --notes <file> --dist <dir> --pub-date <rfc3339> --out <latest.json>
 //! kanso-release sign --feed <latest.json> [--key-env KANSO_UPDATE_SIGNING_KEY]
 //! kanso-release verify --feed <latest.json> [--sig <file>] [--key <base64>]...
+//! kanso-release notes --changelog <CHANGELOG.md> --version <v> --out <file>
 //! ```
 
 use std::collections::BTreeMap;
@@ -31,6 +32,9 @@ Usage:
       writing <latest.json>.sig. Refuses a key the app doesn't trust.
   kanso-release verify --feed <latest.json> [--sig <file>] [--key <base64>]...
       Checks the signature against the given keys, or the trusted ones.
+  kanso-release notes --changelog <CHANGELOG.md> --version <v> --out <file>
+      Writes the changelog's section for <v>: the release's notes, for its
+      page and for latest.json alike.
 ";
 
 fn main() -> ExitCode {
@@ -40,6 +44,7 @@ fn main() -> ExitCode {
         Some("feed") => feed(&Flags::parse(&args[1..])),
         Some("sign") => sign(&Flags::parse(&args[1..])),
         Some("verify") => verify(&Flags::parse(&args[1..])),
+        Some("notes") => notes(&Flags::parse(&args[1..])),
         Some("help" | "-h" | "--help") => {
             print!("{USAGE}");
             Ok(())
@@ -256,5 +261,19 @@ fn verify(flags: &Flags) -> Result<(), String> {
             .collect::<Vec<_>>()
             .join(", ")
     );
+    Ok(())
+}
+
+fn notes(flags: &Flags) -> Result<(), String> {
+    let path = flags.need("changelog")?;
+    let version = flags.need("version")?;
+    let out = PathBuf::from(flags.need("out")?);
+    let changelog = std::fs::read_to_string(path).map_err(|e| format!("reading {path}: {e}"))?;
+    let section = kanso_update::notes::section(&changelog, version).ok_or_else(|| {
+        format!("{path} has no section for {version}; run scripts/release.sh first")
+    })?;
+    std::fs::write(&out, format!("{section}\n"))
+        .map_err(|e| format!("writing {}: {e}", out.display()))?;
+    println!("Wrote {}", out.display());
     Ok(())
 }

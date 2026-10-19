@@ -1,0 +1,68 @@
+# git-cliff turns conventional commits into CHANGELOG.md and each release's
+# notes (docs/RELEASING.md). The release page and the app's What's new show
+# the same section; the app leaves out "Under the hood".
+#
+#   git cliff --unreleased --tag v0.2.0 --prepend CHANGELOG.md   (release.sh)
+#   git cliff --latest --strip all                             (the workflow)
+
+[changelog]
+header = """
+# Changelog
+
+Every release of Kanso, newest first. Each entry links its commit, and each
+heading compares the release with the one before.
+
+"""
+body = """
+{%- set repo = "https://github.com/iamngoni/kanso" -%}
+{% if version -%}
+## [{{ version | trim_start_matches(pat="v") }}]\
+({% if previous.version %}{{ repo }}/compare/{{ previous.version }}...{{ version }}\
+{% else %}{{ repo }}/commits/{{ version }}{% endif %}) - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+## Unreleased
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits %}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | split(pat="\n") | first | trim | upper_first }} \
+([{{ commit.id | truncate(length=7, end="") }}]({{ repo }}/commit/{{ commit.id }}))\
+{% if commit.breaking %} **(breaking)**{% endif %}
+{%- endfor %}
+{% endfor %}
+"""
+footer = ""
+trim = true
+postprocessors = []
+
+[git]
+conventional_commits = true
+# Merges and anything not conventional stay out of the notes.
+filter_unconventional = true
+split_commits = false
+protect_breaking_commits = true
+filter_commits = false
+tag_pattern = "v[0-9]+\\.[0-9]+\\.[0-9]+.*"
+topo_order = false
+sort_commits = "oldest"
+commit_preprocessors = [
+  # "(#12)" links the pull request.
+  { pattern = '\(#([0-9]+)\)', replace = "([#${1}](https://github.com/iamngoni/kanso/pull/${1}))" },
+]
+# The HTML comments order the groups and are stripped from the headings.
+commit_parsers = [
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^feat", group = "<!-- 0 -->New" },
+  { message = "^perf", group = "<!-- 1 -->Improved" },
+  { message = "^style", group = "<!-- 1 -->Improved" },
+  { message = "^ui", group = "<!-- 1 -->Improved" },
+  { message = "^refactor\\(ui\\)", group = "<!-- 1 -->Improved" },
+  { message = "^fix", group = "<!-- 2 -->Fixed" },
+  { message = "^revert", group = "<!-- 2 -->Fixed" },
+  { message = "^refactor", group = "<!-- 3 -->Under the hood" },
+  { message = "^build", group = "<!-- 3 -->Under the hood" },
+  { message = "^ci", group = "<!-- 3 -->Under the hood" },
+  { message = "^chore", group = "<!-- 3 -->Under the hood" },
+  { message = "^test", group = "<!-- 3 -->Under the hood" },
+  { message = "^docs", group = "<!-- 3 -->Under the hood" },
+]

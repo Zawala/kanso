@@ -38,6 +38,39 @@ pub fn for_app(notes: &str) -> String {
     out.join("\n").trim().to_owned()
 }
 
+/// The section of a changelog for `version` (with or without a leading
+/// `v`): from its `## ` heading, whose text starts with the version or
+/// `[version]`, to the next `## `. `None` when there is none.
+pub fn section(changelog: &str, version: &str) -> Option<String> {
+    let version = version.trim_start_matches('v');
+    let mut out: Vec<&str> = Vec::new();
+    let mut inside = false;
+    let mut in_fence = false;
+    for line in changelog.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+        }
+        if !in_fence && heading_level(line) == Some(2) {
+            if inside {
+                break;
+            }
+            let text = heading_text(line);
+            let named = text
+                .strip_prefix('[')
+                .unwrap_or(text)
+                .trim_start_matches('v');
+            inside = named
+                .strip_prefix(version)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with([']', ' ']));
+        }
+        if inside {
+            out.push(line);
+        }
+    }
+    (!out.is_empty()).then(|| out.join("\n").trim().to_owned())
+}
+
 /// The level of an ATX heading (`## Title` is 2).
 fn heading_level(line: &str) -> Option<usize> {
     let hashes = line.bytes().take_while(|b| *b == b'#').count();
@@ -68,12 +101,35 @@ mod tests {
     }
 
     #[test]
+    fn a_release_section_is_found_by_its_version() {
+        let log = format!(
+            "# Changelog\n\n## Unreleased\n\n- soon\n\n{NOTES}\n## [0.1.0](x) - 2026-10-19\n\n- first\n"
+        );
+        let s = section(&log, "v0.2.0").unwrap();
+        assert!(s.starts_with("## [0.2.0]"));
+        assert!(s.contains("Updates install themselves"));
+        assert!(!s.contains("first") && !s.contains("soon"));
+        assert_eq!(
+            section(&log, "0.1.0").unwrap(),
+            "## [0.1.0](x) - 2026-10-19\n\n- first"
+        );
+        assert_eq!(
+            section(&log, "0.1"),
+            None,
+            "not a prefix of another version"
+        );
+        assert_eq!(section(&log, "9.9.9"), None);
+        // The shipped changelog has the first release.
+        assert!(section(include_str!("../../../CHANGELOG.md"), "0.1.0").is_some());
+    }
+
+    #[test]
     fn a_heading_inside_code_is_text() {
         let notes = "### New\n\n```\n### Under the hood\n```\n- kept\n";
         assert_eq!(for_app(notes), notes.trim());
     }
 
-    fn section() -> impl Strategy<Value = (String, Vec<String>)> {
+    fn notes_section() -> impl Strategy<Value = (String, Vec<String>)> {
         (
             prop::sample::select(vec!["New", "Improved", "Fixed", UNDER_THE_HOOD]),
             prop::collection::vec("[a-z]{1,8}( [a-z]{1,8}){0,2}", 0..4),
@@ -85,7 +141,7 @@ mod tests {
         /// Every other section comes through whole and in order; nothing
         /// from "Under the hood" does.
         #[test]
-        fn prop_only_under_the_hood_goes(sections in prop::collection::vec(section(), 0..6)) {
+        fn prop_only_under_the_hood_goes(sections in prop::collection::vec(notes_section(), 0..6)) {
             let mut notes = String::from("## 1.0.0\n");
             for (title, items) in &sections {
                 notes.push_str(&format!("\n### {title}\n\n"));
@@ -107,6 +163,24 @@ mod tests {
             }
             // Leaving out a section twice changes nothing more.
             prop_assert_eq!(for_app(&shown), shown);
+        }
+
+        /// In a changelog of several releases, each one's section is its
+        /// own: its heading first, and no other release's lines.
+        #[test]
+        fn prop_sections_hold_one_release(count in 1usize..6, pick in any::<prop::sample::Index>()) {
+            let versions: Vec<String> = (0..count).map(|i| format!("0.{}.0", count - i)).collect();
+            let mut log = String::from("# Changelog\n\n");
+            for v in &versions {
+                log.push_str(&format!("## [{v}](https://x/compare) - 2026-01-01\n\n### New\n\n- change in {v}\n\n"));
+            }
+            let v = &versions[pick.index(count)];
+            let s = section(&log, v).unwrap();
+            let heading = format!("## [{v}]");
+            prop_assert!(s.starts_with(&heading));
+            let line = format!("- change in {v}");
+            prop_assert!(s.contains(&line));
+            prop_assert_eq!(s.matches("## [").count(), 1);
         }
     }
 }
