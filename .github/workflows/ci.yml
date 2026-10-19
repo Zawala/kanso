@@ -56,13 +56,21 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # On the self-hosted Windows runner, plain `bash` is WSL's launcher in
       # WindowsApps, which can't run the step scripts; put Git Bash first.
+      # Git for Windows may be installed for every user (Program Files) or
+      # only the runner's (AppData\Local\Programs), so look where git is too.
       - name: Git Bash first on PATH (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          $git = Join-Path $env:ProgramFiles 'Git\bin'
-          if (-not (Test-Path (Join-Path $git 'bash.exe'))) {
-            Write-Output "::error::Git for Windows isn't installed at $git; the build steps need its bash."
+          $candidates = @(
+            (Join-Path $env:ProgramFiles 'Git\bin'),
+            (Join-Path $env:LOCALAPPDATA 'Programs\Git\bin')
+          )
+          $gitExe = (Get-Command git -ErrorAction SilentlyContinue).Source
+          if ($gitExe) { $candidates += Join-Path (Split-Path (Split-Path $gitExe)) 'bin' }
+          $git = $candidates | Where-Object { Test-Path (Join-Path $_ 'bash.exe') } | Select-Object -First 1
+          if (-not $git) {
+            Write-Output "::error::Git for Windows' bash.exe isn't in any of: $($candidates -join ', '). The build steps need it."
             exit 1
           }
           Add-Content -Path $env:GITHUB_PATH -Value $git -Encoding ascii
