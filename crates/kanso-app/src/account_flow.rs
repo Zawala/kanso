@@ -1077,7 +1077,7 @@ fn notify_backup(path: PathBuf, cx: &mut App) {
             .action(move |_, _, _| {
                 let path = path.clone();
                 Button::new("show-backup")
-                    .label("Show in Finder")
+                    .label(crate::paths::SHOW_IN_FILE_MANAGER)
                     .on_click(move |_, _, cx| cx.reveal_path(&path))
             })
         },

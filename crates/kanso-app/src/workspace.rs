@@ -119,31 +119,32 @@ impl AppState {
 }
 
 pub fn bind_keys(cx: &mut App) {
+    // `secondary` is ⌘ on macOS and Ctrl on Windows and Linux.
     cx.bind_keys([
-        KeyBinding::new("cmd-n", NewNote, None),
-        KeyBinding::new("cmd-shift-n", NewNotebook, None),
+        KeyBinding::new("secondary-n", NewNote, None),
+        KeyBinding::new("secondary-shift-n", NewNotebook, None),
         // ⌘L searches the list as it is; ⇧⌘F, global search, all notes.
-        KeyBinding::new("cmd-l", FocusSearch, None),
-        KeyBinding::new("cmd-shift-f", SearchAllNotes, None),
+        KeyBinding::new("secondary-l", FocusSearch, None),
+        KeyBinding::new("secondary-shift-f", SearchAllNotes, None),
         // ⌘L goes to the list's search box; ⇧⌘L to the list itself.
-        KeyBinding::new("cmd-shift-l", FocusNoteList, None),
-        KeyBinding::new("cmd-\\", ToggleSidebar, None),
-        KeyBinding::new("cmd-shift-d", ToggleFocusMode, None),
+        KeyBinding::new("secondary-shift-l", FocusNoteList, None),
+        KeyBinding::new("secondary-\\", ToggleSidebar, None),
+        KeyBinding::new("secondary-shift-d", ToggleFocusMode, None),
         // After anything inside that takes Escape (an open menu, extra
         // cursors, the palette), so the first Escape left over leaves.
         KeyBinding::new("escape", ExitFocusMode, Some("FocusMode")),
-        KeyBinding::new("cmd-1", ShowEditor, None),
-        KeyBinding::new("cmd-2", ShowSplit, None),
-        KeyBinding::new("cmd-3", ShowPreview, None),
-        KeyBinding::new("cmd-s", SaveNote, None),
-        KeyBinding::new("cmd-shift-p", TogglePinned, None),
-        KeyBinding::new("cmd-alt-down", NextNote, None),
-        KeyBinding::new("cmd-alt-up", PreviousNote, None),
-        KeyBinding::new("cmd-,", OpenSettings, None),
-        KeyBinding::new("cmd-q", Quit, None),
+        KeyBinding::new("secondary-1", ShowEditor, None),
+        KeyBinding::new("secondary-2", ShowSplit, None),
+        KeyBinding::new("secondary-3", ShowPreview, None),
+        KeyBinding::new("secondary-s", SaveNote, None),
+        KeyBinding::new("secondary-shift-p", TogglePinned, None),
+        KeyBinding::new("secondary-alt-down", NextNote, None),
+        KeyBinding::new("secondary-alt-up", PreviousNote, None),
+        KeyBinding::new("secondary-,", OpenSettings, None),
+        KeyBinding::new("secondary-q", Quit, None),
         KeyBinding::new("enter", FocusEditor, Some("NoteList")),
-        KeyBinding::new("cmd-k", OpenCommandPalette, None),
-        KeyBinding::new("cmd-p", OpenNotePicker, None),
+        KeyBinding::new("secondary-k", OpenCommandPalette, None),
+        KeyBinding::new("secondary-p", OpenNotePicker, None),
     ]);
     crate::palette::bind_keys(cx);
     crate::settings::bind_keys(cx);

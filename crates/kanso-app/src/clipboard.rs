@@ -3,6 +3,8 @@
 //! A12), and asking macOS
 //! whether a folder syncs to iCloud. A few calls into AppKit and Foundation
 //! through the Objective-C runtime; GPUI links both frameworks already.
+//! On Windows and Linux the secret goes through GPUI's clipboard and is
+//! cleared after its minute; nothing there is in iCloud.
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -61,6 +63,7 @@ pub fn clear_secret_on_quit() {
 /// clipboard managers skip it, and clears it after [`SECRET_LIFETIME`]
 /// unless something else was copied meanwhile. Returns false when the
 /// clipboard couldn't be written.
+#[cfg(target_os = "macos")]
 pub fn copy_secret(secret: &str, cx: &mut App) -> bool {
     let Some(copied) = mac::copy_secret(secret) else {
         return false;
@@ -72,6 +75,33 @@ pub fn copy_secret(secret: &str, cx: &mut App) -> bool {
         cx.background_executor().timer(SECRET_LIFETIME).await;
         // AppKit's pasteboard, from the main thread.
         cx.update(|_| clear_secret(Some(copied)));
+    })
+    .detach();
+    true
+}
+
+/// Copies `secret` with GPUI's clipboard, which has no concealed or
+/// host-only marking off macOS, and clears it after [`SECRET_LIFETIME`]
+/// while the clipboard still holds it. Only a hash of the secret waits for
+/// the minute. Not cleared at quit.
+#[cfg(not(target_os = "macos"))]
+pub fn copy_secret(secret: &str, cx: &mut App) -> bool {
+    fn fingerprint(text: &str) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        text.hash(&mut hasher);
+        hasher.finish()
+    }
+    cx.write_to_clipboard(ClipboardItem::new_string(secret.to_owned()));
+    let copied = fingerprint(secret);
+    cx.spawn(async move |cx| {
+        cx.background_executor().timer(SECRET_LIFETIME).await;
+        cx.update(|cx| {
+            let now = cx.read_from_clipboard().and_then(|item| item.text());
+            if now.is_some_and(|now| still_ours(copied as isize, fingerprint(&now) as isize)) {
+                cx.write_to_clipboard(ClipboardItem::new_string(String::new()));
+            }
+        });
     })
     .detach();
     true
@@ -240,10 +270,6 @@ mod mac {
 #[cfg(not(target_os = "macos"))]
 mod mac {
     use std::path::Path;
-
-    pub fn copy_secret(_: &str) -> Option<isize> {
-        None
-    }
 
     pub fn change_count() -> Option<isize> {
         None

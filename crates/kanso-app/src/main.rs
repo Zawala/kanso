@@ -2,6 +2,10 @@
 //!
 //! `kanso` opens the app. Other commands run without a window; see `--help`.
 
+// On Windows the release build is a GUI program, so opening Kanso shows no
+// console window; the commands borrow the console they were run from.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod account_flow;
 #[cfg(test)]
 mod account_flow_tests;
@@ -70,8 +74,15 @@ Commands:
                     and password (macOS asks to allow Keychain access)
   help              Show this message
 
-The data folder defaults to ~/Library/Application Support/Kanso
+";
+
+#[cfg(target_os = "macos")]
+const DATA_DIR_NOTE: &str = "The data folder defaults to ~/Library/Application Support/Kanso
 (or $KANSO_DATA_DIR).";
+#[cfg(target_os = "windows")]
+const DATA_DIR_NOTE: &str = "The data folder defaults to %APPDATA%\\Kanso (or %KANSO_DATA_DIR%).";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const DATA_DIR_NOTE: &str = "The data folder defaults to $XDG_DATA_HOME/kanso, ~/.local/share/kanso when\nthat isn't set (or $KANSO_DATA_DIR).";
 
 struct Args {
     command: Option<String>,
@@ -111,16 +122,32 @@ fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
 }
 
 fn main() -> Result<()> {
+    #[cfg(windows)]
+    if std::env::args().len() > 1 {
+        attach_parent_console();
+    }
     let args = parse_args()?;
     match args.command.as_deref() {
         None => run_app(args.data_dir),
         Some("serve") => serve(args.data_dir),
         Some("import-inkdrop") => inkdrop::run_cli(&args.data_dir, &args.rest),
         Some("help") => {
-            println!("{USAGE}");
+            println!("{USAGE}{DATA_DIR_NOTE}");
             Ok(())
         }
-        Some(other) => bail!("unknown command `{other}`\n\n{USAGE}"),
+        Some(other) => bail!("unknown command `{other}`\n\n{USAGE}{DATA_DIR_NOTE}"),
+    }
+}
+
+/// Writes the commands' output to the console Kanso was started from, if
+/// any: a GUI program on Windows has none of its own.
+#[cfg(windows)]
+fn attach_parent_console() {
+    use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
+    // SAFETY: takes a process ID and only fails when there's no console to
+    // attach to or one is attached already, which leaves things as they were.
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
     }
 }
 
@@ -224,21 +251,36 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
 
 fn open_main_window(cx: &mut App) {
     let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
+    // On macOS the panes run to the top edge; the traffic lights sit in the
+    // leftmost pane's top band, and the app moves the window from the bands
+    // itself (see `layout::BandDrag`). Elsewhere Kanso draws no window
+    // controls of its own, so the system's title bar stays.
+    #[cfg(target_os = "macos")]
+    let titlebar = TitlebarOptions {
+        title: Some("Kanso".into()),
+        appears_transparent: true,
+        traffic_light_position: Some(point(
+            px(layout::TRAFFIC_LIGHTS.0),
+            px(layout::TRAFFIC_LIGHTS.1),
+        )),
+    };
+    #[cfg(not(target_os = "macos"))]
+    let titlebar = TitlebarOptions {
+        title: Some("Kanso".into()),
+        appears_transparent: false,
+        traffic_light_position: None,
+    };
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
-        // The panes run to the top edge; the traffic lights sit in the
-        // leftmost pane's top band, and the app moves the window from the
-        // bands itself (see `layout::BandDrag`).
-        titlebar: Some(TitlebarOptions {
-            title: Some("Kanso".into()),
-            appears_transparent: true,
-            traffic_light_position: Some(point(
-                px(layout::TRAFFIC_LIGHTS.0),
-                px(layout::TRAFFIC_LIGHTS.1),
-            )),
-        }),
-        app_owns_titlebar_drag: true,
+        titlebar: Some(titlebar),
+        app_owns_titlebar_drag: cfg!(target_os = "macos"),
         window_min_size: Some(size(px(1100.), px(720.))),
+        // Matches kanso.desktop, so the dock and the window list show its
+        // name and icon.
+        #[cfg(target_os = "linux")]
+        app_id: Some("kanso".into()),
+        #[cfg(target_os = "linux")]
+        window_decorations: Some(WindowDecorations::Server),
         ..Default::default()
     };
     let theme = cx.global::<AppState>().config.appearance.theme;

@@ -1,4 +1,5 @@
-//! Launch at login, with a per-user LaunchAgent.
+//! Launch at login, with a per-user LaunchAgent on macOS and an XDG
+//! autostart entry on Linux.
 
 use std::path::{Path, PathBuf};
 
@@ -68,16 +69,65 @@ pub fn program_args(exe: &Path, data_dir: &Path) -> Vec<String> {
     args
 }
 
-/// Installs or removes the LaunchAgent at `path`, which opens Kanso on
-/// `data_dir`.
+/// Whether Kanso can open itself at login here: with a LaunchAgent on macOS
+/// and an XDG autostart entry on Linux; not yet on Windows.
+pub const SUPPORTED: bool = !cfg!(target_os = "windows");
+
+/// Quotes an argument for a desktop entry's `Exec` key, then escapes it as
+/// a desktop entry string value (the Desktop Entry Specification's two
+/// layers of escaping).
+pub fn exec_quote(arg: &str) -> String {
+    let mut quoted = String::with_capacity(arg.len() + 2);
+    quoted.push('"');
+    for c in arg.chars() {
+        match c {
+            '"' | '`' | '$' | '\\' => {
+                quoted.push('\\');
+                quoted.push(c);
+            }
+            c => quoted.push(c),
+        }
+    }
+    quoted.push('"');
+    quoted.replace('\\', "\\\\").replace('%', "%%")
+}
+
+/// The XDG autostart entry that runs `program_args` at login.
+pub fn autostart_entry(program_args: &[String]) -> String {
+    let exec: Vec<String> = program_args.iter().map(|arg| exec_quote(arg)).collect();
+    format!(
+        "[Desktop Entry]\nType=Application\nName=Kanso\nExec={}\nIcon=kanso\nTerminal=false\nX-GNOME-Autostart-enabled=true\n",
+        exec.join(" ")
+    )
+}
+
+/// What `set_enabled` writes: the LaunchAgent on macOS, the autostart entry
+/// elsewhere. In an AppImage, the image rather than its mounted copy.
+fn login_item(data_dir: &Path) -> anyhow::Result<String> {
+    if !SUPPORTED {
+        anyhow::bail!("opening at login isn't available on this system yet");
+    }
+    let exe = match std::env::var_os("APPIMAGE").filter(|_| cfg!(target_os = "linux")) {
+        Some(image) => PathBuf::from(image),
+        None => std::env::current_exe().context("couldn't find the Kanso executable")?,
+    };
+    let args = program_args(&exe, data_dir);
+    Ok(if cfg!(target_os = "macos") {
+        plist(&args)
+    } else {
+        autostart_entry(&args)
+    })
+}
+
+/// Installs or removes the login item at `path` (see `login_item`), which
+/// opens Kanso on `data_dir`.
 pub fn set_enabled(path: &PathBuf, enabled: bool, data_dir: &Path) -> anyhow::Result<()> {
     if enabled {
-        let exe = std::env::current_exe().context("couldn't find the Kanso executable")?;
+        let item = login_item(data_dir)?;
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        std::fs::write(path, plist(&program_args(&exe, data_dir)))
-            .with_context(|| format!("writing {}", path.display()))?;
+        std::fs::write(path, item).with_context(|| format!("writing {}", path.display()))?;
     } else {
         match std::fs::remove_file(path) {
             Ok(()) => {}
@@ -90,9 +140,46 @@ pub fn set_enabled(path: &PathBuf, enabled: bool, data_dir: &Path) -> anyhow::Re
 
 #[cfg(test)]
 mod tests {
-    use super::{plist, program_args, xml_escape};
+    use super::{autostart_entry, exec_quote, plist, program_args, xml_escape};
     use proptest::prelude::*;
     use std::path::Path;
+
+    /// Reads one argument back the way a desktop environment does: undo the
+    /// string escaping, then the `Exec` quoting.
+    fn exec_unquote(text: &str) -> Option<String> {
+        let mut value = String::new();
+        let mut chars = text.chars();
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                value.push(chars.next()?);
+            } else {
+                value.push(c);
+            }
+        }
+        let value = value.replace("%%", "%");
+        let inner = value.strip_prefix('"')?.strip_suffix('"')?;
+        let mut arg = String::new();
+        let mut chars = inner.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => arg.push(chars.next()?),
+                '"' | '`' | '$' => return None,
+                c => arg.push(c),
+            }
+        }
+        Some(arg)
+    }
+
+    #[test]
+    fn autostart_entry_examples() {
+        assert_eq!(exec_quote("/opt/kanso/kanso"), "\"/opt/kanso/kanso\"");
+        assert_eq!(exec_quote("a b"), "\"a b\"");
+        assert_eq!(exec_quote("100%"), "\"100%%\"");
+        assert_eq!(exec_quote("$HOME"), "\"\\\\$HOME\"");
+        let entry = autostart_entry(&["/opt/kanso".to_owned(), "--data-dir".to_owned()]);
+        assert!(entry.starts_with("[Desktop Entry]\n"));
+        assert!(entry.contains("\nExec=\"/opt/kanso\" \"--data-dir\"\n"));
+    }
 
     fn xml_unescape(text: &str) -> String {
         text.replace("&lt;", "<")
@@ -117,6 +204,23 @@ mod tests {
             let escaped = xml_escape(&text);
             prop_assert!(!escaped.contains(['<', '>', '"', '\'']));
             prop_assert!(escaped.match_indices('&').all(|(at, _)| ["&amp;", "&lt;", "&gt;", "&quot;", "&apos;"].iter().any(|e| escaped[at..].starts_with(e))));
+        }
+
+        /// Round-trip: a desktop environment reads each quoted argument back
+        /// as it was, whatever quotes, dollars, backslashes or percents it has.
+        #[test]
+        fn prop_exec_quote_round_trips(arg in "[^\\x00\\n\\r]{0,60}") {
+            prop_assert_eq!(exec_unquote(&exec_quote(&arg)), Some(arg));
+        }
+
+        /// Invariant: the entry is one line per key, whatever the arguments.
+        #[test]
+        fn prop_autostart_entry_keeps_one_exec_line(
+            args in proptest::collection::vec("[^\\x00\\n\\r]{0,30}", 1..4),
+        ) {
+            let entry = autostart_entry(&args);
+            prop_assert_eq!(entry.lines().filter(|l| l.starts_with("Exec=")).count(), 1);
+            prop_assert_eq!(entry.lines().count(), 7);
         }
     }
 

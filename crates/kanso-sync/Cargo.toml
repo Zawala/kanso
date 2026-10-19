@@ -29,8 +29,19 @@ zeroize.workspace = true
 # Blocking HTTP with rustls: the GPUI app has no async runtime.
 ureq = "3.4"
 url = "2.5"
-# macOS Keychain for sessions, data keys, recovery keys and pending logouts.
+
+# The system's secret store for sessions, data keys, recovery keys and pending
+# logouts: the Keychain on macOS, the Credential Manager on Windows, and the
+# Secret Service (GNOME Keyring, KWallet) over D-Bus on Linux, with the kernel
+# keyring in front of it.
+[target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3.6", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3.6", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", features = ["linux-native-sync-persistent", "crypto-rust"] }
 
 [dev-dependencies]
 async-channel.workspace = true

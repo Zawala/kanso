@@ -212,12 +212,15 @@ use gpui_kit::prelude::FluentBuilder as _;
 /// Imports Inkdrop's notes, showing progress in a dialog.
 pub fn start_import(window: &mut Window, cx: &mut App) {
     let Some((_, source)) = find_inkdrop() else {
-        window.push_notification(
-            Notification::warning(
-                "No Inkdrop database was found in ~/Library/Application Support/inkdrop.",
-            ),
-            cx,
-        );
+        #[cfg(target_os = "macos")]
+        let message =
+            "No Inkdrop database was found in ~/Library/Application Support/inkdrop.".to_owned();
+        #[cfg(not(target_os = "macos"))]
+        let message = match kanso_import::default_inkdrop_dir() {
+            Some(dir) => format!("No Inkdrop database was found in {}.", dir.display()),
+            None => "No Inkdrop database was found.".to_owned(),
+        };
+        window.push_notification(Notification::warning(message), cx);
         return;
     };
     let store = cx.global::<AppState>().store.clone();

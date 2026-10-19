@@ -7,8 +7,6 @@
 //! the user asked to copy the credentials. Nothing here prints or logs the
 //! secret or the plaintext.
 
-use std::process::Command;
-
 use aes::cipher::{
     BlockDecryptMut as _, BlockEncryptMut as _, KeyIvInit as _, block_padding::Pkcs7,
 };
@@ -57,7 +55,10 @@ pub fn decrypt(data: &[u8], secret: &str) -> anyhow::Result<Vec<u8>> {
 
 /// Reads a generic password from the login Keychain with `security`. macOS
 /// asks the user to allow it.
+#[cfg(target_os = "macos")]
 pub fn keychain_secret(service: &str) -> anyhow::Result<String> {
+    use std::process::Command;
+
     let output = Command::new("/usr/bin/security")
         .args(["find-generic-password", "-w", "-s", service])
         .output()
@@ -67,6 +68,16 @@ pub fn keychain_secret(service: &str) -> anyhow::Result<String> {
     }
     let secret = String::from_utf8(output.stdout).context("the Keychain secret isn't text")?;
     Ok(secret.trim_end_matches('\n').to_owned())
+}
+
+/// Inkdrop's `safeStorage` secret lives in the macOS Keychain; Electron
+/// keeps it elsewhere (DPAPI, libsecret) on other systems, which Kanso
+/// can't read yet. Enter Inkdrop's API credentials by hand instead.
+#[cfg(not(target_os = "macos"))]
+pub fn keychain_secret(service: &str) -> anyhow::Result<String> {
+    bail!(
+        "reading Inkdrop's encrypted credentials (“{service}”) only works on macOS; enter its API username and password instead"
+    )
 }
 
 impl InkdropServerConfig {

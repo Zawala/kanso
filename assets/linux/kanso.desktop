@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Kanso
+GenericName=Notes
+Comment=Markdown notes with sync and end-to-end encryption
+Exec=kanso
+Icon=kanso
+Terminal=false
+Categories=Office;Utility;TextEditor;
+Keywords=notes;markdown;inkdrop;
+StartupWMClass=kanso
