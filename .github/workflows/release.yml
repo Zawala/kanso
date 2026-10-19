@@ -201,6 +201,33 @@ jobs:
           Compress-Archive -Path target/release/kanso.exe `
             -DestinationPath "dist/$env:STEM.zip"
 
+      # A per-user installer beside the zip (packaging/windows/kanso.iss).
+      # Inno Setup is fetched at a pinned version and checked against its
+      # published SHA-256 before it runs.
+      - name: Installer (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          STEM: ${{ steps.version.outputs.stem }}
+          VERSION: ${{ steps.version.outputs.version }}
+          INNO_URL: https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe
+          INNO_SHA256: 9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Join-Path $env:RUNNER_TEMP 'innosetup.exe'
+          $inno = Join-Path $env:RUNNER_TEMP 'inno'
+          Invoke-WebRequest -UseBasicParsing -Uri $env:INNO_URL -OutFile $setup
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:INNO_SHA256) { throw "Inno Setup's SHA-256 is $hash, not $env:INNO_SHA256" }
+          $p = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', "/DIR=$inno")
+          if ($p.ExitCode -ne 0) { throw "Inno Setup didn't install (exit $($p.ExitCode))" }
+          $exe = (Resolve-Path target/release/kanso.exe).Path
+          $dist = (Resolve-Path dist).Path
+          & (Join-Path $inno 'ISCC.exe') "/DAppVersion=$env:VERSION" "/DSourceExe=$exe" `
+            "/DOutputDir=$dist" "/DOutputBase=$env:STEM-setup" packaging/windows/kanso.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Package (Linux)
         if: runner.os == 'Linux'
         env:

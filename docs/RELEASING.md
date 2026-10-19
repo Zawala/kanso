@@ -13,6 +13,7 @@ Every release carries, beside the downloads:
 |---|---|
 | `Kanso-<v>-macos-arm64.app.tar.gz` | `Kanso.app` alone, the macOS update (the `.dmg` is for first installs) |
 | `Kanso-<v>-windows-x64.zip` | `kanso.exe`, the download and the update |
+| `Kanso-<v>-windows-x64-setup.exe` | the per-user installer (`packaging/windows/kanso.iss`, Inno Setup 6.7.3), for first installs |
 | `Kanso-<v>-linux-x64.tar.gz`, `…-linux-arm64.tar.gz` | the folder with `kanso`, the download and the update |
 | `latest.json` | the feed: schema 1, version, date, release page, notes, and for each platform the update's URL, SHA-256 and size |
 | `latest.json.sig` | an Ed25519 signature over the feed's exact bytes, base64 |

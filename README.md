@@ -29,10 +29,13 @@ blocked", and confirm (or Control-click Kanso in Applications and choose Open). 
 different signature, so macOS may ask once per build to let Kanso use its Keychain items; choose
 Always Allow.
 
-**Windows** (`Kanso-<version>-windows-x64.zip`): unzip it and run `kanso.exe`; put it anywhere, for
-example `%LOCALAPPDATA%\Programs\Kanso`, and pin it to Start. It isn't code-signed, so SmartScreen may
-say "Windows protected your PC": choose More info › **Run anyway**. Notes live in `%APPDATA%\Kanso`;
-sign-ins go to the Windows Credential Manager.
+**Windows** (`Kanso-<version>-windows-x64-setup.exe`): run the installer. It installs for you only,
+into `%LOCALAPPDATA%\Programs\Kanso`, without asking for an administrator, and adds Kanso to Start
+(and, if you tick it, the desktop); uninstall it from Settings › Apps. It isn't code-signed yet, so
+SmartScreen may say "Windows protected your PC": choose More info › **Run anyway**. Prefer no
+installer? `Kanso-<version>-windows-x64.zip` holds the same `kanso.exe` to put anywhere you can write
+to. Either way Kanso updates itself. Notes live in `%APPDATA%\Kanso` and stay when Kanso is
+uninstalled unless you ask for them to go; sign-ins go to the Windows Credential Manager.
 
 **Linux** (`Kanso-<version>-linux-x64.tar.gz` or `-linux-arm64.tar.gz`, built on Ubuntu 22.04 so
 glibc 2.35 or newer): unpack it and run `./install.sh`, which puts `kanso` in `~/.local/bin` and Kanso

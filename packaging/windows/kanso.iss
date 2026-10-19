@@ -1,0 +1,95 @@
+; Kanso's Windows installer (Inno Setup 6). The release workflow builds it:
+;
+;   ISCC.exe /DAppVersion=0.2.0 /DSourceExe=...\kanso.exe /DOutputDir=...\dist
+;            /DOutputBase=Kanso-0.2.0-windows-x64-setup packaging\windows\kanso.iss
+;
+; It installs for the current user only, into %LOCALAPPDATA%\Programs\Kanso,
+; so it never asks for an administrator, and Kanso's own updater can swap
+; kanso.exe later without one. Notes live apart, in %APPDATA%\Kanso, and
+; stay when Kanso is uninstalled unless the person asks for them to go.
+
+#ifndef AppVersion
+  #define AppVersion "0.0.0"
+#endif
+#ifndef SourceExe
+  #define SourceExe "..\..\target\release\kanso.exe"
+#endif
+#ifndef OutputDir
+  #define OutputDir "..\..\dist"
+#endif
+#ifndef OutputBase
+  #define OutputBase "Kanso-" + AppVersion + "-windows-x64-setup"
+#endif
+
+[Setup]
+; Never change AppId: Windows recognises an installed Kanso by it, so an
+; installer for a newer version upgrades in place.
+AppId={{6F0B8E52-3C1D-4D6A-9B7E-5A2C4E1F8D30}
+AppName=Kanso
+AppVersion={#AppVersion}
+AppVerName=Kanso {#AppVersion}
+AppPublisher=Ngonidzashe Mangudya
+AppPublisherURL=https://github.com/iamngoni/kanso
+AppSupportURL=https://github.com/iamngoni/kanso/issues
+AppUpdatesURL=https://github.com/iamngoni/kanso/releases
+VersionInfoVersion={#AppVersion}
+DefaultDirName={userpf}\Kanso
+DisableDirPage=yes
+DisableProgramGroupPage=yes
+PrivilegesRequired=lowest
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+MinVersion=10.0
+SetupIconFile={#SourcePath}\..\..\assets\icon\kanso.ico
+UninstallDisplayIcon={app}\kanso.exe
+UninstallDisplayName=Kanso
+OutputDir={#OutputDir}
+OutputBaseFilename={#OutputBase}
+Compression=lzma2/max
+SolidCompression=yes
+WizardStyle=modern
+; Close a running Kanso before replacing it, and open it again afterwards.
+CloseApplications=yes
+RestartApplications=yes
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
+[Files]
+Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "kanso.exe"; Flags: ignoreversion
+
+[Icons]
+Name: "{userprograms}\Kanso"; Filename: "{app}\kanso.exe"
+Name: "{userdesktop}\Kanso"; Filename: "{app}\kanso.exe"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\kanso.exe"; Description: "{cm:LaunchProgram,Kanso}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+; What Kanso's updater leaves beside itself: the previous exe, kept until
+; the next start, and its staging folder.
+Type: files; Name: "{app}\kanso.exe.old"
+Type: filesandordirs; Name: "{app}\.kanso-update"
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Notes: String;
+begin
+  if CurUninstallStep <> usPostUninstall then
+    Exit;
+  Notes := ExpandConstant('{userappdata}\Kanso');
+  if not DirExists(Notes) then
+    Exit;
+  // Kept unless the person says otherwise; a silent uninstall never asks.
+  if UninstallSilent then
+    Exit;
+  if MsgBox('Also delete your Kanso notes and settings on this computer?' + #13#10 + #13#10 +
+            Notes + #13#10 + #13#10 +
+            'Notes synced to your account stay there. Choose No to keep them here too.',
+            mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+    DelTree(Notes, True, True, True);
+end;
