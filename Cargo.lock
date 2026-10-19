@@ -3834,7 +3834,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-app"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -3872,7 +3872,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "fastrand",
  "md-5",
@@ -3884,7 +3884,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-import"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "aes",
  "anyhow",
@@ -3902,7 +3902,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-server"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -3924,7 +3924,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-store"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "async-channel",
  "base64 0.22.1",
@@ -3940,7 +3940,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-sync"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -3968,7 +3968,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-update"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",

@@ -3,6 +3,22 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## [0.2.0](https://github.com/iamngoni/kanso/compare/v0.1.1...v0.2.0) - 2026-10-19
+
+### New
+
+- Close brackets, quotes and Markdown markers as you type ([4f383a9](https://github.com/iamngoni/kanso/commit/4f383a991bd116220cfe1848cb9345da67a87631))
+- Tab and Shift-Tab indent list items, with what hangs under them ([6ea7aac](https://github.com/iamngoni/kanso/commit/6ea7aacf8eaa3624829e83373c36e91833525bf7))
+- Format Table lines up a Markdown table ([3945fee](https://github.com/iamngoni/kanso/commit/3945fee951b59353366cbc4081e81f4e7cf18c6b))
+- Smart paste: links over selected words, formatted text as Markdown, images as attachments ([0b023f6](https://github.com/iamngoni/kanso/commit/0b023f689f86e5dc15dc93744f054be2603723cc))
+- Size attached images in the preview ([a1a7dfd](https://github.com/iamngoni/kanso/commit/a1a7dfdab76e0980cb2717da7b68edbd463ade5d))
+- Word goal with a progress ring in focus mode ([8ee7204](https://github.com/iamngoni/kanso/commit/8ee7204287b572a1eafcd3b1b34db203217886e5))
+- Typewriter scrolling, and the writing aids in Settings › Editor ([18e0836](https://github.com/iamngoni/kanso/commit/18e08363e197903d385588f2e0acc4b902173eef))
+
+### Under the hood
+
+- Snapshots and latency runs for the writing aids ([d3c7467](https://github.com/iamngoni/kanso/commit/d3c7467ec807eb709fd7a867e51f984a00f79a27))
+
 ## [0.1.1](https://github.com/iamngoni/kanso/compare/v0.1.0...v0.1.1) - 2026-10-19
 
 ### Fixed
