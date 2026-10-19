@@ -23,11 +23,9 @@ Builds for macOS (Apple silicon), Windows (x64) and Linux (x64 and arm64) are on
 checksum (`shasum -a 256 -c SHA256SUMS --ignore-missing` checks the ones you have).
 
 **macOS** (`Kanso-<version>-macos-arm64.dmg`): open the disk image and drag Kanso to Applications.
-The app is ad-hoc signed and not notarized, so the first time macOS says it can't check it for
-malware. Click Done, then System Settings › Privacy & Security › **Open Anyway** next to "Kanso was
-blocked", and confirm (or Control-click Kanso in Applications and choose Open). Each new build has a
-different signature, so macOS may ask once per build to let Kanso use its Keychain items; choose
-Always Allow.
+It is signed with a Developer ID and notarized by Apple, so it opens like any other Mac app.
+Once installed, Kanso updates itself: it checks for new releases and installs them when you choose
+Restart now.
 
 **Windows** (`Kanso-<version>-windows-x64-setup.exe`): run the installer. It installs for you only,
 into `%LOCALAPPDATA%\Programs\Kanso`, without asking for an administrator, and adds Kanso to Start
@@ -76,9 +74,6 @@ The default server is the owner's Worker, `kanso.antonlabs.cc`, which takes new
 accounts only when its owner opens sign-ups. To run your own, deploy the Worker in
 [cloud/](cloud/README.md) to your Cloudflare account and choose **Use a different server…** before
 creating the account. An account belongs to its server's address, so pick the final URL first.
-
-**Other people's Macs.** The builds are ad-hoc signed and not notarized; see [Download](#download)
-for getting past Gatekeeper the first time.
 
 ### Shortcuts
 
