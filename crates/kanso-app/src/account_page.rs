@@ -1214,17 +1214,17 @@ fn copy_key_to_clipboard(key: &RecoveryKey, window: &mut Window, cx: &mut App) {
 }
 
 /// Writes the key's file, readable only by this user. The save panel has
-/// asked before replacing a file already there.
+/// asked before replacing a file already there. (On Windows the file keeps
+/// its folder's permissions.)
 pub fn write_key_file(path: &Path, text: &str) -> std::io::Result<()> {
     use std::io::Write as _;
-    use std::os::unix::fs::OpenOptionsExt as _;
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(path)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options.open(path)?;
     // A file that was there keeps its old mode unless it is set again.
+    #[cfg(unix)]
     std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
     file.write_all(text.as_bytes())?;
     file.sync_all()

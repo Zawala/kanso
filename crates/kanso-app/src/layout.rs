@@ -28,6 +28,7 @@ pub const EDITOR_MIN_WIDTH: f32 = 560.;
 
 /// Where macOS puts the close button, from the window's top left. The three
 /// buttons are about 14 points across, 20 apart.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const TRAFFIC_LIGHTS: (f32, f32) = (16., 18.);
 /// The start of the leftmost pane's top band that the traffic lights cover.
 pub const TRAFFIC_LIGHT_INSET: f32 = 76.;

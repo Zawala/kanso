@@ -42,7 +42,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Version
         id: version
@@ -114,7 +114,7 @@ jobs:
           install -m 755 assets/linux/install.sh "$stem/install.sh"
           tar -czf "dist/$stem.tar.gz" "$stem"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ${{ steps.version.outputs.stem }}
           path: dist/*
@@ -128,7 +128,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true
@@ -139,7 +139,7 @@ jobs:
           sha256sum -- * >SHA256SUMS
           cat SHA256SUMS
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: SHA256SUMS
           path: dist/SHA256SUMS
