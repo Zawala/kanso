@@ -53,5 +53,21 @@ for i in 0..<steps {
 cg.setFillColor(rgb(0xC2492E))
 cg.fillEllipse(in: CGRect(x: 700 - 24, y: 690 - 24, width: 48, height: 48))
 
+// Kanso Dev: an amber band across the foot of the tile, saying DEV, so the
+// two apps are never mistaken for each other in the Dock or Finder.
+if ProcessInfo.processInfo.environment["KANSO_ICON_DEV"] != nil {
+    cg.saveGState()
+    cg.addPath(tile); cg.clip()
+    cg.setFillColor(rgb(0xD9922E)); cg.fill(CGRect(x: 100, y: 100, width: 824, height: 200))
+    cg.restoreGState()
+    let label = NSAttributedString(string: "DEV", attributes: [
+        .font: NSFont.systemFont(ofSize: 132, weight: .heavy),
+        .foregroundColor: NSColor.white,
+        .kern: 14,
+    ])
+    let box = label.size()
+    label.draw(at: NSPoint(x: 512 - box.width / 2, y: 200 - box.height / 2))
+}
+
 NSGraphicsContext.restoreGraphicsState()
 try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: out))
