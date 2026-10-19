@@ -3,7 +3,10 @@
   "name": "kanso-sync",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  "workers_dev": true,
+  "workers_dev": false,
+  "preview_urls": false,
+  // Served only on the owner's domain; the old workers.dev address is off.
+  "routes": [{ "pattern": "kanso.antonlabs.cc", "custom_domain": true }],
   // Metrics stay on. Workers Logs keeps only what the Worker itself logs (route names and error
   // codes): invocation logs, which would record every request's URL and metadata, and traces are
   // pinned off, so no dashboard default can turn them on. `wrangler tail` still shows requests

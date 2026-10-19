@@ -1,10 +1,12 @@
 # Deployed
 
-https://kanso-sync.imngonii.workers.dev
+https://kanso.antonlabs.cc
 
-As of 2026-10-18 this still runs the single-user v1 Worker (`SYNC_TOKEN`, migration `0001_init`
-only). Moving it to accounts (`0002_accounts`, `AUTH_PEPPER`, protocol v2) follows
-[docs/ACCOUNTS.md › Rollout](../docs/ACCOUNTS.md#rollout); update this file when that is done.
+Since 2026-10-19 this runs the accounts Worker (protocol v2, migration `0002_accounts`,
+`AUTH_PEPPER`), served only on the custom domain `kanso.antonlabs.cc`; the old
+`kanso-sync.imngonii.workers.dev` address is off (`workers_dev: false`). The D1 Time Travel
+bookmark from before the migration is `000000c8-00000000-00005108-c70da56708596ff0458be5e7c33f0f4e`;
+restore only with `npm run -s admin -- restore <bookmark>`.
 
 ## Restoring D1
 

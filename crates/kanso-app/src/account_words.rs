@@ -274,8 +274,14 @@ pub fn host_of(server: &str) -> String {
 /// Under the Create account form: what happens to the notes here, and that
 /// the password can't be reset, or that the server takes no accounts.
 pub fn sign_up_line(notes: usize, signup: Option<SignupState>) -> String {
-    if matches!(signup, Some(SignupState::Closed | SignupState::Full)) {
-        return "This server isn't taking new accounts.".to_owned();
+    match signup {
+        Some(SignupState::Full) => return "This server isn't taking new accounts.".to_owned(),
+        // Closed also covers a name the owner reserved (`signups only`), which
+        // health doesn't advertise, so the form still submits; the server decides.
+        Some(SignupState::Closed) => {
+            return "This server isn't open to new accounts. If its owner reserved your username, you can still create it.".to_owned();
+        }
+        _ => {}
     }
     let uploaded = match notes {
         0 => String::new(),
@@ -924,13 +930,10 @@ mod tests {
 
     #[test]
     fn small_examples() {
+        assert_eq!(server_label(None), "kanso.antonlabs.cc (default)");
         assert_eq!(
-            server_label(None),
-            "kanso-sync.imngonii.workers.dev (default)"
-        );
-        assert_eq!(
-            server_label(Some("https://kanso-sync.imngonii.workers.dev/")),
-            "kanso-sync.imngonii.workers.dev (default)"
+            server_label(Some("https://kanso.antonlabs.cc/")),
+            "kanso.antonlabs.cc (default)"
         );
         assert_eq!(
             server_label(Some("https://sync.example.dev/")),

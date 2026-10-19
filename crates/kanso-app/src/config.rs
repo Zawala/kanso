@@ -185,6 +185,17 @@ pub fn is_default_server(server: &str) -> bool {
     kanso_sync::check_endpoint(server).as_deref() == Ok(kanso_sync::DEFAULT_SERVER)
 }
 
+/// The owner's Worker before it moved to its own domain; v1 files that name
+/// it migrate to the default, like the default itself. It no longer answers.
+const OLD_OWNER_SERVER: &str = "https://kanso-sync.imngonii.workers.dev";
+
+/// Whether a v1 `endpoint` means "the owner's server": the default, or its
+/// old workers.dev address.
+fn is_owner_endpoint(endpoint: &str) -> bool {
+    is_default_server(endpoint)
+        || kanso_sync::check_endpoint(endpoint).as_deref() == Ok(OLD_OWNER_SERVER)
+}
+
 /// The source side's share of the split before it is first dragged.
 pub const DEFAULT_SPLIT_RATIO: f32 = 0.5;
 
@@ -260,7 +271,7 @@ impl AppConfig {
                 .sync
                 .endpoint
                 .clone()
-                .filter(|endpoint| !is_default_server(endpoint));
+                .filter(|endpoint| !is_owner_endpoint(endpoint));
         }
         self.version = CONFIG_VERSION;
         true
@@ -469,7 +480,7 @@ mod tests {
             };
             prop_assert_eq!(migrated.appearance.editor_font_size, expected_size);
             let expected_server = if config.version < 2 && config.sync.server.is_none() {
-                config.sync.endpoint.clone().filter(|e| !is_default_server(e))
+                config.sync.endpoint.clone().filter(|e| !is_owner_endpoint(e))
             } else {
                 config.sync.server.clone()
             };

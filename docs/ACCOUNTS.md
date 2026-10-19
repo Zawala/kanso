@@ -213,7 +213,7 @@ revisions; the password; the recovery key; or the data key.
 - `lp(x)` means a 2-byte big-endian byte length of `x`, then the UTF-8 bytes of `x`.
 - Format version 1 is the byte `0x01`.
 - **Origins.** `origin` is `url::Url::parse(server)?.origin().ascii_serialization()` of the URL the
-  client actually connects to, for example `https://kanso-sync.imngonii.workers.dev`: lowercase,
+  client actually connects to, for example `https://kanso.antonlabs.cc`: lowercase,
   punycode, default port omitted, path dropped. The server never supplies it.
 
 ### Password and KDF
@@ -457,7 +457,7 @@ primitives.
 
 ### Conventions
 
-- **Base URL.** The server URL (default `https://kanso-sync.imngonii.workers.dev`), checked by
+- **Base URL.** The server URL (default `https://kanso.antonlabs.cc`), checked by
   `check_endpoint`: https, or http to loopback only. A host ending in a dot is refused, since it would
   give the same server a second origin.
 - **Browser requests (M7).** Any request with an `Origin` header gets 403 `forbidden_origin`,
@@ -1376,7 +1376,7 @@ AUTH_PEPPER:<value>` on `wrangler dev`. `.dev.vars` and `cloud/.wrangler/` go in
 ### Public API the app calls
 
 ```rust
-pub const DEFAULT_SERVER: &str = "https://kanso-sync.imngonii.workers.dev";
+pub const DEFAULT_SERVER: &str = "https://kanso.antonlabs.cc";
 
 pub trait Backend: Send + Sync { /* api, remote, kdf_floor, kdf_default, retry_pause (1 s, then 4 s) */ }
 pub struct HttpBackend;                 // the app
@@ -2039,7 +2039,7 @@ account] [Sign in].
   - Username, with the hint "3–32 lowercase letters, digits, - or _".
   - Password, with the hint "At least 12 characters. A few random words work well."
   - Confirm password.
-  - Server: "kanso-sync.imngonii.workers.dev (default)" or the custom URL, with "Use a different
+  - Server: "kanso.antonlabs.cc (default)" or the custom URL, with "Use a different
     server…". That opens a prompt checked by `check_endpoint` and `server_info`, and a custom server
     shows "Use the default server" next to it.
 
@@ -2364,7 +2364,7 @@ above already say each of them; this list is the index.
     revoked rows per account.
 13. `signups only <name>` checks for an existing account afterwards; `check_endpoint` refuses a
     host ending in a dot.
-14. `DEFAULT_SERVER` stays `https://kanso-sync.imngonii.workers.dev`.
+14. `DEFAULT_SERVER` stays `https://kanso.antonlabs.cc`.
 
 *Other step-1 decisions:*
 

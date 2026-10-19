@@ -555,7 +555,8 @@ impl AccountPage {
         page.push(section(title, rows, colors));
 
         // Under the form: what will happen, the error, and the buttons.
-        let closed = matches!(signup, Some(SignupState::Closed | SignupState::Full));
+        // Only a full server blocks the form: "closed" may hide a reservation.
+        let closed = matches!(signup, Some(SignupState::Full));
         let line = match form {
             SignedOutForm::CreateAccount => Some(sign_up_line(self.notes, signup)),
             SignedOutForm::Recover => Some(

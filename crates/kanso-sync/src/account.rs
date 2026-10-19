@@ -30,7 +30,7 @@ use crate::{DeviceIdentity, EndpointError};
 
 /// The owner's Worker, compiled in as the default server. Accounts are bound
 /// to their server's origin, so it stays this URL (security re-check 14).
-pub const DEFAULT_SERVER: &str = "https://kanso-sync.imngonii.workers.dev";
+pub const DEFAULT_SERVER: &str = "https://kanso.antonlabs.cc";
 
 /// What a running account task is doing, for the button's spinner text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
