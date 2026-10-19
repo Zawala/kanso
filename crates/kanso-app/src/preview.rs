@@ -9,8 +9,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use gpui_kit::base::text::{TextView, TextViewState, TextViewStyle};
-use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::assets::IconName as Lucide;
+use gpui_kit::base::text::{
+    CodeBlock, MarkdownExtensions, MarkdownNode, MarkdownParseContext, TextView, TextViewState,
+    TextViewStyle, markdown_ast,
+};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_store::Store;
@@ -76,10 +81,15 @@ pub struct Preview {
     /// Whether text keeps to the readable measure (the setting), or fills
     /// the pane.
     readable: bool,
+    /// Draws quotes in their own color (see [`quote_extensions`]).
+    extensions: MarkdownExtensions,
 }
 
 impl Preview {
     pub fn new(store: Arc<Store>, links: LinkSender) -> Self {
+        let images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>> = Arc::default();
+        let resolver: ImageResolver = Arc::new(image_resolver(store.clone(), images.clone()));
+        let extensions = quote_extensions(Arc::new(Links(links.clone())), resolver);
         Preview {
             text: SharedString::default(),
             shown: SharedString::default(),
@@ -88,9 +98,10 @@ impl Preview {
             splitting: None,
             generation: 0,
             store,
-            images: Arc::default(),
+            images,
             links,
             readable: false,
+            extensions,
         }
     }
 
@@ -251,25 +262,166 @@ impl Preview {
 
     /// Resolves `inkdrop://file:<id>` from the store, caching decoded images.
     fn image_resolver(&self) -> impl Fn(&SharedUri) -> ImageSource + Send + Sync + 'static {
-        let store = self.store.clone();
-        let images = self.images.clone();
-        move |uri| {
-            let Some(suffix) = uri.strip_prefix("inkdrop://file:") else {
-                return ImageSource::from(uri.clone());
-            };
-            let id = format!("file:{suffix}");
-            let mut cache = images.lock().expect("image cache poisoned");
-            let image = cache.entry(id.clone()).or_insert_with(|| {
-                let (content_type, attachment) = store.attachment(&id).ok()??;
-                let format = ImageFormat::from_mime_type(&content_type)?;
-                Some(Arc::new(Image::from_bytes(format, attachment.data)))
-            });
-            match image {
-                Some(image) => ImageSource::Image(image.clone()),
-                None => ImageSource::from(uri.clone()),
-            }
+        image_resolver(self.store.clone(), self.images.clone())
+    }
+}
+
+/// Finds a note's images: `inkdrop://file:<id>` from the store, decoded once
+/// and cached; anything else as the URI says.
+type ImageResolver = Arc<dyn Fn(&SharedUri) -> ImageSource + Send + Sync>;
+
+fn image_resolver(
+    store: Arc<Store>,
+    images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>>,
+) -> impl Fn(&SharedUri) -> ImageSource + Send + Sync + 'static {
+    move |uri| {
+        let Some(suffix) = uri.strip_prefix("inkdrop://file:") else {
+            return ImageSource::from(uri.clone());
+        };
+        let id = format!("file:{suffix}");
+        let mut cache = images.lock().expect("image cache poisoned");
+        let image = cache.entry(id.clone()).or_insert_with(|| {
+            let (content_type, attachment) = store.attachment(&id).ok()??;
+            let format = ImageFormat::from_mime_type(&content_type)?;
+            Some(Arc::new(Image::from_bytes(format, attachment.data)))
+        });
+        match image {
+            Some(image) => ImageSource::Image(image.clone()),
+            None => ImageSource::from(uri.clone()),
         }
     }
+}
+
+/// Where a clicked link goes: a note link to the editor, a web or mail link
+/// to the system, anything else nowhere.
+struct Links(LinkSender);
+
+impl Links {
+    fn open(&self, url: &str, cx: &mut App) {
+        match linked_note(url) {
+            Some(id) => {
+                self.0.try_send(id).ok();
+            }
+            None if is_openable(url) => cx.open_url(url),
+            None => {}
+        }
+    }
+}
+
+/// A quote's text without its `>` markers, to be shown as Markdown of its
+/// own. Each line loses the whitespace before its `>`, the `>` and one space
+/// or tab after it; a line without one (a lazy continuation) stays as it is.
+/// Pure.
+pub(crate) fn unquote(source: &str) -> String {
+    source
+        .split('\n')
+        .map(
+            |line| match line.trim_start_matches([' ', '\t']).strip_prefix('>') {
+                Some(rest) => rest
+                    .strip_prefix(' ')
+                    .or_else(|| rest.strip_prefix('\t'))
+                    .unwrap_or(rest),
+                None => line,
+            },
+        )
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The custom node a quote becomes.
+const QUOTE: &str = "kanso-quote";
+/// Changes when [`quote_extensions`] parses differently, so a text view
+/// re-parses its note.
+const QUOTE_PARSER_REVISION: u64 = 1;
+
+/// A quote's Markdown, without its markers.
+struct Quote(SharedString);
+
+/// Quotes drawn by Kanso rather than the text view: the text view draws a
+/// quote in its one muted color, the one it also gives finished tasks and
+/// list markers, so a theme couldn't make quotes stand out without making
+/// finished tasks shout too. Each quote becomes a text view of its own in
+/// the theme's quote color, beside a bar.
+fn quote_extensions(links: Arc<Links>, images: ImageResolver) -> MarkdownExtensions {
+    let parse = |node: &markdown_ast::Node, cx: &MarkdownParseContext<'_>| {
+        let markdown_ast::Node::Blockquote(_) = node else {
+            return None;
+        };
+        let source = cx.node_source(node)?;
+        let body = unquote(source);
+        Some(
+            MarkdownNode::new(QUOTE, Quote(body.clone().into()))
+                .text(body)
+                .markdown(source),
+        )
+    };
+    MarkdownExtensions::default()
+        .parser_revision(QUOTE_PARSER_REVISION)
+        .block_parser(parse)
+        .block_renderer(QUOTE, move |node, _window, cx| {
+            let Some(Quote(body)) = node.data::<Quote>() else {
+                return div().into_any_element();
+            };
+            let colors = Colors::get(cx);
+            let preview = crate::themes::preview_colors(cx);
+            let dark = cx.theme().is_dark();
+            let style = text_style(colors, &preview, dark).with_foreground(preview.quote.into());
+            let bar = Hsla::from(preview.quote).opacity(0.45);
+            let id = ElementId::NamedInteger(
+                QUOTE.into(),
+                node.source_range().map_or(0, |r| r.start) as u64,
+            );
+            let links = links.clone();
+            let resolver = images.clone();
+            div()
+                .w_full()
+                .min_w_0()
+                .border_l(px(3.))
+                .border_color(bar)
+                .pl(px(14.))
+                .child(
+                    TextView::markdown(id, body.clone())
+                        .style(style)
+                        .text_size(px(TEXT_SIZE))
+                        .line_height(relative(LINE_HEIGHT))
+                        .text_color(preview.quote)
+                        .selectable(true)
+                        .markdown_extensions(quote_extensions(links.clone(), resolver.clone()))
+                        .code_block_actions(code_block_actions)
+                        .image_source(move |uri| resolver(uri))
+                        .on_link_click(move |url, _, _, cx| links.open(url, cx)),
+                )
+                .into_any_element()
+        })
+}
+
+/// What sits in a code block's corner: its language, quietly, and a button
+/// that copies the code.
+fn code_block_actions(block: &CodeBlock, _: &mut Window, cx: &mut App) -> AnyElement {
+    let colors = Colors::get(cx);
+    let code = block.code();
+    h_flex()
+        .gap_1()
+        .items_center()
+        .children(block.lang().filter(|lang| !lang.is_empty()).map(|lang| {
+            div()
+                .pl_1()
+                .font_family(cx.theme().font_family.clone())
+                .text_size(px(12.))
+                .text_color(colors.text_muted)
+                .child(lang)
+        }))
+        .child(
+            Button::new("copy")
+                .ghost()
+                .xsmall()
+                .icon(Icon::new(Lucide::Copy).text_color(colors.text_muted))
+                .tooltip("Copy code")
+                .on_click(move |_, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(code.to_string()));
+                }),
+        )
+        .into_any_element()
 }
 
 /// A heading's size relative to the body, and the gap above it relative to
@@ -342,12 +494,14 @@ pub fn is_openable(url: &str) -> bool {
 /// Body text in the preview theme's colors; code is set apart by a quiet
 /// fill rather than by color, and so is a table's header row, which is also
 /// set heavier. Table rows sit on the page itself; a table wider than the
-/// column scrolls sideways rather than cutting off its last columns. Quotes
-/// and finished tasks, which the text view draws in its muted color, get
-/// the theme's quote color (Kanso's secondary text): they are still read.
-/// Headings, code and a table's header take colors of their own only when
-/// the theme gives them. `dark` picks the check mark that reads on the dark
-/// theme's task boxes.
+/// column scrolls sideways rather than cutting off its last columns.
+/// Finished tasks and list markers, which the text view draws in its muted
+/// color, take the theme's `task_done` color (Kanso's secondary text), not
+/// the quote's: quotes are drawn by [`quote_extensions`]. Code blocks leave
+/// room at the top for their language and copy button. Headings, code and
+/// a table's header take colors of their own only when the theme gives
+/// them; a first-level heading is set bold. `dark` picks the check mark
+/// that reads on the dark theme's task boxes.
 // no-prop-test: maps theme colors onto a style; the snapshots show it.
 pub(crate) fn text_style(colors: &Colors, p: &PreviewColors, dark: bool) -> TextViewStyle {
     let mut table = StyleRefinement::default().bg(colors.editor);
@@ -356,7 +510,10 @@ pub(crate) fn text_style(colors: &Colors, p: &PreviewColors, dark: bool) -> Text
         Some(color) => Hsla::from(color.rgb).opacity(f32::from(color.alpha) / 255.),
         None => Hsla::from(colors.accent).opacity(0.3),
     };
-    let mut code_block = StyleRefinement::default().rounded(px(6.));
+    let mut code_block = StyleRefinement::default()
+        .rounded(px(8.))
+        .pt(px(CODE_TOP))
+        .border_color(Hsla::from(p.border).opacity(0.6));
     if let Some(code) = p.code_text {
         code_block = code_block.text_color(code);
     }
@@ -364,10 +521,11 @@ pub(crate) fn text_style(colors: &Colors, p: &PreviewColors, dark: bool) -> Text
     if let Some(head) = p.table_header_background {
         table_head = table_head.bg(head);
     }
-    let style = TextViewStyle::default()
+    let heading = p.heading;
+    TextViewStyle::default()
         .with_dark(dark)
         .with_foreground(p.text.into())
-        .with_muted_foreground(p.quote.into())
+        .with_muted_foreground(p.task_done.into())
         .with_link(p.link.into())
         .with_selection(selection)
         .with_code_background(p.code_background.into())
@@ -380,14 +538,22 @@ pub(crate) fn text_style(colors: &Colors, p: &PreviewColors, dark: bool) -> Text
             ..Default::default()
         })
         .with_table(table)
-        .with_table_head(table_head);
-    match p.heading {
-        Some(heading) => {
-            style.with_heading(move |_| StyleRefinement::default().text_color(heading))
-        }
-        None => style,
-    }
+        .with_table_head(table_head)
+        .with_heading(move |level| {
+            let mut style = StyleRefinement::default();
+            if level == 1 {
+                style = style.font_weight(FontWeight::BOLD);
+            }
+            match heading {
+                Some(color) => style.text_color(color),
+                None => style,
+            }
+        })
 }
+
+/// Room above a code block's first line, clear of its language and copy
+/// button.
+const CODE_TOP: f32 = 34.;
 
 impl Render for Preview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -401,9 +567,9 @@ impl Render for Preview {
             .iter()
             .map(|c| (c.state.clone(), c.start, c.end))
             .collect();
-        let resolver: Arc<dyn Fn(&SharedUri) -> ImageSource + Send + Sync> =
-            Arc::new(self.image_resolver());
-        let links = self.links.clone();
+        let resolver: ImageResolver = Arc::new(self.image_resolver());
+        let links = Arc::new(Links(self.links.clone()));
+        let extensions = self.extensions.clone();
         div().id("preview").size_full().bg(colors.editor).child(
             list(self.list.clone(), move |ix, window, _| {
                 let Some((state, start, end)) = chunks.get(ix).cloned() else {
@@ -412,6 +578,7 @@ impl Render for Preview {
                 let rem = window.rem_size();
                 let resolver = resolver.clone();
                 let links = links.clone();
+                let extensions = extensions.clone();
                 div()
                     .w_full()
                     .pl(px(TEXT_INSET))
@@ -431,14 +598,10 @@ impl Render for Preview {
                                     .line_height(relative(LINE_HEIGHT))
                                     .text_color(text_color)
                                     .selectable(true)
+                                    .markdown_extensions(extensions)
+                                    .code_block_actions(code_block_actions)
                                     .image_source(move |uri| resolver(uri))
-                                    .on_link_click(move |url, _, _, cx| match linked_note(url) {
-                                        Some(id) => {
-                                            links.try_send(id).ok();
-                                        }
-                                        None if is_openable(url) => cx.open_url(url),
-                                        None => {}
-                                    }),
+                                    .on_link_click(move |url, _, _, cx| links.open(url, cx)),
                             ),
                     )
                     .into_any_element()
@@ -605,6 +768,72 @@ mod tests {
                 .count();
             assert!(before[..kept].iter().zip(&views).all(|(a, b)| a.1 == b.1));
         }
+    }
+
+    /// Lines of a quote's body: anything but line breaks.
+    fn quote_lines() -> impl Strategy<Value = Vec<String>> {
+        prop::collection::vec("[^\r\n]{0,24}", 1..8)
+    }
+
+    fn quote(lines: &[String]) -> String {
+        lines
+            .iter()
+            .map(|line| format!("> {line}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 256,
+            failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
+            ..ProptestConfig::default()
+        })]
+
+        /// Round trip: quoting lines with `> ` and unquoting gives them
+        /// back, leading spaces, tabs and inner `>` included.
+        #[test]
+        fn prop_unquote_inverts_quote(lines in quote_lines()) {
+            prop_assert_eq!(super::unquote(&quote(&lines)), lines.join("\n"));
+        }
+
+        /// Round trip for a nested quote: one level comes off at a time.
+        #[test]
+        fn prop_unquote_peels_one_level(lines in quote_lines()) {
+            let inner = quote(&lines);
+            let outer = quote(&inner.split('\n').map(str::to_owned).collect::<Vec<_>>());
+            prop_assert_eq!(super::unquote(&outer), inner);
+        }
+
+        /// Invariants: the line count holds, and a line without a marker (a
+        /// lazy continuation) comes through as it was.
+        #[test]
+        fn prop_unquote_keeps_lines(lines in quote_lines(), indent in "[ \t]{0,3}") {
+            let text: Vec<String> = lines
+                .iter()
+                .enumerate()
+                .map(|(ix, line)| if ix % 2 == 0 { format!("{indent}> {line}") } else { line.clone() })
+                .collect();
+            let out = super::unquote(&text.join("\n"));
+            prop_assert_eq!(out.split('\n').count(), text.len());
+            for ((ix, line), got) in text.iter().enumerate().zip(out.split('\n')) {
+                if ix % 2 == 1 && !line.trim_start_matches([' ', '\t']).starts_with('>') {
+                    prop_assert_eq!(got, line.as_str());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unquote_examples() {
+        use super::unquote;
+        assert_eq!(unquote("> a\n> b"), "a\nb");
+        assert_eq!(unquote(">a\n>b"), "a\nb");
+        assert_eq!(unquote("> a\nlazy"), "a\nlazy");
+        assert_eq!(unquote("  > - item\n  > - two"), "- item\n- two");
+        assert_eq!(unquote("> > nested"), "> nested");
+        assert_eq!(unquote(">     code"), "    code");
+        assert_eq!(unquote(">"), "");
     }
 
     #[test]

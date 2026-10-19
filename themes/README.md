@@ -118,7 +118,8 @@ The code keys are tree-sitter capture names, as in Zed's themes.
 | Key | Colors |
 |---|---|
 | `text`, `heading`, `link` | Body text, headings, links. |
-| `quote` | Quoted text and finished tasks. |
+| `quote` | Quoted text and the bar beside it. |
+| `task_done` | Finished tasks, and list bullets and numbers: text that steps back. Defaults to the secondary text, not the quote color. |
 | `border` | Table borders and horizontal rules. |
 | `code_background`, `code_text` | Code blocks, and their text when they have no language. |
 | `inline_code_background`, `inline_code_text` | Inline code. |

@@ -650,6 +650,11 @@ mod tests {
             want("preview text".into(), contrast(p.text, c.editor), 4.5);
             want("preview link".into(), contrast(p.link, c.editor), 4.5);
             want("preview quote".into(), contrast(p.quote, c.editor), 4.5);
+            want(
+                "preview finished tasks".into(),
+                contrast(p.task_done, c.editor),
+                3.0,
+            );
             if let Some(heading) = p.heading {
                 want("preview heading".into(), contrast(heading, c.editor), 3.0);
             }

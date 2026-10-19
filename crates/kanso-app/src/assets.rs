@@ -20,6 +20,7 @@ icon_assets!(
         Code,
         Columns2,
         Command,
+        Copy,
         CornerDownLeft,
         DatabaseBackup,
         FileKey,

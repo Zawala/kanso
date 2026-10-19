@@ -334,7 +334,11 @@
         },
         "quote": {
           "$ref": "#/$defs/color",
-          "description": "Quoted text and finished tasks."
+          "description": "Quoted text and the bar beside it."
+        },
+        "task_done": {
+          "$ref": "#/$defs/color",
+          "description": "Finished tasks, and list bullets and numbers: text that steps back."
         },
         "border": {
           "$ref": "#/$defs/color",

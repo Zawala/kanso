@@ -289,7 +289,11 @@ pub const PREVIEW_KEYS: &[(&str, &str)] = &[
     ("text", "Body text."),
     ("heading", "Headings."),
     ("link", "Links."),
-    ("quote", "Quoted text and finished tasks."),
+    ("quote", "Quoted text and the bar beside it."),
+    (
+        "task_done",
+        "Finished tasks, and list bullets and numbers: text that steps back.",
+    ),
     ("border", "Table borders and horizontal rules."),
     ("code_background", "Code blocks."),
     ("code_text", "Text in code blocks without a language."),
@@ -638,6 +642,8 @@ pub struct PreviewColors {
     pub heading: Option<Rgb>,
     pub link: Rgb,
     pub quote: Rgb,
+    /// Finished tasks and list markers, which step back from the text.
+    pub task_done: Rgb,
     pub border: Rgb,
     pub code_background: Rgb,
     pub code_text: Option<Rgb>,
@@ -938,6 +944,9 @@ impl ThemeFile {
             heading: given("heading"),
             link: given("link").unwrap_or(ui.link),
             quote: given("quote").unwrap_or(ui.text_secondary),
+            // Not the quote's color: a theme that makes quotes stand out
+            // would make finished tasks stand out with them.
+            task_done: given("task_done").unwrap_or(ui.text_secondary),
             border: self
                 .preview
                 .get("border")
@@ -979,7 +988,8 @@ pub fn fit_syntax(
 }
 
 /// Preview colors fitted to the pane they are drawn on: text at 4.5:1 on
-/// the pane, links and quotes too, headings at 3:1, and text on code and on
+/// the pane, links and quotes too, headings and finished tasks at 3:1, and
+/// text on code and on
 /// a table's header at 4.5:1 on their own fills (a dark code block from a
 /// dark preview theme keeps light text on a light page). A theme's own
 /// preview on its own panes comes back unchanged when it already reads.
@@ -1006,6 +1016,8 @@ pub fn fit_preview(preview: &PreviewColors, ui: &Colors) -> PreviewColors {
             .map(|c| ensure_contrast(c, &[surface], 3.0, ui.text)),
         link: ensure_contrast(preview.link, &[surface], 4.5, ui.text),
         quote: ensure_contrast(preview.quote, &[surface], 4.5, ui.text),
+        // Stepping back is the point, so 3:1 is enough, as for headings.
+        task_done: ensure_contrast(preview.task_done, &[surface], 3.0, ui.text),
         border: preview.border,
         code_background: preview.code_background,
         code_text: on(preview.code_background, preview.code_text),
