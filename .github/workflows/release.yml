@@ -89,7 +89,7 @@ jobs:
 
       # Installs the toolchain pinned in rust-toolchain.toml.
       - name: Rust
-        run: rustup show active-toolchain || rustup toolchain install
+        run: scripts/ci-rust.sh
 
       - name: Linux build dependencies
         if: runner.os == 'Linux'
@@ -253,7 +253,7 @@ jobs:
           merge-multiple: true
 
       - name: Rust
-        run: rustup show active-toolchain || rustup toolchain install
+        run: scripts/ci-rust.sh
 
       # Built here, without the key: build scripts and proc macros never
       # see it.
