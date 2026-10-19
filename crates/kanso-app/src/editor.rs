@@ -13,6 +13,8 @@
 //! kept in the note's history either way. Leaving the note or quitting
 //! before answering keeps the editor's text.
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -30,7 +32,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::{DocType, Note, NoteStatus, now_ms};
-use kanso_store::{Change, Origin, Put, Store, StoreError};
+use kanso_store::{Backlink, Change, Origin, Put, Store, StoreError};
 
 use crate::clock::Clock;
 use crate::commands::Picker;
@@ -50,6 +52,7 @@ use crate::split::{
 use crate::table_format;
 use crate::text_stats::{line_lengths, pieces_eq};
 use crate::theme::{Colors, muted_tag_color, status_glyph};
+use crate::wikilinks::{SharedIndex, WikiCompletion, WikiIndex, rewrite_for_preview};
 use crate::word_goal::{self, GoalSetting};
 use crate::workspace::{AppState, NewNote};
 
@@ -86,6 +89,9 @@ const SANS_EM: f32 = 0.44;
 /// bottom, which the editor caps at half its height, so the caret's line
 /// stays in the middle.
 const TYPEWRITER_LINES: usize = 10_000;
+/// How long changes to notes settle before the titles wiki-links resolve
+/// against are read again.
+const WIKI_REFRESH_DELAY: Duration = Duration::from_millis(400);
 
 pub enum EditorEvent {
     /// Something worth telling the user, such as a failed save.
@@ -96,6 +102,20 @@ pub enum EditorEvent {
     /// list of notebooks or tags, which filters as you type and makes new
     /// tags.
     Pick(Picker),
+    /// The backlinks button: the inspector opens on its Backlinks tab.
+    ShowBacklinks,
+    /// The inspector button: the inspector opens or closes.
+    ToggleInspector,
+    /// The note was renamed from `old` to `new` while `links` wiki-links in
+    /// `notes` other notes named it by its old title: the workspace offers
+    /// to update them.
+    Renamed {
+        id: String,
+        old: String,
+        new: String,
+        links: usize,
+        notes: usize,
+    },
 }
 
 /// Whether two versions of a note say the same thing: equal apart from the
@@ -146,9 +166,22 @@ pub struct NoteEditor {
     preview_stale: bool,
     /// A change from elsewhere that arrived over unsaved edits.
     incoming: Option<Incoming>,
-    /// Notes that link here: (id, title).
-    backlinks: Vec<(String, String)>,
+    /// Notes that link here, with where.
+    backlinks: Vec<Backlink>,
     backlinks_task: Option<Task<()>>,
+    /// The titles wiki-links resolve against, shared with autocomplete.
+    wiki: SharedIndex,
+    wiki_task: Option<Task<()>>,
+    /// A line to show once note `.0` opens, as a backlink or heading asks.
+    pending_reveal: Option<(String, u32)>,
+    /// The note's saved title when its title field got the keyboard, to
+    /// tell a rename when it loses it.
+    title_on_focus: Option<(String, String)>,
+    /// Counts the body's edits and loads, so the outline can tell its text
+    /// changed.
+    text_version: u64,
+    /// Whether the inspector beside the editor is open, for its button.
+    pub inspector_open: bool,
     /// Where the empty-notebook block sends its actions from while no note
     /// is open.
     pub(crate) empty_focus: FocusHandle,
@@ -216,6 +249,10 @@ impl NoteEditor {
                 // Kanso pairs on its own; see `pairing`.
                 .auto_close(false)
         });
+        let wiki: SharedIndex = Rc::new(RefCell::new(Arc::new(WikiIndex::default())));
+        body.update(cx, |state, _| {
+            state.lsp_mut().completion_provider = Some(Rc::new(WikiCompletion::new(wiki.clone())));
+        });
         let settings = cx
             .try_global::<AppState>()
             .map_or_else(EditorSettings::default, |state| state.config.editor);
@@ -264,11 +301,17 @@ impl NoteEditor {
                 }
                 InputEvent::PressEnter { .. } => {
                     this.body.update(cx, |body, cx| body.focus(window, cx));
+                    this.title_settled(cx);
                 }
-                _ => {}
+                InputEvent::Focus => {
+                    this.title_on_focus =
+                        this.note.as_ref().map(|n| (n.id.clone(), n.title.clone()));
+                }
+                InputEvent::Blur => this.title_settled(cx),
             }),
             cx.subscribe_in(&body, window, |this, _, event, window, cx| {
                 if matches!(event, InputEvent::Change) {
+                    this.text_version += 1;
                     this.source_lines = None;
                     this.schedule_autosave(cx);
                     this.schedule_preview(window, cx);
@@ -311,6 +354,12 @@ impl NoteEditor {
             incoming: None,
             backlinks: Vec::new(),
             backlinks_task: None,
+            wiki,
+            wiki_task: None,
+            pending_reveal: None,
+            title_on_focus: None,
+            text_version: 0,
+            inspector_open: false,
             empty_focus: cx.focus_handle(),
             focus_mode: false,
             split_ratio,
@@ -599,7 +648,8 @@ impl NoteEditor {
         // The kept line lengths describe the old text, which may have had
         // the same length.
         self.source_lines = None;
-        let text: SharedString = body.into();
+        self.text_version += 1;
+        let text = self.preview_source(body.into());
         self.preview_stale = false;
         self.preview.update(cx, |preview, cx| {
             preview.set_text(text, cx);
@@ -617,6 +667,11 @@ impl NoteEditor {
             .update(cx, |footer, cx| footer.note_opened(has_note, cx));
         self.update_footer_goal(cx);
         self.refresh_backlinks(cx);
+        if let Some((id, line)) = self.pending_reveal.take()
+            && self.note_id() == Some(id.as_str())
+        {
+            self.reveal_line(line, window, cx);
+        }
         cx.notify();
     }
 
@@ -707,9 +762,121 @@ impl NoteEditor {
 
     fn refresh_preview(&mut self, cx: &mut Context<Self>) {
         self.preview_stale = false;
-        let text = self.body.read(cx).value();
+        let text = self.preview_source(self.body.read(cx).value());
         self.preview
             .update(cx, |preview, cx| preview.set_text(text, cx));
+    }
+
+    /// What the preview is handed for `text`: wiki-links written as
+    /// ordinary links (see [`crate::wikilinks`]).
+    fn preview_source(&self, text: SharedString) -> SharedString {
+        rewrite_for_preview(&text, &self.wiki.borrow())
+    }
+
+    /// Reads the titles wiki-links resolve against again, in the background
+    /// once changes settle, and shows the preview again with them.
+    pub fn refresh_wiki(&mut self, cx: &mut Context<Self>) {
+        let store = self.store.clone();
+        self.wiki_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(WIKI_REFRESH_DELAY).await;
+            let titles = cx
+                .background_executor()
+                .spawn(async move { store.note_titles().unwrap_or_default() })
+                .await;
+            this.update(cx, |this, cx| {
+                this.wiki_task = None;
+                if this.wiki.borrow().titles == titles {
+                    return;
+                }
+                *this.wiki.borrow_mut() = Arc::new(WikiIndex::new(titles));
+                if this.view_mode != ViewMode::Edit && this.note.is_some() {
+                    this.refresh_preview(cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    /// The open note's ID, its text and a count that changes whenever the
+    /// text does: what the outline is made from.
+    pub fn outline_source(&self, cx: &App) -> Option<(String, u64, SharedString)> {
+        let id = self.note_id()?.to_owned();
+        Some((id, self.text_version, self.body.read(cx).value()))
+    }
+
+    /// The line (0-based) the caret is on.
+    pub fn caret_line(&self, cx: &App) -> u32 {
+        self.body.read(cx).cursor_position().line
+    }
+
+    /// Notes that link to the open one, as last found.
+    pub fn backlinks(&self) -> &[Backlink] {
+        &self.backlinks
+    }
+
+    /// Puts the caret at the start of `line` and brings it into view; in
+    /// the preview alone, scrolls the preview to about the same place.
+    pub fn reveal_line(&mut self, line: u32, window: &mut Window, cx: &mut Context<Self>) {
+        if self.note.is_none() {
+            return;
+        }
+        if self.view_mode == ViewMode::Preview {
+            let lines = gpui_kit::base::input::RopeExt::lines_len(self.body.read(cx).text()).max(1);
+            let share = line as f32 / lines as f32;
+            self.preview.update(cx, |preview, cx| {
+                let top = preview.scroll_max() * share;
+                preview.scroll_to(top, cx);
+            });
+            return;
+        }
+        self.body.update(cx, |state, cx| {
+            state.set_cursor_position(Position::new(line, 0), window, cx);
+        });
+    }
+
+    /// Shows `line` of note `id` once it opens.
+    pub fn reveal_after_open(&mut self, id: String, line: u32) {
+        self.pending_reveal = Some((id, line));
+    }
+
+    /// The title field lost the keyboard or took Enter: if that renamed the
+    /// note and other notes name it by the old title in wiki-links, the
+    /// workspace offers to update them.
+    fn title_settled(&mut self, cx: &mut Context<Self>) {
+        let Some((id, old)) = self.title_on_focus.take() else {
+            return;
+        };
+        if self.note_id() != Some(id.as_str()) {
+            return;
+        }
+        self.flush(cx);
+        let Some(new) = self.note.as_ref().map(|n| n.title.clone()) else {
+            return;
+        };
+        if old.trim().is_empty()
+            || new.trim().is_empty()
+            || kanso_core::links::normalize_title(&old) == kanso_core::links::normalize_title(&new)
+        {
+            return;
+        }
+        // The old title only named this note if no older note has it.
+        if let Ok(Some((other, _))) = self.store.resolve_title(&old)
+            && other != id
+        {
+            return;
+        }
+        if let Ok((links, notes)) = self.store.wiki_link_count(&old, &id)
+            && links > 0
+        {
+            cx.emit(EditorEvent::Renamed {
+                id,
+                old,
+                new,
+                links,
+                notes,
+            });
+        }
     }
 
     /// Saves any pending edits now. With the question about a change made
@@ -1053,6 +1220,12 @@ impl NoteEditor {
             this.pairs.typed(text, selection, ch)
         }) {
             cx.stop_propagation();
+            // The pair goes in past the text editor's own typing, which is
+            // what asks for completions: a second `[` opens `[[` ones here.
+            if ch == '[' {
+                self.body
+                    .update(cx, |state, cx| state.show_completions(window, cx));
+            }
         }
     }
 
@@ -1099,6 +1272,16 @@ impl NoteEditor {
     // no-prop-test: key glue over `table_format::enter_in_table`.
     fn on_enter(&mut self, action: &Enter, window: &mut Window, cx: &mut Context<Self>) {
         if action.secondary || action.shift || !self.body_takes_edits(window, cx) {
+            return;
+        }
+        // An open completion list takes Enter as "choose", and nothing else
+        // may see it: left to bubble, the keystroke also types a newline.
+        let chose = self.body.update(cx, |state, cx| {
+            state.completion_menu_state().open
+                && state.route_overlay_action(Box::new(action.clone()), window, cx)
+        });
+        if chose {
+            cx.stop_propagation();
             return;
         }
         let format = self.settings.format_tables;
@@ -1377,8 +1560,9 @@ impl NoteEditor {
         self.body
             .update(cx, |state, cx| state.set_value(body.clone(), window, cx));
         self.source_lines = None;
+        let text = self.preview_source(body.into());
         self.preview
-            .update(cx, |preview, cx| preview.set_text(body.into(), cx));
+            .update(cx, |preview, cx| preview.set_text(text, cx));
         self.save(cx);
     }
 
@@ -1471,9 +1655,7 @@ impl NoteEditor {
             .on_click(cx.listener(|_, _, _, cx| cx.emit(EditorEvent::Pick(Picker::Notebook))));
 
         let backlinks = (!self.backlinks.is_empty()).then(|| {
-            let links = self.backlinks.clone();
-            let count = links.len();
-            let library = self.library.clone();
+            let count = self.backlinks.len();
             Button::new("backlinks")
                 .ghost()
                 .small()
@@ -1490,24 +1672,9 @@ impl NoteEditor {
                 } else {
                     format!("Linked from {count} notes")
                 })
-                .dropdown_menu(move |mut menu, _, _| {
-                    // Room for about a dozen; more scroll.
-                    menu = menu.max_h(px(420.)).scrollable(true).label("Linked from");
-                    for (id, title) in &links {
-                        let library = library.clone();
-                        let id = id.clone();
-                        let title = if title.trim().is_empty() {
-                            "Untitled".to_owned()
-                        } else {
-                            title.clone()
-                        };
-                        menu = menu.item(PopupMenuItem::new(title).on_click(move |_, _, cx| {
-                            library.update(cx, |library, cx| library.select(Some(id.clone()), cx));
-                        }));
-                    }
-                    menu
-                })
+                .on_click(cx.listener(|_, _, _, cx| cx.emit(EditorEvent::ShowBacklinks)))
         });
+        let inspector_open = self.inspector_open;
 
         let modes = [
             ("mode-edit", "Edit", ViewMode::Edit),
@@ -1640,6 +1807,25 @@ impl NoteEditor {
                             .separator()
                             .menu("Move to Trash", Box::new(crate::workspace::TrashNote))
                     }),
+            )
+            .child(
+                Button::new("inspector")
+                    .ghost()
+                    .small()
+                    .tab_stop(tab_stop)
+                    .icon(Icon::new(Lucide::PanelRight).text_color(if inspector_open {
+                        colors.text
+                    } else {
+                        colors.text_secondary
+                    }))
+                    .selected(inspector_open)
+                    .tooltip(if inspector_open {
+                        "Hide outline and backlinks"
+                    } else {
+                        "Show outline and backlinks"
+                    })
+                    .debug_selector(|| "inspector-toggle".into())
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(EditorEvent::ToggleInspector))),
             )
     }
 
@@ -2461,6 +2647,23 @@ impl NoteEditor {
         self.body.clone()
     }
 
+    /// What the open completion list offers, by label; empty while closed.
+    pub fn completion_labels_for_test(&self, cx: &App) -> Vec<String> {
+        let menu = self.body.read(cx).completion_menu_state();
+        if !menu.open {
+            return Vec::new();
+        }
+        menu.items.iter().map(|item| item.label.clone()).collect()
+    }
+
+    /// Types `title` into the title field, as if typed.
+    pub fn set_title_for_test(&mut self, title: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.title.update(cx, |state, cx| {
+            state.set_value(title.to_owned(), window, cx)
+        });
+        self.schedule_autosave(cx);
+    }
+
     pub fn set_preview_for_test(&self, text: String, cx: &mut App) {
         self.preview.update(cx, |p, cx| p.set_text(text.into(), cx));
     }
@@ -2574,39 +2777,10 @@ impl NoteEditor {
     }
 }
 
-/// Notes outside the trash whose body links to note `id`, as (id, title).
-pub fn backlinks(store: &Store, id: &str) -> Vec<(String, String)> {
-    let Some(suffix) = id.strip_prefix("note:") else {
-        return Vec::new();
-    };
-    let target = format!("inkdrop://note/{suffix}");
-    let query = kanso_core::Query {
-        clauses: vec![kanso_core::Clause {
-            negated: false,
-            field: Some(kanso_core::Field::Body),
-            value: target.clone(),
-        }],
-    };
-    let params = kanso_store::SearchParams {
-        query,
-        ..Default::default()
-    };
-    store
-        .search_summaries(&params)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|n| n.id != id)
-        .filter(|n| {
-            // The search matches substrings; make sure the ID isn't just a
-            // prefix of a longer one.
-            store.note(&n.id).ok().flatten().is_some_and(|note| {
-                kanso_core::tasks::linked_note_ids(&note.body)
-                    .iter()
-                    .any(|linked| linked == id)
-            })
-        })
-        .map(|n| (n.id, n.title))
-        .collect()
+/// Notes outside the trash that link to note `id`, from the store's index
+/// of links: by `inkdrop://note/` link, or by a wiki-link to its title.
+pub fn backlinks(store: &Store, id: &str) -> Vec<Backlink> {
+    store.backlinks(id).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -3002,7 +3176,7 @@ mod tests {
                     .map(|(ix, _)| ids[ix].clone())
                     .collect();
                 expected.sort();
-                let mut found: Vec<String> = backlinks(&store, id).into_iter().map(|(id, _)| id).collect();
+                let mut found: Vec<String> = backlinks(&store, id).into_iter().map(|b| b.id).collect();
                 found.sort();
                 prop_assert_eq!(found, expected);
             }

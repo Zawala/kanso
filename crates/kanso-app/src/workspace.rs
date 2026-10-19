@@ -18,10 +18,14 @@ use serde_json::{Value, json};
 
 use crate::account_page::SignedOutForm;
 use crate::commands::Picker;
-use crate::config::{AppConfig, ViewMode};
+use crate::config::{AppConfig, InspectorTab, ViewMode};
 use crate::dialogs::{confirm, prompt_text};
 use crate::editor::{EditorEvent, NoteEditor};
-use crate::layout::{BandAction, BandDrag, PaneEdge, PaneWidths, inset_after, rail_width};
+use crate::inspector::{Inspector, InspectorEvent};
+use crate::layout::{
+    BandAction, BandDrag, PaneEdge, PaneWidths, inset_after, inspector_dragged, inspector_fitted,
+    rail_width,
+};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::{NoteList, NoteListEvent};
 use crate::palette::{Mode, Palette};
@@ -66,6 +70,9 @@ actions!(
         OpenNotePicker,
         PastePlainText,
         FormatTable,
+        ToggleInspector,
+        ShowOutline,
+        ShowBacklinks,
     ]
 );
 
@@ -133,6 +140,7 @@ pub fn bind_keys(cx: &mut App) {
         // ⌘L goes to the list's search box; ⇧⌘L to the list itself.
         KeyBinding::new("secondary-shift-l", FocusNoteList, None),
         KeyBinding::new("secondary-\\", ToggleSidebar, None),
+        KeyBinding::new("secondary-alt-i", ToggleInspector, None),
         KeyBinding::new("secondary-shift-d", ToggleFocusMode, None),
         // After anything inside that takes Escape (an open menu, extra
         // cursors, the palette), so the first Escape left over leaves.
@@ -197,6 +205,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Preview Only", ShowPreview),
             MenuItem::separator(),
             MenuItem::action("Toggle Sidebar", ToggleSidebar),
+            MenuItem::action("Outline and Backlinks", ToggleInspector),
             MenuItem::action("Focus Mode", ToggleFocusMode),
             MenuItem::action("Search All Notes", SearchAllNotes),
             MenuItem::action("Search This List", FocusSearch),
@@ -238,6 +247,12 @@ pub struct Workspace {
     pub editor: Entity<NoteEditor>,
     /// The command palette, drawn over the rest when open.
     pub(crate) palette: Entity<Palette>,
+    /// The outline and backlinks beside the editor.
+    pub(crate) inspector: Entity<Inspector>,
+    pub(crate) inspector_open: bool,
+    /// The inspector's width as set; it narrows or hides to leave the
+    /// editor its room.
+    pub(crate) inspector_width: f32,
     /// Settings, drawn in place of the list and the editor while open.
     pub(crate) settings: Entity<SettingsView>,
     /// While Settings are open: where the notes were, to go back to.
@@ -269,6 +284,9 @@ impl Workspace {
         let appearance = state.config.appearance.clone();
         let last_note = state.config.last_note.clone();
         let focus_mode = state.config.layout.focus_mode;
+        let inspector_open = state.config.layout.inspector_open;
+        let inspector_width = state.config.layout.inspector_width;
+        let inspector_tab = state.config.layout.inspector_tab;
 
         let library = cx.new(|cx| Library::new(store.clone(), cx));
         let sidebar = cx.new(|cx| Sidebar::new(library.clone(), cx));
@@ -300,6 +318,19 @@ impl Workspace {
         });
 
         let settings = cx.new(|cx| SettingsView::new(library.clone(), window, cx));
+        let inspector = cx.new(|cx| {
+            Inspector::new(
+                store.clone(),
+                library.clone(),
+                editor.clone(),
+                inspector_tab,
+                cx,
+            )
+        });
+        editor.update(cx, |editor, cx| {
+            editor.inspector_open = inspector_open;
+            editor.refresh_wiki(cx);
+        });
 
         let subscriptions = vec![
             cx.subscribe_in(&library, window, |this, _, event, window, cx| match event {
@@ -322,12 +353,18 @@ impl Workspace {
                 }
                 LibraryEvent::Changed(change) => {
                     let change = change.clone();
+                    let note = change.id.starts_with("note:");
                     this.editor.update(cx, |editor, cx| {
                         editor.on_store_change(&change, window, cx);
-                        if change.id.starts_with("note:") {
+                        if note {
                             editor.refresh_backlinks(cx);
+                            editor.refresh_wiki(cx);
                         }
                     });
+                    if note {
+                        this.inspector
+                            .update(cx, |inspector, cx| inspector.refresh(cx));
+                    }
                 }
             }),
             cx.subscribe_in(&sidebar, window, |this, _, event, window, cx| {
@@ -345,6 +382,23 @@ impl Workspace {
                     let mode = Mode::Pick(*picker);
                     this.palette
                         .update(cx, |palette, cx| palette.open(mode, window, cx));
+                }
+                EditorEvent::ShowBacklinks => {
+                    this.show_inspector(Some(InspectorTab::Backlinks), cx);
+                }
+                EditorEvent::ToggleInspector => this.toggle_inspector(cx),
+                EditorEvent::Renamed {
+                    id,
+                    old,
+                    new,
+                    links,
+                    notes,
+                } => this.offer_relink(id, old, new, *links, *notes, window, cx),
+            }),
+            cx.subscribe(&inspector, |_, _, event, cx| match event {
+                InspectorEvent::Tab(tab) => {
+                    let tab = *tab;
+                    AppState::update_config_soon(cx, |config| config.layout.inspector_tab = tab);
                 }
             }),
             cx.observe_window_appearance(window, |_, window, cx| {
@@ -366,10 +420,8 @@ impl Workspace {
 
         let links = cx.spawn_in(window, async move |this, cx| {
             while let Ok(id) = links_rx.recv().await {
-                let opened = this.update(cx, |this, cx| {
-                    this.library
-                        .update(cx, |library, cx| library.select(Some(id), cx));
-                });
+                let opened =
+                    this.update_in(cx, |this, window, cx| this.follow_link(id, window, cx));
                 if opened.is_err() {
                     break;
                 }
@@ -397,6 +449,9 @@ impl Workspace {
             note_list,
             editor,
             palette,
+            inspector,
+            inspector_open,
+            inspector_width,
             settings,
             settings_return: None,
             show_sidebar: appearance.show_sidebar,
@@ -469,6 +524,122 @@ impl Workspace {
             }
             Err(err) => self.notify_error(format!("Couldn't create the note: {err}"), window, cx),
         }
+    }
+
+    /// Follows a link clicked in the preview: a note's ID opens the note,
+    /// and an unresolved wiki-link's `kanso-new:` link creates its note.
+    pub(crate) fn follow_link(
+        &mut self,
+        link: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(title) = crate::wikilinks::new_note_title(&link) {
+            self.new_note_titled(&title, window, cx);
+            return;
+        }
+        self.library
+            .update(cx, |library, cx| library.select(Some(link), cx));
+    }
+
+    /// Creates a note titled `title` in the notebook a new note would go
+    /// into, and opens it with the keyboard in its text: what clicking an
+    /// unresolved wiki-link does. A note with that title already (made since
+    /// the preview was drawn) opens instead.
+    fn new_note_titled(&mut self, title: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.flush(cx);
+        if let Ok(Some((id, _))) = self.store.resolve_title(title) {
+            self.library
+                .update(cx, |library, cx| library.select(Some(id), cx));
+            return;
+        }
+        let book = match self.library.read(cx).default_book() {
+            Some(book) => book,
+            None => match self.store.put(
+                DocType::Book,
+                json!({"name": "Notes"}),
+                Put::Upsert,
+                Origin::Ui,
+            ) {
+                Ok(created) => created.id,
+                Err(err) => {
+                    return self.notify_error(
+                        format!("Couldn't create a notebook: {err}"),
+                        window,
+                        cx,
+                    );
+                }
+            },
+        };
+        let note = json!({"title": title, "body": "", "bookId": book});
+        match self.store.put(DocType::Note, note, Put::Upsert, Origin::Ui) {
+            Ok(created) => {
+                self.library
+                    .update(cx, |library, cx| library.select(Some(created.id), cx));
+                self.editor
+                    .update(cx, |editor, cx| editor.focus_body(window, cx));
+            }
+            Err(err) => self.notify_error(format!("Couldn't create the note: {err}"), window, cx),
+        }
+    }
+
+    /// Opens the inspector, on `tab` when one is given.
+    pub(crate) fn show_inspector(&mut self, tab: Option<InspectorTab>, cx: &mut Context<Self>) {
+        if let Some(tab) = tab {
+            self.inspector
+                .update(cx, |inspector, cx| inspector.set_tab(tab, cx));
+        }
+        if !self.inspector_open {
+            self.set_inspector_open(true, cx);
+        }
+    }
+
+    pub(crate) fn toggle_inspector(&mut self, cx: &mut Context<Self>) {
+        self.set_inspector_open(!self.inspector_open, cx);
+    }
+
+    fn set_inspector_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        self.inspector_open = open;
+        self.editor.update(cx, |editor, cx| {
+            editor.inspector_open = open;
+            cx.notify();
+        });
+        AppState::update_config(cx, |config| config.layout.inspector_open = open);
+        cx.notify();
+    }
+
+    /// After a rename, offers to point the wiki-links that used the old
+    /// title at the new one.
+    #[allow(clippy::too_many_arguments)]
+    fn offer_relink(
+        &mut self,
+        id: &str,
+        old: &str,
+        new: &str,
+        links: usize,
+        notes: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (id, old, new) = (id.to_owned(), old.to_owned(), new.to_owned());
+        let store = self.store.clone();
+        let message = relink_message(&old, links, notes);
+        let label = relink_label(links);
+        let notification = Notification::info(message).action(move |_, _, _| {
+            let (id, old, new, store) = (id.clone(), old.clone(), new.clone(), store.clone());
+            gpui_kit::component::button::Button::new("update-links")
+                .label(label.clone())
+                .on_click(move |_, window, cx| {
+                    match store.retitle_links(&old, &new, &id, Origin::Ui) {
+                        Ok(_) => {}
+                        Err(err) => window.push_notification(
+                            Notification::error(format!("Couldn't update the links: {err}")),
+                            cx,
+                        ),
+                    }
+                })
+        });
+        window.push_notification(notification, cx);
     }
 
     /// Writes `fields` into document `id` with a shallow merge.
@@ -850,6 +1021,12 @@ impl Workspace {
         }
     }
 
+    /// Shows the open note as `mode`, as the View menu does.
+    #[cfg(test)]
+    pub(crate) fn set_view_mode_for_test(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
+        self.set_view_mode(mode, cx);
+    }
+
     fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
         self.editor
             .update(cx, |editor, cx| editor.set_view_mode(mode, cx));
@@ -909,6 +1086,17 @@ impl Workspace {
         self.pane_widths.fitted(width, self.rail(window))
     }
 
+    /// The inspector's width as drawn, or `None` while it is closed or the
+    /// window has no room for it.
+    pub(crate) fn inspector_shown(&self, window: &Window) -> Option<f32> {
+        if !self.inspector_open || self.focus_mode || self.settings_open() {
+            return None;
+        }
+        let width = f32::from(window.viewport_size().width);
+        let before = self.leading_width(window) + self.fitted_widths(window).list;
+        inspector_fitted(self.inspector_width, width, before)
+    }
+
     /// The width of what is left of the note list: the sidebar or its rail.
     fn leading_width(&self, window: &Window) -> f32 {
         self.rail(window)
@@ -924,6 +1112,16 @@ impl Workspace {
     ) {
         let edge = **event.drag(cx);
         let x = f32::from(event.event.position.x - event.bounds.left());
+        if edge == PaneEdge::Inspector {
+            let before = self.leading_width(window) + self.fitted_widths(window).list;
+            let width = inspector_dragged(x, f32::from(event.bounds.size.width), before);
+            if (width - self.inspector_width).abs() > 0.1 {
+                self.inspector_width = width;
+                AppState::update_config_soon(cx, |config| config.layout.inspector_width = width);
+                cx.notify();
+            }
+            return;
+        }
         let rail = self.rail(window);
         // From the widths as drawn, so the edge doesn't jump to the pointer.
         let from = self.fitted_widths(window);
@@ -966,6 +1164,7 @@ fn pane_handle(edge: PaneEdge) -> impl IntoElement {
     let id = match edge {
         PaneEdge::Sidebar => "sidebar-edge",
         PaneEdge::NoteList => "list-edge",
+        PaneEdge::Inspector => "inspector-edge",
     };
     resize_handle::<PaneEdge, PaneEdge>(id, Axis::Horizontal).on_drag(edge, |edge, _, _, cx| {
         cx.stop_propagation();
@@ -977,6 +1176,26 @@ fn pane_handle(edge: PaneEdge) -> impl IntoElement {
 impl Render for PaneEdge {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         Empty
+    }
+}
+
+/// What the offer to update links after a rename says. Pure.
+pub(crate) fn relink_message(old: &str, links: usize, notes: usize) -> String {
+    let links_word = if links == 1 { "link" } else { "links" };
+    let notes_part = if notes == 1 {
+        "1 note".to_owned()
+    } else {
+        format!("{notes} notes")
+    };
+    format!("{links} {links_word} in {notes_part} still use the old title “{old}”.")
+}
+
+/// The offer's button: "Update 1 link", "Update 3 links". Pure.
+pub(crate) fn relink_label(links: usize) -> String {
+    if links == 1 {
+        "Update 1 link".to_owned()
+    } else {
+        format!("Update {links} links")
     }
 }
 
@@ -1010,6 +1229,10 @@ impl Render for Workspace {
         self.editor
             .update(cx, |editor, cx| editor.set_focus_mode(focus_mode, cx));
         let widths = self.fitted_widths(window);
+        let inspector = self.inspector_shown(window);
+        self.inspector.update(cx, |inspector_view, _| {
+            inspector_view.visible = inspector.is_some();
+        });
         self.palette
             .update(cx, |palette, _| palette.set_notes_hidden(settings_open));
         let signed_in = cx
@@ -1111,6 +1334,21 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|this, _: &ExitFocusMode, window, cx| {
                 this.set_focus_mode(false, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ToggleInspector, window, cx| {
+                this.close_settings(window, cx);
+                this.set_focus_mode(false, window, cx);
+                this.toggle_inspector(cx);
+            }))
+            .on_action(cx.listener(|this, _: &ShowOutline, window, cx| {
+                this.close_settings(window, cx);
+                this.set_focus_mode(false, window, cx);
+                this.show_inspector(Some(InspectorTab::Outline), cx);
+            }))
+            .on_action(cx.listener(|this, _: &ShowBacklinks, window, cx| {
+                this.close_settings(window, cx);
+                this.set_focus_mode(false, window, cx);
+                this.show_inspector(Some(InspectorTab::Backlinks), cx);
             }))
             // What acts on the open note brings it back from behind
             // Settings first, so the note it changes is in view.
@@ -1282,6 +1520,18 @@ impl Render for Workspace {
                                 .child(self.editor.clone())
                                 .when(!focus_mode, |el| el.child(pane_handle(PaneEdge::NoteList))),
                         )
+                        .when_some(inspector, |el, width| {
+                            el.child(
+                                div()
+                                    .relative()
+                                    .h_full()
+                                    .w(px(width))
+                                    .flex_none()
+                                    .debug_selector(|| "inspector-pane".into())
+                                    .child(self.inspector.clone())
+                                    .child(pane_handle(PaneEdge::Inspector)),
+                            )
+                        })
                     }),
             )
             // Over everything else when open.

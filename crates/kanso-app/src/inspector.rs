@@ -1,0 +1,564 @@
+//! The inspector: a pane on the editor's right with the open note's outline
+//! and the notes that link to it.
+//!
+//! Outline lists the note's headings as they are typed, the one the caret
+//! is under marked; clicking one takes the caret there. Backlinks lists the
+//! notes that link here, each with the line it links on, and below them the
+//! notes that mention the title without linking, each with Link to make the
+//! mention a link.
+
+use std::sync::Arc;
+
+use gpui_kit::assets::IconName as Lucide;
+use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
+use gpui_kit::component::{Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
+use kanso_core::DocType;
+use kanso_core::outline::{Heading, headings};
+use kanso_store::{Backlink, Origin, Put, Store};
+use serde_json::json;
+
+use crate::config::InspectorTab;
+use crate::editor::NoteEditor;
+use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
+use crate::library::Library;
+use crate::note_list::quiet_empty;
+use crate::theme::{Colors, section_label};
+
+/// How far each heading level indents its row, in points.
+const LEVEL_INDENT: f32 = 12.;
+/// Room either side of the rows.
+const PAD_X: f32 = 10.;
+
+/// What the inspector asks of the workspace.
+pub enum InspectorEvent {
+    /// A tab was picked: kept for next time.
+    Tab(InspectorTab),
+}
+
+pub struct Inspector {
+    store: Arc<Store>,
+    library: Entity<Library>,
+    editor: Entity<NoteEditor>,
+    pub tab: InspectorTab,
+    /// The outline of the open note: its ID, the text version it was made
+    /// from, and its headings.
+    outline: Option<(String, u64, Vec<Heading>)>,
+    /// Unlinked mentions of the open note, and which note they are for.
+    mentions: Vec<Backlink>,
+    mentions_for: Option<String>,
+    mentions_task: Option<Task<()>>,
+    /// Whether the pane is on screen: mentions are only looked for then.
+    pub visible: bool,
+    scroll: ScrollHandle,
+    _subscriptions: Vec<Subscription>,
+}
+
+impl EventEmitter<InspectorEvent> for Inspector {}
+
+impl Inspector {
+    pub fn new(
+        store: Arc<Store>,
+        library: Entity<Library>,
+        editor: Entity<NoteEditor>,
+        tab: InspectorTab,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        // The editor notifies as its text, caret and backlinks change.
+        let subscriptions = vec![cx.observe(&editor, |this, _, cx| {
+            if this.visible {
+                cx.notify();
+            }
+        })];
+        Inspector {
+            store,
+            library,
+            editor,
+            tab,
+            outline: None,
+            mentions: Vec::new(),
+            mentions_for: None,
+            mentions_task: None,
+            visible: false,
+            scroll: ScrollHandle::new(),
+            _subscriptions: subscriptions,
+        }
+    }
+
+    /// Shows `tab`.
+    pub fn set_tab(&mut self, tab: InspectorTab, cx: &mut Context<Self>) {
+        if self.tab != tab {
+            self.tab = tab;
+            self.scroll.set_offset(point(px(0.), px(0.)));
+            cx.emit(InspectorEvent::Tab(tab));
+            cx.notify();
+        }
+    }
+
+    /// Looks for unlinked mentions again, as after a note changed.
+    pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        self.mentions_for = None;
+        if self.visible {
+            cx.notify();
+        }
+    }
+
+    /// The open note's headings, parsed again only when its text changed.
+    fn outline(&mut self, cx: &App) -> &[Heading] {
+        let source = self.editor.read(cx).outline_source(cx);
+        let Some((id, version, text)) = source else {
+            self.outline = None;
+            return &[];
+        };
+        let fresh = self
+            .outline
+            .as_ref()
+            .is_some_and(|(kept, at, _)| *kept == id && *at == version);
+        if !fresh {
+            self.outline = Some((id, version, headings(&text)));
+        }
+        self.outline.as_ref().map_or(&[], |(_, _, h)| h.as_slice())
+    }
+
+    /// Starts looking for the open note's unlinked mentions, in the
+    /// background, unless they are known.
+    fn load_mentions(&mut self, cx: &mut Context<Self>) {
+        let id = self.editor.read(cx).note_id().map(str::to_owned);
+        if self.mentions_for == id {
+            return;
+        }
+        self.mentions_for = id.clone();
+        let Some(id) = id else {
+            self.mentions.clear();
+            self.mentions_task = None;
+            return;
+        };
+        let store = self.store.clone();
+        let search = cx
+            .background_executor()
+            .spawn(async move { store.unlinked_mentions(&id).unwrap_or_default() });
+        self.mentions_task = Some(cx.spawn(async move |this, cx| {
+            let found = search.await;
+            this.update(cx, |this, cx| {
+                this.mentions_task = None;
+                if this.mentions != found {
+                    this.mentions = found;
+                    cx.notify();
+                }
+            })
+            .ok();
+        }));
+    }
+
+    /// Opens note `id` at `line`.
+    fn open_at(&self, id: String, line: u32, cx: &mut App) {
+        self.editor
+            .update(cx, |editor, _| editor.reveal_after_open(id.clone(), line));
+        self.library
+            .update(cx, |library, cx| library.select(Some(id), cx));
+    }
+
+    /// Makes the mention in note `mention` a link to the open note.
+    fn link_mention(&mut self, mention: &Backlink, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(target) = self.editor.read(cx).note_id().map(str::to_owned) else {
+            return;
+        };
+        let Ok(Some(title)) = self.store.note(&target).map(|n| n.map(|n| n.title)) else {
+            return;
+        };
+        let Ok(Some(note)) = self.store.note(&mention.id) else {
+            return;
+        };
+        let uri = format!(
+            "inkdrop://note/{}",
+            target.strip_prefix("note:").unwrap_or(&target)
+        );
+        let Some(body) = kanso_core::links::link_mention(&note.body, mention.line, &title, &uri)
+        else {
+            return;
+        };
+        let result = self.store.put(
+            DocType::Note,
+            json!({"_id": mention.id, "_rev": note.rev, "body": body}),
+            Put::Merge,
+            Origin::Ui,
+        );
+        if let Err(err) = result {
+            use gpui_kit::component::WindowExt as _;
+            window.push_notification(
+                gpui_kit::component::notification::Notification::error(format!(
+                    "Couldn't link the mention: {err}"
+                )),
+                cx,
+            );
+        }
+        self.mentions.retain(|m| m.id != mention.id);
+        self.mentions_for = None;
+        cx.notify();
+    }
+
+    fn render_tabs(&self, backlinks: usize, cx: &mut Context<Self>) -> impl IntoElement {
+        let colors = Colors::get(cx);
+        let tab = self.tab;
+        let tabs = [
+            ("tab-outline", "Outline".to_owned(), InspectorTab::Outline),
+            (
+                "tab-backlinks",
+                if backlinks > 0 {
+                    format!("Backlinks {backlinks}")
+                } else {
+                    "Backlinks".to_owned()
+                },
+                InspectorTab::Backlinks,
+            ),
+        ];
+        let options = [InspectorTab::Outline, InspectorTab::Backlinks];
+        h_flex()
+            .h(px(TOP_BAND_HEIGHT))
+            .flex_none()
+            .px(px(PAD_X))
+            .child(
+                ButtonGroup::new("inspector-tabs")
+                    .outline()
+                    .small()
+                    .children(tabs.map(|(id, label, option)| {
+                        let selected = tab == option;
+                        Button::new(id).selected(selected).child(
+                            div()
+                                .px_0p5()
+                                .text_size(px(12.5))
+                                .when(selected, |el| el.font_medium())
+                                .text_color(if selected {
+                                    colors.text
+                                } else {
+                                    colors.text_secondary
+                                })
+                                .child(label),
+                        )
+                    }))
+                    .on_click(cx.listener(move |this, clicked: &Vec<usize>, _, cx| {
+                        if let Some(&ix) = clicked.first() {
+                            this.set_tab(options[ix], cx);
+                        }
+                    })),
+            )
+    }
+
+    fn render_outline(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = Colors::get(cx);
+        let caret = self.editor.read(cx).caret_line(cx);
+        let has_note = self.editor.read(cx).note_id().is_some();
+        let headings = self.outline(cx).to_vec();
+        if !has_note {
+            return quiet_empty(Lucide::TableOfContents, "No note open".into(), None, colors)
+                .into_any_element();
+        }
+        if headings.is_empty() {
+            return quiet_empty(
+                Lucide::TableOfContents,
+                "No headings yet".into(),
+                Some("Start a line with # to add one.".into()),
+                colors,
+            )
+            .into_any_element();
+        }
+        let top = headings.iter().map(|h| h.level).min().unwrap_or(1);
+        let current = current_heading(&headings, caret);
+        let editor = self.editor.clone();
+        v_flex()
+            .id("outline")
+            .size_full()
+            .overflow_y_scroll()
+            .track_scroll(&self.scroll)
+            .px(px(PAD_X))
+            .pb(px(12.))
+            .children(headings.into_iter().enumerate().map(|(ix, heading)| {
+                let active = current == Some(ix);
+                let indent = f32::from(heading.level.saturating_sub(top)) * LEVEL_INDENT;
+                let editor = editor.clone();
+                let line = heading.line;
+                h_flex()
+                    .id(ElementId::NamedInteger("heading".into(), ix as u64))
+                    .w_full()
+                    .h(px(28.))
+                    .pl(px(8. + indent))
+                    .pr(px(8.))
+                    .rounded(px(6.))
+                    .gap(px(8.))
+                    .cursor_pointer()
+                    .when(active, |el| el.bg(colors.row_active))
+                    .when(!active, |el| el.hover(|el| el.bg(colors.row_hover)))
+                    .child(
+                        div()
+                            .flex_none()
+                            .w(px(2.))
+                            .h(px(14.))
+                            .rounded_full()
+                            .bg(if active {
+                                Hsla::from(colors.accent)
+                            } else {
+                                gpui_kit::transparent_black()
+                            }),
+                    )
+                    .child(
+                        div()
+                            .min_w_0()
+                            .flex_1()
+                            .truncate()
+                            .text_size(px(if heading.level <= top { 13. } else { 12.5 }))
+                            .when(heading.level <= top, |el| el.font_medium())
+                            .text_color(if active || heading.level <= top {
+                                colors.text
+                            } else {
+                                colors.text_secondary
+                            })
+                            .child(heading.text),
+                    )
+                    .on_click(move |_, window, cx| {
+                        editor.update(cx, |editor, cx| editor.reveal_line(line, window, cx));
+                    })
+            }))
+            .into_any_element()
+    }
+
+    fn render_backlinks(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = Colors::get(cx);
+        let editor = self.editor.read(cx);
+        if editor.note_id().is_none() {
+            return quiet_empty(Lucide::Link, "No note open".into(), None, colors)
+                .into_any_element();
+        }
+        let linked: Vec<Backlink> = editor.backlinks().to_vec();
+        self.load_mentions(cx);
+        let mentions = self.mentions.clone();
+        if linked.is_empty() && mentions.is_empty() {
+            return quiet_empty(
+                Lucide::Link,
+                "No links to this note yet".into(),
+                Some("Type [[ in another note to link here.".into()),
+                colors,
+            )
+            .into_any_element();
+        }
+        let view = cx.entity();
+        let section = |label: String| {
+            section_label(div(), colors)
+                .px(px(8.))
+                .pt(px(10.))
+                .pb(px(6.))
+                .child(label)
+        };
+        let row = |ix: usize, kind: &'static str, link: &Backlink, action: Option<AnyElement>| {
+            let open = view.clone();
+            let (id, line) = (link.id.clone(), link.line);
+            let title = if link.title.trim().is_empty() {
+                "Untitled".to_owned()
+            } else {
+                link.title.clone()
+            };
+            v_flex()
+                .id(ElementId::NamedInteger(kind.into(), ix as u64))
+                .group(SharedString::from(format!("{kind}-{ix}")))
+                .w_full()
+                .px(px(8.))
+                .py(px(7.))
+                .gap(px(2.))
+                .rounded(px(6.))
+                .cursor_pointer()
+                .hover(|el| el.bg(colors.row_hover))
+                .child(
+                    h_flex()
+                        .gap(px(6.))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .text_size(px(13.))
+                                .font_medium()
+                                .text_color(colors.text)
+                                .child(title),
+                        )
+                        .children(action),
+                )
+                .when(!link.context.is_empty(), |el| {
+                    el.child(
+                        div()
+                            .text_size(px(12.))
+                            .line_height(px(17.))
+                            .text_color(colors.text_secondary)
+                            .line_clamp(2)
+                            .text_ellipsis()
+                            .child(link.context.clone()),
+                    )
+                })
+                .on_click(move |_, _, cx| {
+                    let (id, line) = (id.clone(), line);
+                    open.update(cx, |this, cx| this.open_at(id, line, cx));
+                })
+        };
+        let mut list = v_flex()
+            .id("backlinks")
+            .size_full()
+            .overflow_y_scroll()
+            .track_scroll(&self.scroll)
+            .px(px(PAD_X))
+            .pb(px(12.));
+        if !linked.is_empty() {
+            list = list.child(section("Linked from".into()));
+            for (ix, link) in linked.iter().enumerate() {
+                list = list.child(row(ix, "backlink", link, None));
+            }
+        }
+        if !mentions.is_empty() {
+            list = list.child(section("Unlinked mentions".into()));
+            for (ix, mention) in mentions.iter().enumerate() {
+                let link_view = view.clone();
+                let target = mention.clone();
+                let action = Button::new(ElementId::NamedInteger("link-mention".into(), ix as u64))
+                    .ghost()
+                    .xsmall()
+                    .child(
+                        div()
+                            .px_0p5()
+                            .text_size(px(11.5))
+                            .text_color(colors.link)
+                            .child("Link"),
+                    )
+                    .tooltip("Make this mention a link to the note")
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        link_view.update(cx, |this, cx| this.link_mention(&target, window, cx));
+                    })
+                    .into_any_element();
+                list = list.child(row(ix, "mention", mention, Some(action)));
+            }
+        }
+        list.into_any_element()
+    }
+
+    fn render_bottom_band(&mut self, backlinks: usize, cx: &mut Context<Self>) -> impl IntoElement {
+        let colors = Colors::get(cx);
+        let summary = match self.tab {
+            InspectorTab::Outline => {
+                let n = self.outline(cx).len();
+                match n {
+                    0 => String::new(),
+                    1 => "1 heading".to_owned(),
+                    n => format!("{n} headings"),
+                }
+            }
+            InspectorTab::Backlinks => {
+                let mentions = self.mentions.len();
+                let mut parts = Vec::new();
+                match backlinks {
+                    0 => {}
+                    1 => parts.push("1 link".to_owned()),
+                    n => parts.push(format!("{n} links")),
+                }
+                match mentions {
+                    0 => {}
+                    1 => parts.push("1 mention".to_owned()),
+                    n => parts.push(format!("{n} mentions")),
+                }
+                parts.join(" · ")
+            }
+        };
+        h_flex()
+            .h(px(BOTTOM_BAND_HEIGHT))
+            .flex_none()
+            .px(px(PAD_X + 8.))
+            .border_t_1()
+            .border_color(colors.divider)
+            .text_size(px(12.))
+            .text_color(colors.text_muted)
+            .child(summary)
+    }
+}
+
+#[cfg(test)]
+impl Inspector {
+    /// The notes found mentioning the open note, by ID.
+    pub fn mentions_for_test(&self) -> Vec<String> {
+        self.mentions.iter().map(|m| m.id.clone()).collect()
+    }
+
+    /// Presses Link on the first mention.
+    pub fn link_first_mention_for_test(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(first) = self.mentions.first().cloned() {
+            self.link_mention(&first, window, cx);
+        }
+    }
+}
+
+/// The heading the caret on `line` is under: the last one at or above it.
+/// Pure.
+pub fn current_heading(headings: &[Heading], line: u32) -> Option<usize> {
+    headings.iter().rposition(|h| h.line <= line)
+}
+
+impl Render for Inspector {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let colors = Colors::get(cx);
+        let backlinks = self.editor.read(cx).backlinks().len();
+        let body = match self.tab {
+            InspectorTab::Outline => self.render_outline(cx),
+            InspectorTab::Backlinks => self.render_backlinks(cx),
+        };
+        v_flex()
+            .size_full()
+            .bg(colors.list)
+            .border_l_1()
+            .border_color(colors.divider)
+            .child(self.render_tabs(backlinks, cx))
+            .child(div().flex_1().min_h_0().child(body))
+            .child(self.render_bottom_band(backlinks, cx))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::current_heading;
+    use kanso_core::outline::Heading;
+    use proptest::prelude::*;
+
+    fn at(lines: &[u32]) -> Vec<Heading> {
+        lines
+            .iter()
+            .map(|&line| Heading {
+                level: 2,
+                text: "h".into(),
+                line,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_caret_is_under_the_last_heading_above_it() {
+        let headings = at(&[2, 5, 9]);
+        assert_eq!(current_heading(&headings, 0), None);
+        assert_eq!(current_heading(&headings, 5), Some(1));
+        assert_eq!(current_heading(&headings, 7), Some(1));
+        assert_eq!(current_heading(&headings, 40), Some(2));
+    }
+
+    proptest! {
+        /// The heading found is at or above the caret, and the next one (if
+        /// any) is below it.
+        #[test]
+        fn prop_current_heading_brackets_the_caret(mut lines in prop::collection::btree_set(0u32..200, 0..12), caret in 0u32..220) {
+            let lines: Vec<u32> = std::mem::take(&mut lines).into_iter().collect();
+            let headings = at(&lines);
+            match current_heading(&headings, caret) {
+                Some(ix) => {
+                    prop_assert!(headings[ix].line <= caret);
+                    if let Some(next) = headings.get(ix + 1) {
+                        prop_assert!(next.line > caret);
+                    }
+                }
+                None => prop_assert!(lines.iter().all(|&l| l > caret)),
+            }
+        }
+    }
+}

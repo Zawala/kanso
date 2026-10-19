@@ -29,12 +29,15 @@ mod fuzzy;
 mod grouping;
 mod history;
 mod inkdrop;
+mod inspector;
 mod keys;
 #[cfg(test)]
 mod latency_bench;
 mod launch;
 mod layout;
 mod library;
+#[cfg(test)]
+mod links_tests;
 mod list_edit;
 mod markdown_edit;
 mod markdown_source;
@@ -65,6 +68,7 @@ mod themes;
 #[cfg(test)]
 mod ui_tests;
 mod updates;
+mod wikilinks;
 mod word_goal;
 mod workspace;
 

@@ -25,6 +25,37 @@ pub const SIDEBAR_RANGE: (f32, f32) = (180., 320.);
 pub const NOTE_LIST_RANGE: (f32, f32) = (260., 480.);
 /// The editor's own minimum: dragging a pane wider stops short of it.
 pub const EDITOR_MIN_WIDTH: f32 = 560.;
+/// The inspector beside the editor (outline and backlinks): its width
+/// before it is first dragged, and how narrow and wide dragging makes it.
+pub const INSPECTOR_WIDTH: f32 = 264.;
+pub const INSPECTOR_RANGE: (f32, f32) = (220., 420.);
+
+/// The inspector's width once its left edge is dragged to `x` points from
+/// the window's left, in a window `window` wide whose panes before the
+/// editor take `before_editor`: following the pointer within its range,
+/// and short of leaving the editor less than its minimum.
+pub fn inspector_dragged(x: f32, window: f32, before_editor: f32) -> f32 {
+    let room = window - before_editor - EDITOR_MIN_WIDTH;
+    (window - x)
+        .min(INSPECTOR_RANGE.1.min(room))
+        .max(INSPECTOR_RANGE.0)
+}
+
+/// The inspector's width as drawn, from its set `width`: as set (within its
+/// range) when the editor keeps its minimum beside it, narrower when not,
+/// and hidden (`None`) when even its narrowest would leave the editor short.
+/// The inspector gives way before the sidebar and the list do.
+pub fn inspector_fitted(width: f32, window: f32, before_editor: f32) -> Option<f32> {
+    let room = window - before_editor - EDITOR_MIN_WIDTH;
+    if room + 1e-3 < INSPECTOR_RANGE.0 {
+        return None;
+    }
+    Some(
+        width
+            .clamp(INSPECTOR_RANGE.0, INSPECTOR_RANGE.1)
+            .min(room.max(INSPECTOR_RANGE.0)),
+    )
+}
 
 /// Where macOS puts the close button, from the window's top left. The three
 /// buttons are about 14 points across, 20 apart.
@@ -65,11 +96,13 @@ pub fn inset_after(left: f32, fullscreen: bool) -> f32 {
     (leading_inset(true, fullscreen) - left.max(0.)).max(0.)
 }
 
-/// The pane edge a drag moves: the sidebar's right edge or the list's.
+/// The pane edge a drag moves: the sidebar's right edge, the list's, or
+/// the inspector's left edge.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneEdge {
     Sidebar,
     NoteList,
+    Inspector,
 }
 
 /// The sidebar's and the note list's widths in points.
@@ -109,6 +142,8 @@ impl PaneWidths {
                     ..self
                 }
             }
+            // Its width is kept apart; see `inspector_dragged`.
+            PaneEdge::Inspector => self,
         }
     }
 
@@ -351,10 +386,11 @@ mod tests {
             match edge {
                 PaneEdge::Sidebar => prop_assert_eq!(after.list, before.list),
                 PaneEdge::NoteList => prop_assert_eq!(after.sidebar, before.sidebar),
+                PaneEdge::Inspector => unreachable!(),
             }
             let (other, min) = match edge {
                 PaneEdge::Sidebar => (after.list, SIDEBAR_RANGE.0),
-                PaneEdge::NoteList => (left, NOTE_LIST_RANGE.0),
+                PaneEdge::NoteList | PaneEdge::Inspector => (left, NOTE_LIST_RANGE.0),
             };
             let editor = window - left - after.list;
             if window - other - min >= EDITOR_MIN_WIDTH {
@@ -584,6 +620,49 @@ mod tests {
             // The rail covers the lights, so whatever follows it starts flush.
             prop_assert_eq!(inset_after(rail_width(fullscreen), fullscreen), 0.);
         }
+    }
+
+    proptest! {
+        #![proptest_config(config())]
+
+        /// Invariants of the inspector's width: a drag keeps it within its
+        /// range, a wider drag never makes it narrower, and fitting it to a
+        /// window either hides it or leaves the editor its minimum (when the
+        /// panes before it leave room for its narrowest) without going out
+        /// of its range; fitting what is already fitted changes nothing.
+        #[test]
+        fn prop_the_inspector_leaves_the_editor_its_room(
+            width in 150f32..500.,
+            window in 600f32..2600.,
+            before in 0f32..900.,
+            a in 0f32..2600.,
+            b in 0f32..2600.,
+        ) {
+            let dragged = inspector_dragged(a, window, before);
+            prop_assert!((INSPECTOR_RANGE.0..=INSPECTOR_RANGE.1).contains(&dragged));
+            let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+            prop_assert!(inspector_dragged(lo, window, before) >= inspector_dragged(hi, window, before));
+            match inspector_fitted(width, window, before) {
+                None => prop_assert!(window - before - EDITOR_MIN_WIDTH < INSPECTOR_RANGE.0),
+                Some(shown) => {
+                    prop_assert!((INSPECTOR_RANGE.0..=INSPECTOR_RANGE.1).contains(&shown));
+                    prop_assert!(window - before - shown >= EDITOR_MIN_WIDTH - 1e-2);
+                    prop_assert_eq!(inspector_fitted(shown, window, before), Some(shown));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn inspector_examples() {
+        // Room to spare: as set.
+        assert_eq!(inspector_fitted(300., 1600., 540.), Some(300.));
+        // 1440 wide with the sidebar and the list: 340 points spare.
+        assert_eq!(inspector_fitted(400., 1440., 540.), Some(340.));
+        // Too narrow: hidden, so the editor keeps its room.
+        assert_eq!(inspector_fitted(264., 1200., 540.), None);
+        // Dragging its edge to x = 1100 in a 1440 window: 340 wide.
+        assert_eq!(inspector_dragged(1100., 1440., 540.), 340.);
     }
 
     #[test]

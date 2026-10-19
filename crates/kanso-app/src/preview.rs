@@ -373,6 +373,10 @@ impl Links {
             Some(id) => {
                 self.0.try_send(id).ok();
             }
+            // An unresolved wiki-link: the workspace creates its note.
+            None if url.starts_with(crate::wikilinks::NEW_NOTE_SCHEME) => {
+                self.0.try_send(url.to_owned()).ok();
+            }
             None if is_openable(url) => cx.open_url(url),
             None => {}
         }
@@ -563,6 +567,8 @@ fn quote_extensions(
     let quote_rich = rich.clone();
     let extensions = MarkdownExtensions::default()
         .parser_revision(QUOTE_PARSER_REVISION)
+        // Unresolved wiki-links, drawn dashed (see `crate::wikilinks`).
+        .plugin(crate::wikilinks::UnresolvedLink::new(links.0.clone()))
         .block_parser(parse)
         .block_renderer(PICTURE, move |node, _window, cx| {
             render_picture(node, &picture_images, &picture_resizes, cx)

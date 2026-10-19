@@ -3860,6 +3860,7 @@ dependencies = [
  "kanso-store",
  "kanso-sync",
  "kanso-update",
+ "lsp-types",
  "markdown",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",

@@ -273,8 +273,17 @@ fn is_owner_endpoint(endpoint: &str) -> bool {
 /// The source side's share of the split before it is first dragged.
 pub const DEFAULT_SPLIT_RATIO: f32 = 0.5;
 
+/// The inspector's tabs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InspectorTab {
+    #[default]
+    Outline,
+    Backlinks,
+}
+
 /// How the window's panes were left: focus mode, where the split divides,
-/// and whether the sidebar's Status group is open.
+/// whether the sidebar's Status group is open, and the inspector.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct WindowLayout {
@@ -283,6 +292,10 @@ pub struct WindowLayout {
     pub split_ratio: f32,
     /// Open or closed by the user; `None` until they choose.
     pub status_open: Option<bool>,
+    /// The outline and backlinks pane beside the editor.
+    pub inspector_open: bool,
+    pub inspector_width: f32,
+    pub inspector_tab: InspectorTab,
 }
 
 impl Default for WindowLayout {
@@ -291,6 +304,9 @@ impl Default for WindowLayout {
             focus_mode: false,
             split_ratio: DEFAULT_SPLIT_RATIO,
             status_open: None,
+            inspector_open: false,
+            inspector_width: crate::layout::INSPECTOR_WIDTH,
+            inspector_tab: InspectorTab::Outline,
         }
     }
 }
@@ -514,13 +530,33 @@ mod tests {
     }
 
     fn gen_layout() -> impl Strategy<Value = WindowLayout> {
-        (any::<bool>(), 0.0f32..=1.0, prop::option::of(any::<bool>())).prop_map(
-            |(focus_mode, split_ratio, status_open)| WindowLayout {
-                focus_mode,
-                split_ratio,
-                status_open,
-            },
+        (
+            any::<bool>(),
+            0.0f32..=1.0,
+            prop::option::of(any::<bool>()),
+            any::<bool>(),
+            crate::layout::INSPECTOR_RANGE.0..=crate::layout::INSPECTOR_RANGE.1,
+            prop::sample::select(vec![InspectorTab::Outline, InspectorTab::Backlinks]),
         )
+            .prop_map(
+                |(
+                    focus_mode,
+                    split_ratio,
+                    status_open,
+                    inspector_open,
+                    inspector_width,
+                    inspector_tab,
+                )| {
+                    WindowLayout {
+                        focus_mode,
+                        split_ratio,
+                        status_open,
+                        inspector_open,
+                        inspector_width,
+                        inspector_tab,
+                    }
+                },
+            )
     }
 
     fn gen_settings() -> impl Strategy<Value = AppConfig> {
@@ -954,6 +990,12 @@ mod tests {
         assert!(partial.layout.focus_mode);
         assert_eq!(partial.layout.split_ratio, DEFAULT_SPLIT_RATIO);
         assert_eq!(partial.layout.status_open, None);
+        assert!(!partial.layout.inspector_open);
+        assert_eq!(
+            partial.layout.inspector_width,
+            crate::layout::INSPECTOR_WIDTH
+        );
+        assert_eq!(partial.layout.inspector_tab, InspectorTab::Outline);
     }
 
     /// Files from before updates install themselves turn them on; turning

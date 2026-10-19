@@ -24,7 +24,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::{Clause, DocType, Field, Note, NoteStatus};
-use kanso_store::{NoteSummary, Origin, Put, SearchParams, Sort, Store};
+use kanso_store::{HeadingHit, NoteSummary, Origin, Put, SearchParams, Sort, Store};
 use serde_json::json;
 
 use crate::commands::{self, Command, Group, Needs, Picker, Run};
@@ -81,6 +81,8 @@ pub(crate) const PANEL_HEIGHT: f32 = SEARCH_HEIGHT + BODY_HEIGHT + FOOTER_HEIGHT
 const ROW_HEIGHT: f32 = 30.;
 /// How many notes a search lists.
 const NOTE_LIMIT: usize = 20;
+/// How many headings ⌘P lists under the notes.
+const HEADING_LIMIT: usize = 8;
 /// How long typing pauses before notes are searched.
 const SEARCH_DELAY: Duration = Duration::from_millis(80);
 /// A match in a keyword counts a little less than the same match in the label.
@@ -93,6 +95,8 @@ enum Target {
     /// Show these notes in the note list.
     Show(Filter),
     Note(NoteSummary),
+    /// Open a note at one of its headings.
+    Heading(HeadingHit),
     /// Move the open note into this notebook.
     Book(String),
     /// Add this tag to the open note, or take it off.
@@ -165,6 +169,7 @@ impl Item {
             Target::Command(command) => format!("command:{}", command.id),
             Target::Show(filter) => format!("show:{filter:?}"),
             Target::Note(note) => format!("note:{}", note.id),
+            Target::Heading(hit) => format!("heading:{}:{}", hit.note_id, hit.line),
             Target::Book(id) => format!("book:{id}"),
             Target::Tag(id) => format!("tag:{id}"),
             Target::NewTag(name) => format!("new-tag:{name}"),
@@ -222,6 +227,8 @@ pub struct Palette {
     chosen_key: Option<String>,
     /// Notes found for `notes_for`.
     notes: Vec<NoteSummary>,
+    /// Headings found for `notes_for`, in ⌘P.
+    headings: Vec<HeadingHit>,
     notes_for: Option<String>,
     search_task: Option<Task<()>>,
     scroll: ScrollHandle,
@@ -277,6 +284,7 @@ impl Palette {
             selected: None,
             chosen_key: None,
             notes: Vec::new(),
+            headings: Vec::new(),
             notes_for: None,
             search_task: None,
             scroll: ScrollHandle::new(),
@@ -361,6 +369,18 @@ impl Palette {
         }
     }
 
+    /// Selects the first heading listed, so the detail pane shows it.
+    #[cfg(test)]
+    pub fn select_first_heading(&mut self, cx: &mut Context<Self>) {
+        if let Some(ix) = self
+            .items
+            .iter()
+            .position(|item| matches!(item.target, Target::Heading(_)))
+        {
+            self.select(ix, true, cx);
+        }
+    }
+
     /// The labels of the entries listed now.
     #[cfg(test)]
     pub fn item_labels(&self) -> Vec<String> {
@@ -418,9 +438,11 @@ impl Palette {
         if !wanted {
             self.search_task = None;
             self.notes.clear();
+            self.headings.clear();
             self.notes_for = None;
             return;
         }
+        let heading_query = heading_query(self.mode, &query);
         if self.notes_for.as_deref() == Some(query.as_str()) {
             // Back to the query already shown: a search for another one
             // still on its way would replace it.
@@ -443,7 +465,14 @@ impl Palette {
                         None => Vec::new(),
                     };
                     let anywhere = store.search_summaries(&params)?;
-                    Ok::<_, kanso_store::StoreError>(merge_by_id(titled, anywhere, NOTE_LIMIT))
+                    let headings = match heading_query {
+                        Some(words) => store.search_headings(&words, HEADING_LIMIT)?,
+                        None => Vec::new(),
+                    };
+                    Ok::<_, kanso_store::StoreError>((
+                        merge_by_id(titled, anywhere, NOTE_LIMIT),
+                        headings,
+                    ))
                 })
                 .await;
             this.update(cx, |this, cx| {
@@ -451,7 +480,9 @@ impl Palette {
                     return;
                 }
                 // A query the store can't run finds nothing.
-                this.notes = found.unwrap_or_default();
+                let (notes, headings) = found.unwrap_or_default();
+                this.notes = notes;
+                this.headings = headings;
                 this.notes_for = Some(query);
                 this.rebuild(cx);
                 cx.notify();
@@ -504,7 +535,12 @@ impl Palette {
                 } else {
                     "Notes"
                 };
-                vec![section(heading, self.note_entries(query, cx), true)]
+                let mut sections = vec![section(heading, self.note_entries(query, cx), true)];
+                let headings = self.heading_entries(query);
+                if !headings.is_empty() {
+                    sections.push(section("Headings", headings, true));
+                }
+                sections
             }
             Some(Mode::Pick(Picker::Notebook)) => {
                 let library = self.library.read(cx);
@@ -755,6 +791,26 @@ impl Palette {
             .collect()
     }
 
+    /// Headings found for the query, each with the note it is in.
+    fn heading_entries(&self, query: &str) -> Vec<(Item, Option<i64>)> {
+        if self.notes_for.as_deref() != Some(query) {
+            return Vec::new();
+        }
+        self.headings
+            .iter()
+            .map(|hit| {
+                let score = fuzzy::score(query, &hit.text);
+                let item = Item::new(
+                    Target::Heading(hit.clone()),
+                    hit.text.clone(),
+                    IconName::Heading,
+                )
+                .hint(note_title(&hit.note_title));
+                (item, score)
+            })
+            .collect()
+    }
+
     /// Ranks the entries for the query and lays out the rows: with a query,
     /// sections are ordered by their best entry, so the best fit comes first.
     fn rebuild(&mut self, cx: &mut Context<Self>) {
@@ -892,6 +948,12 @@ impl Palette {
         }
     }
 
+    /// Chooses entry `ix`, as Enter on it would.
+    #[cfg(test)]
+    pub fn choose_for_test(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.choose(ix, window, cx);
+    }
+
     /// Does what entry `ix` stands for.
     fn choose(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(item) = self.items.get(ix).cloned() else {
@@ -931,6 +993,23 @@ impl Palette {
                 } else {
                     self.editor
                         .update(cx, |editor, cx| editor.focus_body(window, cx));
+                }
+            }
+            Target::Heading(hit) => {
+                self.close(window, cx);
+                let open = self.editor.read(cx).note_id() == Some(hit.note_id.as_str());
+                if open {
+                    self.editor
+                        .update(cx, |editor, cx| editor.reveal_line(hit.line, window, cx));
+                } else {
+                    self.editor.update(cx, |editor, _| {
+                        editor.reveal_after_open(hit.note_id.clone(), hit.line)
+                    });
+                    self.library
+                        .update(cx, |library, cx| library.select(Some(hit.note_id), cx));
+                }
+                if self.editor.read(cx).view_mode == ViewMode::Preview {
+                    window.focus(&self.list_focus, cx);
                 }
             }
             Target::Book(id) => {
@@ -1248,6 +1327,23 @@ impl Palette {
                     detail.description_lines = 4;
                 }
             }
+            Target::Heading(hit) => {
+                detail.description = Some(
+                    format!(
+                        "Opens “{}” at this heading.",
+                        self::note_title(&hit.note_title)
+                    )
+                    .into(),
+                );
+                detail.meta.push((
+                    Icon::new(IconName::FileText),
+                    self::note_title(&hit.note_title).into(),
+                ));
+                detail.meta.push((
+                    Icon::new(IconName::Heading),
+                    format!("Level {} heading, line {}", hit.level, hit.line + 1).into(),
+                ));
+            }
             Target::Book(id) => {
                 let here = self.note.as_ref().is_some_and(|n| &n.book_id == id);
                 detail.description = Some(
@@ -1526,6 +1622,14 @@ fn merge_by_id(first: Vec<NoteSummary>, then: Vec<NoteSummary>, limit: usize) ->
 
 /// The tag name in what was typed in the tag list: without the "#" tags are
 /// shown with, and the spaces around it.
+/// The words ⌘P looks for in headings: the query, when ⌘P is open and the
+/// query is plain words rather than a search with qualifiers. Pure.
+fn heading_query(mode: Option<Mode>, query: &str) -> Option<String> {
+    let words = query.trim();
+    (mode == Some(Mode::Notes) && !words.is_empty() && !words.contains(':'))
+        .then(|| words.to_owned())
+}
+
 fn tag_name(query: &str) -> &str {
     query
         .trim_start_matches(|c: char| c == '#' || c.is_whitespace())

@@ -395,35 +395,40 @@ pub fn mention_lines(body: &str, title: &str) -> Vec<u32> {
         if fence.is_some() {
             continue;
         }
-        let lower = line.to_lowercase();
-        if has_word(&lower, &needle) && !inside_link(&lower, &needle) {
+        if !free_mentions(&line.to_lowercase(), &needle).is_empty() {
             lines.push(ix as u32);
         }
     }
     lines
 }
 
-/// Whether `needle` occurs in `hay` with no word character either side.
-fn has_word(hay: &str, needle: &str) -> bool {
-    hay.match_indices(needle).any(|(at, _)| {
-        let before = hay[..at].chars().next_back();
-        let after = hay[at + needle.len()..].chars().next();
-        !before.is_some_and(is_word) && !after.is_some_and(is_word)
-    })
+/// Where `needle` occurs in `hay` as words of its own (no word character
+/// either side) outside links and inline code. `hay` and `needle` are
+/// compared as they are; lowercase both to ignore case.
+fn free_mentions(hay: &str, needle: &str) -> Vec<usize> {
+    let covered = covered_ranges(hay);
+    hay.match_indices(needle)
+        .map(|(at, _)| at)
+        .filter(|&at| {
+            let before = hay[..at].chars().next_back();
+            let after = hay[at + needle.len()..].chars().next();
+            !before.is_some_and(is_word) && !after.is_some_and(is_word)
+        })
+        .filter(|&at| !covered.iter().any(|r| r.start <= at && at < r.end))
+        .collect()
 }
 
 fn is_word(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-/// Whether every occurrence of `needle` in `line` is inside a link's text
-/// or target, or inline code.
-fn inside_link(line: &str, needle: &str) -> bool {
+/// The parts of a line that are links (`[text](target)` or wiki-links) or
+/// inline code.
+fn covered_ranges(line: &str) -> Vec<Range<usize>> {
     let mut covered: Vec<Range<usize>> = inline_code_spans(line);
     for link in wiki_links(line) {
         covered.push(link.range);
     }
-    // `[text](target)` links.
     let mut from = 0;
     while let Some(open) = line[from..].find('[') {
         let open = from + open;
@@ -437,8 +442,43 @@ fn inside_link(line: &str, needle: &str) -> bool {
         covered.push(open..end);
         from = end.max(open + 1);
     }
-    line.match_indices(needle)
-        .all(|(at, _)| covered.iter().any(|r| r.start <= at && at < r.end))
+    covered
+}
+
+/// Turns the first unlinked mention of `title` on line `line` (0-based) of
+/// `body` into a link to `uri`, keeping the mention's words as they are
+/// written. `None` when that line has no such mention.
+pub fn link_mention(body: &str, line: u32, title: &str, uri: &str) -> Option<String> {
+    let needle = title.trim().to_lowercase();
+    if needle.is_empty() {
+        return None;
+    }
+    let start: usize = body
+        .split('\n')
+        .take(line as usize)
+        .map(|l| l.len() + 1)
+        .sum();
+    if start > body.len() {
+        return None;
+    }
+    let text = body[start..].split('\n').next().unwrap_or("");
+    let lower = text.to_lowercase();
+    // Positions in the lowered line are the line's only when lowering kept
+    // every character's length.
+    if lower.len() != text.len() {
+        return None;
+    }
+    let at = *free_mentions(&lower, &needle).first()?;
+    let words = &text[at..at + needle.len()];
+    let mut out = String::with_capacity(body.len() + uri.len() + 4);
+    out.push_str(&body[..start + at]);
+    out.push('[');
+    out.push_str(words);
+    out.push_str("](");
+    out.push_str(uri);
+    out.push(')');
+    out.push_str(&body[start + at + needle.len()..]);
+    Some(out)
 }
 
 #[cfg(test)]
@@ -513,8 +553,41 @@ mod tests {
 
     #[test]
     fn mentions_skip_links_code_and_partial_words() {
-        let body = "Roadmap is due.\n[[Roadmap]] here\nroadmaps\n`Roadmap`\nthe ROADMAP!";
+        let body = "Roadmap is due.\n[[Roadmap]] here\nroadmaps\n`Roadmap`\nthe ROADMAP!\nroadmaps [[Roadmap]]";
         assert_eq!(mention_lines(body, "Roadmap"), vec![0, 4]);
+    }
+
+    #[test]
+    fn links_a_mention_in_place() {
+        let body = "intro\nSee [roadmap](x) and the Roadmap, roadmap.\n";
+        assert_eq!(
+            link_mention(body, 1, "roadmap", "inkdrop://note/r").as_deref(),
+            Some("intro\nSee [roadmap](x) and the [Roadmap](inkdrop://note/r), roadmap.\n")
+        );
+        assert_eq!(link_mention(body, 0, "roadmap", "u"), None);
+    }
+
+    proptest! {
+        /// After linking a mention its line has one free mention fewer, and
+        /// taking the link's brackets and target out again gives the body
+        /// back.
+        #[test]
+        fn prop_linking_a_mention_takes_one_away(words in prop::collection::vec(prop_oneof![Just("plan"), Just("Plan"), Just("plans"), Just("[[Plan]]"), Just("x")], 1..8), before in "[a-z\n]{0,10}") {
+            let line = words.join(" ");
+            let body = format!("{before}\n{line}\nend");
+            let at = before.matches('\n').count() as u32 + 1;
+            let free = |b: &str| free_mentions(&line_text(b, at).to_lowercase(), "plan").len();
+            match link_mention(&body, at, "Plan", "inkdrop://note/p") {
+                Some(linked) => {
+                    prop_assert_eq!(free(&linked) + 1, free(&body));
+                    let d = body.bytes().zip(linked.bytes()).take_while(|(a, b)| a == b).count();
+                    prop_assert_eq!(linked.as_bytes()[d], b'[');
+                    let back = format!("{}{}", &linked[..d], &linked[d + 1..]).replacen("](inkdrop://note/p)", "", 1);
+                    prop_assert_eq!(back, body);
+                }
+                None => prop_assert_eq!(free(&body), 0),
+            }
+        }
     }
 
     fn title() -> impl Strategy<Value = String> {

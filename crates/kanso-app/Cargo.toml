@@ -35,6 +35,9 @@ kanso-server.workspace = true
 kanso-sync.workspace = true
 kanso-update.workspace = true
 kanso-store.workspace = true
+# The types `[[` autocomplete answers the text editor in. Pinned to the
+# version gpui-base uses.
+lsp-types = "=0.97.0"
 markdown.workspace = true
 semver.workspace = true
 serde.workspace = true

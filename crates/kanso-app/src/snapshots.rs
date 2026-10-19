@@ -33,7 +33,9 @@ use crate::account_page::{AccountPage, SignedOutForm};
 use crate::assets::KansoAssets;
 use crate::clock::Clock;
 use crate::commands::Picker;
-use crate::config::{AppConfig, EditorFont, ThemePreference, ThemeSettings, ViewMode};
+use crate::config::{
+    AppConfig, EditorFont, InspectorTab, ThemePreference, ThemeSettings, ViewMode,
+};
 use crate::editor::EditorEvent;
 use crate::layout::{BOTTOM_BAND_HEIGHT, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, rail_width};
 use crate::library::{Filter, has_notes_inside};
@@ -118,7 +120,7 @@ fn demo_store(path: &Path) -> Store {
         (
             &platform,
             "Tool registry schema",
-            "Schema and capabilities for discoverability.\n\n```rust\npub struct Tool {\n    pub name: String,\n    pub schema: serde_json::Value,\n}\n```\n".to_owned(),
+            "Schema and capabilities for discoverability, as the MCP support model lays out.\n\n```rust\npub struct Tool {\n    pub name: String,\n    pub schema: serde_json::Value,\n}\n```\n".to_owned(),
             vec![mcp, rust.clone()],
             "onHold",
             false,
@@ -1991,6 +1993,94 @@ fn note_picker(
     open_palette(cx, window, workspace, Mode::Notes, "");
 }
 
+// MARK: Linked knowledge
+
+/// The open note's outline beside it, the heading the caret is under lit.
+fn inspector_outline(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| {
+        workspace.update(cx, |workspace, cx| {
+            workspace.show_inspector(Some(InspectorTab::Outline), cx)
+        })
+    });
+}
+
+/// The notes that link to the open note, and one that only names it.
+fn inspector_backlinks(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| {
+        workspace.update(cx, |workspace, cx| {
+            workspace.show_inspector(Some(InspectorTab::Backlinks), cx)
+        })
+    });
+}
+
+/// A note with wiki-links: two that resolve, one to a heading under an
+/// alias, and one to a note not written yet.
+const WIKI_NOTE: &str = "# Agent plan\n\nThe agent work follows the [[MCP support model]], within its [[MCP support model#Goals|goals]].\n\n## Open questions\n\n- [x] Read the [[Kanso roadmap]]\n- [ ] Draft the review flow @2026-10-24\n- [ ] Start a [[Someday list]]\n";
+
+fn wiki_links(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    open_new_note(cx, workspace, store, "Agent plan", WIKI_NOTE);
+}
+
+/// `[[` typed in the source: notes offered by title.
+fn wiki_autocomplete(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    use gpui_kit::EntityInputHandler as _;
+    let body = "# Agent plan\n\nThe agent work follows the ";
+    open_new_note(cx, workspace, store, "Agent plan", body);
+    cx.run_until_parked();
+    // The titles load after a pause.
+    cx.advance_clock(std::time::Duration::from_secs(1));
+    cx.run_until_parked();
+    cx.update_window(window, |_, window, cx| {
+        let editor = workspace.read(cx).editor.clone();
+        editor.update(cx, |editor, cx| {
+            editor.focus_body(window, cx);
+            editor.body_state().update(cx, |state, cx| {
+                let end = body.len();
+                state.set_selected_range(end..end, cx);
+                state.replace_text_in_range(None, "[[", window, cx);
+                state.replace_text_in_range(None, "s", window, cx);
+            });
+        });
+    })
+    .unwrap();
+}
+
+/// ⌘P with "sync" typed: notes, then the headings that match.
+fn palette_headings(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    open_palette(cx, window, workspace, Mode::Notes, "sync");
+    cx.advance_clock(std::time::Duration::from_millis(500));
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let palette = workspace.read(cx).palette.clone();
+        palette.update(cx, |palette, cx| palette.select_first_heading(cx));
+    });
+}
+
 // MARK: Updates
 
 /// The demo release's notes, as git-cliff writes a section.
@@ -2397,23 +2487,30 @@ fn check_settings_surfaces(image: &image::RgbaImage, shot: &Shot) {
 
 /// Each pane is painted in its own surface color. The points sit in
 /// padding that no content reaches.
-fn check_surfaces(image: &image::RgbaImage, shot: &Shot) {
+fn check_surfaces(image: &image::RgbaImage, shot: &Shot, inspector: bool) {
     let colors = shot_colors(shot);
+    // The inspector, when open, is the window's right edge, in the list's
+    // surface.
+    let right = if inspector {
+        colors.list
+    } else {
+        colors.editor
+    };
     let width = f32::from(shot.size.width);
     let height = f32::from(shot.size.height);
     let scale = image.width() as f32 / width;
     // The bands are part of their panes: one surface from top to bottom.
     let mut checks = vec![
-        ((width - 4., 4.), colors.editor, "editor's top band"),
+        ((width - 4., 4.), right, "right pane's top band"),
         (
             (width - 12., height / 2.),
-            colors.editor,
-            "editor or preview",
+            right,
+            "editor, preview or inspector",
         ),
         (
             (width - 4., height - BOTTOM_BAND_HEIGHT / 2.),
-            colors.editor,
-            "editor's bottom band",
+            right,
+            "right pane's bottom band",
         ),
     ];
     let band_top = height - BOTTOM_BAND_HEIGHT;
@@ -3073,6 +3170,28 @@ fn snapshots() {
             Edit,
             settings_updates_failed,
         ),
+        // Linked knowledge: the inspector, wiki-links, `[[` and headings
+        // in ⌘P.
+        shot("dark-inspector-outline", Dark, Edit, inspector_outline),
+        shot("light-inspector-outline", Light, Split, inspector_outline),
+        shot(
+            "dark-inspector-backlinks",
+            Dark,
+            Preview,
+            inspector_backlinks,
+        ),
+        shot(
+            "light-inspector-backlinks",
+            Light,
+            Edit,
+            inspector_backlinks,
+        ),
+        shot("dark-wiki-links", Dark, Split, wiki_links),
+        shot("light-wiki-links", Light, Preview, wiki_links),
+        shot("dark-wiki-autocomplete", Dark, Edit, wiki_autocomplete),
+        shot("light-wiki-autocomplete", Light, Edit, wiki_autocomplete),
+        shot("dark-palette-headings", Dark, Edit, palette_headings),
+        shot("light-palette-headings", Light, Edit, palette_headings),
         shot("dark-dev-flavour", Dark, Edit, dev_flavour),
         shot("light-dev-flavour", Light, Edit, dev_flavour),
     ];
@@ -3224,7 +3343,12 @@ fn snapshots() {
         } else if settings_open {
             check_settings_surfaces(&image, shot);
         } else {
-            check_surfaces(&image, shot);
+            let inspector = cx
+                .update_window(window, |_, window, cx| {
+                    workspace.read(cx).inspector_shown(window).is_some()
+                })
+                .unwrap();
+            check_surfaces(&image, shot, inspector);
         }
     }
 }

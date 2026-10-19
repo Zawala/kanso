@@ -411,6 +411,31 @@ impl NoteList {
         // Dropped is as quiet as the row's time.
         let glyph = status_glyph(note.status, colors, colors.quiet(selected))
             .map(|(icon, tint)| Icon::new(icon).size(px(12.)).text_color(tint));
+        let tasks = task_pill(note.tasks_done, note.tasks_total).map(|label| {
+            let done = note.tasks_done >= note.tasks_total;
+            div()
+                .flex_shrink_0()
+                .px(px(5.))
+                .h(px(16.))
+                .flex()
+                .items_center()
+                .rounded(px(8.))
+                .border_1()
+                .border_color(if done {
+                    Hsla::from(colors.success).opacity(0.45)
+                } else {
+                    Hsla::from(colors.divider)
+                })
+                .text_size(px(11.))
+                .line_height(px(14.))
+                .text_color(if done {
+                    colors.success
+                } else {
+                    colors.quiet(selected)
+                })
+                .debug_selector(|| "task-pill".into())
+                .child(label)
+        });
         let trailing = if hovered {
             self.render_row_actions(note, in_trash, cx)
                 .into_any_element()
@@ -420,6 +445,7 @@ impl NoteList {
                 .gap_1()
                 .text_size(px(12.))
                 .text_color(colors.quiet(selected))
+                .children(tasks)
                 .when(pinned, |el| el.child(Icon::new(Lucide::Pin).size(px(12.))))
                 .child(time)
                 .into_any_element()
@@ -880,6 +906,12 @@ impl NoteList {
     }
 }
 
+/// The pill a row shows for its task list: "3/7", or nothing for a note
+/// without tasks. Pure.
+pub(crate) fn task_pill(done: u32, total: u32) -> Option<String> {
+    (total > 0).then(|| format!("{}/{total}", done.min(total)))
+}
+
 /// Each row's height for the virtual list (only heights are read).
 fn item_sizes(rows: &[Row]) -> Vec<Size<Pixels>> {
     rows.iter()
@@ -986,7 +1018,7 @@ fn query_tokens(colors: &Colors, cx: &App) -> impl IntoElement {
 /// A short message in the middle of an empty list, as in the design, a
 /// little above the centre (by the top band's height) so it sits level with
 /// the editor's block beside it.
-fn quiet_empty(
+pub(crate) fn quiet_empty(
     icon: impl Into<Icon>,
     title: String,
     detail: Option<String>,
