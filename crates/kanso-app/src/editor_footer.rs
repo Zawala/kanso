@@ -1,4 +1,6 @@
 //! The editor's bottom band: where the cursor is, and how long the note is.
+//! In focus mode it also shows the note's word goal, as a small ring and
+//! "640 / 1,000"; clicking it sets the goal.
 //!
 //! It is its own view so the editor doesn't redraw for it. The text editor
 //! has no event for a moving cursor and notifies on every caret blink, so
@@ -7,8 +9,10 @@
 
 use std::time::Duration;
 
-use gpui_kit::component::h_flex;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{EditorState, InputEvent, Position};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::{Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -16,11 +20,22 @@ use crate::layout::BOTTOM_BAND_HEIGHT;
 use crate::preview::TEXT_INSET;
 use crate::text_stats::{format_count, plural, word_count};
 use crate::theme::Colors;
+use crate::word_goal::{self, GoalSetting, PRESETS};
 
 /// How long typing pauses before the counts catch up.
 const COUNT_DELAY: Duration = Duration::from_millis(250);
 /// The band itself: in focus mode, hovering it shows the counts.
 const FOOTER_GROUP: &str = "editor-footer";
+/// The goal ring's size and the width of its line.
+const RING: f32 = 12.;
+const RING_LINE: f32 = 1.75;
+
+/// The word goal chosen in the footer's menu.
+pub enum FooterEvent {
+    Goal(GoalSetting),
+    /// "Custom…": the palette asks for a number.
+    CustomGoal,
+}
 
 pub struct EditorFooter {
     body: Entity<EditorState>,
@@ -30,15 +45,20 @@ pub struct EditorFooter {
     /// Whether there is a note, and a cursor in it to report.
     has_note: bool,
     show_cursor: bool,
-    /// In focus mode: no divider above it, and the counts wait for the
-    /// pointer.
+    /// In focus mode: no divider above it, the counts wait for the pointer,
+    /// and the word goal shows.
     quiet: bool,
+    /// The open note's own goal, and the default from Settings.
+    goal: GoalSetting,
+    default_goal: Option<u32>,
     /// Shows the counts in focus mode, as a hover would.
     #[cfg(test)]
     pub(crate) reveal: bool,
     count_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
+
+impl EventEmitter<FooterEvent> for EditorFooter {}
 
 impl EditorFooter {
     pub fn new(body: Entity<EditorState>, cx: &mut Context<Self>) -> Self {
@@ -64,6 +84,8 @@ impl EditorFooter {
             has_note: false,
             show_cursor: true,
             quiet: false,
+            goal: GoalSetting::Default,
+            default_goal: None,
             #[cfg(test)]
             reveal: false,
             count_task: None,
@@ -96,6 +118,19 @@ impl EditorFooter {
         }
     }
 
+    /// The open note's goal and the default.
+    pub fn set_goal(&mut self, goal: GoalSetting, default: Option<u32>, cx: &mut Context<Self>) {
+        if (self.goal, self.default_goal) != (goal, default) {
+            (self.goal, self.default_goal) = (goal, default);
+            cx.notify();
+        }
+    }
+
+    /// The goal that applies to the open note.
+    pub fn goal(&self) -> Option<u32> {
+        word_goal::effective_goal(self.goal, self.default_goal)
+    }
+
     fn count_soon(&mut self, cx: &mut Context<Self>) {
         self.count_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(COUNT_DELAY).await;
@@ -119,6 +154,156 @@ impl EditorFooter {
             self.chars,
         )
     }
+
+    /// The goal's ring and words, or "Word goal" with none; a click opens
+    /// the goal menu.
+    // no-prop-test: drawing and a menu; `word_goal` has the properties and
+    // the goal snapshot shows it.
+    fn render_goal(&self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = Colors::get(cx);
+        let footer = cx.entity();
+        let setting = self.goal;
+        let default = self.default_goal;
+        let goal = self.goal();
+        let (content, tooltip): (AnyElement, &str) = match goal {
+            Some(goal) => {
+                let progress = word_goal::progress(self.words, goal);
+                let met = progress >= 1.;
+                let fill = if met { colors.success } else { colors.accent };
+                (
+                    h_flex()
+                        .gap(px(6.))
+                        .child(ring(progress, colors.divider.into(), fill.into()))
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(if met {
+                                    colors.text_secondary
+                                } else {
+                                    colors.text_muted
+                                })
+                                .child(word_goal::goal_label(self.words, goal)),
+                        )
+                        .into_any_element(),
+                    "Word goal",
+                )
+            }
+            None => (
+                div()
+                    .text_size(px(12.))
+                    .text_color(colors.text_muted)
+                    .child("Set word goal")
+                    .into_any_element(),
+                "Set a word goal for this note",
+            ),
+        };
+        let emit =
+            move |event: fn() -> FooterEvent, footer: &Entity<EditorFooter>, cx: &mut App| {
+                footer.update(cx, |_, cx| cx.emit(event()));
+            };
+        Button::new("word-goal")
+            .ghost()
+            .xsmall()
+            .tab_stop(false)
+            .child(content)
+            .tooltip(tooltip)
+            .debug_selector(|| "word-goal".into())
+            .dropdown_menu(move |mut menu, _, _| {
+                menu = menu.label("Word goal");
+                for preset in PRESETS {
+                    let footer = footer.clone();
+                    menu = menu.item(
+                        PopupMenuItem::new(format!("{} words", format_count(preset as usize)))
+                            .checked(setting == GoalSetting::Words(preset))
+                            .on_click(move |_, _, cx| {
+                                footer.update(cx, |_, cx| {
+                                    cx.emit(FooterEvent::Goal(GoalSetting::Words(preset)))
+                                });
+                            }),
+                    );
+                }
+                let custom = footer.clone();
+                let custom_checked =
+                    matches!(setting, GoalSetting::Words(n) if !PRESETS.contains(&n));
+                menu = menu.separator().item(
+                    PopupMenuItem::new("Custom…")
+                        .checked(custom_checked)
+                        .on_click(move |_, _, cx| emit(|| FooterEvent::CustomGoal, &custom, cx)),
+                );
+                let clear = footer.clone();
+                match default {
+                    Some(default) => {
+                        let off = footer.clone();
+                        menu.item(
+                            PopupMenuItem::new(format!(
+                                "Default ({} words)",
+                                format_count(default as usize)
+                            ))
+                            .checked(setting == GoalSetting::Default)
+                            .on_click(move |_, _, cx| {
+                                emit(|| FooterEvent::Goal(GoalSetting::Default), &clear, cx)
+                            }),
+                        )
+                        .item(
+                            PopupMenuItem::new("No goal for this note")
+                                .checked(setting == GoalSetting::Off)
+                                .on_click(move |_, _, cx| {
+                                    emit(|| FooterEvent::Goal(GoalSetting::Off), &off, cx)
+                                }),
+                        )
+                    }
+                    None => menu.item(
+                        PopupMenuItem::new("No goal")
+                            .checked(goal.is_none())
+                            .on_click(move |_, _, cx| {
+                                emit(|| FooterEvent::Goal(GoalSetting::Default), &clear, cx)
+                            }),
+                    ),
+                }
+            })
+            .into_any_element()
+    }
+}
+
+/// A ring `progress` of the way round, from the top clockwise, over a
+/// faint full ring.
+// no-prop-test: painting; the goal snapshot shows it.
+fn ring(progress: f32, track: Hsla, fill: Hsla) -> impl IntoElement {
+    canvas(
+        |_, _, _| {},
+        move |bounds, _, window, _| {
+            let center = bounds.center();
+            let radius = (f32::from(bounds.size.width.min(bounds.size.height)) - RING_LINE) / 2.;
+            let arc = |share: f32| -> Option<Path<Pixels>> {
+                let steps = ((48. * share).ceil() as usize).max(2);
+                let mut path = PathBuilder::stroke(px(RING_LINE));
+                for step in 0..=steps {
+                    let angle = std::f32::consts::TAU * share * step as f32 / steps as f32
+                        - std::f32::consts::FRAC_PI_2;
+                    let at = point(
+                        center.x + px(radius * angle.cos()),
+                        center.y + px(radius * angle.sin()),
+                    );
+                    if step == 0 {
+                        path.move_to(at);
+                    } else {
+                        path.line_to(at);
+                    }
+                }
+                path.build().ok()
+            };
+            if let Some(path) = arc(1.) {
+                window.paint_path(path, track);
+            }
+            if progress > 0.
+                && let Some(path) = arc(progress.min(1.))
+            {
+                window.paint_path(path, fill);
+            }
+        },
+    )
+    .flex_none()
+    .size(px(RING))
 }
 
 /// "Ln 12, Col 4 · 412 words · 2,841 chars", from a 0-based cursor.
@@ -154,6 +339,13 @@ impl Render for EditorFooter {
                     .group_hover(FOOTER_GROUP, |style| style.opacity(1.))
             })
         };
+        // In focus mode a goal stays in sight; with none, the way to set
+        // one waits with the counts.
+        let goal = (self.quiet && self.has_note).then(|| {
+            let shown = self.goal().is_some();
+            let el = div().flex_none().child(self.render_goal(cx));
+            if shown { el } else { item(el) }
+        });
         h_flex()
             .id("editor-footer")
             .group(FOOTER_GROUP)
@@ -176,8 +368,11 @@ impl Render for EditorFooter {
                         .truncate()
                         .child(self.label()),
                 )
-                .child(item(div()).flex_none().child("Markdown"))
+                .when(!self.quiet, |el| {
+                    el.child(item(div()).flex_none().child("Markdown"))
+                })
             })
+            .children(goal)
     }
 }
 
