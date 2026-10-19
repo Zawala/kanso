@@ -760,7 +760,14 @@ fn a_401_from_this_macs_own_recovery_keeps_its_new_key(cx: &mut TestAppContext) 
             .is_some_and(|kept| kept.recovery_key == new_key && !kept.unconfirmed),
         "the server took it"
     );
-    assert!(Arc::ptr_eq(&session(cx), &old), "not signed in again yet");
+    // Not signed in again yet. A background sync on the old session may
+    // already have had its 401 and ended it; that is the same 401 the
+    // refresh below asks for, just sooner.
+    let current = cx.read(|cx| cx.global::<Services>().session());
+    assert!(
+        current.is_none_or(|current| Arc::ptr_eq(&current, &old)),
+        "not signed in again yet"
+    );
 
     cx.update(account_flow::refresh_details);
     wait_until(cx, "the old session's 401", |cx| {
