@@ -1,0 +1,198 @@
+# Releasing Kanso
+
+A release is a tag. `scripts/release.sh` cuts it, the release workflow builds
+every platform into a draft GitHub Release with a signed update feed, and
+`scripts/release.sh publish` publishes the draft. Publishing is the moment
+every installed Kanso can see the update.
+
+## How updates work
+
+Every release carries, beside the downloads:
+
+| Asset | What it is |
+|---|---|
+| `Kanso-<v>-macos-arm64.app.tar.gz` | `Kanso.app` alone, the macOS update (the `.dmg` is for first installs) |
+| `Kanso-<v>-windows-x64.zip` | `kanso.exe`, the download and the update |
+| `Kanso-<v>-linux-x64.tar.gz`, `…-linux-arm64.tar.gz` | the folder with `kanso`, the download and the update |
+| `latest.json` | the feed: schema 1, version, date, release page, notes, and for each platform the update's URL, SHA-256 and size |
+| `latest.json.sig` | an Ed25519 signature over the feed's exact bytes, base64 |
+| `SHA256SUMS` | every file's checksum |
+
+The app (`crates/kanso-app/src/updates.rs`, with the logic in
+`crates/kanso-update`) does this:
+
+1. A few seconds after it opens, every six hours, and on **Check for
+   Updates…** (the app menu, the palette, Settings › Updates), it fetches
+   `https://github.com/iamngoni/kanso/releases/latest/download/latest.json`
+   and its `.sig`. GitHub answers `releases/latest` with the newest
+   *published* release only, never a draft.
+2. It checks the signature against the public keys compiled into it
+   (`crates/kanso-update/keys/trusted-keys.txt`) before reading the JSON.
+   Then it refuses a version that isn't newer than itself (no downgrade, no
+   replay), a feed with no build for this system, and any URL that isn't
+   `https://github.com/iamngoni/kanso/releases/…`. Every fetch, each hop of
+   GitHub's redirects included, must be HTTPS on `github.com`,
+   `objects.githubusercontent.com` or `release-assets.githubusercontent.com`.
+3. With **Download and install updates automatically** on (the default), it
+   downloads the update beside the install (in `.kanso-update/`, on the same
+   volume), checks its size and SHA-256 against the signed feed, and unpacks
+   it, taking only plain files that stay inside the folder. On macOS the
+   staged `.app` must pass `codesign --verify --deep --strict`, and when the
+   running Kanso is signed by a developer, carry the same Team ID.
+4. The sidebar shows **Update ready · Restart**. Its sheet has the release
+   notes with their commit links, and **Restart now** or **Later**. Restart
+   now, or any quit, swaps the update in with two renames (the old copy
+   moves aside, the new one moves in, and the first rename is undone if the
+   second fails), removes macOS's quarantine flag, and starts the new Kanso
+   with `--after-update`, which waits for the old one to let go of the data
+   folder. On Windows the running `kanso.exe` becomes `kanso.exe.old`, which
+   the next start deletes.
+5. The first start of the new version shows **Updated to Kanso <v>** once,
+   with What's new.
+
+With automatic updates off, the sidebar says **Update available ·
+Download** and Download fetches and stages it the same way. A copy that
+can't replace itself opens the release page instead, and Settings › Updates
+says why: a debug or `cargo` build, Kanso Dev (never updated, see
+[DEVELOPING.md](DEVELOPING.md)), an app macOS is running from a temporary
+copy (App Translocation) or from its disk image, an AppImage, or a folder
+Kanso can't write to (Program Files, say).
+
+Failures stay quiet and in words: offline, rate limited, no release yet, an
+update that failed a check, no space. The sidebar only mentions the ones that
+need a person (a failed check, a full disk). Each step is logged to
+`<data folder>/logs/updates.log` and to standard error.
+
+`KANSO_UPDATE_FEED=<url>` points a **debug** build at another feed (it may be
+`http://127.0.0.1:<port>/…`). Release builds ignore it, and the feed must
+still be signed by a trusted key.
+
+## Changelog
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org).
+`cliff.toml` turns them into `CHANGELOG.md` with git-cliff:
+
+| Commit type | Section |
+|---|---|
+| `feat` | New |
+| `perf`, `style`, `ui`, `refactor(ui)` | Improved |
+| `fix`, `revert` | Fixed |
+| `refactor`, `build`, `ci`, `chore`, `test`, `docs` | Under the hood (left out of the app's What's new) |
+
+Every entry links its short sha to the commit, `(#n)` links the pull
+request, and each release's heading links the compare view with the release
+before. The release page and the feed's `notes` are the same section of
+`CHANGELOG.md`; the app leaves out Under the hood, which the release page
+keeps. Merges and commits that aren't conventional stay out.
+
+## Cutting a release
+
+From a clean `master` that matches `origin/master`:
+
+```sh
+scripts/release.sh 0.2.0          # bump, changelog, commit, tag
+# read the new section of CHANGELOG.md; amend it if it needs words
+git push origin master && git push origin v0.2.0   # or pass --push above
+scripts/release.sh publish 0.2.0  # wait for the workflow, verify, publish
+```
+
+`release.sh <version>`:
+
+1. refuses anything but a clean `master` equal to `origin/master`, a tag
+   that exists already, and a checkout with no trusted update key;
+2. sets `[workspace.package] version` and updates `Cargo.lock`;
+3. adds the release's section to `CHANGELOG.md` with
+   `git cliff --unreleased --tag v<version>` (a section written ahead, as
+   0.1.0's was, only gets today's date);
+4. commits `chore(release): v<version>` and tags `v<version>`, then prints
+   the push commands. It pushes only with `--push`.
+
+The tag starts `.github/workflows/release.yml`, which builds each platform,
+signs and notarizes the Mac app when the Apple secrets are set, makes the
+update archives, writes `latest.json` from them with the release's section of
+`CHANGELOG.md` (or, if that's missing, git-cliff's notes for the tag), signs
+it with `KANSO_UPDATE_SIGNING_KEY`, verifies it against the keys in the
+checkout, and opens a **draft** release with everything. A missing or
+untrusted signing key fails the release.
+
+`release.sh publish <version>` waits for that run, downloads the draft's
+`latest.json` and `.sig`, verifies them, and publishes the draft as the
+latest release.
+
+## One-time setup
+
+Do these once, before the first release; the release workflow can't sign a
+feed without the first.
+
+### 1. The update signing key (required)
+
+```sh
+cargo run -p kanso-update --bin kanso-release -- keygen --secret-out ~/kanso-update-signing.key
+```
+
+It prints the public key. Add it on its own line to
+`crates/kanso-update/keys/trusted-keys.txt` and commit that (`build: Trust
+the update signing key`), so every build from then on checks updates with
+it. Then give the secret to the workflow and put it somewhere safe:
+
+```sh
+gh secret set KANSO_UPDATE_SIGNING_KEY --repo iamngoni/kanso < ~/kanso-update-signing.key
+# keep a copy in your password manager, then
+rm ~/kanso-update-signing.key
+```
+
+Whoever holds this key can ship code to everyone running Kanso: keep it only
+in the password manager and the repository secret. If it leaks, add a new
+key to `trusted-keys.txt`, release with the old one one last time (installed
+copies only trust the old one), switch the secret to the new key, remove the
+old line, and release again.
+
+To check the key and the secret match, sign a test feed the same way the
+workflow does: `kanso-release sign` refuses a key whose public half isn't in
+`trusted-keys.txt`.
+
+### 2. Developer ID signing and notarization (optional)
+
+Without these, the Mac app is signed ad hoc as before: it updates itself,
+but a first install needs right-click › Open. With them, it is signed with
+your Developer ID and the hardened runtime, notarized and stapled, and the
+updater also requires every update to carry the same Team ID (4973Y692JU).
+
+**The certificate.** In Keychain Access, under login › My Certificates, find
+"Developer ID Application: Ngonidzashe Mangudya (4973Y692JU)". Open its
+disclosure arrow to check the private key is there, select the certificate,
+choose File › Export Items…, save as `DeveloperID.p12` and set a password.
+Then:
+
+```sh
+base64 -i DeveloperID.p12 | gh secret set MACOS_CERT_P12_BASE64 --repo iamngoni/kanso
+gh secret set MACOS_CERT_PASSWORD --repo iamngoni/kanso   # paste the password
+rm DeveloperID.p12
+```
+
+**The App Store Connect API key**, for `notarytool`. On
+[App Store Connect](https://appstoreconnect.apple.com), go to Users and
+Access › Integrations › App Store Connect API › Team Keys, press **+**,
+name it "Kanso notarization" with the **Developer** role, and Generate.
+Note the **Key ID** beside it and the **Issuer ID** above the list, and
+download `AuthKey_<KEYID>.p8` (Apple lets you download it once). Then:
+
+```sh
+base64 -i AuthKey_<KEYID>.p8 | gh secret set APPLE_API_KEY_P8_BASE64 --repo iamngoni/kanso
+gh secret set APPLE_API_KEY_ID --repo iamngoni/kanso --body <KEYID>
+gh secret set APPLE_API_ISSUER --repo iamngoni/kanso --body <issuer-uuid>
+```
+
+Keep the `.p8` in the password manager and delete the download. The
+workflow signs and notarizes only when all five Apple secrets are set.
+
+## Testing an update
+
+`cargo test -p kanso-update` runs the property tests and an end-to-end test
+that serves a signed feed from a local HTTP server on an ephemeral port and
+updates a fake Kanso in a temporary folder: check, download, verify, stage,
+swap. Nothing outside the temporary folders is touched.
+
+To watch the app do it, run a debug build with `KANSO_UPDATE_FEED` pointing
+at a feed signed with a key in `trusted-keys.txt`. A debug build never
+replaces itself; it shows the update and offers the release page.
