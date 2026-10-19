@@ -707,7 +707,7 @@ pub fn pill(phase: &Phase, manual: bool) -> Option<(PillKind, String)> {
         Phase::Checking => manual.then(|| (PillKind::Busy, "Checking for updates…".into())),
         Phase::Downloading { done, total, .. } => Some((
             PillKind::Busy,
-            format!("Downloading update · {}%", percent(*done, *total)),
+            format!("Downloading · {}%", percent(*done, *total)),
         )),
         Phase::Ready(_) => Some((PillKind::Ready, "Update ready · Restart".into())),
         Phase::Available(_) => Some((PillKind::Available, "Update available · Download".into())),
@@ -833,25 +833,44 @@ pub fn render_pill(cx: &App) -> Option<AnyElement> {
         PillKind::Failed => (colors.fill, colors.warning, Lucide::TriangleAlert),
     };
     let opens_sheet = matches!(kind, PillKind::Ready | PillKind::Available);
+    // "Update ready" on the left, what a click does on the right.
+    let (what, act) = match label.split_once(" · ") {
+        Some((what, act)) => (what.to_owned(), Some(act.to_owned())),
+        None => (label, None),
+    };
     Some(
         h_flex()
             .id("update-pill")
             .debug_selector(|| "update-pill".into())
             .flex_none()
-            .mx(px(10.))
+            .mx(px(8.))
             .mb(px(10.))
             .h(px(30.))
-            .px(px(12.))
-            .gap(px(7.))
+            .px(px(10.))
+            .gap(px(6.))
             .rounded(px(15.))
             .bg(bg)
             .text_color(fg)
-            .text_size(px(12.5))
-            .font_medium()
+            .text_size(px(12.))
             .cursor_pointer()
             .hover(|el| el.opacity(0.9))
-            .child(Icon::new(icon).size(px(14.)).text_color(fg))
-            .child(div().min_w_0().truncate().child(label))
+            .child(Icon::new(icon).size(px(13.)).text_color(fg))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .font_medium()
+                    .child(what),
+            )
+            .children(act.map(|act| {
+                div()
+                    .flex_none()
+                    .whitespace_nowrap()
+                    .font_semibold()
+                    .child(act)
+            }))
             .on_click(move |_, window, cx| {
                 if opens_sheet {
                     window.dispatch_action(Box::new(ShowUpdate), cx)
@@ -1049,7 +1068,7 @@ pub fn announce(window: &mut Window, cx: &mut App) {
     window.push_notification(
         Notification::new()
             .title(title)
-            .message("See what changed in this release.")
+            .message("See what changed.")
             .icon(Icon::new(Lucide::Sparkles))
             .action(move |_, _, _| {
                 let notes = notes.clone();
@@ -1300,7 +1319,7 @@ mod tests {
         };
         assert_eq!(
             pill(&downloading, false),
-            Some((PillKind::Busy, "Downloading update · 42%".into()))
+            Some((PillKind::Busy, "Downloading · 42%".into()))
         );
         assert_eq!(
             pill(&Phase::Checking, false),
@@ -1463,7 +1482,7 @@ mod tests {
             prop_assert_eq!(shown.is_some(), expected);
             if let Some((kind, label)) = shown {
                 prop_assert_eq!(kind == PillKind::Ready, label.contains("Restart"));
-                prop_assert!(label.len() <= 30, "{} is too long for the sidebar", label);
+                prop_assert!(label.chars().count() <= 28, "{} is too long for the sidebar", label);
             }
         }
 
