@@ -1,0 +1,9 @@
+# Kanso's update signing keys: one base64 Ed25519 public key a line.
+#
+# The app takes an update only when `latest.json.sig` verifies against one
+# of these, and `kanso-release sign` refuses a key whose public half isn't
+# here. To rotate, add the new key, ship a release signed with the old one,
+# then sign with the new one and remove the old line (docs/RELEASING.md).
+#
+# None yet: run `cargo run -p kanso-update --bin kanso-release -- keygen`
+# and add the public key it prints below this line.

@@ -1,0 +1,32 @@
+[package]
+name = "kanso-update"
+description = "Kanso's updater: the signed release feed, downloading and checking an update, staging it beside the install and swapping it in; and kanso-release, which makes and signs the feed."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "kanso-release"
+path = "src/bin/kanso-release.rs"
+
+[dependencies]
+base64.workspace = true
+ed25519-dalek = { version = "3", default-features = false, features = ["fast", "zeroize"] }
+flate2 = "1.1"
+getrandom.workspace = true
+semver = "1.0"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tar = "0.4.45"
+thiserror.workspace = true
+# The same blocking HTTP client as kanso-sync, with rustls.
+ureq = "3.4"
+url = "2.5"
+zeroize.workspace = true
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+tiny_http = "0.12"
