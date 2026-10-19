@@ -515,6 +515,144 @@ fn focus_mode(
     .unwrap();
 }
 
+/// About 640 words of prose, for the word goal.
+fn morning_pages() -> String {
+    let paragraph = "The kettle clicks off and the house is still quiet. I write \
+        before the day starts asking for things, a page or two about whatever \
+        is on my mind, without stopping to fix the sentences. Some mornings it \
+        is plans, some mornings it is nothing much, and that is fine too.";
+    let words = paragraph.split_whitespace().count();
+    let mut body = String::from("# Morning pages\n\n");
+    for _ in 0..(640 / words) {
+        body.push_str(paragraph);
+        body.push_str("\n\n");
+    }
+    body
+}
+
+/// Focus mode on a note aiming for 1,000 words, about two thirds there:
+/// the footer's ring and count.
+fn focus_word_goal(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    open_new_note(cx, workspace, store, "Morning pages", &morning_pages());
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let editor = workspace.read(cx).editor.clone();
+        editor.update(cx, |editor, cx| {
+            editor.set_word_goal(crate::word_goal::GoalSetting::Words(1000), cx)
+        });
+    });
+    focus_mode(cx, window, workspace, store);
+}
+
+/// The word goal list in the palette, with "1.5k" typed.
+fn palette_word_goal(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    pick_from_header(cx, window, workspace, Picker::WordGoal, "1.5k");
+}
+
+/// A picture to attach: a soft diagonal gradient with a sun.
+fn sample_picture(width: u32, height: u32) -> Vec<u8> {
+    let image = image::RgbImage::from_fn(width, height, |x, y| {
+        let (fx, fy) = (x as f32 / width as f32, y as f32 / height as f32);
+        let (dx, dy) = (fx - 0.7, fy - 0.35);
+        if dx * dx * 3.2 + dy * dy * 1.8 < 0.012 {
+            return image::Rgb([250, 214, 120]);
+        }
+        let t = (fx + fy) / 2.;
+        image::Rgb([
+            (70. + 120. * t) as u8,
+            (110. + 60. * (1. - fy)) as u8,
+            (170. - 60. * t) as u8,
+        ])
+    });
+    let mut out = std::io::Cursor::new(Vec::new());
+    image.write_to(&mut out, image::ImageFormat::Png).unwrap();
+    out.into_inner()
+}
+
+/// Attached pictures in the preview: one set to the small width, one at
+/// its own size, with the size buttons showing as on hover.
+fn sized_images(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let small =
+        crate::smart_paste::attach_image(store, &sample_picture(960, 540), "png", Some("Lake.png"))
+            .unwrap();
+    let full = crate::smart_paste::attach_image(
+        store,
+        &sample_picture(1200, 400),
+        "png",
+        Some("Ridge.png"),
+    )
+    .unwrap();
+    let body = format!(
+        "# Field notes\n\nThe lake at seven, before the wind came up.\n\n{}\n\nAnd the ridge from the road back, at its own size.\n\n{}\n",
+        crate::smart_paste::sized_image(&format!("inkdrop://{small}"), "", Some(240)),
+        crate::smart_paste::image_markdown(&full),
+    );
+    crate::preview::REVEAL_IMAGE_SIZES.store(true, std::sync::atomic::Ordering::Relaxed);
+    open_new_note(cx, workspace, store, "Field notes", &body);
+}
+
+/// A table as typed, its pipes all over the place.
+const ROUGH_TABLE: &str = "# Pantry\n\nWhat to buy this week.\n\n| Item | Qty | Price |\n|:--|:-:|--:|\n| Apples | 6 | 3.20 |\n| Oat milk | 2 | 4.50 |\n| Coffee beans | 1 | 12.00 |\n| Café crème | 12 | 0.90 |\n\nThe rest can wait.\n";
+
+fn table_before(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    open_new_note(cx, workspace, store, "Pantry", ROUGH_TABLE);
+}
+
+/// The same table after Format Table: pipes in line, alignment kept.
+fn table_after(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    open_new_note(cx, workspace, store, "Pantry", ROUGH_TABLE);
+    cx.run_until_parked();
+    let at = ROUGH_TABLE.find("Apples").unwrap();
+    cx.update_window(window, |_, window, cx| {
+        let editor = workspace.read(cx).editor.clone();
+        editor.update(cx, |editor, cx| {
+            editor.focus_body(window, cx);
+            editor
+                .body_state()
+                .update(cx, |body, cx| body.set_selected_range(at..at, cx));
+            editor.format_table(window, cx);
+        });
+    })
+    .unwrap();
+}
+
+/// The formatted table in the monospace face, where its pipes line up on
+/// screen too.
+fn table_after_mono(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    mono_font(cx, window, workspace, store);
+    table_after(cx, window, workspace, store);
+}
+
 /// Focus mode with the pointer near the top: the header shows.
 fn focus_mode_hover(
     cx: &mut HeadlessAppContext,
@@ -2518,6 +2656,35 @@ fn snapshots() {
             left: Left::Nothing,
             ..shot("dark-focus-split-quiet", Dark, Split, focus_mode)
         },
+        // Writing aids: the word goal, sized images, tables formatted.
+        Shot {
+            left: Left::Nothing,
+            ..shot("dark-focus-word-goal", Dark, Edit, focus_word_goal)
+        },
+        Shot {
+            left: Left::Nothing,
+            ..shot("light-focus-word-goal", Light, Edit, focus_word_goal)
+        },
+        shot("dark-palette-word-goal", Dark, Edit, palette_word_goal),
+        shot("dark-images-sized", Dark, Preview, sized_images),
+        shot("light-images-sized", Light, Preview, sized_images),
+        shot("dark-table-before", Dark, Edit, table_before),
+        shot("dark-table-after", Dark, Edit, table_after),
+        shot("dark-table-after-mono", Dark, Edit, table_after_mono),
+        shot("light-table-after", Light, Split, table_after),
+        Shot {
+            size: size(px(1440.), px(1200.)),
+            ..shot("dark-settings-editor-writing", Dark, Edit, settings_editor)
+        },
+        Shot {
+            size: size(px(1440.), px(1200.)),
+            ..shot(
+                "light-settings-editor-writing",
+                Light,
+                Edit,
+                settings_editor,
+            )
+        },
         // The divider where a drag left it, and the preview following the
         // source's scrolling.
         shot("dark-split-dragged", Dark, Split, split_dragged),
@@ -2946,6 +3113,7 @@ fn snapshots() {
         only.as_deref()
             .is_none_or(|o| o.split(',').any(|n| n == s.name))
     }) {
+        crate::preview::REVEAL_IMAGE_SIZES.store(false, std::sync::atomic::Ordering::Relaxed);
         let dir = tempfile::tempdir().unwrap();
         let db = dir.path().join("kanso.db");
         let (store, clock) = match &real_db {

@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::assets::IconName as Lucide;
+use gpui_kit::base::input::{Backspace, Enter, IndentInline, OutdentInline, Paste};
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::input::{Editor, EditorState, Input, InputEvent, InputState, Position};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem};
@@ -33,18 +34,23 @@ use kanso_store::{Change, Origin, Put, Store, StoreError};
 
 use crate::clock::Clock;
 use crate::commands::Picker;
-use crate::config::{Appearance, EditorFont, ViewMode};
-use crate::editor_footer::EditorFooter;
+use crate::config::{Appearance, EditorFont, EditorSettings, ViewMode};
+use crate::editor_footer::{EditorFooter, FooterEvent};
 use crate::empty_state::EmptyNotebook;
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT, leading_inset};
 use crate::library::{Filter, Library};
-use crate::markdown_edit::{self, Format};
-use crate::preview::{LinkSender, Preview, TEXT_INSET, readable_width};
+use crate::list_edit::{self, TabIntent};
+use crate::markdown_edit::{self, Edit, Format};
+use crate::pairing::Pairs;
+use crate::preview::{ImageResize, LinkSender, Preview, TEXT_INSET, readable_width};
+use crate::smart_paste;
 use crate::split::{
     scroll_sync, source_scroll_max, split_left, split_min_side, split_ratio, wrapped_rows,
 };
+use crate::table_format;
 use crate::text_stats::{line_lengths, pieces_eq};
 use crate::theme::{Colors, muted_tag_color, status_glyph};
+use crate::word_goal::{self, GoalSetting};
 use crate::workspace::{AppState, NewNote};
 
 const AUTOSAVE_DELAY: Duration = Duration::from_millis(600);
@@ -76,6 +82,10 @@ const TOP_GROUP: &str = "editor-top";
 /// later than the source.
 const MONO_EM: f32 = 0.6;
 const SANS_EM: f32 = 0.44;
+/// Typewriter scrolling: the caret keeps this many lines from the top and
+/// bottom, which the editor caps at half its height, so the caret's line
+/// stays in the middle.
+const TYPEWRITER_LINES: usize = 10_000;
 
 pub enum EditorEvent {
     /// Something worth telling the user, such as a failed save.
@@ -157,10 +167,17 @@ pub struct NoteEditor {
     /// without one (opening a note, a reload) has another length or the
     /// same lines.
     source_lines: Option<(usize, Vec<usize>)>,
+    /// The writing aids from Settings › Editor.
+    settings: EditorSettings,
+    /// The pairs typed in the open note that are still open.
+    pairs: Pairs,
+    /// Whether the caret's line is kept in the middle now.
+    typewriter: bool,
     /// Shows the hidden header in focus mode, as a hover would.
     #[cfg(test)]
     pub(crate) reveal_chrome: bool,
     _subscriptions: Vec<Subscription>,
+    _resizes: Task<()>,
 }
 
 impl EventEmitter<EditorEvent> for NoteEditor {}
@@ -196,8 +213,25 @@ impl NoteEditor {
                 .folding(line_numbers)
                 .indent_guides(false)
                 .soft_wrap(true)
+                // Kanso pairs on its own; see `pairing`.
+                .auto_close(false)
         });
-        let preview = cx.new(|_| Preview::new(store.clone(), links));
+        let settings = cx
+            .try_global::<AppState>()
+            .map_or_else(EditorSettings::default, |state| state.config.editor);
+        let (resizes, resized) = async_channel::unbounded::<ImageResize>();
+        let preview = cx.new(|_| Preview::new(store.clone(), links, resizes));
+        // A size picked for an image in the preview rewrites its Markdown.
+        let resize_task = cx.spawn_in(window, async move |this, cx| {
+            while let Ok(resize) = resized.recv().await {
+                if this
+                    .update_in(cx, |this, window, cx| this.resize_image(resize, window, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
         let split = cx.new(|_| ResizableState::default());
         let split_ratio = cx
             .try_global::<AppState>()
@@ -207,9 +241,14 @@ impl NoteEditor {
         let footer = cx.new(|cx| {
             let mut footer = EditorFooter::new(body.clone(), cx);
             footer.set_show_cursor(view_mode != ViewMode::Preview, cx);
+            footer.set_goal(GoalSetting::Default, settings.word_goal, cx);
             footer
         });
         let subscriptions = vec![
+            cx.subscribe(&footer, |this, _, event: &FooterEvent, cx| match event {
+                FooterEvent::Goal(goal) => this.set_word_goal(*goal, cx),
+                FooterEvent::CustomGoal => cx.emit(EditorEvent::Pick(Picker::WordGoal)),
+            }),
             cx.subscribe_in(&title, window, |this, _, event, window, cx| match event {
                 // The breadcrumb shows the title as it's typed.
                 InputEvent::Change => {
@@ -272,10 +311,59 @@ impl NoteEditor {
             split_placed_for: px(0.),
             followed_scroll: None,
             source_lines: None,
+            settings,
+            pairs: Pairs::default(),
+            typewriter: false,
             #[cfg(test)]
             reveal_chrome: false,
             _subscriptions: subscriptions,
+            _resizes: resize_task,
         }
+    }
+
+    /// The writing aids as Settings › Editor has them now.
+    pub fn set_settings(&mut self, settings: EditorSettings, cx: &mut Context<Self>) {
+        if self.settings == settings {
+            return;
+        }
+        self.settings = settings;
+        if !settings.auto_pair {
+            self.pairs.clear();
+        }
+        self.update_footer_goal(cx);
+        cx.notify();
+    }
+
+    /// The open note's word goal: its own, the default, or none.
+    pub fn word_goal(&self) -> GoalSetting {
+        self.note
+            .as_ref()
+            .map_or(GoalSetting::Default, word_goal::note_goal)
+    }
+
+    /// The default word goal from Settings.
+    pub fn default_word_goal(&self) -> Option<u32> {
+        self.settings.word_goal
+    }
+
+    /// Gives the open note its own word goal (or takes it back to the
+    /// default), saved with the note.
+    pub fn set_word_goal(&mut self, goal: GoalSetting, cx: &mut Context<Self>) {
+        if self.note.is_none() || self.word_goal() == goal {
+            return;
+        }
+        self.write(
+            move |note, _| word_goal::set_note_goal(note, goal),
+            Origin::Ui,
+            cx,
+        );
+        self.update_footer_goal(cx);
+    }
+
+    fn update_footer_goal(&mut self, cx: &mut Context<Self>) {
+        let (goal, default) = (self.word_goal(), self.settings.word_goal);
+        self.footer
+            .update(cx, |footer, cx| footer.set_goal(goal, default, cx));
     }
 
     /// Focus mode on or off, as the workspace has it.
@@ -516,9 +604,11 @@ impl NoteEditor {
         if !keep_place {
             self.followed_scroll = None;
         }
+        self.pairs.clear();
         let has_note = self.note.is_some();
         self.footer
             .update(cx, |footer, cx| footer.note_opened(has_note, cx));
+        self.update_footer_goal(cx);
         self.refresh_backlinks(cx);
         cx.notify();
     }
@@ -897,6 +987,324 @@ impl NoteEditor {
             state.replace(edit.text, window, cx);
             state.set_selected_range(edit.selection, cx);
             state.focus(window, cx);
+        });
+    }
+
+    /// Whether the note's text has the keyboard and nothing is being
+    /// composed in it (an input method's marked text), so a smart edit may
+    /// take a key.
+    fn body_takes_edits(&self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.note.is_none() || self.view_mode == ViewMode::Preview {
+            return false;
+        }
+        self.body.update(cx, |state, cx| {
+            state.focus_handle(cx).is_focused(window)
+                && state.marked_text_range(window, cx).is_none()
+        })
+    }
+
+    /// Runs `smart` on the body's text and selection; the edit it returns
+    /// is applied as one undo step. Whether there was one.
+    fn smart_edit(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        smart: impl FnOnce(&mut Self, &str, std::ops::Range<usize>) -> Option<Edit>,
+    ) -> bool {
+        let (text, selection) = {
+            let state = self.body.read(cx);
+            (state.value(), state.selected_range())
+        };
+        let Some(edit) = smart(self, &text, selection) else {
+            return false;
+        };
+        self.body
+            .update(cx, |state, cx| apply_edit(state, &text, edit, window, cx));
+        true
+    }
+
+    /// A key typed in the source: an opener gets its closer, a closer Kanso
+    /// put in is stepped over, and a selection is wrapped.
+    // no-prop-test: key glue; `pairing` has the properties and
+    // `pairing_types_through_the_editor` types through it.
+    fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.settings.auto_pair {
+            return;
+        }
+        let Some(ch) = typed_char(&event.keystroke) else {
+            return;
+        };
+        if !self.pairs.may_handle(ch) || !self.body_takes_edits(window, cx) {
+            return;
+        }
+        if self.smart_edit(window, cx, |this, text, selection| {
+            this.pairs.typed(text, selection, ch)
+        }) {
+            cx.stop_propagation();
+        }
+    }
+
+    /// Backspace in an empty pair Kanso put in takes both halves.
+    // no-prop-test: key glue over `Pairs::backspace`.
+    fn on_backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
+        if self.pairs.is_empty() || !self.body_takes_edits(window, cx) {
+            return;
+        }
+        if self.smart_edit(window, cx, |this, text, selection| {
+            if !selection.is_empty() {
+                return None;
+            }
+            this.pairs.backspace(text, selection.start)
+        }) {
+            cx.stop_propagation();
+        }
+    }
+
+    /// Tab and Shift-Tab: the next or previous table cell, a list item in
+    /// or out with what hangs under it, or else the editor's own indent.
+    // no-prop-test: key glue over `list_edit::tab_intent`, which has the
+    // properties, as do `indent_list` and `next_cell`.
+    fn on_tab(&mut self, out: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.body_takes_edits(window, cx) {
+            return;
+        }
+        let format = self.settings.format_tables;
+        if self.smart_edit(
+            window,
+            cx,
+            |_, text, selection| match list_edit::tab_intent(text, selection.start) {
+                TabIntent::Table => table_format::next_cell(text, selection.start, out, format),
+                TabIntent::List => list_edit::indent_list(text, selection, out),
+                TabIntent::Indent => None,
+            },
+        ) {
+            cx.stop_propagation();
+        }
+    }
+
+    /// Enter at the end of a table row adds a row; in an empty last row it
+    /// leaves the table.
+    // no-prop-test: key glue over `table_format::enter_in_table`.
+    fn on_enter(&mut self, action: &Enter, window: &mut Window, cx: &mut Context<Self>) {
+        if action.secondary || action.shift || !self.body_takes_edits(window, cx) {
+            return;
+        }
+        let format = self.settings.format_tables;
+        if self.smart_edit(window, cx, |_, text, selection| {
+            if !selection.is_empty() {
+                return None;
+            }
+            table_format::enter_in_table(text, selection.start, format)
+        }) {
+            cx.stop_propagation();
+        }
+    }
+
+    /// Lines up the table at the cursor ("Format Table").
+    pub fn format_table(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.note.is_none() || self.view_mode == ViewMode::Preview {
+            return;
+        }
+        let formatted = self.smart_edit(window, cx, |_, text, selection| {
+            table_format::format_table(text, selection.start)
+        });
+        if formatted {
+            self.focus_body(window, cx);
+        } else {
+            cx.emit(EditorEvent::Notice(
+                "Put the cursor in a table to format it.".into(),
+            ));
+        }
+    }
+
+    /// ⌘V in the source: images become attachments; with smart paste on, a
+    /// web address over selected words links them and formatted text comes
+    /// in as Markdown. Anything else pastes as usual.
+    // no-prop-test: clipboard glue; `smart_paste` has the properties and
+    // `pasting_links_and_images` pastes through it.
+    fn on_paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.body_takes_edits(window, cx) {
+            return;
+        }
+        let Some(item) = cx.read_from_clipboard() else {
+            return;
+        };
+        let mut plain = None;
+        let mut images = Vec::new();
+        for entry in item.entries() {
+            match entry {
+                ClipboardEntry::String(string) => {
+                    plain.get_or_insert_with(|| string.text().clone());
+                }
+                ClipboardEntry::Image(image) => {
+                    images.push(Pasted::Bytes(image.bytes.clone(), image.format.extension()))
+                }
+                ClipboardEntry::ExternalPaths(paths) => images.extend(
+                    paths
+                        .paths()
+                        .iter()
+                        .filter(|path| image_path(path))
+                        .map(|path| Pasted::File(path.clone())),
+                ),
+            }
+        }
+        // Copied image files, or a copied image with no text.
+        let files = images.iter().any(|p| matches!(p, Pasted::File(_)));
+        if !images.is_empty() && (files || plain.is_none()) {
+            cx.stop_propagation();
+            self.attach_images(images, None, window, cx);
+            return;
+        }
+        if !self.settings.smart_paste {
+            return;
+        }
+        let Some(plain) = plain else {
+            return;
+        };
+        if self.smart_edit(window, cx, |_, text, selection| {
+            if let Some(link) = smart_paste::link_over_selection(text, selection.clone(), &plain) {
+                return Some(link);
+            }
+            let markdown = clipboard_html()
+                .filter(|html| smart_paste::worth_converting(html))
+                .and_then(|html| smart_paste::html_to_markdown(&html))?;
+            let end = selection.start + markdown.len();
+            Some(Edit {
+                range: selection,
+                text: markdown,
+                selection: end..end,
+            })
+        }) {
+            cx.stop_propagation();
+        }
+    }
+
+    /// ⇧⌘V: the clipboard's plain text, as it is, over the selection.
+    pub fn paste_plain(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.body_takes_edits(window, cx) {
+            // The title pastes plain text anyway.
+            window.dispatch_action(Box::new(Paste), cx);
+            return;
+        }
+        let Some(plain) = cx.read_from_clipboard().and_then(|item| item.text()) else {
+            return;
+        };
+        self.smart_edit(window, cx, |_, _, selection| {
+            let end = selection.start + plain.len();
+            Some(Edit {
+                range: selection,
+                text: plain,
+                selection: end..end,
+            })
+        });
+    }
+
+    /// Files dropped on the source: images become attachments where they
+    /// fall.
+    // no-prop-test: drop glue over `attach_images`.
+    fn on_drop(&mut self, paths: &ExternalPaths, window: &mut Window, cx: &mut Context<Self>) {
+        if self.note.is_none() || self.view_mode == ViewMode::Preview {
+            return;
+        }
+        let images: Vec<Pasted> = paths
+            .paths()
+            .iter()
+            .filter(|path| image_path(path))
+            .map(|path| Pasted::File(path.clone()))
+            .collect();
+        if images.is_empty() {
+            if !paths.paths().is_empty() {
+                cx.emit(EditorEvent::Notice(
+                    "Only images can be dropped into a note.".into(),
+                ));
+            }
+            return;
+        }
+        let point = window.mouse_position();
+        let at = self.body.update(cx, |state, cx| {
+            let utf16 = state.character_index_for_point(point, window, cx)?;
+            Some(utf8_offset(&state.value(), utf16))
+        });
+        self.focus_body(window, cx);
+        self.attach_images(images, at, window, cx);
+    }
+
+    /// Stores `images` as attachments in the background, then puts them in
+    /// the text at `at` (or over the selection), each a paragraph of its
+    /// own. What can't be attached is said in a notice.
+    fn attach_images(
+        &mut self,
+        images: Vec<Pasted>,
+        at: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let store = self.store.clone();
+        let length = self.body.read(cx).text().len();
+        let work = cx.background_executor().spawn(async move {
+            images
+                .into_iter()
+                .map(|image| attach(&store, image))
+                .collect::<Vec<_>>()
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let results = work.await;
+            this.update_in(cx, |this, window, cx| {
+                let mut blocks = Vec::new();
+                for result in results {
+                    match result {
+                        Ok(id) => blocks.push(smart_paste::image_markdown(&id)),
+                        Err(message) => cx.emit(EditorEvent::Notice(message)),
+                    }
+                }
+                if blocks.is_empty() || this.note.is_none() {
+                    return;
+                }
+                let block = blocks.join("\n\n");
+                this.smart_edit(window, cx, |_, text, selection| {
+                    // Where it was dropped, unless the text changed since.
+                    let range = match at {
+                        Some(at) if text.len() == length && text.is_char_boundary(at) => at..at,
+                        _ => selection,
+                    };
+                    Some(smart_paste::block_insert(text, range, &block))
+                });
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// A size picked for an image in the preview: its Markdown is
+    /// rewritten, as one undo step, with the cursor kept where it was.
+    // no-prop-test: glue; `smart_paste::sized_image` has the properties and
+    // `image_sizes_rewrite_the_markdown` resizes through it.
+    fn resize_image(&mut self, resize: ImageResize, window: &mut Window, cx: &mut Context<Self>) {
+        if self.note.is_none() {
+            return;
+        }
+        let replacement = smart_paste::sized_image(&resize.src, &resize.alt, resize.width);
+        self.smart_edit(window, cx, |_, text, selection| {
+            let start = text.find(&resize.source)?;
+            let end = start + resize.source.len();
+            let shift = |at: usize| {
+                if at >= end {
+                    at - resize.source.len() + replacement.len()
+                } else {
+                    at.min(start)
+                }
+            };
+            let selection = if selection.end <= start || selection.start >= end {
+                shift(selection.start)..shift(selection.end)
+            } else {
+                let after = start + replacement.len();
+                after..after
+            };
+            Some(Edit {
+                range: start..end,
+                text: replacement.clone(),
+                selection,
+            })
         });
     }
 
@@ -1592,6 +2000,116 @@ pub fn rgb_color(rgb: u32) -> Hsla {
     gpui_kit::rgb(rgb).into()
 }
 
+/// An image to attach: bytes from the clipboard with their format's file
+/// extension, or a file.
+enum Pasted {
+    Bytes(Vec<u8>, &'static str),
+    File(std::path::PathBuf),
+}
+
+/// Stores one image as an attachment: its ID, or what to tell the user. A
+/// file over the limit isn't read at all.
+// no-prop-test: file reading around `smart_paste::attach_image`, which is
+// tested with a store.
+fn attach(store: &Store, image: Pasted) -> Result<String, String> {
+    use kanso_core::model::MAX_ATTACHMENT_SIZE;
+    match image {
+        Pasted::Bytes(bytes, ext) => smart_paste::attach_image(store, &bytes, ext, None),
+        Pasted::File(path) => {
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or_default();
+            let name = path.file_name().and_then(|n| n.to_str());
+            if let Ok(meta) = std::fs::metadata(&path)
+                && meta.len() > MAX_ATTACHMENT_SIZE as u64
+            {
+                return Err(smart_paste::too_large(
+                    meta.len() as usize,
+                    MAX_ATTACHMENT_SIZE,
+                ));
+            }
+            let bytes =
+                std::fs::read(&path).map_err(|err| format!("Couldn't read the image: {err}"))?;
+            smart_paste::attach_image(store, &bytes, ext, name)
+        }
+    }
+}
+
+/// The HTML on the clipboard, for a paste. Tests set their own rather than
+/// read the computer's.
+#[cfg(not(test))]
+fn clipboard_html() -> Option<String> {
+    crate::clipboard::read_html()
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_HTML: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn clipboard_html() -> Option<String> {
+    TEST_HTML.with(|html| html.borrow().clone())
+}
+
+/// Whether a file looks like an image Kanso can attach, by its extension.
+fn image_path(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| smart_paste::stored_as(ext).is_some())
+}
+
+/// The character a key types, when it types one and no command modifier is
+/// held.
+// no-prop-test: reads three flags and a string; the pairing window test
+// types through it.
+fn typed_char(keystroke: &Keystroke) -> Option<char> {
+    let modifiers = keystroke.modifiers;
+    if modifiers.control || modifiers.platform || modifiers.function {
+        return None;
+    }
+    let typed = keystroke.key_char.as_deref()?;
+    let mut chars = typed.chars();
+    let ch = chars.next()?;
+    chars.next().is_none().then_some(ch)
+}
+
+/// The UTF-8 offset in `text` of UTF-16 offset `utf16`, clamped to the end.
+fn utf8_offset(text: &str, utf16: usize) -> usize {
+    let mut units = 0;
+    for (ix, ch) in text.char_indices() {
+        if units >= utf16 {
+            return ix;
+        }
+        units += ch.len_utf16();
+    }
+    text.len()
+}
+
+/// Applies `edit`, made against `text`, to the body as one step that undoes
+/// at once. An edit that changes nothing only moves the selection, and
+/// leaves nothing to undo.
+// no-prop-test: three calls into the editor; the window tests undo
+// through it.
+fn apply_edit(
+    state: &mut EditorState,
+    text: &str,
+    edit: Edit,
+    window: &mut Window,
+    cx: &mut Context<EditorState>,
+) {
+    if text.get(edit.range.clone()) != Some(edit.text.as_str()) {
+        if state.selected_range() != edit.range {
+            state.set_selected_range(edit.range, cx);
+        }
+        state.replace(edit.text, window, cx);
+    }
+    if state.selected_range() != edit.selection {
+        state.set_selected_range(edit.selection, cx);
+    }
+}
+
 impl Render for NoteEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The face follows the view mode and the font setting, however they
@@ -1709,10 +2227,34 @@ impl Render for NoteEditor {
                 el.child(v_flex().flex_none().child(self.render_format_bar(cx)))
             });
 
+        // Typewriter scrolling: the caret's line stays in the middle.
+        let typewriter = self.settings.typewriter.centres(focus_mode);
+        if typewriter != self.typewriter {
+            self.typewriter = typewriter;
+            self.body.update(cx, |body, cx| {
+                body.set_cursor_surrounding_lines(
+                    typewriter.then_some(TYPEWRITER_LINES),
+                    window,
+                    cx,
+                )
+            });
+        }
+        // The writing aids take their keys before the text editor does.
         let source = div()
             .flex_1()
             .h_full()
             .min_w_0()
+            .capture_key_down(cx.listener(Self::on_key_down))
+            .capture_action(cx.listener(Self::on_backspace))
+            .capture_action(
+                cx.listener(|this, _: &IndentInline, window, cx| this.on_tab(false, window, cx)),
+            )
+            .capture_action(
+                cx.listener(|this, _: &OutdentInline, window, cx| this.on_tab(true, window, cx)),
+            )
+            .capture_action(cx.listener(Self::on_enter))
+            .capture_action(cx.listener(Self::on_paste))
+            .on_drop(cx.listener(Self::on_drop))
             .pl(px(TEXT_INSET - SOURCE_TEXT_LEFT))
             .pr_4()
             .py_2()
@@ -2415,5 +2957,323 @@ mod tests {
                 prop_assert_eq!(found, expected);
             }
         }
+    }
+}
+
+/// The writing aids through the real text editor: keys, paste and undo.
+#[cfg(test)]
+mod writing_tests {
+    use super::{NoteEditor, TEST_HTML};
+    use crate::config::{Appearance, EditorSettings};
+    use crate::library::Library;
+    use crate::preview::ImageResize;
+    use crate::word_goal::{GOAL_KEY, GoalSetting};
+    use gpui_kit::{
+        AnyWindowHandle, AppContext as _, ClipboardItem, Entity, Image, ImageFormat, TestAppContext,
+    };
+    use kanso_core::DocType;
+    use kanso_store::{Origin, Put, Store};
+    use serde_json::json;
+    use std::ops::Range;
+    use std::sync::Arc;
+
+    struct Open {
+        window: AnyWindowHandle,
+        editor: Entity<NoteEditor>,
+        store: Arc<Store>,
+        id: String,
+        _dir: tempfile::TempDir,
+    }
+
+    impl Open {
+        fn new(cx: &mut TestAppContext, body: &str) -> Open {
+            let dir = tempfile::tempdir().unwrap();
+            let store = Arc::new(Store::open(dir.path().join("k.db")).unwrap());
+            let book = store
+                .put(DocType::Book, json!({"name": "B"}), Put::Upsert, Origin::Ui)
+                .unwrap()
+                .id;
+            let id = store
+                .put(
+                    DocType::Note,
+                    json!({"title": "t", "body": body, "bookId": book}),
+                    Put::Upsert,
+                    Origin::Ui,
+                )
+                .unwrap()
+                .id;
+            let editor_store = store.clone();
+            let (window, editor) = cx.update(|cx| {
+                gpui_kit::init(cx);
+                gpui_kit::open_window(Default::default(), cx, |window, cx| {
+                    let library = cx.new(|cx| Library::new(editor_store.clone(), cx));
+                    let (links, _) = async_channel::unbounded();
+                    cx.new(|cx| {
+                        NoteEditor::new(
+                            editor_store,
+                            library,
+                            links,
+                            &Appearance::default(),
+                            window,
+                            cx,
+                        )
+                    })
+                })
+                .unwrap()
+            });
+            let open = Open {
+                window,
+                editor,
+                store,
+                id: id.clone(),
+                _dir: dir,
+            };
+            open.with(cx, move |editor, window, cx| {
+                editor.open(Some(&id), window, cx);
+                editor.focus_body(window, cx);
+            });
+            open
+        }
+
+        fn with<R>(
+            &self,
+            cx: &mut TestAppContext,
+            f: impl FnOnce(
+                &mut NoteEditor,
+                &mut gpui_kit::Window,
+                &mut gpui_kit::Context<NoteEditor>,
+            ) -> R,
+        ) -> R {
+            let editor = self.editor.clone();
+            let out = cx
+                .update_window(self.window, |_, window, cx| {
+                    editor.update(cx, |editor, cx| f(editor, window, cx))
+                })
+                .unwrap();
+            cx.run_until_parked();
+            out
+        }
+
+        fn select(&self, cx: &mut TestAppContext, range: Range<usize>) {
+            self.with(cx, |editor, _, cx| {
+                editor
+                    .body
+                    .update(cx, |body, cx| body.set_selected_range(range, cx))
+            });
+        }
+
+        fn text(&self, cx: &mut TestAppContext) -> (String, Range<usize>) {
+            self.with(cx, |editor, _, cx| {
+                let body = editor.body.read(cx);
+                (body.value().to_string(), body.selected_range())
+            })
+        }
+
+        fn input(&self, cx: &mut TestAppContext, text: &str) {
+            cx.simulate_input(self.window, text);
+        }
+
+        fn keys(&self, cx: &mut TestAppContext, keys: &str) {
+            cx.simulate_keystrokes(self.window, keys);
+        }
+    }
+
+    /// Pairs close as they're typed, a closer Kanso put in is stepped over,
+    /// Backspace takes an empty pair, a selection is wrapped, and each of
+    /// these undoes in one step. Turned off, typing is plain.
+    // no-prop-test: drives the editor with keys; `pairing` has the
+    // properties.
+    #[gpui_kit::test]
+    fn pairing_types_through_the_editor(cx: &mut TestAppContext) {
+        let open = Open::new(cx, "");
+        open.input(cx, "(");
+        assert_eq!(open.text(cx), ("()".into(), 1..1));
+        open.input(cx, "a)");
+        assert_eq!(open.text(cx), ("(a)".into(), 3..3));
+        open.input(cx, " [");
+        assert_eq!(open.text(cx), ("(a) []".into(), 5..5));
+        open.keys(cx, "backspace");
+        assert_eq!(open.text(cx), ("(a) ".into(), 4..4));
+        open.input(cx, "**b");
+        assert_eq!(open.text(cx).0, "(a) **b**");
+        open.input(cx, "**");
+        assert_eq!(open.text(cx), ("(a) **b**".into(), 9..9));
+
+        // A selection is wrapped, and stays selected; undo unwraps it.
+        open.select(cx, 1..2);
+        open.input(cx, "`");
+        assert_eq!(open.text(cx), ("(`a`) **b**".into(), 2..3));
+        open.keys(cx, "cmd-z");
+        assert_eq!(open.text(cx).0, "(a) **b**");
+
+        // Off: typed as it is.
+        open.with(cx, |editor, _, cx| {
+            editor.set_settings(
+                EditorSettings {
+                    auto_pair: false,
+                    ..EditorSettings::default()
+                },
+                cx,
+            )
+        });
+        open.select(cx, 9..9);
+        open.input(cx, " (");
+        assert_eq!(open.text(cx).0, "(a) **b** (");
+    }
+
+    /// Tab moves list items in and out, and through a table's cells,
+    /// lining the table up; Enter at the end of a row adds one.
+    // no-prop-test: drives the editor with keys; `list_edit` and
+    // `table_format` have the properties.
+    #[gpui_kit::test]
+    fn tab_and_enter_in_lists_and_tables(cx: &mut TestAppContext) {
+        let open = Open::new(cx, "- a\n- b");
+        open.select(cx, 7..7);
+        open.keys(cx, "tab");
+        assert_eq!(open.text(cx), ("- a\n  - b".into(), 9..9));
+        open.keys(cx, "shift-tab");
+        assert_eq!(open.text(cx), ("- a\n- b".into(), 7..7));
+        // Undo takes the indent back in one step.
+        open.keys(cx, "tab");
+        open.keys(cx, "cmd-z");
+        assert_eq!(open.text(cx).0, "- a\n- b");
+
+        let table = "| Name | Qty |\n|---|---|\n| Apples | 3 |";
+        open.with(cx, |editor, window, cx| {
+            editor.edit_for_test(table, window, cx)
+        });
+        open.select(cx, 3..3);
+        open.keys(cx, "tab");
+        let (text, selection) = open.text(cx);
+        assert_eq!(text, "| Name   | Qty |\n| ------ | --- |\n| Apples | 3   |");
+        assert_eq!(&text[selection], "Qty");
+        // The last cell: Enter at the end of the row adds one.
+        let end = text.len();
+        open.select(cx, end..end);
+        open.keys(cx, "enter");
+        let (text, selection) = open.text(cx);
+        assert!(
+            text.starts_with("| Name   | Qty |\n| ------ | --- |\n| Apples | 3   |\n|"),
+            "{text:?}"
+        );
+        assert!(selection.start > end);
+
+        // Format Table, from the palette or the menu.
+        open.with(cx, |editor, window, cx| {
+            editor.edit_for_test("| a | bb |\n|-|:-:|\n| ccc | d |", window, cx)
+        });
+        open.select(cx, 2..2);
+        open.with(cx, |editor, window, cx| editor.format_table(window, cx));
+        assert_eq!(
+            open.text(cx).0,
+            "| a   | bb  |\n| --- | :-: |\n| ccc |  d  |"
+        );
+    }
+
+    /// A link pasted over words links them; formatted HTML pastes as
+    /// Markdown; ⇧⌘V pastes it plain; an image becomes an attachment.
+    // no-prop-test: drives the editor's paste; `smart_paste` has the
+    // properties.
+    #[gpui_kit::test]
+    fn pasting_links_and_images(cx: &mut TestAppContext) {
+        let open = Open::new(cx, "read the docs");
+        cx.write_to_clipboard(ClipboardItem::new_string("https://kanso.app".into()));
+        open.select(cx, 9..13);
+        open.keys(cx, "cmd-v");
+        assert_eq!(open.text(cx).0, "read the [docs](https://kanso.app)");
+
+        let end = open.text(cx).0.len();
+        TEST_HTML.with(|html| *html.borrow_mut() = Some("<p><b>Bold</b> move</p>".into()));
+        cx.write_to_clipboard(ClipboardItem::new_string("Bold move".into()));
+        open.select(cx, end..end);
+        open.keys(cx, "cmd-v");
+        assert_eq!(
+            open.text(cx).0,
+            "read the [docs](https://kanso.app)**Bold** move"
+        );
+        open.with(cx, |editor, window, cx| editor.paste_plain(window, cx));
+        assert!(open.text(cx).0.ends_with("**Bold** moveBold move"));
+        TEST_HTML.with(|html| *html.borrow_mut() = None);
+
+        // An image on its own: stored, and put in as a paragraph.
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([9, 8, 7, 255]))
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        let png = png.into_inner();
+        cx.write_to_clipboard(ClipboardItem::new_image(&Image::from_bytes(
+            ImageFormat::Png,
+            png.clone(),
+        )));
+        open.keys(cx, "cmd-v");
+        let text = open.text(cx).0;
+        let (_, tail) = text.rsplit_once("\n\n![](inkdrop://").expect(&text);
+        let id = tail.strip_suffix(')').unwrap();
+        let (content_type, blob) = open.store.attachment(id).unwrap().unwrap();
+        assert_eq!((content_type.as_str(), blob.data), ("image/png", png));
+    }
+
+    /// A size picked in the preview rewrites the image's Markdown as one
+    /// undo step, and the cursor stays put.
+    // no-prop-test: glue; `smart_paste::sized_image` has the properties.
+    #[gpui_kit::test]
+    fn image_sizes_rewrite_the_markdown(cx: &mut TestAppContext) {
+        let source = "![](inkdrop://file:abc)";
+        let open = Open::new(cx, &format!("Intro\n\n{source}\n\nEnd"));
+        let end = open.text(cx).0.len();
+        open.select(cx, end..end);
+        let resize = |width| ImageResize {
+            source: source.into(),
+            src: "inkdrop://file:abc".into(),
+            alt: String::new(),
+            width,
+        };
+        open.with(cx, |editor, window, cx| {
+            editor.resize_image(resize(Some(240)), window, cx)
+        });
+        let (text, selection) = open.text(cx);
+        assert_eq!(
+            text,
+            "Intro\n\n<img src=\"inkdrop://file:abc\" width=\"240\">\n\nEnd"
+        );
+        assert_eq!(selection, text.len()..text.len());
+        open.keys(cx, "cmd-z");
+        assert_eq!(open.text(cx).0, format!("Intro\n\n{source}\n\nEnd"));
+    }
+
+    /// A note's own word goal is saved with it; without one the default
+    /// from Settings applies, and the footer shows whichever.
+    // no-prop-test: glue; `word_goal` has the properties.
+    #[gpui_kit::test]
+    fn word_goals_are_kept_with_the_note(cx: &mut TestAppContext) {
+        let open = Open::new(cx, "one two three");
+        open.with(cx, |editor, _, cx| {
+            editor.set_settings(
+                EditorSettings {
+                    word_goal: Some(1000),
+                    ..EditorSettings::default()
+                },
+                cx,
+            )
+        });
+        let footer_goal =
+            |cx: &mut TestAppContext| open.with(cx, |editor, _, cx| editor.footer.read(cx).goal());
+        assert_eq!(footer_goal(cx), Some(1000));
+        open.with(cx, |editor, _, cx| {
+            editor.set_word_goal(GoalSetting::Words(500), cx)
+        });
+        assert_eq!(footer_goal(cx), Some(500));
+        let note = open.store.note(&open.id).unwrap().unwrap();
+        assert_eq!(note.extra.get(GOAL_KEY), Some(&json!(500)));
+        open.with(cx, |editor, _, cx| {
+            editor.set_word_goal(GoalSetting::Off, cx)
+        });
+        assert_eq!(footer_goal(cx), None);
+        open.with(cx, |editor, _, cx| {
+            editor.set_word_goal(GoalSetting::Default, cx)
+        });
+        assert_eq!(footer_goal(cx), Some(1000));
+        let note = open.store.note(&open.id).unwrap().unwrap();
+        assert!(!note.extra.contains_key(GOAL_KEY));
     }
 }

@@ -18,9 +18,16 @@ dev-flavour = []
 [dependencies]
 anyhow.workspace = true
 async-channel.workspace = true
+# Pasted and dropped images go into the store as base64 attachments.
+base64.workspace = true
 chrono.workspace = true
 fastrand.workspace = true
 gpui-kit.workspace = true
+# HTML on the clipboard pasted as Markdown (Apache-2.0).
+htmd = "0.5.6"
+# Pasted images Inkdrop doesn't take (TIFF, WebP, BMP) are stored as PNG.
+# GPUI already builds these decoders.
+image = { version = "0.25", default-features = false, features = ["png", "tiff", "webp", "bmp", "ico"] }
 kanso-core.workspace = true
 kanso-import.workspace = true
 kanso-server.workspace = true
@@ -33,6 +40,8 @@ serde.workspace = true
 serde_json.workspace = true
 tree-sitter-c-sharp.workspace = true
 tree-sitter-swift.workspace = true
+# Table formatting measures cells as a monospaced face shows them.
+unicode-width = "0.2"
 
 [dev-dependencies]
 base64.workspace = true
@@ -57,7 +66,13 @@ gpui-pre-apple = "=0.3.9"
 [target.'cfg(target_os = "windows")'.dependencies]
 # Gives `kanso serve` and the other commands the console they were run from:
 # the release build is a GUI program without a console of its own.
-windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_System_Console",
+    # Reading the clipboard's CF_HTML for pasting formatted text.
+    "Win32_Foundation",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+] }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 # The app icon in kanso.exe.

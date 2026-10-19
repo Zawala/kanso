@@ -154,6 +154,17 @@ impl Bench {
             .unwrap();
     }
 
+    /// Types `c` as a key, through the window: the writing aids (pairing)
+    /// see it first, as in the app.
+    fn press(&mut self, c: &str) {
+        let keystroke = gpui_kit::Keystroke::parse(c).unwrap();
+        self.cx
+            .update_window(self.window, |_, window, cx| {
+                window.dispatch_keystroke(keystroke, cx);
+            })
+            .unwrap();
+    }
+
     fn set_mode(&mut self, mode: ViewMode) {
         let workspace = self.workspace.clone();
         self.cx.update(|cx| {
@@ -242,8 +253,12 @@ fn percentile(values: &mut [f64], p: f64) -> f64 {
 }
 
 /// Types [`KEYSTROKES`] characters at `line` of a note of about `bytes`, and
-/// reports what the preview did.
-fn run(bytes: usize, place: &str) {
+/// reports what the preview did. With `keys`, it types keys through the
+/// window instead, making "(x) " over and over: with pairing on (`true`) by
+/// typing "(", "x", ")" (stepped over) and a space; with it off, by typing
+/// the closer and moving back into the brackets, as one would by hand.
+fn run(bytes: usize, place: &str, keys: Option<bool>) {
+    let by_keys = keys.is_some();
     let note = realistic_note(bytes);
     let lines = note.lines().count() as u32;
     let line = match place {
@@ -251,6 +266,21 @@ fn run(bytes: usize, place: &str) {
         _ => lines / 2,
     };
     let mut bench = Bench::open(&note);
+    if keys == Some(false) {
+        let workspace = bench.workspace.clone();
+        bench.cx.update(|cx| {
+            let editor = workspace.read(cx).editor.clone();
+            editor.update(cx, |editor, cx| {
+                editor.set_settings(
+                    crate::config::EditorSettings {
+                        auto_pair: false,
+                        ..Default::default()
+                    },
+                    cx,
+                )
+            });
+        });
+    }
     bench.place_cursor(line);
     if std::env::var_os("KANSO_BENCH_REDRAW").is_some() {
         for mode in [ViewMode::Edit, ViewMode::Preview, ViewMode::Split] {
@@ -320,6 +350,17 @@ fn run(bytes: usize, place: &str) {
             }
             return;
         }
+        Ok("keys") => {
+            println!("spinning pid {}", std::process::id());
+            const KEYS: [&str; 4] = ["(", "x", ")", "space"];
+            for i in 0..1500 {
+                bench.press(KEYS[i % 4]);
+                bench.cx.run_until_parked();
+                bench.draw(false);
+                bench.cx.advance_clock(FRAME);
+            }
+            return;
+        }
         Ok("type") => {
             println!("spinning pid {}", std::process::id());
             for _ in 0..1500 {
@@ -350,7 +391,16 @@ fn run(bytes: usize, place: &str) {
         let keystroke = frame % frames_per_key == 0 && typed.len() < KEYSTROKES;
         let start = Instant::now();
         let split_before = split_ms();
-        if keystroke {
+        if keystroke && by_keys {
+            // The same text either way: pairing closes the bracket and
+            // steps over it; without it the keys do.
+            let keys: &[&str] = if keys == Some(true) {
+                &["(", "x", ")", "space"]
+            } else {
+                &["(", ")", "left", "x", "right", "space"]
+            };
+            bench.press(keys[typed.len() % keys.len()]);
+        } else if keystroke {
             bench.type_char("x");
         }
         let typed_at = Instant::now();
@@ -432,11 +482,16 @@ fn run(bytes: usize, place: &str) {
         .collect();
     let first = latencies.first().copied().unwrap_or(f64::NAN);
     println!(
-        "{:>4} KB at {:<6}: preview updates while typing {:>2}/{KEYSTROKES}; \
+        "{:>4} KB at {:<6}{}: preview updates while typing {:>2}/{KEYSTROKES}; \
          keystroke→preview (simulated) first {first:.0} ms, p50 {:.0} ms, max {:.0} ms; \
          max gap {:.0} ms",
         note.len() / 1024,
         place,
+        match keys {
+            Some(true) => " (keys, pairing on)",
+            Some(false) => " (keys, pairing off)",
+            None => "",
+        },
         updates_while_typing,
         percentile(&mut latencies.clone(), 0.5),
         percentile(&mut latencies, 1.0),
@@ -464,7 +519,9 @@ fn latency_bench() {
     });
     for bytes in sizes.into_iter().map(|kb: usize| kb * 1024) {
         for place in ["middle", "end"] {
-            run(bytes, place);
+            run(bytes, place, None);
         }
+        run(bytes, "middle", Some(false));
+        run(bytes, "middle", Some(true));
     }
 }

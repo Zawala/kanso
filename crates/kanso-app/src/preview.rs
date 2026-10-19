@@ -15,7 +15,7 @@ use gpui_kit::base::text::{
     TextViewStyle, markdown_ast,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Selectable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_store::Store;
@@ -55,6 +55,30 @@ pub fn readable_width(size: f32, mono: bool) -> f32 {
 /// Where clicks on `inkdrop://note/<id>` links go.
 pub type LinkSender = async_channel::Sender<String>;
 
+/// A size picked for an attached image in the preview: the editor puts
+/// `source` (the image's Markdown) back as `src` shown `width` wide, or at
+/// its own size.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImageResize {
+    pub source: String,
+    pub src: String,
+    pub alt: String,
+    pub width: Option<u32>,
+}
+
+/// Where the preview's image sizes go.
+pub type ResizeSender = async_channel::Sender<ImageResize>;
+
+/// The widths an attached image can be given in the preview, besides its
+/// own: small and medium.
+pub const IMAGE_SIZES: [(&str, Option<u32>); 3] =
+    [("Small", Some(240)), ("Medium", Some(480)), ("Full", None)];
+
+/// Shows the size buttons over every image, as a hover would.
+#[cfg(test)]
+pub(crate) static REVEAL_IMAGE_SIZES: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 /// A chunk on show.
 struct Shown {
     key: u64,
@@ -86,10 +110,10 @@ pub struct Preview {
 }
 
 impl Preview {
-    pub fn new(store: Arc<Store>, links: LinkSender) -> Self {
+    pub fn new(store: Arc<Store>, links: LinkSender, resizes: ResizeSender) -> Self {
         let images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>> = Arc::default();
         let resolver: ImageResolver = Arc::new(image_resolver(store.clone(), images.clone()));
-        let extensions = quote_extensions(Arc::new(Links(links.clone())), resolver);
+        let extensions = quote_extensions(Arc::new(Links(links.clone())), resolver, resizes);
         Preview {
             text: SharedString::default(),
             shown: SharedString::default(),
@@ -330,24 +354,152 @@ pub(crate) fn unquote(source: &str) -> String {
 
 /// The custom node a quote becomes.
 const QUOTE: &str = "kanso-quote";
+/// The custom node an attached image on a line of its own becomes.
+const PICTURE: &str = "kanso-picture";
 /// Changes when [`quote_extensions`] parses differently, so a text view
 /// re-parses its note.
-const QUOTE_PARSER_REVISION: u64 = 1;
+const QUOTE_PARSER_REVISION: u64 = 2;
 
 /// A quote's Markdown, without its markers.
 struct Quote(SharedString);
+
+/// An attached image on a line of its own, as `![alt](src)` or as
+/// `<img src=… width=…>`.
+struct Picture {
+    src: String,
+    alt: String,
+    width: Option<u32>,
+    source: String,
+}
+
+/// The attached image `node` shows on its own, if it is one: a paragraph of
+/// just an `inkdrop://file:` image, or an `<img>` tag for one. Pure.
+fn picture(node: &markdown_ast::Node, source: &str) -> Option<Picture> {
+    let (src, alt, width) = match node {
+        markdown_ast::Node::Paragraph(paragraph) => match paragraph.children.as_slice() {
+            [markdown_ast::Node::Image(image)] => (image.url.clone(), image.alt.clone(), None),
+            _ => return None,
+        },
+        markdown_ast::Node::Html(html) => {
+            let tag = crate::smart_paste::img_tag(&html.value)?;
+            (tag.src, tag.alt, tag.width)
+        }
+        _ => return None,
+    };
+    src.starts_with("inkdrop://file:").then(|| Picture {
+        src,
+        alt,
+        width,
+        source: source.trim_end().to_owned(),
+    })
+}
+
+/// An attached image with its size buttons over its corner, shown on
+/// hover: small, medium, or its own size.
+// no-prop-test: drawing and clicks; `picture` and `sized_image` have the
+// tests, and the image snapshot shows it.
+fn render_picture(
+    node: &MarkdownNode,
+    resolver: &ImageResolver,
+    resizes: &ResizeSender,
+    cx: &mut App,
+) -> AnyElement {
+    let Some(picture) = node.data::<Picture>() else {
+        return div().into_any_element();
+    };
+    let colors = Colors::get(cx);
+    let at = node.source_range().map_or(0, |r| r.start);
+    let group = SharedString::from(format!("{PICTURE}-{at}"));
+    #[cfg(test)]
+    let hidden = !REVEAL_IMAGE_SIZES.load(std::sync::atomic::Ordering::Relaxed);
+    #[cfg(not(test))]
+    let hidden = true;
+    let image = img(resolver(&SharedUri::from(picture.src.clone())))
+        .object_fit(ObjectFit::Contain)
+        .max_w(relative(1.))
+        .when_some(picture.width, |el, width| el.w(px(width as f32)));
+    let buttons = IMAGE_SIZES.iter().enumerate().map(|(ix, (label, width))| {
+        let resize = ImageResize {
+            source: picture.source.clone(),
+            src: picture.src.clone(),
+            alt: picture.alt.clone(),
+            width: *width,
+        };
+        let resizes = resizes.clone();
+        let selected = picture.width == *width;
+        Button::new(ix)
+            .ghost()
+            .xsmall()
+            .tab_stop(false)
+            .selected(selected)
+            .child(
+                div()
+                    .px_0p5()
+                    .text_size(px(11.5))
+                    .text_color(if selected {
+                        colors.text
+                    } else {
+                        colors.text_secondary
+                    })
+                    .child(*label),
+            )
+            .on_click(move |_, _, cx| {
+                cx.stop_propagation();
+                resizes.try_send(resize.clone()).ok();
+            })
+    });
+    let sizes = h_flex()
+        .id("sizes")
+        .absolute()
+        .top(px(8.))
+        .left(px(8.))
+        .p(px(2.))
+        .gap(px(2.))
+        .rounded(px(7.))
+        .border_1()
+        .border_color(colors.divider)
+        .bg(colors.elevated)
+        .shadow_sm()
+        .debug_selector(|| "image-sizes".into())
+        .when(hidden, |el| {
+            el.opacity(0.)
+                .group_hover(group.clone(), |style| style.opacity(1.))
+        })
+        .children(buttons);
+    v_flex()
+        .id(ElementId::NamedInteger(PICTURE.into(), at as u64))
+        .group(group)
+        .relative()
+        .w_full()
+        .items_start()
+        .child(image)
+        .child(sizes)
+        .into_any_element()
+}
 
 /// Quotes drawn by Kanso rather than the text view: the text view draws a
 /// quote in its one muted color, the one it also gives finished tasks and
 /// list markers, so a theme couldn't make quotes stand out without making
 /// finished tasks shout too. Each quote becomes a text view of its own in
 /// the theme's quote color, beside a bar.
-fn quote_extensions(links: Arc<Links>, images: ImageResolver) -> MarkdownExtensions {
+fn quote_extensions(
+    links: Arc<Links>,
+    images: ImageResolver,
+    resizes: ResizeSender,
+) -> MarkdownExtensions {
     let parse = |node: &markdown_ast::Node, cx: &MarkdownParseContext<'_>| {
+        let source = cx.node_source(node)?;
+        if let Some(picture) = picture(node, source) {
+            let alt = picture.alt.clone();
+            return Some(
+                MarkdownNode::new(PICTURE, picture)
+                    .text(alt)
+                    .markdown(source),
+            );
+        }
         let markdown_ast::Node::Blockquote(_) = node else {
             return None;
         };
-        let source = cx.node_source(node)?;
         let body = unquote(source);
         Some(
             MarkdownNode::new(QUOTE, Quote(body.clone().into()))
@@ -355,9 +507,14 @@ fn quote_extensions(links: Arc<Links>, images: ImageResolver) -> MarkdownExtensi
                 .markdown(source),
         )
     };
+    let picture_images = images.clone();
+    let picture_resizes = resizes.clone();
     MarkdownExtensions::default()
         .parser_revision(QUOTE_PARSER_REVISION)
         .block_parser(parse)
+        .block_renderer(PICTURE, move |node, _window, cx| {
+            render_picture(node, &picture_images, &picture_resizes, cx)
+        })
         .block_renderer(QUOTE, move |node, _window, cx| {
             let Some(Quote(body)) = node.data::<Quote>() else {
                 return div().into_any_element();
@@ -386,7 +543,11 @@ fn quote_extensions(links: Arc<Links>, images: ImageResolver) -> MarkdownExtensi
                         .line_height(relative(LINE_HEIGHT))
                         .text_color(preview.quote)
                         .selectable(true)
-                        .markdown_extensions(quote_extensions(links.clone(), resolver.clone()))
+                        .markdown_extensions(quote_extensions(
+                            links.clone(),
+                            resolver.clone(),
+                            resizes.clone(),
+                        ))
                         .code_block_actions(code_block_actions)
                         .image_source(move |uri| resolver(uri))
                         .on_link_click(move |url, _, _, cx| links.open(url, cx)),
@@ -711,7 +872,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = std::sync::Arc::new(kanso_store::Store::open(dir.path().join("k.db")).unwrap());
         let (links, _rx) = async_channel::unbounded();
-        let preview = cx.new(|_| Preview::new(store, links));
+        let (resizes, _resized) = async_channel::unbounded();
+        let preview = cx.new(|_| Preview::new(store, links, resizes));
         let mut rng = fastrand::Rng::with_seed(20261017);
         let pieces = [
             "word ",
@@ -834,6 +996,36 @@ mod tests {
         assert_eq!(unquote("> > nested"), "> nested");
         assert_eq!(unquote(">     code"), "    code");
         assert_eq!(unquote(">"), "");
+    }
+
+    /// An attached image alone on its line gets size buttons; one in a
+    /// sentence, or from the web, stays the text view's.
+    #[test]
+    fn attached_images_on_their_own_get_sizes() {
+        let first = |text: &str| {
+            let root = markdown::to_mdast(text, &markdown::ParseOptions::gfm()).unwrap();
+            let node = root.children().unwrap()[0].clone();
+            let at = node.position().unwrap();
+            super::picture(&node, &text[at.start.offset..at.end.offset])
+                .map(|p| (p.src, p.alt, p.width, p.source))
+        };
+        let src = "inkdrop://file:abc".to_owned();
+        assert_eq!(
+            first("![Cat](inkdrop://file:abc)\n"),
+            Some((
+                src.clone(),
+                "Cat".into(),
+                None,
+                "![Cat](inkdrop://file:abc)".into()
+            ))
+        );
+        let tag = "<img src=\"inkdrop://file:abc\" width=\"240\">";
+        assert_eq!(
+            first(tag),
+            Some((src, String::new(), Some(240), tag.to_owned()))
+        );
+        assert_eq!(first("![](https://x.io/a.png)"), None);
+        assert_eq!(first("Look: ![](inkdrop://file:abc)"), None);
     }
 
     #[test]

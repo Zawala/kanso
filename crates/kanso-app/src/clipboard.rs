@@ -5,6 +5,9 @@
 //! through the Objective-C runtime; GPUI links both frameworks already.
 //! On Windows and Linux the secret goes through GPUI's clipboard and is
 //! cleared after its minute; nothing there is in iCloud.
+//!
+//! Also the HTML a paste can turn into Markdown, which GPUI's clipboard
+//! doesn't read: `public.html` on macOS, CF_HTML on Windows.
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -114,6 +117,100 @@ pub fn syncs_to_icloud(folder: &Path, home: &Path) -> bool {
     crate::account_words::is_icloud_path(folder, home) || mac::is_ubiquitous(folder)
 }
 
+/// The HTML on the clipboard, for pasting formatted text as Markdown:
+/// macOS's `public.html`, or the fragment of Windows' CF_HTML. Linux pastes
+/// plain text only.
+// no-prop-test: reads the system clipboard; `cf_html_fragment` has the
+// properties.
+#[cfg_attr(test, allow(dead_code))] // Tests set their own HTML.
+pub fn read_html() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        mac::read_html()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        win::read_html()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        None
+    }
+}
+
+/// The HTML fragment in a CF_HTML clipboard entry: the bytes between its
+/// header's `StartFragment` and `EndFragment` offsets, or between the
+/// fragment comments when the offsets don't fit.
+#[cfg(any(target_os = "windows", test))]
+fn cf_html_fragment(data: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(data);
+    let offset = |key: &str| -> Option<usize> {
+        let at = text.find(key)? + key.len();
+        let digits: String = text[at..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        digits.parse().ok()
+    };
+    let by_offsets = match (offset("StartFragment:"), offset("EndFragment:")) {
+        (Some(start), Some(end)) if start <= end && end <= data.len() => {
+            Some(String::from_utf8_lossy(&data[start..end]).into_owned())
+        }
+        _ => None,
+    };
+    by_offsets
+        .or_else(|| {
+            let start = text.find("<!--StartFragment-->")? + "<!--StartFragment-->".len();
+            let end = text[start..].find("<!--EndFragment-->")? + start;
+            Some(text[start..end].to_owned())
+        })
+        .filter(|html| !html.trim().is_empty())
+}
+
+#[cfg(target_os = "windows")]
+mod win {
+    use windows_sys::Win32::System::DataExchange::{
+        CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+        RegisterClipboardFormatW,
+    };
+    use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+
+    #[cfg_attr(test, allow(dead_code))]
+    pub fn read_html() -> Option<String> {
+        let name: Vec<u16> = "HTML Format\0".encode_utf16().collect();
+        // SAFETY: a NUL-terminated UTF-16 name; registering is idempotent.
+        let format = unsafe { RegisterClipboardFormatW(name.as_ptr()) };
+        // SAFETY: plain queries of the clipboard, opened and closed here;
+        // the locked memory is copied before it is unlocked.
+        unsafe {
+            if format == 0 || IsClipboardFormatAvailable(format) == 0 {
+                return None;
+            }
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                return None;
+            }
+            let bytes = (|| {
+                let handle = GetClipboardData(format);
+                if handle.is_null() {
+                    return None;
+                }
+                let data = GlobalLock(handle) as *const u8;
+                if data.is_null() {
+                    return None;
+                }
+                let bytes = std::slice::from_raw_parts(data, GlobalSize(handle)).to_vec();
+                GlobalUnlock(handle);
+                Some(bytes)
+            })();
+            CloseClipboard();
+            let bytes = bytes?;
+            // The data ends with a NUL.
+            let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
+            super::cf_html_fragment(&bytes[..end])
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod mac {
     use std::ffi::{CString, c_char, c_void};
@@ -212,6 +309,31 @@ mod mac {
         change_count()
     }
 
+    /// `[pasteboard stringForType:@"public.html"]`, as UTF-8.
+    #[cfg_attr(test, allow(dead_code))]
+    pub fn read_html() -> Option<String> {
+        let pasteboard = general_pasteboard()?;
+        let kind = ns_string("public.html")?;
+        // SAFETY: `stringForType:` takes an NSString and returns an
+        // autoreleased NSString, or nil when there is no HTML.
+        let string_for: unsafe extern "C" fn(Id, Sel, Id) -> Id =
+            unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
+        let html = unsafe { string_for(pasteboard, sel("stringForType:"), kind) };
+        if html.is_null() {
+            return None;
+        }
+        // SAFETY: `UTF8String` returns a NUL-terminated buffer the string
+        // owns, valid while it lives; it is copied at once.
+        let utf8: unsafe extern "C" fn(Id, Sel) -> *const c_char =
+            unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
+        let bytes = unsafe { utf8(html, sel("UTF8String")) };
+        if bytes.is_null() {
+            return None;
+        }
+        let html = unsafe { std::ffi::CStr::from_ptr(bytes) };
+        Some(html.to_string_lossy().into_owned())
+    }
+
     pub fn change_count() -> Option<isize> {
         let pasteboard = general_pasteboard()?;
         // SAFETY: `changeCount` takes no arguments and returns NSInteger.
@@ -284,13 +406,51 @@ mod mac {
 
 #[cfg(test)]
 mod tests {
-    use super::{should_clear, still_ours};
+    use super::{cf_html_fragment, should_clear, still_ours};
     use proptest::prelude::*;
 
     #[test]
     fn examples() {
         assert!(still_ours(7, 7));
         assert!(!still_ours(7, 8));
+    }
+
+    /// CF_HTML as Windows writes it: a header of byte offsets, then the
+    /// document with the fragment marked.
+    fn cf_html(fragment: &str) -> Vec<u8> {
+        let head = "Version:0.9\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\nStartFragment:0000000000\r\nEndFragment:0000000000\r\n";
+        let before = "<html><body>\r\n<!--StartFragment-->";
+        let after = "<!--EndFragment-->\r\n</body></html>";
+        let start_html = head.len();
+        let start = start_html + before.len();
+        let end = start + fragment.len();
+        let end_html = end + after.len();
+        let head = format!(
+            "Version:0.9\r\nStartHTML:{start_html:010}\r\nEndHTML:{end_html:010}\r\nStartFragment:{start:010}\r\nEndFragment:{end:010}\r\n"
+        );
+        format!("{head}{before}{fragment}{after}").into_bytes()
+    }
+
+    #[test]
+    fn cf_html_fragments() {
+        assert_eq!(
+            cf_html_fragment(&cf_html("<b>bold</b> é")).as_deref(),
+            Some("<b>bold</b> é")
+        );
+        // Offsets that don't fit: the comments mark it.
+        let broken = b"StartFragment:999999\r\n<!--StartFragment--><i>x</i><!--EndFragment-->";
+        assert_eq!(cf_html_fragment(broken).as_deref(), Some("<i>x</i>"));
+        assert_eq!(cf_html_fragment(b"nothing here"), None);
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(256))]
+
+        /// Round trip: the fragment written into CF_HTML is read back.
+        #[test]
+        fn prop_cf_html_round_trips(fragment in "<p>[a-zé <>/]{1,40}</p>") {
+            prop_assert_eq!(cf_html_fragment(&cf_html(&fragment)), Some(fragment));
+        }
     }
 
     /// A12: the key copied a moment before quitting is cleared at quit, once;

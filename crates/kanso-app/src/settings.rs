@@ -15,6 +15,7 @@ use std::time::Duration;
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::kbd::Kbd;
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::tooltip::Tooltip;
@@ -30,12 +31,14 @@ use kanso_sync::{QuotaKind, SyncProblem};
 use crate::account_page::AccountPage;
 use crate::account_words::{quota_words, signed_out_sentence};
 use crate::clock::Clock;
-use crate::config::{DEFAULT_FONT_SIZE, EditorFont, SyncSettings};
+use crate::config::{DEFAULT_FONT_SIZE, EditorFont, EditorSettings, SyncSettings, Typewriter};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::Library;
 use crate::services::{self, AccountState, ApiState, Services, SyncState};
 use crate::sidebar::{Tone, sync_line, tone_color};
+use crate::text_stats::format_count;
 use crate::theme::Colors;
+use crate::word_goal::PRESETS;
 use crate::workspace::{AppState, OpenSettings, Workspace, for_each_workspace};
 use crate::{dialogs, inkdrop, launch, paths};
 
@@ -404,8 +407,10 @@ fn config(cx: &App) -> &crate::config::AppConfig {
 fn update_editors(cx: &mut App) {
     cx.defer(|cx| {
         let appearance = config(cx).appearance.clone();
+        let writing = config(cx).editor;
         for_each_workspace(cx, |workspace, cx| {
             workspace.editor.update(cx, |editor, cx| {
+                editor.set_settings(writing, cx);
                 editor.editor_font = appearance.editor_font;
                 editor.font_size = appearance.editor_font_size;
                 editor.allow_line_numbers = appearance.line_numbers;
@@ -964,7 +969,89 @@ fn editor_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                 ),
         ],
         colors,
-    )]
+    ),
+    writing_section(cx)]
+}
+
+/// Settings › Editor › Writing: the aids that act as you type.
+// no-prop-test: layout and clicks; the settings snapshots show it and
+// `config` tests the settings' defaults and round trip.
+fn writing_section(cx: &mut Context<SettingsView>) -> AnyElement {
+    let colors = Colors::get(cx);
+    let writing = config(cx).editor;
+    let switch = |id: &'static str, on: bool, set: fn(&mut EditorSettings, bool)| {
+        div().debug_selector(move || id.into()).child(
+            Switch::new(id)
+                .checked(on)
+                .on_click(move |on, _, cx| set_writing(cx, |editor| set(editor, *on))),
+        )
+    };
+    let goal_label = match writing.word_goal {
+        Some(n) => format!("{} words", format_count(n as usize)),
+        None => "None".to_owned(),
+    };
+    let current_goal = writing.word_goal;
+    let goal_menu = Button::new("default-goal")
+        .debug_selector(|| "default-goal".into())
+        .outline()
+        .small()
+        .label(goal_label)
+        .dropdown_caret(true)
+        .dropdown_menu(move |mut menu, _, _| {
+            menu = menu.item(
+                PopupMenuItem::new("None")
+                    .checked(current_goal.is_none())
+                    .on_click(|_, _, cx| set_writing(cx, |editor| editor.word_goal = None)),
+            );
+            for n in PRESETS {
+                menu = menu.item(
+                    PopupMenuItem::new(format!("{} words", format_count(n as usize)))
+                        .checked(current_goal == Some(n))
+                        .on_click(move |_, _, cx| {
+                            set_writing(cx, |editor| editor.word_goal = Some(n))
+                        }),
+                );
+            }
+            menu
+        });
+    section(
+        "Writing",
+        vec![
+            Row::new(Lucide::Brackets, "Close brackets and markers")
+                .detail("Typing ( [ { \" * _ or ` adds its closer, and wraps selected text.")
+                .trailing(switch("auto-pair", writing.auto_pair, |e, on| e.auto_pair = on)),
+            Row::new(Lucide::Table, "Line up tables")
+                .detail("Tab and Enter in a table pad its cells so the pipes line up in monospace. Format Table does it any time.")
+                .trailing(switch("format-tables", writing.format_tables, |e, on| {
+                    e.format_tables = on
+                })),
+            Row::new(Lucide::ClipboardPaste, "Smart paste")
+                .detail("A link pasted over words links them; formatted text pastes as Markdown. ⇧⌘V pastes plain text.")
+                .trailing(switch("smart-paste", writing.smart_paste, |e, on| e.smart_paste = on)),
+            Row::new(Lucide::ScrollText, "Typewriter scrolling")
+                .detail("Keeps the line you're writing in the middle of the editor.")
+                .trailing(segmented(
+                    "typewriter",
+                    [
+                        ("Off", Typewriter::Off),
+                        ("Focus mode", Typewriter::FocusMode),
+                        ("Always", Typewriter::Always),
+                    ],
+                    writing.typewriter,
+                    |typewriter, _, cx| set_writing(cx, |editor| editor.typewriter = typewriter),
+                    colors,
+                )),
+            Row::new(Lucide::Goal, "Word goal")
+                .detail("For notes without their own. Focus mode shows the progress; set a note's own goal from its footer.")
+                .trailing(goal_menu),
+        ],
+        colors,
+    )
+}
+
+fn set_writing(cx: &mut App, change: impl FnOnce(&mut EditorSettings)) {
+    AppState::update_config(cx, |config| change(&mut config.editor));
+    update_editors(cx);
 }
 
 fn api_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
