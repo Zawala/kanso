@@ -58,6 +58,19 @@ jobs:
         with:
           persist-credentials: false
 
+      # On the self-hosted Windows runner, plain `bash` is WSL's launcher in
+      # WindowsApps, which can't run the step scripts; put Git Bash first.
+      - name: Git Bash first on PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $git = Join-Path $env:ProgramFiles 'Git\bin'
+          if (-not (Test-Path (Join-Path $git 'bash.exe'))) {
+            Write-Output "::error::Git for Windows isn't installed at $git; the build steps need its bash."
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $git -Encoding ascii
+
       - name: Version
         id: version
         run: |
@@ -165,7 +178,7 @@ jobs:
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: powershell
         env:
           STEM: ${{ steps.version.outputs.stem }}
         run: |

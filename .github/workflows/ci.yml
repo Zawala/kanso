@@ -54,6 +54,18 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # On the self-hosted Windows runner, plain `bash` is WSL's launcher in
+      # WindowsApps, which can't run the step scripts; put Git Bash first.
+      - name: Git Bash first on PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $git = Join-Path $env:ProgramFiles 'Git\bin'
+          if (-not (Test-Path (Join-Path $git 'bash.exe'))) {
+            Write-Output "::error::Git for Windows isn't installed at $git; the build steps need its bash."
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $git -Encoding ascii
       - run: rustup show active-toolchain || rustup toolchain install
         shell: bash
       - name: Linux build dependencies
