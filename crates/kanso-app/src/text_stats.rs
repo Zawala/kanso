@@ -1,5 +1,6 @@
 //! Counts the editor's footer shows: words in a note and numbers with
-//! thousands separators.
+//! thousands separators. Also what the editor reads off its text a piece at
+//! a time (the pieces of its rope), so a long note isn't copied for it.
 
 /// The words in Markdown text: runs between whitespace with at least one
 /// letter or digit in them. Markup on its own, like `#`, `-`, `|` or a
@@ -28,6 +29,33 @@ pub fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{} {}", format_count(n), if n == 1 { one } else { many })
 }
 
+/// The length in characters of each line of the text made of `pieces`, as
+/// `text.split('\n')` would find them: a trailing newline ends with an
+/// empty line.
+pub fn line_lengths<'a>(pieces: impl IntoIterator<Item = &'a str>) -> Vec<usize> {
+    let mut lengths = vec![0];
+    for piece in pieces {
+        let mut lines = piece.split('\n');
+        if let Some(first) = lines.next() {
+            *lengths.last_mut().expect("never empty") += first.chars().count();
+        }
+        lengths.extend(lines.map(|line| line.chars().count()));
+    }
+    lengths
+}
+
+/// Whether the text made of `pieces` is `text`.
+pub fn pieces_eq<'a>(pieces: impl IntoIterator<Item = &'a str>, text: &str) -> bool {
+    let mut rest = text;
+    for piece in pieces {
+        match rest.strip_prefix(piece) {
+            Some(after) => rest = after,
+            None => return false,
+        }
+    }
+    rest.is_empty()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -47,8 +75,41 @@ mod tests {
         "([a-zé0-9#*|>`\\[\\]()-]{0,6}[ \t\n\u{a0}]{0,3}){0,12}"
     }
 
+    /// `text` cut into pieces at the given points, as a rope hands it out.
+    fn pieces(text: &str, cuts: &[usize]) -> Vec<String> {
+        let mut points: Vec<usize> = cuts
+            .iter()
+            .map(|c| c % (text.len() + 1))
+            .filter(|c| text.is_char_boundary(*c))
+            .collect();
+        points.push(0);
+        points.push(text.len());
+        points.sort_unstable();
+        points.dedup();
+        points
+            .windows(2)
+            .map(|w| text[w[0]..w[1]].to_owned())
+            .collect()
+    }
+
     proptest! {
         #![proptest_config(config())]
+
+        /// Equivalence: lines measured a piece at a time are the lines of the
+        /// whole text, wherever it is cut.
+        #[test]
+        fn prop_line_lengths_match_the_whole_text(text in "[a-zé\n ]{0,60}", cuts in prop::collection::vec(any::<usize>(), 0..6)) {
+            let expected: Vec<usize> = text.split('\n').map(|l| l.chars().count()).collect();
+            let pieces = pieces(&text, &cuts);
+            prop_assert_eq!(line_lengths(pieces.iter().map(String::as_str)), expected);
+        }
+
+        /// Equivalence: comparing a piece at a time is comparing the texts.
+        #[test]
+        fn prop_pieces_eq_is_string_equality(a in "[ab\n]{0,12}", b in "[ab\n]{0,12}", cuts in prop::collection::vec(any::<usize>(), 0..5)) {
+            let pieces = pieces(&a, &cuts);
+            prop_assert_eq!(pieces_eq(pieces.iter().map(String::as_str), &b), a == b);
+        }
 
         /// Additivity: two texts joined by a space have the words of both.
         #[test]

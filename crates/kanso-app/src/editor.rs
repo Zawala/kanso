@@ -43,6 +43,7 @@ use crate::preview::{LinkSender, Preview, TEXT_INSET, readable_width};
 use crate::split::{
     scroll_sync, source_scroll_max, split_left, split_min_side, split_ratio, wrapped_rows,
 };
+use crate::text_stats::{line_lengths, pieces_eq};
 use crate::theme::{Colors, muted_tag_color, status_glyph};
 use crate::workspace::{AppState, NewNote};
 
@@ -420,11 +421,7 @@ impl NoteEditor {
             .as_ref()
             .is_none_or(|(kept, _)| *kept != len)
         {
-            let lines = body
-                .value()
-                .split('\n')
-                .map(|line| line.chars().count())
-                .collect();
+            let lines = line_lengths(body.text().chunks());
             self.source_lines = Some((len, lines));
         }
         let lines = self
@@ -541,10 +538,13 @@ impl NoteEditor {
         )
     }
 
+    /// Whether the title or the body differ from the note's. The header
+    /// asks on every frame once a save is done, so the body is compared a
+    /// piece of its rope at a time rather than copied.
     pub fn has_unsaved_edits(&self, cx: &App) -> bool {
         self.note.as_ref().is_some_and(|note| {
-            let (title, body) = self.current_text(cx);
-            title != note.title || body != note.body
+            self.title.read(cx).value() != note.title.as_str()
+                || !pieces_eq(self.body.read(cx).text().chunks(), &note.body)
         })
     }
 
