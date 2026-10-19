@@ -1,20 +1,20 @@
 # Kanso
 
 A local-first Markdown notes app for macOS, with Windows and Linux builds, built with [GPUI](https://www.gpui.rs) through
-[gpui-kit](https://github.com/longbridge/gpui-kit), as a replacement for Inkdrop.
+[gpui-kit](https://github.com/longbridge/gpui-kit).
 
-- **Imports Inkdrop.** Notes, notebooks, tags, statuses and attachments come over from Inkdrop's
-  database, which is only read. Running the import again picks up newer Inkdrop edits and never
-  reverts notes you changed in Kanso.
-- **Serves Inkdrop's local API.** `http://127.0.0.1:19840` answers like Inkdrop's local server, so
-  `@inkdropapp/mcp-server` and other Inkdrop API clients keep working unchanged. `/mcp` on the same
-  port is a native MCP endpoint with the same 17 tools.
+- **Serves a local API for agents.** `http://127.0.0.1:19840` is a REST API over your notes, and
+  `/mcp` on the same port is a native MCP endpoint with 17 tools. It speaks the same API as
+  Inkdrop's local server, so clients written for that one work too.
 - **Syncs end-to-end encrypted.** An account on a Cloudflare Worker (D1 for documents, R2 for
   attachments) keeps your Macs in step. Each Mac encrypts notes, titles, IDs and attachments before
   they leave it, with a key the server never sees. Conflicts keep both versions: the losing one
   stays in the note's history.
 - **Keeps history.** Earlier versions of each note, including every version replaced by the API,
   sync or an import, and a daily database backup.
+- **Imports your notes.** Kanso can copy in an Inkdrop library: notes, notebooks, tags, statuses
+  and attachments. Its files are only read, and importing again picks up newer edits without
+  reverting notes you changed in Kanso.
 
 ## Download
 
@@ -52,15 +52,16 @@ scripts/bundle-macos.sh
 
 It builds an ad-hoc signed `target/release/Kanso.app`; copy it to `/Applications`. On Windows and
 Linux, `cargo build --release -p kanso-app` builds `target/release/kanso`. On first run with an
-empty library, Kanso offers to import from Inkdrop.
+empty library, Kanso offers to import any Inkdrop library it finds.
 
 ## Using it
 
-**Taking over from Inkdrop.** Quit Inkdrop so Kanso can use port 19840 (until then the plug icon at
-the bottom of the sidebar turns amber and says the port is in use, and Kanso keeps trying). In
-Settings › Local API, **Copy from Inkdrop…** takes Inkdrop's port, username and password; macOS asks
-you to allow access to the Keychain item "inkdrop Safe Storage", which Inkdrop uses to encrypt them.
-MCP clients configured for Inkdrop then work without changes.
+**Importing from Inkdrop.** **Import from Inkdrop…**, in the Kanso menu and the command palette
+(or `kanso import-inkdrop`), copies an Inkdrop library in. The local API listens on port 19840; if another app already uses that port, the
+plug icon at the bottom of the sidebar turns amber, and Kanso keeps trying until it's free or you
+choose another port in Settings › Local API. To keep MCP clients you had set up for Inkdrop, **Use
+settings from Inkdrop…** on that page takes its port, username and password; macOS asks you to allow
+access to the Keychain item "inkdrop Safe Storage", where Inkdrop keeps them encrypted.
 
 **Sync.** Settings › Account › **Create account** picks a username and a password of at least 12
 characters; this Mac's notes are encrypted and uploaded. Kanso then shows a **recovery key**: save
@@ -127,7 +128,7 @@ cloud/scripts/e2e-local.sh   # the Worker under wrangler dev and the Rust client
 | `kanso-core` | Document types, revisions, the search query language, task and link parsing |
 | `kanso-store` | SQLite store: writes, search, history, change feed, backups, sync bookkeeping |
 | `kanso-import` | Inkdrop (PouchDB on SQLite) importer and Electron safeStorage decryption |
-| `kanso-server` | Inkdrop-compatible HTTP API and the native MCP endpoint |
+| `kanso-server` | The local HTTP API (compatible with Inkdrop's) and the native MCP endpoint |
 | `kanso-sync` | Accounts and end-to-end encrypted sync, and the `kanso-sync` command (`verify`, `estimate`, `unbind`) |
 | `kanso-app` | The GPUI app and the `kanso` command |
 | `cloud/` | The sync Worker (TypeScript, D1, R2) and its admin script |

@@ -1,6 +1,6 @@
 [package]
 name = "kanso-server"
-description = "Kanso's local HTTP API: Inkdrop-compatible REST endpoints and a native MCP endpoint."
+description = "Kanso's local HTTP API: REST endpoints, compatible with Inkdrop's local API, and a native MCP endpoint."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

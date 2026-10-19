@@ -6,7 +6,7 @@ folder in, and reads more from the `themes` folder in its data folder
 (Settings › Themes › Open Folder), so you can try a theme by dropping its file
 there: Kanso picks up the change within a couple of seconds.
 
-As in Inkdrop, three themes are in use at once, and you choose each in
+Three themes are in use at once, and you choose each in
 Settings › Themes:
 
 - the **UI theme** colors the sidebar, the note list, menus and every control;

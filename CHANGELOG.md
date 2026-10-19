@@ -31,8 +31,8 @@ heading compares the release with the one before.
 
 ## [0.1.0](https://github.com/iamngoni/kanso/commits/v0.1.0) - 2026-10-19
 
-The first release: a calm, local-first Markdown notes app that replaces
-Inkdrop, built on GPUI for macOS, Windows and Linux. What follows sums up
+The first release: a calm, local-first Markdown notes app built on GPUI
+for macOS, Windows and Linux. What follows sums up
 the history so far; every commit is in [the history up to
 v0.1.0](https://github.com/iamngoni/kanso/commits/v0.1.0).
 
@@ -46,7 +46,7 @@ v0.1.0](https://github.com/iamngoni/kanso/commits/v0.1.0).
 - The command palette and Open Note ([d268159](https://github.com/iamngoni/kanso/commit/d268159))
 - Backlinks and each note's history, with a way back to any earlier version ([4b45548](https://github.com/iamngoni/kanso/commit/4b45548))
 - Export a note, or every note, as Markdown ([0e35966](https://github.com/iamngoni/kanso/commit/0e35966))
-- An Inkdrop-compatible local API and a native MCP endpoint, so Inkdrop's clients and MCP server keep working ([88ba474](https://github.com/iamngoni/kanso/commit/88ba474), [d5fd4d5](https://github.com/iamngoni/kanso/commit/d5fd4d5))
+- A local API and a native MCP endpoint for agents and other clients, compatible with Inkdrop's local API ([88ba474](https://github.com/iamngoni/kanso/commit/88ba474), [d5fd4d5](https://github.com/iamngoni/kanso/commit/d5fd4d5))
 - Accounts with end-to-end encrypted sync between your computers, recovery keys, and a Settings page for the account and its devices ([f2d5a5a](https://github.com/iamngoni/kanso/commit/f2d5a5a), [666c77f](https://github.com/iamngoni/kanso/commit/666c77f), [b5fbac9](https://github.com/iamngoni/kanso/commit/b5fbac9))
 - Settings inside the main window, and opening at login ([157cd61](https://github.com/iamngoni/kanso/commit/157cd61))
 - Twenty themes, separate UI, syntax and preview themes, and importing Inkdrop and Zed themes ([1f9d3ff](https://github.com/iamngoni/kanso/commit/1f9d3ff), [8f050bc](https://github.com/iamngoni/kanso/commit/8f050bc))

@@ -7,5 +7,5 @@ Exec=kanso
 Icon=kanso
 Terminal=false
 Categories=Office;Utility;TextEditor;
-Keywords=notes;markdown;inkdrop;
+Keywords=notes;markdown;writing;
 StartupWMClass=kanso

@@ -1,6 +1,6 @@
 [package]
 name = "kanso-store"
-description = "Kanso's SQLite document store: Inkdrop-shaped JSON documents, trigram search, revisions and sync state."
+description = "Kanso's SQLite document store: JSON documents, trigram search, revisions and sync state."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
