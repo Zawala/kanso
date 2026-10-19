@@ -300,17 +300,17 @@ impl NoteEditor {
         }
     }
 
-    /// Whether focus mode hides the header band, the status and tags and the
-    /// toolbar until the pointer comes near the top. Hidden, their controls
-    /// leave the Tab order, so the keyboard never lands on one nobody can
-    /// see; every one of them is also in the palette, which focus mode
-    /// keeps.
+    /// Whether focus mode hides the header band until the pointer comes
+    /// near the top (the status, tags and toolbar don't show in focus mode
+    /// at all). Hidden, its controls leave the Tab order, so the keyboard
+    /// never lands on one nobody can see; every one of them is also in the
+    /// palette, which focus mode keeps.
     fn chrome_hidden(&self) -> bool {
         self.focus_mode && !self.chrome_revealed()
     }
 
-    /// Whether the header band and toolbar show in focus mode without a
-    /// hover: only in pictures of the hovered state.
+    /// Whether the header band shows in focus mode without a hover: only in
+    /// pictures of the hovered state.
     fn chrome_revealed(&self) -> bool {
         #[cfg(test)]
         {
@@ -1085,6 +1085,9 @@ impl NoteEditor {
                     div()
                         .px_0p5()
                         .text_size(px(12.5))
+                        // The mode in use reads heavier as well as brighter:
+                        // the segment's fill alone is faint on dark themes.
+                        .when(selected, |el| el.font_medium())
                         .text_color(if selected {
                             colors.text
                         } else {
@@ -1676,8 +1679,10 @@ impl Render for NoteEditor {
             };
             px(readable_width(size, face.mono) + SOURCE_EDGES + numbers)
         });
-        // In focus mode the header band and the toolbar wait, invisible but
-        // in place so nothing moves, until the pointer comes near the top.
+        // In focus mode the header band waits, invisible but in place so
+        // nothing moves, until the pointer comes near the top. The status,
+        // tags and toolbar go: kept in place, invisible, they left a wide
+        // empty band between the title and the text.
         let hide_chrome = self.chrome_hidden();
         let chrome = |el: Div| {
             el.flex_none().when(hide_chrome, |el| {
@@ -1697,9 +1702,11 @@ impl Render for NoteEditor {
                     .pb(px(8.))
                     .child(self.render_title(window, cx)),
             )
-            .child(chrome(v_flex()).child(self.render_meta(&note, cx)))
-            .when(mode == ViewMode::Edit && !trashed, |el| {
-                el.child(chrome(v_flex()).child(self.render_format_bar(cx)))
+            .when(!focus_mode, |el| {
+                el.child(v_flex().flex_none().child(self.render_meta(&note, cx)))
+            })
+            .when(mode == ViewMode::Edit && !trashed && !focus_mode, |el| {
+                el.child(v_flex().flex_none().child(self.render_format_bar(cx)))
             });
 
         let source = div()

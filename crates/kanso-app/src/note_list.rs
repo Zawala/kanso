@@ -834,14 +834,17 @@ impl NoteList {
                 colors,
             )
             .into_any_element(),
-            // The editor beside it shows the full block with the actions.
-            Filter::All | Filter::Book(_) => quiet_empty(
-                IconName::FileText,
-                "No notes yet".into(),
-                Some("Create your first note to get started.".into()),
-                colors,
-            )
-            .into_any_element(),
+            // The editor beside it shows the full block with the actions;
+            // a second icon and sentence here would only repeat it.
+            Filter::All | Filter::Book(_) => v_flex()
+                .size_full()
+                .items_center()
+                .justify_center()
+                .pb(px(TOP_BAND_HEIGHT))
+                .text_size(px(12.5))
+                .text_color(colors.text_muted)
+                .child("No notes")
+                .into_any_element(),
             Filter::Pinned => quiet_empty(
                 Lucide::Pin,
                 "No pinned notes".into(),
