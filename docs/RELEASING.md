@@ -1,9 +1,10 @@
 # Releasing Kanso
 
-A release is a tag. `scripts/release.sh` cuts it, the release workflow builds
-every platform into a draft GitHub Release with a signed update feed, and
-`scripts/release.sh publish` publishes the draft. Publishing is the moment
-every installed Kanso can see the update.
+A release is a tag. `scripts/release.sh` cuts it, and the release workflow
+builds every platform, signs the update feed, checks everything and
+publishes the GitHub Release on its own. Publishing is the moment every
+installed Kanso can see the update; if any check fails, nothing is
+published.
 
 ## How updates work
 
@@ -102,7 +103,7 @@ From a clean `master` that matches `origin/master`:
 scripts/release.sh 0.2.0          # bump, changelog, commit, tag
 # read the new section of CHANGELOG.md; amend it if it needs words
 git push origin master && git push origin v0.2.0   # or pass --push above
-scripts/release.sh publish 0.2.0  # wait for the workflow, verify, publish
+# the workflow builds, checks and publishes it
 ```
 
 `release.sh <version>`:
@@ -121,8 +122,11 @@ signs and notarizes the Mac app when the Apple secrets are set, and makes
 the update archives. Its `feed` job then writes `latest.json` from them with
 the release's section of `CHANGELOG.md` (a tag without one fails), signs it
 with `KANSO_UPDATE_SIGNING_KEY`, and verifies it against the keys in the
-checkout; a separate `publish` job opens a **draft** release with
-everything. A missing or untrusted signing key fails the release.
+checkout. A missing or untrusted signing key fails the release, and so does
+a tag without the Developer ID secrets: the Mac build must be signed,
+notarized and accepted by Gatekeeper (`spctl`). Last, the `publish` job
+checks every file against `SHA256SUMS`, uploads everything as a draft, and
+publishes it as the latest release once every file is up.
 
 The signing key only reaches the `feed` job, which runs in the `release`
 environment with a read-only token, no third-party actions, and the key in
@@ -130,9 +134,9 @@ one step that runs a `kanso-release` built in an earlier one. Only `publish`
 can write to the repository, and it runs no code from it. Every action is
 pinned to a commit; bump the SHAs deliberately.
 
-`release.sh publish <version>` waits for that run, downloads the draft's
-`latest.json` and `.sig`, verifies them, and publishes the draft as the
-latest release.
+`release.sh publish <version>` is only for a release left as a draft (by a
+run stopped between upload and publish): it downloads the draft's
+`latest.json` and `.sig`, verifies them, and publishes it.
 
 ## One-time setup
 

@@ -5,13 +5,14 @@
 #       On a clean, up-to-date master: bumps [workspace.package] version and
 #       Cargo.lock, adds the release's section to CHANGELOG.md with
 #       git-cliff, commits "chore(release): v<version>" and tags v<version>.
-#       It prints the push commands; --push runs them, which starts the
-#       release workflow.
+#       It prints the push command; --push runs it. The pushed tag starts
+#       the release workflow, which builds, checks and publishes the release
+#       on its own; everyone's Kanso then picks it up.
 #
 #   scripts/release.sh publish <version>
-#       Waits for the release workflow of v<version>, checks the draft has
-#       a feed whose signature verifies, and publishes it. Publishing is
-#       what makes the update reach everyone's Kanso.
+#       Only for a release the workflow left as a draft (an older run, or
+#       one stopped between upload and publish): waits for the workflow,
+#       checks the draft's feed signature, and publishes it.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -134,11 +135,11 @@ cut() {
 	echo
 	echo "Committed and tagged $tag. Read CHANGELOG.md's new section, then:"
 	echo "  git push origin master && git push origin $tag"
-	echo "  scripts/release.sh publish $version"
+	echo "The workflow builds, checks and publishes it."
 	if [[ "$push" == "--push" ]]; then
 		git push origin master
 		git push origin "$tag"
-		echo "Pushed. The release workflow is building $tag."
+		echo "Pushed. The release workflow builds, checks and publishes $tag."
 	fi
 }
 

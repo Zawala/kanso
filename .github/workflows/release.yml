@@ -1,9 +1,9 @@
 name: Release
 
-# A `v*` tag builds every platform and opens a draft GitHub Release with the
+# A `v*` tag builds every platform and publishes a GitHub Release with the
 # downloads, the update archives, the signed update feed (latest.json and
-# latest.json.sig) and SHA256SUMS; publishing the draft is left to a person
-# (scripts/release.sh publish), and only then does the app see the update.
+# latest.json.sig) and SHA256SUMS, once every check passes; everyone's Kanso
+# then sees the update. If any check fails, nothing is published.
 # Run by hand (workflow_dispatch), it builds the same downloads as artifacts
 # only, without a feed. docs/RELEASING.md has the whole flow.
 #
@@ -166,6 +166,12 @@ jobs:
             xcrun stapler staple "$app"
           fi
           codesign --verify --deep --strict "$app"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            # A tag publishes itself, so it must be the notarized build
+            # Gatekeeper accepts, never an ad hoc one.
+            [ "$signing" = 1 ] || { echo "::error::A release needs the Developer ID and notarization secrets"; exit 1; }
+            spctl --assess --type execute -vv "$app"
+          fi
 
           mkdir -p dist dmg
           # The update archive: the .app alone, with no AppleDouble files
@@ -343,10 +349,14 @@ jobs:
             notes/notes.md
           if-no-files-found: error
 
-  # A draft: nothing is public until someone presses Publish. The only job
-  # that can write, and it runs no code from the repository.
+  # Publishes the release once everything above passed: each platform
+  # built (macOS signed, notarized and accepted by Gatekeeper), the update
+  # feed signed and verified against the app's trusted key, and every file
+  # matching SHA256SUMS. It goes up as a draft first and is published only
+  # once every file is uploaded, so nobody sees a half-uploaded release.
+  # The only job that can write, and it runs no code from the repository.
   publish:
-    name: Draft release
+    name: Publish release
     needs: [build, feed]
     runs-on: [self-hosted, Linux]
     permissions:
@@ -363,11 +373,16 @@ jobs:
           name: release-feed
           path: feed
 
-      - name: Draft release
+      - name: Check every file against SHA256SUMS
+        run: |
+          cp feed/dist/latest.json feed/dist/latest.json.sig feed/dist/SHA256SUMS dist/
+          cd dist && sha256sum --check --strict SHA256SUMS
+
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          cp feed/dist/latest.json feed/dist/latest.json.sig feed/dist/SHA256SUMS dist/
           gh release create "$GITHUB_REF_NAME" dist/* \
             --draft --verify-tag --notes-file feed/notes/notes.md --title "Kanso ${GITHUB_REF_NAME#v}"
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
