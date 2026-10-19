@@ -7,3 +7,4 @@
 #
 # None yet: run `cargo run -p kanso-update --bin kanso-release -- keygen`
 # and add the public key it prints below this line.
+30faS+arUbc8DuB5RoGkoxxTzZlym7ilZRPQHiq52JI=
