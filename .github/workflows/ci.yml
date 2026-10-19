@@ -24,6 +24,35 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
 
+  # The app and the command-line tools build for Windows and Linux too (the
+  # release workflow ships them). The tests stay on the job above: several
+  # need macOS's fonts and text system.
+  portability:
+    name: clippy (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show active-toolchain || rustup toolchain install
+        shell: bash
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config clang cmake \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libvulkan-dev libegl-dev \
+            libx11-dev libx11-xcb-dev libxcb1-dev \
+            libxcb-randr0-dev libxcb-shape0-dev libxcb-shm0-dev libxcb-xfixes0-dev \
+            libfontconfig-dev libfreetype-dev \
+            libssl-dev libasound2-dev libdbus-1-dev libzstd-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --locked -- -D warnings
+
   worker:
     runs-on: self-hosted
     defaults:
