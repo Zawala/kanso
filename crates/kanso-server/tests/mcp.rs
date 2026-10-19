@@ -52,7 +52,7 @@ async fn lists_the_seventeen_tools_and_the_note_template() {
     let answer = rpc(&app.router, "tools/list", json!({})).await;
     let tools = answer["result"]["tools"].as_array().unwrap();
     // The 17, then Kanso's own.
-    assert!(tools.len() > 17);
+    assert_eq!(tools.len(), 20);
     assert!(
         tools[17..]
             .iter()
@@ -648,6 +648,69 @@ async fn notes_export_as_standalone_pages() {
         &app.router,
         "kanso-export-html",
         json!({ "noteId": note_id, "theme": "sepia" }),
+    )
+    .await;
+    assert_eq!(bad["isError"], true);
+}
+
+#[tokio::test]
+async fn outlines_and_wiki_links_through_kanso_tools() {
+    let app = app();
+    let (book_id, _) = write(&app.router, "/books", json!({ "name": "B" })).await;
+    let (plan, _) = write(
+        &app.router,
+        "/notes",
+        json!({ "bookId": book_id, "title": "Project Plan", "body": "# Goals\ntext\n```\n# not\n```\n## Budget Lines\n" }),
+    )
+    .await;
+    let outline =
+        tool_json(&tool(&app.router, "kanso-get-outline", json!({ "noteId": plan })).await);
+    assert_eq!(
+        outline,
+        json!([
+            { "level": 1, "text": "Goals", "line": 0 },
+            { "level": 2, "text": "Budget Lines", "line": 5 },
+        ])
+    );
+    let missing = tool(
+        &app.router,
+        "kanso-get-outline",
+        json!({ "noteId": "note:missing" }),
+    )
+    .await;
+    assert_eq!(missing["isError"], true);
+
+    let bare = plan.strip_prefix("note:").unwrap();
+    let found = tool_json(
+        &tool(
+            &app.router,
+            "kanso-resolve-wikilink",
+            json!({ "link": "[[project  plan#budget lines|money]]" }),
+        )
+        .await,
+    );
+    assert_eq!(
+        found,
+        json!({
+            "noteId": plan,
+            "title": "Project Plan",
+            "uri": format!("inkdrop://note/{bare}"),
+            "alias": "money",
+            "heading": { "text": "Budget Lines", "level": 2, "line": 5 },
+        })
+    );
+    let unknown = tool(
+        &app.router,
+        "kanso-resolve-wikilink",
+        json!({ "link": "Nothing" }),
+    )
+    .await;
+    assert_eq!(unknown["isError"], true);
+    assert_eq!(text(&unknown, 0), "No note is titled \"Nothing\".");
+    let bad = tool(
+        &app.router,
+        "kanso-resolve-wikilink",
+        json!({ "link": "[[]]" }),
     )
     .await;
     assert_eq!(bad["isError"], true);

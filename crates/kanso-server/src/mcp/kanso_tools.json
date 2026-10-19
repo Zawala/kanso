@@ -24,5 +24,45 @@
     "execution": {
       "taskSupport": "forbidden"
     }
+  },
+  {
+    "name": "kanso-get-outline",
+    "description": "Retrieve a note's outline: its headings in order, each with its level (1 to 6), its text without Markdown markers, and the 0-based line it is on in the note's body. Headings inside code blocks are not part of the outline.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "noteId": {
+          "type": "string",
+          "description": "ID of the note. It can be found as `_id` in the note docs. It always starts with `note:`."
+        }
+      },
+      "required": [
+        "noteId"
+      ]
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "kanso-resolve-wikilink",
+    "description": "Find the note a wiki-link points at. Accepts `[[Title]]`, `[[Title#Heading]]` or `[[Title|alias]]`, with or without the brackets. Titles match without regard to case or extra spaces, among notes outside the trash; when several notes share a title, the one created first is the match. Returns the note's ID, title and `inkdrop://note/<id>` link, which is the form to write when linking to it, plus the heading's line when the link names a heading the note has.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "link": {
+          "type": "string",
+          "description": "The wiki-link, such as `[[Project Plan#Budget]]`, or just the title."
+        }
+      },
+      "required": [
+        "link"
+      ]
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
   }
 ]

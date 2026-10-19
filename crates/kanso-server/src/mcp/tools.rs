@@ -1,4 +1,5 @@
-//! The 17 tools and the note resource, implemented on the store.
+//! The 17 tools and the note resource, implemented on the store, and
+//! Kanso's own `kanso-…` tools after them.
 //!
 //! Each tool does what `@inkdropapp/mcp-server` 1.5.0 does with the HTTP API,
 //! through the same operations the REST handlers use, and formats its result
@@ -70,6 +71,8 @@ pub(crate) fn call(state: &AppState, name: &str, arguments: Option<&Value>) -> V
         "create-file" => create_file(store, state.local_files, &args),
         "read-file" => read_file(store, state.local_files, &args),
         "kanso-export-html" => export_html(store, &args),
+        "kanso-get-outline" => get_outline(store, &args),
+        "kanso-resolve-wikilink" => resolve_wikilink(store, &args),
         _ => Err(ToolError(format!(
             "MCP error -32602: Tool {name} not found"
         ))),
@@ -281,6 +284,62 @@ fn read_backlinks(store: &Store, args: &Args) -> ToolResult {
             })
             .collect(),
     )
+}
+
+/// `kanso-get-outline`: the note's headings as JSON.
+fn get_outline(store: &Store, args: &Args) -> ToolResult {
+    let id = with_prefix(DocType::Note, str_arg(args, "noteId"));
+    // The same failure as reading a note that isn't there.
+    api::get_doc(store, &id, None, false)?;
+    let headings = store
+        .outline(&id)
+        .map_err(|err| ToolError(err.to_string()))?;
+    if headings.is_empty() {
+        return result(vec![text(format!("No headings in {}.", note_uri(&id)))]);
+    }
+    let headings = serde_json::to_value(headings).unwrap_or_default();
+    result(vec![text(pretty(&headings))])
+}
+
+/// `kanso-resolve-wikilink`: the note a wiki-link names.
+fn resolve_wikilink(store: &Store, args: &Args) -> ToolResult {
+    let link = str_arg(args, "link").trim();
+    let inner = link
+        .strip_prefix("[[")
+        .and_then(|rest| rest.strip_suffix("]]"))
+        .unwrap_or(link);
+    let Some((title, heading, alias)) = kanso_core::links::parse_target(inner) else {
+        return Err(ToolError(format!(
+            "`{link}` is not a wiki-link: it needs a title, without brackets or line breaks inside."
+        )));
+    };
+    let found = store
+        .resolve_title(&title)
+        .map_err(|err| ToolError(err.to_string()))?;
+    let Some((id, note_title)) = found else {
+        return Err(ToolError(format!("No note is titled \"{title}\".")));
+    };
+    let mut answer = Map::new();
+    answer.insert("noteId".into(), json!(id));
+    answer.insert("title".into(), json!(note_title));
+    answer.insert("uri".into(), json!(note_uri(&id)));
+    if let Some(alias) = alias {
+        answer.insert("alias".into(), json!(alias));
+    }
+    if let Some(heading) = heading {
+        let outline = store
+            .outline(&id)
+            .map_err(|err| ToolError(err.to_string()))?;
+        let found = kanso_core::outline::find_heading(&outline, &heading);
+        answer.insert(
+            "heading".into(),
+            match found {
+                Some(h) => json!({ "text": h.text, "level": h.level, "line": h.line }),
+                None => json!({ "text": heading, "found": false }),
+            },
+        );
+    }
+    result(vec![text(pretty(&Value::Object(answer)))])
 }
 
 fn summaries(notes: Vec<Value>) -> ToolResult {
