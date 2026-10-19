@@ -43,6 +43,7 @@ use crate::services::{
 };
 use crate::settings::{NAV_WIDTH, SettingsPage};
 use crate::theme::{Colors, DARK, LIGHT, Rgb};
+use crate::updates::{Phase, Problem as UpdateProblem, Updates};
 use crate::workspace::{AppState, Workspace, apply_theme};
 
 /// The demo's "now": Thursday 28 May 2026, 09:45 in a zone two hours ahead
@@ -1810,6 +1811,210 @@ fn note_picker(
     open_palette(cx, window, workspace, Mode::Notes, "");
 }
 
+// MARK: Updates
+
+/// The demo release's notes, as git-cliff writes a section.
+const DEMO_NOTES: &str = "## [0.2.0](https://github.com/iamngoni/kanso/compare/v0.1.0...v0.2.0) - 2026-05-27\n\n### New\n\n- Kanso updates itself: new releases download in the background and install on restart ([3f9c2e1](https://github.com/iamngoni/kanso/commit/3f9c2e1))\n- Check for Updates… in the app menu, the palette and Settings ([b81d07a](https://github.com/iamngoni/kanso/commit/b81d07a))\n\n### Improved\n\n- Code blocks color 23 languages ([3709232](https://github.com/iamngoni/kanso/commit/3709232))\n- Quotes and finished tasks have their own colors ([27f54a0](https://github.com/iamngoni/kanso/commit/27f54a0))\n\n### Fixed\n\n- The gap under the title in focus mode is gone ([f5a06dd](https://github.com/iamngoni/kanso/commit/f5a06dd)) (#12)\n\n### Under the hood\n\n- Strip symbols from release builds ([60b6c92](https://github.com/iamngoni/kanso/commit/60b6c92))\n";
+
+fn demo_update() -> kanso_update::Update {
+    kanso_update::Update {
+        version: "0.2.0".into(),
+        pub_date: "2026-05-27T16:00:00Z".into(),
+        release_url: "https://github.com/iamngoni/kanso/releases/tag/v0.2.0".into(),
+        notes: DEMO_NOTES.into(),
+        asset: kanso_update::Asset {
+            url: "https://github.com/iamngoni/kanso/releases/download/v0.2.0/Kanso-0.2.0-macos-arm64.app.tar.gz".into(),
+            sha256: "ab".repeat(32),
+            size: 18_400_000,
+        },
+    }
+}
+
+fn demo_pending() -> kanso_update::Pending {
+    let update = demo_update();
+    kanso_update::Pending {
+        version: update.version,
+        payload: "/Applications/.kanso-update/unpacked-0.2.0/Kanso.app".into(),
+        target: "/Applications/Kanso.app".into(),
+        pub_date: update.pub_date,
+        release_url: update.release_url,
+        notes: update.notes,
+    }
+}
+
+/// The updater in `phase`, with nothing reachable; installable as from
+/// /Applications.
+fn set_updates(cx: &mut HeadlessAppContext, phase: Phase, manual: bool) {
+    cx.update(|cx| {
+        let now = Clock::now_ms(cx);
+        let mut updates = Updates::default();
+        updates.phase = phase;
+        updates.manual = manual;
+        updates.last_checked_ms = Some(now - 12 * MINUTE);
+        updates.install = Ok(kanso_update::Install {
+            target: "/Applications/Kanso.app".into(),
+            stage_dir: "/Applications/.kanso-update".into(),
+            platform: kanso_update::Platform::MacosArm64,
+        });
+        cx.set_global(updates);
+    });
+}
+
+fn update_checking(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    set_updates(cx, Phase::Checking, true);
+}
+
+fn update_downloading(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    set_updates(
+        cx,
+        Phase::Downloading {
+            update: demo_update(),
+            done: 7_728_000,
+            total: 18_400_000,
+        },
+        false,
+    );
+}
+
+fn update_ready(cx: &mut HeadlessAppContext, _: AnyWindowHandle, _: &Entity<Workspace>, _: &Store) {
+    set_updates(cx, Phase::Ready(demo_pending()), false);
+}
+
+fn update_available(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    set_updates(cx, Phase::Available(demo_update()), false);
+    cx.update(|cx| cx.global_mut::<AppState>().config.updates.auto_install = false);
+}
+
+fn update_failed(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    set_updates(cx, Phase::Failed(UpdateProblem::Verification), false);
+}
+
+/// The rail with an update ready.
+fn rail_update_ready(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    collapse_sidebar(cx, window, workspace, store);
+    set_updates(cx, Phase::Ready(demo_pending()), false);
+}
+
+/// The ready pill clicked: the sheet with the release's notes.
+fn update_sheet(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    set_updates(cx, Phase::Ready(demo_pending()), false);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        crate::updates::open_sheet(window, cx)
+    })
+    .unwrap();
+}
+
+/// The first launch after an update: the toast that offers What's new.
+fn update_toast(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    set_updates(cx, Phase::UpToDate, false);
+    cx.update(|cx| {
+        cx.set_reduce_motion(true);
+        let notes = crate::updates::ReleaseNotes::from(&demo_update());
+        let updates = cx.global_mut::<Updates>();
+        updates.installed_notes = Some(notes.clone());
+        updates.just_updated = Some(notes);
+    });
+    cx.update_window(window, |_, window, cx| crate::updates::announce(window, cx))
+        .unwrap();
+}
+
+/// Settings › Updates with an update ready, up to date, and in Kanso Dev.
+fn settings_updates_ready(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    set_updates(cx, Phase::Ready(demo_pending()), false);
+    show_settings(cx, window, workspace, SettingsPage::Updates);
+}
+
+fn settings_updates_current(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    set_updates(cx, Phase::UpToDate, true);
+    cx.update(|cx| {
+        cx.global_mut::<Updates>().installed_notes =
+            Some(crate::updates::ReleaseNotes::from(&demo_update()));
+    });
+    show_settings(cx, window, workspace, SettingsPage::Updates);
+}
+
+fn settings_updates_failed(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    set_updates(cx, Phase::Failed(UpdateProblem::Offline), true);
+    show_settings(cx, window, workspace, SettingsPage::Updates);
+}
+
+/// Kanso Dev: the badge by the name, and its Updates page.
+fn dev_flavour(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    set_updates(cx, Phase::Idle, false);
+    cx.update(|cx| {
+        let updates = cx.global_mut::<Updates>();
+        updates.off = crate::updates::off_reason(
+            &crate::flavour::DEV,
+            true,
+            Some(kanso_update::Platform::MacosArm64),
+        );
+        updates.install = Err(kanso_update::NotInstallable::DevFlavour);
+        updates.last_checked_ms = None;
+        let sidebar = workspace.read(cx).sidebar.clone();
+        sidebar.update(cx, |sidebar, cx| {
+            sidebar.badge = crate::flavour::DEV.badge;
+            cx.notify();
+        });
+    });
+    show_settings(cx, window, workspace, SettingsPage::Updates);
+}
+
 fn open(
     cx: &mut HeadlessAppContext,
     store: Arc<Store>,
@@ -2601,6 +2806,59 @@ fn snapshots() {
         },
         shot("dark-settings-from-focus", Dark, Edit, settings_from_focus),
         shot("dark-settings-palette", Dark, Edit, settings_palette),
+        // Updates: the sidebar's pill in each state, the rail, the sheet,
+        // the toast after an update, Settings › Updates and Kanso Dev.
+        shot("dark-update-checking", Dark, Split, update_checking),
+        shot("light-update-checking", Light, Split, update_checking),
+        shot("dark-update-downloading", Dark, Split, update_downloading),
+        shot("light-update-downloading", Light, Split, update_downloading),
+        shot("dark-update-ready", Dark, Split, update_ready),
+        shot("light-update-ready", Light, Split, update_ready),
+        shot("dark-update-available", Dark, Split, update_available),
+        shot("light-update-available", Light, Split, update_available),
+        shot("dark-update-failed", Dark, Split, update_failed),
+        shot("light-update-failed", Light, Split, update_failed),
+        Shot {
+            left: Left::Rail,
+            ..shot("dark-rail-update-ready", Dark, Edit, rail_update_ready)
+        },
+        Shot {
+            dialog_width: crate::updates::SHEET_WIDTH,
+            ..shot("dark-update-sheet", Dark, Split, update_sheet)
+        },
+        Shot {
+            dialog_width: crate::updates::SHEET_WIDTH,
+            ..shot("light-update-sheet", Light, Split, update_sheet)
+        },
+        shot("dark-update-toast", Dark, Split, update_toast),
+        shot("light-update-toast", Light, Split, update_toast),
+        shot("dark-settings-updates", Dark, Edit, settings_updates_ready),
+        shot(
+            "light-settings-updates",
+            Light,
+            Edit,
+            settings_updates_ready,
+        ),
+        shot(
+            "dark-settings-updates-current",
+            Dark,
+            Edit,
+            settings_updates_current,
+        ),
+        shot(
+            "light-settings-updates-current",
+            Light,
+            Edit,
+            settings_updates_current,
+        ),
+        shot(
+            "dark-settings-updates-failed",
+            Dark,
+            Edit,
+            settings_updates_failed,
+        ),
+        shot("dark-dev-flavour", Dark, Edit, dev_flavour),
+        shot("light-dev-flavour", Light, Edit, dev_flavour),
     ];
     // The Themes page whole, in both of Kanso's themes and in another.
     let tall = size(px(1440.), px(2900.));
