@@ -23,7 +23,7 @@ use kanso_core::DocType;
 use kanso_store::{Origin, Put, Store};
 use serde_json::json;
 
-use crate::config::{AppConfig, ThemePreference, ViewMode};
+use crate::config::{AppConfig, ThemePreference, ThemeSettings, ViewMode};
 use crate::services::Services;
 use crate::workspace::{AppState, Workspace, apply_theme};
 
@@ -190,6 +190,7 @@ fn open_split(
 ) -> (AnyWindowHandle, Entity<Workspace>) {
     let mut config = AppConfig::default();
     config.appearance.theme = ThemePreference::Light;
+    config.appearance.themes = ThemeSettings::from_preference(ThemePreference::Light);
     config.appearance.view_mode = ViewMode::Split;
     config.last_note = Some(note.to_owned());
     cx.update(|cx| {
@@ -199,7 +200,7 @@ fn open_split(
             config,
         });
         cx.set_global(Services::default());
-        apply_theme(ThemePreference::Light, None, cx);
+        apply_theme(None, cx);
     });
     cx.update(|cx| {
         gpui_kit::open_window(
@@ -214,7 +215,7 @@ fn open_split(
             },
             cx,
             |window, cx| {
-                apply_theme(ThemePreference::Light, Some(window), cx);
+                apply_theme(Some(window), cx);
                 cx.new(|cx| Workspace::new(window, cx))
             },
         )

@@ -9,7 +9,7 @@ use gpui_kit::assets::IconName;
 
 use crate::settings::{
     CloseSettings, OpenAccountSettings, OpenApiSettings, OpenAppearanceSettings,
-    OpenEditorSettings, OpenGeneralSettings,
+    OpenEditorSettings, OpenGeneralSettings, ReloadThemes,
 };
 use crate::workspace::{
     ChangePassword, ExportLibrary, ExportNote, FocusNoteList, FocusSearch, ImportInkdrop, NewNote,
@@ -508,13 +508,33 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "settings-appearance",
-        label: "Settings: Appearance",
+        label: "Settings: Themes",
         label_when_pinned: None,
-        description: "Light, dark, or following macOS.",
+        description: "The UI, editor syntax and preview themes, light and dark.",
         icon: IconName::Palette,
-        keywords: &["preferences", "theme", "dark mode", "light mode"],
+        keywords: &[
+            "preferences",
+            "appearance",
+            "theme",
+            "color scheme",
+            "colors",
+            "syntax",
+            "dark mode",
+            "light mode",
+        ],
         group: Group::App,
         run: action!(OpenAppearanceSettings),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "reload-themes",
+        label: "Reload Themes",
+        label_when_pinned: None,
+        description: "Reads the themes folder again, after adding or editing a theme file.",
+        icon: IconName::RefreshCw,
+        keywords: &["theme", "colors", "refresh"],
+        group: Group::App,
+        run: action!(ReloadThemes),
         needs: Needs::Nothing,
     },
     Command {

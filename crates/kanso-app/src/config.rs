@@ -85,6 +85,9 @@ pub struct AccountRef {
     pub username: String,
 }
 
+/// Light, dark or the system's: the only theme choice before version 3, still
+/// written beside [`ThemeSettings`] so an older Kanso keeps the light or dark
+/// it last showed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ThemePreference {
@@ -92,6 +95,74 @@ pub enum ThemePreference {
     System,
     Light,
     Dark,
+}
+
+/// Kanso's own themes, the ones older files and a missing theme fall back to.
+pub const KANSO_LIGHT: &str = "Kanso Light";
+pub const KANSO_DARK: &str = "Kanso Dark";
+
+/// Which themes color the app, by name, as Inkdrop chooses them: one for the
+/// UI, and the editor's syntax and the preview each the UI's own unless one
+/// is picked for them. Following the system switches the UI between a light
+/// and a dark theme.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ThemeSettings {
+    /// The UI theme while the system isn't followed.
+    pub ui: String,
+    /// `None`: the UI theme's.
+    pub syntax: Option<String>,
+    pub preview: Option<String>,
+    pub follow_system: bool,
+    /// The UI themes for light and dark mode while the system is followed.
+    pub light: String,
+    pub dark: String,
+}
+
+impl Default for ThemeSettings {
+    fn default() -> Self {
+        ThemeSettings::from_preference(ThemePreference::System)
+    }
+}
+
+impl ThemeSettings {
+    /// The settings an older file's light-or-dark choice means: Kanso's own
+    /// light and dark themes, following the system or fixed.
+    pub fn from_preference(preference: ThemePreference) -> ThemeSettings {
+        ThemeSettings {
+            ui: match preference {
+                ThemePreference::Light => KANSO_LIGHT,
+                ThemePreference::System | ThemePreference::Dark => KANSO_DARK,
+            }
+            .to_owned(),
+            syntax: None,
+            preview: None,
+            follow_system: preference == ThemePreference::System,
+            light: KANSO_LIGHT.to_owned(),
+            dark: KANSO_DARK.to_owned(),
+        }
+    }
+
+    /// The UI theme to show while the system is dark or light.
+    pub fn ui_for(&self, system_dark: bool) -> &str {
+        match (self.follow_system, system_dark) {
+            (true, true) => &self.dark,
+            (true, false) => &self.light,
+            (false, _) => &self.ui,
+        }
+    }
+
+    pub fn syntax_for(&self, system_dark: bool) -> &str {
+        self.syntax
+            .as_deref()
+            .unwrap_or_else(|| self.ui_for(system_dark))
+    }
+
+    pub fn preview_for(&self, system_dark: bool) -> &str {
+        self.preview
+            .as_deref()
+            .unwrap_or_else(|| self.ui_for(system_dark))
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -154,7 +225,9 @@ pub const DEFAULT_FONT_SIZE: f32 = 16.0;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Appearance {
+    /// Kept for older versions; [`Self::themes`] is the choice.
     pub theme: ThemePreference,
+    pub themes: ThemeSettings,
     pub editor_font: EditorFont,
     pub editor_font_size: f32,
     /// Whether monospace text shows line numbers beside it.
@@ -170,6 +243,7 @@ impl Default for Appearance {
     fn default() -> Self {
         Appearance {
             theme: ThemePreference::System,
+            themes: ThemeSettings::default(),
             editor_font: EditorFont::Auto,
             editor_font_size: DEFAULT_FONT_SIZE,
             line_numbers: true,
@@ -222,7 +296,7 @@ impl Default for WindowLayout {
 }
 
 /// The layout [`AppConfig::migrate`] brings older files up to.
-pub const CONFIG_VERSION: u32 = 2;
+pub const CONFIG_VERSION: u32 = 3;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -259,6 +333,8 @@ impl AppConfig {
     /// accounts: a Worker URL that isn't the default becomes the forms'
     /// server, and the URL itself, `enabled` and the (absent) account stay
     /// as they were, so the Mac starts signed out with its notes in place.
+    /// Version 3 brought themes: light, dark or system becomes Kanso's own
+    /// light and dark themes, fixed or following the system.
     pub fn migrate(&mut self) -> bool {
         if self.version >= CONFIG_VERSION {
             return false;
@@ -272,6 +348,9 @@ impl AppConfig {
                 .endpoint
                 .clone()
                 .filter(|endpoint| !is_owner_endpoint(endpoint));
+        }
+        if self.version < 3 {
+            self.appearance.themes = ThemeSettings::from_preference(self.appearance.theme);
         }
         self.version = CONFIG_VERSION;
         true
@@ -372,6 +451,7 @@ mod tests {
             any::<bool>(),
             prop::option::of("note:[a-zA-Z0-9]{8}"),
             0u32..=CONFIG_VERSION + 1,
+            gen_themes(),
         )
             .prop_map(
                 |(
@@ -385,6 +465,7 @@ mod tests {
                     login,
                     last,
                     version,
+                    themes,
                 )| AppConfig {
                     version,
                     server: ServerSettings {
@@ -397,6 +478,7 @@ mod tests {
                     sync,
                     appearance: Appearance {
                         theme,
+                        themes,
                         editor_font: font,
                         editor_font_size: size,
                         line_numbers: numbers,
@@ -446,6 +528,59 @@ mod tests {
             )
     }
 
+    fn gen_theme_name() -> impl Strategy<Value = String> {
+        prop_oneof![
+            Just(KANSO_LIGHT.to_owned()),
+            Just(KANSO_DARK.to_owned()),
+            "[A-Za-z ]{1,12}"
+        ]
+    }
+
+    fn gen_themes() -> impl Strategy<Value = ThemeSettings> {
+        (
+            gen_theme_name(),
+            prop::option::of(gen_theme_name()),
+            prop::option::of(gen_theme_name()),
+            any::<bool>(),
+            gen_theme_name(),
+            gen_theme_name(),
+        )
+            .prop_map(
+                |(ui, syntax, preview, follow_system, light, dark)| ThemeSettings {
+                    ui,
+                    syntax,
+                    preview,
+                    follow_system,
+                    light,
+                    dark,
+                },
+            )
+    }
+
+    /// A version 2 file's light theme becomes Kanso Light, fixed; a file
+    /// with no theme follows the system.
+    #[test]
+    fn old_theme_choices_migrate() {
+        let mut light: AppConfig =
+            serde_json::from_str(r#"{"version": 2, "appearance": {"theme": "light"}}"#).unwrap();
+        assert!(light.migrate());
+        assert!(!light.appearance.themes.follow_system);
+        assert_eq!(light.appearance.themes.ui, KANSO_LIGHT);
+        let mut none: AppConfig = serde_json::from_str(r#"{"version": 2}"#).unwrap();
+        none.migrate();
+        assert!(none.appearance.themes.follow_system);
+        assert_eq!(none.appearance.themes.ui_for(false), KANSO_LIGHT);
+        assert_eq!(none.appearance.themes.ui_for(true), KANSO_DARK);
+        let chosen: AppConfig = serde_json::from_str(
+            r#"{"version": 3, "appearance": {"themes": {"ui": "Nord", "followSystem": false, "syntax": "Dracula"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(chosen.appearance.themes.ui_for(true), "Nord");
+        assert_eq!(chosen.appearance.themes.syntax_for(true), "Dracula");
+        assert_eq!(chosen.appearance.themes.preview_for(true), "Nord");
+        assert_eq!(chosen.appearance.themes.light, KANSO_LIGHT);
+    }
+
     fn gen_font() -> impl Strategy<Value = EditorFont> {
         prop::sample::select(vec![EditorFont::Auto, EditorFont::Sans, EditorFont::Mono])
     }
@@ -464,11 +599,13 @@ mod tests {
         /// Migration ends at the current version and is idempotent. It
         /// lifts a never-changed old default size (from before version 1),
         /// makes a Worker URL that isn't the default the forms' server
-        /// (from before version 2, unless one is set), and changes nothing
+        /// (from before version 2, unless one is set), turns light, dark or
+        /// system into Kanso's own themes (from before version 3), and
+        /// changes nothing
         /// else: the URL, `enabled` and the account stay as they were.
         /// Current files are left alone.
         #[test]
-        fn prop_migration_lifts_old_files_to_v2(config in gen_config()) {
+        fn prop_migration_lifts_old_files_to_v3(config in gen_config()) {
             let mut migrated = config.clone();
             let changed = migrated.migrate();
             prop_assert_eq!(migrated.version, CONFIG_VERSION.max(config.version));
@@ -488,7 +625,14 @@ mod tests {
             prop_assert_eq!(&migrated.sync.endpoint, &config.sync.endpoint);
             prop_assert_eq!(migrated.sync.enabled, config.sync.enabled);
             prop_assert_eq!(&migrated.sync.account, &config.sync.account);
+            let expected_themes = if config.version < 3 {
+                ThemeSettings::from_preference(config.appearance.theme)
+            } else {
+                config.appearance.themes.clone()
+            };
+            prop_assert_eq!(&migrated.appearance.themes, &expected_themes);
             let mut rest = migrated.clone();
+            rest.appearance.themes = config.appearance.themes.clone();
             rest.version = config.version;
             rest.appearance.editor_font_size = config.appearance.editor_font_size;
             rest.sync.server = config.sync.server.clone();
@@ -496,6 +640,31 @@ mod tests {
             let mut again = migrated.clone();
             prop_assert!(!again.migrate());
             prop_assert_eq!(again, migrated);
+        }
+
+        /// Following the system picks its light or dark theme and nothing
+        /// else does; syntax and preview are the UI theme's unless chosen.
+        /// A file from before themes means Kanso's own, following the
+        /// system only for System.
+        #[test]
+        fn prop_theme_choice_follows_the_system_only_when_asked(themes in gen_themes(), dark: bool, pref in prop::sample::select(vec![ThemePreference::System, ThemePreference::Light, ThemePreference::Dark])) {
+            let ui = themes.ui_for(dark);
+            if themes.follow_system {
+                prop_assert_eq!(ui, if dark { &themes.dark } else { &themes.light });
+            } else {
+                prop_assert_eq!(ui, &themes.ui);
+                prop_assert_eq!(ui, themes.ui_for(!dark));
+            }
+            prop_assert_eq!(themes.syntax_for(dark), themes.syntax.as_deref().unwrap_or(ui));
+            prop_assert_eq!(themes.preview_for(dark), themes.preview.as_deref().unwrap_or(ui));
+            let old = ThemeSettings::from_preference(pref);
+            prop_assert_eq!(old.follow_system, pref == ThemePreference::System);
+            let expected = match (pref, dark) {
+                (ThemePreference::Light, _) | (ThemePreference::System, false) => KANSO_LIGHT,
+                _ => KANSO_DARK,
+            };
+            prop_assert_eq!(old.ui_for(dark), expected);
+            prop_assert_eq!(old.syntax_for(dark), expected);
         }
 
         /// The default server is recognized however it is written, and no
@@ -606,7 +775,7 @@ mod tests {
         let owner = r#"{"version": 1, "sync": {"enabled": true, "endpoint": "https://kanso-sync.imngonii.workers.dev", "intervalSecs": 300}}"#;
         let mut config: AppConfig = serde_json::from_str(owner).unwrap();
         assert!(config.migrate());
-        assert_eq!(config.version, 2);
+        assert_eq!(config.version, CONFIG_VERSION);
         assert_eq!(config.sync.server, None);
         assert_eq!(config.sync.account, None);
         assert!(config.sync.enabled);

@@ -1,21 +1,25 @@
-//! Kanso's two themes: warm graphite (dark, the primary one) and soft paper
-//! (light), from the design spec's palette.
+//! The colors the views draw with, and the component library's theme built
+//! from them. Kanso's own two themes, warm graphite (dark, the primary one)
+//! and soft paper (light), are [`DARK`] and [`LIGHT`]; `themes/kanso-dark.json`
+//! and `themes/kanso-light.json` give the same colors, and every other theme
+//! is read from a file the same way (see `theme_file.rs` and `themes.rs`).
 //!
-//! The component library gets them as theme files, so its buttons, menus and
-//! inputs match. The views read [`Colors`] directly for what the library
-//! can't express: three pane surfaces, secondary text, and selected rows
-//! (the library caps a list's selected background at 20% opacity).
+//! The component library gets the theme in use as a theme file, so its
+//! buttons, menus and inputs match. The views read [`Colors`] directly for
+//! what the library can't express: three pane surfaces, secondary text, and
+//! selected rows (the library caps a list's selected background at 20%
+//! opacity).
 
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::{Theme, ThemeRegistry};
+use gpui_kit::component::Theme;
 use gpui_kit::{App, Fill, FontWeight, Hsla, Styled, TextSystem, font, px};
 use kanso_core::NoteStatus;
 use serde_json::{Value, json};
 
-pub const LIGHT_NAME: &str = "Kanso Light";
-pub const DARK_NAME: &str = "Kanso Dark";
+use crate::theme_file::{CAPTURES, ResolvedTheme, TokenStyle};
 
 /// An sRGB color, `0xRRGGBB`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,7 +32,7 @@ impl Rgb {
     }
 
     /// `#RRGGBBAA`, with `alpha` out of 255.
-    fn hex_alpha(self, alpha: u8) -> String {
+    pub(crate) fn hex_alpha(self, alpha: u8) -> String {
         format!("{}{alpha:02X}", self.hex())
     }
 }
@@ -162,8 +166,12 @@ pub const LIGHT: Colors = Colors {
 };
 
 impl Colors {
-    /// The colors of the theme in use.
+    /// The colors of the UI theme in use; Kanso's own light or dark before
+    /// one is applied.
     pub fn get(cx: &App) -> &'static Colors {
+        if let Some(active) = cx.try_global::<crate::themes::ActiveTheme>() {
+            return active.colors;
+        }
         if Theme::global(cx).is_dark() {
             &DARK
         } else {
@@ -219,31 +227,6 @@ pub fn section_label<E: Styled>(el: E, colors: &Colors) -> E {
         .text_color(colors.text_muted)
 }
 
-/// Registers Kanso's themes and makes them the ones light and dark mode use.
-/// Does nothing once they are in place.
-pub fn ensure_installed(cx: &mut App) {
-    let theme = Theme::global(cx);
-    if theme.light_theme.name == LIGHT_NAME && theme.dark_theme.name == DARK_NAME {
-        return;
-    }
-    let set = theme_set(mono_font(cx));
-    let registry = ThemeRegistry::global_mut(cx);
-    if let Err(err) = registry.load_themes_from_str(&set.to_string()) {
-        eprintln!("kanso: couldn't load the theme: {err:#}");
-        return;
-    }
-    let themes = registry.themes();
-    let (Some(light), Some(dark)) = (
-        themes.get(LIGHT_NAME).cloned(),
-        themes.get(DARK_NAME).cloned(),
-    ) else {
-        return;
-    };
-    let theme = Theme::global_mut(cx);
-    theme.light_theme = light;
-    theme.dark_theme = dark;
-}
-
 /// SF Mono, the system's monospaced face, by the name Core Text knows it
 /// by. It isn't installed as a family called "SF Mono", so it never shows in
 /// the font list.
@@ -252,7 +235,7 @@ pub(crate) const SYSTEM_MONO: &str = ".AppleSystemUIFontMonospaced";
 /// SF Mono when it loads. A family that doesn't load quietly becomes a
 /// proportional fallback, so it is checked rather than assumed; without it
 /// the library keeps its own default, Menlo.
-fn mono_font(cx: &App) -> Option<&'static str> {
+pub(crate) fn mono_font(cx: &App) -> Option<&'static str> {
     static FOUND: OnceLock<bool> = OnceLock::new();
     FOUND
         .get_or_init(|| loads_monospaced(cx.text_system(), SYSTEM_MONO))
@@ -272,26 +255,36 @@ fn loads_monospaced(text_system: &TextSystem, family: &str) -> bool {
     itself && width('i').is_some() && width('i') == width('m')
 }
 
-// no-prop-test: a fixed document; `themes_parse` checks it loads as written.
+/// Kanso's two themes as one theme set, as the component library reads
+/// theme files.
+#[cfg(test)]
 pub(crate) fn theme_set(mono: Option<&str>) -> Value {
-    json!({
-        "name": "Kanso",
-        "themes": [
-            theme_config(LIGHT_NAME, false, &LIGHT, mono),
-            theme_config(DARK_NAME, true, &DARK, mono),
-        ],
-    })
+    let config = |ix: usize| {
+        let theme = &crate::themes::builtins()[ix].resolved;
+        theme_config(theme, &theme.colors, &theme.syntax, mono)
+    };
+    json!({ "name": "Kanso", "themes": [config(0), config(1)] })
 }
 
-fn theme_config(name: &str, dark: bool, c: &Colors, mono: Option<&str>) -> Value {
+/// The component library's theme file for the UI theme `ui`, drawn in
+/// `colors` (its own, fitted), with the editor's syntax in `syntax`.
+// no-prop-test: a mapping onto the library's keys; `themes_parse` and
+// `kanso_themes_match_the_palettes` check what it writes.
+pub(crate) fn theme_config(
+    ui: &ResolvedTheme,
+    c: &Colors,
+    syntax: &BTreeMap<&'static str, TokenStyle>,
+    mono: Option<&str>,
+) -> Value {
+    let dark = ui.dark;
     let mut config = json!({
-        "name": name,
+        "name": ui.name,
         "mode": if dark { "dark" } else { "light" },
         "radius": 6,
         "radius.lg": 10,
         "shadow": false,
-        "colors": theme_colors(dark, c),
-        "highlight": highlight(c),
+        "colors": theme_colors(dark, c, ui),
+        "highlight": highlight_style(c, syntax),
     });
     if let Some(mono) = mono {
         config["mono_font.family"] = json!(mono);
@@ -300,7 +293,7 @@ fn theme_config(name: &str, dark: bool, c: &Colors, mono: Option<&str>) -> Value
 }
 
 /// The component library's color keys.
-fn theme_colors(dark: bool, c: &Colors) -> Value {
+fn theme_colors(dark: bool, c: &Colors, ui: &ResolvedTheme) -> Value {
     // Text on the status colors: dark on the light dark-theme ones, paper
     // on the shaded light-theme ones.
     let on_status = if dark { c.app } else { c.button_text };
@@ -336,8 +329,11 @@ fn theme_colors(dark: bool, c: &Colors) -> Value {
             (if dark { c.text } else { c.elevated }).hex(),
         ),
         ("ring", c.accent.hex()),
-        ("caret", c.accent.hex()),
-        ("selection.background", c.accent.hex_alpha(0x4D)),
+        ("caret", ui.caret.hex()),
+        (
+            "selection.background",
+            ui.selection.rgb.hex_alpha(ui.selection.alpha),
+        ),
         ("link", c.link.hex()),
         ("link.hover", c.link.hex()),
         ("link.active", c.link.hex()),
@@ -395,58 +391,24 @@ fn theme_colors(dark: bool, c: &Colors) -> Value {
     )
 }
 
-/// Editor colors and syntax styles. Markdown source stays calm: headings are
-/// bold in the text color, markers recede, and code is legible rather than
-/// colorful.
-fn highlight(c: &Colors) -> Value {
-    let color = |rgb: Rgb| json!({ "color": rgb.hex() });
-    let muted = color(c.text_muted);
-    let secondary = color(c.text_secondary);
-    let mut syntax = json!({
-        "title": { "color": c.text.hex(), "font_weight": 700 },
-        "punctuation.special": muted,
-        "punctuation.list_marker": muted,
-        "punctuation.delimiter": muted,
-        "text.literal": secondary,
-        "text.code.span": color(c.code_text),
-        "link_text": color(c.link),
-        "link_uri": muted,
-        "emphasis": { "font_style": "italic" },
-        "emphasis.strong": { "font_weight": 700 },
-        "string.escape": muted,
-    });
-    // Code in fenced blocks.
-    let code = json!({
-        "comment": { "color": c.text_muted.hex(), "font_style": "italic" },
-        "comment.doc": { "color": c.text_muted.hex(), "font_style": "italic" },
-        "keyword": color(c.syntax_keyword),
-        "tag": color(c.syntax_keyword),
-        "constructor": color(c.syntax_keyword),
-        "string": color(c.syntax_string),
-        "string.special": color(c.syntax_string),
-        "number": color(c.code_text),
-        "boolean": color(c.code_text),
-        "constant": color(c.code_text),
-        "variable.special": color(c.code_text),
-        "type": secondary,
-        "attribute": secondary,
-        "label": secondary,
-        "operator": secondary,
-        "punctuation": secondary,
-        "punctuation.bracket": secondary,
-        "function": color(c.text),
-        "property": color(c.text),
-        "variable": color(c.text),
-        "embedded": color(c.text),
-    });
-    if let (Value::Object(syntax), Value::Object(code)) = (&mut syntax, code) {
-        syntax.extend(code);
-    }
+/// Editor colors and syntax styles: each highlight capture in its syntax
+/// key's style (see [`CAPTURES`]). In Kanso's own themes Markdown source
+/// stays calm: headings are bold in the text color, markers recede, and code
+/// is legible rather than colorful.
+pub(crate) fn highlight_style(c: &Colors, syntax: &BTreeMap<&'static str, TokenStyle>) -> Value {
+    let styles: serde_json::Map<String, Value> = CAPTURES
+        .iter()
+        .filter_map(|(capture, key)| {
+            let style = syntax.get(key)?;
+            (!style.is_empty()).then(|| ((*capture).to_owned(), style.to_highlight_json()))
+        })
+        .collect();
+    let foreground = syntax.get("text").and_then(|s| s.color).unwrap_or(c.text);
     // There are no line number keys: the gutter draws numbers in the
     // theme's `muted.foreground`, and the current line's in `foreground`.
     json!({
         "editor.background": c.editor.hex(),
-        "editor.foreground": c.text.hex(),
+        "editor.foreground": foreground.hex(),
         "editor.active_line.background": c.active_line.hex(),
         "editor.invisible": c.text_muted.hex_alpha(0x66),
         "error": c.danger.hex(),
@@ -454,7 +416,7 @@ fn highlight(c: &Colors) -> Value {
         "info": c.accent.hex(),
         "success": c.success.hex(),
         "hint": c.text_muted.hex(),
-        "syntax": syntax,
+        "syntax": styles,
     })
 }
 
@@ -1017,13 +979,116 @@ mod tests {
         assert!(!loads_monospaced(&text_system, "No Such Family Kanso"));
     }
 
+    /// The editor colors and syntax styles Kanso drew before themes were
+    /// files, kept to check that its own theme files draw the same.
+    fn legacy_highlight(c: &Colors) -> Value {
+        let color = |rgb: Rgb| json!({ "color": rgb.hex() });
+        let muted = color(c.text_muted);
+        let secondary = color(c.text_secondary);
+        let mut syntax = json!({
+                "title": { "color": c.text.hex(), "font_weight": 700 },
+                "punctuation.special": muted,
+                "punctuation.list_marker": muted,
+                "punctuation.delimiter": muted,
+                "text.literal": secondary,
+                "text.code.span": color(c.code_text),
+                "link_text": color(c.link),
+                "link_uri": muted,
+                "emphasis": { "font_style": "italic" },
+                "emphasis.strong": { "font_weight": 700 },
+                "string.escape": muted,
+                "comment": { "color": c.text_muted.hex(), "font_style": "italic" },
+                "comment.doc": { "color": c.text_muted.hex(), "font_style": "italic" },
+                "keyword": color(c.syntax_keyword),
+                "tag": color(c.syntax_keyword),
+                "constructor": color(c.syntax_keyword),
+        });
+        let rest = json!({
+                "string": color(c.syntax_string),
+                "string.special": color(c.syntax_string),
+                "number": color(c.code_text),
+                "boolean": color(c.code_text),
+                "constant": color(c.code_text),
+                "variable.special": color(c.code_text),
+                "type": secondary,
+                "attribute": secondary,
+                "label": secondary,
+                "operator": secondary,
+                "punctuation": secondary,
+                "punctuation.bracket": secondary,
+                "function": color(c.text),
+                "property": color(c.text),
+                "variable": color(c.text),
+                "embedded": color(c.text),
+
+        });
+        if let (Value::Object(syntax), Value::Object(rest)) = (&mut syntax, rest) {
+            syntax.extend(rest);
+        }
+        json!({
+            "editor.background": c.editor.hex(),
+            "editor.foreground": c.text.hex(),
+            "editor.active_line.background": c.active_line.hex(),
+            "editor.invisible": c.text_muted.hex_alpha(0x66),
+            "error": c.danger.hex(),
+            "warning": c.warning.hex(),
+            "info": c.accent.hex(),
+            "success": c.success.hex(),
+            "hint": c.text_muted.hex(),
+            "syntax": syntax,
+        })
+    }
+
+    /// Kanso's own theme files give exactly the palettes above, the same
+    /// component theme, and the same syntax styles, plus the two new
+    /// captures for rules and task boxes, which take the list markers'
+    /// color they had before. Selection and caret are the accent's.
+    #[test]
+    fn kanso_themes_match_the_palettes() {
+        use gpui_kit::component::highlighter::HighlightThemeStyle;
+        for (ix, expected) in [(0, &LIGHT), (1, &DARK)] {
+            let theme = &crate::themes::builtins()[ix].resolved;
+            assert_eq!(&theme.colors, expected, "{}", theme.name);
+            assert_eq!(theme.caret, expected.accent);
+            assert_eq!(theme.selection.rgb, expected.accent);
+            assert_eq!(theme.selection.alpha, 0x4D);
+            // Fitting to its own surface changes nothing.
+            let fitted =
+                crate::theme_file::fit_syntax(&theme.syntax, expected.editor, expected.text);
+            assert_eq!(fitted, theme.syntax, "{}", theme.name);
+            let new: HighlightThemeStyle =
+                serde_json::from_value(highlight_style(expected, &fitted)).unwrap();
+            let mut old: HighlightThemeStyle =
+                serde_json::from_value(legacy_highlight(expected)).unwrap();
+            assert_eq!(new.syntax.variant, old.syntax.punctuation_list_marker);
+            assert_eq!(new.syntax.enum_, old.syntax.punctuation_list_marker);
+            old.syntax.variant = new.syntax.variant;
+            old.syntax.enum_ = new.syntax.enum_;
+            assert_eq!(new, old, "{}", theme.name);
+            let preview = crate::theme_file::fit_preview(&theme.preview, expected);
+            assert_eq!(preview, theme.preview);
+            assert_eq!(preview.code_background, expected.code);
+            assert_eq!(preview.text, expected.text);
+            assert_eq!(preview.quote, expected.text_secondary);
+            assert_eq!(preview.border, expected.divider);
+            assert_eq!(preview.link, expected.link);
+            assert_eq!(preview.inline_code_background, expected.code);
+            assert_eq!(
+                (preview.heading, preview.code_text, preview.inline_code_text),
+                (None, None, None)
+            );
+            assert_eq!(preview.table_header_background, None);
+            assert_eq!(preview.selection, None);
+        }
+    }
+
     /// The theme files load with the colors as written.
     #[test]
     fn themes_parse() {
         let set: ThemeSet = serde_json::from_value(theme_set(Some(SYSTEM_MONO))).unwrap();
         assert_eq!(set.themes.len(), 2);
         let dark = &set.themes[1];
-        assert_eq!(dark.name.as_ref(), DARK_NAME);
+        assert_eq!(dark.name.as_ref(), crate::config::KANSO_DARK);
         assert!(dark.mode.is_dark());
         assert_eq!(dark.mono_font_family.as_deref(), Some(SYSTEM_MONO));
         assert_eq!(dark.colors.background.as_deref(), Some("#282824"));

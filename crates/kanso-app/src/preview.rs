@@ -17,6 +17,7 @@ use kanso_store::Store;
 
 use crate::preview_chunks::{self, End, Prepared, SPLIT_SYNC_BYTES, Splice, Start};
 use crate::theme::Colors;
+use crate::theme_file::PreviewColors;
 
 /// The rendered text's size and line height.
 const TEXT_SIZE: f32 = 16.;
@@ -338,40 +339,62 @@ pub fn is_openable(url: &str) -> bool {
     }
 }
 
-/// Body text in the theme's colors; code is set apart by a quiet fill rather
-/// than by color, and so is a table's header row, which is also set heavier.
-/// Table rows sit on the page itself; a table wider than the column scrolls
-/// sideways rather than cutting off its last columns. Quotes and finished
-/// tasks, which the text view draws in its muted color, get the secondary
-/// text color: they are still read. `dark` picks the check mark that reads
-/// on the dark theme's task boxes.
+/// Body text in the preview theme's colors; code is set apart by a quiet
+/// fill rather than by color, and so is a table's header row, which is also
+/// set heavier. Table rows sit on the page itself; a table wider than the
+/// column scrolls sideways rather than cutting off its last columns. Quotes
+/// and finished tasks, which the text view draws in its muted color, get
+/// the theme's quote color (Kanso's secondary text): they are still read.
+/// Headings, code and a table's header take colors of their own only when
+/// the theme gives them. `dark` picks the check mark that reads on the dark
+/// theme's task boxes.
 // no-prop-test: maps theme colors onto a style; the snapshots show it.
-pub(crate) fn text_style(colors: &Colors, dark: bool) -> TextViewStyle {
+pub(crate) fn text_style(colors: &Colors, p: &PreviewColors, dark: bool) -> TextViewStyle {
     let mut table = StyleRefinement::default().bg(colors.editor);
     table.overflow.x = Some(Overflow::Scroll);
-    TextViewStyle::default()
+    let selection = match p.selection {
+        Some(color) => Hsla::from(color.rgb).opacity(f32::from(color.alpha) / 255.),
+        None => Hsla::from(colors.accent).opacity(0.3),
+    };
+    let mut code_block = StyleRefinement::default().rounded(px(6.));
+    if let Some(code) = p.code_text {
+        code_block = code_block.text_color(code);
+    }
+    let mut table_head = StyleRefinement::default().font_weight(FontWeight::SEMIBOLD);
+    if let Some(head) = p.table_header_background {
+        table_head = table_head.bg(head);
+    }
+    let style = TextViewStyle::default()
         .with_dark(dark)
-        .with_foreground(colors.text.into())
-        .with_muted_foreground(colors.text_secondary.into())
-        .with_link(colors.link.into())
-        .with_selection(Hsla::from(colors.accent).opacity(0.3))
-        .with_code_background(colors.code.into())
-        .with_border(colors.divider.into())
+        .with_foreground(p.text.into())
+        .with_muted_foreground(p.quote.into())
+        .with_link(p.link.into())
+        .with_selection(selection)
+        .with_code_background(p.code_background.into())
+        .with_border(p.border.into())
         .with_paragraph_gap(rems(0.9))
-        .with_code_block(StyleRefinement::default().rounded(px(6.)))
+        .with_code_block(code_block)
         .with_inline_code(HighlightStyle {
-            background_color: Some(colors.code.into()),
+            background_color: Some(p.inline_code_background.into()),
+            color: p.inline_code_text.map(Into::into),
             ..Default::default()
         })
         .with_table(table)
-        .with_table_head(StyleRefinement::default().font_weight(FontWeight::SEMIBOLD))
+        .with_table_head(table_head);
+    match p.heading {
+        Some(heading) => {
+            style.with_heading(move |_| StyleRefinement::default().text_color(heading))
+        }
+        None => style,
+    }
 }
 
 impl Render for Preview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
-        let style = text_style(colors, cx.theme().is_dark());
-        let text_color = colors.text;
+        let preview = crate::themes::preview_colors(cx);
+        let style = text_style(colors, &preview, cx.theme().is_dark());
+        let text_color = preview.text;
         let readable = self.readable;
         let chunks: Vec<(Entity<TextViewState>, Start, End)> = self
             .chunks

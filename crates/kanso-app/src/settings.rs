@@ -30,13 +30,13 @@ use kanso_sync::{QuotaKind, SyncProblem};
 use crate::account_page::AccountPage;
 use crate::account_words::{quota_words, signed_out_sentence};
 use crate::clock::Clock;
-use crate::config::{DEFAULT_FONT_SIZE, EditorFont, SyncSettings, ThemePreference};
+use crate::config::{DEFAULT_FONT_SIZE, EditorFont, SyncSettings};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::Library;
 use crate::services::{self, AccountState, ApiState, Services, SyncState};
 use crate::sidebar::{Tone, sync_line, tone_color};
 use crate::theme::Colors;
-use crate::workspace::{AppState, OpenSettings, Workspace, apply_theme, for_each_workspace};
+use crate::workspace::{AppState, OpenSettings, Workspace, for_each_workspace};
 use crate::{dialogs, inkdrop, launch, paths};
 
 actions!(
@@ -50,6 +50,7 @@ actions!(
         CloseSettings,
         NextSettingsPage,
         PreviousSettingsPage,
+        ReloadThemes,
     ]
 );
 
@@ -96,7 +97,7 @@ impl SettingsPage {
         match self {
             SettingsPage::General => "General",
             SettingsPage::Editor => "Editor",
-            SettingsPage::Appearance => "Appearance",
+            SettingsPage::Appearance => "Themes",
             SettingsPage::Account => "Account",
             SettingsPage::LocalApi => "Local API",
         }
@@ -428,12 +429,6 @@ fn set_line_numbers(on: bool, cx: &mut App) {
 fn set_readable_width(on: bool, cx: &mut App) {
     AppState::update_config(cx, |config| config.appearance.readable_width = on);
     update_editors(cx);
-}
-
-fn set_theme(theme: ThemePreference, window: &mut Window, cx: &mut App) {
-    AppState::update_config(cx, |config| config.appearance.theme = theme);
-    apply_theme(theme, Some(window), cx);
-    cx.refresh_windows();
 }
 
 fn set_launch_at_login(on: bool, window: &mut Window, cx: &mut App) {
@@ -809,7 +804,7 @@ impl SettingsView {
         match self.page {
             SettingsPage::General => self.general_page(cx),
             SettingsPage::Editor => editor_page(cx),
-            SettingsPage::Appearance => appearance_page(cx),
+            SettingsPage::Appearance => crate::settings_themes::page(cx),
             SettingsPage::Account => vec![self.account.clone().into_any_element()],
             SettingsPage::LocalApi => api_page(cx),
         }
@@ -953,32 +948,6 @@ fn editor_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                             .on_click(|on, _, cx| set_readable_width(*on, cx)),
                     ),
                 ),
-        ],
-        colors,
-    )]
-}
-
-fn appearance_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
-    let colors = Colors::get(cx);
-    let theme = config(cx).appearance.theme;
-    vec![section(
-        "Theme",
-        vec![
-            Row::new(Lucide::SunMoon, "Light and dark")
-                .detail(
-                    "System follows the macOS setting. Dark is warm graphite; light is soft paper.",
-                )
-                .trailing(segmented(
-                    "theme",
-                    [
-                        ("System", ThemePreference::System),
-                        ("Light", ThemePreference::Light),
-                        ("Dark", ThemePreference::Dark),
-                    ],
-                    theme,
-                    set_theme,
-                    colors,
-                )),
         ],
         colors,
     )]
@@ -1299,15 +1268,17 @@ impl Row {
 pub(crate) fn section(title: &'static str, rows: Vec<Row>, colors: &Colors) -> AnyElement {
     v_flex()
         .mt(px(26.))
-        .child(
-            div()
-                .mb(px(10.))
-                .text_size(px(14.))
-                .line_height(px(20.))
-                .font_medium()
-                .text_color(colors.text_secondary)
-                .child(title),
-        )
+        .when(!title.is_empty(), |el| {
+            el.child(
+                div()
+                    .mb(px(10.))
+                    .text_size(px(14.))
+                    .line_height(px(20.))
+                    .font_medium()
+                    .text_color(colors.text_secondary)
+                    .child(title),
+            )
+        })
         .child(
             v_flex()
                 .border_1()
@@ -1531,6 +1502,9 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
     )
     .on_action(cx.listener(move |this, _: &OpenApiSettings, window, cx| api(this, window, cx)))
     .on_action(cx.listener(|this, _: &CloseSettings, window, cx| this.close_settings(window, cx)))
+    .on_action(
+        cx.listener(|_, _: &ReloadThemes, window, cx| crate::settings_themes::reload(window, cx)),
+    )
 }
 
 /// Settings from the menu bar or the Dock with no main window to take the

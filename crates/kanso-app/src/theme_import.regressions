@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc cc17bef33d67ca527827d60032d6f367fab0981dd050c0f33d796e893d98e124 # shrinks to name = "ß"
+cc 3c107b058777586f407d009996a0d757257a8d3171fc9eca2680882c4f5874bc # shrinks to mut theme = ThemeFile { name: "Any", author: "a", license: "MIT", source: None, description: None, appearance: Light, ui: {"accent": Color { rgb: Rgb(9353395), alpha: 255 }, "editor": Color { rgb: Rgb(9621064), alpha: 255 }, "text": Color { rgb: Rgb(3802), alpha: 255 }}, syntax: {}, preview: {} }

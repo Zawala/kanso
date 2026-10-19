@@ -19,6 +19,11 @@
 //! delimiter rows, task boxes, and the brackets around links and images.
 //! Link reference definitions used capture names no theme styles. Kanso adds
 //! the missing captures.
+//!
+//! Themes can color quotes, rules, task boxes, front matter and HTML blocks
+//! apart from other markers, so each gets a capture of its own. Highlight
+//! names are a fixed list, so they borrow names no bundled code grammar uses
+//! (`theme_file::CAPTURES` maps them to the theme's keys).
 
 use std::sync::Once;
 
@@ -32,9 +37,13 @@ const BLOCK_MARKERS: &str = r#"
 (pipe_table_row "|" @punctuation.delimiter)
 (pipe_table_delimiter_row "|" @punctuation.delimiter)
 (pipe_table_delimiter_cell) @punctuation.delimiter
-[(task_list_marker_checked) (task_list_marker_unchecked)] @punctuation.list_marker
+[(task_list_marker_checked) (task_list_marker_unchecked)] @enum
 (link_reference_definition ":" @punctuation.delimiter)
 (link_label ["[" "]"] @punctuation.delimiter)
+(thematic_break) @variant
+(block_quote) @primary
+(minus_metadata) @preproc
+(html_block) @tag.doctype
 "#;
 
 /// The brackets around links and images, which the inline query leaves in
@@ -69,10 +78,12 @@ pub fn ensure_registered() {
             .into();
         // Reference definitions' labels and destinations, named the way the
         // inline query names a link's.
+        // Rules leave the list markers' group for a capture of their own.
         let highlights = config
             .highlights
             .replace("@text.uri", "@link_uri")
-            .replace("@text.reference", "@link_text");
+            .replace("@text.reference", "@link_text")
+            .replace("  (thematic_break)\n", "");
         config.highlights = format!("{highlights}\n{BLOCK_MARKERS}").into();
         registry.register("markdown", &config);
     });

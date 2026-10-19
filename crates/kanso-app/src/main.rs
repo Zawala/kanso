@@ -36,6 +36,7 @@ mod preview;
 mod preview_chunks;
 mod services;
 mod settings;
+mod settings_themes;
 #[cfg(test)]
 mod settings_window_tests;
 mod sidebar;
@@ -45,6 +46,9 @@ mod split;
 mod text_match;
 mod text_stats;
 mod theme;
+mod theme_file;
+mod theme_import;
+mod themes;
 #[cfg(test)]
 mod ui_tests;
 mod workspace;
@@ -71,6 +75,7 @@ Commands:
                     [--inkdrop-dir <dir>] [--credentials]
                     --credentials also takes Inkdrop's API port, username
                     and password (macOS asks to allow Keychain access)
+  theme             Work with themes; `kanso theme help` lists how
   help              Show this message
 
 The data folder defaults to ~/Library/Application Support/Kanso
@@ -119,6 +124,7 @@ fn main() -> Result<()> {
         None => run_app(args.data_dir),
         Some("serve") => serve(args.data_dir),
         Some("import-inkdrop") => inkdrop::run_cli(&args.data_dir, &args.rest),
+        Some("theme") => theme_import::run_cli(&args.data_dir, &args.rest),
         Some("help") => {
             println!("{USAGE}");
             Ok(())
@@ -213,6 +219,7 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
         watch_for_quit(cx);
         settings::register_app_actions(cx, open_main_window);
         services::apply_server_settings(cx);
+        themes::watch(cx);
         // Signed in again once the config, the binding and the Keychain
         // agree; sync starts then.
         account_flow::restore(cx);
@@ -244,9 +251,8 @@ fn open_main_window(cx: &mut App) {
         window_min_size: Some(size(px(1100.), px(720.))),
         ..Default::default()
     };
-    let theme = cx.global::<AppState>().config.appearance.theme;
     let opened = gpui_kit::open_window(options, cx, |window, cx| {
-        workspace::apply_theme(theme, Some(window), cx);
+        themes::apply(Some(window), cx);
         cx.new(|cx| Workspace::new(window, cx))
     });
     match opened {

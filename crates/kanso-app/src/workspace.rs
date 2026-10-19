@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use gpui_kit::base::{GlobalState, resize_handle};
 use gpui_kit::component::notification::Notification;
-use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::model::TRASH_BOOK_ID;
@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 
 use crate::account_page::SignedOutForm;
 use crate::commands::Picker;
-use crate::config::{AppConfig, ThemePreference, ViewMode};
+use crate::config::{AppConfig, ViewMode};
 use crate::dialogs::{confirm, prompt_text};
 use crate::editor::{EditorEvent, NoteEditor};
 use crate::layout::{BandAction, BandDrag, PaneEdge, PaneWidths, inset_after, rail_width};
@@ -210,14 +210,9 @@ pub fn for_each_workspace(
     }
 }
 
-pub fn apply_theme(preference: ThemePreference, window: Option<&mut Window>, cx: &mut App) {
-    crate::theme::ensure_installed(cx);
-    crate::markdown_source::ensure_registered();
-    match preference {
-        ThemePreference::System => Theme::sync_system_appearance(window, cx),
-        ThemePreference::Light => Theme::change(ThemeMode::Light, window, cx),
-        ThemePreference::Dark => Theme::change(ThemeMode::Dark, window, cx),
-    }
+/// Shows the themes the settings choose, in every window.
+pub fn apply_theme(window: Option<&mut Window>, cx: &mut App) {
+    crate::themes::apply(window, cx);
 }
 
 pub struct Workspace {
@@ -338,8 +333,14 @@ impl Workspace {
                 }
             }),
             cx.observe_window_appearance(window, |_, window, cx| {
-                if cx.global::<AppState>().config.appearance.theme == ThemePreference::System {
-                    Theme::sync_system_appearance(Some(window), cx);
+                if cx
+                    .global::<AppState>()
+                    .config
+                    .appearance
+                    .themes
+                    .follow_system
+                {
+                    apply_theme(Some(window), cx);
                 }
             }),
             // The preview alone hides the text that had the keyboard, say:

@@ -33,7 +33,7 @@ use crate::account_page::{AccountPage, SignedOutForm};
 use crate::assets::KansoAssets;
 use crate::clock::Clock;
 use crate::commands::Picker;
-use crate::config::{AppConfig, EditorFont, ThemePreference, ViewMode};
+use crate::config::{AppConfig, EditorFont, ThemePreference, ThemeSettings, ViewMode};
 use crate::editor::EditorEvent;
 use crate::layout::{BOTTOM_BAND_HEIGHT, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, rail_width};
 use crate::library::{Filter, has_notes_inside};
@@ -236,6 +236,11 @@ enum Left {
 struct Shot {
     name: &'static str,
     theme: ThemePreference,
+    /// A UI theme other than Kanso's own, by name, and syntax and preview
+    /// themes of their own.
+    ui_theme: Option<&'static str>,
+    syntax_theme: Option<&'static str>,
+    preview_theme: Option<&'static str>,
     view_mode: ViewMode,
     /// The window's size in points; the PNG is twice that.
     size: Size<Pixels>,
@@ -960,6 +965,41 @@ fn settings_appearance(
     _: &Store,
 ) {
     show_settings(cx, window, workspace, SettingsPage::Appearance);
+}
+
+/// A note with every Markdown construct a theme colors and code in a few
+/// languages, for showing syntax and preview colors side by side.
+const THEME_NOTE: &str = "# Theme sampler\n\nSome **bold**, some *italic*, `inline code` and a [link](https://kanso.app).\n\n## Code\n\n```json\n{\n  \"name\": \"Nord\",\n  \"dark\": true,\n  \"size\": 14,\n  \"accent\": null,\n  \"tags\": [\"calm\", \"cool\"],\n  \"escape\": \"tab\\\\there\"\n}\n```\n\n> Colors should help reading, never fight it.\n\n- [x] Pick a palette\n- [ ] Check contrast\n  1. Text on panes\n  2. Code on blocks\n\n---\n\n| Token | Color |\n|---|---|\n| keyword | accent |\n| string | green |\n\nPress <kbd>Cmd</kbd>+<kbd>K</kbd> for commands.\n";
+
+/// The theme sampler note, open in the editor.
+fn open_theme_note(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let book = store
+        .search_summaries(&Default::default())
+        .ok()
+        .and_then(|notes| notes.into_iter().next())
+        .and_then(|n| store.note(&n.id).ok().flatten())
+        .map(|note| note.book_id);
+    let id = store
+        .put(
+            DocType::Note,
+            json!({"title": "Theme sampler", "body": THEME_NOTE, "bookId": book}),
+            Put::Upsert,
+            Origin::Ui,
+        )
+        .unwrap()
+        .id;
+    let library = cx.update(|cx| workspace.read(cx).library.clone());
+    cx.update(|cx| {
+        library.update(cx, |library, cx| {
+            library.reload(cx);
+            library.select(Some(id), cx);
+        })
+    });
 }
 
 /// The demo account's name.
@@ -1753,13 +1793,18 @@ fn open(
 ) -> (AnyWindowHandle, Entity<Workspace>) {
     let mut config = AppConfig::default();
     config.appearance.theme = shot.theme;
+    config.appearance.themes = ThemeSettings::from_preference(shot.theme);
+    if let Some(name) = shot.ui_theme {
+        config.appearance.themes.ui = name.to_owned();
+    }
+    config.appearance.themes.syntax = shot.syntax_theme.map(str::to_owned);
+    config.appearance.themes.preview = shot.preview_theme.map(str::to_owned);
     config.appearance.view_mode = shot.view_mode;
     config.last_note = store
         .search_summaries(&Default::default())
         .ok()
         .and_then(|notes| notes.into_iter().next())
         .map(|n| n.id);
-    let theme = shot.theme;
     let now = cx.update(|cx| Clock::now_ms(cx));
     cx.update(|cx| {
         cx.set_global(AppState {
@@ -1781,7 +1826,7 @@ fn open(
             problem: None,
         };
         cx.set_global(services);
-        apply_theme(theme, None, cx);
+        apply_theme(None, cx);
     });
     cx.update(|cx| {
         gpui_kit::open_window(
@@ -1796,7 +1841,7 @@ fn open(
             },
             cx,
             |window, cx| {
-                apply_theme(theme, Some(window), cx);
+                apply_theme(Some(window), cx);
                 cx.new(|cx| {
                     let mut workspace = Workspace::new(window, cx);
                     workspace.placeholder_traffic_lights = true;
@@ -1806,6 +1851,22 @@ fn open(
         )
     })
     .unwrap()
+}
+
+/// The UI colors a shot is drawn in.
+fn shot_colors(shot: &Shot) -> &'static Colors {
+    let dark = shot.theme == ThemePreference::Dark;
+    match shot.ui_theme {
+        Some(name) => {
+            let entry = crate::themes::builtins()
+                .iter()
+                .find(|e| e.name() == name)
+                .unwrap_or_else(|| panic!("no built-in theme {name}"));
+            Box::leak(Box::new(entry.resolved.colors))
+        }
+        None if dark => &DARK,
+        None => &LIGHT,
+    }
 }
 
 /// Checks that the pixel at point `at` (in window points) is `expected`,
@@ -1835,10 +1896,7 @@ fn assert_surface(
 /// The palette's panel is painted in the elevated color, centred in the
 /// window. The point sits in its padding, left of the search field.
 fn check_palette(image: &image::RgbaImage, shot: &Shot) {
-    let colors: &Colors = match shot.theme {
-        ThemePreference::Dark => &DARK,
-        _ => &LIGHT,
-    };
+    let colors = shot_colors(shot);
     let width = f32::from(shot.size.width);
     let height = f32::from(shot.size.height);
     let scale = image.width() as f32 / width;
@@ -1859,10 +1917,7 @@ fn check_palette(image: &image::RgbaImage, shot: &Shot) {
 /// A dialog: its surface in the editor's color, centred across the window
 /// a tenth of the way down. The point sits in its top padding.
 fn check_dialog(image: &image::RgbaImage, shot: &Shot, dialog_width: f32) {
-    let colors: &Colors = match shot.theme {
-        ThemePreference::Dark => &DARK,
-        _ => &LIGHT,
-    };
+    let colors = shot_colors(shot);
     let width = f32::from(shot.size.width);
     let height = f32::from(shot.size.height);
     let scale = image.width() as f32 / width;
@@ -1880,10 +1935,7 @@ fn check_dialog(image: &image::RgbaImage, shot: &Shot, dialog_width: f32) {
 /// Settings: the sidebar, then the page column in the list's color and
 /// the page in the editor's, each band running across.
 fn check_settings_surfaces(image: &image::RgbaImage, shot: &Shot) {
-    let colors: &Colors = match shot.theme {
-        ThemePreference::Dark => &DARK,
-        _ => &LIGHT,
-    };
+    let colors = shot_colors(shot);
     let width = f32::from(shot.size.width);
     let height = f32::from(shot.size.height);
     let scale = image.width() as f32 / width;
@@ -1935,10 +1987,7 @@ fn check_settings_surfaces(image: &image::RgbaImage, shot: &Shot) {
 /// Each pane is painted in its own surface color. The points sit in
 /// padding that no content reaches.
 fn check_surfaces(image: &image::RgbaImage, shot: &Shot) {
-    let colors: &Colors = match shot.theme {
-        ThemePreference::Dark => &DARK,
-        _ => &LIGHT,
-    };
+    let colors = shot_colors(shot);
     let width = f32::from(shot.size.width);
     let height = f32::from(shot.size.height);
     let scale = image.width() as f32 / width;
@@ -2018,6 +2067,120 @@ fn check_surfaces(image: &image::RgbaImage, shot: &Shot) {
     }
 }
 
+/// One theme's three cards, as the Themes page draws them.
+struct ThemeCards(Arc<crate::themes::ThemeEntry>);
+
+impl gpui_kit::Render for ThemeCards {
+    fn render(
+        &mut self,
+        _: &mut Window,
+        _: &mut gpui_kit::Context<Self>,
+    ) -> impl gpui_kit::IntoElement {
+        use crate::settings_themes::{
+            CARD_WIDTH, THUMB_HEIGHT, preview_thumb, syntax_thumb, ui_thumb,
+        };
+        use gpui_kit::{ParentElement as _, Styled as _, div};
+        let entry = &self.0;
+        let card = |thumb: gpui_kit::Div| {
+            thumb
+                .flex_none()
+                .w(px(CARD_WIDTH))
+                .h(px(THUMB_HEIGHT))
+                .rounded(px(6.))
+                .overflow_hidden()
+        };
+        div()
+            .size_full()
+            .flex()
+            .gap(px(THUMB_GAP))
+            .p(px(THUMB_GAP))
+            .bg(entry.resolved.colors.app)
+            .child(card(ui_thumb(entry)))
+            .child(card(syntax_thumb(entry)))
+            .child(card(preview_thumb(entry)))
+    }
+}
+
+const THUMB_GAP: f32 = 12.;
+
+/// Renders each theme's three cards (UI, syntax, preview) to
+/// `<file stem>.png` in `KANSO_THEME_THUMBS_DIR`: the themes in
+/// `KANSO_THEMES_DIR` when set (a checkout of the themes repository, say),
+/// else the built-in ones. `themes/scripts/check.sh` runs it.
+#[test]
+#[ignore = "writes PNGs; run on demand with KANSO_THEME_THUMBS_DIR set"]
+fn theme_thumbnails() {
+    use crate::settings_themes::{CARD_WIDTH, THUMB_HEIGHT};
+    use crate::theme_file::ThemeFile;
+    use crate::themes::ThemeEntry;
+    let out =
+        PathBuf::from(std::env::var("KANSO_THEME_THUMBS_DIR").expect("set KANSO_THEME_THUMBS_DIR"));
+    std::fs::create_dir_all(&out).unwrap();
+    let themes: Vec<(String, Arc<ThemeEntry>)> = match std::env::var_os("KANSO_THEMES_DIR") {
+        Some(dir) => {
+            let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+                .unwrap()
+                .map(|e| e.unwrap().path())
+                .filter(|p| {
+                    p.extension().is_some_and(|x| x == "json") && !p.ends_with("index.json")
+                })
+                .collect();
+            files.sort();
+            files
+                .into_iter()
+                .map(|path| {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    let theme = ThemeFile::parse(&text)
+                        .unwrap_or_else(|e| panic!("{} {e}", path.display()));
+                    let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
+                    (stem, Arc::new(ThemeEntry::new(theme, Some(path))))
+                })
+                .collect()
+        }
+        None => crate::themes::BUILTIN
+            .iter()
+            .zip(crate::themes::builtins())
+            .map(|((file, _), entry)| (file.trim_end_matches(".json").to_owned(), entry.clone()))
+            .collect(),
+    };
+    let window_size = size(
+        px(3. * CARD_WIDTH + 4. * THUMB_GAP),
+        px(THUMB_HEIGHT + 2. * THUMB_GAP),
+    );
+    for (stem, entry) in themes {
+        let mut cx = context(None);
+        cx.update(|cx| apply_theme(None, cx));
+        let window = cx
+            .update(|cx| {
+                gpui_kit::open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(Bounds {
+                            origin: Default::default(),
+                            size: window_size,
+                        })),
+                        focus: false,
+                        show: false,
+                        ..Default::default()
+                    },
+                    cx,
+                    |_, cx| cx.new(|_| ThemeCards(entry.clone())),
+                )
+            })
+            .unwrap()
+            .0;
+        cx.run_until_parked();
+        cx.update_window(window, |_, window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        let image = cx.capture_screenshot(window).expect("Metal rendering");
+        let path = out.join(format!("{stem}.png"));
+        image.save(&path).unwrap();
+        println!("wrote {}", path.display());
+    }
+}
+
 #[test]
 #[ignore = "writes PNGs; run on demand with KANSO_SNAPSHOT_DIR set"]
 fn snapshots() {
@@ -2029,6 +2192,9 @@ fn snapshots() {
     let shot = |name, theme, view_mode, prepare: Prepare| Shot {
         name,
         theme,
+        ui_theme: None,
+        syntax_theme: None,
+        preview_theme: None,
         view_mode,
         size: full,
         prepare,
@@ -2040,7 +2206,7 @@ fn snapshots() {
         dialog_width: crate::dialogs::FORM_WIDTH,
         ..shot(name, theme, Edit, prepare)
     };
-    let shots = [
+    let mut shots = vec![
         shot("dark-split", Dark, Split, open_latest),
         shot("light-split", Light, Split, open_latest),
         shot("dark-edit", Dark, Edit, open_latest),
@@ -2411,6 +2577,64 @@ fn snapshots() {
         shot("dark-settings-from-focus", Dark, Edit, settings_from_focus),
         shot("dark-settings-palette", Dark, Edit, settings_palette),
     ];
+    // The Themes page whole, in both of Kanso's themes and in another.
+    let tall = size(px(1440.), px(2900.));
+    shots.extend([
+        Shot {
+            size: tall,
+            ..shot("dark-settings-themes", Dark, Edit, settings_appearance)
+        },
+        Shot {
+            size: tall,
+            ..shot("light-settings-themes", Light, Edit, settings_appearance)
+        },
+        Shot {
+            size: tall,
+            ui_theme: Some("Nord"),
+            ..shot("nord-settings-themes", Dark, Edit, settings_appearance)
+        },
+    ]);
+    // Every built-in theme: the latest note in Split, and the sampler of
+    // Markdown and code. `theme-<file>` and `theme-<file>-code`.
+    for entry in crate::themes::builtins() {
+        let stem = entry
+            .name()
+            .to_lowercase()
+            .replace(' ', "-")
+            .replace('é', "e");
+        let leak = |name: String| -> &'static str { Box::leak(name.into_boxed_str()) };
+        let name: &'static str = leak(entry.name().to_owned());
+        let theme = if entry.dark() { Dark } else { Light };
+        shots.push(Shot {
+            ui_theme: Some(name),
+            ..shot(leak(format!("theme-{stem}")), theme, Split, open_latest)
+        });
+        shots.push(Shot {
+            ui_theme: Some(name),
+            ..shot(
+                leak(format!("theme-{stem}-code")),
+                theme,
+                Split,
+                open_theme_note,
+            )
+        });
+    }
+    // Themes mixed: one theme's UI, another's syntax and a third's preview,
+    // each fitted to the UI's surfaces.
+    shots.extend([
+        Shot {
+            ui_theme: Some("Nord"),
+            syntax_theme: Some("Dracula"),
+            preview_theme: Some("GitHub Dark"),
+            ..shot("mixed-nord-dracula-github", Dark, Split, open_theme_note)
+        },
+        Shot {
+            ui_theme: Some("Solarized Light"),
+            syntax_theme: Some("Tokyo Night"),
+            preview_theme: Some("Catppuccin Mocha"),
+            ..shot("mixed-light-ui-dark-syntax", Light, Split, open_theme_note)
+        },
+    ]);
     let real_db = std::env::var_os("KANSO_SNAPSHOT_DB");
     let only = std::env::var("KANSO_SNAPSHOT_ONLY").ok();
     for shot in shots.iter().filter(|s| {

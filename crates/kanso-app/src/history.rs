@@ -142,7 +142,11 @@ impl Render for HistoryView {
                             // smaller to suit the dialog.
                             .child(
                                 TextView::markdown(("revision-text", self.selected), body)
-                                    .style(crate::preview::text_style(colors, dark))
+                                    .style(crate::preview::text_style(
+                                        colors,
+                                        &crate::themes::preview_colors(cx),
+                                        dark,
+                                    ))
                                     .text_size(px(14.))
                                     .line_height(relative(1.6))
                                     .text_color(colors.text),

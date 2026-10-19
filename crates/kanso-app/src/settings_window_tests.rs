@@ -946,3 +946,59 @@ fn back_up_now_keeps_its_copy_apart(cx: &mut TestAppContext) {
         "{names:?}"
     );
 }
+
+/// Picking themes on the Themes page shows them at once, in the panes and
+/// the component library alike, and saves the choice. Following the system
+/// (the default) a dark theme takes the dark slot without changing a light
+/// window; once following stops, the UI theme is the one clicked.
+#[gpui_kit::test]
+fn picking_a_theme_applies_it_everywhere(cx: &mut TestAppContext) {
+    use crate::config::{KANSO_DARK, KANSO_LIGHT, ThemePreference};
+    use crate::settings::OpenAppearanceSettings;
+    use crate::theme::{Colors, DARK, LIGHT};
+    use gpui_kit::component::ActiveTheme as _;
+    let f = setup(cx);
+    f.dispatch(cx, Box::new(OpenAppearanceSettings));
+    assert_eq!(f.page(cx), SettingsPage::Appearance);
+    let state = |cx: &mut TestAppContext| {
+        cx.read(|cx| {
+            (
+                *Colors::get(cx),
+                cx.theme().is_dark(),
+                cx.global::<AppState>().config.appearance.themes.clone(),
+            )
+        })
+    };
+    let (colors, dark, themes) = state(cx);
+    assert!(themes.follow_system);
+    // The test platform's windows are light.
+    assert_eq!((colors, dark), (LIGHT, false));
+
+    // Following the system, Nord becomes the dark theme; the window stays
+    // light.
+    f.click(cx, "theme-ui-nord");
+    let (colors, dark, themes) = state(cx);
+    assert_eq!((colors, dark), (LIGHT, false));
+    assert_eq!(
+        (themes.light.as_str(), themes.dark.as_str()),
+        (KANSO_LIGHT, "Nord")
+    );
+
+    // Not following, a click shows the theme.
+    f.click(cx, "themes-follow-system");
+    f.click(cx, "theme-ui-kanso-dark");
+    let (colors, dark, themes) = state(cx);
+    assert_eq!((colors, dark), (DARK, true));
+    assert!(!themes.follow_system);
+    assert_eq!(themes.ui, KANSO_DARK);
+    let editor_background = cx.read(|cx| cx.theme().highlight_theme.style.editor_background);
+    assert_eq!(editor_background, Some(DARK.editor.into()));
+    let saved = cx.read(|cx| {
+        let state = cx.global::<AppState>();
+        AppConfig::load(&crate::paths::config_path(&state.data_dir)).unwrap()
+    });
+    assert_eq!(saved.appearance.themes, themes);
+    assert_eq!(saved.appearance.theme, ThemePreference::Dark);
+    f.click(cx, "theme-ui-kanso-light");
+    assert_eq!(state(cx).0, LIGHT);
+}
