@@ -485,6 +485,67 @@ fn signing_up_binds_this_library_and_shows_the_key(cx: &mut TestAppContext) {
     );
 }
 
+/// Waits for the Account page's details with no fetch running or due.
+fn details_settled(cx: &mut TestAppContext) -> String {
+    wait_until(cx, "the account's details to settle", |cx| {
+        cx.read(|cx| {
+            let details = &cx.global::<Services>().details;
+            !details.loading && !details.stale && details.usage.is_some()
+        })
+    });
+    cx.read(|cx| crate::account_page::storage_detail(&cx.global::<Services>().details))
+}
+
+/// The Account page's storage line follows the syncs that change what the
+/// server holds: after the first upload it counts the uploaded notes, not
+/// the empty account the sign-up fetched. A sync that moves nothing asks the
+/// server nothing more (each account has 120 requests a minute).
+#[gpui_kit::test]
+fn the_storage_line_follows_the_uploads(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 3);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+
+    let state = synced(cx);
+    assert!(ok(&state), "{state:?}");
+    let line = details_settled(cx);
+    assert!(line.starts_with("4 items · "), "{line}");
+
+    let asked = server.stats().count(Route::Account);
+    let state = sync_now(cx);
+    assert!(ok(&state), "{state:?}");
+    let line = details_settled(cx);
+    assert!(line.starts_with("4 items · "), "{line}");
+    assert_eq!(
+        server.stats().count(Route::Account),
+        asked,
+        "an idle sync asks nothing"
+    );
+
+    let book = a
+        .store
+        .changes_since(0, None, false)
+        .unwrap()
+        .into_iter()
+        .find(|doc| doc.id.starts_with("book:"))
+        .unwrap();
+    a.store
+        .put(
+            DocType::Note,
+            json!({"title": "One more", "body": "text", "bookId": book.id}),
+            Put::Upsert,
+            Origin::Ui,
+        )
+        .unwrap();
+    let state = sync_now(cx);
+    assert!(ok(&state), "{state:?}");
+    let line = details_settled(cx);
+    assert!(line.starts_with("5 items · "), "{line}");
+    assert_eq!(server.stats().count(Route::Account), asked + 1);
+}
+
 /// A second Mac with notes of its own signs in: it is asked about them, and
 /// adding them binds it to the same account with its notes kept. An empty
 /// Mac signs in without a question.
