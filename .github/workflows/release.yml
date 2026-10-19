@@ -1,8 +1,11 @@
 name: Release
 
 # A `v*` tag builds every platform and opens a draft GitHub Release with the
-# downloads and SHA256SUMS; publishing the draft is left to a person. Run by
-# hand (workflow_dispatch), it builds the same downloads as artifacts only.
+# downloads, the update archives, the signed update feed (latest.json and
+# latest.json.sig) and SHA256SUMS; publishing the draft is left to a person
+# (scripts/release.sh publish), and only then does the app see the update.
+# Run by hand (workflow_dispatch), it builds the same downloads as artifacts
+# only, without a feed. docs/RELEASING.md has the whole flow.
 on:
   push:
     tags: ["v*"]
@@ -83,15 +86,78 @@ jobs:
       - name: Build
         run: cargo build --release --locked -p kanso-app
 
+      # Developer ID signing and notarization when every Apple secret is set;
+      # otherwise an ad hoc signature, as before. The secrets reach the shell
+      # as variables, never the command line.
       - name: Package (macOS)
         if: runner.os == 'macOS'
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
+          stem=${{ steps.version.outputs.stem }}
+          app=target/release/Kanso.app
+          signing=0
+          if [ -n "$MACOS_CERT_P12_BASE64" ] && [ -n "$MACOS_CERT_PASSWORD" ] &&
+            [ -n "$APPLE_API_KEY_P8_BASE64" ] && [ -n "$APPLE_API_KEY_ID" ] && [ -n "$APPLE_API_ISSUER" ]; then
+            signing=1
+          fi
+
+          if [ "$signing" = 1 ]; then
+            # A throwaway keychain with the Developer ID certificate.
+            keychain="$RUNNER_TEMP/kanso-signing.keychain-db"
+            keychain_password=$(openssl rand -hex 24)
+            echo "$MACOS_CERT_P12_BASE64" | base64 --decode >"$RUNNER_TEMP/cert.p12"
+            security create-keychain -p "$keychain_password" "$keychain"
+            security set-keychain-settings -lut 21600 "$keychain"
+            security unlock-keychain -p "$keychain_password" "$keychain"
+            security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MACOS_CERT_PASSWORD" \
+              -T /usr/bin/codesign -T /usr/bin/security
+            rm -f "$RUNNER_TEMP/cert.p12"
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+            security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+            identity=$(security find-identity -v -p codesigning "$keychain" |
+              sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)
+            [ -n "$identity" ] || { echo "::error::No Developer ID Application identity in MACOS_CERT_P12_BASE64"; exit 1; }
+            echo "$APPLE_API_KEY_P8_BASE64" | base64 --decode >"$RUNNER_TEMP/AuthKey.p8"
+            export KANSO_SIGN_IDENTITY="$identity"
+            echo "Signing with $identity, hardened runtime, and notarizing."
+          else
+            echo "::notice::No Apple signing secrets: the app is signed ad hoc and not notarized."
+          fi
+
+          notarize() {
+            xcrun notarytool submit "$1" --key "$RUNNER_TEMP/AuthKey.p8" \
+              --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --wait --timeout 30m
+          }
+
           scripts/bundle-macos.sh
+          if [ "$signing" = 1 ]; then
+            ditto -c -k --keepParent "$app" "$RUNNER_TEMP/Kanso-notarize.zip"
+            notarize "$RUNNER_TEMP/Kanso-notarize.zip"
+            xcrun stapler staple "$app"
+          fi
+          codesign --verify --deep --strict "$app"
+
           mkdir -p dist dmg
-          cp -R target/release/Kanso.app dmg/
+          # The update archive: the .app alone, with no AppleDouble files
+          # or extended attributes, which the updater would refuse or which
+          # would break the signature.
+          COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs -C target/release \
+            -czf "dist/$stem.app.tar.gz" Kanso.app
+          cp -R "$app" dmg/
           ln -s /Applications dmg/Applications
-          hdiutil create -volname Kanso -srcfolder dmg -fs HFS+ -format UDZO -ov \
-            "dist/${{ steps.version.outputs.stem }}.dmg"
+          hdiutil create -volname Kanso -srcfolder dmg -fs HFS+ -format UDZO -ov "dist/$stem.dmg"
+          if [ "$signing" = 1 ]; then
+            codesign --force --timestamp --sign "$KANSO_SIGN_IDENTITY" "dist/$stem.dmg"
+            notarize "dist/$stem.dmg"
+            xcrun stapler staple "dist/$stem.dmg"
+            security delete-keychain "$keychain"
+            rm -f "$RUNNER_TEMP/AuthKey.p8"
+          fi
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -121,16 +187,65 @@ jobs:
           compression-level: 0
 
   release:
-    name: Checksums and draft release
+    name: Feed, checksums and draft release
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      # The whole history, for git-cliff's fallback.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true
+
+      - name: Rust
+        if: github.ref_type == 'tag'
+        run: rustup show active-toolchain || rustup toolchain install
+
+      # The release's section of CHANGELOG.md, which scripts/release.sh
+      # wrote with git-cliff: the release page and latest.json say the same.
+      - name: Release notes
+        id: notes
+        if: github.ref_type == 'tag'
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          mkdir -p notes
+          if cargo run --quiet --locked -p kanso-update --bin kanso-release -- \
+            notes --changelog CHANGELOG.md --version "$version" --out notes/notes.md; then
+            echo "found=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "::warning::CHANGELOG.md has no section for $version; git-cliff writes the notes from the commits."
+            echo "found=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Release notes from the commits
+        if: github.ref_type == 'tag' && steps.notes.outputs.found != 'true'
+        uses: orhun/git-cliff-action@v4
+        with:
+          version: v2.10.1
+          config: cliff.toml
+          args: --latest --strip all
+        env:
+          OUTPUT: notes/notes.md
+
+      # latest.json, signed: without the key the release stops here, since
+      # an unsigned feed would never update anyone.
+      - name: Update feed
+        if: github.ref_type == 'tag'
+        env:
+          KANSO_UPDATE_SIGNING_KEY: ${{ secrets.KANSO_UPDATE_SIGNING_KEY }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          release() { cargo run --quiet --locked -p kanso-update --bin kanso-release -- "$@"; }
+          release feed --version "$version" --notes notes/notes.md --dist dist \
+            --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --out dist/latest.json
+          release sign --feed dist/latest.json
+          release verify --feed dist/latest.json
 
       - name: SHA256SUMS
         working-directory: dist
@@ -152,4 +267,4 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
-            --draft --verify-tag --generate-notes --title "Kanso ${GITHUB_REF_NAME#v}"
+            --draft --verify-tag --notes-file notes/notes.md --title "Kanso ${GITHUB_REF_NAME#v}"
