@@ -310,6 +310,57 @@ impl Default for UpdateSettings {
     }
 }
 
+/// When the caret's line stays in the middle of the editor while typing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Typewriter {
+    Off,
+    /// Only in focus mode.
+    #[default]
+    FocusMode,
+    Always,
+}
+
+impl Typewriter {
+    /// Whether the caret's line stays centred, in focus mode or out of it.
+    pub fn centres(self, focus_mode: bool) -> bool {
+        match self {
+            Typewriter::Off => false,
+            Typewriter::FocusMode => focus_mode,
+            Typewriter::Always => true,
+        }
+    }
+}
+
+/// How the editor helps with writing (Settings › Editor).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct EditorSettings {
+    /// Brackets, quotes and Markdown markers get their closer as they're
+    /// typed, and wrap a selection.
+    pub auto_pair: bool,
+    /// Tab and Enter in a table line its pipes up.
+    pub format_tables: bool,
+    /// A link pasted over words links them, and formatted text pastes as
+    /// Markdown.
+    pub smart_paste: bool,
+    pub typewriter: Typewriter,
+    /// The word goal of notes that don't set their own.
+    pub word_goal: Option<u32>,
+}
+
+impl Default for EditorSettings {
+    fn default() -> Self {
+        EditorSettings {
+            auto_pair: true,
+            format_tables: true,
+            smart_paste: true,
+            typewriter: Typewriter::FocusMode,
+            word_goal: None,
+        }
+    }
+}
+
 /// The layout [`AppConfig::migrate`] brings older files up to.
 pub const CONFIG_VERSION: u32 = 3;
 
@@ -326,6 +377,7 @@ pub struct AppConfig {
     pub last_note: Option<String>,
     pub layout: WindowLayout,
     pub updates: UpdateSettings,
+    pub editor: EditorSettings,
 }
 
 impl Default for AppConfig {
@@ -339,6 +391,7 @@ impl Default for AppConfig {
             last_note: None,
             layout: WindowLayout::default(),
             updates: UpdateSettings::default(),
+            editor: EditorSettings::default(),
         }
     }
 }
@@ -427,13 +480,37 @@ mod tests {
 
     /// Any config, with the window layout too.
     fn gen_config() -> impl Strategy<Value = AppConfig> {
-        (gen_settings(), gen_layout(), any::<bool>()).prop_map(|(config, layout, auto_install)| {
-            AppConfig {
+        (gen_settings(), gen_layout(), any::<bool>(), gen_editor()).prop_map(
+            |(config, layout, auto_install, editor)| AppConfig {
                 layout,
                 updates: UpdateSettings { auto_install },
+                editor,
                 ..config
-            }
-        })
+            },
+        )
+    }
+
+    fn gen_editor() -> impl Strategy<Value = EditorSettings> {
+        (
+            any::<bool>(),
+            any::<bool>(),
+            any::<bool>(),
+            prop::sample::select(vec![
+                Typewriter::Off,
+                Typewriter::FocusMode,
+                Typewriter::Always,
+            ]),
+            prop::option::of(1u32..100_000),
+        )
+            .prop_map(
+                |(auto_pair, format_tables, smart_paste, typewriter, word_goal)| EditorSettings {
+                    auto_pair,
+                    format_tables,
+                    smart_paste,
+                    typewriter,
+                    word_goal,
+                },
+            )
     }
 
     fn gen_layout() -> impl Strategy<Value = WindowLayout> {
@@ -513,6 +590,7 @@ mod tests {
                     last_note: last,
                     layout: WindowLayout::default(),
                     updates: UpdateSettings::default(),
+                    editor: EditorSettings::default(),
                 },
             )
     }
@@ -880,6 +958,18 @@ mod tests {
 
     /// Files from before updates install themselves turn them on; turning
     /// them off is kept.
+    #[test]
+    fn older_files_get_the_writing_aids() {
+        let config: AppConfig = serde_json::from_str(r#"{"version": 3}"#).unwrap();
+        assert_eq!(config.editor, EditorSettings::default());
+        let editor = config.editor;
+        assert!(editor.auto_pair && editor.format_tables && editor.smart_paste);
+        assert_eq!(editor.typewriter, Typewriter::FocusMode);
+        assert_eq!(editor.word_goal, None);
+        assert!(Typewriter::FocusMode.centres(true) && !Typewriter::FocusMode.centres(false));
+        assert!(Typewriter::Always.centres(false) && !Typewriter::Off.centres(true));
+    }
+
     #[test]
     fn older_files_install_updates_automatically() {
         let old: AppConfig = serde_json::from_str(r#"{"version": 3}"#).unwrap();

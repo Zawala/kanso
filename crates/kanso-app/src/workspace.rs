@@ -62,6 +62,8 @@ actions!(
         Quit,
         OpenCommandPalette,
         OpenNotePicker,
+        PastePlainText,
+        FormatTable,
     ]
 );
 
@@ -145,6 +147,8 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("enter", FocusEditor, Some("NoteList")),
         KeyBinding::new("secondary-k", OpenCommandPalette, None),
         KeyBinding::new("secondary-p", OpenNotePicker, None),
+        // In the note's text: the clipboard's plain text, as it is.
+        KeyBinding::new("secondary-shift-v", PastePlainText, Some("Input")),
     ]);
     crate::palette::bind_keys(cx);
     crate::settings::bind_keys(cx);
@@ -169,7 +173,12 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Export Note…", ExportNote),
             MenuItem::action("Export All Notes…", ExportLibrary),
         ]),
-        Menu::new("Edit").items([MenuItem::os_submenu("Services", SystemMenuType::Services)]),
+        Menu::new("Edit").items([
+            MenuItem::action("Paste and Match Style", PastePlainText),
+            MenuItem::action("Format Table", FormatTable),
+            MenuItem::separator(),
+            MenuItem::os_submenu("Services", SystemMenuType::Services),
+        ]),
         Menu::new("Note").items([
             MenuItem::action("Pin / Unpin Note", TogglePinned),
             MenuItem::action("Move to Trash", TrashNote),
@@ -1103,6 +1112,15 @@ impl Render for Workspace {
                 this.close_settings(window, cx);
                 this.editor
                     .update(cx, |editor, cx| editor.toggle_pinned(cx));
+            }))
+            .on_action(cx.listener(|this, _: &PastePlainText, window, cx| {
+                this.editor
+                    .update(cx, |editor, cx| editor.paste_plain(window, cx));
+            }))
+            .on_action(cx.listener(|this, _: &FormatTable, window, cx| {
+                this.close_settings(window, cx);
+                this.editor
+                    .update(cx, |editor, cx| editor.format_table(window, cx));
             }))
             .on_action(cx.listener(|this, _: &TrashNote, window, cx| {
                 this.close_settings(window, cx);

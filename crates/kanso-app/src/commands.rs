@@ -12,10 +12,11 @@ use crate::settings::{
     OpenEditorSettings, OpenGeneralSettings, OpenUpdateSettings, ReloadThemes,
 };
 use crate::workspace::{
-    ChangePassword, ExportLibrary, ExportNote, FocusNoteList, FocusSearch, ImportInkdrop, NewNote,
-    NewNotebook, NewRecoveryKey, NextNote, OpenNotePicker, OpenSettings, PreviousNote, Quit,
-    SaveNote, SearchAllNotes, ShowCreateAccount, ShowEditor, ShowHistory, ShowPreview, ShowSignIn,
-    ShowSplit, SignOut, SyncNow, ToggleFocusMode, TogglePinned, ToggleSidebar, TrashNote,
+    ChangePassword, ExportLibrary, ExportNote, FocusNoteList, FocusSearch, FormatTable,
+    ImportInkdrop, NewNote, NewNotebook, NewRecoveryKey, NextNote, OpenNotePicker, OpenSettings,
+    PreviousNote, Quit, SaveNote, SearchAllNotes, ShowCreateAccount, ShowEditor, ShowHistory,
+    ShowPreview, ShowSignIn, ShowSplit, SignOut, SyncNow, ToggleFocusMode, TogglePinned,
+    ToggleSidebar, TrashNote,
 };
 
 /// The palette's sections, in the order they appear with nothing typed.
@@ -49,6 +50,8 @@ pub enum Picker {
     GoToNotebook,
     /// A tag whose notes the list shows.
     GoToTag,
+    /// The open note's word goal.
+    WordGoal,
 }
 
 /// What choosing a command does.
@@ -208,6 +211,28 @@ static COMMANDS: &[Command] = &[
         keywords: &["active", "on hold", "completed", "dropped", "done"],
         group: Group::Note,
         run: Run::Pick(Picker::Status),
+        needs: Needs::LiveNote,
+    },
+    Command {
+        id: "format-table",
+        label: "Format table",
+        label_when_pinned: None,
+        description: "Lines up the pipes of the table at the cursor, padding each cell to its column's width. The cells' text stays as it is.",
+        icon: IconName::Table,
+        keywords: &["align", "table", "columns", "pipes", "tidy"],
+        group: Group::Note,
+        run: action!(FormatTable),
+        needs: Needs::LiveNote,
+    },
+    Command {
+        id: "word-goal",
+        label: "Set word goal…",
+        label_when_pinned: None,
+        description: "How many words this note is aiming for. Focus mode shows how far along it is.",
+        icon: IconName::Goal,
+        keywords: &["target", "count", "words", "progress", "focus"],
+        group: Group::Note,
+        run: Run::Pick(Picker::WordGoal),
         needs: Needs::LiveNote,
     },
     Command {

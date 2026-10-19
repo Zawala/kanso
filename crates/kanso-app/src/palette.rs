@@ -34,9 +34,11 @@ use crate::fuzzy;
 use crate::keys::keycap;
 use crate::library::{Filter, Library, RECENT_DAYS, search_params};
 use crate::services::Services;
+use crate::text_stats::format_count;
 use crate::theme::{
     Colors, PALETTE_SELECTED_ALPHA, Rgb, muted_tag_color, section_label, status_glyph,
 };
+use crate::word_goal::{self, GoalSetting};
 
 actions!(
     palette,
@@ -98,6 +100,8 @@ enum Target {
     /// Create a tag with this name and add it.
     NewTag(String),
     Status(NoteStatus),
+    /// Give the open note this word goal.
+    WordGoal(GoalSetting),
 }
 
 #[derive(Clone)]
@@ -165,6 +169,7 @@ impl Item {
             Target::Tag(id) => format!("tag:{id}"),
             Target::NewTag(name) => format!("new-tag:{name}"),
             Target::Status(status) => format!("status:{}", status.as_str()),
+            Target::WordGoal(goal) => format!("goal:{goal:?}"),
         }
     }
 }
@@ -616,6 +621,15 @@ impl Palette {
                     .collect();
                 vec![section("Status", entries, false)]
             }
+            Some(Mode::Pick(Picker::WordGoal)) => {
+                let editor = self.editor.read(cx);
+                let (current, default) = (editor.word_goal(), editor.default_word_goal());
+                vec![section(
+                    "Word goal",
+                    goal_entries(query, current, default),
+                    true,
+                )]
+            }
         }
     }
 
@@ -947,6 +961,11 @@ impl Palette {
                 self.close(window, cx);
                 self.editor
                     .update(cx, |editor, cx| editor.set_status(status, cx));
+            }
+            Target::WordGoal(goal) => {
+                self.close(window, cx);
+                self.editor
+                    .update(cx, |editor, cx| editor.set_word_goal(goal, cx));
             }
         }
     }
@@ -1292,6 +1311,14 @@ impl Palette {
                         .push(("Note", chip(title, cx).into_any_element()));
                 }
             }
+            Target::WordGoal(goal) => {
+                detail.description = Some(goal_description(*goal).into());
+                if let Some(title) = note_title.clone() {
+                    detail
+                        .sections
+                        .push(("Note", chip(title, cx).into_any_element()));
+                }
+            }
         }
 
         v_flex()
@@ -1622,6 +1649,68 @@ fn placeholder(mode: Mode) -> &'static str {
         Mode::Pick(Picker::Status) => "Set status…",
         Mode::Pick(Picker::GoToNotebook) => "Go to notebook…",
         Mode::Pick(Picker::GoToTag) => "Go to tag…",
+        Mode::Pick(Picker::WordGoal) => "Words to aim for, such as 1,500…",
+    }
+}
+
+/// The word goals to choose from: what was typed, when it reads as a
+/// number of words, first; then the usual goals, and the default or none.
+fn goal_entries(
+    query: &str,
+    current: GoalSetting,
+    default: Option<u32>,
+) -> Vec<(Item, Option<i64>)> {
+    let words = |n: u32| format!("{} words", format_count(n as usize));
+    let mut entries = Vec::new();
+    let typed = word_goal::parse_goal(query);
+    if let Some(n) = typed {
+        let item = Item::new(
+            Target::WordGoal(GoalSetting::Words(n)),
+            format!("Aim for {}", words(n)),
+            IconName::Goal,
+        )
+        .checked(current == GoalSetting::Words(n));
+        entries.push((item, Some(i64::MAX / 8)));
+    }
+    for n in word_goal::PRESETS {
+        if typed == Some(n) {
+            continue;
+        }
+        let item = Item::new(
+            Target::WordGoal(GoalSetting::Words(n)),
+            words(n),
+            IconName::Goal,
+        )
+        .checked(current == GoalSetting::Words(n));
+        let score = item_score(query, &item.label, &[]);
+        entries.push((item, score));
+    }
+    let mut plain = |setting: GoalSetting, label: String| {
+        let item = Item::new(Target::WordGoal(setting), label, IconName::Minus)
+            .checked(current == setting);
+        let score = item_score(query, &item.label, &["none", "off", "clear"]);
+        entries.push((item, score));
+    };
+    match default {
+        Some(n) => {
+            plain(GoalSetting::Default, format!("Default ({})", words(n)));
+            plain(GoalSetting::Off, "No goal for this note".to_owned());
+        }
+        None => plain(GoalSetting::Default, "No goal".to_owned()),
+    }
+    entries
+}
+
+fn goal_description(goal: GoalSetting) -> String {
+    match goal {
+        GoalSetting::Words(n) => format!(
+            "Focus mode shows how far the note is toward {} words.",
+            format_count(n as usize)
+        ),
+        GoalSetting::Default => {
+            "The note follows the default goal set in Settings › Editor.".to_owned()
+        }
+        GoalSetting::Off => "This note has no word goal, whatever the default.".to_owned(),
     }
 }
 

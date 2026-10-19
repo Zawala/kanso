@@ -33,9 +33,11 @@ mod latency_bench;
 mod launch;
 mod layout;
 mod library;
+mod list_edit;
 mod markdown_edit;
 mod markdown_source;
 mod note_list;
+mod pairing;
 mod palette;
 mod paths;
 mod preview;
@@ -46,9 +48,11 @@ mod settings_themes;
 #[cfg(test)]
 mod settings_window_tests;
 mod sidebar;
+mod smart_paste;
 #[cfg(test)]
 mod snapshots;
 mod split;
+mod table_format;
 mod text_match;
 mod text_stats;
 mod theme;
@@ -58,6 +62,7 @@ mod themes;
 #[cfg(test)]
 mod ui_tests;
 mod updates;
+mod word_goal;
 mod workspace;
 
 use std::path::PathBuf;
