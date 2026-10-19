@@ -54,16 +54,35 @@ pub trait SecretStore: Send + Sync {
     fn delete(&self, item: &str) -> Result<(), SecretError>;
 }
 
-/// The macOS Keychain, service [`SERVICE`]: generic passwords whose account
-/// is the item name. Tests never construct it; they use [`MemorySecrets`].
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Keychain;
+/// The macOS Keychain, service [`SERVICE`] (or another, for Kanso Dev):
+/// generic passwords whose account is the item name. Tests never construct
+/// it; they use [`MemorySecrets`].
+#[derive(Clone, Copy, Debug)]
+pub struct Keychain {
+    service: &'static str,
+}
+
+impl Default for Keychain {
+    fn default() -> Self {
+        Keychain::with_service(SERVICE)
+    }
+}
 
 // no-prop-test: a thin wrapper over the system Keychain, which tests must
 // never touch; the item formats above it are tested through `MemorySecrets`.
 impl Keychain {
-    fn entry(item: &str) -> Result<keyring::Entry, SecretError> {
-        keyring::Entry::new(SERVICE, item).map_err(keychain_error)
+    /// The Keychain under `service`: a separate build (Kanso Dev) keeps
+    /// its secrets apart from the release's.
+    pub const fn with_service(service: &'static str) -> Keychain {
+        Keychain { service }
+    }
+
+    pub fn service(&self) -> &'static str {
+        self.service
+    }
+
+    fn entry(&self, item: &str) -> Result<keyring::Entry, SecretError> {
+        keyring::Entry::new(self.service, item).map_err(keychain_error)
     }
 }
 
@@ -73,7 +92,7 @@ fn keychain_error(err: keyring::Error) -> SecretError {
 
 impl SecretStore for Keychain {
     fn get(&self, item: &str) -> Result<Option<Zeroizing<String>>, SecretError> {
-        match Keychain::entry(item)?.get_password() {
+        match self.entry(item)?.get_password() {
             Ok(value) => Ok(Some(Zeroizing::new(value))),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(err) => Err(keychain_error(err)),
@@ -81,13 +100,13 @@ impl SecretStore for Keychain {
     }
 
     fn set(&self, item: &str, value: &str) -> Result<(), SecretError> {
-        Keychain::entry(item)?
+        self.entry(item)?
             .set_password(value)
             .map_err(keychain_error)
     }
 
     fn delete(&self, item: &str) -> Result<(), SecretError> {
-        match Keychain::entry(item)?.delete_credential() {
+        match self.entry(item)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(err) => Err(keychain_error(err)),
         }

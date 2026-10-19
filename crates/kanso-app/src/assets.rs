@@ -11,6 +11,7 @@ icon_assets!(
     pub ExtraIcons,
     [
         ArrowUpDown,
+        CircleArrowDown,
         CircleDot,
         CirclePause,
         Clock,
@@ -23,6 +24,7 @@ icon_assets!(
         Copy,
         CornerDownLeft,
         DatabaseBackup,
+        Download,
         FileKey,
         FilePlus,
         Focus,
@@ -55,6 +57,7 @@ icon_assets!(
         Ruler,
         Save,
         Server,
+        Sparkles,
         Split,
         SquareCheck,
         SquarePen,

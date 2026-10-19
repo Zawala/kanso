@@ -9,6 +9,12 @@ rust-version.workspace = true
 name = "kanso"
 path = "src/main.rs"
 
+[features]
+# Kanso Dev: its own name, bundle ID, data folder, Keychain service and API
+# port, and no updates (docs/DEVELOPING.md). `scripts/bundle-macos.sh --dev`
+# builds it; releases never do.
+dev-flavour = []
+
 [dependencies]
 anyhow.workspace = true
 async-channel.workspace = true
@@ -19,8 +25,10 @@ kanso-core.workspace = true
 kanso-import.workspace = true
 kanso-server.workspace = true
 kanso-sync.workspace = true
+kanso-update.workspace = true
 kanso-store.workspace = true
 markdown.workspace = true
+semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tree-sitter-c-sharp.workspace = true

@@ -47,6 +47,7 @@ actions!(
         OpenAppearanceSettings,
         OpenAccountSettings,
         OpenApiSettings,
+        OpenUpdateSettings,
         CloseSettings,
         NextSettingsPage,
         PreviousSettingsPage,
@@ -81,16 +82,18 @@ pub enum SettingsPage {
     Appearance,
     Account,
     LocalApi,
+    Updates,
 }
 
 impl SettingsPage {
     /// In the order the column lists them.
-    pub const ALL: [SettingsPage; 5] = [
+    pub const ALL: [SettingsPage; 6] = [
         SettingsPage::General,
         SettingsPage::Editor,
         SettingsPage::Appearance,
         SettingsPage::Account,
         SettingsPage::LocalApi,
+        SettingsPage::Updates,
     ];
 
     pub fn title(self) -> &'static str {
@@ -100,6 +103,7 @@ impl SettingsPage {
             SettingsPage::Appearance => "Themes",
             SettingsPage::Account => "Account",
             SettingsPage::LocalApi => "Local API",
+            SettingsPage::Updates => "Updates",
         }
     }
 
@@ -110,6 +114,7 @@ impl SettingsPage {
             SettingsPage::Appearance => Lucide::Palette,
             SettingsPage::Account => Lucide::CircleUser,
             SettingsPage::LocalApi => Lucide::Plug,
+            SettingsPage::Updates => Lucide::CircleArrowDown,
         }
     }
 
@@ -120,6 +125,7 @@ impl SettingsPage {
             SettingsPage::Appearance => "settings-appearance",
             SettingsPage::Account => "settings-account",
             SettingsPage::LocalApi => "settings-api",
+            SettingsPage::Updates => "settings-updates",
         }
     }
 
@@ -807,6 +813,7 @@ impl SettingsView {
             SettingsPage::Appearance => crate::settings_themes::page(cx),
             SettingsPage::Account => vec![self.account.clone().into_any_element()],
             SettingsPage::LocalApi => api_page(cx),
+            SettingsPage::Updates => crate::updates::page(cx),
         }
     }
 
@@ -1490,6 +1497,7 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
     let appearance = page(SettingsPage::Appearance);
     let account = page(SettingsPage::Account);
     let api = page(SettingsPage::LocalApi);
+    let updates = page(SettingsPage::Updates);
     el.on_action(
         cx.listener(|this, _: &OpenSettings, window, cx| this.open_settings(None, window, cx)),
     )
@@ -1508,6 +1516,9 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
         cx.listener(move |this, _: &OpenAccountSettings, window, cx| account(this, window, cx)),
     )
     .on_action(cx.listener(move |this, _: &OpenApiSettings, window, cx| api(this, window, cx)))
+    .on_action(
+        cx.listener(move |this, _: &OpenUpdateSettings, window, cx| updates(this, window, cx)),
+    )
     .on_action(cx.listener(|this, _: &CloseSettings, window, cx| this.close_settings(window, cx)))
     .on_action(
         cx.listener(|_, _: &ReloadThemes, window, cx| crate::settings_themes::reload(window, cx)),
@@ -1544,6 +1555,9 @@ pub fn register_app_actions(cx: &mut App, open_main_window: fn(&mut App)) {
     });
     cx.on_action(move |_: &OpenApiSettings, cx| {
         show(Some(SettingsPage::LocalApi), open_main_window, cx)
+    });
+    cx.on_action(move |_: &OpenUpdateSettings, cx| {
+        show(Some(SettingsPage::Updates), open_main_window, cx)
     });
 }
 
@@ -1835,7 +1849,8 @@ mod tests {
         );
         assert_eq!(SettingsPage::General.step(-1), SettingsPage::General);
         assert_eq!(SettingsPage::General.step(3), SettingsPage::Account);
-        assert_eq!(SettingsPage::LocalApi.step(1), SettingsPage::LocalApi);
+        assert_eq!(SettingsPage::LocalApi.step(1), SettingsPage::Updates);
+        assert_eq!(SettingsPage::Updates.step(1), SettingsPage::Updates);
         assert_eq!(SettingsPage::Account.title(), "Account");
     }
 
@@ -2101,16 +2116,16 @@ mod tests {
         /// The page column: a step stays on a page, standing still is a
         /// no-op, and a step there and back returns unless an end stopped it.
         #[test]
-        fn prop_page_steps_stop_at_the_ends(start in 0usize..5, by in -6isize..6) {
+        fn prop_page_steps_stop_at_the_ends(start in 0usize..6, by in -7isize..7) {
             let page = SettingsPage::ALL[start];
             prop_assert_eq!(page.step(0), page);
             let moved = page.step(by);
             let target = start as isize + by;
-            if (0..5).contains(&target) {
+            if (0..6).contains(&target) {
                 prop_assert_eq!(moved, SettingsPage::ALL[target as usize]);
                 prop_assert_eq!(moved.step(-by), page);
             } else {
-                prop_assert_eq!(moved, if by < 0 { SettingsPage::General } else { SettingsPage::LocalApi });
+                prop_assert_eq!(moved, if by < 0 { SettingsPage::General } else { SettingsPage::Updates });
             }
         }
     }

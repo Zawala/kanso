@@ -5,7 +5,12 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
 
-pub const LABEL: &str = "app.kanso.Kanso";
+pub const LABEL: &str = label_for(&crate::flavour::CURRENT);
+
+/// The login item's label for `flavour`: its bundle ID.
+pub const fn label_for(flavour: &crate::flavour::Flavour) -> &'static str {
+    flavour.bundle_id
+}
 
 /// Escapes text for an XML element.
 pub fn xml_escape(text: &str) -> String {

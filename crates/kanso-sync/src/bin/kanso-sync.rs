@@ -197,7 +197,7 @@ fn run(command: Command) -> Result<bool> {
         }
         Command::Unbind { data_dir } => {
             let (_lock, store) = open(&data_dir)?;
-            kanso_sync::unbind(&store, &Keychain)?;
+            kanso_sync::unbind(&store, &Keychain::default())?;
             println!(
                 "Unbound {}: signed out locally, live documents will go to the old server again, and its cursor is 0.",
                 data_dir.display()
@@ -236,7 +236,7 @@ fn binding(store: &Store) -> Result<Option<(String, String, String)>> {
 fn session(store: &Store) -> Result<Session> {
     let (library, origin, account) =
         binding(store)?.ok_or_else(|| anyhow!("this library isn't bound to an account"))?;
-    keychain::load_session(&Keychain, &library, &origin, &account)?
+    keychain::load_session(&Keychain::default(), &library, &origin, &account)?
         .ok_or_else(|| anyhow!("this library is signed out; sign in from Kanso first"))
 }
 

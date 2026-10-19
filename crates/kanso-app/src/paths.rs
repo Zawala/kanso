@@ -14,19 +14,21 @@ pub fn default_data_dir() -> PathBuf {
 
 #[cfg(target_os = "macos")]
 fn platform_data_dir() -> PathBuf {
-    home().join("Library/Application Support/Kanso")
+    home()
+        .join("Library/Application Support")
+        .join(crate::flavour::CURRENT.data_folder)
 }
 
 #[cfg(target_os = "windows")]
 fn platform_data_dir() -> PathBuf {
     non_empty_var("APPDATA")
         .map_or_else(|| home().join("AppData").join("Roaming"), PathBuf::from)
-        .join("Kanso")
+        .join(crate::flavour::CURRENT.data_folder)
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn platform_data_dir() -> PathBuf {
-    xdg_dir("XDG_DATA_HOME", ".local/share").join("kanso")
+    xdg_dir("XDG_DATA_HOME", ".local/share").join(crate::flavour::CURRENT.xdg_name)
 }
 
 /// An XDG base directory: `$var` when it is an absolute path, otherwise
@@ -69,7 +71,9 @@ pub fn backups_dir(data_dir: &Path) -> PathBuf {
 /// entry on Linux.
 #[cfg(target_os = "macos")]
 pub fn launch_agent_path() -> PathBuf {
-    home().join("Library/LaunchAgents/app.kanso.Kanso.plist")
+    home()
+        .join("Library/LaunchAgents")
+        .join(format!("{}.plist", crate::flavour::CURRENT.bundle_id))
 }
 
 /// What starts Kanso at login: the LaunchAgent on macOS, an XDG autostart
@@ -80,7 +84,9 @@ pub fn launch_agent_path() -> PathBuf {
     let config = home().join("AppData").join("Roaming");
     #[cfg(not(target_os = "windows"))]
     let config = xdg_dir("XDG_CONFIG_HOME", ".config");
-    config.join("autostart").join("kanso.desktop")
+    config
+        .join("autostart")
+        .join(format!("{}.desktop", crate::flavour::CURRENT.xdg_name))
 }
 
 /// The button that shows a file in the system's file manager.

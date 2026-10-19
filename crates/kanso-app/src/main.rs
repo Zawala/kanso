@@ -22,6 +22,7 @@ mod editor;
 mod editor_footer;
 mod empty_state;
 mod export;
+mod flavour;
 mod fuzzy;
 mod grouping;
 mod history;
@@ -56,6 +57,7 @@ mod theme_import;
 mod themes;
 #[cfg(test)]
 mod ui_tests;
+mod updates;
 mod workspace;
 
 use std::path::PathBuf;
@@ -97,6 +99,9 @@ struct Args {
     command: Option<String>,
     data_dir: PathBuf,
     rest: Vec<String>,
+    /// Opened by an update: the Kanso that installed it may still be
+    /// quitting, so wait for the data folder.
+    after_update: bool,
 }
 
 fn parse_args() -> Result<Args> {
@@ -108,6 +113,7 @@ fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
     let mut command = None;
     let mut data_dir = None;
     let mut rest = Vec::new();
+    let mut after_update = false;
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -117,6 +123,7 @@ fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
                 ))
             }
             "-h" | "--help" => command = Some("help".to_owned()),
+            "--after-update" => after_update = true,
             // macOS adds this when launching from Finder.
             arg if arg.starts_with("-psn_") => {}
             _ if command.is_none() && !arg.starts_with('-') => command = Some(arg),
@@ -127,6 +134,7 @@ fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
         command,
         data_dir: data_dir.unwrap_or_else(paths::default_data_dir),
         rest,
+        after_update,
     })
 }
 
@@ -137,7 +145,7 @@ fn main() -> Result<()> {
     }
     let args = parse_args()?;
     match args.command.as_deref() {
-        None => run_app(args.data_dir),
+        None => run_app(args.data_dir, args.after_update),
         Some("serve") => serve(args.data_dir),
         Some("import-inkdrop") => inkdrop::run_cli(&args.data_dir, &args.rest),
         Some("theme") => theme_import::run_cli(&args.data_dir, &args.rest),
@@ -200,10 +208,20 @@ fn load_config(data_dir: &std::path::Path) -> Result<AppConfig> {
     Ok(config)
 }
 
-fn run_app(data_dir: PathBuf) -> Result<()> {
+/// How long a Kanso opened by an update waits for the one that installed
+/// it to let go of the data folder.
+const AFTER_UPDATE_WAIT: std::time::Duration = std::time::Duration::from_secs(20);
+
+fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
     std::fs::create_dir_all(&data_dir)
         .with_context(|| format!("creating {}", data_dir.display()))?;
-    let Some(lock) = lock_data_dir(&data_dir)? else {
+    let mut lock = lock_data_dir(&data_dir)?;
+    let started = std::time::Instant::now();
+    while lock.is_none() && after_update && started.elapsed() < AFTER_UPDATE_WAIT {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        lock = lock_data_dir(&data_dir)?;
+    }
+    let Some(lock) = lock else {
         bail!(
             "Kanso is already running with the data folder {}",
             data_dir.display()
@@ -238,7 +256,8 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
         // out.
         let mut services = Services::default();
         services.backend = Some(Arc::new(kanso_sync::HttpBackend::new()));
-        services.secrets = Some(Arc::new(kanso_sync::Keychain));
+        // Kanso Dev keeps its secrets under its own service.
+        services.secrets = Some(Arc::new(flavour::CURRENT.keychain()));
         cx.set_global(services);
         workspace::bind_keys(cx);
         note_list::bind_keys(cx);
@@ -246,11 +265,14 @@ fn run_app(data_dir: PathBuf) -> Result<()> {
         cx.on_action(|_: &Quit, cx| quit(cx));
         watch_for_quit(cx);
         settings::register_app_actions(cx, open_main_window);
+        updates::register_app_actions(cx);
         services::apply_server_settings(cx);
         themes::watch(cx);
         // Signed in again once the config, the binding and the Keychain
         // agree; sync starts then.
         account_flow::restore(cx);
+        updates::set_log_dir(&cx.global::<AppState>().data_dir.clone());
+        updates::init(cx);
         open_main_window(cx);
         cx.activate(true);
         // Held until the process exits so no second Kanso opens this folder.
@@ -268,7 +290,7 @@ fn open_main_window(cx: &mut App) {
     // controls of its own, so the system's title bar stays.
     #[cfg(target_os = "macos")]
     let titlebar = TitlebarOptions {
-        title: Some("Kanso".into()),
+        title: Some(flavour::CURRENT.name.into()),
         appears_transparent: true,
         traffic_light_position: Some(point(
             px(layout::TRAFFIC_LIGHTS.0),
@@ -277,7 +299,7 @@ fn open_main_window(cx: &mut App) {
     };
     #[cfg(not(target_os = "macos"))]
     let titlebar = TitlebarOptions {
-        title: Some("Kanso".into()),
+        title: Some(flavour::CURRENT.name.into()),
         appears_transparent: false,
         traffic_light_position: None,
     };
@@ -289,7 +311,7 @@ fn open_main_window(cx: &mut App) {
         // Matches kanso.desktop, so the dock and the window list show its
         // name and icon.
         #[cfg(target_os = "linux")]
-        app_id: Some("kanso".into()),
+        app_id: Some(flavour::CURRENT.xdg_name.into()),
         #[cfg(target_os = "linux")]
         window_decorations: Some(WindowDecorations::Server),
         ..Default::default()
@@ -308,6 +330,7 @@ fn open_main_window(cx: &mut App) {
                         true
                     });
                     offer_first_import(window, cx);
+                    updates::announce(window, cx);
                 })
                 .ok();
         }
@@ -346,6 +369,9 @@ fn offer_first_import(window: &mut Window, cx: &mut App) {
 fn watch_for_quit(cx: &mut App) {
     cx.on_app_quit(|cx| {
         services::stop_server(cx);
+        // A staged update goes in now, and Kanso opens again if Restart
+        // asked for it.
+        updates::install_on_quit(cx);
         AppState::save_pending_config(cx);
         clipboard::clear_secret_on_quit();
         async {}

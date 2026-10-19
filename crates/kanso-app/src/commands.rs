@@ -9,7 +9,7 @@ use gpui_kit::assets::IconName;
 
 use crate::settings::{
     CloseSettings, OpenAccountSettings, OpenApiSettings, OpenAppearanceSettings,
-    OpenEditorSettings, OpenGeneralSettings, ReloadThemes,
+    OpenEditorSettings, OpenGeneralSettings, OpenUpdateSettings, ReloadThemes,
 };
 use crate::workspace::{
     ChangePassword, ExportLibrary, ExportNote, FocusNoteList, FocusSearch, ImportInkdrop, NewNote,
@@ -368,6 +368,17 @@ static COMMANDS: &[Command] = &[
     },
     // App.
     Command {
+        id: "check-updates",
+        label: "Check for updates…",
+        label_when_pinned: None,
+        description: "Asks GitHub for a newer Kanso. A new release downloads in the background and installs when you restart.",
+        icon: IconName::CircleArrowDown,
+        keywords: &["update", "upgrade", "version", "release", "new"],
+        group: Group::App,
+        run: action!(crate::updates::CheckForUpdates),
+        needs: Needs::Nothing,
+    },
+    Command {
         id: "sync",
         label: "Sync now",
         label_when_pinned: None,
@@ -572,6 +583,24 @@ static COMMANDS: &[Command] = &[
         ],
         group: Group::App,
         run: action!(OpenApiSettings),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "settings-updates",
+        label: "Settings: Updates",
+        label_when_pinned: None,
+        description: "This version, when Kanso last looked for a new one, automatic updates, and what's new.",
+        icon: IconName::CircleArrowDown,
+        keywords: &[
+            "preferences",
+            "update",
+            "version",
+            "release",
+            "changelog",
+            "what's new",
+        ],
+        group: Group::App,
+        run: action!(OpenUpdateSettings),
         needs: Needs::Nothing,
     },
     Command {

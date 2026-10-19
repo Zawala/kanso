@@ -22,7 +22,7 @@ impl Default for ServerSettings {
     fn default() -> Self {
         ServerSettings {
             enabled: true,
-            port: DEFAULT_PORT,
+            port: crate::flavour::CURRENT.default_port,
             bind_address: "127.0.0.1".into(),
             username: String::new(),
             password: String::new(),
@@ -295,6 +295,21 @@ impl Default for WindowLayout {
     }
 }
 
+/// Updates from GitHub releases (docs/RELEASING.md › How updates work).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct UpdateSettings {
+    /// Download a new release in the background and install it on the
+    /// next restart or quit. Off, Kanso only says one is out.
+    pub auto_install: bool,
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        UpdateSettings { auto_install: true }
+    }
+}
+
 /// The layout [`AppConfig::migrate`] brings older files up to.
 pub const CONFIG_VERSION: u32 = 3;
 
@@ -310,6 +325,7 @@ pub struct AppConfig {
     pub launch_at_login: bool,
     pub last_note: Option<String>,
     pub layout: WindowLayout,
+    pub updates: UpdateSettings,
 }
 
 impl Default for AppConfig {
@@ -322,6 +338,7 @@ impl Default for AppConfig {
             launch_at_login: false,
             last_note: None,
             layout: WindowLayout::default(),
+            updates: UpdateSettings::default(),
         }
     }
 }
@@ -410,7 +427,13 @@ mod tests {
 
     /// Any config, with the window layout too.
     fn gen_config() -> impl Strategy<Value = AppConfig> {
-        (gen_settings(), gen_layout()).prop_map(|(config, layout)| AppConfig { layout, ..config })
+        (gen_settings(), gen_layout(), any::<bool>()).prop_map(|(config, layout, auto_install)| {
+            AppConfig {
+                layout,
+                updates: UpdateSettings { auto_install },
+                ..config
+            }
+        })
     }
 
     fn gen_layout() -> impl Strategy<Value = WindowLayout> {
@@ -489,6 +512,7 @@ mod tests {
                     launch_at_login: login,
                     last_note: last,
                     layout: WindowLayout::default(),
+                    updates: UpdateSettings::default(),
                 },
             )
     }
@@ -852,6 +876,17 @@ mod tests {
         assert!(partial.layout.focus_mode);
         assert_eq!(partial.layout.split_ratio, DEFAULT_SPLIT_RATIO);
         assert_eq!(partial.layout.status_open, None);
+    }
+
+    /// Files from before updates install themselves turn them on; turning
+    /// them off is kept.
+    #[test]
+    fn older_files_install_updates_automatically() {
+        let old: AppConfig = serde_json::from_str(r#"{"version": 3}"#).unwrap();
+        assert!(old.updates.auto_install);
+        let off: AppConfig =
+            serde_json::from_str(r#"{"updates": {"autoInstall": false}}"#).unwrap();
+        assert!(!off.updates.auto_install);
     }
 
     #[test]

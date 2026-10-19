@@ -80,6 +80,9 @@ pub struct Sidebar {
     /// shown, not the filter.
     settings_open: bool,
     user: SharedString,
+    /// "DEV" in Kanso Dev, beside the name, so it is never taken for the
+    /// Kanso installed from a release.
+    pub(crate) badge: Option<&'static str>,
     /// Shows the rail button with this tooltip hovered, its tooltip open,
     /// as a pointer resting on it would.
     #[cfg(test)]
@@ -124,6 +127,7 @@ impl Sidebar {
             collapsed: false,
             settings_open: false,
             user: user.into(),
+            badge: crate::flavour::CURRENT.badge,
             #[cfg(test)]
             reveal_tooltip: None,
             _tick: tick,
@@ -313,11 +317,25 @@ impl Sidebar {
                     .text_color(colors.text_secondary),
             )
             .child(
-                div()
+                h_flex()
                     .flex_1()
-                    .text_size(px(15.))
-                    .font_semibold()
-                    .child("Kanso"),
+                    .gap(px(7.))
+                    .child(div().text_size(px(15.)).font_semibold().child("Kanso"))
+                    .children(self.badge.map(|badge| {
+                        div()
+                            .id("dev-badge")
+                            .debug_selector(|| "dev-badge".into())
+                            .px(px(5.))
+                            .py(px(1.))
+                            .rounded(px(4.))
+                            .border_1()
+                            .border_color(colors.warning)
+                            .text_size(px(10.))
+                            .line_height(px(13.))
+                            .font_semibold()
+                            .text_color(colors.warning)
+                            .child(badge)
+                    })),
             )
             .child(
                 Button::new("compose")
@@ -964,6 +982,7 @@ impl Sidebar {
                     .child(tags)
                     .child(trash),
             )
+            .children(crate::updates::render_rail_button(cx))
             .children(api_icon)
             .child(sync_icon)
             .child(
@@ -1145,6 +1164,9 @@ impl Render for Sidebar {
                     .track_scroll(&self.scroll)
                     .child(list),
             )
+            // An update to restart into, or one downloading: by the account
+            // and sync line, calm until it needs a click.
+            .children(crate::updates::render_pill(cx))
             .child(self.render_footer(cx))
             .into_any_element()
     }

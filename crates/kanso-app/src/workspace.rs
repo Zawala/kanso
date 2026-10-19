@@ -154,6 +154,7 @@ pub fn set_menus(cx: &mut App) {
     cx.set_menus([
         Menu::new("Kanso").items([
             MenuItem::action("Settings…", OpenSettings),
+            MenuItem::action("Check for Updates…", crate::updates::CheckForUpdates),
             MenuItem::separator(),
             MenuItem::action("Import from Inkdrop…", ImportInkdrop),
             MenuItem::action("Sync Now", SyncNow),
@@ -1167,6 +1168,7 @@ impl Render for Workspace {
                 ))
             })
             .map(|el| crate::settings::on_actions(el, cx))
+            .map(|el| crate::updates::on_actions(el, cx))
             // The panes run the full height: each has its own top band
             // (the title bar's row) and bottom band. The sidebar and the
             // list keep their widths and the editor takes the rest; each
