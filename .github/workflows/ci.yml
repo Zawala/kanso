@@ -14,8 +14,11 @@ env:
   PROPTEST_RNG_SEED: "20261017"
 
 jobs:
+  # On the self-hosted Mac: several tests need macOS's fonts and text
+  # system, and the Linux runner has no dbus headers for the keyring. The
+  # runner keeps its target folder between runs, so no cache step.
   rust:
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
       # Installs the toolchain pinned in rust-toolchain.toml.
@@ -69,8 +72,9 @@ jobs:
 
   # The Worker under wrangler dev (Miniflare, no Cloudflare credentials) and
   # the Rust client against it: cloud/scripts/e2e-local.sh.
+  # The Mac as well: it builds kanso-sync, whose Linux keyring needs dbus.
   e2e:
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     needs: [rust, worker]
     env:
       KANSO_E2E_PORT: "18787"
@@ -78,6 +82,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
       - run: npm ci --no-audit --no-fund
         working-directory: cloud
       - run: cloud/scripts/e2e-local.sh
