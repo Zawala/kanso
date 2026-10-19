@@ -116,12 +116,18 @@ scripts/release.sh publish 0.2.0  # wait for the workflow, verify, publish
    the push commands. It pushes only with `--push`.
 
 The tag starts `.github/workflows/release.yml`, which builds each platform,
-signs and notarizes the Mac app when the Apple secrets are set, makes the
-update archives, writes `latest.json` from them with the release's section of
-`CHANGELOG.md` (or, if that's missing, git-cliff's notes for the tag), signs
-it with `KANSO_UPDATE_SIGNING_KEY`, verifies it against the keys in the
-checkout, and opens a **draft** release with everything. A missing or
-untrusted signing key fails the release.
+signs and notarizes the Mac app when the Apple secrets are set, and makes
+the update archives. Its `feed` job then writes `latest.json` from them with
+the release's section of `CHANGELOG.md` (a tag without one fails), signs it
+with `KANSO_UPDATE_SIGNING_KEY`, and verifies it against the keys in the
+checkout; a separate `publish` job opens a **draft** release with
+everything. A missing or untrusted signing key fails the release.
+
+The signing key only reaches the `feed` job, which runs in the `release`
+environment with a read-only token, no third-party actions, and the key in
+one step that runs a `kanso-release` built in an earlier one. Only `publish`
+can write to the repository, and it runs no code from it. Every action is
+pinned to a commit; bump the SHAs deliberately.
 
 `release.sh publish <version>` waits for that run, downloads the draft's
 `latest.json` and `.sig`, verifies them, and publishes the draft as the
@@ -143,17 +149,37 @@ It prints the public key. Add it on its own line to
 the update signing key`), so every build from then on checks updates with
 it. Then give the secret to the workflow and put it somewhere safe:
 
+First make the `release` environment (Settings › Environments › New
+environment, `release`). Under **Deployment branches and tags** choose
+**Selected branches and tags** and add the tag rule `v*`, so no branch, pull
+request or hand-run workflow can reach the key; adding yourself as a
+**Required reviewer** also makes every signing wait for your approval. Then
+store the key as that environment's secret, not the repository's:
+
 ```sh
-gh secret set KANSO_UPDATE_SIGNING_KEY --repo iamngoni/kanso < ~/kanso-update-signing.key
+gh secret set KANSO_UPDATE_SIGNING_KEY --repo iamngoni/kanso --env release < ~/kanso-update-signing.key
 # keep a copy in your password manager, then
 rm ~/kanso-update-signing.key
 ```
 
+A repository-wide secret also works, but any workflow on any branch can read
+one.
+
 Whoever holds this key can ship code to everyone running Kanso: keep it only
-in the password manager and the repository secret. If it leaks, add a new
+in the password manager and the environment secret. If it leaks, add a new
 key to `trusted-keys.txt`, release with the old one one last time (installed
 copies only trust the old one), switch the secret to the new key, remove the
-old line, and release again.
+old line, and release again. There is no revocation: a copy that hasn't
+taken that release still trusts the leaked key, so whoever holds it can
+update that copy too (given a release on this repository as well). Move fast,
+and say so in the release notes.
+
+Also, in Settings › Actions › General › **Fork pull request workflows from
+outside collaborators**, choose **Require approval for all outside
+collaborators**. CI runs on the self-hosted Macs, and a pull request's
+workflow is the one in the pull request, so the `if:` that keeps forks off
+those Macs can be edited away by the fork itself; only the approval stops
+it.
 
 To check the key and the secret match, sign a test feed the same way the
 workflow does: `kanso-release sign` refuses a key whose public half isn't in

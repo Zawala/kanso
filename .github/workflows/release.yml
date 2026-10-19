@@ -6,6 +6,12 @@ name: Release
 # (scripts/release.sh publish), and only then does the app see the update.
 # Run by hand (workflow_dispatch), it builds the same downloads as artifacts
 # only, without a feed. docs/RELEASING.md has the whole flow.
+#
+# The update signing key is the most sensitive thing here: whoever holds it
+# ships code to everyone's Kanso. It is only ever in the `feed` job, which
+# runs on a tag, in the `release` environment, with a read-only token and
+# no third-party actions; the key reaches one step, which runs a binary
+# built in an earlier step. Every action is pinned to a commit.
 on:
   push:
     tags: ["v*"]
@@ -44,7 +50,9 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Version
         id: version
@@ -79,7 +87,7 @@ jobs:
             libfontconfig-dev libfreetype-dev \
             libssl-dev libasound2-dev libdbus-1-dev libzstd-dev
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           key: release-${{ matrix.target }}
 
@@ -97,8 +105,9 @@ jobs:
           APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          STEM: ${{ steps.version.outputs.stem }}
         run: |
-          stem=${{ steps.version.outputs.stem }}
+          stem=$STEM
           app=target/release/Kanso.app
           signing=0
           if [ -n "$MACOS_CERT_P12_BASE64" ] && [ -n "$MACOS_CERT_PASSWORD" ] &&
@@ -162,15 +171,19 @@ jobs:
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          STEM: ${{ steps.version.outputs.stem }}
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive -Path target/release/kanso.exe `
-            -DestinationPath "dist/${{ steps.version.outputs.stem }}.zip"
+            -DestinationPath "dist/$env:STEM.zip"
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
+        env:
+          STEM: ${{ steps.version.outputs.stem }}
         run: |
-          stem=${{ steps.version.outputs.stem }}
+          stem=$STEM
           mkdir -p "dist" "$stem"
           install -m 755 target/release/kanso "$stem/kanso"
           strip "$stem/kanso"
@@ -179,73 +192,90 @@ jobs:
           install -m 755 assets/linux/install.sh "$stem/install.sh"
           tar -czf "dist/$stem.tar.gz" "$stem"
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ${{ steps.version.outputs.stem }}
           path: dist/*
           if-no-files-found: error
           compression-level: 0
 
-  release:
-    name: Feed, checksums and draft release
+  # Checksums for a run by hand, which has no feed and no release.
+  checksums:
+    name: Checksums
+    if: github.ref_type != 'tag'
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      # The whole history, for git-cliff's fallback.
-      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
-          fetch-depth: 0
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum -- * >SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: SHA256SUMS
+          path: dist/SHA256SUMS
+          if-no-files-found: error
 
-      - uses: actions/download-artifact@v5
+  # The signed feed. Nothing here can write to the repository, and nothing
+  # but GitHub's own actions and this repository's code runs: the signing
+  # key is in reach of as little as possible. Keep KANSO_UPDATE_SIGNING_KEY
+  # as a secret of the `release` environment, limited to `v*` tags
+  # (docs/RELEASING.md › One-time setup).
+  feed:
+    name: Signed update feed
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           path: dist
           merge-multiple: true
 
       - name: Rust
-        if: github.ref_type == 'tag'
         run: rustup show active-toolchain || rustup toolchain install
+
+      # Built here, without the key: build scripts and proc macros never
+      # see it.
+      - name: Build kanso-release
+        run: cargo build --release --locked -p kanso-update --bin kanso-release
 
       # The release's section of CHANGELOG.md, which scripts/release.sh
       # wrote with git-cliff: the release page and latest.json say the same.
+      # A tag without one fails here rather than run git-cliff in this job.
       - name: Release notes
-        id: notes
-        if: github.ref_type == 'tag'
         run: |
-          version=${GITHUB_REF_NAME#v}
           mkdir -p notes
-          if cargo run --quiet --locked -p kanso-update --bin kanso-release -- \
-            notes --changelog CHANGELOG.md --version "$version" --out notes/notes.md; then
-            echo "found=true" >>"$GITHUB_OUTPUT"
-          else
-            echo "::warning::CHANGELOG.md has no section for $version; git-cliff writes the notes from the commits."
-            echo "found=false" >>"$GITHUB_OUTPUT"
-          fi
+          target/release/kanso-release notes --changelog CHANGELOG.md \
+            --version "${GITHUB_REF_NAME#v}" --out notes/notes.md
 
-      - name: Release notes from the commits
-        if: github.ref_type == 'tag' && steps.notes.outputs.found != 'true'
-        uses: orhun/git-cliff-action@v4
-        with:
-          version: v2.10.1
-          config: cliff.toml
-          args: --latest --strip all
-        env:
-          OUTPUT: notes/notes.md
-
-      # latest.json, signed: without the key the release stops here, since
-      # an unsigned feed would never update anyone.
       - name: Update feed
-        if: github.ref_type == 'tag'
+        run: |
+          target/release/kanso-release feed --version "${GITHUB_REF_NAME#v}" \
+            --notes notes/notes.md --dist dist \
+            --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --out dist/latest.json
+
+      # The one step with the key. Without it the release stops here, since
+      # an unsigned feed would never update anyone.
+      - name: Sign the feed
         env:
           KANSO_UPDATE_SIGNING_KEY: ${{ secrets.KANSO_UPDATE_SIGNING_KEY }}
-        run: |
-          version=${GITHUB_REF_NAME#v}
-          release() { cargo run --quiet --locked -p kanso-update --bin kanso-release -- "$@"; }
-          release feed --version "$version" --notes notes/notes.md --dist dist \
-            --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --out dist/latest.json
-          release sign --feed dist/latest.json
-          release verify --feed dist/latest.json
+        run: target/release/kanso-release sign --feed dist/latest.json
+
+      - name: Verify the feed
+        run: target/release/kanso-release verify --feed dist/latest.json
 
       - name: SHA256SUMS
         working-directory: dist
@@ -253,18 +283,41 @@ jobs:
           sha256sum -- * >SHA256SUMS
           cat SHA256SUMS
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: SHA256SUMS
-          path: dist/SHA256SUMS
+          name: release-feed
+          path: |
+            dist/latest.json
+            dist/latest.json.sig
+            dist/SHA256SUMS
+            notes/notes.md
           if-no-files-found: error
 
-      # A draft: nothing is public until someone presses Publish.
+  # A draft: nothing is public until someone presses Publish. The only job
+  # that can write, and it runs no code from the repository.
+  publish:
+    name: Draft release
+    needs: [build, feed]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          path: dist
+          merge-multiple: true
+          pattern: Kanso-*
+
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: release-feed
+          path: feed
+
       - name: Draft release
-        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          cp feed/dist/latest.json feed/dist/latest.json.sig feed/dist/SHA256SUMS dist/
           gh release create "$GITHUB_REF_NAME" dist/* \
-            --draft --verify-tag --notes-file notes/notes.md --title "Kanso ${GITHUB_REF_NAME#v}"
+            --draft --verify-tag --notes-file feed/notes/notes.md --title "Kanso ${GITHUB_REF_NAME#v}"
