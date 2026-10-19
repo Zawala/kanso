@@ -28,6 +28,9 @@ fastrand = "2"
 getrandom = "0.4"
 hkdf = "0.13"
 hmac = "0.13"
+# The Markdown parser gpui-base uses, pinned to its version: the preview finds
+# blocks where the text view does.
+markdown = { version = "=1.0.0", features = ["serde"] }
 md-5 = "0.10"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 proptest = "1.12"

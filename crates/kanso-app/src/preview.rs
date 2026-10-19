@@ -1,20 +1,31 @@
 //! The rendered note. It is its own view so the editor can cache it:
 //! re-laying out a large note on every keystroke frame doubles edit latency.
+//!
+//! The note is shown in chunks (see [`crate::preview_chunks`]), each its own
+//! text view in a list: an edit re-parses and re-lays out only the chunk it
+//! falls in, and only the chunks on screen are laid out at all. Finding the
+//! chunks of a long note parses it, which runs off the main thread.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use gpui_kit::base::text::{TextView, TextViewStyle};
+use gpui_kit::base::text::{TextView, TextViewState, TextViewStyle};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_store::Store;
 
+use crate::preview_chunks::{self, End, Prepared, SPLIT_SYNC_BYTES, Splice, Start};
 use crate::theme::Colors;
 
 /// The rendered text's size and line height.
 const TEXT_SIZE: f32 = 16.;
 const LINE_HEIGHT: f32 = 1.65;
+/// The room above the first chunk and below the last.
+const TEXT_TOP: f32 = 24.;
+/// How far past the pane the list lays chunks out, so a scroll shows them
+/// laid out already.
+const OVERDRAW: f32 = 800.;
 /// The widest text runs, in ems of its size: about 75 characters a line,
 /// however wide the window. SF Pro averages about 0.44 em a character in
 /// prose, SF Mono 0.62.
@@ -38,12 +49,29 @@ pub fn readable_width(size: f32, mono: bool) -> f32 {
 /// Where clicks on `inkdrop://note/<id>` links go.
 pub type LinkSender = async_channel::Sender<String>;
 
+/// A chunk on show.
+struct Shown {
+    key: u64,
+    start: Start,
+    end: End,
+    state: Entity<TextViewState>,
+    _watch: Subscription,
+}
+
 pub struct Preview {
-    pub text: SharedString,
+    /// The text handed over last.
+    text: SharedString,
+    /// The text the chunks show: `text`, or an older one while it is split.
+    shown: SharedString,
+    chunks: Vec<Shown>,
+    list: ListState,
+    /// Splitting a long text, off the main thread.
+    splitting: Option<Task<()>>,
+    /// Counts the texts shown, so the editor can tell the preview changed.
+    generation: u64,
     store: Arc<Store>,
     images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>>,
     links: LinkSender,
-    scroll: ScrollHandle,
     /// Whether text keeps to the readable measure (the setting), or fills
     /// the pane.
     readable: bool,
@@ -53,19 +81,144 @@ impl Preview {
     pub fn new(store: Arc<Store>, links: LinkSender) -> Self {
         Preview {
             text: SharedString::default(),
+            shown: SharedString::default(),
+            chunks: Vec::new(),
+            list: ListState::new(0, ListAlignment::Top, px(OVERDRAW)).measure_all(),
+            splitting: None,
+            generation: 0,
             store,
             images: Arc::default(),
             links,
-            scroll: ScrollHandle::new(),
             readable: false,
         }
     }
 
+    /// Shows `text`. A short one shows at once; a long one once it has been
+    /// split, off the main thread, with the text before it shown until then.
+    /// While one is being split, a newer text waits for it and then follows.
     pub fn set_text(&mut self, text: SharedString, cx: &mut Context<Self>) {
-        if self.text != text {
-            self.text = text;
-            cx.notify();
+        if self.text == text {
+            return;
         }
+        self.text = text;
+        if self.splitting.is_some() {
+            return;
+        }
+        if self.text.len() <= SPLIT_SYNC_BYTES {
+            let prepared = preview_chunks::prepare(&self.text);
+            self.apply(self.text.clone(), prepared, cx);
+        } else {
+            self.split_soon(cx);
+        }
+    }
+
+    fn split_soon(&mut self, cx: &mut Context<Self>) {
+        let text = self.text.clone();
+        self.splitting = Some(cx.spawn(async move |this, cx| {
+            let (text, prepared) = cx
+                .background_spawn(async move {
+                    let prepared = preview_chunks::prepare(&text);
+                    (text, prepared)
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                this.splitting = None;
+                this.apply(text, prepared, cx);
+                if this.shown != this.text {
+                    if this.text.len() <= SPLIT_SYNC_BYTES {
+                        let prepared = preview_chunks::prepare(&this.text);
+                        this.apply(this.text.clone(), prepared, cx);
+                    } else {
+                        this.split_soon(cx);
+                    }
+                }
+            })
+            .ok();
+        }));
+    }
+
+    /// Shows `text`, split into `prepared`: the chunks it shares with what
+    /// is shown keep their parse and layout, the rest are parsed and
+    /// measured again.
+    fn apply(&mut self, text: SharedString, prepared: Vec<Prepared>, cx: &mut Context<Self>) {
+        let old: Vec<u64> = self.chunks.iter().map(|c| c.key).collect();
+        let new: Vec<u64> = prepared.iter().map(|c| c.key).collect();
+        let Splice {
+            old_range,
+            new_range,
+        } = preview_chunks::diff(&old, &new);
+        let mut prepared = prepared;
+        let mut changed = prepared.drain(new_range.clone());
+        if old_range.len() == new_range.len() {
+            // Typing changes a chunk in place: it keeps its view and its
+            // measured height until it is measured again.
+            for (shown, chunk) in self.chunks[old_range.clone()].iter_mut().zip(&mut changed) {
+                shown.key = chunk.key;
+                shown.start = chunk.start;
+                shown.end = chunk.end;
+                shown
+                    .state
+                    .update(cx, |state, cx| state.set_text(&chunk.text, cx));
+            }
+            drop(changed);
+            if !old_range.is_empty() {
+                self.list.remeasure_items(old_range);
+            }
+        } else {
+            let added: Vec<Shown> = changed.map(|chunk| self.show_chunk(chunk, cx)).collect();
+            self.chunks.splice(old_range.clone(), added);
+            self.list.splice(old_range, new_range.len());
+            // Measures the new chunks, and only them, at the next layout.
+            self.list.remeasure_items(new_range);
+        }
+        self.shown = text;
+        self.generation += 1;
+        cx.notify();
+    }
+
+    fn show_chunk(&mut self, chunk: Prepared, cx: &mut Context<Self>) -> Shown {
+        let state = cx.new(|cx| TextViewState::markdown(&chunk.text, cx).selectable(true));
+        // A long chunk parses in the background and changes height when it
+        // is done, as does one whose images load: it is measured again.
+        let watch = cx.observe(&state, |this, state, _| {
+            if let Some(ix) = this.chunks.iter().position(|c| c.state == state) {
+                this.list.remeasure_items(ix..ix + 1);
+            }
+        });
+        Shown {
+            key: chunk.key,
+            start: chunk.start,
+            end: chunk.end,
+            state,
+            _watch: watch,
+        }
+    }
+
+    /// Counts the texts shown: it changes whenever the preview shows
+    /// another.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// The text the preview shows.
+    #[cfg(test)]
+    pub fn shown(&self) -> &SharedString {
+        &self.shown
+    }
+
+    /// How many chunks the text is shown in.
+    #[cfg(test)]
+    pub fn chunk_count(&self) -> usize {
+        self.chunks.len()
+    }
+
+    /// The chunks shown, by key, with their views.
+    #[cfg(test)]
+    fn chunk_views(&self) -> Vec<(u64, EntityId)> {
+        self.chunks
+            .iter()
+            .map(|c| (c.key, c.state.entity_id()))
+            .collect()
     }
 
     /// Keeps text to the readable measure, or lets it fill the pane.
@@ -78,22 +231,21 @@ impl Preview {
 
     /// How far the preview can scroll, as of its last layout.
     pub fn scroll_max(&self) -> f32 {
-        f32::from(self.scroll.max_offset().y).max(0.)
+        f32::from(self.list.max_offset_for_scrollbar().y).max(0.)
     }
 
     /// Scrolls `top` points down from the start.
     pub fn scroll_to(&mut self, top: f32, cx: &mut Context<Self>) {
-        let offset = point(px(0.), px(-top.max(0.)));
-        if self.scroll.offset() != offset {
-            self.scroll.set_offset(offset);
+        let top = top.max(0.);
+        if (self.scroll_top() - top).abs() >= 0.5 {
+            self.list.set_offset_from_scrollbar(point(px(0.), px(-top)));
             cx.notify();
         }
     }
 
     /// Where the preview is scrolled to, in points from the start.
-    #[cfg(test)]
     pub fn scroll_top(&self) -> f32 {
-        -f32::from(self.scroll.offset().y)
+        -f32::from(self.list.scroll_px_offset_for_scrollbar().y)
     }
 
     /// Resolves `inkdrop://file:<id>` from the store, caching decoded images.
@@ -116,6 +268,50 @@ impl Preview {
                 None => ImageSource::from(uri.clone()),
             }
         }
+    }
+}
+
+/// A heading's size relative to the body, and the gap above it relative to
+/// its size, as the text view sets them.
+fn heading_metrics(level: u8) -> (f32, f32) {
+    match level {
+        1 => (1.8, 1.1),
+        2 => (4. / 3., 1.6),
+        3 => (17. / 15., 1.4),
+        4 => (1., 1.4),
+        5 => (14. / 15., 1.4),
+        _ => (13. / 15., 1.4),
+    }
+}
+
+/// The gap below a heading, relative to its size, as the text view sets it.
+const HEADING_BOTTOM_GAP: f32 = 0.35;
+/// The gap below ordinary blocks, as [`text_style`] sets it.
+const PARAGRAPH_GAP: f32 = 0.9;
+
+/// The room above a chunk that starts like `start` (`first` for the note's
+/// first): what the text view would leave above that block in the whole
+/// note, less the gap the chunk before already leaves below itself.
+fn room_above(start: Start, first: bool, rem: Pixels) -> Pixels {
+    if first {
+        return px(TEXT_TOP);
+    }
+    match start {
+        Start::Flush => px(0.),
+        Start::Heading(level) => {
+            let (scale, gap) = heading_metrics(level);
+            (px(TEXT_SIZE * scale * gap) - rem * PARAGRAPH_GAP).max(px(0.))
+        }
+    }
+}
+
+/// The room below a chunk that ends like `end`: the gap the text view
+/// leaves below that block when another follows it.
+fn room_below(end: End, rem: Pixels) -> Pixels {
+    match end {
+        End::Last => px(TEXT_TOP),
+        End::Gap => rem * PARAGRAPH_GAP,
+        End::Heading(level) => px(TEXT_SIZE * heading_metrics(level).0 * HEADING_BOTTOM_GAP),
     }
 }
 
@@ -173,41 +369,59 @@ pub(crate) fn text_style(colors: &Colors, dark: bool) -> TextViewStyle {
 
 impl Render for Preview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let links = self.links.clone();
         let colors = Colors::get(cx);
-        let dark = cx.theme().is_dark();
-        div()
-            .id("preview")
-            .size_full()
-            .pl(px(TEXT_INSET))
-            .pr_8()
-            .py_6()
-            .overflow_y_scroll()
-            .track_scroll(&self.scroll)
-            .bg(colors.editor)
-            .child(
+        let style = text_style(colors, cx.theme().is_dark());
+        let text_color = colors.text;
+        let readable = self.readable;
+        let chunks: Vec<(Entity<TextViewState>, Start, End)> = self
+            .chunks
+            .iter()
+            .map(|c| (c.state.clone(), c.start, c.end))
+            .collect();
+        let resolver: Arc<dyn Fn(&SharedUri) -> ImageSource + Send + Sync> =
+            Arc::new(self.image_resolver());
+        let links = self.links.clone();
+        div().id("preview").size_full().bg(colors.editor).child(
+            list(self.list.clone(), move |ix, window, _| {
+                let Some((state, start, end)) = chunks.get(ix).cloned() else {
+                    return div().into_any_element();
+                };
+                let rem = window.rem_size();
+                let resolver = resolver.clone();
+                let links = links.clone();
                 div()
                     .w_full()
-                    .when(self.readable, |el| {
-                        el.max_w(px(readable_width(TEXT_SIZE, false)))
-                    })
+                    .pl(px(TEXT_INSET))
+                    .pr_8()
+                    .pt(room_above(start, ix == 0, rem))
+                    .pb(room_below(end, rem))
                     .child(
-                        TextView::markdown("preview-text", self.text.clone())
-                            .style(text_style(colors, dark))
-                            .text_size(px(TEXT_SIZE))
-                            .line_height(relative(LINE_HEIGHT))
-                            .text_color(colors.text)
-                            .selectable(true)
-                            .image_source(self.image_resolver())
-                            .on_link_click(move |url, _, _, cx| match linked_note(url) {
-                                Some(id) => {
-                                    links.try_send(id).ok();
-                                }
-                                None if is_openable(url) => cx.open_url(url),
-                                None => {}
-                            }),
-                    ),
-            )
+                        div()
+                            .w_full()
+                            .when(readable, |el| {
+                                el.max_w(px(readable_width(TEXT_SIZE, false)))
+                            })
+                            .child(
+                                TextView::new(&state)
+                                    .style(style.clone())
+                                    .text_size(px(TEXT_SIZE))
+                                    .line_height(relative(LINE_HEIGHT))
+                                    .text_color(text_color)
+                                    .selectable(true)
+                                    .image_source(move |uri| resolver(uri))
+                                    .on_link_click(move |url, _, _, cx| match linked_note(url) {
+                                        Some(id) => {
+                                            links.try_send(id).ok();
+                                        }
+                                        None if is_openable(url) => cx.open_url(url),
+                                        None => {}
+                                    }),
+                            ),
+                    )
+                    .into_any_element()
+            })
+            .size_full(),
+        )
     }
 }
 
@@ -293,6 +507,80 @@ mod tests {
         fn prop_other_urls_are_not_note_links(url in "(https?|file|inkdrop)://[a-z:/.]{0,20}") {
             prop_assume!(!url.starts_with("inkdrop://note"));
             prop_assert_eq!(linked_note(&url), None);
+        }
+    }
+
+    /// Incremental equals full: however a run of edits arrives (each shown,
+    /// or several while a split is under way), the chunks shown once it
+    /// settles are the chunks of the last text, and a chunk no edit touched
+    /// keeps its view.
+    // no-prop-test: drives the view through seeded random edits; the splice
+    // itself is a property in preview_chunks.rs.
+    #[gpui_kit::test]
+    fn edits_settle_on_the_chunks_of_the_last_text(cx: &mut gpui_kit::TestAppContext) {
+        use super::Preview;
+        use crate::preview_chunks::prepare;
+        use gpui_kit::AppContext as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = std::sync::Arc::new(kanso_store::Store::open(dir.path().join("k.db")).unwrap());
+        let (links, _rx) = async_channel::unbounded();
+        let preview = cx.new(|_| Preview::new(store, links));
+        let mut rng = fastrand::Rng::with_seed(20261017);
+        let pieces = [
+            "word ",
+            "\n",
+            "\n\n",
+            "## Head\n\n",
+            "- item\n",
+            "```\n",
+            "Para. ",
+            "> q\n",
+        ];
+        let mut text: String = (0..200)
+            .map(|n| format!("## Part {n}\n\nText {n}.\n\n"))
+            .collect();
+        let set = |cx: &mut gpui_kit::TestAppContext, text: &str| {
+            let text = text.to_owned();
+            preview.update(cx, |p, cx| p.set_text(text.into(), cx));
+        };
+        set(cx, &text);
+        cx.run_until_parked();
+        for round in 0..60 {
+            let before = cx.read(|cx| preview.read(cx).chunk_views());
+            // One to four edits before the preview gets to run.
+            for _ in 0..rng.usize(1..=4) {
+                let mut at = rng.usize(0..=text.len());
+                while !text.is_char_boundary(at) {
+                    at -= 1;
+                }
+                if rng.bool() || text.is_empty() {
+                    text.insert_str(at, pieces[rng.usize(0..pieces.len())]);
+                } else {
+                    let end = (at + rng.usize(1..8)).min(text.len());
+                    let end = (end..=text.len())
+                        .find(|e| text.is_char_boundary(*e))
+                        .unwrap();
+                    text.replace_range(at..end, "");
+                }
+                set(cx, &text);
+            }
+            cx.run_until_parked();
+            let (shown, views) = cx.read(|cx| {
+                let p = preview.read(cx);
+                (p.shown().to_string(), p.chunk_views())
+            });
+            assert_eq!(shown, text, "round {round}");
+            let keys: Vec<u64> = views.iter().map(|(k, _)| *k).collect();
+            let expected: Vec<u64> = prepare(&text).iter().map(|c| c.key).collect();
+            assert_eq!(keys, expected, "round {round}");
+            // The chunks before the first that changed keep their views.
+            let kept = before
+                .iter()
+                .zip(&views)
+                .take_while(|(a, b)| a.0 == b.0)
+                .count();
+            assert!(before[..kept].iter().zip(&views).all(|(a, b)| a.1 == b.1));
         }
     }
 

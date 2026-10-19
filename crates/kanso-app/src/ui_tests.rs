@@ -1114,6 +1114,71 @@ fn the_preview_follows_the_source(cx: &mut TestAppContext) {
     assert!(top > 0. && top < max / 2., "{top} of {max}");
 }
 
+/// Typing beside the preview keeps it current: the first keystroke shows
+/// at once, continuous typing shows at least every 60 ms rather than
+/// waiting for a pause, and once typing stops the preview is the source.
+/// A long note is shown in chunks, and typing keeps all but the one typed
+/// in.
+// no-prop-test: drives one window over time; the chunking and the splice
+// are properties in preview_chunks.rs.
+#[gpui_kit::test]
+fn the_preview_keeps_up_with_typing(cx: &mut TestAppContext) {
+    use gpui_kit::EntityInputHandler as _;
+
+    let body: String = (1..=150)
+        .map(|n| format!("## Part {n}\n\nSome text for part {n}.\n\n- one\n- two\n\n"))
+        .collect();
+    assert!(
+        body.len() > 4 * 1024,
+        "past the preview's split on the main thread"
+    );
+    let f = split_fixture(cx, &body);
+    let chunks = f.editor(cx, |e, cx| e.preview_chunks_for_test(cx));
+    assert!(chunks >= 150, "a chunk a part or more: {chunks}");
+    assert_eq!(f.editor(cx, |e, cx| e.preview_shown_for_test(cx)), body);
+
+    let state = f.editor(cx, |e, _| e.body_state());
+    f.update_editor(cx, |_, window, cx| {
+        state.update(cx, |state, cx| {
+            state.focus(window, cx);
+            state.set_cursor_position(gpui_kit::component::input::Position::new(42, 0), window, cx);
+        });
+    });
+    // Twenty keystrokes 25 ms apart, a fast burst.
+    let mut shown = Vec::new();
+    for ix in 0..20 {
+        f.update_editor(cx, |_, window, cx| {
+            state.update(cx, |state, cx| {
+                state.replace_text_in_range(None, "x", window, cx)
+            });
+        });
+        let now = f.editor(cx, |e, cx| e.preview_shown_for_test(cx));
+        if shown.last().is_none_or(|(_, last)| *last != now) {
+            shown.push((ix * 25, now));
+        }
+        cx.executor().advance_clock(Duration::from_millis(25));
+        cx.run_until_parked();
+    }
+    assert_eq!(shown[0].0, 0, "the first keystroke shows at once");
+    let gaps: Vec<usize> = shown.windows(2).map(|w| w[1].0 - w[0].0).collect();
+    assert!(
+        gaps.iter().all(|gap| *gap <= 75),
+        "updates every 60 ms or so: {gaps:?}"
+    );
+    assert!(
+        shown.len() >= 7,
+        "the preview kept up: {} updates",
+        shown.len()
+    );
+
+    cx.executor().advance_clock(Duration::from_millis(100));
+    f.draw(cx);
+    let source = f.editor(cx, |e, cx| e.body_for_test(cx));
+    assert!(source.contains(&"x".repeat(20)));
+    assert_eq!(f.editor(cx, |e, cx| e.preview_shown_for_test(cx)), source);
+    assert_eq!(f.editor(cx, |e, cx| e.preview_chunks_for_test(cx)), chunks);
+}
+
 /// Split opened on a long note already scrolled in Edit shows the preview
 /// at the same share: the preview parses a long note in the background
 /// once Split shows it, and the follow tried before it has a length must

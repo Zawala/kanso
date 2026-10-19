@@ -3691,6 +3691,7 @@ dependencies = [
  "kanso-server",
  "kanso-store",
  "kanso-sync",
+ "markdown",
  "proptest",
  "rusqlite",
  "serde",

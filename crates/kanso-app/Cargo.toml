@@ -20,6 +20,7 @@ kanso-import.workspace = true
 kanso-server.workspace = true
 kanso-sync.workspace = true
 kanso-store.workspace = true
+markdown.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

@@ -47,7 +47,9 @@ use crate::theme::{Colors, muted_tag_color, status_glyph};
 use crate::workspace::{AppState, NewNote};
 
 const AUTOSAVE_DELAY: Duration = Duration::from_millis(600);
-const PREVIEW_DELAY: Duration = Duration::from_millis(150);
+/// While typing goes on, the preview beside the source catches up at most
+/// this often: the first change shows at once, later ones on the next tick.
+const PREVIEW_INTERVAL: Duration = Duration::from_millis(60);
 /// Line height of the Markdown source, relative to its size. Every face and
 /// view mode sets the source at the chosen size with this line height:
 /// beside the preview it wraps sooner rather than getting smaller.
@@ -127,7 +129,10 @@ pub struct NoteEditor {
     /// Whether the body shows line numbers now; see [`EditorFont::face`].
     line_numbers: bool,
     autosave: Option<Task<()>>,
+    /// The preview's interval, while typing goes on.
     preview_task: Option<Task<()>>,
+    /// Whether the source changed since the preview was last handed it.
+    preview_stale: bool,
     /// A change from elsewhere that arrived over unsaved edits.
     incoming: Option<Incoming>,
     /// Notes that link here: (id, title).
@@ -143,8 +148,9 @@ pub struct NoteEditor {
     pub(crate) split: Entity<ResizableState>,
     /// The editor width the divider was last placed for.
     split_placed_for: Pixels,
-    /// The source's scroll position the preview last followed.
-    followed_scroll: Option<Pixels>,
+    /// The source's scroll position the preview last followed, and the
+    /// text (by its generation) the preview showed then.
+    followed_scroll: Option<(Pixels, u64)>,
     /// The source's line lengths in characters, for the text of the byte
     /// length kept beside them: an edit clears them, and a new text set
     /// without one (opening a note, a reload) has another length or the
@@ -254,6 +260,7 @@ impl NoteEditor {
             line_numbers,
             autosave: None,
             preview_task: None,
+            preview_stale: false,
             incoming: None,
             backlinks: Vec::new(),
             backlinks_task: None,
@@ -364,7 +371,10 @@ impl NoteEditor {
             return;
         }
         let offset = self.body.read(cx).scroll_offset().y;
-        if self.followed_scroll == Some(offset) {
+        // A new text moves what is where in the preview, so it follows
+        // again even with the source where it was.
+        let generation = self.preview.read(cx).generation();
+        if self.followed_scroll == Some((offset, generation)) {
             return;
         }
         let src = -f32::from(offset);
@@ -378,7 +388,7 @@ impl NoteEditor {
         let Some(src_max) = self.source_scroll_estimate(cx) else {
             return;
         };
-        self.followed_scroll = Some(offset);
+        self.followed_scroll = Some((offset, generation));
         self.preview.update(cx, |preview, cx| {
             preview.scroll_to(scroll_sync(src, src_max, dst_max), cx);
         });
@@ -498,6 +508,7 @@ impl NoteEditor {
         // the same length.
         self.source_lines = None;
         let text: SharedString = body.into();
+        self.preview_stale = false;
         self.preview.update(cx, |preview, cx| {
             preview.set_text(text, cx);
             // Another note starts at its top, beside a source that does.
@@ -559,17 +570,41 @@ impl NoteEditor {
         }
     }
 
+    /// Hands the preview the source's text: at once for the first change,
+    /// then at most every [`PREVIEW_INTERVAL`] while changes keep coming,
+    /// and once more after the last, so it never lags a pause.
     fn schedule_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.view_mode == ViewMode::Edit {
             return;
         }
+        self.preview_stale = true;
+        if self.preview_task.is_some() {
+            return;
+        }
+        self.refresh_preview(cx);
         self.preview_task = Some(cx.spawn_in(window, async move |this, cx| {
-            cx.background_executor().timer(PREVIEW_DELAY).await;
-            this.update(cx, |this, cx| this.refresh_preview(cx)).ok();
+            loop {
+                cx.background_executor().timer(PREVIEW_INTERVAL).await;
+                let more = this
+                    .update(cx, |this, cx| {
+                        if this.preview_stale {
+                            this.refresh_preview(cx);
+                            true
+                        } else {
+                            this.preview_task = None;
+                            false
+                        }
+                    })
+                    .unwrap_or(false);
+                if !more {
+                    break;
+                }
+            }
         }));
     }
 
     fn refresh_preview(&mut self, cx: &mut Context<Self>) {
+        self.preview_stale = false;
         let text = self.body.read(cx).value();
         self.preview
             .update(cx, |preview, cx| preview.set_text(text, cx));
@@ -1822,6 +1857,25 @@ impl Render for NoteEditor {
 
 #[cfg(test)]
 impl NoteEditor {
+    /// The source editor's state, to type into.
+    pub fn body_state(&self) -> Entity<EditorState> {
+        self.body.clone()
+    }
+
+    pub fn set_preview_for_test(&self, text: String, cx: &mut App) {
+        self.preview.update(cx, |p, cx| p.set_text(text.into(), cx));
+    }
+
+    /// The Markdown the preview shows.
+    pub fn preview_shown_for_test(&self, cx: &App) -> String {
+        self.preview.read(cx).shown().to_string()
+    }
+
+    /// How many chunks the preview shows the note in.
+    pub fn preview_chunks_for_test(&self, cx: &App) -> usize {
+        self.preview.read(cx).chunk_count()
+    }
+
     /// Replaces the title and body as if typed, scheduling the autosave.
     pub fn edit_for_test(&mut self, body: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.body

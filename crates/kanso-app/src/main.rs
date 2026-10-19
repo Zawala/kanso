@@ -31,6 +31,7 @@ mod note_list;
 mod palette;
 mod paths;
 mod preview;
+mod preview_chunks;
 mod services;
 mod settings;
 #[cfg(test)]
