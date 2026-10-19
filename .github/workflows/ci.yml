@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# One run per branch at a time: a newer push cancels the older run, so the
+# self-hosted Mac never has two jobs installing the toolchain at once.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   # Property tests run with a fixed seed so a CI failure reproduces locally.
