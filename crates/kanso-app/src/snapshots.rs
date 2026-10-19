@@ -1839,6 +1839,7 @@ fn demo_pending() -> kanso_update::Pending {
         pub_date: update.pub_date,
         release_url: update.release_url,
         notes: update.notes,
+        seal: Default::default(),
     }
 }
 

@@ -2,8 +2,14 @@
 //! unpacking it beside the install, ready to swap in.
 //!
 //! The staging folder sits next to what it replaces (on the same volume, so
-//! the swap is two renames). It holds the unpacked update and
-//! `pending.json`, which says what replaces what; nothing else is kept.
+//! the swap is two renames). It is made afresh for every download, readable
+//! only by its owner, and holds nothing but the unpacked update.
+//!
+//! Nothing on disk is trusted later: what [`prepare`] staged is described by
+//! the [`Pending`] it returns, which carries a [`Seal`] (a digest of the
+//! unpacked update and the staging folder's identity) that only lives in
+//! memory. [`crate::install::apply`] checks the seal before swapping, so an
+//! update planted or altered in the staging folder is never installed.
 
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
@@ -22,7 +28,6 @@ use crate::policy::UrlPolicy;
 /// The most an archive may unpack to: well above Kanso's size, well below
 /// a disk.
 const MAX_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-const PENDING: &str = "pending.json";
 
 #[derive(Debug, thiserror::Error)]
 pub enum StageError {
@@ -73,24 +78,27 @@ pub struct Pending {
     pub pub_date: String,
     pub release_url: String,
     pub notes: String,
+    /// What was checked when it was staged. Never written to disk: a
+    /// `Pending` read back from anywhere has an empty seal and is refused.
+    #[serde(skip)]
+    pub seal: Seal,
 }
 
-impl Pending {
-    pub fn save(&self, stage_dir: &Path) -> io::Result<()> {
-        let tmp = stage_dir.join("pending.json.tmp");
-        fs::write(
-            &tmp,
-            serde_json::to_vec_pretty(self).map_err(io::Error::other)?,
-        )?;
-        fs::rename(tmp, stage_dir.join(PENDING))
-    }
+/// What [`prepare`] saw when it staged an update, checked again by
+/// [`crate::install::apply`] just before the swap.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Seal {
+    /// [`payload_digest`] of the payload, taken right after unpacking and
+    /// before the code-signature check.
+    pub(crate) digest: Option<String>,
+    /// The staging folder's device and inode, where the system has them.
+    pub(crate) stage_id: Option<(u64, u64)>,
+}
 
-    /// The update staged in `stage_dir`, if one is and it is still there.
-    pub fn load(stage_dir: &Path) -> Option<Pending> {
-        let bytes = fs::read(stage_dir.join(PENDING)).ok()?;
-        let pending: Pending = serde_json::from_slice(&bytes).ok()?;
-        // Only ever a path inside the staging folder.
-        (pending.payload.starts_with(stage_dir) && pending.payload.exists()).then_some(pending)
+impl Seal {
+    /// Whether this seal came from [`prepare`].
+    pub fn is_set(&self) -> bool {
+        self.digest.is_some()
     }
 }
 
@@ -108,20 +116,23 @@ pub fn prepare(
     verify: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<Pending, StageError> {
     let dir = &install.stage_dir;
-    clear_dir(dir)?;
-    fs::create_dir_all(dir)?;
+    fresh_stage_dir(dir)?;
+    let stage_id = dir_identity(dir)?;
     let archive = dir.join(install.platform.asset_name(&update.version));
     download(transport, policy, &update.asset, &archive, progress, cancel)?;
     let unpacked = dir.join(format!("unpacked-{}", update.version));
     let result = (|| {
         extract(&archive, install.platform.archive(), &unpacked)?;
         let payload = find_payload(&unpacked, install.platform)?;
+        // The digest first: whatever the signature check then sees, only
+        // these bytes are ever swapped in.
+        let digest = payload_digest(&payload)?;
         verify(&payload).map_err(StageError::CodeSignature)?;
-        Ok(payload)
+        Ok((payload, digest))
     })();
     fs::remove_file(&archive).ok();
-    let payload = match result {
-        Ok(payload) => payload,
+    let (payload, digest) = match result {
+        Ok(found) => found,
         Err(err) => {
             fs::remove_dir_all(&unpacked).ok();
             return Err(err);
@@ -134,28 +145,122 @@ pub fn prepare(
         pub_date: update.pub_date.clone(),
         release_url: update.release_url.clone(),
         notes: update.notes.clone(),
+        seal: Seal {
+            digest: Some(digest),
+            stage_id,
+        },
     };
-    pending.save(dir)?;
     Ok(pending)
 }
 
-/// Empties the staging folder, keeping the folder.
-pub fn clear_dir(dir: &Path) -> io::Result<()> {
-    match fs::read_dir(dir) {
-        Ok(entries) => {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if entry.file_type().is_ok_and(|t| t.is_dir()) {
-                    fs::remove_dir_all(&path)?;
-                } else {
-                    fs::remove_file(&path)?;
-                }
-            }
-            Ok(())
-        }
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+/// Removes whatever is at `path` without following a link there: a link
+/// goes, not what it points at.
+pub fn remove_entry(path: &Path) -> io::Result<()> {
+    let result = match fs::symlink_metadata(path) {
+        Ok(meta) if meta.is_dir() => fs::remove_dir_all(path),
+        Ok(_) => fs::remove_file(path),
         Err(err) => Err(err),
+    };
+    match result {
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        other => other,
     }
+}
+
+/// Makes `dir` anew: whatever was there (a leftover, a link someone put
+/// there, a folder someone else owns) is removed, never followed, and the
+/// folder is created by this process, readable only by its owner. Fails
+/// rather than reuse a folder that appears in between.
+pub fn fresh_stage_dir(dir: &Path) -> io::Result<()> {
+    remove_entry(dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+        fs::DirBuilder::new().mode(0o700).create(dir)
+    }
+    #[cfg(not(unix))]
+    fs::create_dir(dir)
+}
+
+/// The device and inode of the folder at `dir` (not of a link's target),
+/// where the system has them; `None` elsewhere.
+pub fn dir_identity(dir: &Path) -> io::Result<Option<(u64, u64)>> {
+    let meta = fs::symlink_metadata(dir)?;
+    if !meta.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "the staging folder isn't a folder",
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        Ok(Some((meta.dev(), meta.ino())))
+    }
+    #[cfg(not(unix))]
+    Ok(None)
+}
+
+/// A SHA-256 over everything at `path`: each file's relative name, kind,
+/// permissions (on Unix) and contents, in name order. Links, devices and
+/// anything but plain files and folders are refused, as unpacking refuses
+/// them.
+pub fn payload_digest(path: &Path) -> io::Result<String> {
+    let mut hasher = Sha256::new();
+    digest_entry(path, Path::new(""), &mut hasher)?;
+    Ok(hex(&hasher.finalize()))
+}
+
+fn digest_entry(path: &Path, rel: &Path, hasher: &mut Sha256) -> io::Result<()> {
+    let meta = fs::symlink_metadata(path)?;
+    let name = rel.as_os_str().as_encoded_bytes();
+    hasher.update((name.len() as u64).to_le_bytes());
+    hasher.update(name);
+    #[cfg(unix)]
+    let mode = {
+        use std::os::unix::fs::PermissionsExt as _;
+        meta.permissions().mode() & 0o7777
+    };
+    #[cfg(not(unix))]
+    let mode = 0u32;
+    if meta.is_dir() {
+        hasher.update(b"D");
+        let mut children: Vec<_> = fs::read_dir(path)?
+            .map(|e| e.map(|e| e.file_name()))
+            .collect::<io::Result<_>>()?;
+        children.sort();
+        hasher.update((children.len() as u64).to_le_bytes());
+        for child in children {
+            digest_entry(&path.join(&child), &rel.join(&child), hasher)?;
+        }
+    } else if meta.is_file() {
+        hasher.update(b"F");
+        hasher.update(mode.to_le_bytes());
+        let mut file = File::open(path)?;
+        let mut content = Sha256::new();
+        let mut buf = vec![0u8; 64 * 1024];
+        let mut n = 0u64;
+        loop {
+            let read = file.read(&mut buf)?;
+            if read == 0 {
+                break;
+            }
+            n += read as u64;
+            content.update(&buf[..read]);
+        }
+        hasher.update(n.to_le_bytes());
+        hasher.update(content.finalize());
+    } else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{} isn't a plain file", rel.display()),
+        ));
+    }
+    Ok(())
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Streams `asset` into `to`, hashing as it goes, and keeps it only when
@@ -195,9 +300,7 @@ pub fn download(
             return Err(StageError::SizeMismatch);
         }
         file.sync_all()?;
-        let digest = hasher.finalize();
-        let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
-        if hex != asset.sha256 {
+        if hex(&hasher.finalize()) != asset.sha256 {
             return Err(StageError::ChecksumMismatch);
         }
         fs::rename(&part, to)?;
@@ -214,9 +317,7 @@ pub fn download(
 /// paths that climb out are refused, and so is an archive that unpacks to
 /// more than [`MAX_UNPACKED_BYTES`].
 pub fn extract(archive: &Path, kind: ArchiveKind, dest: &Path) -> Result<(), StageError> {
-    if dest.exists() {
-        fs::remove_dir_all(dest)?;
-    }
+    remove_entry(dest)?;
     fs::create_dir_all(dest)?;
     match kind {
         ArchiveKind::TarGz => extract_tar_gz(archive, dest),
@@ -279,14 +380,9 @@ fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(), StageError> {
         if let Some(parent) = out.parent() {
             fs::create_dir_all(parent)?;
         }
-        let mut file = File::create(&out)?;
-        io::copy(&mut entry, &mut file).map_err(|e| {
-            if is_no_space(&e) {
-                StageError::NoSpace
-            } else {
-                StageError::BadArchive(e.to_string())
-            }
-        })?;
+        let size = entry.size();
+        let mut file = create_new_file(&out)?;
+        io::copy(&mut (&mut entry).take(size), &mut file).map_err(copy_error)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt as _;
@@ -329,14 +425,18 @@ fn extract_zip(archive: &Path, dest: &Path) -> Result<(), StageError> {
         if let Some(parent) = out.parent() {
             fs::create_dir_all(parent)?;
         }
-        let mut file = File::create(&out)?;
-        io::copy(&mut entry, &mut file).map_err(|e| {
-            if is_no_space(&e) {
-                StageError::NoSpace
-            } else {
-                StageError::BadArchive(e.to_string())
-            }
-        })?;
+        // The declared size is what counts: a deflate stream that inflates
+        // past it is refused before it can fill the disk.
+        let size = entry.size();
+        let mut file = create_new_file(&out)?;
+        io::copy(&mut (&mut entry).take(size), &mut file).map_err(copy_error)?;
+        let mut extra = [0u8; 1];
+        if entry.read(&mut extra).map_err(copy_error)? != 0 {
+            return Err(StageError::BadArchive(format!(
+                "{} is larger than it says",
+                rel.display()
+            )));
+        }
         #[cfg(unix)]
         if let Some(mode) = entry.unix_mode() {
             use std::os::unix::fs::PermissionsExt as _;
@@ -344,6 +444,34 @@ fn extract_zip(archive: &Path, dest: &Path) -> Result<(), StageError> {
         }
     }
     Ok(())
+}
+
+/// A new file at `out`, replacing a plain file an earlier entry of the
+/// same name wrote; never following a link (unpacking makes none, but the
+/// folder is checked rather than assumed).
+fn create_new_file(out: &Path) -> Result<File, StageError> {
+    if fs::symlink_metadata(out).is_ok_and(|m| m.is_file()) {
+        fs::remove_file(out)?;
+    }
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(out)
+        .map_err(|e| {
+            if e.kind() == io::ErrorKind::AlreadyExists {
+                StageError::BadArchive(format!("{} is there twice", out.display()))
+            } else {
+                e.into()
+            }
+        })
+}
+
+fn copy_error(e: io::Error) -> StageError {
+    if is_no_space(&e) {
+        StageError::NoSpace
+    } else {
+        StageError::BadArchive(e.to_string())
+    }
 }
 
 /// What in an unpacked update replaces the install: the one `.app` on
@@ -675,27 +803,95 @@ mod tests {
     }
 
     #[test]
-    fn pending_updates_round_trip_and_stay_inside() {
-        let dir = tempfile::tempdir().unwrap();
-        let payload = dir.path().join("unpacked-0.2.0/Kanso.app");
-        fs::create_dir_all(&payload).unwrap();
+    fn a_pending_update_is_never_read_back_sealed() {
         let pending = Pending {
             version: "0.2.0".into(),
-            payload: payload.clone(),
+            payload: "/Applications/.kanso-update/unpacked-0.2.0/Kanso.app".into(),
             target: "/Applications/Kanso.app".into(),
             pub_date: "2026-10-20".into(),
             release_url: "https://github.com/iamngoni/kanso/releases/tag/v0.2.0".into(),
             notes: "- New".into(),
+            seal: Seal {
+                digest: Some("ab".repeat(32)),
+                stage_id: Some((1, 2)),
+            },
         };
-        pending.save(dir.path()).unwrap();
-        assert_eq!(Pending::load(dir.path()), Some(pending.clone()));
-        // A record pointing outside the staging folder is ignored.
-        let outside = Pending {
-            payload: "/Applications/Other.app".into(),
-            ..pending
-        };
-        outside.save(dir.path()).unwrap();
-        assert_eq!(Pending::load(dir.path()), None);
+        let json = serde_json::to_string(&pending).unwrap();
+        assert!(!json.contains("abab"), "the seal stays in memory: {json}");
+        let back: Pending = serde_json::from_str(&json).unwrap();
+        assert!(!back.seal.is_set());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_staging_folder_is_made_afresh_and_private() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let victim = dir.path().join("victim");
+        fs::create_dir(&victim).unwrap();
+        fs::write(victim.join("notes.md"), b"keep me").unwrap();
+        let stage = dir.path().join(".kanso-update");
+        // Someone points the staging folder at another folder.
+        std::os::unix::fs::symlink(&victim, &stage).unwrap();
+        fresh_stage_dir(&stage).unwrap();
+        assert_eq!(fs::read(victim.join("notes.md")).unwrap(), b"keep me");
+        let meta = fs::symlink_metadata(&stage).unwrap();
+        assert!(meta.is_dir() && !meta.file_type().is_symlink());
+        assert_eq!(meta.permissions().mode() & 0o777, 0o700);
+        // A leftover folder with files goes too.
+        fs::write(stage.join("planted"), b"x").unwrap();
+        fresh_stage_dir(&stage).unwrap();
+        assert_eq!(fs::read_dir(&stage).unwrap().count(), 0);
+        assert!(dir_identity(&stage).unwrap().is_some());
+        // A file where the folder should be is replaced, not written into.
+        fs::remove_dir(&stage).unwrap();
+        fs::write(&stage, b"x").unwrap();
+        fresh_stage_dir(&stage).unwrap();
+        assert!(fs::symlink_metadata(&stage).unwrap().is_dir());
+    }
+
+    #[test]
+    fn a_zip_entry_larger_than_it_says_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("out");
+        let archive = dir.path().join("a.zip");
+        let mut bytes = zip(&[("kanso.exe", &[0u8; 4096])]);
+        // The central directory's uncompressed size, at offset 24 of its
+        // entry: claim one byte where 4096 inflate.
+        let at = bytes
+            .windows(4)
+            .position(|w| w == [0x50, 0x4b, 0x01, 0x02])
+            .unwrap();
+        bytes[at + 24..at + 28].copy_from_slice(&1u32.to_le_bytes());
+        write(&archive, &bytes);
+        let err = extract(&archive, ArchiveKind::Zip, &dest).unwrap_err();
+        assert!(matches!(err, StageError::BadArchive(_)), "{err:?}");
+        assert!(fs::metadata(dest.join("kanso.exe")).map_or(true, |m| m.len() <= 1));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn digests_refuse_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = dir.path().join("Kanso.app");
+        fs::create_dir_all(app.join("Contents")).unwrap();
+        fs::write(app.join("Contents/kanso"), b"x").unwrap();
+        assert!(payload_digest(&app).is_ok());
+        std::os::unix::fs::symlink("/bin/sh", app.join("Contents/sh")).unwrap();
+        assert!(payload_digest(&app).is_err());
+    }
+
+    #[test]
+    fn duplicate_archive_entries_replace_files_but_not_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("out");
+        let archive = dir.path().join("a.tar.gz");
+        write(
+            &archive,
+            &tar_gz(&[("kanso", b"first", 0o755), ("kanso", b"second", 0o755)]),
+        );
+        extract(&archive, ArchiveKind::TarGz, &dest).unwrap();
+        assert_eq!(fs::read(dest.join("kanso")).unwrap(), b"second");
     }
 
     #[test]
@@ -719,6 +915,47 @@ mod tests {
             let result = fetch(&other, &asset, &to);
             prop_assert_eq!(result.is_ok(), other == body);
             prop_assert_eq!(to.exists(), other == body);
+        }
+
+        /// Any change to a staged update (a file's bytes, a new file, a
+        /// rename, and on Unix a permission) changes its digest; nothing
+        /// else does.
+        #[test]
+        fn prop_digests_catch_every_change(
+            files in prop::collection::btree_map("[a-c]{1,3}", prop::collection::vec(any::<u8>(), 0..64), 1..6),
+            change in 0u8..4,
+            pick in any::<prop::sample::Index>(),
+        ) {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path().join("Kanso.app");
+            fs::create_dir_all(root.join("Contents")).unwrap();
+            for (name, bytes) in &files {
+                fs::write(root.join("Contents").join(name), bytes).unwrap();
+            }
+            let before = payload_digest(&root).unwrap();
+            prop_assert_eq!(&payload_digest(&root).unwrap(), &before, "stable");
+            let names: Vec<&String> = files.keys().collect();
+            let victim = root.join("Contents").join(names[pick.index(names.len())]);
+            match change {
+                0 => {
+                    let mut bytes = fs::read(&victim).unwrap();
+                    bytes.push(0);
+                    fs::write(&victim, bytes).unwrap();
+                }
+                1 => fs::write(root.join("Contents/zz-planted"), b"").unwrap(),
+                2 => fs::rename(&victim, root.join("Contents/zz-renamed")).unwrap(),
+                _ => {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt as _;
+                        let mode = fs::metadata(&victim).unwrap().permissions().mode();
+                        fs::set_permissions(&victim, fs::Permissions::from_mode(mode ^ 0o100)).unwrap();
+                    }
+                    #[cfg(not(unix))]
+                    fs::write(root.join("Contents/zz-planted"), b"").unwrap();
+                }
+            }
+            prop_assert_ne!(payload_digest(&root).unwrap(), before);
         }
 
         /// Paths inside the folder are kept as they are; anything else is

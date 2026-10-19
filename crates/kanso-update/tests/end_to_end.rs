@@ -291,10 +291,16 @@ fn check_download_verify_stage_and_swap() {
     .unwrap();
     assert_eq!(seen, update.asset.size);
     assert!(pending.payload.starts_with(&install.stage_dir));
-    assert_eq!(
-        stage::Pending::load(&install.stage_dir),
-        Some(pending.clone())
-    );
+    assert!(pending.seal.is_set());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = std::fs::metadata(&install.stage_dir)
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o700, "the staging folder is private");
+    }
     // Staged beside the install, untouched until the swap.
     assert_eq!(installed_version(&install.target), "0.1.0");
 
@@ -337,8 +343,49 @@ fn a_tampered_archive_is_never_staged() {
     )
     .unwrap_err();
     assert!(matches!(err, StageError::ChecksumMismatch), "{err:?}");
-    assert!(stage::Pending::load(&install.stage_dir).is_none());
+    assert_eq!(
+        std::fs::read_dir(&install.stage_dir).unwrap().count(),
+        0,
+        "nothing is left staged"
+    );
     assert_eq!(installed_version(&install.target), "0.1.0");
+}
+
+#[test]
+fn an_update_changed_after_its_checks_is_never_swapped_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let exe = fake_kanso(dir.path(), "0.1.0");
+    let release = publish("0.2.0", release_archive("0.2.0"), |_, _| {});
+    let Check::Available(update) = check(&release, "0.1.0").unwrap() else {
+        panic!()
+    };
+    let install = install::locate(&exe, Some(PLATFORM), LocateOptions::default()).unwrap();
+    let pending = stage::prepare(
+        &HttpTransport::new("kanso-test"),
+        &LOCAL,
+        &update,
+        &install,
+        &mut |_, _| {},
+        &AtomicBool::new(false),
+        &|payload| verify(payload, &install.target),
+    )
+    .unwrap();
+    // Something with write access to the staging folder swaps the checked
+    // executable for its own while Kanso runs.
+    let executable = if PLATFORM.is_bundle() {
+        pending.payload.join("Contents/MacOS/kanso")
+    } else {
+        pending.payload.clone()
+    };
+    std::fs::write(&executable, b"#!/bin/sh\necho pwned\n").unwrap();
+    assert!(matches!(
+        install::apply(&pending, &install),
+        Err(install::ApplyError::Tampered)
+    ));
+    assert_eq!(installed_version(&install.target), "0.1.0");
+    // And on the next start, whatever was staged is cleared, not offered.
+    install::clean_up(&install);
+    assert!(!install.stage_dir.exists());
 }
 
 #[test]

@@ -286,8 +286,8 @@ pub fn just_updated(
 }
 
 /// Sets the updater up for the real app: the keys compiled in, GitHub over
-/// HTTPS, and where Kanso is installed. Then picks up an update staged
-/// before, notes an update that just happened, and starts checking.
+/// HTTPS, and where Kanso is installed. Then clears whatever an earlier run
+/// staged, notes an update that just happened, and starts checking.
 // no-prop-test: wiring to the system; `off_reason`, `just_updated` and
 // `kanso_update::install::locate` are tested.
 pub fn init(cx: &mut App) {
@@ -328,8 +328,9 @@ pub fn init(cx: &mut App) {
     after_launch(cx);
 }
 
-/// What happens at every start, whatever set the updater up: leftovers go,
-/// a staged update shows as ready, a finished one is announced once.
+/// What happens at every start, whatever set the updater up: leftovers go
+/// (an update staged by an earlier run included), a finished one is
+/// announced once.
 pub fn after_launch(cx: &mut App) {
     let current = current_version();
     let store = cx.global::<AppState>().store.clone();
@@ -349,13 +350,11 @@ pub fn after_launch(cx: &mut App) {
             updates.installed_notes.get_or_insert_with(|| notes.clone());
             updates.just_updated = Some(notes);
         }
+        // Whatever an earlier run left staged goes: nothing on disk can say
+        // it is still what was checked, so a newer release is downloaded
+        // and checked again instead (kanso_update::install::clean_up).
         if let Ok(install) = &updates.install {
-            kanso_update::install::clean_up(install, &current);
-            if let Some(pending) = Pending::load(&install.stage_dir)
-                && semver::Version::parse(&pending.version).is_ok_and(|v| v > current)
-            {
-                updates.phase = Phase::Ready(pending);
-            }
+            kanso_update::install::clean_up(install);
         }
         updates.off.is_some()
     };
@@ -1265,6 +1264,7 @@ mod tests {
             pub_date: String::new(),
             release_url: String::new(),
             notes: String::new(),
+            seal: Default::default(),
         }
     }
 

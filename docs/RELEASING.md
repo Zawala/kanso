@@ -35,18 +35,25 @@ The app (`crates/kanso-app/src/updates.rs`, with the logic in
    `objects.githubusercontent.com` or `release-assets.githubusercontent.com`.
 3. With **Download and install updates automatically** on (the default), it
    downloads the update beside the install (in `.kanso-update/`, on the same
-   volume), checks its size and SHA-256 against the signed feed, and unpacks
-   it, taking only plain files that stay inside the folder. On macOS the
-   staged `.app` must pass `codesign --verify --deep --strict`, and when the
-   running Kanso is signed by a developer, carry the same Team ID.
+   volume, made afresh for each download and readable only by its owner),
+   checks its size and SHA-256 against the signed feed, and unpacks it,
+   taking only plain files that stay inside the folder. It then takes a
+   digest of what it unpacked, which it keeps in memory only. On macOS the
+   staged `.app` must pass `codesign --verify --deep --strict`, be signed
+   with the running Kanso's identifier and, when the running Kanso is signed
+   by a developer, carry the same Team ID.
 4. The sidebar shows **Update ready · Restart**. Its sheet has the release
    notes with their commit links, and **Restart now** or **Later**. Restart
-   now, or any quit, swaps the update in with two renames (the old copy
+   now, or any quit, checks that the staging folder and the digest are
+   still the ones it took (anything changed or planted there is refused),
+   then swaps the update in with two renames (the old copy
    moves aside, the new one moves in, and the first rename is undone if the
    second fails), removes macOS's quarantine flag, and starts the new Kanso
    with `--after-update`, which waits for the old one to let go of the data
    folder. On Windows the running `kanso.exe` becomes `kanso.exe.old`, which
-   the next start deletes.
+   the next start deletes. An update staged but never swapped in (Kanso was
+   force-quit, say) is deleted at the next start and downloaded again,
+   never installed from disk.
 5. The first start of the new version shows **Updated to Kanso <v>** once,
    with What's new.
 
@@ -55,8 +62,9 @@ Download** and Download fetches and stages it the same way. A copy that
 can't replace itself opens the release page instead, and Settings › Updates
 says why: a debug or `cargo` build, Kanso Dev (never updated, see
 [DEVELOPING.md](DEVELOPING.md)), an app macOS is running from a temporary
-copy (App Translocation) or from its disk image, an AppImage, or a folder
-Kanso can't write to (Program Files, say).
+copy (App Translocation) or from its disk image, an AppImage, a folder
+Kanso can't write to (Program Files, say), or an install that belongs to
+another account on the computer.
 
 Failures stay quiet and in words: offline, rate limited, no release yet, an
 update that failed a check, no space. The sidebar only mentions the ones that
