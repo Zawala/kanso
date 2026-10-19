@@ -18,9 +18,12 @@ jobs:
   # system, and the Linux runner has no dbus headers for the keyring. The
   # runner keeps its target folder between runs, so no cache step.
   rust:
+    # The self-hosted Mac never runs a fork's pull request: that would run a
+    # stranger's code on the owner's machine.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, macOS]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # Installs the toolchain pinned in rust-toolchain.toml.
       - run: rustup show active-toolchain || rustup toolchain install
       - run: cargo fmt --all -- --check
@@ -38,7 +41,7 @@ jobs:
         os: [ubuntu-22.04, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: rustup show active-toolchain || rustup toolchain install
         shell: bash
       - name: Linux build dependencies
@@ -53,10 +56,13 @@ jobs:
             libxcb-randr0-dev libxcb-shape0-dev libxcb-shm0-dev libxcb-xfixes0-dev \
             libfontconfig-dev libfreetype-dev \
             libssl-dev libasound2-dev libdbus-1-dev libzstd-dev
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo clippy --workspace --locked -- -D warnings
 
   worker:
+    # The self-hosted Mac never runs a fork's pull request: that would run a
+    # stranger's code on the owner's machine.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
     defaults:
       run:
@@ -65,7 +71,7 @@ jobs:
       # fast-check reads its seed in vitest.config.ts.
       FAST_CHECK_SEED: "20261017"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
@@ -74,15 +80,18 @@ jobs:
   # the Rust client against it: cloud/scripts/e2e-local.sh.
   # The Mac as well: it builds kanso-sync, whose Linux keyring needs dbus.
   e2e:
+    # The self-hosted Mac never runs a fork's pull request: that would run a
+    # stranger's code on the owner's machine.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, macOS]
     needs: [rust, worker]
     env:
       KANSO_E2E_PORT: "18787"
       WRANGLER_SEND_METRICS: "false"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: rustup show active-toolchain || rustup toolchain install
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24"
       - run: npm ci --no-audit --no-fund
