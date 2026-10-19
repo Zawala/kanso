@@ -17,6 +17,16 @@
 #ifndef OutputDir
   #define OutputDir "..\..\dist"
 #endif
+; Windows' file version takes only numbers, so a dev build's
+; "0.2.0-dev.f66153a" becomes 0.2.0 there; AppVersion keeps the full text.
+#ifndef NumericVersion
+  #define DashPos Pos("-", AppVersion)
+  #if DashPos > 0
+    #define NumericVersion Copy(AppVersion, 1, DashPos - 1)
+  #else
+    #define NumericVersion AppVersion
+  #endif
+#endif
 #ifndef OutputBase
   #define OutputBase "Kanso-" + AppVersion + "-windows-x64-setup"
 #endif
@@ -32,7 +42,7 @@ AppPublisher=Ngonidzashe Mangudya
 AppPublisherURL=https://github.com/iamngoni/kanso
 AppSupportURL=https://github.com/iamngoni/kanso/issues
 AppUpdatesURL=https://github.com/iamngoni/kanso/releases
-VersionInfoVersion={#AppVersion}
+VersionInfoVersion={#NumericVersion}
 DefaultDirName={userpf}\Kanso
 DisableDirPage=yes
 DisableProgramGroupPage=yes
