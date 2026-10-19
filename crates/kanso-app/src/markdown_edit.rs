@@ -210,19 +210,19 @@ fn heading(text: &str, selection: Range<usize>, level: u8) -> Edit {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ListKind {
+pub(crate) enum ListKind {
     Bulleted,
     Numbered,
     Task,
 }
 
-fn indent_len(line: &str) -> usize {
+pub(crate) fn indent_len(line: &str) -> usize {
     line.len() - line.trim_start_matches([' ', '\t']).len()
 }
 
 /// The list marker at the start of `rest` (a line after its indent): its
 /// kind and its length with the space after it.
-fn list_marker(rest: &str) -> Option<(ListKind, usize)> {
+pub(crate) fn list_marker(rest: &str) -> Option<(ListKind, usize)> {
     let b = rest.as_bytes();
     if matches!(b.first(), Some(b'-' | b'*' | b'+')) && b.get(1) == Some(&b' ') {
         let task = b.len() >= 5
