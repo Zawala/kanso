@@ -1,7 +1,8 @@
 //! Imports an Inkdrop database into Kanso's store.
 //!
 //! Inkdrop keeps its documents in PouchDB on SQLite at
-//! `~/Library/Application Support/inkdrop/db/<32 hex>.sqlite`. The importer
+//! `~/Library/Application Support/inkdrop/db/<32 hex>.sqlite` on macOS (see
+//! [`default_inkdrop_dir`] for Windows and Linux). The importer
 //! snapshots that file read-only (it may be open in Inkdrop), then copies the
 //! winning revision of every note, notebook, tag and file, keeping their IDs
 //! and revisions. Attachment bytes are checked against their MD5 digests;
@@ -27,10 +28,33 @@ pub use report::{ImportReport, SourceCounts};
 
 /// Inkdrop's data directory on macOS: `~/Library/Application Support/inkdrop`.
 /// `None` when `HOME` is not set.
+#[cfg(target_os = "macos")]
 pub fn default_inkdrop_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .filter(|home| !home.is_empty())
+    non_empty_var("HOME")
         .map(|home| PathBuf::from(home).join("Library/Application Support/inkdrop"))
+}
+
+/// Inkdrop's data directory on Windows, Electron's `userData`:
+/// `%APPDATA%\inkdrop`. `None` when `APPDATA` is not set.
+#[cfg(target_os = "windows")]
+pub fn default_inkdrop_dir() -> Option<PathBuf> {
+    non_empty_var("APPDATA").map(|dir| PathBuf::from(dir).join("inkdrop"))
+}
+
+/// Inkdrop's data directory on Linux, Electron's `userData`:
+/// `$XDG_CONFIG_HOME/inkdrop` or `~/.config/inkdrop`. `None` when neither
+/// is set.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub fn default_inkdrop_dir() -> Option<PathBuf> {
+    non_empty_var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|dir| dir.is_absolute())
+        .or_else(|| non_empty_var("HOME").map(|home| PathBuf::from(home).join(".config")))
+        .map(|config| config.join("inkdrop"))
+}
+
+fn non_empty_var(name: &str) -> Option<std::ffi::OsString> {
+    std::env::var_os(name).filter(|value| !value.is_empty())
 }
 
 /// Whether `name` is a main database file name: 32 hex digits and `.sqlite`.

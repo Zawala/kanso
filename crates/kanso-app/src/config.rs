@@ -365,22 +365,22 @@ impl AppConfig {
         }
     }
 
-    /// Writes the config atomically with owner-only permissions.
+    /// Writes the config atomically with owner-only permissions (on
+    /// Windows, the data folder's own: the user's profile is theirs alone).
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         use std::io::Write as _;
-        use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
         let tmp = path.with_extension("json.tmp");
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut file = options.open(&tmp)?;
         // `mode` only applies to a new file; a leftover one keeps its own.
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        #[cfg(unix)]
+        file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
         file.write_all(&serde_json::to_vec_pretty(self)?)?;
         file.sync_all()?;
         std::fs::rename(&tmp, path)?;

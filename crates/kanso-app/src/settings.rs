@@ -818,12 +818,16 @@ impl SettingsView {
         let shown = display_path(&dir, &paths::home());
         #[cfg(test)]
         let shown = self.data_dir_label.clone().unwrap_or(shown);
-        vec![
+        let startup = launch::SUPPORTED.then(|| {
             section(
                 "Startup",
                 vec![
                     Row::new(Lucide::Power, "Open Kanso at login")
-                        .detail("Kanso starts when you log in to this Mac, with the local API.")
+                        .detail(if cfg!(target_os = "macos") {
+                            "Kanso starts when you log in to this Mac, with the local API."
+                        } else {
+                            "Kanso starts when you log in, with the local API."
+                        })
                         .trailing(
                             Switch::new("launch-at-login")
                                 .checked(launch_at_login)
@@ -831,7 +835,9 @@ impl SettingsView {
                         ),
                 ],
                 colors,
-            ),
+            )
+        });
+        startup.into_iter().chain([
             section(
                 "Data",
                 vec![
@@ -841,7 +847,7 @@ impl SettingsView {
                             Button::new("reveal-data")
                                 .outline()
                                 .small()
-                                .label("Show in Finder")
+                                .label(paths::SHOW_IN_FILE_MANAGER)
                                 .on_click(move |_, _, cx| cx.reveal_path(&dir)),
                         ),
                     Row::new(Lucide::DatabaseBackup, "Backups")
@@ -873,7 +879,8 @@ impl SettingsView {
                 ],
                 colors,
             ),
-        ]
+        ])
+        .collect()
     }
 }
 

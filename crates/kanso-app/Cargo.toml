@@ -30,8 +30,6 @@ base64.workspace = true
 # backend, whose cocoa pin conflicts; enabling it on each layer is equivalent.
 gpui-pre = { version = "=0.3.9", features = ["test-support"] }
 gpui-pre-platform = { version = "=0.3.9", features = ["test-support"] }
-# Real text shaping for the PNG snapshots, without the main-thread-only platform.
-gpui-pre-apple = "=0.3.9"
 gpui-base = { version = "=0.7.3", features = ["test-support"] }
 gpui-component = { version = "=0.7.3", features = ["test-support"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -41,3 +39,16 @@ rusqlite.workspace = true
 tempfile.workspace = true
 # Names the item type of a test Keychain that wraps MemorySecrets.
 zeroize.workspace = true
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+# Real text shaping for the PNG snapshots, without the main-thread-only platform.
+gpui-pre-apple = "=0.3.9"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# Gives `kanso serve` and the other commands the console they were run from:
+# the release build is a GUI program without a console of its own.
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+
+[target.'cfg(target_os = "windows")'.build-dependencies]
+# The app icon in kanso.exe.
+embed-resource = "3"

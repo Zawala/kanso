@@ -1,0 +1,155 @@
+name: Release
+
+# A `v*` tag builds every platform and opens a draft GitHub Release with the
+# downloads and SHA256SUMS; publishing the draft is left to a person. Run by
+# hand (workflow_dispatch), it builds the same downloads as artifacts only.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+          - name: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          # Ubuntu 22.04's older glibc lets the Linux builds run on more
+          # distributions than a build on 24.04 would.
+          - name: linux-x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - name: linux-arm64
+            os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Version
+        id: version
+        run: |
+          crate_version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version=${GITHUB_REF_NAME#v}
+            if [ "$version" != "$crate_version" ]; then
+              echo "::error::The tag says $version but Cargo.toml says $crate_version; bump [workspace.package] version first."
+              exit 1
+            fi
+          else
+            version="$crate_version-dev.${GITHUB_SHA::7}"
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "stem=Kanso-$version-${{ matrix.name }}" >>"$GITHUB_OUTPUT"
+
+      # Installs the toolchain pinned in rust-toolchain.toml.
+      - name: Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config clang cmake \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libvulkan-dev libegl-dev \
+            libx11-dev libx11-xcb-dev libxcb1-dev \
+            libxcb-randr0-dev libxcb-shape0-dev libxcb-shm0-dev libxcb-xfixes0-dev \
+            libfontconfig-dev libfreetype-dev \
+            libssl-dev libasound2-dev libdbus-1-dev libzstd-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked -p kanso-app
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          scripts/bundle-macos.sh
+          mkdir -p dist dmg
+          cp -R target/release/Kanso.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname Kanso -srcfolder dmg -fs HFS+ -format UDZO -ov \
+            "dist/${{ steps.version.outputs.stem }}.dmg"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path target/release/kanso.exe `
+            -DestinationPath "dist/${{ steps.version.outputs.stem }}.zip"
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          stem=${{ steps.version.outputs.stem }}
+          mkdir -p "dist" "$stem"
+          install -m 755 target/release/kanso "$stem/kanso"
+          strip "$stem/kanso"
+          install -m 644 assets/linux/kanso.desktop "$stem/kanso.desktop"
+          install -m 644 assets/icon/kanso.png "$stem/kanso.png"
+          install -m 755 assets/linux/install.sh "$stem/install.sh"
+          tar -czf "dist/$stem.tar.gz" "$stem"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.version.outputs.stem }}
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    name: Checksums and draft release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum -- * >SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: SHA256SUMS
+          path: dist/SHA256SUMS
+          if-no-files-found: error
+
+      # A draft: nothing is public until someone presses Publish.
+      - name: Draft release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --draft --verify-tag --generate-notes --title "Kanso ${GITHUB_REF_NAME#v}"
