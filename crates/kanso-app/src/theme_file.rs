@@ -330,6 +330,8 @@ pub const CAPTURES: &[(&str, &str)] = &[
     ("constructor", "type_constructor"),
     ("string", "string"),
     ("string.special", "string_special"),
+    ("string.special.symbol", "string_special"),
+    ("string.regex", "string_special"),
     ("number", "number"),
     ("boolean", "boolean"),
     ("constant", "constant"),

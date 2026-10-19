@@ -1042,7 +1042,8 @@ mod tests {
     /// Kanso's own theme files give exactly the palettes above, the same
     /// component theme, and the same syntax styles, plus the two new
     /// captures for rules and task boxes, which take the list markers'
-    /// color they had before. Selection and caret are the accent's.
+    /// color they had before, and two for code that take the special
+    /// strings'. Selection and caret are the accent's.
     #[test]
     fn kanso_themes_match_the_palettes() {
         use gpui_kit::component::highlighter::HighlightThemeStyle;
@@ -1064,6 +1065,12 @@ mod tests {
             assert_eq!(new.syntax.enum_, old.syntax.punctuation_list_marker);
             old.syntax.variant = new.syntax.variant;
             old.syntax.enum_ = new.syntax.enum_;
+            // Regular expressions and symbols in code take the special
+            // strings' style rather than falling back to plain strings.
+            assert_eq!(new.syntax.string_regex, new.syntax.string_special);
+            assert_eq!(new.syntax.string_special_symbol, new.syntax.string_special);
+            old.syntax.string_regex = new.syntax.string_regex;
+            old.syntax.string_special_symbol = new.syntax.string_special_symbol;
             assert_eq!(new, old, "{}", theme.name);
             let preview = crate::theme_file::fit_preview(&theme.preview, expected);
             assert_eq!(preview, theme.preview);

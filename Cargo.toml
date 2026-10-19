@@ -43,7 +43,39 @@ thiserror = "2"
 tempfile = "3"
 unicode-normalization = "0.1"
 zeroize = "1.9"
-gpui-kit = { version = "=0.7.3", features = ["tree-sitter-markdown", "tree-sitter-markdown-inline"] }
+# Grammars for the Markdown source and for code blocks in the editor and the
+# preview (`code_lang.rs` maps fence names onto them). There is no Dart
+# grammar in gpui-kit; every other common language is here.
+gpui-kit = { version = "=0.7.3", features = [
+    "tree-sitter-markdown",
+    "tree-sitter-markdown-inline",
+    "tree-sitter-bash",
+    "tree-sitter-c",
+    "tree-sitter-cpp",
+    "tree-sitter-csharp",
+    "tree-sitter-css",
+    "tree-sitter-diff",
+    "tree-sitter-go",
+    "tree-sitter-html",
+    "tree-sitter-java",
+    "tree-sitter-javascript",
+    "tree-sitter-kotlin",
+    "tree-sitter-lua",
+    "tree-sitter-php",
+    "tree-sitter-python",
+    "tree-sitter-ruby",
+    "tree-sitter-rust",
+    "tree-sitter-sql",
+    "tree-sitter-swift",
+    "tree-sitter-toml",
+    "tree-sitter-tsx",
+    "tree-sitter-typescript",
+    "tree-sitter-yaml",
+] }
+# Only for their highlight queries: gpui-kit compiles these two grammars in
+# without one (`code_lang::ensure_registered`). Pinned to the versions it uses.
+tree-sitter-c-sharp = "=0.23.5"
+tree-sitter-swift = "=0.7.4"
 
 [profile.dev.package."*"]
 opt-level = 2

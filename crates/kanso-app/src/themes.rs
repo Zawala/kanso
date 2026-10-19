@@ -329,6 +329,7 @@ fn ensure_loaded(cx: &mut App) {
 pub fn apply(window: Option<&mut Window>, cx: &mut App) {
     ensure_loaded(cx);
     crate::markdown_source::ensure_registered();
+    crate::code_lang::ensure_registered();
     let appearance = window
         .as_ref()
         .map(|window| window.appearance())
@@ -452,7 +453,6 @@ mod preview_code {
     use std::sync::Arc;
 
     use gpui_kit::App;
-    use gpui_kit::SharedString;
     use gpui_kit::base::TextViewDefaults;
     use gpui_kit::base::input::Rope;
     use gpui_kit::component::ThemeMode;
@@ -485,18 +485,21 @@ mod preview_code {
         TextViewDefaults::global(cx)
             .with_code_block_highlighter(move |block| {
                 thread_local! {
-                    static HIGHLIGHTERS: RefCell<HashMap<SharedString, SyntaxHighlighter>> =
+                    static HIGHLIGHTERS: RefCell<HashMap<&'static str, SyntaxHighlighter>> =
                         RefCell::new(HashMap::new());
                 }
-                let Some(lang) = block.lang() else {
+                let Some(lang) = block
+                    .lang()
+                    .and_then(|info| crate::code_lang::grammar(&info))
+                else {
                     return Vec::new();
                 };
                 let code = block.code();
                 HIGHLIGHTERS.with(|cache| {
                     let mut cache = cache.borrow_mut();
                     let highlighter = cache
-                        .entry(lang.clone())
-                        .or_insert_with(|| SyntaxHighlighter::new(lang.as_ref()));
+                        .entry(lang)
+                        .or_insert_with(|| SyntaxHighlighter::new(lang));
                     highlighter.update(None, &Rope::from_str(code.as_ref()), None);
                     highlighter.styles(&(0..code.len()), highlight.as_ref())
                 })

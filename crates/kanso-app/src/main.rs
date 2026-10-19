@@ -14,6 +14,7 @@ mod account_words;
 mod assets;
 mod clipboard;
 mod clock;
+mod code_lang;
 mod commands;
 mod config;
 mod dialogs;

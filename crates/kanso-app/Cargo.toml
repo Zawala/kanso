@@ -23,6 +23,8 @@ kanso-store.workspace = true
 markdown.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tree-sitter-c-sharp.workspace = true
+tree-sitter-swift.workspace = true
 
 [dev-dependencies]
 base64.workspace = true

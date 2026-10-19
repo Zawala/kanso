@@ -971,12 +971,27 @@ fn settings_appearance(
 /// languages, for showing syntax and preview colors side by side.
 const THEME_NOTE: &str = "# Theme sampler\n\nSome **bold**, some *italic*, `inline code` and a [link](https://kanso.app).\n\n## Code\n\n```json\n{\n  \"name\": \"Nord\",\n  \"dark\": true,\n  \"size\": 14,\n  \"accent\": null,\n  \"tags\": [\"calm\", \"cool\"],\n  \"escape\": \"tab\\\\there\"\n}\n```\n\n> Colors should help reading, never fight it.\n\n- [x] Pick a palette\n- [ ] Check contrast\n  1. Text on panes\n  2. Code on blocks\n\n---\n\n| Token | Color |\n|---|---|\n| keyword | accent |\n| string | green |\n\nPress <kbd>Cmd</kbd>+<kbd>K</kbd> for commands.\n";
 
-/// The theme sampler note, open in the editor.
-fn open_theme_note(
+/// Code in several languages, with a quote and tasks between, to see each
+/// grammar's colors and the preview's blocks.
+const CODE_NOTE: &str = "# Code samples\n\n```rust\n/// A note in the store.\n#[derive(Debug, Clone)]\npub struct Note {\n    pub id: String,\n    pub pinned: bool,\n}\n\nfn main() {\n    let count = notes.iter().filter(|n| n.pinned).count();\n    println!(\"{count} pinned\");\n}\n```\n\n```ts\ninterface Note { id: string; tags: string[] }\nexport async function load(id: string): Promise<Note> {\n  const res = await fetch(`/notes/${id}`);\n  return (await res.json()) as Note; // typed\n}\n```\n\n```python\nimport re\n\ndef slug(title: str) -> str:\n    \"\"\"Lowercase words joined by dashes.\"\"\"\n    return re.sub(r\"[^a-z0-9]+\", \"-\", title.lower()).strip(\"-\")\n```\n\n> Quotes keep their own color; finished tasks step back.\n\n- [x] Highlight Rust, TypeScript and Python\n- [ ] Check every theme\n\n```go\nfunc Sum(xs []int) (total int) {\n\tfor _, x := range xs {\n\t\ttotal += x\n\t}\n\treturn\n}\n```\n\n```sh\n# Back up the library\ncp \"$HOME/Library/Kanso/kanso.db\" ~/backup/ && echo done\n```\n\n```sql\nSELECT title, updated_at FROM notes WHERE pinned = 1 ORDER BY updated_at DESC LIMIT 20;\n```\n\n```yaml\ntheme: Kanso Dark\nsync:\n  interval: 5m\n  enabled: true\n```\n\n```swift\nstruct Note: Identifiable {\n    let id: UUID\n    var title = \"Untitled\"\n}\n```\n";
+
+/// The code samples note, open in the editor.
+fn open_code_note(
     cx: &mut HeadlessAppContext,
     _: AnyWindowHandle,
     workspace: &Entity<Workspace>,
     store: &Store,
+) {
+    open_new_note(cx, workspace, store, "Code samples", CODE_NOTE);
+}
+
+/// Adds a note beside the latest one and opens it.
+fn open_new_note(
+    cx: &mut HeadlessAppContext,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+    title: &str,
+    body: &str,
 ) {
     let book = store
         .search_summaries(&Default::default())
@@ -987,7 +1002,7 @@ fn open_theme_note(
     let id = store
         .put(
             DocType::Note,
-            json!({"title": "Theme sampler", "body": THEME_NOTE, "bookId": book}),
+            json!({"title": title, "body": body, "bookId": book}),
             Put::Upsert,
             Origin::Ui,
         )
@@ -1000,6 +1015,16 @@ fn open_theme_note(
             library.select(Some(id), cx);
         })
     });
+}
+
+/// The theme sampler note, open in the editor.
+fn open_theme_note(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    open_new_note(cx, workspace, store, "Theme sampler", THEME_NOTE);
 }
 
 /// The demo account's name.
@@ -2619,6 +2644,27 @@ fn snapshots() {
             )
         });
     }
+    // Code blocks in each grammar, in Kanso's themes and in Dracula.
+    let code = size(px(1440.), px(2000.));
+    shots.extend([
+        Shot {
+            size: code,
+            ..shot("dark-code-languages", Dark, Preview, open_code_note)
+        },
+        Shot {
+            size: code,
+            ..shot("light-code-languages", Light, Preview, open_code_note)
+        },
+        Shot {
+            size: code,
+            ui_theme: Some("Dracula"),
+            ..shot("dracula-code-languages", Dark, Preview, open_code_note)
+        },
+        Shot {
+            size: code,
+            ..shot("dark-code-languages-edit", Dark, Edit, open_code_note)
+        },
+    ]);
     // Themes mixed: one theme's UI, another's syntax and a third's preview,
     // each fitted to the UI's surfaces.
     shots.extend([
