@@ -13,7 +13,7 @@ use crate::api::Backend;
 use crate::binding::guard_pairs;
 use crate::crypto::{SEAL_OVERHEAD, sealed_doc_len};
 use crate::engine::SyncError;
-use crate::remote::is_file_id;
+use crate::remote::{is_file_id, md5_hex};
 use crate::sealed::{Entry, FileBytes, Pushed, Sealed};
 use crate::wire::{DOC_ROW_COST, FILE_ROW_COST, MAX_CHANGES_LIMIT};
 
@@ -351,7 +351,9 @@ fn generation(rev: &str) -> Option<u64> {
 /// The `--legacy` check (H4): each live legacy document is in the library
 /// at that revision or a higher generation and passed the checks above;
 /// each live legacy file also has a local blob with the manifest's
-/// `md5digest`.
+/// `md5digest`. Files imported from Inkdrop may have no `md5digest`; for
+/// those the blob must exist and its bytes must hash to what the store
+/// recorded for them.
 fn check_legacy(
     store: &Store,
     session: &Session,
@@ -374,7 +376,10 @@ fn check_legacy(
                 let bytes = if is_file_id(&row.id) {
                     match &row.md5digest {
                         Some(md5) => store.has_blob(&row.id, &md5.to_ascii_lowercase())?,
-                        None => false,
+                        None => match (store.blob_md5(&row.id)?, store.attachment(&row.id)?) {
+                            (Some(recorded), Some((_, blob))) => md5_hex(&blob.data) == recorded,
+                            _ => false,
+                        },
                     }
                 } else {
                     true

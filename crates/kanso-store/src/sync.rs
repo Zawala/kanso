@@ -532,6 +532,21 @@ impl Store {
         })
     }
 
+    /// The MD5 (hex) of the bytes the store holds for attachment `id`, if any.
+    pub fn blob_md5(&self, id: &str) -> Result<Option<String>> {
+        self.read(|conn| {
+            Ok(conn
+                .query_row("SELECT md5 FROM blobs WHERE file_id = ?", [id], |row| {
+                    row.get::<_, String>(0)
+                })
+                .map(Some)
+                .or_else(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                    e => Err(e),
+                })?)
+        })
+    }
+
     /// Whether the store has the bytes of attachment `id` with this MD5 (hex).
     pub fn has_blob(&self, id: &str, md5_hex: &str) -> Result<bool> {
         self.read(|conn| {

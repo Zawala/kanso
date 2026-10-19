@@ -176,6 +176,52 @@ fn a_library_bound_elsewhere_is_refused() {
     ));
 }
 
+/// Files imported from Inkdrop can have no `md5digest` in the manifest;
+/// they pass when the library holds bytes that hash to what it recorded
+/// (the owner's migration, 2026-10-19: 9 such files failed before).
+#[test]
+fn a_legacy_file_without_an_md5_passes_on_its_bytes() {
+    let (server, a, _b) = library();
+    let docs = a.store.sync_docs().unwrap();
+    let rev = docs
+        .iter()
+        .find(|d| d.id == "file:img")
+        .unwrap()
+        .rev
+        .clone();
+    let rows = vec![LegacyRow {
+        id: "file:img".into(),
+        rev,
+        deleted: false,
+        md5digest: None,
+    }];
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("manifest.json");
+    let manifest = LegacyManifest {
+        exported_at: 5,
+        rows: rows.clone(),
+    };
+    std::fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let report = verify(&a.store, &server, &a.session, Some(&path), false).unwrap();
+    let legacy = report.legacy.unwrap();
+    assert!(legacy.ok, "{legacy:?}");
+
+    // Without bytes it still fails.
+    let missing = vec![LegacyRow {
+        id: "file:none".into(),
+        rev: "1-aa".into(),
+        deleted: false,
+        md5digest: None,
+    }];
+    let manifest = LegacyManifest {
+        exported_at: 5,
+        rows: missing,
+    };
+    std::fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let report = verify(&a.store, &server, &a.session, Some(&path), false).unwrap();
+    assert_eq!(report.legacy.unwrap().failed, vec!["file:none".to_owned()]);
+}
+
 #[test]
 fn the_legacy_manifest_is_checked_row_by_row() {
     let (server, a, _b) = library();
