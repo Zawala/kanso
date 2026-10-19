@@ -755,6 +755,8 @@ mod tests {
             pinned: false,
             updated_at,
             created_at: 0,
+            tasks_done: 0,
+            tasks_total: 0,
         }
     }
 

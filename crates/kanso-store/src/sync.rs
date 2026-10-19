@@ -399,7 +399,7 @@ impl Store {
 
     /// Empties the library in one transaction (docs/ACCOUNTS.md › Library
     /// binding › Replace, fix 3): removes every document, note-tag row, blob,
-    /// revision, FTS row and archive row, then writes (`Some`) or removes
+    /// revision, FTS row, archive row and derived link, heading and task row, then writes (`Some`) or removes
     /// (`None`) the meta entries. Broadcasts a deletion per document
     /// (`Origin::Sync`). Returns the number of documents removed. A crash
     /// leaves either the old library or an empty one bound fresh.
@@ -420,7 +420,10 @@ impl Store {
                 "revisions",
                 "archive",
                 "docs",
-            ] {
+            ]
+            .into_iter()
+            .chain(crate::derived::TABLES)
+            {
                 tx.execute(&format!("DELETE FROM {table}"), [])?;
             }
             crate::schema::set_meta(tx, crate::schema::SEQ_FLOOR_KEY, &floor.to_string())?;

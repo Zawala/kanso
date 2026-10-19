@@ -82,6 +82,44 @@ UPDATE docs SET synced_gen = CAST(substr(synced_rev, 1, instr(synced_rev, '-') -
     r#"
 ALTER TABLE docs ADD COLUMN sent_rev TEXT;
 "#,
+    // Tables derived from note bodies (`derived.rs`): local to this device,
+    // filled from Rust when the store opens and kept current by every write.
+    r#"
+CREATE TABLE note_links (
+    note_id TEXT NOT NULL,
+    ord INTEGER NOT NULL,
+    -- `note:…` for an `inkdrop://note/` link.
+    target_id TEXT,
+    -- The normalized title for a wiki-link.
+    target_title TEXT,
+    heading TEXT,
+    line INTEGER NOT NULL,
+    PRIMARY KEY (note_id, ord)
+) WITHOUT ROWID;
+CREATE INDEX note_links_target_id ON note_links (target_id) WHERE target_id IS NOT NULL;
+CREATE INDEX note_links_target_title ON note_links (target_title) WHERE target_title IS NOT NULL;
+
+CREATE TABLE note_headings (
+    note_id TEXT NOT NULL,
+    ord INTEGER NOT NULL,
+    level INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    line INTEGER NOT NULL,
+    PRIMARY KEY (note_id, ord)
+) WITHOUT ROWID;
+
+CREATE TABLE note_tasks (
+    note_id TEXT NOT NULL,
+    ord INTEGER NOT NULL,
+    line INTEGER NOT NULL,
+    checked INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    -- `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`, from an `@date` in the task.
+    due TEXT,
+    PRIMARY KEY (note_id, ord)
+) WITHOUT ROWID;
+CREATE INDEX note_tasks_due ON note_tasks (due) WHERE due IS NOT NULL;
+"#,
 ];
 
 pub fn connect(path: &Path) -> Result<Connection> {
@@ -109,6 +147,16 @@ pub fn connect(path: &Path) -> Result<Connection> {
             let body = ctx.get::<Option<String>>(0)?.unwrap_or_default();
             let term = ctx.get::<Option<String>>(1)?.unwrap_or_default();
             Ok(kanso_core::excerpt::match_window(&body, &term).map(str::to_owned))
+        },
+    )?;
+    // A title as wiki-links match it.
+    conn.create_scalar_function(
+        "kanso_norm_title",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            let title = ctx.get::<Option<String>>(0)?.unwrap_or_default();
+            Ok(kanso_core::links::normalize_title(&title))
         },
     )?;
     Ok(conn)

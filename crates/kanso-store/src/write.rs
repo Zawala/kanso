@@ -148,6 +148,9 @@ pub(crate) fn store_row(
             }
         }
     }
+    if crate::derived::applies(doc_type) {
+        crate::derived::write_note(tx, id, (!deleted).then_some(fields))?;
+    }
     if doc_type == DocType::File && deleted {
         tx.execute("DELETE FROM blobs WHERE file_id = ?", [id])?;
     }
@@ -510,7 +513,7 @@ impl Store {
 }
 
 /// Applies `edit` to a live note and stores it under a new revision.
-fn rewrite_note(
+pub(crate) fn rewrite_note(
     tx: &Transaction,
     id: &str,
     origin: Origin,

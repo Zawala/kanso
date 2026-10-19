@@ -75,6 +75,9 @@ pub struct NoteSummary {
     pub pinned: bool,
     pub updated_at: i64,
     pub created_at: i64,
+    /// Task-list items: how many are done, of how many.
+    pub tasks_done: u32,
+    pub tasks_total: u32,
 }
 
 /// Note counts for the sidebar.
@@ -360,7 +363,7 @@ impl Store {
             let columns = format!(
                 "d.id, d.rev, d.title, substr(json_extract(d.json, '$.body'), 1, {HEAD_CHARS}), \
                  d.book_id, d.status, json_extract(d.json, '$.tags'), d.pinned, d.updated_at, d.created_at, \
-                 {window}"
+                 {window}, json_extract(d.json, '$.numOfCheckedTasks'), json_extract(d.json, '$.numOfTasks')"
             );
             let (sql, mut values) = search_sql(&columns, params);
             // The window's term comes first: its column is before the rest.
@@ -387,6 +390,8 @@ impl Store {
                     pinned: row.get::<_, Option<bool>>(7)?.unwrap_or(false),
                     updated_at: row.get::<_, Option<i64>>(8)?.unwrap_or(0),
                     created_at: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
+                    tasks_done: row.get::<_, Option<u32>>(11)?.unwrap_or(0),
+                    tasks_total: row.get::<_, Option<u32>>(12)?.unwrap_or(0),
                 })
             })?;
             Ok(rows.collect::<rusqlite::Result<_>>()?)

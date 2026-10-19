@@ -1830,6 +1830,8 @@ mod tests {
             pinned: false,
             updated_at: 0,
             created_at: 0,
+            tasks_done: 0,
+            tasks_total: 0,
         }
     }
 

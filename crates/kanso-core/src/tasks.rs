@@ -19,6 +19,105 @@ pub fn count_tasks(body: &str) -> TaskCounts {
     counts
 }
 
+/// A task-list item: where it is, whether it is done, its words and its
+/// due date.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TaskItem {
+    /// The line (0-based) it is on.
+    pub line: u32,
+    pub checked: bool,
+    /// The text after the checkbox, trimmed.
+    pub text: String,
+    /// `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`, from an `@2026-10-25` (or
+    /// `@2026-10-25T09:00`) in the text.
+    pub due: Option<String>,
+}
+
+/// The task-list items in a markdown body, outside code fences, in order.
+/// [`count_tasks`] counts the same items.
+pub fn task_items(body: &str) -> Vec<TaskItem> {
+    let mut items = Vec::new();
+    let mut fence: Option<(u8, usize)> = None;
+    for (ix, line) in body.lines().enumerate() {
+        if let Some(open) = fence_marker(line.trim_start()) {
+            fence = match fence {
+                None => Some(open),
+                Some((ch, len)) if open.0 == ch && open.1 >= len => None,
+                other => other,
+            };
+            continue;
+        }
+        if fence.is_some() {
+            continue;
+        }
+        if let Some(checked) = task_marker(line) {
+            let at = line.find('[').map_or(line.len(), |at| at + 3);
+            let text = line[at..].trim().to_owned();
+            items.push(TaskItem {
+                line: ix as u32,
+                checked,
+                due: due_date(&text),
+                text,
+            });
+        }
+    }
+    items
+}
+
+/// The first `@YYYY-MM-DD` (with an optional `THH:MM`) in a task's text
+/// that is a real date, as written without the `@`.
+pub fn due_date(text: &str) -> Option<String> {
+    text.match_indices('@').find_map(|(at, _)| {
+        if at > 0 && !text[..at].ends_with([' ', '\t', '(']) {
+            return None;
+        }
+        let rest = &text[at + 1..];
+        let date = rest.get(..10)?;
+        let b = date.as_bytes();
+        let digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
+        if !(digits(0..4) && b[4] == b'-' && digits(5..7) && b[7] == b'-' && digits(8..10)) {
+            return None;
+        }
+        let year: u32 = date[0..4].parse().ok()?;
+        let month: u32 = date[5..7].parse().ok()?;
+        let day: u32 = date[8..10].parse().ok()?;
+        if !(1..=12).contains(&month) || day == 0 || day > days_in_month(year, month) {
+            return None;
+        }
+        let mut end = 10;
+        if let Some(time) = rest.get(10..16)
+            && let [b'T', h1, h2, b':', m1, m2] = time.as_bytes()
+            && [h1, h2, m1, m2].iter().all(|c| c.is_ascii_digit())
+        {
+            let hour = (h1 - b'0') * 10 + (h2 - b'0');
+            let minute = (m1 - b'0') * 10 + (m2 - b'0');
+            if hour < 24 && minute < 60 {
+                end = 16;
+            }
+        }
+        // The date must end the word.
+        if rest[end..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric())
+        {
+            return None;
+        }
+        Some(rest[..end].to_owned())
+    })
+}
+
+fn days_in_month(year: u32, month: u32) -> u32 {
+    match month {
+        2 if (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400) => {
+            29
+        }
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
 /// Toggles the `index`-th task-list item (0-based, in document order).
 /// Returns `None` when the body has fewer tasks.
 pub fn toggle_task(body: &str, index: usize) -> Option<String> {
@@ -185,6 +284,31 @@ mod tests {
                     ![img](inkdrop://file:XyZ9) inkdrop://note/";
         assert_eq!(linked_note_ids(body), vec!["note:abc-1_2"]);
         assert_eq!(linked_file_ids(body), vec!["file:XyZ9"]);
+    }
+
+    #[test]
+    fn task_items_carry_text_and_due_dates() {
+        let body = "- [ ] Pay rent @2026-11-01\n```\n- [ ] no\n```\n* [x] Call @2026-10-25T09:30 ok\n- [ ] bad @2026-02-30 x@2026-01-01\n";
+        let items = task_items(body);
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].due.as_deref(), Some("2026-11-01"));
+        assert_eq!(items[0].text, "Pay rent @2026-11-01");
+        assert_eq!((items[1].line, items[1].checked), (4, true));
+        assert_eq!(items[1].due.as_deref(), Some("2026-10-25T09:30"));
+        assert_eq!(items[2].due, None);
+        assert_eq!(due_date("@2024-02-29"), Some("2024-02-29".into()));
+        assert_eq!(due_date("@2026-10-25T25:00"), None);
+    }
+
+    proptest::proptest! {
+        /// The items agree with the counts, whatever the text.
+        #[test]
+        fn prop_items_agree_with_counts(body in "([-*] \\[[ x]\\] [a-z@0-9-]{0,12}\n|```\n|[a-z ]{0,8}\n){0,12}") {
+            let items = task_items(&body);
+            let counts = count_tasks(&body);
+            proptest::prop_assert_eq!(items.len() as u32, counts.total);
+            proptest::prop_assert_eq!(items.iter().filter(|i| i.checked).count() as u32, counts.checked);
+        }
     }
 
     #[test]

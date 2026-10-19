@@ -6,6 +6,7 @@
 //! write is broadcast to subscribers as a [`Change`].
 
 mod backup;
+mod derived;
 mod doc;
 mod history;
 mod read;
@@ -20,6 +21,7 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 
 pub use backup::BackupPolicy;
+pub use derived::{Backlink, DERIVED_VERSION, DERIVED_VERSION_KEY, HeadingHit};
 pub use doc::{Attachment, Doc};
 pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
 pub use sync::{ApplyOutcome, SyncDoc, SyncGuard, SyncState};
@@ -98,8 +100,9 @@ impl Store {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let writer = schema::connect(&path)?;
+        let mut writer = schema::connect(&path)?;
         schema::migrate(&writer)?;
+        derived::rebuild_if_stale(&mut writer)?;
         Ok(Store {
             path,
             writer: Mutex::new(writer),
