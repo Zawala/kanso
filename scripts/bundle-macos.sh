@@ -10,6 +10,8 @@ app=target/release/Kanso.app
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp target/release/kanso "$app/Contents/MacOS/kanso"
+# The icon; regenerate it with assets/icon/make-icon.swift and iconutil.
+cp assets/icon/Kanso.icns "$app/Contents/Resources/Kanso.icns"
 
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -24,6 +26,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
     <string>Kanso</string>
     <key>CFBundleExecutable</key>
     <string>kanso</string>
+    <key>CFBundleIconFile</key>
+    <string>Kanso</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
