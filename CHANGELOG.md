@@ -15,6 +15,10 @@ heading compares the release with the one before.
 - Word goal with a progress ring in focus mode ([8ee7204](https://github.com/iamngoni/kanso/commit/8ee7204287b572a1eafcd3b1b34db203217886e5))
 - Typewriter scrolling, and the writing aids in Settings › Editor ([18e0836](https://github.com/iamngoni/kanso/commit/18e08363e197903d385588f2e0acc4b902173eef))
 
+### Fixed
+
+- Kanso comes to the front after Restart now installs an update, instead of opening behind other windows ([7982fed](https://github.com/iamngoni/kanso/commit/7982fed))
+
 ### Under the hood
 
 - Snapshots and latency runs for the writing aids ([d3c7467](https://github.com/iamngoni/kanso/commit/d3c7467ec807eb709fd7a867e51f984a00f79a27))
