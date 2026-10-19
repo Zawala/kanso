@@ -201,7 +201,7 @@ fn demo_store(path: &Path) -> Store {
     store
 }
 
-fn context(clock: Option<Clock>) -> HeadlessAppContext {
+pub(crate) fn context(clock: Option<Clock>) -> HeadlessAppContext {
     let mut cx = HeadlessAppContext::with_platform(
         Arc::new(gpui_apple::AppleTextSystem::new()),
         Arc::new(KansoAssets),

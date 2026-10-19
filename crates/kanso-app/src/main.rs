@@ -22,6 +22,8 @@ mod grouping;
 mod history;
 mod inkdrop;
 mod keys;
+#[cfg(test)]
+mod latency_bench;
 mod launch;
 mod layout;
 mod library;
