@@ -11,6 +11,7 @@ mod account_flow;
 mod account_flow_tests;
 mod account_page;
 mod account_words;
+mod activation;
 mod assets;
 mod clipboard;
 mod clock;
@@ -280,6 +281,10 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         updates::init(cx);
         open_main_window(cx);
         cx.activate(true);
+        // After an update the old copy yielded focus to this one; take it
+        // with macOS's cooperative activation, which `activate` above may
+        // not use.
+        activation::activate();
         // Held until the process exits so no second Kanso opens this folder.
         let _ = &lock;
         std::mem::forget(lock);

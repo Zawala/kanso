@@ -676,6 +676,9 @@ pub fn install_on_quit(cx: &mut App) {
         let args: Vec<String> = data_dir
             .map(|dir| vec!["--data-dir".to_owned(), dir.to_string_lossy().into_owned()])
             .unwrap_or_default();
+        // Without this, macOS 14 and later won't let the new copy take
+        // focus, and it opens behind whatever was under Kanso.
+        crate::activation::yield_to_next_launch();
         if let Err(err) = kanso_update::install::relaunch(install, &args) {
             log_line(&format!("couldn't open Kanso again: {err}"));
         }
