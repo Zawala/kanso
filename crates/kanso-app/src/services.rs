@@ -130,6 +130,9 @@ pub struct AccountDetails {
     pub usage: Option<Usage>,
     pub devices: Option<Vec<DeviceInfo>>,
     pub loading: bool,
+    /// A sync changed what the server holds while a fetch ran: that fetch's
+    /// answer may be from before it, so it is fetched again.
+    pub stale: bool,
     /// Why the last fetch failed, in plain words.
     pub failed: Option<String>,
 }
@@ -454,6 +457,12 @@ pub fn sync_outcome(result: Result<SyncReport, SyncError>, now_ms: i64) -> Optio
     }
 }
 
+/// Whether a sync changed what the account holds on the server: it pushed,
+/// uploaded, or pulled what another Mac pushed.
+pub fn changed_storage(report: &SyncReport) -> bool {
+    report.pushed > 0 || report.files_up > 0 || report.pulled > 0
+}
+
 /// The problem a sync state shows, if any.
 pub fn state_problem(state: &SyncState) -> Option<&SyncProblem> {
     match state {
@@ -622,6 +631,10 @@ fn finish_sync(session: Arc<Session>, result: Option<Result<SyncReport, SyncErro
         return;
     }
     let remerged = matches!(&result, Some(Ok(report)) if report.remerged);
+    // What the server holds changed: the Account page's storage line is
+    // fetched again. A sync that moved nothing asks for nothing (each
+    // account has 120 requests a minute).
+    let changed = matches!(&result, Some(Ok(report)) if changed_storage(report));
     let outcome = match result {
         Some(result) => sync_outcome(result, now),
         None => Some(SyncState::Failed(SyncProblem::Other)),
@@ -651,6 +664,9 @@ fn finish_sync(session: Arc<Session>, result: Option<Result<SyncReport, SyncErro
             },
             cx,
         );
+    }
+    if changed {
+        crate::account_flow::refresh_details_after_sync(cx);
     }
     cx.refresh_windows();
     // Automatic requests stay automatic: the holds this sync just set

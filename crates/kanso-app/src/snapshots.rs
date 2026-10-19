@@ -1006,6 +1006,7 @@ fn demo_details(cx: &mut HeadlessAppContext) {
                 device("d_3", None, 3 * DAY, false),
             ]),
             loading: false,
+            stale: false,
             failed: None,
         };
     });

@@ -1437,6 +1437,18 @@ pub fn check_signup(cx: &mut App) {
 
 // MARK: Storage and devices
 
+/// Fetches the account's details again after a sync that changed what the
+/// server holds. A fetch already running may have been answered before the
+/// sync's changes landed, so it is followed by another.
+pub fn refresh_details_after_sync(cx: &mut App) {
+    let details = &mut cx.global_mut::<Services>().details;
+    if details.loading {
+        details.stale = true;
+        return;
+    }
+    refresh_details(cx);
+}
+
 /// Fetches the account's storage and devices for the Account page.
 pub fn refresh_details(cx: &mut App) {
     let services = cx.global_mut::<Services>();
@@ -1470,8 +1482,10 @@ pub fn refresh_details(cx: &mut App) {
             if !current {
                 return;
             }
+            let stale = services.details.stale;
             let Some((usage, devices)) = answer else {
                 services.details.loading = false;
+                services.details.stale = false;
                 services.details.failed = Some(SOMETHING_WRONG.to_owned());
                 cx.refresh_windows();
                 return;
@@ -1496,6 +1510,7 @@ pub fn refresh_details(cx: &mut App) {
                 usage: usage.ok(),
                 devices: devices.ok(),
                 loading: false,
+                stale: false,
                 failed,
             };
             if let Some(devices) = &mut details.devices {
@@ -1503,6 +1518,9 @@ pub fn refresh_details(cx: &mut App) {
             }
             services.details = details;
             cx.refresh_windows();
+            if stale {
+                refresh_details(cx);
+            }
         });
     })
     .detach();
