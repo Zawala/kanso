@@ -6,7 +6,6 @@ name: Release
 on:
   push:
     tags: ["v*"]
-    branches: ["release-workflow"] # TEMP: remove before merging
   workflow_dispatch:
 
 permissions:
