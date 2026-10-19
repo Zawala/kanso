@@ -135,23 +135,20 @@ cloud/scripts/e2e-local.sh   # the Worker under wrangler dev and the Rust client
 
 ### Cutting a release
 
-[.github/workflows/release.yml](.github/workflows/release.yml) builds the four downloads on GitHub's
-runners and attaches them, with `SHA256SUMS`, to a **draft** release. To cut one:
+On a clean, up-to-date `master`:
 
-1. Set `version` under `[workspace.package]` in `Cargo.toml` to the new version (the workflow stops
-   if the tag and this disagree), and commit it on `master`.
-2. Tag and push the tag:
+```bash
+scripts/release.sh 0.2.0 --push
+```
 
-   ```bash
-   git tag v0.2.0 && git push origin v0.2.0
-   ```
-
-3. When the workflow finishes, open the draft on the Releases page, edit the generated notes and
-   press **Publish release**.
-
-Running the workflow by hand (Actions › Release › Run workflow) builds the same downloads, versioned
-`<version>-dev.<commit>`, as workflow artifacts without making a release. The macOS build is ad-hoc
-signed, not notarized; the Windows build isn't code-signed.
+It bumps the version, writes the release's section of `CHANGELOG.md`, commits, tags `v0.2.0` and
+pushes. The tag starts [.github/workflows/release.yml](.github/workflows/release.yml), which builds
+every platform, signs and notarizes the Mac app, signs the update feed, checks every file and
+publishes the release; installed copies then update themselves. If any check fails, nothing is
+published. Running the workflow by hand (Actions › Release › Run workflow) builds the same
+downloads, versioned `<version>-dev.<commit>`, as workflow artifacts without making a release.
+[docs/RELEASING.md](docs/RELEASING.md) has the details, including `scripts/release.sh publish` for
+a release stuck as a draft.
 
 Design notes and decisions are in [docs/PLAN.md](docs/PLAN.md); accounts and encrypted sync in
 [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
