@@ -10,6 +10,7 @@ anyhow.workspace = true
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
 base64.workspace = true
 kanso-core.workspace = true
+kanso-render.workspace = true
 kanso-store.workspace = true
 regex-lite = "0.1"
 serde.workspace = true

@@ -30,6 +30,7 @@ htmd = "0.5.6"
 image = { version = "0.25", default-features = false, features = ["png", "tiff", "webp", "bmp", "ico"] }
 kanso-core.workspace = true
 kanso-import.workspace = true
+kanso-render.workspace = true
 kanso-server.workspace = true
 kanso-sync.workspace = true
 kanso-update.workspace = true
@@ -62,6 +63,14 @@ zeroize.workspace = true
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 # Real text shaping for the PNG snapshots, without the main-thread-only platform.
 gpui-pre-apple = "=0.3.9"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# PDF export: WebKit lays the exported page out and makes the PDF
+# (WKWebView createPDF). GPUI already links objc2 and block2.
+block2 = "0.6"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSError", "NSGeometry", "NSString"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-app-kit", "objc2-core-foundation", "WKWebView", "WKWebViewConfiguration", "WKPDFConfiguration", "WKNavigation"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # Gives `kanso serve` and the other commands the console they were run from:

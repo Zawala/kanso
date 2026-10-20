@@ -1,0 +1,30 @@
+[package]
+name = "kanso-render"
+description = "Kanso's rich rendering: math (MathJax in QuickJS), Mermaid diagrams and Excalidraw scenes as SVG, and notes as self-contained HTML."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+base64.workspace = true
+# The MathJax bundle is stored deflated (build.rs) and inflated once, on
+# first use. flate2 is already in the app for the updater.
+flate2 = "1.1"
+markdown.workspace = true
+# Mermaid to SVG in pure Rust, with no dependencies of its own (MIT). Chosen
+# over mermaid-rs-renderer and merman in a spike: closest to Mermaid's own
+# layout, and draws its labels as SVG text that resvg can show.
+mermaid-svg = "0.7"
+# QuickJS, to run MathJax (MIT).
+rquickjs = "0.14"
+serde.workspace = true
+serde_json.workspace = true
+# The SVG parser GPUI draws with, at its version: finds a diagram's real
+# bounds, whatever the SVG says.
+usvg = "0.46"
+
+[build-dependencies]
+flate2 = "1.1"
+
+[dev-dependencies]
+proptest.workspace = true
