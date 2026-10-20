@@ -611,7 +611,7 @@ fn the_signed_out_forms_check_before_they_start(cx: &mut TestAppContext) {
     f.click(cx, "account-submit");
     assert_eq!(
         error(cx).as_deref(),
-        Some("Can't reach the server. Your notes are safe on this Mac.")
+        Some("Can't reach the server. Your notes are safe on this device.")
     );
     // Nothing ran, so nothing is left running.
     assert!(cx.read(|cx| cx.global::<Services>().task.is_none()));

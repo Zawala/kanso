@@ -84,7 +84,7 @@ const _: fn() = || {
 pub enum EndpointError {
     #[error("that isn't a URL")]
     Invalid,
-    #[error("use an https:// URL (http:// only reaches this Mac: 127.0.0.1, localhost or [::1])")]
+    #[error("use an https:// URL (http:// only reaches this device: 127.0.0.1, localhost or [::1])")]
     Insecure,
     #[error("the URL can't contain a user name, password, query or fragment")]
     Extra,

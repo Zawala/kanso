@@ -117,7 +117,7 @@ impl Sidebar {
         let user = std::env::var("USER")
             .ok()
             .filter(|name| !name.trim().is_empty())
-            .unwrap_or_else(|| "This Mac".into());
+            .unwrap_or_else(|| "This device".into());
         // The Status group as the user last left it.
         let status_choice = cx
             .try_global::<AppState>()

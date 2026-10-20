@@ -36,7 +36,7 @@ use crate::settings::{OpenAccountSettings, SettingsPage};
 use crate::workspace::AppState;
 
 /// When the library itself couldn't be changed.
-const LIBRARY_TROUBLE: &str = "Kanso couldn't update this Mac's library. Check there is free space on this Mac, then try again.";
+const LIBRARY_TROUBLE: &str = "Kanso couldn't update this device's library. Check there is free space on this device, then try again.";
 /// When a task's thread stopped without an answer.
 const SOMETHING_WRONG: &str = "Something went wrong. Try again.";
 /// When another account task is still running.
@@ -1072,7 +1072,7 @@ fn notify_backup(path: PathBuf, cx: &mut App) {
         move || {
             let path = path.clone();
             Notification::success(format!(
-                "Kanso saved a backup of this Mac's library first, in {shown}."
+                "Kanso saved a backup of this device's library first, in {shown}."
             ))
             .action(move |_, _, _| {
                 let path = path.clone();
@@ -1238,7 +1238,7 @@ pub fn delete_account(password: Password, typed: String, cx: &mut App) -> Receiv
                 notify_windows(
                     move || {
                         Notification::info(format!(
-                            "Deleted {username}'s account. The notes on this Mac stay here."
+                            "Deleted {username}'s account. The notes on this device stay here."
                         ))
                     },
                     cx,
@@ -1547,7 +1547,7 @@ pub fn restore(cx: &mut App) {
             let device = match seams.device() {
                 Ok(device) => device,
                 Err(failure) => {
-                    eprintln!("kanso: this Mac's identity: {}", failure.words);
+                    eprintln!("kanso: this device's identity: {}", failure.words);
                     tx.try_send(None).ok();
                     return;
                 }

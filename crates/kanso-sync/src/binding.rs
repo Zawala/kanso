@@ -109,9 +109,13 @@ impl Machine {
                 "/usr/sbin/ioreg",
                 &["-rd1", "-c", "IOPlatformExpertDevice"],
             )),
-            computer_name: run("/usr/sbin/scutil", &["--get", "ComputerName"])
-                .trim_end_matches('\n')
-                .to_owned(),
+            computer_name: if cfg!(target_os = "macos") {
+                run("/usr/sbin/scutil", &["--get", "ComputerName"])
+            } else {
+                host_name()
+            }
+            .trim_end_matches(['\r', '\n'])
+            .to_owned(),
         }
     }
 
@@ -131,6 +135,29 @@ impl Machine {
     }
 }
 
+/// The host name off macOS: `COMPUTERNAME` on Windows, the kernel's host
+/// name on Linux and other Unixes. Empty when there is none.
+fn host_name() -> String {
+    if cfg!(windows) {
+        std::env::var("COMPUTERNAME").unwrap_or_default()
+    } else {
+        std::fs::read_to_string("/proc/sys/kernel/hostname")
+            .or_else(|_| std::fs::read_to_string("/etc/hostname"))
+            .unwrap_or_default()
+    }
+}
+
+/// The name a device goes by when it reports none.
+pub const DEFAULT_DEVICE_NAME: &str = if cfg!(target_os = "macos") {
+    "Mac"
+} else if cfg!(windows) {
+    "Windows PC"
+} else if cfg!(target_os = "linux") {
+    "Linux computer"
+} else {
+    "Computer"
+};
+
 /// The `"IOPlatformUUID" = "…"` value in `ioreg` output.
 fn platform_uuid(ioreg: &str) -> Option<String> {
     ioreg.lines().find_map(|line| {
@@ -143,13 +170,13 @@ fn platform_uuid(ioreg: &str) -> Option<String> {
 
 /// The device name rule (docs/ACCOUNTS.md › Sealed device names): control
 /// characters removed, trimmed, cut to 64 Unicode scalar values (and trimmed
-/// again, so the rule is idempotent), or "Mac" when that leaves nothing. Pure.
+/// again, so the rule is idempotent), or [`DEFAULT_DEVICE_NAME`] when that leaves nothing. Pure.
 pub fn device_name(computer_name: &str) -> String {
     let cleaned: String = computer_name.chars().filter(|c| !c.is_control()).collect();
     let cut: String = cleaned.trim().chars().take(64).collect();
     let name = cut.trim_end();
     if name.is_empty() {
-        "Mac".to_owned()
+        DEFAULT_DEVICE_NAME.to_owned()
     } else {
         name.to_owned()
     }
@@ -481,8 +508,8 @@ mod tests {
         assert_eq!(device_name("Ngoni’s MacBook Pro"), "Ngoni’s MacBook Pro");
         assert_eq!(device_name("  Studio\n"), "Studio");
         assert_eq!(device_name("a\u{0}b\u{7f}c"), "abc");
-        assert_eq!(device_name(""), "Mac");
-        assert_eq!(device_name(" \t\u{1b} "), "Mac");
+        assert_eq!(device_name(""), DEFAULT_DEVICE_NAME);
+        assert_eq!(device_name(" \t\u{1b} "), DEFAULT_DEVICE_NAME);
         assert_eq!(device_name(&"é".repeat(70)).chars().count(), 64);
     }
 

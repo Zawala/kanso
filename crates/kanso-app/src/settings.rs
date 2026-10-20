@@ -175,7 +175,7 @@ pub fn problem_help(problem: &SyncProblem, resume: impl FnOnce(i64) -> String) -
             resume(*until)
         ),
         SyncProblem::BackOff { .. } => {
-            "This Mac sent the server a lot of requests at once. Sync resumes in a moment."
+            "This device sent the server a lot of requests at once. Sync resumes in a moment."
                 .to_owned()
         }
         SyncProblem::QuotaExceeded(QuotaKind::Server) | SyncProblem::ServerFull => {
@@ -193,14 +193,14 @@ pub fn problem_help(problem: &SyncProblem, resume: impl FnOnce(i64) -> String) -
             "{count} items on the server couldn't be read. They were skipped; your copies here are unchanged."
         ),
         SyncProblem::UpdateKanso => {
-            "Another Mac uses a newer Kanso. Update this one to keep syncing.".to_owned()
+            "Another device uses a newer Kanso. Update this one to keep syncing.".to_owned()
         }
-        SyncProblem::WrongKey => "The server's account keys don't match this Mac's. Sync is stopped; your notes are safe here. Sign out and in again.".to_owned(),
+        SyncProblem::WrongKey => "The server's account keys don't match this device's. Sync is stopped; your notes are safe here. Sign out and in again.".to_owned(),
         SyncProblem::ServerOutdated => {
             "That server doesn't run this version of Kanso sync.".to_owned()
         }
         SyncProblem::Offline => {
-            "Can't reach the server. Your notes are safe on this Mac.".to_owned()
+            "Can't reach the server. Your notes are safe on this device.".to_owned()
         }
         SyncProblem::Other => "Something went wrong. Try Sync now.".to_owned(),
     }
@@ -209,7 +209,7 @@ pub fn problem_help(problem: &SyncProblem, resume: impl FnOnce(i64) -> String) -
 /// What the Account page's status says while signed out.
 pub const NOT_SIGNED_IN: &str = "Not signed in";
 pub const SIGNED_OUT_DETAIL: &str =
-    "Sync your notes between Macs, end-to-end encrypted. Your notes stay on this Mac either way.";
+    "Sync your notes between your devices, end-to-end encrypted. Your notes stay on this device either way.";
 
 /// The Account page's status: the sidebar's words ("Synced just now",
 /// "Syncing…", a problem's label) and what they mean here, with `when`
@@ -235,7 +235,7 @@ pub fn sync_status_line(
         ),
         AccountState::Busy(_) => (
             label,
-            "This takes a few seconds. Your notes stay on this Mac.".to_owned(),
+            "This takes a few seconds. Your notes stay on this device.".to_owned(),
         ),
         AccountState::SignedIn { .. } => {
             let detail = match state {
@@ -258,18 +258,18 @@ pub fn sync_status_line(
                 }
                 SyncState::Synced { conflicts: 1, .. } => match conflicted_title {
                     Some(title) => format!(
-                        "“{title}” changed on two Macs at once. Both versions are kept: the other one is in its history."
+                        "“{title}” changed on two devices at once. Both versions are kept: the other one is in its history."
                     ),
-                    None => "A note changed on two Macs at once. Both versions are kept: the other one is in the note's history.".to_owned(),
+                    None => "A note changed on two devices at once. Both versions are kept: the other one is in the note's history.".to_owned(),
                 },
                 SyncState::Synced { conflicts, .. } => match conflicted_title {
                     Some(title) => format!(
-                        "“{title}” and {} other {} changed on two Macs at once. Both versions of each are kept: the others are in their history.",
+                        "“{title}” and {} other {} changed on two devices at once. Both versions of each are kept: the others are in their history.",
                         conflicts - 1,
                         if *conflicts == 2 { "note" } else { "notes" },
                     ),
                     None => format!(
-                        "{conflicts} notes changed on two Macs at once. Both versions of each are kept: the others are in their history."
+                        "{conflicts} notes changed on two devices at once. Both versions of each are kept: the others are in their history."
                     ),
                 },
             };
@@ -681,7 +681,7 @@ impl SettingsView {
                     Err(err) => {
                         eprintln!("kanso: backing up to {}: {err:#}", dir.display());
                         Notification::error(
-                            "Couldn't back up your notes. Check there is free space on this Mac, then try again.",
+                            "Couldn't back up your notes. Check there is free space on this device, then try again.",
                         )
                     }
                 };
@@ -1032,7 +1032,10 @@ fn writing_section(cx: &mut Context<SettingsView>) -> AnyElement {
                     e.format_tables = on
                 })),
             Row::new(Lucide::ClipboardPaste, "Smart paste")
-                .detail("A link pasted over words links them; formatted text pastes as Markdown. ⇧⌘V pastes plain text.")
+                .detail(format!(
+                    "A link pasted over words links them; formatted text pastes as Markdown. {} pastes plain text.",
+                    keys_label("secondary-shift-v")
+                ))
                 .trailing(switch("smart-paste", writing.smart_paste, |e, on| e.smart_paste = on)),
             Row::new(Lucide::ScrollText, "Typewriter scrolling")
                 .detail("Keeps the line you're writing in the middle of the editor.")
@@ -1054,11 +1057,20 @@ fn writing_section(cx: &mut Context<SettingsView>) -> AnyElement {
                 .detail("A #word in a note's text becomes one of its tags when the note is saved; #work/clients nests. Not in code, links or headings, and tags added by hand stay.")
                 .trailing(switch("inline-tags", writing.inline_tags, |e, on| e.inline_tags = on)),
             Row::new(Lucide::Keyboard, "Vim keys")
-                .detail("Normal, Insert and Visual modes in the note's text, shown in its footer. ⌘ shortcuts work as always.")
+                .detail(format!(
+                    "Normal, Insert and Visual modes in the note's text, shown in its footer. {} shortcuts work as always.",
+                    if cfg!(target_os = "macos") { "⌘" } else { "Ctrl" }
+                ))
                 .trailing(switch("vim-keys", writing.vim, |e, on| e.vim = on)),
         ],
         colors,
     )
+}
+
+/// A keystroke as GPUI writes it (`secondary-shift-v`), shown as this
+/// platform shows it: "⇧⌘V" on macOS, "Ctrl+Shift+V" elsewhere.
+fn keys_label(keys: &str) -> String {
+    Keystroke::parse(keys).map_or_else(|_| keys.to_owned(), |k| Kbd::format(&k))
 }
 
 fn set_writing(cx: &mut App, change: impl FnOnce(&mut EditorSettings)) {
@@ -1116,7 +1128,7 @@ fn api_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                         },
                     )),
                 Row::new(Lucide::Network, "Address")
-                    .detail("127.0.0.1 keeps the API on this Mac.")
+                    .detail("127.0.0.1 keeps the API on this device.")
                     .trailing_all(vec![
                         value_text(server.bind_address.clone(), colors).into_any_element(),
                         change_button(
@@ -1780,7 +1792,7 @@ mod tests {
         // A conflict names its note when the note is known.
         let named = line(&synced(1), &on, 0, Some("Plans"));
         assert!(
-            named.detail.starts_with("“Plans” changed on two Macs"),
+            named.detail.starts_with("“Plans” changed on two devices"),
             "{}",
             named.detail
         );
@@ -1802,7 +1814,7 @@ mod tests {
         assert_eq!(offline.label, "Offline");
         assert_eq!(
             offline.detail,
-            "Can't reach the server. Your notes are safe on this Mac."
+            "Can't reach the server. Your notes are safe on this device."
         );
         let paused = line(
             &SyncState::Failed(SyncProblem::Paused { until: 7 }),
@@ -1860,7 +1872,7 @@ mod tests {
         );
         assert_eq!(
             ended.detail,
-            "Your password was changed on another Mac. Sign in again to keep syncing."
+            "Your password was changed on another device. Sign in again to keep syncing."
         );
         let busy = sync_status_line(
             &SyncState::Off,
@@ -1959,7 +1971,7 @@ mod tests {
         let cases = [
             (
                 SyncProblem::SignedOut(SignOutReason::Revoked),
-                "This Mac was signed out from another Mac. Sign in again to keep syncing.",
+                "This device was signed out from another device. Sign in again to keep syncing.",
             ),
             (
                 SyncProblem::SignedOut(SignOutReason::Recovered),
@@ -1967,7 +1979,7 @@ mod tests {
             ),
             (
                 SyncProblem::SignedOut(SignOutReason::Evicted),
-                "Signed out to make room for another Mac. Sign in again to keep syncing.",
+                "Signed out to make room for another device. Sign in again to keep syncing.",
             ),
             (
                 SyncProblem::SignedOut(SignOutReason::Expired),
@@ -1975,7 +1987,7 @@ mod tests {
             ),
             (
                 SyncProblem::SignedOut(SignOutReason::Unknown),
-                "This Mac was signed out. Sign in again to keep syncing.",
+                "This device was signed out. Sign in again to keep syncing.",
             ),
             (
                 SyncProblem::AccountDisabled,
@@ -2003,11 +2015,11 @@ mod tests {
             ),
             (
                 SyncProblem::UpdateKanso,
-                "Another Mac uses a newer Kanso. Update this one to keep syncing.",
+                "Another device uses a newer Kanso. Update this one to keep syncing.",
             ),
             (
                 SyncProblem::WrongKey,
-                "The server's account keys don't match this Mac's. Sync is stopped; your notes are safe here. Sign out and in again.",
+                "The server's account keys don't match this device's. Sync is stopped; your notes are safe here. Sign out and in again.",
             ),
             (
                 SyncProblem::ServerOutdated,
@@ -2015,7 +2027,7 @@ mod tests {
             ),
             (
                 SyncProblem::Offline,
-                "Can't reach the server. Your notes are safe on this Mac.",
+                "Can't reach the server. Your notes are safe on this device.",
             ),
             (SyncProblem::Other, "Something went wrong. Try Sync now."),
         ];

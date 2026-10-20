@@ -434,8 +434,9 @@ sent raw.
 
 ### Sealed device names
 
-The name is the Mac's ComputerName (`scutil --get ComputerName`) with control characters removed,
-trimmed, and cut to 64 Unicode scalar values. It is "Mac" when that leaves nothing.
+The name is the device's own: the ComputerName on macOS (`scutil --get ComputerName`), `COMPUTERNAME` on
+Windows and the host name on Linux, with control characters removed, trimmed, and cut to 64 Unicode
+scalar values. When that leaves nothing it is "Mac", "Windows PC" or "Linux computer".
 
 `sealed_name = base64url(0x01 || nonce(24) || XChaCha20-Poly1305(device_name_key, nonce,
 "kanso-device" || 0x01 || lp(account_id) || lp(device_id), name))`. That is 55–400 characters.

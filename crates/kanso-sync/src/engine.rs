@@ -131,7 +131,7 @@ pub enum SyncError {
     #[error(transparent)]
     Api(#[from] ApiError),
     /// The server's key ID differs from this Mac's: nothing was written.
-    #[error("the server's account keys don't match this Mac's")]
+    #[error("the server's account keys don't match this device's")]
     WrongKey,
     /// [`SyncOptions::cancel`] was set, or the library was re-bound while
     /// the sync ran (the store's guard failed).
@@ -141,7 +141,7 @@ pub enum SyncError {
     /// route: the sync stopped where it was, with nothing after it marked
     /// done and the cursor at the last page applied. The next automatic sync
     /// waits until `until` (ms) ([`SyncProblem::BackOff`]).
-    #[error("the server asked this Mac to slow down until {until}")]
+    #[error("the server asked this device to slow down until {until}")]
     BackOff { until: i64 },
 }
 

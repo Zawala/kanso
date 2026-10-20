@@ -40,10 +40,10 @@ pub enum ErrorContext {
     Account,
 }
 
-pub const CANT_REACH: &str = "Can't reach the server. Your notes are safe on this Mac.";
+pub const CANT_REACH: &str = "Can't reach the server. Your notes are safe on this device.";
 pub const NOT_A_KANSO_SERVER: &str = "That server doesn't run this version of Kanso sync.";
 pub const KEYS_WRONG: &str =
-    "Something's wrong with the server's copy of your keys. Nothing was changed on this Mac.";
+    "Something's wrong with the server's copy of your keys. Nothing was changed on this device.";
 pub const PASSWORDS_DIFFER: &str = "The passwords don't match.";
 const SERVER_TROUBLE: &str = "The server couldn't do that. Try again in a moment.";
 
@@ -88,9 +88,7 @@ pub fn error_words(err: &AccountError, context: ErrorContext) -> String {
         AccountError::QuotaExceeded { .. } => {
             "Your account is full. Delete something or ask the server's owner for more space."
         }
-        AccountError::Keychain(_) => {
-            "Kanso couldn't use the Keychain. Unlock it, or allow Kanso when macOS asks, then try again."
-        }
+        AccountError::Keychain(_) => SECRET_STORE_TROUBLE,
         AccountError::UnsavedRecoveryKey { username } => {
             return format!(
                 "Save the new recovery key for {username} first. Kanso shows it on the Account page."
@@ -148,7 +146,7 @@ pub fn endpoint_words(err: &EndpointError) -> &'static str {
     match err {
         EndpointError::Invalid => "Enter the server's address, such as https://sync.example.com.",
         EndpointError::Insecure => {
-            "Use an https:// address. Plain http:// only reaches this Mac (127.0.0.1 or localhost)."
+            "Use an https:// address. Plain http:// only reaches this device (127.0.0.1 or localhost)."
         }
         EndpointError::Extra => "Use just the server's address, without a name, password or query.",
     }
@@ -168,13 +166,13 @@ pub fn signup_closed_words(reason: SignupClosedReason) -> &'static str {
 /// page and the sidebar's tooltip say.
 pub fn signed_out_sentence(reason: SignOutReason) -> &'static str {
     match reason {
-        SignOutReason::PasswordChanged => "Your password was changed on another Mac.",
-        SignOutReason::Revoked => "This Mac was signed out from another Mac.",
+        SignOutReason::PasswordChanged => "Your password was changed on another device.",
+        SignOutReason::Revoked => "This device was signed out from another device.",
         SignOutReason::Recovered => "Your account was recovered with its recovery key.",
-        SignOutReason::Evicted => "Signed out to make room for another Mac.",
+        SignOutReason::Evicted => "Signed out to make room for another device.",
         SignOutReason::Expired => "Signed out after 180 days without syncing.",
         SignOutReason::SignedOut | SignOutReason::Rekeyed | SignOutReason::Unknown => {
-            "This Mac was signed out."
+            "This device was signed out."
         }
     }
 }
@@ -285,9 +283,9 @@ pub fn sign_up_line(notes: usize, signup: Option<SignupState>) -> String {
     }
     let uploaded = match notes {
         0 => String::new(),
-        1 => "Your note on this Mac will be encrypted and uploaded. ".to_owned(),
+        1 => "Your note on this device will be encrypted and uploaded. ".to_owned(),
         n => format!(
-            "Your {} notes on this Mac will be encrypted and uploaded. ",
+            "Your {} notes on this device will be encrypted and uploaded. ",
             format_count(n as u64)
         ),
     };
@@ -364,7 +362,7 @@ pub fn device_title(device: &DeviceInfo) -> String {
         .name
         .clone()
         .filter(|name| !name.trim().is_empty())
-        .unwrap_or_else(|| "A Mac".to_owned())
+        .unwrap_or_else(|| "A device".to_owned())
 }
 
 /// The devices as the list shows them: this Mac first, then the most
@@ -389,7 +387,7 @@ pub fn revoke_question(name: &str) -> (String, String) {
 /// What the app says after a sign-in signed another device out.
 pub fn evicted_notice(device: &DeviceInfo) -> String {
     format!(
-        "Signed out “{}” to make room: an account can be signed in on 10 Macs at a time.",
+        "Signed out “{}” to make room: an account can be signed in on 10 devices at a time.",
         device_title(device)
     )
 }
@@ -402,7 +400,7 @@ pub fn revoked_notice(name: &str) -> String {
 }
 
 pub fn sign_out_question(username: &str, unsaved_key: bool) -> (String, String) {
-    let body = "Notes stay on this Mac. Sync stops until you sign in again.";
+    let body = "Notes stay on this device. Sync stops until you sign in again.";
     (
         format!("Sign out of {username}?"),
         match unsaved_key {
@@ -412,23 +410,38 @@ pub fn sign_out_question(username: &str, unsaved_key: bool) -> (String, String) 
     )
 }
 
-/// After a sign-out the Keychain wouldn't fully carry out.
+/// When the platform's secret store, where sign-ins are kept, fails.
+#[cfg(target_os = "macos")]
+const SECRET_STORE_TROUBLE: &str =
+    "Kanso couldn't use the Keychain. Unlock it, or allow Kanso when macOS asks, then try again.";
+#[cfg(target_os = "windows")]
+const SECRET_STORE_TROUBLE: &str =
+    "Kanso couldn't use the Windows Credential Manager. Try again in a moment.";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SECRET_STORE_TROUBLE: &str = "Kanso couldn't use the Secret Service keyring. Make sure GNOME Keyring or KWallet is running and unlocked, then try again.";
+
+/// After a sign-out the secret store wouldn't fully carry out.
+#[cfg(target_os = "macos")]
 pub const SIGNED_OUT_KEYCHAIN: &str = "Signed out. Kanso couldn't remove this Mac's sign-in from the Keychain, but it won't use it again.";
+#[cfg(target_os = "windows")]
+pub const SIGNED_OUT_KEYCHAIN: &str = "Signed out. Kanso couldn't remove this PC's sign-in from the Credential Manager, but it won't use it again.";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub const SIGNED_OUT_KEYCHAIN: &str = "Signed out. Kanso couldn't remove this device's sign-in from the Secret Service keyring, but it won't use it again.";
 
 pub const UNSAVED_KEY_WARNING: &str =
     "Your new recovery key hasn't been saved yet; signing out deletes it.";
 
 pub fn delete_account_words(username: &str) -> String {
     format!(
-        "This deletes {username}'s encrypted notes, attachments and devices from the server. Notes on this Mac stay here, and other Macs keep their copies. The server's backups keep a copy for up to 30 days. This can't be undone."
+        "This deletes {username}'s encrypted notes, attachments and devices from the server. Notes on this device stay here, and other devices keep their copies. The server's backups keep a copy for up to 30 days. This can't be undone."
     )
 }
 
-pub const PASSWORD_CHANGED: &str = "Password changed. Your other Macs will ask for it.";
+pub const PASSWORD_CHANGED: &str = "Password changed. Your other devices will ask for it.";
 /// Over the Change password form.
-pub const CHANGE_PASSWORD_TEXT: &str = "Your other Macs sign out and ask for the new password. Your recovery key changes too: the one you saved stops working, and Kanso shows the new one to save.";
+pub const CHANGE_PASSWORD_TEXT: &str = "Your other devices sign out and ask for the new password. Your recovery key changes too: the one you saved stops working, and Kanso shows the new one to save.";
 pub const REMERGED: &str =
-    "The server's copy was restored from a backup; this Mac sent its changes again.";
+    "The server's copy was restored from a backup; this device sent its changes again.";
 
 // MARK: Time
 
@@ -482,8 +495,8 @@ pub fn binding_question(plan: &Plan, account: &str) -> Option<Question> {
         return None;
     };
     let count = match notes {
-        1 => "1 note on this Mac".to_owned(),
-        n => format!("{} notes on this Mac", format_count(*n as u64)),
+        1 => "1 note on this device".to_owned(),
+        n => format!("{} notes on this device", format_count(*n as u64)),
     };
     let never = match unsynced {
         0 => String::new(),
@@ -498,21 +511,21 @@ pub fn binding_question(plan: &Plan, account: &str) -> Option<Question> {
         None => format!("{count}{never} aren't in {account}'s account."),
     };
     Some(Question {
-        title: "This Mac already has notes".to_owned(),
+        title: "This device already has notes".to_owned(),
         body,
         answers: vec![
             Answer {
                 choice: Choice::Add,
                 label: format!("Add them to {account}"),
                 description: format!(
-                    "They're encrypted and uploaded. A note deleted in {account}'s account but still on this Mac comes back, and a note changed on both sides keeps both versions."
+                    "They're encrypted and uploaded. A note deleted in {account}'s account but still on this device comes back, and a note changed on both sides keeps both versions."
                 ),
             },
             Answer {
                 choice: Choice::Replace,
                 label: format!("Replace them with {account}'s notes"),
                 description: format!(
-                    "Kanso saves a backup of this Mac's library first, then downloads {account}'s notes."
+                    "Kanso saves a backup of this device's library first, then downloads {account}'s notes."
                 ),
             },
         ],
@@ -524,7 +537,7 @@ pub fn binding_question(plan: &Plan, account: &str) -> Option<Question> {
 pub fn upload_question(from: &str) -> (String, String, &'static str) {
     (
         "Upload to the new account?".to_owned(),
-        format!("This Mac's notes came from {from}. Upload them to the new account?"),
+        format!("This device's notes came from {from}. Upload them to the new account?"),
         "Upload to new account",
     )
 }
@@ -588,9 +601,9 @@ pub fn key_checked(note: &str) -> Option<KeyChecked> {
 pub const KEY_AFTER_PASSWORD: &str =
     "Your password changed, and so did your recovery key: the one you saved no longer works.";
 /// The account exists, but this Mac isn't signed in to it.
-pub const CREATED_NOT_SIGNED_IN: &str = "Your account was created, but this Mac couldn't finish signing in. Sign in with your password.";
+pub const CREATED_NOT_SIGNED_IN: &str = "Your account was created, but this device couldn't finish signing in. Sign in with your password.";
 /// The password changed, but this Mac isn't signed in with it.
-pub const CHANGED_NOT_SIGNED_IN: &str = "Your password was changed, but this Mac couldn't finish signing in. Sign in with the new password.";
+pub const CHANGED_NOT_SIGNED_IN: &str = "Your password was changed, but this device couldn't finish signing in. Sign in with the new password.";
 pub const RECOVERY_KEY_FILE_NAME: &str = "Kanso recovery key.txt";
 pub const COPIED_KEY: &str = "Copied. It leaves the clipboard in a minute.";
 pub const ICLOUD_WARNING: &str = "This folder syncs to iCloud. Save the key there anyway?";
@@ -762,7 +775,7 @@ mod tests {
                 },
                 ErrorContext::CurrentPassword
             ),
-            "Your password was changed on another Mac. Sign in again."
+            "Your password was changed on another device. Sign in again."
         );
         // A short password at sign-in can't be anyone's: a plain mismatch.
         assert_eq!(
@@ -891,12 +904,12 @@ mod tests {
             sign_out_question("ngoni", false),
             (
                 "Sign out of ngoni?".to_owned(),
-                "Notes stay on this Mac. Sync stops until you sign in again.".to_owned()
+                "Notes stay on this device. Sync stops until you sign in again.".to_owned()
             )
         );
         assert_eq!(
             sign_out_question("ngoni", true).1,
-            "Your new recovery key hasn't been saved yet; signing out deletes it. Notes stay on this Mac. Sync stops until you sign in again."
+            "Your new recovery key hasn't been saved yet; signing out deletes it. Notes stay on this device. Sync stops until you sign in again."
         );
     }
 
@@ -908,10 +921,10 @@ mod tests {
             unsynced: 3,
         };
         let question = binding_question(&plan, "ngoni").unwrap();
-        assert_eq!(question.title, "This Mac already has notes");
+        assert_eq!(question.title, "This device already has notes");
         assert_eq!(
             question.body,
-            "12 notes on this Mac (3 with changes that were never synced) aren't in ngoni's account."
+            "12 notes on this device (3 with changes that were never synced) aren't in ngoni's account."
         );
         assert_eq!(question.answers[0].label, "Add them to ngoni");
         assert_eq!(question.answers[1].label, "Replace them with ngoni's notes");
@@ -922,7 +935,7 @@ mod tests {
         };
         assert_eq!(
             binding_question(&from_alex, "ngoni").unwrap().body,
-            "1 note on this Mac came from alex."
+            "1 note on this device came from alex."
         );
         assert_eq!(binding_question(&Plan::Fresh, "ngoni"), None);
         assert_eq!(binding_question(&Plan::Resume, "ngoni"), None);
@@ -942,7 +955,7 @@ mod tests {
         assert_eq!(host_of("https://sync.example.dev/"), "sync.example.dev");
         assert_eq!(
             sign_up_line(42, Some(SignupState::Open)),
-            "Your 42 notes on this Mac will be encrypted and uploaded. Kanso can't reset your password; you'll get a recovery key instead."
+            "Your 42 notes on this device will be encrypted and uploaded. Kanso can't reset your password; you'll get a recovery key instead."
         );
         assert_eq!(
             sign_up_line(0, None),

@@ -902,7 +902,7 @@ impl AccountPage {
                 "Security",
                 vec![
                     Row::new(Lucide::KeyRound, "Password")
-                        .detail("Your other Macs ask for the new one, and you get a new recovery key.")
+                        .detail("Your other devices ask for the new one, and you get a new recovery key.")
                         .trailing(
                             Button::new("change-account-password")
                                 .outline()
@@ -947,7 +947,7 @@ impl AccountPage {
                 "Conflict handling",
                 vec![
                     Row::new(Lucide::Split, "Keep both versions")
-                        .detail("When a note changes on two Macs at once, the newer version shows and the other is kept in the note's history."),
+                        .detail("When a note changes on two devices at once, the newer version shows and the other is kept in the note's history."),
                 ],
                 colors,
             ),
@@ -993,7 +993,7 @@ pub fn storage_detail(details: &AccountDetails) -> String {
 /// active, named as the note list names a time (`when`).
 pub fn device_detail(device: &DeviceInfo, when: impl FnOnce(i64) -> String) -> String {
     if device.current {
-        "This Mac".to_owned()
+        "This device".to_owned()
     } else {
         format!("Last active {}", when(device.last_seen_at))
     }
@@ -1341,7 +1341,7 @@ mod tests {
         );
         assert_eq!(
             device_detail(&device(true, 0), |_| "now".into()),
-            "This Mac"
+            "This device"
         );
         assert_eq!(
             device_detail(&device(false, 0), |_| "2 h ago".into()),
@@ -1389,7 +1389,7 @@ mod tests {
         fn prop_device_lines_name_the_mac_or_the_time(current: bool, at in 0i64..1_000_000) {
             let line = device_detail(&device(current, at), |at| format!("t{at}"));
             if current {
-                prop_assert_eq!(line, "This Mac");
+                prop_assert_eq!(line, "This device");
             } else {
                 prop_assert_eq!(line, format!("Last active t{at}"));
             }

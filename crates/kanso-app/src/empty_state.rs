@@ -176,7 +176,7 @@ impl RenderOnce for EmptyNotebook {
                                 .flex_1()
                                 .min_w_0()
                                 .line_height(px(18.))
-                                .child("Already use Kanso on another Mac?")
+                                .child("Already use Kanso on another device?")
                                 .child(div().text_color(colors.text).child("Sign in to sync")),
                         ),
                 )

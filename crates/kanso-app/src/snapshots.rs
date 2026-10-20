@@ -1909,7 +1909,7 @@ fn server_form(
         form.update(cx, |form, cx| {
             form.fill(&["http://sync.example.com"], window, cx);
             form.show_error(
-                "Use an https:// address. Plain http:// only reaches this Mac (127.0.0.1 or localhost).",
+                "Use an https:// address. Plain http:// only reaches this device (127.0.0.1 or localhost).",
                 cx,
             );
         });
