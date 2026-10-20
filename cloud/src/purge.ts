@@ -15,6 +15,7 @@ import type { Env } from "./env";
 import { refusal } from "./http";
 import { expiredLimitsSql } from "./limits";
 import { FILE_ROW_COST, HOUR, MAX_SEALED_FILE, MIN_SEALED_FILE, REVOKED_KEEP_MS, SESSION_IDLE_MS } from "./protocol";
+import { runShortLinkPurges } from "./rerout";
 import { MAX_SEALED_SHARE, MIN_SEALED_SHARE, checksumHex, expireShares, runSharePurges, unpublishStatements } from "./shares";
 
 export const PURGE_LIST_LIMIT = 1000;
@@ -308,6 +309,8 @@ export interface CronReport {
 	sharesExpired: number;
 	/** Published notes' R2 objects deleted by this run. */
 	sharesPurged: number;
+	/** Short links of published notes deleted from Rerout by this run. */
+	shortLinksPurged: number;
 }
 
 /** The scheduled jobs, every 15 minutes. */
@@ -315,6 +318,7 @@ export async function runCron(env: Env, now: number): Promise<CronReport> {
 	const purgeRounds = await runPurges(env, now);
 	const sharesExpired = await expireShares(env, now);
 	const sharesPurged = await runSharePurges(env, now);
+	const shortLinksPurged = await runShortLinkPurges(env);
 	await env.DB.prepare(expiredLimitsSql()).bind(now).run();
 	const reconciled = await reconcile(env, now);
 	await env.DB.batch([
@@ -323,5 +327,5 @@ export async function runCron(env: Env, now: number): Promise<CronReport> {
 		).bind(now, SESSION_IDLE_MS),
 		env.DB.prepare("DELETE FROM sessions WHERE revoked_at IS NOT NULL AND revoked_at < ?1 - ?2").bind(now, REVOKED_KEEP_MS),
 	]);
-	return { purgeRounds, reconcile: reconciled, sharesExpired, sharesPurged };
+	return { purgeRounds, reconcile: reconciled, sharesExpired, sharesPurged, shortLinksPurged };
 }

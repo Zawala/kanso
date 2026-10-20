@@ -202,7 +202,9 @@ revisions; the password; the recovery key; or the data key.
 ### Published notes
 
 Publishing (the note's ⋯ menu or the palette › Publish to the web…) puts one note's web page at
-`<server>/p/<share id>#<key>`. Anyone with the whole link can read the page; the server can't.
+`<server>/p/<share id>#<key>`. Anyone with the whole link can read the page; the server can't. When
+the server has short links on, the link the sheet shows and copies is `<short url>#<key>` instead
+(› Short links); the long one keeps working.
 
 **How.** The device renders the note with the web page export (images inside as data URIs, no
 scripts), in the preview's theme when it is light and Kanso's light theme otherwise. It picks a
@@ -210,7 +212,7 @@ random 128-bit share ID and a random 256-bit key for the share, and seals the pa
 `0x01 || nonce(12) || AES-256-GCM(key, nonce, aad, html)` with
 `aad = "kanso-share" || 0x01 || share_id` and a fresh random nonce on every upload
 (`crates/kanso-sync/src/share.rs`). It uploads that to `PUT /v2/shares/<id>` with its session, and
-keeps `{shareId, key, publishedAt, publishedRev, expiresAt?, contentHash}` in the note as
+keeps `{shareId, key, publishedAt, publishedRev, expiresAt?, contentHash, shortUrl?}` in the note as
 `note.extra.kansoPublish`. That travels inside the sealed note, so the account's other devices can
 update the same link (same ID and key, new ciphertext) or unpublish it, and the server never
 receives the key. Inkdrop's own `share` field is left alone. Only the Publish sheet writes
@@ -219,7 +221,9 @@ ignore any they are given. The key lives only in the link's `#fragment`, which b
 to a server.
 
 **Routes.** `PUT /v2/shares/<id>` (session; `application/octet-stream`; `x-kanso-sha256`; optional
-`x-kanso-expires-at`, Unix ms, at most 366 days ahead) stores or replaces the account's own share.
+`x-kanso-expires-at`, Unix ms, at most 366 days ahead; `x-kanso-title`, the note's title as
+percent-encoded UTF-8, at most 200 characters) stores or replaces the account's own share and
+answers `{ok, id, size, expires_at, short_url}`, `short_url` null when there is no short link.
 Another account's ID is 409 `share_id_taken`. An ID that has ever stopped being served
 (unpublished, expired, taken down, or of a deleted account) is retired for good and answers 409
 `share_retired`: whoever holds an old link knows its ID and key, so nobody, its owner included, may
@@ -234,7 +238,8 @@ records (two racing uploads of one share). It is rate-limited per IP group by th
 binding only (60 a minute), so a public read never writes to D1, and a malformed ID never reaches
 D1. `GET /p/<id>` is the viewer page. D1 holds `shares` (owner, size, SHA-256, times, expiry),
 `retired_shares` (every retired ID, filled by a trigger whenever a share's row is deleted) and
-`share_purges`; R2 holds `shares/<id>` (migration `0003_shares`). The cron unpublishes expired
+`share_purges`; R2 holds `shares/<id>` (migration `0003_shares`; `0004_short_links` adds the
+short-link columns and `short_link_purges`). The cron unpublishes expired
 shares and deletes purged objects, and its reconciliation takes a slice of `shares/` each run:
 objects over an hour old without a row are deleted, and a row left describing another upload than
 the one R2 holds is moved to that object (its size counted against the quotas, or the share is
@@ -243,10 +248,31 @@ all of its shares in the same batch. For abuse, `admin shares <username>` lists 
 shares and `admin unpublish <share id>` takes one down for good; `admin disable` stops serving all
 of an account's shares until `admin enable`.
 
+**Short links.** With the `REROUT_API_KEY` secret set (and `REROUT_PROJECT_ID`, the Kanso project
+on Rerout, in `wrangler.jsonc`), the Worker gives each share a Rerout short link after storing its
+upload (`cloud/src/rerout.ts`): `POST https://api.rerout.co/v1/links` with `target_url`
+`<origin>/p/<id>` (no fragment, so no key), `seo_title` the note's title (whitespace collapsed,
+controls removed, cut to 90 characters; "A note" without one), one line about Kanso as
+`seo_description`, Kanso's preview image `<origin>/og/kanso.png` (a static asset,
+`assets/icon/make-og.swift` draws it) as `seo_image_url`, the target as `seo_canonical_url`, and
+`seo_noindex`. The share's row keeps the link's code, URL and title; a later upload with another
+title retitles it (`PATCH`), and two racing uploads keep one link and delete the other. rerout.co
+answers a browser with a plain 302 to the target, and browsers carry the fragment of the link they
+opened across a redirect, so `<short url>#<key>` opens the note and Rerout never receives the key.
+Link-preview bots get Rerout's page with the title, the line and the image. Short links are best
+effort: without the secret, on an origin that isn't https (`wrangler dev`), or when Rerout fails or
+takes over 5 seconds, publishing succeeds with `short_url` null and the device shows the long link;
+the next upload tries again. Whatever deletes a share's row (unpublish, expiry, `admin unpublish`,
+account deletion, the reconcile) queues its link in `short_link_purges` by trigger; unpublishing
+deletes it from Rerout at once, and the cron deletes the rest (25 a run, retrying failures behind
+the others). A link Rerout made for another project, to another target, or with a short URL a key
+can't follow (a query, a fragment, not https) is deleted and not used.
+
 **The viewer page** is static HTML with one inline script and one inline style, each pinned in a
 `Content-Security-Policy` by its SHA-256 (`default-src 'none'`, `connect-src 'self'`, `img-src
 data:`, `frame-src 'none'`, `frame-ancestors 'none'`, no third-party code), sent with
-`Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex`. Its script reads the key from
+`Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex`. Its preview tags are the same for every
+share ("A note", the line about Kanso, the preview image), so it never reads D1. Its script reads the key from
 `location.hash`, fetches the ciphertext, opens it with WebCrypto, and shows the page in an
 `<iframe srcdoc>` sandboxed without `allow-scripts` and without `allow-same-origin`, after taking
 out anything active (scripts, templates and so declarative shadow roots, frames, objects, forms,
@@ -262,10 +288,13 @@ runs.
 
 **The server sees,** for each share: its ID, the account that owns it, the ciphertext's size (the
 page's size plus 29 bytes) and its SHA-256, when it was published and updated, when it expires,
-and, like any request, the IP addresses and times of the people who open it (live in `wrangler
-tail`, and counted by the rate-limit binding, which keeps nothing in D1). **It never receives** the key, so it can't see the page, the note's title or
-text, or the images, and it can't tell which note a share came from (but see the viewer page's
-caveat above). Whoever has the link can read the note, and
+the note's title as it was published (sent so previews can show it, and kept on the share's row
+while short links are on), and, like any request, the IP addresses and times of the people who open
+it (live in `wrangler tail`, and counted by the rate-limit binding, which keeps nothing in D1).
+With short links on, **Rerout sees** the share's ID, the note's title, and the clicks on its short
+link, as it does for any link. **Neither receives** the key, so neither can see the page, the
+note's text or the images, and neither can tell which note a share came from beyond its title (but
+see the viewer page's caveat above). Whoever has the link can read the note, and
 can pass the link on: the key is the link. Unpublishing stops the server serving it (and deletes
 the ciphertext), but can't take back a copy someone already saved.
 
@@ -1408,7 +1437,10 @@ Changes to `cloud/wrangler.jsonc`:
 ```
 
 The Worker's environment type is `Env { DB: D1Database; FILES: R2Bucket; AUTH_PEPPER?: string;
-AUTH_LIMITER?: RateLimit; SESSION_LIMITER?: RateLimit }`. Commands run in `cloud/`, and the deploy token is only referenced by
+AUTH_LIMITER?: RateLimit; SESSION_LIMITER?: RateLimit; PUBLIC_LIMITER?: RateLimit;
+REROUT_API_KEY?: string; REROUT_PROJECT_ID?: string }`. `REROUT_API_KEY` (optional, a secret) turns
+on published notes' short links: `npx wrangler secret put REROUT_API_KEY` in `cloud/`, pasting a
+key of the Kanso project on Rerout; without it there are none. Commands run in `cloud/`, and the deploy token is only referenced by
 name:
 
 ```bash

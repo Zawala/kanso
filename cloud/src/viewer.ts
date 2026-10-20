@@ -16,6 +16,8 @@
 // the policy too, so the browser would refuse to parse them there. Nothing in
 // the note can run, load from the network, or reach this page.
 
+import { DEFAULT_TITLE, PREVIEW_DESCRIPTION, PREVIEW_IMAGE_PATH } from "./rerout";
+
 /** The page's only stylesheet. Calm: Kanso's paper and graphite, in both schemes. */
 export const VIEWER_STYLE = `:root{color-scheme:light dark;--paper:#fbfaf7;--ink:#2b2a27;--muted:#76736c;--line:#e6e2da;--card:#ffffff}
 @media (prefers-color-scheme:dark){:root{--paper:#1c1b19;--ink:#e9e6df;--muted:#9a968d;--line:#34322e;--card:#232220}}
@@ -109,8 +111,14 @@ else say("Couldn\\u2019t load the note","Check your connection, then reload the 
 });
 })();`;
 
-/** The page: the style and script above, exactly as hashed. */
-export const VIEWER_HTML = `<!doctype html>
+const escapeAttr = (text: string): string => text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/**
+ * The page: the style and script above, exactly as hashed. Its preview tags
+ * are the same for every share (the page never reads D1): "A note", one line
+ * about Kanso and Kanso's image on `origin`.
+ */
+export const viewerHtml = (origin: string): string => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -118,6 +126,13 @@ export const VIEWER_HTML = `<!doctype html>
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>A note</title>
+<meta property="og:site_name" content="Kanso">
+<meta property="og:title" content="${DEFAULT_TITLE}">
+<meta property="og:description" content="${PREVIEW_DESCRIPTION}">
+<meta property="og:image" content="${escapeAttr(origin + PREVIEW_IMAGE_PATH)}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <style>${VIEWER_STYLE}</style>
 </head>
 <body>
@@ -171,8 +186,8 @@ export const PUBLIC_HEADERS: Record<string, string> = {
 };
 
 /** `GET /p/<id>`: the page, the same for every share. */
-export async function viewerPage(): Promise<Response> {
-	return new Response(VIEWER_HTML, {
+export async function viewerPage(origin: string): Promise<Response> {
+	return new Response(viewerHtml(origin), {
 		headers: {
 			"content-type": "text/html; charset=utf-8",
 			"content-security-policy": await viewerPolicy(),

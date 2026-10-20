@@ -39,7 +39,13 @@
       "binding": "FILES",
       "bucket_name": "kanso-files"
     }
-  ]
+  ],
+  // Kanso's link-preview image, /og/kanso.png (assets/icon/make-og.swift draws it). Only paths
+  // that are files here are served as assets; every other request reaches the Worker.
+  "assets": { "directory": "./public" },
+  // Published notes' short links (src/rerout.ts): the Rerout project REROUT_API_KEY belongs to.
+  // The key is a secret, `wrangler secret put REROUT_API_KEY`; without it there are no short links.
+  "vars": { "REROUT_PROJECT_ID": "prj_xX6I1BVjuNKzdE0o" }
   // AUTH_PEPPER (required) is a secret: `wrangler secret put AUTH_PEPPER` (reads stdin; see README.md).
   // SYNC_TOKEN is no longer read; `admin purge-legacy` deletes it.
 }

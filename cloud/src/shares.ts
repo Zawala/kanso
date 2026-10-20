@@ -16,6 +16,12 @@
 // and its upload towards the account's daily writes and upload bytes. The D1
 // row is the authority: a share is served only while it has a row, its
 // account isn't disabled, and R2's object has the row's checksum.
+//
+// With REROUT_API_KEY set, a share also gets a Rerout short link (rerout.ts)
+// whose preview shows the note's title, sent in `x-kanso-title`: titles are
+// not secret, the note itself stays sealed. Its target has no #fragment, so the
+// key never reaches Rerout. When the share's row goes, the link is queued for
+// deletion (`short_link_purges`, filled by a trigger), and the cron deletes it.
 
 import { type Session, withSession } from "./auth";
 import { sha256Hex } from "./crypto";
@@ -23,6 +29,7 @@ import type { Env } from "./env";
 import { badRequest, constraint, error, json, notFound, rateLimited, readBody, refusal, tooLarge, unauthorized, untilMidnight } from "./http";
 import { BINDING_PERIOD_MS, accountKey, clientIp, count, ipGroup } from "./limits";
 import { DAY, FILE_ROW_COST, HOUR, fromBase64url, isSha256Hex } from "./protocol";
+import { createShortLink, deleteShortLink, enabled, retitleShortLink, titleHeader } from "./rerout";
 import { PUBLIC_HEADERS, viewerPage } from "./viewer";
 
 /** The format byte, the nonce and the tag. */
@@ -198,8 +205,50 @@ export function putShare(id: string) {
 			await env.DB.batch(compensation(env.DB, session.accountId, id, size, actual, now, old));
 			return error(500, "internal", "Couldn't store the note.");
 		}
-		return json({ ok: true, id, size, expires_at: expires.value });
+		const shortUrl = await shortLink(env, new URL(request.url).origin, session.accountId, id, now, titleHeader(request.headers.get("x-kanso-title")));
+		return json({ ok: true, id, size, expires_at: expires.value, short_url: shortUrl });
 	});
+}
+
+/**
+ * The share's short link, made now if it has none, and retitled if the note's
+ * title changed. Null when there is none: Rerout isn't configured or failed,
+ * and the device shows the long link. Never fails the upload.
+ */
+async function shortLink(env: Env, origin: string, accountId: string, id: string, now: number, title: string): Promise<string | null> {
+	if (!enabled(env, origin)) return null;
+	try {
+		const row = await env.DB.prepare("SELECT short_code, short_url, short_title FROM shares WHERE id = ?1 AND account_id = ?2")
+			.bind(id, accountId)
+			.first<{ short_code: string | null; short_url: string | null; short_title: string | null }>();
+		if (!row) return null;
+		if (row.short_code !== null) {
+			if (row.short_title !== title && (await retitleShortLink(env, row.short_code, title))) {
+				await env.DB.prepare("UPDATE shares SET short_title = ?3 WHERE id = ?1 AND short_code = ?2").bind(id, row.short_code, title).run();
+			}
+			return row.short_url;
+		}
+		const link = await createShortLink(env, origin, id, title);
+		if (!link) return null;
+		const stored = await env.DB.prepare(
+			"UPDATE shares SET short_code = ?2, short_url = ?3, short_title = ?4 WHERE id = ?1 AND short_code IS NULL RETURNING id",
+		)
+			.bind(id, link.code, link.shortUrl, title)
+			.all();
+		if (stored.results.length === 1) return link.shortUrl;
+		// A racing upload stored its own link first, or the share was unpublished meanwhile: this one goes.
+		await env.DB.prepare("INSERT OR IGNORE INTO short_link_purges (code, requested_at) VALUES (?1, ?2)").bind(link.code, now).run();
+		if (await deleteShortLink(env, link.code)) {
+			await env.DB.prepare("DELETE FROM short_link_purges WHERE code = ?1").bind(link.code).run();
+		}
+		const winner = await env.DB.prepare("SELECT short_url FROM shares WHERE id = ?1 AND account_id = ?2")
+			.bind(id, accountId)
+			.first<{ short_url: string | null }>();
+		return winner?.short_url ?? null;
+	} catch (err) {
+		console.error(JSON.stringify({ route: "rerout", op: "short_link", outcome: (err as Error)?.name ?? typeof err }));
+		return null;
+	}
 }
 
 /**
@@ -221,7 +270,7 @@ export function unpublishStatements(db: D1Database, accountId: string, id: strin
 		db
 			.prepare(`INSERT INTO share_purges (id, requested_at) SELECT ?2, ?3 WHERE ${owned} ON CONFLICT (id) DO UPDATE SET requested_at = excluded.requested_at`)
 			.bind(accountId, id, now),
-		db.prepare(`DELETE FROM shares WHERE id = ?2 AND account_id = ?1${extra} RETURNING id`).bind(accountId, id, now),
+		db.prepare(`DELETE FROM shares WHERE id = ?2 AND account_id = ?1${extra} RETURNING id, short_code`).bind(accountId, id, now),
 	];
 }
 
@@ -235,6 +284,15 @@ export function deleteShare(id: string) {
 			await env.FILES.delete(shareKey(id));
 		} catch {
 			// The purge row stays; the cron deletes the object.
+		}
+		const code = (results[2].results[0] as { short_code: string | null }).short_code;
+		if (code !== null && env.REROUT_API_KEY?.trim()) {
+			try {
+				// The shares_short_link_purge trigger queued it; once Rerout has deleted it, so is the row.
+				if (await deleteShortLink(env, code)) await env.DB.prepare("DELETE FROM short_link_purges WHERE code = ?1").bind(code).run();
+			} catch {
+				// The cron tries again.
+			}
 		}
 		return new Response(null, { status: 204 });
 	});
@@ -307,7 +365,7 @@ export function getViewer(id: string) {
 		if (!isShareId(id)) return withPublicHeaders(notFound());
 		const limited = await publicLimit(env, request);
 		if (limited) return withPublicHeaders(limited);
-		return viewerPage();
+		return viewerPage(new URL(request.url).origin);
 	};
 }
 

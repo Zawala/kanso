@@ -66,7 +66,11 @@ pepper=$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')
 printf %s "$pepper" | npx wrangler secret put AUTH_PEPPER
 unset pepper
 
-npm run migrate:remote     # 0002_accounts and 0003_shares are additive; sign-ups start closed
+# Optional: short links for published notes (src/rerout.ts). Paste a key of the Kanso project
+# on Rerout; without it, published notes keep their long links.
+npx wrangler secret put REROUT_API_KEY
+
+npm run migrate:remote     # 0002 to 0004 are additive; sign-ups start closed
 npm run deploy
 ```
 

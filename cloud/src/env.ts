@@ -10,4 +10,8 @@ export interface Env {
 	SESSION_LIMITER?: RateLimit;
 	/** The write-free filter of published notes and their viewer page, keyed by IP group; absent in unit tests. */
 	PUBLIC_LIMITER?: RateLimit;
+	/** Rerout's API key for published notes' short links; `wrangler secret put REROUT_API_KEY`. Without it there are none. */
+	REROUT_API_KEY?: string;
+	/** The Rerout project the key belongs to (a plain var); a link Rerout made elsewhere is deleted and not used. */
+	REROUT_PROJECT_ID?: string;
 }

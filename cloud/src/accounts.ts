@@ -545,7 +545,7 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 			const deleted = results[results.length - 1].results[0];
 			return deleted
 				? ok(
-						`Unpublished ${shareId} (${String(deleted.username)}). The link answers 404 now, the ID can never be published again, and the cron deletes its R2 object within 15 minutes.`,
+						`Unpublished ${shareId} (${String(deleted.username)}). The link answers 404 now, the ID can never be published again, and the cron deletes its R2 object (and its short link, if it has one) within 15 minutes.`,
 					)
 				: refused(`No published note has the ID ${shareId}.`);
 		}

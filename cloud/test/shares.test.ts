@@ -10,9 +10,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { runCron } from "../src/index";
 import { reconcile } from "../src/purge";
 import { MAX_SEALED_SHARE, shareKey } from "../src/shares";
-import { VIEWER_HTML, VIEWER_SCRIPT, VIEWER_STYLE } from "../src/viewer";
+import { VIEWER_SCRIPT, VIEWER_STYLE, viewerHtml } from "../src/viewer";
 import fixture from "./fixtures/share.json";
-import { START, accountRow, base64url, call, callJson, client, r2Keys, recomputed, resetServer, runAdmin, signUp, testEnv } from "./helpers";
+import { ORIGIN, START, accountRow, base64url, call, callJson, client, r2Keys, recomputed, resetServer, runAdmin, signUp, testEnv } from "./helpers";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -58,7 +58,7 @@ describe("publishing", () => {
 		const id = newShareId();
 		const { bytes, key } = await seal(id, "<p>Hello</p>");
 		const put = await alice.putShare(id, bytes);
-		expect(put).toEqual({ status: 200, body: { ok: true, id, size: bytes.length, expires_at: null } });
+		expect(put).toEqual({ status: 200, body: { ok: true, id, size: bytes.length, expires_at: null, short_url: null } });
 		expect(await r2Keys()).toEqual([shareKey(id)]);
 		const stored = await env.FILES.get(shareKey(id));
 		expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(bytes);
@@ -103,10 +103,23 @@ describe("publishing", () => {
 		expect((await call(`/v2/shares/${id}`, { token: a.token, method: "PUT", body: bytes, headers: { "content-type": "text/html" } })).status).toBe(415);
 		expect(await shareRows()).toEqual([]);
 		expect(await r2Keys()).toEqual([]);
-		// The row holds no content, only who, how big, the ciphertext's checksum and until when.
+		// The row holds no content, only who, how big, the ciphertext's checksum and until when, and
+		// the short link with its preview title when Rerout is on (test/shortlinks.test.ts).
 		expect((await alice.putShare(id, bytes)).status).toBe(200);
 		const row = (await shareRows())[0];
-		expect(Object.keys(row).sort()).toEqual(["account_id", "created_at", "expires_at", "id", "sha256", "size", "updated_at"]);
+		expect(Object.keys(row).sort()).toEqual([
+			"account_id",
+			"created_at",
+			"expires_at",
+			"id",
+			"sha256",
+			"short_code",
+			"short_title",
+			"short_url",
+			"size",
+			"updated_at",
+		]);
+		expect(row).toMatchObject({ short_code: null, short_title: null, short_url: null });
 		const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
 		expect(row.sha256).toBe([...digest].map((b) => b.toString(16).padStart(2, "0")).join(""));
 	});
@@ -515,7 +528,7 @@ describe("the viewer page", () => {
 		expect(r.status).toBe(200);
 		expect(r.headers.get("content-type")).toBe("text/html; charset=utf-8");
 		const html = await r.text();
-		expect(html).toBe(VIEWER_HTML);
+		expect(html).toBe(viewerHtml(ORIGIN));
 		const csp = r.headers.get("content-security-policy")!;
 		expect(csp).toBeTruthy();
 		const directives = Object.fromEntries(csp.split(";").map((d) => d.trim().split(/\s+/)).map(([k, ...v]) => [k, v]));
@@ -544,7 +557,11 @@ describe("the viewer page", () => {
 		const markup = html.replace(/<script>[\s\S]*?<\/script>/, "<script></script>");
 		expect(markup).not.toMatch(/\s(src|href|srcset|action)=/);
 		expect(markup).not.toMatch(/<(link|img|object|embed)\b/);
-		expect(html).not.toMatch(/https?:\/\//);
+		// The one absolute URL is the preview image's on this origin, in a meta tag browsers never load.
+		const image = `<meta property="og:image" content="${ORIGIN}/og/kanso.png">`;
+		expect(html).toContain(image);
+		expect(html.replace(image, "")).not.toMatch(/https?:\/\//);
+		expect(html).toContain('<meta name="robots" content="noindex, nofollow">');
 		// The frame can't run scripts, and has no origin of its own.
 		const sandbox = /<iframe[^>]*sandbox="([^"]*)"/.exec(html)![1].split(" ");
 		expect(sandbox).not.toContain("allow-scripts");
@@ -556,7 +573,7 @@ describe("the viewer page", () => {
 	});
 
 	it("is the same page for every share, and 404 for a malformed ID", async () => {
-		expect(await (await call(`/p/${newShareId()}`)).text()).toBe(VIEWER_HTML);
+		expect(await (await call(`/p/${newShareId()}`)).text()).toBe(viewerHtml(ORIGIN));
 		expect((await call("/p/not-a-share")).status).toBe(404);
 		expect((await call(`/p/${newShareId()}/x`)).status).toBe(404);
 	});
