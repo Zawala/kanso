@@ -740,6 +740,77 @@ fn escape_leaves_focus_mode_last(cx: &mut TestAppContext) {
     );
 }
 
+/// With Vim keys, Escape in Insert mode goes to Normal mode and stays in
+/// focus mode; Escape in Normal mode then leaves focus mode as it would
+/// without Vim. ⌘ shortcuts work in Normal mode.
+// no-prop-test: drives one window through keystrokes.
+#[gpui_kit::test]
+fn vim_escape_leaves_insert_mode_then_focus_mode(cx: &mut TestAppContext) {
+    use crate::vim::Mode;
+    let f = setup(cx);
+    cx.update(crate::workspace::bind_keys);
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    f.select(cx, &f.notes[0]);
+    f.draw(cx);
+    f.update_editor(cx, |editor, _, cx| {
+        editor.set_settings(
+            crate::config::EditorSettings {
+                vim: true,
+                ..Default::default()
+            },
+            cx,
+        )
+    });
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    assert!(f.workspace(&mut vcx, |w, _| w.focus_mode));
+    let before = f.editor(&mut vcx, |e, cx| e.body_for_test(cx));
+    vcx.simulate_keystrokes("i");
+    vcx.simulate_input("ok ");
+    assert_eq!(f.editor(&mut vcx, |e, _| e.vim_mode()), Some(Mode::Insert));
+    vcx.simulate_keystrokes("escape");
+    f.draw(&mut vcx);
+    assert_eq!(f.editor(&mut vcx, |e, _| e.vim_mode()), Some(Mode::Normal));
+    assert!(
+        f.workspace(&mut vcx, |w, _| w.focus_mode),
+        "focus mode stays"
+    );
+    assert_eq!(
+        f.editor(&mut vcx, |e, cx| e.body_for_test(cx)),
+        format!("ok {before}")
+    );
+
+    // The palette opens from Normal mode, and Escape closes it.
+    let palette = f.workspace(&mut vcx, |w, _| w.palette.clone());
+    vcx.simulate_keystrokes("cmd-k");
+    f.draw(&mut vcx);
+    assert!(vcx.read(|cx| palette.read(cx).is_open()));
+    vcx.simulate_keystrokes("escape");
+    f.draw(&mut vcx);
+    assert!(!vcx.read(|cx| palette.read(cx).is_open()));
+    assert!(f.workspace(&mut vcx, |w, _| w.focus_mode));
+
+    // A command half typed takes the first Escape; the next leaves.
+    let editor = f.workspace(&mut vcx, |w, _| w.editor.clone());
+    assert!(vcx.update(|window, cx| editor.read(cx).body_focused(window, cx)));
+    vcx.simulate_keystrokes("d escape");
+    f.draw(&mut vcx);
+    assert!(f.workspace(&mut vcx, |w, _| w.focus_mode));
+    vcx.simulate_keystrokes("escape");
+    f.draw(&mut vcx);
+    assert!(
+        !f.workspace(&mut vcx, |w, _| w.focus_mode),
+        "Escape in Normal mode leaves focus mode"
+    );
+    assert_eq!(
+        f.editor(&mut vcx, |e, cx| e.body_for_test(cx)),
+        format!("ok {before}")
+    );
+}
+
 /// Focus mode hides the header band, the status and tags and the toolbar,
 /// and takes their controls out of the Tab order with them: Tab and
 /// Shift-Tab from the title stay in the note, where before Shift-Tab landed

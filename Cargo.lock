@@ -3954,6 +3954,7 @@ dependencies = [
  "tempfile",
  "tree-sitter-c-sharp",
  "tree-sitter-swift",
+ "unicode-segmentation",
  "unicode-width",
  "ureq",
  "windows-sys 0.61.2",

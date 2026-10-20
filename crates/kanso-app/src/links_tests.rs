@@ -191,6 +191,52 @@ fn wiki_autocomplete_writes_a_note_link(cx: &mut TestAppContext) {
     );
 }
 
+/// With Vim keys, `[[` completion works in Insert mode and Enter chooses;
+/// the link with the rest of what was typed undoes as one step.
+// no-prop-test: drives the editor with keys.
+#[gpui_kit::test]
+fn wiki_autocomplete_in_vim_insert_mode(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let budget = f.note("Budget 2026", "");
+    let open = f.note("Draft", "");
+    f.select(cx, &open);
+    f.with_editor(cx, |editor, window, cx| {
+        editor.set_settings(
+            crate::config::EditorSettings {
+                vim: true,
+                ..Default::default()
+            },
+            cx,
+        );
+        editor.focus_body(window, cx);
+    });
+    f.draw(cx);
+    cx.simulate_keystrokes(f.window, "i");
+    cx.simulate_input(f.window, "See [[bud");
+    f.draw(cx);
+    let labels = f.with_editor(cx, |editor, _, cx| editor.completion_labels_for_test(cx));
+    assert_eq!(labels, ["Budget 2026", "New note “bud”"]);
+    cx.simulate_keystrokes(f.window, "enter");
+    f.draw(cx);
+    let suffix = budget.strip_prefix("note:").unwrap();
+    let linked = format!("See [Budget 2026](inkdrop://note/{suffix})");
+    assert_eq!(f.body(cx), linked);
+    assert_eq!(
+        f.with_editor(cx, |editor, _, _| editor.vim_mode()),
+        Some(crate::vim::Mode::Insert)
+    );
+    cx.simulate_keystrokes(f.window, "escape");
+    f.draw(cx);
+    assert_eq!(
+        f.with_editor(cx, |editor, _, _| editor.vim_mode()),
+        Some(crate::vim::Mode::Normal)
+    );
+    cx.simulate_keystrokes(f.window, "u");
+    assert_eq!(f.body(cx), "");
+    cx.simulate_keystrokes(f.window, "ctrl-r");
+    assert_eq!(f.body(cx), linked);
+}
+
 /// The preview shows a resolved wiki-link as a link to its note and an
 /// unresolved one as a `kanso-new:` link; following that link creates the
 /// note with its title and opens it.

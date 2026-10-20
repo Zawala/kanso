@@ -1,0 +1,506 @@
+//! Vim keys in the note's source: the editor's side of [`crate::vim`].
+//!
+//! With the setting on, a keystroke interceptor sees each key before the
+//! text editor and the app's shortcuts do. In Normal and Visual modes Vim
+//! takes the keys (⌘ shortcuts and the app's Ctrl ones aside); in Insert
+//! mode only Escape, so typing, input methods, pairing, list continuation
+//! and completions are the editor's own. With the setting off there is no
+//! interceptor at all.
+//!
+//! Each Normal mode change is one edit, so one undo step. An Insert mode
+//! session (with the command that began it, as `cw` or `o`) is made one
+//! step when Escape ends it: the session begins with a mark in the undo
+//! history (an invisible character put in and taken out), and Escape
+//! undoes back to that mark and makes the whole change again as one edit.
+//! If the mark can't be found (it was undone past), the history is put back
+//! as it was.
+//!
+//! Normal mode shows a block caret over the character; Visual modes select
+//! the text as the editor selects it.
+
+use std::ops::Range;
+
+use gpui_kit::base::input::{Escape, Redo, Undo};
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::*;
+
+use super::{NoteEditor, apply_edit};
+use crate::markdown_edit::Edit;
+use crate::vim::{Clipboard, Effect, Key, Mode, Outcome, Vim, clamp_normal, diff};
+
+/// What marks the start of an Insert mode session in the undo history: a
+/// zero-width space, put in and taken out at once.
+const MARK: &str = "\u{200B}";
+
+pub(super) struct VimState {
+    vim: Vim,
+    _intercept: Subscription,
+    /// The text before the command that began Insert mode, and where the
+    /// mark went in it.
+    base: Option<(SharedString, usize)>,
+    /// The text as Insert mode began, and where.
+    entry: Option<(SharedString, usize)>,
+    /// Edits since Insert mode began: as many undo steps as there can be.
+    edits: usize,
+    /// The selection a Visual mode last showed, to tell a click from it.
+    shown: Option<Range<usize>>,
+    /// Where Visual mode's cursor is.
+    head: usize,
+}
+
+impl VimState {
+    /// One more edit to the text while Insert mode lasts.
+    pub(super) fn count_edit(&mut self) {
+        if self.vim.mode() == Mode::Insert {
+            self.edits += 1;
+        }
+    }
+}
+
+/// The system clipboard's text, read through the app.
+struct AppClipboard<'a>(&'a mut App);
+
+impl Clipboard for AppClipboard<'_> {
+    fn read(&mut self) -> Option<String> {
+        self.0.read_from_clipboard().and_then(|item| item.text())
+    }
+}
+
+/// The key Vim takes for a keystroke; `None` for ⌘ shortcuts, the app's
+/// Ctrl ones and keys Vim leaves alone, which go on as usual.
+// no-prop-test: a table of key names; the window tests type through it.
+fn vim_key(keystroke: &Keystroke) -> Option<Key> {
+    let modifiers = keystroke.modifiers;
+    if modifiers.platform || modifiers.function {
+        return None;
+    }
+    if modifiers.control {
+        return match keystroke.key.as_str() {
+            "r" => Some(Key::Redo),
+            "[" => Some(Key::Esc),
+            _ => None,
+        };
+    }
+    Some(match keystroke.key.as_str() {
+        "escape" => Key::Esc,
+        "enter" => Key::Enter,
+        "backspace" => Key::Backspace,
+        "tab" => Key::Tab,
+        "left" => Key::Left,
+        "right" => Key::Right,
+        "up" => Key::Up,
+        "down" => Key::Down,
+        "home" => Key::Home,
+        "end" => Key::End,
+        _ => {
+            let typed = keystroke.key_char.as_deref()?;
+            let mut chars = typed.chars();
+            let ch = chars.next()?;
+            if chars.next().is_some() {
+                return None;
+            }
+            Key::Char(ch)
+        }
+    })
+}
+
+impl NoteEditor {
+    /// Turns Vim keys on (in Normal mode) or off.
+    // no-prop-test: sets up or drops the interceptor; the window tests
+    // turn it on and off.
+    pub(super) fn set_vim(&mut self, on: bool, cx: &mut Context<Self>) {
+        if on == self.vim.is_some() {
+            return;
+        }
+        self.vim = on.then(|| {
+            let editor = cx.entity().downgrade();
+            let intercept = cx.intercept_keystrokes(move |event, window, cx| {
+                if let Some(editor) = editor.upgrade() {
+                    editor.update(cx, |editor, cx| {
+                        editor.vim_keystroke(&event.keystroke, window, cx)
+                    });
+                }
+            });
+            VimState {
+                vim: Vim::new(),
+                _intercept: intercept,
+                base: None,
+                entry: None,
+                edits: 0,
+                shown: None,
+                head: 0,
+            }
+        });
+        self.vim_footer(cx);
+        cx.notify();
+    }
+
+    /// Back to Normal mode, as when another note opens.
+    pub(super) fn vim_reset(&mut self, cx: &mut Context<Self>) {
+        if let Some(state) = self.vim.as_mut() {
+            state.vim.reset();
+            state.base = None;
+            state.entry = None;
+            state.shown = None;
+            state.edits = 0;
+            self.vim_footer(cx);
+        }
+    }
+
+    /// The text was set anew (and its undo history with it): an Insert
+    /// session going on can't be made one step any more.
+    pub(super) fn vim_forget_session(&mut self) {
+        if let Some(state) = self.vim.as_mut() {
+            state.base = None;
+            state.entry = None;
+        }
+    }
+
+    fn vim_footer(&self, cx: &mut Context<Self>) {
+        let status = self.vim.as_ref().map(|state| state.vim.status());
+        self.footer
+            .update(cx, |footer, cx| footer.set_vim(status, cx));
+    }
+
+    /// A keystroke anywhere in the app: Vim's when the note's text has the
+    /// keyboard.
+    // no-prop-test: key glue; `vim` has the properties and the window
+    // tests type through it.
+    fn vim_keystroke(
+        &mut self,
+        keystroke: &Keystroke,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(state) = self.vim.as_ref() else {
+            return;
+        };
+        let Some(key) = vim_key(keystroke) else {
+            return;
+        };
+        let insert = state.vim.mode() == Mode::Insert;
+        // Typing is the editor's own: only Escape leaves Insert mode.
+        if insert && key != Key::Esc {
+            return;
+        }
+        // The keyboard elsewhere, or an input method composing: not Vim's.
+        if !self.body_takes_edits(window, cx) {
+            return;
+        }
+        if insert {
+            cx.stop_propagation();
+            self.vim_leave_insert(window, cx);
+            return;
+        }
+        let (text, selection, caret) = {
+            let body = self.body.read(cx);
+            (body.value(), body.selected_range(), body.cursor())
+        };
+        let Some(state) = self.vim.as_mut() else {
+            return;
+        };
+        // A selection Vim didn't make (a click or drag, ⌘A, ⌘Z) ends a
+        // Visual mode; in Normal mode the cursor is where it starts.
+        if state.vim.mode().is_visual() && state.shown.as_ref() != Some(&selection) {
+            state.vim.reset();
+        }
+        let cursor = if selection.is_empty() {
+            caret
+        } else {
+            selection.start
+        };
+        let was = state.vim.mode();
+        let out = state
+            .vim
+            .handle_key(key, &text, cursor, &mut AppClipboard(cx));
+        if !out.consumed {
+            return;
+        }
+        cx.stop_propagation();
+        self.vim_apply(out, was, &text, cursor, window, cx);
+    }
+
+    /// Makes what a key did show in the editor.
+    // no-prop-test: editor glue; the window tests check each part.
+    fn vim_apply(
+        &mut self,
+        out: Outcome,
+        was: Mode,
+        text: &SharedString,
+        cursor: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let entering = out.mode == Mode::Insert && was != Mode::Insert;
+        if entering {
+            // The mark the session's undo steps are gathered back to.
+            self.body.update(cx, |state, cx| {
+                apply_edit(state, text, edit(cursor..cursor, MARK, cursor), window, cx);
+                let marked = state.value();
+                let end = cursor + MARK.len();
+                apply_edit(state, &marked, edit(cursor..end, "", cursor), window, cx);
+            });
+        }
+        let selection = out.selection.clone().unwrap_or(out.cursor..out.cursor);
+        self.body.update(cx, |state, cx| match &out.edit {
+            Some((range, with)) => {
+                let change = Edit {
+                    range: range.clone(),
+                    text: with.clone(),
+                    selection: selection.clone(),
+                };
+                apply_edit(state, text, change, window, cx);
+            }
+            None => {
+                if state.selected_range() != selection {
+                    state.set_selected_range(selection.clone(), cx);
+                }
+            }
+        });
+        let entry = entering.then(|| self.body.read(cx).value());
+        let mut undo = None;
+        for effect in &out.effects {
+            match effect {
+                Effect::Copy(text) => {
+                    cx.write_to_clipboard(ClipboardItem::new_string(text.clone()))
+                }
+                Effect::Undo(n) => undo = Some((true, *n)),
+                Effect::Redo(n) => undo = Some((false, *n)),
+                Effect::Save => self.flush(cx),
+                Effect::Close => {
+                    self.flush(cx);
+                    window.dispatch_action(Box::new(crate::workspace::FocusNoteList), cx);
+                }
+            }
+        }
+        if let Some(state) = self.vim.as_mut() {
+            state.shown = out.selection.clone();
+            state.head = out.cursor;
+            if entering {
+                state.base = Some((text.clone(), cursor));
+                state.entry = entry.map(|entry| (entry, out.cursor));
+                state.edits = 0;
+            }
+        }
+        if let Some((back, n)) = undo {
+            self.vim_history(back, n, window, cx);
+        }
+        self.vim_footer(cx);
+        cx.notify();
+    }
+
+    /// `u` and Ctrl-R: the editor's own undo and redo, `n` steps, with the
+    /// cursor where the change was.
+    // no-prop-test: editor glue; `undo_and_redo_through_the_editor` checks it.
+    fn vim_history(&mut self, back: bool, n: usize, window: &mut Window, cx: &mut Context<Self>) {
+        for _ in 0..n {
+            if back {
+                self.body_action(&Undo, window, cx);
+            } else {
+                self.body_action(&Redo, window, cx);
+            }
+        }
+        self.body.update(cx, |state, cx| {
+            let text = state.value();
+            let at = clamp_normal(&text, state.selected_range().start);
+            state.set_selected_range(at..at, cx);
+        });
+    }
+
+    /// Runs one of the text editor's actions at once.
+    fn body_action(&self, action: &dyn Action, window: &mut Window, cx: &mut Context<Self>) {
+        let focus = self.body.read(cx).focus_handle(cx);
+        focus.dispatch_action(action, window, cx);
+    }
+
+    /// Escape in Insert mode: a count types the text again, the whole
+    /// change becomes one undo step, and the cursor steps back.
+    // no-prop-test: editor glue; the window tests undo sessions through it.
+    fn vim_leave_insert(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // An open completion list closes with the same Escape.
+        self.body.update(cx, |state, cx| {
+            if state.completion_menu_state().open {
+                state.route_overlay_action(Box::new(Escape), window, cx);
+            }
+        });
+        let (now, caret) = {
+            let body = self.body.read(cx);
+            (body.value(), body.cursor())
+        };
+        let Some(state) = self.vim.as_mut() else {
+            return;
+        };
+        let (entry, entry_cursor) = state.entry.take().unwrap_or((now.clone(), caret));
+        let out = state.vim.leave_insert(&entry, entry_cursor, &now, caret);
+        let base = state.base.take();
+        let edits = std::mem::take(&mut state.edits);
+        let mut done = now.to_string();
+        if let Some((range, with)) = &out.edit {
+            done.replace_range(range.clone(), with);
+        }
+        let cursor = out.cursor;
+        let collapsed = base.is_some_and(|(base, mark)| {
+            self.vim_collapse(&base, mark, &done, edits, cursor, window, cx)
+        });
+        if !collapsed {
+            self.body.update(cx, |state, cx| {
+                let change = match out.edit.clone() {
+                    Some((range, text)) => Edit {
+                        range,
+                        text,
+                        selection: cursor..cursor,
+                    },
+                    None => edit(cursor..cursor, "", cursor),
+                };
+                apply_edit(state, &now, change, window, cx);
+            });
+        }
+        if let Some(state) = self.vim.as_mut() {
+            state.shown = None;
+        }
+        self.vim_footer(cx);
+        cx.notify();
+    }
+
+    /// Makes the Insert mode session one undo step: undoes back to its mark
+    /// (at most `edits` steps and a few), then makes the change from `base`
+    /// to `done` as one edit. Whether it could; if not, the history is put
+    /// back as it was.
+    // no-prop-test: drives the editor's undo; `one_change_is_one_undo_step`
+    // checks it, the fallback included.
+    #[allow(clippy::too_many_arguments)]
+    fn vim_collapse(
+        &mut self,
+        base: &str,
+        mark: usize,
+        done: &str,
+        edits: usize,
+        cursor: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(marked) = base
+            .get(..mark)
+            .map(|before| format!("{before}{MARK}{}", &base[mark..]))
+        else {
+            return false;
+        };
+        let is = |this: &Self, text: &str, cx: &App| {
+            let body = this.body.read(cx);
+            body.text().len() == text.len() && body.value() == text
+        };
+        let mut undone = 0;
+        let mut found = false;
+        while undone < edits + 4 {
+            self.body_action(&Undo, window, cx);
+            undone += 1;
+            if is(self, &marked, cx) {
+                found = true;
+                break;
+            }
+        }
+        if found {
+            // The mark going in, the step before.
+            self.body_action(&Undo, window, cx);
+            undone += 1;
+            found = is(self, base, cx);
+        }
+        if !found {
+            for _ in 0..undone {
+                self.body_action(&Redo, window, cx);
+            }
+            return false;
+        }
+        let change = match diff(base, done) {
+            Some((range, text)) => Edit {
+                range,
+                text,
+                selection: cursor..cursor,
+            },
+            None => edit(cursor..cursor, "", cursor),
+        };
+        self.body
+            .update(cx, |state, cx| apply_edit(state, base, change, window, cx));
+        true
+    }
+
+    /// The block caret over the character under Normal (and Visual) mode's
+    /// cursor, drawn over the text editor once it has laid out.
+    // no-prop-test: painting; the Vim snapshots show it.
+    pub(super) fn vim_caret(&self, window: &Window, cx: &App) -> Option<AnyElement> {
+        let state = self.vim.as_ref()?;
+        let mode = state.vim.mode();
+        if mode == Mode::Insert {
+            return None;
+        }
+        let body = self.body.read(cx);
+        if !body.focus_handle(cx).is_focused(window) {
+            return None;
+        }
+        let at = if mode.is_visual() {
+            state.head
+        } else {
+            body.cursor()
+        };
+        let text = body.text();
+        let at = at.min(text.len());
+        // The character under the cursor, read from a little of the text.
+        let mut end = (at + 32).min(text.len());
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let piece = text.slice(at..end).to_string();
+        let width_of = crate::vim::grapheme_at(&piece);
+        let range = at..at + width_of;
+        let body = self.body.clone();
+        let mut color = cx.theme().caret;
+        color.a = 0.4;
+        let fallback = px(self.font_size * 0.6);
+        Some(
+            canvas(
+                |_, _, _| {},
+                move |bounds, _, window, cx| {
+                    let state = body.read(cx);
+                    let Some(start) = state.range_to_bounds(&(range.start..range.start)) else {
+                        return;
+                    };
+                    let width = state
+                        .range_to_bounds(&range)
+                        .filter(|b| b.origin.y == start.origin.y && b.size.width > px(1.))
+                        .map_or(fallback, |b| b.size.width);
+                    let line = start.size.height;
+                    let height = line * 0.85;
+                    let block = Bounds::new(
+                        point(start.origin.x, start.origin.y + (line - height) / 2.),
+                        size(width, height),
+                    );
+                    window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                        window.paint_quad(fill(block, color));
+                    });
+                },
+            )
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .into_any_element(),
+        )
+    }
+}
+
+/// An edit of `range` to `text` with the cursor at `cursor` after it.
+fn edit(range: Range<usize>, text: &str, cursor: usize) -> Edit {
+    Edit {
+        range,
+        text: text.to_owned(),
+        selection: cursor..cursor,
+    }
+}
+
+#[cfg(test)]
+impl NoteEditor {
+    /// The Vim mode, with Vim keys on.
+    pub fn vim_mode(&self) -> Option<Mode> {
+        self.vim.as_ref().map(|state| state.vim.mode())
+    }
+}

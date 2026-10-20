@@ -75,6 +75,7 @@ mod themes;
 #[cfg(test)]
 mod ui_tests;
 mod updates;
+mod vim;
 mod wikilinks;
 mod word_goal;
 mod workspace;

@@ -12,7 +12,7 @@ use std::time::Duration;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{EditorState, InputEvent, Position};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{Sizable as _, h_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -51,6 +51,8 @@ pub struct EditorFooter {
     /// The open note's own goal, and the default from Settings.
     goal: GoalSetting,
     default_goal: Option<u32>,
+    /// With Vim keys on: the mode, and a command being typed.
+    vim: Option<crate::vim::Status>,
     /// Shows the counts in focus mode, as a hover would.
     #[cfg(test)]
     pub(crate) reveal: bool,
@@ -86,6 +88,7 @@ impl EditorFooter {
             quiet: false,
             goal: GoalSetting::Default,
             default_goal: None,
+            vim: None,
             #[cfg(test)]
             reveal: false,
             count_task: None,
@@ -124,6 +127,21 @@ impl EditorFooter {
             (self.goal, self.default_goal) = (goal, default);
             cx.notify();
         }
+    }
+
+    /// The Vim mode and pending command to show, or `None` with Vim keys
+    /// off.
+    pub fn set_vim(&mut self, vim: Option<crate::vim::Status>, cx: &mut Context<Self>) {
+        if self.vim != vim {
+            self.vim = vim;
+            cx.notify();
+        }
+    }
+
+    /// The Vim mode and pending command shown.
+    #[cfg(test)]
+    pub fn vim_shown(&self) -> Option<&crate::vim::Status> {
+        self.vim.as_ref()
     }
 
     /// The goal that applies to the open note.
@@ -360,6 +378,31 @@ impl Render for EditorFooter {
             .bg(colors.editor)
             .text_size(px(12.))
             .text_color(colors.text_muted)
+            // The Vim mode stays in sight in focus mode too: it says what
+            // the next key will do.
+            .when_some(self.vim.as_ref().filter(|_| self.has_note), |el, vim| {
+                el.child(
+                    h_flex()
+                        .flex_none()
+                        .gap(px(6.))
+                        .debug_selector(|| "vim-mode".into())
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(colors.text_secondary)
+                                .child(vim.mode.label()),
+                        )
+                        .when(!vim.pending.is_empty(), |el| {
+                            el.child(
+                                div()
+                                    .font_family(cx.theme().mono_font_family.clone())
+                                    .text_size(px(11.))
+                                    .child(vim.pending.clone()),
+                            )
+                        }),
+                )
+            })
             .when(self.has_note, |el| {
                 el.child(
                     item(div())

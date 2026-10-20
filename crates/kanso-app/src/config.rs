@@ -366,6 +366,8 @@ pub struct EditorSettings {
     /// `#tags` in a note's text become its tags when it is saved
     /// (`kanso_core::tags::inline_tags`). Off unless turned on.
     pub inline_tags: bool,
+    /// Vim keys in the note's text: Normal, Insert and Visual modes.
+    pub vim: bool,
 }
 
 impl Default for EditorSettings {
@@ -377,6 +379,7 @@ impl Default for EditorSettings {
             typewriter: Typewriter::FocusMode,
             word_goal: None,
             inline_tags: false,
+            vim: false,
         }
     }
 }
@@ -554,9 +557,18 @@ mod tests {
             ]),
             prop::option::of(1u32..100_000),
             any::<bool>(),
+            any::<bool>(),
         )
             .prop_map(
-                |(auto_pair, format_tables, smart_paste, typewriter, word_goal, inline_tags)| {
+                |(
+                    auto_pair,
+                    format_tables,
+                    smart_paste,
+                    typewriter,
+                    word_goal,
+                    inline_tags,
+                    vim,
+                )| {
                     EditorSettings {
                         auto_pair,
                         format_tables,
@@ -564,6 +576,7 @@ mod tests {
                         typewriter,
                         word_goal,
                         inline_tags,
+                        vim,
                     }
                 },
             )

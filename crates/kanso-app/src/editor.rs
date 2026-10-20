@@ -56,6 +56,12 @@ use crate::wikilinks::{SharedIndex, WikiCompletion, WikiIndex, rewrite_for_previ
 use crate::word_goal::{self, GoalSetting};
 use crate::workspace::{AppState, NewNote};
 
+#[path = "editor_vim.rs"]
+mod vim_glue;
+#[cfg(test)]
+#[path = "editor_vim_tests.rs"]
+mod vim_tests;
+
 const AUTOSAVE_DELAY: Duration = Duration::from_millis(600);
 /// While typing goes on, the preview beside the source catches up at most
 /// this often: the first change shows at once, later ones on the next tick.
@@ -244,6 +250,8 @@ pub struct NoteEditor {
     pairs: Pairs,
     /// Whether the caret's line is kept in the middle now.
     typewriter: bool,
+    /// Vim keys, while the setting is on.
+    vim: Option<vim_glue::VimState>,
     /// Shows the hidden header in focus mode, as a hover would.
     #[cfg(test)]
     pub(crate) reveal_chrome: bool,
@@ -354,6 +362,9 @@ impl NoteEditor {
             }),
             cx.subscribe_in(&body, window, |this, _, event, window, cx| {
                 if matches!(event, InputEvent::Change) {
+                    if let Some(vim) = this.vim.as_mut() {
+                        vim.count_edit();
+                    }
                     this.text_version += 1;
                     this.source_lines = None;
                     this.schedule_autosave(cx);
@@ -377,7 +388,7 @@ impl NoteEditor {
                 }
             }),
         ];
-        NoteEditor {
+        let mut editor = NoteEditor {
             store,
             library,
             note: None,
@@ -415,11 +426,14 @@ impl NoteEditor {
             settings,
             pairs: Pairs::default(),
             typewriter: false,
+            vim: None,
             #[cfg(test)]
             reveal_chrome: false,
             _subscriptions: subscriptions,
             _resizes: resize_task,
-        }
+        };
+        editor.set_vim(settings.vim, cx);
+        editor
     }
 
     /// The writing aids as Settings › Editor has them now.
@@ -431,6 +445,7 @@ impl NoteEditor {
         if !settings.auto_pair {
             self.pairs.clear();
         }
+        self.set_vim(settings.vim, cx);
         self.update_footer_goal(cx);
         cx.notify();
     }
@@ -743,6 +758,13 @@ impl NoteEditor {
             self.followed_scroll = None;
         }
         self.pairs.clear();
+        // Another note starts in Normal mode. The same one reloaded keeps
+        // its mode, though not the undo steps an Insert session would join.
+        if keep_place {
+            self.vim_forget_session();
+        } else {
+            self.vim_reset(cx);
+        }
         let has_note = self.note.is_some();
         self.footer
             .update(cx, |footer, cx| footer.note_opened(has_note, cx));
@@ -2641,6 +2663,7 @@ impl Render for NoteEditor {
                 div()
                     .h_full()
                     .w_full()
+                    .relative()
                     .when_some(measure, |el, width| el.max_w(width))
                     .child(
                         Editor::new(&self.body)
@@ -2649,7 +2672,9 @@ impl Render for NoteEditor {
                             .font_family(family)
                             .text_size(px(size))
                             .line_height(relative(BODY_LINE_HEIGHT)),
-                    ),
+                    )
+                    // Vim's block caret, over the text.
+                    .children(self.vim_caret(window, cx)),
             );
         let readable = self.readable_width;
         self.preview
@@ -3333,16 +3358,16 @@ mod writing_tests {
     use std::ops::Range;
     use std::sync::Arc;
 
-    struct Open {
-        window: AnyWindowHandle,
-        editor: Entity<NoteEditor>,
-        store: Arc<Store>,
-        id: String,
+    pub(super) struct Open {
+        pub(super) window: AnyWindowHandle,
+        pub(super) editor: Entity<NoteEditor>,
+        pub(super) store: Arc<Store>,
+        pub(super) id: String,
         _dir: tempfile::TempDir,
     }
 
     impl Open {
-        fn new(cx: &mut TestAppContext, body: &str) -> Open {
+        pub(super) fn new(cx: &mut TestAppContext, body: &str) -> Open {
             let dir = tempfile::tempdir().unwrap();
             let store = Arc::new(Store::open(dir.path().join("k.db")).unwrap());
             let book = store
@@ -3391,7 +3416,7 @@ mod writing_tests {
             open
         }
 
-        fn with<R>(
+        pub(super) fn with<R>(
             &self,
             cx: &mut TestAppContext,
             f: impl FnOnce(
@@ -3410,7 +3435,7 @@ mod writing_tests {
             out
         }
 
-        fn select(&self, cx: &mut TestAppContext, range: Range<usize>) {
+        pub(super) fn select(&self, cx: &mut TestAppContext, range: Range<usize>) {
             self.with(cx, |editor, _, cx| {
                 editor
                     .body
@@ -3418,18 +3443,18 @@ mod writing_tests {
             });
         }
 
-        fn text(&self, cx: &mut TestAppContext) -> (String, Range<usize>) {
+        pub(super) fn text(&self, cx: &mut TestAppContext) -> (String, Range<usize>) {
             self.with(cx, |editor, _, cx| {
                 let body = editor.body.read(cx);
                 (body.value().to_string(), body.selected_range())
             })
         }
 
-        fn input(&self, cx: &mut TestAppContext, text: &str) {
+        pub(super) fn input(&self, cx: &mut TestAppContext, text: &str) {
             cx.simulate_input(self.window, text);
         }
 
-        fn keys(&self, cx: &mut TestAppContext, keys: &str) {
+        pub(super) fn keys(&self, cx: &mut TestAppContext, keys: &str) {
             cx.simulate_keystrokes(self.window, keys);
         }
     }

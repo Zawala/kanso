@@ -53,6 +53,8 @@ unicode-width = "0.2"
 # `kanso capture` hands its text to a running Kanso's local API. The sync
 # client already builds it.
 ureq = "3.4"
+# Vim keys step over a character as it is read (a grapheme cluster).
+unicode-segmentation = "1.13"
 
 [dev-dependencies]
 base64.workspace = true

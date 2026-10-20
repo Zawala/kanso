@@ -1052,6 +1052,9 @@ fn writing_section(cx: &mut Context<SettingsView>) -> AnyElement {
             Row::new(Lucide::Hash, "Tags from #words")
                 .detail("A #word in a note's text becomes one of its tags when the note is saved; #work/clients nests. Not in code, links or headings, and tags added by hand stay.")
                 .trailing(switch("inline-tags", writing.inline_tags, |e, on| e.inline_tags = on)),
+            Row::new(Lucide::Keyboard, "Vim keys")
+                .detail("Normal, Insert and Visual modes in the note's text, shown in its footer. ⌘ shortcuts work as always.")
+                .trailing(switch("vim-keys", writing.vim, |e, on| e.vim = on)),
         ],
         colors,
     )
