@@ -216,10 +216,15 @@ fn clause_sql(clause: &Clause, fts_allowed: bool, params: &mut Vec<SqlValue>) ->
             format!("d.book_id = {id}")
         }
         Some(Field::Tag) => {
+            // The tag or any tag inside it: `tag:work` finds `work/acme`
+            // (kanso_core::tags::is_within).
             let name = bind(params, v.clone());
+            let prefix = bind(params, v.clone());
+            let len = bind(params, v.clone());
             format!(
                 "EXISTS (SELECT 1 FROM note_tags nt JOIN docs t ON t.id = nt.tag_id AND t.deleted = 0 \
-                 WHERE nt.note_id = d.id AND lower(t.name) = lower({name}))"
+                 WHERE nt.note_id = d.id AND (lower(t.name) = lower({name}) \
+                 OR lower(substr(t.name, 1, length({len}) + 1)) = lower({prefix}) || '/'))"
             )
         }
         Some(Field::TagId) => {

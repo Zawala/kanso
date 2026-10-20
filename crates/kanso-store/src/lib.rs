@@ -10,6 +10,7 @@ mod derived;
 mod doc;
 mod history;
 mod read;
+mod roles;
 mod schema;
 mod sync;
 mod validate;
@@ -24,6 +25,7 @@ pub use backup::BackupPolicy;
 pub use derived::{Backlink, DERIVED_VERSION, DERIVED_VERSION_KEY, HeadingHit};
 pub use doc::{Attachment, Doc};
 pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
+pub use roles::{DailyNote, FromTemplate, NewNote};
 pub use sync::{ApplyOutcome, SyncDoc, SyncGuard, SyncState};
 pub use write::{Put, WriteResult};
 

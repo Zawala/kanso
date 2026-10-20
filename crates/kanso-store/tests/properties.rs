@@ -29,10 +29,12 @@ const BOOKS: [(&str, &str); 3] = [
     ("book:b1", "beta Book"),
     ("book:b2", "Gamma"),
 ];
-const TAGS: [(&str, &str); 3] = [
+const TAGS: [(&str, &str); 4] = [
     ("tag:t0", "red"),
     ("tag:t1", "Green"),
     ("tag:t2", "blue tag"),
+    // A nested tag: `tag:red` finds it too.
+    ("tag:t3", "Red/dark"),
 ];
 /// Words mixing cases, sub-trigram lengths, non-ASCII and ID-like characters.
 const WORDS: [&str; 11] = [
@@ -66,7 +68,7 @@ fn gen_note() -> impl Strategy<Value = NoteSpec> {
         prop::collection::vec(0..WORDS.len(), 0..3),
         prop::collection::vec(0..WORDS.len(), 0..6),
         0..4usize,
-        prop::sample::subsequence(vec![0usize, 1, 2], 0..=3),
+        prop::sample::subsequence(vec![0usize, 1, 2, 3], 0..=4),
         prop::sample::select(NoteStatus::ALL.to_vec()),
     )
         .prop_map(|(title, body, book, tags, status)| NoteSpec {
@@ -94,8 +96,10 @@ fn gen_clause() -> impl Strategy<Value = Clause> {
             .prop_map(|v| (Some(Field::Book), v.to_owned())),
         prop::sample::select(vec!["b0", "book:b1", "b2", "trash"])
             .prop_map(|v| (Some(Field::BookId), v.to_owned())),
-        prop::sample::select(vec!["RED", "green", "Blue Tag", "none"])
-            .prop_map(|v| (Some(Field::Tag), v.to_owned())),
+        prop::sample::select(vec![
+            "RED", "green", "Blue Tag", "none", "red/DARK", "red/", "re"
+        ])
+        .prop_map(|v| (Some(Field::Tag), v.to_owned())),
         prop::sample::select(vec!["tag:t0", "t1", "tag:t2"])
             .prop_map(|v| (Some(Field::TagId), v.to_owned())),
         prop::sample::select(vec!["active", "ONHOLD", "none", "completed", "dropped"])

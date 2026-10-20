@@ -231,7 +231,7 @@ fn delete_row(
     Ok(rev)
 }
 
-fn next_rev(previous: Option<&Row>, content: &Value) -> Result<String> {
+pub(crate) fn next_rev(previous: Option<&Row>, content: &Value) -> Result<String> {
     let previous = previous
         .map(|p| p.rev.parse::<Rev>())
         .transpose()
@@ -239,7 +239,7 @@ fn next_rev(previous: Option<&Row>, content: &Value) -> Result<String> {
     Ok(Rev::next(previous.as_ref(), content).to_string())
 }
 
-fn fresh_id(tx: &Transaction, doc_type: DocType) -> Result<String> {
+pub(crate) fn fresh_id(tx: &Transaction, doc_type: DocType) -> Result<String> {
     loop {
         let id = new_id(doc_type);
         let taken = tx

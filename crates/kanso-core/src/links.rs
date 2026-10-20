@@ -424,7 +424,7 @@ fn is_word(c: char) -> bool {
 
 /// The parts of a line that are links (`[text](target)` or wiki-links) or
 /// inline code.
-fn covered_ranges(line: &str) -> Vec<Range<usize>> {
+pub(crate) fn covered_ranges(line: &str) -> Vec<Range<usize>> {
     let mut covered: Vec<Range<usize>> = inline_code_spans(line);
     for link in wiki_links(line) {
         covered.push(link.range);

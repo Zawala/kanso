@@ -699,6 +699,11 @@ impl Store {
                 learned(tx, &remote.id, &remote.rev)?;
                 return Ok(ApplyOutcome::Stale { new_rev, conflict });
             }
+            // Two first versions of the same day's note, made apart (two
+            // devices offline): merged rather than one winning.
+            if !rules.legacy() && is_separate_daily_creation(&remote.id, &local, remote) {
+                return merge_daily(tx, remote, &remote_rev, &local, &local_rev, &fields, changes);
+            }
             let local_dirty = local.synced_rev.as_deref() != Some(local.rev.as_str());
             let remote_wins = !local_dirty
                 || match (local.deleted, remote.deleted) {
@@ -728,6 +733,120 @@ impl Store {
             Ok(ApplyOutcome::LocalWon { new_rev })
         })
     }
+}
+
+/// Whether `local` and `remote` are two versions of a daily note made apart:
+/// both live, and the local one never reached this account.
+fn is_separate_daily_creation(id: &str, local: &crate::write::Row, remote: &SyncDoc) -> bool {
+    id.starts_with(kanso_core::roles::DAILY_PREFIX)
+        && local.doc_type == DocType::Note
+        && !local.deleted
+        && !remote.deleted
+        && local.synced_rev.is_none()
+        && local.synced_gen == 0
+}
+
+/// Merges two separately made versions of a daily note
+/// (`kanso_core::roles::merge_daily_bodies`, the older one's lines first,
+/// tags joined). When the remote version already has everything, it is
+/// applied like any newer version. Otherwise the merge becomes the local
+/// version, one generation above both, based on the remote one so it is
+/// pushed, and the remote version is kept in history: an
+/// [`ApplyOutcome::LocalWon`].
+fn merge_daily(
+    tx: &rusqlite::Transaction,
+    remote: &SyncDoc,
+    remote_rev: &kanso_core::Rev,
+    local: &crate::write::Row,
+    local_rev: &kanso_core::Rev,
+    remote_fields: &Map<String, Value>,
+    changes: &mut Vec<crate::Change>,
+) -> Result<ApplyOutcome> {
+    let body = |fields: &Map<String, Value>| {
+        fields
+            .get("body")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let created =
+        |fields: &Map<String, Value>| fields.get("createdAt").and_then(Value::as_i64).unwrap_or(0);
+    let tags = |fields: &Map<String, Value>| -> Vec<String> {
+        fields
+            .get("tags")
+            .and_then(Value::as_array)
+            .map(|tags| {
+                tags.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let (remote_body, local_body) = (body(remote_fields), body(&local.fields));
+    let merged_body = if created(&local.fields) < created(remote_fields) {
+        kanso_core::roles::merge_daily_bodies(&local_body, &remote_body)
+    } else {
+        kanso_core::roles::merge_daily_bodies(&remote_body, &local_body)
+    };
+    let mut merged_tags = tags(remote_fields);
+    for tag in tags(&local.fields) {
+        if !merged_tags.contains(&tag) {
+            merged_tags.push(tag);
+        }
+    }
+    let doc_type = DocType::Note;
+    if merged_body == remote_body && merged_tags == tags(remote_fields) {
+        store_row(
+            tx,
+            &remote.id,
+            doc_type,
+            &remote.rev,
+            false,
+            remote_fields,
+            Some(local),
+            Synced::Set(&remote.rev),
+            Origin::Sync,
+            changes,
+        )?;
+        learned(tx, &remote.id, &remote.rev)?;
+        return Ok(ApplyOutcome::Applied);
+    }
+    let mut fields = remote_fields.clone();
+    fields.insert("body".into(), merged_body.into());
+    fields.insert("tags".into(), merged_tags.into());
+    let updated = updated_at(&local.fields).max(updated_at(remote_fields));
+    fields.insert("updatedAt".into(), updated.into());
+    fields.insert("timestamp".into(), updated.into());
+    let first_created = created(&local.fields).min(created(remote_fields));
+    let fields = normalize(
+        doc_type,
+        &remote.id,
+        fields,
+        None,
+        first_created,
+        Refs::Skip,
+    )?;
+    let above = kanso_core::Rev {
+        generation: local_rev.generation.max(remote_rev.generation),
+        hash: String::new(),
+    };
+    let new_rev = kanso_core::Rev::next(Some(&above), &Value::Object(fields.clone())).to_string();
+    keep_remote(tx, &remote.id, &remote.rev, remote_fields)?;
+    store_row(
+        tx,
+        &remote.id,
+        doc_type,
+        &new_rev,
+        false,
+        &fields,
+        Some(local),
+        Synced::Set(&remote.rev),
+        Origin::Sync,
+        changes,
+    )?;
+    learned(tx, &remote.id, &remote.rev)?;
+    Ok(ApplyOutcome::LocalWon { new_rev })
 }
 
 /// Which conflict rules [`Store::apply_remote`] follows.

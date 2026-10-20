@@ -4,6 +4,7 @@
 //! `file:…`) so links inside note bodies, API clients and imported data keep
 //! working unchanged.
 
+pub mod dates;
 pub mod excerpt;
 pub mod id;
 pub mod links;
@@ -11,7 +12,10 @@ pub mod model;
 pub mod outline;
 pub mod query;
 pub mod rev;
+pub mod roles;
+pub mod tags;
 pub mod tasks;
+pub mod template;
 
 pub use excerpt::excerpt;
 pub use id::{DocType, new_id};

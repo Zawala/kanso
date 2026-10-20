@@ -19,7 +19,8 @@ pub enum Field {
     Book,
     /// Notebook ID with or without the `book:` prefix, e.g. `bookId:kGlLniaV`.
     BookId,
-    /// Tag name, e.g. `tag:JavaScript`.
+    /// Tag name, e.g. `tag:JavaScript`; a nested tag's parent, such as
+    /// `tag:work` for `work/acme`, finds it too.
     Tag,
     /// Tag ID with or without the `tag:` prefix, e.g. `tagId:tag:abc`.
     TagId,
@@ -201,7 +202,7 @@ impl Clause {
                     || (note.book_id == TRASH_BOOK_ID && v.eq_ignore_ascii_case(TRASH_BOOK_ID))
             }
             Some(Field::BookId) => note.book_id == self.book_id(),
-            Some(Field::Tag) => note.tag_names.iter().any(|t| t.eq_ignore_ascii_case(v)),
+            Some(Field::Tag) => note.tag_names.iter().any(|t| crate::tags::is_within(t, v)),
             Some(Field::TagId) => note
                 .tag_ids
                 .iter()
