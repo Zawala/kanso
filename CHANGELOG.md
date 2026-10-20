@@ -7,7 +7,7 @@ heading compares the release with the one before.
 
 ### Fixed
 
-- **import:** Import from Inkdrop on Windows builds a SQLite file URI it accepts ([515dcf8](https://github.com/iamngoni/kanso/commit/515dcf83f70ed27740ab84c071c2386f6bbf2ef7))
+- **import:** Importing a library on Windows builds a SQLite file URI it accepts ([515dcf8](https://github.com/iamngoni/kanso/commit/515dcf83f70ed27740ab84c071c2386f6bbf2ef7))
 
 ### Under the hood
 

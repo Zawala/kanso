@@ -50,6 +50,8 @@ commit_preprocessors = [
   { pattern = '\(#([0-9]+)\)', replace = "([#${1}](https://github.com/iamngoni/kanso/pull/${1}))" },
   # Release notes describe Kanso on its own terms (commit 76d2e0c's subject).
   { pattern = " that doesn't assume Inkdrop", replace = "" },
+  # Commit 515dcf8's subject.
+  { pattern = "Import from Inkdrop on Windows", replace = "Importing a library on Windows" },
 ]
 # The HTML comments order the groups and are stripped from the headings.
 commit_parsers = [
