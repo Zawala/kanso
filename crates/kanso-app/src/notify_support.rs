@@ -31,6 +31,7 @@ pub enum Availability {
 /// executable at `exe` is an app the notification centre accepts: an
 /// identifier, and the executable at `<Name>.app/Contents/MacOS/<exe>`.
 /// Pure.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn runs_as_app(bundle_id: Option<&str>, exe: &Path) -> bool {
     let has_id = bundle_id.is_some_and(|id| !id.trim().is_empty());
     let macos = exe.parent();
@@ -50,6 +51,7 @@ pub fn runs_as_app(bundle_id: Option<&str>, exe: &Path) -> bool {
 
 /// The system's answer about permission, as last heard.
 const UNKNOWN: u8 = 0;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const ALLOWED: u8 = 1;
 const DENIED: u8 = 2;
 static PERMISSION: AtomicU8 = AtomicU8::new(UNKNOWN);
@@ -93,11 +95,11 @@ pub fn availability() -> Availability {
 /// [`availability`] has the answer once it comes. Does nothing when this
 /// isn't an app, so the notification centre is never touched then.
 pub fn refresh_permission() {
-    if !is_app() {
-        return;
-    }
     #[cfg(target_os = "macos")]
     {
+        if !is_app() {
+            return;
+        }
         use block2::RcBlock;
         use objc2_user_notifications::{
             UNAuthorizationStatus, UNNotificationSettings, UNUserNotificationCenter,
