@@ -65,7 +65,8 @@ class FakeRerout {
 			const code = `c${(this.next += 1)}`;
 			this.links.set(code, { target_url: input.target_url, seo_title: input.seo_title, deleted: false });
 			if (this.duringCreate) await this.duringCreate();
-			const link: Record<string, unknown> = { code, short_url: `https://rerout.co/${code}`, project_id: PROJECT, target_url: input.target_url, ...input };
+			const host = typeof input.domain_hostname === "string" ? input.domain_hostname : "rerout.co";
+			const link: Record<string, unknown> = { code, short_url: `https://${host}/${code}`, project_id: PROJECT, target_url: input.target_url, ...input };
 			this.tamper?.(link);
 			return Response.json(link, { status: 201 });
 		}
@@ -111,6 +112,36 @@ const queued = async () =>
 	(await env.DB.prepare("SELECT code, attempts FROM short_link_purges ORDER BY code").all<{ code: string; attempts: number }>()).results;
 
 describe("making a short link", () => {
+	it("makes links on the custom domain when one is set, and uses no link Rerout put on another host", async () => {
+		const a = await signUp("alice");
+		const onDomain = () => testEnv({ REROUT_API_KEY: KEY, REROUT_PROJECT_ID: PROJECT, REROUT_DOMAIN: " Go.KansoApp.app " });
+		const id = newShareId();
+		const r = await put(a.token, id, (await seal(id, "x")).bytes, { e: onDomain() });
+		expect(r).toMatchObject({ status: 200, body: { short_url: "https://go.kansoapp.app/c1" } });
+		expect(JSON.parse(rerout.sent[0].body)).toMatchObject({ domain_hostname: "go.kansoapp.app", target_url: `${ORIGIN}/p/${id}` });
+
+		// Rerout answering on its own host (the domain not ready, say): deleted, the long link stays.
+		rerout.tamper = (l) => (l.short_url = `https://rerout.co/${l.code}`);
+		const other = newShareId();
+		expect((await put(a.token, other, (await seal(other, "x")).bytes, { e: onDomain() })).body.short_url).toBeNull();
+		expect(await row(other)).toMatchObject({ short_code: null });
+		expect(rerout.live()).toEqual(["c1"]);
+	});
+
+	it("hands out a link on the custom domain only: any other host answered is refused", async () => {
+		const a = await signUp("alice");
+		const onDomain = testEnv({ REROUT_API_KEY: KEY, REROUT_PROJECT_ID: PROJECT, REROUT_DOMAIN: "go.kansoapp.app" });
+		await fc.assert(
+			fc.asyncProperty(fc.domain(), async (host) => {
+				rerout.tamper = (l) => (l.short_url = `https://${host}/${l.code}`);
+				const id = newShareId();
+				const url = (await put(a.token, id, (await seal(id, "x")).bytes, { e: onDomain })).body.short_url;
+				expect(url === null ? null : new URL(url).hostname).toBe(new URL(`https://${host}/`).hostname === "go.kansoapp.app" ? "go.kansoapp.app" : null);
+			}),
+			runs(40),
+		);
+	});
+
 	it("gives a share one link to /p/<id> without the key, previewing the title over Kanso's image, noindex", async () => {
 		const a = await signUp("alice");
 		const id = newShareId();

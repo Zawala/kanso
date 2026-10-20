@@ -255,7 +255,10 @@ upload (`cloud/src/rerout.ts`): `POST https://api.rerout.co/v1/links` with `targ
 controls removed, cut to 90 characters; "A note" without one), one line about Kanso as
 `seo_description`, Kanso's preview image `<origin>/og/kanso.png` (a static asset,
 `assets/icon/make-og.swift` draws it) as `seo_image_url`, the target as `seo_canonical_url`, and
-`seo_noindex`. The share's row keeps the link's code, URL and title; a later upload with another
+`seo_noindex`. With `REROUT_DOMAIN` set (`go.kansoapp.app`, added and verified in the Rerout
+project, its CNAME in the kansoapp.app zone) it also sends `domain_hostname`, and a link Rerout answers
+on any other host is deleted and not used, so the device shows the long link rather than one on
+another domain. The share's row keeps the link's code, URL and title; a later upload with another
 title retitles it (`PATCH`), and two racing uploads keep one link and delete the other. rerout.co
 answers a browser with a plain 302 to the target, and browsers carry the fragment of the link they
 opened across a redirect, so `<short url>#<key>` opens the note and Rerout never receives the key.

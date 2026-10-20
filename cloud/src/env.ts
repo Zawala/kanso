@@ -14,4 +14,6 @@ export interface Env {
 	REROUT_API_KEY?: string;
 	/** The Rerout project the key belongs to (a plain var); a link Rerout made elsewhere is deleted and not used. */
 	REROUT_PROJECT_ID?: string;
+	/** The custom domain short links are made on (a plain var, `go.kansoapp.app`), added and verified in that project; without it, Rerout's own. */
+	REROUT_DOMAIN?: string;
 }

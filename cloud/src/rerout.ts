@@ -47,6 +47,12 @@ export function isShortUrl(url: unknown): url is string {
 	}
 }
 
+/** The custom domain short links are made on, lower-cased; null for Rerout's own. */
+export function shortLinkDomain(env: Env): string | null {
+	const domain = env.REROUT_DOMAIN?.trim().toLowerCase();
+	return domain ? domain : null;
+}
+
 /**
  * A title as previews show it: control characters and runs of whitespace
  * become single spaces, the ends are trimmed, and past 90 characters it is cut
@@ -114,6 +120,7 @@ async function call(env: Env, method: string, path: string, body?: unknown): Pro
  */
 export async function createShortLink(env: Env, origin: string, id: string, title: string): Promise<ShortLink | null> {
 	const target = `${origin}/p/${id}`;
+	const domain = shortLinkDomain(env);
 	const response = await call(env, "POST", "/v1/links", {
 		target_url: target,
 		seo_title: title,
@@ -122,6 +129,7 @@ export async function createShortLink(env: Env, origin: string, id: string, titl
 		// Every preview field is set, so Rerout never fetches the target to fill one in.
 		seo_canonical_url: target,
 		seo_noindex: true,
+		...(domain ? { domain_hostname: domain } : {}),
 	});
 	if (!response) return null;
 	if (response.status !== 201 && response.status !== 200) {
@@ -141,7 +149,13 @@ export async function createShortLink(env: Env, origin: string, id: string, titl
 		return null;
 	}
 	const project = env.REROUT_PROJECT_ID?.trim();
-	const usable = isShortUrl(link.short_url) && link.target_url === target && (!project || link.project_id === project);
+	// With a custom domain, a link on any other host isn't one to hand out: the
+	// device keeps the long link instead.
+	const usable =
+		isShortUrl(link.short_url) &&
+		(!domain || new URL(link.short_url).hostname === domain) &&
+		link.target_url === target &&
+		(!project || link.project_id === project);
 	if (!usable) {
 		log("create", "unusable");
 		await deleteShortLink(env, link.code);

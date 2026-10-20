@@ -45,7 +45,9 @@
   "assets": { "directory": "./public" },
   // Published notes' short links (src/rerout.ts): the Rerout project REROUT_API_KEY belongs to.
   // The key is a secret, `wrangler secret put REROUT_API_KEY`; without it there are no short links.
-  "vars": { "REROUT_PROJECT_ID": "prj_xX6I1BVjuNKzdE0o" }
+  // REROUT_DOMAIN: the project's custom domain links are made on (added and verified in Rerout,
+  // with go.kansoapp.app's CNAME in the kansoapp.app zone).
+  "vars": { "REROUT_PROJECT_ID": "prj_xX6I1BVjuNKzdE0o", "REROUT_DOMAIN": "go.kansoapp.app" }
   // AUTH_PEPPER (required) is a secret: `wrangler secret put AUTH_PEPPER` (reads stdin; see README.md).
   // SYNC_TOKEN is no longer read; `admin purge-legacy` deletes it.
 }
