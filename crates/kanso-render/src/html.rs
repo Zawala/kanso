@@ -329,7 +329,7 @@ figure svg{{max-width:100%;height:auto}}
 .kanso-math-display{{display:block;text-align:center;margin:.4em 0}}
 .kanso-diagram,.kanso-drawing{{display:block}}
 .kanso-missing{{color:{muted};font-style:italic}}
-@media print{{body{{max-width:none;padding:0}}pre,figure,table,img{{break-inside:avoid}}h1,h2,h3{{break-after:avoid}}}}
+@media print{{html,body{{background:none}}body{{max-width:none;padding:0}}pre,figure,table,img{{break-inside:avoid}}h1,h2,h3{{break-after:avoid}}}}
 "#,
         scheme = if p.dark { "dark" } else { "light" },
         bg = c(p.background),

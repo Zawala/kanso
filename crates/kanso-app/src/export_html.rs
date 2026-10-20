@@ -2,9 +2,9 @@
 //!
 //! The page is `kanso_render::html::page`: one self-contained file, with
 //! math, diagrams and drawings inline as SVG and attached images as data
-//! URIs, and no scripts. On macOS a PDF is made from that page by WebKit
-//! (WKWebView's createPDF), offscreen; elsewhere the page opens in the
-//! browser, to print to PDF from there.
+//! URIs, and no scripts. On macOS a PDF is printed from that page by
+//! WebKit, offscreen, in pages; elsewhere the page opens in the browser, to
+//! print to PDF from there.
 
 #[cfg(not(target_os = "macos"))]
 use std::path::Path;
@@ -84,6 +84,10 @@ pub fn export_html(
 
 /// Makes a PDF of the page: on macOS saved where asked, by WebKit; elsewhere
 /// the page opens in the browser, to print to PDF.
+///
+/// Paper is printed on white, so a dark preview theme exports in Kanso's
+/// light colors: printing leaves out backgrounds, and light text would be
+/// lost on the page.
 pub fn export_pdf(
     store: Arc<Store>,
     title: String,
@@ -91,7 +95,7 @@ pub fn export_pdf(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let palette = crate::preview_rich::palette(cx);
+    let palette = print_palette(crate::preview_rich::palette(cx));
     #[cfg(target_os = "macos")]
     {
         let picked = cx.prompt_for_new_path(&documents(), Some(&file_name(&title, "pdf")));
@@ -104,39 +108,7 @@ pub fn export_pdf(
                     .background_executor()
                     .spawn(async move { page(&store, &title, &body, &palette) })
                     .await;
-                let Ok(view) = cx.update(|_, _| mac::load(&html)) else {
-                    return;
-                };
-                let result = match view {
-                    Ok(view) => {
-                        // WebKit lays the page out on this thread: look in
-                        // on it every 50 ms, for up to 30 s.
-                        let mut loaded = false;
-                        for _ in 0..600 {
-                            cx.background_executor()
-                                .timer(std::time::Duration::from_millis(50))
-                                .await;
-                            if !cx.update(|_, _| mac::is_loading(&view)).unwrap_or(false) {
-                                loaded = true;
-                                break;
-                            }
-                        }
-                        if loaded {
-                            let (done, finished) = async_channel::bounded(1);
-                            cx.update(|_, _| mac::create_pdf(&view, path.clone(), done))
-                                .ok();
-                            let result = finished
-                                .recv()
-                                .await
-                                .unwrap_or_else(|_| Err("WebKit stopped".into()));
-                            drop(view);
-                            result
-                        } else {
-                            Err("the page took too long to lay out".into())
-                        }
-                    }
-                    Err(err) => Err(err),
-                };
+                let result = mac_pdf(&html, &path, cx).await;
                 cx.update(|window, cx| match result {
                     Ok(()) => cx.reveal_path(&path),
                     Err(err) => tell(
@@ -186,80 +158,91 @@ pub fn export_pdf(
     }
 }
 
+/// The colors to print in: `palette` when it is light, else Kanso's light
+/// theme. Pure.
+fn print_palette(palette: Palette) -> Palette {
+    if palette.dark {
+        Palette::LIGHT
+    } else {
+        palette
+    }
+}
+
+/// How often, and how many times, to look in on WebKit: every 50 ms, for up
+/// to a minute.
+#[cfg(target_os = "macos")]
+const POLL: std::time::Duration = std::time::Duration::from_millis(50);
+#[cfg(target_os = "macos")]
+const POLLS: usize = 1200;
+
+/// Prints `html` to a paged PDF at `path`, on the user's default paper:
+/// WebKit's print operation, run offscreen with no panels. If printing
+/// fails, the PDF is made by createPDF instead, as one long page, so there
+/// is still a PDF.
+#[cfg(target_os = "macos")]
+async fn mac_pdf(
+    html: &str,
+    path: &std::path::Path,
+    cx: &mut AsyncWindowContext,
+) -> Result<(), String> {
+    let closed = |_| "the window closed".to_string();
+    let page = cx.update(|_, _| mac::Page::load(html)).map_err(closed)??;
+    let mut loaded = false;
+    for _ in 0..POLLS {
+        cx.background_executor().timer(POLL).await;
+        if !cx.update(|_, _| page.is_loading()).unwrap_or(false) {
+            loaded = true;
+            break;
+        }
+    }
+    if !loaded {
+        return Err("the page took too long to lay out".into());
+    }
+    // In pages, by printing.
+    std::fs::remove_file(path).ok();
+    let (done, finished) = async_channel::bounded(1);
+    let printed = match cx.update(|_, _| page.print(path, done)).map_err(closed)? {
+        Ok(()) => {
+            let mut success = false;
+            for _ in 0..POLLS {
+                if let Ok(answer) = finished.try_recv() {
+                    success = answer;
+                    break;
+                }
+                cx.background_executor().timer(POLL).await;
+            }
+            success && std::fs::metadata(path).is_ok_and(|m| m.len() > 0)
+        }
+        Err(err) => {
+            eprintln!("kanso: couldn't print the PDF: {err}");
+            false
+        }
+    };
+    if printed {
+        return Ok(());
+    }
+    // One long page, rather than none.
+    eprintln!("kanso: printing the PDF failed; making it as one page");
+    let (done, finished) = async_channel::bounded(1);
+    cx.update(|_, _| page.create_pdf(path.to_path_buf(), done))
+        .map_err(closed)?;
+    finished
+        .recv()
+        .await
+        .unwrap_or_else(|_| Err("WebKit stopped".into()))
+}
+
 #[cfg(not(target_os = "macos"))]
 fn open_in_browser(path: &Path, cx: &mut App) {
     cx.open_with_system(path);
 }
 
 #[cfg(target_os = "macos")]
-mod mac {
-    //! WebKit, offscreen: a WKWebView loads the page, and once it has laid
-    //! it out, createPDF gives the PDF. All on the main thread, as WebKit
-    //! requires.
-
-    use std::path::PathBuf;
-
-    use block2::RcBlock;
-    use objc2::MainThreadMarker;
-    use objc2::rc::Retained;
-    use objc2_foundation::{NSData, NSError, NSPoint, NSRect, NSSize, NSString};
-    use objc2_web_kit::{WKWebView, WKWebViewConfiguration};
-
-    /// The page's width in points: A4 at 96 points an inch, roughly.
-    const PAGE_WIDTH: f64 = 794.;
-
-    /// A web view, offscreen, loading `html`.
-    pub fn load(html: &str) -> Result<Retained<WKWebView>, String> {
-        let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
-        // SAFETY: on the main thread (checked above); the configuration is
-        // copied by the view, which the caller keeps.
-        unsafe {
-            let configuration = WKWebViewConfiguration::new(mtm);
-            let frame = NSRect::new(NSPoint::new(0., 0.), NSSize::new(PAGE_WIDTH, 1123.));
-            let view = WKWebView::initWithFrame_configuration(
-                mtm.alloc::<WKWebView>(),
-                frame,
-                &configuration,
-            );
-            view.loadHTMLString_baseURL(&NSString::from_str(html), None);
-            Ok(view)
-        }
-    }
-
-    pub fn is_loading(view: &WKWebView) -> bool {
-        // SAFETY: a property read, on the main thread (GPUI's foreground).
-        unsafe { view.isLoading() }
-    }
-
-    /// Asks WebKit for the PDF of the whole page and writes it to `path`;
-    /// `done` hears how it went.
-    pub fn create_pdf(
-        view: &WKWebView,
-        path: PathBuf,
-        done: async_channel::Sender<Result<(), String>>,
-    ) {
-        let handler = RcBlock::new(move |data: *mut NSData, error: *mut NSError| {
-            // SAFETY: WebKit passes a valid NSData or NSError, or null.
-            let result = unsafe {
-                match (data.as_ref(), error.as_ref()) {
-                    (Some(data), _) => {
-                        std::fs::write(&path, data.to_vec()).map_err(|err| err.to_string())
-                    }
-                    (None, Some(error)) => Err(error.localizedDescription().to_string()),
-                    (None, None) => Err("WebKit made no PDF".into()),
-                }
-            };
-            done.try_send(result).ok();
-        });
-        // SAFETY: on the main thread; WebKit retains the handler until it
-        // has called it.
-        unsafe { view.createPDFWithConfiguration_completionHandler(None, &handler) };
-    }
-}
+mod mac;
 
 #[cfg(test)]
 mod tests {
-    use super::{Palette, Store, file_name, page};
+    use super::{Palette, Store, file_name, page, print_palette};
     use proptest::prelude::*;
 
     #[test]
@@ -274,6 +257,17 @@ mod tests {
         assert!(html.contains("src=\"data:image/png;base64,"));
         assert!(html.contains("kanso-math"));
         assert!(!html.contains("<script"));
+    }
+
+    #[test]
+    fn pdfs_print_in_light_colors() {
+        assert_eq!(print_palette(Palette::DARK), Palette::LIGHT);
+        assert_eq!(print_palette(Palette::LIGHT), Palette::LIGHT);
+        let sepia = Palette {
+            background: kanso_render::Rgb(0xF4ECD8),
+            ..Palette::LIGHT
+        };
+        assert_eq!(print_palette(sepia), sepia);
     }
 
     proptest! {
