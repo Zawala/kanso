@@ -6,6 +6,7 @@
 //! icons: a button to open it again, compose, the library places, the
 //! notebooks and the tags (lists in the palette), trash, sync and settings.
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use gpui_kit::assets::IconName as Lucide;
@@ -18,6 +19,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::NoteStatus;
+use kanso_core::tags::{TagNode, is_within};
 use kanso_sync::SyncProblem;
 
 use crate::account_words::step_label;
@@ -74,6 +76,8 @@ pub struct Sidebar {
     status_filter: bool,
     /// Whether every tag shows, rather than the most used.
     all_tags: bool,
+    /// The levels of the tag tree opened, by their paths in lowercase.
+    open_tags: HashSet<String>,
     /// Collapsed to the icon rail.
     collapsed: bool,
     /// Settings fill the window beside the sidebar: the gear is the place
@@ -124,6 +128,7 @@ impl Sidebar {
             status_choice,
             status_filter: false,
             all_tags: false,
+            open_tags: HashSet::new(),
             collapsed: false,
             settings_open: false,
             user: user.into(),
@@ -349,17 +354,24 @@ impl Sidebar {
 
     fn render_tags(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let library = self.library.read(cx);
+        // Tags nested with `/` show as a tree below the others' chips.
+        let flat = flat_tag_ids(&library.tag_tree);
+        let flat_tags: Vec<_> = library
+            .tags
+            .iter()
+            .filter(|t| flat.contains(t.id.as_str()))
+            .collect();
         let selected_tag = match &library.filter {
-            Filter::Tag(id) => library.tags.iter().position(|t| &t.id == id),
+            Filter::Tag(id) => flat_tags.iter().position(|t| &t.id == id),
             _ => None,
         };
-        let counts: Vec<u32> = library.tags.iter().map(|t| t.count).collect();
+        let counts: Vec<u32> = flat_tags.iter().map(|t| t.count).collect();
         let shown = visible_tags(&counts, TAG_LIMIT, selected_tag, self.all_tags);
         let more = counts.len() > TAG_LIMIT;
         let tags: Vec<_> = shown
             .iter()
             .map(|&ix| {
-                let t = &library.tags[ix];
+                let t = flat_tags[ix];
                 (t.id.clone(), t.name.clone(), t.count, t.color)
             })
             .collect();
@@ -413,33 +425,7 @@ impl Sidebar {
                 .on_click(move |_, _, cx| {
                     library.update(cx, |library, cx| library.set_filter(filter.clone(), cx));
                 })
-                .context_menu(move |menu, window, cx| {
-                    let (rename, delete) = (view.clone(), view.clone());
-                    let (a, c) = (tag_id.clone(), tag_id.clone());
-                    let recolor_view = view.clone();
-                    let recolor_id = tag_id.clone();
-                    menu.item(PopupMenuItem::new("Rename…").on_click(move |_, _, cx| {
-                        rename.update(cx, |_, cx| cx.emit(SidebarEvent::RenameTag(a.clone())));
-                    }))
-                    .submenu("Color", window, cx, move |mut menu, _, _| {
-                        for option in kanso_core::TagColor::ALL {
-                            let view = recolor_view.clone();
-                            let id = recolor_id.clone();
-                            menu = menu.item(PopupMenuItem::new(format!("{option:?}")).on_click(
-                                move |_, _, cx| {
-                                    view.update(cx, |_, cx| {
-                                        cx.emit(SidebarEvent::RecolorTag(id.clone(), option))
-                                    });
-                                },
-                            ));
-                        }
-                        menu
-                    })
-                    .separator()
-                    .item(PopupMenuItem::new("Delete Tag…").on_click(move |_, _, cx| {
-                        delete.update(cx, |_, cx| cx.emit(SidebarEvent::DeleteTag(c.clone())));
-                    }))
-                })
+                .context_menu(move |menu, window, cx| tag_menu(menu, &view, &tag_id, window, cx))
         });
         let toggle = more.then(|| {
             div()
@@ -470,7 +456,7 @@ impl Sidebar {
                     cx.notify();
                 }))
         });
-        h_flex()
+        let chips = h_flex()
             .flex_wrap()
             .flex_none()
             .gap(px(6.))
@@ -478,7 +464,112 @@ impl Sidebar {
             .px(px(8.))
             .pt_1()
             .children(chips)
-            .children(toggle)
+            .children(toggle);
+        v_flex()
+            .flex_none()
+            .child(chips)
+            .child(div().h(px(4.)))
+            .children(self.render_tag_tree(cx))
+    }
+
+    /// The tags nested with `/`, one row per level, folded by default. A
+    /// level shows the notes tagged with it or anything inside it.
+    fn render_tag_tree(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let library = self.library.read(cx);
+        let showing = match &library.filter {
+            Filter::TagPath(path) => Some(path.clone()),
+            Filter::Tag(id) => library.tag(id).map(|t| t.name.clone()),
+            _ => None,
+        };
+        let nested: Vec<TagNode> = library
+            .tag_tree
+            .iter()
+            .filter(|node| !node.children.is_empty())
+            .cloned()
+            .collect();
+        let open = |path: &str| {
+            self.open_tags.contains(&path.to_lowercase())
+                || showing.as_deref().is_some_and(|shown| {
+                    is_within(shown, path) && !shown.eq_ignore_ascii_case(path)
+                })
+        };
+        let colors = Colors::get(cx);
+        let mut rows = Vec::new();
+        for (depth, node) in visible_tag_rows(&nested, &open) {
+            let filter = if node.children.is_empty()
+                && let Some(id) = &node.tag_id
+            {
+                Filter::Tag(id.clone())
+            } else {
+                Filter::TagPath(node.path.clone())
+            };
+            let parent = !node.children.is_empty();
+            let is_open = parent && open(&node.path);
+            let chevron = if parent {
+                let path = node.path.to_lowercase();
+                div()
+                    .id(SharedString::from(format!("tag-fold-{path}")))
+                    .flex_none()
+                    .size(px(16.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(4.))
+                    .hover(|el| el.bg(colors.sidebar_hover))
+                    .child(
+                        Icon::new(if is_open {
+                            IconName::ChevronDown
+                        } else {
+                            IconName::ChevronRight
+                        })
+                        .size(px(13.))
+                        .text_color(colors.text_muted),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        if !this.open_tags.remove(&path) {
+                            this.open_tags.insert(path.clone());
+                        }
+                        cx.notify();
+                    }))
+                    .into_any_element()
+            } else {
+                div().flex_none().size(px(16.)).into_any_element()
+            };
+            let icon = h_flex()
+                .gap(px(2.))
+                .child(chevron)
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(colors.text_muted)
+                        .child("#"),
+                )
+                .into_any_element();
+            let row = self.row(
+                SharedString::from(format!("tag-tree-{}", node.path.to_lowercase())),
+                filter,
+                Entry {
+                    icon: Some(icon),
+                    label: node.label.clone().into(),
+                    count: node.count,
+                    depth,
+                },
+                cx,
+            );
+            let row = match node.tag_id.clone() {
+                Some(tag_id) => {
+                    let view = cx.entity();
+                    row.context_menu(move |menu, window, cx| {
+                        tag_menu(menu, &view, &tag_id, window, cx)
+                    })
+                    .into_any_element()
+                }
+                None => row.into_any_element(),
+            };
+            rows.push(row);
+        }
+        rows
     }
 
     fn render_status(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1015,6 +1106,13 @@ impl Sidebar {
         self.scroll.scroll_to_bottom();
         cx.notify();
     }
+
+    /// Opens a level of the tag tree, as clicking its arrow does.
+    #[cfg(test)]
+    pub(crate) fn open_tag_level(&mut self, path: &str, cx: &mut Context<Self>) {
+        self.open_tags.insert(path.to_lowercase());
+        cx.notify();
+    }
 }
 
 impl Render for Sidebar {
@@ -1312,6 +1410,72 @@ pub fn initials(name: &str) -> String {
 /// Which tags show, as indices in the library's (name) order: all of them
 /// when asked, or else the `limit` most used plus the selected one. Ties go
 /// to the earlier name.
+/// A tag's menu: rename, color, delete.
+fn tag_menu(
+    menu: gpui_kit::component::menu::PopupMenu,
+    view: &Entity<Sidebar>,
+    tag_id: &str,
+    window: &mut Window,
+    cx: &mut Context<gpui_kit::component::menu::PopupMenu>,
+) -> gpui_kit::component::menu::PopupMenu {
+    let (rename, delete, recolor_view) = (view.clone(), view.clone(), view.clone());
+    let (a, c, recolor_id) = (tag_id.to_owned(), tag_id.to_owned(), tag_id.to_owned());
+    menu.item(PopupMenuItem::new("Rename…").on_click(move |_, _, cx| {
+        rename.update(cx, |_, cx| cx.emit(SidebarEvent::RenameTag(a.clone())));
+    }))
+    .submenu("Color", window, cx, move |mut menu, _, _| {
+        for option in kanso_core::TagColor::ALL {
+            let view = recolor_view.clone();
+            let id = recolor_id.clone();
+            menu = menu.item(PopupMenuItem::new(format!("{option:?}")).on_click(
+                move |_, _, cx| {
+                    view.update(cx, |_, cx| {
+                        cx.emit(SidebarEvent::RecolorTag(id.clone(), option))
+                    });
+                },
+            ));
+        }
+        menu
+    })
+    .separator()
+    .item(PopupMenuItem::new("Delete Tag…").on_click(move |_, _, cx| {
+        delete.update(cx, |_, cx| cx.emit(SidebarEvent::DeleteTag(c.clone())));
+    }))
+}
+
+/// The IDs of the tags that are neither nested nor have tags nested in
+/// them: they show as chips, the rest in the tree. Pure.
+pub fn flat_tag_ids(tree: &[TagNode]) -> HashSet<&str> {
+    tree.iter()
+        .filter(|node| node.children.is_empty())
+        .filter_map(|node| node.tag_id.as_deref())
+        .collect()
+}
+
+/// The tree's rows top to bottom with their depth: every level whose
+/// parents are all open. Pure.
+pub fn visible_tag_rows<'a>(
+    tree: &'a [TagNode],
+    open: &dyn Fn(&str) -> bool,
+) -> Vec<(usize, &'a TagNode)> {
+    fn walk<'a>(
+        nodes: &'a [TagNode],
+        depth: usize,
+        open: &dyn Fn(&str) -> bool,
+        rows: &mut Vec<(usize, &'a TagNode)>,
+    ) {
+        for node in nodes {
+            rows.push((depth, node));
+            if open(&node.path) {
+                walk(&node.children, depth + 1, open, rows);
+            }
+        }
+    }
+    let mut rows = Vec::new();
+    walk(tree, 0, open, &mut rows);
+    rows
+}
+
 pub fn visible_tags(
     counts: &[u32],
     limit: usize,
@@ -1337,9 +1501,11 @@ mod tests {
         SIGN_IN_TO_SYNC, SyncState, Tone, api_icon, footer_name, initials, problem_label,
         status_choice_after, status_group_open, sync_line, tone_icon, visible_tags,
     };
+    use super::{flat_tag_ids, visible_tag_rows};
     use crate::account_words::step_label;
     use crate::grouping::utc_label;
     use crate::services::{AccountState, strategies};
+    use kanso_core::tags::{TagInfo, tag_tree};
     use kanso_sync::{QuotaKind, SignOutReason, SyncProblem};
 
     /// Every label in the problems table, in its order.
@@ -1651,6 +1817,60 @@ mod tests {
         assert_eq!(initials("ngoni mangudya"), "NM");
         assert_eq!(initials("jane.q.public"), "JQ");
         assert_eq!(initials(" -- "), "");
+    }
+
+    #[test]
+    fn tag_tree_rows() {
+        let tags: Vec<TagInfo> = ["work", "work/acme", "work/acme/q3", "home", "read"]
+            .iter()
+            .enumerate()
+            .map(|(ix, name)| TagInfo {
+                id: format!("tag:{ix}"),
+                name: (*name).into(),
+            })
+            .collect();
+        let tree = tag_tree(&tags, &[]);
+        let flat = flat_tag_ids(&tree);
+        assert_eq!(flat.len(), 2);
+        assert!(flat.contains("tag:3") && flat.contains("tag:4"));
+        let nested: Vec<_> = tree
+            .into_iter()
+            .filter(|n| !n.children.is_empty())
+            .collect();
+        let labels = |open: &dyn Fn(&str) -> bool| {
+            visible_tag_rows(&nested, open)
+                .into_iter()
+                .map(|(depth, node)| format!("{depth}{}", node.label))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(labels(&|_| false), ["0work"]);
+        assert_eq!(labels(&|p| p == "work"), ["0work", "1acme"]);
+        assert_eq!(labels(&|_| true), ["0work", "1acme", "2q3"]);
+    }
+
+    proptest::proptest! {
+        /// With every level open, each nested tag has exactly one row, and
+        /// together with the chips every tag shows once.
+        #[test]
+        fn prop_every_tag_shows_once(names in proptest::collection::btree_set("[ab]{1,2}(/[ab]{1,2}){0,2}", 0..10)) {
+            let tags: Vec<TagInfo> = names
+                .iter()
+                .enumerate()
+                .map(|(ix, name)| TagInfo { id: format!("tag:{ix}"), name: name.clone() })
+                .collect();
+            let tree = tag_tree(&tags, &[]);
+            let flat = flat_tag_ids(&tree);
+            let nested: Vec<_> = tree.iter().filter(|n| !n.children.is_empty()).cloned().collect();
+            let mut shown: Vec<String> = visible_tag_rows(&nested, &|_| true)
+                .into_iter()
+                .filter_map(|(_, node)| node.tag_id.clone())
+                .collect();
+            shown.extend(flat.iter().map(|id| (*id).to_owned()));
+            shown.sort();
+            let mut all: Vec<String> = tags.iter().map(|t| t.id.clone()).collect();
+            all.sort();
+            proptest::prop_assert_eq!(shown, all);
+        }
     }
 
     #[test]

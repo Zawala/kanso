@@ -7,6 +7,7 @@
 use gpui_kit::Action;
 use gpui_kit::assets::IconName;
 
+use crate::journal::{NewTemplate, NextDay, OpenToday, PreviousDay, QuickCapture};
 use crate::settings::{
     CloseSettings, OpenAccountSettings, OpenApiSettings, OpenAppearanceSettings,
     OpenEditorSettings, OpenGeneralSettings, OpenUpdateSettings, ReloadThemes,
@@ -52,6 +53,8 @@ pub enum Picker {
     GoToTag,
     /// The open note's word goal.
     WordGoal,
+    /// A template to make a note from.
+    Template,
 }
 
 /// What choosing a command does.
@@ -167,6 +170,39 @@ static COMMANDS: &[Command] = &[
         keywords: &["go", "jump", "switch", "find", "title"],
         group: Group::Note,
         run: action!(OpenNotePicker),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "new-from-template",
+        label: "New from template…",
+        label_when_pinned: None,
+        description: "Makes a note from one in the Templates notebook, with {{date}}, {{time}} and {{title}} filled in.",
+        icon: IconName::LayoutTemplate,
+        keywords: &["create", "template", "boilerplate", "snippet"],
+        group: Group::Note,
+        run: Run::Pick(Picker::Template),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "new-template",
+        label: "New template",
+        label_when_pinned: None,
+        description: "Creates a note in the Templates notebook. Write {{date}}, {{time}}, {{title}}, {{date:%A %e %B}} or {{cursor}} where the new note should have them.",
+        icon: IconName::LayoutTemplate,
+        keywords: &["create", "template", "add"],
+        group: Group::Note,
+        run: action!(NewTemplate),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "quick-capture",
+        label: "Quick note",
+        label_when_pinned: None,
+        description: "Opens the small window for jotting something down, which saves to the Inbox. Its shortcut works from any app; Settings › General sets it.",
+        icon: IconName::Zap,
+        keywords: &["capture", "jot", "inbox", "scratch"],
+        group: Group::Note,
+        run: action!(QuickCapture),
         needs: Needs::Nothing,
     },
     Command {
@@ -416,6 +452,39 @@ static COMMANDS: &[Command] = &[
         needs: Needs::Nothing,
     },
     // Go to; the library adds its places before these.
+    Command {
+        id: "today",
+        label: "Today's note",
+        label_when_pinned: None,
+        description: "Opens today's note in the Journal, making it from the daily template when it doesn't exist yet.",
+        icon: IconName::CalendarDays,
+        keywords: &["daily", "journal", "date", "diary"],
+        group: Group::GoTo,
+        run: action!(OpenToday),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "previous-day",
+        label: "Previous day",
+        label_when_pinned: None,
+        description: "Opens the daily note before the one open (or before today).",
+        icon: IconName::ChevronLeft,
+        keywords: &["daily", "journal", "yesterday", "back"],
+        group: Group::GoTo,
+        run: action!(PreviousDay),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "next-day",
+        label: "Next day",
+        label_when_pinned: None,
+        description: "Opens the daily note after the one open, up to today's.",
+        icon: IconName::ChevronRight,
+        keywords: &["daily", "journal", "tomorrow", "forward"],
+        group: Group::GoTo,
+        run: action!(NextDay),
+        needs: Needs::Nothing,
+    },
     Command {
         id: "go-to-notebook",
         label: "Go to notebook…",

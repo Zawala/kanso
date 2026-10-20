@@ -12,6 +12,7 @@ icon_assets!(
     [
         ArrowUpDown,
         Brackets,
+        CalendarDays,
         CircleArrowDown,
         CircleDot,
         CirclePause,
@@ -40,6 +41,7 @@ icon_assets!(
         KeyRound,
         Keyboard,
         Laptop,
+        LayoutTemplate,
         Link,
         List,
         ListFilter,
@@ -77,6 +79,7 @@ icon_assets!(
         Unplug,
         Upload,
         UserPlus,
+        Zap,
     ]
 );
 

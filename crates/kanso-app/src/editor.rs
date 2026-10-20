@@ -118,6 +118,39 @@ pub enum EditorEvent {
     },
 }
 
+/// The ‹ › beside a daily note's title: the day before and the day after
+/// that have notes (or today).
+fn day_arrows(tab_stop: bool, cx: &App) -> impl IntoElement {
+    let colors = Colors::get(cx);
+    let arrow = |id: &'static str, icon: Lucide, tooltip: &'static str, forward: bool| {
+        Button::new(id)
+            .ghost()
+            .xsmall()
+            .tab_stop(tab_stop)
+            .debug_selector(move || id.into())
+            .icon(Icon::new(icon).text_color(colors.text_secondary))
+            .tooltip(tooltip)
+            .on_click(move |_, window, cx| {
+                if forward {
+                    window.dispatch_action(Box::new(crate::journal::NextDay), cx)
+                } else {
+                    window.dispatch_action(Box::new(crate::journal::PreviousDay), cx)
+                }
+            })
+    };
+    h_flex()
+        .flex_none()
+        .ml(px(6.))
+        .gap(px(1.))
+        .child(arrow(
+            "day-previous",
+            Lucide::ChevronLeft,
+            "Previous day",
+            false,
+        ))
+        .child(arrow("day-next", Lucide::ChevronRight, "Next day", true))
+}
+
 /// Whether two versions of a note say the same thing: equal apart from the
 /// revision and the task counts the store derives from the body. A sync that
 /// only moved the revision (a local win, a stale rebase, a repair) leaves the
@@ -176,6 +209,9 @@ pub struct NoteEditor {
     wiki_task: Option<Task<()>>,
     /// A line to show once note `.0` opens, as a backlink or heading asks.
     pending_reveal: Option<(String, u32)>,
+    /// A byte offset of note `.0`'s text to put the caret at once it
+    /// opens: where a template's `{{cursor}}` was.
+    pending_caret: Option<(String, usize)>,
     /// The note's saved title when its title field got the keyboard, to
     /// tell a rename when it loses it.
     title_on_focus: Option<(String, String)>,
@@ -253,7 +289,12 @@ impl NoteEditor {
         });
         let wiki: SharedIndex = Rc::new(RefCell::new(Arc::new(WikiIndex::default())));
         body.update(cx, |state, _| {
-            state.lsp_mut().completion_provider = Some(Rc::new(WikiCompletion::new(wiki.clone())));
+            // `#tags` beside `[[` wiki-links: the editor takes one provider.
+            state.lsp_mut().completion_provider =
+                Some(Rc::new(crate::tag_complete::NoteCompletion::new(
+                    WikiCompletion::new(wiki.clone()),
+                    library.clone(),
+                )));
         });
         let settings = cx
             .try_global::<AppState>()
@@ -360,6 +401,7 @@ impl NoteEditor {
             wiki,
             wiki_task: None,
             pending_reveal: None,
+            pending_caret: None,
             title_on_focus: None,
             text_version: 0,
             inspector_open: false,
@@ -711,6 +753,16 @@ impl NoteEditor {
         {
             self.reveal_line(line, window, cx);
         }
+        if let Some((id, offset)) = self.pending_caret.take()
+            && self.note_id() == Some(id.as_str())
+        {
+            self.body.update(cx, |state, cx| {
+                let offset = offset.min(state.text().len());
+                let position =
+                    gpui_kit::base::input::RopeExt::offset_to_position(state.text(), offset);
+                state.set_cursor_position(position, window, cx);
+            });
+        }
         cx.notify();
     }
 
@@ -755,7 +807,7 @@ impl NoteEditor {
             cx.background_executor().timer(AUTOSAVE_DELAY).await;
             this.update(cx, |this, cx| {
                 this.autosave = None;
-                this.save(cx);
+                this.save_as(true, cx);
                 // "Saving…" gives way even when there was nothing to write.
                 cx.notify();
             })
@@ -890,6 +942,11 @@ impl NoteEditor {
         self.pending_reveal = Some((id, line));
     }
 
+    /// Puts the caret at byte `offset` of note `id`'s text once it opens.
+    pub fn caret_after_open(&mut self, id: String, offset: usize) {
+        self.pending_caret = Some((id, offset));
+    }
+
     /// The title field lost the keyboard or took Enter: if that renamed the
     /// note and other notes name it by the old title in wiki-links, the
     /// workspace offers to update them.
@@ -974,10 +1031,29 @@ impl NoteEditor {
     /// Writes the title and body if they changed since the last save. While
     /// a Replace holds writes, the edits wait (A10).
     fn save(&mut self, cx: &mut Context<Self>) {
+        self.save_as(false, cx);
+    }
+
+    /// [`Self::save`]; `typing` for the autosave while the note is being
+    /// written in, which leaves out a `#tag` the caret is still in.
+    fn save_as(&mut self, typing: bool, cx: &mut Context<Self>) {
         if self.incoming.is_some() || !self.has_unsaved_edits(cx) || writes_held(cx) {
             return;
         }
-        self.write(|_, _| {}, Origin::Ui, cx);
+        // Settings › Editor: `#tags` in the text become the note's tags.
+        let inline = self.settings.inline_tags.then(|| {
+            let caret = typing.then(|| self.body.read(cx).cursor());
+            (self.store.clone(), caret)
+        });
+        self.write(
+            move |note, _| {
+                if let Some((store, caret)) = inline {
+                    crate::tag_complete::apply_inline_tags(&store, note, caret);
+                }
+            },
+            Origin::Ui,
+            cx,
+        );
     }
 
     /// Saves what waited while writes were held. When the Replace took the
@@ -1780,7 +1856,10 @@ impl NoteEditor {
                             .truncate()
                             .text_size(px(13.))
                             .child(title),
-                    ),
+                    )
+                    .when(kanso_core::roles::daily_date(&note.id).is_some(), |el| {
+                        el.child(day_arrows(tab_stop, cx))
+                    }),
             )
             // The save state shows whole or not at all: when it doesn't fit
             // beside the title it wraps onto a second line the band clips.

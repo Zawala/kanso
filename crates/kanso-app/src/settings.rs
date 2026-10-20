@@ -579,6 +579,8 @@ pub struct SettingsView {
     /// lights when the sidebar is hidden.
     leading_inset: Pixels,
     backing_up: bool,
+    /// The quick capture shortcut's control.
+    shortcut: Entity<crate::settings_capture::ShortcutRecorder>,
     /// Shown instead of the data folder, whose temporary path in a snapshot
     /// changes from run to run.
     #[cfg(test)]
@@ -607,6 +609,7 @@ impl SettingsView {
             scroll: ScrollHandle::new(),
             leading_inset: px(0.),
             backing_up: false,
+            shortcut: cx.new(|_| crate::settings_capture::ShortcutRecorder::new()),
             #[cfg(test)]
             data_dir_label: None,
             _tick: tick,
@@ -850,6 +853,8 @@ impl SettingsView {
             )
         });
         startup.into_iter().chain([
+            crate::settings_capture::capture_section(&self.shortcut, cx),
+            crate::settings_capture::journal_section(cx),
             section(
                 "Data",
                 vec![
@@ -1044,6 +1049,9 @@ fn writing_section(cx: &mut Context<SettingsView>) -> AnyElement {
             Row::new(Lucide::Goal, "Word goal")
                 .detail("For notes without their own. Focus mode shows the progress; set a note's own goal from its footer.")
                 .trailing(goal_menu),
+            Row::new(Lucide::Hash, "Tags from #words")
+                .detail("A #word in a note's text becomes one of its tags when the note is saved; #work/clients nests. Not in code, links or headings, and tags added by hand stay.")
+                .trailing(switch("inline-tags", writing.inline_tags, |e, on| e.inline_tags = on)),
         ],
         colors,
     )

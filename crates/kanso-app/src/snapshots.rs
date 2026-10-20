@@ -2152,6 +2152,121 @@ fn wiki_autocomplete(
     .unwrap();
 }
 
+/// Notes tagged in a tree (`work/acme`, `home/garden`): the sidebar shows
+/// the nested tags as rows under the chips, with `work` open and chosen,
+/// which lists the notes tagged anywhere under it.
+fn tags_tree(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let book = store.books().unwrap()[0].id.clone();
+    let tag = |name: &str| store.tag_named(name, Origin::Ui).unwrap();
+    let notes = [
+        ("Acme kickoff", vec![tag("work/acme")]),
+        ("Acme Q3 review", vec![tag("work/acme/q3")]),
+        ("Hiring loop", vec![tag("work/internal")]),
+        ("Team offsite", vec![tag("work")]),
+        ("Raised beds", vec![tag("home/garden")]),
+    ];
+    for (title, tags) in notes {
+        store
+            .put(
+                DocType::Note,
+                json!({"title": title, "body": format!("# {title}\n"), "bookId": book, "tags": tags}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap();
+    }
+    cx.update(|cx| {
+        let sidebar = workspace.read(cx).sidebar.clone();
+        sidebar.update(cx, |sidebar, cx| {
+            sidebar.open_tag_level("work", cx);
+            sidebar.open_tag_level("home", cx);
+        });
+    });
+    set_filter(cx, workspace, Filter::TagPath("work".into()));
+}
+
+/// Two templates in the Templates notebook, and New from template… open.
+fn template_picker(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let templates = store
+        .role_book(kanso_core::roles::Role::Templates, Origin::Ui)
+        .unwrap();
+    for (title, body) in [
+        (
+            "Meeting {{date}}",
+            "## Attendees\n\n- {{cursor}}\n\n## Notes\n\n## Actions\n\n- [ ] \n",
+        ),
+        (
+            "Weekly review",
+            "# Week {{date:%V}}\n\n## Went well\n\n## To change\n",
+        ),
+    ] {
+        store
+            .put(
+                DocType::Note,
+                json!({"title": title, "body": body, "bookId": templates}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap();
+    }
+    open_palette(cx, window, workspace, Mode::Pick(Picker::Template), "");
+}
+
+/// Today's note (⌘D), made from the daily template, with an earlier day's
+/// note to step back to: the ‹ › beside the title.
+fn daily_note(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let templates = store
+        .role_book(kanso_core::roles::Role::Templates, Origin::Ui)
+        .unwrap();
+    let template = store
+        .put(
+            DocType::Note,
+            json!({
+                "title": "Daily",
+                "body": "# {{date:%A %e %B}}\n\n## Plan\n\n- {{cursor}}\n\n## Log\n\n- {{time}} Started the day\n",
+                "bookId": templates,
+            }),
+            Put::Upsert,
+            Origin::Ui,
+        )
+        .unwrap()
+        .id;
+    store
+        .set_daily_template(Some(&template), Origin::Ui)
+        .unwrap();
+    let earlier = kanso_core::dates::Date::new(2026, 5, 26).unwrap();
+    store
+        .daily_note(
+            earlier,
+            &kanso_store::NewNote {
+                title: kanso_core::roles::daily_title(earlier),
+                body: "## Log\n\n- Shipped the importer\n".into(),
+                tags: Vec::new(),
+            },
+            Origin::Ui,
+        )
+        .unwrap();
+    cx.update_window(window, |_, window, cx| {
+        workspace.update(cx, |workspace, cx| workspace.open_today(window, cx));
+    })
+    .unwrap();
+}
+
 /// ⌘P with "sync" typed: notes, then the headings that match.
 fn palette_headings(
     cx: &mut HeadlessAppContext,
@@ -2776,6 +2891,106 @@ fn theme_thumbnails() {
     }
 }
 
+/// The quick capture window on its own, in both themes: with a note being
+/// written, and asking before Escape discards it.
+#[test]
+#[ignore = "writes PNGs; run on demand with KANSO_SNAPSHOT_DIR set"]
+fn capture_window() {
+    use crate::capture::{CaptureView, HEIGHT, WIDTH};
+    let out = PathBuf::from(std::env::var("KANSO_SNAPSHOT_DIR").expect("set KANSO_SNAPSHOT_DIR"));
+    std::fs::create_dir_all(&out).unwrap();
+    for (name, theme, confirming) in [
+        ("dark-capture", ThemePreference::Dark, false),
+        ("light-capture", ThemePreference::Light, false),
+        ("dark-capture-discard", ThemePreference::Dark, true),
+        ("light-capture-discard", ThemePreference::Light, true),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(demo_store(&dir.path().join("kanso.db")));
+        let mut cx = context(Some(Clock::fixed(DEMO_NOW_MS, DEMO_UTC_OFFSET_SECS)));
+        let mut config = AppConfig::default();
+        config.appearance.theme = theme;
+        config.appearance.themes = ThemeSettings::from_preference(theme);
+        cx.update(|cx| {
+            cx.set_global(AppState {
+                store: store.clone(),
+                data_dir: dir.path().to_path_buf(),
+                config,
+            });
+            crate::capture::bind_keys(cx);
+            apply_theme(None, cx);
+        });
+        let (window, view) = cx
+            .update(|cx| {
+                gpui_kit::open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(Bounds {
+                            origin: Default::default(),
+                            size: size(px(WIDTH), px(HEIGHT)),
+                        })),
+                        focus: false,
+                        show: false,
+                        ..Default::default()
+                    },
+                    cx,
+                    |window, cx| {
+                        apply_theme(Some(window), cx);
+                        cx.new(|cx| CaptureView::new(store.clone(), window, cx))
+                    },
+                )
+            })
+            .unwrap();
+        cx.run_until_parked();
+        cx.update_window(window, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.set_text_for_test(
+                    "Call Sam about the lease\n\n- bring the signed copy\n- ask about the garden #home/garden",
+                    window,
+                    cx,
+                );
+                if confirming {
+                    view.cancel(window, cx);
+                    assert!(view.is_confirming());
+                }
+            });
+        })
+        .unwrap();
+        for _ in 0..2 {
+            cx.advance_clock(std::time::Duration::from_millis(500));
+            cx.run_until_parked();
+            cx.update_window(window, |_, window, cx| {
+                window.refresh();
+                window.draw(cx).clear(cx);
+            })
+            .unwrap();
+        }
+        let image = cx.capture_screenshot(window).expect("Metal rendering");
+        let path = out.join(format!("{name}.png"));
+        image.save(&path).unwrap();
+        println!(
+            "wrote {} ({}x{})",
+            path.display(),
+            image.width(),
+            image.height()
+        );
+        // The text area in the editor's surface color.
+        let colors = if theme == ThemePreference::Dark {
+            &DARK
+        } else {
+            &LIGHT
+        };
+        let scale = image.width() as f32 / WIDTH;
+        assert_surface(
+            &image,
+            scale,
+            (WIDTH - 12., HEIGHT / 2.),
+            colors.editor,
+            3,
+            name,
+        );
+    }
+}
+
 #[test]
 #[ignore = "writes PNGs; run on demand with KANSO_SNAPSHOT_DIR set"]
 fn snapshots() {
@@ -2995,6 +3210,12 @@ fn snapshots() {
         shot("dark-palette-query", Dark, Edit, palette_query),
         shot("light-palette-query", Light, Edit, palette_query),
         shot("dark-palette-move", Dark, Edit, palette_move),
+        shot("dark-template-picker", Dark, Edit, template_picker),
+        shot("light-template-picker", Light, Edit, template_picker),
+        shot("dark-tags-tree", Dark, Edit, tags_tree),
+        shot("light-tags-tree", Light, Edit, tags_tree),
+        shot("dark-daily-note", Dark, Edit, daily_note),
+        shot("light-daily-note", Light, Split, daily_note),
         shot("dark-palette-tag", Dark, Edit, palette_tag),
         shot("light-palette-new-tag", Light, Edit, palette_new_tag),
         shot("dark-open-note", Dark, Split, note_picker),

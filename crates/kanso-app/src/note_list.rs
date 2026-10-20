@@ -789,6 +789,28 @@ impl NoteList {
                         .tooltip_with_action("New note", &crate::workspace::NewNote, None)
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(NoteListEvent::NewNote))),
                 )
+                // The other ways to start a note.
+                .child(
+                    Button::new("list-new-more")
+                        .ghost()
+                        .xsmall()
+                        .icon(
+                            Icon::new(IconName::ChevronDown)
+                                .size(px(13.))
+                                .text_color(colors.text_muted),
+                        )
+                        .tooltip("More ways to start a note")
+                        .dropdown_menu_with_anchor(Anchor::BottomLeft, |menu, _, _| {
+                            menu.menu(
+                                "New from Template…",
+                                Box::new(crate::journal::NewFromTemplate),
+                            )
+                            .menu("Today's Note", Box::new(crate::journal::OpenToday))
+                            .menu("Quick Note", Box::new(crate::journal::QuickCapture))
+                            .separator()
+                            .menu("New Template", Box::new(crate::journal::NewTemplate))
+                        }),
+                )
             })
             .child(div().flex_1())
             .when(sortable, |el| {
@@ -885,7 +907,7 @@ impl NoteList {
                 colors,
             )
             .into_any_element(),
-            Filter::Tag(_) => quiet_empty(
+            Filter::Tag(_) | Filter::TagPath(_) => quiet_empty(
                 Lucide::Hash,
                 format!("No notes tagged {}", library.filter_title()),
                 None,

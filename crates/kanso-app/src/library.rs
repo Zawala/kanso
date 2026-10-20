@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use gpui_kit::*;
 use kanso_core::model::TRASH_BOOK_ID;
+use kanso_core::tags::{TagInfo, TagNode, tag_tree};
 use kanso_core::{Book, Clause, Field, NoteStatus, Query, Tag};
 use kanso_store::{Change, NoteSummary, SearchParams, Sort, StatusCounts, Store, StoreError};
 
@@ -25,6 +26,9 @@ pub enum Filter {
     Recent,
     Book(String),
     Tag(String),
+    /// A level of the tag tree (`work` for `work/acme`): notes with a tag
+    /// at or under it.
+    TagPath(String),
     Status(NoteStatus),
     Trash,
 }
@@ -41,6 +45,7 @@ impl Filter {
             Filter::All | Filter::Pinned | Filter::Recent => Vec::new(),
             Filter::Book(id) => vec![clause(Field::BookId, id)],
             Filter::Tag(id) => vec![clause(Field::TagId, id)],
+            Filter::TagPath(path) => vec![clause(Field::Tag, path)],
             Filter::Status(status) => vec![clause(Field::Status, status.as_str())],
             Filter::Trash => vec![clause(Field::BookId, TRASH_BOOK_ID)],
         }
@@ -125,6 +130,8 @@ pub struct Library {
     pub store: Arc<Store>,
     pub books: Vec<Book>,
     pub tags: Vec<Tag>,
+    /// The tags nested by `/` (`kanso_core::tags::tag_tree`).
+    pub tag_tree: Vec<TagNode>,
     pub counts: StatusCounts,
     /// How many notes Recent lists, without the search.
     pub recent: u32,
@@ -155,6 +162,7 @@ impl EventEmitter<LibraryEvent> for Library {}
 struct Loaded {
     books: Vec<Book>,
     tags: Vec<Tag>,
+    tag_tree: Vec<TagNode>,
     counts: StatusCounts,
     recent: u32,
     notes: Vec<NoteSummary>,
@@ -184,6 +192,7 @@ impl Library {
             store,
             books: Vec::new(),
             tags: Vec::new(),
+            tag_tree: Vec::new(),
             counts: StatusCounts::default(),
             recent: 0,
             filter: Filter::All,
@@ -235,9 +244,18 @@ impl Library {
             } else {
                 store.count_recent(recent_since)?
             };
+            let tags = store.tags()?;
+            let infos: Vec<TagInfo> = tags
+                .iter()
+                .map(|tag| TagInfo {
+                    id: tag.id.clone(),
+                    name: tag.name.clone(),
+                })
+                .collect();
             Ok::<_, StoreError>(Loaded {
                 books: store.books()?,
-                tags: store.tags()?,
+                tag_tree: tag_tree(&infos, &store.tag_links()?),
+                tags,
                 counts: store.status_counts()?,
                 recent,
                 notes,
@@ -253,6 +271,7 @@ impl Library {
                     Ok(loaded) => {
                         this.books = loaded.books;
                         this.tags = loaded.tags;
+                        this.tag_tree = loaded.tag_tree;
                         this.counts = loaded.counts;
                         this.recent = loaded.recent;
                         this.notes = loaded.notes;
@@ -452,6 +471,7 @@ impl Library {
             Filter::Tag(id) => self
                 .tag(id)
                 .map_or("Tag".into(), |t| format!("#{}", t.name)),
+            Filter::TagPath(path) => format!("#{path}"),
             Filter::Status(status) => status.label().into(),
             Filter::Trash => "Trash".into(),
         }

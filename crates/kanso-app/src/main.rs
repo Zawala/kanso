@@ -13,6 +13,8 @@ mod account_page;
 mod account_words;
 mod activation;
 mod assets;
+mod capture;
+mod capture_cli;
 mod clipboard;
 mod clock;
 mod code_lang;
@@ -28,8 +30,10 @@ mod flavour;
 mod fuzzy;
 mod grouping;
 mod history;
+mod hotkey;
 mod inkdrop;
 mod inspector;
+mod journal;
 mod keys;
 #[cfg(test)]
 mod latency_bench;
@@ -51,6 +55,7 @@ mod preview_rich;
 mod publish;
 mod services;
 mod settings;
+mod settings_capture;
 mod settings_themes;
 #[cfg(test)]
 mod settings_window_tests;
@@ -60,6 +65,7 @@ mod smart_paste;
 mod snapshots;
 mod split;
 mod table_format;
+mod tag_complete;
 mod text_match;
 mod text_stats;
 mod theme;
@@ -95,6 +101,8 @@ Commands:
                     [--inkdrop-dir <dir>] [--credentials]
                     --credentials also takes Inkdrop's API port, username
                     and password (macOS asks to allow Keychain access)
+  capture [text]    Save a note to the Inbox; with no text, from
+                    standard input. Works with Kanso open or closed
   theme             Work with themes; `kanso theme help` lists how
   help              Show this message
 
@@ -162,6 +170,7 @@ fn main() -> Result<()> {
         Some("serve") => serve(args.data_dir),
         Some("import-inkdrop") => inkdrop::run_cli(&args.data_dir, &args.rest),
         Some("theme") => theme_import::run_cli(&args.data_dir, &args.rest),
+        Some("capture") => capture_cli::run_cli(&args.data_dir, &args.rest),
         Some("help") => {
             println!("{USAGE}{DATA_DIR_NOTE}");
             Ok(())
@@ -275,6 +284,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         cx.set_global(services);
         workspace::bind_keys(cx);
         note_list::bind_keys(cx);
+        capture::bind_keys(cx);
         workspace::set_menus(cx);
         cx.on_action(|_: &Quit, cx| quit(cx));
         watch_for_quit(cx);
@@ -287,6 +297,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         account_flow::restore(cx);
         updates::set_log_dir(&cx.global::<AppState>().data_dir.clone());
         updates::init(cx);
+        hotkey::init(cx);
         open_main_window(cx);
         cx.activate(true);
         // After an update the old copy yielded focus to this one; take it

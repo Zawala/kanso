@@ -161,6 +161,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-shift-v", PastePlainText, Some("Input")),
     ]);
     crate::palette::bind_keys(cx);
+    crate::journal::bind_keys(cx);
     crate::settings::bind_keys(cx);
 }
 
@@ -178,6 +179,9 @@ pub fn set_menus(cx: &mut App) {
         Menu::new("File").items([
             MenuItem::action("New Note", NewNote),
             MenuItem::action("New Notebook", NewNotebook),
+            MenuItem::action("New from Template…", crate::journal::NewFromTemplate),
+            MenuItem::action("Today's Note", crate::journal::OpenToday),
+            MenuItem::action("Quick Note", crate::journal::QuickCapture),
             MenuItem::separator(),
             MenuItem::action("Save", SaveNote),
             MenuItem::action("Export Note…", ExportNote),
@@ -1457,6 +1461,7 @@ impl Render for Workspace {
                 ))
             })
             .map(|el| crate::settings::on_actions(el, cx))
+            .map(|el| crate::journal::on_actions(el, cx))
             .map(|el| crate::updates::on_actions(el, cx))
             // The panes run the full height: each has its own top band
             // (the title bar's row) and bottom band. The sidebar and the

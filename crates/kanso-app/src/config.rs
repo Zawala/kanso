@@ -363,6 +363,9 @@ pub struct EditorSettings {
     pub typewriter: Typewriter,
     /// The word goal of notes that don't set their own.
     pub word_goal: Option<u32>,
+    /// `#tags` in a note's text become its tags when it is saved
+    /// (`kanso_core::tags::inline_tags`). Off unless turned on.
+    pub inline_tags: bool,
 }
 
 impl Default for EditorSettings {
@@ -373,6 +376,29 @@ impl Default for EditorSettings {
             smart_paste: true,
             typewriter: Typewriter::FocusMode,
             word_goal: None,
+            inline_tags: false,
+        }
+    }
+}
+
+/// The quick capture shortcut, which works from any app (Settings ›
+/// General).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct CaptureSettings {
+    pub enabled: bool,
+    /// As GPUI writes keystrokes: `ctrl-alt-space` (see `hotkey`).
+    pub shortcut: String,
+}
+
+/// ⌃⌥Space.
+pub const DEFAULT_CAPTURE_SHORTCUT: &str = "ctrl-alt-space";
+
+impl Default for CaptureSettings {
+    fn default() -> Self {
+        CaptureSettings {
+            enabled: true,
+            shortcut: DEFAULT_CAPTURE_SHORTCUT.to_owned(),
         }
     }
 }
@@ -394,6 +420,7 @@ pub struct AppConfig {
     pub layout: WindowLayout,
     pub updates: UpdateSettings,
     pub editor: EditorSettings,
+    pub capture: CaptureSettings,
 }
 
 impl Default for AppConfig {
@@ -408,6 +435,7 @@ impl Default for AppConfig {
             layout: WindowLayout::default(),
             updates: UpdateSettings::default(),
             editor: EditorSettings::default(),
+            capture: CaptureSettings::default(),
         }
     }
 }
@@ -496,14 +524,22 @@ mod tests {
 
     /// Any config, with the window layout too.
     fn gen_config() -> impl Strategy<Value = AppConfig> {
-        (gen_settings(), gen_layout(), any::<bool>(), gen_editor()).prop_map(
-            |(config, layout, auto_install, editor)| AppConfig {
-                layout,
-                updates: UpdateSettings { auto_install },
-                editor,
-                ..config
-            },
+        (
+            gen_settings(),
+            gen_layout(),
+            any::<bool>(),
+            gen_editor(),
+            (any::<bool>(), "(ctrl-|alt-|shift-|cmd-){1,3}[a-z0-9]"),
         )
+            .prop_map(
+                |(config, layout, auto_install, editor, (enabled, shortcut))| AppConfig {
+                    layout,
+                    updates: UpdateSettings { auto_install },
+                    editor,
+                    capture: CaptureSettings { enabled, shortcut },
+                    ..config
+                },
+            )
     }
 
     fn gen_editor() -> impl Strategy<Value = EditorSettings> {
@@ -517,14 +553,18 @@ mod tests {
                 Typewriter::Always,
             ]),
             prop::option::of(1u32..100_000),
+            any::<bool>(),
         )
             .prop_map(
-                |(auto_pair, format_tables, smart_paste, typewriter, word_goal)| EditorSettings {
-                    auto_pair,
-                    format_tables,
-                    smart_paste,
-                    typewriter,
-                    word_goal,
+                |(auto_pair, format_tables, smart_paste, typewriter, word_goal, inline_tags)| {
+                    EditorSettings {
+                        auto_pair,
+                        format_tables,
+                        smart_paste,
+                        typewriter,
+                        word_goal,
+                        inline_tags,
+                    }
                 },
             )
     }
@@ -627,6 +667,7 @@ mod tests {
                     layout: WindowLayout::default(),
                     updates: UpdateSettings::default(),
                     editor: EditorSettings::default(),
+                    capture: CaptureSettings::default(),
                 },
             )
     }

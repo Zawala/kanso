@@ -106,6 +106,10 @@ enum Target {
     Status(NoteStatus),
     /// Give the open note this word goal.
     WordGoal(GoalSetting),
+    /// Make a note from this template.
+    Template(String),
+    /// Make a template.
+    NewTemplate,
 }
 
 #[derive(Clone)]
@@ -175,6 +179,8 @@ impl Item {
             Target::NewTag(name) => format!("new-tag:{name}"),
             Target::Status(status) => format!("status:{}", status.as_str()),
             Target::WordGoal(goal) => format!("goal:{goal:?}"),
+            Target::Template(id) => format!("template:{id}"),
+            Target::NewTemplate => "new-template".to_owned(),
         }
     }
 }
@@ -657,6 +663,29 @@ impl Palette {
                     .collect();
                 vec![section("Status", entries, false)]
             }
+            Some(Mode::Pick(Picker::Template)) => {
+                let mut entries: Vec<_> = self
+                    .store
+                    .templates()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(id, title)| {
+                        let label = if title.trim().is_empty() {
+                            "Untitled".to_owned()
+                        } else {
+                            title
+                        };
+                        fit(
+                            Item::new(Target::Template(id), label, IconName::LayoutTemplate),
+                            &[],
+                        )
+                    })
+                    .collect();
+                let item = Item::new(Target::NewTemplate, "New template", IconName::Plus);
+                // Last, but always there.
+                entries.push((item, Some(i64::MIN / 8)));
+                vec![section("Templates", entries, false)]
+            }
             Some(Mode::Pick(Picker::WordGoal)) => {
                 let editor = self.editor.read(cx);
                 let (current, default) = (editor.word_goal(), editor.default_word_goal());
@@ -1046,6 +1075,14 @@ impl Palette {
                 self.editor
                     .update(cx, |editor, cx| editor.set_word_goal(goal, cx));
             }
+            Target::Template(id) => {
+                self.close(window, cx);
+                crate::journal::new_from_template(&self.library, &self.editor, &id, window, cx);
+            }
+            Target::NewTemplate => {
+                self.close(window, cx);
+                crate::journal::new_template(&self.library, &self.editor, window, cx);
+            }
         }
     }
 
@@ -1258,6 +1295,9 @@ impl Palette {
                         }
                         Filter::Book(_) => format!("Shows the notes in {}.", item.label),
                         Filter::Tag(_) => format!("Shows the notes tagged #{}.", item.label),
+                        Filter::TagPath(path) => {
+                            format!("Shows the notes tagged #{path} or a tag inside it.")
+                        }
                     }
                     .into(),
                 );
@@ -1414,6 +1454,38 @@ impl Palette {
                         .sections
                         .push(("Note", chip(title, cx).into_any_element()));
                 }
+            }
+            Target::Template(id) => {
+                // The template's opening lines, as written.
+                let body = self.store.note(id).ok().flatten().map(|n| n.body);
+                let opening: String = body
+                    .as_deref()
+                    .unwrap_or_default()
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .take(6)
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                detail.description = Some(if opening.is_empty() {
+                    "An empty template.".into()
+                } else {
+                    opening.into()
+                });
+                let place = library
+                    .default_book()
+                    .and_then(|id| library.book(&id).map(|b| b.name.clone()))
+                    .unwrap_or_else(|| "Inbox".to_owned());
+                detail.meta.push((
+                    Icon::new(IconName::Notebook),
+                    format!("New note in {place}").into(),
+                ));
+            }
+            Target::NewTemplate => {
+                detail.description = Some(
+                    "Creates a note in the Templates notebook. {{date}}, {{time}}, {{title}}, \
+                     {{date:%A %e %B}} and {{cursor}} are filled in when a note is made from it."
+                        .into(),
+                );
             }
         }
 
@@ -1754,6 +1826,7 @@ fn placeholder(mode: Mode) -> &'static str {
         Mode::Pick(Picker::GoToNotebook) => "Go to notebook…",
         Mode::Pick(Picker::GoToTag) => "Go to tag…",
         Mode::Pick(Picker::WordGoal) => "Words to aim for, such as 1,500…",
+        Mode::Pick(Picker::Template) => "New note from template…",
     }
 }
 
@@ -2590,14 +2663,16 @@ mod tests {
     /// Every command the palette runs as an action finds a handler from
     /// where the palette sends it (the note being written, inside the
     /// workspace), whatever the layout. Quit is the app's own: main.rs
-    /// registers it with `cx.on_action`. Settings open in the window.
+    /// registers it with `cx.on_action`, and Quick capture too. Settings open
+    /// in the window.
     /// Account commands have a handler only in the state they fit, so
     /// the menu greys out Sync Now while signed out; each is checked in
     /// that state.
     #[gpui_kit::test]
     fn every_command_reaches_a_handler(cx: &mut TestAppContext) {
         let f = setup(cx);
-        let app_wide = ["kanso::Quit"];
+        // Quick capture opens its own window, from anywhere in the app.
+        let app_wide = ["kanso::Quit", "kanso::QuickCapture"];
         for signed_in in [false, true] {
             cx.update(|cx| {
                 cx.global_mut::<Services>().account = if signed_in {
