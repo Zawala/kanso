@@ -15,13 +15,17 @@
 //! If the mark can't be found (it was undone past), the history is put back
 //! as it was.
 //!
-//! Normal mode shows a block caret over the character; Visual modes select
-//! the text as the editor selects it.
+//! Normal mode shows a block caret over the character, in place of the
+//! editor's own (which it paints, for that frame, in a colour that can't be
+//! seen: the editor has no setting to hide it); Visual modes select the
+//! text as the editor selects it.
 
 use std::ops::Range;
+use std::rc::Rc;
 
-use gpui_kit::base::input::{Escape, Redo, Undo};
-use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::base::input::{DiagnosticColors, Escape, InputEditorStyle, Redo, RopeExt as _, Undo};
+use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants as _};
+use gpui_kit::component::{ActiveTheme as _, IconName, Selectable as _, Sizable as _};
 use gpui_kit::*;
 
 use super::{NoteEditor, apply_edit};
@@ -156,10 +160,38 @@ impl NoteEditor {
         }
     }
 
+    /// The mode in the footer, and in Visual modes where Vim's cursor is
+    /// (the editor's is at the selection's end).
     fn vim_footer(&self, cx: &mut Context<Self>) {
         let status = self.vim.as_ref().map(|state| state.vim.status());
+        let cursor = self.vim.as_ref().and_then(|state| {
+            state
+                .vim
+                .mode()
+                .is_visual()
+                .then(|| self.body.read(cx).text().offset_to_position(state.head))
+        });
         self.footer
-            .update(cx, |footer, cx| footer.set_vim(status, cx));
+            .update(cx, |footer, cx| footer.set_vim(status, cursor, cx));
+    }
+
+    /// The first and last lines (0-based) wholly in view, for `H`, `M`
+    /// and `L`.
+    // no-prop-test: reads the editor's layout; `lines_in_view` checks it.
+    pub(super) fn vim_view(&self, cx: &App) -> Option<(usize, usize)> {
+        let body = self.body.read(cx);
+        let rows = body.visible_row_range()?;
+        let bounds = body.text_bounds().unwrap_or_else(|| body.input_bounds());
+        let text = body.text();
+        let shown = |row: &usize| {
+            let at = text.line_start_offset(*row);
+            body.range_to_bounds(&(at..at)).is_some_and(|line| {
+                line.top() >= bounds.top() - px(0.5) && line.bottom() <= bounds.bottom() + px(0.5)
+            })
+        };
+        let first = rows.clone().find(shown)?;
+        let last = rows.rev().find(shown)?;
+        Some((first, last.max(first)))
     }
 
     /// A keystroke anywhere in the app: Vim's when the note's text has the
@@ -210,6 +242,11 @@ impl NoteEditor {
             selection.start
         };
         let was = state.vim.mode();
+        let view = self.vim_view(cx);
+        let Some(state) = self.vim.as_mut() else {
+            return;
+        };
+        state.vim.set_view(view);
         let out = state
             .vim
             .handle_key(key, &text, cursor, &mut AppClipboard(cx));
@@ -453,12 +490,17 @@ impl NoteEditor {
         let width_of = crate::vim::grapheme_at(&piece);
         let range = at..at + width_of;
         let body = self.body.clone();
+        let styled = self.body.clone();
         let mut color = cx.theme().caret;
         color.a = 0.4;
         let fallback = px(self.font_size * 0.6);
         Some(
             canvas(
-                |_, _, _| {},
+                // After the editor has laid out and before it paints.
+                move |_, _, cx| {
+                    let style = body_style(cx);
+                    styled.update(cx, |state, _| state.set_editor_style(style));
+                },
                 move |bounds, _, window, cx| {
                     let state = body.read(cx);
                     let Some(start) = state.range_to_bounds(&(range.start..range.start)) else {
@@ -485,6 +527,56 @@ impl NoteEditor {
             .size_full()
             .into_any_element(),
         )
+    }
+}
+
+/// The text editor's style as its `Input` sets it from the theme on each
+/// render, but with a caret that can't be seen (not quite transparent,
+/// which would mean "unset" and fall back to the text's colour). Set
+/// between the editor's layout and its paint, it holds for that frame; the
+/// next render sets the theme's again.
+// no-prop-test: theme glue; the Vim snapshots show no line caret beside
+// the block.
+fn body_style(cx: &App) -> InputEditorStyle {
+    let theme = cx.theme();
+    let mut caret = theme.caret;
+    caret.a = 0.001;
+    InputEditorStyle {
+        foreground: theme.foreground,
+        muted_foreground: theme.muted_foreground,
+        // `Theme::editor_background`, which is the crate's own.
+        background: theme
+            .highlight_theme
+            .style
+            .editor_background
+            .unwrap_or_else(|| theme.input_background()),
+        border: theme.border,
+        selection: theme.selection,
+        caret,
+        diagnostics: DiagnosticColors {
+            error: theme.highlight_theme.style.status.error(cx),
+            warning: theme.highlight_theme.style.status.warning(cx),
+            info: theme.highlight_theme.style.status.info(cx),
+            hint: theme.highlight_theme.style.status.hint(cx),
+        },
+        highlight_styles: theme.highlight_theme.clone(),
+        editor_invisible: theme.highlight_theme.style.editor_invisible,
+        editor_active_line: theme.highlight_theme.style.editor_active_line,
+        editor_gutter_background: theme.highlight_theme.style.editor_gutter_background,
+        fold_icon_renderer: Some(Rc::new(|ix, is_folded| {
+            Button::new(("fold-icon", ix))
+                .ghost()
+                .icon(if is_folded {
+                    IconName::ChevronRight
+                } else {
+                    IconName::ChevronDown
+                })
+                .xsmall()
+                .rounded(ButtonRounded::Small)
+                .size(px(14.))
+                .selected(is_folded)
+                .into_any_element()
+        })),
     }
 }
 

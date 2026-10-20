@@ -11,11 +11,12 @@
 //! text again.
 //!
 //! Covered: Normal, Insert, Visual and Visual Line modes; the motions
-//! `h j k l w b e W B E 0 ^ $ gg G f F t T ; , { } % + -`; counts; the
-//! operators `d c y` over motions and text objects, and `dd cc yy`;
-//! `x X D C s S r J ~ p P o O a A i I Y`; `.`; `u` and Ctrl-R; one
-//! register, kept in step with the system clipboard; and `:w`, `:q`,
-//! `:wq`, `:x` and `:N`. Visual mode changes aren't repeated by `.`.
+//! `h j k l w b e ge W B E gE 0 ^ $ gg G H M L f F t T ; , { } % + -`;
+//! counts; the operators `d c y > <` over motions and text objects, and
+//! `dd cc yy >> <<`; `x X D C s S r J ~ p P o O a A i I Y`; `.` (a Visual
+//! mode change again over a selection the same size from the cursor);
+//! `u` and Ctrl-R; one register, kept in step with the system clipboard;
+//! and `:w`, `:q`, `:wq`, `:x` and `:N`.
 //!
 //! Offsets are UTF-8 byte offsets. A "character" to the cursor is a
 //! grapheme cluster, so an emoji or an accented letter is one step.
@@ -142,6 +143,8 @@ enum Op {
     Delete,
     Change,
     Yank,
+    /// `>` (false) and `<` (true): whole lines in or out by one indent.
+    Shift(bool),
 }
 
 impl Op {
@@ -150,9 +153,28 @@ impl Op {
             'd' => Some(Op::Delete),
             'c' => Some(Op::Change),
             'y' => Some(Op::Yank),
+            '>' => Some(Op::Shift(false)),
+            '<' => Some(Op::Shift(true)),
             _ => None,
         }
     }
+}
+
+/// One level of indent for `>` and `<`: the editor's own (two spaces, as
+/// Tab indents and list items nest).
+const INDENT: &str = "  ";
+
+/// The size of a Visual selection a change was made over, which `.` takes
+/// again from the cursor, as Vim does: so many lines, and on the last one
+/// so many characters (on one line) or up to the same column.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Region {
+    mode: Mode,
+    /// Lines after the first.
+    lines: usize,
+    /// Characters, for a selection on one line; else the last line's
+    /// column.
+    width: usize,
 }
 
 /// What the next key completes.
@@ -204,6 +226,9 @@ struct Change {
     keys: Vec<Key>,
     count: Option<usize>,
     insert: Option<Inserted>,
+    /// For a change made in Visual mode: the selection it was made over,
+    /// and `keys` are the Visual mode keys.
+    visual: Option<Region>,
 }
 
 /// The Insert mode a command began.
@@ -212,6 +237,7 @@ struct Session {
     keys: Vec<Key>,
     count: Option<usize>,
     repeat: Repeat,
+    visual: Option<Region>,
 }
 
 /// The text being changed, with the cursor.
@@ -249,6 +275,11 @@ pub struct Vim {
     ex: Option<String>,
     /// While `.` replays a change, which mustn't record itself.
     replaying: bool,
+    /// The selection a Visual mode change being made started from.
+    region: Option<Region>,
+    /// The first and last lines (0-based) the editor shows, for `H`, `M`
+    /// and `L`; the whole text when unknown.
+    view: Option<(usize, usize)>,
 }
 
 /// The ranges operators take.
@@ -277,6 +308,12 @@ impl Vim {
                 None => self.shown.clone(),
             },
         }
+    }
+
+    /// The first and last lines (0-based) the editor shows, for `H`, `M`
+    /// and `L`.
+    pub fn set_view(&mut self, view: Option<(usize, usize)>) {
+        self.view = view;
     }
 
     /// Back to Normal mode with nothing pending, as when a note opens.
@@ -339,6 +376,7 @@ impl Vim {
                     keys: session.keys.clone(),
                     count: session.count,
                     insert: Some(inserted.clone()),
+                    visual: session.visual,
                 });
             }
         }
@@ -367,6 +405,7 @@ impl Vim {
         self.pending = Pending::default();
         self.keys.clear();
         self.shown.clear();
+        self.region = None;
     }
 
     fn has_pending(&self) -> bool {
@@ -429,6 +468,7 @@ impl Vim {
                 keys: std::mem::take(&mut self.keys),
                 count: self.total_count(),
                 insert: None,
+                visual: self.region,
             });
         }
         self.clear_pending();
@@ -441,6 +481,7 @@ impl Vim {
             keys: std::mem::take(&mut self.keys),
             count: self.total_count(),
             repeat,
+            visual: self.region,
         });
         self.mode = Mode::Insert;
         self.want = None;
@@ -453,6 +494,7 @@ impl Vim {
             operator,
             want: self.want,
             last_find: self.last_find,
+            view: self.view,
         }
     }
 
@@ -479,10 +521,9 @@ impl Vim {
             Wait::G => {
                 self.pending.wait = Wait::Nothing;
                 self.keys.push(key);
-                if key == Key::Char('g') {
-                    self.motion(Motion::FirstLine, work, clip, effects);
-                } else {
-                    self.clear_pending();
+                match g_motion(key) {
+                    Some(motion) => self.motion(motion, work, clip, effects),
+                    None => self.clear_pending(),
                 }
                 return true;
             }
@@ -581,7 +622,7 @@ impl Vim {
         let at = work.cursor;
         let n = self.count1();
         match c {
-            'd' | 'c' | 'y' => self.pending.op = Op::from_char(c),
+            'd' | 'c' | 'y' | '>' | '<' => self.pending.op = Op::from_char(c),
             'g' => self.pending.wait = Wait::G,
             'f' => self.pending.wait = Wait::Find(FindKind::To),
             'F' => self.pending.wait = Wait::Find(FindKind::BackTo),
@@ -729,6 +770,9 @@ impl Vim {
             Key::Char('}') => Motion::ParagraphForward,
             Key::Char('{') => Motion::ParagraphBack,
             Key::Char('%') => Motion::Bracket,
+            Key::Char('H') => Motion::ViewTop,
+            Key::Char('M') => Motion::ViewMiddle,
+            Key::Char('L') => Motion::ViewBottom,
             _ => return None,
         })
     }
@@ -791,6 +835,28 @@ impl Vim {
         effects: &mut Vec<Effect>,
     ) {
         let from = work.cursor;
+        // `>` and `<` take the lines the motion touches.
+        if let Op::Shift(out) = op {
+            let (first, end) = match span {
+                Span::Lines(first, end) => (first, end),
+                Span::Chars(range) => {
+                    let last = if range.end > range.start && is_line_start(&work.text, range.end) {
+                        range.end - 1
+                    } else {
+                        range.end
+                    };
+                    (
+                        line_start(&work.text, range.start),
+                        line_end(&work.text, last),
+                    )
+                }
+            };
+            let changed = shift_lines(work, first, end, out, 1);
+            work.cursor = first_non_blank(&work.text, first);
+            self.want = None;
+            self.done(changed);
+            return;
+        }
         // Nothing to take (`x` on an empty line, `y$` on one): nothing
         // happens, and the register keeps what it had.
         if op != Op::Change && matches!(&span, Span::Chars(range) if range.is_empty()) {
@@ -810,6 +876,8 @@ impl Vim {
         };
         self.want = None;
         match op {
+            // Taken above.
+            Op::Shift(_) => {}
             Op::Yank => {
                 effects.push(Effect::Copy(register.text.clone()));
                 self.clip_seen = Some(register.text.clone());
@@ -966,9 +1034,28 @@ impl Vim {
             return;
         };
         self.replaying = true;
-        self.pending.count = count.or(change.count);
-        for key in &change.keys {
-            self.normal_key(*key, work, clip, effects);
+        match change.visual {
+            // A Visual mode change: a selection the same size from the
+            // cursor, then the same keys.
+            Some(region) => {
+                self.mode = region.mode;
+                self.anchor = work.cursor;
+                self.head = region_head(&work.text, work.cursor, region);
+                self.want = None;
+                self.pending.count = count.or(change.count);
+                for key in &change.keys {
+                    self.visual_key(*key, work, clip, effects);
+                }
+                if self.mode.is_visual() {
+                    self.leave_visual(work);
+                }
+            }
+            None => {
+                self.pending.count = count.or(change.count);
+                for key in &change.keys {
+                    self.normal_key(*key, work, clip, effects);
+                }
+            }
         }
         if self.mode == Mode::Insert {
             let inserted = change.insert.clone().unwrap_or_default();
@@ -1051,10 +1138,10 @@ impl Vim {
         match self.pending.wait {
             Wait::Nothing => {}
             Wait::G => {
-                self.clear_pending();
-                if key == Key::Char('g') {
-                    self.visual_motion(Motion::FirstLine, work);
+                if let Some(motion) = g_motion(key) {
+                    self.visual_motion(motion, work);
                 }
+                self.clear_pending();
                 return true;
             }
             Wait::Find(kind) => {
@@ -1068,6 +1155,8 @@ impl Vim {
             Wait::Replace => {
                 self.clear_pending();
                 if let Key::Char(c) = key {
+                    let region = self.selection_region(&work.text);
+                    self.visual_done(vec![Key::Char('r'), key], None, region);
                     let span = self.visual_span(&work.text);
                     let range = span_range(&span);
                     let replaced: String = work.text[range.clone()]
@@ -1152,14 +1241,33 @@ impl Vim {
                     'c' | 's' | 'C' | 'S' | 'R' => Op::Change,
                     _ => Op::Delete,
                 };
+                let region = self.selection_region(&work.text);
                 self.mode = Mode::Normal;
                 work.cursor = self.ordered().0;
                 self.clear_pending();
-                self.replaying = true;
+                // A delete or change is kept for `.` with the selection's
+                // size.
+                self.keys = vec![Key::Char(c)];
+                self.region = Some(region);
                 self.operate(op, span, work, clip, effects);
-                self.replaying = false;
+            }
+            '>' | '<' => {
+                let region = self.selection_region(&work.text);
+                let count = self.total_count();
+                let (a, b) = self.ordered();
+                let first = line_start(&work.text, a);
+                let end = line_end(&work.text, b);
+                let changed = shift_lines(work, first, end, c == '<', count.unwrap_or(1));
+                self.mode = Mode::Normal;
+                work.cursor = first_non_blank(&work.text, first);
+                self.clear_pending();
+                if changed {
+                    self.visual_done(vec![Key::Char(c)], count, region);
+                }
             }
             '~' | 'u' | 'U' => {
+                let region = self.selection_region(&work.text);
+                self.visual_done(vec![Key::Char(c)], None, region);
                 let span = self.visual_span(&work.text);
                 let range = span_range(&span);
                 let old = &work.text[range.clone()];
@@ -1174,6 +1282,8 @@ impl Vim {
                 self.clear_pending();
             }
             'J' => {
+                let region = self.selection_region(&work.text);
+                self.visual_done(vec![Key::Char(c)], None, region);
                 let (a, b) = self.ordered();
                 let first = line_start(&work.text, a);
                 let mut lines = 1;
@@ -1252,6 +1362,46 @@ impl Vim {
             _ => self.clear_pending(),
         }
         true
+    }
+
+    /// The size of the selection, for `.` to take again.
+    fn selection_region(&self, text: &str) -> Region {
+        let (a, b) = self.ordered();
+        let last = line_start(text, b);
+        let mut lines = 0;
+        let mut at = line_start(text, a);
+        while at < last {
+            match next_line(text, at) {
+                Some(next) => {
+                    at = next;
+                    lines += 1;
+                }
+                None => break,
+            }
+        }
+        let width = if lines == 0 {
+            column(text, b) - column(text, a) + 1
+        } else {
+            column(text, b)
+        };
+        Region {
+            mode: self.mode,
+            lines,
+            width,
+        }
+    }
+
+    /// A change made in Visual mode, kept for `.` (unless `.` is making
+    /// it).
+    fn visual_done(&mut self, keys: Vec<Key>, count: Option<usize>, region: Region) {
+        if !self.replaying {
+            self.last_change = Some(Change {
+                keys,
+                count,
+                insert: None,
+                visual: Some(region),
+            });
+        }
     }
 
     fn leave_visual(&mut self, work: &mut Work) {
@@ -1359,6 +1509,16 @@ impl Vim {
 }
 
 /// What a key types, as the footer shows it.
+/// The motion `g` and `key` make.
+fn g_motion(key: Key) -> Option<Motion> {
+    match key {
+        Key::Char('g') => Some(Motion::FirstLine),
+        Key::Char('e') => Some(Motion::WordEndBack(false)),
+        Key::Char('E') => Some(Motion::WordEndBack(true)),
+        _ => None,
+    }
+}
+
 fn key_char(key: Key) -> Option<char> {
     match key {
         Key::Char(c) => Some(c),
@@ -1498,6 +1658,63 @@ fn join(work: &mut Work, first: usize, lines: usize) -> bool {
 }
 
 /// Upper case to lower and lower to upper, character by character.
+/// Where a selection the size of `region` from `at` ends.
+fn region_head(text: &str, at: usize, region: Region) -> usize {
+    let mut start = line_start(text, at);
+    for _ in 0..region.lines {
+        match next_line(text, start) {
+            Some(next) => start = next,
+            None => break,
+        }
+    }
+    match region.mode {
+        Mode::VisualLine => start,
+        _ if region.lines == 0 => at_column(
+            text,
+            start,
+            column(text, at) + region.width.max(1) - 1,
+            false,
+        ),
+        _ => at_column(text, start, region.width, false),
+    }
+}
+
+/// `>` and `<`, `times` over: the lines from the one starting at `first`
+/// to the one ending at `end` go in by [`INDENT`] (but empty lines), or out
+/// by as much of it as they have. Whether anything changed.
+fn shift_lines(work: &mut Work, first: usize, end: usize, out: bool, times: usize) -> bool {
+    let old = &work.text[first..end];
+    let times = times.clamp(1, MAX_COUNT);
+    let shifted: Vec<String> = old
+        .split('\n')
+        .map(|line| {
+            if out {
+                let mut line = line;
+                for _ in 0..times {
+                    line = match line.strip_prefix('\t') {
+                        Some(rest) => rest,
+                        None => {
+                            let blanks = line.len() - line.trim_start_matches(' ').len();
+                            &line[blanks.min(INDENT.len())..]
+                        }
+                    };
+                }
+                line.to_owned()
+            } else if line.is_empty() {
+                String::new()
+            } else {
+                format!("{}{line}", INDENT.repeat(times))
+            }
+        })
+        .collect();
+    let new = shifted.join("\n");
+    if new == old {
+        return false;
+    }
+    work.replace(first..end, &new);
+    true
+}
+
 fn toggle_case(text: &str) -> String {
     text.chars()
         .flat_map(|c| {

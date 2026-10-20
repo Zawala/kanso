@@ -1,7 +1,7 @@
 //! Vim keys through the real text editor: keys, the writing aids in Insert
 //! mode, undo, the clipboard and the footer.
 
-use gpui_kit::{ClipboardItem, TestAppContext};
+use gpui_kit::{AppContext as _, ClipboardItem, TestAppContext};
 
 use super::writing_tests::Open;
 use crate::config::EditorSettings;
@@ -196,6 +196,72 @@ fn visual_modes_select_in_the_editor(cx: &mut TestAppContext) {
     open.select(cx, 5..5);
     open.keys(cx, "x");
     assert_eq!(open.text(cx).0, "abc df");
+}
+
+/// Ln and Col in the footer are Vim's cursor in Visual modes, not the end
+/// of the selection the editor shows; a Visual mode change repeats with
+/// `.` over a selection the same size.
+// no-prop-test: drives the editor with keys.
+#[gpui_kit::test]
+fn visual_cursor_in_the_footer_and_dot(cx: &mut TestAppContext) {
+    let open = vim_on(cx, "one two\nthree\nfour\nfive");
+    let label = |open: &Open, cx: &mut TestAppContext| {
+        open.with(cx, |editor, _, cx| editor.footer.read(cx).label())
+    };
+    open.keys(cx, "shift-v j");
+    assert_eq!(open.text(cx).1, 0..13);
+    assert!(
+        label(&open, cx).starts_with("Ln 2, Col 1 "),
+        "{}",
+        label(&open, cx)
+    );
+    open.keys(cx, "escape v l");
+    assert_eq!(open.text(cx).1, 8..10);
+    assert!(
+        label(&open, cx).starts_with("Ln 2, Col 2 "),
+        "{}",
+        label(&open, cx)
+    );
+    open.keys(cx, "escape");
+    assert!(
+        label(&open, cx).starts_with("Ln 2, Col 2 "),
+        "{}",
+        label(&open, cx)
+    );
+
+    open.keys(cx, "0 v l d j .");
+    assert_eq!(open.text(cx).0, "one two\nree\nur\nfive");
+    open.keys(cx, "shift-v > j .");
+    assert_eq!(open.text(cx).0, "one two\nree\n  ur\n  five");
+    // Each is one undo step.
+    open.keys(cx, "u u");
+    assert_eq!(open.text(cx).0, "one two\nree\nur\nfive");
+}
+
+/// `H`, `M` and `L` go to the first, middle and last lines in view.
+// no-prop-test: drives the editor with keys over its layout.
+#[gpui_kit::test]
+fn lines_in_view(cx: &mut TestAppContext) {
+    let body: Vec<String> = (0..300).map(|n| format!("line {n}")).collect();
+    let open = vim_on(cx, &body.join("\n"));
+    let line = |open: &Open, cx: &mut TestAppContext| {
+        open.with(cx, |editor, _, cx| {
+            editor.body.read(cx).cursor_position().line as usize
+        })
+    };
+    cx.update_window(open.window, |_, window, cx| window.draw(cx).clear(cx))
+        .unwrap();
+    let view = open.with(cx, |editor, _, cx| editor.vim_view(cx));
+    let (top, bottom) = view.expect("laid out");
+    assert!(top == 0 && bottom > top && bottom < 299, "{top}..{bottom}");
+    open.keys(cx, "shift-l");
+    assert_eq!(line(&open, cx), bottom);
+    open.keys(cx, "shift-m");
+    assert_eq!(line(&open, cx), (top + bottom) / 2);
+    open.keys(cx, "shift-h");
+    assert_eq!(line(&open, cx), top);
+    open.keys(cx, "2 shift-h");
+    assert_eq!(line(&open, cx), top + 1);
 }
 
 /// ⌘ shortcuts reach the app and the editor in Normal mode; `:w` saves.

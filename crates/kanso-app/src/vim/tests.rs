@@ -443,6 +443,87 @@ fn repeat_with_dot() {
 }
 
 #[test]
+fn repeat_visual_changes_with_dot() {
+    // The same size from the cursor: so many characters on one line...
+    check("|abcdef", "vldl.", "c|f");
+    check("|abcd\nefgh", "vlrxj.", "xxcd\n|xxgh");
+    check("|ab ab", "v~w.", "Ab |Ab");
+    check("|abc abc", "vlcz<Esc>w.", "zc |zc");
+    // ...so many lines...
+    check("|a\nb\nc\nd", "Vjd.", "|");
+    check("|a\nb\nc", "V>j.", "  a\n  |b\nc");
+    check("|a\nb\nc\nd", "VjJj.", "a b\nc| d");
+    // ...or up to the same column on the last line.
+    check("|abc\ndef\nghi", "vjd.", "|hi");
+    // Counts and nothing to repeat.
+    check("|a\nb", "V3>j.", "      a\n      |b");
+    check("|abc", "vly.", "|abc");
+}
+
+#[test]
+fn shifting_lines() {
+    check("|a\nb", ">>", "  |a\nb");
+    check("|a\nb\nc", "2>>", "  |a\n  b\nc");
+    check("|a\nb\nc", ">j", "  |a\n  b\nc");
+    check("a\n|b", ">k", "  |a\n  b");
+    check("|a\n\nb", ">2j", "  |a\n\n  b");
+    check("    |a", "<<", "  |a");
+    check(" |a", "<<", "|a");
+    check("\t|a", "<<", "|a");
+    check("|a", "<<", "|a");
+    check("|a\nb", ">>j.", "  a\n  |b");
+    check("|a\nb\nc", "Vj>", "  |a\n  b\nc");
+    check("|a\nb", "Vj2>", "    |a\n    b");
+    check("    |a\n  b", "Vj<", "  |a\nb");
+    check("|a b", ">>u", "|a b");
+    // Counted with a motion; the cursor on the first line's first character.
+    check("x|y\nz", ">ap", "  |xy\n  z");
+}
+
+#[test]
+fn moving_back_to_word_ends() {
+    check("abc de|f", "ge", "ab|c def");
+    check("abc d|ef", "ge", "ab|c def");
+    check("abc |def", "ge", "ab|c def");
+    check("abc def g|h", "2ge", "ab|c def gh");
+    check("a.b c|d", "ge", "a.|b cd");
+    check("a.b c|d", "gE", "a.|b cd");
+    check("ab.c |d", "gE", "ab.|c d");
+    check("ab\n|cd", "ge", "a|b\ncd");
+    check("ab\n\n|cd", "ge", "ab\n|\ncd");
+    check("|ab", "ge", "|ab");
+    // Inclusive with an operator: the end of the word before goes too.
+    check("abc de|f", "dge", "a|b");
+    check("abc de|f", "vged", "a|b");
+}
+
+#[test]
+fn moving_to_lines_in_view() {
+    let text = "a\n b\nc\nd\ne\nf\ng";
+    let mut buf = Buf::new(text, 0);
+    buf.vim.set_view(Some((1, 5)));
+    buf.keys("H");
+    assert_eq!(buf.marked(), "a\n |b\nc\nd\ne\nf\ng");
+    buf.keys("L");
+    assert_eq!(buf.marked(), "a\n b\nc\nd\ne\n|f\ng");
+    buf.keys("M");
+    assert_eq!(buf.marked(), "a\n b\nc\n|d\ne\nf\ng");
+    buf.keys("2H");
+    assert_eq!(buf.marked(), "a\n b\n|c\nd\ne\nf\ng");
+    buf.keys("3L");
+    assert_eq!(buf.marked(), "a\n b\nc\n|d\ne\nf\ng");
+    buf.keys("9H");
+    assert_eq!(buf.marked(), "a\n b\nc\nd\ne\n|f\ng");
+    // Linewise with an operator.
+    buf.keys("dH");
+    assert_eq!(buf.marked(), "a\n|g");
+    // Without a view, the whole text.
+    check("a\n|b\nc", "L", "a\nb\n|c");
+    check("a\n|b\nc", "H", "|a\nb\nc");
+    check("a\nb\n|c", "dM", "|a");
+}
+
+#[test]
 fn undo_and_redo() {
     check("|a b", "dwu", "|a b");
     check("|a b", "dwu<C-r>", "|b");
@@ -644,6 +725,21 @@ fn gen_change() -> impl Strategy<Value = &'static str> {
         "c$x<Esc>",
         "3~",
         "2p",
+        ">>",
+        "<<",
+        "2>>",
+        ">j",
+        "<k",
+        "dge",
+        "vld",
+        "vlrx",
+        "v~",
+        "vlcz<Esc>",
+        "Vd",
+        "Vjd",
+        "Vj>",
+        "V<",
+        "VjJ",
     ])
 }
 
@@ -752,8 +848,11 @@ proptest! {
         again.vim.register = buf.vim.register.clone();
         again.vim.clip_seen = buf.vim.clip_seen.clone();
         // A count before `.` replaces the change's own, so it is only
-        // given to changes typed without one.
-        let count = count.filter(|_| !change.contains(|c: char| c.is_ascii_digit()));
+        // given to changes typed without one, and not to Visual mode ones
+        // (where a count before `v` isn't the change's).
+        let count = count.filter(|_| {
+            !change.contains(|c: char| c.is_ascii_digit()) && !change.starts_with(['v', 'V'])
+        });
         let typed = match count {
             Some(n) => format!("{n}{change}"),
             None => change.to_owned(),
@@ -763,10 +862,16 @@ proptest! {
             None => ".".to_owned(),
         };
         again.keys(&typed);
-        let keys = |vim: &Vim| vim.last_change.as_ref().map(|change| change.keys.clone());
+        let keys = |vim: &Vim| {
+            vim.last_change
+                .as_ref()
+                .map(|change| (change.keys.clone(), change.visual))
+        };
         if keys(&again.vim) != keys(&buf.vim) {
             // Typed again it failed here (`2c$` on the last line), and the
-            // keys after it did something else.
+            // keys after it did something else; or its selection is
+            // another size here (`vl` at a line's end), where `.` takes
+            // the first one's size, as in Vim.
             return Ok(());
         }
         buf.keys(&dot);

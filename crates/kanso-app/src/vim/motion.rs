@@ -80,6 +80,12 @@ pub enum Motion {
     ParagraphBack,
     /// `%`.
     Bracket,
+    /// `ge` and `gE`.
+    WordEndBack(bool),
+    /// `H`, `M` and `L`: the first, middle and last lines in view.
+    ViewTop,
+    ViewMiddle,
+    ViewBottom,
 }
 
 /// Where the cursor wants to be on lines it moves up and down through.
@@ -97,6 +103,9 @@ pub struct Context {
     pub operator: bool,
     pub want: Option<Want>,
     pub last_find: Option<(FindKind, char)>,
+    /// The first and last lines (0-based) in view; the whole text when
+    /// unknown.
+    pub view: Option<(usize, usize)>,
 }
 
 /// Where `motion` from `from` goes, and how an operator takes it; `None`
@@ -204,7 +213,61 @@ pub fn eval(text: &str, from: usize, motion: Motion, cx: &Context) -> Option<(us
         Motion::ParagraphForward => Some(paragraph(text, from, n, true)),
         Motion::ParagraphBack => Some(paragraph(text, from, n, false)),
         Motion::Bracket => bracket(text, from).map(|at| (at, Kind::Inclusive)),
+        Motion::WordEndBack(big) => {
+            let at = word_end_back(text, from, big, n);
+            (at != from).then_some((at, Kind::Inclusive))
+        }
+        Motion::ViewTop | Motion::ViewMiddle | Motion::ViewBottom => {
+            let last_line = text.matches('\n').count();
+            let (top, bottom) = match cx.view {
+                Some((top, bottom)) => {
+                    let top = top.min(last_line);
+                    (top, bottom.clamp(top, last_line))
+                }
+                None => (0, last_line),
+            };
+            let line = match motion {
+                Motion::ViewTop => (top + n - 1).min(bottom),
+                Motion::ViewMiddle => top + (bottom - top) / 2,
+                _ => bottom.saturating_sub(n - 1).max(top),
+            };
+            Some((first_non_blank(text, nth_line(text, line)), Kind::Linewise))
+        }
     }
+}
+
+/// `ge`, `count` times: back to the end of the word before (Vim's
+/// `bckend_word`); where it got to when the text runs out.
+pub fn word_end_back(text: &str, from: usize, big: bool, count: usize) -> usize {
+    let mut at = from;
+    for _ in 0..count {
+        let class = class_at(text, at, big);
+        let Some((prev, _)) = dec(text, at) else {
+            return at;
+        };
+        at = prev;
+        // Back over the rest of the word the cursor was in.
+        if class != 0 {
+            while class_at(text, at, big) == class {
+                match dec(text, at) {
+                    Some((prev, _)) => at = prev,
+                    None => return at,
+                }
+            }
+        }
+        // Back over blanks to the end of the word before; an empty line
+        // is a word of its own.
+        while class_at(text, at, big) == 0 {
+            if is_empty_line(text, at) {
+                break;
+            }
+            match dec(text, at) {
+                Some((prev, _)) => at = prev,
+                None => return at,
+            }
+        }
+    }
+    at
 }
 
 /// `w`, `count` times. With an operator waiting, the last word stops at its

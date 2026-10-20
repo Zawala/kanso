@@ -53,6 +53,9 @@ pub struct EditorFooter {
     default_goal: Option<u32>,
     /// With Vim keys on: the mode, and a command being typed.
     vim: Option<crate::vim::Status>,
+    /// In Vim's Visual modes, its cursor (the editor's is at the
+    /// selection's end).
+    vim_cursor: Option<Position>,
     /// Shows the counts in focus mode, as a hover would.
     #[cfg(test)]
     pub(crate) reveal: bool,
@@ -89,6 +92,7 @@ impl EditorFooter {
             goal: GoalSetting::Default,
             default_goal: None,
             vim: None,
+            vim_cursor: None,
             #[cfg(test)]
             reveal: false,
             count_task: None,
@@ -130,10 +134,16 @@ impl EditorFooter {
     }
 
     /// The Vim mode and pending command to show, or `None` with Vim keys
-    /// off.
-    pub fn set_vim(&mut self, vim: Option<crate::vim::Status>, cx: &mut Context<Self>) {
-        if self.vim != vim {
+    /// off; and in Visual modes, Vim's cursor for Ln and Col.
+    pub fn set_vim(
+        &mut self,
+        vim: Option<crate::vim::Status>,
+        cursor: Option<Position>,
+        cx: &mut Context<Self>,
+    ) {
+        if (&self.vim, self.vim_cursor) != (&vim, cursor) {
             self.vim = vim;
+            self.vim_cursor = cursor;
             cx.notify();
         }
     }
@@ -167,7 +177,8 @@ impl EditorFooter {
 
     pub fn label(&self) -> String {
         footer_label(
-            self.show_cursor.then_some(self.cursor),
+            self.show_cursor
+                .then_some(self.vim_cursor.unwrap_or(self.cursor)),
             self.words,
             self.chars,
         )
