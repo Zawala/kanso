@@ -97,6 +97,12 @@ pub fn block(node: &markdown_ast::Node, markdown: &str) -> Option<Block> {
         Node::Code(code) if fence_is(&code.lang, "excalidraw") => {
             (Kind::Excalidraw, code.value.clone(), None)
         }
+        Node::Paragraph(_)
+            if kanso_render::html::display_math_paragraph(node, markdown).is_some() =>
+        {
+            let formula = kanso_render::html::display_math_paragraph(node, markdown)?;
+            (Kind::DisplayMath, formula.to_owned(), None)
+        }
         Node::Paragraph(_) => (
             Kind::Excalidraw,
             String::new(),
@@ -648,6 +654,12 @@ mod tests {
     fn rich_blocks_are_found() {
         let math = first_block("$$\nx^2\n$$\n").unwrap();
         assert_eq!((math.kind, &*math.source), (Kind::DisplayMath, "x^2"));
+        let one_line = first_block("$$\\sum_k k$$\n").unwrap();
+        assert_eq!(
+            (one_line.kind, &*one_line.source),
+            (Kind::DisplayMath, "\\sum_k k")
+        );
+        assert_eq!(first_block("Area $$x$$ here.\n"), None);
         let fenced = first_block("```math\n\\frac{1}{2}\n```\n").unwrap();
         assert_eq!(fenced.kind, Kind::DisplayMath);
         let diagram = first_block("```mermaid\ngraph TD\nA-->B\n```\n").unwrap();

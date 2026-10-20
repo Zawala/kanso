@@ -111,6 +111,20 @@ pub fn attached_scene(node: &Node) -> Option<String> {
         .flatten()
 }
 
+/// The formula a paragraph is, if it is only one `$$…$$`: display math as
+/// KaTeX writes it on one line. `markdown` is the paragraph's source. Pure.
+pub fn display_math_paragraph<'a>(node: &'a Node, markdown: &str) -> Option<&'a str> {
+    let Node::Paragraph(paragraph) = node else {
+        return None;
+    };
+    let [Node::InlineMath(math)] = paragraph.children.as_slice() else {
+        return None;
+    };
+    let markdown = markdown.trim();
+    (markdown.len() > 4 && markdown.starts_with("$$") && markdown.ends_with("$$"))
+        .then_some(math.value.as_str())
+}
+
 fn node_text(nodes: &[Node]) -> String {
     nodes.iter().map(Node::to_string).collect()
 }
@@ -159,6 +173,11 @@ fn collect(
     out: &mut Vec<(std::ops::Range<usize>, Piece)>,
 ) {
     let range = node.position().map(|p| p.start.offset..p.end.offset);
+    // The node as written.
+    let written = range
+        .clone()
+        .and_then(|r| source.get(r))
+        .unwrap_or_default();
     let drawn = |kind: Kind, code: &str| -> Option<Svg> {
         match render_blocking(&Job::new(kind, code, *palette)).as_ref() {
             Ok(svg) => Some(svg.clone()),
@@ -187,6 +206,11 @@ fn collect(
         Node::Code(code) if fence_is(&code.lang, "excalidraw") => {
             drawn(Kind::Excalidraw, &code.value)
                 .map(|svg| Piece::Block(svg_markup(&svg, "kanso-drawing", 1.)))
+        }
+        Node::Paragraph(_) if display_math_paragraph(node, written).is_some() => {
+            display_math_paragraph(node, written)
+                .and_then(|formula| drawn(Kind::DisplayMath, formula))
+                .map(|svg| Piece::Block(svg_markup(&svg, "kanso-math-display", 1.)))
         }
         Node::Paragraph(_) if attached_scene(node).is_some() => attached_scene(node)
             .and_then(|id| attachments(&id))
@@ -379,6 +403,37 @@ mod tests {
         assert!(html.contains("<a>app link</a>"));
         assert!(html.contains("href=\"https://example.com\""));
         assert!(!html.contains("kansopiece"));
+    }
+
+    #[test]
+    fn one_line_double_dollars_are_display_math() {
+        let html = body(
+            "$$\\sum_{k=1}^n k$$\n\nText $$x$$ inline.\n",
+            &Palette::LIGHT,
+            &none,
+        );
+        assert_eq!(html.matches("class=\"kanso-math-display\"").count(), 1);
+        assert_eq!(html.matches("class=\"kanso-math\"").count(), 1);
+        assert!(!html.contains("$$"));
+    }
+
+    proptest! {
+        /// Invariants: a paragraph is display math exactly when it is one
+        /// `$$…$$` and nothing else, and the formula is what is inside.
+        #[test]
+        fn prop_display_math_paragraphs(formula in "[a-z0-9+=^]{1,12}", before in "[A-Za-z ]{0,6}") {
+            let markdown = format!("{before}$${formula}$$");
+            let tree = markdown::to_mdast(&markdown, &parse_options()).unwrap();
+            let Some(paragraph) = tree.children().and_then(|c| c.first()) else {
+                return Ok(());
+            };
+            let found = display_math_paragraph(paragraph, &markdown);
+            if before.trim().is_empty() {
+                prop_assert_eq!(found, Some(formula.as_str()));
+            } else {
+                prop_assert_eq!(found, None);
+            }
+        }
     }
 
     #[test]
