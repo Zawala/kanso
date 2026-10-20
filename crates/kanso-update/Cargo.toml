@@ -3,6 +3,7 @@ name = "kanso-update"
 description = "Kanso's updater: the signed release feed, downloading and checking an update, staging it beside the install and swapping it in; and kanso-release, which makes and signs the feed."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 rust-version.workspace = true
 
 [[bin]]

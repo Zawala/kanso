@@ -2,6 +2,7 @@
   "name": "kanso-sync-worker",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "description": "Kanso's sync server, protocol v2: accounts with end-to-end encrypted libraries, on a Cloudflare Worker over D1 (accounts, sessions, sealed documents) and R2 (sealed file bytes).",
   "scripts": {

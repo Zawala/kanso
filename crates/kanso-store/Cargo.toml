@@ -3,6 +3,7 @@ name = "kanso-store"
 description = "Kanso's SQLite document store: JSON documents, trigram search, revisions and sync state."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 rust-version.workspace = true
 
 [dependencies]

@@ -3,6 +3,7 @@ name = "kanso-core"
 description = "Kanso domain types: documents, IDs, revisions and the search-query language."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 rust-version.workspace = true
 
 [dependencies]

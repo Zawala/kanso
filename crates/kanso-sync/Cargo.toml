@@ -3,6 +3,7 @@ name = "kanso-sync"
 description = "Kanso's sync client: accounts with end-to-end encryption, and the sync engine that pulls remote changes, pushes local ones and moves attachment bytes."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 rust-version.workspace = true
 
 [[bin]]

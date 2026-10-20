@@ -187,3 +187,16 @@ a release stuck as a draft.
 
 Design notes and decisions are in [docs/PLAN.md](docs/PLAN.md); accounts and encrypted sync in
 [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
+
+## Licence
+
+Kanso is free software under the [GNU Affero General Public License, version 3 or any later
+version](LICENSE) (`AGPL-3.0-or-later`): the app, its crates and the sync Worker in [cloud/](cloud/).
+You may use, study, change and share it. If you share a changed Kanso, or run a changed Worker as a
+service other people use, you must offer them its source under the same licence.
+
+Contributions are welcome. By opening a pull request you agree that your contribution is licensed
+under the same terms.
+
+Kanso's dependencies keep their own licences (MIT, Apache-2.0, BSD and similar; a few files under
+MPL-2.0).

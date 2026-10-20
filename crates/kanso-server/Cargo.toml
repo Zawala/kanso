@@ -3,6 +3,7 @@ name = "kanso-server"
 description = "Kanso's local HTTP API: REST endpoints, compatible with Inkdrop's local API, and a native MCP endpoint."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
