@@ -855,6 +855,7 @@ impl SettingsView {
         startup.into_iter().chain([
             crate::settings_capture::capture_section(&self.shortcut, cx),
             crate::settings_capture::journal_section(cx),
+            crate::reminders::reminders_section(cx),
             section(
                 "Data",
                 vec![

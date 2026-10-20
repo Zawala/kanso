@@ -406,6 +406,19 @@ impl Default for CaptureSettings {
     }
 }
 
+/// Notifications for tasks with a due time (Settings › General).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RemindersSettings {
+    pub enabled: bool,
+}
+
+impl Default for RemindersSettings {
+    fn default() -> Self {
+        RemindersSettings { enabled: true }
+    }
+}
+
 /// The layout [`AppConfig::migrate`] brings older files up to.
 pub const CONFIG_VERSION: u32 = 3;
 
@@ -424,6 +437,7 @@ pub struct AppConfig {
     pub updates: UpdateSettings,
     pub editor: EditorSettings,
     pub capture: CaptureSettings,
+    pub reminders: RemindersSettings,
 }
 
 impl Default for AppConfig {
@@ -439,6 +453,7 @@ impl Default for AppConfig {
             updates: UpdateSettings::default(),
             editor: EditorSettings::default(),
             capture: CaptureSettings::default(),
+            reminders: RemindersSettings::default(),
         }
     }
 }
@@ -681,6 +696,7 @@ mod tests {
                     updates: UpdateSettings::default(),
                     editor: EditorSettings::default(),
                     capture: CaptureSettings::default(),
+                    reminders: super::RemindersSettings::default(),
                 },
             )
     }
