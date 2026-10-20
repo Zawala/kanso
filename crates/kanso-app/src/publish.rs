@@ -1,12 +1,12 @@
 //! The Publish sheet: a note's web page at a link anyone can open, sealed on
-//! this Mac so the sync server keeps only a copy it can't read
+//! this device so the sync server keeps only a copy it can't read
 //! (docs/ACCOUNTS.md › Published notes).
 //!
 //! The page is the note's web page export (`export_html::page`), images
 //! inside it, in the preview's theme when that is light and in Kanso's light
 //! theme otherwise. `kanso_sync::share` seals and uploads it; the link and
 //! its key are kept in the note (`kansoPublish`), so the account's other
-//! Macs can update or unpublish it. Publishing needs an account: signed out,
+//! devices can update or unpublish it. Publishing needs an account: signed out,
 //! the sheet says so and offers to sign in.
 
 use std::sync::Arc;
@@ -122,7 +122,7 @@ pub fn error_text(err: &ShareError) -> String {
                 "Couldn't reach your sync server. Check your connection and try again.".into()
             }
             ApiError::Unauthorized { .. } | ApiError::AccountDisabled => {
-                "Your account signed this Mac out. Sign in again to publish.".into()
+                "Your account signed this device out. Sign in again to publish.".into()
             }
             ApiError::QuotaExceeded { .. } => {
                 "Your account has no room left for this. Unpublish another note, or remove some attachments.".into()
@@ -377,7 +377,7 @@ impl Render for PublishView {
                         .text_size(px(12.5))
                         .line_height(px(18.))
                         .text_color(colors.text_muted)
-                        .child("The link shows the note as it is now. Later edits stay on your Macs until you update it."),
+                        .child("The link shows the note as it is now. Later edits stay on your devices until you update it."),
                 ),
             Phase::Published => {
                 let publish = self.publish().cloned().expect("published");
