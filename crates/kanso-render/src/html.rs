@@ -4,7 +4,8 @@
 //! opens anywhere, prints, and becomes a PDF.
 //!
 //! Raw HTML in a note is shown as text, except an attached image's `<img>`
-//! tag; links into the app keep their text but go nowhere.
+//! tag; links into the app keep their text but go nowhere, and wiki-links
+//! (`[[Title]]`, `[[Title#Heading]]`, `[[Title|alias]]`) show as their label.
 
 use std::fmt::Write as _;
 use std::hash::{Hash as _, Hasher as _};
@@ -86,6 +87,107 @@ pub fn img_tag(html: &str) -> Option<(String, String, Option<u32>)> {
         chars = tail;
     }
     Some((src?, alt, width))
+}
+
+/// An image's alt text without an Obsidian-style width after a `|`
+/// (`Cat|300`, or `Cat|300x200`, whose height is left to the image), and
+/// that width. Pure.
+pub fn split_image_width(alt: &str) -> (&str, Option<u32>) {
+    let Some((text, size)) = alt.rsplit_once('|') else {
+        return (alt, None);
+    };
+    let size = size.trim();
+    let width = size.split_once(['x', 'X']).map_or(size, |(w, _)| w);
+    if width.is_empty() || width.len() > 5 || !width.bytes().all(|b| b.is_ascii_digit()) {
+        return (alt, None);
+    }
+    match width.parse::<u32>() {
+        Ok(width) if width > 0 => (text.trim_end(), Some(width)),
+        _ => (alt, None),
+    }
+}
+
+/// The label a wiki-link's inside (`Title`, `Title#Heading` or
+/// `Title|alias`, as compiled HTML) shows: the alias, else the title and
+/// heading. `None` when it has no words. Pure.
+fn wiki_label(inner: &str) -> Option<String> {
+    let label = match inner.split_once('|') {
+        Some((_, alias)) if !alias.trim().is_empty() => alias.trim().to_owned(),
+        Some((target, _)) => heading_label(target),
+        None => heading_label(inner),
+    };
+    let words = label.replace(['<', '>'], "");
+    (!words.trim().is_empty()).then_some(label)
+}
+
+/// `Title#Heading` as "Title › Heading", or the heading alone.
+fn heading_label(target: &str) -> String {
+    match target.split_once('#') {
+        Some((title, heading)) if title.trim().is_empty() => heading.trim().to_owned(),
+        Some((title, heading)) if heading.trim().is_empty() => title.trim().to_owned(),
+        Some((title, heading)) => format!("{} › {}", title.trim(), heading.trim()),
+        None => target.trim().to_owned(),
+    }
+}
+
+/// Inline tags a wiki-link's text may hold, as Markdown compiles it.
+const WIKI_INLINE_TAGS: [&str; 6] = ["<em>", "</em>", "<strong>", "</strong>", "<del>", "</del>"];
+
+/// The wiki-link at the start of `html` (which starts `[[`): its label and
+/// how long it is. Pure.
+fn wiki_link_at(html: &str) -> Option<(String, usize)> {
+    let close = html.get(2..)?.find("]]")? + 2;
+    let inner = &html[2..close];
+    if inner.contains('\n') || inner.contains("[[") {
+        return None;
+    }
+    // Only inline emphasis inside: no code, links or block tags.
+    let mut rest = inner;
+    while let Some(at) = rest.find('<') {
+        let tag_end = rest[at..].find('>')? + at + 1;
+        if !WIKI_INLINE_TAGS.contains(&&rest[at..tag_end]) {
+            return None;
+        }
+        rest = &rest[tag_end..];
+    }
+    Some((wiki_label(inner)?, close + 2))
+}
+
+/// `[[Title]]`, `[[Title#Heading]]` and `[[Title|alias]]` in compiled
+/// HTML, outside code, as their label: a standalone page has no note to
+/// link to. Pure.
+pub fn wiki_links(html: &str) -> String {
+    if !html.contains("[[") {
+        return html.to_owned();
+    }
+    let mut out = String::with_capacity(html.len());
+    let mut in_code = 0usize;
+    let mut rest = html;
+    while let Some(c) = rest.chars().next() {
+        if c == '<' {
+            let end = rest.find('>').map_or(rest.len(), |e| e + 1);
+            let tag = rest[..end].to_ascii_lowercase();
+            if tag.starts_with("<code") || tag.starts_with("<pre") {
+                in_code += 1;
+            } else if tag.starts_with("</code") || tag.starts_with("</pre") {
+                in_code = in_code.saturating_sub(1);
+            }
+            out.push_str(&rest[..end]);
+            rest = &rest[end..];
+            continue;
+        }
+        if in_code == 0
+            && rest.starts_with("[[")
+            && let Some((label, len)) = wiki_link_at(rest)
+        {
+            let _ = write!(out, r#"<span class="kanso-wikilink">{label}</span>"#);
+            rest = &rest[len..];
+            continue;
+        }
+        out.push(c);
+        rest = &rest[c.len_utf8()..];
+    }
+    out
 }
 
 /// Whether a fence's info string names `want`.
@@ -217,8 +319,25 @@ fn collect(
             .and_then(|(_, bytes)| String::from_utf8(bytes).ok())
             .and_then(|scene| drawn(Kind::Excalidraw, &scene))
             .map(|svg| Piece::Block(svg_markup(&svg, "kanso-drawing", 1.))),
-        Node::Image(image) => attachment_id(&image.url)
-            .map(|id| Piece::Inline(attached_image(&id, &image.alt, None, attachments))),
+        Node::Image(image) => {
+            let (alt, width) = split_image_width(&image.alt);
+            match attachment_id(&image.url) {
+                Some(id) => Some(Piece::Inline(attached_image(&id, alt, width, attachments))),
+                // A web image given a width: the same tag Markdown would
+                // write, with the width and without the `|300`.
+                None => width
+                    .filter(|_| {
+                        image.url.starts_with("https://") || image.url.starts_with("http://")
+                    })
+                    .map(|width| {
+                        Piece::Inline(format!(
+                            r#"<img src="{}" alt="{}" width="{width}">"#,
+                            escape(&image.url),
+                            escape(alt)
+                        ))
+                    }),
+            }
+        }
         Node::Html(html) => img_tag(&html.value).and_then(|(src, alt, width)| {
             attachment_id(&src)
                 .map(|id| Piece::Inline(attached_image(&id, &alt, width, attachments)))
@@ -291,6 +410,7 @@ pub fn body(markdown: &str, palette: &Palette, attachments: Attachments<'_>) -> 
     // Links into the app (and other schemes a browser can't follow) lose
     // their address, so they aren't links that go nowhere.
     html = html.replace("<a href=\"\">", "<a>");
+    html = wiki_links(&html);
     for (n, piece) in kept.into_iter().enumerate() {
         let token = token(n);
         html = match piece {
@@ -341,6 +461,7 @@ figure svg{{max-width:100%;height:auto}}
 .kanso-math-display{{display:block;text-align:center;margin:.4em 0}}
 .kanso-diagram,.kanso-drawing{{display:block}}
 .kanso-missing{{color:{muted};font-style:italic}}
+.kanso-wikilink{{border-bottom:1px dotted {muted}}}
 @media print{{html,body{{background:none}}body{{max-width:none;padding:0}}pre,figure,table,img{{break-inside:avoid}}h1,h2,h3{{break-after:avoid}}}}
 "#,
         scheme = if p.dark { "dark" } else { "light" },
@@ -488,6 +609,77 @@ mod tests {
             html,
             "<p>Para<br>\n---<br>\n---<br>\na<br>\n===</p>\n<p>Next &lt;b&gt;</p>\n"
         );
+    }
+
+    #[test]
+    fn wiki_links_export_as_their_labels() {
+        let html = body(
+            "See [[Plans]], [[Plans#Next steps]], [[Plans|the plan]] and [[#Intro]].\n\n`[[kept]]` stays code.\n",
+            &Palette::LIGHT,
+            &none,
+        );
+        assert!(html.contains(r#"<span class="kanso-wikilink">Plans</span>,"#), "{html}");
+        assert!(html.contains(r#"<span class="kanso-wikilink">Plans › Next steps</span>"#));
+        assert!(html.contains(r#"<span class="kanso-wikilink">the plan</span>"#));
+        assert!(html.contains(r#"<span class="kanso-wikilink">Intro</span>"#));
+        assert!(html.contains("<code>[[kept]]</code>"), "{html}");
+        let html = body("A [[*big* idea]] here, and [[]] stays.\n", &Palette::LIGHT, &none);
+        assert!(html.contains(r#"<span class="kanso-wikilink"><em>big</em> idea</span>"#), "{html}");
+        assert!(html.contains("[[]]"));
+    }
+
+    #[test]
+    fn image_widths_after_a_bar() {
+        assert_eq!(split_image_width("Cat|300"), ("Cat", Some(300)));
+        assert_eq!(split_image_width("Cat |300x200"), ("Cat", Some(300)));
+        assert_eq!(split_image_width("|120"), ("", Some(120)));
+        assert_eq!(split_image_width("a|b"), ("a|b", None));
+        assert_eq!(split_image_width("Cat|0"), ("Cat|0", None));
+        assert_eq!(split_image_width("Cat|9999999"), ("Cat|9999999", None));
+        assert_eq!(split_image_width("Cat"), ("Cat", None));
+        let png = vec![0x89, b'P', b'N', b'G'];
+        let attachments =
+            |id: &str| (id == "file:abc").then(|| ("image/png".to_owned(), png.clone()));
+        let html = body(
+            "![Cat|300](inkdrop://file:abc)\n\n![Web|200](https://example.com/a.png)\n",
+            &Palette::LIGHT,
+            &attachments,
+        );
+        assert!(html.contains(r#"alt="Cat" width="300""#), "{html}");
+        assert!(
+            html.contains(r#"<img src="https://example.com/a.png" alt="Web" width="200">"#),
+            "{html}"
+        );
+        assert!(!html.contains("|300") && !html.contains("|200"));
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(128))]
+
+        /// Invariant: no wiki-link survives export as literal brackets,
+        /// whatever its title, heading or alias.
+        #[test]
+        fn prop_wiki_links_leave_no_brackets(
+            title in "[A-Za-z0-9][A-Za-z0-9 ,.'&-]{0,20}",
+            heading in prop::option::of("[A-Za-z0-9][A-Za-z0-9 ]{0,10}"),
+            alias in prop::option::of("[A-Za-z0-9][A-Za-z0-9 !?]{0,10}"),
+            before in "([A-Za-z][A-Za-z ]{0,9})?",
+            after in "[A-Za-z .]{0,10}",
+            heading_line in any::<bool>(),
+        ) {
+            let mut link = title.clone();
+            if let Some(heading) = &heading {
+                link = format!("{link}#{heading}");
+            }
+            if let Some(alias) = &alias {
+                link = format!("{link}|{alias}");
+            }
+            let line = format!("{before}[[{link}]]{after}");
+            let markdown = if heading_line { format!("## {line}\n") } else { format!("{line}\n\n- {line}\n") };
+            let html = page("t", &markdown, &Palette::LIGHT, &none);
+            prop_assert!(!html.contains("[["), "{}", html);
+            prop_assert!(html.contains("kanso-wikilink"));
+        }
     }
 
     #[test]
