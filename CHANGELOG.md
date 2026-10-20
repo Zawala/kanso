@@ -3,6 +3,22 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## [0.5.2](https://github.com/iamngoni/kanso/compare/v0.5.1...v0.5.2) - 2026-10-20
+
+### New
+
+- **cloud:** Published notes get a Rerout short link that previews the note's title ([46eb294](https://github.com/iamngoni/kanso/commit/46eb29486dc32741899efb2be47da632ef932923))
+- **sync:** Publishing sends the note's title and shows the short link with the key ([d8dfc5f](https://github.com/iamngoni/kanso/commit/d8dfc5fa8b25ed5b3ab74d974eb99eb96d1a73b5))
+
+### Fixed
+
+- **updates:** Restart quits and opens the new Kanso, instead of waiting for the next quit ([2cd9879](https://github.com/iamngoni/kanso/commit/2cd98798e2ca6d38f611f4d971180310e9e966a6))
+
+### Under the hood
+
+- **changelog:** The 0.5.1 notes describe the Windows import fix without naming another app ([62594db](https://github.com/iamngoni/kanso/commit/62594dbefa32a50ff2bc30a28da8d4d6b77d6c20))
+- Bind the e2e Worker's port in the same step that picks it ([2bd8f69](https://github.com/iamngoni/kanso/commit/2bd8f699e1f21ee7cf2b0fd14621ce82c5ffada2))
+
 ## [0.5.1](https://github.com/iamngoni/kanso/compare/v0.5.0...v0.5.1) - 2026-10-20
 
 ### Fixed
