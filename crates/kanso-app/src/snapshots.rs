@@ -2180,6 +2180,109 @@ fn wiki_autocomplete(
     .unwrap();
 }
 
+/// Two notes with tasks around the demo's Thursday 28 May: two overdue,
+/// two today (one at a time), some to come, one undated and one done.
+/// Returns the launch plan's ID.
+fn seed_tasks(store: &Store) -> String {
+    let book = store.books().unwrap()[0].id.clone();
+    let put = |title: &str, body: &str| {
+        store
+            .put(
+                DocType::Note,
+                json!({"title": title, "body": body, "bookId": book}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id
+    };
+    let plan = put(
+        "Launch plan",
+        "# Launch plan\n\nThe public beta goes out on Friday week.\n\n## Before the launch\n\n\
+         - [ ] Send the beta invite to the waiting list @2026-05-26\n\
+         - [ ] Write the launch post @2026-05-28T15:00\n\
+         - [x] Freeze the release branch @2026-05-25\n\
+         - [ ] Record the demo video @2026-05-29\n\
+         - [ ] Check the launch checklist with Sam @2026-06-02T10:30\n\
+         - [ ] Draft a FAQ for support\n\n\
+         ## After\n\n- [ ] Thank the beta testers @2026-06-08\n",
+    );
+    put(
+        "Home",
+        "# Home\n\n- [ ] Renew the car insurance @2026-05-21\n\
+         - [ ] Book the plumber @2026-05-28\n- [ ] Plant the tomatoes @2026-05-31\n",
+    );
+    plan
+}
+
+/// The Tasks view in the list's place, with tasks overdue, today, to come
+/// and undated, and the sidebar's overdue badge.
+fn tasks_view(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let plan = seed_tasks(store);
+    set_filter(cx, workspace, Filter::Tasks);
+    cx.run_until_parked();
+    let (library, tasks) = cx.update(|cx| {
+        let workspace = workspace.read(cx);
+        (workspace.library.clone(), workspace.tasks.clone())
+    });
+    cx.update(|cx| {
+        library.update(cx, |library, cx| library.select(Some(plan), cx));
+        tasks.update(cx, |tasks, cx| {
+            tasks.reload_now(cx);
+            tasks.board.step(1, crate::journal::now(cx));
+        });
+    });
+}
+
+/// A note with due dates: chips in the preview, warm red when overdue.
+fn due_chips(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let plan = seed_tasks(store);
+    let library = cx.update(|cx| workspace.read(cx).library.clone());
+    cx.update(|cx| {
+        library.update(cx, |library, cx| {
+            library.reload(cx);
+            library.select(Some(plan), cx);
+        })
+    });
+}
+
+/// Replace in all notes, finding "release" with a preview of each note's
+/// matches and one note left out.
+fn replace_sheet(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    seed_tasks(store);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    let editor = cx.update(|cx| workspace.read(cx).editor.clone());
+    cx.update_window(window, |_, window, cx| {
+        let view = crate::replace::open_replace(editor, window, cx);
+        view.update(cx, |view, cx| {
+            view.find
+                .update(cx, |find, cx| find.set_value("release", window, cx));
+            view.with
+                .update(cx, |with, cx| with.set_value("launch", window, cx));
+            view.search_blocking(cx);
+            if let Some(last) = view.found.last().map(|n| n.id.clone()) {
+                view.excluded.insert(last);
+            }
+        });
+    })
+    .unwrap();
+}
+
 /// Notes tagged in a tree (`work/acme`, `home/garden`): the sidebar shows
 /// the nested tags as rows under the chips, with `work` open and chosen,
 /// which lists the notes tagged anywhere under it.
@@ -3356,6 +3459,18 @@ fn snapshots() {
         shot("light-tags-tree", Light, Edit, tags_tree),
         shot("dark-daily-note", Dark, Edit, daily_note),
         shot("light-daily-note", Light, Split, daily_note),
+        shot("dark-tasks", Dark, Split, tasks_view),
+        shot("light-tasks", Light, Split, tasks_view),
+        shot("dark-due-chips", Dark, Preview, due_chips),
+        shot("light-due-chips", Light, Split, due_chips),
+        Shot {
+            dialog_width: crate::replace::SHEET_WIDTH,
+            ..shot("dark-replace", Dark, Edit, replace_sheet)
+        },
+        Shot {
+            dialog_width: crate::replace::SHEET_WIDTH,
+            ..shot("light-replace", Light, Edit, replace_sheet)
+        },
         shot("dark-palette-tag", Dark, Edit, palette_tag),
         shot("light-palette-new-tag", Light, Edit, palette_new_tag),
         shot("dark-open-note", Dark, Split, note_picker),
