@@ -265,6 +265,21 @@ impl Store {
         mode: Put,
         origin: Origin,
     ) -> Result<WriteResult> {
+        self.put_keeping(doc_type, body, mode, origin, &[])
+    }
+
+    /// [`Store::put`], except that the fields named in `kept` are never
+    /// taken from `body`: the document keeps its current values for them (in
+    /// the same transaction), and a new document gets none. The local API
+    /// uses it for fields only the app may set.
+    pub fn put_keeping(
+        &self,
+        doc_type: DocType,
+        body: Value,
+        mode: Put,
+        origin: Origin,
+        kept: &[&str],
+    ) -> Result<WriteResult> {
         let Value::Object(mut fields) = body else {
             return Err(StoreError::Invalid("Expected a JSON object.".into()));
         };
@@ -313,6 +328,13 @@ impl Store {
                     merged
                 }
             };
+            let mut merged = merged;
+            for &key in kept {
+                match live.and_then(|p| p.fields.get(key)) {
+                    Some(value) => merged.insert(key.to_owned(), value.clone()),
+                    None => merged.remove(key),
+                };
+            }
             let mut normalized = normalize(
                 doc_type,
                 &id,

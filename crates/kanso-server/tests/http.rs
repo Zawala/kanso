@@ -672,3 +672,75 @@ async fn serve_runs_until_shutdown() {
     tx.send(()).unwrap();
     server.await.unwrap().unwrap();
 }
+
+/// A note's published link as only the app's Publish sheet writes it.
+fn published() -> Value {
+    json!({ "shareId": "q3T9xW2LmN8vPz4RkY7aBw", "key": "app-key", "publishedAt": 1, "publishedRev": "1-a" })
+}
+
+/// Writes `note` as the app does (`Origin::Ui`), carrying `kansoPublish`.
+fn app_note(app: &App, mut note: Value) -> (String, String) {
+    note["kansoPublish"] = published();
+    let res = app
+        .store
+        .put(
+            kanso_core::DocType::Note,
+            note,
+            kanso_store::Put::Upsert,
+            kanso_store::Origin::Ui,
+        )
+        .unwrap();
+    (res.id, res.rev)
+}
+
+#[tokio::test]
+async fn the_local_api_never_sets_a_notes_published_link() {
+    let app = app();
+    let planted = json!({ "shareId": "AAAAAAAAAAAAAAAAAAAAAA", "key": "attacker-key", "publishedAt": 2, "publishedRev": "1-b" });
+
+    // Created through the API: whatever kansoPublish it's given is dropped, and a merge can't add one.
+    let (fresh, _) = write(
+        &app.router,
+        "/notes",
+        json!({ "bookId": "trash", "title": "t", "body": "b", "kansoPublish": planted }),
+    )
+    .await;
+    let (_, doc) = get(&app.router, &format!("/{fresh}")).await;
+    assert!(doc.get("kansoPublish").is_none(), "{doc}");
+    write(
+        &app.router,
+        &format!("/{fresh}"),
+        json!({ "kansoPublish": planted }),
+    )
+    .await;
+    let (_, doc) = get(&app.router, &format!("/{fresh}")).await;
+    assert!(doc.get("kansoPublish").is_none(), "{doc}");
+
+    // A published note keeps the app's value through replace and merge, whatever is sent.
+    let (id, rev) = app_note(
+        &app,
+        json!({ "bookId": "trash", "title": "t", "body": "b" }),
+    );
+    let (_, mut doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["_rev"], rev.as_str());
+    doc["kansoPublish"] = planted.clone();
+    doc["title"] = "replaced".into();
+    write(&app.router, "/notes", doc).await;
+    let (_, mut doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["title"], "replaced");
+    assert_eq!(doc["kansoPublish"], published());
+    // Leaving it out of a replace doesn't remove it either.
+    doc.as_object_mut().unwrap().remove("kansoPublish");
+    doc["title"] = "again".into();
+    write(&app.router, "/notes", doc).await;
+    for body in [
+        json!({ "kansoPublish": planted }),
+        json!({ "kansoPublish": null, "title": "merged" }),
+    ] {
+        write(&app.router, &format!("/{id}"), body).await;
+        let (_, doc) = get(&app.router, &format!("/{id}")).await;
+        assert_eq!(doc["kansoPublish"], published(), "{doc}");
+    }
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["title"], "merged");
+}

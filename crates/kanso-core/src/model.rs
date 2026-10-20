@@ -8,6 +8,11 @@ use serde_json::{Map, Value};
 /// The pseudo-notebook that holds trashed notes.
 pub const TRASH_BOOK_ID: &str = "trash";
 
+/// The note field (in `extra`) holding a published note's link and key
+/// (`kanso_sync::share::KansoPublish`). Only the app's Publish sheet sets
+/// it: the local API and MCP keep a note's value and ignore any they're sent.
+pub const PUBLISH_FIELD: &str = "kansoPublish";
+
 /// Longest note title Inkdrop accepts.
 pub const MAX_TITLE_LEN: usize = 128;
 /// Longest note body Inkdrop accepts, in characters.

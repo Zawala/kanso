@@ -73,13 +73,26 @@ pub(crate) fn list_docs(
     Ok(store.list_api(doc_type, limit, skip)?)
 }
 
+/// Fields of a document the local API and MCP may not set: a note's
+/// published link and key, which only the app's Publish sheet writes. A
+/// write keeps the document's current value and ignores the one it is sent,
+/// so a client can't plant a link (and a key it knows) for the app to
+/// publish to, or move a published note's link elsewhere.
+fn app_only_fields(doc_type: DocType) -> &'static [&'static str] {
+    match doc_type {
+        DocType::Note => &[kanso_core::model::PUBLISH_FIELD],
+        _ => &[],
+    }
+}
+
 /// `POST /notes` and friends: create, or replace when `_id` exists.
 pub(crate) fn upsert(store: &Store, doc_type: DocType, body: Value) -> ApiResult<Value> {
-    Ok(write_response(store.put(
+    Ok(write_response(store.put_keeping(
         doc_type,
         body,
         Put::Upsert,
         Origin::Api,
+        app_only_fields(doc_type),
     )?))
 }
 
@@ -90,11 +103,12 @@ pub(crate) fn merge(store: &Store, id: &str, body: Value) -> ApiResult<Value> {
         return Err(ApiError::bad_request("Expected a JSON object."));
     };
     fields.insert("_id".into(), Value::String(id.to_owned()));
-    Ok(write_response(store.put(
+    Ok(write_response(store.put_keeping(
         doc_type,
         Value::Object(fields),
         Put::Merge,
         Origin::Api,
+        app_only_fields(doc_type),
     )?))
 }
 

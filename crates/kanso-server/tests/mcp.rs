@@ -715,3 +715,46 @@ async fn outlines_and_wiki_links_through_kanso_tools() {
     .await;
     assert_eq!(bad["isError"], true);
 }
+
+#[tokio::test]
+async fn mcp_note_writes_never_set_a_published_link() {
+    let app = app();
+    let planted = json!({ "shareId": "AAAAAAAAAAAAAAAAAAAAAA", "key": "attacker-key", "publishedAt": 2, "publishedRev": "1-b" });
+    let created = tool_json(
+        &tool(
+            &app.router,
+            "create-note",
+            json!({ "bookId": "trash", "title": "t", "body": "b", "status": "none", "kansoPublish": planted }),
+        )
+        .await,
+    );
+    let (_, doc) = get(
+        &app.router,
+        &format!("/{}", created["id"].as_str().unwrap()),
+    )
+    .await;
+    assert!(doc.get("kansoPublish").is_none(), "{doc}");
+
+    // A note the app published keeps its link through update-note.
+    let ours = json!({ "shareId": "q3T9xW2LmN8vPz4RkY7aBw", "key": "app-key", "publishedAt": 1, "publishedRev": "1-a" });
+    let res = app
+        .store
+        .put(
+            kanso_core::DocType::Note,
+            json!({ "bookId": "trash", "title": "t", "body": "b", "kansoPublish": ours }),
+            kanso_store::Put::Upsert,
+            kanso_store::Origin::Ui,
+        )
+        .unwrap();
+    tool_json(
+        &tool(
+            &app.router,
+            "update-note",
+            json!({ "_id": res.id, "_rev": res.rev, "title": "Plan v2", "kansoPublish": planted }),
+        )
+        .await,
+    );
+    let (_, doc) = get(&app.router, &format!("/{}", res.id)).await;
+    assert_eq!(doc["title"], "Plan v2");
+    assert_eq!(doc["kansoPublish"], ours, "{doc}");
+}
