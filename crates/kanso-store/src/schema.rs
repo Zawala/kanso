@@ -129,6 +129,29 @@ ALTER TABLE revisions ADD COLUMN batch TEXT;
 ALTER TABLE revisions ADD COLUMN batch_rev TEXT;
 CREATE INDEX revisions_batch ON revisions (batch) WHERE batch IS NOT NULL;
 "#,
+    // Discovery (`embed.rs`, `ocr.rs`): local to this device like the
+    // tables above, never synced, and emptied with the library. A note's
+    // embedding for related notes, from one model, with the hash of the
+    // text it was made from; and the text read from an image attachment
+    // (mirrored from the file's synced `kansoOcr`), for the app's search.
+    r#"
+CREATE TABLE note_embeddings (
+    note_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    dim INTEGER NOT NULL,
+    -- `dim` little-endian f32s.
+    vector BLOB NOT NULL,
+    content_hash TEXT NOT NULL,
+    PRIMARY KEY (note_id, model)
+) WITHOUT ROWID;
+
+CREATE TABLE file_text (
+    file_id TEXT PRIMARY KEY NOT NULL,
+    -- The MD5 of the image the text was read from.
+    md5 TEXT NOT NULL,
+    text TEXT NOT NULL
+);
+"#,
 ];
 
 pub fn connect(path: &Path) -> Result<Connection> {
@@ -217,4 +240,65 @@ pub fn last_seq(conn: &Connection) -> Result<i64> {
 /// The next value of the store-wide change sequence.
 pub fn next_seq(conn: &Connection) -> Result<i64> {
     Ok(last_seq(conn)? + 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn version(conn: &Connection) -> i64 {
+        conn.pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap()
+    }
+
+    fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
+        conn.prepare(&format!(
+            "SELECT 1 FROM pragma_table_info('{table}') WHERE name = ?"
+        ))
+        .unwrap()
+        .exists([column])
+        .unwrap()
+    }
+
+    /// A new database ends on the last version, one per migration, with
+    /// every phase's tables.
+    #[test]
+    fn a_new_database_takes_every_migration() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = connect(&dir.path().join("k.db")).unwrap();
+        migrate(&conn).unwrap();
+        assert_eq!(MIGRATIONS.len(), 6);
+        assert_eq!(version(&conn), MIGRATIONS.len() as i64);
+        assert!(has_column(&conn, "note_tasks", "due"));
+        assert!(has_column(&conn, "revisions", "batch_rev"));
+        assert!(has_column(&conn, "note_embeddings", "content_hash"));
+        assert!(has_column(&conn, "file_text", "md5"));
+        // Running it again changes nothing.
+        migrate(&conn).unwrap();
+        assert_eq!(version(&conn), 6);
+    }
+
+    /// A database on version 5 (find and replace) moves to 6 (discovery)
+    /// keeping what it had.
+    #[test]
+    fn version_five_moves_to_six() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = connect(&dir.path().join("k.db")).unwrap();
+        for (index, sql) in MIGRATIONS.iter().take(5).enumerate() {
+            conn.execute_batch(&format!(
+                "BEGIN; {sql}; PRAGMA user_version = {}; COMMIT;",
+                index + 1
+            ))
+            .unwrap();
+        }
+        assert_eq!(version(&conn), 5);
+        assert!(!has_column(&conn, "note_embeddings", "vector"));
+        set_meta(&conn, "kept", "yes").unwrap();
+        migrate(&conn).unwrap();
+        assert_eq!(version(&conn), 6);
+        assert!(has_column(&conn, "revisions", "batch"));
+        assert!(has_column(&conn, "note_embeddings", "vector"));
+        assert!(has_column(&conn, "file_text", "text"));
+        assert_eq!(get_meta(&conn, "kept").unwrap().as_deref(), Some("yes"));
+    }
 }

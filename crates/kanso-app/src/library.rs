@@ -65,6 +65,8 @@ pub fn search_params(filter: &Filter, search: &str, sort: Sort, descending: bool
         descending,
         limit: None,
         skip: 0,
+        // The app finds notes by the words in their pictures too.
+        ocr: true,
     }
 }
 
@@ -107,6 +109,7 @@ fn recent_notes(
             descending: true,
             limit: Some(limit),
             skip: 0,
+            ocr: params.ocr,
         };
         let notes = store.search_summaries(&page)?;
         let done = notes.len() < limit || notes.last().is_some_and(|n| n.updated_at < since_ms);

@@ -13,6 +13,12 @@ pub const TRASH_BOOK_ID: &str = "trash";
 /// it: the local API and MCP keep a note's value and ignore any they're sent.
 pub const PUBLISH_FIELD: &str = "kansoPublish";
 
+/// The file field (in `extra`) holding the text read from an image
+/// attachment: `{"text", "md5", "engine"}`, where `md5` is the image's
+/// `md5digest` it was read from. It syncs inside the sealed document, so a
+/// device that can't read images still finds them by their words.
+pub const OCR_FIELD: &str = "kansoOcr";
+
 /// Longest note title Inkdrop accepts.
 pub const MAX_TITLE_LEN: usize = 128;
 /// Longest note body Inkdrop accepts, in characters.

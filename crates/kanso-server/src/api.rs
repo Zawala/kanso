@@ -59,6 +59,7 @@ pub(crate) fn list_notes(store: &Store, query: &NoteQuery) -> ApiResult<Vec<Valu
         descending: query.descending,
         limit: query.limit,
         skip: query.skip,
+        ocr: false,
     };
     Ok(store.search_api(&params)?)
 }
@@ -86,6 +87,8 @@ fn app_only_fields(doc_type: DocType) -> &'static [&'static str] {
             kanso_core::model::PUBLISH_FIELD,
             kanso_core::reminders::ACK_FIELD,
         ],
+        // The words the app read in an image: a write of the file keeps them.
+        DocType::File => &[kanso_core::model::OCR_FIELD],
         _ => &[],
     }
 }

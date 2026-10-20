@@ -424,6 +424,8 @@ impl Store {
             ]
             .into_iter()
             .chain(crate::derived::TABLES)
+            .chain(crate::embed::TABLES)
+            .chain(crate::ocr::TABLES)
             {
                 tx.execute(&format!("DELETE FROM {table}"), [])?;
             }

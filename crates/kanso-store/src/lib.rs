@@ -8,7 +8,10 @@
 mod backup;
 mod derived;
 mod doc;
+mod embed;
+mod graph;
 mod history;
+mod ocr;
 mod read;
 mod replace;
 mod roles;
@@ -26,6 +29,12 @@ use rusqlite::Connection;
 pub use backup::BackupPolicy;
 pub use derived::{Backlink, DERIVED_VERSION, DERIVED_VERSION_KEY, HeadingHit};
 pub use doc::{Attachment, Doc};
+pub use embed::{
+    Embedder, EmbeddingQueue, MODEL_KEY as EMBED_MODEL_KEY, PendingEmbedding, RelatedNote,
+    content_hash, cosine, embed_text, top_k,
+};
+pub use graph::{GraphLink, GraphNote};
+pub use ocr::{OCR_TYPES, UnreadImage};
 pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
 pub use replace::{
     NoteMatches, PREVIEW_MATCHES_PER_NOTE, Planned, ReplaceReport, Skipped, UndoReport,
@@ -111,6 +120,7 @@ impl Store {
         let mut writer = schema::connect(&path)?;
         schema::migrate(&writer)?;
         derived::rebuild_if_stale(&mut writer)?;
+        ocr::rebuild_if_stale(&mut writer)?;
         Ok(Store {
             path,
             writer: Mutex::new(writer),

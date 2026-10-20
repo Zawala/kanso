@@ -48,6 +48,10 @@ pub struct SearchParams {
     pub descending: bool,
     pub limit: Option<usize>,
     pub skip: usize,
+    /// Free-text terms also match the text read from the images a note
+    /// shows (`ocr.rs`). The app's searches ask for it; the local API's
+    /// search keeps to titles and bodies.
+    pub ocr: bool,
 }
 
 impl Default for SearchParams {
@@ -58,6 +62,7 @@ impl Default for SearchParams {
             descending: true,
             limit: None,
             skip: 0,
+            ocr: false,
         }
     }
 }
@@ -147,8 +152,10 @@ fn with_count(count: u32) -> Map<String, Value> {
     extra
 }
 
-/// Builds the `WHERE` clause and parameters for a note search.
-fn search_where(query: &Query) -> (String, Vec<SqlValue>) {
+/// Builds the `WHERE` clause and parameters for a note search; with `ocr`,
+/// a free-text term also matches a note that shows an image whose read
+/// text contains it.
+fn search_where(conn: &Connection, query: &Query, ocr: bool) -> Result<(String, Vec<SqlValue>)> {
     let includes_trash = query.includes_trash();
     let mut sql = String::from("d.type = 'note' AND d.deleted = 0");
     if !includes_trash {
@@ -156,11 +163,22 @@ fn search_where(query: &Query) -> (String, Vec<SqlValue>) {
     }
     let mut params = Vec::new();
     for clause in &query.clauses {
-        let expr = clause_sql(clause, !includes_trash, &mut params);
+        let mut expr = clause_sql(clause, !includes_trash, &mut params);
+        if ocr && clause.field.is_none() && !clause.negated {
+            let files = crate::ocr::files_matching(conn, &clause.value)?;
+            if !files.is_empty() {
+                let shows = files
+                    .into_iter()
+                    .map(|file| format!("instr({BODY}, {}) > 0", bind(&mut params, file)))
+                    .collect::<Vec<_>>()
+                    .join(" OR ");
+                expr = format!("({expr}) OR {shows}");
+            }
+        }
         sql.push_str(if clause.negated { " AND NOT " } else { " AND " });
         sql.push_str(&format!("COALESCE(({expr}), 0)"));
     }
-    (sql, params)
+    Ok((sql, params))
 }
 
 const BODY: &str = "json_extract(d.json, '$.body')";
@@ -238,8 +256,12 @@ fn clause_sql(clause: &Clause, fts_allowed: bool, params: &mut Vec<SqlValue>) ->
     }
 }
 
-fn search_sql(columns: &str, params: &SearchParams) -> (String, Vec<SqlValue>) {
-    let (where_sql, mut values) = search_where(&params.query);
+fn search_sql(
+    conn: &Connection,
+    columns: &str,
+    params: &SearchParams,
+) -> Result<(String, Vec<SqlValue>)> {
+    let (where_sql, mut values) = search_where(conn, &params.query, params.ocr)?;
     let direction = if params.descending { "DESC" } else { "ASC" };
     // Notes without a title read "Untitled"; they go after the named ones
     // in either direction rather than first.
@@ -254,7 +276,7 @@ fn search_sql(columns: &str, params: &SearchParams) -> (String, Vec<SqlValue>) {
     );
     values.push(SqlValue::Integer(params.limit.map_or(-1, |n| n as i64)));
     values.push(SqlValue::Integer(params.skip as i64));
-    (sql, values)
+    Ok((sql, values))
 }
 
 impl Store {
@@ -336,7 +358,7 @@ impl Store {
     /// Notes matching a search, with full bodies.
     pub fn search(&self, params: &SearchParams) -> Result<Vec<Doc>> {
         self.read(|conn| {
-            let (sql, values) = search_sql(DOC_COLUMNS, params);
+            let (sql, values) = search_sql(conn, DOC_COLUMNS, params)?;
             let mut stmt = conn.prepare(&sql)?;
             let docs = stmt
                 .query_map(params_from_iter(values), doc_from_row)?
@@ -370,7 +392,7 @@ impl Store {
                  d.book_id, d.status, json_extract(d.json, '$.tags'), d.pinned, d.updated_at, d.created_at, \
                  {window}, json_extract(d.json, '$.numOfCheckedTasks'), json_extract(d.json, '$.numOfTasks')"
             );
-            let (sql, mut values) = search_sql(&columns, params);
+            let (sql, mut values) = search_sql(conn, &columns, params)?;
             // The window's term comes first: its column is before the rest.
             if let Some(first) = terms.first() {
                 values.insert(0, SqlValue::Text((*first).to_owned()));

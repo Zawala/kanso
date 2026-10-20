@@ -154,6 +154,12 @@ pub(crate) fn store_row(
     if doc_type == DocType::File && deleted {
         tx.execute("DELETE FROM blobs WHERE file_id = ?", [id])?;
     }
+    if doc_type == DocType::File {
+        crate::ocr::write_file(tx, id, (!deleted).then_some(fields))?;
+    }
+    if doc_type == DocType::Note && deleted {
+        crate::embed::forget_note(tx, id)?;
+    }
     changes.push(Change {
         id: id.to_owned(),
         rev: rev.to_owned(),
