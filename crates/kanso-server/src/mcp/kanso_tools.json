@@ -1,5 +1,51 @@
 [
   {
+    "name": "kanso-create-daily-note",
+    "description": "Open the daily note for a day, creating it when there is none, as Kanso's Today command does. Daily notes have fixed IDs (`note:daily-YYYY-MM-DD`) and titles (`YYYY-MM-DD`) and live in the Journal notebook (`book:journal`), which is created on first use. A new daily note is filled in from the Journal's daily template, if one is set. Returns the note's ID, title, notebook and link, and whether it was created now.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "description": "The day, as YYYY-MM-DD. Defaults to today in this computer's time zone."
+        }
+      }
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "kanso-create-from-template",
+    "description": "Create a note from a template: a note in the Templates notebook (`book:templates`). The template's body is copied with its variables filled in: `{{date}}` (YYYY-MM-DD), `{{time}}` (HH:MM), `{{title}}` (the new note's title), `{{date:FORMAT}}` and `{{time:FORMAT}}` (strftime-like: %Y %m %d %e %B %b %A %a %H %M and more) and `{{cursor}}` (removed). Other text in double braces stays as it is. The note gets the template's tags and records it as `sourceTemplateId`. Returns the new note's ID, title, notebook and link.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "templateId": {
+          "type": "string",
+          "description": "ID of the template note. It can be found as `_id` in the note docs. It always starts with `note:`."
+        },
+        "title": {
+          "type": "string",
+          "description": "The new note's title; `{{title}}` in the template becomes it."
+        },
+        "bookId": {
+          "type": "string",
+          "description": "The notebook to create the note in. It can be found as `_id` in the book docs. It always starts with `book:`. Defaults to the Inbox (`book:inbox`), created on first use."
+        }
+      },
+      "required": [
+        "templateId",
+        "title"
+      ]
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
     "name": "kanso-export-html",
     "description": "Export a note as one self-contained HTML page, as Kanso's \"Export as web page\" does. TeX math ($…$ and $$…$$), Mermaid diagrams and Excalidraw drawings are drawn as inline SVG, attached images are embedded as data URIs, and the page has no scripts and loads nothing from the network. Returns the HTML.",
     "inputSchema": {

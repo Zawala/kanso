@@ -420,3 +420,63 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn daily_notes_are_made_from_the_journals_template() {
+    let (_dir, store) = temp_store();
+    assert_eq!(store.daily_template().unwrap(), None);
+    let templates = store.role_book(Role::Templates, Origin::Ui).unwrap();
+    let tpl = store
+        .put(
+            DocType::Note,
+            json!({"title": "Daily", "body": "# {{date:%A, %e %B}}\n\n{{cursor}}\n\nMade at {{time}} for {{title}}",
+                   "bookId": templates}),
+            Put::Upsert,
+            Origin::Ui,
+        )
+        .unwrap();
+    store.set_daily_template(Some(&tpl.id), Origin::Ui).unwrap();
+    assert_eq!(store.daily_template().unwrap(), Some(tpl.id.clone()));
+    assert_eq!(field(&store, "book:journal", "kansoDailyTemplate"), tpl.id);
+    let now = DateTime {
+        date: day(20),
+        hour: 7,
+        minute: 5,
+        second: 0,
+    };
+    let daily = store.open_daily(now, Origin::Ui).unwrap();
+    let note = store.note(&daily.id).unwrap().unwrap();
+    assert_eq!(
+        note.body,
+        "# Tuesday, 20 October\n\n\n\nMade at 07:05 for 2026-10-20"
+    );
+    assert_eq!(daily.cursor, Some("# Tuesday, 20 October\n\n".len()));
+    // Found again: no cursor, nothing rewritten.
+    let again = store.open_daily(now, Origin::Ui).unwrap();
+    assert_eq!((again.created, again.cursor), (false, None));
+    // A template in the trash is no template.
+    store
+        .put(
+            DocType::Note,
+            json!({"_id": tpl.id, "bookId": TRASH_BOOK_ID}),
+            Put::Merge,
+            Origin::Ui,
+        )
+        .unwrap();
+    assert_eq!(store.daily_template().unwrap(), None);
+    let next = store
+        .open_daily(
+            DateTime {
+                date: day(21),
+                ..now
+            },
+            Origin::Ui,
+        )
+        .unwrap();
+    assert_eq!(store.note(&next.id).unwrap().unwrap().body, "");
+    store.set_daily_template(None, Origin::Ui).unwrap();
+    assert_eq!(
+        field(&store, "book:journal", "kansoDailyTemplate"),
+        Value::Null
+    );
+}

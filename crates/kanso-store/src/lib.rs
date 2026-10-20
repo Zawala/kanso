@@ -25,7 +25,7 @@ pub use backup::BackupPolicy;
 pub use derived::{Backlink, DERIVED_VERSION, DERIVED_VERSION_KEY, HeadingHit};
 pub use doc::{Attachment, Doc};
 pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
-pub use roles::{DailyNote, FromTemplate, NewNote};
+pub use roles::{DAILY_TEMPLATE_FIELD, DailyNote, FromTemplate, NewNote};
 pub use sync::{ApplyOutcome, SyncDoc, SyncGuard, SyncState};
 pub use write::{Put, WriteResult};
 

@@ -52,7 +52,7 @@ async fn lists_the_seventeen_tools_and_the_note_template() {
     let answer = rpc(&app.router, "tools/list", json!({})).await;
     let tools = answer["result"]["tools"].as_array().unwrap();
     // The 17, then Kanso's own.
-    assert_eq!(tools.len(), 20);
+    assert_eq!(tools.len(), 22);
     assert!(
         tools[17..]
             .iter()
@@ -757,4 +757,90 @@ async fn mcp_note_writes_never_set_a_published_link() {
     let (_, doc) = get(&app.router, &format!("/{}", res.id)).await;
     assert_eq!(doc["title"], "Plan v2");
     assert_eq!(doc["kansoPublish"], ours, "{doc}");
+}
+
+#[tokio::test]
+async fn daily_notes_and_templates_through_kanso_tools() {
+    let app = app();
+    let made = tool_json(
+        &tool(
+            &app.router,
+            "kanso-create-daily-note",
+            json!({ "date": "2026-10-20" }),
+        )
+        .await,
+    );
+    assert_eq!(
+        made,
+        json!({
+            "noteId": "note:daily-2026-10-20",
+            "title": "2026-10-20",
+            "bookId": "book:journal",
+            "uri": "inkdrop://note/daily-2026-10-20",
+            "created": true,
+        })
+    );
+    let again = tool_json(
+        &tool(
+            &app.router,
+            "kanso-create-daily-note",
+            json!({ "date": "2026-10-20" }),
+        )
+        .await,
+    );
+    assert_eq!(again["created"], false);
+    let today = tool_json(&tool(&app.router, "kanso-create-daily-note", json!({})).await);
+    assert!(
+        today["noteId"]
+            .as_str()
+            .unwrap()
+            .starts_with("note:daily-20")
+    );
+    let bad = tool(
+        &app.router,
+        "kanso-create-daily-note",
+        json!({ "date": "20 October" }),
+    )
+    .await;
+    assert_eq!(bad["isError"], true);
+
+    let (book_id, _) = write(
+        &app.router,
+        "/books",
+        json!({ "_id": "book:templates", "name": "Templates", "kansoRole": "templates" }),
+    )
+    .await;
+    let (template, _) = write(
+        &app.router,
+        "/notes",
+        json!({ "bookId": book_id, "title": "Meeting", "body": "# {{title}}\n\n{{cursor}}{{who}}" }),
+    )
+    .await;
+    let made = tool_json(
+        &tool(
+            &app.router,
+            "kanso-create-from-template",
+            json!({ "templateId": template, "title": "Standup" }),
+        )
+        .await,
+    );
+    assert_eq!(made["title"], "Standup");
+    assert_eq!(made["bookId"], "book:inbox");
+    let note = tool_json(
+        &tool(
+            &app.router,
+            "read-note",
+            json!({ "noteId": made["noteId"] }),
+        )
+        .await,
+    );
+    assert_eq!(note["body"], "# Standup\n\n{{who}}");
+    assert_eq!(note["sourceTemplateId"], template);
+    let missing = tool(
+        &app.router,
+        "kanso-create-from-template",
+        json!({ "templateId": "note:missing", "title": "x" }),
+    )
+    .await;
+    assert_eq!(missing["isError"], true);
 }

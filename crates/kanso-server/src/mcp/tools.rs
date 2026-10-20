@@ -70,6 +70,8 @@ pub(crate) fn call(state: &AppState, name: &str, arguments: Option<&Value>) -> V
         "update-book" => merge(store, args, true),
         "create-file" => create_file(store, state.local_files, &args),
         "read-file" => read_file(store, state.local_files, &args),
+        "kanso-create-daily-note" => create_daily_note(store, &args),
+        "kanso-create-from-template" => create_from_template(store, &args),
         "kanso-export-html" => export_html(store, &args),
         "kanso-get-outline" => get_outline(store, &args),
         "kanso-resolve-wikilink" => resolve_wikilink(store, &args),
@@ -78,6 +80,68 @@ pub(crate) fn call(state: &AppState, name: &str, arguments: Option<&Value>) -> V
         ))),
     };
     result.unwrap_or_else(|ToolError(message)| error_result(message))
+}
+
+/// Now on this computer's clock, in its time zone.
+fn local_now() -> kanso_core::dates::DateTime {
+    let local = chrono::Local::now()
+        .naive_local()
+        .and_utc()
+        .timestamp_millis();
+    kanso_core::dates::DateTime::from_local_ms(local)
+}
+
+/// What a note made or opened by a tool is, for its answer.
+fn made_note(store: &Store, id: &str, created: Option<bool>) -> ToolResult {
+    let note = api::get_doc(store, id, None, false)?;
+    let mut answer = Map::new();
+    answer.insert("noteId".into(), json!(id));
+    answer.insert(
+        "title".into(),
+        note.get("title").cloned().unwrap_or_default(),
+    );
+    answer.insert(
+        "bookId".into(),
+        note.get("bookId").cloned().unwrap_or_default(),
+    );
+    answer.insert("uri".into(), json!(note_uri(id)));
+    if let Some(created) = created {
+        answer.insert("created".into(), json!(created));
+    }
+    result(vec![text(pretty(&Value::Object(answer)))])
+}
+
+/// `kanso-create-daily-note`: the day's note in the Journal, made from the
+/// daily template when missing.
+fn create_daily_note(store: &Store, args: &Args) -> ToolResult {
+    let mut now = local_now();
+    if let Some(date) = opt_str(args, "date") {
+        now.date = kanso_core::dates::Date::parse_iso(date.trim())
+            .ok_or_else(|| ToolError(format!("`{date}` is not a date: write it as YYYY-MM-DD.")))?;
+    }
+    let daily = store
+        .open_daily(now, kanso_store::Origin::Api)
+        .map_err(|err| ToolError(err.to_string()))?;
+    made_note(store, &daily.id, Some(daily.created))
+}
+
+/// `kanso-create-from-template`: a note from a template, its variables
+/// filled in.
+fn create_from_template(store: &Store, args: &Args) -> ToolResult {
+    let template = with_prefix(DocType::Note, str_arg(args, "templateId"));
+    // The same failure as reading a note that isn't there.
+    api::get_doc(store, &template, None, false)?;
+    let book = opt_str(args, "bookId").map(|id| with_prefix(DocType::Book, id));
+    let made = store
+        .create_from_template(
+            &template,
+            Some(str_arg(args, "title")),
+            book.as_deref(),
+            local_now(),
+            kanso_store::Origin::Api,
+        )
+        .map_err(|err| ToolError(err.to_string()))?;
+    made_note(store, &made.id, None)
 }
 
 /// `kanso-export-html`: the note as a standalone page, in Kanso's light or

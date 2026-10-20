@@ -32,7 +32,13 @@ pub struct DailyNote {
     pub id: String,
     /// Made now, rather than found.
     pub created: bool,
+    /// Where a new note's template put `{{cursor}}`, as a byte offset into
+    /// its body.
+    pub cursor: Option<usize>,
 }
+
+/// The Journal's field naming the template new daily notes are made from.
+pub const DAILY_TEMPLATE_FIELD: &str = "kansoDailyTemplate";
 
 /// A note made from a template.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -157,7 +163,11 @@ impl Store {
                         fields.insert("updatedAt".into(), now_ms().into());
                     })?;
                 }
-                return Ok(DailyNote { id, created: false });
+                return Ok(DailyNote {
+                    id,
+                    created: false,
+                    cursor: None,
+                });
             }
             let journal = role_book_in(tx, Role::Journal, origin, changes)?;
             let title = if new.title.trim().is_empty() {
@@ -171,8 +181,73 @@ impl Store {
             fields.insert("bookId".into(), journal.into());
             fields.insert("tags".into(), new.tags.clone().into());
             create(tx, DocType::Note, &id, fields, origin, changes)?;
-            Ok(DailyNote { id, created: true })
+            Ok(DailyNote {
+                id,
+                created: true,
+                cursor: None,
+            })
         })
+    }
+
+    /// The template new daily notes are made from, as the Journal names it
+    /// (it syncs with the Journal), when that note is still there.
+    pub fn daily_template(&self) -> Result<Option<String>> {
+        let Some(journal) = self.find_role_book(Role::Journal)? else {
+            return Ok(None);
+        };
+        let named = self
+            .get(&journal)?
+            .and_then(|doc| doc.fields.get(DAILY_TEMPLATE_FIELD).cloned())
+            .and_then(|v| v.as_str().map(str::to_owned));
+        Ok(match named {
+            Some(id) if self.note(&id)?.is_some_and(|n| !n.is_trashed()) => Some(id),
+            _ => None,
+        })
+    }
+
+    /// Makes `template` (a note's ID, or `None` for none) the one new daily
+    /// notes are made from; the Journal is made if needed.
+    pub fn set_daily_template(&self, template: Option<&str>, origin: Origin) -> Result<()> {
+        let journal = self.role_book(Role::Journal, origin)?;
+        self.put(
+            DocType::Book,
+            json!({"_id": journal, DAILY_TEMPLATE_FIELD: template}),
+            crate::Put::Merge,
+            origin,
+        )?;
+        Ok(())
+    }
+
+    /// Opens the daily note for `now.date`, making it when missing from the
+    /// daily template (filled in for that day, at `now`'s time) or empty.
+    pub fn open_daily(&self, now: DateTime, origin: Origin) -> Result<DailyNote> {
+        let title = daily_title(now.date);
+        let mut cursor = None;
+        let new = match self
+            .daily_template()?
+            .map(|id| self.note(&id))
+            .transpose()?
+        {
+            Some(Some(template)) => {
+                let (_, body) =
+                    template::instantiate(&template.title, &template.body, Some(&title), now);
+                cursor = body.cursor;
+                NewNote {
+                    title,
+                    body: body.text,
+                    tags: template.tags,
+                }
+            }
+            _ => NewNote {
+                title,
+                ..NewNote::default()
+            },
+        };
+        let mut daily = self.daily_note(now.date, &new, origin)?;
+        if daily.created {
+            daily.cursor = cursor;
+        }
+        Ok(daily)
     }
 
     /// The days that have a daily note outside the trash, oldest first.

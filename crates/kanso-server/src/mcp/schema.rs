@@ -360,10 +360,20 @@ mod tests {
         assert_eq!(
             &names[17..],
             [
+                "kanso-create-daily-note",
+                "kanso-create-from-template",
                 "kanso-export-html",
                 "kanso-get-outline",
                 "kanso-resolve-wikilink"
             ]
+        );
+        assert!(validate("kanso-create-daily-note", json!({})).is_ok());
+        assert!(
+            validate(
+                "kanso-create-from-template",
+                json!({"templateId": "note:t"})
+            )
+            .is_err()
         );
         assert!(validate("kanso-get-outline", json!({})).is_err());
         assert!(validate("kanso-resolve-wikilink", json!({"link": "[[A]]"})).is_ok());

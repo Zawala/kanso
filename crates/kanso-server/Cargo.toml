@@ -9,6 +9,8 @@ rust-version.workspace = true
 anyhow.workspace = true
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
 base64.workspace = true
+# Today, in the computer's time zone, for daily notes.
+chrono.workspace = true
 kanso-core.workspace = true
 kanso-render.workspace = true
 kanso-store.workspace = true
