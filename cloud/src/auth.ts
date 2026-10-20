@@ -50,6 +50,7 @@ import {
 	proof32,
 } from "./protocol";
 import { DELETE_PURGE_ROUNDS, accountPrefix, purgePrefix } from "./purge";
+import { accountShareStatements, runSharePurges } from "./shares";
 import { isReserved, normalizeUsername } from "./usernames";
 
 type Handler = (request: Request, env: Env, now: number) => Promise<Response>;
@@ -734,8 +735,9 @@ export const recoveryKey = withSession(async (request, env, now, session) => {
 });
 
 /**
- * The deletion batch: documents, files, sessions, account-keyed limits, the
- * purge row, then the account (children first: D1 enforces foreign keys).
+ * The deletion batch: documents, files, published notes (queued for their R2
+ * objects' deletion), sessions, account-keyed limits, the purge row, then the
+ * account (children first: D1 enforces foreign keys).
  * Every statement holds only while the checked auth hash is stored.
  */
 export function deletionStatements(db: D1Database, accountId: string, now: number, authHash: string): D1PreparedStatement[] {
@@ -744,6 +746,7 @@ export function deletionStatements(db: D1Database, accountId: string, now: numbe
 	return [
 		bind(`DELETE FROM account_docs WHERE account_id = ?1 AND ${guard}`),
 		bind(`DELETE FROM account_files WHERE account_id = ?1 AND ${guard}`),
+		...accountShareStatements(db, accountId, guard, authHash, now),
 		bind(`DELETE FROM sessions WHERE account_id = ?1 AND ${guard}`),
 		bind(
 			`DELETE FROM limits WHERE key IN ('login-user:' || ?1, 'password-account:' || ?1, 'writes-account:' || ?1, 'uploads-account:' || ?1)
@@ -769,8 +772,9 @@ export const deleteAccount = withSession(async (request, env, now, session) => {
 		return error(400, "username_mismatch", "The username doesn't match this account.");
 	}
 	const results = await env.DB.batch(deletionStatements(env.DB, account.id, now, account.auth_hash));
-	if (results[5].results.length !== 1) return invalidCredentials();
+	if (results[results.length - 1].results.length !== 1) return invalidCredentials();
 	await purgePrefix(env, accountPrefix(account.id), now, now, DELETE_PURGE_ROUNDS);
+	await runSharePurges(env, now);
 	return json({ deleted: true });
 });
 

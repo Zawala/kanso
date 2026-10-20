@@ -210,6 +210,20 @@ export function client(token: string, init: Call = {}) {
 			const response = await call(`/v2/files/${id}`, { ...init, token });
 			return { status: response.status, bytes: new Uint8Array(await response.arrayBuffer()) };
 		},
+		async putShare(id: string, bytes: Uint8Array, options: { sha?: string; expiresAt?: number } = {}) {
+			const headers: Record<string, string> = {
+				"content-type": "application/octet-stream",
+				"content-length": String(bytes.length),
+				"x-kanso-sha256": options.sha ?? (await sha256Hex(bytes)),
+			};
+			if (options.expiresAt !== undefined) headers["x-kanso-expires-at"] = String(options.expiresAt);
+			const response = await call(`/v2/shares/${id}`, { ...init, token, method: "PUT", body: bytes, headers });
+			return { status: response.status, body: await response.json<any>() };
+		},
+		async deleteShare(id: string) {
+			const response = await call(`/v2/shares/${id}`, { ...init, token, method: "DELETE" });
+			return { status: response.status, body: response.status === 204 ? null : await response.json<any>() };
+		},
 		account: () => as("/v2/account"),
 		devices: () => as("/v2/account/devices"),
 		logout: () => as("/v2/auth/logout", { method: "POST" }),
@@ -227,6 +241,8 @@ export async function resetServer(settings: Record<string, string> = { signup: "
 	await env.DB.batch([
 		env.DB.prepare("DELETE FROM account_docs"),
 		env.DB.prepare("DELETE FROM account_files"),
+		env.DB.prepare("DELETE FROM shares"),
+		env.DB.prepare("DELETE FROM share_purges"),
 		env.DB.prepare("DELETE FROM sessions"),
 		env.DB.prepare("DELETE FROM accounts"),
 		env.DB.prepare("DELETE FROM limits"),
@@ -267,8 +283,9 @@ export async function recomputed(accountId: string): Promise<{ docs: number; doc
 	const row = await env.DB.prepare(
 		`SELECT (SELECT count(*) FROM account_docs WHERE account_id = ?1 AND deleted = 0) AS docs,
   (SELECT coalesce(sum(length(sealed) + 512), 0) FROM account_docs WHERE account_id = ?1) AS doc_bytes,
-  (SELECT count(*) FROM account_files WHERE account_id = ?1) AS files,
-  (SELECT coalesce(sum(size + 1024), 0) FROM account_files WHERE account_id = ?1) AS file_bytes`,
+  (SELECT count(*) FROM account_files WHERE account_id = ?1) + (SELECT count(*) FROM shares WHERE account_id = ?1) AS files,
+  (SELECT coalesce(sum(size + 1024), 0) FROM account_files WHERE account_id = ?1)
+    + (SELECT coalesce(sum(size + 1024), 0) FROM shares WHERE account_id = ?1) AS file_bytes`,
 	)
 		.bind(accountId)
 		.first<{ docs: number; doc_bytes: number; files: number; file_bytes: number }>();

@@ -514,6 +514,9 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 			const results = await io.sql([
 				`DELETE FROM account_docs WHERE account_id = ${id}`,
 				`DELETE FROM account_files WHERE account_id = ${id}`,
+				`INSERT INTO share_purges (id, requested_at) SELECT id, ${now} FROM shares WHERE account_id = ${id}
+  ON CONFLICT (id) DO UPDATE SET requested_at = excluded.requested_at`,
+				`DELETE FROM shares WHERE account_id = ${id}`,
 				`DELETE FROM sessions WHERE account_id = ${id}`,
 				`DELETE FROM limits WHERE key IN ('login-user:' || ${id}, 'password-account:' || ${id}, 'writes-account:' || ${id},
   'uploads-account:' || ${id})`,
@@ -521,9 +524,11 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
   ON CONFLICT (prefix) DO UPDATE SET requested_at = excluded.requested_at`,
 				`DELETE FROM accounts WHERE username = ${sqlText(user)} RETURNING id`,
 			]);
-			const deleted = results[5].results[0];
+			const deleted = results[results.length - 1].results[0];
 			return deleted
-				? ok(`Deleted ${user} (${String(deleted.id)}). The cron empties accounts/${String(deleted.id)}/ in R2 within 15 minutes.`)
+				? ok(
+						`Deleted ${user} (${String(deleted.id)}). The cron empties accounts/${String(deleted.id)}/ and deletes its published notes in R2 within 15 minutes.`,
+					)
 				: refused(`No account is named ${user}.`);
 		}
 		case "signups": {
@@ -792,8 +797,10 @@ async function recount(rest: string[], io: AdminIO, now: number): Promise<Report
 		`UPDATE accounts SET
   docs = (SELECT count(*) FROM account_docs d WHERE d.account_id = accounts.id AND d.deleted = 0),
   doc_bytes = (SELECT coalesce(sum(octet_length(d.sealed) + ${ROW_COST}), 0) FROM account_docs d WHERE d.account_id = accounts.id),
-  files = (SELECT count(*) FROM account_files f WHERE f.account_id = accounts.id),
-  file_bytes = (SELECT coalesce(sum(f.size + ${FILE_COST}), 0) FROM account_files f WHERE f.account_id = accounts.id),
+  files = (SELECT count(*) FROM account_files f WHERE f.account_id = accounts.id)
+    + (SELECT count(*) FROM shares s WHERE s.account_id = accounts.id),
+  file_bytes = (SELECT coalesce(sum(f.size + ${FILE_COST}), 0) FROM account_files f WHERE f.account_id = accounts.id)
+    + (SELECT coalesce(sum(s.size + ${FILE_COST}), 0) FROM shares s WHERE s.account_id = accounts.id),
   recounted_at = max(${now}, coalesce(recounted_at, 0) + 1)${where}
   RETURNING ${columns}`,
 	]);

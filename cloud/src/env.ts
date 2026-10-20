@@ -8,4 +8,6 @@ export interface Env {
 	AUTH_LIMITER?: RateLimit;
 	/** The write-free filter of the session routes, keyed by account ID; absent in unit tests. */
 	SESSION_LIMITER?: RateLimit;
+	/** The write-free filter of published notes and their viewer page, keyed by IP group; absent in unit tests. */
+	PUBLIC_LIMITER?: RateLimit;
 }

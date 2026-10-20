@@ -22,9 +22,14 @@
 //   GET    /v2/changes?since=&limit=    the account's change feed                     (session)
 //   PUT    /v2/files/<wire_id>          store sealed file bytes                       (session)
 //   GET    /v2/files/<wire_id>          fetch sealed file bytes                       (session)
+//   PUT    /v2/shares/<id>              publish a sealed note, or replace it          (session)
+//   DELETE /v2/shares/<id>              unpublish it                                  (session)
+//   GET    /v2/public/<id>              a published note's sealed bytes               (public)
+//   GET    /p/<id>                      the page that opens it with the link's key    (public)
 //
 // /v1 and every other path answer 404. Any request with an Origin header gets
-// 403 before anything else; a body with the wrong Content-Type gets 415.
+// 403 before anything else, except on the two public routes, which hold no
+// credentials and only ever read; a body with the wrong Content-Type gets 415.
 
 import * as auth from "./auth";
 import { pepperKeys } from "./crypto";
@@ -32,6 +37,7 @@ import type { Env } from "./env";
 import { error, isContentType, methodNotAllowed, notFound } from "./http";
 import { bindingFilter } from "./limits";
 import { runCron } from "./purge";
+import * as shares from "./shares";
 import * as sync from "./sync";
 
 export type { Env } from "./env";
@@ -54,6 +60,8 @@ interface Route {
 	methods: Record<string, Method>;
 	/** Behind the AUTH_LIMITER binding (every /v2/auth/* route and /v2/health). */
 	binding?: boolean;
+	/** Readable by anyone, from a browser too: the Origin rule doesn't apply. */
+	public?: boolean;
 }
 
 const json = (handler: Handler | PepperHandler, pepper = false): Method => ({ handler, body: "json", pepper });
@@ -95,6 +103,15 @@ function match(path: string): Route | null {
 		const id = segment(file[1]);
 		return { name: "files", methods: { GET: { handler: sync.getFile(id) }, PUT: { handler: sync.putFile(id), body: "bytes" } } };
 	}
+	const share = /^\/v2\/shares\/([^/]+)$/.exec(path);
+	if (share) {
+		const id = segment(share[1]);
+		return { name: "shares", methods: { PUT: { handler: shares.putShare(id), body: "bytes" }, DELETE: { handler: shares.deleteShare(id) } } };
+	}
+	const published = /^\/v2\/public\/([^/]+)$/.exec(path);
+	if (published) return { name: "public", public: true, methods: { GET: { handler: shares.getPublic(segment(published[1])), pepper: true } } };
+	const viewer = /^\/p\/([^/]+)$/.exec(path);
+	if (viewer) return { name: "viewer", public: true, methods: { GET: { handler: shares.getViewer(segment(viewer[1])) } } };
 	return null;
 }
 
@@ -102,9 +119,9 @@ function match(path: string): Route | null {
 export async function handle(request: Request, env: Env, now: number): Promise<Response> {
 	let name = "unknown";
 	try {
-		// Browsers always send Origin on the requests that matter; the native client never does (M7).
-		if (request.headers.has("origin")) return error(403, "forbidden_origin", "Browser requests are refused.");
 		const route = match(new URL(request.url).pathname);
+		// Browsers always send Origin on the requests that matter; the native client never does (M7).
+		if (request.headers.has("origin") && !route?.public) return error(403, "forbidden_origin", "Browser requests are refused.");
 		if (!route) return notFound();
 		name = route.name;
 		const method = route.methods[request.method];

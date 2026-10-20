@@ -1,0 +1,8 @@
+{
+	"description": "One published note sealed with fixed inputs: the Rust client (share.rs) must produce `sealed` from them, and the viewer's decryption must open it.",
+	"key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+	"share_id": "AAECAwQFBgcICQoLDA0ODw",
+	"nonce": "a0a1a2a3a4a5a6a7a8a9aaab",
+	"plaintext": "<!doctype html><html><head><title>Fixture</title><style>p{color:#333}</style></head><body><p style=\"margin:0\">Hello, published world.</p></body></html>",
+	"sealed": "01a0a1a2a3a4a5a6a7a8a9aaabda39184226bf7bcf0745efa76a16fee218d8347cac8b2a09fd6a18ba0bc2016db7480196d756264f3aa02bbc600eef9c7927353c1bbc7f4031256831c81ff78a978fb65c4d99cb93809b937db1f2e3d2a86acf9af9a3f61e974b02ea91e939ede3e116896ecffdfcf7b53c60a7b6a54d483c0e82fe45ee5e43a6adccd131d23aaa63dc1bfd7eaf670965d1e97d2ee8e8b4f6c51fd3bcc41603c1a056497b969f97df1a19fdd213"
+}

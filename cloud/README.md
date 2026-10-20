@@ -20,9 +20,15 @@ and the counters behind quotas and rate limits; R2 holds sealed file bytes under
 | `POST /v2/push` | yes | Up to 200 sealed documents, each with the revision it was based on |
 | `GET /v2/changes?since=&limit=` | yes | The account's change feed |
 | `PUT` / `GET /v2/files/<wire_id>` | yes | Sealed file bytes, checked against `x-kanso-sha256` |
+| `PUT` / `DELETE /v2/shares/<id>` | yes | Publish (or replace) a sealed note, or unpublish it |
+| `GET /v2/public/<id>` | | A published note's ciphertext; 410 once expired, rate-limited per IP |
+| `GET /p/<id>` | | The viewer page: opens the note with the key in the link's `#fragment` |
 
 A session is `Authorization: Bearer kanso_…`. `/v1` and every other path answer 404. Any request
-with an `Origin` header gets 403, and a body with the wrong `Content-Type` gets 415. There is no
+with an `Origin` header gets 403, except on the two public routes, and a body with the wrong
+`Content-Type` gets 415. Published notes are described in
+[docs/ACCOUNTS.md › Published notes](../docs/ACCOUNTS.md#published-notes); the
+`PUBLIC_LIMITER` binding (60 requests a minute per IP group) sits in front of both public routes. There is no
 admin route: accounts are administered from the command line (below).
 
 ## Configuration
@@ -60,7 +66,7 @@ pepper=$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')
 printf %s "$pepper" | npx wrangler secret put AUTH_PEPPER
 unset pepper
 
-npm run migrate:remote     # 0002_accounts is additive; sign-ups start closed
+npm run migrate:remote     # 0002_accounts and 0003_shares are additive; sign-ups start closed
 npm run deploy
 ```
 
