@@ -52,7 +52,7 @@ async fn lists_the_seventeen_tools_and_the_note_template() {
     let answer = rpc(&app.router, "tools/list", json!({})).await;
     let tools = answer["result"]["tools"].as_array().unwrap();
     // The 17, then Kanso's own.
-    assert_eq!(tools.len(), 23);
+    assert_eq!(tools.len(), 24);
     assert!(
         tools[17..]
             .iter()
@@ -804,6 +804,72 @@ async fn tasks_through_kanso_list_tasks() {
     )
     .await;
     assert_eq!(bad["isError"], true);
+}
+
+#[tokio::test]
+async fn related_notes_through_kanso_tools() {
+    let app = app();
+    let (book_id, _) = write(&app.router, "/books", json!({ "name": "B" })).await;
+    let mut ids = Vec::new();
+    for (title, body) in [
+        ("Apples", "apples and pears"),
+        ("Orchard", "apples, pears, plums"),
+        ("Engines", "pistons and gears"),
+    ] {
+        let (id, _) = write(
+            &app.router,
+            "/notes",
+            json!({ "bookId": book_id, "title": title, "body": body }),
+        )
+        .await;
+        ids.push(id);
+    }
+    // Off: an empty list, and why.
+    let off = tool(
+        &app.router,
+        "kanso-related-notes",
+        json!({ "noteId": ids[0] }),
+    )
+    .await;
+    assert_eq!(text(&off, 0), "[]");
+    assert!(text(&off, 1).contains("Related notes are off"));
+    // On, before the note is indexed.
+    app.store.set_embedding_model(Some("test")).unwrap();
+    let waiting = tool(
+        &app.router,
+        "kanso-related-notes",
+        json!({ "noteId": ids[0] }),
+    )
+    .await;
+    assert_eq!(text(&waiting, 0), "[]");
+    assert!(text(&waiting, 1).contains("isn't indexed"));
+    // Indexed: the closest first, the note itself left out.
+    let vectors = [vec![1., 0.1], vec![0.9, 0.2], vec![0., 1.]];
+    let rows: Vec<(String, String, Vec<f32>)> = ids
+        .iter()
+        .zip(vectors)
+        .map(|(id, v)| (id.clone(), "h".to_owned(), v))
+        .collect();
+    app.store.put_embeddings("test", &rows).unwrap();
+    let found = tool_json(
+        &tool(
+            &app.router,
+            "kanso-related-notes",
+            json!({ "noteId": ids[0], "limit": 1 }),
+        )
+        .await,
+    );
+    assert_eq!(found.as_array().unwrap().len(), 1);
+    assert_eq!(found[0]["noteId"], ids[1]);
+    assert_eq!(found[0]["title"], "Orchard");
+    assert!(found[0]["similarity"].as_f64().unwrap() > 0.9);
+    let missing = tool(
+        &app.router,
+        "kanso-related-notes",
+        json!({ "noteId": "note:missing" }),
+    )
+    .await;
+    assert_eq!(missing["isError"], true);
 }
 
 #[tokio::test]

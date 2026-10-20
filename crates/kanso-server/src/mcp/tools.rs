@@ -75,6 +75,7 @@ pub(crate) fn call(state: &AppState, name: &str, arguments: Option<&Value>) -> V
         "kanso-export-html" => export_html(store, &args),
         "kanso-get-outline" => get_outline(store, &args),
         "kanso-list-tasks" => list_tasks(store, &args),
+        "kanso-related-notes" => related_notes(store, &args),
         "kanso-resolve-wikilink" => resolve_wikilink(store, &args),
         _ => Err(ToolError(format!(
             "MCP error -32602: Tool {name} not found"
@@ -404,6 +405,55 @@ fn list_tasks(store: &Store, args: &Args) -> ToolResult {
         return result(vec![text("No tasks match.")]);
     }
     result(vec![text(pretty(&Value::Array(tasks)))])
+}
+
+/// `kanso-related-notes`: the notes nearest a note by the embeddings the
+/// app keeps, without loading a model. An empty list, and why, while
+/// related notes are off or the note isn't indexed.
+fn related_notes(store: &Store, args: &Args) -> ToolResult {
+    let id = with_prefix(DocType::Note, str_arg(args, "noteId"));
+    // The same failure as reading a note that isn't there.
+    api::get_doc(store, &id, None, false)?;
+    let limit = args
+        .get("limit")
+        .and_then(Value::as_i64)
+        .unwrap_or(5)
+        .clamp(1, 20) as usize;
+    let model = store
+        .embedding_model()
+        .map_err(|err| ToolError(err.to_string()))?;
+    let Some(model) = model else {
+        return result(vec![
+            text("[]"),
+            text(
+                "Related notes are off. The user can turn them on in Kanso's Settings › General › Related notes; they run on the user's device.",
+            ),
+        ]);
+    };
+    let found = store
+        .related_notes(&id, &model, limit)
+        .map_err(|err| ToolError(err.to_string()))?;
+    let Some(found) = found else {
+        return result(vec![
+            text("[]"),
+            text(format!(
+                "{} isn't indexed for related notes yet; Kanso indexes notes in the background while it is open.",
+                note_uri(&id)
+            )),
+        ]);
+    };
+    let notes: Vec<Value> = found
+        .into_iter()
+        .map(|note| {
+            json!({
+                "noteId": note.id,
+                "title": note.title,
+                "uri": note_uri(&note.id),
+                "similarity": (f64::from(note.score.max(0.)) * 1000.).round() / 1000.,
+            })
+        })
+        .collect();
+    result(vec![text(pretty(&Value::Array(notes)))])
 }
 
 /// `kanso-resolve-wikilink`: the note a wiki-link names.

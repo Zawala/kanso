@@ -365,6 +365,7 @@ mod tests {
                 "kanso-export-html",
                 "kanso-get-outline",
                 "kanso-list-tasks",
+                "kanso-related-notes",
                 "kanso-resolve-wikilink"
             ]
         );
@@ -377,6 +378,20 @@ mod tests {
             validate(
                 "kanso-create-from-template",
                 json!({"templateId": "note:t"})
+            )
+            .is_err()
+        );
+        assert!(
+            validate(
+                "kanso-related-notes",
+                json!({"noteId": "note:a", "limit": 3})
+            )
+            .is_ok()
+        );
+        assert!(
+            validate(
+                "kanso-related-notes",
+                json!({"noteId": "note:a", "limit": "3"})
             )
             .is_err()
         );
