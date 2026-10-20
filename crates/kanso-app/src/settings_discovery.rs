@@ -1,5 +1,5 @@
 //! Settings › General › Discovery: the switches for
-//! the features that find notes by their words (`related.rs`),
+//! the features that find notes by their words (`related.rs`, `ocr.rs`),
 //! and where each stands.
 
 use gpui_kit::assets::IconName as Lucide;
@@ -8,6 +8,7 @@ use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{Sizable as _, v_flex};
 use gpui_kit::*;
 
+use crate::ocr::{self, ImageText};
 use crate::related::{self, Related, Status};
 use crate::settings::{Row, SettingsView, section};
 use crate::theme::Colors;
@@ -103,8 +104,37 @@ pub fn sections(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
         }
         related_rows.push(row);
     }
-    let rows = related_rows;
+    let mut rows = related_rows;
 
+    let image_row = if ocr::supported() {
+        let reading = cx
+            .try_global::<ImageText>()
+            .map(|s| s.status.clone())
+            .unwrap_or_default();
+        let detail = match reading {
+            ocr::Status::Reading { left } if discovery.image_text && left > 0 => format!(
+                "Reading images… {} to go.",
+                crate::text_stats::format_count(left)
+            ),
+            _ => format!(
+                "Reads the words in pictures you attach, on {device}, so search finds the notes they're in. The words sync with the picture."
+            ),
+        };
+        Row::new(Lucide::ScanText, "Search text in images")
+            .detail(detail)
+            .trailing(
+                div().debug_selector(|| "image-text".into()).child(
+                    Switch::new("image-text")
+                        .checked(discovery.image_text)
+                        .on_click(|on, _, cx| ocr::set_enabled(*on, cx)),
+                ),
+            )
+    } else {
+        Row::new(Lucide::ScanText, "Search text in images").detail(
+            "Kanso reads the words in pictures on macOS. Words read there sync with the picture, and search finds them here too.",
+        )
+    };
+    rows.push(image_row);
     vec![section("Discovery", rows, colors)]
 }
 

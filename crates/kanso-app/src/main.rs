@@ -52,6 +52,7 @@ mod markdown_edit;
 mod markdown_source;
 mod note_list;
 mod notify_support;
+mod ocr;
 mod pairing;
 mod palette;
 mod paths;
@@ -314,8 +315,9 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         hotkey::init(cx);
         let store = cx.global::<AppState>().store.clone();
         reminders::init(store, open_main_window, cx);
-        // Related notes, in the background.
+        // Discovery, in the background: related notes and text in images.
         related::init(cx);
+        ocr::init(cx);
         open_main_window(cx);
         cx.activate(true);
         // After an update the old copy yielded focus to this one; take it
