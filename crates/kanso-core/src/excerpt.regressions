@@ -7,3 +7,6 @@
 cc 7eb9d2c7dd5844c0e3fb2213211e5ae0d00e046ff5199f05c9c67504f906b74b # shrinks to text = "\\|"
 cc 4fcb9ca3ab354cf0aac3c0ea21f722388712f7af5462c52347cdff2cf366a26c # shrinks to title = "", body = "\\`"
 cc d6af7e2c3d7380411807ef8277cb9d1e19d10a466324ddcf1f0e6c8e1844b000 # shrinks to text = "\\[a"
+cc 1ebc39daeaec0bab0f324833a1041e89fe84fccc502bb3a28b072253b5f6080c # shrinks to text = "$a*{$"
+cc 2b8cc2fe148013c9a080dfe8b5e4a16a6389785901f03e305fd227765fb0c75c # shrinks to text = "<A|>"
+cc 6182281bedb89899f1d3770d71c94c71f181396d26ac8ca5647402a05f5543dc # shrinks to body = "$ஒ`0$"

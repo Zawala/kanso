@@ -2,8 +2,9 @@
 //!
 //! Most notes start with a heading that repeats their title, and Markdown
 //! markers read as noise in a two-line preview, so the excerpt skips front
-//! matter, code blocks, table rules and a leading title heading, and keeps
-//! only the words of everything else. Blocks (headings, list items, table
+//! matter, code blocks, display math, table rules and a leading title
+//! heading, and keeps only the words of everything else. Inline math keeps
+//! its TeX without the dollar signs. Blocks (headings, list items, table
 //! rows, paragraphs) are set apart with " · " so they don't run together
 //! into one misleading sentence.
 //!
@@ -167,6 +168,7 @@ fn plain_text(title: &str, body: &str, cap: usize) -> String {
     }
 
     let mut fence: Option<&str> = None;
+    let mut in_math = false;
     let mut seen_text = false;
     // Whether the next line starts a block: after a blank line, a rule, a
     // code block, a heading or a table row.
@@ -182,6 +184,18 @@ fn plain_text(title: &str, body: &str, cap: usize) -> String {
         }
         if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
             fence = Some(&trimmed[..3]);
+            block_ended = true;
+            continue;
+        }
+        // A display-math block, `$$` to `$$`, or `$$…$$` on one line.
+        if in_math {
+            if trimmed.ends_with("$$") {
+                in_math = false;
+            }
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("$$") {
+            in_math = !rest.ends_with("$$");
             block_ended = true;
             continue;
         }
@@ -390,6 +404,44 @@ fn strip_inline(text: &str) -> String {
                 }
                 _ => out.push(c),
             },
+            // `$$…$$` within a line is display math: dropped.
+            '$' if chars.get(i + 1) == Some(&'$') => {
+                match find(&chars, i + 2, &['$', '$']) {
+                    Some(close) => {
+                        out.push(REMOVED);
+                        i = close + 2;
+                    }
+                    None => {
+                        out.push_str("$$");
+                        i += 2;
+                    }
+                }
+                continue;
+            }
+            // Inline math keeps its TeX, without the dollar signs.
+            '$' => {
+                if let Some(close) = inline_math_end(&chars, i) {
+                    out.push(REMOVED);
+                    let mut last = ' ';
+                    for &t in &chars[i + 1..close] {
+                        let t = match t {
+                            '`' => REMOVED,
+                            '|' => ' ',
+                            t if t.is_control() => ' ',
+                            t => t,
+                        };
+                        // Runs of `*` would read as emphasis.
+                        if !(t == '*' && last == '*') {
+                            out.push(t);
+                        }
+                        last = t;
+                    }
+                    out.push(REMOVED);
+                    i = close + 1;
+                    continue;
+                }
+                out.push(c);
+            }
             '`' => out.push(REMOVED),
             '|' => out.push(' '),
             '*' | '_' | '~' => {
@@ -473,13 +525,51 @@ fn find(chars: &[char], from: usize, needle: &[char]) -> Option<usize> {
         .find(|&i| chars[i..i + needle.len()] == *needle)
 }
 
+/// Where the `$` closing inline math opened by the `$` at `open` is, by
+/// Pandoc's rule: the opening `$` is not followed by a space, the closing
+/// one is not preceded by a space or followed by a digit, and neither is
+/// escaped. So "$5 and $10" is not math. The same rule as the preview's.
+fn inline_math_end(chars: &[char], open: usize) -> Option<usize> {
+    if chars.get(open) != Some(&'$') || (open > 0 && chars[open - 1] == '\\') {
+        return None;
+    }
+    let first = *chars.get(open + 1)?;
+    if first.is_whitespace() || first == '$' {
+        return None;
+    }
+    let mut i = open + 1;
+    while i < chars.len() {
+        match chars[i] {
+            // An escaped character, `\$` included, is part of the TeX.
+            '\\' => i += 2,
+            '$' => {
+                let before = chars[i - 1];
+                let after = chars.get(i + 1);
+                if !before.is_whitespace() && !after.is_some_and(char::is_ascii_digit) {
+                    return Some(i);
+                }
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    None
+}
+
 /// `<b>`, `</div>`, `<img src="…">`, `<br/>`: a name right after the bracket.
 fn looks_like_tag(inner: &[char]) -> bool {
     let inner = inner.strip_prefix(&['/']).unwrap_or(inner);
     inner.first().is_some_and(char::is_ascii_alphabetic)
         && inner
             .iter()
-            .take_while(|c| !c.is_whitespace() && **c != '/')
+            // What reads as a space or goes once stripped (a table pipe, an
+            // emphasis marker) ends the name too, so stripping twice
+            // finds the same tags.
+            .take_while(|c| {
+                !c.is_whitespace()
+                    && !c.is_control()
+                    && !matches!(**c, '/' | '|' | '*' | '_' | '~' | '`')
+            })
             .all(|c| c.is_ascii_alphanumeric() || *c == '-')
 }
 
@@ -512,8 +602,8 @@ fn truncate(text: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        EXCERPT_CHARS, HEAD_CHARS, WINDOW_CHARS, excerpt, excerpt_around, match_window, plain_text,
-        strip_inline,
+        EXCERPT_CHARS, HEAD_CHARS, WINDOW_CHARS, excerpt, excerpt_around, inline_math_end,
+        match_window, plain_text, strip_inline,
     };
     use crate::query::find_ci;
     use proptest::prelude::*;
@@ -592,6 +682,30 @@ mod tests {
             "see MCP support model › Goals"
         );
         assert_eq!(excerpt("x", "see [[Plan | ]] now"), "see Plan now");
+    }
+
+    #[test]
+    fn math_keeps_its_tex_and_drops_display_blocks() {
+        assert_eq!(
+            excerpt("x", "Area is $\\pi r^2$, roughly."),
+            "Area is \\pi r^2, roughly."
+        );
+        assert_eq!(
+            excerpt("x", "Costs $5 and $10 today"),
+            "Costs $5 and $10 today"
+        );
+        assert_eq!(excerpt("x", "a $ b$ c"), "a $ b$ c");
+        assert_eq!(excerpt("x", "a $b $ c"), "a $b $ c");
+        assert_eq!(excerpt("x", "a \\$b$ c"), "a $b$ c");
+        assert_eq!(
+            excerpt("x", "Before\n\n$$\n\\int_0^1 x\\,dx\n$$\n\nAfter"),
+            "Before · After"
+        );
+        assert_eq!(
+            excerpt("x", "Before\n\n$$E = mc^2$$\n\nAfter"),
+            "Before · After"
+        );
+        assert_eq!(excerpt("x", "So $$x$$ there"), "So there");
         // Closing the gap would make a link; it stays open.
         assert_eq!(strip_inline("[a`]`(b)"), "[a] (b)");
     }
@@ -747,6 +861,38 @@ mod tests {
             prop_assert!(!text.ends_with('·'));
         }
 
+        /// Pandoc's rule: whatever counts as inline math opens on a
+        /// non-space, closes on a non-space not followed by a digit, and
+        /// isn't escaped; money amounts never do.
+        #[test]
+        fn prop_inline_math_follows_pandoc(text in "[a-z $\\\\0-9]{0,24}") {
+            let chars: Vec<char> = text.chars().collect();
+            for open in 0..chars.len() {
+                if let Some(close) = inline_math_end(&chars, open) {
+                    prop_assert!(close > open + 1);
+                    prop_assert!(!chars[open + 1].is_whitespace());
+                    prop_assert!(!chars[close - 1].is_whitespace());
+                    prop_assert!(!chars.get(close + 1).is_some_and(char::is_ascii_digit));
+                    prop_assert!(open == 0 || chars[open - 1] != '\\');
+                }
+            }
+        }
+
+        /// Oracle: amounts of money stay as written.
+        #[test]
+        fn prop_amounts_are_not_math(a in 1u32..1000, b in 1u32..1000, w in gen_word()) {
+            let body = format!("${a} {w} ${b}");
+            prop_assert_eq!(excerpt("", &body), body);
+        }
+
+        /// Oracle: inline math reads as its TeX; display math is dropped.
+        #[test]
+        fn prop_math_reads_as_tex(before in gen_word(), tex in "[a-z^_{}+=]{1,10}", after in gen_word()) {
+            prop_assume!(!tex.starts_with(['_']) && !tex.ends_with(['_']));
+            prop_assert_eq!(excerpt("", &format!("{before} ${tex}$ {after}")), format!("{before} {tex} {after}"));
+            prop_assert_eq!(excerpt("", &format!("{before}\n\n$$\n{tex}\n$$\n\n{after}")), format!("{before} · {after}"));
+        }
+
         /// Invariant: a wiki-link shows as words, never as `[[`, `]]`, or
         /// its `#heading` and `|alias` syntax; an alias stands in for the
         /// title.
@@ -846,9 +992,10 @@ mod tests {
 
         /// Idempotence: stripping inline Markdown twice changes nothing more.
         /// Backslash escapes are decoded once by design (`\\{` becomes `\{`), so
-        /// they are left out.
+        /// they are left out, and so is math, whose TeX is kept as written
+        /// once its dollar signs are gone.
         #[test]
-        fn prop_strip_inline_is_idempotent(text in "[^\\\\]{0,60}") {
+        fn prop_strip_inline_is_idempotent(text in "[^\\\\$]{0,60}") {
             let once = strip_inline(&text);
             prop_assert_eq!(strip_inline(&once), once);
         }
