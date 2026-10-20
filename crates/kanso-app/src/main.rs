@@ -101,8 +101,9 @@ Commands:
                     [--inkdrop-dir <dir>] [--credentials]
                     --credentials also takes Inkdrop's API port, username
                     and password (macOS asks to allow Keychain access)
-  capture [text]    Save a note to the Inbox; with no text, from
-                    standard input. Works with Kanso open or closed
+  capture [text]    Save a note to the Inbox, or [--book <name or id>];
+                    with no text, from standard input. Works with
+                    Kanso open or closed
   theme             Work with themes; `kanso theme help` lists how
   help              Show this message
 
