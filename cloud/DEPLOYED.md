@@ -8,12 +8,16 @@ Since 2026-10-19 this runs the accounts Worker (protocol v2, migration `0002_acc
 bookmark from before the migration is `000000c8-00000000-00005108-c70da56708596ff0458be5e7c33f0f4e`;
 restore only with `npm run -s admin -- restore <bookmark>`.
 
+Since 2026-10-20 it also runs migration `0003_shares` (published links: the `shares` table, with
+ciphertext in R2 under `shares/<id>`), deployed as Worker version
+`f9acbb57-2eb8-4302-a8fd-a5e62bdc468d`.
+
 ## Restoring D1
 
 Only with `npm run -s admin -- restore <time | bookmark>`, run first without `--confirm` to see
 what it does. Never with `wrangler d1 time-travel restore` or the dashboard: a restore alone
-rewinds every account while each Mac still trusts its cursor, and `restore` follows it at once with
-a new epoch for every account so that each Mac re-merges. It prints the bookmark to undo with. A
+rewinds every account while each device still trusts its cursor, and `restore` follows it at once with
+a new epoch for every account so that each device re-merges. It prints the bookmark to undo with. A
 restore also brings back the sessions, passwords and recovery keys of that time: revoke again
 any device revoked since, and anyone who changed a password or recovery key since must change it
 again.

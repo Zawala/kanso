@@ -1,7 +1,7 @@
 # Kanso sync Worker
 
 A Cloudflare Worker that Kanso clients sync through, protocol v2: accounts with end-to-end
-encrypted libraries. Each Mac seals documents and files with a key the server never sees; the
+encrypted libraries. Each device seals documents and files with a key the server never sees; the
 Worker stores and returns those sealed values per account. D1 holds accounts, sessions, documents
 and the counters behind quotas and rate limits; R2 holds sealed file bytes under
 `accounts/<account_id>/<wire_id>`. The full design is [docs/ACCOUNTS.md](../docs/ACCOUNTS.md).
@@ -124,7 +124,7 @@ npm run -s admin -- --local accounts        # the local database (wrangler dev's
 | `global-writes-per-day <n> [--force]` / `global-upload-bytes-per-day <n> [--force]` | Server-wide daily caps |
 | `recount [<username>]` | Recompute the usage counters from the tables |
 | `restore <time \| bookmark> [--confirm <time \| bookmark>]` | The only way to restore D1: Time Travel back to a Unix time in seconds, an RFC 3339 time or a bookmark, then at once a new epoch for every account. Without `--confirm`, prints what it would run |
-| `restored [<username> \| --all]` | A new epoch, so each Mac re-merges; `restore` runs it for you |
+| `restored [<username> \| --all]` | A new epoch, so each device re-merges; `restore` runs it for you |
 | `legacy-status` | The single-user tables and the `files/` purge |
 | `legacy-export --dir DIR` | `manifest.json`, `legacy.sql` and every live legacy file, into DIR |
 | `purge-legacy --account <username> --verified R.json` | Drop the single-user tables, queue the `files/` purge and delete `SYNC_TOKEN`, once `R.json` (from `kanso-sync verify --legacy`) proves everything arrived |
@@ -138,7 +138,7 @@ fair share (the cap ÷ `max_accounts`, 6,000 writes and 100,000,000 bytes by def
 so fifteen accounts at their write budget, or five at their upload budget, can no longer pause
 everyone else until UTC midnight. The price is that a day's total stays under about twice each cap.
 Each daily command, and `max-accounts`, prints the fair shares and how many accounts reach each
-cap; `accounts` shows them beside today's counts. Past its budget an account's Macs show "Sync
+cap; `accounts` shows them beside today's counts. Past its budget an account's devices show "Sync
 paused" and carry on after UTC midnight.
 A library that needs more in one day (a first upload or a re-merge of a large library) can be given
 its own budget with `quota <username> --writes-per-day N`; the owner does this for their own

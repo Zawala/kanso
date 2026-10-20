@@ -1,6 +1,6 @@
 # Kanso plan
 
-Kanso is a local-first markdown notes app that replaces Inkdrop. It has a GPUI desktop UI,
+Kanso is a local-first markdown notes app. It has a GPUI desktop UI,
 serves Inkdrop's local HTTP API on `127.0.0.1:19840` so existing MCP setups keep working,
 imports an Inkdrop database losslessly, and syncs end-to-end encrypted through Cloudflare.
 

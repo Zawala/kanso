@@ -3,18 +3,51 @@
 A local-first Markdown notes app for macOS, with Windows and Linux builds, built with [GPUI](https://www.gpui.rs) through
 [gpui-kit](https://github.com/longbridge/gpui-kit).
 
-- **Serves a local API for agents.** `http://127.0.0.1:19840` is a REST API over your notes, and
-  `/mcp` on the same port is a native MCP endpoint with 17 tools. It speaks the same API as
-  Inkdrop's local server, so clients written for that one work too.
-- **Syncs end-to-end encrypted.** An account on a Cloudflare Worker (D1 for documents, R2 for
-  attachments) keeps your Macs in step. Each Mac encrypts notes, titles, IDs and attachments before
-  they leave it, with a key the server never sees. Conflicts keep both versions: the losing one
-  stays in the note's history.
-- **Keeps history.** Earlier versions of each note, including every version replaced by the API,
-  sync or an import, and a daily database backup.
-- **Imports your notes.** Kanso can copy in an Inkdrop library: notes, notebooks, tags, statuses
-  and attachments. Its files are only read, and importing again picks up newer edits without
+**Writing**
+- Brackets, quotes and Markdown marks pair as you type; lists and tasks continue on Return and
+  indent with Tab; tables line up as you edit them.
+- Smart paste turns a pasted link into Markdown and keeps code as code; ⇧⌘V pastes plain text.
+- Typewriter scrolling, a word goal per note, focus mode, and optional Vim keys.
+
+**Linking**
+- `[[Wiki-links]]` with autocomplete, backlinks with their context, unlinked mentions, and an
+  outline of the note's headings beside the editor.
+- ⌘P finds notes by title and by heading.
+
+**Capture**
+- Today's note (⌘D) in a Journal notebook, and templates with `{{date}}`, `{{time}}` and `{{title}}`.
+- Quick capture from anywhere with ⌃⌥Space, or `kanso capture` from a terminal, into an Inbox.
+- Nested tags (`work/clients`) shown as a tree, with `#` completion in the editor.
+
+**Preview**
+- Mermaid diagrams, math, and Excalidraw drawings, drawn in the note's theme.
+- Images resize from the preview or with `![alt|300](image.png)`.
+
+**Tasks**
+- Due dates (`- [ ] Send the draft @2026-10-25`), a Tasks view of what's overdue, due today and
+  coming up, and reminders as notifications.
+
+**Finding and changing**
+- Search with filters, find and replace across every note with one undo, and each note's
+  version history with what changed since each version.
+
+**Sharing**
+- Export a note as a web page or PDF, or publish it as an end-to-end encrypted link: the key
+  stays in the link, so the server only holds ciphertext.
+
+**Sync, agents and the rest**
+- **End-to-end encrypted sync.** An account on a Cloudflare Worker keeps your devices in step.
+  Each device encrypts notes, titles, IDs and attachments before they leave it, with a key the
+  server never sees. Conflicts keep both versions: the losing one stays in the note's history.
+- **A local API for agents.** `http://127.0.0.1:19840` is a REST API over your notes, and `/mcp`
+  on the same port is a native MCP endpoint. Its REST API matches Inkdrop's local server, so
+  clients written for that work too.
+- **History and backups.** Earlier versions of each note, including every version replaced by the
+  API, sync or an import, and a daily database backup.
+- **Imports.** Kanso can copy in an Inkdrop library: notes, notebooks, tags, statuses and
+  attachments. Its files are only read, and importing again picks up newer edits without
   reverting notes you changed in Kanso.
+- Themes, light and dark, and updates that install themselves.
 
 ## Download
 
@@ -62,12 +95,12 @@ settings from Inkdrop…** on that page takes its port, username and password; m
 access to the Keychain item "inkdrop Safe Storage", where Inkdrop keeps them encrypted.
 
 **Sync.** Settings › Account › **Create account** picks a username and a password of at least 12
-characters; this Mac's notes are encrypted and uploaded. Kanso then shows a **recovery key**: save
+characters; this device's notes are encrypted and uploaded. Kanso then shows a **recovery key**: save
 it somewhere safe (a password manager, or printed). Kanso can't reset a forgotten password. The
 recovery key sets a new one (**Forgot your password?**), and a new key replaces it afterwards. On
-your other Macs, **Sign in** with the same username and password. A Mac that already has notes asks
+your other devices, **Sign in** with the same username and password. A device that already has notes asks
 whether to add them to the account or replace them with the account's notes (after saving a backup
-of its library). Signing out keeps every note on the Mac. The Account page also lists your devices,
+of its library). Signing out keeps every note on the device. The Account page also lists your devices,
 signs one out, changes the password and deletes the account.
 
 The default server is the owner's Worker, `kanso.antonlabs.cc`, which takes new
@@ -85,7 +118,10 @@ of ⌥.
 | ⌘K | Command palette: every command, notebook, tag and status, plus note search |
 | ⌘P | Open a note by title |
 | ⌘N / ⇧⌘N | New note / notebook |
+| ⌘D | Today's note |
+| ⌃⌥Space | Quick capture from any app (change it in Settings › General) |
 | ⇧⌘F | Search all notes (`book:`, `tag:`, `status:`, `title:`, `body:`, `"phrases"`, `-exclude`) |
+| ⇧⌘H | Find and replace in all notes |
 | ⌘L | Search the list that is showing |
 | ↑ ↓ or J K in the list, Return | Move through notes, edit the selected one |
 | ⇧⌘L | Back to the note list |
@@ -93,6 +129,8 @@ of ⌥.
 | ⌘1 / ⌘2 / ⌘3 | Edit / split (drag the divider) / preview |
 | ⇧⌘D | Focus mode: only the note; Escape leaves it |
 | ⌘\ | Fold the sidebar to icons, or open it again |
+| ⌥⌘I | Outline and backlinks beside the note |
+| ⇧⌘V | Paste as plain text |
 | ⇧⌘P | Pin or unpin |
 | ⌘S | Save now (notes also save on their own) |
 | ⌘, | Settings, inside the window; Escape goes back to the notes |
@@ -103,6 +141,8 @@ of ⌥.
 kanso                       # open the app
 kanso serve                 # only the API (REST and /mcp), no window
 kanso import-inkdrop        # import from Inkdrop; --credentials also copies its API settings
+kanso capture "Call Sam"    # save a note to the Inbox (--book <name> picks the notebook)
+pbpaste | kanso capture     # with no text, it reads standard input
 ```
 
 Every command takes `--data-dir <dir>`. The default is `$KANSO_DATA_DIR` when set, otherwise
