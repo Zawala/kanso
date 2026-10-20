@@ -3,6 +3,83 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## [0.5.0](https://github.com/iamngoni/kanso/compare/v0.2.0...v0.5.0) - 2026-10-20
+
+### New
+
+- **release:** A per-user Windows installer beside the zip ([f66153a](https://github.com/iamngoni/kanso/commit/f66153a377dbab5b5aa139f56146421134c71a3a))
+- **render:** Draw math, Mermaid diagrams and Excalidraw sketches in the theme's colours ([8594dfd](https://github.com/iamngoni/kanso/commit/8594dfd222cf8a03e8514d746db3e1ae7fbdaba2))
+- **preview:** Show math, diagrams and Excalidraw drawings in the preview, and export notes as web pages or PDFs ([653584c](https://github.com/iamngoni/kanso/commit/653584c35a0a9b1dfda5e3eb734015af22a966b1))
+- **mcp:** Add kanso-export-html to export a note as a standalone web page ([f39daf2](https://github.com/iamngoni/kanso/commit/f39daf284abae746c92179e2b19bed2f71635c67))
+- **math:** Show $$…$$ on a line of its own as display math, centred, in the preview and exports ([4694608](https://github.com/iamngoni/kanso/commit/46946083be7502def1adbeb8a3e3f2b0399b57a2))
+- **store:** Index each note's links, headings and tasks on this device ([14a021a](https://github.com/iamngoni/kanso/commit/14a021a1f20907eb93a9ae1c020421e2a815ba82))
+- **mcp:** Add kanso-get-outline and kanso-resolve-wikilink tools ([489acc7](https://github.com/iamngoni/kanso/commit/489acc74adc4a8a20b72f6a8d7b54b8d3324a96b))
+- **app:** An outline and backlinks beside the note, and wiki-links between notes ([aa87983](https://github.com/iamngoni/kanso/commit/aa87983703be72d9850c5cc38367265044ff93c6))
+- **list:** Wiki-links read as their alias or title in note excerpts ([dd31e6f](https://github.com/iamngoni/kanso/commit/dd31e6f9f59a7afad74e8422db27024744d3e399))
+- **list:** Math reads as its TeX in note excerpts ([7ffe1f5](https://github.com/iamngoni/kanso/commit/7ffe1f53a56f628077698d51e6bbf330ef895ae4))
+- **cloud:** Publish a note as an encrypted page anyone with the link can read ([5f504da](https://github.com/iamngoni/kanso/commit/5f504da43a5069de48771180e5c938ca8b8bf2bc))
+- **sync:** Seal and publish a note with its own key that never reaches the server ([99ef980](https://github.com/iamngoni/kanso/commit/99ef9805ee7937628839a484b42f39c0846eac84))
+- **publish:** Publish a note to the web from its ⋯ menu, update it, or take it down ([28db263](https://github.com/iamngoni/kanso/commit/28db263732c6d77cbe482955bac2091ba21efec9))
+- **store:** Daily notes, a Journal, Inbox and Templates, and tags nested with / ([8be2538](https://github.com/iamngoni/kanso/commit/8be2538476477481a700b18e4da74dadd5051a6b))
+- **mcp:** Kanso-create-daily-note and kanso-create-from-template ([1e36f92](https://github.com/iamngoni/kanso/commit/1e36f9251fcc1170d954405e20236cde0df2fbee))
+- **app:** Open at login on Windows, and as a macOS login item on macOS 13 and later ([4d93b00](https://github.com/iamngoni/kanso/commit/4d93b005aa815affde09893dcd0cfd6b46315f9e))
+- **app:** Today's note, notes from templates, quick capture from any app and a tag tree ([028eb3f](https://github.com/iamngoni/kanso/commit/028eb3f7d33c6cba91ba84f3982071fde17b69e8))
+- **cli:** Kanso capture --book saves to a notebook by its name or ID ([4b1ccc9](https://github.com/iamngoni/kanso/commit/4b1ccc962df0c81ea359b06fe525824b75078038))
+- **editor:** Vim keys, with Normal, Insert and Visual modes in a note's text ([d19fc09](https://github.com/iamngoni/kanso/commit/d19fc096e6c2954969712807842a8a8aa0c8d6b5))
+- **editor:** Vim keys gain H M L, ge, > and <, and . repeats Visual mode changes ([27e5964](https://github.com/iamngoni/kanso/commit/27e59645c93aa558f6c4aec47984b466ae8cf36c))
+- **tasks:** Due dates show as chips in the preview and are tinted in the editor, with @ date completion ([6c91085](https://github.com/iamngoni/kanso/commit/6c9108560bca2fa856e22c0d873ebf74e0a95591))
+- **tasks:** A Tasks view lists every task by when it's due, ticks them off in place and opens them at their line ([e436364](https://github.com/iamngoni/kanso/commit/e43636409cd846f1e2d2fc66cc0b9635c3b46e88))
+- **reminders:** Tasks with a time send a notification when due, with Mark Done and Dismiss ([0e17f71](https://github.com/iamngoni/kanso/commit/0e17f71a1a1f2065e35062e7e553fe8d3a99cf7d))
+- **replace:** Replace in all notes, with a live preview, options, and Undo replace ([ff34ddb](https://github.com/iamngoni/kanso/commit/ff34ddb4362f63af7587305af86543574f423b88))
+- **history:** Note history shows what changed since each version, with each section to copy ([6e9bfc1](https://github.com/iamngoni/kanso/commit/6e9bfc161b9cbb4799be6e1ce011cd00f7cd7e0e))
+- **images:** Drag an image's edge to resize it, size it with ![alt|300], or use Resize image… from the palette ([d8a3b0b](https://github.com/iamngoni/kanso/commit/d8a3b0b0ae7b04eaef89b4419611b813c618f3fa))
+- **related:** Keep each note's embedding and the words read in its pictures on this device ([80b92c2](https://github.com/iamngoni/kanso/commit/80b92c2469a0a48252a410998e3aa8944d8b0fdd))
+- **mcp:** Kanso-related-notes finds the notes closest in meaning to a note ([6a95ada](https://github.com/iamngoni/kanso/commit/6a95adaa7e83dcd6c80c46b89ad198ee5dcd9924))
+- **graph:** See how notes link, around the open note in the inspector and across the whole library ([ef2cac7](https://github.com/iamngoni/kanso/commit/ef2cac740ee39b55f3213a572d76259a763387a4))
+- **ocr:** Search finds notes by the words in their pictures, read with Vision on macOS ([1aaf62e](https://github.com/iamngoni/kanso/commit/1aaf62e3bb7abb4af28e06718c280a37aebd093e))
+
+### Improved
+
+- **app:** Typing never waits on the outline ([d95c0a0](https://github.com/iamngoni/kanso/commit/d95c0a06e73e743ade9627326f6de6458a880111))
+
+### Fixed
+
+- **app:** Plainer Local API and import wording ([76d2e0c](https://github.com/iamngoni/kanso/commit/76d2e0c6eba450fefca6ee37ddd30de5a8b63dc4))
+- **release:** Build the Windows installer for dev versions too ([7b0fe29](https://github.com/iamngoni/kanso/commit/7b0fe29cb4e5e2f193f52fe0447fa6188ca59131))
+- **render:** Draw Mermaid arrowheads smaller so they sit lightly on thin lines and clear the nodes ([58924a5](https://github.com/iamngoni/kanso/commit/58924a5e7f13b7b9d47dad967e008d80076c33ca))
+- **preview:** Keep a drawing's actions in a quiet row under it that fades in on hover, never over the drawing ([f78cf44](https://github.com/iamngoni/kanso/commit/f78cf449c6f4aa8bee9dd2bc7dcbff74fb51cb9d))
+- **export:** Export as PDF prints real pages on your default paper size, with margins ([c1de524](https://github.com/iamngoni/kanso/commit/c1de524adc81c3cc89246314e64e7ae44103cac2))
+- **preview:** Text the Markdown parser can't handle shows as plain text instead of crashing ([77de02e](https://github.com/iamngoni/kanso/commit/77de02e393a94a29165553879a9546547ee43192))
+- **cloud:** Retire unpublished links for good, serve only the checked upload, and let the owner take a note down ([ef1ef50](https://github.com/iamngoni/kanso/commit/ef1ef50d89bb1000d4154221816b3bc70a1be070))
+- **sync:** Publish under a new link when the old one has expired or was retired, never reviving it ([fc31799](https://github.com/iamngoni/kanso/commit/fc317992986b9bf40027a718c7e6647ea6eb84dd))
+- **api:** Keep a note's published link when the local API or MCP writes the note ([03563d8](https://github.com/iamngoni/kanso/commit/03563d8889ea63f3c84ed4c5663f0026424b712e))
+- **publish:** Say your devices, not your Macs, in the Publish sheet ([225d09e](https://github.com/iamngoni/kanso/commit/225d09eba7c1439705e18c45ac18e27988cca1ee))
+- **sync:** A Journal, Inbox or Templates notebook made on two devices offline is one notebook, not a conflict ([52d0a21](https://github.com/iamngoni/kanso/commit/52d0a21e35901a367d5e16540d0f8275275e86e4))
+- **capture:** Quick notes are written in the editor's font and size from Settings ([ade79a3](https://github.com/iamngoni/kanso/commit/ade79a3dbdbce67252296674580bbd27f945710d))
+- **app:** A new note made under a nested tag gets that tag ([b7803c0](https://github.com/iamngoni/kanso/commit/b7803c0af3f429c8800d48aaff1472bf175f8715))
+- **reminders:** Reminders only reach the notification centre from an app bundle, and say when notifications are off ([185cb86](https://github.com/iamngoni/kanso/commit/185cb86e0bb9e086e30159d14910e859104476e5))
+- **reminders:** Build cleanly on Windows and Linux, where the bundle check isn't needed ([f2f21f4](https://github.com/iamngoni/kanso/commit/f2f21f450fac76b56d88d195512e0d6320797209))
+- **export:** Wiki-links in exported and published pages show as their label, and ![alt|300] images keep their width ([85f185e](https://github.com/iamngoni/kanso/commit/85f185e03dbf219002d00e2a6c325d7d706e1649))
+- Say device instead of Mac on Windows and Linux, name each platform's secret store, and show Ctrl shortcuts off macOS ([13f3310](https://github.com/iamngoni/kanso/commit/13f33100387c6ccb6afd79839f87a7c459c08ee9))
+- **related:** Say the same thing about the model download in the inspector and Settings ([29e496a](https://github.com/iamngoni/kanso/commit/29e496a64841f1345adfe057fd114ba7e833324f))
+
+### Under the hood
+
+- **release:** Publish each release automatically once every check passes ([9a01c36](https://github.com/iamngoni/kanso/commit/9a01c362e65336c3943af8baf09a32e74f05cce8))
+- Describe Kanso on its own terms in the README, changelog and themes guide ([f54d468](https://github.com/iamngoni/kanso/commit/f54d46805699469586f30cef1d7f158b1eac2016))
+- **readme:** Releases publish themselves once every check passes ([9a7f813](https://github.com/iamngoni/kanso/commit/9a7f813ec63c3330155e160a96302953940b1050))
+- **readme:** The Mac download is notarized and updates itself ([45d8b8e](https://github.com/iamngoni/kanso/commit/45d8b8efa1a289e503d6f93377ae88b1f6125c5d))
+- **app:** Measure typing latency with the outline open ([cb1bace](https://github.com/iamngoni/kanso/commit/cb1bacefb99d8b0a5b4c06c50ef4543f3916be36))
+- **core:** Excerpt properties allow dots and brackets a note itself has ([618072b](https://github.com/iamngoni/kanso/commit/618072b9d757bd3be74962a8897cf61736ba4ed8))
+- **app:** Snapshots date the notes they make by the demo clock ([437fb72](https://github.com/iamngoni/kanso/commit/437fb72cd09f6dbae676dc564d6e01167b1ededa))
+- **e2e:** Give each end-to-end run its own Worker port so parallel runs never share one ([67c70c1](https://github.com/iamngoni/kanso/commit/67c70c1b2545f7cb6fb4515b73dc59b97336f774))
+- **editor:** Snapshots of each Vim mode, and the typing benchmark with Vim keys on ([5771afc](https://github.com/iamngoni/kanso/commit/5771afc0d78cb634b6f48b7040c75291cafcadfc))
+- **editor:** Vim snapshots show the caret as it is half a blink later ([30b016b](https://github.com/iamngoni/kanso/commit/30b016b19f14861025324408c6030471575d1992))
+- **app:** Snapshots of the Tasks view, due chips, the replace sheet and the history changes ([436eeb2](https://github.com/iamngoni/kanso/commit/436eeb2499f2957b33f642c82de0ac40331c82f9))
+- **editor:** Due dates stay tinted and @ completes dates with Vim keys on ([49b5243](https://github.com/iamngoni/kanso/commit/49b524353a1b046609663df6b77fcc29d07dbafd))
+- Describe Kanso as it is now, with its newer shortcuts, kanso capture and device-neutral sync wording ([bff32fe](https://github.com/iamngoni/kanso/commit/bff32fe9adff9157a68681baa6127f0dd5fd8525))
+- **changelog:** Release notes describe Kanso on its own terms ([c7be1b2](https://github.com/iamngoni/kanso/commit/c7be1b27da5fb98315d6756824dd95082611e174))
+
 ## [0.2.0](https://github.com/iamngoni/kanso/compare/v0.1.1...v0.2.0) - 2026-10-19
 
 ### New
