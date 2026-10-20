@@ -3,6 +3,17 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## [0.5.1](https://github.com/iamngoni/kanso/compare/v0.5.0...v0.5.1) - 2026-10-20
+
+### Fixed
+
+- **import:** Import from Inkdrop on Windows builds a SQLite file URI it accepts ([515dcf8](https://github.com/iamngoni/kanso/commit/515dcf83f70ed27740ab84c071c2386f6bbf2ef7))
+
+### Under the hood
+
+- Run every crate's tests but the app's on Windows and Linux too ([e4b2dfd](https://github.com/iamngoni/kanso/commit/e4b2dfd19183f4ed684bacc7d8afd386d0a83533))
+- **e2e:** The wrong-password check holds across a rate-limit window boundary ([dedb0e3](https://github.com/iamngoni/kanso/commit/dedb0e355c433b4cf2bfb27d450e01037ec43db8))
+
 ## [0.5.0](https://github.com/iamngoni/kanso/compare/v0.2.0...v0.5.0) - 2026-10-20
 
 ### New
