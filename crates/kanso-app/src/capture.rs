@@ -17,7 +17,7 @@ use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Editor, EditorState, InputEvent};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{Icon, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::DocType;
@@ -25,6 +25,7 @@ use kanso_core::roles::Role;
 use kanso_store::{Origin, Put, Store};
 use serde_json::json;
 
+use crate::config::ViewMode;
 use crate::theme::Colors;
 use crate::workspace::AppState;
 
@@ -404,6 +405,15 @@ impl Focusable for CaptureView {
 impl Render for CaptureView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
+        // The editor's writing face and size, as Settings › Editor has them,
+        // for a note being written on its own.
+        let appearance = &cx.global::<AppState>().config.appearance;
+        let size = appearance.editor_font_size;
+        let family = if appearance.editor_font.face(ViewMode::Edit).mono {
+            cx.theme().mono_font_family.clone()
+        } else {
+            cx.theme().font_family.clone()
+        };
         v_flex()
             .size_full()
             .key_context(CONTEXT)
@@ -418,8 +428,9 @@ impl Render for CaptureView {
                     Editor::new(&self.body)
                         .bordered(false)
                         .h_full()
-                        .text_size(px(15.))
-                        .line_height(relative(1.55)),
+                        .font_family(family)
+                        .text_size(px(size))
+                        .line_height(relative(crate::editor::BODY_LINE_HEIGHT)),
                 ),
             )
             .child(self.render_footer(cx))
