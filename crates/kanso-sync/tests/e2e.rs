@@ -119,6 +119,69 @@ fn identity(n: u8, name: &str) -> DeviceIdentity {
     DeviceIdentity::from_parts(&format!("l_{n:032x}"), name, [n; 32])
 }
 
+fn publishes_without_a_short_link(endpoint: &str, session: &Session) {
+    use kanso_sync::share::{HttpShares, Page, open_share, publish, unpublish};
+    let page = Page {
+        html: b"<!doctype html><title>E2E</title><p>Published.</p>",
+        title: "E2E plan \u{2615}",
+        body: "Published.",
+        rev: "1-a",
+    };
+    let published = publish(
+        &HttpShares,
+        session,
+        None,
+        &page,
+        None,
+        kanso_core::now_ms(),
+    )
+    .expect("publish");
+    assert_eq!(published.short_url, None, "no Rerout behind wrangler dev");
+    assert_eq!(published.link(endpoint), published.long_link(endpoint));
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .max_redirects(0)
+        .build()
+        .into();
+    let get = |path: &str| {
+        let mut response = agent.get(format!("{endpoint}{path}")).call().expect(path);
+        let status = response.status().as_u16();
+        let kind = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_owned();
+        (status, kind, response.body_mut().read_to_vec().unwrap())
+    };
+    let (status, _, sealed) = get(&format!("/v2/public/{}", published.share_id));
+    assert_eq!(status, 200);
+    assert_eq!(
+        open_share(
+            &published.share_key().unwrap(),
+            &published.share_id,
+            &sealed
+        )
+        .unwrap(),
+        page.html
+    );
+    let (status, _, viewer) = get(&format!("/p/{}", published.share_id));
+    let viewer = String::from_utf8(viewer).unwrap();
+    assert_eq!(status, 200);
+    // wrangler dev hands the Worker the route's host, so only the path is checked.
+    let image_tag = viewer
+        .lines()
+        .find(|l| l.starts_with("<meta property=\"og:image\""))
+        .expect("a preview image");
+    assert!(image_tag.ends_with("/og/kanso.png\">"), "{image_tag}");
+    assert!(viewer.contains("noindex"));
+    let (status, kind, image) = get("/og/kanso.png");
+    assert_eq!((status, kind.as_str()), (200, "image/png"));
+    assert!(image.starts_with(b"\x89PNG\r\n\x1a\n"));
+    unpublish(&HttpShares, session, &published).expect("unpublish");
+    assert_eq!(get(&format!("/v2/public/{}", published.share_id)).0, 404);
+}
+
 #[test]
 fn two_macs_sync_through_a_local_worker() {
     let Ok(endpoint) = std::env::var("KANSO_SYNC_E2E_ENDPOINT") else {
@@ -239,6 +302,13 @@ fn two_macs_sync_through_a_local_worker() {
         start.elapsed()
     );
     assert_eq!(all_docs(&a.store), all_docs(&b.store));
+
+    // 5b. Publishing over HTTP with the title: a Worker without Rerout (wrangler
+    //     dev has no key, and its origin isn't https) answers no short link,
+    //     so the long link works; the viewer's preview image is a static
+    //     asset; unpublishing stops the link.
+    publishes_without_a_short_link(&endpoint, &a.session);
+    eprintln!("published and unpublished a note on its long link");
 
     // 2. A password change gives the other device 401 password_changed, and
     //    replaces the recovery key (security review 1).

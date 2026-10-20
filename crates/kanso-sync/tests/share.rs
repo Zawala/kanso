@@ -82,6 +82,59 @@ fn publish_update_and_unpublish() {
 }
 
 #[test]
+fn a_short_link_carries_the_key_and_follows_the_share() {
+    let server = MemoryServer::new();
+    let session = common::sign_up(&server, "alice", 1);
+    let shares = MemoryShares::new();
+
+    // A server without short links: the long link, as before.
+    let plain = publish(&shares, &session, None, &page(HTML, "v1"), None, 1).unwrap();
+    assert_eq!(plain.short_url, None);
+    assert_eq!(
+        plain.link(&session.server),
+        plain.long_link(&session.server)
+    );
+    assert_eq!(shares.get(&plain.share_id).unwrap().title, "Plan");
+
+    shares.short_links(Some("https://rerout.test"));
+    let first = publish(&shares, &session, None, &page(HTML, "v1"), None, 2).unwrap();
+    let short = first.short_url.clone().expect("a short link");
+    assert!(short.starts_with("https://rerout.test/"));
+    assert_eq!(
+        first.link(&session.server),
+        format!("{short}#{}", first.key)
+    );
+    assert_eq!(
+        first.long_link(&session.server),
+        format!("{}/p/{}#{}", session.server, first.share_id, first.key)
+    );
+    let stored = shares.get(&first.share_id).unwrap();
+    assert_eq!(stored.short_url.as_deref(), Some(short.as_str()));
+    assert!(
+        !common::contains(short.as_bytes(), first.key.as_bytes()),
+        "the server's short link never holds the key"
+    );
+
+    // An update keeps it; so does the note, through JSON.
+    let second = publish(&shares, &session, Some(&first), &page(HTML, "v2"), None, 3).unwrap();
+    assert_eq!(second.short_url, first.short_url);
+    let mut extra = serde_json::Map::new();
+    KansoPublish::store(Some(&second), &mut extra);
+    assert_eq!(
+        extra[kanso_sync::share::PUBLISH_KEY]["shortUrl"],
+        short.as_str()
+    );
+    assert_eq!(KansoPublish::from_extra(&extra), Some(second.clone()));
+
+    // A link the server stopped serving gets a new ID, key and short link.
+    assert!(shares.take_down(&first.share_id));
+    let again = publish(&shares, &session, Some(&second), &page(HTML, "v3"), None, 4).unwrap();
+    assert_ne!(again.share_id, first.share_id);
+    assert_ne!(again.short_url, first.short_url);
+    assert!(again.short_url.is_some());
+}
+
+#[test]
 fn another_device_of_the_account_manages_the_same_link() {
     let server = MemoryServer::new();
     let one = common::sign_up(&server, "alice", 1);
@@ -173,7 +226,7 @@ fn a_link_the_server_stopped_serving_is_never_revived() {
     )
     .unwrap();
     for session in [&alice, &mallory] {
-        let refused = shares.put_share(session, &first.share_id, &planted, None);
+        let refused = shares.put_share(session, &first.share_id, &planted, "Plan", None);
         assert!(
             matches!(&refused, Err(kanso_sync::ApiError::Unrecognized { status: 409, code }) if code == "share_retired"),
             "{refused:?}"

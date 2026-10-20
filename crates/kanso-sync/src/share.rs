@@ -10,6 +10,12 @@
 //! never reaches the server, and the viewer page opens the page with
 //! WebCrypto.
 //!
+//! With Rerout configured on the server, the upload also carries the note's
+//! title (`x-kanso-title`; titles aren't secret, the page stays sealed) and
+//! the server answers a short link whose preview shows it. The link to share
+//! is then `<short url>#<key>`: the short link redirects to `/p/<id>` and the
+//! browser keeps the fragment, so the key still never leaves the link.
+//!
 //! What a note publishes is kept in the note, as `note.extra.kansoPublish`
 //! ([`KansoPublish`]), so it syncs end to end encrypted with the note and
 //! the account's other devices can update or unpublish the same link. Inkdrop's
@@ -45,6 +51,11 @@ pub const SHARE_OVERHEAD: usize = 1 + NONCE_LEN + TAG_LEN;
 /// [`SHARE_OVERHEAD`]).
 pub const MAX_SHARE_PLAINTEXT: usize = 10 * 1024 * 1024;
 const AAD_PREFIX: &[u8] = b"kanso-share";
+/// The most of a title an upload sends, in characters; the server cuts
+/// previews to 90.
+pub const MAX_TITLE_CHARS: usize = 200;
+/// The longest short URL the client accepts.
+pub const MAX_SHORT_URL: usize = 256;
 
 /// How long a published note stays readable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -239,6 +250,9 @@ pub struct KansoPublish {
     /// this one included).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_hash: Option<String>,
+    /// The share's short link, without the key, when the server made one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_url: Option<String>,
     #[serde(flatten)]
     pub other: Map<String, Value>,
 }
@@ -252,6 +266,7 @@ impl fmt::Debug for KansoPublish {
             .field("published_rev", &self.published_rev)
             .field("expires_at", &self.expires_at)
             .field("content_hash", &self.content_hash)
+            .field("short_url", &self.short_url)
             .finish_non_exhaustive()
     }
 }
@@ -281,8 +296,17 @@ impl KansoPublish {
         ShareKey::parse(&self.key)
     }
 
-    /// `<server>/p/<id>#<key>`.
+    /// The link to share: `<short url>#<key>` when the note has a usable
+    /// short link, else [`KansoPublish::long_link`].
     pub fn link(&self, server: &str) -> String {
+        match self.short_url.as_deref().and_then(parse_short_url) {
+            Some(short) => short_link(&short, &self.key),
+            None => self.long_link(server),
+        }
+    }
+
+    /// `<server>/p/<id>#<key>`, which works with or without a short link.
+    pub fn long_link(&self, server: &str) -> String {
         share_link(server, &self.share_id, &self.key)
     }
 
@@ -305,6 +329,41 @@ pub fn share_link(server: &str, share_id: &str, key: &str) -> String {
     format!("{}/p/{share_id}#{key}", server.trim_end_matches('/'))
 }
 
+/// `<short url>#<key>`. Pure.
+pub fn short_link(short_url: &str, key: &str) -> String {
+    format!("{short_url}#{key}")
+}
+
+/// A short URL the server answered, when a key can follow it: https with a
+/// host, no credentials, query, fragment or whitespace, at most
+/// [`MAX_SHORT_URL`] bytes. Pure.
+pub fn parse_short_url(text: &str) -> Option<String> {
+    if text.len() > MAX_SHORT_URL
+        || !text.starts_with("https://")
+        || text
+            .chars()
+            .any(|c| c == '#' || c == '?' || c.is_whitespace() || c.is_control())
+    {
+        return None;
+    }
+    let url = url::Url::parse(text).ok()?;
+    let usable = url.scheme() == "https"
+        && url.host_str().is_some_and(|h| !h.is_empty())
+        && url.username().is_empty()
+        && url.password().is_none();
+    usable.then(|| text.to_owned())
+}
+
+/// `x-kanso-title`: the first [`MAX_TITLE_CHARS`] characters of the title,
+/// percent-encoded as UTF-8 (what `decodeURIComponent` reads). Pure.
+pub fn title_header(title: &str) -> String {
+    let cut = title
+        .char_indices()
+        .nth(MAX_TITLE_CHARS)
+        .map_or(title.len(), |(i, _)| i);
+    encode_segment(&title[..cut])
+}
+
 /// The first 16 bytes of SHA-256 over the length-prefixed title and the
 /// body, as hex. Pure.
 pub fn content_hash(title: &str, body: &str) -> String {
@@ -322,17 +381,37 @@ pub fn content_hash(title: &str, body: &str) -> String {
 // The server
 // ---------------------------------------------------------------------------
 
+/// What the server answered an upload.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Uploaded {
+    /// The share's short link, without the key; `None` when the server has
+    /// none (Rerout isn't configured or failed: the long link works).
+    pub short_url: Option<String>,
+}
+
+impl Uploaded {
+    /// Reads `{"short_url": …}` from the server's answer; anything missing,
+    /// malformed or unusable is no short link. Pure.
+    pub fn from_body(body: &[u8]) -> Uploaded {
+        let short_url = serde_json::from_slice::<Value>(body)
+            .ok()
+            .and_then(|v| v.get("short_url")?.as_str().and_then(parse_short_url));
+        Uploaded { short_url }
+    }
+}
+
 /// The share routes, on the session's server with its token.
 pub trait ShareApi: Send + Sync {
-    /// `PUT /v2/shares/<id>` with `x-kanso-sha256` and, when it expires,
-    /// `x-kanso-expires-at`.
+    /// `PUT /v2/shares/<id>` with `x-kanso-sha256`, `x-kanso-title` and,
+    /// when it expires, `x-kanso-expires-at`.
     fn put_share(
         &self,
         session: &Session,
         share_id: &str,
         sealed: &[u8],
+        title: &str,
         expires_at: Option<i64>,
-    ) -> Result<(), ApiError>;
+    ) -> Result<Uploaded, ApiError>;
 
     /// `DELETE /v2/shares/<id>`; [`ApiError::NotFound`] when there is no
     /// such share of this account.
@@ -368,13 +447,36 @@ impl HttpShares {
             .into()
     }
 
+    /// Ok for a 2xx answer, whose body isn't read (a 204 has none).
     fn answer(
         response: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
     ) -> Result<(), ApiError> {
+        HttpShares::answer_with(response, false).map(|_| ())
+    }
+
+    /// The body of a 2xx answer, capped as every answer is.
+    fn answer_body(
+        response: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+    ) -> Result<Vec<u8>, ApiError> {
+        HttpShares::answer_with(response, true)
+    }
+
+    fn answer_with(
+        response: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+        read: bool,
+    ) -> Result<Vec<u8>, ApiError> {
         let mut response = response.map_err(|err| ApiError::Transport(err.to_string()))?;
         let status = response.status().as_u16();
         if (200..300).contains(&status) {
-            return Ok(());
+            if !read {
+                return Ok(Vec::new());
+            }
+            return response
+                .body_mut()
+                .with_config()
+                .limit(MAX_AUTH_RESPONSE)
+                .read_to_vec()
+                .map_err(|err| ApiError::Transport(err.to_string()));
         }
         if (300..400).contains(&status) {
             return Err(ApiError::Protocol(format!(
@@ -397,18 +499,20 @@ impl ShareApi for HttpShares {
         session: &Session,
         share_id: &str,
         sealed: &[u8],
+        title: &str,
         expires_at: Option<i64>,
-    ) -> Result<(), ApiError> {
+    ) -> Result<Uploaded, ApiError> {
         let auth = bearer(session.token());
         let mut request = HttpShares::agent()
             .put(share_url(session, share_id))
             .header("authorization", auth.as_str())
             .header("content-type", "application/octet-stream")
-            .header("x-kanso-sha256", sha256_hex(sealed));
+            .header("x-kanso-sha256", sha256_hex(sealed))
+            .header("x-kanso-title", title_header(title));
         if let Some(at) = expires_at {
             request = request.header("x-kanso-expires-at", at.to_string());
         }
-        HttpShares::answer(request.send(sealed))
+        HttpShares::answer_body(request.send(sealed)).map(|body| Uploaded::from_body(&body))
     }
 
     fn delete_share(&self, session: &Session, share_id: &str) -> Result<(), ApiError> {
@@ -428,7 +532,10 @@ pub struct StoredShare {
     /// The account that published it.
     pub owner: String,
     pub sealed: Vec<u8>,
+    /// The title the last upload sent.
+    pub title: String,
     pub expires_at: Option<i64>,
+    pub short_url: Option<String>,
 }
 
 /// [`ShareApi`] in memory, for tests: the Worker's rules (owner only; an
@@ -440,6 +547,9 @@ pub struct MemoryShares {
     retired: Mutex<Vec<String>>,
     /// The next this many requests fail as if offline.
     offline: Mutex<usize>,
+    /// Where short links point, as a server with Rerout answers them; none
+    /// by default, as a server without.
+    short_base: Mutex<Option<String>>,
 }
 
 impl MemoryShares {
@@ -470,6 +580,12 @@ impl MemoryShares {
         gone
     }
 
+    /// Answers every new share a short link `<base>/<n>`, as a server with
+    /// Rerout does; `None` stops.
+    pub fn short_links(&self, base: Option<&str>) {
+        *self.short_base.lock().unwrap() = base.map(str::to_owned);
+    }
+
     /// Fails the next `n` requests with a transport error.
     pub fn go_offline(&self, n: usize) {
         *self.offline.lock().unwrap() = n;
@@ -491,8 +607,9 @@ impl ShareApi for MemoryShares {
         session: &Session,
         share_id: &str,
         sealed: &[u8],
+        title: &str,
         expires_at: Option<i64>,
-    ) -> Result<(), ApiError> {
+    ) -> Result<Uploaded, ApiError> {
         self.offline()?;
         if !is_share_id(share_id) || sealed.len() < SHARE_OVERHEAD || sealed[0] != SHARE_FORMAT_V1 {
             return Err(ApiError::BadRequest);
@@ -516,15 +633,29 @@ impl ShareApi for MemoryShares {
                 code: "share_id_taken".into(),
             });
         }
+        // A share keeps its short link; a new one gets one when links are on.
+        let short_url = shares
+            .get(share_id)
+            .and_then(|s| s.short_url.clone())
+            .or_else(|| {
+                let base = self.short_base.lock().unwrap().clone()?;
+                Some(format!(
+                    "{}/{}",
+                    base.trim_end_matches('/'),
+                    shares.len() + self.retired.lock().unwrap().len() + 1
+                ))
+            });
         shares.insert(
             share_id.to_owned(),
             StoredShare {
                 owner: session.account_id.clone(),
                 sealed: sealed.to_vec(),
+                title: title.to_owned(),
                 expires_at,
+                short_url: short_url.clone(),
             },
         );
-        Ok(())
+        Ok(Uploaded { short_url })
     }
 
     fn delete_share(&self, session: &Session, share_id: &str) -> Result<(), ApiError> {
@@ -583,10 +714,10 @@ pub fn publish(
         _ => (new_share_id(), ShareKey::generate(), Map::new()),
     };
     let mut fresh = existing.is_none_or(|p| p.share_id != share_id);
-    loop {
+    let uploaded = loop {
         let sealed = seal_share(&key, &share_id, page.html)?;
-        match api.put_share(session, &share_id, &sealed, expiry) {
-            Ok(()) => break,
+        match api.put_share(session, &share_id, &sealed, page.title, expiry) {
+            Ok(uploaded) => break uploaded,
             Err(ApiError::Unrecognized { status: 409, .. }) if !fresh => {
                 share_id = new_share_id();
                 key = ShareKey::generate();
@@ -594,7 +725,7 @@ pub fn publish(
             }
             Err(err) => return Err(err.into()),
         }
-    }
+    };
     Ok(KansoPublish {
         share_id,
         key: key.to_text(),
@@ -602,6 +733,7 @@ pub fn publish(
         published_rev: page.rev.to_owned(),
         expires_at: expiry,
         content_hash: Some(content_hash(page.title, page.body)),
+        short_url: uploaded.short_url,
         other,
     })
 }
@@ -632,6 +764,23 @@ mod tests {
             failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
             ..ProptestConfig::default()
         }
+    }
+
+    /// `decodeURIComponent`, as the Worker reads `x-kanso-title`.
+    fn percent_decode(text: &str) -> String {
+        let bytes = text.as_bytes();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'%' {
+                out.push(u8::from_str_radix(&text[i + 1..i + 3], 16).unwrap());
+                i += 3;
+            } else {
+                out.push(bytes[i]);
+                i += 1;
+            }
+        }
+        String::from_utf8(out).unwrap()
     }
 
     fn key_of(bytes: [u8; 32]) -> ShareKey {
@@ -696,6 +845,51 @@ mod tests {
             share_link("https://kanso.example/", "ID", "KEY"),
             "https://kanso.example/p/ID#KEY"
         );
+        assert_eq!(
+            short_link("https://rerout.co/abc", "KEY"),
+            "https://rerout.co/abc#KEY"
+        );
+        assert_eq!(
+            parse_short_url("https://rerout.co/abc").as_deref(),
+            Some("https://rerout.co/abc")
+        );
+        for bad in [
+            "http://rerout.co/abc",
+            "https://rerout.co/a#b",
+            "https://rerout.co/a?b=1",
+            "https://u:p@rerout.co/a",
+            "https://rerout.co/a b",
+            "https://",
+            "rerout.co/abc",
+            "",
+        ] {
+            assert_eq!(parse_short_url(bad), None, "{bad}");
+        }
+        assert_eq!(
+            parse_short_url(&format!("https://r.co/{}", "a".repeat(250))),
+            None
+        );
+        assert_eq!(title_header("Café ☕ 1/2"), "Caf%C3%A9%20%E2%98%95%201%2F2");
+        assert_eq!(
+            title_header(&"é".repeat(300)),
+            "%C3%A9".repeat(MAX_TITLE_CHARS)
+        );
+        assert_eq!(
+            Uploaded::from_body(br#"{"ok":true,"short_url":"https://rerout.co/x"}"#),
+            Uploaded {
+                short_url: Some("https://rerout.co/x".into())
+            }
+        );
+        for body in [
+            &br#"{"ok":true}"#[..],
+            br#"{"short_url":null}"#,
+            br#"{"short_url":"https://rerout.co/x#k"}"#,
+            br#"{"short_url":7}"#,
+            b"not json",
+            b"",
+        ] {
+            assert_eq!(Uploaded::from_body(body), Uploaded::default());
+        }
         assert_eq!(Expiry::Never.at(5), None);
         assert_eq!(Expiry::Week.at(0), Some(7 * 86_400_000));
         assert_eq!(
@@ -713,6 +907,7 @@ mod tests {
             published_rev: "3-abc".into(),
             expires_at: None,
             content_hash: Some(content_hash("T", "B")),
+            short_url: None,
             other: Map::new(),
         };
         let mut extra = Map::new();
@@ -729,6 +924,31 @@ mod tests {
         assert!(!publish.is_outdated("T", "B"));
         assert!(publish.is_outdated("T", "B2"));
         assert!(!format!("{publish:?}").contains(&publish.key));
+        assert_eq!(
+            publish.link("https://k.example"),
+            publish.long_link("https://k.example")
+        );
+        let short = KansoPublish {
+            short_url: Some("https://rerout.co/abc".into()),
+            ..publish.clone()
+        };
+        assert_eq!(
+            short.link("https://k.example"),
+            format!("https://rerout.co/abc#{}", publish.key)
+        );
+        assert_eq!(
+            short.long_link("https://k.example"),
+            format!("https://k.example/p/{}#{}", publish.share_id, publish.key)
+        );
+        // A short URL that isn't usable falls back to the long link.
+        let broken = KansoPublish {
+            short_url: Some("https://rerout.co/abc#old".into()),
+            ..publish.clone()
+        };
+        assert_eq!(
+            broken.link("https://k.example"),
+            broken.long_link("https://k.example")
+        );
         KansoPublish::store(None, &mut extra);
         assert!(!extra.contains_key(PUBLISH_KEY));
         // Malformed IDs or keys don't count as published.
@@ -747,21 +967,25 @@ mod tests {
             "[0-9]{1,4}-[0-9a-f]{1,32}",
             prop::option::of(any::<i64>()),
             prop::option::of("[0-9a-f]{32}"),
+            prop::option::of("https://[a-z]{1,10}\\.co/[A-Za-z0-9]{1,12}"),
             prop::collection::btree_map("[a-z]{1,8}", any::<i32>(), 0..3),
         )
-            .prop_map(|(id, key, at, rev, expires, hash, other)| KansoPublish {
-                share_id: share_id_of(id),
-                key: key_of(key).to_text(),
-                published_at: at,
-                published_rev: rev,
-                expires_at: expires,
-                content_hash: hash,
-                other: other
-                    .into_iter()
-                    // Unknown keys only: a known one would be read as its field.
-                    .map(|(k, v)| (format!("x{k}"), Value::from(v)))
-                    .collect(),
-            })
+            .prop_map(
+                |(id, key, at, rev, expires, hash, short, other)| KansoPublish {
+                    share_id: share_id_of(id),
+                    key: key_of(key).to_text(),
+                    published_at: at,
+                    published_rev: rev,
+                    expires_at: expires,
+                    content_hash: hash,
+                    short_url: short,
+                    other: other
+                        .into_iter()
+                        // Unknown keys only: a known one would be read as its field.
+                        .map(|(k, v)| (format!("x{k}"), Value::from(v)))
+                        .collect(),
+                },
+            )
     }
 
     proptest! {
@@ -828,6 +1052,50 @@ mod tests {
                 prop_assert_eq!(unb64(&text).unwrap().len(), 16);
                 prop_assert_eq!(b64(&unb64(&text).unwrap()), text);
             }
+        }
+
+        /// A short link is the short URL, `#`, and the key, nothing else:
+        /// splitting at the one `#` gives both back, so the key stays in the
+        /// fragment, which browsers never send.
+        #[test]
+        fn prop_short_links_carry_the_key_in_the_fragment(
+            host in "[a-z]{1,12}(\\.[a-z]{2,6}){1,2}", path in "(/[A-Za-z0-9_~.-]{1,16}){0,3}", key in any::<[u8; 32]>(),
+        ) {
+            let url = format!("https://{host}{path}");
+            let short = parse_short_url(&url).expect("an https URL without a query or fragment");
+            prop_assert_eq!(&short, &url);
+            let key = key_of(key).to_text();
+            let link = short_link(&short, &key);
+            prop_assert_eq!(link.matches('#').count(), 1);
+            let (before, after) = link.split_once('#').unwrap();
+            prop_assert_eq!(before, short.as_str());
+            prop_assert_eq!(after, key.as_str());
+            let parsed = url::Url::parse(&link).unwrap();
+            prop_assert_eq!(parsed.fragment(), Some(key.as_str()));
+        }
+
+        /// Whatever the server answers, a short URL the client keeps is https
+        /// and has no fragment, query or whitespace for a key to collide with.
+        #[test]
+        fn prop_parsed_short_urls_are_safe(text in "\\PC{0,80}", prefix in prop::sample::select(vec!["", "https://", "http://", "https://rerout.co/"])) {
+            let text = format!("{prefix}{text}");
+            if let Some(url) = parse_short_url(&text) {
+                prop_assert_eq!(&url, &text);
+                prop_assert!(url.starts_with("https://") && url.len() <= MAX_SHORT_URL);
+                prop_assert!(!url.contains(['#', '?']) && !url.chars().any(char::is_whitespace));
+            }
+            let body = serde_json::json!({ "short_url": text }).to_string();
+            prop_assert_eq!(Uploaded::from_body(body.as_bytes()).short_url, parse_short_url(&text));
+        }
+
+        /// `x-kanso-title` is header-safe ASCII that percent-decodes to the
+        /// title's first 200 characters.
+        #[test]
+        fn prop_title_headers_round_trip(title in "\\PC{0,260}") {
+            let header = title_header(&title);
+            prop_assert!(header.bytes().all(|b| b.is_ascii_alphanumeric() || b"-._~%".contains(&b)));
+            let expected: String = title.chars().take(MAX_TITLE_CHARS).collect();
+            prop_assert_eq!(percent_decode(&header), expected);
         }
 
         /// The content hash changes with the title or the body, and the

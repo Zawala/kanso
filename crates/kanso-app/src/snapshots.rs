@@ -543,6 +543,7 @@ fn publish_sheet(
                 published_rev: source.rev.clone(),
                 expires_at: Some(now + 5 * DAY - 3 * 60 * MINUTE),
                 content_hash: Some(kanso_sync::share::content_hash(&source.title, &body)),
+                short_url: None,
                 other: Default::default(),
             };
             editor.update(cx, |editor, cx| {

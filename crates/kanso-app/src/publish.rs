@@ -377,7 +377,7 @@ impl Render for PublishView {
                         .text_size(px(12.5))
                         .line_height(px(18.))
                         .text_color(colors.text_muted)
-                        .child("The link shows the note as it is now. Later edits stay on your devices until you update it."),
+                        .child("The link shows the note as it is now. Later edits stay on your devices until you update it. The note's title is sent unencrypted, so link previews can show it."),
                 ),
             Phase::Published => {
                 let publish = self.publish().cloned().expect("published");
@@ -695,6 +695,7 @@ mod tests {
             published_rev: "1-a".into(),
             expires_at: expires,
             content_hash: Some(share::content_hash(title, body)),
+            short_url: None,
             other: Map::new(),
         }
     }
@@ -932,6 +933,24 @@ mod tests {
             let note = f.store.note(&f.note).unwrap().unwrap();
             assert!(!note.extra.contains_key(PUBLISH_KEY));
             assert_eq!(cx.read(|cx| view.read(cx).phase()), Phase::Unpublished);
+        }
+
+        // no-prop-test: one flow in a window; link building has its
+        // properties in kanso-sync's share tests.
+        #[gpui_kit::test]
+        fn a_short_link_is_shown_and_copied_with_the_key(cx: &mut TestAppContext) {
+            let f = setup(cx, true);
+            f.shares.short_links(Some("https://rerout.test"));
+            let view = f.open(cx);
+            f.act(cx, &view, |v, window, cx| v.run_publish(window, cx));
+            let kept = f.kept().expect("published");
+            let short = kept.short_url.clone().expect("a short link");
+            let stored = f.shares.get(&kept.share_id).unwrap();
+            assert_eq!(stored.title, "Plan", "the title goes with the upload");
+            assert_eq!(stored.short_url.as_deref(), Some(short.as_str()));
+            f.act(cx, &view, |v, _, cx| v.copy(cx));
+            let copied = cx.read_from_clipboard().and_then(|item| item.text());
+            assert_eq!(copied, Some(format!("{short}#{}", kept.key)));
         }
 
         // no-prop-test: one flow in a window.
