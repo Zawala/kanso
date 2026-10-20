@@ -46,6 +46,8 @@ markdown.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# The history dialog's changes between versions.
+similar.workspace = true
 tree-sitter-c-sharp.workspace = true
 tree-sitter-swift.workspace = true
 # Table formatting measures cells as a monospaced face shows them.

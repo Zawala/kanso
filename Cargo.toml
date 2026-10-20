@@ -38,6 +38,8 @@ markdown = { version = "=1.0.0", features = ["serde"] }
 md-5 = "0.10"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 proptest = "1.12"
+regex = "1.11"
+similar = { version = "2.7", features = ["inline"] }
 semver = "1.0"
 rusqlite = { version = "0.40", features = ["bundled", "functions", "backup"] }
 serde = { version = "1", features = ["derive"] }
