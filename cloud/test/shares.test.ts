@@ -8,7 +8,8 @@ import { env } from "cloudflare:workers";
 import fc from "fast-check";
 import { beforeEach, describe, expect, it } from "vitest";
 import { runCron } from "../src/index";
-import { MAX_SEALED_SHARE, PUBLIC_PER_MINUTE, shareKey } from "../src/shares";
+import { reconcile } from "../src/purge";
+import { MAX_SEALED_SHARE, shareKey } from "../src/shares";
 import { VIEWER_HTML, VIEWER_SCRIPT, VIEWER_STYLE } from "../src/viewer";
 import fixture from "./fixtures/share.json";
 import { START, accountRow, base64url, call, callJson, client, r2Keys, recomputed, resetServer, runAdmin, signUp, testEnv } from "./helpers";
@@ -22,7 +23,7 @@ const newShareId = (): string => base64url(random(16));
 const fromHex = (hex: string): Uint8Array => Uint8Array.from(hex.match(/../g)!.map((h) => parseInt(h, 16)));
 const fromB64url = (text: string): Uint8Array => Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 
-/** What the Mac uploads: 0x01, a nonce, and AES-256-GCM over `html` with the share's AAD. */
+/** What the device uploads: 0x01, a nonce, and AES-256-GCM over `html` with the share's AAD. */
 async function seal(id: string, html: string, key = random(32)): Promise<{ bytes: Uint8Array; key: Uint8Array }> {
 	const nonce = random(12);
 	const aad = new Uint8Array([...new TextEncoder().encode("kanso-share"), 1, ...new TextEncoder().encode(id)]);
@@ -46,6 +47,7 @@ async function publicGet(id: string, init: { ip?: string; now?: number; env?: Re
 
 const shareRows = async () => (await env.DB.prepare("SELECT * FROM shares ORDER BY id").all()).results;
 const purgeRows = async () => (await env.DB.prepare("SELECT id FROM share_purges ORDER BY id").all<{ id: string }>()).results.map((r) => r.id);
+const retiredRows = async () => (await env.DB.prepare("SELECT id FROM retired_shares ORDER BY id").all<{ id: string }>()).results.map((r) => r.id);
 
 beforeEach(() => resetServer());
 
@@ -101,9 +103,12 @@ describe("publishing", () => {
 		expect((await call(`/v2/shares/${id}`, { token: a.token, method: "PUT", body: bytes, headers: { "content-type": "text/html" } })).status).toBe(415);
 		expect(await shareRows()).toEqual([]);
 		expect(await r2Keys()).toEqual([]);
-		// The row holds no content, only who, how big and until when.
+		// The row holds no content, only who, how big, the ciphertext's checksum and until when.
 		expect((await alice.putShare(id, bytes)).status).toBe(200);
-		expect(Object.keys((await shareRows())[0]).sort()).toEqual(["account_id", "created_at", "expires_at", "id", "size", "updated_at"]);
+		const row = (await shareRows())[0];
+		expect(Object.keys(row).sort()).toEqual(["account_id", "created_at", "expires_at", "id", "sha256", "size", "updated_at"]);
+		const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+		expect(row.sha256).toBe([...digest].map((b) => b.toString(16).padStart(2, "0")).join(""));
 	});
 
 	it("refuses share IDs that aren't 16 bytes of canonical base64url", async () => {
@@ -225,7 +230,7 @@ describe("isolation between accounts", () => {
 });
 
 describe("unpublishing and expiry", () => {
-	it("unpublishing answers 404 at once, deletes the object, refunds the quota, and retires the ID for an hour", async () => {
+	it("unpublishing answers 404 at once, deletes the object, refunds the quota, and retires the ID for good", async () => {
 		const a = await signUp("alice");
 		const alice = client(a.token);
 		const id = newShareId();
@@ -236,11 +241,42 @@ describe("unpublishing and expiry", () => {
 		expect(await r2Keys()).toEqual([]);
 		expect((await accountRow(a.creds.accountId))!).toMatchObject({ files: 0, file_bytes: 0 });
 		expect(await purgeRows()).toEqual([id]);
+		expect(await retiredRows()).toEqual([id]);
 		expect((await alice.deleteShare(id)).status).toBe(404);
-		expect((await alice.putShare(id, bytes)).status).toBe(409);
+		expect(await alice.putShare(id, bytes)).toMatchObject({ status: 409, body: { error: "share_retired" } });
 		await runCron(testEnv(), START + HOUR);
 		expect(await purgeRows()).toEqual([]);
-		expect((await alice.putShare(id, bytes, {})).status).toBe(200);
+		// The purge is done, but the ID stays retired.
+		expect(await alice.putShare(id, bytes)).toMatchObject({ status: 409, body: { error: "share_retired" } });
+		expect(await r2Keys()).toEqual([]);
+	});
+
+	it("nobody can take over an old link once it's purged: unpublished, expired, or of a deleted account", async () => {
+		const a = await signUp("alice");
+		const alice = client(a.token);
+		const [unpublished, expired, deleted] = [newShareId(), newShareId(), newShareId()];
+		await alice.putShare(unpublished, (await seal(unpublished, "a")).bytes);
+		await alice.putShare(expired, (await seal(expired, "b")).bytes, { expiresAt: START + DAY });
+		await alice.deleteShare(unpublished);
+		await runCron(testEnv(), START + DAY + 1);
+		const b = await signUp("bob");
+		await client(b.token).putShare(deleted, (await seal(deleted, "c")).bytes);
+		await callJson("/v2/account/delete", { token: b.token, json: { auth_key: b.creds.authKey, username: "bob" } });
+		// Days later every purge is long done; a newcomer holding the old links tries to reuse them.
+		await runCron(testEnv(), START + 3 * DAY);
+		await runCron(testEnv(), START + 4 * DAY);
+		expect(await purgeRows()).toEqual([]);
+		const m = await signUp("mallory");
+		const mallory = client(m.token);
+		for (const id of [unpublished, expired, deleted]) {
+			const planted = await seal(id, "<p>Planted</p>");
+			expect(await mallory.putShare(id, planted.bytes), id).toMatchObject({ status: 409, body: { error: "share_retired" } });
+			expect(await alice.putShare(id, planted.bytes), id).toMatchObject({ status: 409 });
+			expect((await publicGet(id, { now: START + 4 * DAY })).status, id).toBe(404);
+		}
+		expect(await shareRows()).toEqual([]);
+		expect(await r2Keys()).toEqual([]);
+		expect((await accountRow(m.creds.accountId))!).toMatchObject({ files: 0, file_bytes: 0 });
 	});
 
 	it("serves until the expiry, then 410, and the cron unpublishes it", async () => {
@@ -332,22 +368,35 @@ describe("account deletion", () => {
 });
 
 describe("rate limits", () => {
-	it(`allows ${PUBLIC_PER_MINUTE} public reads a minute per IP group, then 429 public-ip, counted in D1`, async () => {
+	it("a public read never writes to D1, and a malformed ID never reaches it", async () => {
 		const a = await signUp("alice");
 		const id = newShareId();
 		await client(a.token).putShare(id, (await seal(id, "x")).bytes);
-		for (let i = 0; i < PUBLIC_PER_MINUTE; i++) expect((await publicGet(id, { ip: "198.51.100.1" })).status).toBe(200);
-		const limited = await publicGet(id, { ip: "198.51.100.1" });
-		expect(limited.status).toBe(429);
-		expect(JSON.parse(new TextDecoder().decode(limited.bytes))).toMatchObject({ error: "rate_limited", limit: "public-ip" });
-		// Unknown IDs count too, so they can't be probed for free.
-		expect((await publicGet(newShareId(), { ip: "198.51.100.1" })).status).toBe(429);
-		expect((await publicGet(id, { ip: "198.51.100.2" })).status).toBe(200);
-		expect((await publicGet(id, { ip: "198.51.100.1", now: START + 60_000 })).status).toBe(200);
-		// Keys are HMACs, never the address.
-		const keys = (await env.DB.prepare("SELECT key FROM limits WHERE key GLOB 'public-ip:*'").all<{ key: string }>()).results;
-		expect(keys.length).toBeGreaterThan(0);
-		for (const { key } of keys) expect(key).toMatch(/^public-ip:[0-9a-f]{32}$/);
+		const statements: string[] = [];
+		const recording = new Proxy(env.DB, {
+			get(target, name) {
+				if (name === "prepare") {
+					return (sql: string) => {
+						statements.push(sql);
+						return target.prepare(sql);
+					};
+				}
+				if (name === "batch" || name === "exec") throw new Error(`unexpected ${String(name)}`);
+				const value = Reflect.get(target, name);
+				return typeof value === "function" ? value.bind(target) : value;
+			},
+		});
+		const watched = testEnv({ DB: recording });
+		const before = await env.DB.prepare("SELECT (SELECT count(*) FROM limits) AS limits, (SELECT count(*) FROM daily) AS daily").first();
+		for (let i = 0; i < 100; i++) expect((await publicGet(i % 2 ? id : newShareId(), { env: watched, ip: "198.51.100.1" })).status).toBe(i % 2 ? 200 : 404);
+		expect(statements.length).toBeGreaterThan(0);
+		for (const sql of statements) expect(sql.trimStart()).toMatch(/^SELECT\b/);
+		statements.length = 0;
+		for (const bad of ["not-a-share", "AAAAAAAAAAAAAAAAAAAAAB", "x".repeat(200)]) {
+			expect((await publicGet(bad, { env: watched })).status, bad).toBe(404);
+		}
+		expect(statements).toEqual([]);
+		expect(await env.DB.prepare("SELECT (SELECT count(*) FROM limits) AS limits, (SELECT count(*) FROM daily) AS daily").first()).toEqual(before);
 	});
 
 	it("the PUBLIC_LIMITER binding refuses public reads and the viewer page before D1", async () => {
@@ -368,6 +417,89 @@ describe("rate limits", () => {
 		expect((await call(`/p/${id}`, { env: refusing, ip: "2001:db8:abcd:12ff::1" })).status).toBe(429);
 		expect(new Set(seen)).toEqual(new Set(["2001:db8:abcd:0:0:0:0:0/48"]));
 		expect((await env.DB.prepare("SELECT * FROM limits ORDER BY key").all()).results).toEqual(before);
+	});
+});
+
+/** A share ID every run's slice of `shares/` covers: each starts at some first character and runs on to `z`. */
+const lastShareId = (): string => `z${newShareId().slice(1)}`;
+
+describe("racing uploads", () => {
+	it("serves nothing while R2's object isn't the one the row describes, and reconciliation adopts it after an hour", async () => {
+		const a = await signUp("alice");
+		const id = lastShareId();
+		const first = await seal(id, "<p>First</p>");
+		const second = await seal(id, "<p>The second upload, which is longer</p>");
+		expect((await client(a.token).putShare(id, first.bytes)).status).toBe(200);
+		// The other upload's R2 write lands last: the row says `first`, R2 holds `second`.
+		const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", second.bytes));
+		await env.FILES.put(shareKey(id), second.bytes, { sha256: digest });
+		expect((await publicGet(id)).status).toBe(404);
+		// An object R2 never checked isn't served either.
+		await env.FILES.put(shareKey(id), first.bytes);
+		expect((await publicGet(id)).status).toBe(404);
+		await env.FILES.put(shareKey(id), second.bytes, { sha256: digest });
+		// Within the hour reconciliation leaves it (an upload may still be landing).
+		expect((await reconcile(testEnv(), START + HOUR / 2)).sharesAdopted).toBe(0);
+		const later = START + 2 * HOUR;
+		expect(await reconcile(testEnv(), later)).toMatchObject({ sharesAdopted: 1, sharesDropped: 0 });
+		expect(await reconcile(testEnv(), later + 15 * 60_000)).toMatchObject({ sharesAdopted: 0, sharesDropped: 0 });
+		const got = await publicGet(id, { now: later });
+		expect(got.status).toBe(200);
+		expect(await open(id, got.bytes, second.key)).toBe("<p>The second upload, which is longer</p>");
+		expect((await accountRow(a.creds.accountId))!).toMatchObject({ files: 1, file_bytes: second.bytes.length + 1024 });
+		expect(await recomputed(a.creds.accountId)).toMatchObject({ files: 1, file_bytes: second.bytes.length + 1024 });
+	});
+
+	it("reconciliation deletes share objects with no row, once they're an hour old", async () => {
+		const id = lastShareId();
+		await env.FILES.put(shareKey(id), (await seal(id, "x")).bytes);
+		expect((await reconcile(testEnv(), Date.now() + HOUR / 2)).orphansDeleted).toBe(0);
+		expect(await r2Keys()).toEqual([shareKey(id)]);
+		expect((await reconcile(testEnv(), Date.now() + 2 * HOUR)).orphansDeleted).toBe(1);
+		expect(await r2Keys()).toEqual([]);
+	});
+});
+
+describe("takedowns", () => {
+	it("a disabled account's shares answer 404 until it is enabled again", async () => {
+		const a = await signUp("alice");
+		const id = newShareId();
+		await client(a.token).putShare(id, (await seal(id, "x")).bytes);
+		expect((await runAdmin(["disable", "alice"])).ok).toBe(true);
+		expect((await publicGet(id)).status).toBe(404);
+		expect((await runAdmin(["enable", "alice"])).ok).toBe(true);
+		expect((await publicGet(id)).status).toBe(200);
+	});
+
+	it("admin shares lists an account's published notes, and admin unpublish takes one down for good", async () => {
+		const a = await signUp("alice");
+		const alice = client(a.token);
+		const [kept, reported] = [newShareId(), newShareId()];
+		await alice.putShare(kept, (await seal(kept, "kept")).bytes);
+		const { bytes } = await seal(reported, "reported");
+		await alice.putShare(reported, bytes, { expiresAt: START + DAY });
+		const listed = await runAdmin(["shares", "alice"]);
+		expect(listed.ok).toBe(true);
+		expect(listed.message).toContain(kept);
+		expect(listed.message).toContain(reported);
+		expect((await runAdmin(["shares", "nobody"])).ok).toBe(false);
+
+		const done = await runAdmin(["unpublish", reported]);
+		expect(done).toMatchObject({ ok: true });
+		expect(done.message).toContain("alice");
+		expect((await publicGet(reported)).status).toBe(404);
+		expect((await publicGet(kept)).status).toBe(200);
+		expect(await purgeRows()).toEqual([reported]);
+		expect(await retiredRows()).toEqual([reported]);
+		expect((await accountRow(a.creds.accountId))!).toMatchObject({ files: 1 });
+		expect(await recomputed(a.creds.accountId)).toMatchObject({ files: 1 });
+		expect((await accountRow(a.creds.accountId))!.file_bytes).toBe((await recomputed(a.creds.accountId)).file_bytes);
+		// Neither the owner nor anyone else can bring it back.
+		expect(await alice.putShare(reported, bytes)).toMatchObject({ status: 409, body: { error: "share_retired" } });
+		expect((await runAdmin(["unpublish", reported])).ok).toBe(false);
+		await expect(runAdmin(["unpublish", "x'; DROP TABLE shares; --"])).rejects.toThrow(/not a share ID/);
+		await runCron(testEnv(), START + HOUR);
+		expect(await r2Keys()).toEqual([shareKey(kept)]);
 	});
 });
 
@@ -399,6 +531,12 @@ describe("the viewer page", () => {
 		expect(directives["img-src"]).toEqual(["data:"]);
 		expect(directives["frame-ancestors"]).toEqual(["'none'"]);
 		expect(directives["base-uri"]).toEqual(["'none'"]);
+		// The note goes in by srcdoc, which frame-src doesn't govern; nothing else may load in a frame.
+		expect(directives["frame-src"]).toEqual(["'none'"]);
+		// The note's own markup loses scripts, styles and templates (declarative shadow roots too).
+		expect(/querySelectorAll\("([^"]*)"\)\.forEach\(function\(el\)\{el\.remove/.exec(VIEWER_SCRIPT)![1].split(",")).toEqual(
+			expect.arrayContaining(["script", "style", "template", "iframe", "object", "embed", "base", "form"]),
+		);
 		expect(csp).not.toMatch(/unsafe-inline|unsafe-eval|https?:|\*/);
 		expect(r.headers.get("referrer-policy")).toBe("no-referrer");
 		expect(r.headers.get("x-content-type-options")).toBe("nosniff");

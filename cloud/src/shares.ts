@@ -2,21 +2,26 @@
 // `PUT` and `DELETE /v2/shares/<id>`, the public `GET /v2/public/<id>` and the
 // viewer page `GET /p/<id>`, and the purges that delete a share's R2 object.
 //
-// The Worker stores what the Mac uploads, `0x01 || nonce(12) || AES-256-GCM
+// The Worker stores what the device uploads, `0x01 || nonce(12) || AES-256-GCM
 // ciphertext || tag(16)`, at `shares/<id>` in R2, and one D1 row saying whose
-// it is, how big, and until when it is served. The key is in the link's
-// #fragment, which browsers never send: the Worker can't read a share.
+// it is, how big, its SHA-256, and until when it is served. The key is in the
+// link's #fragment, which browsers never send: the Worker never receives it.
+//
+// An ID that stops being published (unpublished, expired, taken down, or its
+// account deleted) is retired for good (`retired_shares`, filled by a trigger
+// on every delete of a share row): whoever holds the old link knows its key,
+// so nobody may publish under that ID again.
 //
 // A share counts as one file towards its account's quotas (size + 1024 bytes),
 // and its upload towards the account's daily writes and upload bytes. The D1
-// row is the authority: a share without a live row is never served, whatever
-// R2 still holds.
+// row is the authority: a share is served only while it has a row, its
+// account isn't disabled, and R2's object has the row's checksum.
 
 import { type Session, withSession } from "./auth";
-import { type PepperKeys, sha256Hex } from "./crypto";
+import { sha256Hex } from "./crypto";
 import type { Env } from "./env";
 import { badRequest, constraint, error, json, notFound, rateLimited, readBody, refusal, tooLarge, unauthorized, untilMidnight } from "./http";
-import { BINDING_PERIOD_MS, accountKey, clientIp, count, ipGroup, ipKey } from "./limits";
+import { BINDING_PERIOD_MS, accountKey, clientIp, count, ipGroup } from "./limits";
 import { DAY, FILE_ROW_COST, HOUR, fromBase64url, isSha256Hex } from "./protocol";
 import { PUBLIC_HEADERS, viewerPage } from "./viewer";
 
@@ -42,44 +47,59 @@ export function isShareId(id: string): boolean {
 
 // --------------------------------------------------------------------- owner
 
-/** Whether `id` is free for `accountId` to write: not another account's, not being purged. */
+/** Whether `id` is free for `accountId` to write: not another account's, never retired. */
 const WRITABLE = `NOT EXISTS (SELECT 1 FROM shares WHERE id = ?2 AND account_id != ?1)
-  AND NOT EXISTS (SELECT 1 FROM share_purges WHERE id = ?2)`;
+  AND NOT EXISTS (SELECT 1 FROM retired_shares WHERE id = ?2)`;
 
 const PUT_SHARE = [
-	"SELECT size FROM shares WHERE id = ?2 AND account_id = ?1",
+	"SELECT size, sha256 FROM shares WHERE id = ?2 AND account_id = ?1",
 	`UPDATE accounts SET
   files = files + (NOT EXISTS (SELECT 1 FROM shares WHERE id = ?2 AND account_id = ?1)),
   file_bytes = file_bytes + ?3 + ${FILE_ROW_COST}
        - coalesce((SELECT size + ${FILE_ROW_COST} FROM shares WHERE id = ?2 AND account_id = ?1), 0)
   WHERE id = ?1 AND ${WRITABLE} RETURNING id`,
-	`INSERT INTO shares (id, account_id, size, created_at, updated_at, expires_at)
-  SELECT ?2, ?1, ?3, ?4, ?4, ?5 FROM accounts WHERE id = ?1 AND ${WRITABLE}
-  ON CONFLICT (id) DO UPDATE SET size = excluded.size, updated_at = excluded.updated_at, expires_at = excluded.expires_at
+	`INSERT INTO shares (id, account_id, size, sha256, created_at, updated_at, expires_at)
+  SELECT ?2, ?1, ?3, ?6, ?4, ?4, ?5 FROM accounts WHERE id = ?1 AND ${WRITABLE}
+  ON CONFLICT (id) DO UPDATE SET size = excluded.size, sha256 = excluded.sha256, updated_at = excluded.updated_at,
+    expires_at = excluded.expires_at
   WHERE shares.account_id = excluded.account_id`,
 ];
 
 /** Undoes a share's D1 batch after R2 failed, if the row still holds this upload. */
-function compensation(db: D1Database, accountId: string, id: string, size: number, now: number, old: number | null): D1PreparedStatement[] {
-	const holds = "EXISTS (SELECT 1 FROM shares WHERE id = ?2 AND account_id = ?1 AND size = ?3 AND updated_at = ?4)";
+function compensation(
+	db: D1Database,
+	accountId: string,
+	id: string,
+	size: number,
+	sha: string,
+	now: number,
+	old: { size: number; sha256: string } | null,
+): D1PreparedStatement[] {
+	const holds = "EXISTS (SELECT 1 FROM shares WHERE id = ?2 AND account_id = ?1 AND size = ?3 AND updated_at = ?4 AND sha256 = ?5)";
 	if (old === null) {
+		// The row goes, which retires the ID: the device publishes again under a new one.
 		return [
 			db
 				.prepare(`UPDATE accounts SET files = files - 1, file_bytes = file_bytes - (?3 + ${FILE_ROW_COST}) WHERE id = ?1 AND ${holds}`)
-				.bind(accountId, id, size, now),
-			db.prepare(`DELETE FROM shares WHERE id = ?2 AND account_id = ?1 AND size = ?3 AND updated_at = ?4`).bind(accountId, id, size, now),
+				.bind(accountId, id, size, now, sha),
+			db
+				.prepare("DELETE FROM shares WHERE id = ?2 AND account_id = ?1 AND size = ?3 AND updated_at = ?4 AND sha256 = ?5")
+				.bind(accountId, id, size, now, sha),
 		];
 	}
-	// The old object may be gone (R2 overwrites in place): the share stays, with its old size,
-	// and the next update replaces it. Growing back is exempt from the quotas, as for files.
+	// The old object may be gone (R2 overwrites in place): the share keeps its old size and
+	// checksum, and is served only while R2 still holds that object. Growing back is exempt
+	// from the quotas, as for files.
 	return [
 		db
 			.prepare(
-				`UPDATE accounts SET file_bytes = file_bytes - ?3 + ?5, recounted_at = CASE WHEN ?5 > ?3 THEN ?4 ELSE recounted_at END
+				`UPDATE accounts SET file_bytes = file_bytes - ?3 + ?6, recounted_at = CASE WHEN ?6 > ?3 THEN ?4 ELSE recounted_at END
   WHERE id = ?1 AND ${holds}`,
 			)
-			.bind(accountId, id, size, now, old),
-		db.prepare("UPDATE shares SET size = ?5 WHERE id = ?2 AND account_id = ?1 AND size = ?3 AND updated_at = ?4").bind(accountId, id, size, now, old),
+			.bind(accountId, id, size, now, sha, old.size),
+		db
+			.prepare("UPDATE shares SET size = ?6, sha256 = ?7 WHERE id = ?2 AND account_id = ?1 AND size = ?3 AND updated_at = ?4 AND sha256 = ?5")
+			.bind(accountId, id, size, now, sha, old.size, old.sha256),
 	];
 }
 
@@ -115,8 +135,9 @@ function expiry(request: Request, now: number): { ok: true; value: number | null
 
 /**
  * `PUT /v2/shares/<id>`: stores the sealed note, new or replacing the
- * account's own share. Another account's ID, or one being purged, is 409
- * `share_id_taken`; the Mac then publishes under a new ID.
+ * account's own share. Another account's ID is 409 `share_id_taken`, a
+ * retired one 409 `share_retired`; either way the device publishes under a
+ * new ID and key, and the old link stays dead.
  */
 export function putShare(id: string) {
 	return withSession(async (request, env, now, session) => {
@@ -151,7 +172,7 @@ export function putShare(id: string) {
 			outcomes = await env.DB.batch([
 				env.DB.prepare(PUT_SHARE[0]).bind(session.accountId, id),
 				env.DB.prepare(PUT_SHARE[1]).bind(session.accountId, id, size),
-				env.DB.prepare(PUT_SHARE[2]).bind(session.accountId, id, size, now, expires.value),
+				env.DB.prepare(PUT_SHARE[2]).bind(session.accountId, id, size, now, expires.value, actual),
 			]);
 		} catch (err) {
 			const r = refusal(err);
@@ -163,16 +184,18 @@ export function putShare(id: string) {
 		if (outcomes[1].results.length !== 1) {
 			const alive = await env.DB.prepare("SELECT 1 AS alive FROM accounts WHERE id = ?1").bind(session.accountId).first();
 			if (!alive) return unauthorized("unknown");
+			const retired = await env.DB.prepare("SELECT 1 AS retired FROM retired_shares WHERE id = ?1").bind(id).first();
+			if (retired) return error(409, "share_retired", "That link was unpublished and can't be used again; publish under a new one.");
 			return error(409, "share_id_taken", "That share ID can't be used; publish under a new one.");
 		}
-		const old = (outcomes[0].results as { size: number }[])[0]?.size ?? null;
+		const old = (outcomes[0].results as { size: number; sha256: string }[])[0] ?? null;
 		try {
 			await env.FILES.put(shareKey(id), bytes, {
 				sha256: actual,
 				httpMetadata: { contentType: "application/octet-stream" },
 			});
 		} catch {
-			await env.DB.batch(compensation(env.DB, session.accountId, id, size, now, old));
+			await env.DB.batch(compensation(env.DB, session.accountId, id, size, actual, now, old));
 			return error(500, "internal", "Couldn't store the note.");
 		}
 		return json({ ok: true, id, size, expires_at: expires.value });
@@ -180,11 +203,11 @@ export function putShare(id: string) {
 }
 
 /**
- * Unpublishes: the row and its quota go, and the object is queued for
- * deletion. With `onlyExpired`, only while the share's expiry has passed (?3),
+ * Unpublishes: the row and its quota go, the ID is retired (the
+ * shares_retire trigger), and the object is queued for deletion. With `onlyExpired`, only while the share's expiry has passed (?3),
  * so an update that moved it in the meantime keeps the share.
  */
-function unpublishStatements(db: D1Database, accountId: string, id: string, now: number, onlyExpired = false): D1PreparedStatement[] {
+export function unpublishStatements(db: D1Database, accountId: string, id: string, now: number, onlyExpired = false): D1PreparedStatement[] {
 	const extra = onlyExpired ? " AND expires_at IS NOT NULL AND expires_at <= ?3" : " AND ?3 IS NOT NULL";
 	const owned = `EXISTS (SELECT 1 FROM shares WHERE id = ?2 AND account_id = ?1${extra})`;
 	return [
@@ -219,25 +242,33 @@ export function deleteShare(id: string) {
 
 // -------------------------------------------------------------------- public
 
-/** Requests per IP group per minute to `/v2/public/*`, counted in D1. */
-export const PUBLIC_PER_MINUTE = 60;
-
 /**
  * `GET /v2/public/<id>`: the sealed bytes of a live share, 410 `expired` once
- * its expiry has passed, 404 otherwise. Rate-limited per IP group, by the
- * PUBLIC_LIMITER binding (write-free) and then a D1 counter. No session, no
- * cookies, no CORS: the viewer page fetches it from the same origin.
+ * its expiry has passed, 404 otherwise: unknown, unpublished, of a disabled
+ * account, or while R2's object isn't the one the row describes (two racing
+ * uploads). Behind the PUBLIC_LIMITER binding only, so a public read never
+ * writes to D1, and a malformed ID never reaches D1. No session, no cookies,
+ * no CORS: the viewer page fetches it from the same origin.
  */
 export function getPublic(id: string) {
-	return async (request: Request, env: Env, now: number, keys: PepperKeys): Promise<Response> => {
-		const limited = await publicLimit(env, request, now, keys);
+	return async (request: Request, env: Env, now: number): Promise<Response> => {
+		const limited = await publicLimit(env, request);
 		if (limited) return withPublicHeaders(limited);
 		if (!isShareId(id)) return withPublicHeaders(notFound());
-		const row = await env.DB.prepare("SELECT expires_at FROM shares WHERE id = ?1").bind(id).first<{ expires_at: number | null }>();
+		const row = await env.DB.prepare(
+			`SELECT s.expires_at, s.sha256 FROM shares s JOIN accounts a ON a.id = s.account_id
+  WHERE s.id = ?1 AND a.disabled_at IS NULL`,
+		)
+			.bind(id)
+			.first<{ expires_at: number | null; sha256: string }>();
 		if (!row) return withPublicHeaders(notFound());
 		if (row.expires_at !== null && row.expires_at <= now) return withPublicHeaders(error(410, "expired", "This link has expired."));
 		const object = await env.FILES.get(shareKey(id));
 		if (!object) return withPublicHeaders(notFound());
+		if (checksumHex(object) !== row.sha256) {
+			await object.body.cancel();
+			return withPublicHeaders(notFound());
+		}
 		return new Response(object.body, {
 			headers: {
 				"content-type": "application/octet-stream",
@@ -249,13 +280,18 @@ export function getPublic(id: string) {
 	};
 }
 
-async function publicLimit(env: Env, request: Request, now: number, keys: PepperKeys): Promise<Response | null> {
-	const group = ipGroup(clientIp(request));
-	if (env.PUBLIC_LIMITER) {
-		const { success } = await env.PUBLIC_LIMITER.limit({ key: group });
-		if (!success) return rateLimited("binding", BINDING_PERIOD_MS);
-	}
-	return count(env.DB, "public-ip", await ipKey(keys, "public-ip", group), now);
+/** The SHA-256 R2 checked when the object was stored, as hex; null when it has none. */
+export function checksumHex(object: R2Object): string | null {
+	const sha = object.checksums.sha256;
+	if (!sha) return null;
+	return [...new Uint8Array(sha)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The PUBLIC_LIMITER binding, per IP group. It writes nothing to D1. */
+async function publicLimit(env: Env, request: Request): Promise<Response | null> {
+	if (!env.PUBLIC_LIMITER) return null;
+	const { success } = await env.PUBLIC_LIMITER.limit({ key: ipGroup(clientIp(request)) });
+	return success ? null : rateLimited("binding", BINDING_PERIOD_MS);
 }
 
 function withPublicHeaders(response: Response): Response {
@@ -269,10 +305,8 @@ function withPublicHeaders(response: Response): Response {
 export function getViewer(id: string) {
 	return async (request: Request, env: Env): Promise<Response> => {
 		if (!isShareId(id)) return withPublicHeaders(notFound());
-		if (env.PUBLIC_LIMITER) {
-			const { success } = await env.PUBLIC_LIMITER.limit({ key: ipGroup(clientIp(request)) });
-			if (!success) return withPublicHeaders(rateLimited("binding", BINDING_PERIOD_MS));
-		}
+		const limited = await publicLimit(env, request);
+		if (limited) return withPublicHeaders(limited);
 		return viewerPage();
 	};
 }

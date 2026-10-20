@@ -1,5 +1,5 @@
 -- Published notes (docs/ACCOUNTS.md › Published notes). Additive only. A share is one
--- note, sealed on the Mac with AES-256-GCM under a key that lives only in the link's
+-- note, sealed on the device with AES-256-GCM under a key that lives only in the link's
 -- #fragment; the Worker stores the ciphertext in R2 at `shares/<id>` and this row,
 -- which says whose it is, how big, and when it stops being served.
 --
@@ -7,11 +7,15 @@
 -- 1024), so the quota triggers of 0002 refuse a share the account has no room for.
 
 CREATE TABLE shares (
-    -- 16 random bytes from the Mac, as unpadded base64url.
+    -- 16 random bytes from the publishing device, as unpadded base64url.
     id TEXT PRIMARY KEY NOT NULL CHECK (length(id) = 22 AND id NOT GLOB '*[^A-Za-z0-9_-]*'),
     account_id TEXT NOT NULL REFERENCES accounts (id),
     -- 0x01 || nonce(12) || ciphertext || tag(16): 29 bytes up to 10 MiB of plaintext.
     size INTEGER NOT NULL CHECK (size BETWEEN 29 AND 10485789),
+    -- The SHA-256 of those bytes, as the upload claimed and R2 checked. The public route
+    -- serves the object only while R2's checksum is this one, so two racing uploads can't
+    -- leave a row describing one object over another.
+    sha256 TEXT NOT NULL CHECK (length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*'),
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     -- Unix ms after which the share is no longer served; NULL for never.
@@ -45,10 +49,23 @@ BEGIN
     WHERE name = 'upload_bytes';
 END;
 
+-- Every share ID that has ever stopped being published (unpublished, expired, taken down,
+-- or of a deleted account), kept for good: an old link's ID and key are known to whoever
+-- holds the link, so no account may ever publish under that ID again.
+CREATE TABLE retired_shares (
+    id TEXT PRIMARY KEY NOT NULL CHECK (length(id) = 22 AND id NOT GLOB '*[^A-Za-z0-9_-]*'),
+    retired_at INTEGER NOT NULL
+);
+
+-- Whatever deletes a share's row retires its ID, so no path can forget to.
+CREATE TRIGGER shares_retire AFTER DELETE ON shares
+BEGIN
+    INSERT OR IGNORE INTO retired_shares (id, retired_at) VALUES (OLD.id, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+END;
+
 -- R2 objects `shares/<id>` still to delete: unpublished, expired, or of a deleted
--- account. An ID here can't be published again; the cron deletes the object and, once
--- the row is more than an hour old (so an upload still in flight can't leave an orphan),
--- the row.
+-- account. The cron deletes the object and, once the row is more than an hour old (so an
+-- upload still in flight can't leave an orphan), the row.
 CREATE TABLE share_purges (
     id TEXT PRIMARY KEY NOT NULL CHECK (length(id) = 22 AND id NOT GLOB '*[^A-Za-z0-9_-]*'),
     requested_at INTEGER NOT NULL

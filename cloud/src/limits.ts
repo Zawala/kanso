@@ -17,7 +17,7 @@ import { type PepperKeys, hex, hmac16 } from "./crypto";
 import { rateLimited } from "./http";
 import { DAY, HOUR } from "./protocol";
 
-export type Rule = "signup-ip" | "login-user" | "login-ip" | "recover-ip" | "password-account" | "writes-account" | "uploads-account" | "public-ip";
+export type Rule = "signup-ip" | "login-user" | "login-ip" | "recover-ip" | "password-account" | "writes-account" | "uploads-account";
 
 /**
  * Window and maximum of each rule. The two per-account daily rules read their
@@ -37,8 +37,6 @@ export const RULES: Record<Rule, { window: number; max: number | null }> = {
 	"password-account": { window: 15 * 60_000, max: 5 },
 	"writes-account": { window: DAY, max: null },
 	"uploads-account": { window: DAY, max: null },
-	// Reads of published notes (`GET /v2/public/<id>`), per IP group.
-	"public-ip": { window: 60_000, max: 60 },
 };
 
 /**

@@ -56,7 +56,7 @@ var css="";
 html=html.replace(/<style\\b[^>]*>([\\s\\S]*?)<\\/style>/gi,function(_,text){css+=text.replace(/<!\\[CDATA\\[|\\]\\]>/g,"")+"\\n";return "";});
 html=html.replace(/(<[^<>]*?\\s)style\\s*=/gi,"$1data-kanso-css=");
 var doc=new DOMParser().parseFromString(html,"text/html");
-doc.querySelectorAll("script,style,iframe,frame,object,embed,base,link,meta,form,noscript").forEach(function(el){el.remove();});
+doc.querySelectorAll("script,style,template,iframe,frame,object,embed,base,link,meta,form,noscript").forEach(function(el){el.remove();});
 var n=0;
 doc.querySelectorAll("*").forEach(function(el){
 for(var i=el.attributes.length-1;i>=0;i--){var name=el.attributes[i].name;if(/^on/i.test(name)||name==="style")el.removeAttribute(name);}
@@ -152,7 +152,7 @@ export function viewerPolicy(): Promise<string> {
 			"img-src data:",
 			"font-src data:",
 			"connect-src 'self'",
-			"frame-src 'self'",
+			"frame-src 'none'",
 			"base-uri 'none'",
 			"form-action 'none'",
 			"frame-ancestors 'none'",

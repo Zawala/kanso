@@ -243,6 +243,7 @@ export async function resetServer(settings: Record<string, string> = { signup: "
 		env.DB.prepare("DELETE FROM account_files"),
 		env.DB.prepare("DELETE FROM shares"),
 		env.DB.prepare("DELETE FROM share_purges"),
+		env.DB.prepare("DELETE FROM retired_shares"),
 		env.DB.prepare("DELETE FROM sessions"),
 		env.DB.prepare("DELETE FROM accounts"),
 		env.DB.prepare("DELETE FROM limits"),

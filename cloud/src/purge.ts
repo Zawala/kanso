@@ -15,7 +15,7 @@ import type { Env } from "./env";
 import { refusal } from "./http";
 import { expiredLimitsSql } from "./limits";
 import { FILE_ROW_COST, HOUR, MAX_SEALED_FILE, MIN_SEALED_FILE, REVOKED_KEEP_MS, SESSION_IDLE_MS } from "./protocol";
-import { expireShares, runSharePurges } from "./shares";
+import { MAX_SEALED_SHARE, MIN_SEALED_SHARE, checksumHex, expireShares, runSharePurges, unpublishStatements } from "./shares";
 
 export const PURGE_LIST_LIMIT = 1000;
 /** Rounds the cron spends on purges each run. */
@@ -88,6 +88,10 @@ export interface ReconcileReport {
 	rowsDropped: number;
 	/** Objects larger than their row whose real size the quotas refused: object and row deleted. */
 	oversizeDeleted: number;
+	/** Shares whose row was moved to the object R2 holds after racing uploads. */
+	sharesAdopted: number;
+	/** Shares unpublished because the quotas refused the object R2 holds. */
+	sharesDropped: number;
 }
 
 const ROWS_FOR_IDS = `SELECT id, size, uploaded_at FROM account_files
@@ -205,9 +209,83 @@ async function reconcileAccount(env: Env, accountId: string, now: number, budget
 	return budget;
 }
 
-/** Reconciles a bounded number of accounts' prefixes, taking accounts in turn from one run to the next. */
+/** R2 list calls one cron run may spend on `shares/`. */
+export const RECONCILE_SHARE_PAGES = 10;
+/** The base64url alphabet in R2's (byte) order: each run starts at the next first character. */
+const SHARE_ID_ORDER = "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz";
+
+/** Moves a share's row to the object R2 holds, when it still describes the object listed. */
+const ADOPT_SHARE = [
+	`UPDATE accounts SET file_bytes = file_bytes - ?3 + ?4
+  WHERE id = ?1 AND ?6 IS NOT NULL AND EXISTS (SELECT 1 FROM shares WHERE id = ?2 AND account_id = ?1 AND size = ?3 AND sha256 = ?5)`,
+	"UPDATE shares SET size = ?4, sha256 = ?6 WHERE id = ?2 AND account_id = ?1 AND size = ?3 AND sha256 = ?5",
+];
+
+/**
+ * Reconciles `shares/` with the shares table, a slice per run (starting at a
+ * different first character each run, within RECONCILE_SHARE_PAGES lists):
+ * deletes objects more than an hour old that have no row (an upload that
+ * raced an unpublish), and where a row over an hour old doesn't describe its
+ * object (two racing uploads of one share left the other one in R2), moves
+ * the row to the object: its size counts against the quotas as an upload
+ * would, and a share the quotas refuse is unpublished. Until then the public
+ * route serves nothing for that share.
+ */
+async function reconcileShares(env: Env, now: number, report: ReconcileReport): Promise<void> {
+	const first = SHARE_ID_ORDER[Math.floor(now / CRON_PERIOD_MS) % SHARE_ID_ORDER.length];
+	const prefix = "shares/";
+	let cursor: string | undefined;
+	for (let page = 0; page < RECONCILE_SHARE_PAGES; page++) {
+		const listed = await env.FILES.list(cursor ? { prefix, cursor, limit: PURGE_LIST_LIMIT } : { prefix, startAfter: `${prefix}${first}`, limit: PURGE_LIST_LIMIT });
+		const ids = listed.objects.map((o) => o.key.slice(prefix.length));
+		const { results: rows } = await env.DB.prepare(
+			"SELECT id, account_id, size, sha256, updated_at FROM shares WHERE id IN (SELECT value FROM json_each(?1))",
+		)
+			.bind(JSON.stringify(ids))
+			.all<{ id: string; account_id: string; size: number; sha256: string; updated_at: number }>();
+		const byId = new Map(rows.map((r) => [r.id, r]));
+		const orphans: string[] = [];
+		for (const object of listed.objects) {
+			const row = byId.get(object.key.slice(prefix.length));
+			if (!row) {
+				if (object.uploaded.getTime() <= now - HOUR) orphans.push(object.key);
+				continue;
+			}
+			if (row.updated_at > now - HOUR) continue;
+			const listedSha = checksumHex(object);
+			if (object.size === row.size && (listedSha === null || listedSha === row.sha256)) continue;
+			const head = await env.FILES.head(object.key);
+			const sha = head ? checksumHex(head) : null;
+			if (!head || (head.size === row.size && sha === row.sha256)) continue;
+			if (sha !== null && head.size >= MIN_SEALED_SHARE && head.size <= MAX_SEALED_SHARE) {
+				try {
+					await env.DB.batch(ADOPT_SHARE.map((sql) => env.DB.prepare(sql).bind(row.account_id, row.id, row.size, head.size, row.sha256, sha)));
+					report.sharesAdopted += 1;
+					continue;
+				} catch (err) {
+					if (refusal(err)?.kind !== "quota_exceeded") throw err;
+				}
+			}
+			// The quotas refuse it, or it isn't a share R2 checked: unpublished (and retired).
+			const done = await env.DB.batch(unpublishStatements(env.DB, row.account_id, row.id, now));
+			if (done[2].results.length === 1) {
+				report.sharesDropped += 1;
+				orphans.push(object.key);
+			}
+		}
+		if (orphans.length > 0) {
+			await env.FILES.delete(orphans);
+			report.orphansDeleted += orphans.length;
+		}
+		if (!listed.truncated) break;
+		cursor = listed.cursor;
+	}
+}
+
+/** Reconciles a bounded number of accounts' prefixes, taking accounts in turn from one run to the next, and a slice of `shares/`. */
 export async function reconcile(env: Env, now: number): Promise<ReconcileReport> {
-	const report: ReconcileReport = { accounts: [], orphansDeleted: 0, sizesFixed: 0, rowsDropped: 0, oversizeDeleted: 0 };
+	const report: ReconcileReport = { accounts: [], orphansDeleted: 0, sizesFixed: 0, rowsDropped: 0, oversizeDeleted: 0, sharesAdopted: 0, sharesDropped: 0 };
+	await reconcileShares(env, now, report);
 	const { results } = await env.DB.prepare("SELECT id FROM accounts ORDER BY id").all<{ id: string }>();
 	if (results.length === 0) return report;
 	const count = Math.min(RECONCILE_ACCOUNTS_PER_RUN, results.length);

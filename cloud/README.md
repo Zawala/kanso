@@ -21,7 +21,7 @@ and the counters behind quotas and rate limits; R2 holds sealed file bytes under
 | `GET /v2/changes?since=&limit=` | yes | The account's change feed |
 | `PUT` / `GET /v2/files/<wire_id>` | yes | Sealed file bytes, checked against `x-kanso-sha256` |
 | `PUT` / `DELETE /v2/shares/<id>` | yes | Publish (or replace) a sealed note, or unpublish it |
-| `GET /v2/public/<id>` | | A published note's ciphertext; 410 once expired, rate-limited per IP |
+| `GET /v2/public/<id>` | | A published note's ciphertext; 410 once expired, rate-limited per IP by the binding, no D1 writes |
 | `GET /p/<id>` | | The viewer page: opens the note with the key in the link's `#fragment` |
 
 A session is `Authorization: Bearer kanso_…`. `/v1` and every other path answer 404. Any request
@@ -112,7 +112,9 @@ npm run -s admin -- --local accounts        # the local database (wrangler dev's
 | `accounts` | Every account's usage against its quotas, writes today against its budget, bytes uploaded today, devices, last seen and status; the settings, global sums and pending purges |
 | `settings` | The settings |
 | `signups open` / `signups close` / `signups only <username>` | Open sign-ups, close them, or reserve them for one name. Run `only` immediately before that name signs up; if someone took the name first, `delete` it and run `only` again |
-| `disable <username>` / `enable <username>` | Refuse, or allow again, the account's sign-ins and sessions |
+| `disable <username>` / `enable <username>` | Refuse, or allow again, the account's sign-ins and sessions; a disabled account's published notes aren't served |
+| `shares <username>` | The account's published notes: share IDs, sizes, times and expiries (never content or keys) |
+| `unpublish <share-id>` | Take a published note down (the ID after `/p/` in its link): the link answers 404 and the ID is retired for good |
 | `delete <username> --confirm <username>` | Delete the account's rows and queue its R2 purge |
 | `max-accounts <n> [--force]` | At most n accounts |
 | `quota <username> [--docs N] [--doc-mib N] [--files N] [--file-mib N] [--writes-per-day N] [--force]` | Per-account quotas, including the account's own daily write budget; `quota <username> --default` goes back to the defaults |

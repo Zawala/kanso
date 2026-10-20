@@ -18,8 +18,12 @@ export const USAGE = `Usage: npm run -s admin -- [--local [--persist-to DIR]] <c
                                     devices, last seen and status; the settings, global sums and
                                     purges.
   settings                          The settings.
-  disable <username>                Refuse the account's sign-ins and sessions.
+  disable <username>                Refuse the account's sign-ins and sessions, and stop serving
+                                    its published notes.
   enable <username>                 Undo disable.
+  shares <username>                 The account's published notes: IDs, sizes and expiries.
+  unpublish <share-id>              Take a published note down (the ID in its link, after /p/):
+                                    the link stops working and the ID can't be used again.
   delete <username> --confirm <username>
                                     Delete the account's rows and queue its R2 purge.
   signups open | close | only <username>
@@ -501,6 +505,49 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 			return result.results.length === 1
 				? ok(`${disable ? "Disabled" : "Enabled"} ${user}.`)
 				: refused(`No ${disable ? "enabled" : "disabled"} account is named ${user}.`);
+		}
+		case "shares": {
+			const { positional } = parse(rest, [], []);
+			arity(positional, 1, 1);
+			const user = username(positional[0]);
+			const [found, rows] = await io.sql([
+				`SELECT id, disabled_at FROM accounts WHERE username = ${sqlText(user)}`,
+				`SELECT s.id, s.size, s.created_at, s.updated_at, s.expires_at FROM shares s JOIN accounts a ON a.id = s.account_id
+  WHERE a.username = ${sqlText(user)} ORDER BY s.created_at, s.id`,
+			]);
+			if (found.results.length !== 1) return refused(`No account is named ${user}.`);
+			if (rows.results.length === 0) return ok(`${user} has no published notes.`);
+			const disabled = found.results[0].disabled_at !== null ? ` ${user} is disabled, so none of them is served.` : "";
+			return ok(
+				`${table([
+					["SHARE ID", "SIZE", "PUBLISHED", "UPDATED", "EXPIRES"],
+					...rows.results.map((r) => [String(r.id), size(r.size), time(r.created_at), time(r.updated_at), time(r.expires_at)]),
+				])}\n\nThe server holds only ciphertext; the links' keys never reach it.${disabled}`,
+			);
+		}
+		case "unpublish": {
+			const { positional } = parse(rest, [], []);
+			arity(positional, 1, 1);
+			const shareId = positional[0];
+			if (!/^[A-Za-z0-9_-]{22}$/.test(shareId)) {
+				throw new UsageError(`"${shareId}" is not a share ID: the 22 characters after /p/ in the link.`);
+			}
+			const id = sqlText(shareId);
+			// The same as the owner's unpublish: the quota goes back, the object is queued for the
+			// cron, and deleting the row retires the ID for good (the shares_retire trigger).
+			const results = await io.sql([
+				`UPDATE accounts SET files = files - 1, file_bytes = file_bytes - (SELECT size + ${FILE_COST} FROM shares WHERE id = ${id})
+  WHERE id = (SELECT account_id FROM shares WHERE id = ${id})`,
+				`INSERT INTO share_purges (id, requested_at) SELECT id, ${now} FROM shares WHERE id = ${id}
+  ON CONFLICT (id) DO UPDATE SET requested_at = excluded.requested_at`,
+				`DELETE FROM shares WHERE id = ${id} RETURNING (SELECT username FROM accounts WHERE accounts.id = shares.account_id) AS username`,
+			]);
+			const deleted = results[results.length - 1].results[0];
+			return deleted
+				? ok(
+						`Unpublished ${shareId} (${String(deleted.username)}). The link answers 404 now, the ID can never be published again, and the cron deletes its R2 object within 15 minutes.`,
+					)
+				: refused(`No published note has the ID ${shareId}.`);
 		}
 		case "delete": {
 			const { positional, flags } = parse(rest, [], ["--confirm"]);

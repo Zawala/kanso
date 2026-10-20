@@ -109,7 +109,7 @@ function match(path: string): Route | null {
 		return { name: "shares", methods: { PUT: { handler: shares.putShare(id), body: "bytes" }, DELETE: { handler: shares.deleteShare(id) } } };
 	}
 	const published = /^\/v2\/public\/([^/]+)$/.exec(path);
-	if (published) return { name: "public", public: true, methods: { GET: { handler: shares.getPublic(segment(published[1])), pepper: true } } };
+	if (published) return { name: "public", public: true, methods: { GET: { handler: shares.getPublic(segment(published[1])) } } };
 	const viewer = /^\/p\/([^/]+)$/.exec(path);
 	if (viewer) return { name: "viewer", public: true, methods: { GET: { handler: shares.getViewer(segment(viewer[1])) } } };
 	return null;
