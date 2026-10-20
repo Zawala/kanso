@@ -9,6 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
+use std::time::Duration;
 
 use gpui_kit::base::text::{
     InlineElement, InlineRenderContext, MarkdownExtensions, MarkdownNode, MarkdownParseContext,
@@ -333,7 +334,9 @@ fn render_block(
             .py(px(4.))
             .child(picture)
             .into_any_element(),
-        Kind::Excalidraw => drawing_block(block, source, picture, svg.width, rich, at, cx),
+        Kind::Excalidraw => {
+            drawing_block(block, source, (picture, svg.width), rich, at, window, cx)
+        }
         _ => div()
             .id(ElementId::NamedInteger(BLOCK.into(), at))
             .w_full()
@@ -404,17 +407,30 @@ pub fn scene_block(scene: &str) -> Result<String, Failure> {
 
 /// A drawing with its actions over its corner, shown on hover: edit it in
 /// Excalidraw, bring it back, or keep it as a file.
+/// Whether the pointer is over a drawing, and how many times it has come
+/// over it: each time names a fresh fade-in.
+#[derive(Clone, Copy, Default)]
+struct DrawingHover {
+    over: bool,
+    shown: u64,
+}
+
 fn drawing_block(
     block: &Block,
     scene: Arc<str>,
-    picture: Img,
-    width: f32,
+    (picture, width): (Img, f32),
     rich: &Arc<Rich>,
     at: u64,
-    cx: &App,
+    window: &mut Window,
+    cx: &mut App,
 ) -> AnyElement {
     let colors = Colors::get(cx);
-    let group = SharedString::from(format!("{BLOCK}-{at}"));
+    let hover = window.use_keyed_state(
+        ElementId::NamedInteger("drawing-hover".into(), at),
+        cx,
+        |_, _| DrawingHover::default(),
+    );
+    let DrawingHover { over, shown } = *hover.read(cx);
     #[cfg(test)]
     let hidden = !crate::preview::REVEAL_IMAGE_SIZES.load(std::sync::atomic::Ordering::Relaxed);
     #[cfg(not(test))]
@@ -481,32 +497,44 @@ fn drawing_block(
             update_from_file(markdown.clone(), rich.clone(), window, cx);
         })
     };
+    // A quiet row under the drawing, right-aligned, that keeps its room
+    // while hidden: the actions never cover the drawing, and showing them
+    // never moves the text below.
     let actions = h_flex()
         .id("drawing-actions")
-        .absolute()
-        .top(px(8.))
-        .right(px(8.))
-        .p(px(2.))
+        .w_full()
+        .justify_end()
+        .pt(px(2.))
         .gap(px(2.))
-        .rounded(px(7.))
-        .border_1()
-        .border_color(colors.divider)
-        .bg(colors.elevated)
-        .shadow_sm()
         .debug_selector(|| "drawing-actions".into())
-        .when(hidden, |el| {
-            el.opacity(0.)
-                .group_hover(group.clone(), |style| style.opacity(1.))
-        })
         .child(open)
         .child(paste)
         .child(save)
         .child(update);
+    let actions = if over || !hidden {
+        actions
+            .with_animation(
+                ElementId::NamedInteger("drawing-fade".into(), shown),
+                Animation::new(Duration::from_millis(160)).with_easing(ease_out_quint()),
+                |row, t| row.opacity(t),
+            )
+            .into_any_element()
+    } else {
+        actions.invisible().into_any_element()
+    };
     v_flex()
         .id(ElementId::NamedInteger(BLOCK.into(), at))
-        .group(group)
-        .relative()
-        // As wide as the drawing, so its actions sit over its corner.
+        .on_hover(move |over, _, cx| {
+            hover.update(cx, |hover, cx| {
+                if hover.over != *over {
+                    hover.over = *over;
+                    // Each showing fades in afresh.
+                    hover.shown += u64::from(*over);
+                    cx.notify();
+                }
+            });
+        })
+        // At least as wide as the actions, which sit under its right edge.
         .w(px(width.max(380.)))
         .max_w(relative(1.))
         .items_start()
