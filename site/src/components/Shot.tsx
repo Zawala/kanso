@@ -1,7 +1,7 @@
 /**
  * A real screenshot of the app, rendered by the app's own snapshot harness,
  * shown in the reader's colour scheme: the light shot by default and the dark
- * one under `prefers-color-scheme: dark`. Captions read like a book's figures.
+ * one under `prefers-color-scheme: dark`. Captions are short and sit under the picture.
  */
 import { cn } from "../lib/cn";
 
@@ -39,12 +39,12 @@ export function Shot({ shot, figure, caption, className, eager = false }: ShotPr
           loading={eager ? "eager" : "lazy"}
           decoding="async"
           {...(eager ? { fetchPriority: "high" as const } : {})}
-          className="block h-auto w-full rounded-[0.7rem] bg-paper-deep shadow-window ring-1 ring-rule/70"
+          className="block h-auto w-full rounded-[10px] bg-sidebar ring-1 ring-line"
         />
       </picture>
       {caption && (
-        <figcaption className="mt-4 flex gap-3 text-[0.9375rem] leading-snug text-ink-faint">
-          {figure && <span className="shrink-0 font-display font-bold text-ink-soft">{figure}</span>}
+        <figcaption className="mt-3 flex gap-2.5 text-[0.875rem] leading-snug text-fg-3">
+          {figure && <span className="shrink-0 text-fg-2 tabular-nums">{figure}</span>}
           <span>{caption}</span>
         </figcaption>
       )}

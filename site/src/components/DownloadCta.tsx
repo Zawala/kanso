@@ -14,23 +14,16 @@ import { Button } from "./ui/button";
 export interface DownloadCtaProps {
   release: Release | null;
   platform: Platform | null;
-  /** "onSumi" on the dark band. */
-  tone?: "paper" | "sumi";
   className?: string;
 }
 
-export function DownloadCta({ release, platform, tone = "paper", className }: DownloadCtaProps) {
-  const variant = tone === "sumi" ? "onSumi" : "primary";
-  const meta = cn("text-[0.9375rem]", tone === "sumi" ? "text-on-sumi-soft" : "text-ink-faint");
-  const secondary = cn(
-    "ink-link text-[0.9375rem] font-medium",
-    tone === "sumi" ? "text-on-sumi" : "text-ink-soft hover:text-ink",
-  );
+export function DownloadCta({ release, platform, className }: DownloadCtaProps) {
+  const meta = "text-[0.875rem] text-fg-3";
 
   if (release === null) {
     return (
-      <div className={cn("flex flex-col items-start gap-3", className)}>
-        <Button asChild size="lg" variant={variant}>
+      <div className={cn("flex flex-wrap items-center gap-x-5 gap-y-3", className)}>
+        <Button asChild size="lg">
           <a href={RELEASES_URL}>
             Download from GitHub <ArrowUpRight />
           </a>
@@ -43,33 +36,29 @@ export function DownloadCta({ release, platform, tone = "paper", className }: Do
   const primary = platform ? buildsFor(release, platform)[0] : undefined;
   if (platform === null || primary === undefined) {
     return (
-      <div className={cn("flex flex-col items-start gap-3", className)}>
-        <Button asChild size="lg" variant={variant}>
+      <div className={cn("flex flex-wrap items-center gap-x-5 gap-y-3", className)}>
+        <Button asChild size="lg">
           <Link to="/download">
             Download Kanso <ArrowDown />
           </Link>
         </Button>
-        <p className={meta}>
-          Version {release.version} · free and open source · macOS, Windows and Linux
-        </p>
+        <p className={meta}>Version {release.version} · free · macOS, Windows and Linux</p>
       </div>
     );
   }
 
   return (
-    <div className={cn("flex flex-col items-start gap-3", className)}>
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        <Button asChild size="lg" variant={variant}>
-          <a href={primary.url} download>
-            Download for {PLATFORM_NAMES[platform]} <ArrowDown />
-          </a>
-        </Button>
-        <Link to="/download" className={secondary}>
+    <div className={cn("flex flex-wrap items-center gap-x-5 gap-y-3", className)}>
+      <Button asChild size="lg">
+        <a href={primary.url} download>
+          Download for {PLATFORM_NAMES[platform]} <ArrowDown />
+        </a>
+      </Button>
+      <p className={meta}>
+        Version {release.version} · {primary.detail} · {formatSize(primary.size)} ·{" "}
+        <Link to="/download" className="ink-link text-fg-2 hover:text-fg">
           Other systems
         </Link>
-      </div>
-      <p className={meta}>
-        Version {release.version} · {primary.detail} · {formatSize(primary.size)}
       </p>
     </div>
   );

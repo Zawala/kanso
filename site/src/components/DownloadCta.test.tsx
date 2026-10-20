@@ -1,8 +1,8 @@
 /**
  * Tests for DownloadCta's three states: no release (GitHub link), no known
  * platform or no build for it (download page link), and a known platform
- * (direct build link with version, detail, size and "Other systems"), plus
- * the dark-band tone. Router links are mocked to plain anchors.
+ * (direct build link with version, detail, size and "Other systems"), and
+ * className passthrough. Router links are mocked to plain anchors.
  */
 import "../test/router";
 import { render, screen } from "@testing-library/react";
@@ -49,23 +49,18 @@ describe("DownloadCta", () => {
     expect(screen.getByText(/Version 0\.5\.2 · 64-bit · installs for you only · 41 MB/)).toBeInTheDocument();
   });
 
-  it("styles the sumi tone for the dark band", () => {
-    render(<DownloadCta release={release} platform="macos" tone="sumi" className="mine" />);
-    expect(screen.getByRole("link", { name: /Download for macOS/ })).toHaveClass("bg-on-sumi");
-    expect(screen.getByRole("link", { name: "Other systems" })).toHaveClass("text-on-sumi");
-    expect(screen.getByText(/Version 0\.5\.2/)).toHaveClass("text-on-sumi-soft");
+  it("passes className to the wrapper in every state", () => {
+    const { container, rerender } = render(<DownloadCta release={null} platform={null} className="mine" />);
+    expect(container.firstElementChild).toHaveClass("mine");
+    rerender(<DownloadCta release={release} platform={null} className="mine" />);
+    expect(container.firstElementChild).toHaveClass("mine");
+    rerender(<DownloadCta release={release} platform="macos" className="mine" />);
+    expect(container.firstElementChild).toHaveClass("mine");
   });
 
-  it("uses paper styling by default", () => {
+  it("styles the main action as the primary button and the secondary link as ink", () => {
     render(<DownloadCta release={release} platform="macos" />);
-    expect(screen.getByRole("link", { name: /Download for macOS/ })).toHaveClass("bg-ink");
-    expect(screen.getByRole("link", { name: "Other systems" })).toHaveClass("text-ink-soft");
-  });
-
-  it("styles the sumi tone in the other two states too", () => {
-    const { rerender } = render(<DownloadCta release={null} platform={null} tone="sumi" />);
-    expect(screen.getByRole("link")).toHaveClass("bg-on-sumi");
-    rerender(<DownloadCta release={release} platform={null} tone="sumi" />);
-    expect(screen.getByRole("link")).toHaveClass("bg-on-sumi");
+    expect(screen.getByRole("link", { name: /Download for macOS/ })).toHaveClass("bg-fg", "h-12");
+    expect(screen.getByRole("link", { name: "Other systems" })).toHaveClass("ink-link");
   });
 });

@@ -20,7 +20,10 @@ afterEach(() => Object.defineProperty(window, "scrollY", { value: 0, configurabl
 describe("Wordmark", () => {
   it("links home", () => {
     render(<Wordmark className="x" />);
-    expect(screen.getByRole("link", { name: "Kanso, home" })).toHaveAttribute("href", "/");
+    const link = screen.getByRole("link", { name: "Kanso, home" });
+    expect(link).toHaveAttribute("href", "/");
+    expect(link).toHaveClass("x");
+    expect(link.querySelector("svg")).not.toBeNull();
   });
 });
 
@@ -28,7 +31,6 @@ describe("SiteHeader", () => {
   it("has the main navigation links", () => {
     render(<SiteHeader />);
     const nav = within(screen.getByRole("navigation", { name: "Main" }));
-    expect(nav.getByRole("link", { name: "Features" })).toHaveAttribute("href", "/#features");
     expect(nav.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
     expect(nav.getByRole("link", { name: "GitHub" })).toHaveAttribute("href", REPOSITORY_URL);
     expect(nav.getByRole("link", { name: "Download" })).toHaveAttribute("href", "/download");
@@ -41,7 +43,7 @@ describe("SiteHeader", () => {
     expect(header).toHaveClass("border-transparent");
     setScroll(200);
     expect(header).toHaveAttribute("data-scrolled", "true");
-    expect(header).toHaveClass("border-rule");
+    expect(header).toHaveClass("border-line");
     setScroll(8);
     expect(header).toHaveAttribute("data-scrolled", "false");
     fireEvent.scroll(window);

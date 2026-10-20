@@ -1,7 +1,7 @@
 /**
  * The site's buttons and button-styled links, in shadcn's shape (variants
- * through cva, `asChild` to style a link) with Kanso's own tokens: ink for the
- * one primary action, vermilion only on hover, quiet outlines elsewhere.
+ * through cva, `asChild` to style a link) drawn like the app's: the text
+ * colour for the one primary action, quiet outlines elsewhere.
  */
 import { Slot } from "@radix-ui/react-slot";
 import { type VariantProps, cva } from "class-variance-authority";
@@ -13,15 +13,14 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "bg-ink text-paper hover:bg-shu-deep",
-        outline: "border border-rule bg-transparent text-ink hover:border-ink",
-        ghost: "text-ink-soft hover:text-ink",
-        onSumi: "bg-on-sumi text-sumi hover:bg-shu hover:text-on-sumi",
+        primary: "bg-fg text-app hover:bg-fg/85",
+        outline: "border border-line bg-elevated/60 text-fg hover:border-fg-3",
+        ghost: "text-fg-2 hover:text-fg",
       },
       size: {
-        sm: "h-9 rounded-full px-4 text-[0.9375rem]",
-        md: "h-11 rounded-full px-5 text-base",
-        lg: "h-14 rounded-full px-7 text-[1.0625rem]",
+        sm: "h-8 rounded-lg px-3 text-[0.875rem]",
+        md: "h-10 rounded-[10px] px-4 text-[0.9375rem]",
+        lg: "h-12 rounded-xl px-5 text-base",
       },
     },
     defaultVariants: { variant: "primary", size: "md" },

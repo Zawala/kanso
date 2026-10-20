@@ -1,20 +1,19 @@
 /**
- * The header and footer every page shares. The header stays at the top with a
- * hairline once the page scrolls; it carries the one download link so it is
- * always a click away. Links are plain anchors and router links, no menus.
+ * The header and footer every page shares: the mark and name on the left,
+ * a few plain links on the right, and a hairline under the header once the
+ * page scrolls. Nothing collapses into a menu; there's too little to hide.
  */
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { cn } from "../lib/cn";
 import { RELEASES_URL, REPOSITORY_URL } from "../lib/release";
-import { Enso } from "./Enso";
-import { Button } from "./ui/button";
+import { Logo } from "./Logo";
 
 export function Wordmark({ className }: { className?: string }) {
   return (
-    <Link to="/" className={cn("group inline-flex items-center gap-2.5 text-ink", className)} aria-label="Kanso, home">
-      <Enso animate={false} className="size-7 text-ink transition-transform duration-500 ease-[var(--ease-out-quint)] group-hover:rotate-[-24deg]" />
-      <span className="font-display text-[1.45rem] font-extrabold tracking-tight">Kanso</span>
+    <Link to="/" className={cn("inline-flex items-center gap-2 text-fg", className)} aria-label="Kanso, home">
+      <Logo className="size-[22px]" />
+      <span className="text-[1.0625rem] font-semibold tracking-[-0.01em]">Kanso</span>
     </Link>
   );
 }
@@ -29,29 +28,27 @@ export function SiteHeader() {
     return () => window.removeEventListener("scroll", update);
   }, []);
 
+  const link = "rounded-md px-2.5 py-1.5 text-fg-2 transition-colors hover:text-fg";
   return (
     <header
       data-scrolled={scrolled}
       className={cn(
-        "sticky top-0 z-40 border-b bg-paper/95 transition-colors duration-300",
-        scrolled ? "border-rule" : "border-transparent",
+        "sticky top-0 z-40 border-b bg-app/90 backdrop-blur-md transition-colors duration-300",
+        scrolled ? "border-line" : "border-transparent",
       )}
     >
-      <div className="page flex h-16 items-center justify-between gap-6">
+      <div className="page flex h-14 items-center justify-between gap-4">
         <Wordmark />
-        <nav aria-label="Main" className="flex items-center gap-1 text-[0.9375rem] sm:gap-2">
-          <a href="/#features" className="hidden rounded-full px-3 py-2 text-ink-soft transition-colors hover:text-ink sm:inline-block">
-            Features
-          </a>
-          <Link to="/privacy" className="hidden rounded-full px-3 py-2 text-ink-soft transition-colors hover:text-ink sm:inline-block">
+        <nav aria-label="Main" className="flex items-center gap-0.5 text-[0.9375rem] sm:gap-1">
+          <Link to="/privacy" className={cn(link, "hidden sm:inline-block")}>
             Privacy
           </Link>
-          <a href={REPOSITORY_URL} className="rounded-full px-3 py-2 text-ink-soft transition-colors hover:text-ink">
+          <a href={REPOSITORY_URL} className={link}>
             GitHub
           </a>
-          <Button asChild size="sm" className="ml-1">
-            <Link to="/download">Download</Link>
-          </Button>
+          <Link to="/download" className={cn(link, "font-medium text-fg")}>
+            Download
+          </Link>
         </nav>
       </div>
     </header>
@@ -60,15 +57,13 @@ export function SiteHeader() {
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-rule">
-      <div className="page grid gap-10 py-14 sm:grid-cols-[1fr_auto] sm:items-end">
-        <div>
-          <Wordmark />
-          <p className="mt-4 max-w-sm text-[0.9375rem] text-ink-faint">
-            <span lang="ja" className="font-display text-ink">簡素</span> — simplicity through leaving things out. Free and open source under the AGPL&#8209;3.0.
-          </p>
+    <footer className="border-t border-line">
+      <div className="page flex flex-col gap-6 py-10 text-[0.875rem] text-fg-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <Logo className="size-5 text-fg-2" />
+          <span>Kanso is free software under the AGPL-3.0.</span>
         </div>
-        <nav aria-label="Footer" className="flex flex-wrap gap-x-7 gap-y-3 text-[0.9375rem] text-ink-soft">
+        <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 text-fg-2">
           <Link to="/download" className="ink-link">
             Download
           </Link>

@@ -36,52 +36,52 @@ const CANNOT_SEE = [
 function Privacy() {
   return (
     <article className="page pt-[clamp(3.5rem,9vw,7rem)] pb-[clamp(5rem,12vw,9rem)]">
-      <p className="type-eyebrow text-shu">Privacy</p>
-      <h1 className="type-section mt-5 max-w-3xl">We'd rather not know.</h1>
-      <p className="type-lede mt-6 max-w-2xl text-ink-soft">
+      <p className="text-[0.875rem] font-medium text-fg-3">Privacy</p>
+      <h1 className="mt-3 max-w-3xl text-[clamp(2.2rem,1.6rem+2.6vw,3.6rem)] leading-[1.05] font-semibold tracking-[-0.035em]">We'd rather not know.</h1>
+      <p className="text-[clamp(1.1rem,1rem+0.4vw,1.3rem)] leading-normal mt-6 max-w-2xl text-fg-2">
         Kanso keeps your notes on your computer. If you sync, they are encrypted on your device first, so the server holds
         only what it needs to pass them between your devices.
       </p>
 
       <div className="mt-[clamp(3.5rem,8vw,6rem)] grid gap-16 lg:grid-cols-12">
         <section aria-labelledby="site" className="lg:col-span-4">
-          <h2 id="site" className="text-[clamp(1.5rem,1.25rem+0.9vw,2rem)]">
+          <h2 id="site" className="text-[clamp(1.5rem,1.25rem+0.9vw,2rem)] font-semibold tracking-[-0.02em]">
             This website
           </h2>
-          <p className="mt-4 text-ink-soft">
+          <p className="mt-4 text-fg-2">
             No analytics, no cookies, no trackers, no forms. The server reads your browser's User-Agent to suggest the right
             download and then forgets it.
           </p>
         </section>
 
         <section aria-labelledby="server" className="lg:col-span-7 lg:col-start-6">
-          <h2 id="server" className="text-[clamp(1.5rem,1.25rem+0.9vw,2rem)]">
+          <h2 id="server" className="text-[clamp(1.5rem,1.25rem+0.9vw,2rem)] font-semibold tracking-[-0.02em]">
             The sync server
           </h2>
-          <h3 className="type-eyebrow mt-8 text-ink-faint">It can't see</h3>
+          <h3 className="mt-8 text-[0.8125rem] font-semibold text-fg-3">It can't see</h3>
           <ul className="mt-4 grid gap-x-8 gap-y-2.5 sm:grid-cols-2">
             {CANNOT_SEE.map((item) => (
-              <li key={item} className="flex gap-3 text-ink">
-                <span aria-hidden="true" className="mt-[0.6em] size-1.5 shrink-0 rounded-full bg-shu" />
+              <li key={item} className="flex gap-3 text-fg">
+                <span aria-hidden="true" className="mt-[0.6em] size-1.5 shrink-0 rounded-full bg-fg-3" />
                 {item}
               </li>
             ))}
           </ul>
-          <h3 className="type-eyebrow mt-12 text-ink-faint">It can see</h3>
+          <h3 className="mt-12 text-[0.8125rem] font-semibold text-fg-3">It can see</h3>
           <dl className="mt-4 grid gap-5">
             {CAN_SEE.map(([term, detail]) => (
-              <div key={term} className="grid gap-1 border-t border-rule pt-4 sm:grid-cols-[11rem_1fr] sm:gap-6">
-                <dt className="font-medium text-ink">{term}</dt>
-                <dd className="text-ink-soft">{detail}</dd>
+              <div key={term} className="grid gap-1 border-t border-line pt-4 sm:grid-cols-[11rem_1fr] sm:gap-6">
+                <dt className="font-medium text-fg">{term}</dt>
+                <dd className="text-fg-2">{detail}</dd>
               </div>
             ))}
           </dl>
-          <h3 className="type-eyebrow mt-12 text-ink-faint">Published notes</h3>
-          <p className="mt-4 text-ink-soft">
+          <h3 className="mt-12 text-[0.8125rem] font-semibold text-fg-3">Published notes</h3>
+          <p className="mt-4 text-fg-2">
             A published note is encrypted too, and its key lives only in the link you share. To give the link a short address
             and a preview, Kanso sends the note's title, and never its key or text, to the link service.
           </p>
-          <p className="mt-10 text-[0.9375rem] text-ink-faint">
+          <p className="mt-10 text-[0.9375rem] text-fg-3">
             Every detail, including how the encryption works, is in{" "}
             <a href={`${REPOSITORY_URL}/blob/master/docs/ACCOUNTS.md`} className="ink-link">
               the accounts design document

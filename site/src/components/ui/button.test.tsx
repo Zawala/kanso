@@ -11,23 +11,22 @@ import { Button } from "./button";
 describe("Button", () => {
   it("defaults to the primary medium button", () => {
     render(<Button>Go</Button>);
-    expect(screen.getByRole("button", { name: "Go" })).toHaveClass("bg-ink", "h-11");
+    expect(screen.getByRole("button", { name: "Go" })).toHaveClass("bg-fg", "h-10");
   });
 
   it.each([
-    ["primary", "bg-ink"],
-    ["outline", "border-rule"],
-    ["ghost", "text-ink-soft"],
-    ["onSumi", "bg-on-sumi"],
+    ["primary", "bg-fg"],
+    ["outline", "border-line"],
+    ["ghost", "text-fg-2"],
   ] as const)("applies the %s variant", (variant, cls) => {
     render(<Button variant={variant}>Go</Button>);
     expect(screen.getByRole("button")).toHaveClass(cls);
   });
 
   it.each([
-    ["sm", "h-9"],
-    ["md", "h-11"],
-    ["lg", "h-14"],
+    ["sm", "h-8"],
+    ["md", "h-10"],
+    ["lg", "h-12"],
   ] as const)("applies the %s size", (size, cls) => {
     render(<Button size={size}>Go</Button>);
     expect(screen.getByRole("button")).toHaveClass(cls);
@@ -37,7 +36,7 @@ describe("Button", () => {
     render(<Button className="h-20 ml-1">Go</Button>);
     const b = screen.getByRole("button");
     expect(b).toHaveClass("h-20", "ml-1");
-    expect(b).not.toHaveClass("h-11");
+    expect(b).not.toHaveClass("h-10");
   });
 
   it("passes props and handles clicks and disabled", async () => {
@@ -59,6 +58,6 @@ describe("Button", () => {
     expect(screen.queryByRole("button")).toBeNull();
     const link = screen.getByRole("link", { name: "Download" });
     expect(link).toHaveAttribute("href", "/download");
-    expect(link).toHaveClass("border-rule", "h-14");
+    expect(link).toHaveClass("border-line", "h-12");
   });
 });

@@ -1,141 +1,143 @@
 /*
- * kansoapp.app's design system: ink on warm paper, one vermilion accent used
- * like a seal, a Mincho display face and a quiet sans for reading. Every
- * colour is an OKLCH token tinted toward the brand's warm hue, redefined for
- * dark mode, and motion stops for anyone who asks for reduced motion.
+ * kansoapp.app's design system is the app's: the colours are Kanso's own two
+ * themes, soft paper and warm graphite (crates/kanso-app/src/theme.rs), the
+ * interface text is the system's, and the editor is set in the system's
+ * monospace, as in the app. The only colour that isn't the app's is the
+ * vermilion dot from its icon, used once or twice per page.
  */
 @import "tailwindcss";
 @import "@fontsource-variable/instrument-sans/wght.css";
 @import "@fontsource-variable/jetbrains-mono/wght.css";
 
-/* Shippori Mincho (SIL OFL, public/fonts/OFL-shippori-mincho.txt): its Latin
-   subset in the three weights the page uses, and only the five kanji the page
-   sets in it (簡素 and 一二三), each cut to a single glyph, so the full
-   Japanese coverage (hundreds of subsets) never ships. */
-@font-face {
-  font-family: "Shippori Mincho";
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url(/fonts/mincho-latin-500.woff2) format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: "Shippori Mincho";
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url(/fonts/mincho-latin-700.woff2) format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: "Shippori Mincho";
-  font-style: normal;
-  font-weight: 800;
-  font-display: swap;
-  src: url(/fonts/mincho-latin-800.woff2) format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face { font-family: "Shippori Mincho"; font-weight: 500 800; font-display: swap; src: url(/fonts/mincho-800-7C21.woff2) format("woff2"); unicode-range: U+7C21; }
-@font-face { font-family: "Shippori Mincho"; font-weight: 500 800; font-display: swap; src: url(/fonts/mincho-800-7D20.woff2) format("woff2"); unicode-range: U+7D20; }
-@font-face { font-family: "Shippori Mincho"; font-weight: 500 800; font-display: swap; src: url(/fonts/mincho-800-4E00.woff2) format("woff2"); unicode-range: U+4E00; }
-@font-face { font-family: "Shippori Mincho"; font-weight: 500 800; font-display: swap; src: url(/fonts/mincho-800-4E8C.woff2) format("woff2"); unicode-range: U+4E8C; }
-@font-face { font-family: "Shippori Mincho"; font-weight: 500 800; font-display: swap; src: url(/fonts/mincho-800-4E09.woff2) format("woff2"); unicode-range: U+4E09; }
-
 :root {
   color-scheme: light dark;
-  --paper: oklch(97.4% 0.012 84);
-  --paper-deep: oklch(94.6% 0.016 80);
-  --ink: oklch(26% 0.014 58);
-  --ink-soft: oklch(42% 0.014 60);
-  --ink-faint: oklch(58% 0.012 64);
-  --rule: oklch(87% 0.014 76);
-  --shu: oklch(61% 0.165 37);
-  --shu-deep: oklch(52% 0.155 34);
-  --shu-wash: oklch(93% 0.035 50);
-  --sumi: oklch(21% 0.012 58);
-  --sumi-raised: oklch(25.5% 0.013 58);
-  --sumi-rule: oklch(34% 0.012 60);
-  --on-sumi: oklch(93% 0.012 84);
-  --on-sumi-soft: oklch(72% 0.012 74);
-  --shadow-window: 0 1px 1px oklch(26% 0.014 58 / 0.06), 0 8px 24px -8px oklch(26% 0.014 58 / 0.18),
-    0 40px 80px -32px oklch(26% 0.014 58 / 0.28);
+  /* Kanso Light (theme.rs, LIGHT). */
+  --app: #f4f1ea;
+  --sidebar: #ebe7dd;
+  --list: #f8f5ef;
+  --editor: #fcfaf4;
+  --elevated: #fffdf8;
+  --fill: #e6e0d4;
+  --fg: #26241f;
+  --fg-2: #655f55;
+  --fg-3: #857c6e;
+  --line: #ddd6c9;
+  --accent: #5e7895;
+  --link: #4d6684;
+  --row: #ece7dc;
+  --row-hover: #f2eee6;
+  --side-active: #e2ddd0;
+  --side-hover: #e5e0d5;
+  --active-line: #f6f3eb;
+  --btn: #4d6684;
+  --btn-fg: #fffdf8;
+  --code: #f4f1ea;
+  --code-fg: #7d5b32;
+  --kw: #4d6684;
+  --str: #55704a;
+  --ok: #4f7f4c;
+  --warn: #8a6424;
+  --bad: #a6493f;
+  --dot: #d4613f;
+  --window-shadow: 0 0 0 1px rgb(38 36 31 / 0.09), 0 2px 4px rgb(38 36 31 / 0.04), 0 24px 48px -16px rgb(38 36 31 / 0.18),
+    0 64px 120px -48px rgb(38 36 31 / 0.22);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: oklch(19.5% 0.011 58);
-    --paper-deep: oklch(23% 0.012 58);
-    --ink: oklch(93% 0.012 84);
-    --ink-soft: oklch(78% 0.012 78);
-    --ink-faint: oklch(62% 0.012 70);
-    --rule: oklch(32% 0.012 60);
-    --shu: oklch(68% 0.155 40);
-    --shu-deep: oklch(74% 0.14 42);
-    --shu-wash: oklch(30% 0.06 40);
-    --sumi: oklch(14.5% 0.009 58);
-    --sumi-raised: oklch(18% 0.01 58);
-    --sumi-rule: oklch(28% 0.011 60);
-    --shadow-window: 0 1px 1px oklch(0% 0 0 / 0.3), 0 8px 24px -8px oklch(0% 0 0 / 0.5),
-      0 40px 80px -32px oklch(0% 0 0 / 0.6);
+    /* Kanso Dark (theme.rs, DARK), the app's primary theme. */
+    --app: #181816;
+    --sidebar: #1d1d1a;
+    --list: #232320;
+    --editor: #282824;
+    --elevated: #30302b;
+    --fill: #30302b;
+    --fg: #f1efe7;
+    --fg-2: #b7b3a8;
+    --fg-3: #7e7a70;
+    --line: #3a3933;
+    --accent: #7e96b3;
+    --link: #869db9;
+    --row: #30302b;
+    --row-hover: #2a2a26;
+    --side-active: #2e2e2a;
+    --side-hover: #252522;
+    --active-line: #2d2d29;
+    --btn: #4a6385;
+    --btn-fg: #f1efe7;
+    --code: #30302b;
+    --code-fg: #cdb892;
+    --kw: #9aacc4;
+    --str: #a9bc98;
+    --ok: #7baa78;
+    --warn: #c49a5a;
+    --bad: #c96e63;
+    --dot: #e0714d;
+    --window-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 2px 4px rgb(0 0 0 / 0.3), 0 24px 48px -16px rgb(0 0 0 / 0.55),
+      0 64px 120px -48px rgb(0 0 0 / 0.6);
   }
 }
 
 @theme inline {
-  --color-paper: var(--paper);
-  --color-paper-deep: var(--paper-deep);
-  --color-ink: var(--ink);
-  --color-ink-soft: var(--ink-soft);
-  --color-ink-faint: var(--ink-faint);
-  --color-rule: var(--rule);
-  --color-shu: var(--shu);
-  --color-shu-deep: var(--shu-deep);
-  --color-shu-wash: var(--shu-wash);
-  --color-sumi: var(--sumi);
-  --color-sumi-raised: var(--sumi-raised);
-  --color-sumi-rule: var(--sumi-rule);
-  --color-on-sumi: var(--on-sumi);
-  --color-on-sumi-soft: var(--on-sumi-soft);
-  --font-display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
-  --font-sans: "Instrument Sans Variable", "Avenir Next", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
-  --shadow-window: var(--shadow-window);
+  --color-app: var(--app);
+  --color-sidebar: var(--sidebar);
+  --color-list: var(--list);
+  --color-editor: var(--editor);
+  --color-elevated: var(--elevated);
+  --color-fill: var(--fill);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-link: var(--link);
+  --color-row: var(--row);
+  --color-row-hover: var(--row-hover);
+  --color-side-active: var(--side-active);
+  --color-side-hover: var(--side-hover);
+  --color-active-line: var(--active-line);
+  --color-btn: var(--btn);
+  --color-btn-fg: var(--btn-fg);
+  --color-code: var(--code);
+  --color-code-fg: var(--code-fg);
+  --color-kw: var(--kw);
+  --color-str: var(--str);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-dot: var(--dot);
+  --font-sans: "Instrument Sans Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", "JetBrains Mono Variable", monospace;
+  --shadow-window: var(--window-shadow);
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @layer base {
   html {
-    background: var(--paper);
-    color: var(--ink);
+    background: var(--app);
+    color: var(--fg);
     font-family: var(--font-sans);
-    font-size: 100%;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
-    scroll-behavior: smooth;
-    scroll-padding-top: 5rem;
+    scroll-padding-top: 4rem;
   }
   body {
     min-height: 100dvh;
-    font-size: clamp(1.0625rem, 1rem + 0.2vw, 1.1875rem);
+    background: var(--app);
+    font-size: 1.0625rem;
     line-height: 1.6;
-    font-feature-settings: "ss01", "cv11";
   }
   ::selection {
-    background: var(--shu-wash);
-    color: var(--ink);
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
   }
   :focus-visible {
-    outline: 2px solid var(--shu);
-    outline-offset: 3px;
-    border-radius: 2px;
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
   h1,
   h2,
   h3 {
-    font-family: var(--font-display);
-    font-weight: 700;
-    letter-spacing: -0.01em;
     text-wrap: balance;
   }
   p {
@@ -144,132 +146,210 @@
 }
 
 @layer components {
-  /* The type scale, fluid from phone to wide screens. */
-  .type-hero {
-    font-size: clamp(3.1rem, 1.6rem + 6.4vw, 8.25rem);
-    line-height: 0.98;
-    font-weight: 800;
-    letter-spacing: -0.025em;
-  }
-  .type-section {
-    font-size: clamp(2.25rem, 1.5rem + 3.2vw, 4.5rem);
-    line-height: 1.04;
-    letter-spacing: -0.02em;
-  }
-  .type-chapter {
-    font-size: clamp(1.75rem, 1.35rem + 1.6vw, 2.75rem);
-    line-height: 1.1;
-  }
-  .type-lede {
-    font-size: clamp(1.2rem, 1.05rem + 0.6vw, 1.55rem);
-    line-height: 1.5;
-  }
-  .type-eyebrow {
-    font-family: var(--font-sans);
-    font-size: 0.8125rem;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    font-weight: 600;
-  }
-
-  /* A page column with generous, fluid gutters. */
   .page {
     width: 100%;
-    max-width: 88rem;
+    max-width: 82rem;
     margin-inline: auto;
-    padding-inline: clamp(1rem, 4vw, 3.5rem);
+    padding-inline: clamp(1rem, 4vw, 3rem);
   }
 
-  /* Links inside prose: an underline that thickens instead of a colour jump. */
   .ink-link {
     text-decoration-line: underline;
     text-decoration-thickness: 1px;
-    text-underline-offset: 0.2em;
-    text-decoration-color: color-mix(in oklch, currentColor 40%, transparent);
-    transition: text-decoration-color 200ms var(--ease-out-quint), text-decoration-thickness 200ms var(--ease-out-quint);
+    text-underline-offset: 0.22em;
+    text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+    transition: text-decoration-color 160ms var(--ease-out-quint);
   }
   .ink-link:hover {
-    text-decoration-color: var(--shu);
-    text-decoration-thickness: 2px;
+    text-decoration-color: currentColor;
   }
 
-  /* Chinese-character numerals in vermilion mark the page's three promises. */
-  .kanji-numeral {
-    font-family: var(--font-display);
-    color: var(--shu);
-    font-weight: 800;
-    line-height: 1;
+  /* A key on the keyboard, as the app's preview draws <kbd>. */
+  .kbd {
+    display: inline-block;
+    min-width: 1.5em;
+    padding: 0.05em 0.4em;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 0.35em;
+    background: var(--elevated);
+    font-family: var(--font-ui);
+    font-size: 0.82em;
+    line-height: 1.4;
+    text-align: center;
+    color: var(--fg-2);
+  }
+
+  /* The note as the app's preview renders it. */
+  .prose-note {
+    font-family: var(--font-ui);
+    font-size: 0.9375rem;
+    line-height: 1.65;
+    color: var(--fg);
+  }
+  .prose-note > * + * {
+    margin-top: 0.85em;
+  }
+  .prose-note h1 {
+    font-size: 1.85em;
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+  .prose-note h2 {
+    font-size: 1.35em;
+    font-weight: 650;
+    margin-top: 1.4em;
+  }
+  .prose-note h3 {
+    font-size: 1.1em;
+    font-weight: 650;
+    margin-top: 1.2em;
+  }
+  .prose-note a {
+    color: var(--link);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--link) 40%, transparent);
+    text-underline-offset: 0.18em;
+  }
+  .prose-note code {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    padding: 0.1em 0.35em;
+    border-radius: 0.3em;
+    background: var(--code);
+    color: var(--code-fg);
+  }
+  .prose-note pre {
+    padding: 0.85em 1em;
+    border-radius: 0.5em;
+    background: var(--code);
+    overflow-x: auto;
+  }
+  .prose-note pre code {
+    padding: 0;
+    background: none;
+    font-size: 0.84em;
+    line-height: 1.6;
+    color: var(--code-fg);
+  }
+  .prose-note blockquote {
+    padding-left: 1em;
+    border-left: 3px solid var(--line);
+    color: var(--fg-2);
+  }
+  .prose-note hr {
+    border: 0;
+    border-top: 1px solid var(--line);
+  }
+  .prose-note table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92em;
+  }
+  .prose-note th,
+  .prose-note td {
+    padding: 0.4em 0.7em;
+    border: 1px solid var(--line);
+    text-align: left;
+  }
+  .prose-note th {
+    background: var(--code);
+    font-weight: 600;
+  }
+
+  /* The editor: a transparent textarea over its coloured copy. */
+  .source {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    line-height: 1.7;
+    tab-size: 2;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+  .tone-mark,
+  .tone-fence {
+    color: var(--fg-3);
+  }
+  .tone-heading {
+    color: var(--fg);
+    font-weight: 700;
+  }
+  .tone-strong {
+    font-weight: 700;
+  }
+  .tone-em {
+    font-style: italic;
+  }
+  .tone-del,
+  .tone-done {
+    color: var(--fg-3);
+    text-decoration: line-through;
+  }
+  .tone-code {
+    color: var(--code-fg);
+  }
+  .tone-link,
+  .tone-wiki {
+    color: var(--link);
+  }
+  .tone-tag {
+    color: var(--str);
+  }
+  .tone-date {
+    color: var(--kw);
+  }
+  .tone-quote {
+    color: var(--fg-2);
   }
 }
 
-/* The ensō draws itself once, like a brush stroke. */
-@keyframes enso-draw {
-  from {
-    stroke-dashoffset: var(--enso-length);
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-@keyframes seal-press {
-  0% {
-    opacity: 0;
-    transform: scale(1.18) rotate(-9deg);
-  }
-  60% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) rotate(-6deg);
-  }
-}
-@keyframes rise {
+@keyframes window-in {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(24px) scale(0.985);
   }
   to {
     opacity: 1;
     transform: none;
   }
 }
-
-.enso-stroke {
-  stroke-dasharray: var(--enso-length);
-  animation: enso-draw 1.9s var(--ease-out-quint) 0.15s both;
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
-.enso-dot {
-  animation: rise 0.6s var(--ease-out-quint) 1.75s both;
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
-.seal {
-  animation: seal-press 0.7s var(--ease-out-expo) 1.2s both;
+.window-in {
+  animation: window-in 900ms var(--ease-out-quint) 150ms both;
 }
-.rise {
-  animation: rise 0.9s var(--ease-out-quint) both;
-  animation-delay: calc(var(--rise-step, 0) * 90ms + 120ms);
+.fade-up {
+  animation: fade-up 700ms var(--ease-out-quint) both;
+  animation-delay: calc(var(--step, 0) * 80ms);
+}
+.pop {
+  animation: pop 180ms var(--ease-out-quint) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-  .enso-stroke,
-  .enso-dot,
-  .seal,
-  .rise {
+  .window-in,
+  .fade-up,
+  .pop {
     animation: none;
-  }
-}
-
-/* Chapters ease into place as they scroll into view, where the browser can tie
-   an animation to scrolling; elsewhere they are simply there. */
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .reveal {
-      animation: rise linear both;
-      animation-timeline: view();
-      animation-range: entry 0% entry 45%;
-    }
   }
 }

@@ -19,8 +19,8 @@ export const Route = createRootRoute({
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Kanso — notes, kept simple" },
       { name: "description", content: SITE_DESCRIPTION },
-      { name: "theme-color", content: "#f8f4ec", media: "(prefers-color-scheme: light)" },
-      { name: "theme-color", content: "#1b1814", media: "(prefers-color-scheme: dark)" },
+      { name: "theme-color", content: "#f4f1ea", media: "(prefers-color-scheme: light)" },
+      { name: "theme-color", content: "#181816", media: "(prefers-color-scheme: dark)" },
       { property: "og:type", content: "website" },
       { property: "og:site_name", content: "Kanso" },
       { property: "og:title", content: "Kanso — notes, kept simple" },
@@ -51,7 +51,7 @@ function RootDocument({ children }: { children: ReactNode }) {
       <body className="flex min-h-dvh flex-col">
         <a
           href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-full focus:bg-ink focus:px-4 focus:py-2 focus:text-paper"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-full focus:bg-fg focus:px-4 focus:py-2 focus:text-app"
         >
           Skip to content
         </a>
@@ -69,9 +69,11 @@ function RootDocument({ children }: { children: ReactNode }) {
 function NotFound() {
   return (
     <section className="page py-[clamp(5rem,14vw,11rem)]">
-      <p className="type-eyebrow text-shu">404</p>
-      <h1 className="type-section mt-4 max-w-2xl">This page was left out.</h1>
-      <p className="mt-6 max-w-xl text-ink-soft">
+      <p className="text-[0.875rem] text-fg-3">404</p>
+      <h1 className="mt-3 max-w-2xl text-[clamp(2rem,1.5rem+2vw,3.2rem)] leading-tight font-semibold tracking-[-0.03em]">
+        This page was left out.
+      </h1>
+      <p className="mt-5 max-w-xl text-fg-2">
         Kanso is about leaving things out, but not this much. The page you asked for isn't here.
       </p>
       <Link to="/" className="ink-link mt-8 inline-block font-medium">

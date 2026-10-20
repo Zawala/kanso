@@ -43,17 +43,17 @@ function DownloadPage() {
   const order = platform ? [platform, ...PLATFORMS.filter((p) => p !== platform)] : [...PLATFORMS];
   return (
     <section className="page pt-[clamp(3.5rem,9vw,7rem)] pb-[clamp(5rem,12vw,9rem)]">
-      <p className="type-eyebrow text-shu">Download</p>
-      <h1 className="type-section mt-5 max-w-3xl">Kanso, for your computer.</h1>
+      <p className="text-[0.875rem] font-medium text-fg-3">Download</p>
+      <h1 className="mt-3 max-w-3xl text-[clamp(2.2rem,1.6rem+2.6vw,3.6rem)] leading-[1.05] font-semibold tracking-[-0.035em]">Kanso, for your computer.</h1>
       {release ? (
-        <p className="type-lede mt-6 max-w-2xl text-ink-soft">
+        <p className="text-[clamp(1.1rem,1rem+0.4vw,1.3rem)] leading-normal mt-6 max-w-2xl text-fg-2">
           Version {release.version}, released {formatDate(release.publishedAt)}. Once it's installed, Kanso updates itself.{" "}
           <a href={release.pageUrl} className="ink-link">
             What's new
           </a>
         </p>
       ) : (
-        <p className="type-lede mt-6 max-w-2xl text-ink-soft">
+        <p className="text-[clamp(1.1rem,1rem+0.4vw,1.3rem)] leading-normal mt-6 max-w-2xl text-fg-2">
           The list of builds couldn't be loaded just now. Every build is on{" "}
           <a href={RELEASES_URL} className="ink-link">
             Kanso's releases page on GitHub
@@ -63,7 +63,7 @@ function DownloadPage() {
       )}
 
       {release && (
-        <div className="mt-[clamp(3rem,7vw,5rem)] grid gap-px overflow-hidden rounded-[0.9rem] border border-rule bg-rule">
+        <div className="mt-[clamp(3rem,7vw,5rem)] grid gap-px overflow-hidden rounded-[0.9rem] border border-line bg-line">
           {order.map((p) => (
             <PlatformRow key={p} platform={p} release={release} mine={p === platform} />
           ))}
@@ -71,7 +71,7 @@ function DownloadPage() {
       )}
 
       {release?.checksumsUrl && (
-        <p className="mt-8 max-w-2xl text-[0.9375rem] text-ink-faint">
+        <p className="mt-8 max-w-2xl text-[0.9375rem] text-fg-3">
           Each download's SHA-256 is in{" "}
           <a href={release.checksumsUrl} className="ink-link">
             SHA256SUMS
@@ -79,7 +79,7 @@ function DownloadPage() {
           . Check the ones you have with <code className="font-mono text-[0.875rem]">shasum -a 256 -c SHA256SUMS --ignore-missing</code>.
         </p>
       )}
-      <p className="mt-4 max-w-2xl text-[0.9375rem] text-ink-faint">
+      <p className="mt-4 max-w-2xl text-[0.9375rem] text-fg-3">
         Prefer to build it yourself?{" "}
         <a href={`${RELEASES_URL.replace(/\/releases$/, "")}#readme`} className="ink-link">
           The source and build steps are on GitHub
@@ -93,13 +93,13 @@ function DownloadPage() {
 function PlatformRow({ platform, release, mine }: { platform: Platform; release: Release; mine: boolean }) {
   const builds = buildsFor(release, platform);
   return (
-    <div className={cn("grid gap-8 bg-paper p-6 sm:p-9 lg:grid-cols-12", mine && "bg-paper-deep")}>
+    <div className={cn("grid gap-8 bg-elevated p-6 sm:p-9 lg:grid-cols-12", mine && "bg-sidebar")}>
       <div className="lg:col-span-4">
-        <h2 className="flex items-baseline gap-3 text-[clamp(1.6rem,1.3rem+1vw,2.2rem)]">
+        <h2 className="flex items-center gap-3 text-[clamp(1.5rem,1.25rem+0.9vw,2rem)] font-semibold tracking-[-0.02em]">
           {PLATFORM_NAMES[platform]}
-          {mine && <span className="type-eyebrow text-shu">Your system</span>}
+          {mine && <span className="rounded-full bg-accent/12 px-2 py-0.5 font-[family-name:var(--font-sans)] text-[0.75rem] font-medium text-accent">Your system</span>}
         </h2>
-        <ul className="mt-4 grid gap-2 text-[0.9375rem] text-ink-soft">
+        <ul className="mt-4 grid gap-2 text-[0.9375rem] text-fg-2">
           {INSTALL[platform].map((line) => (
             <li key={line}>{line}</li>
           ))}
@@ -107,7 +107,7 @@ function PlatformRow({ platform, release, mine }: { platform: Platform; release:
       </div>
       <div className="grid content-start gap-3 lg:col-span-7 lg:col-start-6">
         {builds.length === 0 && (
-          <p className="text-ink-soft">
+          <p className="text-fg-2">
             No build in this release.{" "}
             <a href={RELEASES_URL} className="ink-link">
               Earlier releases
@@ -115,10 +115,10 @@ function PlatformRow({ platform, release, mine }: { platform: Platform; release:
           </p>
         )}
         {builds.map((build, i) => (
-          <div key={build.kind} className="flex flex-wrap items-center justify-between gap-4 border-b border-rule pb-3 last:border-0 last:pb-0">
+          <div key={build.kind} className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-3 last:border-0 last:pb-0">
             <div>
-              <p className="font-medium text-ink">{build.label}</p>
-              <p className="text-[0.875rem] text-ink-faint">
+              <p className="font-medium text-fg">{build.label}</p>
+              <p className="text-[0.875rem] text-fg-3">
                 {build.detail} · {formatSize(build.size)}
               </p>
             </div>
