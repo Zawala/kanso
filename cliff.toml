@@ -48,6 +48,8 @@ sort_commits = "oldest"
 commit_preprocessors = [
   # "(#12)" links the pull request.
   { pattern = '\(#([0-9]+)\)', replace = "([#${1}](https://github.com/iamngoni/kanso/pull/${1}))" },
+  # Release notes describe Kanso on its own terms (commit 76d2e0c's subject).
+  { pattern = " that doesn't assume Inkdrop", replace = "" },
 ]
 # The HTML comments order the groups and are stripped from the headings.
 commit_parsers = [
