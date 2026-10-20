@@ -5,26 +5,32 @@
 //! is under marked; clicking one takes the caret there. Backlinks lists the
 //! notes that link here, each with the line it links on, and below them the
 //! notes that mention the title without linking, each with Link to make the
-//! mention a link.
+//! mention a link. Graph draws the notes around the open one
+//! (`graph_view.rs`), and Related lists the notes about the same things
+//! (`related.rs`).
 
 use std::sync::Arc;
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
-use gpui_kit::component::{Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex};
+use gpui_kit::component::{Icon, Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::DocType;
 use kanso_core::outline::{Heading, headings};
-use kanso_store::{Backlink, Origin, Put, Store};
+use kanso_store::{Backlink, Origin, Put, RelatedNote, Store};
 use serde_json::json;
 
 use crate::config::InspectorTab;
 use crate::editor::NoteEditor;
+use crate::graph_view::{GraphView, Scope};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::Library;
 use crate::note_list::quiet_empty;
+use crate::related::{Related, Status as RelatedStatus};
+use crate::text_stats::plural;
 use crate::theme::{Colors, section_label};
+use crate::workspace::AppState;
 
 /// How far each heading level indents its row, in points.
 const LEVEL_INDENT: f32 = 12.;
@@ -69,6 +75,13 @@ pub struct Inspector {
     mentions_task: Option<Task<()>>,
     /// Whether the pane is on screen: mentions are only looked for then.
     pub visible: bool,
+    /// The notes around the open one.
+    pub(crate) graph: Entity<GraphView>,
+    /// The open note's related notes (`None` while it isn't embedded), and
+    /// the note and embeddings they were found for.
+    related: Option<Vec<RelatedNote>>,
+    related_for: Option<(String, u64)>,
+    related_task: Option<Task<()>>,
     scroll: ScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -81,8 +94,11 @@ impl Inspector {
         library: Entity<Library>,
         editor: Entity<NoteEditor>,
         tab: InspectorTab,
+        hops: u8,
         cx: &mut Context<Self>,
     ) -> Self {
+        let graph =
+            cx.new(|cx| GraphView::new(store.clone(), library.clone(), Scope::Local, hops, cx));
         // The editor notifies on every keystroke; the pane draws again only
         // when what it shows changed: the note, the heading the caret is
         // under, or the backlinks. Typing schedules the outline instead.
@@ -101,6 +117,13 @@ impl Inspector {
                 cx.notify();
             }
         })];
+        let mut subscriptions = subscriptions;
+        // A new state or new embeddings: the Related tab asks again.
+        subscriptions.push(cx.observe_global::<Related>(|this, cx| {
+            if this.visible && this.tab == InspectorTab::Related {
+                cx.notify();
+            }
+        }));
         Inspector {
             store,
             library,
@@ -113,6 +136,10 @@ impl Inspector {
             mentions_for: None,
             mentions_task: None,
             visible: false,
+            graph,
+            related: None,
+            related_for: None,
+            related_task: None,
             scroll: ScrollHandle::new(),
             _subscriptions: subscriptions,
         }
@@ -131,6 +158,7 @@ impl Inspector {
     /// Looks for unlinked mentions again, as after a note changed.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         self.mentions_for = None;
+        self.related_for = None;
         if self.visible {
             cx.notify();
         }
@@ -287,19 +315,44 @@ impl Inspector {
     fn render_tabs(&self, backlinks: usize, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
         let tab = self.tab;
+        // Four tabs share the pane's width: each shows its icon, the open
+        // one its name too, and Backlinks its count.
         let tabs = [
-            ("tab-outline", "Outline".to_owned(), InspectorTab::Outline),
+            (
+                "tab-outline",
+                Lucide::TableOfContents,
+                "Outline",
+                None,
+                InspectorTab::Outline,
+            ),
             (
                 "tab-backlinks",
-                if backlinks > 0 {
-                    format!("Backlinks {backlinks}")
-                } else {
-                    "Backlinks".to_owned()
-                },
+                Lucide::Link,
+                "Backlinks",
+                (backlinks > 0).then(|| backlinks.to_string()),
                 InspectorTab::Backlinks,
             ),
+            (
+                "tab-graph",
+                Lucide::Waypoints,
+                "Graph",
+                None,
+                InspectorTab::Graph,
+            ),
+            (
+                "tab-related",
+                Lucide::Sparkles,
+                "Related",
+                None,
+                InspectorTab::Related,
+            ),
         ];
-        let options = [InspectorTab::Outline, InspectorTab::Backlinks];
+        let options = [
+            InspectorTab::Outline,
+            InspectorTab::Backlinks,
+            InspectorTab::Graph,
+            InspectorTab::Related,
+        ];
         h_flex()
             .h(px(TOP_BAND_HEIGHT))
             .flex_none()
@@ -308,20 +361,33 @@ impl Inspector {
                 ButtonGroup::new("inspector-tabs")
                     .outline()
                     .small()
-                    .children(tabs.map(|(id, label, option)| {
+                    .children(tabs.map(|(id, icon, label, count, option)| {
                         let selected = tab == option;
-                        Button::new(id).selected(selected).child(
-                            div()
-                                .px_0p5()
-                                .text_size(px(12.5))
-                                .when(selected, |el| el.font_medium())
-                                .text_color(if selected {
-                                    colors.text
-                                } else {
-                                    colors.text_secondary
-                                })
-                                .child(label),
-                        )
+                        let color = if selected {
+                            colors.text
+                        } else {
+                            colors.text_secondary
+                        };
+                        Button::new(id)
+                            .selected(selected)
+                            .when(!selected, |el| el.tooltip(label))
+                            .child(
+                                h_flex()
+                                    .px_0p5()
+                                    .gap(px(5.))
+                                    .text_size(px(12.5))
+                                    .text_color(color)
+                                    .child(Icon::new(icon).size(px(14.)).text_color(color))
+                                    .when(selected, |el| el.font_medium().child(label))
+                                    .when_some(count, |el, count| {
+                                        el.child(
+                                            div()
+                                                .text_size(px(11.5))
+                                                .text_color(colors.text_muted)
+                                                .child(count),
+                                        )
+                                    }),
+                            )
                     }))
                     .on_click(cx.listener(move |this, clicked: &Vec<usize>, _, cx| {
                         if let Some(&ix) = clicked.first() {
@@ -550,17 +616,335 @@ impl Inspector {
                 }
                 parts.join(" · ")
             }
+            InspectorTab::Graph => match self.graph.read(cx).counts() {
+                Some((notes, links)) if notes > 0 => format!(
+                    "{} · {}",
+                    plural(notes, "note", "notes"),
+                    plural(links, "link", "links")
+                ),
+                _ => String::new(),
+            },
+            InspectorTab::Related => match related_status(cx) {
+                RelatedStatus::Indexing { done, total } => format!(
+                    "Indexing {} of {}",
+                    crate::text_stats::format_count(done),
+                    plural(total, "note", "notes")
+                ),
+                RelatedStatus::Ready { notes } => {
+                    format!("{} indexed", plural(notes, "note", "notes"))
+                }
+                _ => String::new(),
+            },
         };
+        let graph_controls = (self.tab == InspectorTab::Graph).then(|| {
+            let hops = self.graph.read(cx).hops;
+            let graph = self.graph.clone();
+            h_flex()
+                .gap(px(4.))
+                .child(
+                    ButtonGroup::new("graph-hops")
+                        .outline()
+                        .xsmall()
+                        .children([("1 link", 1u8), ("2 links", 2u8)].map(|(label, n)| {
+                            let selected = hops == n;
+                            Button::new(("hops", n as usize))
+                                .selected(selected)
+                                .tooltip(if n == 1 {
+                                    "The notes this one links with"
+                                } else {
+                                    "And the notes those link with"
+                                })
+                                .child(
+                                    div()
+                                        .px_0p5()
+                                        .text_size(px(11.5))
+                                        .text_color(if selected {
+                                            colors.text
+                                        } else {
+                                            colors.text_secondary
+                                        })
+                                        .child(label),
+                                )
+                        }))
+                        .on_click(move |clicked: &Vec<usize>, _, cx| {
+                            let Some(&ix) = clicked.first() else { return };
+                            let hops = ix as u8 + 1;
+                            graph.update(cx, |graph, cx| graph.set_hops(hops, cx));
+                            AppState::update_config(cx, |config| {
+                                config.discovery.graph_hops = hops
+                            });
+                        }),
+                )
+                .child(
+                    Button::new("open-graph")
+                        .ghost()
+                        .xsmall()
+                        .icon(Lucide::Maximize)
+                        .tooltip("Graph of all notes")
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(crate::graph_view::ShowGraph), cx)
+                        }),
+                )
+        });
         h_flex()
             .h(px(BOTTOM_BAND_HEIGHT))
             .flex_none()
-            .px(px(PAD_X + 8.))
+            .pl(px(PAD_X + 8.))
+            .pr(px(PAD_X))
+            .gap(px(8.))
             .border_t_1()
             .border_color(colors.divider)
             .text_size(px(12.))
             .text_color(colors.text_muted)
-            .child(summary)
+            .child(div().flex_1().min_w_0().truncate().child(summary))
+            .children(graph_controls)
     }
+
+    /// The local graph, centred on the open note.
+    fn render_graph(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let note = self.editor.read(cx).note_id().map(str::to_owned);
+        let visible = self.visible;
+        self.graph.update(cx, |graph, cx| {
+            graph.visible = visible;
+            graph.set_center(note, cx);
+        });
+        self.graph.clone().into_any_element()
+    }
+
+    /// Starts looking for the open note's related notes, in the background,
+    /// unless they are known for these embeddings.
+    fn load_related(&mut self, generation: u64, cx: &mut Context<Self>) {
+        let Some(id) = self.editor.read(cx).note_id().map(str::to_owned) else {
+            self.related = None;
+            self.related_for = None;
+            return;
+        };
+        let wanted = Some((id.clone(), generation));
+        if self.related_for == wanted {
+            return;
+        }
+        // A different note: what was shown is not about it.
+        if self
+            .related_for
+            .as_ref()
+            .is_none_or(|(kept, _)| *kept != id)
+        {
+            self.related = None;
+        }
+        self.related_for = wanted;
+        let store = self.store.clone();
+        let search = cx.background_executor().spawn(async move {
+            store
+                .related_notes(&id, crate::related::MODEL_ID, RELATED_LIMIT)
+                .unwrap_or(None)
+        });
+        self.related_task = Some(cx.spawn(async move |this, cx| {
+            let found = search.await;
+            this.update(cx, |this, cx| {
+                this.related_task = None;
+                if this.related != found {
+                    this.related = found;
+                    cx.notify();
+                }
+            })
+            .ok();
+        }));
+    }
+
+    fn render_related(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = Colors::get(cx);
+        if self.editor.read(cx).note_id().is_none() {
+            return quiet_empty(Lucide::Sparkles, "No note open".into(), None, colors)
+                .into_any_element();
+        }
+        let status = related_status(cx);
+        let generation = cx.try_global::<Related>().map_or(0, |r| r.generation);
+        let action = |id: &'static str, label: &'static str, run: fn(&mut Window, &mut App)| {
+            Button::new(id)
+                .outline()
+                .small()
+                .label(label)
+                .on_click(move |_, window, cx| run(window, cx))
+        };
+        let state = |icon: Lucide, title: String, detail: String| {
+            quiet_empty(icon, title, Some(detail), colors)
+        };
+        match status {
+            RelatedStatus::Off => {
+                return state(
+                    Lucide::Sparkles,
+                    "Related notes are off".into(),
+                    format!(
+                        "Find notes about the same things as this one. It works on {} and sends nothing anywhere.",
+                        crate::settings_discovery::this_device()
+                    ),
+                )
+                .child(div().mt(px(14.)).child(action(
+                    "related-settings",
+                    "Turn On in Settings…",
+                    |window, cx| {
+                        window.dispatch_action(Box::new(crate::settings::OpenGeneralSettings), cx)
+                    },
+                )))
+                .into_any_element();
+            }
+            RelatedStatus::Downloading { done, total } => {
+                return state(
+                    Lucide::Download,
+                    format!(
+                        "Getting the language model… {}%",
+                        crate::related::percent(done, total)
+                    ),
+                    "A one-time download of about 30\u{a0}MB.".into(),
+                )
+                .child(progress_bar(done as f32 / total.max(1) as f32, colors))
+                .into_any_element();
+            }
+            RelatedStatus::Loading => {
+                return state(
+                    Lucide::Sparkles,
+                    "Getting ready…".into(),
+                    "Checking the language model.".into(),
+                )
+                .into_any_element();
+            }
+            RelatedStatus::Failed(message) => {
+                return state(
+                    Lucide::TriangleAlert,
+                    "Related notes stopped".into(),
+                    message,
+                )
+                .child(
+                    div()
+                        .mt(px(14.))
+                        .child(action("related-retry", "Try Again", |_, cx| {
+                            crate::related::start(cx)
+                        })),
+                )
+                .into_any_element();
+            }
+            RelatedStatus::Indexing { .. } | RelatedStatus::Ready { .. } => {}
+        }
+        self.load_related(generation, cx);
+        let Some(related) = self.related.clone() else {
+            return state(
+                Lucide::Sparkles,
+                "Reading this note…".into(),
+                "Related notes show once it's indexed.".into(),
+            )
+            .into_any_element();
+        };
+        if related.is_empty() {
+            return state(
+                Lucide::Sparkles,
+                "Nothing related yet".into(),
+                "Notes about the same things show here, apart from those already linked.".into(),
+            )
+            .into_any_element();
+        }
+        let view = cx.entity();
+        v_flex()
+            .id("related")
+            .size_full()
+            .overflow_y_scroll()
+            .track_scroll(&self.scroll)
+            .px(px(PAD_X))
+            .pb(px(12.))
+            .child(
+                section_label(div(), colors)
+                    .px(px(8.))
+                    .pt(px(10.))
+                    .pb(px(6.))
+                    .child("Not linked yet"),
+            )
+            .children(related.into_iter().enumerate().map(|(ix, note)| {
+                let open = view.clone();
+                let id = note.id.clone();
+                let title = if note.title.trim().is_empty() {
+                    "Untitled".to_owned()
+                } else {
+                    note.title.clone()
+                };
+                let share = note.score.clamp(0., 1.);
+                h_flex()
+                    .id(ElementId::NamedInteger("related".into(), ix as u64))
+                    .w_full()
+                    .px(px(8.))
+                    .py(px(7.))
+                    .gap(px(10.))
+                    .rounded(px(6.))
+                    .cursor_pointer()
+                    .hover(|el| el.bg(colors.row_hover))
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap(px(3.))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_size(px(13.))
+                                    .font_medium()
+                                    .text_color(colors.text)
+                                    .child(title),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.5))
+                                    .text_color(colors.text_muted)
+                                    .child(crate::related::similarity_label(note.score)),
+                            ),
+                    )
+                    .child(
+                        // The similarity, as a short meter.
+                        div()
+                            .flex_none()
+                            .w(px(36.))
+                            .h(px(4.))
+                            .rounded_full()
+                            .bg(colors.fill)
+                            .child(
+                                div()
+                                    .h_full()
+                                    .w(px(36. * share))
+                                    .rounded_full()
+                                    .bg(Hsla::from(colors.accent).opacity(0.4 + 0.6 * share)),
+                            ),
+                    )
+                    .on_click(move |_, _, cx| {
+                        let id = id.clone();
+                        open.update(cx, |this, cx| this.open_at(id, 0, cx));
+                    })
+            }))
+            .into_any_element()
+    }
+}
+
+/// How many related notes the tab lists.
+const RELATED_LIMIT: usize = 8;
+
+fn related_status(cx: &App) -> RelatedStatus {
+    cx.try_global::<Related>()
+        .map(|r| r.status.clone())
+        .unwrap_or_default()
+}
+
+/// A thin bar `share` (0 to 1) of the way full.
+// no-prop-test: drawing; the Related snapshots show it.
+fn progress_bar(share: f32, colors: &Colors) -> impl IntoElement {
+    div()
+        .mt(px(14.))
+        .w(px(160.))
+        .h(px(4.))
+        .rounded_full()
+        .bg(colors.fill)
+        .child(
+            div()
+                .h_full()
+                .w(px(160. * share.clamp(0., 1.)))
+                .rounded_full()
+                .bg(colors.accent),
+        )
 }
 
 #[cfg(test)]
@@ -599,7 +983,12 @@ impl Render for Inspector {
         let body = match self.tab {
             InspectorTab::Outline => self.render_outline(cx),
             InspectorTab::Backlinks => self.render_backlinks(cx),
+            InspectorTab::Graph => self.render_graph(cx),
+            InspectorTab::Related => self.render_related(cx),
         };
+        if self.tab != InspectorTab::Graph {
+            self.graph.update(cx, |graph, _| graph.visible = false);
+        }
         self.drawn = Some(self.drawn_from(cx));
         v_flex()
             .size_full()

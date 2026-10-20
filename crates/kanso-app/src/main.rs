@@ -29,6 +29,8 @@ mod export;
 mod export_html;
 mod flavour;
 mod fuzzy;
+mod graph;
+mod graph_view;
 mod grouping;
 mod history;
 mod history_diff;
@@ -57,11 +59,13 @@ mod preview;
 mod preview_chunks;
 mod preview_rich;
 mod publish;
+mod related;
 mod reminders;
 mod replace;
 mod services;
 mod settings;
 mod settings_capture;
+mod settings_discovery;
 mod settings_themes;
 #[cfg(test)]
 mod settings_window_tests;
@@ -294,6 +298,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         workspace::bind_keys(cx);
         note_list::bind_keys(cx);
         capture::bind_keys(cx);
+        graph_view::bind_keys(cx);
         workspace::set_menus(cx);
         cx.on_action(|_: &Quit, cx| quit(cx));
         watch_for_quit(cx);
@@ -309,6 +314,8 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         hotkey::init(cx);
         let store = cx.global::<AppState>().store.clone();
         reminders::init(store, open_main_window, cx);
+        // Related notes, in the background.
+        related::init(cx);
         open_main_window(cx);
         cx.activate(true);
         // After an update the old copy yielded focus to this one; take it

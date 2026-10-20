@@ -69,6 +69,8 @@ icon_assets!(
         Regex,
         Ruler,
         Save,
+        Scan,
+        ScanText,
         ScrollText,
         Server,
         Sparkles,
@@ -87,6 +89,9 @@ icon_assets!(
         UserPlus,
         WholeWord,
         Zap,
+        Waypoints,
+        ZoomIn,
+        ZoomOut,
     ]
 );
 

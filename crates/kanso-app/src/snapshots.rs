@@ -48,6 +48,8 @@ use crate::theme::{Colors, DARK, LIGHT, Rgb};
 use crate::updates::{Phase, Problem as UpdateProblem, Updates};
 use crate::workspace::{AppState, Workspace, apply_theme};
 
+mod discovery;
+
 /// The demo's "now": Thursday 28 May 2026, 09:45 in a zone two hours ahead
 /// of UTC.
 const DEMO_NOW_MS: i64 = 1_779_954_300_000;
@@ -3569,6 +3571,148 @@ fn snapshots() {
             size: size(px(1440.), px(1700.)),
             ..shot("light-preview-long", Light, Preview, open_latest)
         },
+        // Discovery: the note's graph and related notes beside it, the
+        // library's graph, and related notes in Settings in each state.
+        shot(
+            "dark-inspector-graph",
+            Dark,
+            Edit,
+            discovery::inspector_graph,
+        ),
+        shot(
+            "light-inspector-graph",
+            Light,
+            Split,
+            discovery::inspector_graph,
+        ),
+        shot(
+            "dark-inspector-graph-2",
+            Dark,
+            Edit,
+            discovery::inspector_graph_two,
+        ),
+        shot("dark-graph", Dark, Edit, discovery::library_graph),
+        shot("light-graph", Light, Edit, discovery::library_graph),
+        shot(
+            "dark-graph-hover",
+            Dark,
+            Edit,
+            discovery::library_graph_hover,
+        ),
+        shot(
+            "light-graph-notebook",
+            Light,
+            Edit,
+            discovery::library_graph_notebook,
+        ),
+        shot(
+            "dark-graph-large",
+            Dark,
+            Edit,
+            discovery::library_graph_large,
+        ),
+        shot(
+            "light-graph-large",
+            Light,
+            Edit,
+            discovery::library_graph_large,
+        ),
+        shot(
+            "dark-inspector-related",
+            Dark,
+            Edit,
+            discovery::inspector_related,
+        ),
+        shot(
+            "light-inspector-related",
+            Light,
+            Split,
+            discovery::inspector_related,
+        ),
+        shot(
+            "dark-inspector-related-off",
+            Dark,
+            Edit,
+            discovery::inspector_related_off,
+        ),
+        shot(
+            "light-inspector-related-off",
+            Light,
+            Edit,
+            discovery::inspector_related_off,
+        ),
+        shot(
+            "dark-inspector-related-downloading",
+            Dark,
+            Edit,
+            discovery::inspector_related_downloading,
+        ),
+        shot(
+            "light-inspector-related-failed",
+            Light,
+            Edit,
+            discovery::inspector_related_failed,
+        ),
+        shot(
+            "dark-settings-related-off",
+            Dark,
+            Edit,
+            discovery::settings_related_off,
+        ),
+        shot(
+            "light-settings-related-off",
+            Light,
+            Edit,
+            discovery::settings_related_off,
+        ),
+        shot(
+            "dark-settings-related-downloading",
+            Dark,
+            Edit,
+            discovery::settings_related_downloading,
+        ),
+        shot(
+            "light-settings-related-downloading",
+            Light,
+            Edit,
+            discovery::settings_related_downloading,
+        ),
+        shot(
+            "dark-settings-related-indexing",
+            Dark,
+            Edit,
+            discovery::settings_related_indexing,
+        ),
+        shot(
+            "light-settings-related-indexing",
+            Light,
+            Edit,
+            discovery::settings_related_indexing,
+        ),
+        shot(
+            "dark-settings-related-ready",
+            Dark,
+            Edit,
+            discovery::settings_related_ready,
+        ),
+        shot(
+            "light-settings-related-ready",
+            Light,
+            Edit,
+            discovery::settings_related_ready,
+        ),
+        shot(
+            "dark-settings-related-failed",
+            Dark,
+            Edit,
+            discovery::settings_related_failed,
+        ),
+        shot(
+            "light-settings-related-failed",
+            Light,
+            Edit,
+            discovery::settings_related_failed,
+        ),
         // Settings, in the main window.
         shot("dark-settings-general", Dark, Edit, settings_general),
         shot("light-settings-general", Light, Edit, settings_general),
@@ -4035,6 +4179,7 @@ fn snapshots() {
         );
         let palette_open = cx.update(|cx| workspace.read(cx).palette.read(cx).is_open());
         let settings_open = cx.update(|cx| workspace.read(cx).settings_open());
+        let graph_open = cx.update(|cx| workspace.read(cx).graph_open);
         let dialog_open = cx
             .update_window(window, |_, window, cx| window.has_active_dialog(cx))
             .unwrap();
@@ -4044,6 +4189,8 @@ fn snapshots() {
             check_palette(&image, shot);
         } else if settings_open {
             check_settings_surfaces(&image, shot);
+        } else if graph_open {
+            discovery::check_graph(&image, shot);
         } else {
             let inspector = cx
                 .update_window(window, |_, window, cx| {

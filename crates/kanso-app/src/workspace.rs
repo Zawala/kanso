@@ -217,6 +217,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::separator(),
             MenuItem::action("Toggle Sidebar", ToggleSidebar),
             MenuItem::action("Outline and Backlinks", ToggleInspector),
+            MenuItem::action("Graph", crate::graph_view::ShowGraph),
             MenuItem::action("Focus Mode", ToggleFocusMode),
             MenuItem::action("Search All Notes", SearchAllNotes),
             MenuItem::action("Replace in All Notes…", crate::replace::ReplaceInNotes),
@@ -271,6 +272,10 @@ pub struct Workspace {
     /// The inspector's width as set; it narrows or hides to leave the
     /// editor its room.
     pub(crate) inspector_width: f32,
+    /// The graph of every note, over the window while open
+    /// (`graph_view.rs`); made the first time it opens.
+    pub(crate) graph: Option<Entity<crate::graph_view::GraphView>>,
+    pub(crate) graph_open: bool,
     /// Settings, drawn in place of the list and the editor while open.
     pub(crate) settings: Entity<SettingsView>,
     /// While Settings are open: where the notes were, to go back to.
@@ -305,6 +310,7 @@ impl Workspace {
         let inspector_open = state.config.layout.inspector_open;
         let inspector_width = state.config.layout.inspector_width;
         let inspector_tab = state.config.layout.inspector_tab;
+        let graph_hops = state.config.discovery.graph_hops;
 
         let library = cx.new(|cx| Library::new(store.clone(), cx));
         let sidebar = cx.new(|cx| Sidebar::new(library.clone(), cx));
@@ -344,6 +350,7 @@ impl Workspace {
                 library.clone(),
                 editor.clone(),
                 inspector_tab,
+                graph_hops,
                 cx,
             )
         });
@@ -476,6 +483,8 @@ impl Workspace {
             inspector,
             inspector_open,
             inspector_width,
+            graph: None,
+            graph_open: false,
             settings,
             settings_return: None,
             show_sidebar: appearance.show_sidebar,
@@ -1554,6 +1563,7 @@ impl Render for Workspace {
             .map(|el| crate::journal::on_actions(el, cx))
             .map(|el| crate::replace::on_actions(el, cx))
             .map(|el| crate::updates::on_actions(el, cx))
+            .map(|el| crate::graph_view::on_actions(el, cx))
             // The panes run the full height: each has its own top band
             // (the title bar's row) and bottom band. The sidebar and the
             // list keep their widths and the editor takes the rest; each
@@ -1642,6 +1652,7 @@ impl Render for Workspace {
                         })
                     }),
             )
+            .children(crate::graph_view::overlay(self))
             // Over everything else when open.
             .child(self.palette.clone())
             // The system draws the real traffic lights above the palette too.

@@ -280,6 +280,10 @@ pub enum InspectorTab {
     #[default]
     Outline,
     Backlinks,
+    /// The notes around the open one, as a graph.
+    Graph,
+    /// Notes about the same things (`related.rs`).
+    Related,
 }
 
 /// How the window's panes were left: focus mode, where the split divides,
@@ -419,6 +423,30 @@ impl Default for RemindersSettings {
     }
 }
 
+/// Finding notes by their connections and their words (Settings ›
+/// General): related notes, text in images, the inspector graph's reach.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct DiscoverySettings {
+    /// Related notes: off until turned on, as it downloads a model.
+    pub related_notes: bool,
+    /// Reading the words in image attachments, where the system can
+    /// (macOS): on by default there.
+    pub image_text: bool,
+    /// How many links out the inspector's graph reaches: 1 or 2.
+    pub graph_hops: u8,
+}
+
+impl Default for DiscoverySettings {
+    fn default() -> Self {
+        DiscoverySettings {
+            related_notes: false,
+            image_text: cfg!(target_os = "macos"),
+            graph_hops: 1,
+        }
+    }
+}
+
 /// The layout [`AppConfig::migrate`] brings older files up to.
 pub const CONFIG_VERSION: u32 = 3;
 
@@ -438,6 +466,7 @@ pub struct AppConfig {
     pub editor: EditorSettings,
     pub capture: CaptureSettings,
     pub reminders: RemindersSettings,
+    pub discovery: DiscoverySettings,
 }
 
 impl Default for AppConfig {
@@ -454,6 +483,7 @@ impl Default for AppConfig {
             editor: EditorSettings::default(),
             capture: CaptureSettings::default(),
             reminders: RemindersSettings::default(),
+            discovery: DiscoverySettings::default(),
         }
     }
 }
@@ -548,13 +578,26 @@ mod tests {
             any::<bool>(),
             gen_editor(),
             (any::<bool>(), "(ctrl-|alt-|shift-|cmd-){1,3}[a-z0-9]"),
+            (any::<bool>(), any::<bool>(), 1u8..=2),
         )
             .prop_map(
-                |(config, layout, auto_install, editor, (enabled, shortcut))| AppConfig {
+                |(
+                    config,
+                    layout,
+                    auto_install,
+                    editor,
+                    (enabled, shortcut),
+                    (related_notes, image_text, graph_hops),
+                )| AppConfig {
                     layout,
                     updates: UpdateSettings { auto_install },
                     editor,
                     capture: CaptureSettings { enabled, shortcut },
+                    discovery: DiscoverySettings {
+                        related_notes,
+                        image_text,
+                        graph_hops,
+                    },
                     ..config
                 },
             )
@@ -604,7 +647,12 @@ mod tests {
             prop::option::of(any::<bool>()),
             any::<bool>(),
             crate::layout::INSPECTOR_RANGE.0..=crate::layout::INSPECTOR_RANGE.1,
-            prop::sample::select(vec![InspectorTab::Outline, InspectorTab::Backlinks]),
+            prop::sample::select(vec![
+                InspectorTab::Outline,
+                InspectorTab::Backlinks,
+                InspectorTab::Graph,
+                InspectorTab::Related,
+            ]),
         )
             .prop_map(
                 |(
@@ -697,6 +745,7 @@ mod tests {
                     editor: EditorSettings::default(),
                     capture: CaptureSettings::default(),
                     reminders: super::RemindersSettings::default(),
+                    discovery: DiscoverySettings::default(),
                 },
             )
     }

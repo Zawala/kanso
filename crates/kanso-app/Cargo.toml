@@ -43,17 +43,25 @@ kanso-store.workspace = true
 # version gpui-base uses.
 lsp-types = "=0.97.0"
 markdown.workspace = true
+# Related notes: Model2Vec static embeddings, computed on this device (MIT).
+# Without its Hugging Face client or Oniguruma: `related.rs` fetches the
+# model and checks it against pinned SHA-256s, and the tokenizer uses
+# pure-Rust regexes.
+model2vec-rs = { version = "=0.3.0", default-features = false }
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 # The history dialog's changes between versions.
 similar.workspace = true
+sha2.workspace = true
+# Model2Vec's tokenizer, at the version it uses, with pure-Rust regexes.
+tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex"] }
 tree-sitter-c-sharp.workspace = true
 tree-sitter-swift.workspace = true
 # Table formatting measures cells as a monospaced face shows them.
 unicode-width = "0.2"
-# `kanso capture` hands its text to a running Kanso's local API. The sync
-# client already builds it.
+# `kanso capture` hands its text to a running Kanso's local API, and the
+# related-notes model downloads with it. The sync client already builds it.
 ureq = "3.4"
 # Vim keys step over a character as it is read (a grapheme cluster).
 unicode-segmentation = "1.13"
@@ -84,12 +92,14 @@ gpui-pre-apple = "=0.3.9"
 block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSGraphics", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSView", "NSWindow"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSBundle", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSObject", "NSString", "NSURL"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSObject", "NSString", "NSURL"] }
 # Open at login with SMAppService on macOS 13 and later.
 objc2-service-management = { version = "0.3", default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }
 # Reminders: whether notifications are allowed, asked only inside an app
 # bundle (GPUI already links it).
 objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNUserNotificationCenter", "UNNotificationSettings"] }
+# Text in images: Vision reads the words in image attachments (`ocr.rs`).
+objc2-vision = { version = "0.3", default-features = false, features = ["std", "VNObservation", "VNRecognizeTextRequest", "VNRequest", "VNRequestHandler", "VNTypes"] }
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-app-kit", "objc2-core-foundation", "WKWebView", "WKWebViewConfiguration", "WKPDFConfiguration", "WKNavigation"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
