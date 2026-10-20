@@ -10,9 +10,11 @@ mod derived;
 mod doc;
 mod history;
 mod read;
+mod replace;
 mod roles;
 mod schema;
 mod sync;
+mod tasks;
 mod validate;
 mod write;
 
@@ -25,8 +27,12 @@ pub use backup::BackupPolicy;
 pub use derived::{Backlink, DERIVED_VERSION, DERIVED_VERSION_KEY, HeadingHit};
 pub use doc::{Attachment, Doc};
 pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
+pub use replace::{
+    NoteMatches, PREVIEW_MATCHES_PER_NOTE, Planned, ReplaceReport, Skipped, UndoReport,
+};
 pub use roles::{DAILY_TEMPLATE_FIELD, DailyNote, FromTemplate, NewNote};
 pub use sync::{ApplyOutcome, SyncDoc, SyncGuard, SyncState};
+pub use tasks::{CheckOff, ReminderTask, TaskQuery, TaskRow};
 pub use write::{Put, WriteResult};
 
 #[derive(Debug, thiserror::Error)]

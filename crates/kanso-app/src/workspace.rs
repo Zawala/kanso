@@ -162,6 +162,8 @@ pub fn bind_keys(cx: &mut App) {
     ]);
     crate::palette::bind_keys(cx);
     crate::journal::bind_keys(cx);
+    crate::tasks_view::bind_keys(cx);
+    crate::replace::bind_keys(cx);
     crate::settings::bind_keys(cx);
 }
 
@@ -212,6 +214,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Outline and Backlinks", ToggleInspector),
             MenuItem::action("Focus Mode", ToggleFocusMode),
             MenuItem::action("Search All Notes", SearchAllNotes),
+            MenuItem::action("Replace in All Notes…", crate::replace::ReplaceInNotes),
             MenuItem::action("Search This List", FocusSearch),
             MenuItem::action("Go to Note List", FocusNoteList),
         ]),
@@ -248,6 +251,8 @@ pub struct Workspace {
     pub(crate) library: Entity<Library>,
     pub(crate) sidebar: Entity<Sidebar>,
     pub(crate) note_list: Entity<NoteList>,
+    /// The tasks across the notes, in the list's place while Tasks shows.
+    pub(crate) tasks: Entity<crate::tasks_view::TasksView>,
     pub editor: Entity<NoteEditor>,
     /// The command palette, drawn over the rest when open.
     pub(crate) palette: Entity<Palette>,
@@ -307,6 +312,8 @@ impl Workspace {
             )
         });
 
+        let tasks =
+            cx.new(|cx| crate::tasks_view::TasksView::new(library.clone(), editor.clone(), cx));
         let focus = cx.focus_handle();
         let list_focus = note_list.read(cx).focus_handle(cx);
         let palette = cx.new(|cx| {
@@ -376,6 +383,9 @@ impl Workspace {
             }),
             cx.subscribe_in(&note_list, window, |this, _, event, window, cx| {
                 this.on_note_list_event(event, window, cx);
+            }),
+            cx.subscribe_in(&tasks, window, |this, _, event, window, cx| {
+                this.on_tasks_event(event, window, cx);
             }),
             cx.subscribe_in(&editor, window, |this, _, event, window, cx| match event {
                 EditorEvent::Notice(message) => {
@@ -451,6 +461,7 @@ impl Workspace {
             library,
             sidebar,
             note_list,
+            tasks,
             editor,
             palette,
             inspector,
@@ -680,6 +691,55 @@ impl Workspace {
             self.editor.update(cx, f);
         }
         open
+    }
+
+    /// Opens a task's note at its line, from the Tasks view.
+    fn on_tasks_event(
+        &mut self,
+        event: &crate::tasks_view::TasksEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::tasks_view::TasksEvent;
+        match event {
+            TasksEvent::Notice(message) => {
+                window.push_notification(Notification::info(message.clone()), cx);
+            }
+            TasksEvent::Open {
+                note_id,
+                line,
+                focus,
+            } => self.open_note_at(note_id, *line, *focus, window, cx),
+        }
+    }
+
+    /// Opens note `note_id` with `line` in view; `focus` puts the keyboard
+    /// in its text.
+    pub(crate) fn open_note_at(
+        &mut self,
+        note_id: &str,
+        line: u32,
+        focus: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let open = self.editor.read(cx).note_id() == Some(note_id);
+        if open {
+            self.leave_settings(window, cx);
+            self.editor
+                .update(cx, |editor, cx| editor.reveal_line(line, window, cx));
+        } else {
+            self.editor.update(cx, |editor, _| {
+                editor.reveal_after_open(note_id.to_owned(), line)
+            });
+            self.library.update(cx, |library, cx| {
+                library.select(Some(note_id.to_owned()), cx)
+            });
+        }
+        if focus {
+            self.editor
+                .update(cx, |editor, cx| editor.focus_body(window, cx));
+        }
     }
 
     fn on_note_list_event(
@@ -1228,6 +1288,9 @@ impl Render for Workspace {
         let list_inset = px(inset_after(leading, window.is_fullscreen()));
         self.note_list
             .update(cx, |list, cx| list.set_leading_inset(list_inset, cx));
+        self.tasks
+            .update(cx, |tasks, cx| tasks.set_leading_inset(list_inset, cx));
+        let tasks_shown = self.library.read(cx).filter == Filter::Tasks;
         self.settings.update(cx, |settings, cx| {
             settings.set_leading_inset(list_inset, cx)
         });
@@ -1320,8 +1383,13 @@ impl Render for Workspace {
                 // The list is hidden behind Settings and in focus mode.
                 this.leave_settings(window, cx);
                 this.set_focus_mode(false, window, cx);
-                this.note_list
-                    .update(cx, |list, cx| list.focus_list(window, cx));
+                if this.library.read(cx).filter == Filter::Tasks {
+                    this.tasks
+                        .update(cx, |tasks, cx| tasks.focus_list(window, cx));
+                } else {
+                    this.note_list
+                        .update(cx, |list, cx| list.focus_list(window, cx));
+                }
             }))
             .on_action(cx.listener(|this, _: &FocusEditor, window, cx| {
                 this.editor
@@ -1470,6 +1538,7 @@ impl Render for Workspace {
             })
             .map(|el| crate::settings::on_actions(el, cx))
             .map(|el| crate::journal::on_actions(el, cx))
+            .map(|el| crate::replace::on_actions(el, cx))
             .map(|el| crate::updates::on_actions(el, cx))
             // The panes run the full height: each has its own top band
             // (the title bar's row) and bottom band. The sidebar and the
@@ -1522,7 +1591,13 @@ impl Render for Workspace {
                                     .w(px(widths.list))
                                     .flex_none()
                                     .debug_selector(|| "list-pane".into())
-                                    .child(self.note_list.clone())
+                                    .map(|el| {
+                                        if tasks_shown {
+                                            el.child(self.tasks.clone())
+                                        } else {
+                                            el.child(self.note_list.clone())
+                                        }
+                                    })
                                     // The rail keeps its width.
                                     .when(self.show_sidebar, |el| {
                                         el.child(pane_handle(PaneEdge::Sidebar))

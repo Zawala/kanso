@@ -11,6 +11,8 @@ pub mod links;
 pub mod model;
 pub mod outline;
 pub mod query;
+pub mod reminders;
+pub mod replace;
 pub mod rev;
 pub mod roles;
 pub mod tags;

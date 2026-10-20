@@ -252,6 +252,8 @@ pub struct NoteEditor {
     typewriter: bool,
     /// Vim keys, while the setting is on.
     vim: Option<vim_glue::VimState>,
+    /// The tints on tasks' due dates in the text.
+    due_marks: crate::due::DueMarks,
     /// Shows the hidden header in focus mode, as a hover would.
     #[cfg(test)]
     pub(crate) reveal_chrome: bool,
@@ -369,6 +371,13 @@ impl NoteEditor {
                     this.source_lines = None;
                     this.schedule_autosave(cx);
                     this.schedule_preview(window, cx);
+                    let (body, me) = (this.body.clone(), cx.entity().downgrade());
+                    this.due_marks.refresh_soon(
+                        body,
+                        me,
+                        |editor: &mut NoteEditor| &mut editor.due_marks,
+                        cx,
+                    );
                 }
             }),
             // The text editor notifies when the wheel scrolls it (and when
@@ -427,6 +436,7 @@ impl NoteEditor {
             pairs: Pairs::default(),
             typewriter: false,
             vim: None,
+            due_marks: Default::default(),
             #[cfg(test)]
             reveal_chrome: false,
             _subscriptions: subscriptions,
@@ -741,6 +751,7 @@ impl NoteEditor {
                 state.set_scroll_offset(scroll, cx);
             }
         });
+        self.due_marks.refresh(&self.body, cx);
         // The kept line lengths describe the old text, which may have had
         // the same length.
         self.source_lines = None;
@@ -883,7 +894,7 @@ impl NoteEditor {
     /// What the preview is handed for `text`: wiki-links written as
     /// ordinary links (see [`crate::wikilinks`]).
     fn preview_source(&self, text: SharedString) -> SharedString {
-        rewrite_for_preview(&text, &self.wiki.borrow())
+        crate::due::rewrite_for_preview(&rewrite_for_preview(&text, &self.wiki.borrow()))
     }
 
     /// Reads the titles wiki-links resolve against again, in the background
@@ -957,6 +968,16 @@ impl NoteEditor {
         self.body.update(cx, |state, cx| {
             state.set_cursor_position(Position::new(line, 0), window, cx);
         });
+    }
+
+    /// The text selected in the note's body, if any.
+    pub fn selected_text(&self, cx: &App) -> Option<String> {
+        let state = self.body.read(cx);
+        let range = state.selected_range();
+        let value = state.value();
+        (!range.is_empty())
+            .then(|| value.get(range.start..range.end).map(str::to_owned))
+            .flatten()
     }
 
     /// Shows `line` of note `id` once it opens.

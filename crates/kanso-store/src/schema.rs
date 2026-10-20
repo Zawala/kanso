@@ -120,6 +120,15 @@ CREATE TABLE note_tasks (
 ) WITHOUT ROWID;
 CREATE INDEX note_tasks_due ON note_tasks (due) WHERE due IS NOT NULL;
 "#,
+    // Find and replace across notes (`replace.rs`): the version each note
+    // had before a replace is kept under the replace's batch ID, with the
+    // revision the replace wrote, so "Undo replace" can tell a note edited
+    // again since.
+    r#"
+ALTER TABLE revisions ADD COLUMN batch TEXT;
+ALTER TABLE revisions ADD COLUMN batch_rev TEXT;
+CREATE INDEX revisions_batch ON revisions (batch) WHERE batch IS NOT NULL;
+"#,
 ];
 
 pub fn connect(path: &Path) -> Result<Connection> {
