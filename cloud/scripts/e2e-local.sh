@@ -11,7 +11,8 @@
 #   cloud/scripts/e2e-local.sh            from anywhere in the repository
 #
 # KANSO_E2E_KEEP=1 keeps the state directory for inspection.
-# KANSO_E2E_PORT picks the Worker's port (default 8787); a port something else
+# KANSO_E2E_PORT picks the Worker's port (default: a free one the system hands
+# out, so two runs on one machine never share a Worker); a port something else
 # already listens on is refused, so the test never talks to another server.
 set -euo pipefail
 
@@ -19,7 +20,10 @@ unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID IMNGONII_CLOUDFLARE_API_TOKEN
 
 CLOUD="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="$(cd "$CLOUD/.." && pwd)"
-PORT="${KANSO_E2E_PORT:-8787}"
+PORT="${KANSO_E2E_PORT:-}"
+if [[ -z "$PORT" ]]; then
+	PORT="$(python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+fi
 ENDPOINT="http://127.0.0.1:$PORT"
 # A fixed test pepper (bytes 0..31, as in vitest.config.ts), never a deployed one.
 TEST_PEPPER="AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
@@ -80,6 +84,13 @@ for _ in $(seq 1 120); do
 	fi
 	sleep 0.5
 done
+# wrangler dev may move to another port when this one is taken; then the
+# health check above answered for someone else's Worker.
+if ! grep -q "127.0.0.1:$PORT" "$STATE/wrangler-dev.log"; then
+	echo "wrangler dev isn't listening on $PORT:" >&2
+	cat "$STATE/wrangler-dev.log" >&2
+	exit 1
+fi
 if ! curl -fsS "$ENDPOINT/v2/health"; then
 	echo "The Worker didn't answer /v2/health:" >&2
 	cat "$STATE/wrangler-dev.log" >&2

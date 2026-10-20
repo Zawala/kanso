@@ -110,7 +110,6 @@ jobs:
     runs-on: [self-hosted, macOS]
     needs: [rust, worker]
     env:
-      KANSO_E2E_PORT: "18787"
       WRANGLER_SEND_METRICS: "false"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
