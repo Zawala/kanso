@@ -50,10 +50,11 @@ pub struct MarkdownSource {
 impl MarkdownSource {
     /// A folder, or a zip of one.
     pub fn open(path: &Path, flavor: Flavor) -> anyhow::Result<MarkdownSource> {
-        let is_zip = path.is_file() && extension(&path.to_string_lossy()) == "zip";
+        let is_zip = path.is_file()
+            && extension(&path.file_name().unwrap_or_default().to_string_lossy()) == "zip";
         if path.is_file() && !is_zip {
             anyhow::ensure!(
-                is_note_path(&path.to_string_lossy()),
+                is_note_path(&path.file_name().unwrap_or_default().to_string_lossy()),
                 "{} is not a folder or a Markdown file",
                 path.display()
             );

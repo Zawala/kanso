@@ -77,7 +77,8 @@ fn read_json(path: &Path, pick: impl Fn(&[String]) -> Vec<String>) -> anyhow::Re
         "{} is a folder; pick the export file",
         path.display()
     );
-    let is_zip = extension(&path.to_string_lossy()) == "zip" || looks_like_zip(path);
+    let is_zip = extension(&path.file_name().unwrap_or_default().to_string_lossy()) == "zip"
+        || looks_like_zip(path);
     if !is_zip {
         let meta = std::fs::metadata(path)?;
         anyhow::ensure!(
