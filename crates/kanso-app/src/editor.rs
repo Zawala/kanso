@@ -2825,6 +2825,11 @@ impl NoteEditor {
         self.body.clone()
     }
 
+    /// How many due dates the text has tinted.
+    pub fn due_marks_for_test(&self) -> usize {
+        self.due_marks.count()
+    }
+
     /// What the open completion list offers, by label; empty while closed.
     pub fn completion_labels_for_test(&self, cx: &App) -> Vec<String> {
         let menu = self.body.read(cx).completion_menu_state();

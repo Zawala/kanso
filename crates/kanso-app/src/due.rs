@@ -237,6 +237,8 @@ impl MarkdownPlugin for DueChip {
 pub struct DueMarks {
     collection: Option<TextDecorationCollection>,
     task: Option<Task<()>>,
+    /// How many dates are tinted now.
+    count: usize,
 }
 
 /// The tint of each due date in `body` at local time `now`. Pure.
@@ -268,6 +270,7 @@ impl DueMarks {
                 )
             })
             .collect();
+        self.count = decorations.len();
         match &self.collection {
             Some(collection) => collection.set(decorations, cx),
             None if decorations.is_empty() => {}
@@ -277,6 +280,12 @@ impl DueMarks {
                 }));
             }
         }
+    }
+
+    /// How many dates are tinted now.
+    #[cfg(test)]
+    pub fn count(&self) -> usize {
+        self.count
     }
 
     /// Tints the dates once typing pauses. The decorations already there

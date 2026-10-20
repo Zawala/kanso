@@ -281,3 +281,47 @@ fn shortcuts_and_ex_commands(cx: &mut TestAppContext) {
     assert_eq!(open.text(cx).0, "bc");
     assert_eq!(footer(&open, cx), Some(("NORMAL".into(), String::new())));
 }
+
+/// Vim and the due dates side by side: the footer names the mode while the
+/// dates stay tinted, and `@` completes dates in Insert mode (Enter
+/// chooses) but Normal mode's keys never open the list.
+// no-prop-test: drives the editor with keys; `due` has the properties.
+#[gpui_kit::test]
+fn due_dates_with_vim_keys(cx: &mut TestAppContext) {
+    let open = vim_on(cx, "- [ ] Pay rent @2020-01-01\n- [ ] Call Sam ");
+    cx.run_until_parked();
+    assert_eq!(footer(&open, cx), Some(("NORMAL".into(), String::new())));
+    assert_eq!(open.with(cx, |editor, _, _| editor.due_marks_for_test()), 1);
+
+    // Insert mode: `@` offers dates, as without Vim.
+    open.keys(cx, "j shift-a");
+    assert_eq!(mode(&open, cx), Some(Mode::Insert));
+    open.input(cx, "@to");
+    open.with(cx, |_, window, _| window.refresh());
+    let labels = open.with(cx, |editor, _, cx| editor.completion_labels_for_test(cx));
+    assert!(
+        labels.first().is_some_and(|l| l.starts_with("Today")),
+        "{labels:?}"
+    );
+    assert_eq!(footer(&open, cx), Some(("INSERT".into(), String::new())));
+    open.keys(cx, "enter");
+    let text = open.text(cx).0;
+    assert!(
+        text.starts_with("- [ ] Pay rent @2020-01-01\n- [ ] Call Sam @20"),
+        "{text}"
+    );
+    open.keys(cx, "escape");
+    assert_eq!(mode(&open, cx), Some(Mode::Normal));
+    // The new date is tinted once typing pauses.
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(400));
+    cx.run_until_parked();
+    assert_eq!(open.with(cx, |editor, _, _| editor.due_marks_for_test()), 2);
+
+    // Back in Normal mode, keys that type nothing open no list.
+    open.keys(cx, "0 w w");
+    assert!(
+        open.with(cx, |editor, _, cx| editor.completion_labels_for_test(cx))
+            .is_empty()
+    );
+}
