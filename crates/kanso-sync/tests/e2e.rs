@@ -311,6 +311,9 @@ fn two_macs_sync_through_a_local_worker() {
     // 4. Wrong passwords end in 429 from login-user (10 in 15 minutes per
     //    account), not just from the binding, whose 429s are waited out.
     //    The raw route takes any well-formed auth key, so no KDF runs.
+    //    D1's windows are fixed (they start on the quarter hour), so a run
+    //    that crosses a boundary counts again from zero: 22 tries covers 10
+    //    before it and 11 after, still under login-ip's 30 per window.
     let origin = kanso_sync::origin(&endpoint).unwrap();
     let account_id = b.session.account_id.clone();
     let stranger = identity(9, "Stranger");
@@ -325,7 +328,7 @@ fn two_macs_sync_through_a_local_worker() {
     let api = HttpBackend.api(&endpoint);
     let mut refused_by = None;
     let mut attempts = 0;
-    while attempts < 15 && refused_by.is_none() {
+    while attempts < 22 && refused_by.is_none() {
         match api.login(&wrong_login) {
             Err(ApiError::InvalidCredentials) => attempts += 1,
             Err(ApiError::RateLimited { limit, retry_after }) if limit == "binding" => {
@@ -340,10 +343,9 @@ fn two_macs_sync_through_a_local_worker() {
     }
     let (limit, retry_after) = refused_by.expect("wrong passwords never hit a D1 rule");
     assert_eq!(limit, "login-user", "after {attempts} wrong passwords");
-    assert!(
-        retry_after > BINDING_SECS && retry_after <= 15 * 60,
-        "{retry_after}"
-    );
+    // The rest of the fixed window: anything up to 15 minutes, and under a
+    // minute when the tenth wrong password lands just before the boundary.
+    assert!((1..=15 * 60).contains(&retry_after), "{retry_after}");
     // A Mac that already has a session for the account is exempt (M8): its
     // device proof matches that session's row.
     let exempt = patiently(|| {
