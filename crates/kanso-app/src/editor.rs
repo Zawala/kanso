@@ -798,11 +798,22 @@ impl NoteEditor {
         }));
     }
 
-    /// The open note's ID, its text and a count that changes whenever the
-    /// text does: what the outline is made from.
+    /// The open note's ID and a count that changes whenever its text does,
+    /// without reading the text: whether the outline is current.
+    pub fn outline_version(&self) -> Option<(String, u64)> {
+        Some((self.note_id()?.to_owned(), self.text_version))
+    }
+
+    /// The source text as it is now.
+    pub fn body_text(&self, cx: &App) -> SharedString {
+        self.body.read(cx).value()
+    }
+
+    /// The open note's ID, its text version and its text: what the outline
+    /// is made from.
     pub fn outline_source(&self, cx: &App) -> Option<(String, u64, SharedString)> {
-        let id = self.note_id()?.to_owned();
-        Some((id, self.text_version, self.body.read(cx).value()))
+        let (id, version) = self.outline_version()?;
+        Some((id, version, self.body_text(cx)))
     }
 
     /// The line (0-based) the caret is on.

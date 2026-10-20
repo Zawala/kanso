@@ -37,6 +37,20 @@ pub enum InspectorEvent {
     Tab(InspectorTab),
 }
 
+/// What the pane shows of the editor: when none of it changes, a keystroke
+/// leaves the pane alone.
+#[derive(Clone, PartialEq)]
+struct DrawnFrom {
+    note: Option<String>,
+    /// The outline's version, and the heading the caret is under in it.
+    outline: Option<u64>,
+    active: Option<usize>,
+    backlinks: Vec<Backlink>,
+}
+
+/// How long typing pauses before the outline catches up.
+const OUTLINE_DELAY: std::time::Duration = std::time::Duration::from_millis(150);
+
 pub struct Inspector {
     store: Arc<Store>,
     library: Entity<Library>,
@@ -45,6 +59,10 @@ pub struct Inspector {
     /// The outline of the open note: its ID, the text version it was made
     /// from, and its headings.
     outline: Option<(String, u64, Vec<Heading>)>,
+    /// Parses the outline again once typing pauses.
+    outline_task: Option<Task<()>>,
+    /// What the pane last drew from.
+    drawn: Option<DrawnFrom>,
     /// Unlinked mentions of the open note, and which note they are for.
     mentions: Vec<Backlink>,
     mentions_for: Option<String>,
@@ -65,9 +83,21 @@ impl Inspector {
         tab: InspectorTab,
         cx: &mut Context<Self>,
     ) -> Self {
-        // The editor notifies as its text, caret and backlinks change.
+        // The editor notifies on every keystroke; the pane draws again only
+        // when what it shows changed: the note, the heading the caret is
+        // under, or the backlinks. Typing schedules the outline instead.
         let subscriptions = vec![cx.observe(&editor, |this, _, cx| {
-            if this.visible {
+            if !this.visible {
+                return;
+            }
+            let version = this.editor.read(cx).outline_version();
+            if let (Some((id, at)), Some((kept, kept_at, _))) = (&version, &this.outline)
+                && id == kept
+                && at != kept_at
+            {
+                this.schedule_outline(cx);
+            }
+            if this.drawn.as_ref() != Some(&this.drawn_from(cx)) {
                 cx.notify();
             }
         })];
@@ -77,6 +107,8 @@ impl Inspector {
             editor,
             tab,
             outline: None,
+            outline_task: None,
+            drawn: None,
             mentions: Vec::new(),
             mentions_for: None,
             mentions_task: None,
@@ -104,21 +136,75 @@ impl Inspector {
         }
     }
 
-    /// The open note's headings, parsed again only when its text changed.
-    fn outline(&mut self, cx: &App) -> &[Heading] {
-        let source = self.editor.read(cx).outline_source(cx);
-        let Some((id, version, text)) = source else {
+    /// The open note's headings. A note just opened is parsed at once;
+    /// while it is typed in, the last outline stays until typing pauses and
+    /// it is parsed again off the main thread, so a keystroke never waits
+    /// on it.
+    fn outline(&mut self, cx: &mut Context<Self>) -> &[Heading] {
+        let Some((id, version)) = self.editor.read(cx).outline_version() else {
             self.outline = None;
+            self.outline_task = None;
             return &[];
         };
-        let fresh = self
-            .outline
-            .as_ref()
-            .is_some_and(|(kept, at, _)| *kept == id && *at == version);
-        if !fresh {
-            self.outline = Some((id, version, headings(&text)));
+        match &self.outline {
+            Some((kept, at, _)) if *kept == id && *at == version => {}
+            Some((kept, _, _)) if *kept == id => self.schedule_outline(cx),
+            _ => {
+                let text = self.editor.read(cx).body_text(cx);
+                self.outline = Some((id, version, headings(&text)));
+                self.outline_task = None;
+            }
         }
         self.outline.as_ref().map_or(&[], |(_, _, h)| h.as_slice())
+    }
+
+    /// What the pane would draw from now, without parsing anything.
+    fn drawn_from(&self, cx: &App) -> DrawnFrom {
+        let editor = self.editor.read(cx);
+        let note = editor.note_id().map(str::to_owned);
+        let outline = self
+            .outline
+            .as_ref()
+            .filter(|(kept, _, _)| Some(kept) == note.as_ref());
+        DrawnFrom {
+            outline: outline.map(|(_, at, _)| *at),
+            active: outline.and_then(|(_, _, h)| current_heading(h, editor.caret_line(cx))),
+            note,
+            backlinks: editor.backlinks().to_vec(),
+        }
+    }
+
+    /// Parses the outline again after [`OUTLINE_DELAY`], unless that is
+    /// already on its way.
+    fn schedule_outline(&mut self, cx: &mut Context<Self>) {
+        if self.outline_task.is_some() {
+            return;
+        }
+        self.outline_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(OUTLINE_DELAY).await;
+            let Ok(Some((id, version, text))) =
+                this.update(cx, |this, cx| this.editor.read(cx).outline_source(cx))
+            else {
+                return;
+            };
+            let found = cx
+                .background_executor()
+                .spawn(async move { headings(&text) })
+                .await;
+            this.update(cx, |this, cx| {
+                this.outline_task = None;
+                // A different note opened meanwhile: it was parsed then.
+                if this
+                    .outline
+                    .as_ref()
+                    .is_some_and(|(kept, _, _)| *kept == id)
+                {
+                    this.outline = Some((id, version, found));
+                    cx.notify();
+                }
+            })
+            .ok();
+        }));
     }
 
     /// Starts looking for the open note's unlinked mentions, in the
@@ -479,6 +565,14 @@ impl Inspector {
 
 #[cfg(test)]
 impl Inspector {
+    /// The outline as last drawn, by heading text.
+    pub fn outline_for_test(&self) -> Vec<String> {
+        self.outline
+            .as_ref()
+            .map(|(_, _, h)| h.iter().map(|h| h.text.clone()).collect())
+            .unwrap_or_default()
+    }
+
     /// The notes found mentioning the open note, by ID.
     pub fn mentions_for_test(&self) -> Vec<String> {
         self.mentions.iter().map(|m| m.id.clone()).collect()
@@ -506,6 +600,7 @@ impl Render for Inspector {
             InspectorTab::Outline => self.render_outline(cx),
             InspectorTab::Backlinks => self.render_backlinks(cx),
         };
+        self.drawn = Some(self.drawn_from(cx));
         v_flex()
             .size_full()
             .bg(colors.list)

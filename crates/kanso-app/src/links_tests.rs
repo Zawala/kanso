@@ -305,6 +305,31 @@ fn the_inspector_shows_the_outline_and_backlinks(cx: &mut TestAppContext) {
     assert!(vcx.debug_bounds("inspector-pane").is_none());
 }
 
+/// The outline shows a note's headings as it opens; typing never waits on
+/// parsing them again: the outline catches up once typing pauses.
+// no-prop-test: timing glue; `outline::headings` has the properties.
+#[gpui_kit::test]
+fn the_outline_catches_up_after_typing_pauses(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let open = f.note("Plan", "# Goals\ntext\n");
+    f.select(cx, &open);
+    f.with_workspace(cx, |workspace, _, cx| workspace.toggle_inspector(cx));
+    f.draw(cx);
+    let inspector = cx.read(|cx| f.workspace.read(cx).inspector.clone());
+    let outline = |cx: &mut TestAppContext| cx.read(|cx| inspector.read(cx).outline_for_test());
+    assert_eq!(outline(cx), ["Goals"]);
+
+    f.with_editor(cx, |editor, window, cx| editor.focus_body(window, cx));
+    f.draw(cx);
+    cx.simulate_keystrokes(f.window, "cmd-down");
+    cx.simulate_input(f.window, "## Next");
+    f.draw(cx);
+    assert_eq!(outline(cx), ["Goals"], "parsed on the keystroke");
+    cx.executor().advance_clock(Duration::from_millis(200));
+    f.draw(cx);
+    assert_eq!(outline(cx), ["Goals", "Next"]);
+}
+
 /// Renaming a note that wiki-links name by title offers to update them;
 /// accepting rewrites them to the new title.
 // no-prop-test: window glue; `retitle_wiki_links` has the properties.
