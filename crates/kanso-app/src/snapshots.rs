@@ -131,7 +131,7 @@ fn demo_store(path: &Path) -> Store {
         (
             &product,
             "Kanso roadmap",
-            "# Kanso roadmap\n\nA calm, local-first notes app.\n\n## Next\n\n- [x] Import from Inkdrop\n- [x] Local API on port 19840\n- [ ] Command palette\n- [ ] Focus mode\n".to_owned(),
+            "# Kanso roadmap\n\nA calm, local-first notes app.\n\n## Next\n\n- [x] Wiki-links and backlinks\n- [x] Local API on port 19840\n- [ ] Command palette\n- [ ] Focus mode\n".to_owned(),
             vec![roadmap.clone()],
             "active",
             true,
