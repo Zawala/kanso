@@ -22,6 +22,10 @@ async-channel.workspace = true
 base64.workspace = true
 chrono.workspace = true
 fastrand.workspace = true
+# Quick capture's system-wide shortcut: Carbon's RegisterEventHotKey on
+# macOS (no Accessibility permission), RegisterHotKey on Windows, and an X11
+# key grab on Linux.
+global-hotkey = "0.9"
 gpui-kit.workspace = true
 # HTML on the clipboard pasted as Markdown (Apache-2.0).
 htmd = "0.5.6"
@@ -46,6 +50,9 @@ tree-sitter-c-sharp.workspace = true
 tree-sitter-swift.workspace = true
 # Table formatting measures cells as a monospaced face shows them.
 unicode-width = "0.2"
+# `kanso capture` hands its text to a running Kanso's local API. The sync
+# client already builds it.
+ureq = "3.4"
 
 [dev-dependencies]
 base64.workspace = true
@@ -74,6 +81,8 @@ block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSGraphics", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSView", "NSWindow"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSObject", "NSString", "NSURL"] }
+# Open at login with SMAppService on macOS 13 and later.
+objc2-service-management = { version = "0.3", default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-app-kit", "objc2-core-foundation", "WKWebView", "WKWebViewConfiguration", "WKPDFConfiguration", "WKNavigation"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -85,6 +94,8 @@ windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_System_DataExchange",
     "Win32_System_Memory",
+    # Open at login: the Run key under HKEY_CURRENT_USER.
+    "Win32_System_Registry",
 ] }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]

@@ -77,7 +77,7 @@ pub fn launch_agent_path() -> PathBuf {
 }
 
 /// What starts Kanso at login: the LaunchAgent on macOS, an XDG autostart
-/// entry on Linux. (Windows has none yet; see `launch::SUPPORTED`.)
+/// entry on Linux. (Windows uses the Run key instead; see `launch`.)
 #[cfg(not(target_os = "macos"))]
 pub fn launch_agent_path() -> PathBuf {
     #[cfg(target_os = "windows")]
