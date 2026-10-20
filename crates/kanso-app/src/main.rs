@@ -48,6 +48,7 @@ mod list_edit;
 mod markdown_edit;
 mod markdown_source;
 mod note_list;
+mod notify_support;
 mod pairing;
 mod palette;
 mod paths;

@@ -22,6 +22,7 @@ use kanso_core::tasks::{Due, due_label};
 use kanso_store::{Origin, ReminderTask, Store};
 
 use crate::clock::Clock;
+use crate::notify_support::{self, Availability};
 use crate::settings::{Row, section};
 use crate::tasks_view::display_text;
 use crate::theme::Colors;
@@ -52,6 +53,8 @@ pub struct Reminders {
     open_window: fn(&mut App),
     /// Bumped when the tasks may have changed, to look again at once.
     generation: u64,
+    /// Tests: the test platform's notifications, which need no bundle.
+    assume_app: bool,
 }
 
 impl Global for Reminders {}
@@ -96,6 +99,14 @@ pub fn notification_for(task: &ReminderTask, today: kanso_core::dates::Date) -> 
     }
 }
 
+/// Whether notifications can reach the screen: never touched outside an
+/// app bundle on macOS, and quiet when turned off for Kanso. Tests stand in
+/// for the platform with `Reminders::assume_app`.
+fn can_notify(cx: &App) -> bool {
+    cx.try_global::<Reminders>().is_some_and(|r| r.assume_app)
+        || notify_support::availability() == Availability::Ready
+}
+
 fn enabled(cx: &App) -> bool {
     cx.try_global::<AppState>()
         .is_none_or(|state| state.config.reminders.enabled)
@@ -116,8 +127,15 @@ pub fn init(store: Arc<Store>, open_window: fn(&mut App), cx: &mut App) {
         shown,
         open_window,
         generation: 0,
+        assume_app: false,
     });
-    cx.on_system_notification_response(respond);
+    // Registering for responses opens the platform's notification centre,
+    // which aborts a macOS process that isn't an app bundle: only an app
+    // goes near it (see `notify_support`).
+    if notify_support::availability() != Availability::NotAnApp {
+        cx.on_system_notification_response(respond);
+        notify_support::refresh_permission();
+    }
     cx.spawn(async move |cx| {
         loop {
             let wait = cx.update(check);
@@ -148,7 +166,7 @@ pub fn poke(cx: &mut App) {
 /// Shows the reminders that are due, and says how long until the next
 /// look.
 pub fn check(cx: &mut App) -> Duration {
-    if !cx.has_global::<Reminders>() || !enabled(cx) {
+    if !cx.has_global::<Reminders>() || !enabled(cx) || !can_notify(cx) {
         return MAX_WAIT;
     }
     let now_ms = Clock::now_ms(cx);
@@ -206,6 +224,8 @@ pub fn check(cx: &mut App) -> Duration {
         for (notification, _) in notes {
             cx.show_system_notification(notification);
         }
+        // The first one asks for permission; hear the answer.
+        notify_support::refresh_permission();
     }
     let wait = next_wake(&list, now_local)
         .map(|at| Duration::from_millis(u64::try_from(at - now_local).unwrap_or(0)))
@@ -297,7 +317,15 @@ pub fn reminders_section(cx: &App) -> AnyElement {
         "Reminders",
         vec![
             Row::new(gpui_kit::assets::IconName::Bell, "Remind me of tasks")
-                .detail("A notification when a task with a time comes due, like “- [ ] Call Sam @2026-10-25T09:00”.")
+                .detail(
+                    notify_support::settings_note(
+                        notify_support::availability(),
+                        crate::flavour::CURRENT.name,
+                    )
+                    .unwrap_or_else(|| {
+                        "A notification when a task with a time comes due, like “- [ ] Call Sam @2026-10-25T09:00”.".to_owned()
+                    }),
+                )
                 .trailing(Switch::new("reminders").checked(on).on_click(|on, _, cx| {
                     let on = *on;
                     AppState::update_config(cx, |config| config.reminders.enabled = on);
@@ -361,6 +389,7 @@ mod tests {
                 shown: BTreeMap::new(),
                 open_window: |_| {},
                 generation: 0,
+                assume_app: true,
             });
             cx.on_system_notification_response(respond);
         });
@@ -392,6 +421,20 @@ mod tests {
             ack.get(shown[0].tag.as_ref()).and_then(|v| v.as_i64()),
             Some(NOW)
         );
+    }
+
+    /// The test binary, like `cargo run`, isn't an app bundle: without the
+    /// test stand-in, reminders show nothing and leave the platform's
+    /// notification centre alone.
+    #[gpui_kit::test]
+    fn outside_an_app_bundle_nothing_is_shown(cx: &mut TestAppContext) {
+        let (_dir, _store) = setup(cx);
+        cx.update(|cx: &mut App| cx.global_mut::<Reminders>().assume_app = false);
+        assert!(!crate::notify_support::is_app() || !cfg!(target_os = "macos"));
+        if cfg!(target_os = "macos") {
+            cx.update(check);
+            assert!(cx.shown_system_notifications().is_empty());
+        }
     }
 
     #[gpui_kit::test]
