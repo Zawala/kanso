@@ -725,9 +725,9 @@ mod tests {
         assert_eq!(
             excerpt(
                 "Kanso roadmap",
-                "# Kanso roadmap\n\nA calm, local-first notes app.\n\n## Next\n\n- [x] Import from Inkdrop\n- [x] Local API on port 19840\n- [ ] Command palette\n"
+                "# Kanso roadmap\n\nA calm, local-first notes app.\n\n## Next\n\n- [x] Wiki-links and backlinks\n- [x] Local API on port 19840\n- [ ] Command palette\n"
             ),
-            "A calm, local-first notes app. Next · Import from Inkdrop · Local API on port 19840 · Command palette"
+            "A calm, local-first notes app. Next · Wiki-links and backlinks · Local API on port 19840 · Command palette"
         );
         assert_eq!(
             excerpt(
