@@ -3,7 +3,27 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
-## [0.5.2](https://github.com/iamngoni/kanso/compare/v0.5.1...v0.5.2) - 2026-10-20
+## [0.6.0](https://github.com/iamngoni/kanso/compare/v0.5.2...v0.6.0) - 2026-10-20
+
+### New
+
+- **cloud:** Short links are made on go.kansoapp.app ([2c13feb](https://github.com/iamngoni/kanso/commit/2c13febb560e61646d9276540646960054a91556))
+- **site:** Kanso's website, kansoapp.app ([e339fd3](https://github.com/iamngoni/kanso/commit/e339fd36f17a7dc5a871e3161907a022603e1e27))
+- **import:** Markdown folders, Obsidian, Logseq, Notion, Evernote, Bear, Joplin, Standard Notes, Simplenote and UpNote come in, with links, tags and attachments ([ccb4a03](https://github.com/iamngoni/kanso/commit/ccb4a034d1faf482ec2a4872fdcc0de88c053f39))
+- **app:** Import… previews and imports other apps' notes, File › Open… brings in a Markdown file, and kanso import does both from a terminal ([d56f379](https://github.com/iamngoni/kanso/commit/d56f3799f4488399d70813b4b760a13529183869))
+- **site:** The home page is Kanso, running in the browser ([4d03793](https://github.com/iamngoni/kanso/commit/4d037936d98b2a2f8383019880ff4d5bc9dc0dbb))
+
+### Fixed
+
+- **import:** A Joplin export's name comes from its file on Windows too ([df9b0aa](https://github.com/iamngoni/kanso/commit/df9b0aa56fbc4b413c51f36d8191ae2d2393a8b4))
+
+### Under the hood
+
+- **licence:** Kanso is free software under the AGPL-3.0-or-later ([9ff280e](https://github.com/iamngoni/kanso/commit/9ff280e1fea6c26cb3f969d959b00ec6a8c3ac22))
+- **snapshots:** The demo roadmap lists wiki-links instead of naming another app ([40e8b93](https://github.com/iamngoni/kanso/commit/40e8b93deb8465296374e07787f96065fa20e771))
+- **import:** The Notion export is written by its test, so Windows can check out the repository ([5c4da38](https://github.com/iamngoni/kanso/commit/5c4da38332106d8d864f587e79c8021d6f1e0ecb))
+
+## [0.5.2](https://github.com/iamngoni/kanso/compare/v0.5.0...v0.5.2) - 2026-10-20
 
 ### New
 
@@ -12,23 +32,15 @@ heading compares the release with the one before.
 
 ### Fixed
 
-- **updates:** Restart quits and opens the new Kanso, instead of waiting for the next quit ([2cd9879](https://github.com/iamngoni/kanso/commit/2cd98798e2ca6d38f611f4d971180310e9e966a6))
-
-### Under the hood
-
-- **changelog:** The 0.5.1 notes describe the Windows import fix without naming another app ([62594db](https://github.com/iamngoni/kanso/commit/62594dbefa32a50ff2bc30a28da8d4d6b77d6c20))
-- Bind the e2e Worker's port in the same step that picks it ([2bd8f69](https://github.com/iamngoni/kanso/commit/2bd8f699e1f21ee7cf2b0fd14621ce82c5ffada2))
-
-## [0.5.1](https://github.com/iamngoni/kanso/compare/v0.5.0...v0.5.1) - 2026-10-20
-
-### Fixed
-
 - **import:** Importing a library on Windows builds a SQLite file URI it accepts ([515dcf8](https://github.com/iamngoni/kanso/commit/515dcf83f70ed27740ab84c071c2386f6bbf2ef7))
+- **updates:** Restart quits and opens the new Kanso, instead of waiting for the next quit ([2cd9879](https://github.com/iamngoni/kanso/commit/2cd98798e2ca6d38f611f4d971180310e9e966a6))
 
 ### Under the hood
 
 - Run every crate's tests but the app's on Windows and Linux too ([e4b2dfd](https://github.com/iamngoni/kanso/commit/e4b2dfd19183f4ed684bacc7d8afd386d0a83533))
 - **e2e:** The wrong-password check holds across a rate-limit window boundary ([dedb0e3](https://github.com/iamngoni/kanso/commit/dedb0e355c433b4cf2bfb27d450e01037ec43db8))
+- **changelog:** The 0.5.1 notes describe the Windows import fix without naming another app ([62594db](https://github.com/iamngoni/kanso/commit/62594dbefa32a50ff2bc30a28da8d4d6b77d6c20))
+- Bind the e2e Worker's port in the same step that picks it ([2bd8f69](https://github.com/iamngoni/kanso/commit/2bd8f699e1f21ee7cf2b0fd14621ce82c5ffada2))
 
 ## [0.5.0](https://github.com/iamngoni/kanso/compare/v0.2.0...v0.5.0) - 2026-10-20
 
