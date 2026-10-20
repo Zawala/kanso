@@ -10,7 +10,8 @@
 //! server never sees a note, a title, an ID or a revision. [`Backend`] is the
 //! server: [`HttpBackend`] (the Cloudflare Worker's `/v2` routes) or
 //! [`MemoryServer`] (tests). [`verify()`] and [`estimate()`] back the
-//! `kanso-sync` command line.
+//! `kanso-sync` command line. [`share`] publishes a note as a web page
+//! anyone with its link can read and the server can't.
 
 pub mod account;
 pub mod api;
@@ -22,6 +23,7 @@ pub mod keychain;
 mod memory;
 mod remote;
 mod sealed;
+pub mod share;
 pub mod username;
 mod verify;
 pub mod wire;
@@ -72,6 +74,9 @@ const _: fn() = || {
     send_sync::<MemorySecrets>();
     send_sync::<SyncOptions>();
     send_sync::<DeviceIdentity>();
+    send_sync::<dyn share::ShareApi>();
+    send_sync::<share::HttpShares>();
+    send_sync::<share::MemoryShares>();
 };
 
 /// Why a Worker URL was refused.

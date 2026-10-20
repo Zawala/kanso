@@ -17,6 +17,8 @@ kanso-update = { path = "crates/kanso-update" }
 kanso-render = { path = "crates/kanso-render" }
 
 aes = "0.8"
+# Published notes (kanso-sync share.rs): AES-256-GCM, which browsers open with WebCrypto.
+aes-gcm = { version = "0.11", default-features = false, features = ["aes", "alloc", "zeroize"] }
 anyhow = "1"
 # Accounts with end-to-end encryption (docs/ACCOUNTS.md › Rust crates): RustCrypto on the
 # digest 0.11 generation. `parallel` runs Argon2's lanes on rayon (about 3.6 times faster).
