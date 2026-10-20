@@ -4133,14 +4133,20 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "cbc",
+ "chrono",
  "kanso-core",
  "kanso-store",
  "pbkdf2",
+ "percent-encoding",
  "proptest",
+ "quick-xml",
  "rusqlite",
+ "serde",
  "serde_json",
  "sha1",
+ "tar",
  "tempfile",
+ "zip",
 ]
 
 [[package]]

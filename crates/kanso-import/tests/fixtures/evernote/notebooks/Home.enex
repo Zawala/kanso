@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE en-export SYSTEM "http://xml.evernote.com/pub/evernote-export4.dtd">
+<en-export export-date="20240301T093000Z" application="Evernote" version="10.0">
+  <note>
+    <title>Groceries</title>
+    <created>20230302T180000Z</created>
+    <content><![CDATA[<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd"><en-note><div>Milk, eggs</div></en-note>]]></content>
+  </note>
+  <note>
+    <title>Standup</title>
+    <created>20230301T090000Z</created>
+    <content><![CDATA[<en-note><div>Same title and date as in Work, another notebook.</div></en-note>]]></content>
+  </note>
+</en-export>

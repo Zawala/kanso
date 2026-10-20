@@ -1,0 +1,130 @@
+{
+  "version": "004",
+  "items": [
+    {
+      "uuid": "note-plan",
+      "content_type": "Note",
+      "created_at": "2024-03-01T09:30:00.000Z",
+      "updated_at": "2024-03-09T09:30:00.000Z",
+      "content": {
+        "title": "Plan",
+        "text": "# Plan\n\n- ship it\n",
+        "references": [],
+        "appData": {
+          "org.standardnotes.sn": {
+            "client_updated_at": "2024-03-05T09:30:00.000Z"
+          }
+        },
+        "preview_plain": "",
+        "pinned": true,
+        "trashed": false
+      }
+    },
+    {
+      "uuid": "note-old",
+      "content_type": "Note",
+      "created_at": "2024-03-01T09:30:00.000Z",
+      "updated_at": "2024-03-01T09:30:00.000Z",
+      "content": {
+        "title": "Old",
+        "text": "Gone.",
+        "references": [],
+        "appData": {},
+        "trashed": true
+      }
+    },
+    {
+      "uuid": "note-archive",
+      "content_type": "Note",
+      "created_at": "2024-03-01T09:30:00.000Z",
+      "updated_at": "2024-03-01T09:30:00.000Z",
+      "content": {
+        "title": "Kept",
+        "text": "Archived away.",
+        "references": [],
+        "appData": {
+          "org.standardnotes.sn": {
+            "archived": true,
+            "pinned": true
+          }
+        }
+      }
+    },
+    {
+      "uuid": "note-super",
+      "content_type": "Note",
+      "created_at": "2024-03-01T09:30:00.000Z",
+      "updated_at": "2024-03-01T09:30:00.000Z",
+      "content": {
+        "title": "Super",
+        "noteType": "super",
+        "text": "{\"root\": {\"type\": \"root\", \"children\": [{\"type\": \"paragraph\", \"children\": [{\"type\": \"text\", \"text\": \"Rich\", \"format\": 2}]}]}}",
+        "references": []
+      }
+    },
+    {
+      "uuid": "tag-work",
+      "content_type": "Tag",
+      "created_at": "2024-03-01T09:30:00.000Z",
+      "updated_at": "2024-03-01T09:30:00.000Z",
+      "content": {
+        "title": "work",
+        "references": [
+          {
+            "uuid": "note-plan",
+            "content_type": "Note"
+          }
+        ]
+      }
+    },
+    {
+      "uuid": "tag-acme",
+      "content_type": "Tag",
+      "created_at": "2024-03-01T09:30:00.000Z",
+      "updated_at": "2024-03-01T09:30:00.000Z",
+      "content": {
+        "title": "acme",
+        "references": [
+          {
+            "uuid": "tag-work",
+            "content_type": "Tag",
+            "reference_type": "TagToParentTag"
+          },
+          {
+            "uuid": "note-plan",
+            "content_type": "Note",
+            "reference_type": "TagToNote"
+          },
+          {
+            "uuid": "note-archive",
+            "content_type": "Note"
+          }
+        ]
+      }
+    },
+    {
+      "uuid": "theme",
+      "content_type": "SN|Theme",
+      "created_at": "2024-03-01T09:30:00.000Z",
+      "updated_at": "2024-03-01T09:30:00.000Z",
+      "content": {
+        "name": "Dark",
+        "package_info": {}
+      }
+    },
+    {
+      "uuid": "prefs",
+      "content_type": "SN|UserPreferences",
+      "created_at": "2024-03-01T09:30:00.000Z",
+      "updated_at": "2024-03-01T09:30:00.000Z",
+      "content": {}
+    },
+    {
+      "uuid": "gone",
+      "content_type": "Note",
+      "deleted": true,
+      "created_at": "2024-03-01T09:30:00.000Z",
+      "updated_at": "2024-03-01T09:30:00.000Z"
+    }
+  ]
+}

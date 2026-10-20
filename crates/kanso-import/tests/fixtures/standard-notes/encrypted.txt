@@ -1,0 +1,19 @@
+{
+  "version": "004",
+  "keyParams": {
+    "identifier": "a@b.c",
+    "version": "004",
+    "pw_nonce": "x"
+  },
+  "items": [
+    {
+      "uuid": "n1",
+      "content_type": "Note",
+      "content": "004:abc:def:ghi",
+      "enc_item_key": "004:x:y:z",
+      "items_key_id": "k",
+      "created_at": "2024-03-01T09:30:00.000Z",
+      "updated_at": "2024-03-01T09:30:00.000Z"
+    }
+  ]
+}

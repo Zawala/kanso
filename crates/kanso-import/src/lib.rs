@@ -1,4 +1,11 @@
-//! Imports an Inkdrop database into Kanso's store.
+//! Imports other note apps' libraries into Kanso's store.
+//!
+//! [`library`] reads folders of Markdown (plain, Obsidian vaults, Logseq
+//! graphs) and other apps' exports (Notion, Evernote, Bear, Joplin,
+//! Standard Notes, Simplenote, UpNote), and is the importer behind
+//! `kanso import` and the app's Import… window.
+//!
+//! The rest of the crate imports an Inkdrop database.
 //!
 //! Inkdrop keeps its documents in PouchDB on SQLite at
 //! `~/Library/Application Support/inkdrop/db/<32 hex>.sqlite` on macOS (see
@@ -11,6 +18,7 @@
 
 mod config;
 mod import;
+pub mod library;
 pub mod pouch;
 mod report;
 pub mod safe_storage;
