@@ -2295,6 +2295,113 @@ fn daily_note(
     .unwrap();
 }
 
+const VIM_NOTE: &str = "# Vim keys\n\nMove with h j k l, by words with w and b, and change a word with cw.\n\n- Delete with d and a motion: dw, d$ or dip\n- Yank with y and put it back with p\n- Visual mode selects; V takes whole lines\n\nEscape leaves Insert mode, and Escape again leaves focus mode.\n";
+
+/// A note with Vim keys on, after `keys` (space-separated keystrokes);
+/// `typed` is then typed in Insert mode.
+fn vim_note(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+    keys: &str,
+    typed: &str,
+) {
+    open_new_note(cx, workspace, store, "Vim keys", VIM_NOTE);
+    cx.run_until_parked();
+    let editor = cx.update(|cx| workspace.read(cx).editor.clone());
+    // The editor paints its caret and selection only in the active window,
+    // as on screen.
+    cx.update_window(window, |_, window, _| window.activate_window())
+        .unwrap();
+    cx.run_until_parked();
+    cx.update_window(window, |_, window, cx| {
+        let settings = cx.global::<crate::workspace::AppState>().config.editor;
+        editor.update(cx, |editor, cx| {
+            editor.set_settings(
+                crate::config::EditorSettings {
+                    vim: true,
+                    ..settings
+                },
+                cx,
+            );
+            editor.focus_body(window, cx);
+        });
+    })
+    .unwrap();
+    cx.run_until_parked();
+    for key in keys.split(' ').filter(|key| !key.is_empty()) {
+        cx.update_window(window, |_, window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+            window.dispatch_keystroke(gpui_kit::Keystroke::parse(key).unwrap(), cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+    }
+    if !typed.is_empty() {
+        use gpui_kit::EntityInputHandler as _;
+        cx.update_window(window, |_, window, cx| {
+            let body = editor.read(cx).body_state();
+            body.update(cx, |state, cx| {
+                state.replace_text_in_range(None, typed, window, cx)
+            });
+        })
+        .unwrap();
+        cx.run_until_parked();
+    }
+}
+
+/// Vim's Normal mode: the block caret on a word, "NORMAL" in the footer.
+fn vim_normal(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    vim_note(cx, window, workspace, store, "j j w w w w", "");
+}
+
+/// A command half typed: "2d" waits in the footer.
+fn vim_pending(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    vim_note(cx, window, workspace, store, "j j w w w w 2 d", "");
+}
+
+/// Insert mode after `cw`, a word typed: the line caret.
+fn vim_insert(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    vim_note(cx, window, workspace, store, "j j w w w w c w", "glide");
+}
+
+/// Visual mode over a few words.
+fn vim_visual(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    vim_note(cx, window, workspace, store, "j j w w w w v e e", "");
+}
+
+/// Visual Line mode over two list items.
+fn vim_visual_line(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    vim_note(cx, window, workspace, store, "j j j j w shift-v j", "");
+}
+
 /// ⌘P with "sync" typed: notes, then the headings that match.
 fn palette_headings(
     cx: &mut HeadlessAppContext,
@@ -3564,6 +3671,16 @@ fn snapshots() {
         shot("light-wiki-links", Light, Preview, wiki_links),
         shot("dark-wiki-autocomplete", Dark, Edit, wiki_autocomplete),
         shot("light-wiki-autocomplete", Light, Edit, wiki_autocomplete),
+        shot("dark-vim-normal", Dark, Edit, vim_normal),
+        shot("light-vim-normal", Light, Edit, vim_normal),
+        shot("dark-vim-pending", Dark, Edit, vim_pending),
+        shot("light-vim-pending", Light, Edit, vim_pending),
+        shot("dark-vim-insert", Dark, Edit, vim_insert),
+        shot("light-vim-insert", Light, Edit, vim_insert),
+        shot("dark-vim-visual", Dark, Edit, vim_visual),
+        shot("light-vim-visual", Light, Edit, vim_visual),
+        shot("dark-vim-visual-line", Dark, Edit, vim_visual_line),
+        shot("light-vim-visual-line", Light, Edit, vim_visual_line),
         shot("dark-palette-headings", Dark, Edit, palette_headings),
         shot("light-palette-headings", Light, Edit, palette_headings),
         shot("dark-dev-flavour", Dark, Edit, dev_flavour),

@@ -295,7 +295,30 @@ fn run(bytes: usize, place: &str, keys: Option<bool>) {
             });
         });
     }
+    // With Vim keys on (`KANSO_BENCH_VIM`), typing in Insert mode.
+    let vim = std::env::var_os("KANSO_BENCH_VIM").is_some();
+    if vim {
+        let workspace = bench.workspace.clone();
+        bench.cx.update(|cx| {
+            let editor = workspace.read(cx).editor.clone();
+            editor.update(cx, |editor, cx| {
+                editor.set_settings(
+                    crate::config::EditorSettings {
+                        auto_pair: keys != Some(false),
+                        vim: true,
+                        ..Default::default()
+                    },
+                    cx,
+                )
+            });
+        });
+    }
     bench.place_cursor(line);
+    if vim {
+        bench.press("i");
+        bench.cx.run_until_parked();
+        bench.draw(false);
+    }
     if std::env::var_os("KANSO_BENCH_REDRAW").is_some() {
         for mode in [ViewMode::Edit, ViewMode::Preview, ViewMode::Split] {
             bench.set_mode(mode);
