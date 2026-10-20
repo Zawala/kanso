@@ -12,6 +12,79 @@ const MAX_SOURCE: usize = 64 * 1024;
 /// Room around a diagram, in points.
 const PAD: f32 = 8.;
 
+/// How big arrowheads are drawn, against `mermaid-svg`'s own: its heads are
+/// heavy beside the thin lines and crowd the nodes they point at.
+const MARKER_SCALE: f32 = 0.6;
+/// SVG's size for a marker that doesn't give one.
+const DEFAULT_MARKER_SIZE: f32 = 3.;
+
+/// `svg` with every `<marker>` drawn at `scale` of its size. Markers keep
+/// their view box and reference point, so a smaller head still ends where
+/// the line does. Pure.
+fn shrink_markers(svg: &str, scale: f32) -> String {
+    let mut out = String::with_capacity(svg.len());
+    let mut rest = svg;
+    while let Some(at) = rest.find("<marker") {
+        let after = &rest[at + "<marker".len()..];
+        // `<markerX` is some other tag; only `<marker` followed by space or `>`.
+        if !after.starts_with(|c: char| c.is_whitespace() || c == '>' || c == '/') {
+            out.push_str(&rest[..at + "<marker".len()]);
+            rest = after;
+            continue;
+        }
+        let Some(end) = after.find('>') else { break };
+        out.push_str(&rest[..at]);
+        let mut tag = after[..end].to_owned();
+        for name in ["markerWidth", "markerHeight"] {
+            tag = scale_attribute(&tag, name, scale);
+        }
+        out.push_str("<marker");
+        out.push_str(&tag);
+        rest = &after[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// `attributes` (a tag's text after its name) with `name="n"` scaled, or
+/// added at the scaled default size when absent.
+fn scale_attribute(attributes: &str, name: &str, scale: f32) -> String {
+    let key = format!("{name}=\"");
+    let found = attributes.match_indices(&key).find(|(at, _)| {
+        attributes[..*at]
+            .chars()
+            .next_back()
+            .is_some_and(char::is_whitespace)
+    });
+    match found {
+        Some((at, _)) => {
+            let start = at + key.len();
+            let Some(len) = attributes[start..].find('"') else {
+                return attributes.to_owned();
+            };
+            let Ok(value) = attributes[start..start + len].trim().parse::<f32>() else {
+                return attributes.to_owned();
+            };
+            format!(
+                "{}{}{}",
+                &attributes[..start],
+                svg::number(value * scale),
+                &attributes[start + len..]
+            )
+        }
+        None => {
+            let (body, closing) = match attributes.strip_suffix('/') {
+                Some(body) => (body, "/"),
+                None => (attributes, ""),
+            };
+            format!(
+                "{body} {name}=\"{}\"{closing}",
+                svg::number(DEFAULT_MARKER_SIZE * scale)
+            )
+        }
+    }
+}
+
 /// The diagram keywords `mermaid-svg` draws.
 const KEYWORDS: &[&str] = &[
     "pie",
@@ -143,6 +216,7 @@ pub(crate) fn render(source: &str, palette: &Palette) -> Outcome {
         #[allow(unreachable_patterns)]
         err => Failure::Invalid(err.to_string()),
     })?;
+    let markup = shrink_markers(&markup, MARKER_SCALE);
     let flat = svg::flatten(&markup, PAD)
         .ok_or_else(|| Failure::Invalid("The diagram drew nothing.".into()))?;
     Ok(Svg {
@@ -207,6 +281,40 @@ mod tests {
         ));
         assert_eq!(keyword("%%{init: {}}%%\n\n  graph TD;A-->B"), "graph");
         assert_eq!(keyword("gitGraph:\n commit"), "gitGraph");
+    }
+
+    #[test]
+    fn arrowheads_are_drawn_smaller() {
+        let svg = "<svg><defs><marker id=\"a\" viewBox=\"0 0 10 10\" refX=\"10\" \
+                   markerWidth=\"10\" markerHeight=\"8\" orient=\"auto\"><path/></marker>\
+                   <marker id=\"b\"/></defs><markerish/></svg>";
+        let shrunk = shrink_markers(svg, 0.6);
+        assert!(shrunk.contains("markerWidth=\"6\" markerHeight=\"4.8\""));
+        assert!(shrunk.contains("viewBox=\"0 0 10 10\" refX=\"10\""));
+        assert!(shrunk.contains("<marker id=\"b\" markerWidth=\"1.8\" markerHeight=\"1.8\"/>"));
+        assert!(shrunk.contains("<markerish/>"));
+        // A real flowchart's heads shrink too, and still parse.
+        let source = "flowchart LR\n  A --> B\n";
+        let raw = mermaid_svg::render_with(source, &theme(&Palette::LIGHT)).unwrap();
+        let shrunk = shrink_markers(&raw, MARKER_SCALE);
+        assert_ne!(raw, shrunk);
+        assert!(usvg::Tree::from_str(&shrunk, &usvg::Options::default()).is_ok());
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        /// Invariants: shrinking leaves everything but marker sizes alone
+        /// (so markup without markers is unchanged), and a size scales by
+        /// exactly the factor.
+        #[test]
+        fn prop_markers_scale_exactly(size in 1u32..40, plain in "[a-z >=\"/]{0,30}") {
+            prop_assert_eq!(shrink_markers(&plain, 0.6), plain.clone());
+            let svg = format!("{plain}<marker markerWidth=\"{size}\" markerHeight=\"{size}\">");
+            let expected = svg::number(size as f32 * 0.5);
+            let want = format!("<marker markerWidth=\"{expected}\" markerHeight=\"{expected}\">");
+            prop_assert!(shrink_markers(&svg, 0.5).ends_with(&want));
+        }
     }
 
     proptest! {
