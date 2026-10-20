@@ -684,6 +684,14 @@ mod tests {
         assert_eq!(excerpt("x", "see [[Plan | ]] now"), "see Plan now");
     }
 
+    /// Characters that only look like an excerpt's own marks stay as typed.
+    #[test]
+    fn typed_dots_and_brackets_stay() {
+        assert_eq!(excerpt("", "·"), "·");
+        assert_eq!(excerpt("", "]("), "](");
+        assert_eq!(excerpt("", "One\n\nTwo ·"), "One · Two ·");
+    }
+
     #[test]
     fn math_keeps_its_tex_and_drops_display_blocks() {
         assert_eq!(
@@ -855,10 +863,16 @@ mod tests {
             prop_assert!(text.chars().count() <= EXCERPT_CHARS);
             let noise = ['\n', '\r', '`', '|', '\u{1}'];
             prop_assert!(!text.contains(noise));
-            prop_assert!(!text.contains("**") && !text.contains("]("));
+            prop_assert!(!text.contains("**"));
+            // A link's syntax never shows; the same characters typed as
+            // text, which are no link, stay as typed.
+            prop_assert!(!text.contains("](") || body.contains("]("), "{:?}", text);
             prop_assert_eq!(text.trim(), text.as_str());
             prop_assert!(!text.contains("  "));
-            prop_assert!(!text.ends_with('·'));
+            // No block separator dangles at the end; a "·" the note itself
+            // ends with is its own.
+            prop_assert!(!text.ends_with(" ·") || body.trim_end().ends_with('·'), "{:?}", text);
+            prop_assert!(!text.ends_with('·') || body.contains('·'), "{:?}", text);
         }
 
         /// Pandoc's rule: whatever counts as inline math opens on a
