@@ -99,16 +99,34 @@ fn read_only_uri(path: &Path) -> anyhow::Result<String> {
     let text = path
         .to_str()
         .with_context(|| format!("{} is not valid UTF-8", path.display()))?;
+    Ok(uri_for(text, cfg!(windows)))
+}
+
+/// The read-only `file:` URI for the absolute path `text`. On Windows the
+/// path is written the way SQLite's URI docs show it: forward slashes, and a
+/// slash before the drive, as in `file:/C:/Users/me/inkdrop.db`. Pure.
+fn uri_for(text: &str, windows: bool) -> String {
+    let mut path = text.to_owned();
+    if windows {
+        path = path.replace('\\', "/");
+        let bytes = path.as_bytes();
+        if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+            path.insert(0, '/');
+        }
+    }
     let mut uri = String::from("file:");
-    for b in text.bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'/' | b'-' | b'_' | b'.' | b'~') {
+    for (i, b) in path.bytes().enumerate() {
+        // The drive's colon stays as it is: `/C:/…`.
+        let drive_colon = windows && i == 2 && b == b':';
+        if b.is_ascii_alphanumeric() || matches!(b, b'/' | b'-' | b'_' | b'.' | b'~') || drive_colon
+        {
             uri.push(char::from(b));
         } else {
             uri.push_str(&format!("%{b:02X}"));
         }
     }
     uri.push_str("?mode=ro");
-    Ok(uri)
+    uri
 }
 
 /// Copies a consistent snapshot of the database at `source` into a new
@@ -284,8 +302,69 @@ mod tests {
 
     #[test]
     fn uri_escapes_spaces_and_query_characters() {
-        let uri = read_only_uri(Path::new("/a b/c?d#e%.sqlite")).unwrap();
-        assert_eq!(uri, "file:/a%20b/c%3Fd%23e%25.sqlite?mode=ro");
+        assert_eq!(
+            uri_for("/a b/c?d#e%.sqlite", false),
+            "file:/a%20b/c%3Fd%23e%25.sqlite?mode=ro"
+        );
+    }
+
+    #[test]
+    fn windows_uri_has_forward_slashes_and_the_drive_first() {
+        assert_eq!(
+            uri_for(r"C:\Users\a b\Inkdrop\c?d.db", true),
+            "file:/C:/Users/a%20b/Inkdrop/c%3Fd.db?mode=ro"
+        );
+    }
+
+    #[test]
+    fn read_only_uri_uses_this_platforms_form() {
+        let uri = read_only_uri(&std::env::temp_dir().join("a b.sqlite")).unwrap();
+        assert!(uri.starts_with("file:/"), "{uri}");
+        assert!(!uri.contains('\\') && !uri.contains("%5C"), "{uri}");
+        assert!(uri.ends_with("a%20b.sqlite?mode=ro"), "{uri}");
+    }
+
+    /// Percent-decodes a URI's path, the way SQLite does before opening it.
+    fn decode(uri: &str) -> String {
+        let path = uri
+            .strip_prefix("file:")
+            .unwrap()
+            .strip_suffix("?mode=ro")
+            .unwrap();
+        let mut out = Vec::new();
+        let bytes = path.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'%' {
+                out.push(u8::from_str_radix(&path[i + 1..i + 3], 16).unwrap());
+                i += 3;
+            } else {
+                out.push(bytes[i]);
+                i += 1;
+            }
+        }
+        String::from_utf8(out).unwrap()
+    }
+
+    proptest::proptest! {
+        /// Round trip: decoding the URI gives the path back (with Windows'
+        /// separators turned forward and a slash before the drive), and the
+        /// query never leaks out of the path.
+        #[test]
+        fn prop_uri_decodes_to_the_path(
+            segs in proptest::collection::vec("[a-zA-Z0-9 ?#%&=.é_-]{1,8}", 1..4),
+            drive in proptest::char::range('A', 'Z'),
+        ) {
+            let unix = format!("/{}", segs.join("/"));
+            let u = uri_for(&unix, false);
+            proptest::prop_assert_eq!(u.matches('?').count(), 1);
+            proptest::prop_assert_eq!(decode(&u), unix);
+
+            let win = format!("{drive}:\\{}", segs.join("\\"));
+            let w = uri_for(&win, true);
+            proptest::prop_assert_eq!(w.matches('?').count(), 1);
+            proptest::prop_assert_eq!(decode(&w), format!("/{drive}:/{}", segs.join("/")));
+        }
     }
 
     #[test]
