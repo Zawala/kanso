@@ -214,7 +214,7 @@ fn tag_search_finds_nested_tags_and_tag_named_reuses_tags() {
     let mut both = vec![a.clone(), b.clone()];
     both.sort();
     assert_eq!(found("tag:work"), both);
-    assert_eq!(found("tag:Work/Clients"), [b.clone()]);
+    assert_eq!(found("tag:Work/Clients"), std::slice::from_ref(&b));
     assert_eq!(found("tag:work/clients/acme"), [b]);
     assert_eq!(store.tag_links().unwrap().len(), 3);
 }

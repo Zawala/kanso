@@ -17,6 +17,7 @@
 //! never protected by the floor, and never "missing" in a re-merge.
 
 use kanso_core::DocType;
+use kanso_core::roles::Role;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -704,6 +705,14 @@ impl Store {
             if !rules.legacy() && is_separate_daily_creation(&remote.id, &local, remote) {
                 return merge_daily(tx, remote, &remote_rev, &local, &local_rev, &fields, changes);
             }
+            // Two Journals (or Inboxes, or Templates) made apart: the same
+            // notebook, so the account's copy is taken without a conflict,
+            // unless this one already names a daily template it lacks.
+            if !rules.legacy() && is_separate_role_book_creation(&remote.id, &local, remote, &fields) {
+                store_row(tx, &remote.id, doc_type, &remote.rev, false, &fields, Some(&local), Synced::Set(&remote.rev), Origin::Sync, changes)?;
+                learned(tx, &remote.id, &remote.rev)?;
+                return Ok(ApplyOutcome::Applied);
+            }
             let local_dirty = local.synced_rev.as_deref() != Some(local.rev.as_str());
             let remote_wins = !local_dirty
                 || match (local.deleted, remote.deleted) {
@@ -733,6 +742,29 @@ impl Store {
             Ok(ApplyOutcome::LocalWon { new_rev })
         })
     }
+}
+
+/// Whether `local` and `remote` are a role notebook (`book:journal`, …)
+/// made apart: both live, the local one never reached this account, and
+/// taking the remote one loses nothing the local one was given.
+fn is_separate_role_book_creation(
+    id: &str,
+    local: &crate::write::Row,
+    remote: &SyncDoc,
+    remote_fields: &Map<String, Value>,
+) -> bool {
+    let template = crate::roles::DAILY_TEMPLATE_FIELD;
+    let given = local.fields.get(template).is_some_and(|v| !v.is_null())
+        && remote_fields.get(template) != local.fields.get(template);
+    [Role::Journal, Role::Inbox, Role::Templates]
+        .iter()
+        .any(|role| role.book_id() == id)
+        && local.doc_type == DocType::Book
+        && !local.deleted
+        && !remote.deleted
+        && local.synced_rev.is_none()
+        && local.synced_gen == 0
+        && !given
 }
 
 /// Whether `local` and `remote` are two versions of a daily note made apart:
