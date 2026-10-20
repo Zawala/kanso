@@ -695,7 +695,13 @@ fn node_mcp_server_and_native_mcp_agree() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, TOOL_NAMES);
+    // The 17 first, then Kanso's own.
+    assert_eq!(names[..TOOL_NAMES.len()], TOOL_NAMES);
+    assert!(
+        names[TOOL_NAMES.len()..]
+            .iter()
+            .all(|n| n.starts_with("kanso-"))
+    );
     let mut failures = native.unexpected();
     eprintln!("native /mcp:\n{}", summary(&native));
     verify_store(

@@ -15,6 +15,8 @@ use serde::de::{MapAccess, Visitor};
 use serde_json::{Map, Value};
 
 const TOOLS_JSON: &str = include_str!("tools.json");
+/// Kanso's own tools, named `kanso-…`, listed after the 17.
+const KANSO_TOOLS_JSON: &str = include_str!("kanso_tools.json");
 
 pub(crate) struct Tool {
     pub name: String,
@@ -31,9 +33,19 @@ struct Catalog {
 fn catalog() -> &'static Catalog {
     static CATALOG: OnceLock<Catalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
-        let definitions: Value =
+        let mut definitions: Value =
             serde_json::from_str(TOOLS_JSON).expect("tools.json is valid JSON");
-        let raw: Vec<RawTool> = serde_json::from_str(TOOLS_JSON).expect("tools.json lists tools");
+        let kanso: Value =
+            serde_json::from_str(KANSO_TOOLS_JSON).expect("kanso_tools.json is valid JSON");
+        if let (Some(all), Some(kanso)) = (definitions.as_array_mut(), kanso.as_array()) {
+            all.extend(kanso.iter().cloned());
+        }
+        let mut raw: Vec<RawTool> =
+            serde_json::from_str(TOOLS_JSON).expect("tools.json lists tools");
+        raw.extend(
+            serde_json::from_str::<Vec<RawTool>>(KANSO_TOOLS_JSON)
+                .expect("kanso_tools.json lists tools"),
+        );
         let tools = raw
             .into_iter()
             .map(|tool| Tool {
@@ -342,7 +354,7 @@ mod tests {
             .map(|t| t["name"].as_str().unwrap())
             .collect();
         assert_eq!(
-            names,
+            names[..17],
             [
                 "read-note",
                 "read-backlinks",

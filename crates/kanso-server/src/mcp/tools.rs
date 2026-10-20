@@ -69,11 +69,37 @@ pub(crate) fn call(state: &AppState, name: &str, arguments: Option<&Value>) -> V
         "update-book" => merge(store, args, true),
         "create-file" => create_file(store, state.local_files, &args),
         "read-file" => read_file(store, state.local_files, &args),
+        "kanso-export-html" => export_html(store, &args),
         _ => Err(ToolError(format!(
             "MCP error -32602: Tool {name} not found"
         ))),
     };
     result.unwrap_or_else(|ToolError(message)| error_result(message))
+}
+
+/// `kanso-export-html`: the note as a standalone page, in Kanso's light or
+/// dark theme.
+fn export_html(store: &Store, args: &Args) -> ToolResult {
+    let id = with_prefix(DocType::Note, str_arg(args, "noteId"));
+    let note = api::get_doc(store, &id, None, false)?;
+    let palette = match opt_str(args, "theme") {
+        Some("dark") => kanso_render::Palette::DARK,
+        _ => kanso_render::Palette::LIGHT,
+    };
+    let attachments = |id: &str| {
+        store
+            .attachment(id)
+            .ok()
+            .flatten()
+            .map(|(content_type, attachment)| (content_type, attachment.data))
+    };
+    let html = kanso_render::html::page(
+        &js_string(note.get("title")),
+        &js_string(note.get("body")),
+        &palette,
+        &attachments,
+    );
+    result(vec![text(html)])
 }
 
 /// Runs `resources/read` for `inkdrop://note/{noteId}`.

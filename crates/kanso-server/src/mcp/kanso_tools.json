@@ -1,0 +1,28 @@
+[
+  {
+    "name": "kanso-export-html",
+    "description": "Export a note as one self-contained HTML page, as Kanso's \"Export as web page\" does. TeX math ($…$ and $$…$$), Mermaid diagrams and Excalidraw drawings are drawn as inline SVG, attached images are embedded as data URIs, and the page has no scripts and loads nothing from the network. Returns the HTML.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "noteId": {
+          "type": "string",
+          "description": "ID of the note to export. It can be found as `_id` in the note docs. It always starts with `note:`."
+        },
+        "theme": {
+          "default": "light",
+          "description": "The colors of the page: Kanso's light (paper) or dark (graphite) theme.",
+          "type": "string",
+          "enum": ["light", "dark"]
+        }
+      },
+      "required": [
+        "noteId"
+      ]
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  }
+]

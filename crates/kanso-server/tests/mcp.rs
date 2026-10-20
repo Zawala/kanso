@@ -51,7 +51,13 @@ async fn lists_the_seventeen_tools_and_the_note_template() {
     let app = app();
     let answer = rpc(&app.router, "tools/list", json!({})).await;
     let tools = answer["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 17);
+    // The 17, then Kanso's own.
+    assert!(tools.len() > 17);
+    assert!(
+        tools[17..]
+            .iter()
+            .all(|t| t["name"].as_str().unwrap().starts_with("kanso-"))
+    );
     for tool in tools {
         assert!(tool["description"].as_str().is_some_and(|d| !d.is_empty()));
         assert_eq!(tool["inputSchema"]["type"], "object");
@@ -598,4 +604,51 @@ async fn local_files_are_off_for_non_loopback_binds() {
     assert!(
         text(&result, 0).contains("only available when the server is bound to a loopback address")
     );
+}
+
+#[tokio::test]
+async fn notes_export_as_standalone_pages() {
+    let app = app();
+    let book_id =
+        tool_json(&tool(&app.router, "create-book", json!({ "name": "Work" })).await)["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+    let body = "Area $\\pi r^2$.\n\n```mermaid\ngraph TD\n  A --> B\n```\n\n<script>x()</script>\n";
+    let note = tool_json(
+        &tool(
+            &app.router,
+            "create-note",
+            json!({ "bookId": book_id, "title": "Circles", "body": body }),
+        )
+        .await,
+    );
+    let note_id = note["id"].as_str().unwrap().to_owned();
+    for theme in ["light", "dark"] {
+        let page = tool(
+            &app.router,
+            "kanso-export-html",
+            json!({ "noteId": note_id, "theme": theme }),
+        )
+        .await;
+        let html = text(&page, 0);
+        assert!(html.starts_with("<!doctype html>"), "{html}");
+        assert!(html.contains("<title>Circles</title>"));
+        assert!(html.contains("kanso-math") && html.contains("kanso-diagram"));
+        assert!(!html.contains("<script"));
+    }
+    let missing = tool(
+        &app.router,
+        "kanso-export-html",
+        json!({ "noteId": "note:nope" }),
+    )
+    .await;
+    assert_eq!(missing["isError"], true);
+    let bad = tool(
+        &app.router,
+        "kanso-export-html",
+        json!({ "noteId": note_id, "theme": "sepia" }),
+    )
+    .await;
+    assert_eq!(bad["isError"], true);
 }
