@@ -40,7 +40,7 @@ jobs:
   # release workflow ships them). The tests stay on the job above: several
   # need macOS's fonts and text system.
   portability:
-    name: clippy (${{ matrix.os }})
+    name: clippy + tests (${{ matrix.os }})
     # Self-hosted, so never for a fork's pull request.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
@@ -81,6 +81,12 @@ jobs:
         run: scripts/linux-deps.sh
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo clippy --workspace --locked -- -D warnings
+      # Everything but the app runs here too: the store, sync, server,
+      # renderer, importer and updater, whose file, path and process code
+      # differs per platform. The app's tests need macOS's text system.
+      - name: Tests (all but the app)
+        run: cargo test --workspace --locked --exclude kanso-app
+        shell: bash
 
   worker:
     # The self-hosted Mac never runs a fork's pull request: that would run a
