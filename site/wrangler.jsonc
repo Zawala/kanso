@@ -1,0 +1,15 @@
+// kansoapp.app: the website, a TanStack Start app on its own Worker. It holds
+// no secrets and no storage; the only thing it fetches is the latest release
+// from GitHub's public API. www.kansoapp.app redirects to the apex (src/server.ts).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kanso-site",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    { "pattern": "kansoapp.app", "custom_domain": true },
+    { "pattern": "www.kansoapp.app", "custom_domain": true }
+  ],
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } }
+}

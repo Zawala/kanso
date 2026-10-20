@@ -3,6 +3,8 @@
 A local-first Markdown notes app for macOS, with Windows and Linux builds, built with [GPUI](https://www.gpui.rs) through
 [gpui-kit](https://github.com/longbridge/gpui-kit).
 
+[kansoapp.app](https://kansoapp.app) has downloads and a tour; the website's source is in [`site/`](site).
+
 **Writing**
 - Brackets, quotes and Markdown marks pair as you type; lists and tasks continue on Return and
   indent with Tab; tables line up as you edit them.

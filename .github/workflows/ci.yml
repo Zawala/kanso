@@ -106,6 +106,27 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  # kansoapp.app: types, tests with their coverage floor, and a production
+  # build. Nothing here needs Cloudflare credentials; deploying is by hand.
+  site:
+    # The self-hosted Mac never runs a fork's pull request: that would run a
+    # stranger's code on the owner's machine.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS]
+    defaults:
+      run:
+        working-directory: site
+    env:
+      # fast-check reads its seed in src/test/setup.ts.
+      FAST_CHECK_SEED: "20261017"
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run coverage
+      - run: npm run build
+
   # The Worker under wrangler dev (Miniflare, no Cloudflare credentials) and
   # the Rust client against it: cloud/scripts/e2e-local.sh.
   # The Mac as well: it builds kanso-sync, whose Linux keyring needs dbus.
