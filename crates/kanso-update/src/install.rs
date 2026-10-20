@@ -311,18 +311,58 @@ fn remove_any(path: &Path) -> io::Result<()> {
 }
 
 /// Starts the installed Kanso again, telling it to wait for this one to
-/// let go of the data folder: `open -n` on macOS, the executable itself
-/// elsewhere. `args` are this run's own (a `--data-dir`, say).
+/// let go of the data folder. `args` are this run's own (a `--data-dir`,
+/// say).
+///
+/// On macOS this is what Sparkle and Zed do: a helper outside this process
+/// (its own process group, so it outlives the quit) waits until this
+/// process has exited, then opens the bundle through LaunchServices with a
+/// plain `open`. The new copy is then a normal launch of the one app, not a
+/// second instance (`open -n`) racing the old one, and macOS brings it to
+/// the front as it would any app the person opened. Elsewhere the new
+/// executable starts at once and waits for the data-folder lock itself.
 pub fn relaunch(install: &Install, args: &[String]) -> io::Result<()> {
     let mut command = if install.platform.is_bundle() {
-        let mut c = std::process::Command::new("/usr/bin/open");
-        c.arg("-n").arg(&install.target).arg("--args");
-        c
+        relaunch_after_exit(
+            std::process::id(),
+            Path::new("/usr/bin/open"),
+            &install.target,
+        )
     } else {
         std::process::Command::new(&install.target)
     };
     command.arg("--after-update").args(args);
-    command.spawn().map(drop)
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(drop)
+}
+
+/// The script [`relaunch_after_exit`] runs: `$1` is the process to wait
+/// for, `$2` the opener (`/usr/bin/open`), `$3` the bundle, the rest its
+/// arguments. It gives up waiting after a minute, since the new copy waits
+/// for the data folder anyway.
+pub const RELAUNCH_SCRIPT: &str = r#"pid="$1"; opener="$2"; app="$3"; shift 3
+i=0
+while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do sleep 0.1; i=$((i + 1)); done
+exec "$opener" "$app" --args "$@"
+"#;
+
+/// `/bin/sh` running [`RELAUNCH_SCRIPT`]: once `pid` has exited, `opener`
+/// opens `app`. The caller appends the new copy's arguments.
+pub fn relaunch_after_exit(pid: u32, opener: &Path, app: &Path) -> std::process::Command {
+    let mut c = std::process::Command::new("/bin/sh");
+    c.arg("-c")
+        .arg(RELAUNCH_SCRIPT)
+        .arg("kanso-relaunch")
+        .arg(pid.to_string())
+        .arg(opener)
+        .arg(app);
+    c
 }
 
 /// The Team ID in `codesign -dv` output, unless it is "not set".
@@ -412,6 +452,96 @@ pub fn remove_quarantine(app: &Path) {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    /// An opener that writes each argument it got, NUL-terminated, to `$OUT`.
+    #[cfg(unix)]
+    fn recording_opener(dir: &Path) -> (PathBuf, PathBuf) {
+        use std::os::unix::fs::PermissionsExt as _;
+        let opener = dir.join("open");
+        let out = dir.join("opened");
+        fs::write(
+            &opener,
+            format!(
+                "#!/bin/sh\nprintf '%s\\0' \"$@\" > '{}.tmp' && mv '{}.tmp' '{}'\n",
+                out.display(),
+                out.display(),
+                out.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&opener, fs::Permissions::from_mode(0o755)).unwrap();
+        (opener, out)
+    }
+
+    #[cfg(unix)]
+    fn wait_for(path: &Path) -> Vec<String> {
+        for _ in 0..200 {
+            if let Ok(bytes) = fs::read(path) {
+                let text = String::from_utf8(bytes).unwrap();
+                return text.split_terminator('\0').map(str::to_owned).collect();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        panic!("the opener never ran");
+    }
+
+    /// A process id that has already exited.
+    #[cfg(unix)]
+    fn gone_pid() -> u32 {
+        let mut child = std::process::Command::new("/usr/bin/true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        pid
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn relaunch_waits_for_the_old_process_to_exit() {
+        let dir = tempfile::tempdir().unwrap();
+        let (opener, out) = recording_opener(dir.path());
+        let mut old = std::process::Command::new("/bin/sleep")
+            .arg("0.6")
+            .spawn()
+            .unwrap();
+        let app = dir.path().join("Kanso.app");
+        let mut helper = relaunch_after_exit(old.id(), &opener, &app)
+            .args(["--after-update", "--data-dir", "/a b/K's \"lib\""])
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(!out.exists(), "opened while the old copy still ran");
+        old.wait().unwrap();
+        helper.wait().unwrap();
+        assert_eq!(
+            wait_for(&out),
+            [
+                app.to_str().unwrap(),
+                "--args",
+                "--after-update",
+                "--data-dir",
+                "/a b/K's \"lib\""
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 24, ..ProptestConfig::default() })]
+        /// Round trip: whatever arguments the new copy is given reach the
+        /// opener unchanged, after `--args`, with nothing the shell expands.
+        #[test]
+        fn prop_relaunch_passes_arguments_through(
+            args in prop::collection::vec("[ -~]{0,12}", 0..4),
+        ) {
+            let dir = tempfile::tempdir().unwrap();
+            let (opener, out) = recording_opener(dir.path());
+            let app = dir.path().join("Kanso $HOME `x`.app");
+            relaunch_after_exit(gone_pid(), &opener, &app).args(&args).spawn().unwrap().wait().unwrap();
+            let mut expected = vec![app.to_str().unwrap().to_owned(), "--args".to_owned()];
+            expected.extend(args);
+            prop_assert_eq!(wait_for(&out), expected);
+        }
+    }
 
     fn opts() -> LocateOptions {
         LocateOptions::default()

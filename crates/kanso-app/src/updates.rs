@@ -644,13 +644,19 @@ pub fn open_release_page(url: &str, cx: &mut App) {
 
 /// "Restart now": quits, installing the update on the way out, and opens
 /// the new Kanso.
+///
+/// It quits directly rather than dispatching `Quit`: its callers run while
+/// their window is being updated, and `App::dispatch_action` sends an action
+/// through the active window, which GPUI can't update a second time. The
+/// action was dropped (only logged), so Restart did nothing until the next
+/// quit.
 pub fn restart_now(cx: &mut App) {
     let updates = cx.global_mut::<Updates>();
     if !matches!(updates.phase, Phase::Ready(_)) {
         return;
     }
     updates.restart = true;
-    cx.dispatch_action(&crate::workspace::Quit);
+    crate::quit(cx);
 }
 
 /// On every quit: a staged update is swapped in, and Kanso opens again if
@@ -679,9 +685,6 @@ pub fn install_on_quit(cx: &mut App) {
         let args: Vec<String> = data_dir
             .map(|dir| vec!["--data-dir".to_owned(), dir.to_string_lossy().into_owned()])
             .unwrap_or_default();
-        // Without this, macOS 14 and later won't let the new copy take
-        // focus, and it opens behind whatever was under Kanso.
-        crate::activation::yield_to_next_launch();
         if let Err(err) = kanso_update::install::relaunch(install, &args) {
             log_line(&format!("couldn't open Kanso again: {err}"));
         }
@@ -1260,7 +1263,9 @@ pub fn register_app_actions(cx: &mut App) {
     cx.on_action(|_: &ShowWhatsNew, cx| cx.open_url(&release_page(&current_version())));
     cx.on_action(|_: &CheckForUpdates, cx| {
         check_now(true, cx);
-        cx.dispatch_action(&crate::settings::OpenUpdateSettings);
+        // Deferred: this runs inside the window's update when the menu or
+        // the palette sends it, and a nested dispatch would be dropped.
+        cx.defer(|cx| cx.dispatch_action(&crate::settings::OpenUpdateSettings));
     });
 }
 

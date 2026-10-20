@@ -267,6 +267,44 @@ fn quitting_from_a_window_saves_the_open_note(cx: &mut TestAppContext) {
     assert_eq!(note_body(&f.store, &f.notes[0]), "typed then quit");
 }
 
+/// "Update ready · Restart" quits. Its click (and the sheet's "Restart
+/// now") runs while its window is being updated, so a quit that goes
+/// through `App::dispatch_action` would be dropped: GPUI can't update the
+/// window that is already updating, and only logs that.
+#[gpui_kit::test]
+fn restart_from_the_update_pill_quits_and_saves(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    cx.update(|cx| {
+        cx.on_action(|_: &crate::workspace::Quit, cx| crate::quit(cx));
+        let mut updates = crate::updates::Updates::default();
+        updates.phase = crate::updates::Phase::Ready(kanso_update::Pending {
+            version: "9.9.9".into(),
+            payload: "/x/.kanso-update/unpacked/Kanso.app".into(),
+            target: "/x/Kanso.app".into(),
+            pub_date: String::new(),
+            release_url: String::new(),
+            notes: String::new(),
+            seal: Default::default(),
+        });
+        cx.set_global(updates);
+    });
+    f.select(cx, &f.notes[0]);
+    f.type_body(cx, "typed then restarted");
+    // As in the app: the clicked window is the active one.
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(cx.update(|cx| cx.active_window()), Some(f.window));
+    f.window
+        .update(cx, |_, _, cx| crate::updates::restart_now(cx))
+        .unwrap();
+    cx.run_until_parked();
+    // Kanso's quit saves the open note (the test platform's own quit does
+    // nothing), so the saved draft is the sign it ran.
+    assert_eq!(note_body(&f.store, &f.notes[0]), "typed then restarted");
+}
+
 #[gpui_kit::test]
 fn quitting_the_app_saves_the_open_note(cx: &mut TestAppContext) {
     let f = setup(cx);
