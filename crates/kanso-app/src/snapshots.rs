@@ -2350,6 +2350,11 @@ fn vim_note(
         .unwrap();
         cx.run_until_parked();
     }
+    // The shot is taken after the clock has moved on a whole number of
+    // blinks that leaves the editor's caret in its hidden half; half a
+    // second more shows it (Insert mode's line caret, and none beside
+    // Normal mode's block).
+    cx.advance_clock(std::time::Duration::from_millis(500));
 }
 
 /// Vim's Normal mode: the block caret on a word, "NORMAL" in the footer.
