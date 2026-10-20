@@ -314,6 +314,18 @@ fn render_block(
         },
         None => block.source.clone(),
     };
+    if block.kind == Kind::Excalidraw && is_empty_scene(&source) {
+        let canvas = empty_drawing(at, cx);
+        return drawing_block(
+            block,
+            source,
+            (canvas, EMPTY_DRAWING_WIDTH),
+            rich,
+            at,
+            window,
+            cx,
+        );
+    }
     let job = Job::new(block.kind, source.clone(), palette(cx));
     let Some(outcome) = drawing(&job, rich) else {
         return placeholder(block.kind, cx);
@@ -334,15 +346,69 @@ fn render_block(
             .py(px(4.))
             .child(picture)
             .into_any_element(),
-        Kind::Excalidraw => {
-            drawing_block(block, source, (picture, svg.width), rich, at, window, cx)
-        }
+        Kind::Excalidraw => drawing_block(
+            block,
+            source,
+            (picture.into_any_element(), svg.width),
+            rich,
+            at,
+            window,
+            cx,
+        ),
         _ => div()
             .id(ElementId::NamedInteger(BLOCK.into(), at))
             .w_full()
             .child(picture)
             .into_any_element(),
     }
+}
+
+/// How wide a drawing with nothing in it yet shows.
+const EMPTY_DRAWING_WIDTH: f32 = 380.;
+
+/// Whether a drawing's JSON is a scene with nothing in it yet: what "New
+/// drawing" writes. Pure.
+pub fn is_empty_scene(source: &str) -> bool {
+    match serde_json::from_str::<serde_json::Value>(source) {
+        Ok(serde_json::Value::Object(scene)) => scene
+            .get("elements")
+            .and_then(|e| e.as_array())
+            .is_some_and(|elements| elements.is_empty()),
+        Ok(serde_json::Value::Array(elements)) => elements.is_empty(),
+        _ => false,
+    }
+}
+
+/// A drawing with nothing in it yet: a quiet dashed canvas that says so,
+/// with the drawing's actions under it.
+fn empty_drawing(at: u64, cx: &App) -> AnyElement {
+    let colors = Colors::get(cx);
+    v_flex()
+        .id(ElementId::NamedInteger("empty-drawing".into(), at))
+        .w(px(EMPTY_DRAWING_WIDTH))
+        .max_w(relative(1.))
+        .h(px(120.))
+        .items_center()
+        .justify_center()
+        .gap_1()
+        .rounded(px(8.))
+        .border_1()
+        .border_dashed()
+        .border_color(colors.divider)
+        .bg(Hsla::from(colors.fill).opacity(0.35))
+        .child(
+            div()
+                .text_size(px(13.))
+                .text_color(colors.text_secondary)
+                .child("An empty drawing"),
+        )
+        .child(
+            div()
+                .text_size(px(12.))
+                .text_color(colors.text_muted)
+                .child("Edit in Excalidraw to draw, then Paste back."),
+        )
+        .into_any_element()
 }
 
 /// Room held for a drawing being made.
@@ -418,7 +484,7 @@ struct DrawingHover {
 fn drawing_block(
     block: &Block,
     scene: Arc<str>,
-    (picture, width): (Img, f32),
+    (picture, width): (AnyElement, f32),
     rich: &Arc<Rich>,
     at: u64,
     window: &mut Window,
@@ -549,7 +615,7 @@ fn notify(window: &mut Window, cx: &mut App, notification: Notification) {
 
 /// Puts the drawing on the clipboard as Excalidraw copies it, and opens
 /// excalidraw.com to paste it into. Nothing is uploaded.
-fn edit_in_excalidraw(scene: &str, window: &mut Window, cx: &mut App) {
+pub(crate) fn edit_in_excalidraw(scene: &str, window: &mut Window, cx: &mut App) {
     match kanso_render::excalidraw::to_clipboard(scene) {
         Ok(clip) => {
             cx.write_to_clipboard(ClipboardItem::new_string(clip));
@@ -700,6 +766,19 @@ mod tests {
         assert_eq!(first_block("```rust\nfn x() {}\n```"), None);
         assert_eq!(first_block("[plan.png](inkdrop://file:abc)"), None);
         assert_eq!(first_block("Just words."), None);
+    }
+
+    #[test]
+    fn empty_scenes() {
+        assert!(super::is_empty_scene(
+            r#"{"type":"excalidraw","version":2,"elements":[]}"#
+        ));
+        assert!(super::is_empty_scene("[]"));
+        assert!(!super::is_empty_scene(
+            r#"{"elements":[{"type":"ellipse"}]}"#
+        ));
+        assert!(!super::is_empty_scene("{}"));
+        assert!(!super::is_empty_scene("not json"));
     }
 
     proptest! {

@@ -764,6 +764,71 @@ fn drawing_note(
     settle_drawings(cx, window);
 }
 
+/// Pictures sized by a bar (`![Lake|320](…)`), with the size buttons and
+/// the drag handle on the right edge showing as on hover.
+fn bar_sized_images(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let lake =
+        crate::smart_paste::attach_image(store, &sample_picture(960, 540), "png", Some("Lake.png"))
+            .unwrap();
+    let body = format!(
+        "# Field notes\n\nThe lake at seven, written the way Obsidian sizes images.\n\n![Lake|320](inkdrop://{lake})\n\nThe handle on its right edge drags it wider or narrower.\n"
+    );
+    crate::preview::REVEAL_IMAGE_SIZES.store(true, std::sync::atomic::Ordering::Relaxed);
+    open_new_note(cx, workspace, store, "Field notes", &body);
+}
+
+/// A picture mid-drag: shown at the width it will be, which the chip over
+/// its corner says.
+fn dragging_image(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    *crate::preview::PREVIEW_DRAG_WIDTH.lock().unwrap() = Some(416.);
+    bar_sized_images(cx, window, workspace, store);
+}
+
+/// "Resize image…" from the palette, with the cursor on the image's line
+/// and a width typed.
+fn palette_resize_image(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    bar_sized_images(cx, window, workspace, store);
+    crate::preview::REVEAL_IMAGE_SIZES.store(false, std::sync::atomic::Ordering::Relaxed);
+    cx.update_window(window, |_, window, cx| {
+        let editor = workspace.read(cx).editor.clone();
+        editor.update(cx, |editor, cx| editor.reveal_line(4, window, cx));
+    })
+    .unwrap();
+    cx.run_until_parked();
+    pick_from_header(cx, window, workspace, Picker::ImageSize, "360");
+}
+
+/// "New drawing": an empty drawing, with its actions showing.
+fn new_drawing(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    crate::preview::REVEAL_IMAGE_SIZES.store(true, std::sync::atomic::Ordering::Relaxed);
+    let body = format!(
+        "How a note travels.\n\n{}\n\nSketch it in Excalidraw, then paste it back.\n",
+        crate::image_size::EMPTY_DRAWING
+    );
+    open_new_note(cx, workspace, store, "Sketch", &body);
+    settle_drawings(cx, window);
+}
+
 /// A table as typed, its pipes all over the place.
 const ROUGH_TABLE: &str = "# Pantry\n\nWhat to buy this week.\n\n| Item | Qty | Price |\n|:--|:-:|--:|\n| Apples | 6 | 3.20 |\n| Oat milk | 2 | 4.50 |\n| Coffee beans | 1 | 12.00 |\n| Café crème | 12 | 0.90 |\n\nThe rest can wait.\n";
 
@@ -3396,6 +3461,18 @@ fn snapshots() {
         shot("light-rich-split", Light, Split, rich_note),
         shot("dark-drawing", Dark, Preview, drawing_note),
         shot("light-drawing", Light, Preview, drawing_note),
+        shot("dark-images-bar", Dark, Preview, bar_sized_images),
+        shot("light-images-bar", Light, Split, bar_sized_images),
+        shot("dark-image-dragging", Dark, Preview, dragging_image),
+        shot("light-image-dragging", Light, Preview, dragging_image),
+        shot(
+            "dark-palette-resize-image",
+            Dark,
+            Split,
+            palette_resize_image,
+        ),
+        shot("dark-new-drawing", Dark, Preview, new_drawing),
+        shot("light-new-drawing", Light, Split, new_drawing),
         shot("dark-table-before", Dark, Edit, table_before),
         shot("dark-table-after", Dark, Edit, table_after),
         shot("dark-table-after-mono", Dark, Edit, table_after_mono),
@@ -3892,6 +3969,7 @@ fn snapshots() {
             .is_none_or(|o| o.split(',').any(|n| n == s.name))
     }) {
         crate::preview::REVEAL_IMAGE_SIZES.store(false, std::sync::atomic::Ordering::Relaxed);
+        *crate::preview::PREVIEW_DRAG_WIDTH.lock().unwrap() = None;
         let dir = tempfile::tempdir().unwrap();
         let db = dir.path().join("kanso.db");
         let (store, clock) = match &real_db {

@@ -55,6 +55,8 @@ pub enum Picker {
     WordGoal,
     /// A template to make a note from.
     Template,
+    /// A width for the image on the cursor's line.
+    ImageSize,
 }
 
 /// What choosing a command does.
@@ -80,6 +82,8 @@ pub enum Needs {
     SignedIn,
     /// This Mac isn't signed in (or was signed out by the server).
     SignedOut,
+    /// The cursor is on a line that is only an image, in the note's text.
+    ImageLine,
 }
 
 pub struct Command {
@@ -114,6 +118,14 @@ macro_rules! action {
         Run::Action(|| Box::new($action))
     };
 }
+
+/// Export as PDF: a file on macOS; elsewhere the page opens in the browser
+/// to print to PDF.
+const PDF_DESCRIPTION: &str = if cfg!(target_os = "macos") {
+    "Saves the note as a PDF in the preview's theme, with its math, diagrams and images."
+} else {
+    "Opens the note as a web page in your browser, in the preview's theme, to print to PDF from there."
+};
 
 static COMMANDS: &[Command] = &[
     // Note actions.
@@ -279,6 +291,35 @@ static COMMANDS: &[Command] = &[
         needs: Needs::LiveNote,
     },
     Command {
+        id: "new-drawing",
+        label: "New drawing",
+        label_when_pinned: None,
+        description: "Puts an empty Excalidraw drawing in the note at the cursor. Edit in Excalidraw, from the drawing in the preview, draws in it.",
+        icon: IconName::PenTool,
+        keywords: &[
+            "excalidraw",
+            "sketch",
+            "diagram",
+            "draw",
+            "whiteboard",
+            "insert",
+        ],
+        group: Group::Note,
+        run: action!(crate::workspace::NewDrawing),
+        needs: Needs::LiveNote,
+    },
+    Command {
+        id: "resize-image",
+        label: "Resize image…",
+        label_when_pinned: None,
+        description: "Sets how wide the image on the cursor's line shows: small, medium, its own size, or a width you type.",
+        icon: IconName::Image,
+        keywords: &["image", "picture", "width", "size", "smaller", "bigger"],
+        group: Group::Note,
+        run: Run::Pick(Picker::ImageSize),
+        needs: Needs::ImageLine,
+    },
+    Command {
         id: "word-goal",
         label: "Set word goal…",
         label_when_pinned: None,
@@ -337,7 +378,7 @@ static COMMANDS: &[Command] = &[
         id: "export-pdf",
         label: "Export as PDF…",
         label_when_pinned: None,
-        description: "Saves the note as a PDF in the preview's theme, with its math, diagrams and images.",
+        description: PDF_DESCRIPTION,
         icon: IconName::File,
         keywords: &["pdf", "print", "share", "save as", "file"],
         group: Group::Note,
@@ -560,6 +601,23 @@ static COMMANDS: &[Command] = &[
     },
     // App.
     Command {
+        id: "whats-new",
+        label: "What's new in Kanso",
+        label_when_pinned: None,
+        description: "The changes in this version of Kanso.",
+        icon: IconName::Sparkles,
+        keywords: &[
+            "release notes",
+            "changelog",
+            "changes",
+            "version",
+            "new features",
+        ],
+        group: Group::App,
+        run: action!(crate::updates::ShowWhatsNew),
+        needs: Needs::Nothing,
+    },
+    Command {
         id: "check-updates",
         label: "Check for updates…",
         label_when_pinned: None,
@@ -684,15 +742,25 @@ static COMMANDS: &[Command] = &[
         id: "settings-general",
         label: "Settings: General",
         label_when_pinned: None,
-        description: "Opening at login, the data folder, backups and importing notes.",
+        description: "Opening at login, the data folder, backups, importing notes, reminders, the quick note shortcut and the daily note's template.",
         icon: IconName::Settings,
         keywords: &[
             "preferences",
             "login",
+            "launch at login",
             "startup",
             "backup",
             "data folder",
             "import",
+            "reminder",
+            "notifications",
+            "quick note",
+            "capture",
+            "hotkey",
+            "global shortcut",
+            "daily",
+            "journal",
+            "template",
         ],
         group: Group::App,
         run: action!(OpenGeneralSettings),
@@ -702,9 +770,25 @@ static COMMANDS: &[Command] = &[
         id: "settings-editor",
         label: "Settings: Editor",
         label_when_pinned: None,
-        description: "The editor's font, text size and line numbers.",
+        description: "The editor's font, text size and line numbers, and how writing feels: closing brackets, tables, smart paste, typewriter scrolling, the word goal, tags from #words and Vim keys.",
         icon: IconName::Pencil,
-        keywords: &["preferences", "font", "size", "monospace", "line numbers"],
+        keywords: &[
+            "preferences",
+            "font",
+            "size",
+            "monospace",
+            "line numbers",
+            "readable width",
+            "vim",
+            "typewriter",
+            "word goal",
+            "tags",
+            "hashtags",
+            "smart paste",
+            "brackets",
+            "pairing",
+            "tables",
+        ],
         group: Group::App,
         run: action!(OpenEditorSettings),
         needs: Needs::Nothing,
@@ -724,6 +808,7 @@ static COMMANDS: &[Command] = &[
             "syntax",
             "dark mode",
             "light mode",
+            "preview theme",
         ],
         group: Group::App,
         run: action!(OpenAppearanceSettings),
@@ -744,7 +829,7 @@ static COMMANDS: &[Command] = &[
         id: "settings-account",
         label: "Settings: Account",
         label_when_pinned: None,
-        description: "Your sync account: signing in, storage, devices, the password and recovery key, and how often sync runs.",
+        description: "Your sync account: signing in, storage, devices, the password and recovery key, and how often sync runs. Published links live on the same server.",
         icon: IconName::CircleUser,
         keywords: &[
             "preferences",
@@ -753,6 +838,11 @@ static COMMANDS: &[Command] = &[
             "devices",
             "recovery key",
             "conflict",
+            "login",
+            "sign in",
+            "log in",
+            "server",
+            "publish",
         ],
         group: Group::App,
         run: action!(OpenAccountSettings),
@@ -791,6 +881,7 @@ static COMMANDS: &[Command] = &[
             "release",
             "changelog",
             "what's new",
+            "auto-update",
         ],
         group: Group::App,
         run: action!(OpenUpdateSettings),

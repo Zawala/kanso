@@ -20,9 +20,11 @@ use std::time::Duration;
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::base::input::{Backspace, Enter, IndentInline, OutdentInline, Paste};
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::input::{Editor, EditorState, Input, InputEvent, InputState, Position};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::notification::Notification;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, ResizableState, Selectable as _, Sizable as _,
@@ -1649,8 +1651,93 @@ impl NoteEditor {
         if self.note.is_none() {
             return;
         }
-        let replacement = smart_paste::sized_image(&resize.src, &resize.alt, resize.width);
+        let replacement = match crate::image_size::line_image(&resize.source) {
+            Some(image) => crate::image_size::written(&image, resize.width),
+            None => smart_paste::sized_image(&resize.src, &resize.alt, resize.width),
+        };
         self.replace_block(&resize.source, replacement, window, cx);
+    }
+
+    /// The image on the cursor's line in the note's text, if that line is
+    /// only one: for "Resize image…".
+    pub fn image_on_caret_line(&self, cx: &App) -> Option<crate::image_size::LineImage> {
+        if self.note.is_none() || self.view_mode == ViewMode::Preview {
+            return None;
+        }
+        let state = self.body.read(cx);
+        let text = state.value();
+        crate::image_size::image_at(&text, state.selected_range().start).map(|(_, image)| image)
+    }
+
+    /// Gives the image on the cursor's line `width` (`None`: its own size),
+    /// as one undo step.
+    // no-prop-test: glue; `image_size::resize_at` has the tests and
+    // `resize_image_from_the_palette` goes through it.
+    pub fn resize_caret_image(
+        &mut self,
+        width: Option<u32>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.note.is_none() {
+            return;
+        }
+        let resized = self.smart_edit(window, cx, |_, text, selection| {
+            crate::image_size::resize_at(text, selection.start, width)
+        });
+        if resized {
+            self.focus_body(window, cx);
+        } else {
+            cx.emit(EditorEvent::Notice(
+                "Put the cursor on an image's line to resize it.".into(),
+            ));
+        }
+    }
+
+    /// "New drawing": an empty Excalidraw drawing at the cursor, on lines of
+    /// its own, as one undo step; then an offer to draw in it.
+    // no-prop-test: glue; `image_size::insert_block` has the properties and
+    // `new_drawing_goes_in_at_the_cursor` goes through it.
+    pub fn insert_drawing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self
+            .note
+            .as_ref()
+            .is_none_or(|n| n.book_id == TRASH_BOOK_ID)
+        {
+            return;
+        }
+        if self.view_mode == ViewMode::Preview {
+            self.set_view_mode(ViewMode::Split, cx);
+        }
+        self.smart_edit(window, cx, |_, text, selection| {
+            Some(crate::image_size::insert_block(
+                text,
+                selection.start,
+                crate::image_size::EMPTY_DRAWING,
+            ))
+        });
+        self.focus_body(window, cx);
+        let scene = crate::image_size::EMPTY_DRAWING
+            .trim_start_matches("```excalidraw\n")
+            .trim_end_matches("\n```")
+            .to_owned();
+        window.push_notification(
+            Notification::new()
+                .title("New drawing")
+                .message("Draw in Excalidraw, then Paste back from the drawing in the preview.")
+                .icon(Icon::new(Lucide::PenTool))
+                .action(move |_, _, _| {
+                    let scene = scene.clone();
+                    Button::new("edit-drawing")
+                        .small()
+                        .primary()
+                        .label("Edit in Excalidraw")
+                        .on_click(move |_, window, cx| {
+                            crate::preview_rich::edit_in_excalidraw(&scene, window, cx)
+                        })
+                }),
+            cx,
+        );
     }
 
     /// Puts `replacement` over the first `source` in the note, as one undo
@@ -3666,6 +3753,74 @@ mod writing_tests {
         assert_eq!(selection, 2..2);
         open.keys(cx, "cmd-z");
         assert_eq!(open.text(cx).0, format!("Intro\n\n{block}\n\nEnd"));
+    }
+
+    /// An image written `![alt|300](src)` keeps that form when the preview
+    /// resizes it, as one undo step.
+    // no-prop-test: glue; `image_size` has the properties.
+    #[gpui_kit::test]
+    fn bar_widths_stay_bars(cx: &mut TestAppContext) {
+        let source = "![Cat|300](inkdrop://file:abc)";
+        let open = Open::new(cx, &format!("Intro\n\n{source}\n\nEnd"));
+        open.with(cx, |editor, window, cx| {
+            editor.resize_image(
+                ImageResize {
+                    source: source.into(),
+                    src: "inkdrop://file:abc".into(),
+                    alt: "Cat".into(),
+                    width: Some(412),
+                },
+                window,
+                cx,
+            )
+        });
+        assert_eq!(
+            open.text(cx).0,
+            "Intro\n\n![Cat|412](inkdrop://file:abc)\n\nEnd"
+        );
+        open.keys(cx, "cmd-z");
+        assert_eq!(open.text(cx).0, format!("Intro\n\n{source}\n\nEnd"));
+    }
+
+    /// "Resize image…" gives the image on the cursor's line a width, as one
+    /// undo step; on any other line it says where to put the cursor.
+    // no-prop-test: glue; `image_size::resize_at` has the tests.
+    #[gpui_kit::test]
+    fn resize_image_from_the_palette(cx: &mut TestAppContext) {
+        let text = "Intro\n\n![](https://example.com/a.png)\n\nEnd";
+        let open = Open::new(cx, text);
+        let on_image = text.find("https").unwrap();
+        open.select(cx, on_image..on_image);
+        assert!(open.with(cx, |editor, _, cx| editor.image_on_caret_line(cx).is_some()));
+        open.with(cx, |editor, window, cx| {
+            editor.resize_caret_image(Some(320), window, cx)
+        });
+        assert_eq!(
+            open.text(cx).0,
+            "Intro\n\n<img src=\"https://example.com/a.png\" width=\"320\">\n\nEnd"
+        );
+        open.keys(cx, "cmd-z");
+        assert_eq!(open.text(cx).0, text);
+        open.select(cx, 0..0);
+        assert!(open.with(cx, |editor, _, cx| editor.image_on_caret_line(cx).is_none()));
+        open.with(cx, |editor, window, cx| {
+            editor.resize_caret_image(Some(320), window, cx)
+        });
+        assert_eq!(open.text(cx).0, text);
+    }
+
+    /// "New drawing" puts an empty drawing on lines of its own at the
+    /// cursor, as one undo step.
+    // no-prop-test: glue; `image_size::insert_block` has the properties.
+    #[gpui_kit::test]
+    fn new_drawing_goes_in_at_the_cursor(cx: &mut TestAppContext) {
+        let open = Open::new(cx, "Intro\n\nEnd");
+        open.select(cx, 2..2);
+        open.with(cx, |editor, window, cx| editor.insert_drawing(window, cx));
+        let drawing = crate::image_size::EMPTY_DRAWING;
+        assert_eq!(open.text(cx).0, format!("Intro\n\n{drawing}\n\nEnd"));
+        open.keys(cx, "cmd-z");
+        assert_eq!(open.text(cx).0, "Intro\n\nEnd");
     }
 
     /// A note's own word goal is saved with it; without one the default

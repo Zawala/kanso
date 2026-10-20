@@ -618,13 +618,23 @@ mod tests {
             &Palette::LIGHT,
             &none,
         );
-        assert!(html.contains(r#"<span class="kanso-wikilink">Plans</span>,"#), "{html}");
+        assert!(
+            html.contains(r#"<span class="kanso-wikilink">Plans</span>,"#),
+            "{html}"
+        );
         assert!(html.contains(r#"<span class="kanso-wikilink">Plans › Next steps</span>"#));
         assert!(html.contains(r#"<span class="kanso-wikilink">the plan</span>"#));
         assert!(html.contains(r#"<span class="kanso-wikilink">Intro</span>"#));
         assert!(html.contains("<code>[[kept]]</code>"), "{html}");
-        let html = body("A [[*big* idea]] here, and [[]] stays.\n", &Palette::LIGHT, &none);
-        assert!(html.contains(r#"<span class="kanso-wikilink"><em>big</em> idea</span>"#), "{html}");
+        let html = body(
+            "A [[*big* idea]] here, and [[]] stays.\n",
+            &Palette::LIGHT,
+            &none,
+        );
+        assert!(
+            html.contains(r#"<span class="kanso-wikilink"><em>big</em> idea</span>"#),
+            "{html}"
+        );
         assert!(html.contains("[[]]"));
     }
 

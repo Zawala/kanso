@@ -79,6 +79,9 @@ actions!(
 // Focus mode: ⌘⇧D in and out, and Escape out once nothing inside wants it.
 actions!(kanso, [ToggleFocusMode, ExitFocusMode]);
 
+// An empty Excalidraw drawing at the cursor.
+actions!(kanso, [NewDrawing]);
+
 /// Process-wide state: the store, the data folder and the settings.
 pub struct AppState {
     pub store: Arc<Store>,
@@ -194,6 +197,7 @@ pub fn set_menus(cx: &mut App) {
         Menu::new("Edit").items([
             MenuItem::action("Paste and Match Style", PastePlainText),
             MenuItem::action("Format Table", FormatTable),
+            MenuItem::action("New Drawing", NewDrawing),
             MenuItem::separator(),
             MenuItem::os_submenu("Services", SystemMenuType::Services),
         ]),
@@ -201,6 +205,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Pin / Unpin Note", TogglePinned),
             MenuItem::action("Move to Trash", TrashNote),
             MenuItem::action("Show History…", ShowHistory),
+            MenuItem::action("Publish…", crate::publish::PublishNote),
             MenuItem::separator(),
             MenuItem::action("Next Note", NextNote),
             MenuItem::action("Previous Note", PreviousNote),
@@ -218,6 +223,10 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Search This List", FocusSearch),
             MenuItem::action("Go to Note List", FocusNoteList),
         ]),
+        Menu::new("Help").items([MenuItem::action(
+            "What's New in Kanso",
+            crate::updates::ShowWhatsNew,
+        )]),
     ]);
 }
 
@@ -1458,6 +1467,11 @@ impl Render for Workspace {
                 this.close_settings(window, cx);
                 this.editor
                     .update(cx, |editor, cx| editor.format_table(window, cx));
+            }))
+            .on_action(cx.listener(|this, _: &NewDrawing, window, cx| {
+                this.close_settings(window, cx);
+                this.editor
+                    .update(cx, |editor, cx| editor.insert_drawing(window, cx));
             }))
             .on_action(cx.listener(|this, _: &TrashNote, window, cx| {
                 this.close_settings(window, cx);

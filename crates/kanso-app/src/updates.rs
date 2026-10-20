@@ -43,6 +43,9 @@ use crate::workspace::AppState;
 
 actions!(kanso, [CheckForUpdates, ShowUpdate, RestartToUpdate,]);
 
+// The changes in the version running, from the Help menu and the palette.
+actions!(kanso, [ShowWhatsNew]);
+
 /// When the first check runs after Kanso starts, and how often after.
 const FIRST_CHECK: Duration = Duration::from_secs(8);
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
@@ -1220,15 +1223,41 @@ fn set_auto_install(on: bool, cx: &mut App) {
 pub fn on_actions(el: Div, cx: &mut Context<crate::workspace::Workspace>) -> Div {
     el.on_action(cx.listener(|_, _: &ShowUpdate, window, cx| open_sheet(window, cx)))
         .on_action(cx.listener(|_, _: &RestartToUpdate, _, cx| restart_now(cx)))
+        .on_action(cx.listener(|_, _: &ShowWhatsNew, window, cx| show_whats_new(window, cx)))
         .on_action(cx.listener(|this, _: &CheckForUpdates, window, cx| {
             this.open_settings(Some(crate::settings::SettingsPage::Updates), window, cx);
             check_now(true, cx);
         }))
 }
 
+/// The GitHub page with `version`'s changes: its release, or every
+/// release for a build between releases (`0.3.0-dev.abc`). Pure.
+pub fn release_page(version: &semver::Version) -> String {
+    let repository = kanso_update::REPOSITORY;
+    if version.pre.is_empty() {
+        format!("https://github.com/{repository}/releases/tag/v{version}")
+    } else {
+        format!("https://github.com/{repository}/releases")
+    }
+}
+
+/// What's new: this version's notes when Kanso has them, otherwise its
+/// release page.
+// no-prop-test: a sheet or a link; `release_page` is tested.
+pub fn show_whats_new(window: &mut Window, cx: &mut App) {
+    let notes = cx
+        .try_global::<Updates>()
+        .and_then(|updates| updates.installed_notes.clone());
+    match notes {
+        Some(notes) => open_notes(notes, SheetKind::Installed, window, cx),
+        None => cx.open_url(&release_page(&current_version())),
+    }
+}
+
 /// Check for Updates… from the menu bar with no window to take it.
 // no-prop-test: wiring.
 pub fn register_app_actions(cx: &mut App) {
+    cx.on_action(|_: &ShowWhatsNew, cx| cx.open_url(&release_page(&current_version())));
     cx.on_action(|_: &CheckForUpdates, cx| {
         check_now(true, cx);
         cx.dispatch_action(&crate::settings::OpenUpdateSettings);
@@ -1244,6 +1273,22 @@ mod tests {
     };
     use kanso_update::Asset;
     use proptest::prelude::*;
+
+    #[test]
+    fn whats_new_opens_the_versions_release() {
+        let page = |v: &str| super::release_page(&semver::Version::parse(v).unwrap());
+        assert_eq!(
+            page("0.4.1"),
+            format!(
+                "https://github.com/{}/releases/tag/v0.4.1",
+                kanso_update::REPOSITORY
+            )
+        );
+        assert_eq!(
+            page("0.4.1-dev.abc123"),
+            format!("https://github.com/{}/releases", kanso_update::REPOSITORY)
+        );
+    }
 
     fn update(version: &str) -> Update {
         Update {

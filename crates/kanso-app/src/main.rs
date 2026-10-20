@@ -33,6 +33,7 @@ mod grouping;
 mod history;
 mod history_diff;
 mod hotkey;
+mod image_size;
 mod inkdrop;
 mod inspector;
 mod journal;

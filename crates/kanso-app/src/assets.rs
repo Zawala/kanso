@@ -58,6 +58,7 @@ icon_assets!(
         Notebook,
         NotebookText,
         PanelRight,
+        PenTool,
         Pencil,
         Pin,
         PinOff,

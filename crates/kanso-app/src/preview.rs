@@ -90,6 +90,10 @@ pub const IMAGE_SIZES: [(&str, Option<u32>); 3] =
 pub(crate) static REVEAL_IMAGE_SIZES: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// Shows every image mid-drag at this width, for the snapshots.
+#[cfg(test)]
+pub(crate) static PREVIEW_DRAG_WIDTH: std::sync::Mutex<Option<f32>> = std::sync::Mutex::new(None);
+
 /// A chunk on show.
 struct Shown {
     key: u64,
@@ -414,21 +418,31 @@ const QUOTE_PARSER_REVISION: u64 = 4;
 /// A quote's Markdown, without its markers.
 struct Quote(SharedString);
 
-/// An attached image on a line of its own, as `![alt](src)` or as
+/// An image on a line of its own, as `![alt](src)`, `![alt|300](src)` or
 /// `<img src=… width=…>`.
 struct Picture {
     src: String,
+    /// Without any `|300`.
     alt: String,
     width: Option<u32>,
     source: String,
 }
 
-/// The attached image `node` shows on its own, if it is one: a paragraph of
-/// just an `inkdrop://file:` image, or an `<img>` tag for one. Pure.
+/// Whether the preview can show an image from `src`: an attachment or the
+/// web.
+fn showable_src(src: &str) -> bool {
+    src.starts_with("inkdrop://file:") || src.starts_with("https://") || src.starts_with("http://")
+}
+
+/// The image `node` shows on its own, if it is one: a paragraph of just an
+/// attached or web image, or an `<img>` tag for one. Pure.
 fn picture(node: &markdown_ast::Node, source: &str) -> Option<Picture> {
     let (src, alt, width) = match node {
         markdown_ast::Node::Paragraph(paragraph) => match paragraph.children.as_slice() {
-            [markdown_ast::Node::Image(image)] => (image.url.clone(), image.alt.clone(), None),
+            [markdown_ast::Node::Image(image)] => {
+                let (alt, width) = kanso_render::html::split_image_width(&image.alt);
+                (image.url.clone(), alt.to_owned(), width)
+            }
             _ => return None,
         },
         markdown_ast::Node::Html(html) => {
@@ -437,7 +451,7 @@ fn picture(node: &markdown_ast::Node, source: &str) -> Option<Picture> {
         }
         _ => return None,
     };
-    src.starts_with("inkdrop://file:").then(|| Picture {
+    showable_src(&src).then(|| Picture {
         src,
         alt,
         width,
@@ -445,14 +459,25 @@ fn picture(node: &markdown_ast::Node, source: &str) -> Option<Picture> {
     })
 }
 
-/// An attached image with its size buttons over its corner, shown on
-/// hover: small, medium, or its own size.
-// no-prop-test: drawing and clicks; `picture` and `sized_image` have the
-// tests, and the image snapshot shows it.
+/// An image's right edge being dragged: the width it shows at, and where
+/// its left edge and the room for it are (kept up to date as it's drawn).
+#[derive(Clone, Copy, Default)]
+struct PictureDrag {
+    width: Option<f32>,
+    left: f32,
+    room: f32,
+}
+
+/// An image with its size buttons over its corner and a handle on its right
+/// edge, both shown on hover. Dragging the handle shows the new width as it
+/// goes and writes it once, when the button comes up: one undo step.
+// no-prop-test: drawing, clicks and drags; `picture`, `sized_image` and
+// `image_size::drag_width` have the tests, and the image snapshots show it.
 fn render_picture(
     node: &MarkdownNode,
     resolver: &ImageResolver,
     resizes: &ResizeSender,
+    window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
     let Some(picture) = node.data::<Picture>() else {
@@ -465,17 +490,29 @@ fn render_picture(
     let hidden = !REVEAL_IMAGE_SIZES.load(std::sync::atomic::Ordering::Relaxed);
     #[cfg(not(test))]
     let hidden = true;
+    let drag = window.use_keyed_state(
+        ElementId::NamedInteger("picture-drag".into(), at as u64),
+        cx,
+        |_, _| PictureDrag::default(),
+    );
+    #[cfg(test)]
+    if let Some(width) = *PREVIEW_DRAG_WIDTH.lock().unwrap() {
+        drag.update(cx, |drag, _| drag.width = Some(width));
+    }
+    let dragging = drag.read(cx).width;
+    let shown = dragging.or(picture.width.map(|w| w as f32));
     let image = img(resolver(&SharedUri::from(picture.src.clone())))
         .object_fit(ObjectFit::Contain)
         .max_w(relative(1.))
-        .when_some(picture.width, |el, width| el.w(px(width as f32)));
+        .when_some(shown, |el, width| el.w(px(width)));
+    let resize = |width: Option<u32>| ImageResize {
+        source: picture.source.clone(),
+        src: picture.src.clone(),
+        alt: picture.alt.clone(),
+        width,
+    };
     let buttons = IMAGE_SIZES.iter().enumerate().map(|(ix, (label, width))| {
-        let resize = ImageResize {
-            source: picture.source.clone(),
-            src: picture.src.clone(),
-            alt: picture.alt.clone(),
-            width: *width,
-        };
+        let resize = resize(*width);
         let resizes = resizes.clone();
         let selected = picture.width == *width;
         Button::new(ix)
@@ -499,31 +536,155 @@ fn render_picture(
                 resizes.try_send(PreviewEdit::Resize(resize.clone())).ok();
             })
     });
-    let sizes = h_flex()
-        .id("sizes")
+    let chrome = |el: Div| {
+        el.absolute()
+            .top(px(8.))
+            .left(px(8.))
+            .p(px(2.))
+            .rounded(px(7.))
+            .border_1()
+            .border_color(colors.divider)
+            .bg(colors.elevated)
+            .shadow_sm()
+    };
+    let sizes = match dragging {
+        // While dragging: the width it will be.
+        Some(width) => chrome(div())
+            .px(px(8.))
+            .py(px(3.))
+            .text_size(px(11.5))
+            .text_color(colors.text)
+            .debug_selector(|| "image-drag-width".into())
+            .child(format!("{} px", width.round() as u32))
+            .into_any_element(),
+        None => chrome(h_flex().gap(px(2.)))
+            .id("sizes")
+            .debug_selector(|| "image-sizes".into())
+            .when(hidden, |el| {
+                el.opacity(0.)
+                    .group_hover(group.clone(), |style| style.opacity(1.))
+            })
+            .children(buttons)
+            .into_any_element(),
+    };
+    // The handle: a slim pill on the image's right edge.
+    let handle = div()
+        .id("resize-handle")
         .absolute()
-        .top(px(8.))
-        .left(px(8.))
-        .p(px(2.))
-        .gap(px(2.))
-        .rounded(px(7.))
-        .border_1()
-        .border_color(colors.divider)
-        .bg(colors.elevated)
-        .shadow_sm()
-        .debug_selector(|| "image-sizes".into())
-        .when(hidden, |el| {
+        .top_0()
+        .bottom_0()
+        .right(px(-7.))
+        .w(px(14.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .cursor(CursorStyle::ResizeLeftRight)
+        .debug_selector(|| "image-resize-handle".into())
+        .when(hidden && dragging.is_none(), |el| {
             el.opacity(0.)
                 .group_hover(group.clone(), |style| style.opacity(1.))
         })
-        .children(buttons);
+        .on_mouse_down(MouseButton::Left, {
+            let drag = drag.clone();
+            move |event, window, cx| {
+                cx.stop_propagation();
+                drag.update(cx, |drag, cx| {
+                    let width = crate::image_size::drag_width(
+                        f32::from(event.position.x),
+                        drag.left,
+                        drag.room,
+                    );
+                    drag.width = Some(width as f32);
+                    cx.notify();
+                });
+                window.refresh();
+            }
+        })
+        .child(
+            div()
+                .w(px(5.))
+                .h(px(40.))
+                .max_h(relative(0.6))
+                .rounded(px(3.))
+                .bg(colors.elevated)
+                .border_1()
+                .border_color(colors.divider)
+                .shadow_sm(),
+        );
+    // Where the image may go, measured as it's drawn; while dragging, the
+    // pointer anywhere in the window moves the edge, and letting go writes
+    // the width.
+    let tracker = canvas(
+        {
+            let drag = drag.clone();
+            move |bounds, _, cx| {
+                drag.update(cx, |drag, _| {
+                    drag.left = f32::from(bounds.left());
+                    drag.room = f32::from(bounds.size.width);
+                });
+            }
+        },
+        {
+            let (drag, resizes, resize) = (drag.clone(), resizes.clone(), resize(None));
+            move |_, _, window, cx| {
+                if drag.read(cx).width.is_none() {
+                    return;
+                }
+                window.on_mouse_event({
+                    let drag = drag.clone();
+                    move |event: &MouseMoveEvent, phase, window, cx| {
+                        if phase != DispatchPhase::Capture {
+                            return;
+                        }
+                        drag.update(cx, |drag, cx| {
+                            if drag.width.is_some() {
+                                let width = crate::image_size::drag_width(
+                                    f32::from(event.position.x),
+                                    drag.left,
+                                    drag.room,
+                                );
+                                drag.width = Some(width as f32);
+                                cx.notify();
+                            }
+                        });
+                        window.refresh();
+                    }
+                });
+                window.on_mouse_event(move |_: &MouseUpEvent, phase, window, cx| {
+                    if phase != DispatchPhase::Capture {
+                        return;
+                    }
+                    let Some(width) = drag.update(cx, |drag, _| drag.width.take()) else {
+                        return;
+                    };
+                    let resize = ImageResize {
+                        width: Some(width.round() as u32),
+                        ..resize.clone()
+                    };
+                    resizes.try_send(PreviewEdit::Resize(resize)).ok();
+                    window.refresh();
+                });
+            }
+        },
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full();
     v_flex()
         .id(ElementId::NamedInteger(PICTURE.into(), at as u64))
         .group(group)
         .relative()
         .w_full()
         .items_start()
-        .child(image)
+        .child(tracker)
+        .child(
+            div()
+                .relative()
+                .max_w(relative(1.))
+                .child(image)
+                .child(handle),
+        )
         .child(sizes)
         .into_any_element()
 }
@@ -572,8 +733,8 @@ fn quote_extensions(
         // Tasks' due dates, as chips (see `crate::due`).
         .plugin(crate::due::DueChip)
         .block_parser(parse)
-        .block_renderer(PICTURE, move |node, _window, cx| {
-            render_picture(node, &picture_images, &picture_resizes, cx)
+        .block_renderer(PICTURE, move |node, window, cx| {
+            render_picture(node, &picture_images, &picture_resizes, window, cx)
         })
         .block_renderer(QUOTE, move |node, _window, cx| {
             let Some(Quote(body)) = node.data::<Quote>() else {
@@ -1086,8 +1247,8 @@ mod tests {
         assert_eq!(unquote(">"), "");
     }
 
-    /// An attached image alone on its line gets size buttons; one in a
-    /// sentence, or from the web, stays the text view's.
+    /// An attached or web image alone on its line gets size buttons and a
+    /// handle; one in a sentence, or from a path the preview can't load, stays the text view's.
     #[test]
     fn attached_images_on_their_own_get_sizes() {
         let first = |text: &str| {
@@ -1112,7 +1273,15 @@ mod tests {
             first(tag),
             Some((src, String::new(), Some(240), tag.to_owned()))
         );
-        assert_eq!(first("![](https://x.io/a.png)"), None);
+        assert_eq!(
+            first("![Cat|300](inkdrop://file:abc)").map(|p| (p.1, p.2)),
+            Some(("Cat".into(), Some(300)))
+        );
+        assert_eq!(
+            first("![](https://x.io/a.png)").map(|p| p.0),
+            Some("https://x.io/a.png".into())
+        );
+        assert_eq!(first("![](a.png)"), None);
         assert_eq!(first("Look: ![](inkdrop://file:abc)"), None);
     }
 

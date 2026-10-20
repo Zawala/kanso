@@ -110,6 +110,8 @@ enum Target {
     Template(String),
     /// Make a template.
     NewTemplate,
+    /// Give the image on the cursor's line this width (`None`: its own).
+    ImageWidth(Option<u32>),
 }
 
 #[derive(Clone)]
@@ -181,6 +183,7 @@ impl Item {
             Target::WordGoal(goal) => format!("goal:{goal:?}"),
             Target::Template(id) => format!("template:{id}"),
             Target::NewTemplate => "new-template".to_owned(),
+            Target::ImageWidth(width) => format!("image-width:{width:?}"),
         }
     }
 }
@@ -695,6 +698,18 @@ impl Palette {
                     true,
                 )]
             }
+            Some(Mode::Pick(Picker::ImageSize)) => {
+                let current = self
+                    .editor
+                    .read(cx)
+                    .image_on_caret_line(cx)
+                    .map(|image| image.width);
+                vec![section(
+                    "Image width",
+                    image_width_entries(query, current),
+                    true,
+                )]
+            }
         }
     }
 
@@ -705,6 +720,7 @@ impl Palette {
             .try_global::<Services>()
             .is_some_and(|services| services.signed_in());
         let in_trash = note.is_some_and(|n| n.book_id == TRASH_BOOK_ID);
+        let image_line = !in_trash && self.editor.read(cx).image_on_caret_line(cx).is_some();
         commands::all()
             .iter()
             .filter(|command| command.group == group)
@@ -715,6 +731,7 @@ impl Palette {
                 Needs::Settings => self.notes_hidden,
                 Needs::SignedIn => signed_in,
                 Needs::SignedOut => !signed_in,
+                Needs::ImageLine => image_line,
             })
             .map(|command| {
                 let (label, icon) = match command.label_when_pinned {
@@ -1081,6 +1098,12 @@ impl Palette {
                 self.close(window, cx);
                 self.editor
                     .update(cx, |editor, cx| editor.set_word_goal(goal, cx));
+            }
+            Target::ImageWidth(width) => {
+                self.close(window, cx);
+                self.editor.update(cx, |editor, cx| {
+                    editor.resize_caret_image(width, window, cx)
+                });
             }
             Target::Template(id) => {
                 self.close(window, cx);
@@ -1495,6 +1518,15 @@ impl Palette {
                     format!("New note in {place}").into(),
                 ));
             }
+            Target::ImageWidth(width) => {
+                detail.description = Some(
+                    match width {
+                        Some(width) => format!("Shows the image {width} pixels wide, or the width of the note if that is less."),
+                        None => "Shows the image at its own size, or the width of the note if that is less.".to_owned(),
+                    }
+                    .into(),
+                );
+            }
             Target::NewTemplate => {
                 detail.description = Some(
                     "Creates a note in the Templates notebook. {{date}}, {{time}}, {{title}}, \
@@ -1842,7 +1874,36 @@ fn placeholder(mode: Mode) -> &'static str {
         Mode::Pick(Picker::GoToTag) => "Go to tag…",
         Mode::Pick(Picker::WordGoal) => "Words to aim for, such as 1,500…",
         Mode::Pick(Picker::Template) => "New note from template…",
+        Mode::Pick(Picker::ImageSize) => "Width in pixels, such as 320…",
     }
+}
+
+/// The widths an image can be given: what was typed, when it reads as a
+/// width, first; then the preview's small, medium and full.
+fn image_width_entries(query: &str, current: Option<Option<u32>>) -> Vec<(Item, Option<i64>)> {
+    let mut entries = Vec::new();
+    let typed = crate::image_size::parse_width(query);
+    if let Some(width) = typed {
+        let item = Item::new(
+            Target::ImageWidth(Some(width)),
+            format!("{width} pixels wide"),
+            IconName::Image,
+        )
+        .checked(current == Some(Some(width)));
+        entries.push((item, Some(i64::MAX / 8)));
+    }
+    for (label, width) in crate::preview::IMAGE_SIZES {
+        let hint = match width {
+            Some(width) => format!("{width} px"),
+            None => "Its own size".to_owned(),
+        };
+        let item = Item::new(Target::ImageWidth(width), label, IconName::Image)
+            .checked(current == Some(width))
+            .hint(hint);
+        let score = item_score(query, label, &["size", "width"]);
+        entries.push((item, score));
+    }
+    entries
 }
 
 /// The word goals to choose from: what was typed, when it reads as a

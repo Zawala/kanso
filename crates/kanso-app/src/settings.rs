@@ -208,8 +208,7 @@ pub fn problem_help(problem: &SyncProblem, resume: impl FnOnce(i64) -> String) -
 
 /// What the Account page's status says while signed out.
 pub const NOT_SIGNED_IN: &str = "Not signed in";
-pub const SIGNED_OUT_DETAIL: &str =
-    "Sync your notes between your devices, end-to-end encrypted. Your notes stay on this device either way.";
+pub const SIGNED_OUT_DETAIL: &str = "Sync your notes between your devices, end-to-end encrypted. Your notes stay on this device either way.";
 
 /// The Account page's status: the sidebar's words ("Synced just now",
 /// "Syncing…", a problem's label) and what they mean here, with `when`
@@ -1717,6 +1716,17 @@ mod tests {
     use crate::grouping::utc_label;
     use crate::services::{AccountState, ApiState, SyncState, strategies};
     use crate::sidebar::{Tone, sync_line};
+
+    /// Shortcuts in Settings' text read as this platform writes them.
+    #[test]
+    fn shortcut_labels_follow_the_platform() {
+        let label = super::keys_label("secondary-shift-v");
+        if cfg!(target_os = "macos") {
+            assert_eq!(label, "⇧⌘V");
+        } else {
+            assert_eq!(label, "Ctrl+Shift+V");
+        }
+    }
 
     fn config() -> ProptestConfig {
         ProptestConfig {
