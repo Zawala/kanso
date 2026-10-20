@@ -269,6 +269,17 @@ static COMMANDS: &[Command] = &[
         needs: Needs::Note,
     },
     Command {
+        id: "publish",
+        label: "Publish to the web…",
+        label_when_pinned: None,
+        description: "Puts the note at a link anyone can open. Your sync server keeps only an encrypted copy it can't read.",
+        icon: IconName::Globe,
+        keywords: &["publish", "share", "link", "web", "unpublish", "public"],
+        group: Group::Note,
+        run: action!(crate::publish::PublishNote),
+        needs: Needs::Note,
+    },
+    Command {
         id: "export-pdf",
         label: "Export as PDF…",
         label_when_pinned: None,

@@ -206,6 +206,9 @@ pub struct Services {
     /// The servers' seam: `HttpBackend` in the app, `MemoryServer` in tests.
     /// Without one, nothing reaches a server.
     pub backend: Option<Arc<dyn Backend>>,
+    /// Published notes' seam: `HttpShares` in the app, `MemoryShares` in
+    /// tests. Without one, nothing is published.
+    pub shares: Option<Arc<dyn kanso_sync::share::ShareApi>>,
     /// The Keychain's seam: `Keychain` in the app, `MemorySecrets` in tests.
     pub secrets: Option<Arc<dyn SecretStore>>,
     /// This Mac, as tests fake it; `None` asks the system (on a background

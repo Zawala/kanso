@@ -199,6 +199,54 @@ notes are in which notebook or carry which tag; statuses or pins; documents' own
 times; links between notes; file names, content types or bytes; device names; local document IDs or
 revisions; the password; the recovery key; or the data key.
 
+### Published notes
+
+Publishing (the note's ⋯ menu or the palette › Publish to the web…) puts one note's web page at
+`<server>/p/<share id>#<key>`. Anyone with the whole link can read the page; the server can't.
+
+**How.** The Mac renders the note with the web page export (images inside as data URIs, no
+scripts), in the preview's theme when it is light and Kanso's light theme otherwise. It picks a
+random 128-bit share ID and a random 256-bit key for the share, and seals the page as
+`0x01 || nonce(12) || AES-256-GCM(key, nonce, aad, html)` with
+`aad = "kanso-share" || 0x01 || share_id` and a fresh random nonce on every upload
+(`crates/kanso-sync/src/share.rs`). It uploads that to `PUT /v2/shares/<id>` with its session, and
+keeps `{shareId, key, publishedAt, publishedRev, expiresAt?, contentHash}` in the note as
+`note.extra.kansoPublish`. That travels inside the sealed note, so the account's other Macs can
+update the same link (same ID and key, new ciphertext) or unpublish it, and the server never sees
+the key. Inkdrop's own `share` field is left alone. The key lives only in the link's `#fragment`,
+which browsers never send to a server.
+
+**Routes.** `PUT /v2/shares/<id>` (session; `application/octet-stream`; `x-kanso-sha256`; optional
+`x-kanso-expires-at`, Unix ms, at most 366 days ahead) stores or replaces the account's own share;
+another account's ID, or one unpublished within the last hour, is 409 `share_id_taken` and the Mac
+publishes under a new ID. A body that isn't `0x01` plus at least a nonce and tag is refused, so
+only sealed bytes are stored, up to 10 MiB of page. A share counts as one file (its size + 1,024
+bytes) towards the account's file quotas, and its upload towards the daily writes and upload bytes.
+`DELETE /v2/shares/<id>` (session) unpublishes; 404 when the account has no such share.
+`GET /v2/public/<id>` (no session) returns the ciphertext, 410 `expired` past its expiry and 404
+once unpublished; it is rate-limited per IP group by the `PUBLIC_LIMITER` binding and a D1 counter
+(60 a minute). `GET /p/<id>` is the viewer page. D1 holds `shares` (owner, size, times, expiry) and
+`share_purges`; R2 holds `shares/<id>` (migration `0003_shares`). The cron unpublishes expired
+shares and deletes purged objects; deleting an account (by its owner or `admin delete`) unpublishes
+all of its shares in the same batch.
+
+**The viewer page** is static HTML with one inline script and one inline style, each pinned in a
+`Content-Security-Policy` by its SHA-256 (`default-src 'none'`, `connect-src 'self'`, `img-src
+data:`, `frame-ancestors 'none'`, no third-party code), sent with `Referrer-Policy: no-referrer`
+and `X-Robots-Tag: noindex`. Its script reads the key from `location.hash`, fetches the ciphertext,
+opens it with WebCrypto, and shows the page in an `<iframe srcdoc>` sandboxed without
+`allow-scripts` and without `allow-same-origin`, after taking out anything active and gathering
+the page's styles into one `data:` stylesheet the policy allows. A missing key, a wrong key, an
+expired link and an unpublished one each get a calm sentence instead of the note.
+
+**The server sees,** for each share: its ID, the account that owns it, the ciphertext's size (the
+page's size plus 29 bytes), when it was published and updated, when it expires, and, like any
+request, the IP addresses and times of the people who open it (as rate-limit hashes in D1, and
+live in `wrangler tail`). **It can't see** the page, the note's title or text, the images, or the
+key, and it can't tell which note a share came from. Whoever has the link can read the note, and
+can pass the link on: the key is the link. Unpublishing stops the server serving it (and deletes
+the ciphertext), but can't take back a copy someone already saved.
+
 ## Constructions
 
 ### Encodings

@@ -48,6 +48,7 @@ mod paths;
 mod preview;
 mod preview_chunks;
 mod preview_rich;
+mod publish;
 mod services;
 mod settings;
 mod settings_themes;
@@ -268,6 +269,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         // out.
         let mut services = Services::default();
         services.backend = Some(Arc::new(kanso_sync::HttpBackend::new()));
+        services.shares = Some(Arc::new(kanso_sync::share::HttpShares));
         // Kanso Dev keeps its secrets under its own service.
         services.secrets = Some(Arc::new(flavour::CURRENT.keychain()));
         cx.set_global(services);

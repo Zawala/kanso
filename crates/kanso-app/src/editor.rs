@@ -145,6 +145,8 @@ pub struct NoteEditor {
     library: Entity<Library>,
     /// The note as last loaded or saved, with its current `_rev`.
     note: Option<Note>,
+    /// The next write keeps the note's edit time (publishing isn't editing).
+    keep_edit_time: bool,
     title: Entity<InputState>,
     body: Entity<EditorState>,
     preview: Entity<Preview>,
@@ -338,6 +340,7 @@ impl NoteEditor {
             store,
             library,
             note: None,
+            keep_edit_time: false,
             title,
             body,
             preview,
@@ -414,6 +417,42 @@ impl NoteEditor {
             cx,
         );
         self.update_footer_goal(cx);
+    }
+
+    /// What the Publish sheet works from: the open note's ID, its title and
+    /// body as typed, its revision, and the link it keeps, if any.
+    pub fn publish_source(&self, cx: &App) -> Option<crate::publish::Source> {
+        let note = self.note.as_ref()?;
+        let (title, body) = self.current_text(cx);
+        Some(crate::publish::Source {
+            id: note.id.clone(),
+            title,
+            body,
+            rev: note.rev.clone().unwrap_or_default(),
+            publish: kanso_sync::share::KansoPublish::from_extra(&note.extra),
+        })
+    }
+
+    /// Keeps `publish` in note `id` (or takes it out), saved with the note,
+    /// when it is the open one. Returns whether it was.
+    pub fn set_publish(
+        &mut self,
+        id: &str,
+        publish: Option<kanso_sync::share::KansoPublish>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.note_id() != Some(id) {
+            return false;
+        }
+        // The sheet saved any edits first, so this write only adds the link.
+        self.keep_edit_time = !self.has_unsaved_edits(cx);
+        self.write(
+            move |note, _| {
+                kanso_sync::share::KansoPublish::store(publish.as_ref(), &mut note.extra)
+            },
+            Origin::Ui,
+            cx,
+        )
     }
 
     fn update_footer_goal(&mut self, cx: &mut Context<Self>) {
@@ -988,7 +1027,9 @@ impl NoteEditor {
         note.title = title;
         note.body = body;
         change(&mut note, cx);
-        note.updated_at = now_ms();
+        if !std::mem::take(&mut self.keep_edit_time) {
+            note.updated_at = now_ms();
+        }
         // A sync can move the revision between reading and writing without
         // changing the note: then the write goes on top of the new revision.
         let mut retried = false;
@@ -1800,6 +1841,7 @@ impl NoteEditor {
                         let view = view.clone();
                         menu.menu("Show History…", Box::new(crate::workspace::ShowHistory))
                             .menu("Export Note…", Box::new(crate::workspace::ExportNote))
+                            .menu("Publish to the Web…", Box::new(crate::publish::PublishNote))
                             .submenu("Status", window, cx, move |mut menu, _, _| {
                                 for option in NoteStatus::ALL {
                                     let view = view.clone();

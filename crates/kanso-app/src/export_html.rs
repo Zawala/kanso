@@ -160,7 +160,7 @@ pub fn export_pdf(
 
 /// The colors to print in: `palette` when it is light, else Kanso's light
 /// theme. Pure.
-fn print_palette(palette: Palette) -> Palette {
+pub(crate) fn print_palette(palette: Palette) -> Palette {
     if palette.dark {
         Palette::LIGHT
     } else {

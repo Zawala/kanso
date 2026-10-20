@@ -476,6 +476,93 @@ fn history(
     .unwrap();
 }
 
+/// The Publish sheet for the open note: signed out, signed in and not yet
+/// published, published, and published but edited since.
+fn publish_sheet(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    signed_in: bool,
+    published: Option<bool>,
+) {
+    cx.update(|cx| {
+        cx.set_reduce_motion(true);
+        let services = cx.global_mut::<Services>();
+        if signed_in {
+            services.account = AccountState::SignedIn {
+                username: DEMO_USER.into(),
+            };
+        } else {
+            services.account = AccountState::SignedOut;
+            services.sync = SyncState::Off;
+        }
+    });
+    let editor = cx.update(|cx| workspace.read(cx).editor.clone());
+    if let Some(up_to_date) = published {
+        cx.update(|cx| {
+            let now = Clock::now_ms(cx);
+            let source = editor.read(cx).publish_source(cx).unwrap();
+            let body = if up_to_date {
+                source.body.clone()
+            } else {
+                format!("{}\nAn earlier draft.", source.body)
+            };
+            let publish = kanso_sync::share::KansoPublish {
+                share_id: "q3T9xW2LmN8vPz4RkY7aBw".into(),
+                key: kanso_sync::share::ShareKey::from_bytes([0x5a; 32]).to_text(),
+                published_at: now - 2 * DAY - 3 * 60 * MINUTE,
+                published_rev: source.rev.clone(),
+                expires_at: Some(now + 5 * DAY - 3 * 60 * MINUTE),
+                content_hash: Some(kanso_sync::share::content_hash(&source.title, &body)),
+                other: Default::default(),
+            };
+            editor.update(cx, |editor, cx| {
+                editor.set_publish(&source.id, Some(publish), cx)
+            });
+        });
+    }
+    cx.update_window(window, |_, window, cx| {
+        crate::publish::open_publish(editor, window, cx);
+    })
+    .unwrap();
+}
+
+fn publish_signed_out(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    publish_sheet(cx, window, workspace, false, None);
+}
+
+fn publish_unpublished(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    publish_sheet(cx, window, workspace, true, None);
+}
+
+fn publish_published(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    publish_sheet(cx, window, workspace, true, Some(true));
+}
+
+fn publish_outdated(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    publish_sheet(cx, window, workspace, true, Some(false));
+}
+
 /// The rail while the Worker can't be reached: the sync icon's shape says
 /// so, not only its color.
 fn rail_offline(
@@ -2774,6 +2861,44 @@ fn snapshots() {
         // The open note's earlier versions.
         shot("dark-history", Dark, Edit, history),
         shot("light-history", Light, Edit, history),
+        // Publishing the open note, in each of its states.
+        Shot {
+            dialog_width: crate::publish::SHEET_WIDTH,
+            ..shot("dark-publish-signed-out", Dark, Edit, publish_signed_out)
+        },
+        Shot {
+            dialog_width: crate::publish::SHEET_WIDTH,
+            ..shot("light-publish-signed-out", Light, Edit, publish_signed_out)
+        },
+        Shot {
+            dialog_width: crate::publish::SHEET_WIDTH,
+            ..shot("dark-publish-unpublished", Dark, Edit, publish_unpublished)
+        },
+        Shot {
+            dialog_width: crate::publish::SHEET_WIDTH,
+            ..shot(
+                "light-publish-unpublished",
+                Light,
+                Edit,
+                publish_unpublished,
+            )
+        },
+        Shot {
+            dialog_width: crate::publish::SHEET_WIDTH,
+            ..shot("dark-publish-published", Dark, Edit, publish_published)
+        },
+        Shot {
+            dialog_width: crate::publish::SHEET_WIDTH,
+            ..shot("light-publish-published", Light, Edit, publish_published)
+        },
+        Shot {
+            dialog_width: crate::publish::SHEET_WIDTH,
+            ..shot("dark-publish-outdated", Dark, Edit, publish_outdated)
+        },
+        Shot {
+            dialog_width: crate::publish::SHEET_WIDTH,
+            ..shot("light-publish-outdated", Light, Edit, publish_outdated)
+        },
         // Focus mode, at rest and with the pointer near the top.
         Shot {
             left: Left::Nothing,

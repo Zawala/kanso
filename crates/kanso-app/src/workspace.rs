@@ -1403,6 +1403,12 @@ impl Render for Workspace {
                 this.export_page(true, window, cx);
             }))
             .on_action(
+                cx.listener(|this, _: &crate::publish::PublishNote, window, cx| {
+                    this.close_settings(window, cx);
+                    crate::publish::open_publish(this.editor.clone(), window, cx);
+                }),
+            )
+            .on_action(
                 cx.listener(|this, _: &ExportLibrary, window, cx| this.export(None, window, cx)),
             )
             .on_action(cx.listener(|_, _: &ImportInkdrop, window, cx| {
