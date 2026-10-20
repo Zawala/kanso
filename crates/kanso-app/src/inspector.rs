@@ -792,7 +792,7 @@ impl Inspector {
                 return state(
                     Lucide::Download,
                     format!(
-                        "Getting the language model… {}%",
+                        "Downloading the model… {}%",
                         crate::related::percent(done, total)
                     ),
                     "A one-time download of about 30\u{a0}MB.".into(),
