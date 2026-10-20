@@ -46,9 +46,11 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
   clients written for that work too.
 - **History and backups.** Earlier versions of each note, including every version replaced by the
   API, sync or an import, and a daily database backup.
-- **Imports.** Kanso can copy in an Inkdrop library: notes, notebooks, tags, statuses and
-  attachments. Its files are only read, and importing again picks up newer edits without
-  reverting notes you changed in Kanso.
+- **Imports.** Bring in a folder of Markdown files, an Obsidian vault or a Logseq graph, or an
+  export from Notion, Evernote, Bear, Joplin, Standard Notes, Simplenote, UpNote or Inkdrop, with
+  their notebooks, tags, links and attachments. The source is only read, you see what will come
+  in before anything is written, and importing again picks up newer edits without reverting notes
+  you changed in Kanso.
 - Themes, light and dark, and updates that install themselves.
 
 ## Download
@@ -89,8 +91,40 @@ empty library, Kanso offers to import any Inkdrop library it finds.
 
 ## Using it
 
-**Importing from Inkdrop.** **Import from Inkdrop…**, in the Kanso menu and the command palette
-(or `kanso import-inkdrop`), copies an Inkdrop library in. The local API listens on port 19840; if another app already uses that port, the
+### Importing
+
+**File › Import…** (also in the Kanso menu and the command palette) asks where your notes are,
+then shows what it found before writing anything: how many notes, notebooks, tags and attachments,
+what is new or changed since a last import, and what it will skip and why. **Import** brings them
+in with a progress bar and a report. The source is only ever read. Each import is keyed by where
+a note came from (a vault-relative path, or the other app's own ID), so importing the same source
+again updates its notes instead of duplicating them, and leaves alone any note you changed or
+deleted in Kanso since. **File › Open…** brings in a single `.md` or `.txt` file (and the pictures
+it links to) as a note in the Inbox and opens it; opening it again updates that note.
+
+| Source | Pick | What comes in |
+|---|---|---|
+| Markdown folder | the folder | Every `.md`, `.markdown` and `.txt` file. Subfolders become nested notebooks. YAML front matter gives the title, tags, aliases and created/updated dates; otherwise the first `# heading`, then the file name, is the title and the file's dates are used. Other front-matter keys stay at the top of the note. Linked pictures and files become attachments; links between the files become links between notes. |
+| Obsidian vault | the vault's folder | All of the above, with the file name as the title, `[[wiki-links]]` (headings and aliases kept), `![[embeds]]` of pictures and files (`\|300` widths kept; embedded notes become links), `#tags` and `#nested/tags` in the text and front matter, and the attachment folder from Settings › Files and links. Callouts stay as Markdown. `.obsidian/`, `.trash/` and `.canvas` files are skipped and listed. |
+| Logseq graph | the graph's folder | Pages and journals, `title::`, `tags::` and `alias::` properties, `[[page refs]]`, and `a___b` namespaced pages as `a/b`. The `logseq/` folder is skipped. |
+| Notion | the `.zip` from Settings › Export (Markdown & CSV), or its folder | Pages with the 32-character IDs taken off names and titles, sub-pages in a notebook named after their page, links between pages (including `notion.so` links to pages in the export) and files. A database becomes a note with its table, the first column linking its rows; its rows are notes with their properties. Large exports split into several zips work as they come. |
+| Evernote | an `.enex` file, or a folder of them | Each `.enex` is a notebook. Notes become Markdown (headings, lists, checklists, tables, code blocks, links), with their tags, dates and attachments. |
+| Bear | a `.bear2bk` backup, or an Export Notes folder (TextBundle or Markdown) | Notes with their pictures and files, `#tags`, `#nested/tags` and `#multi word tags#`, pinned, archived (in a notebook of their own) and trashed notes. |
+| Joplin | a `.jex` file, or a RAW export folder | Notebooks and sub-notebooks, tags, attachments and links between notes. |
+| Standard Notes | a decrypted backup (`.txt`/`.json`, or the `.zip`) | Notes, nested tags, pinned, archived and trashed notes. Encrypted backups can't be read; export a decrypted one. |
+| Simplenote | the `.zip` from Export Notes, or its `notes.json` | Notes (the first line is the title), tags, pinned and trashed notes. |
+| UpNote | a folder from Export › Markdown | Read as a Markdown folder. |
+| Inkdrop | found on this computer | Notes, notebooks, tags, statuses and attachments, keeping their IDs (below). |
+
+Attachments larger than 10 MB, the most a Kanso attachment can be, are skipped and listed, and
+links to them stay as they were. Apple Notes has no export of its own; tools that save its notes
+as Markdown files make a folder Kanso can import.
+
+From a terminal, with Kanso closed, `kanso import <kind> <path>` does the same (`kanso import help`
+lists the kinds); `--dry-run` prints the summary and writes nothing.
+
+**Importing from Inkdrop.** Choosing Inkdrop in **Import…** (or `kanso import-inkdrop`) copies an
+Inkdrop library in, keeping its IDs and revisions. The local API listens on port 19840; if another app already uses that port, the
 plug icon at the bottom of the sidebar turns amber, and Kanso keeps trying until it's free or you
 choose another port in Settings › Local API. To keep MCP clients you had set up for Inkdrop, **Use
 settings from Inkdrop…** on that page takes its port, username and password; macOS asks you to allow
@@ -142,6 +176,8 @@ of ⌥.
 ```bash
 kanso                       # open the app
 kanso serve                 # only the API (REST and /mcp), no window
+kanso import obsidian ~/Vault --dry-run   # what an import would bring in
+kanso import notion ~/Downloads/Export.zip  # markdown, obsidian, notion, evernote, bear, …
 kanso import-inkdrop        # import from Inkdrop; --credentials also copies its API settings
 kanso capture "Call Sam"    # save a note to the Inbox (--book <name> picks the notebook)
 pbpaste | kanso capture     # with no text, it reads standard input

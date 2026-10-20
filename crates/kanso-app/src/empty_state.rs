@@ -13,7 +13,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use crate::keys::shortcut_chip;
 use crate::services::Services;
 use crate::theme::Colors;
-use crate::workspace::{ImportInkdrop, NewNote, OpenCommandPalette, ShowSignIn};
+use crate::workspace::{ImportLibrary, NewNote, OpenCommandPalette, ShowSignIn};
 
 use gpui_kit::assets::IconName as Lucide;
 
@@ -113,9 +113,9 @@ impl RenderOnce for EmptyNotebook {
                         Button::new("empty-import")
                             .icon(Lucide::Upload)
                             .label("Import notes")
-                            .tooltip("Import from Inkdrop")
+                            .tooltip("From Markdown, Obsidian, Notion, Evernote and more")
                             .on_click(move |_, window, cx| {
-                                import_focus.dispatch_action(&ImportInkdrop, window, cx);
+                                import_focus.dispatch_action(&ImportLibrary, window, cx);
                             }),
                     ),
             )

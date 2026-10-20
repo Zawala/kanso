@@ -14,10 +14,10 @@ use crate::settings::{
 };
 use crate::workspace::{
     ChangePassword, ExportHtml, ExportLibrary, ExportNote, ExportPdf, FocusNoteList, FocusSearch,
-    FormatTable, ImportInkdrop, NewNote, NewNotebook, NewRecoveryKey, NextNote, OpenNotePicker,
-    OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes, ShowBacklinks, ShowCreateAccount,
-    ShowEditor, ShowHistory, ShowOutline, ShowPreview, ShowSignIn, ShowSplit, SignOut, SyncNow,
-    ToggleFocusMode, ToggleInspector, TogglePinned, ToggleSidebar, TrashNote,
+    FormatTable, ImportLibrary, NewNote, NewNotebook, NewRecoveryKey, NextNote, OpenFile,
+    OpenNotePicker, OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes, ShowBacklinks,
+    ShowCreateAccount, ShowEditor, ShowHistory, ShowOutline, ShowPreview, ShowSignIn, ShowSplit,
+    SignOut, SyncNow, ToggleFocusMode, ToggleInspector, TogglePinned, ToggleSidebar, TrashNote,
 };
 
 /// The palette's sections, in the order they appear with nothing typed.
@@ -728,14 +728,28 @@ static COMMANDS: &[Command] = &[
         needs: Needs::SignedIn,
     },
     Command {
-        id: "import-inkdrop",
-        label: "Import from Inkdrop…",
+        id: "import",
+        label: "Import…",
         label_when_pinned: None,
-        description: "Copies notes, notebooks, tags and attachments from Inkdrop. Inkdrop's files are only read.",
+        description: "Brings in notes from a folder of Markdown files (Obsidian and Logseq folders too) or an export from Notion, Evernote, Bear, Joplin, Standard Notes, Simplenote, UpNote or Inkdrop. Shows what will come in first; the source is only read.",
         icon: IconName::Upload,
-        keywords: &["import", "notes", "notebooks", "attachments"],
+        keywords: &[
+            "import", "markdown", "obsidian", "notion", "evernote", "enex", "bear", "joplin",
+            "logseq", "inkdrop", "vault", "migrate",
+        ],
         group: Group::App,
-        run: action!(ImportInkdrop),
+        run: action!(ImportLibrary),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "open-file",
+        label: "Open Markdown file…",
+        label_when_pinned: None,
+        description: "Brings a .md or .txt file into the Inbox and opens it. Opening it again updates the same note.",
+        icon: IconName::FileText,
+        keywords: &["open", "file", "markdown", "md", "txt"],
+        group: Group::App,
+        run: action!(OpenFile),
         needs: Needs::Nothing,
     },
     Command {

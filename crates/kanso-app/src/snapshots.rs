@@ -593,6 +593,71 @@ fn publish_outdated(
     publish_sheet(cx, window, workspace, true, Some(false));
 }
 
+/// The Obsidian fixture vault the importer's tests use.
+fn import_fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../kanso-import/tests/fixtures/obsidian")
+}
+
+/// The Import window: choosing where notes are.
+fn import_choose(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update_window(window, |_, window, cx| {
+        crate::library_import::start(window, cx);
+    })
+    .unwrap();
+}
+
+/// The Import window's summary before an Obsidian vault comes in.
+fn import_preview(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    store: &Store,
+) {
+    let path = import_fixture();
+    let report = kanso_import::library::preview(
+        kanso_import::library::SourceKind::Obsidian,
+        &path,
+        store,
+        |_| {},
+    )
+    .unwrap();
+    cx.update_window(window, |_, window, cx| {
+        crate::library_import::open_preview(
+            kanso_import::library::SourceKind::Obsidian,
+            PathBuf::from("~/Documents/Vault"),
+            report,
+            window,
+            cx,
+        );
+    })
+    .unwrap();
+}
+
+/// The Import window's report after the vault came in.
+fn import_done(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    store: &Store,
+) {
+    let report = kanso_import::library::import_source(
+        kanso_import::library::SourceKind::Obsidian,
+        &import_fixture(),
+        store,
+        |_| {},
+    )
+    .unwrap();
+    cx.update_window(window, |_, window, cx| {
+        crate::library_import::open_done(report, window, cx);
+    })
+    .unwrap();
+}
+
 /// The rail while the Worker can't be reached: the sync icon's shape says
 /// so, not only its color.
 fn rail_offline(
@@ -3387,6 +3452,19 @@ fn snapshots() {
         // The open note's earlier versions.
         shot("dark-history", Dark, Edit, history),
         shot("light-history", Light, Edit, history),
+        // Importing: choosing the source, the summary, the report.
+        Shot {
+            dialog_width: crate::library_import::WIDTH,
+            ..shot("dark-import-choose", Dark, Edit, import_choose)
+        },
+        Shot {
+            dialog_width: crate::library_import::WIDTH,
+            ..shot("light-import-preview", Light, Edit, import_preview)
+        },
+        Shot {
+            dialog_width: crate::library_import::WIDTH,
+            ..shot("dark-import-done", Dark, Edit, import_done)
+        },
         // Publishing the open note, in each of its states.
         Shot {
             dialog_width: crate::publish::SHEET_WIDTH,

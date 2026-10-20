@@ -65,6 +65,8 @@ actions!(
         NewRecoveryKey,
         SignOut,
         ImportInkdrop,
+        ImportLibrary,
+        OpenFile,
         Quit,
         OpenCommandPalette,
         OpenNotePicker,
@@ -176,7 +178,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Settings…", OpenSettings),
             MenuItem::action("Check for Updates…", crate::updates::CheckForUpdates),
             MenuItem::separator(),
-            MenuItem::action("Import from Inkdrop…", ImportInkdrop),
+            MenuItem::action("Import…", ImportLibrary),
             MenuItem::action("Sync Now", SyncNow),
             MenuItem::separator(),
             MenuItem::action("Quit Kanso", Quit),
@@ -187,6 +189,9 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("New from Template…", crate::journal::NewFromTemplate),
             MenuItem::action("Today's Note", crate::journal::OpenToday),
             MenuItem::action("Quick Note", crate::journal::QuickCapture),
+            MenuItem::separator(),
+            MenuItem::action("Open…", OpenFile),
+            MenuItem::action("Import…", ImportLibrary),
             MenuItem::separator(),
             MenuItem::action("Save", SaveNote),
             MenuItem::action("Export Note…", ExportNote),
@@ -1516,6 +1521,16 @@ impl Render for Workspace {
             )
             .on_action(cx.listener(|_, _: &ImportInkdrop, window, cx| {
                 crate::inkdrop::start_import(window, cx);
+            }))
+            .on_action(cx.listener(|_, _: &ImportLibrary, window, cx| {
+                crate::library_import::start(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &OpenFile, window, cx| {
+                this.flush(cx);
+                let library = this.library.clone();
+                crate::library_import::open_files(window, cx, move |id, _, cx| {
+                    library.update(cx, |library, cx| library.select(Some(id), cx));
+                });
             }))
             .on_action(cx.listener(|this, _: &NextNote, _, cx| {
                 this.library

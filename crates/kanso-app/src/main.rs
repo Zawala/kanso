@@ -44,6 +44,7 @@ mod latency_bench;
 mod launch;
 mod layout;
 mod library;
+mod library_import;
 #[cfg(test)]
 mod links_tests;
 mod list_edit;
@@ -109,6 +110,11 @@ Commands:
   (none)            Open the app
   serve             Run only the local API (Inkdrop-compatible REST and
                     /mcp), without a window
+  import <kind> <path>
+                    Import a folder of Markdown or another app's export
+                    (markdown, obsidian, notion, evernote, bear, joplin,
+                    logseq, standard-notes, simplenote, upnote) [--dry-run];
+                    `kanso import help` lists what each takes
   import-inkdrop    Import notes from Inkdrop
                     [--inkdrop-dir <dir>] [--credentials]
                     --credentials also takes Inkdrop's API port, username
@@ -181,6 +187,7 @@ fn main() -> Result<()> {
     match args.command.as_deref() {
         None => run_app(args.data_dir, args.after_update),
         Some("serve") => serve(args.data_dir),
+        Some("import") => library_import::run_cli(&args.data_dir, &args.rest),
         Some("import-inkdrop") => inkdrop::run_cli(&args.data_dir, &args.rest),
         Some("theme") => theme_import::run_cli(&args.data_dir, &args.rest),
         Some("capture") => capture_cli::run_cli(&args.data_dir, &args.rest),

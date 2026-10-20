@@ -23,7 +23,7 @@ imports an Inkdrop database losslessly, and syncs end-to-end encrypted through C
 crates/
   kanso-core     domain types, IDs, revs, search-query parser
   kanso-store    SQLite store, FTS, revisions, backups, sync state
-  kanso-import   Inkdrop PouchDB importer
+  kanso-import   Inkdrop PouchDB importer; Markdown folders and other apps' exports (library/)
   kanso-server   axum REST API (+ /mcp later)
   kanso-sync     accounts, encrypted sync client, `kanso-sync` command
   kanso-app      GPUI app, binary `kanso`
@@ -104,6 +104,26 @@ queries; terms under 3 characters fall back to an `instr` scan). Qualifiers: `bo
 - Skips `_design/*`, `config` and `_local` docs. Keeps `activity:` docs raw in an archive table.
 - Idempotent (upsert by ID) and ends with a verification report against the source counts.
 - Copies the server port and credentials from Inkdrop's `config.json`.
+
+## Other sources (`kanso-import/src/library`)
+
+- Each format is a `Source` that streams `SourceNote`s (title, Markdown body, folder path, tags,
+  aliases, dates, pinned/trashed, and attachments carried inside the note for Evernote). Folders and
+  zips are read through `tree.rs` (a folder, a zip, Notion's zip of zips, or one file); nothing is
+  ever written to the source.
+- The engine (`library/mod.rs`) reads the notes twice: once for an index of keys, paths, titles and
+  aliases (`resolve.rs`), once to write. Links are pointed at what the import makes: wiki-links to
+  the note's Kanso title, Markdown links to notes as `inkdrop://note/<id>`, pictures and files as
+  `inkdrop://file:<id>`. Attachments are read last, only those a note links to, each capped at
+  10 MB; unlinked files are reported as skipped.
+- IDs come from a SHA-1 of the source kind, the source's name and a stable key (a vault-relative
+  path, or the app's own ID), so a second import finds the first one's documents. Every document
+  carries `kansoImport: {source, key, digest, generation}`; it is left alone when the digest
+  matches, updated through `Store::import_doc` with the next generation when its revision is still
+  the generation the import wrote, and kept when its generation is higher (edited in Kanso) or it
+  was deleted. Tags are matched by name, ignoring case.
+- A preview runs the same code with nothing written, so the summary before an import is what the
+  import does (attachments are compared by size, not read).
 
 ## Sync (Cloudflare)
 

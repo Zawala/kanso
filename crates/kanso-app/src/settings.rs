@@ -890,6 +890,15 @@ impl SettingsView {
             section(
                 "Import",
                 vec![
+                    Row::new(Lucide::FolderOpen, "Import notes")
+                        .detail("From a folder of Markdown, an Obsidian vault, or an export from Notion, Evernote, Bear, Joplin and others. The source is only read.")
+                        .trailing(
+                            Button::new("import-library")
+                                .outline()
+                                .small()
+                                .label("Import…")
+                                .on_click(|_, window, cx| crate::library_import::start(window, cx)),
+                        ),
                     Row::new(Lucide::Upload, "Import from Inkdrop")
                         .detail("Copies notes, notebooks, tags and attachments. Inkdrop's files are only read.")
                         .trailing(
