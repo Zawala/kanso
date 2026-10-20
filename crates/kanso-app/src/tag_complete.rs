@@ -143,6 +143,8 @@ pub struct NoteCompletion {
     /// Whether the caret was in a `#tag` at the last keystroke, so the next
     /// one refines the list.
     in_tag: Cell<bool>,
+    /// Whether the caret was after a task's `@` at the last keystroke.
+    in_date: Cell<bool>,
 }
 
 impl NoteCompletion {
@@ -151,6 +153,7 @@ impl NoteCompletion {
             wiki,
             library,
             in_tag: Cell::new(false),
+            in_date: Cell::new(false),
         }
     }
 
@@ -186,6 +189,13 @@ impl CompletionProvider for NoteCompletion {
         window: &mut Window,
         cx: &mut App,
     ) -> Task<Result<CompletionResponse>> {
+        // A task's due date after `@` (see `crate::due`).
+        let dates = crate::due::completions(text, offset, cx);
+        self.in_date.set(dates.is_some());
+        if let Some(items) = dates {
+            self.in_tag.set(false);
+            return Task::ready(Ok(CompletionResponse::Array(items)));
+        }
         let Some((hash, query)) = self.tag_at(text, offset) else {
             self.in_tag.set(false);
             return self.wiki.completions(text, offset, trigger, window, cx);
@@ -218,8 +228,10 @@ impl CompletionProvider for NoteCompletion {
     fn is_completion_trigger(&self, offset: usize, new_text: &str, cx: &mut App) -> bool {
         if new_text.contains('\n') {
             self.in_tag.set(false);
+            self.in_date.set(false);
         }
-        (!new_text.contains('\n') && (new_text.contains('#') || self.in_tag.get()))
+        (!new_text.contains('\n')
+            && (new_text.contains(['#', '@']) || self.in_tag.get() || self.in_date.get()))
             || self.wiki.is_completion_trigger(offset, new_text, cx)
     }
 }

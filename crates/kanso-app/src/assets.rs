@@ -12,7 +12,9 @@ icon_assets!(
     [
         ArrowUpDown,
         Brackets,
+        CalendarClock,
         CalendarDays,
+        Circle,
         CircleArrowDown,
         CircleDot,
         CirclePause,
@@ -22,6 +24,7 @@ icon_assets!(
         CloudCheck,
         CloudOff,
         Code,
+        CodeXml,
         Columns2,
         Command,
         Copy,
@@ -44,6 +47,7 @@ icon_assets!(
         LayoutTemplate,
         Link,
         List,
+        ListChecks,
         ListFilter,
         ListOrdered,
         ListTodo,
@@ -61,6 +65,7 @@ icon_assets!(
         PlugZap,
         Power,
         RefreshCcw,
+        Regex,
         Ruler,
         Save,
         ScrollText,
@@ -79,6 +84,7 @@ icon_assets!(
         Unplug,
         Upload,
         UserPlus,
+        WholeWord,
         Zap,
     ]
 );

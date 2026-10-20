@@ -408,8 +408,8 @@ const QUOTE: &str = "kanso-quote";
 /// The custom node an attached image on a line of its own becomes.
 const PICTURE: &str = "kanso-picture";
 /// Changes when [`quote_extensions`] parses differently, so a text view
-/// re-parses its note. 3: math, diagrams and drawings.
-const QUOTE_PARSER_REVISION: u64 = 3;
+/// re-parses its note. 3: math, diagrams and drawings. 4: due-date chips.
+const QUOTE_PARSER_REVISION: u64 = 4;
 
 /// A quote's Markdown, without its markers.
 struct Quote(SharedString);
@@ -569,6 +569,8 @@ fn quote_extensions(
         .parser_revision(QUOTE_PARSER_REVISION)
         // Unresolved wiki-links, drawn dashed (see `crate::wikilinks`).
         .plugin(crate::wikilinks::UnresolvedLink::new(links.0.clone()))
+        // Tasks' due dates, as chips (see `crate::due`).
+        .plugin(crate::due::DueChip)
         .block_parser(parse)
         .block_renderer(PICTURE, move |node, _window, cx| {
             render_picture(node, &picture_images, &picture_resizes, cx)
