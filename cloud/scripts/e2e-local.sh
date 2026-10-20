@@ -2,7 +2,7 @@
 # End to end against a local Worker (docs/ACCOUNTS.md › Tests › End to end).
 #
 # Everything here is Miniflare: a throwaway state directory, `wrangler dev`
-# on 127.0.0.1:8787 with a fixed test pepper, and the Rust e2e test
+# on 127.0.0.1 with a fixed test pepper, and the Rust e2e test
 # (`cargo test -p kanso-sync --test e2e`) pointed at it. Once the Worker has
 # stopped, a second test scans the state directory for the first one's
 # canaries. No Cloudflare credentials are read or needed; the script unsets
@@ -11,20 +11,20 @@
 #   cloud/scripts/e2e-local.sh            from anywhere in the repository
 #
 # KANSO_E2E_KEEP=1 keeps the state directory for inspection.
-# KANSO_E2E_PORT picks the Worker's port (default: a free one the system hands
-# out, so two runs on one machine never share a Worker); a port something else
-# already listens on is refused, so the test never talks to another server.
+# The Worker listens on a free port the OS picks, so runs that share a machine
+# (CI's self-hosted Mac runs jobs side by side) never collide. KANSO_E2E_PORT
+# fixes the port instead; a port something else already listens on is
+# refused, so the test never talks to another server.
 set -euo pipefail
 
 unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID IMNGONII_CLOUDFLARE_API_TOKEN
 
 CLOUD="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="$(cd "$CLOUD/.." && pwd)"
-PORT="${KANSO_E2E_PORT:-}"
-if [[ -z "$PORT" ]]; then
-	PORT="$(python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
-fi
-ENDPOINT="http://127.0.0.1:$PORT"
+# 0 has wrangler dev bind a port the OS picks, in the same step that takes it,
+# so no other process can grab it first; its "Ready on" line names the port.
+PORT="${KANSO_E2E_PORT:-0}"
+ENDPOINT=""
 # A fixed test pepper (bytes 0..31, as in vitest.config.ts), never a deployed one.
 TEST_PEPPER="AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
 
@@ -52,8 +52,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
-	echo "Something already listens on 127.0.0.1:$PORT; set KANSO_E2E_PORT to a free port." >&2
+if [[ "$PORT" != "0" ]] && (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
+	echo "Something already listens on 127.0.0.1:$PORT; set KANSO_E2E_PORT to a free port, or unset it to take one the OS picks." >&2
 	exit 1
 fi
 
@@ -75,8 +75,13 @@ WRANGLER=(node_modules/.bin/wrangler)
 	--test-scheduled --show-interactive-dev-session=false --var "AUTH_PEPPER:$TEST_PEPPER" >"$STATE/wrangler-dev.log" 2>&1 &
 DEV_PID=$!
 
+# Only this run's wrangler dev writes this log, so the port it names is ours.
 for _ in $(seq 1 120); do
-	if curl -fsS "$ENDPOINT/v2/health" >/dev/null 2>&1; then break; fi
+	if [[ -z "$ENDPOINT" ]]; then
+		READY="$(grep -Eo 'Ready on http://127\.0\.0\.1:[0-9]+' "$STATE/wrangler-dev.log" | head -n 1 || true)"
+		ENDPOINT="${READY#Ready on }"
+	fi
+	if [[ -n "$ENDPOINT" ]] && curl -fsS "$ENDPOINT/v2/health" >/dev/null 2>&1; then break; fi
 	if ! kill -0 "$DEV_PID" 2>/dev/null; then
 		echo "wrangler dev exited:" >&2
 		cat "$STATE/wrangler-dev.log" >&2
@@ -84,13 +89,18 @@ for _ in $(seq 1 120); do
 	fi
 	sleep 0.5
 done
-# wrangler dev may move to another port when this one is taken; then the
-# health check above answered for someone else's Worker.
-if ! grep -q "127.0.0.1:$PORT" "$STATE/wrangler-dev.log"; then
-	echo "wrangler dev isn't listening on $PORT:" >&2
+if [[ -z "$ENDPOINT" ]]; then
+	echo "wrangler dev never said which port it listens on:" >&2
 	cat "$STATE/wrangler-dev.log" >&2
 	exit 1
 fi
+# wrangler dev may move to another port when a fixed one is taken; then the
+# test would talk to whatever holds the port asked for.
+if [[ "$PORT" != "0" && "$ENDPOINT" != "http://127.0.0.1:$PORT" ]]; then
+	echo "wrangler dev listens on $ENDPOINT, not port $PORT." >&2
+	exit 1
+fi
+echo "The Worker listens on $ENDPOINT."
 if ! curl -fsS "$ENDPOINT/v2/health"; then
 	echo "The Worker didn't answer /v2/health:" >&2
 	cat "$STATE/wrangler-dev.log" >&2

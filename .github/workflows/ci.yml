@@ -109,6 +109,8 @@ jobs:
   # The Worker under wrangler dev (Miniflare, no Cloudflare credentials) and
   # the Rust client against it: cloud/scripts/e2e-local.sh.
   # The Mac as well: it builds kanso-sync, whose Linux keyring needs dbus.
+  # Jobs share that Mac, so the script takes a free port the OS picks rather
+  # than a fixed KANSO_E2E_PORT.
   e2e:
     # The self-hosted Mac never runs a fork's pull request: that would run a
     # stranger's code on the owner's machine.

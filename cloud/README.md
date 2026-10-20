@@ -174,7 +174,7 @@ scripts/e2e-local.sh
 `usernames.json`, `auth.json` and `conformance.json` (protocol v2), and `conformance-v1.json`,
 which this Worker no longer serves: only the Rust rollback test's stand-in for the old Worker
 still runs it. `scripts/e2e-local.sh` starts the Worker under `wrangler dev` on a throwaway state
-directory (port 8787, or `KANSO_E2E_PORT`; a port in use is refused) and runs `cargo test -p
+directory (on a free port the OS picks, or `KANSO_E2E_PORT`; a port in use is refused) and runs `cargo test -p
 kanso-sync --test e2e` against it at production KDF parameters, all in Miniflare with no
 Cloudflare credentials. Once the Worker has stopped, a second test scans every file of its state
 for the first one's canaries (password, recovery key, a marker in every note and name, revision
