@@ -5,6 +5,9 @@
 //! cargo test -p kanso-app latency_bench -- --ignored --nocapture
 //! ```
 //!
+//! `KANSO_BENCH_INSPECTOR=1` measures with the outline open beside the
+//! note.
+//!
 //! Keystrokes arrive on a simulated clock (one every [`typing_interval`],
 //! frames every [`FRAME`]), so the delays the editor chooses are measured
 //! exactly; the work each frame does (parsing, layout, painting) is timed on
@@ -266,6 +269,17 @@ fn run(bytes: usize, place: &str, keys: Option<bool>) {
         _ => lines / 2,
     };
     let mut bench = Bench::open(&note);
+    // With the outline beside the note (`KANSO_BENCH_INSPECTOR`), as many
+    // writers keep it.
+    if std::env::var_os("KANSO_BENCH_INSPECTOR").is_some() {
+        let workspace = bench.workspace.clone();
+        bench.cx.update(|cx| {
+            workspace.update(cx, |workspace, cx| {
+                workspace.show_inspector(Some(crate::config::InspectorTab::Outline), cx)
+            })
+        });
+        bench.draw(true);
+    }
     if keys == Some(false) {
         let workspace = bench.workspace.clone();
         bench.cx.update(|cx| {
