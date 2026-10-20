@@ -503,6 +503,14 @@ impl Workspace {
         let mut note = json!({"title": "", "body": "", "bookId": book});
         match &library.filter {
             Filter::Tag(tag) => note["tags"] = json!([tag]),
+            // A level of the tag tree: its own tag, made if only tags
+            // inside it exist so far.
+            Filter::TagPath(path) => match self.store.tag_named(path, Origin::Ui) {
+                Ok(tag) => note["tags"] = json!([tag]),
+                Err(err) => {
+                    return self.notify_error(format!("Couldn't tag the note: {err}"), window, cx);
+                }
+            },
             Filter::Status(status) => note["status"] = json!(status.as_str()),
             Filter::Pinned => note["pinned"] = json!(true),
             _ => {}

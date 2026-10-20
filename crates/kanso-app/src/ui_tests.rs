@@ -1507,3 +1507,32 @@ fn edits_wait_while_a_replace_holds_writes(cx: &mut TestAppContext) {
         "with the edit on screen"
     );
 }
+
+/// A new note made while a tag shows gets that tag; one made while a level
+/// of the tag tree shows gets the level's own tag, made if only tags inside
+/// it existed.
+#[gpui_kit::test]
+fn new_notes_under_a_tag_get_it(cx: &mut TestAppContext) {
+    use crate::library::Filter;
+    let f = setup(cx);
+    let acme = f.store.tag_named("work/acme", Origin::Ui).unwrap();
+    let library = f.workspace(cx, |w, _| w.library.clone());
+    let made = |filter: Filter, cx: &mut TestAppContext| {
+        library.update(cx, |library, cx| library.set_filter(filter, cx));
+        f.draw(cx);
+        cx.dispatch_action(f.window, crate::workspace::NewNote);
+        cx.run_until_parked();
+        let id = cx.read(|cx| library.read(cx).selected.clone()).unwrap();
+        f.store.note(&id).unwrap().unwrap().tags
+    };
+    assert_eq!(
+        made(Filter::Tag(acme.clone()), cx),
+        std::slice::from_ref(&acme)
+    );
+    let work = made(Filter::TagPath("Work".into()), cx);
+    assert_eq!(work.len(), 1);
+    assert_ne!(work[0], acme);
+    assert_eq!(f.store.tag_named("work", Origin::Ui).unwrap(), work[0]);
+    // Again: the same tag, not another.
+    assert_eq!(made(Filter::TagPath("work".into()), cx), work);
+}
