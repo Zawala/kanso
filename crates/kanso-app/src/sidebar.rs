@@ -230,6 +230,60 @@ impl Sidebar {
             })
     }
 
+    /// Tasks, with the overdue ones counted in a warm red pill (nothing
+    /// when none are).
+    // no-prop-test: drawing; the Tasks snapshots show it.
+    fn tasks_row(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let overdue = self.library.read(cx).overdue;
+        let selected = !self.settings_open && self.library.read(cx).filter == Filter::Tasks;
+        let colors = Colors::get(cx);
+        let icon = self.icon(IconName::CircleCheck, cx);
+        let library = self.library.clone();
+        div()
+            .id("tasks")
+            .h(px(ROW_HEIGHT))
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap(px(10.))
+            .mx_2()
+            .pr(px(8.))
+            .pl(px(10.))
+            .rounded(px(6.))
+            .text_size(px(13.5))
+            .cursor_pointer()
+            .when(selected, |el| el.bg(colors.sidebar_active))
+            .when(!selected, |el| el.hover(|el| el.bg(colors.sidebar_hover)))
+            .child(icon)
+            .child(div().flex_1().min_w_0().truncate().child("Tasks"))
+            .when(overdue > 0, |el| {
+                el.child(
+                    div()
+                        .id("tasks-overdue")
+                        .px(px(6.))
+                        .h(px(17.))
+                        .flex()
+                        .items_center()
+                        .rounded_full()
+                        .bg(Hsla::from(colors.danger).opacity(0.16))
+                        .text_size(px(11.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(colors.danger)
+                        .child(overdue.to_string())
+                        .tooltip(move |window, cx| {
+                            Tooltip::new(format!(
+                                "{overdue} overdue task{}",
+                                if overdue == 1 { "" } else { "s" }
+                            ))
+                            .build(window, cx)
+                        }),
+                )
+            })
+            .on_click(move |_, _, cx| {
+                library.update(cx, |library, cx| library.set_filter(Filter::Tasks, cx));
+            })
+    }
+
     /// A section title, with an optional control on the right.
     fn heading(
         &self,
@@ -1061,6 +1115,13 @@ impl Sidebar {
                         Filter::Recent,
                         cx,
                     ))
+                    .child(self.rail_place(
+                        "rail-tasks",
+                        IconName::CircleCheck,
+                        "Tasks",
+                        Filter::Tasks,
+                        cx,
+                    ))
                     .child(
                         div()
                             .flex_none()
@@ -1166,6 +1227,7 @@ impl Render for Sidebar {
             },
             cx,
         ));
+        list = list.child(self.tasks_row(cx));
 
         let add_book = self.add_button(
             "add-book",

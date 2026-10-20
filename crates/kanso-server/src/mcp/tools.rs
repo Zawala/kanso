@@ -74,6 +74,7 @@ pub(crate) fn call(state: &AppState, name: &str, arguments: Option<&Value>) -> V
         "kanso-create-from-template" => create_from_template(store, &args),
         "kanso-export-html" => export_html(store, &args),
         "kanso-get-outline" => get_outline(store, &args),
+        "kanso-list-tasks" => list_tasks(store, &args),
         "kanso-resolve-wikilink" => resolve_wikilink(store, &args),
         _ => Err(ToolError(format!(
             "MCP error -32602: Tool {name} not found"
@@ -363,6 +364,46 @@ fn get_outline(store: &Store, args: &Args) -> ToolResult {
     }
     let headings = serde_json::to_value(headings).unwrap_or_default();
     result(vec![text(pretty(&headings))])
+}
+
+/// `kanso-list-tasks`: tasks across notes, with their notes.
+fn list_tasks(store: &Store, args: &Args) -> ToolResult {
+    let status = str_arg(args, "status");
+    let limit = args.get("limit").and_then(Value::as_f64).unwrap_or(100.0);
+    let query = kanso_store::TaskQuery {
+        book_id: opt_str(args, "bookId").map(|id| with_prefix(DocType::Book, id)),
+        include_done: status != "open",
+        due_before: opt_str(args, "dueBefore").map(str::to_owned),
+        due_after: opt_str(args, "dueAfter").map(str::to_owned),
+        // Done ones are left out below, after the limit would cut.
+        limit: (status != "done")
+            .then(|| api::count_param("limit", limit))
+            .transpose()?,
+    };
+    let limit = api::count_param("limit", limit)?;
+    let tasks: Vec<Value> = store
+        .tasks(&query)
+        .map_err(|err| ToolError(err.to_string()))?
+        .into_iter()
+        .filter(|t| status != "done" || t.checked)
+        .take(limit)
+        .map(|t| {
+            json!({
+                "text": t.text,
+                "done": t.checked,
+                "due": t.due,
+                "line": t.line,
+                "noteId": t.note_id,
+                "noteTitle": t.note_title,
+                "bookId": t.book_id,
+                "uri": note_uri(&t.note_id),
+            })
+        })
+        .collect();
+    if tasks.is_empty() {
+        return result(vec![text("No tasks match.")]);
+    }
+    result(vec![text(pretty(&Value::Array(tasks)))])
 }
 
 /// `kanso-resolve-wikilink`: the note a wiki-link names.

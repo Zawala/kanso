@@ -31,6 +31,9 @@ pub enum Filter {
     TagPath(String),
     Status(NoteStatus),
     Trash,
+    /// The tasks across notes, in the Tasks view (`crate::tasks_view`),
+    /// in the note list's place.
+    Tasks,
 }
 
 impl Filter {
@@ -42,7 +45,7 @@ impl Filter {
             value: value.to_owned(),
         };
         match self {
-            Filter::All | Filter::Pinned | Filter::Recent => Vec::new(),
+            Filter::All | Filter::Pinned | Filter::Recent | Filter::Tasks => Vec::new(),
             Filter::Book(id) => vec![clause(Field::BookId, id)],
             Filter::Tag(id) => vec![clause(Field::TagId, id)],
             Filter::TagPath(path) => vec![clause(Field::Tag, path)],
@@ -135,6 +138,8 @@ pub struct Library {
     pub counts: StatusCounts,
     /// How many notes Recent lists, without the search.
     pub recent: u32,
+    /// How many open tasks are overdue, for the sidebar's Tasks badge.
+    pub overdue: u32,
     pub filter: Filter,
     pub search: String,
     pub sort: Sort,
@@ -165,7 +170,9 @@ struct Loaded {
     tag_tree: Vec<TagNode>,
     counts: StatusCounts,
     recent: u32,
-    notes: Vec<NoteSummary>,
+    overdue: u32,
+    /// `None` while the Tasks view shows: the list keeps its notes.
+    notes: Option<Vec<NoteSummary>>,
 }
 
 impl Library {
@@ -195,6 +202,7 @@ impl Library {
             tag_tree: Vec::new(),
             counts: StatusCounts::default(),
             recent: 0,
+            overdue: 0,
             filter: Filter::All,
             search: String::new(),
             sort: Sort::UpdatedAt,
@@ -214,6 +222,18 @@ impl Library {
         library
     }
 
+    /// Reads the overdue count again: tasks fall overdue as time passes.
+    pub fn refresh_overdue(&mut self, cx: &mut Context<Self>) {
+        let now =
+            kanso_core::dates::DateTime::from_local_ms(Clock::local_ms(cx, Clock::now_ms(cx)));
+        if let Ok(overdue) = self.store.overdue_count(now)
+            && overdue != self.overdue
+        {
+            self.overdue = overdue;
+            cx.notify();
+        }
+    }
+
     /// Reloads everything on a background thread; a newer reload wins.
     pub fn reload(&mut self, cx: &mut Context<Self>) {
         self.generation += 1;
@@ -227,22 +247,24 @@ impl Library {
         let recent_is_listed =
             filter == Filter::Recent && self.search.trim().is_empty() && !self.is_refined();
         let recent_since = Clock::now_ms(cx) - RECENT_DAYS * DAY_MS;
+        let now =
+            kanso_core::dates::DateTime::from_local_ms(Clock::local_ms(cx, Clock::now_ms(cx)));
         let task = cx.background_executor().spawn(async move {
             let mut notes = match filter {
-                Filter::Recent => recent_notes(&store, &params, recent_since)?,
+                Filter::Tasks => None,
+                Filter::Recent => Some(recent_notes(&store, &params, recent_since)?),
                 _ => {
                     let mut notes = store.search_summaries(&params)?;
                     pinned_first(&mut notes);
-                    notes
+                    Some(notes)
                 }
             };
-            if pinned_only {
+            if pinned_only && let Some(notes) = &mut notes {
                 notes.retain(|note| note.pinned);
             }
-            let recent = if recent_is_listed {
-                u32::try_from(notes.len()).unwrap_or(u32::MAX)
-            } else {
-                store.count_recent(recent_since)?
+            let recent = match &notes {
+                Some(notes) if recent_is_listed => u32::try_from(notes.len()).unwrap_or(u32::MAX),
+                _ => store.count_recent(recent_since)?,
             };
             let tags = store.tags()?;
             let infos: Vec<TagInfo> = tags
@@ -258,6 +280,7 @@ impl Library {
                 tags,
                 counts: store.status_counts()?,
                 recent,
+                overdue: store.overdue_count(now)?,
                 notes,
             })
         });
@@ -274,8 +297,11 @@ impl Library {
                         this.tag_tree = loaded.tag_tree;
                         this.counts = loaded.counts;
                         this.recent = loaded.recent;
-                        this.notes = loaded.notes;
-                        this.notes_version += 1;
+                        this.overdue = loaded.overdue;
+                        if let Some(notes) = loaded.notes {
+                            this.notes = notes;
+                            this.notes_version += 1;
+                        }
                         this.load_error = None;
                     }
                     Err(err) => this.load_error = Some(err.to_string()),
@@ -299,10 +325,11 @@ impl Library {
     pub fn set_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
         cx.emit(LibraryEvent::Shown);
         if self.filter != filter {
+            // The Tasks view leaves the open note as it is.
+            self.reselect = filter != Filter::Tasks;
             self.filter = filter;
             self.status_only = None;
             self.pinned_only = false;
-            self.reselect = true;
             self.reload(cx);
         }
     }
@@ -474,6 +501,7 @@ impl Library {
             Filter::TagPath(path) => format!("#{path}"),
             Filter::Status(status) => status.label().into(),
             Filter::Trash => "Trash".into(),
+            Filter::Tasks => "Tasks".into(),
         }
     }
 }

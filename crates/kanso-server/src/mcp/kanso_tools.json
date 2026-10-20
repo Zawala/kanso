@@ -92,6 +92,44 @@
     }
   },
   {
+    "name": "kanso-list-tasks",
+    "description": "List the task-list items (`- [ ] …` and `- [x] …`) in notes outside the trash, with the note each is in. A task's due date is an `@YYYY-MM-DD` (or `@YYYY-MM-DDTHH:MM`, which also sets a reminder) in its text. Dated tasks come first, soonest first, then tasks without a date. Each task has its text, whether it is done, its due date, its 0-based line in the note's body, and the note's ID, title, notebook and link. To tick a task off, change its `[ ]` to `[x]` on that line with patch-note.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "status": {
+          "default": "open",
+          "description": "Which tasks: open ones (not done), done ones, or all.",
+          "type": "string",
+          "enum": ["open", "done", "all"]
+        },
+        "dueBefore": {
+          "type": "string",
+          "description": "Only tasks due on a day before this one, as YYYY-MM-DD.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "dueAfter": {
+          "type": "string",
+          "description": "Only tasks due on a day after this one, as YYYY-MM-DD.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "bookId": {
+          "type": "string",
+          "description": "Only tasks in this notebook's notes. It can be found as `_id` in the book docs. It always starts with `book:`."
+        },
+        "limit": {
+          "default": 100,
+          "description": "Limit the number of tasks returned",
+          "type": "number"
+        }
+      }
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
     "name": "kanso-resolve-wikilink",
     "description": "Find the note a wiki-link points at. Accepts `[[Title]]`, `[[Title#Heading]]` or `[[Title|alias]]`, with or without the brackets. Titles match without regard to case or extra spaces, among notes outside the trash; when several notes share a title, the one created first is the match. Returns the note's ID, title and `inkdrop://note/<id>` link, which is the form to write when linking to it, plus the heading's line when the link names a heading the note has.",
     "inputSchema": {

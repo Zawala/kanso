@@ -52,7 +52,7 @@ async fn lists_the_seventeen_tools_and_the_note_template() {
     let answer = rpc(&app.router, "tools/list", json!({})).await;
     let tools = answer["result"]["tools"].as_array().unwrap();
     // The 17, then Kanso's own.
-    assert_eq!(tools.len(), 22);
+    assert_eq!(tools.len(), 23);
     assert!(
         tools[17..]
             .iter()
@@ -711,6 +711,96 @@ async fn outlines_and_wiki_links_through_kanso_tools() {
         &app.router,
         "kanso-resolve-wikilink",
         json!({ "link": "[[]]" }),
+    )
+    .await;
+    assert_eq!(bad["isError"], true);
+}
+
+#[tokio::test]
+async fn tasks_through_kanso_list_tasks() {
+    let app = app();
+    let (book_id, _) = write(&app.router, "/books", json!({ "name": "B" })).await;
+    let (other, _) = write(&app.router, "/books", json!({ "name": "C" })).await;
+    let (plan, _) = write(
+        &app.router,
+        "/notes",
+        json!({ "bookId": book_id, "title": "Plan", "body": "- [ ] Pay rent @2026-11-01\n- [x] Book flights @2026-10-02\n- [ ] Someday\n```\n- [ ] not a task\n```\n" }),
+    )
+    .await;
+    write(
+        &app.router,
+        "/notes",
+        json!({ "bookId": other, "title": "Calls", "body": "- [ ] Call Sam @2026-10-25T09:00\n" }),
+    )
+    .await;
+    write(
+        &app.router,
+        "/notes",
+        json!({ "bookId": "trash", "title": "Old", "body": "- [ ] Gone @2026-01-01\n" }),
+    )
+    .await;
+    let open = tool_json(&tool(&app.router, "kanso-list-tasks", json!({})).await);
+    let texts: Vec<&str> = open
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        texts,
+        [
+            "Call Sam @2026-10-25T09:00",
+            "Pay rent @2026-11-01",
+            "Someday"
+        ]
+    );
+    let bare = plan.strip_prefix("note:").unwrap();
+    assert_eq!(
+        open[1],
+        json!({
+            "text": "Pay rent @2026-11-01",
+            "done": false,
+            "due": "2026-11-01",
+            "line": 0,
+            "noteId": plan,
+            "noteTitle": "Plan",
+            "bookId": book_id,
+            "uri": format!("inkdrop://note/{bare}"),
+        })
+    );
+    let done = tool_json(&tool(&app.router, "kanso-list-tasks", json!({ "status": "done" })).await);
+    assert_eq!(done.as_array().unwrap().len(), 1);
+    assert_eq!(done[0]["text"], "Book flights @2026-10-02");
+    let all = tool_json(
+        &tool(
+            &app.router,
+            "kanso-list-tasks",
+            json!({ "status": "all", "bookId": book_id }),
+        )
+        .await,
+    );
+    assert_eq!(all.as_array().unwrap().len(), 3);
+    let window = tool_json(
+        &tool(
+            &app.router,
+            "kanso-list-tasks",
+            json!({ "dueAfter": "2026-10-24", "dueBefore": "2026-11-01", "limit": 5 }),
+        )
+        .await,
+    );
+    assert_eq!(window.as_array().unwrap().len(), 1);
+    assert_eq!(window[0]["due"], "2026-10-25T09:00");
+    let none = tool(
+        &app.router,
+        "kanso-list-tasks",
+        json!({ "dueBefore": "2000-01-01" }),
+    )
+    .await;
+    assert_eq!(text(&none, 0), "No tasks match.");
+    let bad = tool(
+        &app.router,
+        "kanso-list-tasks",
+        json!({ "status": "later" }),
     )
     .await;
     assert_eq!(bad["isError"], true);

@@ -924,6 +924,8 @@ impl NoteList {
             Filter::Trash => {
                 quiet_empty(Lucide::Trash, "Trash is empty".into(), None, colors).into_any_element()
             }
+            // The Tasks view shows in the list's place.
+            Filter::Tasks => div().into_any_element(),
         }
     }
 }

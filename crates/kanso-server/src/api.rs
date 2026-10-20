@@ -77,10 +77,15 @@ pub(crate) fn list_docs(
 /// published link and key, which only the app's Publish sheet writes. A
 /// write keeps the document's current value and ignores the one it is sent,
 /// so a client can't plant a link (and a key it knows) for the app to
-/// publish to, or move a published note's link elsewhere.
+/// publish to, or move a published note's link elsewhere. Also the
+/// reminders the app was told about (`kansoReminderAck`), which a client
+/// replacing the whole note would otherwise drop, so they would ring again.
 fn app_only_fields(doc_type: DocType) -> &'static [&'static str] {
     match doc_type {
-        DocType::Note => &[kanso_core::model::PUBLISH_FIELD],
+        DocType::Note => &[
+            kanso_core::model::PUBLISH_FIELD,
+            kanso_core::reminders::ACK_FIELD,
+        ],
         _ => &[],
     }
 }

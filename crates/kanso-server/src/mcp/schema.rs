@@ -364,9 +364,14 @@ mod tests {
                 "kanso-create-from-template",
                 "kanso-export-html",
                 "kanso-get-outline",
+                "kanso-list-tasks",
                 "kanso-resolve-wikilink"
             ]
         );
+        assert!(validate("kanso-list-tasks", json!({})).is_ok());
+        assert!(validate("kanso-list-tasks", json!({"status": "later"})).is_err());
+        assert!(validate("kanso-list-tasks", json!({"dueBefore": "soon"})).is_err());
+        assert!(validate("kanso-list-tasks", json!({"dueAfter": "2026-10-25"})).is_ok());
         assert!(validate("kanso-create-daily-note", json!({})).is_ok());
         assert!(
             validate(

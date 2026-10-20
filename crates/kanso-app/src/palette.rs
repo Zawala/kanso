@@ -762,6 +762,13 @@ impl Palette {
                 library.recent,
                 &["latest", "edited", "week"],
             ),
+            place(
+                Filter::Tasks,
+                "Tasks".into(),
+                IconName::CircleCheck,
+                library.overdue,
+                &["todo", "to do", "due", "overdue", "checklist"],
+            ),
         ];
         for (depth, book) in library.book_tree() {
             let (item, score) = place(
@@ -1298,10 +1305,18 @@ impl Palette {
                         Filter::TagPath(path) => {
                             format!("Shows the notes tagged #{path} or a tag inside it.")
                         }
+                        Filter::Tasks => "Shows the open tasks in every note, overdue first, then today's, the upcoming ones and those without a date.".to_owned(),
                     }
                     .into(),
                 );
-                if let Some(count) = &item.hint {
+                if *filter == Filter::Tasks {
+                    if let Some(count) = &item.hint {
+                        detail.meta.push((
+                            Icon::new(IconName::CircleCheck),
+                            format!("{count} overdue").into(),
+                        ));
+                    }
+                } else if let Some(count) = &item.hint {
                     detail
                         .meta
                         .push((Icon::new(IconName::FileText), notes_count(count)));
