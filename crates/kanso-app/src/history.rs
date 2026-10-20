@@ -100,6 +100,7 @@ impl Render for HistoryView {
             .selected()
             .map(|r| (field(r, "title"), field(r, "body")))
             .unwrap_or_default();
+        let body = crate::preview_chunks::showable(&body).into_owned();
         let dark = cx.theme().is_dark();
         h_flex()
             .h(px(BODY_HEIGHT))

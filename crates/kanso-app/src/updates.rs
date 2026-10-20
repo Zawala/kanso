@@ -977,7 +977,7 @@ pub fn open_notes(notes: ReleaseNotes, kind: SheetKind, window: &mut Window, cx:
         let shown = if body.is_empty() {
             "This release's notes are on its page.".to_owned()
         } else {
-            body.clone()
+            crate::preview_chunks::showable(&body).into_owned()
         };
         let release_url = release_url.clone();
         let page = release_url.clone();

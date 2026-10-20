@@ -555,7 +555,7 @@ fn quote_extensions(
         let markdown_ast::Node::Blockquote(_) = node else {
             return None;
         };
-        let body = unquote(source);
+        let body = crate::preview_chunks::showable(&unquote(source)).into_owned();
         Some(
             MarkdownNode::new(QUOTE, Quote(body.clone().into()))
                 .text(body)
@@ -629,6 +629,9 @@ pub(crate) fn code_view(
     let colors = Colors::get(cx);
     let preview = crate::themes::preview_colors(cx);
     let style = text_style(colors, &preview, cx.theme().is_dark());
+    let markdown: SharedString = crate::preview_chunks::showable(&markdown)
+        .into_owned()
+        .into();
     TextView::markdown(id, markdown)
         .style(style)
         .text_size(px(TEXT_SIZE))

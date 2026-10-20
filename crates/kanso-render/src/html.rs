@@ -237,11 +237,22 @@ fn collect(
     }
 }
 
+/// `markdown` as plain paragraphs, for text markdown-rs can't parse: its
+/// lines as written, a blank line between paragraphs.
+fn plain_html(markdown: &str) -> String {
+    markdown
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(|p| format!("<p>{}</p>\n", escape(p).replace('\n', "<br>\n")))
+        .collect()
+}
+
 /// The note's body as HTML, without the page around it.
 pub fn body(markdown: &str, palette: &Palette, attachments: Attachments<'_>) -> String {
     let options = parse_options();
-    let Ok(root) = markdown::to_mdast(markdown, &options) else {
-        return format!("<pre>{}</pre>", escape(markdown));
+    let Ok(root) = crate::markdown_safe::to_mdast(markdown, &options) else {
+        return plain_html(markdown);
     };
     let mut pieces = Vec::new();
     collect(&root, markdown, palette, attachments, &mut pieces);
@@ -268,14 +279,15 @@ pub fn body(markdown: &str, palette: &Palette, attachments: Attachments<'_>) -> 
         gfm_tagfilter: true,
         ..markdown::CompileOptions::default()
     };
-    let mut html = markdown::to_html_with_options(
+    let Ok(mut html) = crate::markdown_safe::to_html_with_options(
         &text,
         &markdown::Options {
             parse: options,
             compile,
         },
-    )
-    .unwrap_or_else(|_| format!("<pre>{}</pre>", escape(markdown)));
+    ) else {
+        return plain_html(markdown);
+    };
     // Links into the app (and other schemes a browser can't follow) lose
     // their address, so they aren't links that go nowhere.
     html = html.replace("<a href=\"\">", "<a>");
@@ -466,6 +478,16 @@ mod tests {
         assert!(html.contains("<pre><code class=\"language-mermaid\">"));
         let html = body("Price $5 and $10.\n", &Palette::LIGHT, &none);
         assert!(html.contains("$5"), "{html}");
+    }
+
+    /// markdown 1.0.0 panics on this; the export shows it as plain text.
+    #[test]
+    fn text_markdown_rs_panics_on_exports_as_plain_paragraphs() {
+        let html = body("Para\n---\n---\na\n===\n\nNext <b>", &Palette::LIGHT, &none);
+        assert_eq!(
+            html,
+            "<p>Para<br>\n---<br>\n---<br>\na<br>\n===</p>\n<p>Next &lt;b&gt;</p>\n"
+        );
     }
 
     #[test]

@@ -13,6 +13,7 @@
 mod cache;
 pub mod excalidraw;
 pub mod html;
+pub mod markdown_safe;
 mod math;
 mod mermaid;
 mod rough;

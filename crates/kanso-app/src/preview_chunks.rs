@@ -60,6 +60,37 @@ fn parse_options() -> ParseOptions {
     options
 }
 
+/// `text` as a text view can show it: itself, or, when markdown-rs panics
+/// on it, the same text as plain paragraphs. For Markdown shown outside the
+/// preview's chunks: a quote's body, a version in History, release notes.
+/// What a text was checked to be is kept, so a view drawn every frame
+/// parses its text once.
+pub fn showable(text: &str) -> std::borrow::Cow<'_, str> {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    let key = hasher.finish();
+    let known = SHOWABLE.lock().ok().and_then(|c| c.get(&key).copied());
+    let parses = known.unwrap_or_else(|| {
+        let parses = kanso_render::markdown_safe::parses(text, &parse_options());
+        if let Ok(mut checked) = SHOWABLE.lock() {
+            if checked.len() >= CHECKED_KEPT {
+                checked.clear();
+            }
+            checked.insert(key, parses);
+        }
+        parses
+    });
+    if parses {
+        text.into()
+    } else {
+        kanso_render::markdown_safe::plain_paragraphs(text).into()
+    }
+}
+
+/// Texts [`showable`] checked: a hash of each, and whether it parses.
+static SHOWABLE: std::sync::LazyLock<std::sync::Mutex<HashMap<u64, bool>>> =
+    std::sync::LazyLock::new(Default::default);
+
 /// Whether a block renders as ordinary content: what a heading after it
 /// counts as following. Display math and fenced diagrams are blocks like
 /// any other: each sits whole inside one chunk, with a paragraph gap below.
@@ -75,17 +106,32 @@ fn is_ordinary(node: &Node) -> bool {
     )
 }
 
-/// The chunks of `text`, in order; together they cover it exactly.
+/// The chunks of `text`, in order; together they cover it exactly. The
+/// preview goes through [`prepare`], which shows text markdown-rs panics on
+/// as plain paragraphs.
+#[cfg(test)]
 pub fn split(text: &str) -> Vec<Chunk> {
-    let whole = || {
-        vec![Chunk {
-            range: 0..text.len(),
-            start: Start::Flush,
-            end: End::Last,
-        }]
-    };
-    let Ok(root) = markdown::to_mdast(text, &parse_options()) else {
-        return whole();
+    split_parsed(text).unwrap_or_else(|| whole(text))
+}
+
+/// The one chunk that is all of `text`.
+fn whole(text: &str) -> Vec<Chunk> {
+    vec![Chunk {
+        range: 0..text.len(),
+        start: Start::Flush,
+        end: End::Last,
+    }]
+}
+
+/// The chunks of `text`, or `None` when markdown-rs panics on it: the text
+/// view, which parses the same way, would too. Each chunk returned parses
+/// alone (see [`reads_the_same`]), so no chunk can make it panic.
+fn split_parsed(text: &str) -> Option<Vec<Chunk>> {
+    let whole = || Some(whole(text));
+    let root = match kanso_render::markdown_safe::to_mdast(text, &parse_options()) {
+        Ok(root) => root,
+        Err(kanso_render::markdown_safe::Failure::Panicked) => return None,
+        Err(_) => return whole(),
     };
     let Some(children) = root.children() else {
         return whole();
@@ -114,7 +160,7 @@ pub fn split(text: &str) -> Vec<Chunk> {
         earlier.end = later.end;
         ix = merge_into;
     }
-    chunks
+    Some(chunks)
 }
 
 /// Hashes the shape of `node` into `hasher`: its kind, where it is from
@@ -170,7 +216,7 @@ fn reads_the_same(text: &str, children: &[Node], chunk: &Chunk) -> bool {
     if let Some(same) = CHECKED.lock().ok().and_then(|c| c.get(&key).copied()) {
         return same;
     }
-    let same = markdown::to_mdast(source, &parse_options())
+    let same = kanso_render::markdown_safe::to_mdast(source, &parse_options())
         .is_ok_and(|alone| shapes(&mut alone.children().into_iter().flatten(), 0) == key.1);
     if let Ok(mut checked) = CHECKED.lock() {
         if checked.len() >= CHECKED_KEPT {
@@ -251,7 +297,19 @@ pub struct Prepared {
 pub fn prepare(text: &str) -> Vec<Prepared> {
     #[cfg(test)]
     let started = std::time::Instant::now();
-    let prepared = split(text)
+    let Some(chunks) = split_parsed(text) else {
+        // Text markdown-rs panics on shows as plain paragraphs.
+        let shown = kanso_render::markdown_safe::plain_paragraphs(text);
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        shown.hash(&mut hasher);
+        return vec![Prepared {
+            key: hasher.finish(),
+            text: shown,
+            start: Start::Flush,
+            end: End::Last,
+        }];
+    };
+    let prepared = chunks
         .iter()
         .map(|chunk| {
             let shown = &text[chunk.range.clone()];
@@ -311,7 +369,7 @@ mod tests {
 
     /// Top-level blocks as gpui-base's parser sees them, without their
     /// positions: everything that decides how they render.
-    fn blocks(text: &str) -> Vec<serde_json::Value> {
+    fn blocks(text: &str) -> Option<Vec<serde_json::Value>> {
         fn strip(value: &mut serde_json::Value) {
             match value {
                 serde_json::Value::Object(map) => {
@@ -322,17 +380,19 @@ mod tests {
                 _ => {}
             }
         }
-        let root = markdown::to_mdast(text, &parse_options()).unwrap();
-        root.children()
-            .unwrap()
-            .iter()
-            .filter(|n| !matches!(n, Node::Definition(_)))
-            .map(|n| {
-                let mut value = serde_json::to_value(n).unwrap();
-                strip(&mut value);
-                value
-            })
-            .collect()
+        let root = kanso_render::markdown_safe::to_mdast(text, &parse_options()).ok()?;
+        Some(
+            root.children()
+                .unwrap()
+                .iter()
+                .filter(|n| !matches!(n, Node::Definition(_)))
+                .map(|n| {
+                    let mut value = serde_json::to_value(n).unwrap();
+                    strip(&mut value);
+                    value
+                })
+                .collect(),
+        )
     }
 
     /// Markdown made of the blocks notes are made of, in any order, with
@@ -422,13 +482,39 @@ mod tests {
         /// parsing the whole note, so the preview shows the same thing.
         #[test]
         fn prop_chunks_parse_to_the_notes_blocks(text in gen_markdown()) {
+            // Text markdown-rs panics on isn't split (see the next property).
+            let Some(whole) = blocks(&text) else {
+                return Ok(());
+            };
             let chunks = split(&text);
-            let whole = blocks(&text);
             let mut parts = Vec::new();
             for chunk in &chunks {
-                parts.extend(blocks(&text[chunk.range.clone()]));
+                let part = blocks(&text[chunk.range.clone()]);
+                prop_assert!(part.is_some(), "a chunk doesn't parse");
+                parts.extend(part.unwrap_or_default());
             }
             prop_assert_eq!(parts, whole);
+        }
+
+        /// Safety: whatever the note, every chunk the preview hands its text
+        /// view parses without markdown-rs panicking, and nothing is lost:
+        /// text it panics on shows as one chunk of plain paragraphs.
+        #[test]
+        fn prop_every_chunk_shown_parses(text in gen_markdown()) {
+            let prepared = prepare(&text);
+            for chunk in &prepared {
+                prop_assert!(
+                    kanso_render::markdown_safe::parses(&chunk.text, &parse_options()),
+                    "{:?}", chunk.text
+                );
+            }
+            if !kanso_render::markdown_safe::parses(&text, &parse_options()) {
+                prop_assert_eq!(prepared.len(), 1);
+                prop_assert_eq!(
+                    &prepared[0].text,
+                    &kanso_render::markdown_safe::plain_paragraphs(&text)
+                );
+            }
         }
 
         /// Invariant: a chunk starting with a heading starts with one after
@@ -475,6 +561,23 @@ mod tests {
             prop_assert!(splice.old_range.len() <= 2, "{:?}", splice);
             prop_assert!(splice.new_range.len() <= 2, "{:?}", splice);
         }
+    }
+
+    /// markdown 1.0.0 panics on this ("Cannot push to non-parent"); the
+    /// preview shows it as plain text instead of going down with it.
+    #[test]
+    fn text_markdown_rs_panics_on_shows_as_plain_paragraphs() {
+        let text = "Para\n---\n---\na\n===";
+        assert!(!kanso_render::markdown_safe::parses(text, &parse_options()));
+        let prepared = prepare(text);
+        assert_eq!(prepared.len(), 1);
+        assert_eq!(
+            prepared[0].text,
+            "Para\\\n\\-\\-\\-\\\n\\-\\-\\-\\\na\\\n\\=\\=\\="
+        );
+        assert_eq!(split(text).len(), 1);
+        assert_eq!(showable(text), prepared[0].text);
+        assert_eq!(showable("# Fine"), "# Fine");
     }
 
     #[test]
