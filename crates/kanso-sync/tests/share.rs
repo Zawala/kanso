@@ -1,6 +1,6 @@
 //! Publishing a note (docs/ACCOUNTS.md › Published notes) through the public
 //! API against `MemoryShares`: publish, update in place, the account's other
-//! Mac managing the same link, unpublish, and what the server ends up
+//! device managing the same link, unpublish, and what the server ends up
 //! holding (ciphertext only). The sealing properties are in share.rs's unit
 //! tests; the Worker's own rules in `cloud/test/shares.test.ts`.
 
@@ -82,13 +82,13 @@ fn publish_update_and_unpublish() {
 }
 
 #[test]
-fn another_mac_of_the_account_manages_the_same_link() {
+fn another_device_of_the_account_manages_the_same_link() {
     let server = MemoryServer::new();
     let one = common::sign_up(&server, "alice", 1);
     let two = common::sign_in(&server, "alice", 2);
     let shares = MemoryShares::new();
     let first = publish(&shares, &one, None, &page(HTML, "v1"), None, 1).unwrap();
-    // The second Mac reads kansoPublish from the synced note.
+    // The second device reads kansoPublish from the synced note.
     let mut extra = serde_json::Map::new();
     KansoPublish::store(Some(&first), &mut extra);
     let synced = KansoPublish::from_extra(&extra).unwrap();
@@ -141,11 +141,80 @@ fn a_link_unpublished_elsewhere_is_published_afresh() {
     let shares = MemoryShares::new();
     let first = publish(&shares, &session, None, &page(HTML, "v1"), None, 1).unwrap();
     unpublish(&shares, &session, &first).unwrap();
-    // A Mac that hadn't synced the unpublish yet updates the old link.
+    // A device that hadn't synced the unpublish yet updates the old link.
     let again = publish(&shares, &session, Some(&first), &page(HTML, "v1"), None, 2).unwrap();
     assert_ne!(again.share_id, first.share_id, "the old link stays dead");
     assert_ne!(again.key, first.key);
     assert!(shares.get(&first.share_id).is_none());
+}
+
+#[test]
+fn a_link_the_server_stopped_serving_is_never_revived() {
+    let server = MemoryServer::new();
+    let alice = common::sign_up(&server, "alice", 1);
+    let mallory = common::sign_up(&server, "mallory", 2);
+    let shares = MemoryShares::new();
+    let first = publish(&shares, &alice, None, &page(HTML, "v1"), None, 1).unwrap();
+    // Expired or taken down on the server; the note still holds the old link.
+    assert!(shares.take_down(&first.share_id));
+    let again = publish(&shares, &alice, Some(&first), &page(HTML, "v2"), None, 2).unwrap();
+    assert_ne!(again.share_id, first.share_id);
+    assert_ne!(again.key, first.key);
+    assert!(
+        shares.get(&first.share_id).is_none(),
+        "the old ID holds nothing"
+    );
+    let stored = shares.get(&again.share_id).unwrap();
+    // Nobody can put anything at the old ID: not its owner, not someone holding the link.
+    let planted = kanso_sync::share::seal_share(
+        &first.share_key().unwrap(),
+        &first.share_id,
+        b"<p>Planted</p>",
+    )
+    .unwrap();
+    for session in [&alice, &mallory] {
+        let refused = shares.put_share(session, &first.share_id, &planted, None);
+        assert!(
+            matches!(&refused, Err(kanso_sync::ApiError::Unrecognized { status: 409, code }) if code == "share_retired"),
+            "{refused:?}"
+        );
+    }
+    assert!(shares.get(&first.share_id).is_none());
+    assert_eq!(shares.get(&again.share_id).unwrap(), stored);
+}
+
+#[test]
+fn an_expired_link_is_published_afresh_without_touching_the_old_id() {
+    let server = MemoryServer::new();
+    let session = common::sign_up(&server, "alice", 1);
+    let shares = MemoryShares::new();
+    let first = publish(&shares, &session, None, &page(HTML, "v1"), Some(10), 1).unwrap();
+    let before = shares.get(&first.share_id).unwrap();
+    // Past the expiry, but before the server's cron has retired it.
+    assert!(first.is_expired(10));
+    let again = publish(&shares, &session, Some(&first), &page(HTML, "v2"), None, 10).unwrap();
+    assert_ne!(again.share_id, first.share_id);
+    assert_ne!(again.key, first.key);
+    assert_eq!(again.expires_at, None);
+    assert_eq!(
+        shares.get(&first.share_id).unwrap(),
+        before,
+        "the expired link isn't renewed"
+    );
+    // Before its expiry the same link is updated in place.
+    let live = publish(
+        &shares,
+        &session,
+        Some(&again),
+        &page(HTML, "v3"),
+        Some(100),
+        11,
+    )
+    .unwrap();
+    assert_eq!(
+        (live.share_id.as_str(), live.key.as_str()),
+        (again.share_id.as_str(), again.key.as_str())
+    );
 }
 
 #[test]

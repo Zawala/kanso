@@ -1,5 +1,5 @@
 //! Published notes (docs/ACCOUNTS.md › Published notes): a note's web page,
-//! sealed on this Mac so that anyone with its link can read it and the
+//! sealed on this device so that anyone with its link can read it and the
 //! server can't.
 //!
 //! Each share has a random 128-bit ID and its own random 256-bit key. The
@@ -12,7 +12,7 @@
 //!
 //! What a note publishes is kept in the note, as `note.extra.kansoPublish`
 //! ([`KansoPublish`]), so it syncs end to end encrypted with the note and
-//! the account's other Macs can update or unpublish the same link. Inkdrop's
+//! the account's other devices can update or unpublish the same link. Inkdrop's
 //! own `share` field is left alone.
 
 use std::collections::HashMap;
@@ -34,7 +34,7 @@ use crate::remote::encode_segment;
 use crate::wire::{ApiError, MAX_AUTH_RESPONSE, SessionToken};
 
 /// Where a note keeps what it published, beside Inkdrop's own fields.
-pub const PUBLISH_KEY: &str = "kansoPublish";
+pub const PUBLISH_KEY: &str = kanso_core::model::PUBLISH_FIELD;
 /// The only format so far.
 pub const SHARE_FORMAT_V1: u8 = 0x01;
 const NONCE_LEN: usize = 12;
@@ -219,7 +219,7 @@ pub fn open_share(key: &ShareKey, share_id: &str, sealed: &[u8]) -> Result<Vec<u
 // ---------------------------------------------------------------------------
 
 /// `note.extra.kansoPublish`: the link's ID and key, and what was published
-/// when. It travels inside the sealed note, so only the account's Macs see
+/// when. It travels inside the sealed note, so only the account's devices see
 /// the key. Unknown keys are kept, for later versions.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -234,7 +234,7 @@ pub struct KansoPublish {
     /// Unix ms when the link stops working; absent for never.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<i64>,
-    /// [`content_hash`] of the published title and body, so any Mac can
+    /// [`content_hash`] of the published title and body, so any device can
     /// tell the note changed since (the revision moves with every save,
     /// this one included).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -432,7 +432,8 @@ pub struct StoredShare {
 }
 
 /// [`ShareApi`] in memory, for tests: the Worker's rules (owner only; an
-/// unpublished ID can't come back) without a server.
+/// ID that stopped being served is retired for good, for every account)
+/// without a server.
 #[derive(Debug, Default)]
 pub struct MemoryShares {
     shares: Mutex<HashMap<String, StoredShare>>,
@@ -456,6 +457,17 @@ impl MemoryShares {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Stops serving a share as the server does when it expires or the
+    /// owner of the server takes it down: the share goes and its ID is
+    /// retired for good. False when there was no such share.
+    pub fn take_down(&self, share_id: &str) -> bool {
+        let gone = self.shares.lock().unwrap().remove(share_id).is_some();
+        if gone {
+            self.retired.lock().unwrap().push(share_id.to_owned());
+        }
+        gone
     }
 
     /// Fails the next `n` requests with a transport error.
@@ -489,11 +501,16 @@ impl ShareApi for MemoryShares {
             return Err(ApiError::TooLarge);
         }
         let mut shares = self.shares.lock().unwrap();
-        let taken = self.retired.lock().unwrap().iter().any(|id| id == share_id)
-            || shares
-                .get(share_id)
-                .is_some_and(|s| s.owner != session.account_id);
-        if taken {
+        if self.retired.lock().unwrap().iter().any(|id| id == share_id) {
+            return Err(ApiError::Unrecognized {
+                status: 409,
+                code: "share_retired".into(),
+            });
+        }
+        if shares
+            .get(share_id)
+            .is_some_and(|s| s.owner != session.account_id)
+        {
             return Err(ApiError::Unrecognized {
                 status: 409,
                 code: "share_id_taken".into(),
@@ -539,10 +556,15 @@ pub struct Page<'a> {
 }
 
 /// Publishes `page`, or updates the note's existing link: the same ID and
-/// key with new ciphertext under a fresh nonce. When the server refuses the
-/// old ID (unpublished from another Mac, or not this account's), it is
-/// published under a new ID and key, so the old link stays dead. Returns
-/// what the note should now keep.
+/// key with new ciphertext under a fresh nonce.
+///
+/// A link that has stopped working is never revived. One past its expiry is
+/// left alone and the note is published under a new ID and key. The server
+/// retires every ID it stops serving (unpublished from another device,
+/// expired, taken down) and answers 409 for it, as for another account's
+/// ID; then too the note gets a new ID and key, so whoever holds the old
+/// link can never read the note's later versions. Returns what the note
+/// should now keep.
 pub fn publish(
     api: &dyn ShareApi,
     session: &Session,
@@ -554,7 +576,8 @@ pub fn publish(
     if page.html.len() > MAX_SHARE_PLAINTEXT {
         return Err(ShareError::TooLarge(page.html.len()));
     }
-    let reuse = existing.and_then(|p| Some((p.share_id.clone(), p.share_key()?, p.other.clone())));
+    let live = existing.filter(|p| !p.is_expired(now_ms));
+    let reuse = live.and_then(|p| Some((p.share_id.clone(), p.share_key()?, p.other.clone())));
     let (mut share_id, mut key, other) = match reuse {
         Some((id, key, other)) if is_share_id(&id) => (id, key, other),
         _ => (new_share_id(), ShareKey::generate(), Map::new()),
