@@ -21,6 +21,7 @@ use gpui_kit::*;
 use kanso_store::Store;
 
 use crate::preview_chunks::{self, End, Prepared, SPLIT_SYNC_BYTES, Splice, Start};
+use crate::preview_rich::{self, Rich};
 use crate::theme::Colors;
 use crate::theme_file::PreviewColors;
 
@@ -66,8 +67,18 @@ pub struct ImageResize {
     pub width: Option<u32>,
 }
 
-/// Where the preview's image sizes go.
-pub type ResizeSender = async_channel::Sender<ImageResize>;
+/// An edit the preview asks the editor for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PreviewEdit {
+    /// A size picked for an image.
+    Resize(ImageResize),
+    /// A block (a drawing brought back from Excalidraw) rewritten: the
+    /// first `source` in the note becomes `replacement`.
+    Replace { source: String, replacement: String },
+}
+
+/// Where the preview's edits go.
+pub type ResizeSender = async_channel::Sender<PreviewEdit>;
 
 /// The widths an attached image can be given in the preview, besides its
 /// own: small and medium.
@@ -107,13 +118,35 @@ pub struct Preview {
     readable: bool,
     /// Draws quotes in their own color (see [`quote_extensions`]).
     extensions: MarkdownExtensions,
+    /// Measures the chunks again as math and diagrams finish drawing.
+    _rich: Task<()>,
 }
 
 impl Preview {
-    pub fn new(store: Arc<Store>, links: LinkSender, resizes: ResizeSender) -> Self {
+    pub fn new(
+        store: Arc<Store>,
+        links: LinkSender,
+        resizes: ResizeSender,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>> = Arc::default();
         let resolver: ImageResolver = Arc::new(image_resolver(store.clone(), images.clone()));
-        let extensions = quote_extensions(Arc::new(Links(links.clone())), resolver, resizes);
+        let (wake, woken) = async_channel::unbounded();
+        let rich = Arc::new(Rich {
+            wake,
+            store: store.clone(),
+            edits: resizes.clone(),
+        });
+        let extensions = quote_extensions(Arc::new(Links(links.clone())), resolver, resizes, rich);
+        let rich_task = cx.spawn(async move |this, cx| {
+            while woken.recv().await.is_ok() {
+                // Several drawings finishing together are one remeasure.
+                while woken.try_recv().is_ok() {}
+                if this.update(cx, |this, cx| this.drawings_ready(cx)).is_err() {
+                    break;
+                }
+            }
+        });
         Preview {
             text: SharedString::default(),
             shown: SharedString::default(),
@@ -126,7 +159,21 @@ impl Preview {
             links,
             readable: false,
             extensions,
+            _rich: rich_task,
         }
+    }
+
+    /// Drawings finished: the chunks showing them change height.
+    fn drawings_ready(&mut self, cx: &mut Context<Self>) {
+        for chunk in &self.chunks {
+            chunk
+                .state
+                .update(cx, |state, cx| state.invalidate_inline_layout(cx));
+        }
+        if !self.chunks.is_empty() {
+            self.list.remeasure_items(0..self.chunks.len());
+        }
+        cx.notify();
     }
 
     /// Shows `text`. A short one shows at once; a long one once it has been
@@ -357,8 +404,8 @@ const QUOTE: &str = "kanso-quote";
 /// The custom node an attached image on a line of its own becomes.
 const PICTURE: &str = "kanso-picture";
 /// Changes when [`quote_extensions`] parses differently, so a text view
-/// re-parses its note.
-const QUOTE_PARSER_REVISION: u64 = 2;
+/// re-parses its note. 3: math, diagrams and drawings.
+const QUOTE_PARSER_REVISION: u64 = 3;
 
 /// A quote's Markdown, without its markers.
 struct Quote(SharedString);
@@ -445,7 +492,7 @@ fn render_picture(
             )
             .on_click(move |_, _, cx| {
                 cx.stop_propagation();
-                resizes.try_send(resize.clone()).ok();
+                resizes.try_send(PreviewEdit::Resize(resize.clone())).ok();
             })
     });
     let sizes = h_flex()
@@ -486,8 +533,12 @@ fn quote_extensions(
     links: Arc<Links>,
     images: ImageResolver,
     resizes: ResizeSender,
+    rich: Arc<Rich>,
 ) -> MarkdownExtensions {
     let parse = |node: &markdown_ast::Node, cx: &MarkdownParseContext<'_>| {
+        if let Some(block) = preview_rich::parse_block(node, cx) {
+            return Some(block);
+        }
         let source = cx.node_source(node)?;
         if let Some(picture) = picture(node, source) {
             let alt = picture.alt.clone();
@@ -509,7 +560,8 @@ fn quote_extensions(
     };
     let picture_images = images.clone();
     let picture_resizes = resizes.clone();
-    MarkdownExtensions::default()
+    let quote_rich = rich.clone();
+    let extensions = MarkdownExtensions::default()
         .parser_revision(QUOTE_PARSER_REVISION)
         .block_parser(parse)
         .block_renderer(PICTURE, move |node, _window, cx| {
@@ -530,6 +582,7 @@ fn quote_extensions(
             );
             let links = links.clone();
             let resolver = images.clone();
+            let rich = quote_rich.clone();
             div()
                 .w_full()
                 .min_w_0()
@@ -547,13 +600,37 @@ fn quote_extensions(
                             links.clone(),
                             resolver.clone(),
                             resizes.clone(),
+                            rich,
                         ))
                         .code_block_actions(code_block_actions)
                         .image_source(move |uri| resolver(uri))
                         .on_link_click(move |url, _, _, cx| links.open(url, cx)),
                 )
                 .into_any_element()
-        })
+        });
+    preview_rich::register(extensions, rich)
+}
+
+/// A code block (or any Markdown) shown alone in the preview's style: the
+/// source of a diagram that couldn't be drawn.
+// no-prop-test: drawing; the fallback snapshot shows it.
+pub(crate) fn code_view(
+    id: ElementId,
+    markdown: SharedString,
+    _window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let colors = Colors::get(cx);
+    let preview = crate::themes::preview_colors(cx);
+    let style = text_style(colors, &preview, cx.theme().is_dark());
+    TextView::markdown(id, markdown)
+        .style(style)
+        .text_size(px(TEXT_SIZE))
+        .line_height(relative(LINE_HEIGHT))
+        .text_color(preview.text)
+        .selectable(true)
+        .code_block_actions(code_block_actions)
+        .into_any_element()
 }
 
 /// What sits in a code block's corner: its language, quietly, and a button
@@ -873,7 +950,7 @@ mod tests {
         let store = std::sync::Arc::new(kanso_store::Store::open(dir.path().join("k.db")).unwrap());
         let (links, _rx) = async_channel::unbounded();
         let (resizes, _resized) = async_channel::unbounded();
-        let preview = cx.new(|_| Preview::new(store, links, resizes));
+        let preview = cx.new(|cx| Preview::new(store, links, resizes, cx));
         let mut rng = fastrand::Rng::with_seed(20261017);
         let pieces = [
             "word ",

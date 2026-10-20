@@ -51,6 +51,8 @@ actions!(
         ShowHistory,
         OpenSettings,
         ExportNote,
+        ExportHtml,
+        ExportPdf,
         ExportLibrary,
         SyncNow,
         ShowSignIn,
@@ -171,6 +173,8 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::separator(),
             MenuItem::action("Save", SaveNote),
             MenuItem::action("Export Note…", ExportNote),
+            MenuItem::action("Export as Web Page…", ExportHtml),
+            MenuItem::action("Export as PDF…", ExportPdf),
             MenuItem::action("Export All Notes…", ExportLibrary),
         ]),
         Menu::new("Edit").items([
@@ -831,6 +835,21 @@ impl Workspace {
         .detach();
     }
 
+    /// Exports the open note as a web page, or as a PDF, in the preview's
+    /// theme.
+    fn export_page(&mut self, pdf: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.flush(cx);
+        let Some((title, body)) = self.editor.read(cx).export_text(cx) else {
+            return;
+        };
+        let store = self.store.clone();
+        if pdf {
+            crate::export_html::export_pdf(store, title, body, window, cx);
+        } else {
+            crate::export_html::export_html(store, title, body, window, cx);
+        }
+    }
+
     fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
         self.editor
             .update(cx, |editor, cx| editor.set_view_mode(mode, cx));
@@ -1136,6 +1155,14 @@ impl Render for Workspace {
                 if let Some(id) = id {
                     this.export(Some(vec![id]), window, cx);
                 }
+            }))
+            .on_action(cx.listener(|this, _: &ExportHtml, window, cx| {
+                this.close_settings(window, cx);
+                this.export_page(false, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ExportPdf, window, cx| {
+                this.close_settings(window, cx);
+                this.export_page(true, window, cx);
             }))
             .on_action(
                 cx.listener(|this, _: &ExportLibrary, window, cx| this.export(None, window, cx)),

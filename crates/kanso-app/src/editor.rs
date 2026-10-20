@@ -42,7 +42,7 @@ use crate::library::{Filter, Library};
 use crate::list_edit::{self, TabIntent};
 use crate::markdown_edit::{self, Edit, Format};
 use crate::pairing::Pairs;
-use crate::preview::{ImageResize, LinkSender, Preview, TEXT_INSET, readable_width};
+use crate::preview::{ImageResize, LinkSender, Preview, PreviewEdit, TEXT_INSET, readable_width};
 use crate::smart_paste;
 use crate::split::{
     scroll_sync, source_scroll_max, split_left, split_min_side, split_ratio, wrapped_rows,
@@ -219,13 +219,20 @@ impl NoteEditor {
         let settings = cx
             .try_global::<AppState>()
             .map_or_else(EditorSettings::default, |state| state.config.editor);
-        let (resizes, resized) = async_channel::unbounded::<ImageResize>();
-        let preview = cx.new(|_| Preview::new(store.clone(), links, resizes));
-        // A size picked for an image in the preview rewrites its Markdown.
+        let (resizes, resized) = async_channel::unbounded::<PreviewEdit>();
+        let preview = cx.new(|cx| Preview::new(store.clone(), links, resizes, cx));
+        // A size picked for an image in the preview rewrites its Markdown,
+        // as does a drawing brought back from Excalidraw.
         let resize_task = cx.spawn_in(window, async move |this, cx| {
-            while let Ok(resize) = resized.recv().await {
+            while let Ok(edit) = resized.recv().await {
                 if this
-                    .update_in(cx, |this, window, cx| this.resize_image(resize, window, cx))
+                    .update_in(cx, |this, window, cx| match edit {
+                        PreviewEdit::Resize(resize) => this.resize_image(resize, window, cx),
+                        PreviewEdit::Replace {
+                            source,
+                            replacement,
+                        } => this.replace_block(&source, replacement, window, cx),
+                    })
                     .is_err()
                 {
                     break;
@@ -619,6 +626,11 @@ impl NoteEditor {
 
     pub fn focus_title(&self, window: &mut Window, cx: &mut Context<Self>) {
         self.title.update(cx, |title, cx| title.focus(window, cx));
+    }
+
+    /// The open note's title and body as they are now, for an export.
+    pub fn export_text(&self, cx: &App) -> Option<(String, String)> {
+        self.note.as_ref().map(|_| self.current_text(cx))
     }
 
     fn current_text(&self, cx: &App) -> (String, String) {
@@ -1209,13 +1221,13 @@ impl NoteEditor {
         let images: Vec<Pasted> = paths
             .paths()
             .iter()
-            .filter(|path| image_path(path))
+            .filter(|path| image_path(path) || is_drawing(path))
             .map(|path| Pasted::File(path.clone()))
             .collect();
         if images.is_empty() {
             if !paths.paths().is_empty() {
                 cx.emit(EditorEvent::Notice(
-                    "Only images can be dropped into a note.".into(),
+                    "Only images and Excalidraw drawings can be dropped into a note.".into(),
                 ));
             }
             return;
@@ -1253,7 +1265,7 @@ impl NoteEditor {
                 let mut blocks = Vec::new();
                 for result in results {
                     match result {
-                        Ok(id) => blocks.push(smart_paste::image_markdown(&id)),
+                        Ok(block) => blocks.push(block),
                         Err(message) => cx.emit(EditorEvent::Notice(message)),
                     }
                 }
@@ -1284,12 +1296,30 @@ impl NoteEditor {
             return;
         }
         let replacement = smart_paste::sized_image(&resize.src, &resize.alt, resize.width);
+        self.replace_block(&resize.source, replacement, window, cx);
+    }
+
+    /// Puts `replacement` over the first `source` in the note, as one undo
+    /// step, with the cursor kept where it was (or after the replacement,
+    /// if it was inside it).
+    // no-prop-test: glue; `image_sizes_rewrite_the_markdown` and
+    // `drawings_brought_back_replace_their_block` go through it.
+    pub(crate) fn replace_block(
+        &mut self,
+        source: &str,
+        replacement: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.note.is_none() || source.is_empty() {
+            return;
+        }
         self.smart_edit(window, cx, |_, text, selection| {
-            let start = text.find(&resize.source)?;
-            let end = start + resize.source.len();
+            let start = text.find(source)?;
+            let end = start + source.len();
             let shift = |at: usize| {
                 if at >= end {
-                    at - resize.source.len() + replacement.len()
+                    at - source.len() + replacement.len()
                 } else {
                     at.min(start)
                 }
@@ -2011,10 +2041,29 @@ enum Pasted {
 /// file over the limit isn't read at all.
 // no-prop-test: file reading around `smart_paste::attach_image`, which is
 // tested with a store.
+/// Whether a dropped file is an Excalidraw drawing.
+fn is_drawing(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("excalidraw"))
+}
+
+/// What a pasted or dropped file becomes in the note: an attached image's
+/// Markdown, or a drawing's fenced block (kept in the note itself, so it
+/// syncs and versions with it).
 fn attach(store: &Store, image: Pasted) -> Result<String, String> {
     use kanso_core::model::MAX_ATTACHMENT_SIZE;
     match image {
-        Pasted::Bytes(bytes, ext) => smart_paste::attach_image(store, &bytes, ext, None),
+        Pasted::Bytes(bytes, ext) => smart_paste::attach_image(store, &bytes, ext, None)
+            .map(|id| smart_paste::image_markdown(&id)),
+        Pasted::File(path) if is_drawing(&path) => {
+            let text = std::fs::read_to_string(&path)
+                .map_err(|err| format!("Couldn't read the drawing: {err}"))?;
+            if !kanso_render::excalidraw::is_scene(&text) {
+                return Err("That file isn't an Excalidraw drawing.".into());
+            }
+            crate::preview_rich::scene_block(&text).map_err(|failure| failure.badge())
+        }
         Pasted::File(path) => {
             let ext = path
                 .extension()
@@ -2032,6 +2081,7 @@ fn attach(store: &Store, image: Pasted) -> Result<String, String> {
             let bytes =
                 std::fs::read(&path).map_err(|err| format!("Couldn't read the image: {err}"))?;
             smart_paste::attach_image(store, &bytes, ext, name)
+                .map(|id| smart_paste::image_markdown(&id))
         }
     }
 }
@@ -3239,6 +3289,26 @@ mod writing_tests {
         assert_eq!(selection, text.len()..text.len());
         open.keys(cx, "cmd-z");
         assert_eq!(open.text(cx).0, format!("Intro\n\n{source}\n\nEnd"));
+    }
+
+    /// A drawing brought back from Excalidraw replaces its block in one
+    /// undo step; the cursor before it stays put.
+    // no-prop-test: glue; `scene_block` has the round-trip property.
+    #[gpui_kit::test]
+    fn drawings_brought_back_replace_their_block(cx: &mut TestAppContext) {
+        let block = "```excalidraw\n{\"elements\":[]}\n```";
+        let open = Open::new(cx, &format!("Intro\n\n{block}\n\nEnd"));
+        open.select(cx, 2..2);
+        let scene = r#"{"type":"excalidraw/clipboard","elements":[{"type":"ellipse","x":0,"y":0,"width":9,"height":9}]}"#;
+        let replacement = crate::preview_rich::scene_block(scene).unwrap();
+        open.with(cx, |editor, window, cx| {
+            editor.replace_block(block, replacement.clone(), window, cx)
+        });
+        let (text, selection) = open.text(cx);
+        assert_eq!(text, format!("Intro\n\n{replacement}\n\nEnd"));
+        assert_eq!(selection, 2..2);
+        open.keys(cx, "cmd-z");
+        assert_eq!(open.text(cx).0, format!("Intro\n\n{block}\n\nEnd"));
     }
 
     /// A note's own word goal is saved with it; without one the default

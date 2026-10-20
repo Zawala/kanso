@@ -12,11 +12,11 @@ use crate::settings::{
     OpenEditorSettings, OpenGeneralSettings, OpenUpdateSettings, ReloadThemes,
 };
 use crate::workspace::{
-    ChangePassword, ExportLibrary, ExportNote, FocusNoteList, FocusSearch, FormatTable,
-    ImportInkdrop, NewNote, NewNotebook, NewRecoveryKey, NextNote, OpenNotePicker, OpenSettings,
-    PreviousNote, Quit, SaveNote, SearchAllNotes, ShowCreateAccount, ShowEditor, ShowHistory,
-    ShowPreview, ShowSignIn, ShowSplit, SignOut, SyncNow, ToggleFocusMode, TogglePinned,
-    ToggleSidebar, TrashNote,
+    ChangePassword, ExportHtml, ExportLibrary, ExportNote, ExportPdf, FocusNoteList, FocusSearch,
+    FormatTable, ImportInkdrop, NewNote, NewNotebook, NewRecoveryKey, NextNote, OpenNotePicker,
+    OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes, ShowCreateAccount, ShowEditor,
+    ShowHistory, ShowPreview, ShowSignIn, ShowSplit, SignOut, SyncNow, ToggleFocusMode,
+    TogglePinned, ToggleSidebar, TrashNote,
 };
 
 /// The palette's sections, in the order they appear with nothing typed.
@@ -255,6 +255,28 @@ static COMMANDS: &[Command] = &[
         keywords: &["markdown", "save as", "file", "share"],
         group: Group::Note,
         run: action!(ExportNote),
+        needs: Needs::Note,
+    },
+    Command {
+        id: "export-html",
+        label: "Export as web page…",
+        label_when_pinned: None,
+        description: "Saves the note as one HTML file in the preview's theme, with its math, diagrams and images inside it.",
+        icon: IconName::Globe,
+        keywords: &["html", "page", "share", "save as", "file"],
+        group: Group::Note,
+        run: action!(ExportHtml),
+        needs: Needs::Note,
+    },
+    Command {
+        id: "export-pdf",
+        label: "Export as PDF…",
+        label_when_pinned: None,
+        description: "Saves the note as a PDF in the preview's theme, with its math, diagrams and images.",
+        icon: IconName::File,
+        keywords: &["pdf", "print", "share", "save as", "file"],
+        group: Group::Note,
+        run: action!(ExportPdf),
         needs: Needs::Note,
     },
     Command {

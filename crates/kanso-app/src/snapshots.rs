@@ -606,6 +606,48 @@ fn sized_images(
     open_new_note(cx, workspace, store, "Field notes", &body);
 }
 
+/// Math and diagrams: inline and display formulas, two Mermaid diagrams,
+/// and the badges for a diagram and a formula that can't be drawn.
+const RICH_NOTE: &str = "A circle of radius $r$ has area $\\pi r^2$, and an ellipse $\\pi a b$; it costs $5 and $10 to print.\n\n$$\n\\int_0^{2\\pi} \\frac{d\\theta}{1 + e\\cos\\theta} = \\frac{2\\pi}{\\sqrt{1-e^2}}\n$$\n\n```mermaid\nflowchart LR\n  Draft --> Review{Ready?}\n  Review -->|Yes| Publish\n  Review -->|No| Draft\n```\n\n```mermaid\nsequenceDiagram\n  Kanso->>Worker: Sealed note\n  Worker-->>Kanso: Stored\n```\n\n```mermaid\nsparkleDiagram\n  a --> b\n```\n\nAnd a slip: $\\frac{1}{$ stays as typed.\n";
+
+/// An Excalidraw drawing in a note.
+const DRAWING_NOTE: &str = "How a note travels.\n\n```excalidraw\n{\"type\":\"excalidraw\",\"version\":2,\"elements\":[{\"type\":\"rectangle\",\"x\":0,\"y\":0,\"width\":160,\"height\":80,\"strokeColor\":\"#1e1e1e\",\"backgroundColor\":\"#a5d8ff\",\"fillStyle\":\"hachure\",\"strokeWidth\":2,\"roughness\":1,\"seed\":7,\"roundness\":{\"type\":3}},{\"type\":\"text\",\"x\":20,\"y\":27,\"width\":120,\"height\":25,\"text\":\"Kanso\",\"fontSize\":20,\"fontFamily\":1,\"textAlign\":\"center\",\"strokeColor\":\"#1e1e1e\",\"seed\":8},{\"type\":\"arrow\",\"x\":170,\"y\":40,\"width\":110,\"height\":0,\"points\":[[0,0],[110,0]],\"strokeColor\":\"#1e1e1e\",\"endArrowhead\":\"arrow\",\"strokeWidth\":2,\"roughness\":1,\"seed\":9},{\"type\":\"ellipse\",\"x\":290,\"y\":0,\"width\":140,\"height\":80,\"strokeColor\":\"#e03131\",\"backgroundColor\":\"#ffc9c9\",\"fillStyle\":\"solid\",\"strokeWidth\":2,\"roughness\":1,\"seed\":10},{\"type\":\"text\",\"x\":310,\"y\":27,\"width\":100,\"height\":25,\"text\":\"Worker\",\"fontSize\":20,\"fontFamily\":1,\"textAlign\":\"center\",\"strokeColor\":\"#1e1e1e\",\"seed\":11},{\"type\":\"freedraw\",\"x\":40,\"y\":110,\"width\":300,\"height\":30,\"points\":[[0,10],[40,0],[80,20],[120,5],[160,25],[200,8],[240,22],[300,12]],\"strokeColor\":\"#2f9e44\",\"strokeWidth\":2,\"seed\":12}]}\n```\n\nSealed on the way.\n";
+
+/// Lets math and diagrams finish drawing: they draw on threads of their
+/// own, which the test clock doesn't wait for.
+fn settle_drawings(cx: &mut HeadlessAppContext, window: AnyWindowHandle) {
+    for _ in 0..60 {
+        cx.run_until_parked();
+        cx.update_window(window, |_, window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+fn rich_note(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    open_new_note(cx, workspace, store, "Orbits", RICH_NOTE);
+    settle_drawings(cx, window);
+}
+
+fn drawing_note(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    crate::preview::REVEAL_IMAGE_SIZES.store(true, std::sync::atomic::Ordering::Relaxed);
+    open_new_note(cx, workspace, store, "Sketch", DRAWING_NOTE);
+    settle_drawings(cx, window);
+}
+
 /// A table as typed, its pipes all over the place.
 const ROUGH_TABLE: &str = "# Pantry\n\nWhat to buy this week.\n\n| Item | Qty | Price |\n|:--|:-:|--:|\n| Apples | 6 | 3.20 |\n| Oat milk | 2 | 4.50 |\n| Coffee beans | 1 | 12.00 |\n| Café crème | 12 | 0.90 |\n\nThe rest can wait.\n";
 
@@ -2668,6 +2710,12 @@ fn snapshots() {
         shot("dark-palette-word-goal", Dark, Edit, palette_word_goal),
         shot("dark-images-sized", Dark, Preview, sized_images),
         shot("light-images-sized", Light, Preview, sized_images),
+        // Math, diagrams and drawings in the preview.
+        shot("dark-rich-preview", Dark, Preview, rich_note),
+        shot("light-rich-preview", Light, Preview, rich_note),
+        shot("light-rich-split", Light, Split, rich_note),
+        shot("dark-drawing", Dark, Preview, drawing_note),
+        shot("light-drawing", Light, Preview, drawing_note),
         shot("dark-table-before", Dark, Edit, table_before),
         shot("dark-table-after", Dark, Edit, table_after),
         shot("dark-table-after-mono", Dark, Edit, table_after_mono),

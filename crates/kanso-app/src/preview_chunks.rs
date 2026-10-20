@@ -61,11 +61,17 @@ fn parse_options() -> ParseOptions {
 }
 
 /// Whether a block renders as ordinary content: what a heading after it
-/// counts as following.
+/// counts as following. Display math and fenced diagrams are blocks like
+/// any other: each sits whole inside one chunk, with a paragraph gap below.
 fn is_ordinary(node: &Node) -> bool {
     matches!(
         node,
-        Node::Paragraph(_) | Node::List(_) | Node::Code(_) | Node::Blockquote(_) | Node::Table(_)
+        Node::Paragraph(_)
+            | Node::List(_)
+            | Node::Code(_)
+            | Node::Math(_)
+            | Node::Blockquote(_)
+            | Node::Table(_)
     )
 }
 
@@ -127,6 +133,7 @@ fn hash_shape(node: &Node, base: usize, hasher: &mut impl std::hash::Hasher) {
         Node::ListItem(i) => (i.spread, i.checked).hash(hasher),
         Node::Heading(h) => h.depth.hash(hasher),
         Node::Code(c) => (&c.lang, &c.meta).hash(hasher),
+        Node::Math(m) => m.meta.hash(hasher),
         Node::Table(t) => format!("{:?}", t.align).hash(hasher),
         _ => {}
     }
@@ -524,6 +531,28 @@ mod tests {
         // preview knows, so the paragraph after it stays in its chunk.
         assert_eq!(split("One.\n\n---\n\nTwo.").len(), 1);
         assert_eq!(split("One.\n\n<div>x</div>\n\nTwo.").len(), 1);
+    }
+
+    /// Math and diagrams sit whole inside one chunk, and count as ordinary
+    /// content: a heading after display math starts a chunk of its own.
+    #[test]
+    fn math_and_diagrams_stay_whole() {
+        let text = "Intro.\n\n$$\nx^2\n\n\\frac12\n$$\n\n## Next\n\n```mermaid\ngraph TD\n\nA-->B\n```\n\nAfter.";
+        let chunks = split(text);
+        let math = text.find("$$").unwrap()..text.rfind("$$").unwrap() + 2;
+        let fence = text.find("```").unwrap()..text.rfind("```").unwrap() + 3;
+        for block in [math, fence] {
+            assert!(
+                chunks
+                    .iter()
+                    .any(|c| c.range.start <= block.start && block.end <= c.range.end),
+                "{chunks:?}"
+            );
+        }
+        assert!(
+            chunks.iter().any(|c| c.start == Start::Heading(2)),
+            "{chunks:?}"
+        );
     }
 
     #[test]
