@@ -2339,8 +2339,10 @@ Existing tests that must change:
 2. Apply the migrations with `wrangler d1 migrations apply kanso-sync --local --persist-to $dir`.
 3. Set `signup` to `open` with `wrangler d1 execute --local`.
 4. Start `wrangler dev --local --persist-to $dir --port $KANSO_E2E_PORT --test-scheduled --var
-   AUTH_PEPPER:<test>` (port 8787 by default; a port something already listens on is refused, so
-   the test never talks to another server). This is all Miniflare: no Cloudflare credentials.
+   AUTH_PEPPER:<test>`. Without `KANSO_E2E_PORT` the port is 0: the OS picks a free one and the
+   script reads it from wrangler's `Ready on` line, so runs sharing a machine never collide. A
+   fixed port something already listens on is refused, so the test never talks to another server.
+   This is all Miniflare: no Cloudflare credentials.
 5. Run `KANSO_SYNC_E2E_ENDPOINT=http://127.0.0.1:$port KANSO_SYNC_E2E_CANARIES=$list cargo test
    -p kanso-sync --test e2e -- --nocapture`.
 6. Stop `wrangler dev`, then run the ignored test `the_stopped_state_holds_no_canary` with
@@ -2363,7 +2365,7 @@ The test runs at production KDF parameters:
    revision hashes and the deleted account's sealed files. As a positive control the scan must find
    the witness's username (stored as it is in D1) and its sealed file (in R2).
 
-The `e2e` CI job runs the script on port 18787. After deploy, the Workers dashboard's CPU-time metric for `/v2/push` and
+The `e2e` CI job runs the script on a port the OS picks: jobs share the self-hosted Mac. After deploy, the Workers dashboard's CPU-time metric for `/v2/push` and
 `/v2/changes` during the owner's first upload confirms the bench (expected well under 100 ms,
 against a 30 s limit).
 
