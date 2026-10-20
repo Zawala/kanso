@@ -222,6 +222,33 @@ pub(crate) fn context(clock: Option<Clock>) -> HeadlessAppContext {
     cx
 }
 
+/// Notes a shot made as it prepared (stamped with the real clock) moved
+/// onto the demo's clock: a minute apart, the last made a minute before
+/// the demo's "now", so every run draws the same dates.
+fn pin_new_times(store: &Store, typing: Option<&str>) {
+    let mut made: Vec<(i64, String)> = store
+        .search_summaries(&Default::default())
+        .unwrap()
+        .into_iter()
+        .filter(|note| note.updated_at > DEMO_NOW_MS || note.created_at > DEMO_NOW_MS)
+        .filter(|note| Some(note.id.as_str()) != typing)
+        .map(|note| (note.created_at, note.id))
+        .collect();
+    made.sort();
+    let count = made.len() as i64;
+    for (ix, (_, id)) in made.into_iter().enumerate() {
+        let at = DEMO_NOW_MS - (count - ix as i64) * MINUTE;
+        store
+            .put(
+                DocType::Note,
+                json!({"_id": id, "createdAt": at, "updatedAt": at}),
+                Put::Merge,
+                Origin::Ui,
+            )
+            .unwrap();
+    }
+}
+
 /// Puts the workspace in the shot's state before drawing.
 type Prepare = fn(&mut HeadlessAppContext, AnyWindowHandle, &Entity<Workspace>, &Store);
 
@@ -1272,7 +1299,8 @@ fn open_new_note(
     let id = store
         .put(
             DocType::Note,
-            json!({"title": title, "body": body, "bookId": book}),
+            json!({"title": title, "body": body, "bookId": book,
+                "createdAt": DEMO_NOW_MS - MINUTE, "updatedAt": DEMO_NOW_MS - MINUTE}),
             Put::Upsert,
             Origin::Ui,
         )
@@ -3644,6 +3672,19 @@ fn snapshots() {
         let (window, workspace) = open(&mut cx, store.clone(), dir.path().to_path_buf(), shot);
         cx.run_until_parked();
         (shot.prepare)(&mut cx, window, &workspace, &store);
+        if real_db.is_none() {
+            // Not under text being typed, which would read as a change
+            // made elsewhere.
+            cx.run_until_parked();
+            let typing = cx.update(|cx| {
+                let editor = workspace.read(cx).editor.read(cx);
+                editor
+                    .has_unsaved_edits(cx)
+                    .then(|| editor.note_id().map(str::to_owned))
+                    .flatten()
+            });
+            pin_new_times(&store, typing.as_deref());
+        }
         // Search waits for typing to pause.
         cx.advance_clock(std::time::Duration::from_secs(1));
         // Let background work (backlinks, image decoding) settle, then draw.

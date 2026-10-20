@@ -31,7 +31,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::model::TRASH_BOOK_ID;
-use kanso_core::{DocType, Note, NoteStatus, now_ms};
+use kanso_core::{DocType, Note, NoteStatus};
 use kanso_store::{Backlink, Change, Origin, Put, Store, StoreError};
 
 use crate::clock::Clock;
@@ -63,7 +63,7 @@ const PREVIEW_INTERVAL: Duration = Duration::from_millis(60);
 /// Line height of the Markdown source, relative to its size. Every face and
 /// view mode sets the source at the chosen size with this line height:
 /// beside the preview it wraps sooner rather than getting smaller.
-const BODY_LINE_HEIGHT: f32 = 1.6;
+pub(crate) const BODY_LINE_HEIGHT: f32 = 1.6;
 /// Where the source editor's text starts inside it, without line numbers:
 /// its padding and the gap its gutter keeps. The pane's padding makes up the
 /// rest of [`TEXT_INSET`].
@@ -1104,7 +1104,7 @@ impl NoteEditor {
         note.body = body;
         change(&mut note, cx);
         if !std::mem::take(&mut self.keep_edit_time) {
-            note.updated_at = now_ms();
+            note.updated_at = Clock::now_ms(cx);
         }
         // A sync can move the revision between reading and writing without
         // changing the note: then the write goes on top of the new revision.
