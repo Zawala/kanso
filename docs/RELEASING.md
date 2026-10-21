@@ -95,6 +95,11 @@ before. The release page and the feed's `notes` are the same section of
 `CHANGELOG.md`; the app leaves out Under the hood, which the release page
 keeps. Merges and commits that aren't conventional stay out.
 
+An entry whose commit someone else wrote ends "by @login" (from their GitHub
+no-reply address; otherwise "by" and their name), so each feature is credited
+to the person who made it. Keep contributors' commits as they wrote them
+(merge, don't squash) for this to work.
+
 ## Cutting a release
 
 From a clean `master` that matches `origin/master`:
