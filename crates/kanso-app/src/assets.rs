@@ -7,6 +7,8 @@ use std::borrow::Cow;
 use gpui_kit::assets::{Assets, icon_assets};
 use gpui_kit::{AssetSource, Result, SharedString};
 
+use crate::icon_packs::AppIcons;
+
 icon_assets!(
     pub ExtraIcons,
     [
@@ -221,10 +223,6 @@ pub struct KansoAssets;
 
 impl AssetSource for KansoAssets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
-        // The icon pack chosen for the app draws the icons it has.
-        if let Some(bytes) = crate::icon_packs::app_icon(path) {
-            return Ok(Some(Cow::Owned(bytes.to_vec())));
-        }
         // The extra set answers `None` for paths it lacks; the default bundle
         // reports them as errors, so it goes last.
         if let Some(bytes) = ExtraIcons.load(path)? {
@@ -239,6 +237,27 @@ impl AssetSource for KansoAssets {
         paths.sort();
         paths.dedup();
         Ok(paths)
+    }
+}
+
+/// The app's assets: [`KansoAssets`], with the icon pack chosen for the
+/// app's own icons drawing the ones it has. The app keeps the same
+/// [`AppIcons`] as a global to change them.
+#[derive(Clone, Default)]
+pub struct AppAssets {
+    pub icons: AppIcons,
+}
+
+impl AssetSource for AppAssets {
+    fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
+        if let Some(bytes) = self.icons.get(path) {
+            return Ok(Some(Cow::Owned(bytes.to_vec())));
+        }
+        KansoAssets.load(path)
+    }
+
+    fn list(&self, path: &str) -> Result<Vec<SharedString>> {
+        KansoAssets.list(path)
     }
 }
 

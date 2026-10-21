@@ -77,7 +77,8 @@ its built-in icons, so a pack matches every light and dark theme. That means:
 - Draw on a square `viewBox`, such as `0 0 24 24`. Strokes and fills both
   work; `stroke="currentColor"` is fine.
 - An icon is at most 256 KB, an `icons.json` at most 48 MB, and a pack at most
-  40,000 icons; Kanso reads up to 64 packs.
+  40,000 icons and 64 MB of them, an icon's other names (Iconify's aliases)
+  counted as icons but sharing its file; Kanso reads up to 64 packs.
 
 A file that can't be used (a name with capitals or spaces, a file that isn't
 an SVG, one that is too large) is skipped, and Settings › Themes lists it with

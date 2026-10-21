@@ -61,6 +61,7 @@ mod markdown_source;
 mod mcp_cli;
 mod mcp_setup;
 mod model_fetch;
+mod models;
 mod note_list;
 mod note_meaning;
 mod note_menu;
@@ -309,8 +310,10 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
     });
 
     // The icon pack chosen for the app's own icons, before any is drawn.
-    icon_packs::apply_at_launch(&data_dir, config.appearance.icon_pack.as_deref());
-    let app = application().with_assets(assets::KansoAssets);
+    let app_icons = icon_packs::apply_at_launch(&data_dir, config.appearance.icon_pack.as_deref());
+    let app = application().with_assets(assets::AppAssets {
+        icons: app_icons.clone(),
+    });
     app.on_reopen(|cx| {
         if cx.windows().is_empty() {
             open_main_window(cx);
@@ -332,6 +335,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         services.secrets = Some(Arc::new(flavour::CURRENT.keychain()));
         cx.set_global(services);
         cx.set_global(touch_id::TouchId(Arc::new(touch_id::SystemTouchId)));
+        cx.set_global(app_icons);
         // The icon pack gallery fetches over HTTPS; tests leave it out.
         cx.set_global(icon_gallery::Gallery(Arc::new(
             icon_gallery::HttpSource::default(),

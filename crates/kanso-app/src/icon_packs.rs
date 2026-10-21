@@ -22,17 +22,22 @@
 //! built-in ones are.
 //!
 //! Packs are read at launch, again whenever the folder changes, and on
-//! Reload. A pack or file that can't be used is skipped with a notice that
-//! says why; it never stops the others or the app.
+//! Reload, each time off the UI thread. A pack or file that can't be used is
+//! skipped with a notice that says why; it never stops the others or the
+//! app. However a pack is made, what it costs is capped: so many icons, so
+//! many bytes each and in all, and an icon's other names share its SVG.
 
 use std::collections::HashMap;
+use std::hash::{Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
-use gpui_kit::{App, Global};
-use serde::Deserialize;
+use gpui_kit::{App, Global, Task};
 
+pub use crate::models::icon_pack::{IconPack, PackIcon};
+use crate::models::icon_pack::{IconWords, Manifest};
+use crate::models::iconify::{IconifyIcon, IconifyJson};
 use crate::themes::Notice;
 use crate::workspace::AppState;
 
@@ -40,6 +45,8 @@ use crate::workspace::AppState;
 pub const MAX_SVG_BYTES: u64 = 256 * 1024;
 /// Most icons one pack may hold; the rest are skipped.
 pub const MAX_ICONS: usize = 40_000;
+/// Most bytes of SVG one pack may hold in all; the rest are skipped.
+pub const MAX_PACK_BYTES: u64 = 64 * 1024 * 1024;
 /// Largest `icons.json` a pack may hold.
 pub const MAX_JSON_BYTES: u64 = 48 * 1024 * 1024;
 /// The file holding a pack's icons in Iconify's format.
@@ -48,155 +55,72 @@ pub const ICONIFY_FILE: &str = "icons.json";
 pub const MAX_PACKS: usize = 64;
 const WATCH_INTERVAL: Duration = Duration::from_secs(2);
 pub const MANIFEST: &str = "pack.json";
+/// Room an Iconify body needs for the `<svg …>` around it: the tag and four
+/// numbers, however long.
+const SVG_WRAPPER_BYTES: usize = 256;
 
 /// The folder icon packs go in.
 pub fn packs_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("icon-packs")
 }
 
-/// One icon of a pack.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PackIcon {
-    /// The file's name without `.svg`: lowercase letters, digits and dashes.
-    pub name: String,
-    pub label: String,
-    /// More words the search finds it by, spaced.
-    pub keywords: String,
-    pub svg: Arc<[u8]>,
-}
+/// SVGs by icon name; an SVG shared by several names is one allocation.
+pub type NamedSvgs = Vec<(String, Arc<[u8]>)>;
 
-/// A pack of icons.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct IconPack {
-    /// The folder's name.
-    pub id: String,
-    pub name: String,
-    pub author: Option<String>,
-    pub license: Option<String>,
-    /// The Iconify set the gallery installed it from, if it did.
-    pub iconify: Option<String>,
-    /// In name order.
-    pub icons: Vec<PackIcon>,
-}
-
-impl IconPack {
-    pub fn icon(&self, name: &str) -> Option<&PackIcon> {
-        self.icons
-            .binary_search_by(|icon| icon.name.as_str().cmp(name))
-            .ok()
-            .map(|ix| &self.icons[ix])
-    }
-
-    /// How many of the app's own icons this pack draws in their place.
-    pub fn replaces(&self) -> usize {
-        self.icons
-            .iter()
-            .filter(|icon| crate::assets::is_app_icon(&icon.name))
-            .count()
-    }
-}
-
-#[derive(Default, Deserialize)]
-#[serde(default)]
-struct Manifest {
-    name: Option<String>,
-    author: Option<String>,
-    license: Option<String>,
-    source: Source,
-    icons: HashMap<String, IconWords>,
-}
-
-/// Where a pack came from, as the gallery writes it.
-#[derive(Default, Deserialize)]
-#[serde(default)]
-struct Source {
-    iconify: Option<String>,
-}
-
-/// An `icons.json` in Iconify's format: the parts Kanso draws.
-#[derive(Deserialize)]
-pub struct IconifyJson {
-    pub icons: HashMap<String, IconifyIcon>,
-    #[serde(default)]
-    pub aliases: HashMap<String, IconifyAlias>,
-    #[serde(default)]
-    pub width: Option<f32>,
-    #[serde(default)]
-    pub height: Option<f32>,
-    #[serde(default)]
-    pub left: Option<f32>,
-    #[serde(default)]
-    pub top: Option<f32>,
-}
-
-#[derive(Deserialize)]
-pub struct IconifyIcon {
-    pub body: String,
-    #[serde(default)]
-    pub width: Option<f32>,
-    #[serde(default)]
-    pub height: Option<f32>,
-    #[serde(default)]
-    pub left: Option<f32>,
-    #[serde(default)]
-    pub top: Option<f32>,
-    #[serde(default)]
-    pub hidden: bool,
-}
-
-/// Another name for an icon; one that turns or flips it is left out.
-#[derive(Deserialize)]
-pub struct IconifyAlias {
-    pub parent: String,
-    #[serde(default)]
-    pub rotate: Option<u8>,
-    #[serde(default, rename = "hFlip")]
-    pub h_flip: bool,
-    #[serde(default, rename = "vFlip")]
-    pub v_flip: bool,
-    #[serde(default)]
-    pub hidden: bool,
-}
-
-impl IconifyJson {
-    /// Each icon as a whole SVG, by name: aliases that only rename an icon
-    /// included, hidden icons left out. Pure.
-    pub fn svgs(&self) -> Vec<(String, String)> {
-        let svg = |icon: &IconifyIcon| {
-            let left = icon.left.or(self.left).unwrap_or(0.);
-            let top = icon.top.or(self.top).unwrap_or(0.);
-            let width = icon.width.or(self.width).unwrap_or(16.);
-            let height = icon.height.or(self.height).unwrap_or(16.);
-            format!(
-                r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{left} {top} {width} {height}">{}</svg>"#,
-                icon.body
-            )
-        };
-        let mut out: Vec<(String, String)> = self
-            .icons
-            .iter()
-            .filter(|(_, icon)| !icon.hidden)
-            .map(|(name, icon)| (name.clone(), svg(icon)))
-            .collect();
-        for (name, alias) in &self.aliases {
-            let plain = alias.rotate.unwrap_or(0) == 0 && !alias.h_flip && !alias.v_flip;
-            if plain
-                && !alias.hidden
-                && let Some(parent) = self.icons.get(&alias.parent)
-            {
-                out.push((name.clone(), svg(parent)));
+/// Each icon of `set` as a whole SVG, by name, in name order: aliases that
+/// only rename an icon included, hidden icons and ones larger than
+/// [`MAX_SVG_BYTES`] left out. At most `limit` icons and `budget` bytes of
+/// SVG are made; the flag says whether any were left out for that. An
+/// icon's SVG is made once and shared by its aliases, so a set of one large
+/// icon and many names for it costs one icon. Pure.
+pub fn iconify_svgs(set: &IconifyJson, limit: usize, budget: u64) -> (NamedSvgs, bool) {
+    let fits = |icon: &IconifyIcon| icon.body.len() + SVG_WRAPPER_BYTES <= MAX_SVG_BYTES as usize;
+    // Each name with the icon it draws, before any SVG is made.
+    let mut names: Vec<(&str, &str)> = set
+        .icons
+        .iter()
+        .filter(|(_, icon)| !icon.hidden && fits(icon))
+        .map(|(name, _)| (name.as_str(), name.as_str()))
+        .collect();
+    names.extend(set.aliases.iter().filter_map(|(name, alias)| {
+        let plain = alias.rotate.unwrap_or(0) == 0 && !alias.h_flip && !alias.v_flip;
+        let parent = set.icons.get(&alias.parent)?;
+        // An icon of the same name comes first.
+        (plain && !alias.hidden && fits(parent) && !set.icons.contains_key(name))
+            .then_some((name.as_str(), alias.parent.as_str()))
+    }));
+    names.sort_unstable();
+    let mut more = names.len() > limit;
+    names.truncate(limit);
+    let mut made: HashMap<&str, Arc<[u8]>> = HashMap::new();
+    let mut spent = 0u64;
+    let mut out = Vec::with_capacity(names.len());
+    for (name, parent) in names {
+        let svg = match made.get(parent) {
+            Some(svg) => svg.clone(),
+            None => {
+                let icon = &set.icons[parent];
+                let left = icon.left.or(set.left).unwrap_or(0.);
+                let top = icon.top.or(set.top).unwrap_or(0.);
+                let width = icon.width.or(set.width).unwrap_or(16.);
+                let height = icon.height.or(set.height).unwrap_or(16.);
+                let svg = format!(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{left} {top} {width} {height}">{}</svg>"#,
+                    icon.body
+                );
+                spent += svg.len() as u64;
+                if spent > budget {
+                    more = true;
+                    break;
+                }
+                let svg: Arc<[u8]> = Arc::from(svg.into_bytes());
+                made.insert(parent, svg.clone());
+                svg
             }
-        }
-        out.sort();
-        out
+        };
+        out.push((name.to_owned(), svg));
     }
-}
-
-#[derive(Default, Deserialize)]
-#[serde(default)]
-struct IconWords {
-    label: Option<String>,
-    keywords: Option<String>,
+    (out, more)
 }
 
 /// Whether `id` can name a pack or an icon: lowercase ASCII letters, digits,
@@ -226,6 +150,28 @@ pub fn label_from_name(name: &str) -> String {
 /// element. Pure.
 pub fn looks_like_svg(bytes: &[u8]) -> bool {
     std::str::from_utf8(bytes).is_ok_and(|text| text.contains("<svg"))
+}
+
+/// The label and search words `manifest` gives icon `name`.
+fn words_for(manifest: &Manifest, name: &str) -> (String, String) {
+    let words: Option<&IconWords> = manifest.icons.get(name);
+    (
+        words
+            .and_then(|w| w.label.clone())
+            .filter(|label| !label.trim().is_empty())
+            .unwrap_or_else(|| label_from_name(name)),
+        words.and_then(|w| w.keywords.clone()).unwrap_or_default(),
+    )
+}
+
+fn too_many(id: &str) -> Notice {
+    Notice {
+        file: id.to_owned(),
+        message: format!(
+            "has more than {MAX_ICONS} icons or {} MB of them; the rest are left out",
+            MAX_PACK_BYTES / (1024 * 1024)
+        ),
+    }
 }
 
 /// Reads the pack in folder `dir`, saying what couldn't be used.
@@ -264,6 +210,7 @@ pub fn read_pack(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconPack> {
         .collect();
     files.sort();
     let mut icons = Vec::new();
+    let mut spent = 0u64;
     for path in files {
         let file = path.file_name()?.to_string_lossy().into_owned();
         let where_ = format!("{id}/{file}");
@@ -275,13 +222,6 @@ pub fn read_pack(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconPack> {
             });
             continue;
         }
-        if icons.len() == MAX_ICONS {
-            notices.push(Notice {
-                file: id.clone(),
-                message: format!("has more than {MAX_ICONS} icons; the rest are left out"),
-            });
-            break;
-        }
         let size = std::fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
         if size > MAX_SVG_BYTES {
             notices.push(Notice {
@@ -289,6 +229,10 @@ pub fn read_pack(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconPack> {
                 message: format!("is larger than {} KB", MAX_SVG_BYTES / 1024),
             });
             continue;
+        }
+        if icons.len() == MAX_ICONS || spent + size > MAX_PACK_BYTES {
+            notices.push(too_many(&id));
+            break;
         }
         let bytes = match std::fs::read(&path) {
             Ok(bytes) if looks_like_svg(&bytes) => bytes,
@@ -307,18 +251,16 @@ pub fn read_pack(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconPack> {
                 continue;
             }
         };
-        let words = manifest.icons.get(&name);
+        spent += bytes.len() as u64;
+        let (label, keywords) = words_for(&manifest, &name);
         icons.push(PackIcon {
-            label: words
-                .and_then(|w| w.label.clone())
-                .filter(|label| !label.trim().is_empty())
-                .unwrap_or_else(|| label_from_name(&name)),
-            keywords: words.and_then(|w| w.keywords.clone()).unwrap_or_default(),
+            label,
+            keywords,
             name,
             svg: Arc::from(bytes),
         });
     }
-    read_iconify(dir, &id, &manifest, &mut icons, notices);
+    read_iconify(dir, &id, &manifest, spent, &mut icons, notices);
     icons.sort_by(|a, b| a.name.cmp(&b.name));
     icons.dedup_by(|a, b| a.name == b.name);
     if icons.is_empty() {
@@ -328,6 +270,10 @@ pub fn read_pack(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconPack> {
         });
         return None;
     }
+    let replaces = icons
+        .iter()
+        .filter(|icon| crate::assets::is_app_icon(&icon.name))
+        .count();
     Some(IconPack {
         name: manifest
             .name
@@ -341,15 +287,18 @@ pub fn read_pack(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconPack> {
             .filter(|prefix| is_valid_name(prefix)),
         id,
         icons,
+        replaces,
     })
 }
 
 /// Adds the icons in the pack's `icons.json`, if it has one, after any SVG
-/// files of the same names.
+/// files of the same names, within what the pack has left: `spent` bytes
+/// of SVG are read already.
 fn read_iconify(
     dir: &Path,
     id: &str,
     manifest: &Manifest,
+    spent: u64,
     icons: &mut Vec<PackIcon>,
     notices: &mut Vec<Notice>,
 ) {
@@ -378,53 +327,48 @@ fn read_iconify(
             return;
         }
     };
-    for (name, svg) in set.svgs() {
-        if icons.len() >= MAX_ICONS {
-            notices.push(Notice {
-                file: id.to_owned(),
-                message: format!("has more than {MAX_ICONS} icons; the rest are left out"),
-            });
-            break;
-        }
-        if !is_valid_name(&name) || svg.len() as u64 > MAX_SVG_BYTES {
+    let (svgs, more) = iconify_svgs(
+        &set,
+        MAX_ICONS.saturating_sub(icons.len()),
+        MAX_PACK_BYTES.saturating_sub(spent),
+    );
+    if more {
+        notices.push(too_many(id));
+    }
+    for (name, svg) in svgs {
+        if !is_valid_name(&name) {
             continue;
         }
-        let words = manifest.icons.get(&name);
+        let (label, keywords) = words_for(manifest, &name);
         icons.push(PackIcon {
-            label: words
-                .and_then(|w| w.label.clone())
-                .filter(|label| !label.trim().is_empty())
-                .unwrap_or_else(|| label_from_name(&name)),
-            keywords: words.and_then(|w| w.keywords.clone()).unwrap_or_default(),
+            label,
+            keywords,
             name,
-            svg: Arc::from(svg.into_bytes()),
+            svg,
         });
     }
 }
 
-/// Every file in the packs folder with its size and time, to tell when it
-/// changes.
-fn signature(dir: &Path) -> Vec<(String, u64, Option<SystemTime>)> {
+/// A fingerprint of every file in the packs folder, its size and time, to
+/// tell when one changes.
+fn signature(dir: &Path) -> u64 {
     let mut files = Vec::new();
-    let Ok(packs) = std::fs::read_dir(dir) else {
-        return files;
-    };
-    for pack in packs.filter_map(Result::ok) {
-        let Ok(read) = std::fs::read_dir(pack.path()) else {
-            continue;
-        };
-        for entry in read.filter_map(Result::ok) {
-            if let Ok(meta) = entry.metadata() {
-                files.push((
-                    entry.path().to_string_lossy().into_owned(),
-                    meta.len(),
-                    meta.modified().ok(),
-                ));
+    if let Ok(packs) = std::fs::read_dir(dir) {
+        for pack in packs.filter_map(Result::ok) {
+            let Ok(read) = std::fs::read_dir(pack.path()) else {
+                continue;
+            };
+            for entry in read.filter_map(Result::ok) {
+                if let Ok(meta) = entry.metadata() {
+                    files.push((entry.path(), meta.len(), meta.modified().ok()));
+                }
             }
         }
     }
     files.sort();
-    files
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    files.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// The icon packs, as last read.
@@ -432,7 +376,7 @@ fn signature(dir: &Path) -> Vec<(String, u64, Option<SystemTime>)> {
 pub struct IconPacks {
     pub packs: Vec<Arc<IconPack>>,
     pub notices: Vec<Notice>,
-    signature: Vec<(String, u64, Option<SystemTime>)>,
+    signature: u64,
     /// Counts reloads, so a view can tell its picture is stale.
     pub generation: u64,
 }
@@ -440,7 +384,8 @@ pub struct IconPacks {
 impl Global for IconPacks {}
 
 impl IconPacks {
-    /// The packs in `dir`, if given, by name.
+    /// The packs in `dir`, if given, by name. Slow for large packs: read
+    /// off the UI thread (`reload_soon`).
     pub fn load(dir: Option<&Path>) -> IconPacks {
         let mut packs = Vec::new();
         let mut notices = Vec::new();
@@ -461,7 +406,7 @@ impl IconPacks {
                 .collect();
             folders.sort();
             for folder in folders.into_iter().take(MAX_PACKS) {
-                if let Some(pack) = read_pack(&folder, &mut notices) {
+                if let Some(pack) = read_pack_safely(&folder, &mut notices) {
                     packs.push(Arc::new(pack));
                 }
             }
@@ -486,24 +431,52 @@ impl IconPacks {
     }
 }
 
+/// [`read_pack`], with a pack that trips it skipped and said so, never
+/// taking the app down with it.
+fn read_pack_safely(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconPack> {
+    let mut theirs = Vec::new();
+    let read =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| read_pack(dir, &mut theirs)));
+    notices.append(&mut theirs);
+    read.unwrap_or_else(|_| {
+        notices.push(Notice {
+            file: dir.file_name()?.to_string_lossy().into_owned(),
+            message: "couldn't be read".into(),
+        });
+        None
+    })
+}
+
 /// `<pack>/<icon>` as its two names, if it has that shape. Pure.
 pub fn split_key(key: &str) -> Option<(&str, &str)> {
     let (pack, icon) = key.split_once('/')?;
     (is_valid_name(pack) && is_valid_name(icon)).then_some((pack, icon))
 }
 
-/// Reads the packs folder the first time it is needed.
+fn folder(cx: &App) -> Option<PathBuf> {
+    cx.try_global::<AppState>()
+        .map(|state| packs_dir(&state.data_dir))
+}
+
+/// Makes `packs` the ones shown, counting the reload, and draws them.
+fn show(mut packs: IconPacks, cx: &mut App) -> Vec<Notice> {
+    packs.generation = cx
+        .try_global::<IconPacks>()
+        .map_or(0, |packs| packs.generation + 1);
+    let notices = packs.notices.clone();
+    cx.set_global(packs);
+    cx.refresh_windows();
+    notices
+}
+
+/// Reads the packs folder now, on this thread, if no read has finished
+/// yet. Launch reads it in the background (`watch`), so this is only for a
+/// view that needs the packs before that read is done.
 pub fn ensure_loaded(cx: &mut App) {
     if cx.has_global::<IconPacks>() {
         return;
     }
-    let dir = cx
-        .try_global::<AppState>()
-        .map(|state| packs_dir(&state.data_dir));
-    let packs = IconPacks::load(dir.as_deref());
-    for notice in &packs.notices {
-        eprintln!("kanso: icon pack {}", notice.sentence());
-    }
+    let packs = IconPacks::load(folder(cx).as_deref());
     cx.set_global(packs);
 }
 
@@ -513,40 +486,51 @@ pub fn packs(cx: &mut App) -> &IconPacks {
     cx.global::<IconPacks>()
 }
 
-/// Reads the packs folder again, and says what couldn't be used.
-pub fn reload(cx: &mut App) -> Vec<Notice> {
-    let dir = cx
-        .try_global::<AppState>()
-        .map(|state| packs_dir(&state.data_dir));
-    let generation = cx
-        .try_global::<IconPacks>()
-        .map_or(0, |packs| packs.generation + 1);
-    let mut packs = IconPacks::load(dir.as_deref());
-    packs.generation = generation;
-    let notices = packs.notices.clone();
-    cx.set_global(packs);
-    cx.refresh_windows();
-    notices
+/// Reads the packs folder again off the UI thread, then shows the packs
+/// in every window. The task gives what couldn't be used.
+pub fn reload_soon(cx: &mut App) -> Task<Vec<Notice>> {
+    let dir = folder(cx);
+    let read = cx
+        .background_executor()
+        .spawn(async move { IconPacks::load(dir.as_deref()) });
+    cx.spawn(async move |cx| {
+        let packs = read.await;
+        cx.update(|cx| show(packs, cx))
+    })
 }
 
-/// Checks the packs folder every couple of seconds and reloads when a file
-/// is added, changed or removed.
+/// Reads the packs folder again, on this thread (tests and snapshots).
+#[cfg(test)]
+pub fn reload(cx: &mut App) -> Vec<Notice> {
+    let packs = IconPacks::load(folder(cx).as_deref());
+    show(packs, cx)
+}
+
+/// Reads the packs at launch, off the UI thread, and shows them once read,
+/// so notebooks with a pack's icon show it without the picker opening
+/// first. Then checks the folder every couple of seconds, also off the UI
+/// thread, and reads it again when a file is added, changed or removed.
 pub fn watch(cx: &mut App) {
+    let first = reload_soon(cx);
     cx.spawn(async move |cx| {
+        for notice in first.await {
+            eprintln!("kanso: icon pack {}", notice.sentence());
+        }
         loop {
             cx.background_executor().timer(WATCH_INTERVAL).await;
-            let changed = cx.update(|cx| {
-                let Some(state) = cx.try_global::<AppState>() else {
-                    return false;
-                };
-                let dir = packs_dir(&state.data_dir);
-                cx.try_global::<IconPacks>()
-                    .is_some_and(|packs| packs.signature != signature(&dir))
+            let seen = cx.update(|cx| {
+                let packs = cx.try_global::<IconPacks>()?;
+                Some((folder(cx)?, packs.signature))
             });
-            if changed {
-                cx.update(|cx| {
-                    reload(cx);
-                });
+            let Some((dir, seen)) = seen else {
+                continue;
+            };
+            let now = cx
+                .background_executor()
+                .spawn(async move { signature(&dir) })
+                .await;
+            if now != seen {
+                cx.update(reload_soon).await;
             }
         }
     })
@@ -555,45 +539,67 @@ pub fn watch(cx: &mut App) {
 
 // MARK: The app's own icons
 
-/// The pack drawing the app's own icons, by icon name, set once at launch.
-static APP_ICONS: RwLock<Option<HashMap<String, Arc<[u8]>>>> = RwLock::new(None);
-/// Draws the app's own icons with `pack`'s, where it has them, or with the
-/// built-in ones. A window keeps the icons it has drawn: this takes effect
-/// in windows opened after it (see `reopen_main_window`).
-pub fn use_for_app(pack: Option<&IconPack>) {
-    let icons = pack.map(|pack| {
-        pack.icons
-            .iter()
-            .map(|icon| (icon.name.clone(), icon.svg.clone()))
-            .collect()
-    });
-    *APP_ICONS.write().unwrap_or_else(|e| e.into_inner()) = icons;
+/// The pack drawing the app's own icons, by icon name. The app keeps it as
+/// a global, and its asset loader (`assets::AppAssets`) holds the same one,
+/// so each app, and each test, has its own.
+#[derive(Clone, Default)]
+pub struct AppIcons(Arc<RwLock<Option<SvgsByName>>>);
+
+type SvgsByName = HashMap<String, Arc<[u8]>>;
+
+impl Global for AppIcons {}
+
+impl AppIcons {
+    /// Draws the app's own icons with `pack`'s, where it has them, or with
+    /// the built-in ones. A window keeps the icons it has drawn: this takes
+    /// effect in windows opened after it (see `reopen_main_window`).
+    pub fn set(&self, pack: Option<&IconPack>) {
+        let icons = pack.map(|pack| {
+            pack.icons
+                .iter()
+                .map(|icon| (icon.name.clone(), icon.svg.clone()))
+                .collect()
+        });
+        *self.0.write().unwrap_or_else(|e| e.into_inner()) = icons;
+    }
+
+    /// The chosen pack's SVG for the asset at `path` (`icons/<name>.svg`),
+    /// if it draws that icon.
+    pub fn get(&self, path: &str) -> Option<Arc<[u8]>> {
+        let name = path.strip_prefix("icons/")?.strip_suffix(".svg")?;
+        self.0
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()?
+            .get(name)
+            .cloned()
+    }
 }
 
-/// The chosen pack's SVG for the asset at `path` (`icons/<name>.svg`), if it
-/// draws that icon.
-pub fn app_icon(path: &str) -> Option<Arc<[u8]>> {
-    let name = path.strip_prefix("icons/")?.strip_suffix(".svg")?;
-    APP_ICONS
-        .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .as_ref()?
-        .get(name)
-        .cloned()
+/// Draws the app's own icons with `pack`'s (`None`: the built-in ones), in
+/// windows opened from now on.
+pub fn use_for_app(pack: Option<&IconPack>, cx: &App) {
+    if let Some(icons) = cx.try_global::<AppIcons>() {
+        icons.set(pack);
+    }
 }
 
-/// The pack the config chooses for the app's icons, read from `data_dir`,
-/// for launch, before any window is drawn.
-pub fn apply_at_launch(data_dir: &Path, chosen: Option<&str>) {
-    let Some(chosen) = chosen else {
-        return;
+/// The app's icons at launch, before any window is drawn: the pack the
+/// config chooses, read from `data_dir`. A pack that can't be read, or
+/// trips the reader, leaves the built-in icons; the caps on a pack keep
+/// what it costs to read bounded, so no pack can stop a launch.
+pub fn apply_at_launch(data_dir: &Path, chosen: Option<&str>) -> AppIcons {
+    let icons = AppIcons::default();
+    let Some(chosen) = chosen.filter(|id| is_valid_name(id)) else {
+        return icons;
     };
     let mut notices = Vec::new();
-    let pack = read_pack(&packs_dir(data_dir).join(chosen), &mut notices);
+    let pack = read_pack_safely(&packs_dir(data_dir).join(chosen), &mut notices);
     if pack.is_none() {
         eprintln!("kanso: the icon pack {chosen} couldn't be used; drawing the built-in icons");
     }
-    use_for_app(pack.as_ref());
+    icons.set(pack.as_ref());
+    icons
 }
 
 #[cfg(test)]
@@ -663,7 +669,7 @@ mod tests {
         assert!(packs.lookup("phosphor/missing").is_none());
         assert!(packs.lookup("other/orbit").is_none());
         // `pin` is one of the app's own icons; `orbit` isn't one Kanso has.
-        assert_eq!(p.replaces(), 1);
+        assert_eq!(p.replaces, 1);
         let said: Vec<String> = packs.notices.iter().map(Notice::sentence).collect();
         for expected in [
             "Bad Name.svg",
@@ -739,19 +745,181 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = packs_dir(dir.path());
         write(&root.join("mine"), "pin.svg", SVG);
-        apply_at_launch(dir.path(), Some("mine"));
-        assert_eq!(app_icon("icons/pin.svg").as_deref(), Some(SVG.as_bytes()));
-        assert_eq!(app_icon("icons/plus.svg"), None);
-        // The asset loader draws it in the built-in icon's place.
+        let icons = apply_at_launch(dir.path(), Some("mine"));
+        assert_eq!(icons.get("icons/pin.svg").as_deref(), Some(SVG.as_bytes()));
+        assert_eq!(icons.get("icons/plus.svg"), None);
+        assert_eq!(icons.get("pin.svg"), None);
+        // The app's asset loader draws it in the built-in icon's place; one
+        // made apart from it, as each snapshot's is, still draws Kanso's.
         use gpui_kit::AssetSource as _;
-        let drawn = crate::assets::KansoAssets
+        let app = crate::assets::AppAssets {
+            icons: icons.clone(),
+        };
+        let drawn = app.load("icons/pin.svg").unwrap().unwrap();
+        assert_eq!(drawn.as_ref(), SVG.as_bytes());
+        let builtin = crate::assets::KansoAssets
             .load("icons/pin.svg")
             .unwrap()
             .unwrap();
-        assert_eq!(drawn.as_ref(), SVG.as_bytes());
-        assert_eq!(app_icon("pin.svg"), None);
-        use_for_app(None);
-        assert_eq!(app_icon("icons/pin.svg"), None);
+        assert_ne!(builtin.as_ref(), SVG.as_bytes());
+        assert_eq!(
+            crate::assets::AppAssets::default()
+                .load("icons/pin.svg")
+                .unwrap()
+                .unwrap(),
+            builtin
+        );
+        icons.set(None);
+        assert_eq!(icons.get("icons/pin.svg"), None);
+        // A pack that has gone, or a name that can't be one, leaves Kanso's.
+        assert_eq!(
+            apply_at_launch(dir.path(), Some("gone")).get("icons/pin.svg"),
+            None
+        );
+        assert_eq!(
+            apply_at_launch(dir.path(), Some("../mine")).get("icons/pin.svg"),
+            None
+        );
+        assert_eq!(apply_at_launch(dir.path(), None).get("icons/pin.svg"), None);
+    }
+
+    /// A body as large as a pack allows, and very many names for it: the
+    /// names stop at the cap, and all of them share the one SVG rather than
+    /// a copy each.
+    #[test]
+    fn aliases_share_their_icon_and_stop_at_the_cap() {
+        let body = format!("<path d='{}'/>", "M1 1".repeat(50_000));
+        let mut aliases = serde_json::Map::new();
+        for n in 0..100_000 {
+            aliases.insert(format!("a{n:06}"), serde_json::json!({"parent": "big"}));
+        }
+        let text = serde_json::json!({
+            "icons": {"big": {"body": body}, "huge": {"body": "x".repeat(MAX_SVG_BYTES as usize)}},
+            "aliases": aliases,
+        })
+        .to_string();
+        let set: IconifyJson = serde_json::from_str(&text).unwrap();
+        let (svgs, more) = iconify_svgs(&set, MAX_ICONS, MAX_PACK_BYTES);
+        assert!(more);
+        assert_eq!(svgs.len(), MAX_ICONS);
+        let first = &svgs[0].1;
+        assert!(svgs.iter().all(|(_, svg)| Arc::ptr_eq(svg, first)));
+        // The body too large to draw is left out, whatever its name.
+        assert!(svgs.iter().all(|(name, _)| name != "huge"));
+
+        // Read as a pack: bounded too, and said so.
+        let dir = tempfile::tempdir().unwrap();
+        let root = packs_dir(dir.path());
+        write(&root.join("many"), ICONIFY_FILE, &text);
+        let packs = IconPacks::load(Some(&root));
+        assert_eq!(packs.packs[0].icons.len(), MAX_ICONS);
+        assert!(
+            packs
+                .notices
+                .iter()
+                .any(|n| n.file == "many" && n.message.contains("left out")),
+            "{:?}",
+            packs.notices
+        );
+    }
+
+    /// More bytes than a pack may hold in all: the icons stop there.
+    #[test]
+    fn a_pack_stops_at_its_byte_budget() {
+        let mut icons = serde_json::Map::new();
+        for n in 0..10 {
+            icons.insert(
+                format!("i{n}"),
+                serde_json::json!({"body": "y".repeat(1000)}),
+            );
+        }
+        let set: IconifyJson =
+            serde_json::from_value(serde_json::json!({ "icons": icons })).unwrap();
+        let (svgs, more) = iconify_svgs(&set, 100, 3500);
+        assert!(more);
+        assert_eq!(svgs.len(), 3);
+        let names: Vec<&str> = svgs.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, vec!["i0", "i1", "i2"]);
+        assert!(!iconify_svgs(&set, 100, MAX_PACK_BYTES).1);
+    }
+
+    use proptest::prelude::*;
+    use proptest::test_runner::FileFailurePersistence;
+
+    fn config() -> ProptestConfig {
+        ProptestConfig {
+            cases: 256,
+            failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
+            ..ProptestConfig::default()
+        }
+    }
+
+    /// An Iconify set of a few icons, some hidden or large, and aliases,
+    /// some turned or pointing nowhere.
+    fn iconify_set() -> impl Strategy<Value = IconifyJson> {
+        let icon = (0usize..4, any::<bool>());
+        let alias = (0usize..6, any::<bool>(), any::<bool>());
+        (
+            prop::collection::btree_map("[a-d]{1,2}", icon, 0..8),
+            prop::collection::btree_map("[a-f]{1,2}", alias, 0..12),
+        )
+            .prop_map(|(icons, aliases)| {
+                let parents = ["a", "b", "c", "d", "e", "f"];
+                serde_json::from_value(serde_json::json!({
+                    "icons": icons.into_iter().map(|(name, (size, hidden))| {
+                        let body = "z".repeat([1, 10, 100, MAX_SVG_BYTES as usize][size]);
+                        (name, serde_json::json!({"body": body, "hidden": hidden}))
+                    }).collect::<serde_json::Map<_, _>>(),
+                    "aliases": aliases.into_iter().map(|(name, (parent, turned, hidden))| {
+                        (name, serde_json::json!({
+                            "parent": parents[parent], "hFlip": turned, "hidden": hidden,
+                        }))
+                    }).collect::<serde_json::Map<_, _>>(),
+                }))
+                .unwrap()
+            })
+    }
+
+    proptest! {
+        #![proptest_config(config())]
+
+        /// Invariants: whatever the caps, the icons made are in name order,
+        /// at most `limit` of them, each small enough to draw and within
+        /// the byte budget counting each shared SVG once; an alias shares
+        /// its icon's SVG; and a tighter cap gives the start of what a
+        /// looser one gives, saying so when it leaves any out.
+        #[test]
+        fn prop_iconify_svgs_stay_within_their_caps(
+            set in iconify_set(),
+            limit in 0usize..20,
+            budget in 0u64..2000,
+        ) {
+            let (all, none_left) = iconify_svgs(&set, usize::MAX, u64::MAX);
+            prop_assert!(!none_left);
+            let (svgs, more) = iconify_svgs(&set, limit, budget);
+            prop_assert!(svgs.len() <= limit);
+            prop_assert!(svgs.windows(2).all(|pair| pair[0].0 < pair[1].0));
+            prop_assert_eq!(&all[..svgs.len()], &svgs[..]);
+            prop_assert_eq!(more, svgs.len() < all.len());
+            let mut seen: Vec<&Arc<[u8]>> = Vec::new();
+            for (_, svg) in &svgs {
+                prop_assert!(svg.len() as u64 <= MAX_SVG_BYTES);
+                if !seen.iter().any(|other| Arc::ptr_eq(other, svg)) {
+                    seen.push(svg);
+                }
+            }
+            let spent: u64 = seen.iter().map(|svg| svg.len() as u64).sum();
+            prop_assert!(spent <= budget);
+            for (name, svg) in &svgs {
+                if let Some(alias) = set.aliases.get(name) && !set.icons.contains_key(name) {
+                    let parent = svgs.iter().find(|(other, _)| *other == alias.parent);
+                    if let Some((_, parent)) = parent {
+                        prop_assert!(Arc::ptr_eq(parent, svg));
+                    }
+                    prop_assert!(!alias.h_flip && !alias.hidden);
+                }
+            }
+        }
     }
 }
 

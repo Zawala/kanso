@@ -321,25 +321,35 @@ fn use_icon_pack(id: Option<String>, window: &mut Window, cx: &mut App) {
         .as_deref()
         .and_then(|id| icon_packs::packs(cx).pack(id).cloned());
     AppState::update_config(cx, |config| config.appearance.icon_pack = id);
-    icon_packs::use_for_app(pack.as_deref());
+    icon_packs::use_for_app(pack.as_deref(), cx);
     crate::reopen_main_window(window, cx);
 }
 
-/// Reads the icon packs folder again, and says what couldn't be used.
+/// Reads the icon packs folder again, off the UI thread, and says what
+/// couldn't be used.
 fn reload_icon_packs(window: &mut Window, cx: &mut App) {
-    let notices = icon_packs::reload(cx);
-    let count = cx.global::<icon_packs::IconPacks>().packs.len();
-    let message = match notices.len() {
-        0 => Notification::success(match count {
-            1 => "1 icon pack ready.".to_owned(),
-            n => format!("{n} icon packs ready."),
-        }),
-        1 => Notification::warning(notices[0].sentence()),
-        n => Notification::warning(format!(
-            "{n} icon pack files couldn't be used; the Themes page lists them."
-        )),
-    };
-    window.push_notification(message, cx);
+    let reload = icon_packs::reload_soon(cx);
+    let handle = window.window_handle();
+    cx.spawn(async move |cx| {
+        let notices = reload.await;
+        cx.update(|cx| {
+            let count = cx.global::<icon_packs::IconPacks>().packs.len();
+            let message = match notices.len() {
+                0 => Notification::success(match count {
+                    1 => "1 icon pack ready.".to_owned(),
+                    n => format!("{n} icon packs ready."),
+                }),
+                1 => Notification::warning(notices[0].sentence()),
+                n => Notification::warning(format!(
+                    "{n} icon pack files couldn't be used; the Themes page lists them."
+                )),
+            };
+            handle
+                .update(cx, |_, window, cx| window.push_notification(message, cx))
+                .ok();
+        });
+    })
+    .detach();
 }
 
 /// What a pack's row says about it. Pure.
@@ -354,7 +364,7 @@ pub fn pack_detail(pack: &icon_packs::IconPack) -> String {
     if let Some(license) = &pack.license {
         parts.push(license.clone());
     }
-    parts.push(match pack.replaces() {
+    parts.push(match pack.replaces {
         0 => "for notebooks".to_owned(),
         1 => "for notebooks, and 1 of Kanso's icons".to_owned(),
         n => format!("for notebooks, and {n} of Kanso's icons"),
@@ -390,7 +400,7 @@ fn icon_packs_section(cx: &mut Context<SettingsView>) -> AnyElement {
     ];
     for (ix, pack) in list.iter().enumerate() {
         let row = Row::new(Lucide::Package, pack.name.clone()).detail(pack_detail(pack));
-        rows.push(if pack.replaces() > 0 {
+        rows.push(if pack.replaces > 0 {
             row.trailing(use_button(Some(pack.id.clone()), ix + 1))
         } else {
             row

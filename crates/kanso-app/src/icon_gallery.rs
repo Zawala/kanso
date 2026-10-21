@@ -27,11 +27,13 @@ use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{Disableable as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
-use serde::Deserialize;
 use serde_json::json;
 
 use crate::book_icons::matches;
-use crate::icon_packs::{self, ICONIFY_FILE, IconifyJson, MANIFEST, MAX_JSON_BYTES};
+use crate::icon_packs::{self, ICONIFY_FILE, MANIFEST, MAX_JSON_BYTES};
+pub use crate::models::icon_set::IconSet;
+use crate::models::icon_set::RawSet;
+use crate::models::iconify::IconifyJson;
 use crate::theme::Colors;
 use crate::workspace::AppState;
 
@@ -43,6 +45,8 @@ pub const COLLECTIONS_URL: &str = "https://api.iconify.design/collections";
 const MAX_LIST_BYTES: u64 = 8 * 1024 * 1024;
 /// Largest answer for a set's samples.
 const MAX_SAMPLE_BYTES: u64 = 512 * 1024;
+/// Most icons read from an answer for a set's samples.
+const MAX_SAMPLE_ICONS: usize = 64;
 /// How many sets' samples are fetched at once.
 const SAMPLE_WORKERS: usize = 4;
 pub const GALLERY_WIDTH: f32 = 640.;
@@ -121,49 +125,6 @@ pub struct Gallery(pub Arc<dyn Source>);
 
 impl Global for Gallery {}
 
-/// One icon set the gallery lists.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct IconSet {
-    /// Iconify's name for it, and the pack's ID once installed.
-    pub prefix: String,
-    pub name: String,
-    pub total: u32,
-    pub author: Option<String>,
-    pub license: Option<String>,
-    pub category: Option<String>,
-    /// A few of its icons' names.
-    pub samples: Vec<String>,
-}
-
-#[derive(Deserialize)]
-struct RawSet {
-    name: String,
-    #[serde(default)]
-    total: u32,
-    #[serde(default)]
-    author: Option<RawNamed>,
-    #[serde(default)]
-    license: Option<RawLicense>,
-    #[serde(default)]
-    category: Option<String>,
-    #[serde(default)]
-    samples: Vec<String>,
-    #[serde(default)]
-    palette: bool,
-    #[serde(default)]
-    hidden: bool,
-}
-
-#[derive(Deserialize)]
-struct RawNamed {
-    name: String,
-}
-
-#[derive(Deserialize)]
-struct RawLicense {
-    title: String,
-}
-
 /// The sets in Iconify's list that Kanso can draw: one color, not hidden,
 /// with a prefix that can name a pack, by name. Pure.
 pub fn parse_collections(bytes: &[u8]) -> Result<Vec<IconSet>, String> {
@@ -227,12 +188,12 @@ pub fn fetch_samples(source: &dyn Source, set: &IconSet) -> Result<Vec<Arc<[u8]>
     let bytes = source.get(&samples_url(&set.prefix, &set.samples), MAX_SAMPLE_BYTES)?;
     let found: IconifyJson =
         serde_json::from_slice(&bytes).map_err(|_| "The samples couldn't be read.".to_owned())?;
-    let svgs: HashMap<String, String> = found.svgs().into_iter().collect();
+    let (svgs, _) = icon_packs::iconify_svgs(&found, MAX_SAMPLE_ICONS, 4 * MAX_SAMPLE_BYTES);
+    let svgs: HashMap<String, Arc<[u8]>> = svgs.into_iter().collect();
     Ok(set
         .samples
         .iter()
-        .filter_map(|name| svgs.get(name))
-        .map(|svg| Arc::from(svg.as_bytes()))
+        .filter_map(|name| svgs.get(name).cloned())
         .collect())
 }
 
@@ -514,7 +475,7 @@ impl IconGallery {
             },
             move |this, result, cx| {
                 this.busy.remove(&prefix);
-                icon_packs::reload(cx);
+                icon_packs::reload_soon(cx).detach();
                 let notification = match (result, busy) {
                     (Ok(()), Busy::Installing) => Notification::success(format!(
                         "{name} is installed. Its icons are in each notebook's Change Icon…"
@@ -1073,6 +1034,6 @@ pub mod tests {
         println!("{} icons, notices {:?}", pack.icons.len(), loaded.notices);
         assert!(pack.icons.len() > 1000);
         // Lucide's own names: it can draw every one of Kanso's icons.
-        assert!(pack.replaces() > 100, "{}", pack.replaces());
+        assert!(pack.replaces > 100, "{}", pack.replaces);
     }
 }
