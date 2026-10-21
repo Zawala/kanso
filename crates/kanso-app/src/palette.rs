@@ -728,6 +728,8 @@ impl Palette {
                 Needs::Nothing => true,
                 Needs::Note => note.is_some(),
                 Needs::LiveNote => note.is_some() && !in_trash,
+                Needs::UnlockedNote => note.is_some_and(|n| !n.is_locked()) && !in_trash,
+                Needs::LockedNote => note.is_some_and(|n| n.is_locked()),
                 Needs::Settings => self.notes_hidden,
                 Needs::SignedIn => signed_in,
                 Needs::SignedOut => !signed_in,
@@ -1300,8 +1302,10 @@ impl Palette {
                         render_keys(&keys, true, false, cx).into_any_element(),
                     ));
                 }
-                if matches!(command.needs, Needs::Note | Needs::LiveNote)
-                    && let Some(title) = note_title.clone()
+                if matches!(
+                    command.needs,
+                    Needs::Note | Needs::LiveNote | Needs::UnlockedNote | Needs::LockedNote
+                ) && let Some(title) = note_title.clone()
                 {
                     detail
                         .sections
@@ -2085,6 +2089,7 @@ mod tests {
             created_at: 0,
             tasks_done: 0,
             tasks_total: 0,
+            locked: false,
         }
     }
 

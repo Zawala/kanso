@@ -37,6 +37,10 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
 - Export a note as a web page or PDF, or publish it as an end-to-end encrypted link: the key
   stays in the link, so the server only holds ciphertext.
 
+**Locked notes**
+- Lock a note with a password (**Lock note…** in the palette or the Note menu). Its text is sealed
+  on this device, stays sealed in sync, and opens on your other devices with the same password.
+
 **Sync, agents and the rest**
 - **End-to-end encrypted sync.** An account on a Cloudflare Worker keeps your devices in step.
   Each device encrypts notes, titles, IDs and attachments before they leave it, with a key the
@@ -143,6 +147,33 @@ The default server is the owner's Worker, `kanso.antonlabs.cc`, which takes new
 accounts only when its owner opens sign-ups. To run your own, deploy the Worker in
 [cloud/](cloud/README.md) to your Cloudflare account and choose **Use a different server…** before
 creating the account. An account belongs to its server's address, so pick the final URL first.
+
+### Locked notes
+
+**Lock note…** (palette, or the Note menu) seals the open note's text with your lock password. The
+first time, Kanso asks you to set one, at least 8 characters; on another device, or once notes are
+locked, it asks for that password instead. **Kanso can't recover a forgotten lock password**, and the
+notes locked with it can't be read without it.
+
+Once you type the password, the notes locked with it open until **Lock notes now**, quitting, or ten
+minutes without opening or saving one. **Remove lock…** keeps a note's text as plain text again, and
+**Change lock password…** seals every locked note again with a new password.
+
+What locking does and doesn't do:
+
+- The text is sealed with XChaCha20-Poly1305 under a key Argon2id derives from the password (256 MiB,
+  three passes), bound to the note, and kept in the note itself (`kansoLock`). The note's body in the
+  database is empty, so search, backlinks, tasks, reminders, related notes and the local API (REST
+  and MCP) never see it. Sync carries the sealed text inside the note's own encrypted document.
+- Locking deletes the note's earlier versions, its embedding and the search index's words, and SQLite
+  overwrites the space they took. Daily backups made before you locked it still hold the text until
+  they are replaced, after 14 days.
+- The title, notebook, tags, status and dates stay visible, and pictures and files attached to a
+  locked note aren't sealed.
+- The local API reads a locked note with an empty body. It can move, retitle or tag the note, but
+  can't change its text, take the lock off, or delete it outright (moving it to the trash still works).
+- Export All Notes leaves locked notes out, and a locked note can't be published.
+- Every device needs this version of Kanso: an older one shows a locked note as empty.
 
 ### Shortcuts
 

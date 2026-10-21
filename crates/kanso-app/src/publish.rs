@@ -639,6 +639,17 @@ pub fn open_publish(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<Entity<PublishView>> {
+    // A locked note's text stays sealed: publishing it would put it at a
+    // link instead.
+    if editor.read(cx).lock_view() != crate::locked::LockView::Plain {
+        window.push_notification(
+            gpui_kit::component::notification::Notification::info(
+                "Locked notes can't be published. Remove the lock first.",
+            ),
+            cx,
+        );
+        return None;
+    }
     let source = editor.read(cx).publish_source(cx)?;
     let services = cx.global::<Services>();
     let signed_in = services.signed_in();

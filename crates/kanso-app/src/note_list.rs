@@ -520,9 +520,25 @@ impl NoteList {
                             .text_color(colors.text_secondary)
                             .line_clamp(EXCERPT_LINES as usize)
                             .text_ellipsis()
-                            .child(StyledText::new(note.snippet.clone()).with_highlights(
-                                excerpt_matches.into_iter().map(|r| (r, highlight)),
-                            )),
+                            // A locked note's text isn't in the list.
+                            .when(note.locked, |el| {
+                                el.child(
+                                    h_flex()
+                                        .gap_1()
+                                        .text_color(colors.text_muted)
+                                        .child(
+                                            Icon::new(Lucide::Lock)
+                                                .size(px(12.))
+                                                .text_color(colors.text_muted),
+                                        )
+                                        .child("Locked"),
+                                )
+                            })
+                            .when(!note.locked, |el| {
+                                el.child(StyledText::new(note.snippet.clone()).with_highlights(
+                                    excerpt_matches.into_iter().map(|r| (r, highlight)),
+                                ))
+                            }),
                     ),
             )
             .cursor_pointer()

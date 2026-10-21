@@ -53,6 +53,7 @@ icon_assets!(
         ListTodo,
         Lock,
         LockKeyhole,
+        LockOpen,
         LogIn,
         LogOut,
         Notebook,

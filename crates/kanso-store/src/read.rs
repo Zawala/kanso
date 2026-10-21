@@ -83,6 +83,9 @@ pub struct NoteSummary {
     /// Task-list items: how many are done, of how many.
     pub tasks_done: u32,
     pub tasks_total: u32,
+    /// Whether the note's text is sealed under the lock password; its
+    /// snippet is then empty.
+    pub locked: bool,
 }
 
 /// Note counts for the sidebar.
@@ -390,7 +393,8 @@ impl Store {
             let columns = format!(
                 "d.id, d.rev, d.title, substr(json_extract(d.json, '$.body'), 1, {HEAD_CHARS}), \
                  d.book_id, d.status, json_extract(d.json, '$.tags'), d.pinned, d.updated_at, d.created_at, \
-                 {window}, json_extract(d.json, '$.numOfCheckedTasks'), json_extract(d.json, '$.numOfTasks')"
+                 {window}, json_extract(d.json, '$.numOfCheckedTasks'), json_extract(d.json, '$.numOfTasks'), \
+                 json_extract(d.json, '$.kansoLock') IS NOT NULL"
             );
             let (sql, mut values) = search_sql(conn, &columns, params)?;
             // The window's term comes first: its column is before the rest.
@@ -419,6 +423,7 @@ impl Store {
                     created_at: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
                     tasks_done: row.get::<_, Option<u32>>(11)?.unwrap_or(0),
                     tasks_total: row.get::<_, Option<u32>>(12)?.unwrap_or(0),
+                    locked: row.get(13)?,
                 })
             })?;
             Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -440,6 +445,22 @@ impl Store {
 
     pub fn note(&self, id: &str) -> Result<Option<Note>> {
         self.typed(id)
+    }
+
+    /// Every live locked note, in the trash too: what changing the lock
+    /// password seals again.
+    pub fn locked_notes(&self) -> Result<Vec<Note>> {
+        let ids: Vec<String> = self.read(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id FROM docs WHERE type = 'note' AND deleted = 0
+                 AND json_extract(json, '$.kansoLock') IS NOT NULL ORDER BY id",
+            )?;
+            let rows = stmt.query_map([], |row| row.get(0))?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })?;
+        ids.iter()
+            .filter_map(|id| self.note(id).transpose())
+            .collect()
     }
 
     pub fn file_meta(&self, id: &str) -> Result<Option<FileMeta>> {

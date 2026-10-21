@@ -81,11 +81,15 @@ pub(crate) fn list_docs(
 /// publish to, or move a published note's link elsewhere. Also the
 /// reminders the app was told about (`kansoReminderAck`), which a client
 /// replacing the whole note would otherwise drop, so they would ring again.
+/// And a locked note's sealed text (`kansoLock`): a client reads a locked
+/// note with an empty body and can't lock, unlock or replace its text (the
+/// store refuses text beside the lock).
 fn app_only_fields(doc_type: DocType) -> &'static [&'static str] {
     match doc_type {
         DocType::Note => &[
             kanso_core::model::PUBLISH_FIELD,
             kanso_core::reminders::ACK_FIELD,
+            kanso_core::model::LOCK_FIELD,
         ],
         // The words the app read in an image: a write of the file keeps them.
         DocType::File => &[kanso_core::model::OCR_FIELD],
@@ -120,10 +124,19 @@ pub(crate) fn merge(store: &Store, id: &str, body: Value) -> ApiResult<Value> {
     )?))
 }
 
-/// `DELETE /<id>`.
+/// `DELETE /<id>`. A locked note can't be deleted outright from here: its
+/// text would be gone without anyone who knows the password agreeing. Moving
+/// it to the trash (`bookId: "trash"`) still works.
 pub(crate) fn delete(store: &Store, id: &str) -> ApiResult<Value> {
     if DocType::of_id(id).is_none() {
         return Err(ApiError::not_found());
+    }
+    if DocType::of_id(id) == Some(DocType::Note)
+        && store.note(id)?.is_some_and(|note| note.is_locked())
+    {
+        return Err(ApiError::bad_request(
+            "The note is locked: delete it in Kanso.",
+        ));
     }
     Ok(write_response(store.delete(id, Origin::Api)?))
 }

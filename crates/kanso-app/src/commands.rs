@@ -76,6 +76,10 @@ pub enum Needs {
     Note,
     /// A note is open and isn't in the trash.
     LiveNote,
+    /// A note is open, isn't in the trash and isn't locked.
+    UnlockedNote,
+    /// A locked note is open.
+    LockedNote,
     /// Settings are open, in place of the notes.
     Settings,
     /// This Mac is signed in to an account.
@@ -373,6 +377,50 @@ static COMMANDS: &[Command] = &[
         group: Group::Note,
         run: action!(crate::publish::PublishNote),
         needs: Needs::Note,
+    },
+    Command {
+        id: "lock",
+        label: "Lock note…",
+        label_when_pinned: None,
+        description: "Keeps the note's text sealed with your lock password, on this device and in sync. Its earlier versions are deleted; search, backlinks and tasks skip it while it's locked.",
+        icon: IconName::Lock,
+        keywords: &["lock", "password", "encrypt", "private", "secret", "hide"],
+        group: Group::Note,
+        run: action!(crate::locked::LockNote),
+        needs: Needs::UnlockedNote,
+    },
+    Command {
+        id: "remove-lock",
+        label: "Remove lock…",
+        label_when_pinned: None,
+        description: "Keeps the note's text as plain text again, so search, backlinks and tasks see it.",
+        icon: IconName::LockOpen,
+        keywords: &["unlock", "lock", "password", "decrypt"],
+        group: Group::Note,
+        run: action!(crate::locked::RemoveLock),
+        needs: Needs::LockedNote,
+    },
+    Command {
+        id: "lock-now",
+        label: "Lock notes now",
+        label_when_pinned: None,
+        description: "Closes every locked note until the lock password is typed again. Kanso also does this after 10 minutes without using one.",
+        icon: IconName::LockKeyhole,
+        keywords: &["lock", "close", "hide", "away"],
+        group: Group::Note,
+        run: action!(crate::locked::LockNotesNow),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "lock-password",
+        label: "Change lock password…",
+        label_when_pinned: None,
+        description: "Seals every locked note again with a new lock password.",
+        icon: IconName::LockKeyhole,
+        keywords: &["lock", "password", "change", "rekey"],
+        group: Group::Note,
+        run: action!(crate::locked::ChangeLockPassword),
+        needs: Needs::Nothing,
     },
     Command {
         id: "export-pdf",

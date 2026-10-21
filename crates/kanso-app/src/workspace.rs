@@ -212,6 +212,11 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Show History…", ShowHistory),
             MenuItem::action("Publish…", crate::publish::PublishNote),
             MenuItem::separator(),
+            MenuItem::action("Lock Note…", crate::locked::LockNote),
+            MenuItem::action("Remove Lock…", crate::locked::RemoveLock),
+            MenuItem::action("Lock Notes Now", crate::locked::LockNotesNow),
+            MenuItem::action("Change Lock Password…", crate::locked::ChangeLockPassword),
+            MenuItem::separator(),
             MenuItem::action("Next Note", NextNote),
             MenuItem::action("Previous Note", PreviousNote),
         ]),
@@ -303,6 +308,8 @@ pub struct Workspace {
     pub(crate) placeholder_traffic_lights: bool,
     _subscriptions: Vec<Subscription>,
     _links: Task<()>,
+    /// Locks the notes again once they go unused for a while.
+    _auto_lock: Task<()>,
 }
 
 impl Workspace {
@@ -463,6 +470,22 @@ impl Workspace {
             }
         });
 
+        let auto_lock = cx.spawn_in(window, async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(30))
+                    .await;
+                let locked = this.update_in(cx, |this, window, cx| {
+                    if crate::locked::LockKeys::idle(cx, std::time::Instant::now()) {
+                        crate::locked::lock_now(&this.editor, window, cx);
+                    }
+                });
+                if locked.is_err() {
+                    break;
+                }
+            }
+        });
+
         if let Some(id) = last_note.filter(|id| store.note(id).ok().flatten().is_some()) {
             library.update(cx, |library, cx| library.select_quietly(Some(id), cx));
         }
@@ -501,6 +524,7 @@ impl Workspace {
             placeholder_traffic_lights: false,
             _subscriptions: subscriptions,
             _links: links,
+            _auto_lock: auto_lock,
         }
     }
 
@@ -828,24 +852,53 @@ impl Workspace {
             }
             NoteListEvent::Duplicate(id) => {
                 self.flush(cx);
-                let Ok(Some(note)) = self.store.note(id) else {
+                let Ok(Some(mut note)) = self.store.note(id) else {
                     return;
                 };
+                // A locked note's copy is locked too, sealed for its own ID.
+                if crate::locked::reveal(&mut note, cx).is_closed() {
+                    self.notify_error("Unlock the note to duplicate it.", window, cx);
+                    return;
+                }
                 let copy = json!({
                     "title": format!("{} (copy)", note.title),
-                    "body": note.body,
+                    "body": if note.is_locked() { "" } else { note.body.as_str() },
                     "bookId": note.book_id,
                     "tags": note.tags,
                     "status": note.status.as_str(),
                 });
-                match self.store.put(DocType::Note, copy, Put::Upsert, Origin::Ui) {
+                let created = self
+                    .store
+                    .put(DocType::Note, copy, Put::Upsert, Origin::Ui)
+                    .map_err(|err| err.to_string())
+                    .and_then(|created| {
+                        if note.is_locked() {
+                            self.lock_copy(&created.id, note.body.clone(), cx)?;
+                        }
+                        Ok(created.id)
+                    });
+                match created {
                     Ok(created) => self
                         .library
-                        .update(cx, |library, cx| library.select(Some(created.id), cx)),
-                    Err(err) => self.notify_error(err.to_string(), window, cx),
+                        .update(cx, |library, cx| library.select(Some(created), cx)),
+                    Err(err) => self.notify_error(err, window, cx),
                 }
             }
         }
+    }
+
+    /// Seals `body` into the new note `id`, a locked note's copy.
+    fn lock_copy(&self, id: &str, body: String, cx: &mut App) -> Result<(), String> {
+        let mut copy = self
+            .store
+            .note(id)
+            .map_err(|err| err.to_string())?
+            .ok_or_else(|| "The copy wasn't saved.".to_owned())?;
+        copy.body = body;
+        crate::locked::seal(&mut copy, cx)?;
+        let value = serde_json::to_value(&copy).map_err(|err| err.to_string())?;
+        self.store.lock_note(value).map_err(|err| err.to_string())?;
+        Ok(())
     }
 
     fn on_sidebar_event(
@@ -1086,8 +1139,14 @@ impl Workspace {
                 Ok(report) => {
                     window.push_notification(
                         Notification::success(format!(
-                            "Exported {} notes and {} attachments.",
-                            report.notes, report.attachments
+                            "Exported {} notes and {} attachments.{}",
+                            report.notes,
+                            report.attachments,
+                            match report.locked {
+                                0 => String::new(),
+                                1 => " 1 locked note was left out.".into(),
+                                n => format!(" {n} locked notes were left out."),
+                            }
                         )),
                         cx,
                     );
@@ -1514,6 +1573,33 @@ impl Render for Workspace {
                 cx.listener(|this, _: &crate::publish::PublishNote, window, cx| {
                     this.close_settings(window, cx);
                     crate::publish::open_publish(this.editor.clone(), window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::locked::LockNote, window, cx| {
+                    this.close_settings(window, cx);
+                    crate::locked::lock_open_note(this.editor.clone(), window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::locked::UnlockNote, window, cx| {
+                    crate::locked::unlock_open_note(this.editor.clone(), window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::locked::RemoveLock, window, cx| {
+                    this.close_settings(window, cx);
+                    crate::locked::remove_lock(this.editor.clone(), window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::locked::LockNotesNow, window, cx| {
+                    crate::locked::lock_now(&this.editor, window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::locked::ChangeLockPassword, window, cx| {
+                    crate::locked::change_password(this.editor.clone(), window, cx);
                 }),
             )
             .on_action(

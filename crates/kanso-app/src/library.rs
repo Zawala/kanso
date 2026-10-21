@@ -808,6 +808,7 @@ mod tests {
             created_at: 0,
             tasks_done: 0,
             tasks_total: 0,
+            locked: false,
         }
     }
 

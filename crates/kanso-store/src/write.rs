@@ -2,7 +2,7 @@
 
 use base64::Engine as _;
 use kanso_core::id::is_valid_id;
-use kanso_core::model::{MAX_ATTACHMENT_SIZE, TRASH_BOOK_ID};
+use kanso_core::model::{LOCK_FIELD, MAX_ATTACHMENT_SIZE, TRASH_BOOK_ID};
 use kanso_core::{DocType, Rev, new_id, now_ms};
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde_json::{Map, Value, json};
@@ -286,127 +286,194 @@ impl Store {
         origin: Origin,
         kept: &[&str],
     ) -> Result<WriteResult> {
-        let Value::Object(mut fields) = body else {
+        let Value::Object(fields) = body else {
             return Err(StoreError::Invalid("Expected a JSON object.".into()));
         };
-        self.write(|tx, changes| {
-            let attachment = if doc_type == DocType::File {
-                take_attachment(&mut fields)?
-            } else {
-                None
-            };
-            let given_id = fields.get("_id").and_then(Value::as_str).map(str::to_owned);
-            let given_rev = fields
-                .get("_rev")
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-            let id = match given_id {
-                Some(id) if is_valid_id(doc_type, &id) => id,
-                Some(id) => {
-                    return Err(StoreError::Invalid(format!("Invalid document ID '{id}'.")));
-                }
-                None if mode == Put::Merge => return Err(StoreError::NotFound),
-                None => fresh_id(tx, doc_type)?,
-            };
-            let previous = load_row(tx, &id)?;
-            if let Some(prev) = &previous
-                && prev.doc_type != doc_type
-            {
-                return Err(StoreError::Conflict);
-            }
-            let live = previous.as_ref().filter(|p| !p.deleted);
-            let merged = match (mode, live) {
-                (Put::Upsert, Some(prev)) => {
-                    if given_rev.as_deref() != Some(prev.rev.as_str()) {
-                        return Err(StoreError::Conflict);
-                    }
-                    fields
-                }
-                (Put::Upsert, None) => fields,
-                (Put::Merge, None) => return Err(StoreError::NotFound),
-                (Put::Merge, Some(prev)) => {
-                    if given_rev.as_ref().is_some_and(|rev| *rev != prev.rev) {
-                        return Err(StoreError::Conflict);
-                    }
-                    strip_reserved(&mut fields);
-                    let mut merged = prev.fields.clone();
-                    merged.extend(fields);
-                    merged
-                }
-            };
-            let mut merged = merged;
-            for &key in kept {
-                match live.and_then(|p| p.fields.get(key)) {
-                    Some(value) => merged.insert(key.to_owned(), value.clone()),
-                    None => merged.remove(key),
-                };
-            }
-            let mut normalized = normalize(
-                doc_type,
-                &id,
-                merged,
-                live.map(|p| &p.fields),
-                now_ms(),
-                if origin == Origin::Sync {
-                    Refs::Skip
-                } else {
-                    Refs::Check(tx)
-                },
-            )?;
-
-            if doc_type == DocType::File {
-                let blob = match attachment {
-                    Some(blob) => {
-                        if blob.data.len() > MAX_ATTACHMENT_SIZE {
-                            return Err(StoreError::Invalid(format!(
-                                "The file is larger than {MAX_ATTACHMENT_SIZE} bytes."
-                            )));
-                        }
-                        blob
-                    }
-                    None => match live {
-                        Some(_) => load_blob(tx, &id)?.ok_or(StoreError::NotFound)?,
-                        None => {
-                            return Err(StoreError::Invalid(
-                                "The file has no attachment data.".into(),
-                            ));
-                        }
-                    },
-                };
-                normalized.insert("contentLength".into(), blob.data.len().into());
-                normalized.insert("md5digest".into(), blob.md5_hex().into());
-                tx.execute(
-                    "INSERT INTO blobs (file_id, md5, data) VALUES (?1, ?2, ?3)
-                     ON CONFLICT (file_id) DO UPDATE SET md5 = excluded.md5, data = excluded.data",
-                    params![id, blob.md5_hex(), blob.data],
-                )?;
-            }
-
-            if let Some(prev) = live
-                && prev.fields == normalized
-            {
-                return Ok(WriteResult {
-                    id,
-                    rev: prev.rev.clone(),
-                });
-            }
-            let rev = next_rev(previous.as_ref(), &Value::Object(normalized.clone()))?;
-            store_row(
-                tx,
-                &id,
-                doc_type,
-                &rev,
-                false,
-                &normalized,
-                previous.as_ref(),
-                Synced::Keep,
-                origin,
-                changes,
-            )?;
-            Ok(WriteResult { id, rev })
-        })
+        self.write(|tx, changes| put_in(tx, changes, doc_type, fields, mode, origin, kept))
     }
 
+    /// Writes `body`, a whole note the app has just sealed under the lock
+    /// password, and forgets what the note said before: its saved versions
+    /// (all in plain text until now), its embedding, and the pages SQLite
+    /// freed for them, which are overwritten, and the write-ahead log, which
+    /// is emptied. One transaction: there is no moment with the note locked
+    /// and its old text still in history. Refused unless `body` is locked.
+    pub fn lock_note(&self, body: Value) -> Result<WriteResult> {
+        let Value::Object(fields) = body else {
+            return Err(StoreError::Invalid("Expected a JSON object.".into()));
+        };
+        if !fields.contains_key(LOCK_FIELD) {
+            return Err(StoreError::Invalid("The note isn't locked.".into()));
+        }
+        let result = self.write(|tx, changes| {
+            let result = put_in(
+                tx,
+                changes,
+                DocType::Note,
+                fields,
+                Put::Upsert,
+                Origin::Ui,
+                &[],
+            )?;
+            tx.execute("DELETE FROM revisions WHERE doc_id = ?", [&result.id])?;
+            crate::embed::forget_note(tx, &result.id)?;
+            Ok(result)
+        })?;
+        self.checkpoint()?;
+        Ok(result)
+    }
+
+    /// Moves everything in the write-ahead log into the database and empties
+    /// the log, so text just deleted doesn't linger in it.
+    fn checkpoint(&self) -> Result<()> {
+        let conn = self.writer.lock().expect("writer poisoned");
+        conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
+        Ok(())
+    }
+}
+
+/// [`Store::put_keeping`] inside the writer's transaction.
+fn put_in(
+    tx: &Transaction,
+    changes: &mut Vec<Change>,
+    doc_type: DocType,
+    mut fields: Map<String, Value>,
+    mode: Put,
+    origin: Origin,
+    kept: &[&str],
+) -> Result<WriteResult> {
+    let attachment = if doc_type == DocType::File {
+        take_attachment(&mut fields)?
+    } else {
+        None
+    };
+    let given_id = fields.get("_id").and_then(Value::as_str).map(str::to_owned);
+    let given_rev = fields
+        .get("_rev")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let id = match given_id {
+        Some(id) if is_valid_id(doc_type, &id) => id,
+        Some(id) => {
+            return Err(StoreError::Invalid(format!("Invalid document ID '{id}'.")));
+        }
+        None if mode == Put::Merge => return Err(StoreError::NotFound),
+        None => fresh_id(tx, doc_type)?,
+    };
+    let previous = load_row(tx, &id)?;
+    if let Some(prev) = &previous
+        && prev.doc_type != doc_type
+    {
+        return Err(StoreError::Conflict);
+    }
+    let live = previous.as_ref().filter(|p| !p.deleted);
+    let merged = match (mode, live) {
+        (Put::Upsert, Some(prev)) => {
+            if given_rev.as_deref() != Some(prev.rev.as_str()) {
+                return Err(StoreError::Conflict);
+            }
+            fields
+        }
+        (Put::Upsert, None) => fields,
+        (Put::Merge, None) => return Err(StoreError::NotFound),
+        (Put::Merge, Some(prev)) => {
+            if given_rev.as_ref().is_some_and(|rev| *rev != prev.rev) {
+                return Err(StoreError::Conflict);
+            }
+            strip_reserved(&mut fields);
+            let mut merged = prev.fields.clone();
+            merged.extend(fields);
+            merged
+        }
+    };
+    let mut merged = merged;
+    for &key in kept {
+        match live.and_then(|p| p.fields.get(key)) {
+            Some(value) => merged.insert(key.to_owned(), value.clone()),
+            None => merged.remove(key),
+        };
+    }
+    let mut normalized = normalize(
+        doc_type,
+        &id,
+        merged,
+        live.map(|p| &p.fields),
+        now_ms(),
+        if origin == Origin::Sync {
+            Refs::Skip
+        } else {
+            Refs::Check(tx)
+        },
+    )?;
+    // A locked note's text is only in its sealed `kansoLock`. Sync takes
+    // what another device wrote, even an older Kanso's; nothing local may
+    // put text beside the lock, where search and the API would read it.
+    if doc_type == DocType::Note
+        && origin != Origin::Sync
+        && normalized.contains_key(LOCK_FIELD)
+        && normalized
+            .get("body")
+            .and_then(Value::as_str)
+            .is_some_and(|b| !b.is_empty())
+    {
+        return Err(StoreError::Invalid(
+            "The note is locked: its text can only be changed in Kanso.".into(),
+        ));
+    }
+
+    if doc_type == DocType::File {
+        let blob = match attachment {
+            Some(blob) => {
+                if blob.data.len() > MAX_ATTACHMENT_SIZE {
+                    return Err(StoreError::Invalid(format!(
+                        "The file is larger than {MAX_ATTACHMENT_SIZE} bytes."
+                    )));
+                }
+                blob
+            }
+            None => match live {
+                Some(_) => load_blob(tx, &id)?.ok_or(StoreError::NotFound)?,
+                None => {
+                    return Err(StoreError::Invalid(
+                        "The file has no attachment data.".into(),
+                    ));
+                }
+            },
+        };
+        normalized.insert("contentLength".into(), blob.data.len().into());
+        normalized.insert("md5digest".into(), blob.md5_hex().into());
+        tx.execute(
+            "INSERT INTO blobs (file_id, md5, data) VALUES (?1, ?2, ?3)
+             ON CONFLICT (file_id) DO UPDATE SET md5 = excluded.md5, data = excluded.data",
+            params![id, blob.md5_hex(), blob.data],
+        )?;
+    }
+
+    if let Some(prev) = live
+        && prev.fields == normalized
+    {
+        return Ok(WriteResult {
+            id,
+            rev: prev.rev.clone(),
+        });
+    }
+    let rev = next_rev(previous.as_ref(), &Value::Object(normalized.clone()))?;
+    store_row(
+        tx,
+        &id,
+        doc_type,
+        &rev,
+        false,
+        &normalized,
+        previous.as_ref(),
+        Synced::Keep,
+        origin,
+        changes,
+    )?;
+    Ok(WriteResult { id, rev })
+}
+
+impl Store {
     /// Deletes a document with Inkdrop's semantics: a notebook's notes move to
     /// the trash and its sub-notebooks are deleted; a tag is removed from its
     /// notes first; a note or file is deleted outright.
