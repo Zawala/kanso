@@ -32,8 +32,8 @@ A pack does two things:
 - **Kanso's own icons.** An SVG named like one of the icons Kanso draws
   (`pin.svg`, `chevron-right.svg`, `notebook.svg`, `search.svg`…) replaces it
   everywhere: the sidebar, the toolbar, menus and the palette. Choose the pack
-  with **Use for App Icons**. Kanso shows the new icons the next time it
-  opens, since a window keeps the icons it has already drawn. A pack that
+  with **Use for App Icons**: the window opens again in its place with the
+  new icons, the note you're writing saved first. A pack that
   covers only some icons leaves the rest as they are. Kanso's names are
   [Lucide](https://lucide.dev/icons)'s, so a pack made for Lucide names fits.
 

@@ -1002,3 +1002,48 @@ fn picking_a_theme_applies_it_everywhere(cx: &mut TestAppContext) {
     f.click(cx, "theme-ui-kanso-light");
     assert_eq!(state(cx).0, LIGHT);
 }
+
+/// Choosing an icon pack for the app opens the main window again in its
+/// place: the old one closes, the note being written is saved first, and
+/// the new one shows Settings › Themes, so the new icons show at once.
+#[gpui_kit::test]
+fn reopening_the_main_window_saves_the_note_and_returns_to_themes(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let editor = cx.read(|cx| f.workspace.read(cx).editor.clone());
+    let body = cx.read(|cx| editor.read(cx).body_state());
+    f.window
+        .update(cx, |_, window, cx| {
+            body.update(cx, |state, cx| {
+                state.set_selected_range(0..0, cx);
+                state.replace("Typed just now. ", window, cx);
+            })
+        })
+        .unwrap();
+    f.window
+        .update(cx, |_, window, cx| crate::reopen_main_window(window, cx))
+        .unwrap();
+    cx.run_until_parked();
+
+    let windows = cx.update(|cx| cx.windows());
+    assert_eq!(windows.len(), 1, "the old window closed");
+    assert_ne!(windows[0].window_id(), f.window.window_id());
+    let saved = cx.read(|cx| {
+        cx.global::<AppState>()
+            .store
+            .note(&f.note)
+            .unwrap()
+            .unwrap()
+            .body
+    });
+    assert!(saved.starts_with("Typed just now. "), "{}", &saved[..40]);
+    let mut shown = Vec::new();
+    cx.update(|cx| {
+        for_each_workspace(cx, |workspace, cx| {
+            shown.push((
+                workspace.settings_open(),
+                workspace.settings.read(cx).page(),
+            ));
+        })
+    });
+    assert_eq!(shown, vec![(true, SettingsPage::Appearance)]);
+}

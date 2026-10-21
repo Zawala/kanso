@@ -353,7 +353,43 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
 }
 
 fn open_main_window(cx: &mut App) {
-    let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
+    open_main_window_at(None, cx);
+}
+
+/// Opens the main window again where `window` is, and closes `window`, with
+/// Settings › Themes showing in the new one. A new window draws every icon
+/// afresh, so an icon pack just chosen for the app's icons shows at once,
+/// with no restart. The note being written is saved first.
+pub(crate) fn reopen_main_window(window: &mut Window, cx: &mut App) {
+    if let Some(Some(root)) = window.root::<gpui_kit::base::Root>()
+        && let Ok(workspace) = root.read(cx).view().clone().downcast::<Workspace>()
+    {
+        let editor = workspace.read(cx).editor.clone();
+        editor.update(cx, |editor, cx| editor.flush(cx));
+    }
+    let bounds = window.window_bounds();
+    let old = window.window_handle();
+    cx.defer(move |cx| {
+        let Some((new, workspace)) = open_main_window_at(Some(bounds), cx) else {
+            return;
+        };
+        old.update(cx, |_, window, _| window.remove_window()).ok();
+        new.update(cx, |_, window, cx| {
+            workspace.update(cx, |workspace, cx| {
+                workspace.open_settings(Some(settings::SettingsPage::Appearance), window, cx)
+            });
+            window.activate_window();
+        })
+        .ok();
+    });
+}
+
+/// Opens a main window with `bounds`, or centered at the default size.
+fn open_main_window_at(
+    bounds: Option<WindowBounds>,
+    cx: &mut App,
+) -> Option<(AnyWindowHandle, Entity<Workspace>)> {
+    let centered = Bounds::centered(None, size(px(1440.), px(900.)), cx);
     // On macOS the panes run to the top edge; the traffic lights sit in the
     // leftmost pane's top band, and the app moves the window from the bands
     // itself (see `layout::BandDrag`). On Windows Kanso draws the whole
@@ -375,7 +411,7 @@ fn open_main_window(cx: &mut App) {
         traffic_light_position: None,
     };
     let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        window_bounds: Some(bounds.unwrap_or(WindowBounds::Windowed(centered))),
         titlebar: Some(titlebar),
         app_owns_titlebar_drag: cfg!(target_os = "macos"),
         window_min_size: Some(size(px(1100.), px(720.))),
@@ -393,9 +429,9 @@ fn open_main_window(cx: &mut App) {
     });
     match opened {
         Ok((window, view)) => {
+            let editor = view.read(cx).editor.clone();
             window
                 .update(cx, |_, window, cx| {
-                    let editor = view.read(cx).editor.clone();
                     window.on_window_should_close(cx, move |_, cx| {
                         editor.update(cx, |editor, cx| editor.flush(cx));
                         true
@@ -404,8 +440,12 @@ fn open_main_window(cx: &mut App) {
                     updates::announce(window, cx);
                 })
                 .ok();
+            Some((window, view))
         }
-        Err(err) => eprintln!("kanso: couldn't open a window: {err:#}"),
+        Err(err) => {
+            eprintln!("kanso: couldn't open a window: {err:#}");
+            None
+        }
     }
 }
 

@@ -314,17 +314,15 @@ pub fn page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
 }
 
 /// Chooses the icon pack that draws the app's own icons (`None`: the
-/// built-in ones), from the next launch.
+/// built-in ones), and shows it at once: the main window opens again in its
+/// place, since a window keeps the icons it has drawn.
 fn use_icon_pack(id: Option<String>, window: &mut Window, cx: &mut App) {
-    let changed = id != icon_packs::in_use();
+    let pack = id
+        .as_deref()
+        .and_then(|id| icon_packs::packs(cx).pack(id).cloned());
     AppState::update_config(cx, |config| config.appearance.icon_pack = id);
-    if changed {
-        window.push_notification(
-            Notification::info("Restart Kanso to see the new icons."),
-            cx,
-        );
-    }
-    cx.refresh_windows();
+    icon_packs::use_for_app(pack.as_deref());
+    crate::reopen_main_window(window, cx);
 }
 
 /// Reads the icon packs folder again, and says what couldn't be used.
@@ -398,20 +396,13 @@ fn icon_packs_section(cx: &mut Context<SettingsView>) -> AnyElement {
             row
         });
     }
-    // A chosen pack that has gone is drawn until the next launch only.
+    // A chosen pack that has gone is drawn only by windows open already.
     if let Some(id) = &chosen
         && !list.iter().any(|pack| &pack.id == id)
     {
         rows.push(Row::new(Lucide::TriangleAlert, id.clone()).detail(
-            "The chosen icon pack isn't in the folder; Kanso's icons show from the next launch.",
+            "The chosen icon pack isn't in the folder any more; Kanso's own icons show from the next launch.",
         ));
-    }
-    if chosen != icon_packs::in_use() {
-        rows.push(
-            Row::new(Lucide::RefreshCcw, "Restart to see the new icons").detail(
-                "The app's icons change when Kanso next opens; notebook icons from packs show now.",
-            ),
-        );
     }
     rows.push(
         Row::new(Lucide::FolderOpen, "Icon packs folder")

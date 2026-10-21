@@ -156,7 +156,7 @@ picker) lists nearly two hundred open-source icon sets from Iconify, such as Luc
 and Material Symbols, to install or uninstall in a click. An icon pack can also be a folder of SVG icons
 you add to the `icon-packs` folder of Kanso's data folder (Settings › Themes › Icon packs › **Open Folder**). Its icons join the notebook icon picker in a section
 of their own, and a pack chosen with **Use for App Icons** draws Kanso's own icons where it has a file
-of the same name, from the next launch. [docs/ICON_PACKS.md](docs/ICON_PACKS.md) has the format.
+of the same name, at once. [docs/ICON_PACKS.md](docs/ICON_PACKS.md) has the format.
 
 ### Shortcuts
 

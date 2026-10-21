@@ -16,8 +16,9 @@
 //! Its icons join the notebook icon picker (a notebook keeps one as
 //! `<pack>/<icon>`). Chosen in Settings › Themes, a pack also draws the app's
 //! own icons: an SVG named like one of them (`pin.svg`, `chevron-right.svg`)
-//! takes its place everywhere, from the next launch, since the window keeps
-//! the icons it has drawn. Icons are drawn in one color, the theme's, as the
+//! takes its place everywhere. A window keeps the icons it has drawn, so
+//! choosing a pack opens the main window again in its place to show it at
+//! once (`reopen_main_window`). Icons are drawn in one color, the theme's, as the
 //! built-in ones are.
 //!
 //! Packs are read at launch, again whenever the folder changes, and on
@@ -556,16 +557,9 @@ pub fn watch(cx: &mut App) {
 
 /// The pack drawing the app's own icons, by icon name, set once at launch.
 static APP_ICONS: RwLock<Option<HashMap<String, Arc<[u8]>>>> = RwLock::new(None);
-/// The ID of the pack drawing them since launch.
-static IN_USE: RwLock<Option<String>> = RwLock::new(None);
-
-/// The pack drawing the app's own icons since launch, by ID.
-pub fn in_use() -> Option<String> {
-    IN_USE.read().unwrap_or_else(|e| e.into_inner()).clone()
-}
-
 /// Draws the app's own icons with `pack`'s, where it has them, or with the
-/// built-in ones. Takes effect for icons not drawn yet: call it at launch.
+/// built-in ones. A window keeps the icons it has drawn: this takes effect
+/// in windows opened after it (see `reopen_main_window`).
 pub fn use_for_app(pack: Option<&IconPack>) {
     let icons = pack.map(|pack| {
         pack.icons
@@ -574,7 +568,6 @@ pub fn use_for_app(pack: Option<&IconPack>) {
             .collect()
     });
     *APP_ICONS.write().unwrap_or_else(|e| e.into_inner()) = icons;
-    *IN_USE.write().unwrap_or_else(|e| e.into_inner()) = pack.map(|pack| pack.id.clone());
 }
 
 /// The chosen pack's SVG for the asset at `path` (`icons/<name>.svg`), if it
