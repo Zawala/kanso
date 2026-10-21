@@ -140,7 +140,7 @@ pub fn sections(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
 
 /// A short bar `share` (0 to 1) of the way full.
 // no-prop-test: drawing; the settings snapshots show it.
-fn meter(share: f32, colors: &Colors) -> impl IntoElement {
+pub(crate) fn meter(share: f32, colors: &Colors) -> impl IntoElement {
     v_flex().w(px(96.)).child(
         div()
             .w_full()

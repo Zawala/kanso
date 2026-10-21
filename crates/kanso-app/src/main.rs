@@ -73,6 +73,7 @@ mod settings;
 mod settings_capture;
 mod settings_discovery;
 mod settings_themes;
+mod settings_voice;
 #[cfg(test)]
 mod settings_window_tests;
 mod sidebar;
@@ -90,11 +91,12 @@ mod theme_file;
 mod theme_import;
 mod themes;
 mod title_bar;
-mod voice_state;
 #[cfg(test)]
 mod ui_tests;
 mod updates;
 mod vim;
+mod voice;
+mod voice_state;
 mod wikilinks;
 mod word_goal;
 mod workspace;
@@ -333,6 +335,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         reminders::init(store, open_main_window, cx);
         // Discovery, in the background: related notes and text in images.
         related::init(cx);
+        voice::init(cx);
         ocr::init(cx);
         open_main_window(cx);
         cx.activate(true);

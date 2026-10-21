@@ -1332,6 +1332,29 @@ impl NoteEditor {
         window.refresh();
     }
 
+    /// Puts what was said at the caret (in place of a selection) as one
+    /// step that undoes at once, with the keyboard back in the note.
+    /// Whether there was a note to put it in.
+    // no-prop-test: glue over `voice_edit`, which has the properties.
+    pub fn insert_transcript(
+        &mut self,
+        transcript: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.note.is_none() {
+            return false;
+        }
+        if self.view_mode == ViewMode::Preview {
+            self.set_view_mode(ViewMode::Split, cx);
+        }
+        self.smart_edit(window, cx, |_, text, selection| {
+            crate::voice_state::voice_edit(text, selection, transcript)
+        });
+        self.focus_body(window, cx);
+        true
+    }
+
     pub fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
         self.view_mode = mode;
         if mode != ViewMode::Edit {
@@ -1403,6 +1426,16 @@ impl NoteEditor {
     // no-prop-test: key glue; `pairing` has the properties and
     // `pairing_types_through_the_editor` types through it.
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        // Escape while listening drops what was said.
+        if event.keystroke.key == "escape"
+            && cx
+                .try_global::<crate::voice::Voice>()
+                .is_some_and(|voice| voice.is_for(&cx.entity()))
+        {
+            crate::voice::cancel(cx);
+            cx.stop_propagation();
+            return;
+        }
         if !self.settings.auto_pair {
             return;
         }
@@ -1857,6 +1890,55 @@ impl NoteEditor {
     /// The top band: where the note lives (click it to move the note),
     /// whether it is saved, linked-from notes, the view mode and the note's
     /// actions. Its empty middle moves the window.
+    /// While this note listens: a level meter, the time, and a cancel; then
+    /// "Writing…" while what was said becomes text.
+    // no-prop-test: drawing; the voice snapshots show each state.
+    fn voice_pill(&self, colors: &Colors, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let voice = cx.try_global::<crate::voice::Voice>()?;
+        if !voice.is_for(&cx.entity()) {
+            return None;
+        }
+        let pill = h_flex()
+            .id("voice-pill")
+            .debug_selector(|| "voice-pill".into())
+            .flex_none()
+            .h(px(24.))
+            .mr(px(4.))
+            .pl(px(10.))
+            .gap(px(8.))
+            .rounded_full()
+            .bg(colors.fill)
+            .text_size(px(12.))
+            .text_color(colors.text_secondary);
+        Some(match voice.level_and_elapsed() {
+            Some((level, elapsed)) => pill
+                .child(level_meter(level, colors))
+                .child(
+                    div()
+                        .min_w(px(30.))
+                        .child(crate::voice::elapsed_label(elapsed)),
+                )
+                .child(
+                    Button::new("voice-cancel")
+                        .ghost()
+                        .xsmall()
+                        .icon(Icon::new(Lucide::Close).text_color(colors.text_secondary))
+                        .tooltip("Cancel (Esc)")
+                        .on_click(|_, _, cx| crate::voice::cancel(cx)),
+                )
+                .into_any_element(),
+            None => pill
+                .pr(px(10.))
+                .child(
+                    Icon::new(Lucide::LoaderCircle)
+                        .xsmall()
+                        .text_color(colors.text_secondary),
+                )
+                .child("Writing…")
+                .into_any_element(),
+        })
+    }
+
     fn render_band(&self, note: &Note, cx: &mut Context<Self>) -> impl IntoElement {
         let library = self.library.read(cx);
         let path: Vec<String> = if note.book_id == TRASH_BOOK_ID {
@@ -1915,6 +1997,10 @@ impl NoteEditor {
         });
         // Out of the Tab order while focus mode hides them.
         let tab_stop = !self.chrome_hidden();
+        let listening = cx.try_global::<crate::voice::Voice>().is_some_and(|voice| {
+            voice.is_for(&cx.entity())
+                && matches!(voice.phase, crate::voice_state::Phase::Listening { .. })
+        });
         let move_menu = Button::new("breadcrumb")
             .ghost()
             .small()
@@ -2053,17 +2139,29 @@ impl NoteEditor {
                     .tooltip(if pinned { "Unpin note" } else { "Pin note" })
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_pinned(cx))),
             )
-            .when(crate::dictation::AVAILABLE, |el| {
-                el.child(
-                    Button::new("dictate")
-                        .ghost()
-                        .small()
-                        .tab_stop(tab_stop)
-                        .icon(Icon::new(Lucide::Mic).text_color(colors.text_secondary))
-                        .tooltip("Dictate")
-                        .on_click(cx.listener(|this, _, window, cx| this.dictate(window, cx))),
-                )
-            })
+            .children(self.voice_pill(colors, cx))
+            .child(
+                Button::new("dictate")
+                    .ghost()
+                    .small()
+                    .tab_stop(tab_stop)
+                    .icon(Icon::new(Lucide::Mic).text_color(if listening {
+                        colors.danger
+                    } else {
+                        colors.text_secondary
+                    }))
+                    .selected(listening)
+                    .tooltip(if listening {
+                        "Stop and write it down"
+                    } else {
+                        "Voice input"
+                    })
+                    .on_click(
+                        cx.listener(|_, _, window, cx| {
+                            crate::voice::press(cx.entity(), window, cx)
+                        }),
+                    ),
+            )
             .child(
                 Button::new("history")
                     .ghost()
@@ -2601,6 +2699,24 @@ fn utf8_offset(text: &str, utf16: usize) -> usize {
         units += ch.len_utf16();
     }
     text.len()
+}
+
+/// Five bars that rise with `level` (0 to 1), the middle one most, in the
+/// danger color: the microphone is on.
+// no-prop-test: drawing; the voice snapshots show it.
+fn level_meter(level: f32, colors: &Colors) -> impl IntoElement {
+    let level = level.clamp(0., 1.).sqrt();
+    h_flex()
+        .h(px(14.))
+        .gap(px(2.))
+        .items_center()
+        .children([0.5f32, 0.8, 1., 0.8, 0.5].map(|weight| {
+            div()
+                .w(px(2.5))
+                .h(px(3. + 11. * level * weight))
+                .rounded_full()
+                .bg(colors.danger)
+        }))
 }
 
 /// Applies `edit`, made against `text`, to the body as one step that undoes

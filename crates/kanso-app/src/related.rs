@@ -327,7 +327,7 @@ async fn run(
 
 /// Waits for `work` or `tick`, whichever comes first: `Some` with the
 /// work's result, or `None` when the tick came first.
-async fn futures_lite_select<T>(
+pub(crate) async fn futures_lite_select<T>(
     work: &mut std::pin::Pin<&mut impl std::future::Future<Output = T>>,
     tick: impl std::future::Future,
 ) -> Option<T> {
@@ -385,8 +385,14 @@ mod tests {
             .map(|f| (MODEL.file_url(f.name), vec![b'x'; f.size as usize]))
             .collect();
         let cancel = AtomicBool::new(false);
-        let err = download(&Memory::new(fake), &MODEL, dir.path(), &mut |_, _| {}, &cancel)
-            .unwrap_err();
+        let err = download(
+            &Memory::new(fake),
+            &MODEL,
+            dir.path(),
+            &mut |_, _| {},
+            &cancel,
+        )
+        .unwrap_err();
         assert!(matches!(err, ModelError::Checksum("config.json")));
         // Nothing was kept, not even the part file.
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);

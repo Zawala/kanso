@@ -91,7 +91,9 @@ fn hash_into(hasher: &mut Sha256, reader: &mut dyn Read, limit: u64) -> io::Resu
     let mut buf = vec![0u8; 64 * 1024];
     let mut read = 0u64;
     while read < limit {
-        let want = buf.len().min((limit - read).try_into().unwrap_or(usize::MAX));
+        let want = buf
+            .len()
+            .min((limit - read).try_into().unwrap_or(usize::MAX));
         let n = reader.read(&mut buf[..want])?;
         if n == 0 {
             break;
@@ -214,9 +216,14 @@ pub fn download(
     for file in todo {
         let to = dir.join(file.name);
         let part = dir.join(format!("{}.part", file.name));
-        let result = fetch_file(fetch, &model.file_url(file.name), &file, &part, &mut |got| {
-            progress(done + got, total)
-        }, cancel);
+        let result = fetch_file(
+            fetch,
+            &model.file_url(file.name),
+            &file,
+            &part,
+            &mut |got| progress(done + got, total),
+            cancel,
+        );
         match result {
             Ok(()) => fs::rename(&part, &to)?,
             // What arrived is kept to carry on from.
@@ -395,7 +402,9 @@ pub(crate) mod tests {
 
     /// A pinned file of `len` bytes from `seed`, for the download tests.
     fn file_of(len: usize, seed: u8) -> (Vec<u8>, ModelFile) {
-        let bytes: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(31).wrapping_add(seed)).collect();
+        let bytes: Vec<u8> = (0..len)
+            .map(|i| (i as u8).wrapping_mul(31).wrapping_add(seed))
+            .collect();
         let sha = hex(&Sha256::digest(&bytes));
         let file = ModelFile {
             name: "weights.bin",

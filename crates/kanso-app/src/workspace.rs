@@ -157,6 +157,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-3", ShowPreview, None),
         KeyBinding::new("secondary-s", SaveNote, None),
         KeyBinding::new("secondary-shift-p", TogglePinned, None),
+        KeyBinding::new("secondary-shift-m", Dictate, None),
         KeyBinding::new("secondary-alt-down", NextNote, None),
         KeyBinding::new("secondary-alt-up", PreviousNote, None),
         KeyBinding::new("secondary-,", OpenSettings, None),
@@ -212,7 +213,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Pin / Unpin Note", TogglePinned),
             MenuItem::action("Move to Trash", TrashNote),
             MenuItem::action("Show History…", ShowHistory),
-            MenuItem::action("Dictate", Dictate),
+            MenuItem::action("Voice Input", Dictate),
             MenuItem::action("Publish…", crate::publish::PublishNote),
             MenuItem::separator(),
             MenuItem::action("Next Note", NextNote),
@@ -1557,8 +1558,7 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|this, _: &Dictate, window, cx| {
                 this.close_settings(window, cx);
-                this.editor
-                    .update(cx, |editor, cx| editor.dictate(window, cx));
+                crate::voice::press(this.editor.clone(), window, cx);
             }))
             .on_action(cx.listener(|this, _: &ShowHistory, window, cx| {
                 this.close_settings(window, cx);

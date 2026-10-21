@@ -152,7 +152,12 @@ mod tests {
     use proptest::prelude::*;
 
     fn apply(text: &str, edit: &Edit) -> String {
-        format!("{}{}{}", &text[..edit.range.start], edit.text, &text[edit.range.end..])
+        format!(
+            "{}{}{}",
+            &text[..edit.range.start],
+            edit.text,
+            &text[edit.range.end..]
+        )
     }
 
     fn put(text: &str, at: usize, transcript: &str) -> String {
@@ -162,7 +167,10 @@ mod tests {
     #[test]
     fn transcripts_go_in_as_written() {
         assert_eq!(put("", 0, " Hello there. "), "Hello there.");
-        assert_eq!(put("Groceries:", 10, "Milk and eggs."), "Groceries: Milk and eggs.");
+        assert_eq!(
+            put("Groceries:", 10, "Milk and eggs."),
+            "Groceries: Milk and eggs."
+        );
         assert_eq!(put("I said", 6, "Hello there."), "I said hello there.");
         assert_eq!(put("I said", 6, "I think so."), "I said I think so.");
         assert_eq!(put("We met", 6, "NASA people."), "We met NASA people.");
@@ -185,14 +193,36 @@ mod tests {
         let (p, e) = Phase::Idle.next(Event::Press, 1);
         assert_eq!(e, Effect::Listen(1));
         let (p, e) = p.next(Event::Press, 2);
-        assert_eq!((p, e), (Phase::Transcribing { session: 1 }, Effect::Transcribe));
+        assert_eq!(
+            (p, e),
+            (Phase::Transcribing { session: 1 }, Effect::Transcribe)
+        );
         let (p, e) = p.next(Event::Cancel, 2);
         assert_eq!((p, e), (Phase::Idle, Effect::Drop));
         let (p, _) = p.next(Event::Press, 2);
         let (p, _) = p.next(Event::Press, 3);
         // The first go's transcript, late: not this one's.
-        assert_eq!(p.next(Event::Transcribed { session: 1, ok: true }, 3).1, Effect::None);
-        assert_eq!(p.next(Event::Transcribed { session: 2, ok: true }, 3), (Phase::Idle, Effect::Insert));
+        assert_eq!(
+            p.next(
+                Event::Transcribed {
+                    session: 1,
+                    ok: true
+                },
+                3
+            )
+            .1,
+            Effect::None
+        );
+        assert_eq!(
+            p.next(
+                Event::Transcribed {
+                    session: 2,
+                    ok: true
+                },
+                3
+            ),
+            (Phase::Idle, Effect::Insert)
+        );
     }
 
     fn text() -> impl Strategy<Value = String> {

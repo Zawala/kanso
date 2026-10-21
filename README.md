@@ -10,6 +10,9 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
   indent with Tab; tables line up as you edit them.
 - Smart paste turns a pasted link into Markdown and keeps code as code; ⇧⌘V pastes plain text.
 - Typewriter scrolling, a word goal per note, focus mode, and optional Vim keys.
+- Voice input: press the mic, speak, and the words go in at the cursor. It runs on your device
+  with NVIDIA's Parakeet model (25 languages, downloaded once on first use), or with your
+  system's own dictation.
 
 **Linking**
 - `[[Wiki-links]]` with autocomplete, backlinks with their context, unlinked mentions, and an
@@ -241,4 +244,8 @@ Contributions are welcome. By opening a pull request you agree that your contrib
 under the same terms.
 
 Kanso's dependencies keep their own licences (MIT, Apache-2.0, BSD and similar; a few files under
-MPL-2.0).
+MPL-2.0). The models Kanso downloads on request keep theirs: voice input's
+[Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) by NVIDIA is
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), in istupakov's
+[ONNX conversion](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx); related notes'
+[potion-base-8M](https://huggingface.co/minishlab/potion-base-8M) is MIT.

@@ -602,7 +602,11 @@ mod tests {
             gen_editor(),
             (any::<bool>(), "(ctrl-|alt-|shift-|cmd-){1,3}[a-z0-9]"),
             (any::<bool>(), any::<bool>(), 1u8..=2),
-            prop::sample::select(vec![VoiceEngine::Ask, VoiceEngine::OnDevice, VoiceEngine::System]),
+            prop::sample::select(vec![
+                VoiceEngine::Ask,
+                VoiceEngine::OnDevice,
+                VoiceEngine::System,
+            ]),
         )
             .prop_map(
                 |(

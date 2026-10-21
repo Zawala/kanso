@@ -13,11 +13,12 @@ use crate::settings::{
     OpenEditorSettings, OpenGeneralSettings, OpenUpdateSettings, ReloadThemes,
 };
 use crate::workspace::{
-    ChangePassword, ExportHtml, ExportLibrary, ExportNote, ExportPdf, FocusNoteList, FocusSearch,
-    FormatTable, ImportLibrary, NewNote, NewNotebook, NewRecoveryKey, NextNote, OpenFile,
-    OpenNotePicker, OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes, ShowBacklinks,
-    ShowCreateAccount, ShowEditor, ShowHistory, ShowOutline, ShowPreview, ShowSignIn, ShowSplit,
-    SignOut, SyncNow, ToggleFocusMode, ToggleInspector, TogglePinned, ToggleSidebar, TrashNote,
+    ChangePassword, Dictate, ExportHtml, ExportLibrary, ExportNote, ExportPdf, FocusNoteList,
+    FocusSearch, FormatTable, ImportLibrary, NewNote, NewNotebook, NewRecoveryKey, NextNote,
+    OpenFile, OpenNotePicker, OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes,
+    ShowBacklinks, ShowCreateAccount, ShowEditor, ShowHistory, ShowOutline, ShowPreview,
+    ShowSignIn, ShowSplit, SignOut, SyncNow, ToggleFocusMode, ToggleInspector, TogglePinned,
+    ToggleSidebar, TrashNote,
 };
 
 /// The palette's sections, in the order they appear with nothing typed.
@@ -328,6 +329,24 @@ static COMMANDS: &[Command] = &[
         keywords: &["target", "count", "words", "progress", "focus"],
         group: Group::Note,
         run: Run::Pick(Picker::WordGoal),
+        needs: Needs::LiveNote,
+    },
+    Command {
+        id: "voice-input",
+        label: "Voice input",
+        label_when_pinned: None,
+        description: "Starts listening; again writes what you said at the cursor. Esc drops it.",
+        icon: IconName::Mic,
+        keywords: &[
+            "dictate",
+            "dictation",
+            "speak",
+            "speech",
+            "microphone",
+            "transcribe",
+        ],
+        group: Group::Note,
+        run: action!(Dictate),
         needs: Needs::LiveNote,
     },
     Command {

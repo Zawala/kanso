@@ -49,6 +49,7 @@ use crate::updates::{Phase, Problem as UpdateProblem, Updates};
 use crate::workspace::{AppState, Workspace, apply_theme};
 
 mod discovery;
+mod voice;
 
 /// The demo's "now": Thursday 28 May 2026, 09:45 in a zone two hours ahead
 /// of UTC.
@@ -3796,6 +3797,40 @@ fn snapshots() {
         shot("dark-settings-general", Dark, Edit, settings_general),
         shot("light-settings-general", Light, Edit, settings_general),
         shot("dark-settings-editor", Dark, Edit, settings_editor),
+        // Voice input: the pill while listening and writing, and Settings'
+        // Voice input in each state of the model.
+        shot("dark-voice-listening", Dark, Edit, voice::editor_listening),
+        shot(
+            "light-voice-listening",
+            Light,
+            Edit,
+            voice::editor_listening,
+        ),
+        shot("dark-voice-writing", Dark, Edit, voice::editor_writing),
+        shot(
+            "light-settings-voice-missing",
+            Light,
+            Edit,
+            voice::settings_voice_missing,
+        ),
+        shot(
+            "dark-settings-voice-downloading",
+            Dark,
+            Edit,
+            voice::settings_voice_downloading,
+        ),
+        shot(
+            "light-settings-voice-ready",
+            Light,
+            Edit,
+            voice::settings_voice_ready,
+        ),
+        shot(
+            "dark-settings-voice-failed",
+            Dark,
+            Edit,
+            voice::settings_voice_failed,
+        ),
         shot("dark-settings-appearance", Dark, Edit, settings_appearance),
         // The Account page, signed in.
         Shot {

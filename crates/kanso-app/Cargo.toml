@@ -39,6 +39,7 @@ kanso-render.workspace = true
 kanso-server.workspace = true
 kanso-sync.workspace = true
 kanso-update.workspace = true
+kanso-voice.workspace = true
 kanso-store.workspace = true
 # The types `[[` autocomplete answers the text editor in. Pinned to the
 # version gpui-base uses.
