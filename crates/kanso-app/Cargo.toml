@@ -66,6 +66,9 @@ tokenizers = { version = "0.21", default-features = false, features = ["fancy-re
 tree-sitter-c-sharp.workspace = true
 tree-sitter-swift.workspace = true
 tar = "0.4.45"
+# A Zed extension's extension.toml, read for who made an imported icon
+# theme and where it lives. Already built for other crates.
+toml = "0.8"
 # Table formatting measures cells as a monospaced face shows them.
 unicode-width = "0.2"
 # `kanso capture` hands its text to a running Kanso's local API, and the

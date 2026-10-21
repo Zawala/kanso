@@ -361,13 +361,7 @@ pub fn import_icon_theme(window: &mut Window, cx: &mut App) {
             cx.update(|window, cx| {
                 icon_themes::reload(cx);
                 let message = match result {
-                    Ok(reports) => Notification::success(
-                        reports
-                            .iter()
-                            .map(|report| report.summary())
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                    ),
+                    Ok(imports) => Notification::success(imports.summary()),
                     Err(err) => {
                         Notification::error(format!("Couldn't import the icon theme: {err}"))
                     }

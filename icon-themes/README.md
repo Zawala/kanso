@@ -140,14 +140,22 @@ A Zed theme's folder icons become `notebook` and `notebook-open`, its
 chevrons `fold-closed` and `fold-open`, its default file icon `note`, its
 named folders the special notebooks where the names line up (`inbox`,
 `journal`, `templates`, `trash`, `tags`), and its PDF, image and audio file
-icons the attachment slots. Everything else is left to Kanso's own icons.
+icons the attachment slots (by the theme's own `file_suffixes`, else by
+Zed's default suffixes, as Zed does). Everything else is left to Kanso's
+own icons. A theme file to convert may be up to 8 MB; what Kanso writes is
+held to the limits above.
 
 The result lands in the icon themes folder as an ordinary theme folder to
-edit, with only the SVGs it uses (each checked as above), the theme's name,
-author and license carried over, and its LICENSE file when it has one. The
-import says what mapped and what was left out; importing again updates the
-same folder. An archive is unpacked by Kanso itself, regular files only, at
-most 64 MB and 20,000 files, and never outside its own temporary folder.
+edit, with only the SVGs it uses (each checked as above) and every license
+file the source has (`LICENSE`, `LICENSE-MIT`, `COPYING`…). Its author and
+license are the ones `extension.toml` or `package.json` give, its `source`
+the repository or homepage they name. The import says what mapped and what
+was left out; importing again updates the same folder. A theme with no icon
+Kanso can use isn't imported, and variants drawing the same shapes in other
+colors (a light and a dark one, say) are imported once, since Kanso draws
+icons in the text color anyway. An archive is unpacked by Kanso itself,
+regular files only, at most 64 MB and 20,000 files, and never outside its
+own temporary folder.
 
 `kanso icon-theme check <folder>` reads a theme as Kanso does and lists
 anything wrong, and `kanso icon-theme schema` prints the schema.

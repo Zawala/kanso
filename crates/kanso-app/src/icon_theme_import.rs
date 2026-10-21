@@ -46,8 +46,14 @@ Commands:
                     Print the icon theme JSON Schema, or write it to <file>
   help              Show this message";
 
-/// Largest LICENSE file carried over.
+/// Largest licence file carried over, and the most of them.
 const MAX_LICENSE_BYTES: u64 = 64 * 1024;
+const MAX_LICENSE_FILES: usize = 8;
+/// Largest Zed or package icon theme JSON read. Well above a Kanso theme
+/// file's own cap ([`MAX_JSON_BYTES`]): a Zed theme maps every kind of file
+/// there is, of which Kanso keeps a handful, so a theme of a megabyte or two
+/// imports as a few kilobytes.
+const MAX_SOURCE_JSON_BYTES: u64 = 8 * 1024 * 1024;
 /// Largest package.json or extension.toml read.
 const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 /// The most an archive may unpack to, and the most files it may hold: well
@@ -73,9 +79,12 @@ pub fn run_cli(data_dir: &Path, args: &[String]) -> anyhow::Result<()> {
             let mut failed = 0;
             for path in &paths {
                 match import_path(path, &dir) {
-                    Ok(reports) => {
-                        for report in reports {
+                    Ok(imports) => {
+                        for report in &imports.reports {
                             println!("{}", report.details());
+                        }
+                        for skipped in &imports.skipped {
+                            eprintln!("{}: {skipped}", path.display());
                         }
                     }
                     Err(err) => {
@@ -192,6 +201,27 @@ impl Report {
     }
 }
 
+/// What one import wrote, and the themes in the source it didn't, with why.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Imports {
+    pub reports: Vec<Report>,
+    /// A sentence for each theme not written: one with no icon Kanso can
+    /// use, or a variant drawing the same shapes as one written.
+    pub skipped: Vec<String>,
+}
+
+impl Imports {
+    /// Sentences for a notification.
+    pub fn summary(&self) -> String {
+        self.reports
+            .iter()
+            .map(Report::summary)
+            .chain(self.skipped.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
 fn count(n: usize, what: &str) -> String {
     match n {
         1 => format!("1 {what}"),
@@ -207,8 +237,8 @@ struct Imported {
     root: PathBuf,
     /// Each path in `file` with the path inside `root` it comes from.
     sources: BTreeMap<String, String>,
-    /// A LICENSE file to carry over, inside `root`.
-    license_file: Option<PathBuf>,
+    /// The licence files to carry over, inside `root`.
+    license_files: Vec<PathBuf>,
     /// The folder name a Kanso icon theme had, to keep.
     id: Option<String>,
     mapped: Vec<String>,
@@ -221,7 +251,7 @@ struct Imported {
 /// folder, and says what each brought.
 // no-prop-test: reads and writes files; `prop_import_stays_in_its_folder`
 // runs it over malformed sources, and the example tests over each kind.
-pub fn import_path(source: &Path, dir: &Path) -> Result<Vec<Report>, String> {
+pub fn import_path(source: &Path, dir: &Path) -> Result<Imports, String> {
     if !source.exists() {
         return Err(format!("{} doesn't exist.", source.display()));
     }
@@ -245,13 +275,124 @@ pub fn import_path(source: &Path, dir: &Path) -> Result<Vec<Report>, String> {
     import_themes(themes, dir)
 }
 
-fn import_themes(themes: Vec<Imported>, dir: &Path) -> Result<Vec<Report>, String> {
+/// Writes each theme, but for a variant drawing the same shapes as one
+/// before it, and one with no icon Kanso can use; an error when none is
+/// written, so nothing at all is.
+fn import_themes(themes: Vec<Imported>, dir: &Path) -> Result<Imports, String> {
     if themes.is_empty() {
         return Err("There are no icon themes in it.".into());
     }
+    let mut skipped = Vec::new();
+    let mut seen: Vec<(u64, String)> = Vec::new();
+    let mut unique = Vec::new();
+    for theme in themes {
+        let shape = shape_signature(&theme);
+        if let Some(shape) = shape
+            && let Some((_, first)) = seen.iter().find(|(s, _)| *s == shape)
+        {
+            skipped.push(format!(
+                "{} draws the same shapes as {first}, and Kanso draws icons in one color, so only {first} was imported.",
+                theme.file.name
+            ));
+            continue;
+        }
+        if let Some(shape) = shape {
+            seen.push((shape, theme.file.name.clone()));
+        }
+        unique.push(theme);
+    }
     std::fs::create_dir_all(dir)
         .map_err(|err| format!("The icon themes folder couldn't be made: {err}."))?;
-    themes.into_iter().map(|theme| write(theme, dir)).collect()
+    let mut reports = Vec::new();
+    for theme in unique {
+        match write(theme, dir) {
+            Ok(report) => reports.push(report),
+            Err(err) => skipped.push(err),
+        }
+    }
+    if reports.is_empty() {
+        return Err(skipped.join(" "));
+    }
+    Ok(Imports { reports, skipped })
+}
+
+/// A fingerprint of the shapes a theme draws: each icon's key and its SVG
+/// with colors and spacing taken out ([`svg_shape`]), so variants that
+/// differ only in color match. `None` when it draws nothing or its folder
+/// can't be read.
+fn shape_signature(theme: &Imported) -> Option<u64> {
+    let folder = Folder::new(&theme.root).ok()?;
+    let file = &theme.file;
+    let mut print = icon_theme_file::Fingerprint::default();
+    let entries = file
+        .icons
+        .iter()
+        .map(|(k, p)| (format!("icons.{k}"), p))
+        .chain(
+            file.library
+                .iter()
+                .map(|(k, p)| (format!("library.{}", k.key()), p)),
+        )
+        .chain(
+            file.notebook_icons
+                .iter()
+                .map(|(k, e)| (format!("notebook_icons.{k}"), &e.file)),
+        )
+        .collect::<Vec<_>>();
+    if entries.is_empty() {
+        return None;
+    }
+    for (key, dest) in entries {
+        let from = theme.sources.get(dest).unwrap_or(dest);
+        print.field(key.as_bytes());
+        match folder.read(from, MAX_SVG_BYTES) {
+            Ok(bytes) => print.field(&svg_shape(&bytes)),
+            Err(_) => print.field(b"\0unreadable"),
+        }
+    }
+    Some(print.finish())
+}
+
+/// An SVG with each color (`#` and hex digits, `rgb(…)`, `hsl(…)`) made
+/// one `#` and each run of spacing one space: what Kanso, drawing in one
+/// color, shows of it.
+/// Pure.
+pub fn svg_shape(svg: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(svg.len());
+    let mut ix = 0;
+    while ix < svg.len() {
+        let rest = &svg[ix..];
+        if rest[0] == b'#' {
+            ix += 1;
+            while ix < svg.len() && svg[ix].is_ascii_hexdigit() {
+                ix += 1;
+            }
+            out.push(b'#');
+            continue;
+        }
+        let function = [&b"rgba("[..], b"rgb(", b"hsla(", b"hsl("]
+            .into_iter()
+            .find(|f| rest.len() >= f.len() && rest[..f.len()].eq_ignore_ascii_case(f));
+        if let Some(function) = function {
+            ix += function.len();
+            while ix < svg.len() && svg[ix] != b')' {
+                ix += 1;
+            }
+            ix += 1;
+            out.push(b'#');
+            continue;
+        }
+        if rest[0].is_ascii_whitespace() {
+            // A run of spacing reads as one space.
+            if out.last() != Some(&b' ') {
+                out.push(b' ');
+            }
+        } else {
+            out.push(rest[0]);
+        }
+        ix += 1;
+    }
+    out
 }
 
 /// The icon themes in a folder: a Zed extension's, a theme package's, or a
@@ -282,7 +423,7 @@ fn read_folder_source(source: &Path) -> Result<Vec<Imported>, String> {
 /// folder above `icon_themes/`), or a Kanso icon theme, whose are its
 /// folder's.
 fn read_json_source(path: &Path) -> Result<Vec<Imported>, String> {
-    let value = read_json(path)?;
+    let value = read_json(path, MAX_SOURCE_JSON_BYTES)?;
     let parent = path.parent().unwrap_or(Path::new("."));
     if is_zed_family(&value) {
         let root = if parent.file_name().is_some_and(|n| n == "icon_themes") {
@@ -295,9 +436,11 @@ fn read_json_source(path: &Path) -> Result<Vec<Imported>, String> {
     read_kanso_folder(parent).map(|theme| vec![theme])
 }
 
-/// A JSON file, within [`MAX_JSON_BYTES`], comments allowed as Zed allows.
-fn read_json(path: &Path) -> Result<Value, String> {
-    let text = read_small(path, MAX_JSON_BYTES)?;
+/// A JSON file of at most `limit` bytes, comments allowed as Zed allows:
+/// [`MAX_SOURCE_JSON_BYTES`] for a theme to convert, [`MAX_JSON_BYTES`]
+/// for a Kanso theme file.
+fn read_json(path: &Path, limit: u64) -> Result<Value, String> {
+    let text = read_small(path, limit)?;
     serde_json::from_str(&text)
         .or_else(|_| serde_json::from_str(&crate::theme_import::strip_jsonc(&text)))
         .map_err(|err| format!("It isn't valid JSON: {err}."))
@@ -331,25 +474,154 @@ fn read_package(dir: &Path) -> Result<Vec<Imported>, String> {
     };
     let path = inside(dir, &named)
         .ok_or_else(|| "Its iconTheme isn't a file inside the package.".to_owned())?;
-    let value = read_json(&path)?;
-    let mut themes = if is_zed_family(&value) {
-        read_zed(&value, dir)?
-    } else {
-        vec![read_kanso_file(&value, path.parent().unwrap_or(dir), None)?]
-    };
-    let license = package.get("license").and_then(Value::as_str);
-    let author = package_author(&package);
-    for theme in &mut themes {
-        if theme.file.license.is_empty()
-            && let Some(license) = license
-        {
-            theme.file.license = license.trim().chars().take(64).collect();
-        }
-        if theme.file.author.is_empty() {
-            theme.file.author = author.clone();
-        }
+    let value = read_json(&path, MAX_SOURCE_JSON_BYTES)?;
+    if is_zed_family(&value) {
+        // `read_zed` reads the package's own author, license and home.
+        return read_zed(&value, dir);
     }
-    Ok(themes)
+    // A Kanso theme file keeps a Kanso theme file's cap.
+    let value = read_json(&path, MAX_JSON_BYTES)?;
+    let mut theme = read_kanso_file(&value, path.parent().unwrap_or(dir), None)?;
+    let manifest = package_manifest(&package);
+    if theme.file.license.is_empty() {
+        theme.file.license = manifest.license.unwrap_or_default();
+    }
+    if theme.file.author.is_empty() {
+        theme.file.author = manifest.author;
+    }
+    if theme.file.source.is_none() {
+        theme.file.source = manifest.url;
+    }
+    theme.license_files = license_files(dir);
+    Ok(vec![theme])
+}
+
+/// Who made a theme, under what license and where it lives, as its
+/// extension or package says.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Manifest {
+    author: String,
+    /// An SPDX expression ([`is_spdx`]).
+    license: Option<String>,
+    /// A web address ([`web_url`]).
+    url: Option<String>,
+}
+
+/// The manifest of the extension or package in `root`: `package.json`'s,
+/// filled in from `extension.toml`'s.
+fn manifest(root: &Path) -> Manifest {
+    let package = read_small(&root.join("package.json"), MAX_MANIFEST_BYTES)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .map(|package| package_manifest(&package))
+        .unwrap_or_default();
+    let extension = extension_manifest(root);
+    Manifest {
+        author: if package.author.is_empty() {
+            extension.author
+        } else {
+            package.author
+        },
+        license: package.license.or(extension.license),
+        url: package.url.or(extension.url),
+    }
+}
+
+/// `package.json`'s author, license, and repository or homepage. Pure.
+fn package_manifest(package: &Value) -> Manifest {
+    let license = match package.get("license") {
+        Some(Value::String(s)) => Some(s.as_str()),
+        Some(Value::Object(o)) => o.get("type").and_then(Value::as_str),
+        _ => None,
+    };
+    let repository = match package.get("repository") {
+        Some(Value::String(s)) => Some(s.as_str()),
+        Some(Value::Object(o)) => o.get("url").and_then(Value::as_str),
+        _ => None,
+    };
+    Manifest {
+        author: package_author(package),
+        license: license.filter(|l| is_spdx(l)).map(|l| l.trim().to_owned()),
+        url: repository.and_then(web_url).or_else(|| {
+            package
+                .get("homepage")
+                .and_then(Value::as_str)
+                .and_then(web_url)
+        }),
+    }
+}
+
+/// A Zed extension's `extension.toml`: its `authors`, `license` (if it
+/// says) and `repository`.
+fn extension_manifest(root: &Path) -> Manifest {
+    let Some(table) = read_small(&root.join("extension.toml"), MAX_MANIFEST_BYTES)
+        .ok()
+        .and_then(|text| text.parse::<toml::Table>().ok())
+    else {
+        return Manifest::default();
+    };
+    let text = |key: &str| table.get(key).and_then(toml::Value::as_str);
+    let authors: Vec<String> = table
+        .get("authors")
+        .and_then(toml::Value::as_array)
+        .map(|authors| {
+            authors
+                .iter()
+                .filter_map(toml::Value::as_str)
+                .map(person_name)
+                .filter(|name| !name.is_empty())
+                .take(8)
+                .collect()
+        })
+        .unwrap_or_default();
+    Manifest {
+        author: authors.join(", ").chars().take(200).collect(),
+        license: text("license")
+            .filter(|l| is_spdx(l))
+            .map(|l| l.trim().to_owned()),
+        url: text("repository").and_then(web_url),
+    }
+}
+
+/// A person as manifests write one, `Name <email> (site)`, as their name.
+/// Pure.
+fn person_name(person: &str) -> String {
+    person
+        .split(['<', '('])
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .chars()
+        .take(100)
+        .collect()
+}
+
+/// `text` as a web address, if it is one: `http(s)://` and no spaces, a
+/// `git+` in front taken off. Pure.
+pub fn web_url(text: &str) -> Option<String> {
+    let url = text.trim();
+    let url = url.strip_prefix("git+").unwrap_or(url);
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
+    let host = rest.split('/').next().unwrap_or_default();
+    (!host.is_empty()
+        && host.contains('.')
+        && url.len() <= 300
+        && !url.chars().any(|c| c.is_whitespace() || c.is_control()))
+    .then(|| url.to_owned())
+}
+
+/// Whether `text` looks like an SPDX license expression (`MIT`,
+/// `MIT OR Apache-2.0`). Pure.
+pub fn is_spdx(text: &str) -> bool {
+    let text = text.trim();
+    !text.is_empty()
+        && text.len() <= 64
+        && text.chars().any(|c| c.is_ascii_alphabetic())
+        && text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || " .-+()".contains(c))
 }
 
 /// The package's author: a name, or `{"name": …}`.
@@ -389,7 +661,7 @@ fn read_kanso_folder(dir: &Path) -> Result<Imported, String> {
     let [path] = json.as_slice() else {
         return Err("This folder isn't an icon theme Kanso can import: it is neither a Zed extension with icon themes, a theme package, nor a Kanso icon theme folder (one .json and its SVGs).".into());
     };
-    let value = read_json(path)?;
+    let value = read_json(path, MAX_JSON_BYTES)?;
     let id = dir
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -422,32 +694,60 @@ fn read_kanso_file(value: &Value, root: &Path, id: Option<String>) -> Result<Imp
         file,
         root: root.to_path_buf(),
         sources,
-        license_file: license_file(root),
+        license_files: license_files(root),
         id,
         mapped,
         left_out: Vec::new(),
     })
 }
 
-/// A LICENSE file in `root`, if there is a small one.
-fn license_file(root: &Path) -> Option<PathBuf> {
-    let read = std::fs::read_dir(root).ok()?;
+/// The licence files in `root` (`LICENSE`, `LICENSE-MIT`, `COPYING.md`…):
+/// regular files, not links, small, at most [`MAX_LICENSE_FILES`], in name
+/// order.
+fn license_files(root: &Path) -> Vec<PathBuf> {
+    let Ok(read) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
     let mut found: Vec<PathBuf> = read
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| {
-            p.file_name().is_some_and(|n| {
-                let n = n.to_string_lossy().to_ascii_uppercase();
-                n == "LICENSE"
-                    || n == "LICENCE"
-                    || n.starts_with("LICENSE.")
-                    || n.starts_with("LICENCE.")
-            })
+            p.file_name()
+                .is_some_and(|n| is_license_name(&n.to_string_lossy()))
         })
-        .filter(|p| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() <= MAX_LICENSE_BYTES))
+        .filter(|p| {
+            std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file() && m.len() <= MAX_LICENSE_BYTES)
+        })
         .collect();
     found.sort();
-    found.into_iter().next()
+    found.truncate(MAX_LICENSE_FILES);
+    found
+}
+
+/// Whether a file name is a licence file's, and one safe to write as is:
+/// letters, digits, `.`, `-` and `_`, not hidden, not a theme's JSON or an
+/// SVG. Pure.
+pub fn is_license_name(name: &str) -> bool {
+    if name.is_empty()
+        || name.len() > 64
+        || name.starts_with('.')
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+    {
+        return false;
+    }
+    let upper = name.to_ascii_uppercase();
+    if upper.ends_with(".JSON") || upper.ends_with(".SVG") {
+        return false;
+    }
+    ["LICENSE", "LICENCE", "COPYING", "UNLICENSE"]
+        .iter()
+        .any(|base| {
+            upper
+                .strip_prefix(base)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with(['.', '-', '_']))
+        })
 }
 
 /// The SPDX identifier a license text reads as, for the common ones. Pure.
@@ -499,7 +799,7 @@ pub fn is_zed_family(value: &Value) -> bool {
 }
 
 fn read_zed_file(path: &Path, root: &Path) -> Result<Vec<Imported>, String> {
-    let value = read_json(path)?;
+    let value = read_json(path, MAX_SOURCE_JSON_BYTES)?;
     if !is_zed_family(&value) {
         return Ok(Vec::new());
     }
@@ -511,23 +811,36 @@ fn read_zed_file(path: &Path, root: &Path) -> Result<Vec<Imported>, String> {
 // no-prop-test: maps over `zed_theme`, which `prop_zed_mapping_is_total`
 // covers.
 fn read_zed(family: &Value, root: &Path) -> Result<Vec<Imported>, String> {
-    let author = family
-        .get("author")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .trim()
-        .to_owned();
-    let family_name = family
+    let manifest = manifest(root);
+    // Who drew the icons, as the extension or package says; the theme
+    // file's own `author` is often the format's.
+    let author = if manifest.author.is_empty() {
+        family
+            .get("author")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .chars()
+            .take(200)
+            .collect()
+    } else {
+        manifest.author.clone()
+    };
+    let family_name: String = family
         .get("name")
         .and_then(Value::as_str)
-        .unwrap_or("Zed icon theme");
-    let license_file = license_file(root);
-    let license = license_file
-        .as_ref()
-        .and_then(|p| read_small(p, MAX_LICENSE_BYTES).ok())
-        .and_then(|text| spdx_from_text(&text))
-        .or_else(|| extension_license(root))
-        .unwrap_or_default();
+        .unwrap_or("Zed icon theme")
+        .trim()
+        .chars()
+        .take(80)
+        .collect();
+    let license_files = license_files(root);
+    let license = manifest.license.clone().or_else(|| {
+        license_files.iter().find_map(|p| {
+            let text = read_small(p, MAX_LICENSE_BYTES).ok()?;
+            spdx_from_text(&text).map(str::to_owned)
+        })
+    });
     let themes = family
         .get("themes")
         .and_then(Value::as_array)
@@ -540,40 +853,20 @@ fn read_zed(family: &Value, root: &Path) -> Result<Vec<Imported>, String> {
             continue;
         }
         file.author = author.clone();
-        file.license = license.to_owned();
-        file.source = Some(format!("Imported from the Zed icon theme {family_name}"));
+        file.license = license.clone().unwrap_or_default();
+        file.source = manifest.url.clone();
+        file.description = Some(format!("Imported from the Zed icon theme {family_name}."));
         out.push(Imported {
             file,
             root: root.to_path_buf(),
             sources,
-            license_file: license_file.clone(),
+            license_files: license_files.clone(),
             id: None,
             mapped,
             left_out,
         });
     }
     Ok(out)
-}
-
-/// `license = "…"` in a Zed extension's `extension.toml`, if it says.
-fn extension_license(root: &Path) -> Option<&'static str> {
-    let text = read_small(&root.join("extension.toml"), MAX_MANIFEST_BYTES).ok()?;
-    let line = text
-        .lines()
-        .find(|l| l.trim_start().starts_with("license"))?;
-    let value = line.split_once('=')?.1.trim().trim_matches('"');
-    [
-        "MIT",
-        "Apache-2.0",
-        "ISC",
-        "MPL-2.0",
-        "CC-BY-4.0",
-        "CC0-1.0",
-        "BSD-3-Clause",
-        "GPL-3.0",
-    ]
-    .into_iter()
-    .find(|id| id.eq_ignore_ascii_case(value))
 }
 
 /// The names a special notebook may have as a named folder in a Zed theme.
@@ -602,6 +895,28 @@ const ATTACHMENTS: &[(Slot, &[&str])] = &[
         Slot::AttachmentAudio,
         &["mp3", "m4a", "wav", "ogg", "flac", "aac"],
     ),
+];
+
+/// Zed's own suffix → icon key table, for the suffixes in [`ATTACHMENTS`].
+/// Zed starts every icon theme's `file_suffixes` from its default theme's
+/// and lays the theme's own over them (`ThemeRegistry::load_icon_theme`),
+/// then looks the key up in the theme's `file_icons`; so a theme may draw
+/// `image` without naming `png`. Taken from `FILE_SUFFIXES_BY_ICON_KEY` in
+/// Zed's `crates/theme/src/icon_theme.rs`: PDF is a `document` there.
+const ZED_DEFAULT_SUFFIXES: &[(&str, &str)] = &[
+    ("pdf", "document"),
+    ("png", "image"),
+    ("jpg", "image"),
+    ("jpeg", "image"),
+    ("gif", "image"),
+    ("webp", "image"),
+    ("svg", "image"),
+    ("mp3", "audio"),
+    ("m4a", "audio"),
+    ("wav", "audio"),
+    ("ogg", "audio"),
+    ("flac", "audio"),
+    ("aac", "audio"),
 ];
 
 /// A Zed path (`./icons/folder.svg`) as one inside the extension, if it is
@@ -722,16 +1037,24 @@ pub fn zed_theme(
     let suffixes = pair("file_suffixes").and_then(Value::as_object);
     for (slot, wanted) in ATTACHMENTS {
         let found = wanted.iter().find_map(|suffix| {
-            let key = suffixes?.get(*suffix)?.as_str()?;
-            Some((suffix, key, icon_path(key)?))
+            let own = suffixes.and_then(|s| s.get(*suffix)?.as_str());
+            let (from, key) = match own {
+                Some(key) => (format!("file_suffixes.{suffix} ({key})"), key),
+                None => {
+                    let key = ZED_DEFAULT_SUFFIXES
+                        .iter()
+                        .find(|(s, _)| s == suffix)
+                        .map(|(_, key)| *key)?;
+                    (
+                        format!("file_icons.{key} (Zed's default for .{suffix})"),
+                        key,
+                    )
+                }
+            };
+            Some((from, icon_path(key)?))
         });
-        if let Some((suffix, key, path)) = found {
-            take(
-                &format!("file_suffixes.{suffix} ({key})"),
-                Some(path),
-                *slot,
-                &mut left_out,
-            );
+        if let Some((from, path)) = found {
+            take(&from, Some(path), *slot, &mut left_out);
         }
     }
     let used: Vec<&str> = ATTACHMENTS
@@ -889,16 +1212,33 @@ fn fill(theme: &mut Imported, folder: &Path, id: &str) -> Result<(), String> {
     theme
         .mapped
         .retain(|line| kept.iter().any(|k| line.ends_with(k.as_str()) || line == k));
-    if let Some(license) = &theme.license_file
-        && let Ok(text) = read_small(license, MAX_LICENSE_BYTES)
-        && license.starts_with(&theme.root)
-    {
+    if file.icons.is_empty() && file.library.is_empty() && file.notebook_icons.is_empty() {
+        return Err(format!(
+            "{} has no icon Kanso can use (no folder, arrow, file or attachment icon came across), so it wasn't imported.",
+            file.name
+        ));
+    }
+    for license in &theme.license_files {
+        let Some(name) = license
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .filter(|n| is_license_name(n))
+        else {
+            continue;
+        };
+        let Ok(text) = read_small(license, MAX_LICENSE_BYTES) else {
+            continue;
+        };
+        if !license.starts_with(&theme.root) {
+            continue;
+        }
         if theme.file.license.is_empty()
             && let Some(id) = spdx_from_text(&text)
         {
             theme.file.license = id.to_owned();
         }
-        std::fs::write(folder.join("LICENSE"), text)
+        // `name` is checked: one plain file name, so inside `folder`.
+        std::fs::write(folder.join(&name), text)
             .map_err(|err| format!("Its license couldn't be written: {err}."))?;
     }
     let json = folder.join(format!("{id}.json"));
@@ -1132,7 +1472,7 @@ mod tests {
         let ext = dir.path().join("tiny-icons");
         zed_extension(&ext);
         let out = dir.path().join("icon-themes");
-        let reports = import_path(&ext, &out).unwrap();
+        let reports = import_path(&ext, &out).unwrap().reports;
         assert_eq!(reports.len(), 1);
         let report = &reports[0];
         assert_eq!(report.name, "Tiny");
@@ -1188,7 +1528,9 @@ mod tests {
         assert!(!report.folder.join("icons/unused.svg").exists());
         assert!(!report.folder.join("icons/rust.svg").exists());
         // Again: the same folder, updated in place, nothing left behind.
-        let again = import_path(&ext.join("icon_themes/tiny.json"), &out).unwrap();
+        let again = import_path(&ext.join("icon_themes/tiny.json"), &out)
+            .unwrap()
+            .reports;
         assert_eq!(again[0].folder, out.join("tiny"));
         let names: Vec<String> = std::fs::read_dir(&out)
             .unwrap()
@@ -1210,7 +1552,7 @@ mod tests {
             r#"{"name": "tiny-icons", "license": "ISC", "author": {"name": "Pkg"}}"#,
         );
         let out = dir.path().join("out");
-        let reports = import_path(&pkg, &out).unwrap();
+        let reports = import_path(&pkg, &out).unwrap().reports;
         assert_eq!(reports[0].name, "Tiny");
         let tgz = std::fs::File::create(dir.path().join("tiny.tgz")).unwrap();
         let mut tar = tar::Builder::new(flate2::write::GzEncoder::new(
@@ -1219,7 +1561,9 @@ mod tests {
         ));
         tar.append_dir_all("package", &pkg).unwrap();
         tar.into_inner().unwrap().finish().unwrap();
-        let from_tgz = import_path(&dir.path().join("tiny.tgz"), &out).unwrap();
+        let from_tgz = import_path(&dir.path().join("tiny.tgz"), &out)
+            .unwrap()
+            .reports;
         assert_eq!(from_tgz[0].folder, out.join("tiny"));
         // Named in package.json instead, and in Kanso's own format.
         let named = dir.path().join("named");
@@ -1234,7 +1578,7 @@ mod tests {
             r#"{"name": "Named", "icons": {"search": "s.svg"}}"#,
         );
         write(&named, "theme/s.svg", SVG);
-        let reports = import_path(&named, &out).unwrap();
+        let reports = import_path(&named, &out).unwrap().reports;
         let mut notices = Vec::new();
         let theme = icon_theme_file::read_folder(&reports[0].folder, &mut notices).unwrap();
         assert_eq!(
@@ -1359,7 +1703,7 @@ mod tests {
         );
         write(&src, "icons/s.svg", SVG);
         let out = dir.path().join("out");
-        let report = &import_path(&src, &out).unwrap()[0];
+        let report = &import_path(&src, &out).unwrap().reports[0];
         assert_eq!(report.folder, out.join("mine"));
         assert_eq!(report.mapped, vec!["icons.search".to_owned()]);
         assert!(
@@ -1369,13 +1713,347 @@ mod tests {
                 .any(|l| l.starts_with("icons/gone.svg"))
         );
         let named = dir.path().join("phosphor");
-        write(&named, "p.json", r#"{"name": "Phosphor"}"#);
-        let report = &import_path(&named, &out).unwrap()[0];
+        write(
+            &named,
+            "p.json",
+            r#"{"name": "Phosphor", "icons": {"search": "s.svg"}}"#,
+        );
+        write(&named, "s.svg", SVG);
+        let report = &import_path(&named, &out).unwrap().reports[0];
         assert_eq!(report.name, "Phosphor (Imported)");
         assert_eq!(report.folder, out.join("phosphor-imported"));
         assert!(import_path(&dir.path().join("nope"), &out).is_err());
         write(dir.path(), "x.txt", "x");
         assert!(import_path(&dir.path().join("x.txt"), &out).is_err());
+    }
+
+    /// A Zed family of one theme, `theme`, in an extension at `root`.
+    fn zed_family(root: &Path, themes: Value) {
+        write(
+            root,
+            "icon_themes/family.json",
+            &json!({"name": "Family", "author": "Format Author", "themes": themes}).to_string(),
+        );
+    }
+
+    /// A Zed theme or package JSON past a Kanso theme file's 512 KB
+    /// imports, a Kanso theme file past it doesn't, and nothing past the
+    /// source cap is read.
+    #[test]
+    fn large_source_themes_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let ext = dir.path().join("big");
+        write(&ext, "icons/folder.svg", SVG);
+        let stems: serde_json::Map<String, Value> = (0..40_000)
+            .map(|n| (format!("stem-{n}"), json!("folder")))
+            .collect();
+        zed_family(
+            &ext,
+            json!([{
+                "name": "Big",
+                "directory_icons": {"collapsed": "./icons/folder.svg"},
+                "file_stems": stems,
+            }]),
+        );
+        let json = ext.join("icon_themes/family.json");
+        assert!(std::fs::metadata(&json).unwrap().len() > MAX_JSON_BYTES);
+        let out = dir.path().join("out");
+        let imports = import_path(&ext, &out).unwrap();
+        assert_eq!(imports.reports[0].name, "Big");
+        assert!(import_path(&json, &out).is_ok());
+        // A Kanso theme file keeps its own cap.
+        let kanso = dir.path().join("kanso");
+        let padding = " ".repeat(MAX_JSON_BYTES as usize);
+        write(
+            &kanso,
+            "k.json",
+            &format!(r#"{{"name": "K", "icons": {{"search": "s.svg"}}{padding}}}"#),
+        );
+        write(&kanso, "s.svg", SVG);
+        assert!(
+            import_path(&kanso, &out)
+                .unwrap_err()
+                .contains("larger than 512 KB")
+        );
+        std::fs::write(&json, vec![b' '; MAX_SOURCE_JSON_BYTES as usize + 1]).unwrap();
+        assert!(import_path(&ext, &out).unwrap_err().contains("larger than"));
+    }
+
+    /// A theme that draws `image`, `audio` and `document` without naming
+    /// their suffixes gets the attachment slots through Zed's own suffix
+    /// table; a suffix the theme names wins.
+    #[test]
+    fn attachments_fall_back_to_zeds_suffixes() {
+        let dir = tempfile::tempdir().unwrap();
+        let ext = dir.path().join("ext");
+        for icon in ["image", "audio", "document", "picture"] {
+            write(&ext, &format!("icons/{icon}.svg"), SVG);
+        }
+        let icons = json!({
+            "image": {"path": "./icons/image.svg"},
+            "audio": {"path": "./icons/audio.svg"},
+            "document": {"path": "./icons/document.svg"},
+            "picture": {"path": "./icons/picture.svg"},
+        });
+        let (file, _, mapped, _) =
+            zed_theme(&json!({"name": "Defaults", "file_icons": icons.clone()}));
+        assert_eq!(
+            file.library.get(&Slot::AttachmentImage).map(String::as_str),
+            Some("icons/image.svg")
+        );
+        assert_eq!(
+            file.library.get(&Slot::AttachmentAudio).map(String::as_str),
+            Some("icons/audio.svg")
+        );
+        assert_eq!(
+            file.library.get(&Slot::AttachmentPdf).map(String::as_str),
+            Some("icons/document.svg")
+        );
+        assert!(
+            mapped.iter().any(
+                |m| m == "file_icons.image (Zed's default for .png) → library.attachment-image"
+            ),
+            "{mapped:?}"
+        );
+        let (file, _, _, _) = zed_theme(&json!({
+            "name": "Own",
+            "file_suffixes": {"png": "picture"},
+            "file_icons": icons,
+        }));
+        assert_eq!(
+            file.library.get(&Slot::AttachmentImage).map(String::as_str),
+            Some("icons/picture.svg")
+        );
+    }
+
+    /// An imported theme's `source` is the extension's or package's web
+    /// address, or left out; its author is who the manifest says made it.
+    #[test]
+    fn source_and_author_come_from_the_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let ext = dir.path().join("ext");
+        zed_extension(&ext);
+        write(
+            &ext,
+            "extension.toml",
+            "id = \"tiny-icons\"\nname = \"Tiny Icons\"\nauthors = [\"Grace Hopper <grace@example.com>\", \"Alan\"]\nrepository = \"https://github.com/example/tiny-icons\"\n",
+        );
+        let report = &import_path(&ext, &out).unwrap().reports[0];
+        let mut notices = Vec::new();
+        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        assert_eq!(theme.author, "Grace Hopper, Alan");
+        assert_eq!(
+            theme.source.as_deref(),
+            Some("https://github.com/example/tiny-icons")
+        );
+        assert_eq!(
+            theme.description.as_deref(),
+            Some("Imported from the Zed icon theme Tiny Icons.")
+        );
+        // Without one: no source, the format's author as a last resort.
+        let bare = dir.path().join("bare");
+        zed_extension(&bare);
+        let report = &import_path(&bare, &out).unwrap().reports[0];
+        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        assert_eq!(theme.source, None);
+        assert_eq!(theme.author, "Ada");
+        // A package's repository, then its homepage.
+        let pkg = dir.path().join("pkg");
+        zed_extension(&pkg);
+        std::fs::remove_file(pkg.join("extension.toml")).unwrap();
+        write(
+            &pkg,
+            "package.json",
+            r#"{"name": "p", "author": "Pat <p@example.com>", "repository": {"type": "git", "url": "git+https://github.com/example/p.git"}}"#,
+        );
+        let report = &import_path(&pkg, &out).unwrap().reports[0];
+        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        assert_eq!(theme.author, "Pat");
+        assert_eq!(
+            theme.source.as_deref(),
+            Some("https://github.com/example/p.git")
+        );
+        write(
+            &pkg,
+            "package.json",
+            r#"{"name": "p", "repository": "example/p", "homepage": "https://example.com/p"}"#,
+        );
+        let report = &import_path(&pkg, &out).unwrap().reports[0];
+        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        assert_eq!(theme.source.as_deref(), Some("https://example.com/p"));
+        assert!(notices.is_empty(), "{notices:?}");
+    }
+
+    /// A theme with no icon Kanso can use is refused, and nothing written:
+    /// the command fails.
+    #[test]
+    fn an_empty_import_fails_and_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let ext = dir.path().join("ext");
+        write(&ext, "icons/rust.svg", SVG);
+        zed_family(
+            &ext,
+            json!([{
+                "name": "Stems Only",
+                "file_stems": {"Cargo.toml": "rust"},
+                "file_icons": {"rust": {"path": "./icons/rust.svg"}},
+            }]),
+        );
+        let out = dir.path().join("out");
+        let err = import_path(&ext, &out).unwrap_err();
+        assert!(
+            err.contains("Stems Only has no icon Kanso can use"),
+            "{err}"
+        );
+        assert!(files(&out).is_empty(), "{:?}", files(&out));
+        let data = dir.path().join("data");
+        let args = vec!["import".to_owned(), ext.to_string_lossy().into_owned()];
+        assert!(run_cli(&data, &args).is_err());
+        assert!(files(&icon_themes_dir(&data)).is_empty());
+    }
+
+    /// Every licence file comes across, under its own name, and the
+    /// manifest's license fills the field.
+    #[test]
+    fn every_license_file_is_copied() {
+        let dir = tempfile::tempdir().unwrap();
+        let ext = dir.path().join("ext");
+        zed_extension(&ext);
+        write(&ext, "LICENSE-APACHE", "Apache License\nVersion 2.0");
+        write(&ext, "COPYING.md", "Some words");
+        write(&ext, "LICENSE.json", "{}");
+        write(&ext, "LICENSES-NOT", "x");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(ext.join("LICENSE"), ext.join("LICENSE-LINK")).unwrap();
+        write(
+            &ext,
+            "extension.toml",
+            "id = \"t\"\nname = \"T\"\nlicense = \"MIT OR Apache-2.0\"\n",
+        );
+        let out = dir.path().join("out");
+        let report = &import_path(&ext, &out).unwrap().reports[0];
+        let mut copied: Vec<String> = std::fs::read_dir(&report.folder)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n != "icons" && !n.ends_with(".json"))
+            .collect();
+        copied.sort();
+        assert_eq!(copied, ["COPYING.md", "LICENSE", "LICENSE-APACHE"]);
+        let mut notices = Vec::new();
+        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        assert_eq!(theme.license, "MIT OR Apache-2.0");
+        // Without the manifest's, the first licence text that reads as one.
+        std::fs::remove_file(ext.join("extension.toml")).unwrap();
+        std::fs::remove_file(ext.join("LICENSE")).unwrap();
+        let report = &import_path(&ext, &out).unwrap().reports[0];
+        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        assert_eq!(theme.license, "Apache-2.0");
+    }
+
+    #[test]
+    fn license_names() {
+        for name in [
+            "LICENSE",
+            "licence",
+            "LICENSE-MIT",
+            "LICENSE.md",
+            "COPYING",
+            "COPYING.txt",
+            "UNLICENSE",
+            "License_APACHE",
+        ] {
+            assert!(is_license_name(name), "{name}");
+        }
+        for name in [
+            "",
+            ".LICENSE",
+            "LICENSES",
+            "LICENSE.json",
+            "LICENSE.svg",
+            "README",
+            "LICENSE/x",
+            "../LICENSE",
+            "LICENSE MIT",
+        ] {
+            assert!(!is_license_name(name), "{name}");
+        }
+    }
+
+    /// Variants that draw the same shapes in other colors import once,
+    /// and the rest are said; a variant with other shapes imports too.
+    #[test]
+    fn same_shape_variants_import_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let ext = dir.path().join("ext");
+        let svg = |color: &str, d: &str| {
+            format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="{color}" d="{d}"/></svg>"#
+            )
+        };
+        write(
+            &ext,
+            "icons/dark/folder.svg",
+            &svg("#cdd6f4", "M1 1h14v14H1z"),
+        );
+        write(
+            &ext,
+            "icons/light/folder.svg",
+            &svg("#4C4F69", "M1 1h14v14H1z"),
+        );
+        write(
+            &ext,
+            "icons/mocha/folder.svg",
+            &svg("rgb(1, 2, 3)", "M1  1h14v14H1z"),
+        );
+        write(
+            &ext,
+            "icons/other/folder.svg",
+            &svg("#cdd6f4", "M2 2h12v12H2z"),
+        );
+        let theme = |name: &str, folder: &str| json!({"name": name, "directory_icons": {"collapsed": format!("./icons/{folder}/folder.svg")}});
+        zed_family(
+            &ext,
+            json!([
+                theme("Dark", "dark"),
+                theme("Light", "light"),
+                theme("Mocha", "mocha"),
+                theme("Other", "other")
+            ]),
+        );
+        let out = dir.path().join("out");
+        let imports = import_path(&ext, &out).unwrap();
+        let names: Vec<&str> = imports.reports.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["Dark", "Other"]);
+        assert_eq!(imports.skipped.len(), 2, "{:?}", imports.skipped);
+        assert!(imports.skipped[0].starts_with("Light draws the same shapes as Dark"));
+        assert!(imports.summary().contains("only Dark was imported"));
+        assert!(!out.join("light").exists());
+    }
+
+    #[test]
+    fn web_urls_and_spdx() {
+        assert_eq!(
+            web_url(" git+https://github.com/a/b.git ").as_deref(),
+            Some("https://github.com/a/b.git")
+        );
+        assert_eq!(
+            web_url("http://example.com").as_deref(),
+            Some("http://example.com")
+        );
+        for bad in [
+            "github:a/b",
+            "a/b",
+            "ftp://x.com",
+            "https://",
+            "https://x y.com",
+            "javascript:alert(1)",
+            "https://localhost/x",
+        ] {
+            assert_eq!(web_url(bad), None, "{bad}");
+        }
+        assert!(is_spdx("MIT") && is_spdx("(MIT OR Apache-2.0)") && is_spdx("GPL-3.0+"));
+        assert!(!is_spdx("") && !is_spdx("SEE LICENSE IN <file>") && !is_spdx("123"));
     }
 
     #[test]
@@ -1491,6 +2169,80 @@ mod tests {
             ..ProptestConfig::default()
         })]
 
+        /// The attachment slots follow Zed's lookup: a suffix's key from the
+        /// theme, else from Zed's table, then the theme's `file_icons`; the
+        /// first suffix that gets an icon wins.
+        #[test]
+        fn prop_attachments_follow_zeds_lookup(
+            own in prop::collection::btree_map(
+                prop::sample::select(vec!["pdf", "png", "jpg", "svg", "mp3", "flac", "rs"]),
+                prop::sample::select(vec!["image", "audio", "document", "pic", "none"]),
+                0..6,
+            ),
+            drawn in prop::collection::btree_set(
+                prop::sample::select(vec!["image", "audio", "document", "pic"]),
+                0..4,
+            ),
+        ) {
+            let icons: serde_json::Map<String, Value> = drawn
+                .iter()
+                .map(|key| ((*key).to_owned(), json!({"path": format!("./icons/{key}.svg")})))
+                .collect();
+            let (file, _, _, _) = zed_theme(&json!({
+                "name": "T",
+                "file_suffixes": own,
+                "file_icons": icons,
+            }));
+            for (slot, wanted) in ATTACHMENTS {
+                let expected = wanted.iter().find_map(|suffix| {
+                    let key = own.get(suffix).copied().or_else(|| {
+                        ZED_DEFAULT_SUFFIXES.iter().find(|(s, _)| s == suffix).map(|(_, k)| *k)
+                    })?;
+                    drawn.contains(key).then(|| format!("icons/{key}.svg"))
+                });
+                prop_assert_eq!(file.library.get(slot).cloned(), expected);
+            }
+        }
+
+        /// An SVG's shape is the same whatever its colors and spacing, and
+        /// differs with its path data.
+        #[test]
+        fn prop_svg_shape_ignores_color(
+            a in "#[0-9a-fA-F]{3,8}",
+            b in "rgba?\\([0-9, .%]{0,16}\\)",
+            spaces in "[ \n\t]{0,4}",
+            d in "[MLHVZmlhvz0-9 ]{1,20}",
+        ) {
+            let svg = |color: &str, d: &str| format!(
+                r#"<svg viewBox="0 0 16 16">{spaces}<path fill="{color}" d="{d}"/></svg>"#
+            );
+            let base = svg(&a, &d);
+            prop_assert_eq!(svg_shape(base.as_bytes()), svg_shape(svg(&b, &d).as_bytes()));
+            prop_assert_eq!(svg_shape(&svg_shape(base.as_bytes())), svg_shape(base.as_bytes()));
+            let other = format!("{d}Q");
+            prop_assert_ne!(svg_shape(base.as_bytes()), svg_shape(svg(&a, &other).as_bytes()));
+        }
+
+        /// Whatever a manifest says, a source is a web address or nothing,
+        /// a license an SPDX-looking expression or nothing, and a licence
+        /// file name one plain name.
+        #[test]
+        fn prop_manifest_values_are_checked(text in "\\PC{0,40}", name in "[A-Za-z0-9./_ -]{0,20}") {
+            if let Some(url) = web_url(&text) {
+                prop_assert!(url.starts_with("https://") || url.starts_with("http://"));
+                prop_assert!(!url.chars().any(char::is_whitespace));
+            }
+            let package = json!({"license": text, "repository": text, "homepage": text, "author": text});
+            let manifest = package_manifest(&package);
+            if let Some(license) = &manifest.license {
+                prop_assert!(is_spdx(license));
+            }
+            if is_license_name(&name) {
+                prop_assert!(!name.contains('/') && !name.starts_with('.') && !name.contains(' '));
+                prop_assert_eq!(Path::new(&name).components().count(), 1);
+            }
+        }
+
         /// Whatever an archive's entries are named, it unpacks only inside
         /// its folder; and bytes that aren't an archive are an error, never
         /// a panic.
@@ -1570,8 +2322,8 @@ mod tests {
                 let name = path.to_string_lossy().into_owned();
                 prop_assert!(!name.contains("secret"), "{}", name);
             }
-            if let Ok(reports) = result.unwrap() {
-                for report in reports {
+            if let Ok(imports) = result.unwrap() {
+                for report in imports.reports {
                     prop_assert!(report.folder.starts_with(&out));
                     let mut notices = Vec::new();
                     let theme = icon_theme_file::read_folder(&report.folder, &mut notices);

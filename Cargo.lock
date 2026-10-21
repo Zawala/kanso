@@ -4291,6 +4291,7 @@ dependencies = [
  "tar",
  "tempfile",
  "tokenizers",
+ "toml 0.8.23",
  "tree-sitter-c-sharp",
  "tree-sitter-swift",
  "unicode-segmentation",
