@@ -447,6 +447,27 @@ impl Default for DiscoverySettings {
     }
 }
 
+/// How the editor's mic turns speech into text (`voice.rs`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VoiceEngine {
+    /// Not chosen yet: the mic's first press asks, as the on-device model
+    /// is a large download.
+    #[default]
+    Ask,
+    /// Parakeet, on this device, once its model is downloaded.
+    OnDevice,
+    /// The system's own dictation (macOS dictation, Windows voice typing).
+    System,
+}
+
+/// Voice input (Settings › Editor).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct VoiceSettings {
+    pub engine: VoiceEngine,
+}
+
 /// The layout [`AppConfig::migrate`] brings older files up to.
 pub const CONFIG_VERSION: u32 = 3;
 
@@ -467,6 +488,7 @@ pub struct AppConfig {
     pub capture: CaptureSettings,
     pub reminders: RemindersSettings,
     pub discovery: DiscoverySettings,
+    pub voice: VoiceSettings,
 }
 
 impl Default for AppConfig {
@@ -484,6 +506,7 @@ impl Default for AppConfig {
             capture: CaptureSettings::default(),
             reminders: RemindersSettings::default(),
             discovery: DiscoverySettings::default(),
+            voice: VoiceSettings::default(),
         }
     }
 }
@@ -579,6 +602,7 @@ mod tests {
             gen_editor(),
             (any::<bool>(), "(ctrl-|alt-|shift-|cmd-){1,3}[a-z0-9]"),
             (any::<bool>(), any::<bool>(), 1u8..=2),
+            prop::sample::select(vec![VoiceEngine::Ask, VoiceEngine::OnDevice, VoiceEngine::System]),
         )
             .prop_map(
                 |(
@@ -588,7 +612,9 @@ mod tests {
                     editor,
                     (enabled, shortcut),
                     (related_notes, image_text, graph_hops),
+                    engine,
                 )| AppConfig {
+                    voice: VoiceSettings { engine },
                     layout,
                     updates: UpdateSettings { auto_install },
                     editor,
@@ -746,6 +772,7 @@ mod tests {
                     capture: CaptureSettings::default(),
                     reminders: super::RemindersSettings::default(),
                     discovery: DiscoverySettings::default(),
+                    voice: VoiceSettings::default(),
                 },
             )
     }
