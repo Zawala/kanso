@@ -1288,7 +1288,32 @@ impl Render for NoteList {
                     }))
                     .child(body),
             )
+            .when(self.offers_sync(cx), |el| {
+                el.child(crate::sync_nudge::render(Colors::get(cx)))
+            })
             .child(self.render_bottom_band(cx))
+    }
+}
+
+impl NoteList {
+    /// Whether the foot of the list offers sync (see `sync_nudge`).
+    fn offers_sync(&self, cx: &App) -> bool {
+        let signed_out = cx
+            .try_global::<crate::services::Services>()
+            .is_some_and(|services| {
+                matches!(
+                    services.account_state(),
+                    crate::services::AccountState::SignedOut
+                )
+            });
+        let nudges = &cx.global::<crate::workspace::AppState>().config.nudges;
+        crate::sync_nudge::offer_sync(
+            signed_out,
+            nudges.sync_offer_dismissed,
+            self.library.read(cx).counts.all,
+            nudges.first_seen_ms,
+            Clock::now_ms(cx),
+        )
     }
 }
 

@@ -314,6 +314,17 @@ pub struct Workspace {
 
 impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // The sync offer counts its week from the first launch.
+        if cx
+            .global::<AppState>()
+            .config
+            .nudges
+            .first_seen_ms
+            .is_none()
+        {
+            let now = crate::clock::Clock::now_ms(cx);
+            AppState::update_config(cx, |config| config.nudges.first_seen_ms = Some(now));
+        }
         let state = cx.global::<AppState>();
         let store = state.store.clone();
         let appearance = state.config.appearance.clone();

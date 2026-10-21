@@ -79,6 +79,7 @@ mod smart_paste;
 #[cfg(test)]
 mod snapshots;
 mod split;
+mod sync_nudge;
 mod table_format;
 mod tag_complete;
 mod tasks_view;

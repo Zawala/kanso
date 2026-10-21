@@ -467,6 +467,17 @@ pub struct AppConfig {
     pub capture: CaptureSettings,
     pub reminders: RemindersSettings,
     pub discovery: DiscoverySettings,
+    pub nudges: Nudges,
+}
+
+/// What Kanso has told someone about, so it says it once.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Nudges {
+    /// When Kanso was first opened with this config (ms), for the sync offer.
+    pub first_seen_ms: Option<i64>,
+    /// The note list's sync offer was put away.
+    pub sync_offer_dismissed: bool,
 }
 
 impl Default for AppConfig {
@@ -484,6 +495,7 @@ impl Default for AppConfig {
             capture: CaptureSettings::default(),
             reminders: RemindersSettings::default(),
             discovery: DiscoverySettings::default(),
+            nudges: Nudges::default(),
         }
     }
 }
@@ -746,6 +758,10 @@ mod tests {
                     capture: CaptureSettings::default(),
                     reminders: super::RemindersSettings::default(),
                     discovery: DiscoverySettings::default(),
+                    nudges: super::Nudges {
+                        first_seen_ms: login.then_some(i64::from(version) * 1_000),
+                        sync_offer_dismissed: version % 2 == 0,
+                    },
                 },
             )
     }
