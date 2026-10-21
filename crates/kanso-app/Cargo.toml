@@ -23,6 +23,9 @@ async-channel.workspace = true
 base64.workspace = true
 chrono.workspace = true
 fastrand.workspace = true
+# Icon theme packages and extensions come as .tgz / .tar.gz, unpacked in
+# process with caps. Both are already built for the updater.
+flate2 = "1.1"
 # Quick capture's system-wide shortcut: Carbon's RegisterEventHotKey on
 # macOS (no Accessibility permission), RegisterHotKey on Windows, and an X11
 # key grab on Linux.
@@ -62,6 +65,7 @@ sha2.workspace = true
 tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex"] }
 tree-sitter-c-sharp.workspace = true
 tree-sitter-swift.workspace = true
+tar = "0.4.45"
 # Table formatting measures cells as a monospaced face shows them.
 unicode-width = "0.2"
 # `kanso capture` hands its text to a running Kanso's local API, and the

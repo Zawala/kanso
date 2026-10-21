@@ -1,0 +1,1125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "title": "Kanso icon theme",
+  "description": "One Kanso icon theme: SVGs for the UI icons by name, for the library's own icons by slot, and more icons for notebooks. Every map is optional; an icon a theme leaves out is drawn as before.",
+  "type": "object",
+  "required": [
+    "name"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "description": "The format version, 1."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The name shown in Settings › Themes; unique among icon themes."
+    },
+    "author": {
+      "type": "string"
+    },
+    "license": {
+      "type": "string",
+      "description": "An SPDX license identifier for the icons, such as MIT."
+    },
+    "source": {
+      "type": "string",
+      "description": "Where the icons come from."
+    },
+    "description": {
+      "type": "string"
+    },
+    "icons": {
+      "type": "object",
+      "description": "SVGs for Kanso's UI icons, by their Lucide names.",
+      "additionalProperties": false,
+      "properties": {
+        "a-large-small": {
+          "$ref": "#/$defs/svg"
+        },
+        "alarm-clock": {
+          "$ref": "#/$defs/svg"
+        },
+        "apple": {
+          "$ref": "#/$defs/svg"
+        },
+        "archive": {
+          "$ref": "#/$defs/svg"
+        },
+        "arrow-down": {
+          "$ref": "#/$defs/svg"
+        },
+        "arrow-left": {
+          "$ref": "#/$defs/svg"
+        },
+        "arrow-right": {
+          "$ref": "#/$defs/svg"
+        },
+        "arrow-up-down": {
+          "$ref": "#/$defs/svg"
+        },
+        "arrow-up": {
+          "$ref": "#/$defs/svg"
+        },
+        "asterisk": {
+          "$ref": "#/$defs/svg"
+        },
+        "at-sign": {
+          "$ref": "#/$defs/svg"
+        },
+        "atom": {
+          "$ref": "#/$defs/svg"
+        },
+        "baby": {
+          "$ref": "#/$defs/svg"
+        },
+        "ban": {
+          "$ref": "#/$defs/svg"
+        },
+        "banknote": {
+          "$ref": "#/$defs/svg"
+        },
+        "battery-charging": {
+          "$ref": "#/$defs/svg"
+        },
+        "battery-full": {
+          "$ref": "#/$defs/svg"
+        },
+        "battery-low": {
+          "$ref": "#/$defs/svg"
+        },
+        "battery-medium": {
+          "$ref": "#/$defs/svg"
+        },
+        "battery-warning": {
+          "$ref": "#/$defs/svg"
+        },
+        "battery": {
+          "$ref": "#/$defs/svg"
+        },
+        "bed": {
+          "$ref": "#/$defs/svg"
+        },
+        "bell": {
+          "$ref": "#/$defs/svg"
+        },
+        "bike": {
+          "$ref": "#/$defs/svg"
+        },
+        "book-marked": {
+          "$ref": "#/$defs/svg"
+        },
+        "book-open": {
+          "$ref": "#/$defs/svg"
+        },
+        "bookmark": {
+          "$ref": "#/$defs/svg"
+        },
+        "bot": {
+          "$ref": "#/$defs/svg"
+        },
+        "brackets": {
+          "$ref": "#/$defs/svg"
+        },
+        "brain": {
+          "$ref": "#/$defs/svg"
+        },
+        "briefcase": {
+          "$ref": "#/$defs/svg"
+        },
+        "brush": {
+          "$ref": "#/$defs/svg"
+        },
+        "bug": {
+          "$ref": "#/$defs/svg"
+        },
+        "building-2": {
+          "$ref": "#/$defs/svg"
+        },
+        "bus": {
+          "$ref": "#/$defs/svg"
+        },
+        "cake": {
+          "$ref": "#/$defs/svg"
+        },
+        "calculator": {
+          "$ref": "#/$defs/svg"
+        },
+        "calendar-clock": {
+          "$ref": "#/$defs/svg"
+        },
+        "calendar-days": {
+          "$ref": "#/$defs/svg"
+        },
+        "calendar": {
+          "$ref": "#/$defs/svg"
+        },
+        "camera": {
+          "$ref": "#/$defs/svg"
+        },
+        "car": {
+          "$ref": "#/$defs/svg"
+        },
+        "case-sensitive": {
+          "$ref": "#/$defs/svg"
+        },
+        "cat": {
+          "$ref": "#/$defs/svg"
+        },
+        "chart-line": {
+          "$ref": "#/$defs/svg"
+        },
+        "chart-pie": {
+          "$ref": "#/$defs/svg"
+        },
+        "check": {
+          "$ref": "#/$defs/svg"
+        },
+        "chef-hat": {
+          "$ref": "#/$defs/svg"
+        },
+        "chevron-down": {
+          "$ref": "#/$defs/svg"
+        },
+        "chevron-left": {
+          "$ref": "#/$defs/svg"
+        },
+        "chevron-right": {
+          "$ref": "#/$defs/svg"
+        },
+        "chevron-up": {
+          "$ref": "#/$defs/svg"
+        },
+        "chevrons-up-down": {
+          "$ref": "#/$defs/svg"
+        },
+        "church": {
+          "$ref": "#/$defs/svg"
+        },
+        "circle-alert": {
+          "$ref": "#/$defs/svg"
+        },
+        "circle-arrow-down": {
+          "$ref": "#/$defs/svg"
+        },
+        "circle-check": {
+          "$ref": "#/$defs/svg"
+        },
+        "circle-dot": {
+          "$ref": "#/$defs/svg"
+        },
+        "circle-pause": {
+          "$ref": "#/$defs/svg"
+        },
+        "circle-user": {
+          "$ref": "#/$defs/svg"
+        },
+        "circle-x": {
+          "$ref": "#/$defs/svg"
+        },
+        "circle": {
+          "$ref": "#/$defs/svg"
+        },
+        "clapperboard": {
+          "$ref": "#/$defs/svg"
+        },
+        "clipboard-list": {
+          "$ref": "#/$defs/svg"
+        },
+        "clipboard-paste": {
+          "$ref": "#/$defs/svg"
+        },
+        "clock": {
+          "$ref": "#/$defs/svg"
+        },
+        "close": {
+          "$ref": "#/$defs/svg"
+        },
+        "cloud-check": {
+          "$ref": "#/$defs/svg"
+        },
+        "cloud-off": {
+          "$ref": "#/$defs/svg"
+        },
+        "cloud-rain": {
+          "$ref": "#/$defs/svg"
+        },
+        "cloud-upload": {
+          "$ref": "#/$defs/svg"
+        },
+        "cloud": {
+          "$ref": "#/$defs/svg"
+        },
+        "code-xml": {
+          "$ref": "#/$defs/svg"
+        },
+        "code": {
+          "$ref": "#/$defs/svg"
+        },
+        "coffee": {
+          "$ref": "#/$defs/svg"
+        },
+        "coins": {
+          "$ref": "#/$defs/svg"
+        },
+        "columns-2": {
+          "$ref": "#/$defs/svg"
+        },
+        "command": {
+          "$ref": "#/$defs/svg"
+        },
+        "compass": {
+          "$ref": "#/$defs/svg"
+        },
+        "contact": {
+          "$ref": "#/$defs/svg"
+        },
+        "copy": {
+          "$ref": "#/$defs/svg"
+        },
+        "corner-down-left": {
+          "$ref": "#/$defs/svg"
+        },
+        "cpu": {
+          "$ref": "#/$defs/svg"
+        },
+        "credit-card": {
+          "$ref": "#/$defs/svg"
+        },
+        "dash": {
+          "$ref": "#/$defs/svg"
+        },
+        "database-backup": {
+          "$ref": "#/$defs/svg"
+        },
+        "database": {
+          "$ref": "#/$defs/svg"
+        },
+        "delete": {
+          "$ref": "#/$defs/svg"
+        },
+        "dices": {
+          "$ref": "#/$defs/svg"
+        },
+        "dog": {
+          "$ref": "#/$defs/svg"
+        },
+        "download": {
+          "$ref": "#/$defs/svg"
+        },
+        "droplet": {
+          "$ref": "#/$defs/svg"
+        },
+        "dumbbell": {
+          "$ref": "#/$defs/svg"
+        },
+        "ellipsis-vertical": {
+          "$ref": "#/$defs/svg"
+        },
+        "ellipsis": {
+          "$ref": "#/$defs/svg"
+        },
+        "external-link": {
+          "$ref": "#/$defs/svg"
+        },
+        "eye-off": {
+          "$ref": "#/$defs/svg"
+        },
+        "eye": {
+          "$ref": "#/$defs/svg"
+        },
+        "feather": {
+          "$ref": "#/$defs/svg"
+        },
+        "file-key": {
+          "$ref": "#/$defs/svg"
+        },
+        "file-plus": {
+          "$ref": "#/$defs/svg"
+        },
+        "file-text": {
+          "$ref": "#/$defs/svg"
+        },
+        "file": {
+          "$ref": "#/$defs/svg"
+        },
+        "files": {
+          "$ref": "#/$defs/svg"
+        },
+        "film": {
+          "$ref": "#/$defs/svg"
+        },
+        "fingerprint-pattern": {
+          "$ref": "#/$defs/svg"
+        },
+        "flag": {
+          "$ref": "#/$defs/svg"
+        },
+        "flame": {
+          "$ref": "#/$defs/svg"
+        },
+        "flask-conical": {
+          "$ref": "#/$defs/svg"
+        },
+        "flower": {
+          "$ref": "#/$defs/svg"
+        },
+        "focus": {
+          "$ref": "#/$defs/svg"
+        },
+        "folder-closed": {
+          "$ref": "#/$defs/svg"
+        },
+        "folder-heart": {
+          "$ref": "#/$defs/svg"
+        },
+        "folder-lock": {
+          "$ref": "#/$defs/svg"
+        },
+        "folder-open": {
+          "$ref": "#/$defs/svg"
+        },
+        "folder": {
+          "$ref": "#/$defs/svg"
+        },
+        "frame": {
+          "$ref": "#/$defs/svg"
+        },
+        "gallery-vertical-end": {
+          "$ref": "#/$defs/svg"
+        },
+        "gamepad-2": {
+          "$ref": "#/$defs/svg"
+        },
+        "gift": {
+          "$ref": "#/$defs/svg"
+        },
+        "git-branch": {
+          "$ref": "#/$defs/svg"
+        },
+        "github": {
+          "$ref": "#/$defs/svg"
+        },
+        "globe": {
+          "$ref": "#/$defs/svg"
+        },
+        "goal": {
+          "$ref": "#/$defs/svg"
+        },
+        "graduation-cap": {
+          "$ref": "#/$defs/svg"
+        },
+        "guitar": {
+          "$ref": "#/$defs/svg"
+        },
+        "hammer": {
+          "$ref": "#/$defs/svg"
+        },
+        "hand-heart": {
+          "$ref": "#/$defs/svg"
+        },
+        "handshake": {
+          "$ref": "#/$defs/svg"
+        },
+        "hard-drive": {
+          "$ref": "#/$defs/svg"
+        },
+        "hash": {
+          "$ref": "#/$defs/svg"
+        },
+        "heading-1": {
+          "$ref": "#/$defs/svg"
+        },
+        "heading-2": {
+          "$ref": "#/$defs/svg"
+        },
+        "heading-3": {
+          "$ref": "#/$defs/svg"
+        },
+        "heading": {
+          "$ref": "#/$defs/svg"
+        },
+        "headphones": {
+          "$ref": "#/$defs/svg"
+        },
+        "heart-off": {
+          "$ref": "#/$defs/svg"
+        },
+        "heart-pulse": {
+          "$ref": "#/$defs/svg"
+        },
+        "heart": {
+          "$ref": "#/$defs/svg"
+        },
+        "hourglass": {
+          "$ref": "#/$defs/svg"
+        },
+        "house": {
+          "$ref": "#/$defs/svg"
+        },
+        "image": {
+          "$ref": "#/$defs/svg"
+        },
+        "inbox": {
+          "$ref": "#/$defs/svg"
+        },
+        "infinity": {
+          "$ref": "#/$defs/svg"
+        },
+        "info": {
+          "$ref": "#/$defs/svg"
+        },
+        "inspector": {
+          "$ref": "#/$defs/svg"
+        },
+        "key-round": {
+          "$ref": "#/$defs/svg"
+        },
+        "key": {
+          "$ref": "#/$defs/svg"
+        },
+        "keyboard": {
+          "$ref": "#/$defs/svg"
+        },
+        "landmark": {
+          "$ref": "#/$defs/svg"
+        },
+        "languages": {
+          "$ref": "#/$defs/svg"
+        },
+        "laptop": {
+          "$ref": "#/$defs/svg"
+        },
+        "layout-dashboard": {
+          "$ref": "#/$defs/svg"
+        },
+        "layout-template": {
+          "$ref": "#/$defs/svg"
+        },
+        "leaf": {
+          "$ref": "#/$defs/svg"
+        },
+        "library": {
+          "$ref": "#/$defs/svg"
+        },
+        "lightbulb": {
+          "$ref": "#/$defs/svg"
+        },
+        "link-2": {
+          "$ref": "#/$defs/svg"
+        },
+        "link": {
+          "$ref": "#/$defs/svg"
+        },
+        "list-checks": {
+          "$ref": "#/$defs/svg"
+        },
+        "list-filter": {
+          "$ref": "#/$defs/svg"
+        },
+        "list-ordered": {
+          "$ref": "#/$defs/svg"
+        },
+        "list-todo": {
+          "$ref": "#/$defs/svg"
+        },
+        "list": {
+          "$ref": "#/$defs/svg"
+        },
+        "loader-circle": {
+          "$ref": "#/$defs/svg"
+        },
+        "loader": {
+          "$ref": "#/$defs/svg"
+        },
+        "lock-keyhole": {
+          "$ref": "#/$defs/svg"
+        },
+        "lock-open": {
+          "$ref": "#/$defs/svg"
+        },
+        "lock": {
+          "$ref": "#/$defs/svg"
+        },
+        "log-in": {
+          "$ref": "#/$defs/svg"
+        },
+        "log-out": {
+          "$ref": "#/$defs/svg"
+        },
+        "mail": {
+          "$ref": "#/$defs/svg"
+        },
+        "map-pin": {
+          "$ref": "#/$defs/svg"
+        },
+        "map": {
+          "$ref": "#/$defs/svg"
+        },
+        "maximize": {
+          "$ref": "#/$defs/svg"
+        },
+        "megaphone": {
+          "$ref": "#/$defs/svg"
+        },
+        "memory-stick": {
+          "$ref": "#/$defs/svg"
+        },
+        "menu": {
+          "$ref": "#/$defs/svg"
+        },
+        "message-circle": {
+          "$ref": "#/$defs/svg"
+        },
+        "message-square-plus": {
+          "$ref": "#/$defs/svg"
+        },
+        "message-square": {
+          "$ref": "#/$defs/svg"
+        },
+        "mic": {
+          "$ref": "#/$defs/svg"
+        },
+        "microscope": {
+          "$ref": "#/$defs/svg"
+        },
+        "minimize": {
+          "$ref": "#/$defs/svg"
+        },
+        "minus": {
+          "$ref": "#/$defs/svg"
+        },
+        "monitor-smartphone": {
+          "$ref": "#/$defs/svg"
+        },
+        "moon": {
+          "$ref": "#/$defs/svg"
+        },
+        "mountain": {
+          "$ref": "#/$defs/svg"
+        },
+        "music": {
+          "$ref": "#/$defs/svg"
+        },
+        "network": {
+          "$ref": "#/$defs/svg"
+        },
+        "newspaper": {
+          "$ref": "#/$defs/svg"
+        },
+        "notebook-pen": {
+          "$ref": "#/$defs/svg"
+        },
+        "notebook-text": {
+          "$ref": "#/$defs/svg"
+        },
+        "notebook": {
+          "$ref": "#/$defs/svg"
+        },
+        "package": {
+          "$ref": "#/$defs/svg"
+        },
+        "palette": {
+          "$ref": "#/$defs/svg"
+        },
+        "panel-bottom-open": {
+          "$ref": "#/$defs/svg"
+        },
+        "panel-bottom": {
+          "$ref": "#/$defs/svg"
+        },
+        "panel-left-close": {
+          "$ref": "#/$defs/svg"
+        },
+        "panel-left-open": {
+          "$ref": "#/$defs/svg"
+        },
+        "panel-left": {
+          "$ref": "#/$defs/svg"
+        },
+        "panel-right-close": {
+          "$ref": "#/$defs/svg"
+        },
+        "panel-right-open": {
+          "$ref": "#/$defs/svg"
+        },
+        "panel-right": {
+          "$ref": "#/$defs/svg"
+        },
+        "party-popper": {
+          "$ref": "#/$defs/svg"
+        },
+        "pause": {
+          "$ref": "#/$defs/svg"
+        },
+        "paw-print": {
+          "$ref": "#/$defs/svg"
+        },
+        "pen-tool": {
+          "$ref": "#/$defs/svg"
+        },
+        "pencil": {
+          "$ref": "#/$defs/svg"
+        },
+        "phone": {
+          "$ref": "#/$defs/svg"
+        },
+        "piggy-bank": {
+          "$ref": "#/$defs/svg"
+        },
+        "pill": {
+          "$ref": "#/$defs/svg"
+        },
+        "pin-off": {
+          "$ref": "#/$defs/svg"
+        },
+        "pin": {
+          "$ref": "#/$defs/svg"
+        },
+        "plane": {
+          "$ref": "#/$defs/svg"
+        },
+        "play": {
+          "$ref": "#/$defs/svg"
+        },
+        "plug-zap": {
+          "$ref": "#/$defs/svg"
+        },
+        "plug": {
+          "$ref": "#/$defs/svg"
+        },
+        "plus": {
+          "$ref": "#/$defs/svg"
+        },
+        "power": {
+          "$ref": "#/$defs/svg"
+        },
+        "presentation": {
+          "$ref": "#/$defs/svg"
+        },
+        "puzzle": {
+          "$ref": "#/$defs/svg"
+        },
+        "receipt": {
+          "$ref": "#/$defs/svg"
+        },
+        "redo-2": {
+          "$ref": "#/$defs/svg"
+        },
+        "redo": {
+          "$ref": "#/$defs/svg"
+        },
+        "refresh-ccw": {
+          "$ref": "#/$defs/svg"
+        },
+        "refresh-cw": {
+          "$ref": "#/$defs/svg"
+        },
+        "regex": {
+          "$ref": "#/$defs/svg"
+        },
+        "replace": {
+          "$ref": "#/$defs/svg"
+        },
+        "resize-corner": {
+          "$ref": "#/$defs/svg"
+        },
+        "rocket": {
+          "$ref": "#/$defs/svg"
+        },
+        "rotate-cw": {
+          "$ref": "#/$defs/svg"
+        },
+        "rss": {
+          "$ref": "#/$defs/svg"
+        },
+        "ruler": {
+          "$ref": "#/$defs/svg"
+        },
+        "save": {
+          "$ref": "#/$defs/svg"
+        },
+        "scan-text": {
+          "$ref": "#/$defs/svg"
+        },
+        "scan": {
+          "$ref": "#/$defs/svg"
+        },
+        "school": {
+          "$ref": "#/$defs/svg"
+        },
+        "scroll-text": {
+          "$ref": "#/$defs/svg"
+        },
+        "search": {
+          "$ref": "#/$defs/svg"
+        },
+        "server": {
+          "$ref": "#/$defs/svg"
+        },
+        "settings-2": {
+          "$ref": "#/$defs/svg"
+        },
+        "settings": {
+          "$ref": "#/$defs/svg"
+        },
+        "shapes": {
+          "$ref": "#/$defs/svg"
+        },
+        "share-2": {
+          "$ref": "#/$defs/svg"
+        },
+        "shield-alert": {
+          "$ref": "#/$defs/svg"
+        },
+        "shield-check": {
+          "$ref": "#/$defs/svg"
+        },
+        "shield": {
+          "$ref": "#/$defs/svg"
+        },
+        "ship": {
+          "$ref": "#/$defs/svg"
+        },
+        "shopping-bag": {
+          "$ref": "#/$defs/svg"
+        },
+        "shopping-cart": {
+          "$ref": "#/$defs/svg"
+        },
+        "snowflake": {
+          "$ref": "#/$defs/svg"
+        },
+        "sofa": {
+          "$ref": "#/$defs/svg"
+        },
+        "sort-ascending": {
+          "$ref": "#/$defs/svg"
+        },
+        "sort-descending": {
+          "$ref": "#/$defs/svg"
+        },
+        "sparkles": {
+          "$ref": "#/$defs/svg"
+        },
+        "split": {
+          "$ref": "#/$defs/svg"
+        },
+        "square-check": {
+          "$ref": "#/$defs/svg"
+        },
+        "square-kanban": {
+          "$ref": "#/$defs/svg"
+        },
+        "square-pen": {
+          "$ref": "#/$defs/svg"
+        },
+        "square-terminal": {
+          "$ref": "#/$defs/svg"
+        },
+        "square": {
+          "$ref": "#/$defs/svg"
+        },
+        "star-fill": {
+          "$ref": "#/$defs/svg"
+        },
+        "star-off": {
+          "$ref": "#/$defs/svg"
+        },
+        "star": {
+          "$ref": "#/$defs/svg"
+        },
+        "stethoscope": {
+          "$ref": "#/$defs/svg"
+        },
+        "sticky-note": {
+          "$ref": "#/$defs/svg"
+        },
+        "store": {
+          "$ref": "#/$defs/svg"
+        },
+        "sun-moon": {
+          "$ref": "#/$defs/svg"
+        },
+        "sun": {
+          "$ref": "#/$defs/svg"
+        },
+        "table-of-contents": {
+          "$ref": "#/$defs/svg"
+        },
+        "table": {
+          "$ref": "#/$defs/svg"
+        },
+        "tag": {
+          "$ref": "#/$defs/svg"
+        },
+        "target": {
+          "$ref": "#/$defs/svg"
+        },
+        "tent": {
+          "$ref": "#/$defs/svg"
+        },
+        "terminal": {
+          "$ref": "#/$defs/svg"
+        },
+        "text-quote": {
+          "$ref": "#/$defs/svg"
+        },
+        "thumbs-down": {
+          "$ref": "#/$defs/svg"
+        },
+        "thumbs-up": {
+          "$ref": "#/$defs/svg"
+        },
+        "train-front": {
+          "$ref": "#/$defs/svg"
+        },
+        "trash": {
+          "$ref": "#/$defs/svg"
+        },
+        "trees": {
+          "$ref": "#/$defs/svg"
+        },
+        "triangle-alert": {
+          "$ref": "#/$defs/svg"
+        },
+        "trophy": {
+          "$ref": "#/$defs/svg"
+        },
+        "truck": {
+          "$ref": "#/$defs/svg"
+        },
+        "type": {
+          "$ref": "#/$defs/svg"
+        },
+        "undo-2": {
+          "$ref": "#/$defs/svg"
+        },
+        "undo": {
+          "$ref": "#/$defs/svg"
+        },
+        "unplug": {
+          "$ref": "#/$defs/svg"
+        },
+        "upload": {
+          "$ref": "#/$defs/svg"
+        },
+        "user-plus": {
+          "$ref": "#/$defs/svg"
+        },
+        "user": {
+          "$ref": "#/$defs/svg"
+        },
+        "users": {
+          "$ref": "#/$defs/svg"
+        },
+        "utensils": {
+          "$ref": "#/$defs/svg"
+        },
+        "video": {
+          "$ref": "#/$defs/svg"
+        },
+        "wallet": {
+          "$ref": "#/$defs/svg"
+        },
+        "waypoints": {
+          "$ref": "#/$defs/svg"
+        },
+        "whole-word": {
+          "$ref": "#/$defs/svg"
+        },
+        "window-close": {
+          "$ref": "#/$defs/svg"
+        },
+        "window-maximize": {
+          "$ref": "#/$defs/svg"
+        },
+        "window-minimize": {
+          "$ref": "#/$defs/svg"
+        },
+        "window-restore": {
+          "$ref": "#/$defs/svg"
+        },
+        "wrench": {
+          "$ref": "#/$defs/svg"
+        },
+        "zap": {
+          "$ref": "#/$defs/svg"
+        },
+        "zoom-in": {
+          "$ref": "#/$defs/svg"
+        },
+        "zoom-out": {
+          "$ref": "#/$defs/svg"
+        }
+      }
+    },
+    "library": {
+      "type": "object",
+      "description": "SVGs for the library's own icons. A slot left out falls back to the icon it shows by default.",
+      "additionalProperties": false,
+      "properties": {
+        "notebook": {
+          "$ref": "#/$defs/svg",
+          "description": "A notebook, folded, without an icon of its own."
+        },
+        "notebook-open": {
+          "$ref": "#/$defs/svg",
+          "description": "A notebook opened in the sidebar to show the ones inside it."
+        },
+        "notebook-locked": {
+          "$ref": "#/$defs/svg",
+          "description": "A locked notebook, in place of its icon."
+        },
+        "fold-closed": {
+          "$ref": "#/$defs/svg",
+          "description": "The arrow beside a folded notebook or tag."
+        },
+        "fold-open": {
+          "$ref": "#/$defs/svg",
+          "description": "The arrow beside an open notebook or tag."
+        },
+        "inbox": {
+          "$ref": "#/$defs/svg",
+          "description": "The Inbox notebook, where quick captures go."
+        },
+        "journal": {
+          "$ref": "#/$defs/svg",
+          "description": "The Journal notebook of daily notes."
+        },
+        "templates": {
+          "$ref": "#/$defs/svg",
+          "description": "The Templates notebook."
+        },
+        "note": {
+          "$ref": "#/$defs/svg",
+          "description": "A note in lists and the palette."
+        },
+        "note-pinned": {
+          "$ref": "#/$defs/svg",
+          "description": "The mark on a pinned note."
+        },
+        "note-locked": {
+          "$ref": "#/$defs/svg",
+          "description": "The mark on a locked note."
+        },
+        "note-shared": {
+          "$ref": "#/$defs/svg",
+          "description": "The mark on a shared note."
+        },
+        "note-published": {
+          "$ref": "#/$defs/svg",
+          "description": "The mark on a published note."
+        },
+        "tag": {
+          "$ref": "#/$defs/svg",
+          "description": "A tag in lists and the palette."
+        },
+        "all-notes": {
+          "$ref": "#/$defs/svg",
+          "description": "All Notes, in the sidebar and the palette."
+        },
+        "pinned": {
+          "$ref": "#/$defs/svg",
+          "description": "Pinned notes, in the sidebar and the palette."
+        },
+        "recent": {
+          "$ref": "#/$defs/svg",
+          "description": "Recent notes, in the sidebar and the palette."
+        },
+        "tasks": {
+          "$ref": "#/$defs/svg",
+          "description": "Tasks, in the sidebar and the palette."
+        },
+        "shared": {
+          "$ref": "#/$defs/svg",
+          "description": "Notes shared with you."
+        },
+        "trash": {
+          "$ref": "#/$defs/svg",
+          "description": "The Trash."
+        },
+        "notebooks": {
+          "$ref": "#/$defs/svg",
+          "description": "The notebooks, in the collapsed sidebar."
+        },
+        "tags": {
+          "$ref": "#/$defs/svg",
+          "description": "The tags, in the collapsed sidebar."
+        },
+        "board": {
+          "$ref": "#/$defs/svg",
+          "description": "The board of notes by status."
+        },
+        "calendar": {
+          "$ref": "#/$defs/svg",
+          "description": "The calendar of daily notes."
+        },
+        "graph": {
+          "$ref": "#/$defs/svg",
+          "description": "The graph of linked notes."
+        },
+        "attachment-pdf": {
+          "$ref": "#/$defs/svg",
+          "description": "A PDF attachment (kept for attachment lists)."
+        },
+        "attachment-image": {
+          "$ref": "#/$defs/svg",
+          "description": "An image attachment (kept for attachment lists)."
+        },
+        "attachment-audio": {
+          "$ref": "#/$defs/svg",
+          "description": "An audio attachment (kept for attachment lists)."
+        }
+      }
+    },
+    "notebook_icons": {
+      "type": "object",
+      "description": "More icons for the notebook icon picker, by name.",
+      "maxProperties": 2000,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/svg"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "file"
+            ],
+            "properties": {
+              "file": {
+                "$ref": "#/$defs/svg"
+              },
+              "label": {
+                "type": "string"
+              },
+              "keywords": {
+                "type": "string",
+                "description": "More words the picker's search finds it by, spaced."
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "svg": {
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "^([A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+\\.[sS][vV][gG]$",
+      "description": "The path of an .svg file inside the theme's folder, such as icons/search.svg."
+    }
+  }
+}

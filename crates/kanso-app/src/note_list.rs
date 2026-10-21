@@ -21,6 +21,7 @@ use kanso_store::{NoteSummary, Sort};
 
 use crate::clock::Clock;
 use crate::grouping::{Grouped, Row, RowKey, bucket_label, day_of, group_rows, row_time_label};
+use crate::icon_themes::{Slot, library_icon};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_menu::NoteCommand;
@@ -453,7 +454,9 @@ impl NoteList {
                 .text_size(px(12.))
                 .text_color(colors.quiet(selected))
                 .children(tasks)
-                .when(pinned, |el| el.child(Icon::new(Lucide::Pin).size(px(12.))))
+                .when(pinned, |el| {
+                    el.child(library_icon(Slot::NotePinned).size(px(12.)))
+                })
                 .child(time)
                 .into_any_element()
         };
@@ -534,7 +537,7 @@ impl NoteList {
                                         .gap_1()
                                         .text_color(colors.text_muted)
                                         .child(
-                                            Icon::new(Lucide::Lock)
+                                            library_icon(Slot::NoteLocked)
                                                 .size(px(12.))
                                                 .text_color(colors.text_muted),
                                         )
@@ -765,7 +768,7 @@ impl NoteList {
                         .ghost()
                         .small()
                         .icon(
-                            Icon::new(Lucide::SquareKanban)
+                            library_icon(Slot::Board)
                                 .size(px(15.))
                                 .text_color(colors.text_secondary),
                         )
@@ -921,7 +924,7 @@ impl NoteList {
         match &library.filter {
             // Its notes are a level or more down: not a notebook to start.
             Filter::Book(id) if library.has_notes_inside(id) => quiet_empty(
-                Lucide::Notebook,
+                library_icon(Slot::Notebook),
                 format!("No notes directly in {}", library.filter_title()),
                 Some("Its notes are in the notebooks inside it.".into()),
                 colors,
@@ -939,21 +942,21 @@ impl NoteList {
                 .child("No notes")
                 .into_any_element(),
             Filter::Pinned => quiet_empty(
-                Lucide::Pin,
+                library_icon(Slot::Pinned),
                 "No pinned notes".into(),
                 Some("Pin a note to keep it at the top.".into()),
                 colors,
             )
             .into_any_element(),
             Filter::Recent => quiet_empty(
-                Lucide::Clock,
+                library_icon(Slot::Recent),
                 "No recent notes".into(),
                 Some("Notes edited in the last 7 days show here.".into()),
                 colors,
             )
             .into_any_element(),
             Filter::Tag(_) | Filter::TagPath(_) => quiet_empty(
-                Lucide::Hash,
+                library_icon(Slot::Tag),
                 format!("No notes tagged {}", library.filter_title()),
                 None,
                 colors,
@@ -966,13 +969,17 @@ impl NoteList {
                 colors,
             )
             .into_any_element(),
-            Filter::Trash => {
-                quiet_empty(Lucide::Trash, "Trash is empty".into(), None, colors).into_any_element()
-            }
+            Filter::Trash => quiet_empty(
+                library_icon(Slot::Trash),
+                "Trash is empty".into(),
+                None,
+                colors,
+            )
+            .into_any_element(),
             // The Tasks view shows in the list's place.
             Filter::Tasks => div().into_any_element(),
             Filter::Shared => quiet_empty(
-                Lucide::Users,
+                library_icon(Slot::Shared),
                 "Nothing shared with you yet".into(),
                 Some(
                     "Notes other people share with you show here. Invitations wait above them."

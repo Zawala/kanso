@@ -4,8 +4,8 @@
 //! outlined. Following the system's light and dark mode outlines a light
 //! and a dark UI theme at once, and a click sets the one of its kind.
 //! Below them: the themes folder, Reload, Import, and any theme file that
-//! couldn't be used; then the icon packs, one of which can draw the app's
-//! own icons.
+//! couldn't be used; then the icon theme chooser, each theme with a row of
+//! its icons, and the icon themes folder.
 
 use std::sync::Arc;
 
@@ -14,14 +14,12 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{
-    Disableable as _, Sizable as _, StyledExt as _, WindowExt as _, h_flex, v_flex,
-};
+use gpui_kit::component::{Icon, Sizable as _, StyledExt as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::config::{ThemePreference, ThemeSettings};
-use crate::icon_packs;
+use crate::icon_themes::{self, IconTheme, IconThemes};
 use crate::settings::{Row, SettingsView, section};
 use crate::theme::{Colors, Rgb, SYSTEM_MONO};
 use crate::theme_file::{PreviewColors, TokenStyle, fit_preview, fit_syntax};
@@ -309,39 +307,24 @@ pub fn page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
         );
     }
     pages.push(section("Theme files", rows, colors));
-    pages.push(icon_packs_section(cx));
+    pages.push(icon_theme_section(cx));
     pages
 }
 
-/// Chooses the icon pack that draws the app's own icons (`None`: the
-/// built-in ones), and shows it at once: the main window opens again in its
-/// place, since a window keeps the icons it has drawn.
-fn use_icon_pack(id: Option<String>, window: &mut Window, cx: &mut App) {
-    let pack = id
-        .as_deref()
-        .and_then(|id| icon_packs::packs(cx).pack(id).cloned());
-    AppState::update_config(cx, |config| config.appearance.icon_pack = id);
-    icon_packs::use_for_app(pack.as_deref(), cx);
-    crate::reopen_main_window(window, cx);
-}
-
-/// Reads the icon packs folder again, off the UI thread, and says what
+/// Reads the icon themes folder again, off the UI thread, and says what
 /// couldn't be used.
-fn reload_icon_packs(window: &mut Window, cx: &mut App) {
-    let reload = icon_packs::reload_soon(cx);
+pub fn reload_icon_themes(window: &mut Window, cx: &mut App) {
+    let reload = icon_themes::reload_soon(cx);
     let handle = window.window_handle();
     cx.spawn(async move |cx| {
         let notices = reload.await;
         cx.update(|cx| {
-            let count = cx.global::<icon_packs::IconPacks>().packs.len();
+            let count = cx.global::<IconThemes>().entries.len();
             let message = match notices.len() {
-                0 => Notification::success(match count {
-                    1 => "1 icon pack ready.".to_owned(),
-                    n => format!("{n} icon packs ready."),
-                }),
+                0 => Notification::success(format!("{count} icon themes ready.")),
                 1 => Notification::warning(notices[0].sentence()),
                 n => Notification::warning(format!(
-                    "{n} icon pack files couldn't be used; the Themes page lists them."
+                    "{n} icon theme files couldn't be used; the Themes page lists them."
                 )),
             };
             handle
@@ -352,73 +335,98 @@ fn reload_icon_packs(window: &mut Window, cx: &mut App) {
     .detach();
 }
 
-/// What a pack's row says about it. Pure.
-pub fn pack_detail(pack: &icon_packs::IconPack) -> String {
-    let mut parts = vec![match pack.icons.len() {
-        1 => "1 icon".to_owned(),
-        n => format!("{n} icons"),
-    }];
-    if let Some(author) = &pack.author {
-        parts.push(format!("by {author}"));
-    }
-    if let Some(license) = &pack.license {
-        parts.push(license.clone());
-    }
-    parts.push(match pack.replaces {
-        0 => "for notebooks".to_owned(),
-        1 => "for notebooks, and 1 of Kanso's icons".to_owned(),
-        n => format!("for notebooks, and {n} of Kanso's icons"),
+/// Asks for an icon theme to import (a Zed icon theme, a theme package
+/// carrying one, or a Kanso icon theme folder), converts it into the icon
+/// themes folder off the UI thread, reloads, and says what came across.
+pub fn import_icon_theme(window: &mut Window, cx: &mut App) {
+    let dir = icon_themes::icon_themes_dir(&cx.global::<AppState>().data_dir);
+    let picked = cx.prompt_for_paths(PathPromptOptions {
+        files: true,
+        directories: true,
+        multiple: false,
+        prompt: Some("Import Icon Theme".into()),
     });
+    window
+        .spawn(cx, async move |cx| {
+            let Ok(Ok(Some(paths))) = picked.await else {
+                return;
+            };
+            let Some(source) = paths.into_iter().next() else {
+                return;
+            };
+            let result = cx
+                .background_executor()
+                .spawn(async move { crate::icon_theme_import::import_path(&source, &dir) })
+                .await;
+            cx.update(|window, cx| {
+                icon_themes::reload(cx);
+                let message = match result {
+                    Ok(reports) => Notification::success(
+                        reports
+                            .iter()
+                            .map(|report| report.summary())
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    ),
+                    Err(err) => {
+                        Notification::error(format!("Couldn't import the icon theme: {err}"))
+                    }
+                };
+                window.push_notification(message, cx);
+            })
+            .ok();
+        })
+        .detach();
+}
+
+/// What a theme's card says about it, under its name. Pure.
+pub fn icon_theme_detail(theme: &IconTheme) -> String {
+    let mut parts = Vec::new();
+    parts.push(match &theme.path {
+        Some(_) => "In your icon themes folder".to_owned(),
+        None => "Built in".to_owned(),
+    });
+    if !theme.author.is_empty() {
+        parts.push(format!("by {}", theme.author));
+    }
+    if !theme.license.is_empty() {
+        parts.push(theme.license.clone());
+    }
+    let drawn = theme.icons.len() + theme.library.len();
+    parts.push(match drawn {
+        0 => "Kanso's own icons".to_owned(),
+        1 => "draws 1 icon".to_owned(),
+        n => format!("draws {n} icons"),
+    });
+    match theme.extras.len() {
+        0 => {}
+        1 => parts.push("1 more for notebooks".to_owned()),
+        n => parts.push(format!("{n} more for notebooks")),
+    }
     parts.join(" · ")
 }
 
-/// Icon packs: which draws the app's own icons, the folder, and what
-/// couldn't be used.
-fn icon_packs_section(cx: &mut Context<SettingsView>) -> AnyElement {
+/// The icon theme chooser: a card for each theme with a row of its icons,
+/// the chosen one outlined; then the folder, Import, and what couldn't be
+/// used.
+fn icon_theme_section(cx: &mut Context<SettingsView>) -> AnyElement {
     let colors = Colors::get(cx);
-    let dir = icon_packs::packs_dir(&cx.global::<AppState>().data_dir);
-    let chosen = cx.global::<AppState>().config.appearance.icon_pack.clone();
-    let packs = icon_packs::packs(cx);
-    let (list, notices) = (packs.packs.clone(), packs.notices.clone());
-    let use_button = |id: Option<String>, ix: usize| {
-        let selected = chosen == id;
-        Button::new(("use-icon-pack", ix))
-            .outline()
-            .small()
-            .label(if selected {
-                "In Use"
-            } else {
-                "Use for App Icons"
-            })
-            .disabled(selected)
-            .on_click(move |_, window, cx| use_icon_pack(id.clone(), window, cx))
-    };
+    let dir = icon_themes::icon_themes_dir(&cx.global::<AppState>().data_dir);
+    let chosen = cx.global::<AppState>().config.appearance.icon_theme.clone();
+    let active = icon_themes::active(cx);
+    let (entries, notices) = cx
+        .try_global::<IconThemes>()
+        .map(|themes| (themes.entries.clone(), themes.notices.clone()))
+        .unwrap_or_default();
+    let cards = entries
+        .iter()
+        .map(|theme| icon_theme_card(theme, theme.key == active.key, colors))
+        .collect();
     let mut rows = vec![
-        Row::new(Lucide::Shapes, "Kanso's icons")
-            .detail("The built-in icons, from Lucide.")
-            .trailing(use_button(None, 0)),
-    ];
-    for (ix, pack) in list.iter().enumerate() {
-        let row = Row::new(Lucide::Package, pack.name.clone()).detail(pack_detail(pack));
-        rows.push(if pack.replaces > 0 {
-            row.trailing(use_button(Some(pack.id.clone()), ix + 1))
-        } else {
-            row
-        });
-    }
-    // A chosen pack that has gone is drawn only by windows open already.
-    if let Some(id) = &chosen
-        && !list.iter().any(|pack| &pack.id == id)
-    {
-        rows.push(Row::new(Lucide::TriangleAlert, id.clone()).detail(
-            "The chosen icon pack isn't in the folder any more; Kanso's own icons show from the next launch.",
-        ));
-    }
-    rows.push(
-        Row::new(Lucide::FolderOpen, "Icon packs folder")
-            .detail("Add a folder of SVG icons here, with an optional pack.json; Kanso picks up changes on its own.")
+        Row::new(Lucide::FolderOpen, "Icon themes folder")
+            .detail("Add a folder holding an icon theme's .json and its SVGs; Kanso picks up changes on its own.")
             .trailing(
-                Button::new("open-icon-packs-folder")
+                Button::new("open-icon-themes-folder")
                     .outline()
                     .small()
                     .label("Open Folder")
@@ -428,36 +436,110 @@ fn icon_packs_section(cx: &mut Context<SettingsView>) -> AnyElement {
                     }),
             )
             .trailing(
-                Button::new("reload-icon-packs")
+                Button::new("reload-icon-themes")
                     .outline()
                     .small()
                     .label("Reload")
-                    .on_click(|_, window, cx| reload_icon_packs(window, cx)),
+                    .on_click(|_, window, cx| reload_icon_themes(window, cx)),
             ),
-    );
-    rows.insert(
-        0,
-        Row::new(Lucide::Download, "Get icon packs")
-            .detail("Browse open-source icon sets and install one in a click.")
+        Row::new(Lucide::Download, "Import icon theme")
+            .detail("A Zed icon theme (its extension folder or .tar.gz), a theme package carrying one, or a Kanso icon theme folder, converted into the icon themes folder.")
             .trailing(
-                Button::new("browse-icon-packs")
+                Button::new("import-icon-theme")
                     .outline()
                     .small()
-                    .label("Browse Icon Packs…")
-                    .debug_selector(|| "browse-icon-packs".into())
-                    .on_click(|_, window, cx| {
-                        crate::icon_gallery::open_gallery(window, cx);
-                    }),
+                    .label("Import…")
+                    .debug_selector(|| "import-icon-theme".into())
+                    .on_click(|_, window, cx| import_icon_theme(window, cx)),
             ),
-    );
+    ];
+    // A chosen theme that has gone draws Kanso's own icons meanwhile.
+    if let Some(id) = &chosen
+        && !entries.iter().any(|theme| &theme.id == id)
+    {
+        rows.push(Row::new(Lucide::TriangleAlert, id.clone()).detail(
+            "The chosen icon theme isn't in the icon themes folder; Kanso's own icons show until it is.",
+        ));
+    }
     for (ix, notice) in notices.iter().enumerate() {
         rows.push(
             Row::new(Lucide::TriangleAlert, notice.file.clone())
                 .detail(notice.sentence())
-                .trailing(div().id(("icon-pack-notice", ix))),
+                .trailing(div().id(("icon-theme-notice", ix))),
         );
     }
-    section("Icon packs", rows, colors)
+    v_flex()
+        .child(grid_section(
+            "Icon theme",
+            "Draws every icon: the sidebar, the toolbar, menus and every control. An icon a theme leaves out stays Kanso's own.",
+            cards,
+            colors,
+        ))
+        .child(section("Icon theme files", rows, colors))
+        .into_any_element()
+}
+
+/// A theme's card: a row of its icons, outlined when chosen, and its name.
+fn icon_theme_card(theme: &Arc<IconTheme>, chosen: bool, colors: &Colors) -> AnyElement {
+    let paths = icon_themes::themed_paths(theme);
+    let icons = icon_themes::PREVIEW.iter().map(|path| {
+        let drawn = paths
+            .get(*path)
+            .cloned()
+            .unwrap_or_else(|| SharedString::from((*path).to_owned()));
+        Icon::default()
+            .path(icon_themes::unresolved(drawn))
+            .size(px(16.))
+            .text_color(colors.text_secondary)
+    });
+    let id = theme.id.clone();
+    let selector = format!("icon-theme-{id}");
+    let detail: SharedString = icon_theme_detail(theme).into();
+    v_flex()
+        .id(SharedString::from(selector.clone()))
+        .w(px(CARD_WIDTH * 2. + CARD_GAP))
+        .gap(px(6.))
+        .cursor_pointer()
+        .debug_selector(move || selector.clone())
+        .child(
+            div()
+                .p(px(2.))
+                .rounded(px(9.))
+                .border_2()
+                .border_color(if chosen {
+                    Hsla::from(colors.accent)
+                } else {
+                    transparent_black()
+                })
+                .child(
+                    h_flex()
+                        .h(px(44.))
+                        .px(px(14.))
+                        .gap(px(12.))
+                        .justify_center()
+                        .rounded(px(6.))
+                        .bg(colors.editor)
+                        .border_1()
+                        .border_color(colors.divider)
+                        .children(icons),
+                ),
+        )
+        .child(
+            h_flex()
+                .justify_center()
+                .text_size(px(12.))
+                .line_height(px(16.))
+                .text_color(if chosen {
+                    colors.text
+                } else {
+                    colors.text_secondary
+                })
+                .when(chosen, |el| el.font_medium())
+                .child(div().truncate().child(theme.name.clone())),
+        )
+        .tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
+        .on_click(move |_, _, cx| icon_themes::choose(Some(id.clone()), cx))
+        .into_any_element()
 }
 
 /// A titled grid of cards.

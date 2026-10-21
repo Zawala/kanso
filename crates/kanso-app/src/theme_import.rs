@@ -18,6 +18,8 @@ mod package;
 mod package_base;
 mod zed;
 
+pub(crate) use zed::strip_jsonc;
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, bail};

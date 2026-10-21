@@ -169,7 +169,10 @@ fn day_arrows(tab_stop: bool, cx: &App) -> impl IntoElement {
                 .xsmall()
                 .tab_stop(tab_stop)
                 .debug_selector(|| "day-calendar".into())
-                .icon(Icon::new(Lucide::CalendarDays).text_color(colors.text_secondary))
+                .icon(
+                    crate::icon_themes::library_icon(crate::icon_themes::Slot::Calendar)
+                        .text_color(colors.text_secondary),
+                )
                 .tooltip("Journal calendar")
                 .on_click(|_, window, cx| {
                     window.dispatch_action(Box::new(crate::calendar_view::ShowCalendar), cx)

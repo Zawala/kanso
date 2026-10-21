@@ -236,9 +236,13 @@ pub struct Appearance {
     pub view_mode: ViewMode,
     /// The full sidebar, or (false) the icon rail it collapses to.
     pub show_sidebar: bool,
-    /// The icon pack drawing the app's own icons, by its folder's name;
-    /// `None` for the built-in ones. Read at launch.
-    pub icon_pack: Option<String>,
+    /// The icon theme drawing the app's icons, by its folder's name;
+    /// `None` for Kanso's own.
+    pub icon_theme: Option<String>,
+    /// The icon pack of versions before 4, which [`AppConfig::migrate`]
+    /// makes the icon theme; never written.
+    #[serde(rename = "iconPack", skip_serializing)]
+    pub legacy_icon_pack: Option<String>,
 }
 
 impl Default for Appearance {
@@ -252,7 +256,8 @@ impl Default for Appearance {
             readable_width: false,
             view_mode: ViewMode::Split,
             show_sidebar: true,
-            icon_pack: None,
+            icon_theme: None,
+            legacy_icon_pack: None,
         }
     }
 }
@@ -488,7 +493,7 @@ pub struct LockedSettings {
 }
 
 /// The layout [`AppConfig::migrate`] brings older files up to.
-pub const CONFIG_VERSION: u32 = 3;
+pub const CONFIG_VERSION: u32 = 4;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -552,7 +557,10 @@ impl AppConfig {
     /// server, and the URL itself, `enabled` and the (absent) account stay
     /// as they were, so the Mac starts signed out with its notes in place.
     /// Version 3 brought themes: light, dark or system becomes Kanso's own
-    /// light and dark themes, fixed or following the system.
+    /// light and dark themes, fixed or following the system. Version 4
+    /// replaced icon packs with icon themes: a pack chosen for the app's
+    /// icons becomes the icon theme of the same folder name, which draws
+    /// Kanso's own icons until there is one.
     pub fn migrate(&mut self) -> bool {
         if self.version >= CONFIG_VERSION {
             return false;
@@ -569,6 +577,12 @@ impl AppConfig {
         }
         if self.version < 3 {
             self.appearance.themes = ThemeSettings::from_preference(self.appearance.theme);
+        }
+        if let Some(pack) = self.appearance.legacy_icon_pack.take()
+            && self.version < 4
+            && self.appearance.icon_theme.is_none()
+        {
+            self.appearance.icon_theme = Some(pack);
         }
         self.version = CONFIG_VERSION;
         true
@@ -802,7 +816,8 @@ mod tests {
                         readable_width: readable,
                         view_mode: mode,
                         show_sidebar: sidebar,
-                        icon_pack: None,
+                        icon_theme: None,
+                        legacy_icon_pack: None,
                     },
                     launch_at_login: login,
                     last_note: last,
@@ -1071,6 +1086,31 @@ mod tests {
             assert!(!face(EditorFont::Sans, mode));
             assert!(face(EditorFont::Mono, mode));
         }
+    }
+
+    /// An icon pack chosen before version 4 becomes the icon theme of the
+    /// same folder name, and isn't written back; a later file keeps its
+    /// icon theme.
+    #[test]
+    fn an_old_icon_pack_becomes_the_icon_theme() {
+        let mut old: AppConfig =
+            serde_json::from_str(r#"{"version": 3, "appearance": {"iconPack": "phosphor"}}"#)
+                .unwrap();
+        assert!(old.migrate());
+        assert_eq!(old.appearance.icon_theme.as_deref(), Some("phosphor"));
+        assert_eq!(old.appearance.legacy_icon_pack, None);
+        let written = serde_json::to_value(&old).unwrap();
+        assert_eq!(written["appearance"]["iconTheme"], "phosphor");
+        assert!(written["appearance"].get("iconPack").is_none());
+        let mut current: AppConfig = serde_json::from_str(
+            r#"{"version": 4, "appearance": {"iconTheme": "mine", "iconPack": "old"}}"#,
+        )
+        .unwrap();
+        assert!(!current.migrate());
+        assert_eq!(current.appearance.icon_theme.as_deref(), Some("mine"));
+        let mut none: AppConfig = serde_json::from_str(r#"{"version": 3}"#).unwrap();
+        assert!(none.migrate());
+        assert_eq!(none.appearance.icon_theme, None);
     }
 
     #[test]

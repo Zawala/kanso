@@ -21,6 +21,7 @@ use kanso_store::{Sort, Store, TaskQuery};
 use crate::board::{Board, BoardKind, Card, CardId, Lane, Move, cards};
 use crate::clock::Clock;
 use crate::due::{Tone, chip_colors, chip_label, tone};
+use crate::icon_themes::{Slot, library_icon};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT, inset_after};
 use crate::library::{Filter, Library, LibraryEvent, list_notes, search_params};
 use crate::note_list::quiet_empty;
@@ -469,7 +470,7 @@ impl BoardView {
                             .gap(px(6.))
                             .when(note.locked, |el| {
                                 el.child(
-                                    Icon::new(Lucide::Lock)
+                                    library_icon(Slot::NoteLocked)
                                         .size(px(12.))
                                         .text_color(colors.text_muted),
                                 )
@@ -620,7 +621,7 @@ impl BoardView {
                 Some("Write “- [ ] Call Sam” in a note, and it shows here.".to_owned()),
             ),
         };
-        quiet_empty(Lucide::SquareKanban, title, detail, colors).into_any_element()
+        quiet_empty(library_icon(Slot::Board), title, detail, colors).into_any_element()
     }
 }
 

@@ -246,7 +246,6 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Graph", crate::graph_view::ShowGraph),
             MenuItem::action("Board", crate::board_view::ShowBoard),
             MenuItem::action("Tasks Board", crate::board_view::ShowTaskBoard),
-            MenuItem::action("Icon Packs…", crate::icon_gallery::BrowseIconPacks),
             MenuItem::action("Focus Mode", ToggleFocusMode),
             MenuItem::action("Search All Notes", SearchAllNotes),
             MenuItem::action("Replace in All Notes…", crate::replace::ReplaceInNotes),
@@ -1753,11 +1752,16 @@ impl Render for Workspace {
                 this.close_settings(window, cx);
                 this.export_page(true, window, cx);
             }))
-            .on_action(
-                cx.listener(|_, _: &crate::icon_gallery::BrowseIconPacks, window, cx| {
-                    crate::icon_gallery::open_gallery(window, cx);
-                }),
-            )
+            .on_action(cx.listener(
+                |_, _: &crate::settings::ImportIconTheme, window, cx| {
+                    crate::settings_themes::import_icon_theme(window, cx);
+                },
+            ))
+            .on_action(cx.listener(
+                |_, _: &crate::settings::ReloadIconThemes, window, cx| {
+                    crate::settings_themes::reload_icon_themes(window, cx);
+                },
+            ))
             .on_action(
                 cx.listener(|this, _: &crate::publish::PublishNote, window, cx| {
                     this.close_settings(window, cx);

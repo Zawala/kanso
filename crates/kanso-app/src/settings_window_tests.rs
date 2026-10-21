@@ -42,6 +42,7 @@ fn globals(cx: &mut App, store: Arc<Store>, data_dir: std::path::PathBuf) {
     });
     cx.set_global(Services::default());
     crate::workspace::bind_keys(cx);
+    crate::icon_themes::init(cx);
 }
 
 /// A notebook with enough notes to scroll, the last one open with a long
@@ -1003,101 +1004,186 @@ fn picking_a_theme_applies_it_everywhere(cx: &mut TestAppContext) {
     assert_eq!(state(cx).0, LIGHT);
 }
 
-/// Choosing an icon pack for the app opens the main window again in its
-/// place: the old one closes, the note being written is saved first, and
-/// the new one shows Settings › Themes, so the new icons show at once. The
-/// old window's editor is let go, as when a window closes by hand, and a
-/// transcript still coming goes into the same note in the new window.
-#[gpui_kit::test]
-fn reopening_the_main_window_saves_the_note_and_returns_to_themes(cx: &mut TestAppContext) {
-    use crate::voice::{ModelState, Voice};
-    use crate::voice_state::Phase;
+/// Every icon path asked for as windows draw, with the path drawn for it.
+type Seen = std::rc::Rc<std::cell::RefCell<Vec<(String, String)>>>;
 
-    let Fixture {
-        _dir,
-        window,
-        workspace,
-        note,
-        ..
-    } = setup(cx);
-    let editor = cx.read(|cx| workspace.read(cx).editor.clone());
-    let body = cx.read(|cx| editor.read(cx).body_state());
-    window
-        .update(cx, |_, window, cx| {
-            body.update(cx, |state, cx| {
-                state.set_selected_range(0..0, cx);
-                state.replace("Typed just now. ", window, cx);
-            })
-        })
-        .unwrap();
-    // The microphone off, the model still turning what it heard into text.
-    let transcribing = Phase::Transcribing { session: 1 };
-    cx.update(|cx| {
-        cx.set_global(Voice::for_snapshot(
-            transcribing,
-            &editor,
-            window,
-            (0.5, Duration::from_secs(3)),
-            ModelState::Ready,
-        ))
-    });
-    let old_editor = editor.downgrade();
-    let old_workspace = workspace.downgrade();
-    drop((editor, body, workspace));
-    window
-        .update(cx, |_, window, cx| crate::reopen_main_window(window, cx))
-        .unwrap();
-    cx.run_until_parked();
-
-    let windows = cx.update(|cx| cx.windows());
-    assert_eq!(windows.len(), 1, "the old window closed");
-    assert_ne!(windows[0].window_id(), window.window_id());
-    assert!(old_editor.upgrade().is_none(), "the old editor is let go");
-    assert!(
-        old_workspace.upgrade().is_none(),
-        "the old window is let go"
-    );
-    let saved = cx.read(|cx| {
-        cx.global::<AppState>()
-            .store
-            .note(&note)
-            .unwrap()
-            .unwrap()
-            .body
-    });
-    assert!(saved.starts_with("Typed just now. "), "{}", &saved[..40]);
-    let mut shown = Vec::new();
-    let mut editors = Vec::new();
-    cx.update(|cx| {
-        for_each_workspace(cx, |workspace, cx| {
-            shown.push((
-                workspace.settings_open(),
-                workspace.settings.read(cx).page(),
-            ));
-            editors.push(workspace.editor.clone());
-        })
-    });
-    assert_eq!(shown, vec![(true, SettingsPage::Appearance)]);
-    let new_editor = editors.pop().unwrap();
-    assert_eq!(
-        cx.read(|cx| new_editor.read(cx).note_id().map(str::to_owned)),
-        Some(note)
-    );
-    assert!(
-        cx.read(|cx| cx.global::<Voice>().is_for(&new_editor)),
-        "the transcript goes to the new window's note"
-    );
-
-    // Listening there when it gives way: the microphone stops.
-    cx.update(|cx| {
-        cx.set_global(Voice::for_snapshot(
-            Phase::Listening { session: 2 },
-            &new_editor,
-            windows[0],
-            (0.5, Duration::from_secs(3)),
-            ModelState::Ready,
+/// Wraps the icon hook `icon_themes::init` set, keeping what it is asked
+/// and what it answers.
+fn record_icons(cx: &mut App) -> Seen {
+    let seen = Seen::default();
+    let kept = seen.clone();
+    gpui_kit::component::set_icon_resolver(cx, move |path, cx| {
+        let drawn = cx
+            .try_global::<crate::icon_themes::ActiveIconTheme>()
+            .and_then(|active| active.resolve(path));
+        kept.borrow_mut().push((
+            path.to_owned(),
+            drawn
+                .as_ref()
+                .map_or_else(|| path.to_owned(), |d| d.to_string()),
         ));
-        crate::voice::finish_in(windows[0], cx);
-        assert!(!cx.global::<Voice>().phase.is_active());
+        drawn
     });
+    seen
+}
+
+/// What `seen` drew for `path` since it was last emptied.
+fn drawn_for(seen: &Seen, path: &str) -> Vec<String> {
+    let mut drawn: Vec<String> = seen
+        .borrow()
+        .iter()
+        .filter(|(asked, _)| asked == path)
+        .map(|(_, drawn)| drawn.clone())
+        .collect();
+    drawn.dedup();
+    drawn
+}
+
+/// A gpui-kit control with an icon of its own, a library slot and a UI
+/// icon, side by side.
+struct IconSampler;
+
+impl gpui_kit::Render for IconSampler {
+    fn render(
+        &mut self,
+        _: &mut gpui_kit::Window,
+        _: &mut gpui_kit::Context<Self>,
+    ) -> impl gpui_kit::IntoElement {
+        use gpui_kit::ParentElement as _;
+        gpui_kit::div()
+            .child(gpui_kit::component::checkbox::Checkbox::new("sample").checked(true))
+            .child(crate::icon_themes::library_icon(
+                crate::icon_themes::Slot::Notebook,
+            ))
+            .child(gpui_kit::component::Icon::new(
+                gpui_kit::assets::IconName::Search,
+            ))
+    }
+}
+
+/// Switching the icon theme redraws, in the same window and with no new
+/// one opened, a gpui-kit control's own icon (the checkbox's check) and
+/// Kanso's icons alike, each under a path of the new theme's, so GPUI
+/// draws it afresh rather than from what it kept of the old theme. Back
+/// on Kanso's own icons, each path is the built-in one again.
+#[gpui_kit::test]
+fn switching_icon_theme_redraws_controls_and_kanso_icons_in_one_window(cx: &mut TestAppContext) {
+    let (window, _) = cx.update(|cx| {
+        gpui_kit::init(cx);
+        cx.set_reduce_motion(true);
+        crate::icon_themes::init(cx);
+        gpui_kit::open_window(Default::default(), cx, |_, cx| cx.new(|_| IconSampler)).unwrap()
+    });
+    let seen = cx.update(record_icons);
+    let draw = |cx: &mut TestAppContext| {
+        window
+            .update(cx, |_, window, cx| {
+                window.refresh();
+                window.draw(cx).clear(cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+    };
+    draw(cx);
+    assert_eq!(drawn_for(&seen, "icons/check.svg"), vec!["icons/check.svg"]);
+    assert_eq!(
+        drawn_for(&seen, "icons/library/notebook.svg"),
+        vec!["icons/notebook.svg"]
+    );
+    assert_eq!(
+        drawn_for(&seen, "icons/search.svg"),
+        vec!["icons/search.svg"]
+    );
+
+    // Phosphor, chosen as Settings and the palette choose it: no draw is
+    // asked for; choosing redraws the window.
+    seen.borrow_mut().clear();
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(dir.path().join("kanso.db")).unwrap());
+    let data_dir = dir.path().to_path_buf();
+    cx.update(|cx| {
+        cx.set_global(AppState {
+            store,
+            data_dir,
+            config: AppConfig::default(),
+        });
+    });
+    let phosphor = crate::icon_themes::builtins()[1].clone();
+    cx.update(|cx| {
+        cx.global_mut::<AppState>().config.appearance.icon_theme = Some("phosphor".into());
+        crate::icon_themes::apply(cx);
+    });
+    cx.run_until_parked();
+    let key = format!("icons/@{}/", phosphor.key);
+    for path in [
+        "icons/check.svg",
+        "icons/library/notebook.svg",
+        "icons/search.svg",
+    ] {
+        let drawn = drawn_for(&seen, path);
+        assert!(
+            !drawn.is_empty() && drawn.iter().all(|d| d.starts_with(&key)),
+            "{path} drew {drawn:?}"
+        );
+    }
+    assert_eq!(cx.update(|cx| cx.windows().len()), 1);
+    let id = window.window_id();
+    assert!(cx.update(|cx| cx.windows()[0].window_id() == id));
+
+    seen.borrow_mut().clear();
+    cx.update(|cx| {
+        cx.global_mut::<AppState>().config.appearance.icon_theme = None;
+        crate::icon_themes::apply(cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(drawn_for(&seen, "icons/check.svg"), vec!["icons/check.svg"]);
+}
+
+/// Picking an icon theme's card on the Themes page draws the main window's
+/// icons with it at once (the sidebar's among them), and saves the choice;
+/// the palette lists the themes with the one in use checked.
+#[gpui_kit::test]
+fn picking_an_icon_theme_in_settings_applies_it(cx: &mut TestAppContext) {
+    use crate::settings::OpenAppearanceSettings;
+    let f = setup(cx);
+    let seen = cx.update(record_icons);
+    f.dispatch(cx, Box::new(OpenAppearanceSettings));
+    cx.update(|cx| {
+        f.workspace
+            .read(cx)
+            .settings
+            .clone()
+            .update(cx, |settings, _| settings.scroll_to_end_for_test())
+    });
+    f.draw(cx);
+    seen.borrow_mut().clear();
+    f.click(cx, "icon-theme-phosphor");
+    let phosphor = crate::icon_themes::builtins()[1].clone();
+    let saved = cx.read(|cx| {
+        let state = cx.global::<AppState>();
+        AppConfig::load(&crate::paths::config_path(&state.data_dir)).unwrap()
+    });
+    assert_eq!(saved.appearance.icon_theme.as_deref(), Some("phosphor"));
+    assert_eq!(
+        cx.read(|cx| crate::icon_themes::active(cx).id.clone()),
+        "phosphor"
+    );
+    let key = format!("icons/@{}/", phosphor.key);
+    // Drawn before the click with Kanso's own icon, then with Phosphor's.
+    let drawn = drawn_for(&seen, "icons/library/all-notes.svg");
+    assert!(
+        drawn.last().is_some_and(|d| d.starts_with(&key)),
+        "the sidebar's All Notes drew {drawn:?}"
+    );
+    // Lucide again, from its card.
+    f.click(cx, "icon-theme-lucide");
+    let saved = cx.read(|cx| {
+        let state = cx.global::<AppState>();
+        AppConfig::load(&crate::paths::config_path(&state.data_dir)).unwrap()
+    });
+    assert_eq!(saved.appearance.icon_theme, None);
+    assert_eq!(
+        cx.read(|cx| crate::icon_themes::active(cx).id.clone()),
+        "lucide"
+    );
 }

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "schema_version": 1,
+  "name": "Lucide",
+  "author": "Lucide Contributors",
+  "license": "ISC",
+  "source": "https://lucide.dev",
+  "description": "Kanso's own icons, from Lucide: the look Kanso has without an icon theme."
+}

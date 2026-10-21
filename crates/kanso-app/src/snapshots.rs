@@ -229,6 +229,7 @@ pub(crate) fn context(clock: Option<Clock>) -> HeadlessAppContext {
         // The app's keymap, so shortcuts show as bound.
         crate::workspace::bind_keys(cx);
         crate::note_list::bind_keys(cx);
+        crate::icon_themes::init(cx);
         if let Some(clock) = clock {
             cx.set_global(clock);
         }
@@ -329,149 +330,63 @@ fn book_icon_picker(
     .unwrap();
 }
 
-/// The icon picker scrolled down to the demo pack's section.
-fn book_icon_pack_section(
+/// Draws with the icon theme `id`, as chosen in Settings.
+fn use_icon_theme(cx: &mut HeadlessAppContext, id: &str) {
+    let id = id.to_owned();
+    cx.update(|cx| {
+        crate::icon_themes::choose(Some(id), cx);
+        cx.refresh_windows();
+    });
+}
+
+/// The icon picker under Phosphor, searched for the theme's own icons.
+fn book_icon_theme_section(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
     _: &Entity<Workspace>,
     _: &Store,
 ) {
+    use_icon_theme(cx, "phosphor");
     cx.update(|cx| cx.set_reduce_motion(true));
     cx.update_window(window, |_, window, cx| {
         let picker = crate::book_icons::open_picker(
             "Ideas",
-            Some("sketch/wave".into()),
+            Some("phosphor/planet".into()),
             window,
             cx,
             |_, _, _| {},
         );
-        picker.update(cx, |picker, cx| picker.search_for("sketch", window, cx));
+        picker.update(cx, |picker, cx| picker.search_for("phosphor", window, cx));
     })
     .unwrap();
 }
 
-/// The icon pack gallery, with a few sets as Iconify lists them and one
-/// of them installed.
-fn icon_gallery(
+/// Settings › Themes scrolled to the icon theme chooser, with Phosphor
+/// chosen.
+fn settings_icon_themes(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
-    _: &Entity<Workspace>,
+    workspace: &Entity<Workspace>,
     _: &Store,
 ) {
-    use crate::icon_gallery::tests::FakeSource;
-    use crate::icon_gallery::{COLLECTIONS_URL, Gallery, open_gallery, samples_url};
-    let shapes = [
-        "<circle cx='12' cy='12' r='9' fill='none' stroke='currentColor' stroke-width='2'/>",
-        "<path d='M12 3 21 12 12 21 3 12Z' fill='none' stroke='currentColor' stroke-width='2'/>",
-        "<path d='M4 4h16v16H4Z' fill='none' stroke='currentColor' stroke-width='2'/>",
-        "<path d='M12 3 21 20H3Z' fill='none' stroke='currentColor' stroke-width='2'/>",
-        "<path d='M3 12c3-6 6 6 9 0s6 6 9 0' fill='none' stroke='currentColor' stroke-width='2'/>",
-        "<path d='M12 4v16M4 12h16' stroke='currentColor' stroke-width='2'/>",
-    ];
-    let sets = [
-        (
-            "lucide",
-            "Lucide",
-            1903,
-            "Lucide Contributors",
-            "ISC",
-            "UI 24px",
-        ),
-        (
-            "ph",
-            "Phosphor",
-            9072,
-            "Phosphor Icons",
-            "MIT",
-            "UI Other / Mixed Grid",
-        ),
-        (
-            "tabler",
-            "Tabler Icons",
-            6238,
-            "Paweł Kuna",
-            "MIT",
-            "UI 24px",
-        ),
-        (
-            "material-symbols",
-            "Material Symbols",
-            15728,
-            "Google",
-            "Apache 2.0",
-            "Material",
-        ),
-        (
-            "ri",
-            "Remix Icon",
-            3188,
-            "Remix Design",
-            "Apache 2.0",
-            "UI 24px",
-        ),
-        (
-            "heroicons",
-            "HeroIcons",
-            1288,
-            "Refactoring UI Inc",
-            "MIT",
-            "UI Other / Mixed Grid",
-        ),
-    ];
-    let source = FakeSource::default();
-    let names: Vec<String> = (0..6).map(|ix| format!("s{ix}")).collect();
-    let mut list = serde_json::Map::new();
-    for (prefix, name, total, author, license, category) in sets {
-        list.insert(
-            prefix.into(),
-            json!({"name": name, "total": total, "author": {"name": author},
-                   "license": {"title": license}, "category": category, "samples": names}),
-        );
-        let icons: serde_json::Map<String, serde_json::Value> = names
-            .iter()
-            .zip(shapes)
-            .map(|(n, body)| (n.clone(), json!({"body": body})))
-            .collect();
-        source.answer(
-            &samples_url(prefix, &names),
-            &json!({"prefix": prefix, "width": 24, "height": 24, "icons": icons}).to_string(),
-        );
-    }
-    source.answer(
-        COLLECTIONS_URL,
-        &serde_json::Value::Object(list).to_string(),
-    );
+    use_icon_theme(cx, "phosphor");
+    show_settings(cx, window, workspace, SettingsPage::Appearance);
+    // The icon theme chooser closes the page.
     cx.update(|cx| {
-        cx.set_reduce_motion(true);
-        cx.set_global(Gallery(std::sync::Arc::new(source)));
+        let settings = workspace.read(cx).settings.clone();
+        settings.update(cx, |settings, _| settings.scroll_to_end_for_test());
     });
-    // Phosphor, installed.
-    let data_dir = cx.update(|cx| cx.global::<AppState>().data_dir.clone());
-    let ph = crate::icon_packs::packs_dir(&data_dir).join("ph");
-    std::fs::create_dir_all(&ph).unwrap();
-    std::fs::write(
-        ph.join("pack.json"),
-        r#"{"name": "Phosphor", "source": {"iconify": "ph"}}"#,
-    )
-    .unwrap();
-    std::fs::write(
-        ph.join("icons.json"),
-        r#"{"icons": {"dot": {"body": "<circle cx='8' cy='8' r='4'/>"}}}"#,
-    )
-    .unwrap();
-    cx.update(|cx| {
-        crate::icon_packs::reload(cx);
-    });
-    let gallery = cx
-        .update_window(window, |_, window, cx| open_gallery(window, cx))
-        .unwrap();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    while std::time::Instant::now() < deadline
-        && !cx.update(|cx| gallery.read(cx).is_ready() && gallery.read(cx).samples_loaded() == 6)
-    {
-        cx.run_until_parked();
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
+}
+
+/// The app drawn with Phosphor's icons, Engineering open in the sidebar.
+fn icon_theme_phosphor(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    use_icon_theme(cx, "phosphor");
+    notebook_open(cx, window, workspace, store);
 }
 
 /// The icon picker searching for "money".
@@ -3424,45 +3339,12 @@ fn dev_flavour(
     show_settings(cx, window, workspace, SettingsPage::Updates);
 }
 
-/// A small icon pack in the demo's data folder: the Themes page lists it
-/// and the notebook icon picker has a section for it.
-fn demo_icon_pack(data_dir: &Path) {
-    let pack = crate::icon_packs::packs_dir(data_dir).join("sketch");
-    std::fs::create_dir_all(&pack).unwrap();
-    let svg = |shape: &str| {
-        format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{shape}</svg>"#
-        )
-    };
-    for (name, shape) in [
-        (
-            "circle-dot",
-            r#"<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/>"#,
-        ),
-        ("diamond", r#"<path d="M12 3 21 12 12 21 3 12Z"/>"#),
-        (
-            "hexagon",
-            r#"<path d="M12 3 20 7.5V16.5L12 21 4 16.5V7.5Z"/>"#,
-        ),
-        ("wave", r#"<path d="M3 12c3-6 6 6 9 0s6 6 9 0"/>"#),
-    ] {
-        std::fs::write(pack.join(format!("{name}.svg")), svg(shape)).unwrap();
-    }
-    std::fs::write(
-        pack.join("pack.json"),
-        r#"{"name": "Sketch", "author": "Kanso", "license": "CC0",
-            "icons": {"wave": {"label": "Wave", "keywords": "sea water"}}}"#,
-    )
-    .unwrap();
-}
-
 fn open(
     cx: &mut HeadlessAppContext,
     store: Arc<Store>,
     data_dir: PathBuf,
     shot: &Shot,
 ) -> (AnyWindowHandle, Entity<Workspace>) {
-    demo_icon_pack(&data_dir);
     let mut config = AppConfig::default();
     config.appearance.theme = shot.theme;
     config.appearance.themes = ThemeSettings::from_preference(shot.theme);
@@ -4001,12 +3883,21 @@ fn snapshots() {
         },
         Shot {
             dialog_width: crate::book_icons::PICKER_WIDTH,
-            ..shot("dark-book-icons-pack", Dark, Edit, book_icon_pack_section)
+            ..shot("dark-book-icons-theme", Dark, Edit, book_icon_theme_section)
         },
-        Shot {
-            dialog_width: crate::icon_gallery::GALLERY_WIDTH,
-            ..shot("dark-icon-gallery", Dark, Edit, icon_gallery)
-        },
+        shot(
+            "light-settings-icon-themes",
+            Light,
+            Edit,
+            settings_icon_themes,
+        ),
+        shot("dark-icon-theme-phosphor", Dark, Edit, icon_theme_phosphor),
+        shot(
+            "light-icon-theme-phosphor",
+            Light,
+            Split,
+            icon_theme_phosphor,
+        ),
         shot("dark-preview", Dark, Preview, open_latest),
         shot("light-preview", Light, Preview, open_latest),
         shot("dark-edit-mono", Dark, Edit, mono_font),

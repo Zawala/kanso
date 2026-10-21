@@ -1,9 +1,9 @@
 //! The icons a notebook can show: a set to choose from, kept in the notebook
 //! by name ([`kanso_core::model::BOOK_ICON_FIELD`]) so it syncs, and the
-//! picker that finds and chooses one.
+//! picker that finds and chooses one. The icon theme in use draws them
+//! all, and can add more of its own, kept as `<theme>/<icon>`.
 
 use std::rc::Rc;
-use std::sync::Arc;
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::WindowExt as _;
@@ -14,8 +14,10 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::Book;
 use kanso_core::model::BOOK_ICON_FIELD;
+use kanso_core::roles::{ROLE_FIELD, Role};
 
-use crate::icon_packs::{self, IconPacks};
+use crate::icon_theme_file::is_valid_name;
+use crate::icon_themes::{self, IconTheme, Slot};
 use crate::theme::Colors;
 
 /// One icon a notebook can show.
@@ -44,7 +46,8 @@ const fn choice(
     }
 }
 
-/// The icon a notebook shows until another is chosen.
+/// The first choice in the picker, which stands for the default: a
+/// notebook keeps no icon for it.
 pub const DEFAULT: Lucide = Lucide::Notebook;
 
 /// The icons to choose from, in the picker's order: notebooks and files,
@@ -381,49 +384,87 @@ pub fn find(name: &str) -> Option<&'static Choice> {
     CHOICES.iter().find(|choice| choice.name == name)
 }
 
-/// What a notebook shows: a built-in icon, or one from an icon pack.
+/// What a notebook shows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NotebookIcon {
-    Lucide(Lucide),
-    /// The pack icon's SVG.
-    Pack(Arc<[u8]>),
+    /// One of the built-in choices, which the icon theme may draw.
+    Choice(Lucide),
+    /// The library's own: the default notebook, open or locked, or a
+    /// notebook with a job, such as the Inbox.
+    Slot(Slot),
+    /// An icon the theme in use adds, by the path it is drawn under.
+    Theme(SharedString),
 }
 
-impl From<NotebookIcon> for Icon {
-    fn from(icon: NotebookIcon) -> Icon {
-        match icon {
-            NotebookIcon::Lucide(icon) => Icon::new(icon),
-            NotebookIcon::Pack(svg) => Icon::default().data(&svg),
+impl NotebookIcon {
+    /// The path it is drawn under (before the icon theme draws it).
+    pub fn path(&self) -> SharedString {
+        match self {
+            NotebookIcon::Choice(icon) => gpui_kit::component::IconNamed::path(*icon),
+            NotebookIcon::Slot(slot) => icon_themes::slot_path(*slot),
+            NotebookIcon::Theme(path) => path.clone(),
         }
     }
 }
 
-/// The icon `book` keeps, as kept: a built-in icon's name, or
-/// `<pack>/<icon>` for a pack's, whether or not that pack is here.
+impl From<NotebookIcon> for Icon {
+    fn from(icon: NotebookIcon) -> Icon {
+        Icon::default().path(icon.path())
+    }
+}
+
+/// `<theme>/<icon>` as its two names, if it has that shape. Pure.
+pub fn split_key(key: &str) -> Option<(&str, &str)> {
+    let (theme, icon) = key.split_once('/')?;
+    (is_valid_name(theme) && is_valid_name(icon)).then_some((theme, icon))
+}
+
+/// The icon `book` keeps, as kept: a built-in choice's name, or
+/// `<theme>/<icon>` for an icon theme's, whether or not that theme is in use
+/// (an icon pack's from before icon themes is kept the same way).
 pub fn chosen(book: &Book) -> Option<String> {
     let name = book.extra.get(BOOK_ICON_FIELD)?.as_str()?;
-    (find(name).is_some() || icon_packs::split_key(name).is_some()).then(|| name.to_owned())
+    (find(name).is_some() || split_key(name).is_some()).then(|| name.to_owned())
 }
 
-/// The icon a kept name shows: its built-in icon, its pack's icon when the
-/// pack is here, else [`DEFAULT`].
-pub fn icon_for(name: Option<&str>, packs: Option<&IconPacks>) -> NotebookIcon {
-    let Some(name) = name else {
-        return NotebookIcon::Lucide(DEFAULT);
-    };
-    if let Some(choice) = find(name) {
-        return NotebookIcon::Lucide(choice.icon);
+/// The job `book` has, if any.
+pub fn role(book: &Book) -> Option<Role> {
+    Role::of_book(
+        &book.id,
+        book.extra.get(ROLE_FIELD).and_then(|value| value.as_str()),
+    )
+}
+
+/// The icon a kept name shows under `theme`: its built-in choice, the
+/// theme's own icon when it is the theme's, else the library's icon for a
+/// notebook with `role`, or for any notebook. Pure.
+pub fn icon_for(name: Option<&str>, role: Option<Role>, theme: &IconTheme) -> NotebookIcon {
+    if let Some(name) = name {
+        if let Some(choice) = find(name) {
+            return NotebookIcon::Choice(choice.icon);
+        }
+        if let Some((id, icon)) = split_key(name)
+            && id == theme.id
+            && theme.extra(icon).is_some()
+        {
+            return NotebookIcon::Theme(icon_themes::extra_path(theme, icon));
+        }
     }
-    packs
-        .and_then(|packs| packs.lookup(name))
-        .map_or(NotebookIcon::Lucide(DEFAULT), |icon| {
-            NotebookIcon::Pack(icon.svg.clone())
-        })
+    NotebookIcon::Slot(match role {
+        Some(Role::Inbox) => Slot::Inbox,
+        Some(Role::Journal) => Slot::Journal,
+        Some(Role::Templates) => Slot::Templates,
+        None => Slot::Notebook,
+    })
 }
 
-/// The icon `book` keeps.
+/// The icon `book` keeps, drawn by the theme in use.
 pub fn book_icon(book: &Book, cx: &App) -> NotebookIcon {
-    icon_for(chosen(book).as_deref(), cx.try_global::<IconPacks>())
+    icon_for(
+        chosen(book).as_deref(),
+        role(book),
+        &icon_themes::active(cx),
+    )
 }
 
 /// What a notebook shows for `icon`: the lock in its place while it is
@@ -431,9 +472,18 @@ pub fn book_icon(book: &Book, cx: &App) -> NotebookIcon {
 /// says nothing about it then. Pure.
 pub fn shown(icon: NotebookIcon, locked: bool) -> NotebookIcon {
     if locked {
-        NotebookIcon::Lucide(Lucide::Lock)
+        NotebookIcon::Slot(Slot::NotebookLocked)
     } else {
         icon
+    }
+}
+
+/// What a notebook opened in the sidebar shows: the open notebook in place
+/// of the plain one; any other icon as it is. Pure.
+pub fn opened(icon: NotebookIcon, open: bool) -> NotebookIcon {
+    match icon {
+        NotebookIcon::Slot(Slot::Notebook) if open => NotebookIcon::Slot(Slot::NotebookOpen),
+        icon => icon,
     }
 }
 
@@ -477,33 +527,31 @@ struct Entry {
     icon: NotebookIcon,
 }
 
-/// The picker's sections: Kanso's icons, then each pack's, by pack name.
-fn sections(packs: Option<&IconPacks>) -> Vec<(SharedString, Vec<Entry>)> {
+/// The picker's sections: Kanso's icons, then the icon theme's own, if it
+/// adds any, under its name.
+fn sections(theme: &IconTheme) -> Vec<(SharedString, Vec<Entry>)> {
     let builtin = CHOICES
         .iter()
         .map(|choice| Entry {
             key: choice.name.into(),
             label: choice.label.into(),
             keywords: choice.keywords.into(),
-            icon: NotebookIcon::Lucide(choice.icon),
+            icon: NotebookIcon::Choice(choice.icon),
         })
         .collect();
     let mut sections = vec![(SharedString::from("Kanso"), builtin)];
-    for pack in packs
-        .map(|packs| packs.packs.as_slice())
-        .unwrap_or_default()
-    {
-        let entries = pack
-            .icons
+    if !theme.extras.is_empty() {
+        let entries = theme
+            .extras
             .iter()
             .map(|icon| Entry {
-                key: format!("{}/{}", pack.id, icon.name).into(),
+                key: format!("{}/{}", theme.id, icon.name).into(),
                 label: icon.label.clone().into(),
-                keywords: format!("{} {}", icon.keywords, pack.name).into(),
-                icon: NotebookIcon::Pack(icon.svg.clone()),
+                keywords: format!("{} {}", icon.keywords, theme.name).into(),
+                icon: NotebookIcon::Theme(icon_themes::extra_path(theme, &icon.name)),
             })
             .collect();
-        sections.push((pack.name.clone().into(), entries));
+        sections.push((theme.name.clone().into(), entries));
     }
     sections
 }
@@ -521,7 +569,7 @@ pub const PICKER_WIDTH: f32 = COLUMNS as f32 * (CELL + GAP) + 44.;
 type PickHandler = Rc<dyn Fn(Option<String>, &mut Window, &mut App)>;
 
 /// The picker's body: a search field over the grid of icons it finds,
-/// Kanso's and each icon pack's.
+/// Kanso's and the icon theme's.
 pub struct IconPicker {
     search: Entity<InputState>,
     current: Option<String>,
@@ -782,7 +830,7 @@ pub fn open_picker(
 ) -> Entity<IconPicker> {
     let title = SharedString::from(format!("Icon for \u{201c}{name}\u{201d}"));
     let on_pick: PickHandler = Rc::new(on_pick);
-    let sections = sections(Some(icon_packs::packs(cx)));
+    let sections = sections(&icon_themes::active(cx));
     let has_icon = current.is_some();
     let picker = cx.new(|cx| IconPicker::new(current, sections, on_pick.clone(), window, cx));
     let search = picker.read(cx).search.clone();
@@ -802,17 +850,6 @@ pub fn open_picker(
                     .w_full()
                     .gap_2()
                     .justify_end()
-                    .child(
-                        Button::new("book-icon-more")
-                            .small()
-                            .ghost()
-                            .label("Get More Icons…")
-                            .on_click(|_, window, cx| {
-                                window.close_dialog(cx);
-                                crate::icon_gallery::open_gallery(window, cx);
-                            }),
-                    )
-                    .child(div().flex_1())
                     .child(
                         Button::new("book-icon-default")
                             .small()
@@ -845,8 +882,9 @@ mod tests {
     use proptest::test_runner::FileFailurePersistence;
     use serde_json::json;
 
-    use super::{CHOICES, DEFAULT, NotebookIcon, chosen, icon_for, matching, shown};
+    use super::{CHOICES, DEFAULT, NotebookIcon, chosen, icon_for, matching, opened, role, shown};
     use crate::assets::KansoAssets;
+    use crate::icon_themes::{self, Slot};
 
     fn book(icon: serde_json::Value) -> Book {
         serde_json::from_value(json!({"_id": "book:a", "name": "A", "kansoIcon": icon})).unwrap()
@@ -881,65 +919,75 @@ mod tests {
 
     #[test]
     fn a_notebook_shows_its_chosen_icon_or_the_default() {
-        let shows = |book: &Book| icon_for(chosen(book).as_deref(), None);
-        let lucide = NotebookIcon::Lucide;
+        let lucide = icon_themes::default_theme();
+        let phosphor = &icon_themes::builtins()[1];
+        let shows = |book: &Book| icon_for(chosen(book).as_deref(), role(book), lucide);
+        let choice = NotebookIcon::Choice;
+        let notebook = NotebookIcon::Slot(Slot::Notebook);
         assert_eq!(
             shows(&book(json!("rocket"))),
-            lucide(gpui_kit::assets::IconName::Rocket)
+            choice(gpui_kit::assets::IconName::Rocket)
         );
         assert_eq!(chosen(&book(json!("rocket"))).as_deref(), Some("rocket"));
         // Unknown names, other types and none all show the default.
         for value in [json!("not-an-icon"), json!(3), json!(null), json!("../x/y")] {
-            assert_eq!(shows(&book(value.clone())), lucide(DEFAULT), "{value}");
+            assert_eq!(shows(&book(value.clone())), notebook, "{value}");
             assert_eq!(chosen(&book(value)), None);
         }
         let plain: Book = serde_json::from_value(json!({"_id": "book:a", "name": "A"})).unwrap();
-        assert_eq!(shows(&plain), lucide(DEFAULT));
-        // Locked, any notebook shows the lock instead.
-        let rocket = lucide(gpui_kit::assets::IconName::Rocket);
-        assert_eq!(shown(rocket.clone(), false), rocket);
-        assert_eq!(
-            shown(rocket, true),
-            lucide(gpui_kit::assets::IconName::Lock)
-        );
-        assert_eq!(
-            shown(
-                NotebookIcon::Pack(std::sync::Arc::from(&b"<svg/>"[..])),
-                true
-            ),
-            lucide(gpui_kit::assets::IconName::Lock)
-        );
-        // A pack's icon is kept whether or not the pack is here, and shows
-        // the default until it is.
-        let packed = book(json!("phosphor/rocket"));
-        assert_eq!(chosen(&packed).as_deref(), Some("phosphor/rocket"));
-        assert_eq!(shows(&packed), lucide(DEFAULT));
-    }
-
-    /// A pack in the folder: its icons show for notebooks that keep them,
-    /// and the picker lists them in a section of their own, found by their
-    /// words and the pack's name.
-    #[test]
-    fn a_packs_icons_show_and_are_found() {
-        let dir = tempfile::tempdir().unwrap();
-        let pack = crate::icon_packs::packs_dir(dir.path()).join("phosphor");
-        std::fs::create_dir_all(&pack).unwrap();
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>"#;
-        std::fs::write(pack.join("orbit.svg"), svg).unwrap();
-        std::fs::write(
-            pack.join("pack.json"),
-            r#"{"name": "Phosphor", "icons": {"orbit": {"keywords": "planet space"}}}"#,
+        assert_eq!(shows(&plain), notebook);
+        // Notebooks with a job have slots of their own.
+        let inbox: Book =
+            serde_json::from_value(json!({"_id": "book:inbox", "name": "Inbox"})).unwrap();
+        assert_eq!(shows(&inbox), NotebookIcon::Slot(Slot::Inbox));
+        let journal: Book = serde_json::from_value(
+            json!({"_id": "book:x", "name": "Days", "kansoRole": "journal"}),
         )
         .unwrap();
-        let packs =
-            crate::icon_packs::IconPacks::load(Some(&crate::icon_packs::packs_dir(dir.path())));
+        assert_eq!(shows(&journal), NotebookIcon::Slot(Slot::Journal));
+        // Locked, any notebook shows the lock instead; open, the plain one
+        // shows open and one with its own icon keeps it.
+        let rocket = choice(gpui_kit::assets::IconName::Rocket);
+        assert_eq!(shown(rocket.clone(), false), rocket);
         assert_eq!(
-            icon_for(Some("phosphor/orbit"), Some(&packs)),
-            NotebookIcon::Pack(std::sync::Arc::from(svg.as_bytes()))
+            shown(rocket.clone(), true),
+            NotebookIcon::Slot(Slot::NotebookLocked)
         );
-        let sections = super::sections(Some(&packs));
+        assert_eq!(
+            opened(notebook.clone(), true),
+            NotebookIcon::Slot(Slot::NotebookOpen)
+        );
+        assert_eq!(opened(notebook.clone(), false), notebook);
+        assert_eq!(opened(rocket.clone(), true), rocket);
+        // A theme's icon is kept whether or not the theme is in use, shows
+        // under its theme, and the default under any other; so does an old
+        // icon pack's.
+        let planet = book(json!("phosphor/planet"));
+        assert_eq!(chosen(&planet).as_deref(), Some("phosphor/planet"));
+        assert_eq!(shows(&planet), notebook);
+        assert_eq!(
+            icon_for(chosen(&planet).as_deref(), None, phosphor),
+            NotebookIcon::Theme(icon_themes::extra_path(phosphor, "planet"))
+        );
+        let gone = book(json!("phosphor/not-there"));
+        assert_eq!(icon_for(chosen(&gone).as_deref(), None, phosphor), notebook);
+        let old_pack = book(json!("sketch/wave"));
+        assert_eq!(chosen(&old_pack).as_deref(), Some("sketch/wave"));
+        assert_eq!(icon_for(Some("sketch/wave"), None, phosphor), notebook);
+        // Every icon is drawn by a path the icon theme can draw over.
+        assert_eq!(rocket.path().as_ref(), "icons/rocket.svg");
+        assert_eq!(notebook.path().as_ref(), "icons/library/notebook.svg");
+    }
+
+    /// The theme in use adds its own icons to the picker, in a section of
+    /// their own, found by their words and the theme's name.
+    #[test]
+    fn a_themes_icons_are_found() {
+        let phosphor = &icon_themes::builtins()[1];
+        let sections = super::sections(phosphor);
         let titles: Vec<&str> = sections.iter().map(|(title, _)| title.as_ref()).collect();
         assert_eq!(titles, vec!["Kanso", "Phosphor"]);
+        assert_eq!(super::sections(icon_themes::default_theme()).len(), 1);
         let found = |query: &str| -> Vec<String> {
             let query = super::words(query);
             sections
@@ -949,9 +997,8 @@ mod tests {
                 .map(|e| e.key.to_string())
                 .collect()
         };
-        assert_eq!(found("planet"), vec!["phosphor/orbit".to_owned()]);
-        assert!(found("phosphor").contains(&"phosphor/orbit".to_owned()));
-        assert!(found("orbit").contains(&"phosphor/orbit".to_owned()));
+        assert_eq!(found("orbit"), vec!["phosphor/planet".to_owned()]);
+        assert!(found("phosphor").contains(&"phosphor/planet".to_owned()));
     }
 
     #[test]
@@ -1043,12 +1090,12 @@ mod tests {
         assert!(!open, "the picker closed");
     }
 
-    /// At launch, with no picker or Settings opened: the packs are read in
-    /// the background, and once read, a notebook keeping a pack's icon shows
-    /// it in the sidebar and the palette's notebooks. A locked notebook shows
-    /// the lock in both, whatever its own icon.
+    /// In a window, under Phosphor: a notebook keeping one of its icons
+    /// shows it in the sidebar and the palette's notebooks; the Inbox shows
+    /// its slot; a locked notebook shows the lock in both. Back on Kanso's
+    /// own icons, the theme's icon gives way to the default.
     #[gpui_kit::test]
-    fn a_packs_icon_shows_from_launch(cx: &mut gpui_kit::TestAppContext) {
+    fn a_themes_icon_shows_in_the_sidebar_and_palette(cx: &mut gpui_kit::TestAppContext) {
         use std::sync::Arc;
 
         use gpui_kit::AppContext as _;
@@ -1058,32 +1105,29 @@ mod tests {
         use crate::palette::Mode;
 
         let dir = tempfile::tempdir().unwrap();
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>"#;
-        let pack = crate::icon_packs::packs_dir(dir.path()).join("mine");
-        std::fs::create_dir_all(&pack).unwrap();
-        std::fs::write(pack.join("orbit.svg"), svg).unwrap();
         let store = Arc::new(Store::open(dir.path().join("kanso.db")).unwrap());
         for book in [
-            json!({"name": "Trips", "kansoIcon": "mine/orbit"}),
-            json!({"name": "Vault", "kansoIcon": "mine/orbit", "kansoLock": {"v": 1}}),
+            json!({"name": "Trips", "kansoIcon": "phosphor/planet"}),
+            json!({"name": "Vault", "kansoIcon": "phosphor/planet", "kansoLock": {"v": 1}}),
+            json!({"_id": "book:inbox", "name": "Inbox", "kansoRole": "inbox"}),
         ] {
             store
                 .put(DocType::Book, book, Put::Upsert, Origin::Ui)
                 .unwrap();
         }
         let data_dir = dir.path().to_path_buf();
+        let mut config = crate::config::AppConfig::default();
+        config.appearance.icon_theme = Some("phosphor".into());
         let (window, workspace) = cx.update(|cx| {
             gpui_kit::init(cx);
             cx.set_global(crate::workspace::AppState {
                 store,
                 data_dir,
-                config: crate::config::AppConfig::default(),
+                config,
             });
             cx.set_global(crate::services::Services::default());
             crate::workspace::bind_keys(cx);
-            crate::icon_packs::watch(cx);
-            // Read off the UI thread: not yet.
-            assert!(!cx.has_global::<crate::icon_packs::IconPacks>());
+            crate::icon_themes::init(cx);
             gpui_kit::open_window(Default::default(), cx, |window, cx| {
                 cx.new(|cx| crate::workspace::Workspace::new(window, cx))
             })
@@ -1091,22 +1135,27 @@ mod tests {
         });
         cx.run_until_parked();
 
-        let drawn = NotebookIcon::Pack(Arc::from(svg.as_bytes()));
-        let lock = NotebookIcon::Lucide(gpui_kit::assets::IconName::Lock);
-        let rows = cx.read(|cx| {
-            workspace
-                .read(cx)
-                .sidebar
-                .read(cx)
-                .book_rows_for_test(cx)
-                .into_iter()
-                .map(|(name, icon, _)| (name, icon))
-                .collect::<Vec<_>>()
-        });
+        let phosphor = icon_themes::builtins()[1].clone();
+        let planet = NotebookIcon::Theme(icon_themes::extra_path(&phosphor, "planet"));
+        let lock = NotebookIcon::Slot(Slot::NotebookLocked);
+        let inbox = NotebookIcon::Slot(Slot::Inbox);
+        let rows = |cx: &mut gpui_kit::TestAppContext| {
+            cx.read(|cx| {
+                workspace
+                    .read(cx)
+                    .sidebar
+                    .read(cx)
+                    .book_rows_for_test(cx)
+                    .into_iter()
+                    .map(|(name, icon, _)| (name, icon))
+                    .collect::<Vec<_>>()
+            })
+        };
         assert_eq!(
-            rows,
+            rows(cx),
             vec![
-                ("Trips".to_owned(), drawn.clone()),
+                ("Inbox".to_owned(), inbox.clone()),
+                ("Trips".to_owned(), planet.clone()),
                 ("Vault".to_owned(), lock.clone())
             ]
         );
@@ -1126,7 +1175,17 @@ mod tests {
         let listed = cx.read(|cx| palette.read(cx).item_icons());
         assert_eq!(
             listed,
-            vec![("Trips".to_owned(), drawn), ("Vault".to_owned(), lock)]
+            vec![
+                ("Inbox".to_owned(), inbox.path()),
+                ("Trips".to_owned(), planet.path()),
+                ("Vault".to_owned(), lock.path())
+            ]
+        );
+        cx.update(|cx| icon_themes::choose(None, cx));
+        cx.run_until_parked();
+        assert_eq!(
+            rows(cx)[1],
+            ("Trips".to_owned(), NotebookIcon::Slot(Slot::Notebook))
         );
     }
 

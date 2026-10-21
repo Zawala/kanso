@@ -55,6 +55,8 @@ actions!(
         NextSettingsPage,
         PreviousSettingsPage,
         ReloadThemes,
+        ImportIconTheme,
+        ReloadIconThemes,
     ]
 );
 

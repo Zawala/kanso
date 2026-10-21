@@ -25,6 +25,7 @@ use kanso_sync::SyncProblem;
 use crate::account_words::step_label;
 use crate::clock::Clock;
 use crate::editor::rgb_color;
+use crate::icon_themes::{Slot, library_icon};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library};
 use crate::services::{AccountState, ApiState, Services, SyncState};
@@ -275,7 +276,10 @@ impl Sidebar {
             .map(|row| {
                 (
                     row.name,
-                    crate::book_icons::shown(row.icon, row.locked),
+                    crate::book_icons::shown(
+                        crate::book_icons::opened(row.icon, row.open),
+                        row.locked,
+                    ),
                     row.open,
                 )
             })
@@ -307,10 +311,10 @@ impl Sidebar {
             .rounded(px(4.))
             .hover(|el| el.bg(colors.sidebar_hover))
             .child(
-                Icon::new(if open {
-                    IconName::ChevronDown
+                library_icon(if open {
+                    Slot::FoldOpen
                 } else {
-                    IconName::ChevronRight
+                    Slot::FoldClosed
                 })
                 .size(px(13.))
                 .text_color(colors.text_muted),
@@ -379,7 +383,7 @@ impl Sidebar {
         let overdue = self.library.read(cx).overdue;
         let selected = !self.settings_open && self.library.read(cx).filter == Filter::Tasks;
         let colors = Colors::get(cx);
-        let icon = self.icon(IconName::CircleCheck, cx);
+        let icon = self.icon(library_icon(Slot::Tasks), cx);
         let library = self.library.clone();
         div()
             .id("tasks")
@@ -439,7 +443,7 @@ impl Sidebar {
         let count = self.library.read(cx).shared;
         let selected = !self.settings_open && self.library.read(cx).filter == Filter::Shared;
         let colors = Colors::get(cx);
-        let icon = self.icon(Lucide::Users, cx);
+        let icon = self.icon(library_icon(Slot::Shared), cx);
         let library = self.library.clone();
         let badge = mention_badge(unread);
         Some(
@@ -1199,7 +1203,7 @@ impl Sidebar {
         let notebooks = self
             .rail_button(
                 "rail-notebooks",
-                Lucide::Notebook,
+                library_icon(Slot::Notebooks),
                 "Notebooks",
                 None,
                 !self.settings_open && matches!(filter, Filter::Book(_)),
@@ -1209,7 +1213,7 @@ impl Sidebar {
         let tags = self
             .rail_button(
                 "rail-tags",
-                Lucide::Hash,
+                library_icon(Slot::Tags),
                 "Tags",
                 None,
                 !self.settings_open && matches!(filter, Filter::Tag(_)),
@@ -1217,7 +1221,13 @@ impl Sidebar {
             )
             .on_click(cx.listener(|_, _, _, cx| cx.emit(SidebarEvent::GoToTag)));
         let trash = self
-            .rail_place("rail-trash", Lucide::Trash, "Trash", Filter::Trash, cx)
+            .rail_place(
+                "rail-trash",
+                library_icon(Slot::Trash),
+                "Trash",
+                Filter::Trash,
+                cx,
+            )
             .context_menu(move |menu, _, _| {
                 let view = trash_view.clone();
                 menu.item(
@@ -1293,28 +1303,28 @@ impl Sidebar {
                     .overflow_y_scroll()
                     .child(self.rail_place(
                         "rail-all",
-                        IconName::FileText,
+                        library_icon(Slot::AllNotes),
                         "All Notes",
                         Filter::All,
                         cx,
                     ))
                     .child(self.rail_place(
                         "rail-pinned",
-                        Lucide::Pin,
+                        library_icon(Slot::Pinned),
                         "Pinned",
                         Filter::Pinned,
                         cx,
                     ))
                     .child(self.rail_place(
                         "rail-recent",
-                        Lucide::Clock,
+                        library_icon(Slot::Recent),
                         "Recent",
                         Filter::Recent,
                         cx,
                     ))
                     .child(self.rail_place(
                         "rail-tasks",
-                        IconName::CircleCheck,
+                        library_icon(Slot::Tasks),
                         "Tasks",
                         Filter::Tasks,
                         cx,
@@ -1323,7 +1333,7 @@ impl Sidebar {
                         el.child(
                             self.rail_place(
                                 "rail-shared",
-                                Lucide::Users,
+                                library_icon(Slot::Shared),
                                 "Shared with me",
                                 Filter::Shared,
                                 cx,
@@ -1408,7 +1418,7 @@ impl Render for Sidebar {
         let recent = library.recent;
 
         let mut list = v_flex().pb_4();
-        let icon = self.icon(IconName::FileText, cx);
+        let icon = self.icon(library_icon(Slot::AllNotes), cx);
         list = list.child(self.row(
             "all",
             Filter::All,
@@ -1420,7 +1430,7 @@ impl Render for Sidebar {
             },
             cx,
         ));
-        let icon = self.icon(Lucide::Pin, cx);
+        let icon = self.icon(library_icon(Slot::Pinned), cx);
         list = list.child(self.row(
             "pinned",
             Filter::Pinned,
@@ -1432,7 +1442,7 @@ impl Render for Sidebar {
             },
             cx,
         ));
-        let icon = self.icon(Lucide::Clock, cx);
+        let icon = self.icon(library_icon(Slot::Recent), cx);
         list = list.child(self.row(
             "recent",
             Filter::Recent,
@@ -1480,7 +1490,10 @@ impl Render for Sidebar {
                 .gap(px(4.))
                 .child(chevron)
                 // A locked notebook shows the lock in place of its icon.
-                .child(self.icon(crate::book_icons::shown(icon, locked), cx))
+                .child(self.icon(
+                    crate::book_icons::shown(crate::book_icons::opened(icon, open), locked),
+                    cx,
+                ))
                 .into_any_element();
             let row = self
                 .row(

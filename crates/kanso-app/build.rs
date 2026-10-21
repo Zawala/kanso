@@ -1,9 +1,11 @@
-//! On Windows, puts the app icon (assets/icon/kanso.ico) into kanso.exe so
-//! Explorer, the taskbar and the window show it, and keeps DirectML from
-//! loading with the app. Nothing on other platforms.
+//! Compiles the built-in icon themes in (`icon-themes/`, see
+//! `icon_themes::BUILTIN_FILES`). On Windows, also puts the app icon
+//! (assets/icon/kanso.ico) into kanso.exe so Explorer, the taskbar and the
+//! window show it, and keeps DirectML from loading with the app.
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    builtin_icon_themes();
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
         && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
     {
@@ -39,4 +41,77 @@ fn windows_icon() {
     embed_resource::compile(&rc, embed_resource::NONE)
         .manifest_optional()
         .expect("compiling the icon resource");
+}
+
+/// Writes `builtin_icon_themes.rs` into `OUT_DIR`: for each folder of
+/// `icon-themes/` holding a theme, its ID, its JSON and every SVG under it,
+/// by path, as `include_bytes!`s. Only `.json` and `.svg` files go in.
+fn builtin_icon_themes() {
+    use std::fmt::Write as _;
+    use std::path::{Path, PathBuf};
+
+    fn svgs(dir: &Path, prefix: &str, out: &mut Vec<(String, PathBuf)>) {
+        let Ok(read) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut entries: Vec<PathBuf> = read.filter_map(Result::ok).map(|e| e.path()).collect();
+        entries.sort();
+        for path in entries {
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            if path.is_dir() {
+                svgs(&path, &format!("{prefix}{name}/"), out);
+            } else if name.ends_with(".svg") {
+                out.push((format!("{prefix}{name}"), path));
+            }
+        }
+    }
+
+    let manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let root = manifest_dir.join("../../icon-themes");
+    println!("cargo:rerun-if-changed={}", root.display());
+    let mut code = String::from(
+        "/// The built-in icon themes: (ID, theme JSON, SVGs by path).\n\
+         pub const BUILTIN_FILES: &[BuiltinTheme] = &[\n",
+    );
+    let mut folders: Vec<PathBuf> = std::fs::read_dir(&root)
+        .map(|read| read.filter_map(Result::ok).map(|e| e.path()).collect())
+        .unwrap_or_default();
+    folders.sort();
+    for folder in folders.into_iter().filter(|p| p.is_dir()) {
+        let id = folder.file_name().unwrap().to_string_lossy().into_owned();
+        // The schema's folder isn't a theme.
+        if id == "schema" {
+            continue;
+        }
+        let json = std::fs::read_dir(&folder)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .find(|p| p.extension().is_some_and(|x| x == "json"));
+        let Some(json) = json else {
+            continue;
+        };
+        println!("cargo:rerun-if-changed={}", folder.display());
+        println!("cargo:rerun-if-changed={}", json.display());
+        let mut files = Vec::new();
+        svgs(&folder, "", &mut files);
+        writeln!(
+            code,
+            "    ({id:?}, include_str!({:?}), &[",
+            json.display().to_string()
+        )
+        .unwrap();
+        for (rel, path) in files {
+            writeln!(
+                code,
+                "        ({rel:?}, include_bytes!({:?})),",
+                path.display().to_string()
+            )
+            .unwrap();
+        }
+        code.push_str("    ]),\n");
+    }
+    code.push_str("];\n");
+    let out = PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("builtin_icon_themes.rs");
+    std::fs::write(out, code).expect("writing builtin_icon_themes.rs");
 }

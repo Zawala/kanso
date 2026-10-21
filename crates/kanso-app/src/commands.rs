@@ -9,8 +9,8 @@ use gpui_kit::assets::IconName;
 
 use crate::journal::{NewTemplate, NextDay, OpenToday, PreviousDay, QuickCapture};
 use crate::settings::{
-    CloseSettings, OpenAccountSettings, OpenApiSettings, OpenAppearanceSettings,
-    OpenEditorSettings, OpenGeneralSettings, OpenUpdateSettings, ReloadThemes,
+    CloseSettings, ImportIconTheme, OpenAccountSettings, OpenApiSettings, OpenAppearanceSettings,
+    OpenEditorSettings, OpenGeneralSettings, OpenUpdateSettings, ReloadIconThemes, ReloadThemes,
 };
 use crate::workspace::{
     ChangePassword, Dictate, ExportHtml, ExportLibrary, ExportNote, ExportPdf, FocusNoteList,
@@ -58,6 +58,8 @@ pub enum Picker {
     Template,
     /// A width for the image on the cursor's line.
     ImageSize,
+    /// The icon theme drawing the app's icons.
+    IconTheme,
 }
 
 /// What choosing a command does.
@@ -583,25 +585,6 @@ static COMMANDS: &[Command] = &[
         needs: Needs::Note,
     },
     Command {
-        id: "icon-packs",
-        label: "Browse icon packs…",
-        label_when_pinned: None,
-        description: "Lists open-source icon sets to install: their icons join each notebook's Change Icon…, and one can draw Kanso's own icons.",
-        icon: IconName::Package,
-        keywords: &[
-            "icons",
-            "icon pack",
-            "gallery",
-            "marketplace",
-            "install",
-            "download",
-            "theme",
-        ],
-        group: Group::App,
-        run: action!(crate::icon_gallery::BrowseIconPacks),
-        needs: Needs::Nothing,
-    },
-    Command {
         id: "save",
         label: "Save note",
         label_when_pinned: None,
@@ -1110,6 +1093,46 @@ static COMMANDS: &[Command] = &[
         ],
         group: Group::App,
         run: action!(OpenAppearanceSettings),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "icon-theme",
+        label: "Change icon theme…",
+        label_when_pinned: None,
+        description: "Picks the icon theme that draws every icon in Kanso, at once: Kanso's own, Phosphor, or one in your icon themes folder.",
+        icon: IconName::Shapes,
+        keywords: &[
+            "icons",
+            "icon theme",
+            "look",
+            "appearance",
+            "phosphor",
+            "lucide",
+        ],
+        group: Group::App,
+        run: Run::Pick(Picker::IconTheme),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "import-icon-theme",
+        label: "Import Icon Theme…",
+        label_when_pinned: None,
+        description: "Converts a Zed icon theme, a theme package carrying one, or a Kanso icon theme folder into your icon themes folder.",
+        icon: IconName::Download,
+        keywords: &["icons", "icon theme", "import", "zed"],
+        group: Group::App,
+        run: action!(ImportIconTheme),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "reload-icon-themes",
+        label: "Reload Icon Themes",
+        label_when_pinned: None,
+        description: "Reads the icon themes folder again, after adding or editing an icon theme.",
+        icon: IconName::RefreshCw,
+        keywords: &["icons", "icon theme", "refresh"],
+        group: Group::App,
+        run: action!(ReloadIconThemes),
         needs: Needs::Nothing,
     },
     Command {

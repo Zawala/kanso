@@ -17,8 +17,8 @@ use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{
-    Icon, IconName, Selectable as _, Sizable as _, StyledExt as _, VirtualListScrollHandle, h_flex,
-    v_flex, v_virtual_list,
+    Icon, Selectable as _, Sizable as _, StyledExt as _, VirtualListScrollHandle, h_flex, v_flex,
+    v_virtual_list,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -30,6 +30,7 @@ use kanso_store::{CheckOff, Origin, Store, StoreError, TaskQuery, TaskRow};
 use crate::clock::Clock;
 use crate::due::{Tone, chip_colors, chip_label, tone};
 use crate::editor::NoteEditor;
+use crate::icon_themes::{Slot, library_icon};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::quiet_empty;
@@ -594,7 +595,7 @@ impl TasksView {
                     .ghost()
                     .small()
                     .icon(
-                        Icon::new(Lucide::SquareKanban)
+                        library_icon(Slot::Board)
                             .size(px(15.))
                             .text_color(colors.text_secondary),
                     )
@@ -628,10 +629,10 @@ impl TasksView {
             .gap(px(4.))
             .cursor_pointer()
             .child(
-                Icon::new(if collapsed {
-                    IconName::ChevronRight
+                library_icon(if collapsed {
+                    Slot::FoldClosed
                 } else {
-                    IconName::ChevronDown
+                    Slot::FoldOpen
                 })
                 .size(px(13.))
                 .text_color(colors.text_muted),

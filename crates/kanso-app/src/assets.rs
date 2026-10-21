@@ -1,13 +1,12 @@
 //! The icons the app draws. GPUI Kit's default bundle covers the components;
 //! the app's own views use a few more from the Lucide catalog, embedded here
-//! so the binary carries only what it shows.
+//! so the binary carries only what it shows. Icon themes draw over them
+//! under paths of their own (`icon_themes`), which load from here too.
 
 use std::borrow::Cow;
 
 use gpui_kit::assets::{Assets, icon_assets};
 use gpui_kit::{AssetSource, Result, SharedString};
-
-use crate::icon_packs::AppIcons;
 
 icon_assets!(
     pub ExtraIcons,
@@ -217,19 +216,46 @@ icon_assets!(
     ]
 );
 
-/// Whether the app draws an icon named `name` (`chevron-right`): one an
-/// icon pack can draw in its place.
+/// Whether the app draws a UI icon named `name` (`chevron-right`): one an
+/// icon theme can draw in its place.
 pub fn is_app_icon(name: &str) -> bool {
     let path = format!("icons/{name}.svg");
     matches!(ExtraIcons.load(&path), Ok(Some(_))) || matches!(Assets.load(&path), Ok(Some(_)))
 }
 
-/// The default component icons plus [`ExtraIcons`].
+/// The names of every UI icon the app draws, sorted.
+pub fn app_icon_names() -> Vec<String> {
+    KansoAssets
+        .list("icons/")
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|path| {
+            let name = path.strip_prefix("icons/")?.strip_suffix(".svg")?;
+            (!name.contains('/')).then(|| name.to_owned())
+        })
+        .collect()
+}
+
+/// The default component icons plus [`ExtraIcons`], and the icons of every
+/// icon theme read (`icons/@<key>/…`, see `icon_themes::themed_path`), and
+/// the library's slots as drawn without a theme (`icons/library/…`).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct KansoAssets;
 
 impl AssetSource for KansoAssets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
+        if path.starts_with(crate::icon_themes::THEMED_PREFIX) {
+            return match crate::icon_themes::themed_svg(path) {
+                Some(svg) => Ok(Some(Cow::Owned(svg.to_vec()))),
+                None => Err(anyhow::anyhow!("no icon theme draws {path}")),
+            };
+        }
+        if let Some(name) = path.strip_prefix(crate::icon_themes::BUILTIN_PREFIX) {
+            return self.load(&format!("icons/{name}"));
+        }
+        if let Some(fallback) = crate::icon_themes::unthemed_slot_path(path) {
+            return self.load(&fallback);
+        }
         // The extra set answers `None` for paths it lacks; the default bundle
         // reports them as errors, so it goes last.
         if let Some(bytes) = ExtraIcons.load(path)? {
@@ -244,27 +270,6 @@ impl AssetSource for KansoAssets {
         paths.sort();
         paths.dedup();
         Ok(paths)
-    }
-}
-
-/// The app's assets: [`KansoAssets`], with the icon pack chosen for the
-/// app's own icons drawing the ones it has. The app keeps the same
-/// [`AppIcons`] as a global to change them.
-#[derive(Clone, Default)]
-pub struct AppAssets {
-    pub icons: AppIcons,
-}
-
-impl AssetSource for AppAssets {
-    fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
-        if let Some(bytes) = self.icons.get(path) {
-            return Ok(Some(Cow::Owned(bytes.to_vec())));
-        }
-        KansoAssets.load(path)
-    }
-
-    fn list(&self, path: &str) -> Result<Vec<SharedString>> {
-        KansoAssets.list(path)
     }
 }
 

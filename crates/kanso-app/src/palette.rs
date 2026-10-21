@@ -35,6 +35,7 @@ use crate::commands::{self, Command, Group, Needs, Picker, Run};
 use crate::config::ViewMode;
 use crate::editor::{NoteEditor, rgb_color};
 use crate::fuzzy;
+use crate::icon_themes::{self, Slot};
 use crate::keys::keycap;
 use crate::library::{Filter, Library, RECENT_DAYS, search_params};
 use crate::services::Services;
@@ -122,6 +123,8 @@ enum Target {
     NewTemplate,
     /// Give the image on the cursor's line this width (`None`: its own).
     ImageWidth(Option<u32>),
+    /// Draw the app's icons with the icon theme of this ID.
+    IconTheme(String),
 }
 
 #[derive(Clone)]
@@ -139,8 +142,9 @@ struct Item {
     checked: bool,
     /// Muted text at the end of the row, such as a count.
     hint: Option<SharedString>,
-    /// An icon pack's SVG, drawn in place of `icon`.
-    pack_icon: Option<std::sync::Arc<[u8]>>,
+    /// The path of the icon drawn in place of `icon`: a notebook's own, or
+    /// a library slot's, which the icon theme draws.
+    icon_path: Option<SharedString>,
 }
 
 impl Item {
@@ -153,18 +157,23 @@ impl Item {
             depth: 0,
             checked: false,
             hint: None,
-            pack_icon: None,
+            icon_path: None,
         }
     }
 
     /// An entry for a notebook, with the notebook's own icon.
     fn notebook(target: Target, label: impl Into<SharedString>, icon: NotebookIcon) -> Self {
-        match icon {
-            NotebookIcon::Lucide(icon) => Item::new(target, label, icon),
-            NotebookIcon::Pack(svg) => Item {
-                pack_icon: Some(svg),
-                ..Item::new(target, label, crate::book_icons::DEFAULT)
-            },
+        Item {
+            icon_path: Some(icon.path()),
+            ..Item::new(target, label, crate::book_icons::DEFAULT)
+        }
+    }
+
+    /// An entry drawn with the library's icon for `slot`.
+    fn slot(target: Target, label: impl Into<SharedString>, slot: Slot) -> Self {
+        Item {
+            icon_path: Some(icon_themes::slot_path(slot)),
+            ..Item::new(target, label, crate::book_icons::DEFAULT)
         }
     }
 
@@ -208,6 +217,7 @@ impl Item {
             Target::Template(id) => format!("template:{id}"),
             Target::NewTemplate => "new-template".to_owned(),
             Target::ImageWidth(width) => format!("image-width:{width:?}"),
+            Target::IconTheme(id) => format!("icon-theme:{id}"),
         }
     }
 }
@@ -435,17 +445,17 @@ impl Palette {
             .collect()
     }
 
-    /// The entries listed now with the icon each draws (tests).
+    /// The entries listed now with the path of the icon each draws (tests).
     #[cfg(test)]
-    pub fn item_icons(&self) -> Vec<(String, NotebookIcon)> {
+    pub fn item_icons(&self) -> Vec<(String, SharedString)> {
         self.items
             .iter()
             .map(|item| {
-                let icon = match &item.pack_icon {
-                    Some(svg) => NotebookIcon::Pack(svg.clone()),
-                    None => NotebookIcon::Lucide(item.icon),
-                };
-                (item.label.to_string(), icon)
+                let path = item
+                    .icon_path
+                    .clone()
+                    .unwrap_or_else(|| gpui_kit::component::IconNamed::path(item.icon));
+                (item.label.to_string(), path)
             })
             .collect()
     }
@@ -668,13 +678,10 @@ impl Palette {
                     .iter()
                     .map(|tag| {
                         let filter = Filter::Tag(tag.id.clone());
-                        let item = Item::new(
-                            Target::Show(filter.clone()),
-                            tag.name.clone(),
-                            IconName::Hash,
-                        )
-                        .checked(*showing == filter)
-                        .hint(tag.count.to_string());
+                        let item =
+                            Item::slot(Target::Show(filter.clone()), tag.name.clone(), Slot::Tag)
+                                .checked(*showing == filter)
+                                .hint(tag.count.to_string());
                         let score = item_score(name, &item.label, &[]);
                         (item, score)
                     })
@@ -708,13 +715,10 @@ impl Palette {
                 let mut entries: Vec<_> = tags
                     .iter()
                     .map(|tag| {
-                        let item = Item::new(
-                            Target::Tag(tag.id.clone()),
-                            tag.name.clone(),
-                            IconName::Hash,
-                        )
-                        .checked(on_note.contains(&tag.id))
-                        .hint(tag.count.to_string());
+                        let item =
+                            Item::slot(Target::Tag(tag.id.clone()), tag.name.clone(), Slot::Tag)
+                                .checked(on_note.contains(&tag.id))
+                                .hint(tag.count.to_string());
                         let score = item_score(name, &item.label, &[]);
                         (item, score)
                     })
@@ -797,6 +801,31 @@ impl Palette {
                     true,
                 )]
             }
+            Some(Mode::Pick(Picker::IconTheme)) => {
+                let current = icon_themes::active(cx).id.clone();
+                let entries = cx
+                    .try_global::<icon_themes::IconThemes>()
+                    .map(|themes| themes.entries.clone())
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|theme| {
+                        let item = Item::new(
+                            Target::IconTheme(theme.id.clone()),
+                            theme.name.clone(),
+                            IconName::Shapes,
+                        )
+                        .checked(theme.id == current)
+                        .hint(if theme.path.is_some() {
+                            "Your folder"
+                        } else {
+                            "Built in"
+                        });
+                        let score = item_score(query, &item.label, &[theme.id.as_str()]);
+                        (item, score)
+                    })
+                    .collect();
+                vec![section("Icon themes", entries, false)]
+            }
             Some(Mode::Pick(Picker::ImageSize)) => {
                 let current = self
                     .editor
@@ -855,39 +884,40 @@ impl Palette {
         let library = self.library.read(cx);
         let counts = &library.counts;
         let showing = &library.filter;
-        let place = |filter: Filter, label: String, icon, count: u32, keywords: &[&str]| {
-            let score = item_score(query, &label, keywords);
-            let item = Item::new(Target::Show(filter.clone()), label, icon)
-                .checked(*showing == filter)
-                .hint(count.to_string());
-            (item, score)
-        };
+        let place =
+            |filter: Filter, label: String, icon: NotebookIcon, count: u32, keywords: &[&str]| {
+                let score = item_score(query, &label, keywords);
+                let item = Item::notebook(Target::Show(filter.clone()), label, icon)
+                    .checked(*showing == filter)
+                    .hint(count.to_string());
+                (item, score)
+            };
         let mut places = vec![
             place(
                 Filter::All,
                 "All Notes".into(),
-                IconName::Inbox,
+                NotebookIcon::Slot(Slot::AllNotes),
                 counts.all,
                 &["everything", "library"],
             ),
             place(
                 Filter::Pinned,
                 "Pinned".into(),
-                IconName::Pin,
+                NotebookIcon::Slot(Slot::Pinned),
                 counts.pinned,
                 &["starred"],
             ),
             place(
                 Filter::Recent,
                 "Recent".into(),
-                IconName::Clock,
+                NotebookIcon::Slot(Slot::Recent),
                 library.recent,
                 &["latest", "edited", "week"],
             ),
             place(
                 Filter::Tasks,
                 "Tasks".into(),
-                IconName::CircleCheck,
+                NotebookIcon::Slot(Slot::Tasks),
                 library.overdue,
                 &["todo", "to do", "due", "overdue", "checklist"],
             ),
@@ -896,7 +926,10 @@ impl Palette {
             let (item, score) = place(
                 Filter::Book(book.id.clone()),
                 book.name.clone(),
-                IconName::Notebook,
+                crate::book_icons::shown(
+                    crate::book_icons::book_icon(book, cx),
+                    library.is_book_locked(&book.id),
+                ),
                 book.count,
                 &[],
             );
@@ -910,7 +943,7 @@ impl Palette {
             let (item, score) = place(
                 Filter::Status(status),
                 status.label().into(),
-                IconName::Minus,
+                NotebookIcon::Choice(IconName::Minus),
                 count,
                 &["status"],
             );
@@ -920,7 +953,7 @@ impl Palette {
             places.push(place(
                 Filter::Shared,
                 "Shared with me".into(),
-                IconName::Users,
+                NotebookIcon::Slot(Slot::Shared),
                 library.shared,
                 &["shared", "collaboration", "invitations", "others"],
             ));
@@ -928,7 +961,7 @@ impl Palette {
         places.push(place(
             Filter::Trash,
             "Trash".into(),
-            IconName::Trash,
+            NotebookIcon::Slot(Slot::Trash),
             counts.trash,
             &["deleted"],
         ));
@@ -947,7 +980,7 @@ impl Palette {
             .map(|note| {
                 let title = note_title(&note.title);
                 let score = fuzzy::score(query, &title);
-                let mut item = Item::new(Target::Note(note.clone()), title, IconName::FileText)
+                let mut item = Item::slot(Target::Note(note.clone()), title, Slot::Note)
                     .checked(open == Some(note.id.as_str()));
                 if let Some(book) = library.book(&note.book_id) {
                     item = item.hint(book.name.clone());
@@ -1236,6 +1269,10 @@ impl Palette {
                 self.editor
                     .update(cx, |editor, cx| editor.set_word_goal(goal, cx));
             }
+            Target::IconTheme(id) => {
+                self.close(window, cx);
+                icon_themes::choose(Some(id), cx);
+            }
             Target::ImageWidth(width) => {
                 self.close(window, cx);
                 self.editor.update(cx, |editor, cx| {
@@ -1316,9 +1353,12 @@ impl Palette {
             .when(selected, |el| el.bg(selected_fill(cx)))
             .child({
                 let (icon, color) = item.glyph(colors, colors.quiet(selected));
-                match &item.pack_icon {
-                    Some(svg) => Icon::default().data(svg),
-                    None => Icon::new(icon),
+                match &item.icon_path {
+                    // A status's glyph stands in for any icon.
+                    Some(path) if item.status == NoteStatus::None => {
+                        Icon::default().path(path.clone())
+                    }
+                    _ => Icon::new(icon),
                 }
                 .size_4()
                 .flex_none()
@@ -1681,6 +1721,31 @@ impl Palette {
                     Icon::new(IconName::Notebook),
                     format!("New note in {place}").into(),
                 ));
+            }
+            Target::IconTheme(id) => {
+                if let Some(theme) = cx
+                    .try_global::<icon_themes::IconThemes>()
+                    .and_then(|themes| themes.get(id))
+                {
+                    detail.description = Some(
+                        theme
+                            .description
+                            .clone()
+                            .unwrap_or_else(|| crate::settings_themes::icon_theme_detail(theme))
+                            .into(),
+                    );
+                    if !theme.author.is_empty() {
+                        detail.meta.push((
+                            Icon::new(IconName::User),
+                            format!("By {}", theme.author).into(),
+                        ));
+                    }
+                    if !theme.license.is_empty() {
+                        detail
+                            .meta
+                            .push((Icon::new(IconName::Info), theme.license.clone().into()));
+                    }
+                }
             }
             Target::ImageWidth(width) => {
                 detail.description = Some(
@@ -2080,6 +2145,7 @@ fn placeholder(mode: Mode) -> &'static str {
         Mode::Pick(Picker::WordGoal) => "Words to aim for, such as 1,500…",
         Mode::Pick(Picker::Template) => "New note from template…",
         Mode::Pick(Picker::ImageSize) => "Width in pixels, such as 320…",
+        Mode::Pick(Picker::IconTheme) => "Icon theme…",
     }
 }
 

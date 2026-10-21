@@ -29,6 +29,7 @@ use kanso_store::Store;
 use crate::graph::{
     Graph, Viewport, hit, layout, node_radius, screen_radius, segment_visible, stand_tall,
 };
+use crate::icon_themes::{Slot, library_icon};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT, inset_after};
 use crate::library::{Library, LibraryEvent};
 use crate::note_list::quiet_empty;
@@ -602,12 +603,22 @@ impl GraphView {
     fn render_body(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let colors = Colors::get(cx);
         if self.scope == Scope::Local && self.center.is_none() {
-            return quiet_empty(Lucide::Waypoints, "No note open".into(), None, colors)
-                .into_any_element();
+            return quiet_empty(
+                library_icon(Slot::Graph),
+                "No note open".into(),
+                None,
+                colors,
+            )
+            .into_any_element();
         }
         let Some(shown) = self.shown.clone() else {
-            return quiet_empty(Lucide::Waypoints, "Drawing the graph…".into(), None, colors)
-                .into_any_element();
+            return quiet_empty(
+                library_icon(Slot::Graph),
+                "Drawing the graph…".into(),
+                None,
+                colors,
+            )
+            .into_any_element();
         };
         if shown.graph.is_empty() {
             let (title, detail) = match self.scope {
@@ -618,7 +629,8 @@ impl GraphView {
                 ),
                 Scope::Library => ("No notes here".to_owned(), None),
             };
-            return quiet_empty(Lucide::Waypoints, title, detail, colors).into_any_element();
+            return quiet_empty(library_icon(Slot::Graph), title, detail, colors)
+                .into_any_element();
         }
         let lonely = self.scope == Scope::Local && shown.graph.len() == 1;
         div()

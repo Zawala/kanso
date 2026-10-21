@@ -45,8 +45,9 @@ mod grouping;
 mod history;
 mod history_diff;
 mod hotkey;
-mod icon_gallery;
-mod icon_packs;
+mod icon_theme_file;
+mod icon_theme_import;
+mod icon_themes;
 mod image_size;
 mod inspector;
 mod journal;
@@ -158,6 +159,8 @@ Commands:
                     output, for AI agents that start a program; needs
                     Kanso open with its local API on
   theme             Work with themes; `kanso theme help` lists how
+  icon-theme        Work with icon themes; `kanso icon-theme help` lists
+                    how
   help              Show this message
 
 ";
@@ -224,6 +227,7 @@ fn main() -> Result<()> {
         Some("serve") => serve(args.data_dir),
         Some("import") => library_import::run_cli(&args.data_dir, &args.rest),
         Some("theme") => theme_import::run_cli(&args.data_dir, &args.rest),
+        Some("icon-theme") => icon_theme_import::run_cli(&args.data_dir, &args.rest),
         Some("capture") => capture_cli::run_cli(&args.data_dir, &args.rest),
         Some("mcp") => mcp_cli::run_cli(&args.data_dir, &args.rest),
         Some("help") => {
@@ -316,11 +320,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         }
     });
 
-    // The icon pack chosen for the app's own icons, before any is drawn.
-    let app_icons = icon_packs::apply_at_launch(&data_dir, config.appearance.icon_pack.as_deref());
-    let app = application().with_assets(assets::AppAssets {
-        icons: app_icons.clone(),
-    });
+    let app = application().with_assets(assets::KansoAssets);
     app.on_reopen(|cx| {
         if cx.windows().is_empty() {
             open_main_window(cx);
@@ -343,11 +343,6 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         services.secrets = Some(Arc::new(flavour::CURRENT.keychain()));
         cx.set_global(services);
         cx.set_global(touch_id::TouchId(Arc::new(touch_id::SystemTouchId)));
-        cx.set_global(app_icons);
-        // The icon pack gallery fetches over HTTPS; tests leave it out.
-        cx.set_global(icon_gallery::Gallery(Arc::new(
-            icon_gallery::HttpSource::default(),
-        )));
         workspace::bind_keys(cx);
         note_list::bind_keys(cx);
         capture::bind_keys(cx);
@@ -360,7 +355,9 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         updates::register_app_actions(cx);
         services::apply_server_settings(cx);
         themes::watch(cx);
-        icon_packs::watch(cx);
+        // The chosen icon theme draws every icon, from the first window on.
+        icon_themes::init(cx);
+        icon_themes::watch(cx);
         // Signed in again once the config, the binding and the Keychain
         // agree; sync starts then.
         account_flow::restore(cx);
@@ -383,58 +380,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
 }
 
 fn open_main_window(cx: &mut App) {
-    open_main_window_at(None, cx);
-}
-
-/// Opens the main window again where `window` is, and closes `window`, with
-/// Settings › Themes showing in the new one. A new window draws every icon
-/// afresh, so an icon pack just chosen for the app's icons shows at once,
-/// with no restart.
-///
-/// The old window goes as it would closed by hand: the note being written
-/// is saved first, and the window and everything in it, a locked note's
-/// text included, is let go. Voice input listening there stops, and what it
-/// heard goes into the same note in the new window (`voice::finish_in`).
-/// The new window opens the last note afresh, so what isn't carried over is
-/// what lives only in a window: the note's undo history, its scroll and
-/// caret, an open dialog, the palette or find, and the system's own
-/// dictation, which stops with the window it typed in.
-pub(crate) fn reopen_main_window(window: &mut Window, cx: &mut App) {
-    let old = window.window_handle();
-    let mut note = None;
-    if let Some(Some(root)) = window.root::<gpui_kit::base::Root>()
-        && let Ok(workspace) = root.read(cx).view().clone().downcast::<Workspace>()
-    {
-        let editor = workspace.read(cx).editor.clone();
-        editor.update(cx, |editor, cx| editor.flush(cx));
-        note = editor.read(cx).note_id().map(str::to_owned);
-    }
-    voice::finish_in(old, cx);
-    let bounds = window.window_bounds();
-    cx.defer(move |cx| {
-        let Some((new, workspace)) = open_main_window_at(Some(bounds), cx) else {
-            return;
-        };
-        old.update(cx, |_, window, _| window.remove_window()).ok();
-        // Once the new window has opened the note it shows.
-        let editor = workspace.read(cx).editor.clone();
-        cx.defer(move |cx| voice::moved(old, note.as_deref(), &editor, new, cx));
-        new.update(cx, |_, window, cx| {
-            workspace.update(cx, |workspace, cx| {
-                workspace.open_settings(Some(settings::SettingsPage::Appearance), window, cx)
-            });
-            window.activate_window();
-        })
-        .ok();
-    });
-}
-
-/// Opens a main window with `bounds`, or centered at the default size.
-fn open_main_window_at(
-    bounds: Option<WindowBounds>,
-    cx: &mut App,
-) -> Option<(AnyWindowHandle, Entity<Workspace>)> {
-    let centered = Bounds::centered(None, size(px(1440.), px(900.)), cx);
+    let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
     // On macOS the panes run to the top edge; the traffic lights sit in the
     // leftmost pane's top band, and the app moves the window from the bands
     // itself (see `layout::BandDrag`). On Windows Kanso draws the whole
@@ -456,7 +402,7 @@ fn open_main_window_at(
         traffic_light_position: None,
     };
     let options = WindowOptions {
-        window_bounds: Some(bounds.unwrap_or(WindowBounds::Windowed(centered))),
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(titlebar),
         app_owns_titlebar_drag: cfg!(target_os = "macos"),
         window_min_size: Some(size(px(1100.), px(720.))),
@@ -474,9 +420,9 @@ fn open_main_window_at(
     });
     match opened {
         Ok((window, view)) => {
-            let editor = view.read(cx).editor.clone();
             window
                 .update(cx, |_, window, cx| {
+                    let editor = view.read(cx).editor.clone();
                     window.on_window_should_close(cx, move |_, cx| {
                         editor.update(cx, |editor, cx| editor.flush(cx));
                         true
@@ -485,12 +431,8 @@ fn open_main_window_at(
                     updates::announce(window, cx);
                 })
                 .ok();
-            Some((window, view))
         }
-        Err(err) => {
-            eprintln!("kanso: couldn't open a window: {err:#}");
-            None
-        }
+        Err(err) => eprintln!("kanso: couldn't open a window: {err:#}"),
     }
 }
 
