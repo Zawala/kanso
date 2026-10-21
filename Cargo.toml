@@ -103,3 +103,8 @@ opt-level = 2
 
 [profile.release]
 strip = "symbols"
+
+# GPUI Kit's component crate with one small hook added, so an icon theme
+# restyles the component library's own icons too (vendor/README.md).
+[patch.crates-io]
+gpui-component = { path = "vendor/gpui-component" }
