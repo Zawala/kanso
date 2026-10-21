@@ -50,6 +50,7 @@ mod list_edit;
 mod markdown_edit;
 mod markdown_source;
 mod note_list;
+mod note_menu;
 mod notify_support;
 mod ocr;
 mod pairing;

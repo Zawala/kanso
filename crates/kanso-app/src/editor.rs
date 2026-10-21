@@ -106,6 +106,8 @@ pub enum EditorEvent {
     Notice(String),
     /// The history button: the workspace opens the note's history.
     ShowHistory,
+    /// A choice from the note's "More" menu.
+    Command(crate::note_menu::NoteCommand),
     /// The notebook path or "Add tag": the workspace opens the palette's
     /// list of notebooks or tags, which filters as you type and makes new
     /// tags.
@@ -2048,26 +2050,10 @@ impl NoteEditor {
                     .tooltip("More")
                     .dropdown_menu(move |menu, window, cx| {
                         let view = view.clone();
-                        menu.menu("Show History…", Box::new(crate::workspace::ShowHistory))
-                            .menu("Export Note…", Box::new(crate::workspace::ExportNote))
-                            .menu("Publish to the Web…", Box::new(crate::publish::PublishNote))
-                            .submenu("Status", window, cx, move |mut menu, _, _| {
-                                for option in NoteStatus::ALL {
-                                    let view = view.clone();
-                                    menu = menu.item(
-                                        PopupMenuItem::new(option.label())
-                                            .checked(option == status)
-                                            .on_click(move |_, _, cx| {
-                                                view.update(cx, |this, cx| {
-                                                    this.set_status(option, cx)
-                                                });
-                                            }),
-                                    );
-                                }
-                                menu
-                            })
-                            .separator()
-                            .menu("Move to Trash", Box::new(crate::workspace::TrashNote))
+                        let run: crate::note_menu::Run = Rc::new(move |command, _, cx| {
+                            view.update(cx, |_, cx| cx.emit(EditorEvent::Command(command)));
+                        });
+                        crate::note_menu::items(menu, pinned, status, run, window, cx)
                     }),
             )
             .child(

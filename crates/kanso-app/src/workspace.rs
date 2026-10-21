@@ -28,6 +28,7 @@ use crate::layout::{
 };
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::{NoteList, NoteListEvent};
+use crate::note_menu::NoteCommand;
 use crate::palette::{Mode, Palette};
 use crate::paths;
 use crate::settings::{SettingsPage, SettingsReturn, SettingsView};
@@ -417,6 +418,12 @@ impl Workspace {
                     window.push_notification(Notification::error(message.clone()), cx);
                 }
                 EditorEvent::ShowHistory => this.show_history(window, cx),
+                EditorEvent::Command(command) => {
+                    let id = this.editor.read(cx).note_id().map(str::to_owned);
+                    if let Some(id) = id {
+                        this.run_note_command(&id, *command, window, cx);
+                    }
+                }
                 EditorEvent::Pick(picker) => {
                     let mode = Mode::Pick(*picker);
                     this.palette
@@ -782,28 +789,7 @@ impl Workspace {
             NoteListEvent::OpenSelected => self
                 .editor
                 .update(cx, |editor, cx| editor.focus_body(window, cx)),
-            NoteListEvent::TogglePinned(id) => {
-                if !self.with_open_note(id, cx, |editor, cx| editor.toggle_pinned(cx)) {
-                    let pinned = self
-                        .library
-                        .read(cx)
-                        .notes
-                        .iter()
-                        .any(|n| &n.id == id && n.pinned);
-                    self.merge(DocType::Note, id, json!({"pinned": !pinned}), window, cx);
-                }
-            }
-            NoteListEvent::Trash(id) => {
-                if !self.with_open_note(id, cx, |editor, cx| editor.trash(cx)) {
-                    self.merge(
-                        DocType::Note,
-                        id,
-                        json!({"bookId": TRASH_BOOK_ID}),
-                        window,
-                        cx,
-                    );
-                }
-            }
+            NoteListEvent::Command(id, command) => self.run_note_command(id, *command, window, cx),
             NoteListEvent::Restore(id) => {
                 let Some(book) = self.library.read(cx).books.first().map(|b| b.id.clone()) else {
                     return self.notify_error(
@@ -832,7 +818,42 @@ impl Workspace {
                     },
                 );
             }
-            NoteListEvent::Duplicate(id) => {
+        }
+    }
+
+    /// Carries out a choice from a note's menu (see `note_menu`), for the
+    /// note `id`, which may not be the open one.
+    fn run_note_command(
+        &mut self,
+        id: &str,
+        command: NoteCommand,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match command {
+            NoteCommand::TogglePinned => {
+                if !self.with_open_note(id, cx, |editor, cx| editor.toggle_pinned(cx)) {
+                    let pinned = self
+                        .library
+                        .read(cx)
+                        .notes
+                        .iter()
+                        .any(|n| n.id == id && n.pinned);
+                    self.merge(DocType::Note, id, json!({"pinned": !pinned}), window, cx);
+                }
+            }
+            NoteCommand::Trash => {
+                if !self.with_open_note(id, cx, |editor, cx| editor.trash(cx)) {
+                    self.merge(
+                        DocType::Note,
+                        id,
+                        json!({"bookId": TRASH_BOOK_ID}),
+                        window,
+                        cx,
+                    );
+                }
+            }
+            NoteCommand::Duplicate => {
                 self.flush(cx);
                 let Ok(Some(note)) = self.store.note(id) else {
                     return;
@@ -851,7 +872,41 @@ impl Workspace {
                     Err(err) => self.notify_error(err.to_string(), window, cx),
                 }
             }
+            NoteCommand::SetStatus(status) => {
+                if !self.with_open_note(id, cx, |editor, cx| editor.set_status(status, cx)) {
+                    self.merge(
+                        DocType::Note,
+                        id,
+                        json!({"status": status.as_str()}),
+                        window,
+                        cx,
+                    );
+                }
+            }
+            NoteCommand::Export => self.export(Some(vec![id.to_owned()]), window, cx),
+            // These work on the open note, so the note opens first.
+            NoteCommand::ShowHistory => {
+                if self.open_note(id, window, cx) {
+                    self.show_history(window, cx);
+                }
+            }
+            NoteCommand::Publish => {
+                if self.open_note(id, window, cx) {
+                    crate::publish::open_publish(self.editor.clone(), window, cx);
+                }
+            }
         }
+    }
+
+    /// Selects and opens the note `id`, and says whether it is now open: a
+    /// held Replace can keep the editor on its note.
+    fn open_note(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        self.close_settings(window, cx);
+        self.library
+            .update(cx, |library, cx| library.select(Some(id.to_owned()), cx));
+        self.editor
+            .update(cx, |editor, cx| editor.open(Some(id), window, cx));
+        self.editor.read(cx).note_id() == Some(id)
     }
 
     fn on_sidebar_event(

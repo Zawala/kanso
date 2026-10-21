@@ -23,6 +23,7 @@ use crate::clock::Clock;
 use crate::grouping::{Grouped, Row, RowKey, bucket_label, day_of, group_rows, row_time_label};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library, LibraryEvent};
+use crate::note_menu::NoteCommand;
 use crate::text_match::{highlight_terms, match_ranges};
 use crate::theme::{Colors, section_label, status_glyph};
 use crate::workspace::SearchAllNotes;
@@ -67,11 +68,10 @@ pub fn bind_keys(cx: &mut App) {
 /// Note operations the workspace carries out.
 pub enum NoteListEvent {
     NewNote,
-    TogglePinned(String),
-    Trash(String),
+    /// A choice from a note's menu, or its pin or trash button.
+    Command(String, NoteCommand),
     Restore(String),
     DeleteForever(String),
-    Duplicate(String),
     /// Enter in the list or the search box: move focus to the editor.
     OpenSelected,
 }
@@ -380,6 +380,7 @@ impl NoteList {
         let view = cx.entity();
         let menu_id = note.id.clone();
         let pinned = note.pinned;
+        let status = note.status;
         let at = if context.created {
             note.created_at
         } else {
@@ -570,7 +571,7 @@ impl NoteList {
                 window.focus(&focus, cx);
                 library.update(cx, |library, cx| library.select(Some(id.clone()), cx));
             })
-            .context_menu(move |menu, _, _| {
+            .context_menu(move |menu, window, cx| {
                 let emit = |event: fn(String) -> NoteListEvent| {
                     let view = view.clone();
                     let id = menu_id.clone();
@@ -586,13 +587,14 @@ impl NoteList {
                                 .on_click(emit(NoteListEvent::DeleteForever)),
                         )
                 } else {
-                    menu.item(
-                        PopupMenuItem::new(if pinned { "Unpin Note" } else { "Pin Note" })
-                            .on_click(emit(NoteListEvent::TogglePinned)),
-                    )
-                    .item(PopupMenuItem::new("Duplicate").on_click(emit(NoteListEvent::Duplicate)))
-                    .separator()
-                    .item(PopupMenuItem::new("Move to Trash").on_click(emit(NoteListEvent::Trash)))
+                    let view = view.clone();
+                    let id = menu_id.clone();
+                    let run: crate::note_menu::Run = Rc::new(move |command, _, cx| {
+                        view.update(cx, |_, cx| {
+                            cx.emit(NoteListEvent::Command(id.clone(), command))
+                        });
+                    });
+                    crate::note_menu::items(menu, pinned, status, run, window, cx)
                 }
             })
     }
@@ -645,14 +647,14 @@ impl NoteList {
                     } else {
                         "Pin note"
                     },
-                    NoteListEvent::TogglePinned,
+                    |id| NoteListEvent::Command(id, NoteCommand::TogglePinned),
                     cx,
                 ))
                 .child(action(
                     "row-trash",
                     Icon::new(Lucide::Trash),
                     "Move to trash",
-                    NoteListEvent::Trash,
+                    |id| NoteListEvent::Command(id, NoteCommand::Trash),
                     cx,
                 ))
             }
