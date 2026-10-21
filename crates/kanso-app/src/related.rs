@@ -16,8 +16,7 @@
 //! (`kanso-store/src/embed.rs`), so the inspector's Related tab and the
 //! local API's `kanso-related-notes` read them without the model.
 
-use std::fs::{self, File};
-use std::io::{self, Read, Write as _};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,8 +24,9 @@ use std::time::Duration;
 
 use gpui_kit::{App, Global, Task};
 use kanso_store::{Embedder, Store};
-use sha2::{Digest as _, Sha256};
 
+pub use crate::model_fetch::percent;
+use crate::model_fetch::{HttpFetch, Model, ModelError, ModelFile, download};
 use crate::workspace::AppState;
 
 /// The model, as the store names its embeddings: the Hugging Face repository
@@ -35,17 +35,6 @@ pub const MODEL_ID: &str = "minishlab/potion-base-8M@bf8b0566";
 /// The repository's commit the files below come from.
 const REVISION: &str = "bf8b056651a2c21b8d2565580b8569da283cab23";
 const REPOSITORY: &str = "minishlab/potion-base-8M";
-/// Where the model is kept, under the data folder.
-const MODEL_FOLDER: &str = "models/potion-base-8M";
-
-/// One of the model's files, with the size and SHA-256 it must have.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ModelFile {
-    pub name: &'static str,
-    pub size: u64,
-    pub sha256: &'static str,
-}
-
 /// The model's files at [`REVISION`]. The SHA-256s were taken from the
 /// files themselves; for the safetensors file it is also the hash Git LFS
 /// records for it.
@@ -66,6 +55,14 @@ pub const FILES: [ModelFile; 3] = [
         sha256: "f65d0f325faadc1e121c319e2faa41170d3fa07d8c89abd48ca5358d9a223de2",
     },
 ];
+
+/// The model, kept in the data folder's `models/potion-base-8M`.
+pub const MODEL: Model = Model {
+    repository: REPOSITORY,
+    revision: REVISION,
+    folder: "models/potion-base-8M",
+    files: &FILES,
+};
 
 /// How many notes are embedded at once, and the pause after each batch.
 const BATCH: usize = 16;
@@ -104,186 +101,6 @@ pub struct Related {
 
 impl Global for Related {}
 
-/// The model's folder in the data folder `data_dir`.
-pub fn model_dir(data_dir: &Path) -> PathBuf {
-    data_dir.join(MODEL_FOLDER)
-}
-
-/// The address of a model file at its pinned revision.
-pub fn file_url(name: &str) -> String {
-    format!("https://huggingface.co/{REPOSITORY}/resolve/{REVISION}/{name}")
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-/// Whether the file at `path` is `file`: its size and SHA-256.
-pub fn verify(path: &Path, file: &ModelFile) -> io::Result<bool> {
-    let meta = match fs::metadata(path) {
-        Ok(meta) => meta,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(false),
-        Err(err) => return Err(err),
-    };
-    if meta.len() != file.size {
-        return Ok(false);
-    }
-    let mut hasher = Sha256::new();
-    let mut reader = File::open(path)?;
-    let mut buf = vec![0u8; 64 * 1024];
-    loop {
-        let n = reader.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Ok(hex(&hasher.finalize()) == file.sha256)
-}
-
-/// Why the model couldn't be fetched or loaded.
-#[derive(Debug)]
-pub enum ModelError {
-    Offline,
-    Status(u16),
-    /// The bytes aren't the pinned file.
-    Checksum(&'static str),
-    Cancelled,
-    Io(io::Error),
-    Load(String),
-}
-
-impl std::error::Error for ModelError {}
-
-impl std::fmt::Display for ModelError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ModelError::Offline => write!(f, "Couldn't reach the download. Check the connection."),
-            ModelError::Status(code) => write!(f, "The download answered {code}."),
-            ModelError::Checksum(name) => write!(
-                f,
-                "The downloaded {name} isn't the expected file, so it wasn't kept."
-            ),
-            ModelError::Cancelled => write!(f, "Cancelled."),
-            ModelError::Io(err) => write!(f, "Couldn't save the model: {err}"),
-            ModelError::Load(err) => write!(f, "Couldn't load the model: {err}"),
-        }
-    }
-}
-
-impl From<io::Error> for ModelError {
-    fn from(err: io::Error) -> Self {
-        ModelError::Io(err)
-    }
-}
-
-/// Opens a download: the body, as it arrives. The app's fetches over
-/// HTTPS; tests answer from memory.
-pub trait Fetch: Send + Sync {
-    fn open(&self, url: &str) -> Result<Box<dyn Read + Send>, ModelError>;
-}
-
-/// HTTPS only, every hop of a redirect too, with no cookies or credentials
-/// and no identifying headers beyond a plain user agent.
-pub struct HttpFetch {
-    agent: ureq::Agent,
-}
-
-impl Default for HttpFetch {
-    fn default() -> Self {
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .https_only(true)
-            .max_redirects(5)
-            .http_status_as_error(false)
-            .timeout_connect(Some(Duration::from_secs(20)))
-            .timeout_recv_body(Some(Duration::from_secs(60)))
-            .user_agent("Kanso")
-            .build()
-            .into();
-        HttpFetch { agent }
-    }
-}
-
-impl Fetch for HttpFetch {
-    fn open(&self, url: &str) -> Result<Box<dyn Read + Send>, ModelError> {
-        let response = self
-            .agent
-            .get(url)
-            .call()
-            .map_err(|_| ModelError::Offline)?;
-        match response.status().as_u16() {
-            200 => Ok(Box::new(response.into_body().into_reader())),
-            code => Err(ModelError::Status(code)),
-        }
-    }
-}
-
-/// The files in `dir` that aren't the pinned ones (missing or different).
-pub fn missing(dir: &Path) -> io::Result<Vec<ModelFile>> {
-    let mut out = Vec::new();
-    for file in FILES {
-        if !verify(&dir.join(file.name), &file)? {
-            out.push(file);
-        }
-    }
-    Ok(out)
-}
-
-/// Fetches the model's files that `dir` lacks, each kept only when its
-/// size and SHA-256 are the pinned ones. `progress` gets the bytes so far
-/// and the total.
-pub fn download(
-    fetch: &dyn Fetch,
-    dir: &Path,
-    progress: &mut dyn FnMut(u64, u64),
-    cancel: &AtomicBool,
-) -> Result<(), ModelError> {
-    fs::create_dir_all(dir)?;
-    let todo = missing(dir)?;
-    let total: u64 = todo.iter().map(|f| f.size).sum();
-    let mut done = 0u64;
-    progress(0, total);
-    for file in todo {
-        let to = dir.join(file.name);
-        let part = dir.join(format!("{}.part", file.name));
-        let result = (|| {
-            let mut body = fetch.open(&file_url(file.name))?;
-            let mut out = File::create(&part)?;
-            let mut hasher = Sha256::new();
-            let mut buf = vec![0u8; 64 * 1024];
-            let mut got = 0u64;
-            loop {
-                if cancel.load(Ordering::Relaxed) {
-                    return Err(ModelError::Cancelled);
-                }
-                let n = body.read(&mut buf).map_err(|_| ModelError::Offline)?;
-                if n == 0 {
-                    break;
-                }
-                got += n as u64;
-                if got > file.size {
-                    return Err(ModelError::Checksum(file.name));
-                }
-                hasher.update(&buf[..n]);
-                out.write_all(&buf[..n])?;
-                progress(done + got, total);
-            }
-            out.sync_all()?;
-            if got != file.size || hex(&hasher.finalize()) != file.sha256 {
-                return Err(ModelError::Checksum(file.name));
-            }
-            fs::rename(&part, &to)?;
-            Ok(())
-        })();
-        if result.is_err() {
-            fs::remove_file(&part).ok();
-        }
-        result?;
-        done += file.size;
-    }
-    Ok(())
-}
-
 /// The model, loaded from `dir` once every file there checks out.
 pub struct StaticEmbedder {
     model: model2vec_rs::model::StaticModel,
@@ -292,7 +109,7 @@ pub struct StaticEmbedder {
 
 impl StaticEmbedder {
     pub fn load(dir: &Path) -> Result<StaticEmbedder, ModelError> {
-        if let Some(file) = missing(dir)?.first() {
+        if let Some(file) = MODEL.missing(dir)?.first() {
             return Err(ModelError::Checksum(file.name));
         }
         let read = |name: &str| fs::read(dir.join(name));
@@ -392,7 +209,7 @@ fn stop(cx: &mut App) {
 pub fn start(cx: &mut App) {
     let state = cx.global::<AppState>();
     let store = state.store.clone();
-    let dir = model_dir(&state.data_dir);
+    let dir = MODEL.dir(&state.data_dir);
     let related = cx.default_global::<Related>();
     related.cancel.store(true, Ordering::Relaxed);
     let cancel = Arc::new(AtomicBool::new(false));
@@ -420,7 +237,7 @@ async fn run(
     let needed = {
         let dir = dir.clone();
         cx.background_executor()
-            .spawn(async move { missing(&dir) })
+            .spawn(async move { MODEL.missing(&dir) })
             .await?
     };
     if !needed.is_empty() {
@@ -432,6 +249,7 @@ async fn run(
             cx.background_executor().spawn(async move {
                 download(
                     &HttpFetch::default(),
+                    &MODEL,
                     &dir,
                     &mut |done, total| *progress.lock().unwrap() = (done, total),
                     &cancel,
@@ -537,37 +355,17 @@ pub fn similarity_label(score: f32) -> &'static str {
     }
 }
 
-/// "34%" of the model: the download's progress.
-pub fn percent(done: u64, total: u64) -> u32 {
-    if total == 0 {
-        return 100;
-    }
-    ((done.min(total) as f64 / total as f64) * 100.).floor() as u32
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model_fetch::tests::Memory;
     use proptest::prelude::*;
     use std::collections::HashMap;
-
-    /// Answers from memory, counting what was asked.
-    struct Memory(HashMap<String, Vec<u8>>, Mutex<Vec<String>>);
-
-    impl Fetch for Memory {
-        fn open(&self, url: &str) -> Result<Box<dyn Read + Send>, ModelError> {
-            self.1.lock().unwrap().push(url.to_owned());
-            match self.0.get(url) {
-                Some(bytes) => Ok(Box::new(io::Cursor::new(bytes.clone()))),
-                None => Err(ModelError::Status(404)),
-            }
-        }
-    }
 
     #[test]
     fn the_pinned_files_are_on_their_revision_over_https() {
         for file in FILES {
-            let url = file_url(file.name);
+            let url = MODEL.file_url(file.name);
             assert!(url.starts_with("https://huggingface.co/minishlab/potion-base-8M/resolve/"));
             assert!(url.contains(REVISION));
             assert_eq!(file.sha256.len(), 64);
@@ -584,11 +382,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let fake: HashMap<String, Vec<u8>> = FILES
             .iter()
-            .map(|f| (file_url(f.name), vec![b'x'; f.size as usize]))
+            .map(|f| (MODEL.file_url(f.name), vec![b'x'; f.size as usize]))
             .collect();
-        let fetch = Memory(fake, Mutex::new(Vec::new()));
         let cancel = AtomicBool::new(false);
-        let err = download(&fetch, dir.path(), &mut |_, _| {}, &cancel).unwrap_err();
+        let err = download(&Memory::new(fake), &MODEL, dir.path(), &mut |_, _| {}, &cancel)
+            .unwrap_err();
         assert!(matches!(err, ModelError::Checksum("config.json")));
         // Nothing was kept, not even the part file.
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
@@ -596,59 +394,14 @@ mod tests {
         for file in FILES {
             fs::write(dir.path().join(file.name), vec![b'y'; file.size as usize]).unwrap();
         }
-        assert_eq!(missing(dir.path()).unwrap().len(), 3);
+        assert_eq!(MODEL.missing(dir.path()).unwrap().len(), 3);
         assert!(matches!(
             StaticEmbedder::load(dir.path()),
             Err(ModelError::Checksum(_))
         ));
-        // Too long a body is cut off before it is all read.
-        let long: HashMap<String, Vec<u8>> = FILES
-            .iter()
-            .map(|f| (file_url(f.name), vec![b'z'; f.size as usize + 10]))
-            .collect();
-        let fetch = Memory(long, Mutex::new(Vec::new()));
-        let empty = tempfile::tempdir().unwrap();
-        assert!(matches!(
-            download(&fetch, empty.path(), &mut |_, _| {}, &cancel),
-            Err(ModelError::Checksum(_))
-        ));
-        // Offline: a clear error, nothing kept.
-        let nothing = Memory(HashMap::new(), Mutex::new(Vec::new()));
-        assert!(matches!(
-            download(&nothing, empty.path(), &mut |_, _| {}, &cancel),
-            Err(ModelError::Status(404))
-        ));
-        assert_eq!(fs::read_dir(empty.path()).unwrap().count(), 0);
-    }
-
-    #[test]
-    fn verify_checks_size_and_hash() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("f");
-        let file = ModelFile {
-            name: "f",
-            size: 3,
-            // SHA-256 of "abc".
-            sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-        };
-        assert!(!verify(&path, &file).unwrap());
-        fs::write(&path, b"abc").unwrap();
-        assert!(verify(&path, &file).unwrap());
-        fs::write(&path, b"abd").unwrap();
-        assert!(!verify(&path, &file).unwrap());
-        fs::write(&path, b"abcd").unwrap();
-        assert!(!verify(&path, &file).unwrap());
     }
 
     proptest! {
-        /// The progress shown never goes past 100% or backwards.
-        #[test]
-        fn prop_percent_is_monotonic_and_bounded(done in 0u64..10_000_000, more in 0u64..10_000_000, total in 0u64..10_000_000) {
-            let a = percent(done, total);
-            prop_assert!(a <= 100);
-            prop_assert!(percent(done + more, total) >= a);
-        }
-
         /// Closer scores never read as further apart.
         #[test]
         fn prop_similarity_words_follow_the_score(a in -1f32..1., b in -1f32..1.) {

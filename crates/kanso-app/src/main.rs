@@ -52,6 +52,7 @@ mod markdown_edit;
 mod markdown_source;
 mod mcp_cli;
 mod mcp_setup;
+mod model_fetch;
 mod note_list;
 mod note_menu;
 mod notify_support;
