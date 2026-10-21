@@ -25,6 +25,7 @@ use kanso_sync::lock::{Envelope, LOCK_KDF, LockError, LockKey, LockPassword};
 use crate::dialogs::{self, Field, FormSpec, FormView, Progress, Submit};
 use crate::editor::NoteEditor;
 use crate::services::Services;
+use crate::touch_id::{secret_store_name, unlock_name};
 use crate::workspace::AppState;
 
 actions!(
@@ -261,8 +262,8 @@ fn sentence(err: &LockError) -> String {
     }
 }
 
-/// Lock Note: seals the open note. The first time this session, Touch ID
-/// (when on) or the lock password opens the keys, or a password is made when
+/// Lock Note: seals the open note. The first time this session, Touch ID or
+/// Windows Hello (when on) or the lock password opens the keys, or a password is made when
 /// no note is locked yet. Returns the form when it asks for a password.
 pub fn lock_open_note(
     editor: Entity<NoteEditor>,
@@ -392,7 +393,7 @@ fn set_password_form(
     })
 }
 
-/// Unlock: Touch ID when it's on, else (or when it fails) the lock password,
+/// Unlock: Touch ID or Windows Hello when it's on, else (or when it fails) the lock password,
 /// opens the open note and every other note locked with the same password.
 /// Returns the form when it asks for the password.
 pub fn unlock_open_note(
@@ -457,9 +458,10 @@ fn password_unlock(
     })
 }
 
-// MARK: Touch ID
+// MARK: Touch ID and Windows Hello
 
-/// Whether Touch ID unlocks locked notes on this device now.
+/// Whether Touch ID (or Windows Hello) unlocks locked notes on this device
+/// now.
 pub fn touch_id_on(cx: &App) -> bool {
     cx.try_global::<AppState>()
         .is_some_and(|state| state.config.locked.touch_id == Some(true))
@@ -470,15 +472,15 @@ fn secrets(cx: &App) -> Option<Arc<dyn SecretStore>> {
     cx.try_global::<Services>()?.secrets.clone()
 }
 
-/// The library's ID, which names its Keychain items.
+/// The library's ID, which names its Keychain (or Credential Manager) items.
 fn library_id(store: &Store) -> Result<String, String> {
     kanso_sync::device_identity(store, &kanso_sync::Machine::this_mac())
         .map(|device| device.library_id)
         .map_err(|err| err.to_string())
 }
 
-/// Asks for a fingerprint, takes the lock keys kept for Touch ID into this
-/// session and runs `then`; runs `otherwise` when Touch ID is off, is
+/// Asks for a fingerprint (or Windows Hello), takes the lock keys kept for it
+/// into this session and runs `then`; runs `otherwise` when it is off, is
 /// cancelled or fails, or no keys are kept.
 fn with_touch_id(
     window: &mut Window,
@@ -544,7 +546,10 @@ fn remember_keys(cx: &mut App) {
             save_lock_keys(secrets.as_ref(), &library_id, &keys).map_err(|err| err.to_string())
         });
         if let Err(err) = saved {
-            eprintln!("kanso: locked notes: couldn't keep the keys for Touch ID: {err}");
+            eprintln!(
+                "kanso: locked notes: couldn't keep the keys for {}: {err}",
+                crate::touch_id::NAME
+            );
         }
     })
     .detach();
@@ -560,11 +565,15 @@ fn after_password(window: &mut Window, cx: &mut App) {
     }
     AppState::update_config(cx, |config| config.locked.touch_id = Some(false));
     let notification = Notification::info(
-        "Use Touch ID to unlock your locked notes on this device? The password still works, and other devices need it.",
+        concat!(
+            "Use ",
+            unlock_name!(),
+            " to unlock your locked notes on this device? The password still works, and other devices need it."
+        ),
     )
     .action(|_, _, _| {
         Button::new("turn-on-touch-id")
-            .label("Use Touch ID")
+            .label(concat!("Use ", unlock_name!()))
             .on_click(|_, window, cx| {
                 window.dispatch_action(Box::new(TurnOnTouchId), cx);
             })
@@ -572,27 +581,46 @@ fn after_password(window: &mut Window, cx: &mut App) {
     window.push_notification(notification, cx);
 }
 
-/// Turn On Touch ID: after a fingerprint, keeps the lock keys this session
-/// holds in the Keychain, so Touch ID opens locked notes on this device.
+/// Turn On Touch ID (or Windows Hello): after a fingerprint, keeps the lock
+/// keys this session holds in the Keychain (or the Credential Manager), so
+/// it opens locked notes on this device.
 pub fn turn_on_touch_id(window: &mut Window, cx: &mut App) {
     let say = |words: &str, window: &mut Window, cx: &mut App| {
         window.push_notification(Notification::info(words.to_owned()), cx);
     };
     if !crate::touch_id::available(cx) {
-        return say("Touch ID isn't set up on this device.", window, cx);
-    }
-    let Some(secrets) = secrets(cx) else {
-        return say("This copy of Kanso can't use the Keychain.", window, cx);
-    };
-    if !LockKeys::is_unlocked(cx) {
         return say(
-            "Unlock a locked note with your lock password first, then turn on Touch ID.",
+            concat!(unlock_name!(), " isn't set up on this device."),
             window,
             cx,
         );
     }
-    let Some(answer) = crate::touch_id::authenticate("turn on Touch ID for your locked notes", cx)
-    else {
+    let Some(secrets) = secrets(cx) else {
+        return say(
+            concat!(
+                "This copy of Kanso can't use the ",
+                secret_store_name!(),
+                "."
+            ),
+            window,
+            cx,
+        );
+    };
+    if !LockKeys::is_unlocked(cx) {
+        return say(
+            concat!(
+                "Unlock a locked note with your lock password first, then turn on ",
+                unlock_name!(),
+                "."
+            ),
+            window,
+            cx,
+        );
+    }
+    let Some(answer) = crate::touch_id::authenticate(
+        concat!("turn on ", unlock_name!(), " for your locked notes"),
+        cx,
+    ) else {
         return;
     };
     let keys = LockKeys::get(cx)
@@ -617,14 +645,18 @@ pub fn turn_on_touch_id(window: &mut Window, cx: &mut App) {
                     Ok(()) => {
                         AppState::update_config(cx, |config| config.locked.touch_id = Some(true));
                         window.push_notification(
-                            Notification::success(
-                                "Touch ID now unlocks your locked notes on this device.",
-                            ),
+                            Notification::success(concat!(
+                                unlock_name!(),
+                                " now unlocks your locked notes on this device."
+                            )),
                             cx,
                         );
                     }
                     Err(err) => window.push_notification(
-                        Notification::error(format!("Couldn't turn on Touch ID: {err}")),
+                        Notification::error(format!(
+                            "Couldn't turn on {}: {err}",
+                            crate::touch_id::NAME
+                        )),
                         cx,
                     ),
                 })
@@ -634,7 +666,7 @@ pub fn turn_on_touch_id(window: &mut Window, cx: &mut App) {
     .detach();
 }
 
-/// Turn Off Touch ID: forgets the keys kept for it; the password opens
+/// Turn Off Touch ID (or Windows Hello): forgets the keys kept for it; the password opens
 /// locked notes again.
 pub fn turn_off_touch_id(window: &mut Window, cx: &mut App) {
     AppState::update_config(cx, |config| config.locked.touch_id = Some(false));
@@ -724,7 +756,8 @@ pub fn change_password(
             move || rekey(&store, &old, &new, params),
             move |(key, skipped), window, cx| {
                 LockKeys::replace(Some(key), cx);
-                // Touch ID keeps the new key in place of the old ones.
+                // Touch ID (or Windows Hello) keeps the new key in place of
+                // the old ones.
                 remember_keys(cx);
                 editor.update(cx, |editor, cx| {
                     editor.lock_keys_changed(window, cx);

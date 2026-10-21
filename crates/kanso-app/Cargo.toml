@@ -105,6 +105,16 @@ objc2-vision = { version = "0.3", default-features = false, features = ["std", "
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-app-kit", "objc2-core-foundation", "WKWebView", "WKWebViewConfiguration", "WKPDFConfiguration", "WKNavigation"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+# Windows Hello unlocks locked notes (`touch_id.rs`): UserConsentVerifier,
+# asked over Kanso's window. The version GPUI already builds.
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Security_Credentials_UI",
+    "Win32_Foundation",
+    "Win32_System_WinRT",
+    "Win32_UI_WindowsAndMessaging",
+] }
+windows-future = "0.3"
 # Gives `kanso serve` and the other commands the console they were run from:
 # the release build is a GUI program without a console of its own.
 windows-sys = { version = "0.61", features = [

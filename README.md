@@ -43,7 +43,8 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
 **Locked notes**
 - Lock a note with a password (**Lock note…** in the palette or the Note menu). Its text is sealed
   on this device, stays sealed in sync, and opens on your other devices with the same password.
-- Unlock them with Touch ID on a Mac that has it, with the password as the fallback.
+- Unlock them with Touch ID on a Mac that has it, or Windows Hello on Windows, with the password as
+  the fallback.
 
 **Sync, agents and the rest**
 - **End-to-end encrypted sync.** An account on a Cloudflare Worker keeps your devices in step.
@@ -174,6 +175,14 @@ what other devices and Macs without Touch ID use. Touch ID unlocks the lock *key
 in this Mac's login Keychain (never the password itself) and reads only after a fingerprint; macOS
 doesn't enforce the fingerprint on the Keychain item, so this guards against someone using your
 unlocked Mac, not against software running as you. Changing the lock password replaces the kept key.
+
+**Windows Hello** (Windows) works the same way, with the same commands named for it: **Unlock locked
+notes with Windows Hello** and **Stop using Windows Hello for locked notes**. Windows Hello accepts
+your face, a fingerprint or your Windows Hello PIN, never the Windows password, and Kanso's lock
+password stays the fallback. The kept lock keys go into the Windows Credential Manager, which only
+your signed-in Windows account can read; as on a Mac, that guards against someone using your
+unlocked PC, not against software running as you. Linux has no such unlock: locked notes open with
+the lock password there.
 
 What locking does and doesn't do:
 

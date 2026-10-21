@@ -220,8 +220,14 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Remove Lock…", crate::locked::RemoveLock),
             MenuItem::action("Lock Notes Now", crate::locked::LockNotesNow),
             MenuItem::action("Change Lock Password…", crate::locked::ChangeLockPassword),
-            MenuItem::action("Unlock with Touch ID", crate::locked::TurnOnTouchId),
-            MenuItem::action("Stop Using Touch ID", crate::locked::TurnOffTouchId),
+            MenuItem::action(
+                concat!("Unlock with ", crate::touch_id::unlock_name!()),
+                crate::locked::TurnOnTouchId,
+            ),
+            MenuItem::action(
+                concat!("Stop Using ", crate::touch_id::unlock_name!()),
+                crate::locked::TurnOffTouchId,
+            ),
             MenuItem::separator(),
             MenuItem::action("Next Note", NextNote),
             MenuItem::action("Previous Note", PreviousNote),

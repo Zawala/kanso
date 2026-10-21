@@ -472,8 +472,8 @@ pub struct VoiceSettings {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct LockedSettings {
-    /// Whether Touch ID unlocks them here: `None` until Kanso has offered
-    /// it, so it offers once.
+    /// Whether Touch ID (Windows Hello on Windows) unlocks them here: `None`
+    /// until Kanso has offered it, so it offers once.
     pub touch_id: Option<bool>,
 }
 
