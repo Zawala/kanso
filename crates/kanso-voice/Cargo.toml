@@ -1,0 +1,39 @@
+[package]
+name = "kanso-voice"
+description = "Dictation on this device: the microphone, and Parakeet TDT speech to text through ONNX Runtime."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+async-channel.workspace = true
+# The microphone on every platform: Core Audio, WASAPI and ALSA.
+cpal = "0.18"
+# ONNX Runtime 1.31, linked statically from pyke's prebuilt archives (the
+# build script downloads and checks them). Only the CPU execution provider
+# runs; telemetry is off. On macOS the archive also carries Core ML, and on
+# Windows DirectML, whose system libraries it links.
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-rustls", "api-24"] }
+# Spaces before punctuation come out of the transcript as onnx-asr does it.
+regex.workspace = true
+# The microphone callback hands samples over without locking or allocating.
+rtrb = "0.3"
+# The microphone's own rate to the model's 16 kHz.
+rubato = "5"
+# Audio files to transcribe, in pure Rust: WAV, AIFF, CAF, MP3, M4A (AAC or
+# ALAC), FLAC and Ogg Vorbis. Only the decoders for these are built.
+symphonia = { version = "0.5.5", default-features = false, features = ["aac", "adpcm", "aiff", "alac", "caf", "flac", "isomp4", "mp3", "ogg", "pcm", "vorbis", "wav"] }
+thiserror.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Microphone permission: AVCaptureDevice's authorization status and request.
+block2 = "0.6"
+objc2 = "0.6"
+objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "AVCaptureDevice", "AVMediaFormat"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
+
+[dev-dependencies]
+# Reads the spoken fixture in the model test.
+hound = "3.5"
+proptest.workspace = true

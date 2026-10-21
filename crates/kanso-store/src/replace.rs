@@ -86,11 +86,13 @@ impl Store {
         include_trash: bool,
     ) -> Result<Vec<NoteMatches>> {
         self.read(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, rev, title, book_id, json_extract(json, '$.body') FROM docs
+            let mut stmt = conn.prepare(concat!(
+                "SELECT id, rev, title, book_id, ",
+                crate::schema::readable_body!(""),
+                " FROM docs
                  WHERE type = 'note' AND deleted = 0 AND (?1 OR IFNULL(book_id, '') != 'trash')
-                 ORDER BY updated_at DESC, id",
-            )?;
+                 ORDER BY updated_at DESC, id"
+            ))?;
             let mut rows = stmt.query(params![include_trash])?;
             let mut found = Vec::new();
             while let Some(row) = rows.next()? {

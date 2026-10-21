@@ -10,9 +10,9 @@ use kanso_core::links::{
     LinkTarget, line_text, mention_lines, normalize_title, note_links, plain_line,
     retitle_wiki_links,
 };
+use kanso_core::now_ms;
 use kanso_core::outline::{Heading, headings};
 use kanso_core::tasks::task_items;
-use kanso_core::{DocType, now_ms};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Map, Value};
 
@@ -137,9 +137,11 @@ pub(crate) fn rebuild_if_stale(conn: &mut Connection) -> Result<bool> {
         tx.execute(&format!("DELETE FROM {table}"), [])?;
     }
     let notes: Vec<(String, Option<String>)> = tx
-        .prepare(
-            "SELECT id, json_extract(json, '$.body') FROM docs WHERE type = 'note' AND deleted = 0",
-        )?
+        .prepare(concat!(
+            "SELECT id, ",
+            crate::schema::readable_body!(""),
+            " FROM docs WHERE type = 'note' AND deleted = 0"
+        ))?
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<rusqlite::Result<_>>()?;
     for (id, body) in notes {
@@ -205,13 +207,15 @@ impl Store {
                     .map(|_| normalize_title(title)),
                 None => None,
             };
-            let mut stmt = conn.prepare(
-                "SELECT d.id, d.title, MIN(l.line), json_extract(d.json, '$.body')
+            let mut stmt = conn.prepare(concat!(
+                "SELECT d.id, d.title, MIN(l.line), ",
+                crate::schema::readable_body!("d."),
+                "
                  FROM note_links l JOIN docs d ON d.id = l.note_id
                  WHERE d.deleted = 0 AND IFNULL(d.book_id, '') != 'trash' AND d.id != ?1
                    AND (l.target_id = ?1 OR (?2 IS NOT NULL AND l.target_title = ?2))
-                 GROUP BY d.id ORDER BY d.updated_at DESC, d.id",
-            )?;
+                 GROUP BY d.id ORDER BY d.updated_at DESC, d.id"
+            ))?;
             let rows = stmt.query_map(params![id, by_title], |row| {
                 let body: Option<String> = row.get(3)?;
                 let line: u32 = row.get(2)?;
@@ -250,12 +254,19 @@ impl Store {
                 ""
             };
             let sql = format!(
-                "SELECT d.id, d.title, json_extract(d.json, '$.body') FROM docs d
+                concat!(
+                    "SELECT d.id, d.title, ",
+                    crate::schema::readable_body!("d."),
+                    " FROM docs d
                  WHERE d.type = 'note' AND d.deleted = 0 AND IFNULL(d.book_id, '') != 'trash'
-                   AND d.id != ?1 AND {prefilter}kanso_contains(json_extract(d.json, '$.body'), ?3)
+                   AND d.id != ?1 AND {prefilter}kanso_contains(",
+                    crate::schema::readable_body!("d."),
+                    ", ?3)
                    AND NOT EXISTS (SELECT 1 FROM note_links l WHERE l.note_id = d.id
                        AND (l.target_id = ?1 OR l.target_title = ?4))
                  ORDER BY d.updated_at DESC, d.id"
+                ),
+                prefilter = prefilter
             );
             let fts = format!("body : \"{}\"", title.replace('"', "\"\""));
             let mut stmt = conn.prepare(&sql)?;
@@ -433,9 +444,4 @@ impl Store {
             ))
         })
     }
-}
-
-/// Only notes have derived rows.
-pub(crate) fn applies(doc_type: DocType) -> bool {
-    doc_type == DocType::Note
 }

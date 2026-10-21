@@ -39,6 +39,7 @@ kanso-render.workspace = true
 kanso-server.workspace = true
 kanso-sync.workspace = true
 kanso-update.workspace = true
+kanso-voice.workspace = true
 kanso-store.workspace = true
 # The types `[[` autocomplete answers the text editor in. Pinned to the
 # version gpui-base uses.
@@ -93,7 +94,7 @@ gpui-pre-apple = "=0.3.9"
 block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSGraphics", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSView", "NSWindow"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSObject", "NSString", "NSURL"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSCalendar", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSObject", "NSString", "NSURL"] }
 # Open at login with SMAppService on macOS 13 and later.
 objc2-service-management = { version = "0.3", default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }
 # Reminders: whether notifications are allowed, asked only inside an app
@@ -104,6 +105,16 @@ objc2-vision = { version = "0.3", default-features = false, features = ["std", "
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-app-kit", "objc2-core-foundation", "WKWebView", "WKWebViewConfiguration", "WKPDFConfiguration", "WKNavigation"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+# Windows Hello unlocks locked notes (`touch_id.rs`): UserConsentVerifier,
+# asked over Kanso's window. The version GPUI already builds.
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Security_Credentials_UI",
+    "Win32_Foundation",
+    "Win32_System_WinRT",
+    "Win32_UI_WindowsAndMessaging",
+] }
+windows-future = "0.3"
 # Gives `kanso serve` and the other commands the console they were run from:
 # the release build is a GUI program without a console of its own.
 windows-sys = { version = "0.61", features = [

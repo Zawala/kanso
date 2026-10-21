@@ -166,6 +166,12 @@ jobs:
             xcrun stapler staple "$app"
           fi
           codesign --verify --deep --strict "$app"
+          # Without it the hardened runtime keeps voice input from the
+          # microphone, and macOS never asks.
+          codesign -d --entitlements - --xml "$app" 2>/dev/null |
+            grep -q com.apple.security.device.audio-input ||
+            { echo "::error::Kanso.app is missing the microphone entitlement"; exit 1; }
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist" >/dev/null
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             # A tag publishes itself, so it must be the notarized build
             # Gatekeeper accepts, never an ad hoc one.

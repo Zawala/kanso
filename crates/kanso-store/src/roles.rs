@@ -6,7 +6,7 @@
 //! never both make it.
 
 use kanso_core::dates::{Date, DateTime};
-use kanso_core::model::TRASH_BOOK_ID;
+use kanso_core::model::{Note, TRASH_BOOK_ID};
 use kanso_core::roles::{DAILY_PREFIX, ROLE_FIELD, Role, daily_id, daily_title};
 use kanso_core::template;
 use kanso_core::{DocType, now_ms};
@@ -205,6 +205,19 @@ impl Store {
         })
     }
 
+    /// Note `id` as a template is read: a locked one (sealed, or in a locked
+    /// notebook) gives its title and tags but none of its text, so copying
+    /// it never brings its words out of the lock.
+    fn template_note(&self, id: &str) -> Result<Option<Note>> {
+        let Some(mut note) = self.note(id)? else {
+            return Ok(None);
+        };
+        if note.is_locked() || self.note_is_locked(id)? {
+            note.body.clear();
+        }
+        Ok(Some(note))
+    }
+
     /// Makes `template` (a note's ID, or `None` for none) the one new daily
     /// notes are made from; the Journal is made if needed.
     pub fn set_daily_template(&self, template: Option<&str>, origin: Origin) -> Result<()> {
@@ -225,7 +238,7 @@ impl Store {
         let mut cursor = None;
         let new = match self
             .daily_template()?
-            .map(|id| self.note(&id))
+            .map(|id| self.template_note(&id))
             .transpose()?
         {
             Some(Some(template)) => {
@@ -304,7 +317,9 @@ impl Store {
         now: DateTime,
         origin: Origin,
     ) -> Result<FromTemplate> {
-        let template = self.note(template_id)?.ok_or(StoreError::NotFound)?;
+        let template = self
+            .template_note(template_id)?
+            .ok_or(StoreError::NotFound)?;
         let (title, body) = template::instantiate(&template.title, &template.body, title, now);
         let book = match book {
             Some(book) => book.to_owned(),

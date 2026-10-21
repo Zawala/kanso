@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { runCron } from "../src/index";
 import { reconcile } from "../src/purge";
 import { MAX_SEALED_SHARE, shareKey } from "../src/shares";
-import { VIEWER_SCRIPT, VIEWER_STYLE, viewerHtml } from "../src/viewer";
+import { VIEWER_SCRIPT, VIEWER_STYLE, siteBundle, siteHref, siteImages, siteRoute, viewerHtml } from "../src/viewer";
 import fixture from "./fixtures/share.json";
 import { ORIGIN, START, accountRow, base64url, call, callJson, client, r2Keys, recomputed, resetServer, runAdmin, signUp, testEnv } from "./helpers";
 
@@ -588,5 +588,109 @@ describe("the viewer page", () => {
 		// And the server accepts it as a share.
 		const a = await signUp("alice");
 		expect((await client(a.token).putShare(fixture.share_id, sealed)).status).toBe(200);
+	});
+});
+
+describe("a published notebook on the viewer page", () => {
+	const KEY = /^[A-Za-z0-9_-]{43}$/;
+	const keyArb = fc.stringMatching(KEY);
+	const slugArb = fc.stringMatching(/^[a-z0-9-]{1,64}$/);
+	const PAGE = `${ORIGIN}/p/AAAAAAAAAAAAAAAAAAAAAA`;
+
+	it("runs the same helpers the tests check, as plain script", () => {
+		for (const helper of [siteRoute, siteHref, siteImages, siteBundle]) expect(VIEWER_SCRIPT).toContain(helper.toString());
+		// Bundlers that keep names wrap inner functions in a helper the page doesn't have.
+		expect(VIEWER_SCRIPT).not.toContain("__name(");
+		// It parses: a syntax error would leave every link on a blank page.
+		expect(() => new Function(VIEWER_SCRIPT)).not.toThrow();
+		// Its frame may move the top window only on a click, and only within this page.
+		const sandbox = /<iframe[^>]*sandbox="([^"]*)"/.exec(viewerHtml(ORIGIN))![1].split(" ");
+		expect(sandbox).toContain("allow-top-navigation-by-user-activation");
+		expect(sandbox).not.toContain("allow-top-navigation");
+	});
+
+	it("reads the page from the fragment after the key", () => {
+		expect(siteRoute("#abc")).toEqual({ key: "abc", slug: "" });
+		expect(siteRoute("#abc/")).toEqual({ key: "abc", slug: "" });
+		expect(siteRoute("#abc/a-note")).toEqual({ key: "abc", slug: "a-note" });
+		expect(siteRoute("")).toEqual({ key: "", slug: "" });
+		fc.assert(
+			fc.property(keyArb, fc.option(slugArb, { nil: undefined }), (key, slug) => {
+				const hash = "#" + key + (slug === undefined ? "" : "/" + slug);
+				expect(siteRoute(hash)).toEqual({ key, slug: slug ?? "" });
+			}),
+			runs(200),
+		);
+	});
+
+	it("turns links between its pages into this page's fragments, and only to pages it has", () => {
+		const pages = { "a-note": {}, other: {} };
+		expect(siteHref("kanso-page:a-note", pages, PAGE, "k")).toBe(`${PAGE}#k/a-note`);
+		expect(siteHref("kanso-page:", pages, PAGE, "k")).toBe(`${PAGE}#k`);
+		expect(siteHref("kanso-page:missing", pages, PAGE, "k")).toBeNull();
+		expect(siteHref("kanso-page:__proto__", pages, PAGE, "k")).toBeNull();
+		expect(siteHref("kanso-page:toString", pages, PAGE, "k")).toBeNull();
+		expect(siteHref("https://example.com/", pages, PAGE, "k")).toBeNull();
+		fc.assert(
+			fc.property(fc.uniqueArray(slugArb, { maxLength: 8 }), fc.string(), keyArb, (slugs, slug, key) => {
+				const map = Object.fromEntries(slugs.map((s) => [s, {}]));
+				const to = siteHref("kanso-page:" + slug, map, PAGE, key);
+				if (slug === "" || slugs.includes(slug)) {
+					// Always this same page with another fragment: the key never leaves the fragment.
+					expect(to).toBe(PAGE + "#" + key + (slug ? "/" + slug : ""));
+					expect(siteRoute(new URL(to!).hash)).toEqual({ key, slug });
+				} else expect(to).toBeNull();
+			}),
+			runs(300),
+		);
+	});
+
+	it("puts back only its own images, as data: URLs", () => {
+		const files = [
+			{ type: "image/png", data: "iVBORw0KGgo=" },
+			{ type: "application/pdf", data: "JVBERi0=" },
+			{ type: "image/svg+xml\" onerror=\"x", data: "AAAA" },
+			{ type: "image/gif", data: "R0lG\"><script>" },
+		];
+		const html = '<img src="kanso-file:0"><img src="kanso-file:1"><img src="kanso-file:2"><img src="kanso-file:3"><img src="kanso-file:9">';
+		expect(siteImages(html, files)).toBe('<img src="data:image/png;base64,iVBORw0KGgo="><img src=""><img src=""><img src=""><img src="">');
+		fc.assert(
+			fc.property(
+				fc.array(fc.record({ type: fc.oneof(fc.constant("image/png"), fc.string()), data: fc.oneof(fc.base64String(), fc.string()) }), { maxLength: 5 }),
+				fc.array(fc.oneof(fc.nat(7).map((n) => `<img src="kanso-file:${n}">`), fc.string()), { maxLength: 8 }),
+				(files, parts) => {
+					const out = siteImages(parts.join(""), files);
+					// Every image the bundle names comes back as an image data: URL or nothing, and the quotes stay balanced.
+					for (const [, src] of out.matchAll(/src="([^"]*)"/g)) {
+						if (src.startsWith("kanso-file:")) continue;
+						if (src) expect(src).toMatch(/^data:image\/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/]*={0,2}$/);
+					}
+					expect(out).not.toMatch(/src="kanso-file:\d{1,6}"/);
+				},
+			),
+			runs(300),
+		);
+	});
+
+	it("tells a notebook's bundle from a note's page, and opens a sealed one", async () => {
+		const bundle = { kanso: "site", v: 1, title: "Recipes", index: "<p>Index</p>", pages: { soup: { title: "Soup", html: "<p>Soup</p>", downloads: [] } }, files: [] };
+		expect(siteBundle(JSON.stringify(bundle))).toEqual(bundle);
+		expect(siteBundle("<!doctype html><p>{}</p>")).toBeNull();
+		expect(siteBundle("{not json")).toBeNull();
+		expect(siteBundle(JSON.stringify({ ...bundle, v: 2 }))).toBeNull();
+		expect(siteBundle(JSON.stringify({ ...bundle, kanso: "note" }))).toBeNull();
+		expect(siteBundle(JSON.stringify({ ...bundle, pages: [] }))).toBeNull();
+		expect(siteBundle(JSON.stringify({ ...bundle, files: {} }))).toBeNull();
+		// It is sealed like any note's page, under the same AAD.
+		const id = newShareId();
+		const { bytes, key } = await seal(id, JSON.stringify(bundle));
+		expect(siteBundle(await open(id, bytes, key))).toEqual(bundle);
+		fc.assert(
+			fc.property(fc.string(), (text) => {
+				// A note's page is HTML and never reads as a notebook.
+				expect(siteBundle("<" + text)).toBeNull();
+			}),
+			runs(200),
+		);
 	});
 });

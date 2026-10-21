@@ -173,5 +173,30 @@
     "execution": {
       "taskSupport": "forbidden"
     }
+  },
+  {
+    "name": "kanso-search-by-meaning",
+    "description": "Find the notes about something, by meaning rather than by words: the search is turned into numbers by the same language model as Kanso's related notes, on the user's device, and compared with every note's. A note can match without containing any of the words; for notes containing the words, use search-notes. Returns each note's ID, title, `inkdrop://note/<id>` link and similarity (0 to 1, higher is closer), most similar first, leaving out notes less than 0.35 similar. It needs related notes on in Kanso's Settings and the Kanso app open with its model loaded (a server started with `kanso serve` has no model); otherwise it returns an empty list and says why.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "What the notes should be about, in a few words or a sentence."
+        },
+        "limit": {
+          "default": 5,
+          "description": "How many notes to return, from 1 to 20.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
   }
 ]

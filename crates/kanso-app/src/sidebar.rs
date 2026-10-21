@@ -42,6 +42,9 @@ pub enum SidebarEvent {
     /// "Change Icon…" in a notebook's menu: the workspace opens the picker.
     ChangeBookIcon(String),
     DeleteBook(String),
+    LockBook(String),
+    RemoveBookLock(String),
+    PublishBook(String),
     RenameTag(String),
     RecolorTag(String, kanso_core::TagColor),
     DeleteTag(String),
@@ -1259,6 +1262,9 @@ impl Render for Sidebar {
                     icon: crate::book_icons::book_icon(book, cx),
                     parent,
                     open: parent && open(ix),
+                    // Locked by its own lock, or a notebook it is inside.
+                    locked: library.is_book_locked(&book.id),
+                    own_lock: book.is_locked(),
                 }
             })
             .collect();
@@ -1317,6 +1323,8 @@ impl Render for Sidebar {
             icon,
             parent,
             open,
+            locked,
+            own_lock,
         } in books
         {
             let view = cx.entity();
@@ -1332,7 +1340,15 @@ impl Render for Sidebar {
             let icon = h_flex()
                 .gap(px(4.))
                 .child(chevron)
-                .child(self.icon(icon, cx))
+                // A locked notebook shows the lock in place of its icon.
+                .child(self.icon(
+                    if locked {
+                        crate::book_icons::NotebookIcon::Lucide(Lucide::Lock)
+                    } else {
+                        icon
+                    },
+                    cx,
+                ))
                 .into_any_element();
             let row = self
                 .row(
@@ -1349,7 +1365,32 @@ impl Render for Sidebar {
                 .context_menu(move |menu, _, _| {
                     let (new, rename, delete) = (view.clone(), view.clone(), view.clone());
                     let (a, b, c) = (book_id.clone(), book_id.clone(), book_id.clone());
-                    let (reicon, d) = (view.clone(), book_id.clone());
+                    let (reicon, f) = (view.clone(), book_id.clone());
+                    let (lock, d) = (view.clone(), book_id.clone());
+                    // A notebook inside a locked one is locked with it, and
+                    // has no lock of its own to take off.
+                    let lock_item = if own_lock {
+                        Some(PopupMenuItem::new("Remove Notebook Lock…").on_click(
+                            move |_, _, cx| {
+                                lock.update(cx, |_, cx| {
+                                    cx.emit(SidebarEvent::RemoveBookLock(d.clone()))
+                                });
+                            },
+                        ))
+                    } else if !locked {
+                        Some(
+                            PopupMenuItem::new("Lock Notebook…").on_click(move |_, _, cx| {
+                                lock.update(cx, |_, cx| cx.emit(SidebarEvent::LockBook(d.clone())));
+                            }),
+                        )
+                    } else {
+                        None
+                    };
+                    let menu = match lock_item {
+                        Some(item) => menu.item(item).separator(),
+                        None => menu,
+                    };
+                    let (publish, e) = (view.clone(), book_id.clone());
                     menu.item(
                         PopupMenuItem::new("New Sub-notebook").on_click(move |_, _, cx| {
                             new.update(cx, |_, cx| {
@@ -1365,8 +1406,14 @@ impl Render for Sidebar {
                     .item(
                         PopupMenuItem::new("Change Icon…").on_click(move |_, _, cx| {
                             reicon.update(cx, |_, cx| {
-                                cx.emit(SidebarEvent::ChangeBookIcon(d.clone()))
+                                cx.emit(SidebarEvent::ChangeBookIcon(f.clone()))
                             });
+                        }),
+                    )
+                    .item(
+                        PopupMenuItem::new("Publish Notebook…").on_click(move |_, _, cx| {
+                            publish
+                                .update(cx, |_, cx| cx.emit(SidebarEvent::PublishBook(e.clone())));
                         }),
                     )
                     .separator()
@@ -1626,6 +1673,10 @@ struct BookRow {
     /// Has notebooks inside it, so it has an arrow.
     parent: bool,
     open: bool,
+    /// Locked, by its own lock or a notebook it is inside.
+    locked: bool,
+    /// Locked by a lock of its own, which can be taken off.
+    own_lock: bool,
 }
 
 /// The notebook tree's rows that show, top to bottom, from the depth of

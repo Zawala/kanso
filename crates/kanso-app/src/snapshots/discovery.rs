@@ -1,5 +1,6 @@
 //! Snapshot states for discovery: the inspector's graph and related notes,
-//! the library's graph, and Settings' related notes in each state.
+//! the library's graph, Settings' related notes in each state, and the
+//! palette finding notes by meaning.
 
 use gpui_kit::{AnyWindowHandle, Entity, HeadlessAppContext};
 use kanso_core::DocType;
@@ -282,6 +283,109 @@ pub(super) fn inspector_related(
     let notes = fake_embeddings(store);
     set_related(cx, Status::Ready { notes }, true);
     show_tab(cx, workspace, InspectorTab::Related);
+}
+
+/// [`fake_vector`] as a model, for searches by meaning.
+struct FakeModel;
+
+impl kanso_store::Embedder for FakeModel {
+    fn model(&self) -> &str {
+        MODEL_ID
+    }
+    fn dim(&self) -> usize {
+        48
+    }
+    fn embed(&self, texts: &[String]) -> Vec<Vec<f32>> {
+        texts.iter().map(|t| fake_vector(t)).collect()
+    }
+}
+
+/// ⌘P with words no note has together: the notes about them, found by
+/// meaning, the closest selected.
+pub(super) fn palette_meaning(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    link_cluster(store);
+    let notes = fake_embeddings(store);
+    store.lend_embedder(Some(std::sync::Arc::new(FakeModel)));
+    set_related(cx, Status::Ready { notes }, true);
+    super::open_palette(
+        cx,
+        window,
+        workspace,
+        crate::palette::Mode::Notes,
+        "client approval permission grants",
+    );
+    cx.advance_clock(std::time::Duration::from_millis(500));
+    cx.run_until_parked();
+    cx.update(|cx| {
+        let palette = workspace.read(cx).palette.clone();
+        palette.update(cx, |palette, cx| palette.select_first_note(cx));
+    });
+}
+
+/// Tags close notes have, as the open note's suggestions.
+fn suggest_tags(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, store: &Store) {
+    let suggested: Vec<kanso_store::TagSuggestion> = [("roadmap", 1.4), ("rust", 0.6)]
+        .into_iter()
+        .map(|(name, weight)| kanso_store::TagSuggestion {
+            tag_id: store.tag_named(name, Origin::Ui).unwrap(),
+            name: name.into(),
+            weight,
+        })
+        .collect();
+    cx.update(|cx| {
+        let meaning = workspace.read(cx).editor.read(cx).meaning().clone();
+        meaning.update(cx, |meaning, cx| {
+            meaning.set_suggested_for_test(suggested);
+            cx.notify();
+        });
+    });
+}
+
+/// The Related tab with tags to suggest above the related notes.
+pub(super) fn inspector_related_tags(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    inspector_related(cx, window, workspace, store);
+    suggest_tags(cx, workspace, store);
+}
+
+/// The tag list from the header, the suggested tags first.
+pub(super) fn palette_suggested_tags(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    suggest_tags(cx, workspace, store);
+    super::pick_from_header(cx, window, workspace, crate::commands::Picker::Tag, "");
+}
+
+/// The open note with a near twin: the quiet line under its header.
+pub(super) fn editor_twin(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| {
+        let meaning = workspace.read(cx).editor.read(cx).meaning().clone();
+        meaning.update(cx, |meaning, cx| {
+            meaning.set_duplicate_for_test(Some(kanso_store::RelatedNote {
+                id: "note:twin".into(),
+                title: "MCP support model (copy)".into(),
+                score: 0.97,
+            }));
+            cx.notify();
+        });
+    });
 }
 
 /// The Related tab while the feature is off.

@@ -2,7 +2,8 @@
 //! validates types and, for local writes, references to notebooks and tags.
 
 use kanso_core::model::{
-    MAX_BODY_LEN, MAX_NAME_LEN, MAX_TITLE_LEN, SUPPORTED_IMAGE_TYPES, TRASH_BOOK_ID,
+    MAX_BODY_LEN, MAX_NAME_LEN, MAX_TITLE_LEN, SUPPORTED_AUDIO_TYPES, SUPPORTED_IMAGE_TYPES,
+    TRASH_BOOK_ID,
 };
 use kanso_core::tasks::count_tasks;
 use kanso_core::{DocType, NoteShare, NoteStatus, TagColor};
@@ -196,7 +197,9 @@ fn normalize_file(f: &mut Map<String, Value>, refs: Refs) -> Result<()> {
         return invalid("The file needs a name of 1 to 128 characters.".into());
     }
     let content_type = string_or(f, "contentType", "")?;
-    if matches!(refs, Refs::Check(_)) && !SUPPORTED_IMAGE_TYPES.contains(&content_type.as_str()) {
+    let supported = SUPPORTED_IMAGE_TYPES.contains(&content_type.as_str())
+        || SUPPORTED_AUDIO_TYPES.contains(&content_type.as_str());
+    if matches!(refs, Refs::Check(_)) && !supported {
         return invalid(format!("Unsupported file type '{content_type}'."));
     }
     f.insert("contentType".into(), content_type.into());

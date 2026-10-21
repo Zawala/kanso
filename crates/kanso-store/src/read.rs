@@ -83,6 +83,9 @@ pub struct NoteSummary {
     /// Task-list items: how many are done, of how many.
     pub tasks_done: u32,
     pub tasks_total: u32,
+    /// Whether the note's text is sealed under the lock password, or the
+    /// note is in a locked notebook; its snippet is then empty.
+    pub locked: bool,
 }
 
 /// Note counts for the sidebar.
@@ -103,7 +106,8 @@ pub struct Revision {
     pub fields: Map<String, Value>,
 }
 
-const DOC_COLUMNS: &str = "d.id, d.type, d.rev, d.seq, d.deleted, d.json";
+const DOC_COLUMNS: &str = "d.id, d.type, d.rev, d.seq, d.deleted, d.json, \
+    d.type = 'note' AND IFNULL(d.book_id, '') IN (SELECT id FROM locked_books)";
 
 fn doc_from_row(row: &Row) -> rusqlite::Result<Doc> {
     let doc_type: String = row.get(1)?;
@@ -119,6 +123,7 @@ fn doc_from_row(row: &Row) -> rusqlite::Result<Doc> {
         seq: row.get(3)?,
         deleted: row.get(4)?,
         fields,
+        in_locked_notebook: row.get(6)?,
     })
 }
 
@@ -181,7 +186,7 @@ fn search_where(conn: &Connection, query: &Query, ocr: bool) -> Result<(String, 
     Ok((sql, params))
 }
 
-const BODY: &str = "json_extract(d.json, '$.body')";
+const BODY: &str = crate::schema::readable_body!("d.");
 
 fn bind(params: &mut Vec<SqlValue>, value: String) -> &'static str {
     params.push(SqlValue::Text(value));
@@ -294,14 +299,14 @@ impl Store {
                 return Err(StoreError::NotFound);
             }
             Ok(match doc.doc_type {
-                DocType::Note => doc.to_api(Map::new()),
+                DocType::Note => doc.to_served(Map::new()),
                 DocType::Book => {
                     let counts = count_map(conn, BOOK_COUNTS)?;
-                    doc.to_api(with_count(counts.get(id).copied().unwrap_or(0)))
+                    doc.to_served(with_count(counts.get(id).copied().unwrap_or(0)))
                 }
                 DocType::Tag => {
                     let counts = count_map(conn, TAG_COUNTS)?;
-                    doc.to_api(with_count(counts.get(id).copied().unwrap_or(0)))
+                    doc.to_served(with_count(counts.get(id).copied().unwrap_or(0)))
                 }
                 DocType::File => {
                     let blob = load_blob(conn, id)?.unwrap_or_else(|| Attachment::new(Vec::new()));
@@ -319,6 +324,25 @@ impl Store {
         limit: Option<usize>,
         skip: usize,
     ) -> Result<Vec<Value>> {
+        self.list(doc_type, limit, skip, true)
+    }
+
+    /// [`Store::list_api`], as served (`served`) or as the app reads it,
+    /// with a notebook's lock.
+    fn list(
+        &self,
+        doc_type: DocType,
+        limit: Option<usize>,
+        skip: usize,
+        served: bool,
+    ) -> Result<Vec<Value>> {
+        let shown = |doc: Doc, extra: Map<String, Value>| {
+            if served {
+                doc.to_served(extra)
+            } else {
+                doc.to_api(extra)
+            }
+        };
         self.read(|conn| {
             let order = match doc_type {
                 DocType::Book | DocType::Tag => "d.name COLLATE NOCASE, d.id",
@@ -342,14 +366,15 @@ impl Store {
             docs.into_iter()
                 .map(|doc| match doc.doc_type {
                     DocType::Book | DocType::Tag => {
-                        Ok(doc.to_api(with_count(counts.get(&doc.id).copied().unwrap_or(0))))
+                        let count = counts.get(&doc.id).copied().unwrap_or(0);
+                        Ok(shown(doc, with_count(count)))
                     }
                     DocType::File => {
                         let blob = load_blob(conn, &doc.id)?.unwrap_or_else(|| Attachment::new(Vec::new()));
                         let content_type = doc.str_field("contentType").unwrap_or_default().to_owned();
                         Ok(doc.file_to_api(&content_type, &blob, false))
                     }
-                    DocType::Note => Ok(doc.to_api(Map::new())),
+                    DocType::Note => Ok(shown(doc, Map::new())),
                 })
                 .collect()
         })
@@ -372,7 +397,7 @@ impl Store {
         Ok(self
             .search(params)?
             .into_iter()
-            .map(|doc| doc.to_api(Map::new()))
+            .map(|doc| doc.to_served(Map::new()))
             .collect())
     }
 
@@ -383,14 +408,17 @@ impl Store {
         let terms: Vec<&str> = params.query.terms_for(Field::Body).collect();
         self.read(|conn| {
             let window = if terms.is_empty() {
-                "NULL"
+                "NULL".to_owned()
             } else {
-                "kanso_window(json_extract(d.json, '$.body'), ?)"
+                format!("kanso_window({BODY}, ?)")
             };
+            let locked = crate::schema::note_locked!("d.");
+            // A note in a locked notebook counts no tasks, as a sealed one.
             let columns = format!(
-                "d.id, d.rev, d.title, substr(json_extract(d.json, '$.body'), 1, {HEAD_CHARS}), \
+                "d.id, d.rev, d.title, substr({BODY}, 1, {HEAD_CHARS}), \
                  d.book_id, d.status, json_extract(d.json, '$.tags'), d.pinned, d.updated_at, d.created_at, \
-                 {window}, json_extract(d.json, '$.numOfCheckedTasks'), json_extract(d.json, '$.numOfTasks')"
+                 {window}, CASE WHEN {locked} THEN 0 ELSE json_extract(d.json, '$.numOfCheckedTasks') END, \
+                 CASE WHEN {locked} THEN 0 ELSE json_extract(d.json, '$.numOfTasks') END, {locked}"
             );
             let (sql, mut values) = search_sql(conn, &columns, params)?;
             // The window's term comes first: its column is before the rest.
@@ -419,6 +447,7 @@ impl Store {
                     created_at: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
                     tasks_done: row.get::<_, Option<u32>>(11)?.unwrap_or(0),
                     tasks_total: row.get::<_, Option<u32>>(12)?.unwrap_or(0),
+                    locked: row.get(13)?,
                 })
             })?;
             Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -442,6 +471,101 @@ impl Store {
         self.typed(id)
     }
 
+    /// Whether note `id` is read as locked: sealed itself, or in a locked
+    /// notebook (or one inside it). `false` for no such live note.
+    pub fn note_is_locked(&self, id: &str) -> Result<bool> {
+        self.read(|conn| {
+            Ok(conn
+                .query_row(
+                    concat!(
+                        "SELECT ",
+                        crate::schema::note_locked!(""),
+                        " FROM docs WHERE id = ? AND type = 'note' AND deleted = 0"
+                    ),
+                    [id],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .unwrap_or(false))
+        })
+    }
+
+    /// Whether live note `id` is in a locked notebook (or one inside it).
+    pub fn note_in_locked_book(&self, id: &str) -> Result<bool> {
+        self.read(|conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT IFNULL(book_id, '') IN (SELECT id FROM locked_books)
+                     FROM docs WHERE id = ? AND type = 'note' AND deleted = 0",
+                    [id],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .unwrap_or(false))
+        })
+    }
+
+    /// The locked notebooks: each one whose lock is set, and every notebook
+    /// inside one.
+    pub fn locked_books(&self) -> Result<std::collections::HashSet<String>> {
+        self.read(|conn| crate::write::locked_book_ids(conn).map(|ids| ids.into_iter().collect()))
+    }
+
+    /// The live notes in locked notebooks whose text isn't sealed yet: made
+    /// there empty, or put there by another device or an older Kanso. The
+    /// app seals them once it holds the key.
+    pub fn unsealed_in_locked_books(&self) -> Result<Vec<Note>> {
+        let ids: Vec<String> = self.read(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id FROM docs WHERE type = 'note' AND deleted = 0
+                 AND json_extract(json, '$.kansoLock') IS NULL
+                 AND IFNULL(book_id, '') IN (SELECT id FROM locked_books) ORDER BY id",
+            )?;
+            let rows = stmt.query_map([], |row| row.get(0))?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })?;
+        ids.iter()
+            .filter_map(|id| self.note(id).transpose())
+            .collect()
+    }
+
+    /// The live notes in `books`, as the app reads them: what locking a
+    /// notebook seals.
+    pub fn notes_in_books(&self, books: &[String]) -> Result<Vec<Note>> {
+        let ids: Vec<String> = self.read(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id FROM docs WHERE type = 'note' AND deleted = 0 AND book_id = ? ORDER BY id",
+            )?;
+            let mut ids = Vec::new();
+            for book in books {
+                let rows = stmt.query_map([book], |row| row.get::<_, String>(0))?;
+                for id in rows {
+                    ids.push(id?);
+                }
+            }
+            Ok(ids)
+        })?;
+        ids.iter()
+            .filter_map(|id| self.note(id).transpose())
+            .collect()
+    }
+
+    /// Every live locked note, in the trash too: what changing the lock
+    /// password seals again.
+    pub fn locked_notes(&self) -> Result<Vec<Note>> {
+        let ids: Vec<String> = self.read(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id FROM docs WHERE type = 'note' AND deleted = 0
+                 AND json_extract(json, '$.kansoLock') IS NOT NULL ORDER BY id",
+            )?;
+            let rows = stmt.query_map([], |row| row.get(0))?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })?;
+        ids.iter()
+            .filter_map(|id| self.note(id).transpose())
+            .collect()
+    }
+
     pub fn file_meta(&self, id: &str) -> Result<Option<FileMeta>> {
         self.typed(id)
     }
@@ -455,7 +579,7 @@ impl Store {
 
     /// All live notebooks with note counts, sorted by name.
     pub fn books(&self) -> Result<Vec<Book>> {
-        self.list_api(DocType::Book, None, 0)?
+        self.list(DocType::Book, None, 0, false)?
             .into_iter()
             .map(|v| Ok(serde_json::from_value(v)?))
             .collect()

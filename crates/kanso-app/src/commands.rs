@@ -13,11 +13,12 @@ use crate::settings::{
     OpenEditorSettings, OpenGeneralSettings, OpenUpdateSettings, ReloadThemes,
 };
 use crate::workspace::{
-    ChangePassword, ExportHtml, ExportLibrary, ExportNote, ExportPdf, FocusNoteList, FocusSearch,
-    FormatTable, ImportLibrary, NewNote, NewNotebook, NewRecoveryKey, NextNote, OpenFile,
-    OpenNotePicker, OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes, ShowBacklinks,
-    ShowCreateAccount, ShowEditor, ShowHistory, ShowOutline, ShowPreview, ShowSignIn, ShowSplit,
-    SignOut, SyncNow, ToggleFocusMode, ToggleInspector, TogglePinned, ToggleSidebar, TrashNote,
+    ChangePassword, Dictate, ExportHtml, ExportLibrary, ExportNote, ExportPdf, FocusNoteList,
+    FocusSearch, FormatTable, ImportLibrary, NewNote, NewNotebook, NewRecoveryKey, NextNote,
+    OpenFile, OpenNotePicker, OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes,
+    ShowBacklinks, ShowCreateAccount, ShowEditor, ShowHistory, ShowOutline, ShowPreview,
+    ShowSignIn, ShowSplit, SignOut, SyncNow, ToggleFocusMode, ToggleInspector, TogglePinned,
+    ToggleSidebar, TrashNote,
 };
 
 /// The palette's sections, in the order they appear with nothing typed.
@@ -76,6 +77,10 @@ pub enum Needs {
     Note,
     /// A note is open and isn't in the trash.
     LiveNote,
+    /// A note is open, isn't in the trash and isn't locked.
+    UnlockedNote,
+    /// A locked note is open.
+    LockedNote,
     /// Settings are open, in place of the notes.
     Settings,
     /// This Mac is signed in to an account.
@@ -84,6 +89,8 @@ pub enum Needs {
     SignedOut,
     /// The cursor is on a line that is only an image, in the note's text.
     ImageLine,
+    /// The cursor is on a line that links to an audio attachment.
+    AudioLine,
 }
 
 pub struct Command {
@@ -320,6 +327,25 @@ static COMMANDS: &[Command] = &[
         needs: Needs::ImageLine,
     },
     Command {
+        id: "transcribe-recording",
+        label: "Transcribe recording",
+        label_when_pinned: None,
+        description: "Turns the recording linked on the cursor's line into text, on this device, and puts it under the recording.",
+        icon: IconName::Mic,
+        keywords: &[
+            "audio",
+            "voice",
+            "memo",
+            "speech",
+            "text",
+            "transcript",
+            "dictation",
+        ],
+        group: Group::Note,
+        run: action!(crate::transcribe::TranscribeAudio),
+        needs: Needs::AudioLine,
+    },
+    Command {
         id: "word-goal",
         label: "Set word goal…",
         label_when_pinned: None,
@@ -328,6 +354,24 @@ static COMMANDS: &[Command] = &[
         keywords: &["target", "count", "words", "progress", "focus"],
         group: Group::Note,
         run: Run::Pick(Picker::WordGoal),
+        needs: Needs::LiveNote,
+    },
+    Command {
+        id: "voice-input",
+        label: "Voice input",
+        label_when_pinned: None,
+        description: "Starts listening; again writes what you said at the cursor. Esc drops it.",
+        icon: IconName::Mic,
+        keywords: &[
+            "dictate",
+            "dictation",
+            "speak",
+            "speech",
+            "microphone",
+            "transcribe",
+        ],
+        group: Group::Note,
+        run: action!(Dictate),
         needs: Needs::LiveNote,
     },
     Command {
@@ -373,6 +417,106 @@ static COMMANDS: &[Command] = &[
         group: Group::Note,
         run: action!(crate::publish::PublishNote),
         needs: Needs::Note,
+    },
+    Command {
+        id: "publish-notebook",
+        label: "Publish notebook…",
+        label_when_pinned: None,
+        description: "Puts the notebook the list shows at one link, as a small site with a page for each note and links between them. Locked notes stay out.",
+        icon: IconName::Globe,
+        keywords: &[
+            "publish",
+            "notebook",
+            "site",
+            "website",
+            "share",
+            "link",
+            "web",
+            "unpublish",
+        ],
+        group: Group::Note,
+        run: action!(crate::publish_site::PublishNotebook),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "lock",
+        label: "Lock note…",
+        label_when_pinned: None,
+        description: "Keeps the note's text sealed with your lock password, on this device and in sync. Its earlier versions are deleted; search, backlinks and tasks skip it while it's locked.",
+        icon: IconName::Lock,
+        keywords: &["lock", "password", "encrypt", "private", "secret", "hide"],
+        group: Group::Note,
+        run: action!(crate::locked::LockNote),
+        needs: Needs::UnlockedNote,
+    },
+    Command {
+        id: "remove-lock",
+        label: "Remove lock…",
+        label_when_pinned: None,
+        description: "Keeps the note's text as plain text again, so search, backlinks and tasks see it.",
+        icon: IconName::LockOpen,
+        keywords: &["unlock", "lock", "password", "decrypt"],
+        group: Group::Note,
+        run: action!(crate::locked::RemoveLock),
+        needs: Needs::LockedNote,
+    },
+    Command {
+        id: "lock-now",
+        label: "Lock notes now",
+        label_when_pinned: None,
+        description: "Closes every locked note until the lock password is typed again. Kanso also does this after 10 minutes without using one.",
+        icon: IconName::LockKeyhole,
+        keywords: &["lock", "close", "hide", "away"],
+        group: Group::Note,
+        run: action!(crate::locked::LockNotesNow),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "lock-password",
+        label: "Change lock password…",
+        label_when_pinned: None,
+        description: "Seals every locked note again with a new lock password.",
+        icon: IconName::LockKeyhole,
+        keywords: &["lock", "password", "change", "rekey"],
+        group: Group::Note,
+        run: action!(crate::locked::ChangeLockPassword),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "touch-id-on",
+        label: concat!("Unlock locked notes with ", crate::touch_id::unlock_name!()),
+        label_when_pinned: None,
+        description: concat!(
+            "Once ",
+            crate::touch_id::unlock_name!(),
+            " says it's you, keeps the lock keys in this device's ",
+            crate::touch_id::secret_store_name!(),
+            " so it opens locked notes here. The lock password still works, and other devices need it."
+        ),
+        icon: IconName::FingerprintPattern,
+        keywords: crate::touch_id::KEYWORDS,
+        group: Group::Note,
+        run: action!(crate::locked::TurnOnTouchId),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "touch-id-off",
+        label: concat!(
+            "Stop using ",
+            crate::touch_id::unlock_name!(),
+            " for locked notes"
+        ),
+        label_when_pinned: None,
+        description: concat!(
+            "Forgets the lock keys kept for ",
+            crate::touch_id::unlock_name!(),
+            " on this device; locked notes open with the lock password again."
+        ),
+        icon: IconName::FingerprintPattern,
+        keywords: crate::touch_id::KEYWORDS,
+        group: Group::Note,
+        run: action!(crate::locked::TurnOffTouchId),
+        needs: Needs::Nothing,
     },
     Command {
         id: "export-pdf",
@@ -530,6 +674,30 @@ static COMMANDS: &[Command] = &[
         needs: Needs::Nothing,
     },
     Command {
+        id: "show-board",
+        label: "Show board",
+        label_when_pinned: None,
+        description: "Lays out the notes the list shows in a column per status. Drag a card to another column, or move it with ⇧← and ⇧→, to change its status.",
+        icon: IconName::SquareKanban,
+        keywords: &["board", "kanban", "columns", "status", "cards", "drag"],
+        group: Group::View,
+        run: action!(crate::board_view::ShowBoard),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "show-task-board",
+        label: "Show tasks board",
+        label_when_pinned: None,
+        description: "Lays out the tasks in the notes the list shows as To do and Done. Dragging a task to Done ticks it off in its note.",
+        icon: IconName::SquareKanban,
+        keywords: &[
+            "board", "kanban", "tasks", "to do", "todo", "done", "columns",
+        ],
+        group: Group::View,
+        run: action!(crate::board_view::ShowTaskBoard),
+        needs: Needs::Nothing,
+    },
+    Command {
         id: "show-local-graph",
         label: "Show note's graph",
         label_when_pinned: None,
@@ -572,6 +740,17 @@ static COMMANDS: &[Command] = &[
         keywords: &["daily", "journal", "date", "diary"],
         group: Group::GoTo,
         run: action!(OpenToday),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "journal-calendar",
+        label: "Journal calendar…",
+        label_when_pinned: None,
+        description: "Shows a month with the days that have a daily note marked. Click a day to open its note, or to start it from the daily template.",
+        icon: IconName::CalendarDays,
+        keywords: &["daily", "journal", "calendar", "month", "date", "diary"],
+        group: Group::GoTo,
+        run: action!(crate::calendar_view::ShowCalendar),
         needs: Needs::Nothing,
     },
     Command {

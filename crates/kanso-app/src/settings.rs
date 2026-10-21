@@ -1002,7 +1002,8 @@ fn editor_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
         ],
         colors,
     ),
-    writing_section(cx)]
+    writing_section(cx),
+    crate::settings_voice::section(cx)]
 }
 
 /// Settings › Editor › Writing: the aids that act as you type.
@@ -1587,11 +1588,11 @@ fn value_text(text: impl Into<SharedString>, colors: &Colors) -> Div {
         .child(text.into())
 }
 
-/// Three choices side by side, the current one selected.
+/// A few choices side by side, the current one selected.
 // no-prop-test: drawing and a click; the UI tests click it.
-fn segmented<T: Copy + PartialEq + 'static>(
+pub(crate) fn segmented<T: Copy + PartialEq + 'static, const N: usize>(
     id: &'static str,
-    options: [(&'static str, T); 3],
+    options: [(&'static str, T); N],
     current: T,
     on_pick: fn(T, &mut Window, &mut App),
     colors: &Colors,

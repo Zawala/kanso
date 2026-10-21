@@ -234,12 +234,14 @@ impl Store {
     /// notes worked on most recently are embedded first.
     pub fn embedding_queue(&self, model: &str) -> Result<EmbeddingQueue> {
         self.read(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT d.id, d.title, json_extract(d.json, '$.body'), e.content_hash
+            let mut stmt = conn.prepare(concat!(
+                "SELECT d.id, d.title, ",
+                crate::schema::readable_body!("d."),
+                ", e.content_hash
                  FROM docs d LEFT JOIN note_embeddings e ON e.note_id = d.id AND e.model = ?1
                  WHERE d.type = 'note' AND d.deleted = 0 AND IFNULL(d.book_id, '') != 'trash'
-                 ORDER BY d.updated_at DESC, d.id",
-            )?;
+                 ORDER BY d.updated_at DESC, d.id"
+            ))?;
             let mut rows = stmt.query([model])?;
             let mut queue = EmbeddingQueue::default();
             while let Some(row) = rows.next()? {
@@ -279,7 +281,25 @@ impl Store {
                  ON CONFLICT (note_id, model) DO UPDATE SET dim = excluded.dim,
                      vector = excluded.vector, content_hash = excluded.content_hash",
             )?;
+            // The words as the note reads now: one locked (or edited) since
+            // the queue was read keeps no vector made from its old words.
+            let mut now = tx.prepare_cached(concat!(
+                "SELECT title, ",
+                crate::schema::readable_body!(""),
+                " FROM docs WHERE id = ? AND type = 'note' AND deleted = 0"
+            ))?;
             for (id, hash, vector) in rows {
+                let current = now
+                    .query_row([id], |row| {
+                        Ok(content_hash(&embed_text(
+                            row.get::<_, Option<String>>(0)?.as_deref().unwrap_or(""),
+                            row.get::<_, Option<String>>(1)?.as_deref().unwrap_or(""),
+                        )))
+                    })
+                    .optional()?;
+                if current.as_deref() != Some(hash.as_str()) {
+                    continue;
+                }
                 stmt.execute(params![
                     id,
                     model,
@@ -315,58 +335,83 @@ impl Store {
         k: usize,
     ) -> Result<Option<Vec<RelatedNote>>> {
         self.read(|conn| {
-            let own: Option<(i64, Vec<u8>)> = conn
-                .query_row(
-                    "SELECT dim, vector FROM note_embeddings WHERE note_id = ? AND model = ?",
-                    params![id, model],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .optional()?;
-            let Some(query) = own.and_then(|(dim, v)| decode_vector(&v, dim as usize)) else {
+            let Some(query) = own_vector(conn, id, model)? else {
                 return Ok(None);
             };
             let mut skip = linked_notes(conn, id)?;
             skip.insert(id.to_owned());
-            let mut stmt = conn.prepare(
-                "SELECT d.id, d.title, e.dim, e.vector FROM note_embeddings e
-                 JOIN docs d ON d.id = e.note_id
-                 WHERE e.model = ? AND d.deleted = 0 AND IFNULL(d.book_id, '') != 'trash'",
-            )?;
-            let mut rows = stmt.query([model])?;
-            let mut candidates: Vec<(String, String, Vec<f32>)> = Vec::new();
-            while let Some(row) = rows.next()? {
-                let note: String = row.get(0)?;
-                if skip.contains(&note) {
-                    continue;
-                }
-                let dim: i64 = row.get(2)?;
-                let bytes: Vec<u8> = row.get(3)?;
-                if let Some(vector) = decode_vector(&bytes, dim as usize) {
-                    let title: Option<String> = row.get(1)?;
-                    candidates.push((note, title.unwrap_or_default(), vector));
-                }
-            }
-            let best = top_k(
-                &query,
-                candidates
-                    .iter()
-                    .map(|(id, _, v)| (id.as_str(), v.as_slice())),
-                k,
-            );
-            Ok(Some(
-                best.into_iter()
-                    .map(|(id, score)| {
-                        let title = candidates
-                            .iter()
-                            .find(|(c, _, _)| *c == id)
-                            .map(|(_, t, _)| t.clone())
-                            .unwrap_or_default();
-                        RelatedNote { id, title, score }
-                    })
-                    .collect(),
-            ))
+            let candidates = embedded_notes(conn, model, &skip, false)?;
+            Ok(Some(nearest(&query, &candidates, k)))
         })
     }
+}
+
+/// Note `id`'s embedding by `model`, if it has one.
+pub(crate) fn own_vector(conn: &Connection, id: &str, model: &str) -> Result<Option<Vec<f32>>> {
+    let own: Option<(i64, Vec<u8>)> = conn
+        .query_row(
+            "SELECT dim, vector FROM note_embeddings WHERE note_id = ? AND model = ?",
+            params![id, model],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    Ok(own.and_then(|(dim, v)| decode_vector(&v, dim as usize)))
+}
+
+/// A note with an embedding: its ID, title and vector.
+pub(crate) type Embedded = (String, String, Vec<f32>);
+
+/// The live notes outside the trash with an embedding by `model`, apart
+/// from those in `skip`, and apart from locked notes when `unlocked_only`
+/// (their embedding is made from the title alone).
+pub(crate) fn embedded_notes(
+    conn: &Connection,
+    model: &str,
+    skip: &HashSet<String>,
+    unlocked_only: bool,
+) -> Result<Vec<Embedded>> {
+    let mut stmt = conn.prepare(
+        "SELECT d.id, d.title, e.dim, e.vector FROM note_embeddings e
+         JOIN docs d ON d.id = e.note_id
+         WHERE e.model = ?1 AND d.deleted = 0 AND IFNULL(d.book_id, '') != 'trash'
+             AND (?2 = 0 OR json_extract(d.json, '$.kansoLock') IS NULL)",
+    )?;
+    let mut rows = stmt.query(params![model, unlocked_only])?;
+    let mut candidates = Vec::new();
+    while let Some(row) = rows.next()? {
+        let note: String = row.get(0)?;
+        if skip.contains(&note) {
+            continue;
+        }
+        let dim: i64 = row.get(2)?;
+        let bytes: Vec<u8> = row.get(3)?;
+        if let Some(vector) = decode_vector(&bytes, dim as usize) {
+            let title: Option<String> = row.get(1)?;
+            candidates.push((note, title.unwrap_or_default(), vector));
+        }
+    }
+    Ok(candidates)
+}
+
+/// The `k` of `candidates` nearest `query`, most similar first.
+pub(crate) fn nearest(query: &[f32], candidates: &[Embedded], k: usize) -> Vec<RelatedNote> {
+    let best = top_k(
+        query,
+        candidates
+            .iter()
+            .map(|(id, _, v)| (id.as_str(), v.as_slice())),
+        k,
+    );
+    best.into_iter()
+        .map(|(id, score)| {
+            let title = candidates
+                .iter()
+                .find(|(c, _, _)| *c == id)
+                .map(|(_, t, _)| t.clone())
+                .unwrap_or_default();
+            RelatedNote { id, title, score }
+        })
+        .collect()
 }
 
 #[cfg(test)]

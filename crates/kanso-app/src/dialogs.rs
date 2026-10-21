@@ -117,7 +117,7 @@ fn prompt(
         let on_ok = on_ok.clone();
         alert
             .title(title.clone())
-            .child(Input::new(&input))
+            .child(Input::new(&input).when(masked, |input| input.mask_toggle()))
             .show_cancel(true)
             .ok_text(ok_label.clone())
             .on_ok(move |_, window, cx| {
@@ -474,7 +474,12 @@ impl Render for FormView {
                 .child(
                     div()
                         .debug_selector(move || format!("form-field-{ix}"))
-                        .child(Input::new(input).disabled(running)),
+                        // Masked fields can be shown while typing, to check them.
+                        .child(
+                            Input::new(input)
+                                .disabled(running)
+                                .when(field.masked, |input| input.mask_toggle()),
+                        ),
                 )
                 .when_some(field.hint.clone(), |el, hint| {
                     el.child(

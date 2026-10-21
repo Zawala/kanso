@@ -744,3 +744,219 @@ async fn the_local_api_never_sets_a_notes_published_link() {
     let (_, doc) = get(&app.router, &format!("/{id}")).await;
     assert_eq!(doc["title"], "merged");
 }
+
+#[tokio::test]
+async fn the_local_api_never_sets_a_notebooks_published_link() {
+    let app = app();
+    let planted = json!({ "shareId": "AAAAAAAAAAAAAAAAAAAAAA", "key": "attacker-key", "publishedAt": 2, "publishedRev": "" });
+    // Made through the API: a link it is given is dropped, and a merge can't add one.
+    let (id, _) = write(
+        &app.router,
+        "/books",
+        json!({ "name": "Site", "kansoPublish": planted }),
+    )
+    .await;
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert!(doc.get("kansoPublish").is_none(), "{doc}");
+    write(
+        &app.router,
+        &format!("/{id}"),
+        json!({ "kansoPublish": planted }),
+    )
+    .await;
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert!(doc.get("kansoPublish").is_none(), "{doc}");
+    // Published by the app: renames through the API keep the app's value.
+    app.store
+        .put(
+            kanso_core::DocType::Book,
+            json!({ "_id": id, "kansoPublish": published() }),
+            kanso_store::Put::Merge,
+            kanso_store::Origin::Ui,
+        )
+        .unwrap();
+    for body in [
+        json!({ "kansoPublish": planted, "name": "Renamed" }),
+        json!({ "kansoPublish": null }),
+    ] {
+        write(&app.router, &format!("/{id}"), body).await;
+        let (_, doc) = get(&app.router, &format!("/{id}")).await;
+        assert_eq!(doc["kansoPublish"], published(), "{doc}");
+    }
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["name"], "Renamed");
+}
+
+#[tokio::test]
+async fn a_locked_note_keeps_its_sealed_text_from_the_local_api() {
+    let app = app();
+    let sealed = json!({ "v": 1, "salt": "c2FsdA", "m": 64, "t": 1, "p": 1, "data": "sealed" });
+    let (id, _) = app_note(&app, json!({ "bookId": "trash", "title": "t", "body": "" }));
+    let note = app.store.get_api(&id, None, false).unwrap();
+    let mut locked = note.clone();
+    locked["kansoLock"] = sealed.clone();
+    app.store.lock_note(locked).unwrap();
+
+    // Read with an empty body and without the sealed text, which would let
+    // a client guess the password offline; a replace keeps the lock.
+    let sealed_kept = |store: &kanso_store::Store| {
+        store
+            .note(&id)
+            .unwrap()
+            .unwrap()
+            .extra
+            .get("kansoLock")
+            .cloned()
+    };
+    let (_, mut doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["body"], "");
+    assert!(doc.get("kansoLock").is_none(), "{doc}");
+    doc["title"] = "retitled".into();
+    write(&app.router, "/notes", doc).await;
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["title"], "retitled");
+    assert!(doc.get("kansoLock").is_none());
+    assert_eq!(sealed_kept(&app.store), Some(sealed.clone()));
+
+    // Text can't go beside the lock, the lock can't be taken off, and the
+    // note can't be deleted outright.
+    for body in [
+        json!({ "body": "plain" }),
+        json!({ "kansoLock": null, "body": "plain" }),
+    ] {
+        let (status, _) = post(&app.router, &format!("/{id}"), body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let (status, _) = call(&app.router, Method::DELETE, &format!("/{id}"), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["body"], "");
+    assert_eq!(sealed_kept(&app.store), Some(sealed));
+    // Nor does the changes feed carry it.
+    let (_, feed) = get(&app.router, "/_changes?include_docs=true").await;
+    assert!(feed.to_string().contains(&id), "{feed}");
+    assert!(!feed.to_string().contains("c2FsdA"), "{feed}");
+}
+
+#[tokio::test]
+async fn a_locked_notebook_keeps_its_notes_text_and_its_lock_from_the_local_api_and_mcp() {
+    let app = app();
+    let lock = json!({ "v": 1, "salt": "c2FsdA", "m": 64, "t": 1, "p": 1, "data": "notebook" });
+    let (book, _) = write(&app.router, "/books", json!({ "name": "Private" })).await;
+    let (inner, _) = write(
+        &app.router,
+        "/books",
+        json!({ "name": "Deeper", "parentBookId": book }),
+    )
+    .await;
+    let (id, _) = write(
+        &app.router,
+        "/notes",
+        json!({ "bookId": inner, "title": "Plans", "body": "zebracanary4471" }),
+    )
+    .await;
+    // Locked on another device, before this note was sealed here.
+    let mut locked = app.store.get_api(&book, None, false).unwrap();
+    locked.as_object_mut().unwrap().remove("count");
+    locked["kansoLock"] = lock.clone();
+    app.store
+        .put(
+            kanso_core::DocType::Book,
+            locked,
+            kanso_store::Put::Upsert,
+            kanso_store::Origin::Sync,
+        )
+        .unwrap();
+
+    // The note reads with an empty body everywhere, MCP included.
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["body"], "");
+    assert_eq!(doc["title"], "Plans");
+    for uri in [
+        "/notes?keyword=zebracanary4471".to_owned(),
+        "/notes".to_owned(),
+        "/_changes?include_docs=true".to_owned(),
+    ] {
+        let (_, found) = get(&app.router, &uri).await;
+        assert!(
+            !found.to_string().contains("zebracanary4471"),
+            "{uri}: {found}"
+        );
+    }
+    for (name, arguments) in [
+        ("read-note", json!({ "noteId": id })),
+        ("search-notes", json!({ "keyword": "Plans" })),
+        ("list-notes", json!({ "bookId": inner })),
+    ] {
+        let answer = tool(&app.router, name, arguments).await;
+        assert!(answer.to_string().contains("Plans"), "{name}: {answer}");
+        assert!(
+            !answer.to_string().contains("zebracanary4471"),
+            "{name}: {answer}"
+        );
+    }
+    // Nor is its text changed, emptied, moved out or deleted from here.
+    for (uri, body) in [
+        (format!("/{id}"), json!({ "body": "replaced" })),
+        (format!("/{id}"), json!({ "body": "" })),
+        (format!("/{id}"), json!({ "bookId": "trash" })),
+        (
+            "/notes".to_owned(),
+            json!({ "bookId": book, "title": "New", "body": "plain" }),
+        ),
+    ] {
+        let (status, _) = post(&app.router, &uri, body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{uri}");
+    }
+    let (status, _) = call(&app.router, Method::DELETE, &format!("/{id}"), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // The notebook's lock never goes out, can't be taken off or planted,
+    // and the notebook can't be deleted from here.
+    for uri in [format!("/{book}"), "/books".to_owned()] {
+        let (_, doc) = get(&app.router, &uri).await;
+        assert!(!doc.to_string().contains("c2FsdA"), "{uri}: {doc}");
+    }
+    write(
+        &app.router,
+        &format!("/{book}"),
+        json!({ "kansoLock": null, "name": "Renamed" }),
+    )
+    .await;
+    assert_eq!(
+        app.store
+            .get(&book)
+            .unwrap()
+            .unwrap()
+            .fields
+            .get("kansoLock"),
+        Some(&lock)
+    );
+    write(
+        &app.router,
+        &format!("/{inner}"),
+        json!({ "kansoLock": { "v": 1, "salt": "planted", "m": 64, "t": 1, "p": 1, "data": "x" } }),
+    )
+    .await;
+    assert!(
+        app.store
+            .get(&inner)
+            .unwrap()
+            .unwrap()
+            .fields
+            .get("kansoLock")
+            .is_none()
+    );
+    for target in [&book, &inner] {
+        let (status, _) = call(&app.router, Method::DELETE, &format!("/{target}"), None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    assert!(
+        app.store
+            .note(&id)
+            .unwrap()
+            .unwrap()
+            .body
+            .contains("zebracanary4471")
+    );
+}

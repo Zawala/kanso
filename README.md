@@ -10,6 +10,9 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
   indent with Tab; tables line up as you edit them.
 - Smart paste turns a pasted link into Markdown and keeps code as code; ⇧⌘V pastes plain text.
 - Typewriter scrolling, a word goal per note, focus mode, and optional Vim keys.
+- Voice input: press the mic, speak, and the words go in at the cursor. It runs on your device
+  with NVIDIA's Parakeet model (25 languages, downloaded once on first use), or with your
+  system's own dictation.
 
 **Linking**
 - `[[Wiki-links]]` with autocomplete, backlinks with their context, unlinked mentions, and an
@@ -36,6 +39,14 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
 **Sharing**
 - Export a note as a web page or PDF, or publish it as an end-to-end encrypted link: the key
   stays in the link, so the server only holds ciphertext.
+
+**Locked notes**
+- Lock a note with a password (**Lock note…** in the palette or the Note menu). Its text is sealed
+  on this device, stays sealed in sync, and opens on your other devices with the same password.
+- Lock a whole notebook, and every note in it and in the notebooks inside it is locked, now and
+  when notes go in later.
+- Unlock them with Touch ID on a Mac that has it, or Windows Hello on Windows, with the password as
+  the fallback.
 
 **Sync, agents and the rest**
 - **End-to-end encrypted sync.** An account on a Cloudflare Worker keeps your devices in step.
@@ -149,6 +160,70 @@ accounts only when its owner opens sign-ups. Published notes open on `share.kans
 [cloud/](cloud/README.md) to your Cloudflare account and choose **Use a different server…** before
 creating the account. An account belongs to its server's address, so pick the final URL first.
 
+### Locked notes
+
+**Lock note…** (palette, or the Note menu) seals the open note's text with your lock password. The
+first time, Kanso asks you to set one, at least 8 characters; on another device, or once notes are
+locked, it asks for that password instead. **Kanso can't recover a forgotten lock password**, and the
+notes locked with it can't be read without it.
+
+Once you type the password, the notes locked with it open until **Lock notes now**, quitting, or ten
+minutes without opening or saving one. **Remove lock…** keeps a note's text as plain text again, and
+**Change lock password…** seals every locked note again with a new password.
+
+**Touch ID** (macOS): once you've typed the lock password, Kanso offers to unlock with Touch ID
+instead; **Unlock locked notes with Touch ID** in the palette or the Note menu turns it on at any time,
+and **Stop using Touch ID for locked notes** turns it off. With it on, Unlock asks for a fingerprint
+and falls back to the password if you cancel. The lock password still exists and still works: it's
+what other devices and Macs without Touch ID use. Touch ID unlocks the lock *keys*, which Kanso keeps
+in this Mac's login Keychain (never the password itself) and reads only after a fingerprint; macOS
+doesn't enforce the fingerprint on the Keychain item, so this guards against someone using your
+unlocked Mac, not against software running as you. Changing the lock password replaces the kept key.
+
+**Windows Hello** (Windows) works the same way, with the same commands named for it: **Unlock locked
+notes with Windows Hello** and **Stop using Windows Hello for locked notes**. Windows Hello accepts
+your face, a fingerprint or your Windows Hello PIN, never the Windows password, and Kanso's lock
+password stays the fallback. The kept lock keys go into the Windows Credential Manager, which only
+your signed-in Windows account can read; as on a Mac, that guards against someone using your
+unlocked PC, not against software running as you. Linux has no such unlock: locked notes open with
+the lock password there.
+
+**Locked notebooks.** Right-click a notebook and choose **Lock Notebook…**: every note in it, and in
+the notebooks inside it, is sealed with your lock password, and so is a note made there or moved in
+later. Opening a locked notebook asks for the password (or Touch ID, or Windows Hello) once, and its
+notes stay open until they lock again with the others. A locked notebook shows a lock in the sidebar.
+
+- A note locked on its own before keeps its own seal, and opens with the password it was locked with.
+- A note moved out of a locked notebook stays locked; **Remove lock…** makes it plain again. Inside a
+  locked notebook, a note can't have its lock removed.
+- **Remove Notebook Lock…** (after opening the notebook) stops locking the notes put there later. The
+  notes in it now stay locked, so no text turns plain without you asking for that note.
+- The notebook's lock syncs inside its own encrypted document, like a note's. A note another device
+  puts there without sealing it (one running an older Kanso, say) is kept from search, the local API
+  and related notes here, and is sealed the next time you open the notebook.
+- The local API and MCP read every note in a locked notebook with an empty body. They can't write text
+  into one, change or empty a note's text there, move a note's plain text out, lock or unlock the
+  notebook, or delete the notebook or its notes outright.
+- **Change lock password…** moves locked notebooks to the new password too.
+
+What locking does and doesn't do:
+
+- The text is sealed with XChaCha20-Poly1305 under a key Argon2id derives from the password (256 MiB,
+  three passes), bound to the note, and kept in the note itself (`kansoLock`). The note's body in the
+  database is empty, so search, backlinks, tasks, reminders, related notes and the local API (REST
+  and MCP) never see it. Sync carries the sealed text inside the note's own encrypted document.
+- Locking deletes the note's earlier versions, its embedding and the search index's words, and SQLite
+  overwrites the space they took. Daily backups made before you locked it still hold the text until
+  they are replaced, after 14 days.
+- The title, notebook, tags, status and dates stay visible, and pictures and files attached to a
+  locked note aren't sealed.
+- The local API reads a locked note with an empty body. It can move, retitle or tag the note, but
+  can't change its text, take the lock off, or delete it outright (moving it to the trash still works).
+- Export All Notes leaves locked notes, and the notes in locked notebooks, out, and none of them can
+  be published.
+- Every device needs this version of Kanso: an older one shows a locked note as empty, and doesn't
+  know a notebook is locked, so a note it makes there stays plain until this version seals it.
+
 ### Icon packs
 
 **Browse Icon Packs…** (Settings › Themes, the palette, or **Get More Icons…** in a notebook's icon
@@ -252,4 +327,8 @@ Contributions are welcome. By opening a pull request you agree that your contrib
 under the same terms.
 
 Kanso's dependencies keep their own licences (MIT, Apache-2.0, BSD and similar; a few files under
-MPL-2.0).
+MPL-2.0). The models Kanso downloads on request keep theirs: voice input's
+[Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) by NVIDIA is
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), in istupakov's
+[ONNX conversion](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx); related notes'
+[potion-base-8M](https://huggingface.co/minishlab/potion-base-8M) is MIT.

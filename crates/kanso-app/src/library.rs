@@ -120,6 +120,40 @@ fn recent_notes(
     }
 }
 
+/// The notes a list of `filter` shows for `params`: Recent's newest first,
+/// the rest pinned first, and only the pinned ones when `pinned_only`.
+/// The note list and the board read their notes through this.
+pub fn list_notes(
+    store: &Store,
+    filter: &Filter,
+    params: &SearchParams,
+    pinned_only: bool,
+    recent_since: i64,
+) -> Result<Vec<NoteSummary>, StoreError> {
+    let mut notes = match filter {
+        Filter::Recent => recent_notes(store, params, recent_since)?,
+        _ => {
+            let mut notes = store.search_summaries(params)?;
+            pinned_first(&mut notes);
+            notes
+        }
+    };
+    if pinned_only || *filter == Filter::Pinned {
+        notes.retain(|note| note.pinned);
+    }
+    Ok(notes)
+}
+
+/// The place a board lays out for the list's `filter`: the same notebook
+/// or tag, but every status, since the board's columns are the statuses.
+/// Tasks and the trash have no board of their own; theirs is all notes.
+pub fn board_scope(filter: &Filter) -> Filter {
+    match filter {
+        Filter::Status(_) | Filter::Tasks | Filter::Trash => Filter::All,
+        other => other.clone(),
+    }
+}
+
 pub enum LibraryEvent {
     /// The selected note changed: `asked` when someone picked it, rather
     /// than the app on its own (the first note of a new list, the last note
@@ -253,18 +287,16 @@ impl Library {
         let now =
             kanso_core::dates::DateTime::from_local_ms(Clock::local_ms(cx, Clock::now_ms(cx)));
         let task = cx.background_executor().spawn(async move {
-            let mut notes = match filter {
+            let notes = match filter {
                 Filter::Tasks => None,
-                Filter::Recent => Some(recent_notes(&store, &params, recent_since)?),
-                _ => {
-                    let mut notes = store.search_summaries(&params)?;
-                    pinned_first(&mut notes);
-                    Some(notes)
-                }
+                _ => Some(list_notes(
+                    &store,
+                    &filter,
+                    &params,
+                    pinned_only,
+                    recent_since,
+                )?),
             };
-            if pinned_only && let Some(notes) = &mut notes {
-                notes.retain(|note| note.pinned);
-            }
             let recent = match &notes {
                 Some(notes) if recent_is_listed => u32::try_from(notes.len()).unwrap_or(u32::MAX),
                 _ => store.count_recent(recent_since)?,
@@ -448,6 +480,12 @@ impl Library {
         book_path(id, &self.books)
     }
 
+    /// Whether notebook `id` is locked: by its own lock, or by one of the
+    /// notebooks it is inside.
+    pub fn is_book_locked(&self, id: &str) -> bool {
+        is_book_locked(id, &self.books)
+    }
+
     /// Whether the notebooks inside `id` hold notes, though it may have
     /// none of its own.
     pub fn has_notes_inside(&self, id: &str) -> bool {
@@ -493,7 +531,12 @@ impl Library {
     }
 
     pub fn filter_title(&self) -> String {
-        match &self.filter {
+        self.title_of(&self.filter)
+    }
+
+    /// A place's name, as the list's title says it.
+    pub fn title_of(&self, filter: &Filter) -> String {
+        match filter {
             Filter::All => "All Notes".into(),
             Filter::Pinned => "Pinned".into(),
             Filter::Recent => "Recent".into(),
@@ -527,6 +570,31 @@ pub fn book_path<'a>(id: &str, books: &'a [Book]) -> Vec<&'a Book> {
     }
     path.reverse();
     path
+}
+
+/// Whether notebook `id` is locked: by its own lock, or by one of the
+/// notebooks it is inside (`kanso_store`'s `locked_books`, from the books
+/// the app has).
+pub fn is_book_locked(id: &str, books: &[Book]) -> bool {
+    book_path(id, books).iter().any(|book| book.is_locked())
+}
+
+/// Notebook `id` and every notebook inside it, at any depth: what locking
+/// it seals. Should the notebooks form a cycle, each is taken once.
+pub fn book_subtree(id: &str, books: &[Book]) -> Vec<String> {
+    let mut found = vec![id.to_owned()];
+    let mut i = 0;
+    while i < found.len() {
+        for book in books {
+            if book.parent_book_id.as_deref() == Some(found[i].as_str())
+                && !found.contains(&book.id)
+            {
+                found.push(book.id.clone());
+            }
+        }
+        i += 1;
+    }
+    found
 }
 
 /// Whether a notebook inside `id`, at any depth, has notes of its own. A
@@ -598,8 +666,8 @@ pub fn book_tree(books: &[Book]) -> Vec<(usize, &Book)> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Filter, book_path, book_tree, has_notes_inside, pinned_first, recent_first, recent_notes,
-        refine_status, search_params,
+        Filter, book_path, book_subtree, book_tree, has_notes_inside, is_book_locked, pinned_first,
+        recent_first, recent_notes, refine_status, search_params,
     };
     use kanso_core::{Book, NoteFacts, NoteStatus, Query};
     use kanso_store::{NoteSummary, Sort};
@@ -719,6 +787,45 @@ mod tests {
             }
         }
 
+        /// Model: a notebook is inside a notebook's subtree exactly when the
+        /// second is on the first one's path up to the top, cycles and
+        /// missing parents included; and a notebook is locked exactly when
+        /// a notebook on its path has a lock, which is when it is in the
+        /// subtree of some notebook with a lock: locking that one seals it.
+        #[test]
+        fn prop_a_locked_notebook_reaches_every_notebook_inside_it(
+            specs in prop::collection::vec((prop::option::of(0usize..12), any::<bool>()), 1..10),
+            target in any::<prop::sample::Index>(),
+        ) {
+            let books: Vec<Book> = specs
+                .iter()
+                .enumerate()
+                .map(|(ix, (parent, locked))| {
+                    let mut b = book(ix, *parent, "b");
+                    if *locked {
+                        b.extra.insert(kanso_core::model::LOCK_FIELD.into(), serde_json::json!({}));
+                    }
+                    b
+                })
+                .collect();
+            let root = &books[target.index(books.len())].id;
+            let inside = book_subtree(root, &books);
+            prop_assert_eq!(inside.first(), Some(root));
+            for b in &books {
+                let below = book_path(&b.id, &books).iter().any(|on| &on.id == root);
+                prop_assert_eq!(inside.contains(&b.id), below, "{}", b.id);
+                let by_subtree = books
+                    .iter()
+                    .filter(|lock| lock.is_locked())
+                    .any(|lock| book_subtree(&lock.id, &books).contains(&b.id));
+                prop_assert_eq!(is_book_locked(&b.id, &books), by_subtree, "{}", b.id);
+            }
+            prop_assert_eq!(
+                inside.len(),
+                inside.iter().collect::<std::collections::HashSet<_>>().len()
+            );
+        }
+
         /// Model: a notebook holds notes inside it exactly when some other
         /// notebook with notes has it on its path up to the top. The path
         /// walks parents bottom-up; the function walks children top-down.
@@ -808,6 +915,7 @@ mod tests {
             created_at: 0,
             tasks_done: 0,
             tasks_total: 0,
+            locked: false,
         }
     }
 

@@ -15,7 +15,7 @@ use kanso_core::id::with_prefix;
 use kanso_core::links::{LINK_SCHEME, NOTE_LINK_PREFIX};
 use kanso_core::model::{MAX_ATTACHMENT_SIZE, SUPPORTED_IMAGE_TYPES};
 use kanso_core::{DocType, now_ms};
-use kanso_store::{Attachment, Store};
+use kanso_store::{Attachment, MEANING_SIMILARITY, MeaningSearch, Store};
 use serde_json::{Map, Value, json};
 
 use super::RpcError;
@@ -78,6 +78,7 @@ pub(crate) fn call(state: &AppState, name: &str, arguments: Option<&Value>) -> V
         "kanso-list-tasks" => list_tasks(store, &args),
         "kanso-related-notes" => related_notes(store, &args),
         "kanso-resolve-wikilink" => resolve_wikilink(store, &args),
+        "kanso-search-by-meaning" => search_by_meaning(store, &args),
         _ => Err(ToolError(format!(
             "MCP error -32602: Tool {name} not found"
         ))),
@@ -457,6 +458,61 @@ fn related_notes(store: &Store, args: &Args) -> ToolResult {
             })
         })
         .collect();
+    result(vec![text(pretty(&Value::Array(notes)))])
+}
+
+/// `kanso-search-by-meaning`: the notes nearest a search by the embeddings
+/// the app keeps, with the model the app lends the store. An empty list,
+/// and why, while related notes are off or no model is loaded here.
+fn search_by_meaning(store: &Store, args: &Args) -> ToolResult {
+    let query = str_arg(args, "query").trim();
+    if query.is_empty() {
+        return Err(ToolError("Say what the notes should be about.".into()));
+    }
+    let limit = args
+        .get("limit")
+        .and_then(Value::as_i64)
+        .unwrap_or(5)
+        .clamp(1, 20) as usize;
+    let found = store
+        .search_by_meaning(query, limit)
+        .map_err(|err| ToolError(err.to_string()))?;
+    let found = match found {
+        MeaningSearch::Off => {
+            return result(vec![
+                text("[]"),
+                text(
+                    "Search by meaning uses related notes, which are off. The user can turn them on in Kanso's Settings › General › Related notes; they run on the user's device. search-notes finds notes by their words meanwhile.",
+                ),
+            ]);
+        }
+        MeaningSearch::NoModel => {
+            return result(vec![
+                text("[]"),
+                text(
+                    "Kanso's language model isn't loaded where this API runs: it loads in the Kanso app, a little after it opens, and a server started with `kanso serve` has none. search-notes finds notes by their words meanwhile.",
+                ),
+            ]);
+        }
+        MeaningSearch::Found(found) => found,
+    };
+    let notes: Vec<Value> = kanso_store::blend_meaning(&[], found, MEANING_SIMILARITY, limit)
+        .into_iter()
+        .map(|note| {
+            json!({
+                "noteId": note.id,
+                "title": note.title,
+                "uri": note_uri(&note.id),
+                "similarity": (f64::from(note.score.max(0.)) * 1000.).round() / 1000.,
+            })
+        })
+        .collect();
+    if notes.is_empty() {
+        return result(vec![
+            text("[]"),
+            text("No note is close enough in meaning."),
+        ]);
+    }
     result(vec![text(pretty(&Value::Array(notes)))])
 }
 

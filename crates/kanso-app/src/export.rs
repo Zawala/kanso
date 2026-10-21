@@ -191,6 +191,9 @@ fn book_dirs(books: &[Book]) -> HashMap<String, PathBuf> {
 pub struct ExportReport {
     pub notes: usize,
     pub attachments: usize,
+    /// Locked notes left out: their text is only sealed, and an export is
+    /// plain text.
+    pub locked: usize,
 }
 
 /// Writes notes into `root`. With `only`, just those notes (and their
@@ -214,6 +217,11 @@ pub fn export(store: &Store, root: &Path, only: Option<&[String]>) -> anyhow::Re
         .into_iter()
         .filter(|n| n.book_id != TRASH_BOOK_ID)
         .collect();
+    // Locked notes, and every note in a locked notebook, stay out.
+    let locked_books = store.locked_books()?;
+    let (locked, notes): (Vec<Note>, Vec<Note>) = notes
+        .into_iter()
+        .partition(|note| note.is_locked() || locked_books.contains(&note.book_id));
 
     // Decide every path first so links between notes can point at them.
     // Names in use, on disk or by notebook folders, are taken.
@@ -254,7 +262,10 @@ pub fn export(store: &Store, root: &Path, only: Option<&[String]>) -> anyhow::Re
         }
     }
 
-    let mut report = ExportReport::default();
+    let mut report = ExportReport {
+        locked: locked.len(),
+        ..ExportReport::default()
+    };
     for (file_id, path) in &file_paths {
         if let Some((_, attachment)) = store.attachment(file_id)? {
             write_new(&root.join(path), &attachment.data)?;

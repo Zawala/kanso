@@ -157,6 +157,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-3", ShowPreview, None),
         KeyBinding::new("secondary-s", SaveNote, None),
         KeyBinding::new("secondary-shift-p", TogglePinned, None),
+        KeyBinding::new("secondary-shift-m", Dictate, None),
         KeyBinding::new("secondary-alt-down", NextNote, None),
         KeyBinding::new("secondary-alt-up", PreviousNote, None),
         KeyBinding::new("secondary-,", OpenSettings, None),
@@ -169,6 +170,7 @@ pub fn bind_keys(cx: &mut App) {
     ]);
     crate::palette::bind_keys(cx);
     crate::journal::bind_keys(cx);
+    crate::calendar_view::bind_keys(cx);
     crate::tasks_view::bind_keys(cx);
     crate::replace::bind_keys(cx);
     crate::settings::bind_keys(cx);
@@ -190,6 +192,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("New Notebook", NewNotebook),
             MenuItem::action("New from Template…", crate::journal::NewFromTemplate),
             MenuItem::action("Today's Note", crate::journal::OpenToday),
+            MenuItem::action("Journal Calendar…", crate::calendar_view::ShowCalendar),
             MenuItem::action("Quick Note", crate::journal::QuickCapture),
             MenuItem::separator(),
             MenuItem::action("Open…", OpenFile),
@@ -212,8 +215,23 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Pin / Unpin Note", TogglePinned),
             MenuItem::action("Move to Trash", TrashNote),
             MenuItem::action("Show History…", ShowHistory),
-            MenuItem::action("Dictate", Dictate),
+            MenuItem::action("Voice Input", Dictate),
+            MenuItem::action("Transcribe Recording", crate::transcribe::TranscribeAudio),
             MenuItem::action("Publish…", crate::publish::PublishNote),
+            MenuItem::action("Publish Notebook…", crate::publish_site::PublishNotebook),
+            MenuItem::separator(),
+            MenuItem::action("Lock Note…", crate::locked::LockNote),
+            MenuItem::action("Remove Lock…", crate::locked::RemoveLock),
+            MenuItem::action("Lock Notes Now", crate::locked::LockNotesNow),
+            MenuItem::action("Change Lock Password…", crate::locked::ChangeLockPassword),
+            MenuItem::action(
+                concat!("Unlock with ", crate::touch_id::unlock_name!()),
+                crate::locked::TurnOnTouchId,
+            ),
+            MenuItem::action(
+                concat!("Stop Using ", crate::touch_id::unlock_name!()),
+                crate::locked::TurnOffTouchId,
+            ),
             MenuItem::separator(),
             MenuItem::action("Next Note", NextNote),
             MenuItem::action("Previous Note", PreviousNote),
@@ -226,6 +244,8 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Toggle Sidebar", ToggleSidebar),
             MenuItem::action("Outline and Backlinks", ToggleInspector),
             MenuItem::action("Graph", crate::graph_view::ShowGraph),
+            MenuItem::action("Board", crate::board_view::ShowBoard),
+            MenuItem::action("Tasks Board", crate::board_view::ShowTaskBoard),
             MenuItem::action("Icon Packs…", crate::icon_gallery::BrowseIconPacks),
             MenuItem::action("Focus Mode", ToggleFocusMode),
             MenuItem::action("Search All Notes", SearchAllNotes),
@@ -267,7 +287,7 @@ pub fn apply_theme(window: Option<&mut Window>, cx: &mut App) {
 }
 
 pub struct Workspace {
-    store: Arc<Store>,
+    pub(crate) store: Arc<Store>,
     pub(crate) library: Entity<Library>,
     pub(crate) sidebar: Entity<Sidebar>,
     pub(crate) note_list: Entity<NoteList>,
@@ -286,6 +306,13 @@ pub struct Workspace {
     /// (`graph_view.rs`); made the first time it opens.
     pub(crate) graph: Option<Entity<crate::graph_view::GraphView>>,
     pub(crate) graph_open: bool,
+    /// The board over the window while open (`board_view.rs`); made the
+    /// first time it opens.
+    pub(crate) board: Option<Entity<crate::board_view::BoardView>>,
+    pub(crate) board_open: bool,
+    pub(crate) _board_events: Option<Subscription>,
+    /// The open calendar sheet's picks.
+    pub(crate) _calendar_events: Option<Subscription>,
     /// Settings, drawn in place of the list and the editor while open.
     pub(crate) settings: Entity<SettingsView>,
     /// While Settings are open: where the notes were, to go back to.
@@ -311,6 +338,8 @@ pub struct Workspace {
     pub(crate) title_bar: Option<Entity<gpui_kit::component::menu::AppMenuBar>>,
     _subscriptions: Vec<Subscription>,
     _links: Task<()>,
+    /// Locks the notes again once they go unused for a while.
+    _auto_lock: Task<()>,
 }
 
 impl Workspace {
@@ -385,10 +414,17 @@ impl Workspace {
 
         let subscriptions = vec![
             cx.subscribe_in(&library, window, |this, _, event, window, cx| match event {
-                // A place asked for: the list shows, whatever hid it.
+                // A place asked for: the list shows, whatever hid it. A
+                // locked notebook asks for its password once.
                 LibraryEvent::Shown => {
                     this.leave_settings(window, cx);
                     this.set_focus_mode(false, window, cx);
+                    if let Filter::Book(id) = this.library.read(cx).filter.clone()
+                        && this.library.read(cx).is_book_locked(&id)
+                        && !window.has_active_dialog(cx)
+                    {
+                        crate::notebook_lock::open_notebook(&id, this.editor.clone(), window, cx);
+                    }
                 }
                 // A note someone picked shows; one the app picked itself
                 // (the last note at launch, the first of a new list) waits
@@ -488,6 +524,22 @@ impl Workspace {
             }
         });
 
+        let auto_lock = cx.spawn_in(window, async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(30))
+                    .await;
+                let locked = this.update_in(cx, |this, window, cx| {
+                    if crate::locked::LockKeys::idle(cx, std::time::Instant::now()) {
+                        crate::locked::lock_now(&this.editor, window, cx);
+                    }
+                });
+                if locked.is_err() {
+                    break;
+                }
+            }
+        });
+
         if let Some(id) = last_note.filter(|id| store.note(id).ok().flatten().is_some()) {
             library.update(cx, |library, cx| library.select_quietly(Some(id), cx));
         }
@@ -515,6 +567,10 @@ impl Workspace {
             inspector_width,
             graph: None,
             graph_open: false,
+            board: None,
+            board_open: false,
+            _board_events: None,
+            _calendar_events: None,
             settings,
             settings_return: None,
             show_sidebar: appearance.show_sidebar,
@@ -528,15 +584,21 @@ impl Workspace {
                 .then(|| gpui_kit::component::menu::AppMenuBar::new(cx)),
             _subscriptions: subscriptions,
             _links: links,
+            _auto_lock: auto_lock,
         }
     }
 
-    fn notify_error(&self, message: impl Into<SharedString>, window: &mut Window, cx: &mut App) {
+    pub(crate) fn notify_error(
+        &self,
+        message: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         window.push_notification(Notification::error(message), cx);
     }
 
     /// Saves the open note before an operation that may touch it.
-    fn flush(&self, cx: &mut App) {
+    pub(crate) fn flush(&self, cx: &mut App) {
         self.editor.update(cx, |editor, cx| editor.flush(cx));
     }
 
@@ -869,21 +931,36 @@ impl Workspace {
             }
             NoteCommand::Duplicate => {
                 self.flush(cx);
-                let Ok(Some(note)) = self.store.note(id) else {
+                let Ok(Some(mut note)) = self.store.note(id) else {
                     return;
                 };
+                // A locked note's copy is locked too, sealed for its own ID.
+                if crate::locked::reveal(&mut note, cx).is_closed() {
+                    self.notify_error("Unlock the note to duplicate it.", window, cx);
+                    return;
+                }
                 let copy = json!({
                     "title": format!("{} (copy)", note.title),
-                    "body": note.body,
+                    "body": if note.is_locked() { "" } else { note.body.as_str() },
                     "bookId": note.book_id,
                     "tags": note.tags,
                     "status": note.status.as_str(),
                 });
-                match self.store.put(DocType::Note, copy, Put::Upsert, Origin::Ui) {
+                let created = self
+                    .store
+                    .put(DocType::Note, copy, Put::Upsert, Origin::Ui)
+                    .map_err(|err| err.to_string())
+                    .and_then(|created| {
+                        if note.is_locked() {
+                            self.lock_copy(&created.id, note.body.clone(), cx)?;
+                        }
+                        Ok(created.id)
+                    });
+                match created {
                     Ok(created) => self
                         .library
-                        .update(cx, |library, cx| library.select(Some(created.id), cx)),
-                    Err(err) => self.notify_error(err.to_string(), window, cx),
+                        .update(cx, |library, cx| library.select(Some(created), cx)),
+                    Err(err) => self.notify_error(err, window, cx),
                 }
             }
             NoteCommand::SetStatus(status) => {
@@ -910,6 +987,20 @@ impl Workspace {
                 }
             }
         }
+    }
+
+    /// Seals `body` into the new note `id`, a locked note's copy.
+    fn lock_copy(&self, id: &str, body: String, cx: &mut App) -> Result<(), String> {
+        let mut copy = self
+            .store
+            .note(id)
+            .map_err(|err| err.to_string())?
+            .ok_or_else(|| "The copy wasn't saved.".to_owned())?;
+        copy.body = body;
+        crate::locked::seal(&mut copy, cx)?;
+        let value = serde_json::to_value(&copy).map_err(|err| err.to_string())?;
+        self.store.lock_note(value).map_err(|err| err.to_string())?;
+        Ok(())
     }
 
     /// Selects and opens the note `id`, and says whether it is now open: a
@@ -997,6 +1088,20 @@ impl Workspace {
                         report(result.map(drop), window, cx);
                     },
                 );
+            }
+            SidebarEvent::LockBook(id) => {
+                crate::notebook_lock::lock_notebook(id.clone(), self.editor.clone(), window, cx);
+            }
+            SidebarEvent::RemoveBookLock(id) => {
+                crate::notebook_lock::remove_notebook_lock(
+                    id.clone(),
+                    self.editor.clone(),
+                    window,
+                    cx,
+                );
+            }
+            SidebarEvent::PublishBook(id) => {
+                self.publish_notebook(Some(id.clone()), window, cx);
             }
             SidebarEvent::DeleteBook(id) => {
                 let name = self
@@ -1188,8 +1293,14 @@ impl Workspace {
                 Ok(report) => {
                     window.push_notification(
                         Notification::success(format!(
-                            "Exported {} notes and {} attachments.",
-                            report.notes, report.attachments
+                            "Exported {} notes and {} attachments.{}",
+                            report.notes,
+                            report.attachments,
+                            match report.locked {
+                                0 => String::new(),
+                                1 => " 1 locked note was left out.".into(),
+                                n => format!(" {n} locked notes were left out."),
+                            }
                         )),
                         cx,
                     );
@@ -1594,10 +1705,29 @@ impl Render for Workspace {
                 this.close_settings(window, cx);
                 this.editor.update(cx, |editor, cx| editor.trash(cx));
             }))
+            .on_action(
+                cx.listener(|this, _: &crate::transcribe::TranscribeAudio, window, cx| {
+                    this.close_settings(window, cx);
+                    let found = this.editor.read(cx).audio_on_caret_line(cx);
+                    match found {
+                        Some((file_id, name)) => crate::transcribe::start(
+                            this.editor.clone(),
+                            crate::transcribe::Source::Attachment { file_id, name },
+                            window,
+                            cx,
+                        ),
+                        None => window.push_notification(
+                            gpui_kit::component::notification::Notification::info(
+                                "Put the cursor on the line with a recording to transcribe it, or drop a recording into the note.",
+                            ),
+                            cx,
+                        ),
+                    }
+                }),
+            )
             .on_action(cx.listener(|this, _: &Dictate, window, cx| {
                 this.close_settings(window, cx);
-                this.editor
-                    .update(cx, |editor, cx| editor.dictate(window, cx));
+                crate::voice::press(this.editor.clone(), window, cx);
             }))
             .on_action(cx.listener(|this, _: &ShowHistory, window, cx| {
                 this.close_settings(window, cx);
@@ -1627,6 +1757,43 @@ impl Render for Workspace {
                 cx.listener(|this, _: &crate::publish::PublishNote, window, cx| {
                     this.close_settings(window, cx);
                     crate::publish::open_publish(this.editor.clone(), window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::locked::LockNote, window, cx| {
+                    this.close_settings(window, cx);
+                    crate::locked::lock_open_note(this.editor.clone(), window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::locked::UnlockNote, window, cx| {
+                    crate::locked::unlock_open_note(this.editor.clone(), window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::locked::RemoveLock, window, cx| {
+                    this.close_settings(window, cx);
+                    crate::locked::remove_lock(this.editor.clone(), window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::locked::LockNotesNow, window, cx| {
+                    crate::locked::lock_now(&this.editor, window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::locked::ChangeLockPassword, window, cx| {
+                    crate::locked::change_password(this.editor.clone(), window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|_, _: &crate::locked::TurnOnTouchId, window, cx| {
+                    crate::locked::turn_on_touch_id(window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|_, _: &crate::locked::TurnOffTouchId, window, cx| {
+                    crate::locked::turn_off_touch_id(window, cx);
                 }),
             )
             .on_action(
@@ -1689,9 +1856,12 @@ impl Render for Workspace {
             })
             .map(|el| crate::settings::on_actions(el, cx))
             .map(|el| crate::journal::on_actions(el, cx))
+            .map(|el| crate::calendar_view::on_actions(el, cx))
+            .map(|el| crate::publish_site::on_actions(el, cx))
             .map(|el| crate::replace::on_actions(el, cx))
             .map(|el| crate::updates::on_actions(el, cx))
             .map(|el| crate::graph_view::on_actions(el, cx))
+            .map(|el| crate::board_view::on_actions(el, cx))
             // Off macOS, Kanso's own title bar with the menus.
             .when_some(self.title_bar.clone(), |el, menus| {
                 el.child(crate::title_bar::render(&menus, colors))
@@ -1785,6 +1955,7 @@ impl Render for Workspace {
                     }),
             )
             .children(crate::graph_view::overlay(self))
+            .children(crate::board_view::overlay(self))
             // Over everything else when open.
             .child(self.palette.clone())
             // The system draws the real traffic lights above the palette too.

@@ -103,16 +103,22 @@ cat > "$app/Contents/Info.plist" <<PLIST
     <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Kanso listens only while you dictate, and turns what you say into text on this Mac.</string>
 </dict>
 </plist>
 PLIST
 
 plutil -lint "$app/Contents/Info.plist" >/dev/null
+# The microphone, for voice input (packaging/macos/Kanso.entitlements).
+entitlements=packaging/macos/Kanso.entitlements
+plutil -lint "$entitlements" >/dev/null
 if [ -n "${KANSO_SIGN_IDENTITY:-}" ]; then
-    codesign --force --options runtime --timestamp --sign "$KANSO_SIGN_IDENTITY" "$app"
+    codesign --force --options runtime --timestamp --entitlements "$entitlements" \
+        --sign "$KANSO_SIGN_IDENTITY" "$app"
 else
     # Ad hoc: macOS runs it on this Mac; not for distribution.
-    codesign --force --sign - "$app"
+    codesign --force --entitlements "$entitlements" --sign - "$app"
 fi
 codesign --verify --deep --strict "$app"
 echo "Built $app"

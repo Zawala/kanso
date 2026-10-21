@@ -8,9 +8,10 @@ use serde_json::{Map, Value};
 /// The pseudo-notebook that holds trashed notes.
 pub const TRASH_BOOK_ID: &str = "trash";
 
-/// The note field (in `extra`) holding a published note's link and key
-/// (`kanso_sync::share::KansoPublish`). Only the app's Publish sheet sets
-/// it: the local API and MCP keep a note's value and ignore any they're sent.
+/// The note or notebook field (in `extra`) holding a published note's or
+/// notebook's link and key (`kanso_sync::share::KansoPublish`). Only the
+/// app's Publish sheets set it: the local API and MCP keep a document's
+/// value and ignore any they're sent.
 pub const PUBLISH_FIELD: &str = "kansoPublish";
 
 /// The file field (in `extra`) holding the text read from an image
@@ -24,6 +25,16 @@ pub const OCR_FIELD: &str = "kansoOcr";
 /// It syncs with the notebook; a name the app doesn't know shows the
 /// default icon.
 pub const BOOK_ICON_FIELD: &str = "kansoIcon";
+
+/// The note field (in `extra`) holding a locked note's sealed text
+/// (`kanso_sync::lock::Envelope`). A locked note's `body` is always empty:
+/// its text is only in here, so search, links, tasks, embeddings and the
+/// local API never see it. Only the app sets it.
+///
+/// A notebook has it too when it is locked: an envelope sealing nothing
+/// under the lock password, which tells the password and its salt. Every
+/// note in a locked notebook, and in the notebooks inside it, is locked.
+pub const LOCK_FIELD: &str = "kansoLock";
 
 /// Longest note title the API accepts.
 pub const MAX_TITLE_LEN: usize = 128;
@@ -192,6 +203,11 @@ impl Note {
     pub fn is_trashed(&self) -> bool {
         self.book_id == TRASH_BOOK_ID
     }
+
+    /// Whether the note's text is sealed under the lock password.
+    pub fn is_locked(&self) -> bool {
+        self.extra.contains_key(LOCK_FIELD)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -215,6 +231,14 @@ pub struct Book {
     pub updated_at: i64,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+impl Book {
+    /// Whether the notebook itself is locked (a notebook inside it is
+    /// locked too, without its own lock).
+    pub fn is_locked(&self) -> bool {
+        self.extra.contains_key(LOCK_FIELD)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -269,6 +293,18 @@ pub const SUPPORTED_IMAGE_TYPES: [&str; 7] = [
     "image/gif",
     "image/heic",
     "image/heif",
+];
+
+/// Audio types the app attaches, so a recording can sit in a note beside
+/// its transcript. The local API's MCP tools keep to images.
+pub const SUPPORTED_AUDIO_TYPES: [&str; 7] = [
+    "audio/mp4",
+    "audio/mpeg",
+    "audio/wav",
+    "audio/aiff",
+    "audio/x-caf",
+    "audio/flac",
+    "audio/ogg",
 ];
 
 /// Largest attachment the API accepts, in bytes.

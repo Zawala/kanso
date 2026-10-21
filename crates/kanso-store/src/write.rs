@@ -1,8 +1,10 @@
 //! Writes: create, replace, merge, delete and import.
 
+use std::collections::BTreeSet;
+
 use base64::Engine as _;
 use kanso_core::id::is_valid_id;
-use kanso_core::model::{MAX_ATTACHMENT_SIZE, TRASH_BOOK_ID};
+use kanso_core::model::{LOCK_FIELD, MAX_ATTACHMENT_SIZE, TRASH_BOOK_ID};
 use kanso_core::{DocType, Rev, new_id, now_ms};
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde_json::{Map, Value, json};
@@ -105,11 +107,38 @@ pub(crate) fn store_row(
     origin: Origin,
     changes: &mut Vec<Change>,
 ) -> Result<()> {
+    let is_note = doc_type == DocType::Note;
+    // A locked note keeps only versions sealed under its current key, on
+    // every device: locking it, or changing the lock password, anywhere
+    // forgets its plain and old-key versions here too, however the new
+    // version arrived (sync included). A note in a locked notebook is
+    // locked the same way, sealed or not.
+    let salt_now = (is_note && !deleted).then(|| lock_salt(fields)).flatten();
+    let in_locked = is_note && !deleted && in_locked_book(tx, book_of(fields))?;
+    let locked = salt_now.is_some() || in_locked;
+    if is_note && !deleted && origin != Origin::Sync {
+        guard_note(tx, fields, previous, in_locked)?;
+    }
     if let Some(prev) = previous
         && !prev.deleted
+        && (!locked || (salt_now.is_some() && salt_now == lock_salt(&prev.fields)))
     {
         snapshot(tx, id, prev, origin)?;
     }
+    if locked {
+        let was_locked = match previous.filter(|prev| !prev.deleted) {
+            Some(prev) => {
+                lock_salt(&prev.fields).is_some() || in_locked_book(tx, book_of(&prev.fields))?
+            }
+            // A new note has nothing to forget.
+            None => true,
+        };
+        forget_text(tx, id, salt_now.as_deref(), !was_locked)?;
+    }
+    let book_ids_before = match doc_type {
+        DocType::Book => Some(locked_book_ids(tx)?),
+        _ => None,
+    };
     let seq = schema::next_seq(tx)?;
     let json = serde_json::to_string(fields)?;
     let synced_rev = match synced {
@@ -124,32 +153,20 @@ pub(crate) fn store_row(
              synced_rev = excluded.synced_rev",
         params![id, doc_type.as_str(), rev, seq, deleted, json, synced_rev],
     )?;
-    if doc_type == DocType::Note {
+    if is_note {
         tx.execute("DELETE FROM note_tags WHERE note_id = ?", [id])?;
-        tx.execute("DELETE FROM notes_fts WHERE note_id = ?", [id])?;
-        if !deleted {
-            if let Some(Value::Array(tags)) = fields.get("tags") {
-                for tag in tags.iter().filter_map(Value::as_str) {
-                    tx.execute(
-                        "INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
-                        params![id, tag],
-                    )?;
-                }
-            }
-            if fields.get("bookId").and_then(Value::as_str) != Some(TRASH_BOOK_ID) {
+        if !deleted && let Some(Value::Array(tags)) = fields.get("tags") {
+            for tag in tags.iter().filter_map(Value::as_str) {
                 tx.execute(
-                    "INSERT INTO notes_fts (note_id, title, body) VALUES (?1, ?2, ?3)",
-                    params![
-                        id,
-                        fields.get("title").and_then(Value::as_str).unwrap_or(""),
-                        fields.get("body").and_then(Value::as_str).unwrap_or(""),
-                    ],
+                    "INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
+                    params![id, tag],
                 )?;
             }
         }
+        index_note(tx, id, (!deleted).then_some(fields), locked)?;
     }
-    if crate::derived::applies(doc_type) {
-        crate::derived::write_note(tx, id, (!deleted).then_some(fields))?;
+    if let Some(before) = book_ids_before {
+        books_changed(tx, before, origin)?;
     }
     if doc_type == DocType::File && deleted {
         tx.execute("DELETE FROM blobs WHERE file_id = ?", [id])?;
@@ -157,7 +174,7 @@ pub(crate) fn store_row(
     if doc_type == DocType::File {
         crate::ocr::write_file(tx, id, (!deleted).then_some(fields))?;
     }
-    if doc_type == DocType::Note && deleted {
+    if is_note && deleted {
         crate::embed::forget_note(tx, id)?;
     }
     changes.push(Change {
@@ -168,6 +185,215 @@ pub(crate) fn store_row(
         origin,
     });
     Ok(())
+}
+
+/// Puts a note's words in the search index and its derived tables (links,
+/// headings, tasks), or takes them out when `fields` is `None`. A locked
+/// note's text is only ever the sealed one: whatever an older Kanso put
+/// beside the lock, or a note in a locked notebook holds before it is
+/// sealed, is kept as it came, but isn't searched, linked or listed as
+/// tasks (and the API doesn't return it, `Doc::to_served`).
+fn index_note(
+    tx: &Transaction,
+    id: &str,
+    fields: Option<&Map<String, Value>>,
+    locked: bool,
+) -> Result<()> {
+    let blanked;
+    let indexed = match fields {
+        Some(fields)
+            if locked
+                && fields
+                    .get("body")
+                    .and_then(Value::as_str)
+                    .is_some_and(|b| !b.is_empty()) =>
+        {
+            blanked = {
+                let mut blank = fields.clone();
+                blank.insert("body".into(), Value::String(String::new()));
+                blank
+            };
+            Some(&blanked)
+        }
+        other => other,
+    };
+    tx.execute("DELETE FROM notes_fts WHERE note_id = ?", [id])?;
+    if let Some(indexed) = indexed
+        && indexed.get("bookId").and_then(Value::as_str) != Some(TRASH_BOOK_ID)
+    {
+        tx.execute(
+            "INSERT INTO notes_fts (note_id, title, body) VALUES (?1, ?2, ?3)",
+            params![
+                id,
+                indexed.get("title").and_then(Value::as_str).unwrap_or(""),
+                indexed.get("body").and_then(Value::as_str).unwrap_or(""),
+            ],
+        )?;
+    }
+    crate::derived::write_note(tx, id, indexed)
+}
+
+/// Forgets what a locked note said before: every saved version not sealed
+/// under `salt` (all of them, for a note in a locked notebook that isn't
+/// sealed), and, when it was `newly` locked, its embedding. The write-ahead
+/// log is emptied after the write when anything went.
+fn forget_text(tx: &Transaction, id: &str, salt: Option<&str>, newly: bool) -> Result<()> {
+    let forgotten = match salt {
+        Some(salt) => tx.execute(
+            "DELETE FROM revisions WHERE doc_id = ?1
+             AND json_extract(json, '$.kansoLock.salt') IS NOT ?2",
+            params![id, salt],
+        )?,
+        None => tx.execute("DELETE FROM revisions WHERE doc_id = ?", [id])?,
+    };
+    if newly {
+        crate::embed::forget_note(tx, id)?;
+    }
+    if forgotten > 0 || newly {
+        FORGOT_TEXT.set(true);
+    }
+    Ok(())
+}
+
+/// A note's notebook.
+fn book_of(fields: &Map<String, Value>) -> Option<&str> {
+    fields.get("bookId").and_then(Value::as_str)
+}
+
+/// Whether a note's plain text isn't empty.
+fn has_text(fields: &Map<String, Value>) -> bool {
+    fields
+        .get("body")
+        .and_then(Value::as_str)
+        .is_some_and(|b| !b.is_empty())
+}
+
+/// Whether notebook `book_id` is locked, or inside a locked notebook.
+pub(crate) fn in_locked_book(conn: &rusqlite::Connection, book_id: Option<&str>) -> Result<bool> {
+    let Some(book_id) = book_id else {
+        return Ok(false);
+    };
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM locked_books WHERE id = ?)",
+        [book_id],
+        |row| row.get(0),
+    )?)
+}
+
+/// The locked notebooks: each whose lock is set, and every notebook inside
+/// one.
+pub(crate) fn locked_book_ids(conn: &rusqlite::Connection) -> Result<BTreeSet<String>> {
+    let mut stmt = conn.prepare("SELECT id FROM locked_books")?;
+    let rows = stmt.query_map([], |row| row.get(0))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// The plain text of a locked notebook stays in it until Kanso seals it:
+/// nothing but sync may write plain text into a note in a locked notebook,
+/// change or empty a note's text there without sealing it, or carry it out.
+/// A note kept as it was (retagged, pinned, moved within the notebook) is
+/// fine, and so is an empty one.
+fn guard_note(
+    tx: &Transaction,
+    fields: &Map<String, Value>,
+    previous: Option<&Row>,
+    in_locked: bool,
+) -> Result<()> {
+    if fields.contains_key(LOCK_FIELD) {
+        return Ok(());
+    }
+    let prev = previous.filter(|prev| !prev.deleted);
+    let exposed = match prev {
+        Some(prev) => {
+            !prev.fields.contains_key(LOCK_FIELD)
+                && has_text(&prev.fields)
+                && in_locked_book_of(tx, &prev.fields)?
+        }
+        None => false,
+    };
+    let text_changed = prev.is_none_or(|prev| prev.fields.get("body") != fields.get("body"));
+    let refused = if exposed {
+        text_changed || !in_locked
+    } else {
+        in_locked && has_text(fields)
+    };
+    if refused {
+        return Err(StoreError::Invalid(
+            "The notebook is locked: its notes' text can only be changed in Kanso.".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn in_locked_book_of(tx: &Transaction, fields: &Map<String, Value>) -> Result<bool> {
+    in_locked_book(tx, book_of(fields))
+}
+
+/// After a notebook was written: the notes of every notebook that became
+/// locked, or stopped being locked, are indexed again as they now read. A
+/// local write may not do this to a note with plain text ([`guard_note`]).
+fn books_changed(tx: &Transaction, before: BTreeSet<String>, origin: Origin) -> Result<()> {
+    let after = locked_book_ids(tx)?;
+    // Only Kanso (or a lock taken off on another device) unlocks a
+    // notebook: moving one out of a locked notebook would, too.
+    if matches!(origin, Origin::Api | Origin::Import) && before.difference(&after).next().is_some()
+    {
+        return Err(StoreError::Invalid(
+            "The notebook is locked: unlock it in Kanso first.".into(),
+        ));
+    }
+    let moved: Vec<&String> = before.symmetric_difference(&after).collect();
+    for book in moved {
+        let notes: Vec<String> = tx
+            .prepare(
+                "SELECT id FROM docs WHERE type = 'note' AND deleted = 0 AND book_id = ? ORDER BY id",
+            )?
+            .query_map([book], |row| row.get(0))?
+            .collect::<Result<_, _>>()?;
+        let now_locked = after.contains(book);
+        for note in notes {
+            let Some(row) = load_row(tx, &note)? else {
+                continue;
+            };
+            let salt = lock_salt(&row.fields);
+            if origin != Origin::Sync && salt.is_none() && has_text(&row.fields) {
+                return Err(StoreError::Invalid(if now_locked {
+                    "The notebook is locked: notes with text move into it from Kanso, sealed."
+                        .into()
+                } else {
+                    "The notebook is locked: unlock it in Kanso first.".into()
+                }));
+            }
+            let locked = salt.is_some() || now_locked;
+            if locked {
+                forget_text(tx, &note, salt.as_deref(), now_locked && salt.is_none())?;
+            }
+            index_note(tx, &note, Some(&row.fields), locked)?;
+        }
+    }
+    Ok(())
+}
+
+thread_local! {
+    /// Set by a write that overwrote a note's plain or old-key text, so the
+    /// store empties the write-ahead log, where that text still is, once the
+    /// write commits ([`forgot_text`]).
+    static FORGOT_TEXT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the write just made forgot a note's text; clears it.
+pub(crate) fn forgot_text() -> bool {
+    FORGOT_TEXT.replace(false)
+}
+
+/// The salt a locked note's text is sealed under; `None` when it isn't
+/// locked.
+fn lock_salt(fields: &Map<String, Value>) -> Option<String> {
+    fields
+        .get(LOCK_FIELD)?
+        .get("salt")?
+        .as_str()
+        .map(str::to_owned)
 }
 
 fn snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
@@ -185,7 +411,7 @@ fn snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()
 }
 
 /// Puts `prev` in the document's history, unthrottled, then prunes it.
-fn keep_snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
+pub(crate) fn keep_snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
     let now = now_ms();
     tx.execute(
         "INSERT INTO revisions (doc_id, rev, json, saved_at, origin) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -286,127 +512,234 @@ impl Store {
         origin: Origin,
         kept: &[&str],
     ) -> Result<WriteResult> {
-        let Value::Object(mut fields) = body else {
+        let Value::Object(fields) = body else {
             return Err(StoreError::Invalid("Expected a JSON object.".into()));
         };
-        self.write(|tx, changes| {
-            let attachment = if doc_type == DocType::File {
-                take_attachment(&mut fields)?
-            } else {
-                None
-            };
-            let given_id = fields.get("_id").and_then(Value::as_str).map(str::to_owned);
-            let given_rev = fields
-                .get("_rev")
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-            let id = match given_id {
-                Some(id) if is_valid_id(doc_type, &id) => id,
-                Some(id) => {
-                    return Err(StoreError::Invalid(format!("Invalid document ID '{id}'.")));
-                }
-                None if mode == Put::Merge => return Err(StoreError::NotFound),
-                None => fresh_id(tx, doc_type)?,
-            };
-            let previous = load_row(tx, &id)?;
-            if let Some(prev) = &previous
-                && prev.doc_type != doc_type
-            {
-                return Err(StoreError::Conflict);
-            }
-            let live = previous.as_ref().filter(|p| !p.deleted);
-            let merged = match (mode, live) {
-                (Put::Upsert, Some(prev)) => {
-                    if given_rev.as_deref() != Some(prev.rev.as_str()) {
-                        return Err(StoreError::Conflict);
-                    }
-                    fields
-                }
-                (Put::Upsert, None) => fields,
-                (Put::Merge, None) => return Err(StoreError::NotFound),
-                (Put::Merge, Some(prev)) => {
-                    if given_rev.as_ref().is_some_and(|rev| *rev != prev.rev) {
-                        return Err(StoreError::Conflict);
-                    }
-                    strip_reserved(&mut fields);
-                    let mut merged = prev.fields.clone();
-                    merged.extend(fields);
-                    merged
-                }
-            };
-            let mut merged = merged;
-            for &key in kept {
-                match live.and_then(|p| p.fields.get(key)) {
-                    Some(value) => merged.insert(key.to_owned(), value.clone()),
-                    None => merged.remove(key),
-                };
-            }
-            let mut normalized = normalize(
-                doc_type,
-                &id,
-                merged,
-                live.map(|p| &p.fields),
-                now_ms(),
-                if origin == Origin::Sync {
-                    Refs::Skip
-                } else {
-                    Refs::Check(tx)
-                },
-            )?;
-
-            if doc_type == DocType::File {
-                let blob = match attachment {
-                    Some(blob) => {
-                        if blob.data.len() > MAX_ATTACHMENT_SIZE {
-                            return Err(StoreError::Invalid(format!(
-                                "The file is larger than {MAX_ATTACHMENT_SIZE} bytes."
-                            )));
-                        }
-                        blob
-                    }
-                    None => match live {
-                        Some(_) => load_blob(tx, &id)?.ok_or(StoreError::NotFound)?,
-                        None => {
-                            return Err(StoreError::Invalid(
-                                "The file has no attachment data.".into(),
-                            ));
-                        }
-                    },
-                };
-                normalized.insert("contentLength".into(), blob.data.len().into());
-                normalized.insert("md5digest".into(), blob.md5_hex().into());
-                tx.execute(
-                    "INSERT INTO blobs (file_id, md5, data) VALUES (?1, ?2, ?3)
-                     ON CONFLICT (file_id) DO UPDATE SET md5 = excluded.md5, data = excluded.data",
-                    params![id, blob.md5_hex(), blob.data],
-                )?;
-            }
-
-            if let Some(prev) = live
-                && prev.fields == normalized
-            {
-                return Ok(WriteResult {
-                    id,
-                    rev: prev.rev.clone(),
-                });
-            }
-            let rev = next_rev(previous.as_ref(), &Value::Object(normalized.clone()))?;
-            store_row(
-                tx,
-                &id,
-                doc_type,
-                &rev,
-                false,
-                &normalized,
-                previous.as_ref(),
-                Synced::Keep,
-                origin,
-                changes,
-            )?;
-            Ok(WriteResult { id, rev })
-        })
+        self.write(|tx, changes| put_in(tx, changes, doc_type, fields, mode, origin, kept))
     }
 
+    /// Writes `body`, a whole note the app has just sealed under the lock
+    /// password, and forgets what the note said before: its saved versions
+    /// (all in plain text until now), its embedding, and the pages SQLite
+    /// freed for them, which are overwritten, and the write-ahead log, which
+    /// is emptied once no reader holds it (`Store::write`). One transaction:
+    /// there is no moment with the note locked and its old text still in
+    /// history. Refused unless `body` is locked.
+    pub fn lock_note(&self, body: Value) -> Result<WriteResult> {
+        let Value::Object(fields) = body else {
+            return Err(StoreError::Invalid("Expected a JSON object.".into()));
+        };
+        if !fields.contains_key(LOCK_FIELD) {
+            return Err(StoreError::Invalid("The note isn't locked.".into()));
+        }
+        let result = self.write(|tx, changes| {
+            let result = put_in(
+                tx,
+                changes,
+                DocType::Note,
+                fields,
+                Put::Upsert,
+                Origin::Ui,
+                &[],
+            )?;
+            tx.execute("DELETE FROM revisions WHERE doc_id = ?", [&result.id])?;
+            crate::embed::forget_note(tx, &result.id)?;
+            FORGOT_TEXT.set(true);
+            Ok(result)
+        })?;
+        Ok(result)
+    }
+
+    /// Locks a notebook: writes `notes`, the notes in it the app has just
+    /// sealed, as [`Store::lock_note`] does, then `book`, the whole notebook
+    /// with its lock set, in one transaction. Every note in it then reads as
+    /// locked; one with text left unsealed refuses the lock, so there is no
+    /// moment with the notebook locked and a note's plain text readable.
+    /// Refused unless `book` and every note in `notes` carry a lock.
+    pub fn lock_book(&self, book: Value, notes: Vec<Value>) -> Result<WriteResult> {
+        let Value::Object(book) = book else {
+            return Err(StoreError::Invalid("Expected a JSON object.".into()));
+        };
+        if !book.contains_key(LOCK_FIELD) {
+            return Err(StoreError::Invalid("The notebook isn't locked.".into()));
+        }
+        let mut sealed = Vec::with_capacity(notes.len());
+        for note in notes {
+            match note {
+                Value::Object(note) if note.contains_key(LOCK_FIELD) => sealed.push(note),
+                _ => return Err(StoreError::Invalid("A note isn't locked.".into())),
+            }
+        }
+        self.write(|tx, changes| {
+            for note in sealed {
+                let result = put_in(
+                    tx,
+                    changes,
+                    DocType::Note,
+                    note,
+                    Put::Upsert,
+                    Origin::Ui,
+                    &[],
+                )?;
+                tx.execute("DELETE FROM revisions WHERE doc_id = ?", [&result.id])?;
+                crate::embed::forget_note(tx, &result.id)?;
+                FORGOT_TEXT.set(true);
+            }
+            put_in(
+                tx,
+                changes,
+                DocType::Book,
+                book,
+                Put::Upsert,
+                Origin::Ui,
+                &[],
+            )
+        })
+    }
+}
+
+/// [`Store::put_keeping`] inside the writer's transaction.
+fn put_in(
+    tx: &Transaction,
+    changes: &mut Vec<Change>,
+    doc_type: DocType,
+    mut fields: Map<String, Value>,
+    mode: Put,
+    origin: Origin,
+    kept: &[&str],
+) -> Result<WriteResult> {
+    let attachment = if doc_type == DocType::File {
+        take_attachment(&mut fields)?
+    } else {
+        None
+    };
+    let given_id = fields.get("_id").and_then(Value::as_str).map(str::to_owned);
+    let given_rev = fields
+        .get("_rev")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let id = match given_id {
+        Some(id) if is_valid_id(doc_type, &id) => id,
+        Some(id) => {
+            return Err(StoreError::Invalid(format!("Invalid document ID '{id}'.")));
+        }
+        None if mode == Put::Merge => return Err(StoreError::NotFound),
+        None => fresh_id(tx, doc_type)?,
+    };
+    let previous = load_row(tx, &id)?;
+    if let Some(prev) = &previous
+        && prev.doc_type != doc_type
+    {
+        return Err(StoreError::Conflict);
+    }
+    let live = previous.as_ref().filter(|p| !p.deleted);
+    let merged = match (mode, live) {
+        (Put::Upsert, Some(prev)) => {
+            if given_rev.as_deref() != Some(prev.rev.as_str()) {
+                return Err(StoreError::Conflict);
+            }
+            fields
+        }
+        (Put::Upsert, None) => fields,
+        (Put::Merge, None) => return Err(StoreError::NotFound),
+        (Put::Merge, Some(prev)) => {
+            if given_rev.as_ref().is_some_and(|rev| *rev != prev.rev) {
+                return Err(StoreError::Conflict);
+            }
+            strip_reserved(&mut fields);
+            let mut merged = prev.fields.clone();
+            merged.extend(fields);
+            merged
+        }
+    };
+    let mut merged = merged;
+    for &key in kept {
+        match live.and_then(|p| p.fields.get(key)) {
+            Some(value) => merged.insert(key.to_owned(), value.clone()),
+            None => merged.remove(key),
+        };
+    }
+    let mut normalized = normalize(
+        doc_type,
+        &id,
+        merged,
+        live.map(|p| &p.fields),
+        now_ms(),
+        if origin == Origin::Sync {
+            Refs::Skip
+        } else {
+            Refs::Check(tx)
+        },
+    )?;
+    // A locked note's text is only in its sealed `kansoLock`. Sync takes
+    // what another device wrote, even an older Kanso's; nothing local may
+    // put text beside the lock, where search and the API would read it.
+    if doc_type == DocType::Note
+        && origin != Origin::Sync
+        && normalized.contains_key(LOCK_FIELD)
+        && normalized
+            .get("body")
+            .and_then(Value::as_str)
+            .is_some_and(|b| !b.is_empty())
+    {
+        return Err(StoreError::Invalid(
+            "The note is locked: its text can only be changed in Kanso.".into(),
+        ));
+    }
+
+    if doc_type == DocType::File {
+        let blob = match attachment {
+            Some(blob) => {
+                if blob.data.len() > MAX_ATTACHMENT_SIZE {
+                    return Err(StoreError::Invalid(format!(
+                        "The file is larger than {MAX_ATTACHMENT_SIZE} bytes."
+                    )));
+                }
+                blob
+            }
+            None => match live {
+                Some(_) => load_blob(tx, &id)?.ok_or(StoreError::NotFound)?,
+                None => {
+                    return Err(StoreError::Invalid(
+                        "The file has no attachment data.".into(),
+                    ));
+                }
+            },
+        };
+        normalized.insert("contentLength".into(), blob.data.len().into());
+        normalized.insert("md5digest".into(), blob.md5_hex().into());
+        tx.execute(
+            "INSERT INTO blobs (file_id, md5, data) VALUES (?1, ?2, ?3)
+             ON CONFLICT (file_id) DO UPDATE SET md5 = excluded.md5, data = excluded.data",
+            params![id, blob.md5_hex(), blob.data],
+        )?;
+    }
+
+    if let Some(prev) = live
+        && prev.fields == normalized
+    {
+        return Ok(WriteResult {
+            id,
+            rev: prev.rev.clone(),
+        });
+    }
+    let rev = next_rev(previous.as_ref(), &Value::Object(normalized.clone()))?;
+    store_row(
+        tx,
+        &id,
+        doc_type,
+        &rev,
+        false,
+        &normalized,
+        previous.as_ref(),
+        Synced::Keep,
+        origin,
+        changes,
+    )?;
+    Ok(WriteResult { id, rev })
+}
+
+impl Store {
     /// Deletes a document with the local-server API's semantics: a notebook's notes move to
     /// the trash and its sub-notebooks are deleted; a tag is removed from its
     /// notes first; a note or file is deleted outright.

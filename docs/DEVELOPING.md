@@ -50,3 +50,16 @@ capturing the screen:
 KANSO_SNAPSHOT_DIR=/tmp/shots cargo test -q -p kanso-app snapshots -- --ignored --nocapture
 KANSO_SNAPSHOT_ONLY=dark-update-ready,light-settings-updates ...   # a few
 ```
+
+Voice input's real transcription test needs the Parakeet model (about 670 MB)
+in a folder of its own; it is skipped otherwise:
+
+```sh
+KANSO_VOICE_MODEL_DIR=~/Library/Application\ Support/Kanso\ Dev/models/parakeet-tdt-0.6b-v3 \
+    cargo test --release -p kanso-voice --test model -- --ignored --nocapture
+```
+
+ONNX Runtime is linked into the app statically; its build script downloads
+pyke's prebuilt archive once and checks it. On macOS the bundle carries the
+microphone entitlement (`packaging/macos/Kanso.entitlements`), without which
+the hardened runtime keeps the microphone from Kanso and macOS never asks.

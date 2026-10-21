@@ -12,7 +12,11 @@ mod account_flow_tests;
 mod account_page;
 mod account_words;
 mod assets;
+mod board;
+mod board_view;
 mod book_icons;
+mod calendar;
+mod calendar_view;
 mod capture;
 mod capture_cli;
 mod clipboard;
@@ -51,12 +55,16 @@ mod library_import;
 #[cfg(test)]
 mod links_tests;
 mod list_edit;
+mod locked;
 mod markdown_edit;
 mod markdown_source;
 mod mcp_cli;
 mod mcp_setup;
+mod model_fetch;
 mod note_list;
+mod note_meaning;
 mod note_menu;
+mod notebook_lock;
 mod notify_support;
 mod ocr;
 mod pairing;
@@ -67,6 +75,7 @@ mod preview;
 mod preview_chunks;
 mod preview_rich;
 mod publish;
+mod publish_site;
 mod related;
 mod reminders;
 mod replace;
@@ -75,9 +84,11 @@ mod settings;
 mod settings_capture;
 mod settings_discovery;
 mod settings_themes;
+mod settings_voice;
 #[cfg(test)]
 mod settings_window_tests;
 mod sidebar;
+mod site;
 mod smart_paste;
 #[cfg(test)]
 mod snapshots;
@@ -93,10 +104,14 @@ mod theme_file;
 mod theme_import;
 mod themes;
 mod title_bar;
+mod touch_id;
+mod transcribe;
 #[cfg(test)]
 mod ui_tests;
 mod updates;
 mod vim;
+mod voice;
+mod voice_state;
 mod wikilinks;
 mod word_goal;
 mod workspace;
@@ -316,6 +331,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         // Kanso Dev keeps its secrets under its own service.
         services.secrets = Some(Arc::new(flavour::CURRENT.keychain()));
         cx.set_global(services);
+        cx.set_global(touch_id::TouchId(Arc::new(touch_id::SystemTouchId)));
         // The icon pack gallery fetches over HTTPS; tests leave it out.
         cx.set_global(icon_gallery::Gallery(Arc::new(
             icon_gallery::HttpSource::default(),
@@ -324,6 +340,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         note_list::bind_keys(cx);
         capture::bind_keys(cx);
         graph_view::bind_keys(cx);
+        board_view::bind_keys(cx);
         workspace::set_menus(cx);
         cx.on_action(|_: &Quit, cx| quit(cx));
         watch_for_quit(cx);
@@ -342,6 +359,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         reminders::init(store, open_main_window, cx);
         // Discovery, in the background: related notes and text in images.
         related::init(cx);
+        voice::init(cx);
         ocr::init(cx);
         open_main_window(cx);
         cx.activate(true);

@@ -521,9 +521,25 @@ impl NoteList {
                             .text_color(colors.text_secondary)
                             .line_clamp(EXCERPT_LINES as usize)
                             .text_ellipsis()
-                            .child(StyledText::new(note.snippet.clone()).with_highlights(
-                                excerpt_matches.into_iter().map(|r| (r, highlight)),
-                            )),
+                            // A locked note's text isn't in the list.
+                            .when(note.locked, |el| {
+                                el.child(
+                                    h_flex()
+                                        .gap_1()
+                                        .text_color(colors.text_muted)
+                                        .child(
+                                            Icon::new(Lucide::Lock)
+                                                .size(px(12.))
+                                                .text_color(colors.text_muted),
+                                        )
+                                        .child("Locked"),
+                                )
+                            })
+                            .when(!note.locked, |el| {
+                                el.child(StyledText::new(note.snippet.clone()).with_highlights(
+                                    excerpt_matches.into_iter().map(|r| (r, highlight)),
+                                ))
+                            }),
                     ),
             )
             .cursor_pointer()
@@ -736,6 +752,23 @@ impl NoteList {
                 )
             })
             .child(div().flex_1())
+            // The trash has no board: its notes have no status to change.
+            .when(library.filter != Filter::Trash, |el| {
+                el.child(
+                    Button::new("list-board")
+                        .ghost()
+                        .small()
+                        .icon(
+                            Icon::new(Lucide::SquareKanban)
+                                .size(px(15.))
+                                .text_color(colors.text_secondary),
+                        )
+                        .tooltip("Board")
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(crate::board_view::ShowBoard), cx)
+                        }),
+                )
+            })
             .child(filter_menu)
     }
 
@@ -808,6 +841,10 @@ impl NoteList {
                                 Box::new(crate::journal::NewFromTemplate),
                             )
                             .menu("Today's Note", Box::new(crate::journal::OpenToday))
+                            .menu(
+                                "Journal Calendar…",
+                                Box::new(crate::calendar_view::ShowCalendar),
+                            )
                             .menu("Quick Note", Box::new(crate::journal::QuickCapture))
                             .separator()
                             .menu("New Template", Box::new(crate::journal::NewTemplate))

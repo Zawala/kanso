@@ -52,7 +52,7 @@ async fn lists_the_seventeen_tools_and_the_note_template() {
     let answer = rpc(&app.router, "tools/list", json!({})).await;
     let tools = answer["result"]["tools"].as_array().unwrap();
     // The 17, then Kanso's own.
-    assert_eq!(tools.len(), 24);
+    assert_eq!(tools.len(), 25);
     assert!(
         tools[17..]
             .iter()
@@ -848,7 +848,7 @@ async fn related_notes_through_kanso_tools() {
     let rows: Vec<(String, String, Vec<f32>)> = ids
         .iter()
         .zip(vectors)
-        .map(|(id, v)| (id.clone(), "h".to_owned(), v))
+        .map(|(id, v)| (id.clone(), hash_of(&app.store, id), v))
         .collect();
     app.store.put_embeddings("test", &rows).unwrap();
     let found = tool_json(
@@ -870,6 +870,85 @@ async fn related_notes_through_kanso_tools() {
     )
     .await;
     assert_eq!(missing["isError"], true);
+}
+
+/// A stand-in model that knows two subjects: fruit and machines.
+struct Initials;
+
+impl kanso_store::Embedder for Initials {
+    fn model(&self) -> &str {
+        "test"
+    }
+    fn dim(&self) -> usize {
+        2
+    }
+    fn embed(&self, texts: &[String]) -> Vec<Vec<f32>> {
+        texts
+            .iter()
+            .map(|t| {
+                let fruit = t.matches("fruit").count() as f32;
+                let machine = t.matches("machine").count() as f32;
+                vec![fruit, machine]
+            })
+            .collect()
+    }
+}
+
+#[tokio::test]
+async fn search_by_meaning_through_kanso_tools() {
+    let app = app();
+    let (book_id, _) = write(&app.router, "/books", json!({ "name": "B" })).await;
+    let mut ids = Vec::new();
+    for (title, body) in [
+        ("Apples", "apples and pears"),
+        ("Engines", "pistons and gears"),
+    ] {
+        let (id, _) = write(
+            &app.router,
+            "/notes",
+            json!({ "bookId": book_id, "title": title, "body": body }),
+        )
+        .await;
+        ids.push(id);
+    }
+    let search = |query: &str| {
+        tool(
+            &app.router,
+            "kanso-search-by-meaning",
+            json!({ "query": query, "limit": 5 }),
+        )
+    };
+    // Off: an empty list, and why.
+    let off = search("fruit").await;
+    assert_eq!(text(&off, 0), "[]");
+    assert!(text(&off, 1).contains("related notes, which are off"));
+    // On, but no model where the API runs (as under `kanso serve`).
+    app.store.set_embedding_model(Some("test")).unwrap();
+    let rows = vec![
+        (ids[0].clone(), hash_of(&app.store, &ids[0]), vec![1., 0.]),
+        (ids[1].clone(), hash_of(&app.store, &ids[1]), vec![0., 1.]),
+    ];
+    app.store.put_embeddings("test", &rows).unwrap();
+    let no_model = search("fruit").await;
+    assert_eq!(text(&no_model, 0), "[]");
+    assert!(text(&no_model, 1).contains("isn't loaded"));
+    // The app lends its model: the note about fruit, though it never says
+    // "fruit", and not the one about machines.
+    app.store.lend_embedder(Some(std::sync::Arc::new(Initials)));
+    let found = tool_json(&search("fruit").await);
+    assert_eq!(found.as_array().unwrap().len(), 1);
+    assert_eq!(found[0]["noteId"], ids[0]);
+    assert_eq!(found[0]["title"], "Apples");
+    assert_eq!(found[0]["similarity"], 1.0);
+    let nothing = search("weather").await;
+    assert!(text(&nothing, 1).contains("close enough"));
+    let empty = tool(
+        &app.router,
+        "kanso-search-by-meaning",
+        json!({ "query": "  " }),
+    )
+    .await;
+    assert_eq!(empty["isError"], true);
 }
 
 #[tokio::test]
@@ -999,4 +1078,16 @@ async fn daily_notes_and_templates_through_kanso_tools() {
     )
     .await;
     assert_eq!(missing["isError"], true);
+}
+
+/// The hash of note `id`'s words as the embedding worker would send it.
+fn hash_of(store: &kanso_store::Store, id: &str) -> String {
+    store
+        .embedding_queue("test")
+        .unwrap()
+        .pending
+        .into_iter()
+        .find(|pending| pending.id == id)
+        .unwrap()
+        .hash
 }

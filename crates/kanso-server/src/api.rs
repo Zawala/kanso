@@ -74,18 +74,30 @@ pub(crate) fn list_docs(
     Ok(store.list_api(doc_type, limit, skip)?)
 }
 
-/// Fields of a document the local API and MCP may not set: a note's
-/// published link and key, which only the app's Publish sheet writes. A
+/// Fields of a document the local API and MCP may not set: a note's or a
+/// notebook's published link and key, which only the app's Publish sheets
+/// write. A
 /// write keeps the document's current value and ignores the one it is sent,
 /// so a client can't plant a link (and a key it knows) for the app to
 /// publish to, or move a published note's link elsewhere. Also the
 /// reminders the app was told about (`kansoReminderAck`), which a client
 /// replacing the whole note would otherwise drop, so they would ring again.
+/// And a locked note's sealed text (`kansoLock`): a client reads a locked
+/// note with an empty body and can't lock, unlock or replace its text (the
+/// store refuses text beside the lock). A notebook's lock likewise: a client
+/// can't lock or unlock a notebook, nor write text into the notes of a
+/// locked one (the store refuses that too).
 fn app_only_fields(doc_type: DocType) -> &'static [&'static str] {
     match doc_type {
         DocType::Note => &[
             kanso_core::model::PUBLISH_FIELD,
             kanso_core::reminders::ACK_FIELD,
+            kanso_core::model::LOCK_FIELD,
+        ],
+        // A notebook's lock, and a published notebook's link and key.
+        DocType::Book => &[
+            kanso_core::model::LOCK_FIELD,
+            kanso_core::model::PUBLISH_FIELD,
         ],
         // The words the app read in an image: a write of the file keeps them.
         DocType::File => &[kanso_core::model::OCR_FIELD],
@@ -120,10 +132,24 @@ pub(crate) fn merge(store: &Store, id: &str, body: Value) -> ApiResult<Value> {
     )?))
 }
 
-/// `DELETE /<id>`.
+/// `DELETE /<id>`. A locked note, or a note in a locked notebook, can't be
+/// deleted outright from here: its text would be gone without anyone who
+/// knows the password agreeing. Moving it to the trash (`bookId: "trash"`)
+/// still works for a sealed one. Nor can a locked notebook, or one inside
+/// it, be deleted from here.
 pub(crate) fn delete(store: &Store, id: &str) -> ApiResult<Value> {
     if DocType::of_id(id).is_none() {
         return Err(ApiError::not_found());
+    }
+    if DocType::of_id(id) == Some(DocType::Note) && store.note_is_locked(id)? {
+        return Err(ApiError::bad_request(
+            "The note is locked: delete it in Kanso.",
+        ));
+    }
+    if DocType::of_id(id) == Some(DocType::Book) && store.locked_books()?.contains(id) {
+        return Err(ApiError::bad_request(
+            "The notebook is locked: delete it in Kanso.",
+        ));
     }
     Ok(write_response(store.delete(id, Origin::Api)?))
 }
@@ -167,7 +193,7 @@ pub(crate) fn changes(
                 row["doc"] = if doc.deleted {
                     json!({ "_id": doc.id, "_rev": doc.rev, "_deleted": true })
                 } else {
-                    doc.to_api(Default::default())
+                    doc.to_served(Default::default())
                 };
             }
             row

@@ -1,8 +1,21 @@
 //! On Windows, puts the app icon (assets/icon/kanso.ico) into kanso.exe so
-//! Explorer, the taskbar and the window show it. Nothing on other platforms.
+//! Explorer, the taskbar and the window show it, and keeps DirectML from
+//! loading with the app. Nothing on other platforms.
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+    {
+        // ONNX Runtime, linked in for voice input (kanso-voice), carries
+        // DirectML's setup code, which makes the exe import DirectML and
+        // Direct3D 12. Voice input runs on the CPU and never calls them, so
+        // they load only if called: never, rather than at every launch.
+        for dll in ["DirectML.dll", "d3d12.dll"] {
+            println!("cargo:rustc-link-arg-bins=/DELAYLOAD:{dll}");
+        }
+        println!("cargo:rustc-link-arg-bins=delayimp.lib");
+    }
     #[cfg(windows)]
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         windows_icon();

@@ -39,6 +39,13 @@ pub fn logout_item(library_id: &str) -> String {
     format!("sync-logout:{library_id}")
 }
 
+/// `lock-keys:<library_id>`: `{"v":1,"keys":[…]}`, the lock keys (not the
+/// password) for unlocking locked notes with Touch ID on this device, from
+/// turning Touch ID on until turning it off or changing the lock password.
+pub fn lock_keys_item(library_id: &str) -> String {
+    format!("lock-keys:{library_id}")
+}
+
 /// A Keychain failure.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("keychain: {0}")]
@@ -604,5 +611,72 @@ mod tests {
                 prop_assert_eq!(secrets.items(), model.keys().cloned().collect::<Vec<_>>());
             }
         }
+    }
+}
+
+/// The first line of a `lock-keys` item; each line after it is one key.
+const LOCK_KEYS_V1: &str = "kanso-lock-keys/1";
+
+/// Keeps `keys` for Touch ID, replacing any kept before.
+pub fn save_lock_keys(
+    secrets: &dyn SecretStore,
+    library_id: &str,
+    keys: &[&crate::lock::LockKey],
+) -> Result<(), SecretError> {
+    let mut value = Zeroizing::new(String::from(LOCK_KEYS_V1));
+    for key in keys {
+        value.push('\n');
+        value.push_str(&key.to_secret());
+    }
+    secrets.set(&lock_keys_item(library_id), &value)
+}
+
+/// The lock keys kept for Touch ID, or `None` when there are none. An item
+/// this version can't read counts as none.
+pub fn load_lock_keys(
+    secrets: &dyn SecretStore,
+    library_id: &str,
+) -> Result<Option<Vec<crate::lock::LockKey>>, SecretError> {
+    let Some(value) = secrets.get(&lock_keys_item(library_id))? else {
+        return Ok(None);
+    };
+    let mut lines = value.lines();
+    if lines.next() != Some(LOCK_KEYS_V1) {
+        return Ok(None);
+    }
+    let keys: Vec<_> = lines
+        .filter_map(|line| crate::lock::LockKey::from_secret(line).ok())
+        .collect();
+    Ok((!keys.is_empty()).then_some(keys))
+}
+
+/// Forgets the lock keys kept for Touch ID.
+pub fn delete_lock_keys(secrets: &dyn SecretStore, library_id: &str) -> Result<(), SecretError> {
+    secrets.delete(&lock_keys_item(library_id))
+}
+
+#[cfg(test)]
+mod lock_key_tests {
+    use super::*;
+    use crate::crypto::KdfParams;
+    use crate::lock::{LockKey, LockPassword};
+
+    #[test]
+    fn lock_keys_are_kept_per_library_and_forgotten() {
+        let secrets = MemorySecrets::new();
+        let password = LockPassword::new("correct horse").unwrap();
+        let first = LockKey::create(&password, KdfParams::TEST).unwrap();
+        let second = LockKey::create(&password, KdfParams::TEST).unwrap();
+        assert!(load_lock_keys(&secrets, "l_a").unwrap().is_none());
+        save_lock_keys(&secrets, "l_a", &[&first, &second]).unwrap();
+        let kept = load_lock_keys(&secrets, "l_a").unwrap().unwrap();
+        assert_eq!(kept.len(), 2);
+        assert!(kept[0].same_kdf(&first) && kept[1].same_kdf(&second));
+        assert!(load_lock_keys(&secrets, "l_b").unwrap().is_none());
+        // The password itself is never kept.
+        let raw = secrets.get(&lock_keys_item("l_a")).unwrap().unwrap();
+        assert!(!raw.contains("correct horse"));
+        delete_lock_keys(&secrets, "l_a").unwrap();
+        assert!(load_lock_keys(&secrets, "l_a").unwrap().is_none());
     }
 }

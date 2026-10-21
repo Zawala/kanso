@@ -455,6 +455,36 @@ impl Default for DiscoverySettings {
     }
 }
 
+/// How the editor's mic turns speech into text (`voice.rs`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VoiceEngine {
+    /// Not chosen yet: the mic's first press asks, as the on-device model
+    /// is a large download.
+    #[default]
+    Ask,
+    /// Parakeet, on this device, once its model is downloaded.
+    OnDevice,
+    /// The system's own dictation (macOS dictation, Windows voice typing).
+    System,
+}
+
+/// Voice input (Settings › Editor).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct VoiceSettings {
+    pub engine: VoiceEngine,
+}
+
+/// Locked notes on this device.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LockedSettings {
+    /// Whether Touch ID (Windows Hello on Windows) unlocks them here: `None`
+    /// until Kanso has offered it, so it offers once.
+    pub touch_id: Option<bool>,
+}
+
 /// The layout [`AppConfig::migrate`] brings older files up to.
 pub const CONFIG_VERSION: u32 = 3;
 
@@ -475,6 +505,8 @@ pub struct AppConfig {
     pub capture: CaptureSettings,
     pub reminders: RemindersSettings,
     pub discovery: DiscoverySettings,
+    pub voice: VoiceSettings,
+    pub locked: LockedSettings,
     pub nudges: Nudges,
 }
 
@@ -503,6 +535,8 @@ impl Default for AppConfig {
             capture: CaptureSettings::default(),
             reminders: RemindersSettings::default(),
             discovery: DiscoverySettings::default(),
+            voice: VoiceSettings::default(),
+            locked: LockedSettings::default(),
             nudges: Nudges::default(),
         }
     }
@@ -599,6 +633,11 @@ mod tests {
             gen_editor(),
             (any::<bool>(), "(ctrl-|alt-|shift-|cmd-){1,3}[a-z0-9]"),
             (any::<bool>(), any::<bool>(), 1u8..=2),
+            prop::sample::select(vec![
+                VoiceEngine::Ask,
+                VoiceEngine::OnDevice,
+                VoiceEngine::System,
+            ]),
         )
             .prop_map(
                 |(
@@ -608,7 +647,9 @@ mod tests {
                     editor,
                     (enabled, shortcut),
                     (related_notes, image_text, graph_hops),
+                    engine,
                 )| AppConfig {
+                    voice: VoiceSettings { engine },
                     layout,
                     updates: UpdateSettings { auto_install },
                     editor,
@@ -768,6 +809,8 @@ mod tests {
                     capture: CaptureSettings::default(),
                     reminders: super::RemindersSettings::default(),
                     discovery: DiscoverySettings::default(),
+                    voice: VoiceSettings::default(),
+                    locked: LockedSettings::default(),
                     nudges: super::Nudges {
                         first_seen_ms: login.then_some(i64::from(version) * 1_000),
                         sync_offer_dismissed: version % 2 == 0,

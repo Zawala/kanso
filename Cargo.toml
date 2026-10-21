@@ -16,6 +16,7 @@ kanso-server = { path = "crates/kanso-server" }
 kanso-sync = { path = "crates/kanso-sync" }
 kanso-update = { path = "crates/kanso-update" }
 kanso-render = { path = "crates/kanso-render" }
+kanso-voice = { path = "crates/kanso-voice" }
 
 aes = "0.8"
 # Published notes (kanso-sync share.rs): AES-256-GCM, which browsers open with WebCrypto.

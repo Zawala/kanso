@@ -755,9 +755,17 @@ fn is_separate_role_book_creation(
     remote: &SyncDoc,
     remote_fields: &Map<String, Value>,
 ) -> bool {
-    let template = crate::roles::DAILY_TEMPLATE_FIELD;
-    let given = local.fields.get(template).is_some_and(|v| !v.is_null())
-        && remote_fields.get(template) != local.fields.get(template);
+    // What only the local one was given: a daily template, or a link it
+    // was published at.
+    let given = [
+        crate::roles::DAILY_TEMPLATE_FIELD,
+        kanso_core::model::PUBLISH_FIELD,
+    ]
+    .iter()
+    .any(|field| {
+        local.fields.get(*field).is_some_and(|v| !v.is_null())
+            && remote_fields.get(*field) != local.fields.get(*field)
+    });
     [Role::Journal, Role::Inbox, Role::Templates]
         .iter()
         .any(|role| role.book_id() == id)
