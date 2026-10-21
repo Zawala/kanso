@@ -83,7 +83,9 @@ pub(crate) fn list_docs(
 /// replacing the whole note would otherwise drop, so they would ring again.
 /// And a locked note's sealed text (`kansoLock`): a client reads a locked
 /// note with an empty body and can't lock, unlock or replace its text (the
-/// store refuses text beside the lock).
+/// store refuses text beside the lock). A notebook's lock likewise: a client
+/// can't lock or unlock a notebook, nor write text into the notes of a
+/// locked one (the store refuses that too).
 fn app_only_fields(doc_type: DocType) -> &'static [&'static str] {
     match doc_type {
         DocType::Note => &[
@@ -91,6 +93,7 @@ fn app_only_fields(doc_type: DocType) -> &'static [&'static str] {
             kanso_core::reminders::ACK_FIELD,
             kanso_core::model::LOCK_FIELD,
         ],
+        DocType::Book => &[kanso_core::model::LOCK_FIELD],
         // The words the app read in an image: a write of the file keeps them.
         DocType::File => &[kanso_core::model::OCR_FIELD],
         _ => &[],
@@ -124,18 +127,23 @@ pub(crate) fn merge(store: &Store, id: &str, body: Value) -> ApiResult<Value> {
     )?))
 }
 
-/// `DELETE /<id>`. A locked note can't be deleted outright from here: its
-/// text would be gone without anyone who knows the password agreeing. Moving
-/// it to the trash (`bookId: "trash"`) still works.
+/// `DELETE /<id>`. A locked note, or a note in a locked notebook, can't be
+/// deleted outright from here: its text would be gone without anyone who
+/// knows the password agreeing. Moving it to the trash (`bookId: "trash"`)
+/// still works for a sealed one. Nor can a locked notebook, or one inside
+/// it, be deleted from here.
 pub(crate) fn delete(store: &Store, id: &str) -> ApiResult<Value> {
     if DocType::of_id(id).is_none() {
         return Err(ApiError::not_found());
     }
-    if DocType::of_id(id) == Some(DocType::Note)
-        && store.note(id)?.is_some_and(|note| note.is_locked())
-    {
+    if DocType::of_id(id) == Some(DocType::Note) && store.note_is_locked(id)? {
         return Err(ApiError::bad_request(
             "The note is locked: delete it in Kanso.",
+        ));
+    }
+    if DocType::of_id(id) == Some(DocType::Book) && store.locked_books()?.contains(id) {
+        return Err(ApiError::bad_request(
+            "The notebook is locked: delete it in Kanso.",
         ));
     }
     Ok(write_response(store.delete(id, Origin::Api)?))

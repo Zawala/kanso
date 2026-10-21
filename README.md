@@ -43,6 +43,8 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
 **Locked notes**
 - Lock a note with a password (**Lock note…** in the palette or the Note menu). Its text is sealed
   on this device, stays sealed in sync, and opens on your other devices with the same password.
+- Lock a whole notebook, and every note in it and in the notebooks inside it is locked, now and
+  when notes go in later.
 - Unlock them with Touch ID on a Mac that has it, or Windows Hello on Windows, with the password as
   the fallback.
 
@@ -184,6 +186,24 @@ your signed-in Windows account can read; as on a Mac, that guards against someon
 unlocked PC, not against software running as you. Linux has no such unlock: locked notes open with
 the lock password there.
 
+**Locked notebooks.** Right-click a notebook and choose **Lock Notebook…**: every note in it, and in
+the notebooks inside it, is sealed with your lock password, and so is a note made there or moved in
+later. Opening a locked notebook asks for the password (or Touch ID, or Windows Hello) once, and its
+notes stay open until they lock again with the others. A locked notebook shows a lock in the sidebar.
+
+- A note locked on its own before keeps its own seal, and opens with the password it was locked with.
+- A note moved out of a locked notebook stays locked; **Remove lock…** makes it plain again. Inside a
+  locked notebook, a note can't have its lock removed.
+- **Remove Notebook Lock…** (after opening the notebook) stops locking the notes put there later. The
+  notes in it now stay locked, so no text turns plain without you asking for that note.
+- The notebook's lock syncs inside its own encrypted document, like a note's. A note another device
+  puts there without sealing it (one running an older Kanso, say) is kept from search, the local API
+  and related notes here, and is sealed the next time you open the notebook.
+- The local API and MCP read every note in a locked notebook with an empty body. They can't write text
+  into one, change or empty a note's text there, move a note's plain text out, lock or unlock the
+  notebook, or delete the notebook or its notes outright.
+- **Change lock password…** moves locked notebooks to the new password too.
+
 What locking does and doesn't do:
 
 - The text is sealed with XChaCha20-Poly1305 under a key Argon2id derives from the password (256 MiB,
@@ -197,8 +217,10 @@ What locking does and doesn't do:
   locked note aren't sealed.
 - The local API reads a locked note with an empty body. It can move, retitle or tag the note, but
   can't change its text, take the lock off, or delete it outright (moving it to the trash still works).
-- Export All Notes leaves locked notes out, and a locked note can't be published.
-- Every device needs this version of Kanso: an older one shows a locked note as empty.
+- Export All Notes leaves locked notes, and the notes in locked notebooks, out, and none of them can
+  be published.
+- Every device needs this version of Kanso: an older one shows a locked note as empty, and doesn't
+  know a notebook is locked, so a note it makes there stays plain until this version seals it.
 
 ### Shortcuts
 

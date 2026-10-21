@@ -217,7 +217,11 @@ pub fn export(store: &Store, root: &Path, only: Option<&[String]>) -> anyhow::Re
         .into_iter()
         .filter(|n| n.book_id != TRASH_BOOK_ID)
         .collect();
-    let (locked, notes): (Vec<Note>, Vec<Note>) = notes.into_iter().partition(Note::is_locked);
+    // Locked notes, and every note in a locked notebook, stay out.
+    let locked_books = store.locked_books()?;
+    let (locked, notes): (Vec<Note>, Vec<Note>) = notes
+        .into_iter()
+        .partition(|note| note.is_locked() || locked_books.contains(&note.book_id));
 
     // Decide every path first so links between notes can point at them.
     // Names in use, on disk or by notebook folders, are taken.

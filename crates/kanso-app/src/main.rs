@@ -56,6 +56,7 @@ mod mcp_setup;
 mod model_fetch;
 mod note_list;
 mod note_menu;
+mod notebook_lock;
 mod notify_support;
 mod ocr;
 mod pairing;

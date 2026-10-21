@@ -37,11 +37,16 @@ impl Store {
             .and_then(Value::as_str)
             .is_some_and(|body| !body.is_empty());
         self.write(|tx, _| {
-            // A locked note's history holds only sealed versions.
+            // A locked note's history holds only sealed versions, and so
+            // does a note's in a locked notebook.
             if has_text && !fields.contains_key(LOCK_FIELD) {
                 let locked: bool = tx
                     .query_row(
-                        "SELECT json_extract(json, '$.kansoLock') IS NOT NULL FROM docs WHERE id = ?",
+                        concat!(
+                            "SELECT ",
+                            crate::schema::note_locked!(""),
+                            " FROM docs WHERE id = ?"
+                        ),
                         [id],
                         |row| row.get(0),
                     )

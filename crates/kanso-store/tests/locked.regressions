@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 5f8ef711d0b6ec3e82c10a2b4ddfa93bec1001c1d0e52b89f2594d711e6728d9 # shrinks to ops = [Create { book: 0, text: true, by: Api }, SyncLockBook { book: 0 }]
+cc 4e61fa9c0d5a1f8325675db55fb81c63b47fa7071d0df02c262450996b83a4f8 # shrinks to ops = [Create { book: 0, text: false, by: Api }, Create { book: 0, text: true, by: Api }, Edit { note: 5, text: false, by: Api }, SyncLockBook { book: 0 }, Create { book: 0, text: false, by: Api }]

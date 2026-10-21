@@ -640,12 +640,19 @@ pub fn open_publish(
     cx: &mut App,
 ) -> Option<Entity<PublishView>> {
     // A locked note's text stays sealed: publishing it would put it at a
-    // link instead.
+    // link instead. So does the text of a note in a locked notebook.
     if editor.read(cx).lock_view() != crate::locked::LockView::Plain {
+        let store = cx.global::<AppState>().store.clone();
+        let in_locked_notebook = editor
+            .read(cx)
+            .note_id()
+            .is_some_and(|id| store.note_in_locked_book(id).unwrap_or(false));
         window.push_notification(
-            gpui_kit::component::notification::Notification::info(
-                "Locked notes can't be published. Remove the lock first.",
-            ),
+            gpui_kit::component::notification::Notification::info(if in_locked_notebook {
+                "Notes in a locked notebook can't be published. Move the note out and remove its lock first."
+            } else {
+                "Locked notes can't be published. Remove the lock first."
+            }),
             cx,
         );
         return None;
