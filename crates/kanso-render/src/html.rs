@@ -6,6 +6,11 @@
 //! Raw HTML in a note is shown as text, except an attached image's `<img>`
 //! tag; links into the app keep their text but go nowhere, and wiki-links
 //! (`[[Title]]`, `[[Title#Heading]]`, `[[Title|alias]]`) show as their label.
+//!
+//! A page in a published notebook ([`Site`]) is the same page, except that
+//! links to the notebook's other published notes stay links, to
+//! `kanso-page:<slug>` ([`PAGE_LINK_PREFIX`]), which the share page turns
+//! into the site's own addresses; [`site_index`] is the notebook's first page.
 
 use std::fmt::Write as _;
 use std::hash::{Hash as _, Hasher as _};
@@ -33,6 +38,39 @@ enum Piece {
     Block(String),
     /// Sits in a line.
     Inline(String),
+}
+
+/// A link from one page of a published notebook to another: this, then the
+/// page's slug (empty for the notebook's index).
+pub const PAGE_LINK_PREFIX: &str = "kanso-page:";
+/// The prefix of an ID link to a note inside a note body, then the note ID
+/// without its `note:` prefix; the same as `kanso_core::links::NOTE_LINK_PREFIX`.
+pub const NOTE_LINK_PREFIX: &str = "inkdrop://note/";
+
+/// What a link to another note names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoteRef<'a> {
+    /// A note by ID (`note:…`), from an ID link.
+    Id(&'a str),
+    /// A note by title as written, from a wiki-link.
+    Title(&'a str),
+}
+
+/// A page among a published notebook's pages.
+pub struct Site<'a> {
+    /// The slug of the published page a link names; `None` for a note that
+    /// isn't published, whose links show as plain text.
+    pub resolve: &'a dyn Fn(NoteRef<'_>) -> Option<String>,
+    /// The notebook's name, for the link back to its index.
+    pub home: &'a str,
+}
+
+/// The note an ID link ([`NOTE_LINK_PREFIX`] then the ID) points at, as `note:<id>`.
+/// Pure.
+pub fn linked_note_id(url: &str) -> Option<String> {
+    let id = url.strip_prefix(NOTE_LINK_PREFIX)?;
+    let id = id.split(['?', '#', '/', ')', ' ']).next()?;
+    (!id.is_empty()).then(|| format!("note:{id}"))
 }
 
 /// The prefix of an attachment link inside a note body, then the file ID.
@@ -140,9 +178,30 @@ fn heading_label(target: &str) -> String {
 /// Inline tags a wiki-link's text may hold, as Markdown compiles it.
 const WIKI_INLINE_TAGS: [&str; 6] = ["<em>", "</em>", "<strong>", "</strong>", "<del>", "</del>"];
 
-/// The wiki-link at the start of `html` (which starts `[[`): its label and
-/// how long it is. Pure.
-fn wiki_link_at(html: &str) -> Option<(String, usize)> {
+/// The title a wiki-link's inside names, as plain text: without its
+/// heading, alias, inline tags and character references. Pure.
+fn wiki_title(inner: &str) -> String {
+    let target = inner.split_once('|').map_or(inner, |(target, _)| target);
+    let title = target.split_once('#').map_or(target, |(title, _)| title);
+    let mut text = String::with_capacity(title.len());
+    let mut rest = title;
+    while let Some(at) = rest.find('<') {
+        text.push_str(&rest[..at]);
+        rest = rest[at..].find('>').map_or("", |end| &rest[at + end + 1..]);
+    }
+    text.push_str(rest);
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+        .trim()
+        .to_owned()
+}
+
+/// The wiki-link at the start of `html` (which starts `[[`): its label,
+/// the title it names and how long it is. Pure.
+fn wiki_link_at(html: &str) -> Option<(String, String, usize)> {
     let close = html.get(2..)?.find("]]")? + 2;
     let inner = &html[2..close];
     if inner.contains('\n') || inner.contains("[[") {
@@ -157,13 +216,19 @@ fn wiki_link_at(html: &str) -> Option<(String, usize)> {
         }
         rest = &rest[tag_end..];
     }
-    Some((wiki_label(inner)?, close + 2))
+    Some((wiki_label(inner)?, wiki_title(inner), close + 2))
 }
 
 /// `[[Title]]`, `[[Title#Heading]]` and `[[Title|alias]]` in compiled
 /// HTML, outside code, as their label: a standalone page has no note to
 /// link to. Pure.
 pub fn wiki_links(html: &str) -> String {
+    wiki_links_in(html, None)
+}
+
+/// [`wiki_links`], with links to a site's published notes kept as links
+/// to their pages. Pure.
+pub fn wiki_links_in(html: &str, site: Option<&Site>) -> String {
     if !html.contains("[[") {
         return html.to_owned();
     }
@@ -185,9 +250,20 @@ pub fn wiki_links(html: &str) -> String {
         }
         if in_code == 0
             && rest.starts_with("[[")
-            && let Some((label, len)) = wiki_link_at(rest)
+            && let Some((label, title, len)) = wiki_link_at(rest)
         {
-            let _ = write!(out, r#"<span class="kanso-wikilink">{label}</span>"#);
+            match site.and_then(|site| (site.resolve)(NoteRef::Title(&title))) {
+                Some(slug) => {
+                    let _ = write!(
+                        out,
+                        r#"<a class="kanso-wikilink" href="{PAGE_LINK_PREFIX}{}">{label}</a>"#,
+                        escape(&slug)
+                    );
+                }
+                None => {
+                    let _ = write!(out, r#"<span class="kanso-wikilink">{label}</span>"#);
+                }
+            }
             rest = &rest[len..];
             continue;
         }
@@ -249,7 +325,8 @@ fn svg_markup(svg: &Svg, class: &str, scale: f32) -> String {
     format!(r#"<span class="{class}"{style}>{}</span>"#, svg.markup)
 }
 
-fn data_uri(content_type: &str, bytes: &[u8]) -> String {
+/// `data:<type>;base64,<bytes>`, as pages carry their images. Pure.
+pub fn data_uri(content_type: &str, bytes: &[u8]) -> String {
     format!(
         "data:{};base64,{}",
         content_type,
@@ -279,6 +356,7 @@ fn collect(
     source: &str,
     palette: &Palette,
     attachments: Attachments<'_>,
+    site: Option<&Site>,
     out: &mut Vec<(std::ops::Range<usize>, Piece)>,
 ) {
     let range = node.position().map(|p| p.start.offset..p.end.offset);
@@ -345,6 +423,16 @@ fn collect(
                     }),
             }
         }
+        // In a site, an ID link to a published note links to its page.
+        Node::Link(link) if site.is_some() => linked_note_id(&link.url)
+            .and_then(|id| site.and_then(|site| (site.resolve)(NoteRef::Id(&id))))
+            .map(|slug| {
+                Piece::Inline(format!(
+                    r#"<a href="{PAGE_LINK_PREFIX}{}">{}</a>"#,
+                    escape(&slug),
+                    escape(&node_text(&link.children))
+                ))
+            }),
         Node::Html(html) => img_tag(&html.value).and_then(|(src, alt, width)| {
             attachment_id(&src)
                 .map(|id| Piece::Inline(attached_image(&id, &alt, width, attachments)))
@@ -357,7 +445,7 @@ fn collect(
         }
         _ => {
             for child in node.children().into_iter().flatten() {
-                collect(child, source, palette, attachments, out);
+                collect(child, source, palette, attachments, site, out);
             }
         }
     }
@@ -376,12 +464,22 @@ fn plain_html(markdown: &str) -> String {
 
 /// The note's body as HTML, without the page around it.
 pub fn body(markdown: &str, palette: &Palette, attachments: Attachments<'_>) -> String {
+    body_in(markdown, palette, attachments, None)
+}
+
+/// [`body`], as a page of `site` when given.
+pub fn body_in(
+    markdown: &str,
+    palette: &Palette,
+    attachments: Attachments<'_>,
+    site: Option<&Site>,
+) -> String {
     let options = parse_options();
     let Ok(root) = crate::markdown_safe::to_mdast(markdown, &options) else {
         return plain_html(markdown);
     };
     let mut pieces = Vec::new();
-    collect(&root, markdown, palette, attachments, &mut pieces);
+    collect(&root, markdown, palette, attachments, site, &mut pieces);
     pieces.sort_by_key(|(range, _)| range.start);
     // A placeholder no note will contain: it survives Markdown as a word.
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -417,7 +515,7 @@ pub fn body(markdown: &str, palette: &Palette, attachments: Attachments<'_>) -> 
     // Links into the app (and other schemes a browser can't follow) lose
     // their address, so they aren't links that go nowhere.
     html = html.replace("<a href=\"\">", "<a>");
-    html = wiki_links(&html);
+    html = wiki_links_in(&html, site);
     for (n, piece) in kept.into_iter().enumerate() {
         let token = token(n);
         html = match piece {
@@ -469,6 +567,13 @@ figure svg{{max-width:100%;height:auto}}
 .kanso-diagram,.kanso-drawing{{display:block}}
 .kanso-missing{{color:{muted};font-style:italic}}
 .kanso-wikilink{{border-bottom:1px dotted {muted}}}
+a.kanso-wikilink{{border-bottom:0}}
+.kanso-site-nav{{margin:0 0 1.2rem;font-size:.9rem}}
+.kanso-site-nav a{{color:{muted};text-decoration:none}}
+ul.kanso-site-index{{list-style:none;padding:0}}
+.kanso-site-index li{{margin:0 0 1.1em}}
+.kanso-site-index a{{font-weight:600;text-decoration:none}}
+.kanso-site-index p{{margin:.2em 0 0;color:{muted}}}
 @media print{{html,body{{background:none}}body{{max-width:none;padding:0}}pre,figure,table,img{{break-inside:avoid}}h1,h2,h3{{break-after:avoid}}}}
 "#,
         scheme = if p.dark { "dark" } else { "light" },
@@ -488,10 +593,84 @@ pub fn page(
     palette: &Palette,
     attachments: Attachments<'_>,
 ) -> String {
-    let body = body(markdown, palette, attachments);
-    let mut html = String::with_capacity(body.len() + 4096);
+    page_in(title, markdown, palette, attachments, None)
+}
+
+/// [`page`], as a page of `site` when given: links to the site's other
+/// pages stay links, and a link above the title leads back to its index.
+pub fn page_in(
+    title: &str,
+    markdown: &str,
+    palette: &Palette,
+    attachments: Attachments<'_>,
+    site: Option<&Site>,
+) -> String {
+    let body = body_in(markdown, palette, attachments, site);
     let title = title.trim();
     let shown_title = if title.is_empty() { "Untitled" } else { title };
+    let nav = site.map(|site| {
+        format!(
+            r#"<nav class="kanso-site-nav"><a href="{PAGE_LINK_PREFIX}">← {}</a></nav>"#,
+            escape(site.home.trim())
+        )
+    });
+    document(shown_title, nav.as_deref(), &body, palette)
+}
+
+/// A note on a published notebook's index.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IndexEntry {
+    pub slug: String,
+    pub title: String,
+    /// A line or two of the note's text.
+    pub snippet: String,
+    /// The notebook inside the published one it is in ("Plans › 2026"),
+    /// or `None` for the published notebook's own notes.
+    pub group: Option<String>,
+}
+
+/// A published notebook's first page: its name, then its notes, those of
+/// the notebooks inside it under their names, each linking to its page.
+pub fn site_index(name: &str, entries: &[IndexEntry], palette: &Palette) -> String {
+    let name = name.trim();
+    let shown = if name.is_empty() { "Notebook" } else { name };
+    let mut main = String::new();
+    let mut group: Option<Option<&str>> = None;
+    for entry in entries {
+        let this = entry.group.as_deref();
+        if group != Some(this) {
+            if group.is_some() {
+                main.push_str("</ul>\n");
+            }
+            if let Some(name) = this {
+                let _ = writeln!(main, "<h2>{}</h2>", escape(name));
+            }
+            main.push_str("<ul class=\"kanso-site-index\">\n");
+            group = Some(this);
+        }
+        let title = entry.title.trim();
+        let _ = write!(
+            main,
+            r#"<li><a href="{PAGE_LINK_PREFIX}{}">{}</a>"#,
+            escape(&entry.slug),
+            escape(if title.is_empty() { "Untitled" } else { title })
+        );
+        if !entry.snippet.trim().is_empty() {
+            let _ = write!(main, "<p>{}</p>", escape(entry.snippet.trim()));
+        }
+        main.push_str("</li>\n");
+    }
+    if group.is_some() {
+        main.push_str("</ul>\n");
+    } else {
+        main.push_str("<p class=\"kanso-missing\">Nothing is published here yet.</p>\n");
+    }
+    document(shown, None, &main, palette)
+}
+
+/// The page around a title and its HTML: styled, standalone.
+fn document(title: &str, nav: Option<&str>, main: &str, palette: &Palette) -> String {
+    let mut html = String::with_capacity(main.len() + 4096);
     let _ = write!(
         html,
         r#"<!doctype html>
@@ -505,13 +684,14 @@ pub fn page(
 <style>{css}</style>
 </head>
 <body>
-<header><h1>{title}</h1></header>
+<header>{nav}<h1>{title}</h1></header>
 <main>
-{body}</main>
+{main}</main>
 </body>
 </html>
 "#,
-        title = escape(shown_title),
+        title = escape(title),
+        nav = nav.unwrap_or_default(),
         css = css(palette),
     );
     html
@@ -545,6 +725,71 @@ mod tests {
         assert!(!html.contains("kansopiece"));
     }
 
+    /// The site of the tests: "Plans" and note:abc are published.
+    fn plans(target: NoteRef<'_>) -> Option<String> {
+        match target {
+            NoteRef::Title(title) if title.eq_ignore_ascii_case("plans") => Some("plans".into()),
+            NoteRef::Id("note:abc") => Some("abc-page".into()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_site_page_links_to_its_published_notes_only() {
+        let site = Site {
+            resolve: &plans,
+            home: "Work & play",
+        };
+        let note = format!(
+            "See [[Plans#Next]], [[Secret]] and [[plans|the plan]].\n\n[by id]({NOTE_LINK_PREFIX}abc) and [hidden]({NOTE_LINK_PREFIX}zzz) and `[[Plans]]`\n"
+        );
+        let html = page_in("Note", &note, &Palette::LIGHT, &none, Some(&site));
+        assert!(
+            html.contains(r#"<a class="kanso-wikilink" href="kanso-page:plans">Plans › Next</a>"#)
+        );
+        assert!(html.contains(r#"<a class="kanso-wikilink" href="kanso-page:plans">the plan</a>"#));
+        assert!(html.contains(r#"<span class="kanso-wikilink">Secret</span>"#));
+        assert!(html.contains(r#"<a href="kanso-page:abc-page">by id</a>"#));
+        assert!(html.contains("<a>hidden</a>"));
+        assert!(html.contains("<code>[[Plans]]</code>"));
+        assert!(html.contains(
+            r#"<nav class="kanso-site-nav"><a href="kanso-page:">← Work &amp; play</a></nav>"#
+        ));
+        // Without a site, the same note links nowhere.
+        let plain = page("Note", &note, &Palette::LIGHT, &none);
+        assert!(!plain.contains("kanso-page:"));
+        assert!(plain.contains("<a>by id</a>"));
+    }
+
+    #[test]
+    fn a_site_index_lists_its_notes_by_notebook() {
+        let entry = |slug: &str, title: &str, group: Option<&str>| IndexEntry {
+            slug: slug.into(),
+            title: title.into(),
+            snippet: format!("About {title}"),
+            group: group.map(str::to_owned),
+        };
+        let html = site_index(
+            "Work",
+            &[
+                entry("a", "A <b>", None),
+                entry("b", "", None),
+                entry("c", "C", Some("Work › Old")),
+            ],
+            &Palette::DARK,
+        );
+        assert!(html.contains("<title>Work</title>"));
+        assert!(html.contains(
+            r#"<li><a href="kanso-page:a">A &lt;b&gt;</a><p>About A &lt;b&gt;</p></li>"#
+        ));
+        assert!(html.contains(r#"<a href="kanso-page:b">Untitled</a>"#));
+        assert!(html.find("<h2>Work › Old</h2>").unwrap() > html.find("kanso-page:b").unwrap());
+        assert_eq!(html.matches("<ul class=\"kanso-site-index\">").count(), 2);
+        assert!(
+            site_index("Empty", &[], &Palette::LIGHT).contains("Nothing is published here yet.")
+        );
+    }
+
     #[test]
     fn one_line_double_dollars_are_display_math() {
         let html = body(
@@ -555,6 +800,34 @@ mod tests {
         assert_eq!(html.matches("class=\"kanso-math-display\"").count(), 1);
         assert_eq!(html.matches("class=\"kanso-math\"").count(), 1);
         assert!(!html.contains("$$"));
+    }
+
+    proptest! {
+        /// Invariant: in a site page, every link to another page goes to a
+        /// page the site said is published (or to the index), and no
+        /// wiki-link is left as brackets outside code.
+        #[test]
+        fn prop_site_links_only_reach_published_pages(
+            parts in prop::collection::vec(prop_oneof![
+                "[a-z ]{0,8}",
+                Just("[[Plans]]".to_owned()),
+                Just("[[Secret|s]]".to_owned()),
+                Just("[[plans#x]]".to_owned()),
+                Just(format!("[t]({NOTE_LINK_PREFIX}abc)")),
+                Just(format!("[u]({NOTE_LINK_PREFIX}q)")),
+                Just("[w](https://example.com)".to_owned()),
+            ], 0..10),
+        ) {
+            let site = Site { resolve: &plans, home: "Home" };
+            let note = parts.join(" ");
+            let html = page_in("T", &note, &Palette::LIGHT, &none, Some(&site));
+            for (at, _) in html.match_indices("href=\"kanso-page:") {
+                let rest = &html[at + "href=\"kanso-page:".len()..];
+                let slug = &rest[..rest.find('"').unwrap()];
+                prop_assert!(["", "plans", "abc-page"].contains(&slug), "{}", slug);
+            }
+            prop_assert!(!html.contains("[["));
+        }
     }
 
     proptest! {

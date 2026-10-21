@@ -339,7 +339,7 @@ fn store_publish(store: &Store, id: &str, publish: Option<&KansoPublish>) -> any
     Ok(())
 }
 
-fn paragraph(text: impl Into<SharedString>, colors: &Colors) -> Div {
+pub(crate) fn paragraph(text: impl Into<SharedString>, colors: &Colors) -> Div {
     div()
         .text_size(px(13.5))
         .line_height(px(20.))
@@ -475,50 +475,67 @@ impl Render for PublishView {
 
 impl PublishView {
     fn expiry_row(&self, colors: &Colors, cx: &mut Context<Self>) -> impl IntoElement {
-        let current = self.expiry;
-        h_flex()
-            .gap_3()
-            .items_center()
-            .child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(colors.text)
-                    .child("Link works for"),
-            )
-            .child(
-                ButtonGroup::new("publish-expiry")
-                    .outline()
-                    .small()
-                    .disabled(self.busy.is_some())
-                    .children(Expiry::ALL.iter().enumerate().map(|(ix, option)| {
-                        let selected = *option == current;
-                        Button::new(("publish-expiry", ix))
-                            .selected(selected)
-                            .debug_selector(move || format!("publish-expiry-{ix}"))
-                            .child(
-                                div()
-                                    .px_1()
-                                    .text_size(px(12.5))
-                                    .when(selected, |el| el.font_medium())
-                                    .text_color(if selected {
-                                        colors.text
-                                    } else {
-                                        colors.text_secondary
-                                    })
-                                    .child(if *option == Expiry::Never {
-                                        "Always"
-                                    } else {
-                                        option.label()
-                                    }),
-                            )
-                    }))
-                    .on_click(cx.listener(|this, clicked: &Vec<usize>, _, cx| {
-                        if let Some(&ix) = clicked.first() {
-                            this.set_expiry(Expiry::ALL[ix], cx);
-                        }
-                    })),
-            )
+        expiry_row(
+            self.expiry,
+            self.busy.is_some(),
+            colors,
+            cx,
+            PublishView::set_expiry,
+        )
     }
+}
+
+/// The "Link works for" row, for a note's sheet and a notebook's: `pick`
+/// keeps the choice.
+pub(crate) fn expiry_row<V: 'static>(
+    current: Expiry,
+    disabled: bool,
+    colors: &Colors,
+    cx: &mut Context<V>,
+    pick: fn(&mut V, Expiry, &mut Context<V>),
+) -> impl IntoElement {
+    h_flex()
+        .gap_3()
+        .items_center()
+        .child(
+            div()
+                .text_size(px(13.))
+                .text_color(colors.text)
+                .child("Link works for"),
+        )
+        .child(
+            ButtonGroup::new("publish-expiry")
+                .outline()
+                .small()
+                .disabled(disabled)
+                .children(Expiry::ALL.iter().enumerate().map(|(ix, option)| {
+                    let selected = *option == current;
+                    Button::new(("publish-expiry", ix))
+                        .selected(selected)
+                        .debug_selector(move || format!("publish-expiry-{ix}"))
+                        .child(
+                            div()
+                                .px_1()
+                                .text_size(px(12.5))
+                                .when(selected, |el| el.font_medium())
+                                .text_color(if selected {
+                                    colors.text
+                                } else {
+                                    colors.text_secondary
+                                })
+                                .child(if *option == Expiry::Never {
+                                    "Always"
+                                } else {
+                                    option.label()
+                                }),
+                        )
+                }))
+                .on_click(cx.listener(move |this, clicked: &Vec<usize>, _, cx| {
+                    if let Some(&ix) = clicked.first() {
+                        pick(this, Expiry::ALL[ix], cx);
+                    }
+                })),
+        )
 }
 
 /// The sheet's buttons, which follow its phase and task.

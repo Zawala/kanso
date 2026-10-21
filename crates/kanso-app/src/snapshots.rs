@@ -594,6 +594,68 @@ fn publish_outdated(
     publish_sheet(cx, window, workspace, true, Some(false));
 }
 
+/// The Publish sheet for the open note's notebook, signed in: not yet
+/// published, and published.
+fn publish_site_sheet(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+    published: bool,
+) {
+    cx.update(|cx| {
+        cx.set_reduce_motion(true);
+        cx.global_mut::<Services>().account = AccountState::SignedIn {
+            username: DEMO_USER.into(),
+        };
+    });
+    let book = cx
+        .update(|cx| workspace.read(cx).notebook_to_publish(cx))
+        .expect("the open note has a notebook");
+    if published {
+        let now = cx.update(|cx| Clock::now_ms(cx));
+        let plan = crate::site::plan(store, &book).unwrap();
+        let publish = kanso_sync::share::KansoPublish {
+            share_id: "r4U0yX3MnO9wQa5SlZ8bCw".into(),
+            key: kanso_sync::share::ShareKey::from_bytes([0x3c; 32]).to_text(),
+            published_at: now - 3 * DAY,
+            published_rev: String::new(),
+            expires_at: None,
+            content_hash: Some(kanso_sync::share::content_hash(
+                &plan.name,
+                &plan.fingerprint(),
+            )),
+            short_url: None,
+            other: Default::default(),
+        };
+        crate::site::store_book_publish(store, &book, Some(&publish)).unwrap();
+    }
+    cx.update_window(window, |_, window, cx| {
+        workspace.update(cx, |workspace, cx| {
+            crate::publish_site::open_publish_site(workspace, &book, window, cx);
+        });
+    })
+    .unwrap();
+}
+
+fn publish_site_unpublished(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    publish_site_sheet(cx, window, workspace, store, false);
+}
+
+fn publish_site_published(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    publish_site_sheet(cx, window, workspace, store, true);
+}
+
 /// The Obsidian fixture vault the importer's tests use.
 fn import_fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../kanso-import/tests/fixtures/obsidian")
@@ -2393,6 +2455,49 @@ fn tasks_view(
     });
 }
 
+/// The board over the window: the demo's notes in a column per status,
+/// one card selected.
+fn status_board(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_board(cx, window, workspace, crate::board::BoardKind::Notes);
+}
+
+/// The tasks board: the demo's tasks as To do and Done.
+fn task_board(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    seed_tasks(store);
+    show_board(cx, window, workspace, crate::board::BoardKind::Tasks);
+}
+
+fn show_board(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    kind: crate::board::BoardKind,
+) {
+    cx.run_until_parked();
+    cx.update_window(window, |_, window, cx| {
+        workspace.update(cx, |workspace, cx| workspace.show_board(kind, window, cx));
+    })
+    .unwrap();
+    cx.update(|cx| {
+        let board = workspace.read(cx).board.clone().unwrap();
+        board.update(cx, |board, cx| {
+            board.reload_now(cx);
+            board.board.step_across(1);
+            board.board.step_down(1);
+        });
+    });
+}
+
 /// A note with due dates: chips in the preview, warm red when overdue.
 fn due_chips(
     cx: &mut HeadlessAppContext,
@@ -2550,6 +2655,46 @@ fn daily_note(
         workspace.update(cx, |workspace, cx| workspace.open_today(window, cx));
     })
     .unwrap();
+}
+
+/// The Journal's calendar over today's note: May 2026 with a few days'
+/// notes marked, today (the 28th) ringed, Monday first.
+fn journal_calendar(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    daily_note(cx, window, workspace, store);
+    for day in [4, 11, 12, 19, 21] {
+        let date = kanso_core::dates::Date::new(2026, 5, day).unwrap();
+        store
+            .daily_note(
+                date,
+                &kanso_store::NewNote {
+                    title: kanso_core::roles::daily_title(date),
+                    ..Default::default()
+                },
+                Origin::Ui,
+            )
+            .unwrap();
+    }
+    cx.run_until_parked();
+    cx.update(|cx| cx.set_reduce_motion(true));
+    let view = cx
+        .update_window(window, |_, window, cx| {
+            workspace.update(cx, |workspace, cx| {
+                crate::calendar_view::open_calendar(workspace, window, cx)
+            })
+        })
+        .unwrap();
+    cx.update(|cx| {
+        view.update(cx, |view, cx| {
+            view.week_start = 0;
+            view.read_days();
+            cx.notify();
+        })
+    });
 }
 
 const VIM_NOTE: &str = "# Vim keys\n\nMove with h j k l, by words with w and b, and change a word with cw.\n\n- Delete with d and a motion: dw, d$ or dip\n- Yank with y and put it back with p\n- Visual mode selects; V takes whole lines\n\nEscape leaves Insert mode, and Escape again leaves focus mode.\n";
@@ -3524,6 +3669,42 @@ fn snapshots() {
             dialog_width: crate::publish::SHEET_WIDTH,
             ..shot("light-publish-outdated", Light, Edit, publish_outdated)
         },
+        Shot {
+            dialog_width: crate::publish_site::SHEET_WIDTH,
+            ..shot(
+                "dark-publish-site-unpublished",
+                Dark,
+                Edit,
+                publish_site_unpublished,
+            )
+        },
+        Shot {
+            dialog_width: crate::publish_site::SHEET_WIDTH,
+            ..shot(
+                "light-publish-site-unpublished",
+                Light,
+                Edit,
+                publish_site_unpublished,
+            )
+        },
+        Shot {
+            dialog_width: crate::publish_site::SHEET_WIDTH,
+            ..shot(
+                "dark-publish-site-published",
+                Dark,
+                Edit,
+                publish_site_published,
+            )
+        },
+        Shot {
+            dialog_width: crate::publish_site::SHEET_WIDTH,
+            ..shot(
+                "light-publish-site-published",
+                Light,
+                Edit,
+                publish_site_published,
+            )
+        },
         // Focus mode, at rest and with the pointer near the top.
         Shot {
             left: Left::Nothing,
@@ -3638,8 +3819,20 @@ fn snapshots() {
         shot("light-tags-tree", Light, Edit, tags_tree),
         shot("dark-daily-note", Dark, Edit, daily_note),
         shot("light-daily-note", Light, Split, daily_note),
+        Shot {
+            dialog_width: crate::calendar_view::SHEET_WIDTH,
+            ..shot("dark-journal-calendar", Dark, Edit, journal_calendar)
+        },
+        Shot {
+            dialog_width: crate::calendar_view::SHEET_WIDTH,
+            ..shot("light-journal-calendar", Light, Edit, journal_calendar)
+        },
         shot("dark-tasks", Dark, Split, tasks_view),
         shot("light-tasks", Light, Split, tasks_view),
+        shot("dark-board", Dark, Edit, status_board),
+        shot("light-board", Light, Edit, status_board),
+        shot("dark-task-board", Dark, Edit, task_board),
+        shot("light-task-board", Light, Edit, task_board),
         shot("dark-due-chips", Dark, Preview, due_chips),
         shot("light-due-chips", Light, Split, due_chips),
         Shot {
@@ -4347,6 +4540,9 @@ fn snapshots() {
         let palette_open = cx.update(|cx| workspace.read(cx).palette.read(cx).is_open());
         let settings_open = cx.update(|cx| workspace.read(cx).settings_open());
         let graph_open = cx.update(|cx| workspace.read(cx).graph_open);
+        // The board is laid out as the graph is: bands in the list's color
+        // round the editor's.
+        let board_open = cx.update(|cx| workspace.read(cx).board_open);
         let dialog_open = cx
             .update_window(window, |_, window, cx| window.has_active_dialog(cx))
             .unwrap();
@@ -4356,7 +4552,7 @@ fn snapshots() {
             check_palette(&image, shot);
         } else if settings_open {
             check_settings_surfaces(&image, shot);
-        } else if graph_open {
+        } else if graph_open || board_open {
             discovery::check_graph(&image, shot);
         } else {
             let inspector = cx

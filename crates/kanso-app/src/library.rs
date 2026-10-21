@@ -120,6 +120,40 @@ fn recent_notes(
     }
 }
 
+/// The notes a list of `filter` shows for `params`: Recent's newest first,
+/// the rest pinned first, and only the pinned ones when `pinned_only`.
+/// The note list and the board read their notes through this.
+pub fn list_notes(
+    store: &Store,
+    filter: &Filter,
+    params: &SearchParams,
+    pinned_only: bool,
+    recent_since: i64,
+) -> Result<Vec<NoteSummary>, StoreError> {
+    let mut notes = match filter {
+        Filter::Recent => recent_notes(store, params, recent_since)?,
+        _ => {
+            let mut notes = store.search_summaries(params)?;
+            pinned_first(&mut notes);
+            notes
+        }
+    };
+    if pinned_only || *filter == Filter::Pinned {
+        notes.retain(|note| note.pinned);
+    }
+    Ok(notes)
+}
+
+/// The place a board lays out for the list's `filter`: the same notebook
+/// or tag, but every status, since the board's columns are the statuses.
+/// Tasks and the trash have no board of their own; theirs is all notes.
+pub fn board_scope(filter: &Filter) -> Filter {
+    match filter {
+        Filter::Status(_) | Filter::Tasks | Filter::Trash => Filter::All,
+        other => other.clone(),
+    }
+}
+
 pub enum LibraryEvent {
     /// The selected note changed: `asked` when someone picked it, rather
     /// than the app on its own (the first note of a new list, the last note
@@ -253,18 +287,16 @@ impl Library {
         let now =
             kanso_core::dates::DateTime::from_local_ms(Clock::local_ms(cx, Clock::now_ms(cx)));
         let task = cx.background_executor().spawn(async move {
-            let mut notes = match filter {
+            let notes = match filter {
                 Filter::Tasks => None,
-                Filter::Recent => Some(recent_notes(&store, &params, recent_since)?),
-                _ => {
-                    let mut notes = store.search_summaries(&params)?;
-                    pinned_first(&mut notes);
-                    Some(notes)
-                }
+                _ => Some(list_notes(
+                    &store,
+                    &filter,
+                    &params,
+                    pinned_only,
+                    recent_since,
+                )?),
             };
-            if pinned_only && let Some(notes) = &mut notes {
-                notes.retain(|note| note.pinned);
-            }
             let recent = match &notes {
                 Some(notes) if recent_is_listed => u32::try_from(notes.len()).unwrap_or(u32::MAX),
                 _ => store.count_recent(recent_since)?,
@@ -499,7 +531,12 @@ impl Library {
     }
 
     pub fn filter_title(&self) -> String {
-        match &self.filter {
+        self.title_of(&self.filter)
+    }
+
+    /// A place's name, as the list's title says it.
+    pub fn title_of(&self, filter: &Filter) -> String {
+        match filter {
             Filter::All => "All Notes".into(),
             Filter::Pinned => "Pinned".into(),
             Filter::Recent => "Recent".into(),

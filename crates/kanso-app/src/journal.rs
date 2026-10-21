@@ -78,7 +78,7 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
 
 /// Opens note `id` with the caret at byte `caret` of its text when given,
 /// and the keyboard in the text, or in the title with `title_first`.
-fn open_made(
+pub(crate) fn open_made(
     library: &Entity<Library>,
     editor: &Entity<NoteEditor>,
     id: String,

@@ -982,6 +982,7 @@ fn size2(side: f32) -> Size<Pixels> {
 impl Workspace {
     pub(crate) fn show_graph(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.close_settings(window, cx);
+        self.close_board(window, cx);
         self.set_focus_mode(false, window, cx);
         let graph = match &self.graph {
             Some(graph) => graph.clone(),

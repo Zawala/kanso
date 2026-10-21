@@ -25,6 +25,7 @@ mod memory;
 mod remote;
 mod sealed;
 pub mod share;
+pub mod site;
 pub mod username;
 mod verify;
 pub mod wire;

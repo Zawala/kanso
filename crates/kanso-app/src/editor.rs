@@ -131,7 +131,7 @@ pub enum EditorEvent {
 }
 
 /// The ‹ › beside a daily note's title: the day before and the day after
-/// that have notes (or today).
+/// that have notes (or today); and the month's calendar.
 fn day_arrows(tab_stop: bool, cx: &App) -> impl IntoElement {
     let colors = Colors::get(cx);
     let arrow = |id: &'static str, icon: Lucide, tooltip: &'static str, forward: bool| {
@@ -161,6 +161,18 @@ fn day_arrows(tab_stop: bool, cx: &App) -> impl IntoElement {
             false,
         ))
         .child(arrow("day-next", Lucide::ChevronRight, "Next day", true))
+        .child(
+            Button::new("day-calendar")
+                .ghost()
+                .xsmall()
+                .tab_stop(tab_stop)
+                .debug_selector(|| "day-calendar".into())
+                .icon(Icon::new(Lucide::CalendarDays).text_color(colors.text_secondary))
+                .tooltip("Journal calendar")
+                .on_click(|_, window, cx| {
+                    window.dispatch_action(Box::new(crate::calendar_view::ShowCalendar), cx)
+                }),
+        )
 }
 
 /// Whether two versions of a note say the same thing: equal apart from the

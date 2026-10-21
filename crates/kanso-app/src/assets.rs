@@ -81,6 +81,7 @@ icon_assets!(
         Sparkles,
         Split,
         SquareCheck,
+        SquareKanban,
         SquarePen,
         SunMoon,
         Table,

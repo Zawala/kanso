@@ -42,6 +42,7 @@ pub enum SidebarEvent {
     DeleteBook(String),
     LockBook(String),
     RemoveBookLock(String),
+    PublishBook(String),
     RenameTag(String),
     RecolorTag(String, kanso_core::TagColor),
     DeleteTag(String),
@@ -1300,6 +1301,7 @@ impl Render for Sidebar {
                         Some(item) => menu.item(item).separator(),
                         None => menu,
                     };
+                    let (publish, e) = (view.clone(), book_id.clone());
                     menu.item(
                         PopupMenuItem::new("New Sub-notebook").on_click(move |_, _, cx| {
                             new.update(cx, |_, cx| {
@@ -1312,6 +1314,12 @@ impl Render for Sidebar {
                     .item(PopupMenuItem::new("Rename…").on_click(move |_, _, cx| {
                         rename.update(cx, |_, cx| cx.emit(SidebarEvent::RenameBook(b.clone())));
                     }))
+                    .item(
+                        PopupMenuItem::new("Publish Notebook…").on_click(move |_, _, cx| {
+                            publish
+                                .update(cx, |_, cx| cx.emit(SidebarEvent::PublishBook(e.clone())));
+                        }),
+                    )
                     .separator()
                     .item(
                         PopupMenuItem::new("Delete Notebook…").on_click(move |_, _, cx| {
