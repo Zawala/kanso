@@ -3053,14 +3053,16 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    /// The toolbar edits the body the way typing does: at the selection,
-    /// saved after the pause, and counted in the footer once typing rests.
-    // no-prop-test: glue between the toolbar, the text editor and autosave;
-    // the edits themselves are property-tested in `markdown_edit`.
-    #[gpui_kit::test]
-    fn formatting_edits_the_body_and_saves(cx: &mut TestAppContext) {
-        let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(Store::open(dir.path().join("k.db")).unwrap());
+    type Opened = (
+        gpui_kit::AnyWindowHandle,
+        gpui_kit::Entity<NoteEditor>,
+        Arc<Store>,
+        String,
+    );
+
+    /// An editor in a window, on a new note with `body`.
+    fn editor_on(cx: &mut TestAppContext, dir: &std::path::Path, body: &str) -> Opened {
+        let store = Arc::new(Store::open(dir.join("k.db")).unwrap());
         let book = store
             .put(DocType::Book, json!({"name": "B"}), Put::Upsert, Origin::Ui)
             .unwrap()
@@ -3068,7 +3070,7 @@ mod tests {
         let id = store
             .put(
                 DocType::Note,
-                json!({"title": "t", "body": "Goals\nnext", "bookId": book}),
+                json!({"title": "t", "body": body, "bookId": book}),
                 Put::Upsert,
                 Origin::Ui,
             )
@@ -3093,6 +3095,17 @@ mod tests {
             })
             .unwrap()
         });
+        (window, editor, store, id)
+    }
+
+    /// The toolbar edits the body the way typing does: at the selection,
+    /// saved after the pause, and counted in the footer once typing rests.
+    // no-prop-test: glue between the toolbar, the text editor and autosave;
+    // the edits themselves are property-tested in `markdown_edit`.
+    #[gpui_kit::test]
+    fn formatting_edits_the_body_and_saves(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let (window, editor, store, id) = editor_on(cx, dir.path(), "Goals\nnext");
         let edit = |cx: &mut TestAppContext,
                     f: &dyn Fn(
             &mut NoteEditor,
@@ -3121,6 +3134,83 @@ mod tests {
         assert_eq!(store.note(&id).unwrap().unwrap().body, "## Goals\n**next**");
         let label = cx.read(|cx| editor.read(cx).footer.read(cx).label());
         assert!(label.ends_with("2 words · 17 chars"), "{label}");
+    }
+
+    /// Dictation, as macOS sends it: marked text that grows while you
+    /// speak, committed in place, then a correction of an earlier word by
+    /// its range. The text comes out as spoken, smart edits keep out while
+    /// it is marked, an autosave in the middle doesn't disturb it, and the
+    /// note is saved as committed.
+    // no-prop-test: glue between the platform's input calls, the text editor
+    // and autosave; there is no rule here beyond "what was spoken lands".
+    #[gpui_kit::test]
+    fn dictation_lands_as_spoken(cx: &mut TestAppContext) {
+        use gpui_kit::EntityInputHandler as _;
+        let dir = tempfile::tempdir().unwrap();
+        let start = "Shopping\n- eggs";
+        let (window, editor, store, id) = editor_on(cx, dir.path(), start);
+        let step = |cx: &mut TestAppContext,
+                    f: &dyn Fn(
+            &mut NoteEditor,
+            &mut gpui_kit::Window,
+            &mut gpui_kit::Context<NoteEditor>,
+        )| {
+            window
+                .update(cx, |_, window, cx| {
+                    editor.update(cx, |editor, cx| f(editor, window, cx))
+                })
+                .unwrap();
+            cx.run_until_parked();
+        };
+        step(cx, &|editor, window, cx| {
+            editor.open(Some(&id), window, cx);
+            editor.focus_body(window, cx);
+            editor.body.update(cx, |body, cx| {
+                body.set_selected_range(start.len()..start.len(), cx)
+            });
+        });
+        // Words arrive as marked text, replacing the marked text before.
+        for heard in [" and", " and milk"] {
+            step(cx, &|editor, window, cx| {
+                editor.body.update(cx, |body, cx| {
+                    let end = heard.encode_utf16().count();
+                    body.replace_and_mark_text_in_range(None, heard, Some(end..end), window, cx)
+                });
+            });
+        }
+        // Still speaking: no smart edit takes a key, and an autosave
+        // leaves the marked text as it is.
+        step(cx, &|editor, window, cx| {
+            assert!(!editor.body_takes_edits(window, cx))
+        });
+        cx.executor().advance_clock(Duration::from_secs(30));
+        cx.run_until_parked();
+        step(cx, &|editor, window, cx| {
+            let marked = editor
+                .body
+                .update(cx, |body, cx| body.marked_text_range(window, cx));
+            assert_eq!(marked, Some(15..24));
+            assert_eq!(editor.body.read(cx).value(), "Shopping\n- eggs and milk");
+        });
+        // Done speaking: committed in place, and the editor's own again.
+        step(cx, &|editor, window, cx| {
+            editor.body.update(cx, |body, cx| {
+                body.replace_text_in_range(None, " and milk", window, cx)
+            });
+            assert!(editor.body_takes_edits(window, cx));
+        });
+        // "Replace milk with bread": a correction by range.
+        step(cx, &|editor, window, cx| {
+            editor.body.update(cx, |body, cx| {
+                body.replace_text_in_range(Some(20..24), "bread", window, cx)
+            });
+        });
+        cx.executor().advance_clock(Duration::from_secs(30));
+        cx.run_until_parked();
+        assert_eq!(
+            store.note(&id).unwrap().unwrap().body,
+            "Shopping\n- eggs and bread"
+        );
     }
 
     #[test]
