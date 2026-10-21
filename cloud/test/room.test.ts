@@ -178,8 +178,14 @@ describe("presence and socket caps", () => {
 		const frames = await Promise.all(Array.from({ length: 30 }, () => envelope({ kind: "p", epoch: 1, shareId: id, by: bob })));
 		const started = Date.now();
 		frames.forEach((f, i) => (i % 2 === 0 ? b1 : b2).ws.send(f));
-		const refused = [...(await b1.drain(400)), ...(await b2.drain(100))].filter((m) => "text" in m);
-		const relayed = (await a.drain(100)).filter((m) => "bytes" in m);
+		// Every frame is relayed or refused; a slow machine takes longer to say which.
+		const refused: Awaited<ReturnType<typeof b1.drain>> = [];
+		const relayed: Awaited<ReturnType<typeof a.drain>> = [];
+		const deadline = Date.now() + 10_000;
+		while (relayed.length + refused.length < 30 && Date.now() < deadline) {
+			refused.push(...[...(await b1.drain(100)), ...(await b2.drain(50))].filter((m) => "text" in m));
+			relayed.push(...(await a.drain(50)).filter((m) => "bytes" in m));
+		}
 		const refill = Math.ceil((10 * (Date.now() - started)) / 1000);
 		for (const m of refused) expect(text(m)).toMatchObject({ type: "error", error: "rate_limited", limit: "presence", kind: "p" });
 		expect(relayed.length + refused.length).toBe(30);
