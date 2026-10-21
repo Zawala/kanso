@@ -20,6 +20,7 @@ mod code_lang;
 mod commands;
 mod config;
 mod dialogs;
+mod dictation;
 mod due;
 mod editor;
 mod editor_footer;

@@ -1311,6 +1311,27 @@ impl NoteEditor {
         self.set_book(TRASH_BOOK_ID.into(), cx);
     }
 
+    /// Starts the system's dictation into the note's text, at the cursor.
+    /// The text must have the keyboard, and be drawn with it, before the
+    /// system starts listening: that is where dictation types. Preview has
+    /// no text to type into, so it gives way to Split.
+    pub fn dictate(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.note.is_none() || !crate::dictation::AVAILABLE {
+            return;
+        }
+        if self.view_mode == ViewMode::Preview {
+            self.set_view_mode(ViewMode::Split, cx);
+        }
+        self.focus_body(window, cx);
+        // Two frames on: the first draws the text with the keyboard, which
+        // is when it starts taking typed text.
+        window.on_next_frame(|window, _| {
+            window.on_next_frame(|_, _| crate::dictation::start());
+            window.refresh();
+        });
+        window.refresh();
+    }
+
     pub fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
         self.view_mode = mode;
         if mode != ViewMode::Edit {
@@ -2032,6 +2053,17 @@ impl NoteEditor {
                     .tooltip(if pinned { "Unpin note" } else { "Pin note" })
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_pinned(cx))),
             )
+            .when(crate::dictation::AVAILABLE, |el| {
+                el.child(
+                    Button::new("dictate")
+                        .ghost()
+                        .small()
+                        .tab_stop(tab_stop)
+                        .icon(Icon::new(Lucide::Mic).text_color(colors.text_secondary))
+                        .tooltip("Dictate")
+                        .on_click(cx.listener(|this, _, window, cx| this.dictate(window, cx))),
+                )
+            })
             .child(
                 Button::new("history")
                     .ghost()

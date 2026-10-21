@@ -114,6 +114,8 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Memory",
     # Open at login: the Run key under HKEY_CURRENT_USER.
     "Win32_System_Registry",
+    # The Dictate button: voice typing's shortcut, Windows key + H.
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]

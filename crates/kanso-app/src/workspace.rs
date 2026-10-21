@@ -54,6 +54,7 @@ actions!(
         NextNote,
         PreviousNote,
         ShowHistory,
+        Dictate,
         OpenSettings,
         ExportNote,
         ExportHtml,
@@ -211,6 +212,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Pin / Unpin Note", TogglePinned),
             MenuItem::action("Move to Trash", TrashNote),
             MenuItem::action("Show History…", ShowHistory),
+            MenuItem::action("Dictate", Dictate),
             MenuItem::action("Publish…", crate::publish::PublishNote),
             MenuItem::separator(),
             MenuItem::action("Next Note", NextNote),
@@ -1552,6 +1554,11 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &TrashNote, window, cx| {
                 this.close_settings(window, cx);
                 this.editor.update(cx, |editor, cx| editor.trash(cx));
+            }))
+            .on_action(cx.listener(|this, _: &Dictate, window, cx| {
+                this.close_settings(window, cx);
+                this.editor
+                    .update(cx, |editor, cx| editor.dictate(window, cx));
             }))
             .on_action(cx.listener(|this, _: &ShowHistory, window, cx| {
                 this.close_settings(window, cx);
