@@ -13,6 +13,13 @@ heading compares the release with the one before.
 - **editor:** A Dictate button starts the system's dictation in the note ([fc99d25](https://github.com/iamngoni/kanso/commit/fc99d253de47b5be1071bac724176d2b36498530))
 - **sync:** Kanso's server is sync.kansoapp.app, and published notes open on share.kansoapp.app ([48a79f8](https://github.com/iamngoni/kanso/commit/48a79f869b475265d157dd1d3e274978abb6094d))
 - **app:** Kanso tells people they can sync, without getting in the way ([7b61dfe](https://github.com/iamngoni/kanso/commit/7b61dfe3c3735ba04b370df1811833c3455c4297))
+- **locked:** Lock a note with a password, sealed on this device and in sync ([aff0a7c](https://github.com/iamngoni/kanso/commit/aff0a7c711c4ab57198c9b2c4cf30b861ffee2a6))
+- **app:** Password fields have an eye to show what was typed ([2d2ca64](https://github.com/iamngoni/kanso/commit/2d2ca64b402b81823a8caef0fedb67740a6915ac))
+- **locked:** Touch ID unlocks locked notes, with the lock password as the fallback ([9051847](https://github.com/iamngoni/kanso/commit/90518471036c4a7fcf1d15ced46dec92be0e3588))
+
+### Fixed
+
+- **locked:** A locked note's old text is gone on every device, and the API never serves its seal ([e94888e](https://github.com/iamngoni/kanso/commit/e94888e00006b5d01207b168926abcc4b5f132f7))
 
 ### Under the hood
 
