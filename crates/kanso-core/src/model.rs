@@ -19,6 +19,12 @@ pub const PUBLISH_FIELD: &str = "kansoPublish";
 /// device that can't read images still finds them by their words.
 pub const OCR_FIELD: &str = "kansoOcr";
 
+/// The notebook field (in `extra`) naming the icon it shows in the sidebar
+/// and lists: one of the app's choices, by its Lucide name (`"rocket"`).
+/// It syncs with the notebook; a name the app doesn't know shows the
+/// default icon.
+pub const BOOK_ICON_FIELD: &str = "kansoIcon";
+
 /// Longest note title the API accepts.
 pub const MAX_TITLE_LEN: usize = 128;
 /// Longest note body the API accepts, in characters.

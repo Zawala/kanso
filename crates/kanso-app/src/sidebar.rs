@@ -39,6 +39,8 @@ pub enum SidebarEvent {
         parent: Option<String>,
     },
     RenameBook(String),
+    /// "Change Icon…" in a notebook's menu: the workspace opens the picker.
+    ChangeBookIcon(String),
     DeleteBook(String),
     RenameTag(String),
     RecolorTag(String, kanso_core::TagColor),
@@ -78,6 +80,9 @@ pub struct Sidebar {
     all_tags: bool,
     /// The levels of the tag tree opened, by their paths in lowercase.
     open_tags: HashSet<String>,
+    /// The notebooks opened to show the ones inside them, by ID; kept in
+    /// the config.
+    open_books: HashSet<String>,
     /// Collapsed to the icon rail.
     collapsed: bool,
     /// Settings fill the window beside the sidebar: the gear is the place
@@ -122,6 +127,11 @@ impl Sidebar {
         let status_choice = cx
             .try_global::<AppState>()
             .and_then(|state| state.config.layout.status_open);
+        // The notebooks as the user last left them.
+        let open_books = cx
+            .try_global::<AppState>()
+            .map(|state| state.config.layout.open_books.iter().cloned().collect())
+            .unwrap_or_default();
         Sidebar {
             library,
             scroll: ScrollHandle::new(),
@@ -129,6 +139,7 @@ impl Sidebar {
             status_filter: false,
             all_tags: false,
             open_tags: HashSet::new(),
+            open_books,
             collapsed: false,
             settings_open: false,
             user: user.into(),
@@ -178,6 +189,60 @@ impl Sidebar {
         if cx.has_global::<AppState>() {
             AppState::update_config(cx, |config| config.layout.status_open = choice);
         }
+    }
+
+    /// A click on a notebook's arrow: it opens to show the notebooks inside
+    /// it, or folds them away, and stays that way next time.
+    pub fn toggle_book(&mut self, id: &str, cx: &mut Context<Self>) {
+        if !self.open_books.remove(id) {
+            self.open_books.insert(id.to_owned());
+        }
+        if cx.has_global::<AppState>() {
+            let mut open: Vec<String> = self.open_books.iter().cloned().collect();
+            open.sort();
+            AppState::update_config_soon(cx, |config| config.layout.open_books = open);
+        }
+        cx.notify();
+    }
+
+    /// The arrow before a notebook or tag level that has others inside it,
+    /// which opens or folds them; an empty space of its size before one that
+    /// doesn't, so the icons line up.
+    fn fold_arrow(
+        &self,
+        id: SharedString,
+        parent: bool,
+        open: bool,
+        on_click: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        if !parent {
+            return div().flex_none().size(px(16.)).into_any_element();
+        }
+        let colors = Colors::get(cx);
+        div()
+            .id(id)
+            .flex_none()
+            .size(px(16.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(4.))
+            .hover(|el| el.bg(colors.sidebar_hover))
+            .child(
+                Icon::new(if open {
+                    IconName::ChevronDown
+                } else {
+                    IconName::ChevronRight
+                })
+                .size(px(13.))
+                .text_color(colors.text_muted),
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                on_click(this, cx);
+            }))
+            .into_any_element()
     }
 
     /// Whether the gear shows as the place on screen.
@@ -559,37 +624,19 @@ impl Sidebar {
             };
             let parent = !node.children.is_empty();
             let is_open = parent && open(&node.path);
-            let chevron = if parent {
-                let path = node.path.to_lowercase();
-                div()
-                    .id(SharedString::from(format!("tag-fold-{path}")))
-                    .flex_none()
-                    .size(px(16.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(4.))
-                    .hover(|el| el.bg(colors.sidebar_hover))
-                    .child(
-                        Icon::new(if is_open {
-                            IconName::ChevronDown
-                        } else {
-                            IconName::ChevronRight
-                        })
-                        .size(px(13.))
-                        .text_color(colors.text_muted),
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        cx.stop_propagation();
-                        if !this.open_tags.remove(&path) {
-                            this.open_tags.insert(path.clone());
-                        }
-                        cx.notify();
-                    }))
-                    .into_any_element()
-            } else {
-                div().flex_none().size(px(16.)).into_any_element()
-            };
+            let path = node.path.to_lowercase();
+            let chevron = self.fold_arrow(
+                SharedString::from(format!("tag-fold-{path}")),
+                parent,
+                is_open,
+                move |this, cx| {
+                    if !this.open_tags.remove(&path) {
+                        this.open_tags.insert(path.clone());
+                    }
+                    cx.notify();
+                },
+                cx,
+            );
             let icon = h_flex()
                 .gap(px(2.))
                 .child(chevron)
@@ -1184,10 +1231,36 @@ impl Render for Sidebar {
         let library = self.library.read(cx);
         let counts = library.counts.clone();
         let recent = library.recent;
-        let books: Vec<(usize, String, String, u32)> = library
-            .book_tree()
+        let tree = library.book_tree();
+        let depths: Vec<usize> = tree.iter().map(|(depth, _)| *depth).collect();
+        // The notebooks the one showing is inside stay open around it.
+        let showing: HashSet<String> = match &library.filter {
+            Filter::Book(id) => library
+                .book_path(id)
+                .iter()
+                .filter(|b| b.id != *id)
+                .map(|b| b.id.clone())
+                .collect(),
+            _ => HashSet::new(),
+        };
+        let open = |ix: usize| {
+            let id = &tree[ix].1.id;
+            self.open_books.contains(id) || showing.contains(id)
+        };
+        let books: Vec<BookRow> = visible_book_rows(&depths, &open)
             .into_iter()
-            .map(|(depth, b)| (depth, b.id.clone(), b.name.clone(), b.count))
+            .map(|(ix, parent)| {
+                let (depth, book) = tree[ix];
+                BookRow {
+                    depth,
+                    id: book.id.clone(),
+                    name: book.name.clone(),
+                    count: book.count,
+                    icon: crate::book_icons::book_icon(book),
+                    parent,
+                    open: parent && open(ix),
+                }
+            })
             .collect();
 
         let mut list = v_flex().pb_4();
@@ -1236,10 +1309,31 @@ impl Render for Sidebar {
             cx,
         );
         list = list.child(self.heading("Notebooks", Some(add_book), cx));
-        for (depth, id, name, count) in books {
+        for BookRow {
+            depth,
+            id,
+            name,
+            count,
+            icon,
+            parent,
+            open,
+        } in books
+        {
             let view = cx.entity();
             let book_id = id.clone();
-            let icon = self.icon(Lucide::Notebook, cx);
+            let fold_id = id.clone();
+            let chevron = self.fold_arrow(
+                SharedString::from(format!("book-fold-{id}")),
+                parent,
+                open,
+                move |this, cx| this.toggle_book(&fold_id, cx),
+                cx,
+            );
+            let icon = h_flex()
+                .gap(px(4.))
+                .child(chevron)
+                .child(self.icon(icon, cx))
+                .into_any_element();
             let row = self
                 .row(
                     SharedString::from(format!("book-{id}")),
@@ -1255,6 +1349,7 @@ impl Render for Sidebar {
                 .context_menu(move |menu, _, _| {
                     let (new, rename, delete) = (view.clone(), view.clone(), view.clone());
                     let (a, b, c) = (book_id.clone(), book_id.clone(), book_id.clone());
+                    let (reicon, d) = (view.clone(), book_id.clone());
                     menu.item(
                         PopupMenuItem::new("New Sub-notebook").on_click(move |_, _, cx| {
                             new.update(cx, |_, cx| {
@@ -1267,6 +1362,13 @@ impl Render for Sidebar {
                     .item(PopupMenuItem::new("Rename…").on_click(move |_, _, cx| {
                         rename.update(cx, |_, cx| cx.emit(SidebarEvent::RenameBook(b.clone())));
                     }))
+                    .item(
+                        PopupMenuItem::new("Change Icon…").on_click(move |_, _, cx| {
+                            reicon.update(cx, |_, cx| {
+                                cx.emit(SidebarEvent::ChangeBookIcon(d.clone()))
+                            });
+                        }),
+                    )
                     .separator()
                     .item(
                         PopupMenuItem::new("Delete Notebook…").on_click(move |_, _, cx| {
@@ -1514,6 +1616,40 @@ pub fn flat_tag_ids(tree: &[TagNode]) -> HashSet<&str> {
         .collect()
 }
 
+/// A notebook row as the sidebar draws it.
+struct BookRow {
+    depth: usize,
+    id: String,
+    name: String,
+    count: u32,
+    icon: Lucide,
+    /// Has notebooks inside it, so it has an arrow.
+    parent: bool,
+    open: bool,
+}
+
+/// The notebook tree's rows that show, top to bottom, from the depth of
+/// each notebook in the tree's order: every notebook whose parents are all
+/// open, with whether it has notebooks inside it. `open` is asked by index.
+/// Pure.
+pub fn visible_book_rows(depths: &[usize], open: &dyn Fn(usize) -> bool) -> Vec<(usize, bool)> {
+    let mut rows = Vec::new();
+    // Rows deeper than this are inside a folded notebook.
+    let mut folded_at: Option<usize> = None;
+    for (ix, &depth) in depths.iter().enumerate() {
+        if folded_at.is_some_and(|folded| depth > folded) {
+            continue;
+        }
+        folded_at = None;
+        let parent = depths.get(ix + 1).is_some_and(|&next| next > depth);
+        rows.push((ix, parent));
+        if parent && !open(ix) {
+            folded_at = Some(depth);
+        }
+    }
+    rows
+}
+
 /// The tree's rows top to bottom with their depth: every level whose
 /// parents are all open. Pure.
 pub fn visible_tag_rows<'a>(
@@ -1563,7 +1699,7 @@ mod tests {
         SIGN_IN_TO_SYNC, SyncState, Tone, api_icon, footer_name, initials, problem_label,
         status_choice_after, status_group_open, sync_line, tone_icon, visible_tags,
     };
-    use super::{flat_tag_ids, visible_tag_rows};
+    use super::{flat_tag_ids, visible_book_rows, visible_tag_rows};
     use crate::account_words::step_label;
     use crate::grouping::utc_label;
     use crate::services::{AccountState, strategies};
@@ -1944,5 +2080,90 @@ mod tests {
         );
         assert_eq!(visible_tags(&[5, 1, 9, 3], 2, None, true), vec![0, 1, 2, 3]);
         assert_eq!(visible_tags(&[1, 1, 1], 2, None, false), vec![0, 1]);
+    }
+
+    /// The sidebar's notebooks as in the screenshot that asked for this:
+    /// folded, only the top levels show; opening one shows its children,
+    /// and a folded child keeps its own children hidden.
+    #[test]
+    fn notebooks_fold_like_an_accordion() {
+        // My Vault › (Agents, Clients › TDi, Etapath › (Driver App, Reviews › Filters)), Notes
+        let depths = [0, 1, 1, 2, 1, 2, 2, 3, 0];
+        let shown = |open: &[usize]| -> Vec<(usize, bool)> {
+            visible_book_rows(&depths, &|ix| open.contains(&ix))
+        };
+        assert_eq!(shown(&[]), vec![(0, true), (8, false)]);
+        assert_eq!(
+            shown(&[0]),
+            vec![(0, true), (1, false), (2, true), (4, true), (8, false)]
+        );
+        assert_eq!(
+            shown(&[0, 4]),
+            vec![
+                (0, true),
+                (1, false),
+                (2, true),
+                (4, true),
+                (5, false),
+                (6, true),
+                (8, false)
+            ]
+        );
+        // A child opened under a folded parent stays out of sight.
+        assert_eq!(shown(&[4]), shown(&[]));
+        assert_eq!(visible_book_rows(&[], &|_| true), vec![]);
+    }
+
+    /// Depths of a notebook tree in its order: each one at most one deeper
+    /// than the one before it.
+    fn tree_depths() -> impl Strategy<Value = Vec<usize>> {
+        prop::collection::vec(any::<bool>(), 0..40).prop_map(|steps| {
+            let mut depths: Vec<usize> = Vec::new();
+            for (ix, deeper) in steps.into_iter().enumerate() {
+                let last = depths.last().copied().unwrap_or(0);
+                depths.push(match (ix, deeper) {
+                    (0, _) => 0,
+                    (_, true) => last + 1,
+                    (_, false) => last.saturating_sub(ix % 3),
+                });
+            }
+            depths
+        })
+    }
+
+    proptest! {
+        #![proptest_config(config())]
+
+        /// Invariants: a notebook shows exactly when every notebook it is
+        /// inside is open; rows keep the tree's order; a row has an arrow
+        /// exactly when the next notebook is inside it; and with everything
+        /// open, every notebook shows.
+        #[test]
+        fn prop_a_notebook_shows_when_its_parents_are_open(
+            depths in tree_depths(),
+            open in prop::collection::vec(any::<bool>(), 40),
+        ) {
+            let is_open = |ix: usize| open[ix];
+            let rows = visible_book_rows(&depths, &is_open);
+            let parents_open = |ix: usize| {
+                // Walk back to each ancestor: the nearest shallower row.
+                let mut depth = depths[ix];
+                (0..ix).rev().all(|up| {
+                    if depths[up] < depth {
+                        depth = depths[up];
+                        is_open(up)
+                    } else {
+                        true
+                    }
+                })
+            };
+            let expected: Vec<usize> = (0..depths.len()).filter(|&ix| parents_open(ix)).collect();
+            let shown: Vec<usize> = rows.iter().map(|(ix, _)| *ix).collect();
+            prop_assert_eq!(shown, expected);
+            for (ix, parent) in &rows {
+                prop_assert_eq!(*parent, depths.get(ix + 1).is_some_and(|&next| next > depths[*ix]));
+            }
+            prop_assert_eq!(visible_book_rows(&depths, &|_| true).len(), depths.len());
+        }
     }
 }

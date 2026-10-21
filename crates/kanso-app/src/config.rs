@@ -300,6 +300,9 @@ pub struct WindowLayout {
     pub inspector_open: bool,
     pub inspector_width: f32,
     pub inspector_tab: InspectorTab,
+    /// The sidebar's notebooks opened to show the ones inside them, by ID;
+    /// the rest are folded.
+    pub open_books: Vec<String>,
 }
 
 impl Default for WindowLayout {
@@ -311,6 +314,7 @@ impl Default for WindowLayout {
             inspector_open: false,
             inspector_width: crate::layout::INSPECTOR_WIDTH,
             inspector_tab: InspectorTab::Outline,
+            open_books: Vec::new(),
         }
     }
 }
@@ -682,6 +686,7 @@ mod tests {
                         inspector_open,
                         inspector_width,
                         inspector_tab,
+                        open_books: Vec::new(),
                     }
                 },
             )

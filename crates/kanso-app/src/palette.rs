@@ -561,7 +561,7 @@ impl Palette {
                         let item = Item::new(
                             Target::Book(book.id.clone()),
                             book.name.clone(),
-                            IconName::Notebook,
+                            crate::book_icons::book_icon(book),
                         )
                         // Typing flattens the tree into a ranked list.
                         .depth(if query.is_empty() { depth } else { 0 })
@@ -583,7 +583,7 @@ impl Palette {
                         let item = Item::new(
                             Target::Show(filter.clone()),
                             book.name.clone(),
-                            IconName::Notebook,
+                            crate::book_icons::book_icon(book),
                         )
                         .depth(if query.is_empty() { depth } else { 0 })
                         .checked(*showing == filter)

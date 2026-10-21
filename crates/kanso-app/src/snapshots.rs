@@ -80,8 +80,19 @@ fn demo_store(path: &Path) -> Store {
     let engineering = book("Engineering", None);
     let platform = book("Platform", Some(&engineering));
     let product = book("Product", None);
-    book("Research", None);
+    let research = book("Research", None);
     let design = book("Design", None);
+    // Two notebooks with icons of their own.
+    for (id, icon) in [(&research, "flask-conical"), (&design, "palette")] {
+        store
+            .put(
+                DocType::Book,
+                json!({"_id": id, "kansoIcon": icon}),
+                Put::Merge,
+                Origin::Ui,
+            )
+            .unwrap();
+    }
     let personal = book("Personal", None);
     let tag = |name: &str, color: &str| {
         store
@@ -284,6 +295,38 @@ struct Shot {
 
 /// The most recently edited note, as after a restart.
 fn open_latest(_: &mut HeadlessAppContext, _: AnyWindowHandle, _: &Entity<Workspace>, _: &Store) {}
+
+/// Engineering opened in the sidebar, showing Platform inside it.
+fn notebook_open(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let engineering = store
+        .books()
+        .unwrap()
+        .into_iter()
+        .find(|b| b.name == "Engineering")
+        .unwrap()
+        .id;
+    let sidebar = cx.update(|cx| workspace.read(cx).sidebar.clone());
+    cx.update(|cx| sidebar.update(cx, |sidebar, cx| sidebar.toggle_book(&engineering, cx)));
+}
+
+/// The icon picker for a notebook with an icon of its own.
+fn book_icon_picker(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        crate::book_icons::open_picker("Design", Some("palette"), window, cx, |_, _, _| {});
+    })
+    .unwrap();
+}
 
 fn set_filter(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, filter: Filter) {
     let library = cx.update(|cx| workspace.read(cx).library.clone());
@@ -3397,6 +3440,11 @@ fn snapshots() {
         shot("light-split", Light, Split, open_latest),
         shot("dark-edit", Dark, Edit, open_latest),
         shot("light-edit", Light, Edit, open_latest),
+        shot("dark-notebook-open", Dark, Edit, notebook_open),
+        Shot {
+            dialog_width: crate::book_icons::PICKER_WIDTH,
+            ..shot("dark-book-icons", Dark, Edit, book_icon_picker)
+        },
         shot("dark-preview", Dark, Preview, open_latest),
         shot("light-preview", Light, Preview, open_latest),
         shot("dark-edit-mono", Dark, Edit, mono_font),

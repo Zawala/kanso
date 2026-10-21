@@ -12,6 +12,7 @@ mod account_flow_tests;
 mod account_page;
 mod account_words;
 mod assets;
+mod book_icons;
 mod capture;
 mod capture_cli;
 mod clipboard;
