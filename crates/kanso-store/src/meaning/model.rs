@@ -1,6 +1,6 @@
 //! What the meaning features answer with.
 
-use crate::RelatedNote;
+use crate::{RelatedNote, WriteResult};
 
 /// What a search by meaning found.
 #[derive(Clone, Debug, PartialEq)]
@@ -22,4 +22,12 @@ pub struct TagSuggestion {
     pub name: String,
     /// The similarities of the near notes that have it, added up.
     pub weight: f32,
+}
+
+/// Two notes made one: the note kept, with the other's words and tags,
+/// and the other, now in the trash.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Merged {
+    pub kept: WriteResult,
+    pub trashed: WriteResult,
 }

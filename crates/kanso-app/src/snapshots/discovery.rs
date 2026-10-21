@@ -368,6 +368,26 @@ pub(super) fn palette_suggested_tags(
     super::pick_from_header(cx, window, workspace, crate::commands::Picker::Tag, "");
 }
 
+/// The open note with a near twin: the quiet line under its header.
+pub(super) fn editor_twin(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| {
+        let meaning = workspace.read(cx).editor.read(cx).meaning().clone();
+        meaning.update(cx, |meaning, cx| {
+            meaning.set_duplicate_for_test(Some(kanso_store::RelatedNote {
+                id: "note:twin".into(),
+                title: "MCP support model (copy)".into(),
+                score: 0.97,
+            }));
+            cx.notify();
+        });
+    });
+}
+
 /// The Related tab while the feature is off.
 pub(super) fn inspector_related_off(
     cx: &mut HeadlessAppContext,

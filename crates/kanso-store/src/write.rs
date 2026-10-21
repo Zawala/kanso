@@ -249,7 +249,7 @@ fn snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()
 }
 
 /// Puts `prev` in the document's history, unthrottled, then prunes it.
-fn keep_snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
+pub(crate) fn keep_snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
     let now = now_ms();
     tx.execute(
         "INSERT INTO revisions (doc_id, rev, json, saved_at, origin) VALUES (?1, ?2, ?3, ?4, ?5)",

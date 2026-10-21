@@ -1,6 +1,7 @@
 //! The rules the meaning features follow, apart from the store: which
-//! notes a search by meaning adds to the text matches, and which tags the
-//! nearest notes suggest.
+//! notes a search by meaning adds to the text matches, which tags the
+//! nearest notes suggest, when two notes count as the same, and how two
+//! notes are merged without losing a word.
 
 use std::collections::{HashMap, HashSet};
 
@@ -10,6 +11,17 @@ use crate::RelatedNote;
 /// it the Related tab's words say "Loosely related"; a search list of
 /// those is noise.
 pub const MEANING_SIMILARITY: f32 = 0.35;
+
+/// The least similarity for two notes to count as saying the same thing.
+///
+/// The model averages one fixed vector per word piece, so two notes reach
+/// this only when nearly all their words are the same ones, in about the
+/// same amounts: a copy, a copy with a line or two changed, or the same
+/// list written twice. Notes that are merely about the same subject share
+/// many words but not their proportions, and land lower (the Related tab
+/// calls 0.75 and up "Very close"). 0.95 keeps the warning for notes that
+/// are worth merging, and a false warning costs a glance.
+pub const DUPLICATE_SIMILARITY: f32 = 0.95;
 
 /// The least similarity for a near note's tags to be suggested: "Close",
 /// as the Related tab says it, or nearly.
@@ -72,6 +84,49 @@ pub fn suggest_tags(
     suggested
 }
 
+/// The body of a note merged with another: its own words, then the
+/// other's under the other's title as a heading (unless the other's body
+/// already starts with that title, or it has none). Nothing of either is
+/// left out. Pure.
+pub fn merged_body(body: &str, other_title: &str, other_body: &str) -> String {
+    let mine = body.trim_end();
+    let theirs = other_body.trim_matches(['\n', '\r']).trim_end();
+    let title = other_title.trim();
+    let first_line = theirs.lines().next().unwrap_or("");
+    let titled = first_line.trim_start_matches('#').trim() == title && first_line.starts_with('#');
+    let mut out = String::with_capacity(mine.len() + title.len() + theirs.len() + 8);
+    out.push_str(mine);
+    let mut part = |text: &str| {
+        if text.is_empty() {
+            return;
+        }
+        if !out.is_empty() {
+            out.push_str("\n\n");
+        }
+        out.push_str(text);
+    };
+    if !title.is_empty() && !titled {
+        part(&format!("## {title}"));
+    }
+    part(theirs);
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out
+}
+
+/// A note's tags merged with another's: its own, then the other's it
+/// hasn't, in order. Pure.
+pub fn merged_tags(tags: &[String], other: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(tags.len() + other.len());
+    for tag in tags.iter().chain(other) {
+        if !out.contains(tag) {
+            out.push(tag.clone());
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,6 +159,26 @@ mod tests {
         let names: Vec<&str> = suggested.iter().map(|(t, _)| t.as_str()).collect();
         assert_eq!(names, ["tag:work", "tag:home"]);
         assert!((suggested[0].1 - 1.6).abs() < 1e-6);
+    }
+
+    #[test]
+    fn merging_keeps_both_texts() {
+        assert_eq!(
+            merged_body("Mine\n", "Theirs", "Their words\n"),
+            "Mine\n\n## Theirs\n\nTheir words\n"
+        );
+        // The other note already starts with its title.
+        assert_eq!(
+            merged_body("Mine", "Theirs", "# Theirs\nWords"),
+            "Mine\n\n# Theirs\nWords\n"
+        );
+        assert_eq!(merged_body("", "", "Words"), "Words\n");
+        assert_eq!(merged_body("Mine", "Theirs", ""), "Mine\n\n## Theirs\n");
+        let s = |v: &[&str]| v.iter().map(|t| (*t).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            merged_tags(&s(&["a", "b"]), &s(&["b", "c"])),
+            s(&["a", "b", "c"])
+        );
     }
 
     fn config(cases: u32) -> ProptestConfig {
@@ -217,6 +292,34 @@ mod tests {
                     }
                 }
             }
+        }
+
+        /// Merging loses no text: the merged body starts with the note's
+        /// own words and holds the other's words and title, and the tags
+        /// are both notes' tags, each once.
+        #[test]
+        fn prop_merging_loses_no_text(
+            body in "[a-z #\n-]{0,40}",
+            title in "[A-Za-z ]{0,12}",
+            other in "[a-z #\n-]{0,40}",
+            tags in prop::collection::vec("[a-c]", 0..4),
+            other_tags in prop::collection::vec("[a-e]", 0..4),
+        ) {
+            let merged = merged_body(&body, &title, &other);
+            prop_assert!(merged.starts_with(body.trim_end()));
+            let theirs = other.trim();
+            prop_assert!(merged.contains(theirs));
+            prop_assert!(merged.contains(title.trim()));
+            for word in body.split_whitespace().chain(other.split_whitespace()) {
+                prop_assert!(merged.contains(word));
+            }
+            let all = merged_tags(&tags, &other_tags);
+            for tag in tags.iter().chain(&other_tags) {
+                prop_assert!(all.contains(tag));
+            }
+            let unique: HashSet<&String> = all.iter().collect();
+            prop_assert_eq!(unique.len(), all.len());
+            prop_assert!(all.starts_with(&merged_tags(&tags, &[])));
         }
     }
 }

@@ -264,7 +264,8 @@ pub struct NoteEditor {
     vim: Option<vim_glue::VimState>,
     /// The tints on tasks' due dates in the text.
     due_marks: crate::due::DueMarks,
-    /// What related notes say about the open note: suggested tags.
+    /// What related notes say about the open note: suggested tags, and a
+    /// note that says nearly the same.
     meaning: Entity<NoteMeaning>,
     /// Shows the hidden header in focus mode, as a hover would.
     #[cfg(test)]
@@ -2683,6 +2684,137 @@ impl NoteEditor {
             )
     }
 
+    /// A quiet line when another note says nearly the same as this one,
+    /// with Open, Merge and a way to say they're different.
+    fn render_twin_banner(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let twin = self.meaning.read(cx).duplicate()?.clone();
+        let colors = Colors::get(cx);
+        let title = if twin.title.trim().is_empty() {
+            "Untitled".to_owned()
+        } else {
+            twin.title.clone()
+        };
+        let percent = (twin.score.clamp(0., 1.) * 100.).floor() as u32;
+        let (open_id, merge_id) = (twin.id.clone(), twin.id.clone());
+        let merge_title = title.clone();
+        Some(
+            h_flex()
+                .flex_none()
+                .gap_2()
+                .mx(px(TEXT_INSET - 12.))
+                .my_1()
+                .px(px(12.))
+                .py(px(5.))
+                .rounded(px(6.))
+                .bg(colors.fill)
+                .text_size(px(12.5))
+                .text_color(colors.text_secondary)
+                .debug_selector(|| "twin-banner".into())
+                .child(
+                    Icon::new(Lucide::Copy)
+                        .size(px(13.))
+                        .text_color(colors.text_muted),
+                )
+                .child(div().flex_1().min_w_0().truncate().child(format!(
+                    "Says nearly the same as “{title}” ({percent}% alike)"
+                )))
+                .child(
+                    Button::new("twin-open")
+                        .ghost()
+                        .xsmall()
+                        .label("Open")
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let id = open_id.clone();
+                            this.library
+                                .update(cx, |library, cx| library.select(Some(id), cx));
+                        })),
+                )
+                .child(
+                    Button::new("twin-merge")
+                        .ghost()
+                        .xsmall()
+                        .label("Merge…")
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.ask_to_merge(merge_id.clone(), merge_title.clone(), window, cx)
+                        })),
+                )
+                .child(
+                    Button::new("twin-dismiss")
+                        .ghost()
+                        .xsmall()
+                        .label("Not the same")
+                        .tooltip("Don't mention these two again while Kanso is open")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.meaning
+                                .update(cx, |meaning, cx| meaning.dismiss_duplicate(cx));
+                            cx.notify();
+                        })),
+                )
+                .into_any_element(),
+        )
+    }
+
+    /// Asks before merging note `other` into the open note.
+    fn ask_to_merge(
+        &mut self,
+        other: String,
+        title: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let editor = cx.entity().downgrade();
+        crate::dialogs::confirm(
+            format!("Merge “{title}” into this note?"),
+            "Its text goes at the end of this note, under its title, with its tags, and it moves to the trash. Both notes' versions from before stay in their history.",
+            "Merge",
+            window,
+            cx,
+            move |window, cx| {
+                editor
+                    .update(cx, |editor, cx| editor.merge_from(&other, window, cx))
+                    .ok();
+            },
+        );
+    }
+
+    /// Merges note `other` into the open note, after saving what was typed
+    /// (`Store::merge_notes`), and shows the result.
+    pub fn merge_from(&mut self, other: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.flush(cx);
+        let Some(note) = self.note.clone() else {
+            return;
+        };
+        if self.incoming.is_some() || note.is_locked() {
+            cx.emit(EditorEvent::Notice(
+                "This note can't be merged right now.".into(),
+            ));
+            return;
+        }
+        let other_rev = match self.store.note(other) {
+            Ok(Some(other)) => other.rev.unwrap_or_default(),
+            _ => {
+                cx.emit(EditorEvent::Notice("The other note is gone.".into()));
+                return;
+            }
+        };
+        let rev = note.rev.clone().unwrap_or_default();
+        match self
+            .store
+            .merge_notes(&note.id, &rev, other, &other_rev, Origin::Ui)
+        {
+            Ok(_) => {
+                self.meaning
+                    .update(cx, |meaning, cx| meaning.dismiss_duplicate(cx));
+                if let Ok(Some(merged)) = self.store.note(&note.id) {
+                    self.show(Some(merged), true, window, cx);
+                }
+            }
+            Err(err) => cx.emit(EditorEvent::Notice(format!(
+                "Couldn't merge the notes: {err}"
+            ))),
+        }
+    }
+
     /// What shows in place of a locked note's text until it is unlocked.
     fn render_locked(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = Colors::get(cx);
@@ -3188,6 +3320,9 @@ impl Render for NoteEditor {
                 let deleted = matches!(incoming, Incoming::Deleted);
                 el.child(self.render_incoming_banner(deleted, cx))
             })
+            .when(!trashed && self.incoming.is_none(), |el| {
+                el.children(self.render_twin_banner(cx))
+            })
             .child(div().flex_1().min_h_0().w_full().child(body))
             // Redrawn only when the cursor or the counts change.
             .child(
@@ -3472,6 +3607,113 @@ mod tests {
         assert_eq!(store.note(&id).unwrap().unwrap().body, "## Goals\n**next**");
         let label = cx.read(|cx| editor.read(cx).footer.read(cx).label());
         assert!(label.ends_with("2 words · 17 chars"), "{label}");
+    }
+
+    /// A note that says nearly the same as another is mentioned once both
+    /// are embedded; merging saves what was typed first, keeps both texts
+    /// and tags, and trashes the other. Dismissing stops the mention.
+    // no-prop-test: glue; `merged_body` and `Store::merge_notes` have the
+    // properties.
+    #[gpui_kit::test]
+    fn a_near_twin_is_mentioned_and_merges_without_loss(cx: &mut TestAppContext) {
+        use crate::related::{MODEL_ID, Related};
+        let dir = tempfile::tempdir().unwrap();
+        let (window, editor, store, id) =
+            editor_on(cx, dir.path(), "milk eggs bread butter cheese");
+        let book = store.note(&id).unwrap().unwrap().book_id;
+        let shop = store.tag_named("shop", Origin::Ui).unwrap();
+        let twin = store
+            .put(
+                DocType::Note,
+                json!({"title": "t", "body": "milk eggs bread butter cheese jam", "bookId": book, "tags": [shop]}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let letters = |text: &str| {
+            let mut v = vec![0f32; 26];
+            for c in text.bytes().filter(u8::is_ascii_lowercase) {
+                v[(c - b'a') as usize] += 1.;
+            }
+            v
+        };
+        let embed = |store: &Store| {
+            let queue = store.embedding_queue(MODEL_ID).unwrap();
+            let rows: Vec<_> = queue
+                .pending
+                .into_iter()
+                .map(|p| {
+                    let v = letters(&p.text);
+                    (p.id, p.hash, v)
+                })
+                .collect();
+            store.put_embeddings(MODEL_ID, &rows).unwrap();
+        };
+        store.set_embedding_model(Some(MODEL_ID)).unwrap();
+        embed(&store);
+        let run = |cx: &mut TestAppContext,
+                   f: &dyn Fn(
+            &mut NoteEditor,
+            &mut gpui_kit::Window,
+            &mut gpui_kit::Context<NoteEditor>,
+        )| {
+            window
+                .update(cx, |_, window, cx| {
+                    editor.update(cx, |editor, cx| f(editor, window, cx))
+                })
+                .unwrap();
+            cx.run_until_parked();
+        };
+        let new_embeddings = |cx: &mut TestAppContext, generation: u64| {
+            cx.update(|cx| {
+                if !cx.has_global::<Related>() {
+                    cx.set_global(Related::default());
+                }
+                gpui_kit::BorrowAppContext::update_global::<Related, _>(cx, |related, _| {
+                    related.generation = generation
+                });
+            });
+            cx.run_until_parked();
+        };
+        run(cx, &|editor, window, cx| editor.open(Some(&id), window, cx));
+        new_embeddings(cx, 1);
+        let duplicate = |cx: &mut TestAppContext| {
+            cx.read(|cx| {
+                let meaning = editor.read(cx).meaning().clone();
+                meaning.read(cx).duplicate().map(|d| d.id.clone())
+            })
+        };
+        assert_eq!(duplicate(cx), Some(twin.clone()));
+        // Dismissed: not mentioned again, from either note.
+        run(cx, &|editor, _, cx| {
+            editor
+                .meaning
+                .update(cx, |meaning, cx| meaning.dismiss_duplicate(cx))
+        });
+        assert_eq!(duplicate(cx), None);
+
+        // Typed and not yet saved, then merged.
+        run(cx, &|editor, window, cx| {
+            editor.edit_for_test("milk eggs bread\nbutter", window, cx)
+        });
+        run(cx, &|editor, window, cx| {
+            editor.merge_from(&twin, window, cx)
+        });
+        let kept = store.note(&id).unwrap().unwrap();
+        assert_eq!(
+            kept.body,
+            "milk eggs bread\nbutter\n\n## t\n\nmilk eggs bread butter cheese jam\n"
+        );
+        assert_eq!(kept.tags, [shop]);
+        assert_eq!(
+            store.note(&twin).unwrap().unwrap().book_id,
+            kanso_core::model::TRASH_BOOK_ID
+        );
+        let shown = cx.read(|cx| editor.read(cx).body_for_test(cx));
+        assert_eq!(shown, kept.body);
+        // Nothing waits to be saved over it.
+        assert!(!cx.read(|cx| editor.read(cx).has_unsaved_edits(cx)));
     }
 
     /// Dictation, as macOS sends it: marked text that grows while you

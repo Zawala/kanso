@@ -1,8 +1,9 @@
 //! Meaning, from the embeddings related notes keep (`embed.rs`): searching
-//! notes by what they are about, and tags suggested by the nearest notes.
+//! notes by what they are about, tags suggested by the nearest notes, a
+//! note that says the same as another, and merging the two.
 //!
-//! The vectors are read from the store, so tag suggestions work without a
-//! model. A search needs its words turned
+//! The vectors are read from the store, so tag suggestions and the
+//! duplicate check work without a model. A search needs its words turned
 //! into a vector by the same model the notes were embedded with: the app
 //! lends the store its model while it is loaded ([`Store::lend_embedder`]),
 //! and a store opened without the app answers [`MeaningSearch::NoModel`].
@@ -16,12 +17,15 @@ use std::sync::Arc;
 use kanso_core::Note;
 use kanso_core::excerpt::{HEAD_CHARS, excerpt_around};
 
+use kanso_core::model::{LOCK_FIELD, TRASH_BOOK_ID};
 use rusqlite::{Connection, params};
+use serde_json::Value;
 
 use crate::embed::{embedded_notes, nearest, own_vector};
-use crate::{Embedder, NoteSummary, Result, Store};
-use model::{MeaningSearch, TagSuggestion};
-use rank::suggest_tags;
+use crate::write::{keep_snapshot, load_row, rewrite_note};
+use crate::{Embedder, NoteSummary, Origin, RelatedNote, Result, Store, StoreError, WriteResult};
+use model::{MeaningSearch, Merged, TagSuggestion};
+use rank::{DUPLICATE_SIMILARITY, merged_body, merged_tags, suggest_tags};
 
 /// How many of a note's nearest notes its tag suggestions come from.
 const TAG_NEIGHBOURS: usize = 12;
@@ -101,6 +105,110 @@ impl Store {
         })
     }
 
+    /// The note that says nearly the same as note `id` by `model`, at least
+    /// [`DUPLICATE_SIMILARITY`] similar, if there is one. Locked notes are
+    /// left out on both sides: their embedding is made from the title only.
+    pub fn near_duplicate(&self, id: &str, model: &str) -> Result<Option<RelatedNote>> {
+        self.read(|conn| {
+            if is_locked(conn, id)? {
+                return Ok(None);
+            }
+            let Some(query) = own_vector(conn, id, model)? else {
+                return Ok(None);
+            };
+            let skip = HashSet::from([id.to_owned()]);
+            let candidates = embedded_notes(conn, model, &skip, true)?;
+            Ok(nearest(&query, &candidates, 1)
+                .into_iter()
+                .find(|note| note.score >= DUPLICATE_SIMILARITY))
+        })
+    }
+
+    /// Merges note `other` into note `keep`: `keep` gets `other`'s words
+    /// after its own ([`merged_body`]) and its tags, and `other` goes to the
+    /// trash, both in one transaction. Both versions as they were go into
+    /// their notes' history first. Refused with [`StoreError::Conflict`]
+    /// when either revision isn't the current one, and for locked notes.
+    pub fn merge_notes(
+        &self,
+        keep: &str,
+        keep_rev: &str,
+        other: &str,
+        other_rev: &str,
+        origin: Origin,
+    ) -> Result<Merged> {
+        if keep == other {
+            return Err(StoreError::Invalid(
+                "A note can't be merged into itself.".into(),
+            ));
+        }
+        self.write(|tx, changes| {
+            let load = |id: &str, rev: &str| -> Result<crate::write::Row> {
+                let row = load_row(tx, id)?
+                    .filter(|row| row.doc_type == kanso_core::DocType::Note && !row.deleted)
+                    .ok_or(StoreError::NotFound)?;
+                if row.rev != rev {
+                    return Err(StoreError::Conflict);
+                }
+                if row.fields.contains_key(LOCK_FIELD) {
+                    return Err(StoreError::Invalid("A locked note can't be merged.".into()));
+                }
+                Ok(row)
+            };
+            let kept_row = load(keep, keep_rev)?;
+            let other_row = load(other, other_rev)?;
+            // However recent the last saved version, these two are kept:
+            // the write path saves them itself for every other origin, and
+            // for the app at most every few minutes.
+            if origin == Origin::Ui {
+                keep_snapshot(tx, keep, &kept_row, origin)?;
+                keep_snapshot(tx, other, &other_row, origin)?;
+            }
+            let text = |row: &crate::write::Row, field: &str| {
+                row.fields
+                    .get(field)
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned()
+            };
+            let tags = |row: &crate::write::Row| -> Vec<String> {
+                row.fields
+                    .get("tags")
+                    .and_then(Value::as_array)
+                    .map(|tags| {
+                        tags.iter()
+                            .filter_map(|t| t.as_str().map(str::to_owned))
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            let body = merged_body(
+                &text(&kept_row, "body"),
+                &text(&other_row, "title"),
+                &text(&other_row, "body"),
+            );
+            let all_tags = merged_tags(&tags(&kept_row), &tags(&other_row));
+            rewrite_note(tx, keep, origin, changes, |fields| {
+                fields.insert("body".into(), body.into());
+                fields.insert("tags".into(), all_tags.into());
+            })?;
+            rewrite_note(tx, other, origin, changes, |fields| {
+                fields.insert("bookId".into(), TRASH_BOOK_ID.into());
+            })?;
+            let rev = |id: &str| -> Result<WriteResult> {
+                let row = load_row(tx, id)?.ok_or(StoreError::NotFound)?;
+                Ok(WriteResult {
+                    id: id.to_owned(),
+                    rev: row.rev,
+                })
+            };
+            Ok(Merged {
+                kept: rev(keep)?,
+                trashed: rev(other)?,
+            })
+        })
+    }
+
     /// The live notes with `ids` as the note list shows them, in that
     /// order; any gone meanwhile are left out.
     pub fn summaries_of(&self, ids: &[&str]) -> Result<Vec<NoteSummary>> {
@@ -135,6 +243,18 @@ fn tag_name(conn: &Connection, id: &str) -> Result<Option<String>> {
         .flatten())
 }
 
+fn is_locked(conn: &Connection, id: &str) -> Result<bool> {
+    use rusqlite::OptionalExtension as _;
+    Ok(conn
+        .query_row(
+            "SELECT json_extract(json, '$.kansoLock') IS NOT NULL FROM docs WHERE id = ?",
+            [id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .unwrap_or(false))
+}
+
 /// A note as a list row, its snippet from the start of its body.
 fn summary(note: &Note) -> NoteSummary {
     let locked = note.is_locked();
@@ -163,8 +283,9 @@ fn summary(note: &Note) -> NoteSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Origin, Put};
+    use crate::{Put, embed_text};
     use kanso_core::DocType;
+    use proptest::prelude::*;
     use serde_json::json;
 
     /// Counts letters: texts with the same letters point the same way.
@@ -290,5 +411,92 @@ mod tests {
             .map(|s| s.name)
             .collect();
         assert_eq!(names, ["letters", "ab"]);
+    }
+
+    fn rev(store: &Store, id: &str) -> String {
+        store.note(id).unwrap().unwrap().rev.unwrap()
+    }
+
+    #[test]
+    fn a_copy_is_a_near_duplicate_and_merging_keeps_everything() {
+        let (_dir, store) = open();
+        let a = note(&store, "Groceries", "milk eggs bread", &["home"]);
+        let b = note(&store, "Groceries", "milk eggs bread jam", &["shop"]);
+        let c = note(&store, "Taxes", "forms receipts", &[]);
+        store.set_embedding_model(Some("letters")).unwrap();
+        index(&store);
+        let twin = store.near_duplicate(&a, "letters").unwrap().unwrap();
+        assert_eq!(twin.id, b);
+        assert!(twin.score >= DUPLICATE_SIMILARITY);
+        assert_eq!(store.near_duplicate(&c, "letters").unwrap(), None);
+
+        // A stale revision is refused, and nothing changes.
+        let stale = store.merge_notes(&a, "1-x", &b, &rev(&store, &b), Origin::Ui);
+        assert!(matches!(stale, Err(StoreError::Conflict)));
+        let (a_rev, b_rev) = (rev(&store, &a), rev(&store, &b));
+        let merged = store
+            .merge_notes(&a, &a_rev, &b, &b_rev, Origin::Ui)
+            .unwrap();
+        let kept = store.note(&a).unwrap().unwrap();
+        assert_eq!(kept.rev.as_deref(), Some(merged.kept.rev.as_str()));
+        assert_eq!(
+            kept.body,
+            "milk eggs bread\n\n## Groceries\n\nmilk eggs bread jam\n"
+        );
+        assert_eq!(kept.tags.len(), 2);
+        let trashed = store.note(&b).unwrap().unwrap();
+        assert_eq!(trashed.book_id, TRASH_BOOK_ID);
+        assert_eq!(trashed.body, "milk eggs bread jam");
+        // Both versions from before are in history.
+        assert!(store.revisions(&a).unwrap().iter().any(|r| r.rev == a_rev));
+        assert!(store.revisions(&b).unwrap().iter().any(|r| r.rev == b_rev));
+        // In the trash, it is no longer anyone's duplicate.
+        index(&store);
+        assert_eq!(store.near_duplicate(&a, "letters").unwrap(), None);
+        assert!(matches!(
+            store.merge_notes(&a, &merged.kept.rev, &a, &merged.kept.rev, Origin::Ui),
+            Err(StoreError::Invalid(_))
+        ));
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 24,
+            failure_persistence: Some(Box::new(
+                proptest::test_runner::FileFailurePersistence::WithSource("regressions"),
+            )),
+            ..ProptestConfig::default()
+        })]
+
+        /// Through the store, merging loses no text: the kept note holds
+        /// both bodies' words and the other title, has every tag of both,
+        /// and the other note is in the trash with its words as they were.
+        #[test]
+        fn prop_merging_through_the_store_loses_no_text(
+            body in "[a-z \n]{0,40}",
+            title in "[A-Za-z]{0,10}",
+            other in "[a-z \n]{0,40}",
+            tags in prop::collection::vec("[a-c]", 0..3),
+            other_tags in prop::collection::vec("[b-e]", 0..3),
+        ) {
+            let (_dir, store) = open();
+            let tags: Vec<&str> = tags.iter().map(String::as_str).collect();
+            let other_tags: Vec<&str> = other_tags.iter().map(String::as_str).collect();
+            let a = note(&store, "Kept", &body, &tags);
+            let b = note(&store, &title, &other, &other_tags);
+            let before = (store.note(&a).unwrap().unwrap(), store.note(&b).unwrap().unwrap());
+            store.merge_notes(&a, &rev(&store, &a), &b, &rev(&store, &b), Origin::Ui).unwrap();
+            let kept = store.note(&a).unwrap().unwrap();
+            for word in before.0.body.split_whitespace().chain(before.1.body.split_whitespace()) {
+                prop_assert!(kept.body.contains(word));
+            }
+            prop_assert!(embed_text("", &kept.body).contains(title.trim()) || title.trim().is_empty());
+            for tag in before.0.tags.iter().chain(&before.1.tags) {
+                prop_assert!(kept.tags.contains(tag));
+            }
+            let trashed = store.note(&b).unwrap().unwrap();
+            prop_assert_eq!(trashed.book_id.as_str(), TRASH_BOOK_ID);
+            prop_assert_eq!(trashed.body, before.1.body);
+        }
     }
 }

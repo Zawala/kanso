@@ -3747,6 +3747,8 @@ fn snapshots() {
             Edit,
             discovery::palette_suggested_tags,
         ),
+        shot("dark-editor-twin", Dark, Edit, discovery::editor_twin),
+        shot("light-editor-twin", Light, Split, discovery::editor_twin),
         shot(
             "dark-inspector-related-off",
             Dark,

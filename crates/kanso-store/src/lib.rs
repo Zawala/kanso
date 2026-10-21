@@ -35,9 +35,10 @@ pub use embed::{
     content_hash, cosine, embed_text, top_k,
 };
 pub use graph::{GraphLink, GraphNote};
-pub use meaning::model::{MeaningSearch, TagSuggestion};
+pub use meaning::model::{MeaningSearch, Merged, TagSuggestion};
 pub use meaning::rank::{
-    MEANING_SIMILARITY, TAG_NEIGHBOUR_SIMILARITY, blend_meaning, suggest_tags,
+    DUPLICATE_SIMILARITY, MEANING_SIMILARITY, TAG_NEIGHBOUR_SIMILARITY, blend_meaning, merged_body,
+    merged_tags, suggest_tags,
 };
 pub use ocr::{OCR_TYPES, UnreadImage};
 pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
