@@ -66,7 +66,7 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
   you changed in Kanso.
 - Notebooks nest, and fold away in the sidebar like an accordion (the arrow beside one opens it);
   right-click one › **Change Icon…** to search 144 icons and give it one of its own, which syncs with it.
-- Themes, light and dark, icon packs, and updates that install themselves.
+- Themes, light and dark, icon themes that draw every icon, and updates that install themselves.
 
 ## Download
 
@@ -224,14 +224,16 @@ What locking does and doesn't do:
 - Every device needs this version of Kanso: an older one shows a locked note as empty, and doesn't
   know a notebook is locked, so a note it makes there stays plain until this version seals it.
 
-### Icon packs
+### Icon themes
 
-**Browse Icon Packs…** (Settings › Themes, the palette, or **Get More Icons…** in a notebook's icon
-picker) lists nearly two hundred open-source icon sets from Iconify, such as Lucide, Phosphor, Tabler
-and Material Symbols, to install or uninstall in a click. An icon pack can also be a folder of SVG icons
-you add to the `icon-packs` folder of Kanso's data folder (Settings › Themes › Icon packs › **Open Folder**). Its icons join the notebook icon picker in a section
-of their own, and a pack chosen with **Use for App Icons** draws Kanso's own icons where it has a file
-of the same name, at once. [docs/ICON_PACKS.md](docs/ICON_PACKS.md) has the format.
+An icon theme draws every icon in Kanso, the controls' own included, and switches at once:
+Settings › Themes › **Icon theme**, or **Change icon theme…** in the palette. Kanso's own Lucide icons
+and Phosphor are built in; a theme can also restyle the library's own icons (a notebook folded or
+open, the Inbox, a pinned note) and add icons to a notebook's **Change Icon…** picker. Add your own
+as a folder of SVGs and one JSON file in the `icon-themes` folder of Kanso's data folder
+(Settings › Themes › Icon theme files › **Open Folder**), or import a Zed icon theme with
+**Import…** there or `kanso icon-theme import <path>`. An icon a theme leaves out stays Kanso's own.
+[icon-themes/README.md](icon-themes/README.md) has the format.
 
 ### Shortcuts
 
