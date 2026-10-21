@@ -368,8 +368,19 @@ impl AccountPage {
             div()
                 .w(px(FIELD_WIDTH))
                 .debug_selector(move || selector.into())
-                .child(Input::new(input).disabled(disabled)),
+                .child(
+                    Input::new(input)
+                        .disabled(disabled)
+                        .when(self.is_password(input), |input| input.mask_toggle()),
+                ),
         )
+    }
+
+    /// Whether `input` is one of the password fields, which can be shown.
+    fn is_password(&self, input: &Entity<InputState>) -> bool {
+        [&self.password, &self.confirm]
+            .iter()
+            .any(|field| field.entity_id() == input.entity_id())
     }
 
     /// The Server row: the forms' server, and the way to change it.
