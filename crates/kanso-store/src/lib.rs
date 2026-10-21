@@ -11,6 +11,7 @@ mod doc;
 mod embed;
 mod graph;
 mod history;
+mod meaning;
 mod ocr;
 mod read;
 mod replace;
@@ -34,6 +35,8 @@ pub use embed::{
     content_hash, cosine, embed_text, top_k,
 };
 pub use graph::{GraphLink, GraphNote};
+pub use meaning::model::MeaningSearch;
+pub use meaning::rank::{MEANING_SIMILARITY, blend_meaning};
 pub use ocr::{OCR_TYPES, UnreadImage};
 pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
 pub use replace::{
@@ -111,6 +114,9 @@ pub struct Store {
     /// A note's forgotten text may still be in the write-ahead log: a reader
     /// kept the last write from emptying it, so the next write tries again.
     wal_to_empty: std::sync::atomic::AtomicBool,
+    /// The app's embedding model while it is loaded, for turning a search
+    /// into a vector ([`Store::lend_embedder`]).
+    embedder: std::sync::RwLock<Option<std::sync::Arc<dyn Embedder>>>,
 }
 
 impl Store {
@@ -130,6 +136,7 @@ impl Store {
             readers: Mutex::new(Vec::new()),
             subscribers: Mutex::new(Vec::new()),
             wal_to_empty: Default::default(),
+            embedder: Default::default(),
         })
     }
 

@@ -15,6 +15,10 @@
 //! (the store keeps a hash of them). The store keeps the vectors
 //! (`kanso-store/src/embed.rs`), so the inspector's Related tab and the
 //! local API's `kanso-related-notes` read them without the model.
+//!
+//! While the model is loaded the store borrows it to turn a search into a
+//! vector, so the palette (and the local API's `kanso-search-by-meaning`)
+//! also finds notes about what was typed, not only notes with its words.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -198,6 +202,7 @@ fn stop(cx: &mut App) {
     related.cancel.store(true, Ordering::Relaxed);
     related.task = None;
     let store = cx.global::<AppState>().store.clone();
+    store.lend_embedder(None);
     if let Err(err) = store.set_embedding_model(None) {
         eprintln!("kanso: couldn't turn related notes off: {err}");
     }
@@ -283,6 +288,8 @@ async fn run(
     store
         .set_embedding_model(Some(MODEL_ID))
         .map_err(|err| ModelError::Load(err.to_string()))?;
+    // Searches by meaning turn their words into a vector with it.
+    store.lend_embedder(Some(embedder.clone()));
     loop {
         if cancel.load(Ordering::Relaxed) {
             return Ok(());

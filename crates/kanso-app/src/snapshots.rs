@@ -3730,6 +3730,12 @@ fn snapshots() {
             discovery::inspector_related,
         ),
         shot(
+            "dark-palette-meaning",
+            Dark,
+            Edit,
+            discovery::palette_meaning,
+        ),
+        shot(
             "dark-inspector-related-off",
             Dark,
             Edit,
