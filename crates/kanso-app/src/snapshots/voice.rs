@@ -1,5 +1,6 @@
 //! Snapshot states for voice input: the pill in the note's header while
-//! listening and writing, and Settings' Voice input in each model state.
+//! listening and writing, a recording being transcribed, and Settings'
+//! Voice input in each model state.
 
 use std::time::Duration;
 
@@ -128,4 +129,17 @@ pub(super) fn settings_voice_failed(
         workspace,
         ModelState::Failed("Couldn't reach the download. Check the connection.".into()),
     );
+}
+
+/// A recording dropped into the note, a third transcribed.
+pub(super) fn editor_transcribing(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| {
+        let editor = workspace.read(cx).editor.clone();
+        crate::transcribe::show_for_snapshot(&editor, window, "Standup 21 Oct.m4a", 0.34, cx);
+    });
 }

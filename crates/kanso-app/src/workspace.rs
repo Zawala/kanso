@@ -214,6 +214,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Move to Trash", TrashNote),
             MenuItem::action("Show History…", ShowHistory),
             MenuItem::action("Voice Input", Dictate),
+            MenuItem::action("Transcribe Recording", crate::transcribe::TranscribeAudio),
             MenuItem::action("Publish…", crate::publish::PublishNote),
             MenuItem::separator(),
             MenuItem::action("Lock Note…", crate::locked::LockNote),
@@ -1628,6 +1629,26 @@ impl Render for Workspace {
                 this.close_settings(window, cx);
                 this.editor.update(cx, |editor, cx| editor.trash(cx));
             }))
+            .on_action(
+                cx.listener(|this, _: &crate::transcribe::TranscribeAudio, window, cx| {
+                    this.close_settings(window, cx);
+                    let found = this.editor.read(cx).audio_on_caret_line(cx);
+                    match found {
+                        Some((file_id, name)) => crate::transcribe::start(
+                            this.editor.clone(),
+                            crate::transcribe::Source::Attachment { file_id, name },
+                            window,
+                            cx,
+                        ),
+                        None => window.push_notification(
+                            gpui_kit::component::notification::Notification::info(
+                                "Put the cursor on the line with a recording to transcribe it, or drop a recording into the note.",
+                            ),
+                            cx,
+                        ),
+                    }
+                }),
+            )
             .on_action(cx.listener(|this, _: &Dictate, window, cx| {
                 this.close_settings(window, cx);
                 crate::voice::press(this.editor.clone(), window, cx);

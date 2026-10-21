@@ -24,7 +24,10 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::{Clause, DocType, Field, Note, NoteStatus};
-use kanso_store::{HeadingHit, NoteSummary, Origin, Put, SearchParams, Sort, Store};
+use kanso_store::{
+    HeadingHit, MEANING_SIMILARITY, MeaningSearch, NoteSummary, Origin, Put, SearchParams, Sort,
+    Store, blend_meaning,
+};
 use serde_json::json;
 
 use crate::commands::{self, Command, Group, Needs, Picker, Run};
@@ -83,6 +86,12 @@ const ROW_HEIGHT: f32 = 30.;
 const NOTE_LIMIT: usize = 20;
 /// How many headings ⌘P lists under the notes.
 const HEADING_LIMIT: usize = 8;
+/// How many notes are listed for being about the search, after the notes
+/// that have its words.
+const MEANING_LIMIT: usize = 5;
+/// The shortest search that is also searched by meaning: a letter or two
+/// says little about a subject.
+const MEANING_MIN_CHARS: usize = 3;
 /// How long typing pauses before notes are searched.
 const SEARCH_DELAY: Duration = Duration::from_millis(80);
 /// A match in a keyword counts a little less than the same match in the label.
@@ -238,6 +247,9 @@ pub struct Palette {
     notes: Vec<NoteSummary>,
     /// Headings found for `notes_for`, in ⌘P.
     headings: Vec<HeadingHit>,
+    /// Notes about `notes_for` that don't have its words, each with how
+    /// close it is, while related notes are on.
+    about: Vec<(NoteSummary, f32)>,
     notes_for: Option<String>,
     search_task: Option<Task<()>>,
     scroll: ScrollHandle,
@@ -267,6 +279,13 @@ impl Palette {
                 }
                 _ => {}
             }),
+            // Tag suggestions for the open note arrive in the background.
+            cx.observe(&editor.read(cx).meaning().clone(), |this, _, cx| {
+                if this.mode == Some(Mode::Pick(Picker::Tag)) {
+                    this.rebuild(cx);
+                    cx.notify();
+                }
+            }),
             // Notebooks and tags can change while the palette is open, by
             // sync or the API.
             cx.observe(&library, |this, _, cx| {
@@ -294,6 +313,7 @@ impl Palette {
             chosen_key: None,
             notes: Vec::new(),
             headings: Vec::new(),
+            about: Vec::new(),
             notes_for: None,
             search_task: None,
             scroll: ScrollHandle::new(),
@@ -353,6 +373,7 @@ impl Palette {
         }
         self.search_task = None;
         self.notes.clear();
+        self.about.clear();
         self.notes_for = None;
         self.items.clear();
         self.rows.clear();
@@ -435,8 +456,9 @@ impl Palette {
 
     /// Searches the store for notes when the mode lists them, in the
     /// background: notes whose titles have the words first, then notes that
-    /// have them anywhere. Results for another query never replace the
-    /// current one's.
+    /// have them anywhere, and, with related notes on, notes about the
+    /// words that don't have them. Results for another query never replace
+    /// the current one's.
     fn search_notes(&mut self, cx: &mut Context<Self>) {
         let query = self.query(cx);
         let wanted = match self.mode {
@@ -448,10 +470,12 @@ impl Palette {
             self.search_task = None;
             self.notes.clear();
             self.headings.clear();
+            self.about.clear();
             self.notes_for = None;
             return;
         }
         let heading_query = heading_query(self.mode, &query);
+        let meaning_query = meaning_query(&query);
         if self.notes_for.as_deref() == Some(query.as_str()) {
             // Back to the query already shown: a search for another one
             // still on its way would replace it.
@@ -478,10 +502,12 @@ impl Palette {
                         Some(words) => store.search_headings(&words, HEADING_LIMIT)?,
                         None => Vec::new(),
                     };
-                    Ok::<_, kanso_store::StoreError>((
-                        merge_by_id(titled, anywhere, NOTE_LIMIT),
-                        headings,
-                    ))
+                    let notes = merge_by_id(titled, anywhere, NOTE_LIMIT);
+                    let about = match meaning_query {
+                        Some(words) => about_notes(&store, &words, &notes)?,
+                        None => Vec::new(),
+                    };
+                    Ok::<_, kanso_store::StoreError>((notes, headings, about))
                 })
                 .await;
             this.update(cx, |this, cx| {
@@ -489,9 +515,10 @@ impl Palette {
                     return;
                 }
                 // A query the store can't run finds nothing.
-                let (notes, headings) = found.unwrap_or_default();
+                let (notes, headings, about) = found.unwrap_or_default();
                 this.notes = notes;
                 this.headings = headings;
+                this.about = about;
                 this.notes_for = Some(query);
                 this.rebuild(cx);
                 cx.notify();
@@ -535,6 +562,7 @@ impl Palette {
                 ));
                 if !query.is_empty() {
                     sections.push(section("Notes", self.note_entries(query, cx), true));
+                    sections.push(section(ABOUT_HEADING, self.about_entries(query), true));
                 }
                 sections
             }
@@ -549,6 +577,7 @@ impl Palette {
                 if !headings.is_empty() {
                     sections.push(section("Headings", headings, true));
                 }
+                sections.push(section(ABOUT_HEADING, self.about_entries(query), true));
                 sections
             }
             Some(Mode::Pick(Picker::Notebook)) => {
@@ -619,7 +648,24 @@ impl Palette {
             Some(Mode::Pick(Picker::Tag)) => {
                 let library = self.library.read(cx);
                 let on_note = self.note.as_ref().map_or(&[][..], |n| &n.tags[..]);
-                let mut tags: Vec<_> = library.tags.iter().collect();
+                // Before anything is typed, the tags close notes have lead.
+                let suggested: Vec<_> = if query.is_empty() && self.note.is_some() {
+                    self.editor
+                        .read(cx)
+                        .meaning()
+                        .read(cx)
+                        .suggested_tags(on_note)
+                        .into_iter()
+                        .filter_map(|s| library.tag(&s.tag_id).cloned())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                let mut tags: Vec<_> = library
+                    .tags
+                    .iter()
+                    .filter(|t| !suggested.iter().any(|s| s.id == t.id))
+                    .collect();
                 tags.sort_by_key(|t| t.name.to_lowercase());
                 // Tags show as "#mcp", so "#mcp" typed finds "mcp".
                 let name = tag_name(query);
@@ -647,7 +693,24 @@ impl Palette {
                     // Last, but always there.
                     entries.push((item, Some(i64::MIN / 8)));
                 }
-                vec![section("Tags", entries, false)]
+                let mut sections = Vec::new();
+                if !suggested.is_empty() {
+                    let entries = suggested
+                        .iter()
+                        .map(|tag| {
+                            let item = Item::new(
+                                Target::Tag(tag.id.clone()),
+                                tag.name.clone(),
+                                IconName::Sparkles,
+                            )
+                            .hint(tag.count.to_string());
+                            (item, None)
+                        })
+                        .collect();
+                    sections.push(section(SUGGESTED_HEADING, entries, true));
+                }
+                sections.push(section("Tags", entries, false));
+                sections
             }
             Some(Mode::Pick(Picker::Status)) => {
                 let current = self.note.as_ref().map(|n| n.status);
@@ -721,6 +784,7 @@ impl Palette {
             .is_some_and(|services| services.signed_in());
         let in_trash = note.is_some_and(|n| n.book_id == TRASH_BOOK_ID);
         let image_line = !in_trash && self.editor.read(cx).image_on_caret_line(cx).is_some();
+        let audio_line = !in_trash && self.editor.read(cx).audio_on_caret_line(cx).is_some();
         commands::all()
             .iter()
             .filter(|command| command.group == group)
@@ -734,6 +798,7 @@ impl Palette {
                 Needs::SignedIn => signed_in,
                 Needs::SignedOut => !signed_in,
                 Needs::ImageLine => image_line,
+                Needs::AudioLine => audio_line,
             })
             .map(|command| {
                 let (label, icon) = match command.label_when_pinned {
@@ -843,6 +908,29 @@ impl Palette {
                 (item, score)
             })
             .filter(|(_, score)| current || score.is_some())
+            .collect()
+    }
+
+    /// Notes about the query that don't have its words, closest first, each
+    /// saying how close it is. They go after every match, unranked by the
+    /// letters typed: their titles needn't have them.
+    fn about_entries(&self, query: &str) -> Vec<(Item, Option<i64>)> {
+        if self.notes_for.as_deref() != Some(query) {
+            return Vec::new();
+        }
+        let open = self.note.as_ref().map(|n| n.id.as_str());
+        self.about
+            .iter()
+            .map(|(note, score)| {
+                let item = Item::new(
+                    Target::Note(note.clone()),
+                    note_title(&note.title),
+                    IconName::Sparkles,
+                )
+                .checked(open == Some(note.id.as_str()))
+                .hint(crate::related::similarity_label(*score));
+                (item, None)
+            })
             .collect()
     }
 
@@ -1361,6 +1449,15 @@ impl Palette {
                 }
             }
             Target::Note(note) => {
+                // Found by meaning: say so, and how close.
+                if item.icon == IconName::Sparkles
+                    && let Some(close) = &item.hint
+                {
+                    detail.meta.push((
+                        Icon::new(IconName::Sparkles),
+                        format!("{close} in meaning to what you typed").into(),
+                    ));
+                }
                 let book = if note.book_id == TRASH_BOOK_ID {
                     "Trash".to_owned()
                 } else {
@@ -1453,6 +1550,11 @@ impl Palette {
                     if item.checked {
                         format!(
                             "The note has #{}; choosing it takes the tag off.",
+                            item.label
+                        )
+                    } else if item.icon == IconName::Sparkles {
+                        format!(
+                            "Adds #{} to the note. Notes about the same things have it.",
                             item.label
                         )
                     } else {
@@ -1743,6 +1845,47 @@ fn merge_by_id(first: Vec<NoteSummary>, then: Vec<NoteSummary>, limit: usize) ->
     merged
 }
 
+/// The heading over the tags close notes suggest.
+const SUGGESTED_HEADING: &str = "Suggested by close notes";
+
+/// The heading over notes found by meaning.
+const ABOUT_HEADING: &str = "Similar in meaning";
+
+/// The words searched by meaning: the query, when it is plain words long
+/// enough to say something, rather than a search with qualifiers. Pure.
+fn meaning_query(query: &str) -> Option<String> {
+    let words = query.trim();
+    let plain = !words.contains(':') && !words.starts_with('-') && !words.contains('"');
+    (plain && words.chars().filter(|c| c.is_alphanumeric()).count() >= MEANING_MIN_CHARS)
+        .then(|| words.to_owned())
+}
+
+/// The notes about `words` that `listed` (the text matches) leaves out,
+/// as list rows with their similarity, closest first; none while related
+/// notes are off or the model isn't loaded.
+fn about_notes(
+    store: &Store,
+    words: &str,
+    listed: &[NoteSummary],
+) -> kanso_store::Result<Vec<(NoteSummary, f32)>> {
+    let MeaningSearch::Found(found) =
+        store.search_by_meaning(words, MEANING_LIMIT + listed.len())?
+    else {
+        return Ok(Vec::new());
+    };
+    let ids: Vec<&str> = listed.iter().map(|n| n.id.as_str()).collect();
+    let kept = blend_meaning(&ids, found, MEANING_SIMILARITY, MEANING_LIMIT);
+    let wanted: Vec<&str> = kept.iter().map(|n| n.id.as_str()).collect();
+    let rows = store.summaries_of(&wanted)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let score = kept.iter().find(|n| n.id == row.id)?.score;
+            Some((row, score))
+        })
+        .collect())
+}
+
 /// The tag name in what was typed in the tag list: without the "#" tags are
 /// shown with, and the spaces around it.
 /// The words ⌘P looks for in headings: the query, when ⌘P is open and the
@@ -2016,8 +2159,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        MODIFIER_SYMBOLS, Mode, Palette, merge_by_id, shortcut, shortcut_parts, tag_name,
-        title_search,
+        ABOUT_HEADING, MODIFIER_SYMBOLS, Mode, Palette, Row, SUGGESTED_HEADING, meaning_query,
+        merge_by_id, shortcut, shortcut_parts, tag_name, title_search,
     };
     use crate::config::AppConfig;
     use crate::library::Filter;
@@ -2726,6 +2869,186 @@ mod tests {
             "Quarterly planning"
         );
         assert!(f.body_focused(cx));
+    }
+
+    /// A stand-in model that knows two subjects: plants and planning.
+    struct Subjects;
+
+    impl kanso_store::Embedder for Subjects {
+        fn model(&self) -> &str {
+            "subjects"
+        }
+        fn dim(&self) -> usize {
+            2
+        }
+        fn embed(&self, texts: &[String]) -> Vec<Vec<f32>> {
+            let count = |t: &str, words: &[&str]| {
+                words.iter().map(|w| t.matches(w).count()).sum::<usize>() as f32
+            };
+            texts
+                .iter()
+                .map(|t| {
+                    let t = t.to_lowercase();
+                    vec![
+                        count(&t, &["vegetable", "tomato", "basil", "garden"]),
+                        count(&t, &["plan", "goal", "agenda", "schedule"]),
+                    ]
+                })
+                .collect()
+        }
+    }
+
+    /// With related notes on, a search also lists notes about its words
+    /// that don't have them, after the ones that do, never twice, and
+    /// says how close each is.
+    #[gpui_kit::test]
+    fn notes_about_the_search_follow_the_matches(cx: &mut TestAppContext) {
+        let f = setup(cx);
+        let book = f.store.note(&f.note).unwrap().unwrap().book_id;
+        f.store
+            .put(
+                DocType::Note,
+                json!({"title": "Raised beds", "body": "tomatoes and basil", "bookId": book}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap();
+        let embed_all = |store: &Store| {
+            let queue = store.embedding_queue("subjects").unwrap();
+            let texts: Vec<String> = queue.pending.iter().map(|p| p.text.clone()).collect();
+            let rows: Vec<_> = queue
+                .pending
+                .into_iter()
+                .zip(kanso_store::Embedder::embed(&Subjects, &texts))
+                .map(|(p, v)| (p.id, p.hash, v))
+                .collect();
+            store.put_embeddings("subjects", &rows).unwrap();
+        };
+        // Off: words only.
+        f.keys(cx, "cmd-p");
+        f.type_query(cx, "vegetables");
+        assert!(f.labels(cx).is_empty());
+        f.store.set_embedding_model(Some("subjects")).unwrap();
+        embed_all(&f.store);
+        f.store.lend_embedder(Some(Arc::new(Subjects)));
+        f.type_query(cx, "vegetable garden");
+        assert_eq!(f.labels(cx), ["Raised beds"]);
+        let palette = f.palette(cx);
+        let (heading, hint) = cx.read(|cx| {
+            let palette = palette.read(cx);
+            let heading = palette.rows.iter().find_map(|row| match row {
+                Row::Heading(h) => Some(h.to_string()),
+                _ => None,
+            });
+            (
+                heading,
+                palette.items[0].hint.clone().map(|h| h.to_string()),
+            )
+        });
+        assert_eq!(heading.as_deref(), Some(ABOUT_HEADING));
+        assert_eq!(hint.as_deref(), Some("Very close"));
+        // A note with the words is listed once, with the matches.
+        f.type_query(cx, "planning");
+        assert_eq!(f.labels(cx), ["Quarterly planning", "Weekly sync notes"]);
+        let rows = cx.read(|cx| {
+            palette
+                .read(cx)
+                .rows
+                .iter()
+                .filter_map(|row| match row {
+                    Row::Heading(h) => Some(h.to_string()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(rows, ["Notes", ABOUT_HEADING]);
+        // Enter opens it, like any note.
+        f.type_query(cx, "tomato garden");
+        f.keys(cx, "enter");
+        let library = cx.read(|cx| f.workspace.read(cx).library.clone());
+        let selected = cx.read(|cx| library.read(cx).selected.clone()).unwrap();
+        assert_eq!(
+            f.store.note(&selected).unwrap().unwrap().title,
+            "Raised beds"
+        );
+        f.store.lend_embedder(None);
+    }
+
+    /// The tag list leads with the tags close notes have and the open note
+    /// hasn't, once each; adding one takes it off the suggestions.
+    #[gpui_kit::test]
+    fn the_tag_list_suggests_tags_from_close_notes(cx: &mut TestAppContext) {
+        use crate::commands::Picker;
+        use crate::related::{MODEL_ID, Related};
+        let f = setup(cx);
+        let book = f.store.note(&f.note).unwrap().unwrap().book_id;
+        let tagged = |title: &str, body: &str, tag: &str| {
+            let tag = f.store.tag_named(tag, Origin::Ui).unwrap();
+            f.store
+                .put(
+                    DocType::Note,
+                    json!({"title": title, "body": body, "bookId": book, "tags": [tag]}),
+                    Put::Upsert,
+                    Origin::Ui,
+                )
+                .unwrap();
+        };
+        tagged("Retro", "the schedule and agenda", "planning");
+        tagged("Raised beds", "tomatoes and basil", "garden");
+        f.store.set_embedding_model(Some(MODEL_ID)).unwrap();
+        let queue = f.store.embedding_queue(MODEL_ID).unwrap();
+        let texts: Vec<String> = queue.pending.iter().map(|p| p.text.clone()).collect();
+        let rows: Vec<_> = queue
+            .pending
+            .into_iter()
+            .zip(kanso_store::Embedder::embed(&Subjects, &texts))
+            .map(|(p, v)| (p.id, p.hash, v))
+            .collect();
+        f.store.put_embeddings(MODEL_ID, &rows).unwrap();
+        // New embeddings: the open note's suggestions are read again.
+        cx.update(|cx| {
+            cx.set_global(Related::default());
+            gpui_kit::BorrowAppContext::update_global::<Related, _>(cx, |related, _| {
+                related.generation = 1
+            });
+        });
+        cx.run_until_parked();
+        let headings = |cx: &mut TestAppContext| {
+            let palette = f.palette(cx);
+            cx.read(|cx| {
+                palette
+                    .read(cx)
+                    .rows
+                    .iter()
+                    .filter_map(|row| match row {
+                        Row::Heading(h) => Some(h.to_string()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            })
+        };
+        f.open(cx, Mode::Pick(Picker::Tag));
+        assert_eq!(headings(cx), [SUGGESTED_HEADING, "Tags"]);
+        let labels = f.labels(cx);
+        assert_eq!(labels, ["planning", "garden"]);
+        // Typing searches every tag as before.
+        f.type_query(cx, "gar");
+        assert_eq!(headings(cx), ["Tags"]);
+        f.type_query(cx, "");
+        f.keys(cx, "enter");
+        let tags = f.store.note(&f.note).unwrap().unwrap().tags;
+        assert_eq!(tags, [f.store.tag_named("planning", Origin::Ui).unwrap()]);
+        f.open(cx, Mode::Pick(Picker::Tag));
+        assert_eq!(headings(cx), ["Tags"]);
+    }
+
+    #[test]
+    fn meaning_searches_plain_words_only() {
+        assert_eq!(meaning_query(" fruit trees "), Some("fruit trees".into()));
+        assert_eq!(meaning_query("ab"), None);
+        assert_eq!(meaning_query("tag:work"), None);
+        assert_eq!(meaning_query("-draft"), None);
+        assert_eq!(meaning_query("\"exact words\""), None);
     }
 
     #[gpui_kit::test]

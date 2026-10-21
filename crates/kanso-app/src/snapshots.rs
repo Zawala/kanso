@@ -3730,6 +3730,26 @@ fn snapshots() {
             discovery::inspector_related,
         ),
         shot(
+            "dark-palette-meaning",
+            Dark,
+            Edit,
+            discovery::palette_meaning,
+        ),
+        shot(
+            "light-inspector-related-tags",
+            Light,
+            Edit,
+            discovery::inspector_related_tags,
+        ),
+        shot(
+            "dark-palette-suggested-tags",
+            Dark,
+            Edit,
+            discovery::palette_suggested_tags,
+        ),
+        shot("dark-editor-twin", Dark, Edit, discovery::editor_twin),
+        shot("light-editor-twin", Light, Split, discovery::editor_twin),
+        shot(
             "dark-inspector-related-off",
             Dark,
             Edit,
@@ -3827,6 +3847,18 @@ fn snapshots() {
             voice::editor_listening,
         ),
         shot("dark-voice-writing", Dark, Edit, voice::editor_writing),
+        shot(
+            "dark-editor-transcribing",
+            Dark,
+            Edit,
+            voice::editor_transcribing,
+        ),
+        shot(
+            "light-editor-transcribing",
+            Light,
+            Split,
+            voice::editor_transcribing,
+        ),
         shot(
             "light-settings-voice-missing",
             Light,

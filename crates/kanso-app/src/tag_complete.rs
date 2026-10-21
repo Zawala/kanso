@@ -7,6 +7,9 @@
 //! What counts as a tag is `kanso_core::tags::inline_tags`: not in code, a
 //! link or a heading's `#`, and only names a `#tag` can spell are offered.
 //!
+//! With related notes on, the tags the note's nearest notes have come
+//! first ([`suggested_first`], from `note_meaning.rs`).
+//!
 //! With Settings › Editor › "Tags from #words" on, saving gives the note
 //! the tags its text names ([`apply_inline_tags`]).
 
@@ -26,6 +29,7 @@ use kanso_store::{Origin, Store};
 use serde_json::Value;
 
 use crate::library::Library;
+use crate::note_meaning::NoteMeaning;
 use crate::wikilinks::WikiCompletion;
 
 /// The most tags offered at once.
@@ -102,6 +106,31 @@ pub fn candidates<'a>(names: &[&'a str], query: &str, limit: usize) -> Vec<&'a s
         .collect()
 }
 
+/// `found` (tags matching the query, best first) with the `suggested`
+/// tags that match the query moved to the front, in their own order, at
+/// most `limit` in all. Pure.
+pub fn suggested_first<'a>(
+    found: Vec<&'a str>,
+    suggested: &[&'a str],
+    query: &str,
+    limit: usize,
+) -> Vec<&'a str> {
+    let fitting = candidates(suggested, query, usize::MAX);
+    let mut out: Vec<&str> = suggested
+        .iter()
+        .copied()
+        .filter(|name| fitting.contains(name))
+        .collect();
+    out.dedup();
+    for name in found {
+        if !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    out.truncate(limit);
+    out
+}
+
 /// The note's field listing the tags its text gave it, so a `#tag` taken
 /// out of the text takes its tag off, and a tag added by hand never is.
 pub const INLINE_TAGS_FIELD: &str = "kansoInlineTags";
@@ -140,6 +169,8 @@ pub fn apply_inline_tags(store: &Store, note: &mut Note, caret: Option<usize>) {
 pub struct NoteCompletion {
     wiki: WikiCompletion,
     library: Entity<Library>,
+    /// The tags suggested for the open note.
+    meaning: Entity<NoteMeaning>,
     /// Whether the caret was in a `#tag` at the last keystroke, so the next
     /// one refines the list.
     in_tag: Cell<bool>,
@@ -148,10 +179,15 @@ pub struct NoteCompletion {
 }
 
 impl NoteCompletion {
-    pub fn new(wiki: WikiCompletion, library: Entity<Library>) -> Self {
+    pub fn new(
+        wiki: WikiCompletion,
+        library: Entity<Library>,
+        meaning: Entity<NoteMeaning>,
+    ) -> Self {
         NoteCompletion {
             wiki,
             library,
+            meaning,
             in_tag: Cell::new(false),
             in_date: Cell::new(false),
         }
@@ -208,11 +244,17 @@ impl CompletionProvider for NoteCompletion {
         };
         let library = self.library.read(cx);
         let names: Vec<&str> = library.tags.iter().map(|tag| tag.name.as_str()).collect();
-        let items = candidates(&names, &query, LIMIT)
+        let suggestions = self.meaning.read(cx).suggested_tags(&[]);
+        let suggested: Vec<&str> = suggestions.iter().map(|s| s.name.as_str()).collect();
+        let found = candidates(&names, &query, LIMIT);
+        let items = suggested_first(found, &suggested, &query, LIMIT)
             .into_iter()
             .filter(|name| *name != query)
             .map(|name| CompletionItem {
                 label: format!("#{name}"),
+                detail: suggested
+                    .contains(&name)
+                    .then(|| "Suggested by close notes".to_owned()),
                 kind: Some(CompletionItemKind::KEYWORD),
                 filter_text: Some(String::new()),
                 text_edit: Some(CompletionTextEdit::Edit(TextEdit {
@@ -238,7 +280,7 @@ impl CompletionProvider for NoteCompletion {
 
 #[cfg(test)]
 mod tests {
-    use super::{INLINE_TAGS_FIELD, apply_inline_tags, candidates, tag_query};
+    use super::{INLINE_TAGS_FIELD, apply_inline_tags, candidates, suggested_first, tag_query};
     use kanso_core::{DocType, Note};
     use kanso_store::{Origin, Put, Store};
     use proptest::prelude::*;
@@ -315,8 +357,52 @@ mod tests {
         assert_eq!(candidates(&names, "", 2).len(), 2);
     }
 
+    #[test]
+    fn suggested_tags_come_first() {
+        let found = vec!["work", "writing", "home"];
+        assert_eq!(
+            suggested_first(found.clone(), &["home", "garden"], "", 10),
+            ["home", "garden", "work", "writing"]
+        );
+        // Only those that fit what is typed.
+        assert_eq!(
+            suggested_first(found, &["home", "writing"], "wr", 10),
+            ["writing", "work", "home"]
+        );
+    }
+
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(512))]
+
+        /// Suggestions that fit the query lead, nothing repeats, nothing
+        /// found is lost while there is room, and nothing comes from
+        /// nowhere.
+        #[test]
+        fn prop_suggestions_lead_without_losing_matches(
+            names in prop::collection::btree_set("[a-z]{1,5}", 0..8),
+            suggested in prop::collection::btree_set("[a-z]{1,5}", 0..4),
+            query in "[a-z]{0,2}",
+            limit in 0usize..16,
+        ) {
+            let names: Vec<&str> = names.iter().map(String::as_str).collect();
+            let suggested: Vec<&str> = suggested.iter().map(String::as_str).collect();
+            let found = candidates(&names, &query, usize::MAX);
+            let out = suggested_first(found.clone(), &suggested, &query, limit);
+            prop_assert!(out.len() <= limit);
+            let mut seen = std::collections::HashSet::new();
+            for name in &out {
+                prop_assert!(seen.insert(*name));
+                prop_assert!(found.contains(name) || suggested.contains(name));
+            }
+            let fitting = candidates(&suggested, &query, usize::MAX);
+            let lead = out.iter().take_while(|n| fitting.contains(n)).count();
+            prop_assert_eq!(lead, fitting.len().min(limit));
+            if fitting.len() + found.len() <= limit {
+                for name in &found {
+                    prop_assert!(out.contains(name));
+                }
+            }
+        }
 
         /// Invariants: a query found ends at the caret, starts after a `#`,
         /// and is made of tag characters only.

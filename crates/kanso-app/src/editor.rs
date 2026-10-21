@@ -46,6 +46,7 @@ use crate::library::{Filter, Library};
 use crate::list_edit::{self, TabIntent};
 use crate::locked::LockView;
 use crate::markdown_edit::{self, Edit, Format};
+use crate::note_meaning::NoteMeaning;
 use crate::pairing::Pairs;
 use crate::preview::{ImageResize, LinkSender, Preview, PreviewEdit, TEXT_INSET, readable_width};
 use crate::smart_paste;
@@ -263,6 +264,9 @@ pub struct NoteEditor {
     vim: Option<vim_glue::VimState>,
     /// The tints on tasks' due dates in the text.
     due_marks: crate::due::DueMarks,
+    /// What related notes say about the open note: suggested tags, and a
+    /// note that says nearly the same.
+    meaning: Entity<NoteMeaning>,
     /// Shows the hidden header in focus mode, as a hover would.
     #[cfg(test)]
     pub(crate) reveal_chrome: bool,
@@ -307,12 +311,14 @@ impl NoteEditor {
                 .auto_close(false)
         });
         let wiki: SharedIndex = Rc::new(RefCell::new(Arc::new(WikiIndex::default())));
+        let meaning = cx.new(|cx| NoteMeaning::new(store.clone(), cx));
         body.update(cx, |state, _| {
             // `#tags` beside `[[` wiki-links: the editor takes one provider.
             state.lsp_mut().completion_provider =
                 Some(Rc::new(crate::tag_complete::NoteCompletion::new(
                     WikiCompletion::new(wiki.clone()),
                     library.clone(),
+                    meaning.clone(),
                 )));
         });
         let settings = cx
@@ -447,6 +453,7 @@ impl NoteEditor {
             typewriter: false,
             vim: None,
             due_marks: Default::default(),
+            meaning,
             #[cfg(test)]
             reveal_chrome: false,
             _subscriptions: subscriptions,
@@ -696,6 +703,11 @@ impl NoteEditor {
         ))
     }
 
+    /// What related notes say about the open note.
+    pub fn meaning(&self) -> &Entity<NoteMeaning> {
+        &self.meaning
+    }
+
     pub fn note_id(&self) -> Option<&str> {
         self.note.as_ref().map(|n| n.id.as_str())
     }
@@ -789,6 +801,9 @@ impl NoteEditor {
         } else {
             self.vim_reset(cx);
         }
+        let id = self.note_id().map(str::to_owned);
+        self.meaning
+            .update(cx, |meaning, cx| meaning.follow(id.as_deref(), cx));
         let has_note = self.note.is_some();
         self.footer
             .update(cx, |footer, cx| footer.note_opened(has_note, cx));
@@ -1764,10 +1779,17 @@ impl NoteEditor {
             .filter(|path| image_path(path) || is_drawing(path))
             .map(|path| Pasted::File(path.clone()))
             .collect();
-        if images.is_empty() {
+        let audio: Vec<std::path::PathBuf> = paths
+            .paths()
+            .iter()
+            .filter(|path| crate::transcribe::is_audio(path))
+            .cloned()
+            .collect();
+        if images.is_empty() && audio.is_empty() {
             if !paths.paths().is_empty() {
                 cx.emit(EditorEvent::Notice(
-                    "Only images and Excalidraw drawings can be dropped into a note.".into(),
+                    "Only images, recordings and Excalidraw drawings can be dropped into a note."
+                        .into(),
                 ));
             }
             return;
@@ -1778,7 +1800,131 @@ impl NoteEditor {
             Some(utf8_offset(&state.value(), utf16))
         });
         self.focus_body(window, cx);
-        self.attach_images(images, at, window, cx);
+        if !audio.is_empty() {
+            self.attach_recordings(audio, at, window, cx);
+        }
+        if !images.is_empty() {
+            self.attach_images(images, at, window, cx);
+        }
+    }
+
+    /// Attaches recordings dropped at `at` (those up to the attachment
+    /// limit), puts their links there, and transcribes the first: its words
+    /// go under its link, or at the end of the note for one too long to
+    /// attach.
+    // no-prop-test: glue; `transcribe::transcript_edit` and `attach_audio`
+    // have the tests.
+    fn attach_recordings(
+        &mut self,
+        paths: Vec<std::path::PathBuf>,
+        at: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let store = self.store.clone();
+        let length = self.body.read(cx).text().len();
+        let work = cx.background_executor().spawn(async move {
+            paths
+                .into_iter()
+                .map(|path| {
+                    let attached = crate::transcribe::attach_audio(&store, &path);
+                    (path, attached)
+                })
+                .collect::<Vec<_>>()
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let results = work.await;
+            this.update_in(cx, |this, window, cx| {
+                if this.note.is_none() {
+                    return;
+                }
+                let mut links = Vec::new();
+                let mut first = None;
+                for (path, attached) in results {
+                    let name = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("recording")
+                        .to_owned();
+                    match attached {
+                        Ok(Some((file_id, link))) => {
+                            links.push(link);
+                            first.get_or_insert(crate::transcribe::Source::Path {
+                                path,
+                                file_id: Some(file_id),
+                                name,
+                            });
+                        }
+                        Ok(None) => {
+                            first.get_or_insert(crate::transcribe::Source::Path {
+                                path,
+                                file_id: None,
+                                name,
+                            });
+                        }
+                        Err(message) => cx.emit(EditorEvent::Notice(message)),
+                    }
+                }
+                if !links.is_empty() {
+                    let block = links.join("\n\n");
+                    this.smart_edit(window, cx, |_, text, selection| {
+                        let range = match at {
+                            Some(at) if text.len() == length && text.is_char_boundary(at) => at..at,
+                            _ => selection,
+                        };
+                        Some(smart_paste::block_insert(text, range, &block))
+                    });
+                    this.save(cx);
+                }
+                if let Some(source) = first {
+                    let editor = cx.entity();
+                    crate::transcribe::start(editor, source, window, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Puts a transcript in the note as a paragraph of its own, under the
+    /// line linking to `file_id` (or at the end), as one undo step, leaving
+    /// the caret where it was. False when the note's text can't take it.
+    // no-prop-test: glue over `transcribe::transcript_edit`, which has the properties.
+    pub fn insert_transcript_below(
+        &mut self,
+        file_id: Option<&str>,
+        transcript: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.note.is_none() || matches!(self.lock, LockView::Closed(_)) {
+            return false;
+        }
+        self.smart_edit(window, cx, |_, text, selection| {
+            crate::transcribe::transcript_edit(text, file_id, transcript, selection)
+        });
+        self.schedule_autosave(cx);
+        true
+    }
+
+    /// The audio attachment linked on the caret's line: its file ID and
+    /// name.
+    pub fn audio_on_caret_line(&self, cx: &App) -> Option<(String, String)> {
+        self.note.as_ref()?;
+        let state = self.body.read(cx);
+        let text = state.value();
+        let caret = state.selected_range().start.min(text.len());
+        let start = text[..caret].rfind('\n').map_or(0, |i| i + 1);
+        let end = text[caret..].find('\n').map_or(text.len(), |i| caret + i);
+        crate::transcribe::linked_files(&text[start..end])
+            .into_iter()
+            .find_map(|id| {
+                let doc = self.store.get(&id).ok()??;
+                let content_type = doc.str_field("contentType")?;
+                kanso_voice::file::extension(content_type)?;
+                let name = doc.str_field("name").unwrap_or("recording").to_owned();
+                Some((id, name))
+            })
     }
 
     /// Stores `images` as attachments in the background, then puts them in
@@ -2669,6 +2815,200 @@ impl NoteEditor {
             )
     }
 
+    /// A quiet line when another note says nearly the same as this one,
+    /// with Open, Merge and a way to say they're different.
+    fn render_twin_banner(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let twin = self.meaning.read(cx).duplicate()?.clone();
+        let colors = Colors::get(cx);
+        let title = if twin.title.trim().is_empty() {
+            "Untitled".to_owned()
+        } else {
+            twin.title.clone()
+        };
+        let percent = (twin.score.clamp(0., 1.) * 100.).floor() as u32;
+        let (open_id, merge_id) = (twin.id.clone(), twin.id.clone());
+        let merge_title = title.clone();
+        Some(
+            h_flex()
+                .flex_none()
+                .gap_2()
+                .mx(px(TEXT_INSET - 12.))
+                .my_1()
+                .px(px(12.))
+                .py(px(5.))
+                .rounded(px(6.))
+                .bg(colors.fill)
+                .text_size(px(12.5))
+                .text_color(colors.text_secondary)
+                .debug_selector(|| "twin-banner".into())
+                .child(
+                    Icon::new(Lucide::Copy)
+                        .size(px(13.))
+                        .text_color(colors.text_muted),
+                )
+                .child(div().flex_1().min_w_0().truncate().child(format!(
+                    "Says nearly the same as “{title}” ({percent}% alike)"
+                )))
+                .child(
+                    Button::new("twin-open")
+                        .ghost()
+                        .xsmall()
+                        .label("Open")
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let id = open_id.clone();
+                            this.library
+                                .update(cx, |library, cx| library.select(Some(id), cx));
+                        })),
+                )
+                .child(
+                    Button::new("twin-merge")
+                        .ghost()
+                        .xsmall()
+                        .label("Merge…")
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.ask_to_merge(merge_id.clone(), merge_title.clone(), window, cx)
+                        })),
+                )
+                .child(
+                    Button::new("twin-dismiss")
+                        .ghost()
+                        .xsmall()
+                        .label("Not the same")
+                        .tooltip("Don't mention these two again while Kanso is open")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.meaning
+                                .update(cx, |meaning, cx| meaning.dismiss_duplicate(cx));
+                            cx.notify();
+                        })),
+                )
+                .into_any_element(),
+        )
+    }
+
+    /// While a recording is transcribed into this note: its name, how far
+    /// along it is, and Cancel.
+    fn render_transcribing(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let shown = crate::transcribe::shown_for(self.note_id()?, cx)?;
+        let colors = Colors::get(cx);
+        let words = match (shown.waiting, shown.share) {
+            (true, _) => format!(
+                "“{}” is transcribed once the speech model has downloaded",
+                shown.name
+            ),
+            (false, Some(share)) => format!(
+                "Transcribing “{}”… {}%",
+                shown.name,
+                (share * 100.).floor() as u32
+            ),
+            (false, None) => format!("Transcribing “{}”…", shown.name),
+        };
+        let share = shown.share.unwrap_or(0.);
+        Some(
+            h_flex()
+                .flex_none()
+                .gap_2()
+                .mx(px(TEXT_INSET - 12.))
+                .my_1()
+                .px(px(12.))
+                .py(px(5.))
+                .rounded(px(6.))
+                .bg(colors.fill)
+                .text_size(px(12.5))
+                .text_color(colors.text_secondary)
+                .debug_selector(|| "transcribing".into())
+                .child(
+                    Icon::new(Lucide::Mic)
+                        .size(px(13.))
+                        .text_color(colors.text_muted),
+                )
+                .child(div().flex_1().min_w_0().truncate().child(words))
+                .child(
+                    div()
+                        .flex_none()
+                        .w(px(80.))
+                        .h(px(4.))
+                        .rounded_full()
+                        .bg(colors.divider)
+                        .child(
+                            div()
+                                .h_full()
+                                .w(px(80. * share.clamp(0., 1.)))
+                                .rounded_full()
+                                .bg(colors.accent),
+                        ),
+                )
+                .child(
+                    Button::new("transcribe-cancel")
+                        .ghost()
+                        .xsmall()
+                        .label("Cancel")
+                        .on_click(|_, _, cx| crate::transcribe::cancel(cx)),
+                )
+                .into_any_element(),
+        )
+    }
+
+    /// Asks before merging note `other` into the open note.
+    fn ask_to_merge(
+        &mut self,
+        other: String,
+        title: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let editor = cx.entity().downgrade();
+        crate::dialogs::confirm(
+            format!("Merge “{title}” into this note?"),
+            "Its text goes at the end of this note, under its title, with its tags, and it moves to the trash. Both notes' versions from before stay in their history.",
+            "Merge",
+            window,
+            cx,
+            move |window, cx| {
+                editor
+                    .update(cx, |editor, cx| editor.merge_from(&other, window, cx))
+                    .ok();
+            },
+        );
+    }
+
+    /// Merges note `other` into the open note, after saving what was typed
+    /// (`Store::merge_notes`), and shows the result.
+    pub fn merge_from(&mut self, other: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.flush(cx);
+        let Some(note) = self.note.clone() else {
+            return;
+        };
+        if self.incoming.is_some() || note.is_locked() {
+            cx.emit(EditorEvent::Notice(
+                "This note can't be merged right now.".into(),
+            ));
+            return;
+        }
+        let other_rev = match self.store.note(other) {
+            Ok(Some(other)) => other.rev.unwrap_or_default(),
+            _ => {
+                cx.emit(EditorEvent::Notice("The other note is gone.".into()));
+                return;
+            }
+        };
+        let rev = note.rev.clone().unwrap_or_default();
+        match self
+            .store
+            .merge_notes(&note.id, &rev, other, &other_rev, Origin::Ui)
+        {
+            Ok(_) => {
+                self.meaning
+                    .update(cx, |meaning, cx| meaning.dismiss_duplicate(cx));
+                if let Ok(Some(merged)) = self.store.note(&note.id) {
+                    self.show(Some(merged), true, window, cx);
+                }
+            }
+            Err(err) => cx.emit(EditorEvent::Notice(format!(
+                "Couldn't merge the notes: {err}"
+            ))),
+        }
+    }
+
     /// What shows in place of a locked note's text until it is unlocked.
     fn render_locked(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = Colors::get(cx);
@@ -3174,6 +3514,10 @@ impl Render for NoteEditor {
                 let deleted = matches!(incoming, Incoming::Deleted);
                 el.child(self.render_incoming_banner(deleted, cx))
             })
+            .when(!trashed && self.incoming.is_none(), |el| {
+                el.children(self.render_twin_banner(cx))
+            })
+            .children(self.render_transcribing(cx))
             .child(div().flex_1().min_h_0().w_full().child(body))
             // Redrawn only when the cursor or the counts change.
             .child(
@@ -3458,6 +3802,176 @@ mod tests {
         assert_eq!(store.note(&id).unwrap().unwrap().body, "## Goals\n**next**");
         let label = cx.read(|cx| editor.read(cx).footer.read(cx).label());
         assert!(label.ends_with("2 words · 17 chars"), "{label}");
+    }
+
+    /// A recording linked on the caret's line is found for Transcribe
+    /// Recording, and its transcript goes in under it as one edit, saved,
+    /// with the caret left where it was.
+    // no-prop-test: glue; `transcribe::transcript_edit` has the properties.
+    #[gpui_kit::test]
+    fn a_transcript_goes_under_its_recording(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let (window, editor, store, id) = editor_on(cx, dir.path(), "");
+        let wav = dir.path().join("memo.wav");
+        std::fs::write(&wav, b"RIFF").unwrap();
+        let (file_id, link) = crate::transcribe::attach_audio(&store, &wav)
+            .unwrap()
+            .unwrap();
+        let rev = store.note(&id).unwrap().unwrap().rev.unwrap();
+        let body = format!("Notes\n{link}\nLater");
+        store
+            .put(
+                DocType::Note,
+                json!({"_id": id, "_rev": rev, "body": body}),
+                Put::Merge,
+                Origin::Ui,
+            )
+            .unwrap();
+        let run = |cx: &mut TestAppContext,
+                   f: &dyn Fn(
+            &mut NoteEditor,
+            &mut gpui_kit::Window,
+            &mut gpui_kit::Context<NoteEditor>,
+        )| {
+            window
+                .update(cx, |_, window, cx| {
+                    editor.update(cx, |editor, cx| f(editor, window, cx))
+                })
+                .unwrap();
+            cx.executor().advance_clock(Duration::from_secs(2));
+            cx.run_until_parked();
+        };
+        run(cx, &|editor, window, cx| editor.open(Some(&id), window, cx));
+        // On the first line: no recording there.
+        run(cx, &|editor, _, cx| {
+            editor
+                .body
+                .update(cx, |body, cx| body.set_selected_range(2..2, cx))
+        });
+        assert_eq!(cx.read(|cx| editor.read(cx).audio_on_caret_line(cx)), None);
+        run(cx, &|editor, _, cx| {
+            editor
+                .body
+                .update(cx, |body, cx| body.set_selected_range(8..8, cx))
+        });
+        let found = cx.read(|cx| editor.read(cx).audio_on_caret_line(cx));
+        assert_eq!(found, Some((file_id.clone(), "memo.wav".to_owned())));
+        run(cx, &|editor, window, cx| {
+            editor.insert_transcript_below(Some(&file_id), "Spoken words.", window, cx);
+        });
+        assert_eq!(
+            store.note(&id).unwrap().unwrap().body,
+            format!("Notes\n{link}\n\nSpoken words.\n\nLater")
+        );
+        let caret = cx.read(|cx| editor.read(cx).body.read(cx).selected_range());
+        assert_eq!(caret, 8..8);
+    }
+
+    /// A note that says nearly the same as another is mentioned once both
+    /// are embedded; merging saves what was typed first, keeps both texts
+    /// and tags, and trashes the other. Dismissing stops the mention.
+    // no-prop-test: glue; `merged_body` and `Store::merge_notes` have the
+    // properties.
+    #[gpui_kit::test]
+    fn a_near_twin_is_mentioned_and_merges_without_loss(cx: &mut TestAppContext) {
+        use crate::related::{MODEL_ID, Related};
+        let dir = tempfile::tempdir().unwrap();
+        let (window, editor, store, id) =
+            editor_on(cx, dir.path(), "milk eggs bread butter cheese");
+        let book = store.note(&id).unwrap().unwrap().book_id;
+        let shop = store.tag_named("shop", Origin::Ui).unwrap();
+        let twin = store
+            .put(
+                DocType::Note,
+                json!({"title": "t", "body": "milk eggs bread butter cheese jam", "bookId": book, "tags": [shop]}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let letters = |text: &str| {
+            let mut v = vec![0f32; 26];
+            for c in text.bytes().filter(u8::is_ascii_lowercase) {
+                v[(c - b'a') as usize] += 1.;
+            }
+            v
+        };
+        let embed = |store: &Store| {
+            let queue = store.embedding_queue(MODEL_ID).unwrap();
+            let rows: Vec<_> = queue
+                .pending
+                .into_iter()
+                .map(|p| {
+                    let v = letters(&p.text);
+                    (p.id, p.hash, v)
+                })
+                .collect();
+            store.put_embeddings(MODEL_ID, &rows).unwrap();
+        };
+        store.set_embedding_model(Some(MODEL_ID)).unwrap();
+        embed(&store);
+        let run = |cx: &mut TestAppContext,
+                   f: &dyn Fn(
+            &mut NoteEditor,
+            &mut gpui_kit::Window,
+            &mut gpui_kit::Context<NoteEditor>,
+        )| {
+            window
+                .update(cx, |_, window, cx| {
+                    editor.update(cx, |editor, cx| f(editor, window, cx))
+                })
+                .unwrap();
+            cx.run_until_parked();
+        };
+        let new_embeddings = |cx: &mut TestAppContext, generation: u64| {
+            cx.update(|cx| {
+                if !cx.has_global::<Related>() {
+                    cx.set_global(Related::default());
+                }
+                gpui_kit::BorrowAppContext::update_global::<Related, _>(cx, |related, _| {
+                    related.generation = generation
+                });
+            });
+            cx.run_until_parked();
+        };
+        run(cx, &|editor, window, cx| editor.open(Some(&id), window, cx));
+        new_embeddings(cx, 1);
+        let duplicate = |cx: &mut TestAppContext| {
+            cx.read(|cx| {
+                let meaning = editor.read(cx).meaning().clone();
+                meaning.read(cx).duplicate().map(|d| d.id.clone())
+            })
+        };
+        assert_eq!(duplicate(cx), Some(twin.clone()));
+        // Dismissed: not mentioned again, from either note.
+        run(cx, &|editor, _, cx| {
+            editor
+                .meaning
+                .update(cx, |meaning, cx| meaning.dismiss_duplicate(cx))
+        });
+        assert_eq!(duplicate(cx), None);
+
+        // Typed and not yet saved, then merged.
+        run(cx, &|editor, window, cx| {
+            editor.edit_for_test("milk eggs bread\nbutter", window, cx)
+        });
+        run(cx, &|editor, window, cx| {
+            editor.merge_from(&twin, window, cx)
+        });
+        let kept = store.note(&id).unwrap().unwrap();
+        assert_eq!(
+            kept.body,
+            "milk eggs bread\nbutter\n\n## t\n\nmilk eggs bread butter cheese jam\n"
+        );
+        assert_eq!(kept.tags, [shop]);
+        assert_eq!(
+            store.note(&twin).unwrap().unwrap().book_id,
+            kanso_core::model::TRASH_BOOK_ID
+        );
+        let shown = cx.read(|cx| editor.read(cx).body_for_test(cx));
+        assert_eq!(shown, kept.body);
+        // Nothing waits to be saved over it.
+        assert!(!cx.read(|cx| editor.read(cx).has_unsaved_edits(cx)));
     }
 
     /// Dictation, as macOS sends it: marked text that grows while you

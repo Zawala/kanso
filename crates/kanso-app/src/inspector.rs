@@ -118,6 +118,13 @@ impl Inspector {
             }
         })];
         let mut subscriptions = subscriptions;
+        // Tags suggested for the open note, shown on the Related tab.
+        let meaning = editor.read(cx).meaning().clone();
+        subscriptions.push(cx.observe(&meaning, |this, _, cx| {
+            if this.visible && this.tab == InspectorTab::Related {
+                cx.notify();
+            }
+        }));
         // A new state or new embeddings: the Related tab asks again.
         subscriptions.push(cx.observe_global::<Related>(|this, cx| {
             if this.visible && this.tab == InspectorTab::Related {
@@ -835,7 +842,8 @@ impl Inspector {
             )
             .into_any_element();
         };
-        if related.is_empty() {
+        let tags = self.render_suggested_tags(cx);
+        if related.is_empty() && tags.is_none() {
             return state(
                 Lucide::Sparkles,
                 "Nothing related yet".into(),
@@ -851,13 +859,16 @@ impl Inspector {
             .track_scroll(&self.scroll)
             .px(px(PAD_X))
             .pb(px(12.))
-            .child(
-                section_label(div(), colors)
-                    .px(px(8.))
-                    .pt(px(10.))
-                    .pb(px(6.))
-                    .child("Not linked yet"),
-            )
+            .children(tags)
+            .when(!related.is_empty(), |el| {
+                el.child(
+                    section_label(div(), colors)
+                        .px(px(8.))
+                        .pt(px(10.))
+                        .pb(px(6.))
+                        .child("Not linked yet"),
+                )
+            })
             .children(related.into_iter().enumerate().map(|(ix, note)| {
                 let open = view.clone();
                 let id = note.id.clone();
@@ -918,6 +929,67 @@ impl Inspector {
                     })
             }))
             .into_any_element()
+    }
+}
+
+impl Inspector {
+    /// The tags the open note's close notes have and it hasn't, each a
+    /// chip that adds it; `None` when there are none.
+    fn render_suggested_tags(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let colors = Colors::get(cx);
+        let editor = self.editor.read(cx);
+        let own = editor.current_note(cx).map(|n| n.tags).unwrap_or_default();
+        let suggested = editor.meaning().read(cx).suggested_tags(&own);
+        if suggested.is_empty() {
+            return None;
+        }
+        let editor = self.editor.clone();
+        Some(
+            v_flex()
+                .child(
+                    section_label(div(), colors)
+                        .px(px(8.))
+                        .pt(px(10.))
+                        .pb(px(6.))
+                        .child("Suggested tags"),
+                )
+                .child(
+                    h_flex()
+                        .flex_wrap()
+                        .gap(px(6.))
+                        .px(px(8.))
+                        .pb(px(4.))
+                        .children(suggested.into_iter().enumerate().map(|(ix, tag)| {
+                            let editor = editor.clone();
+                            let id = tag.tag_id.clone();
+                            h_flex()
+                                .id(ElementId::NamedInteger("suggested-tag".into(), ix as u64))
+                                .gap(px(3.))
+                                .px(px(8.))
+                                .py(px(3.))
+                                .rounded(px(6.))
+                                .border_1()
+                                .border_color(colors.divider)
+                                .cursor_pointer()
+                                .text_size(px(12.))
+                                .text_color(colors.text_secondary)
+                                .hover(|el| el.bg(colors.row_hover))
+                                .child(Icon::new(Lucide::Plus).size(px(11.)))
+                                .child(format!("#{}", tag.name))
+                                .tooltip(move |window, cx| {
+                                    gpui_kit::component::tooltip::Tooltip::new(
+                                        "Notes about the same things have this tag",
+                                    )
+                                    .build(window, cx)
+                                })
+                                .on_click(move |_, _, cx| {
+                                    let id = id.clone();
+                                    editor.update(cx, |editor, cx| editor.toggle_tag(id, cx));
+                                })
+                        })),
+                )
+                .into_any_element(),
+        )
     }
 }
 

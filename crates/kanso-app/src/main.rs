@@ -55,6 +55,7 @@ mod mcp_cli;
 mod mcp_setup;
 mod model_fetch;
 mod note_list;
+mod note_meaning;
 mod note_menu;
 mod notify_support;
 mod ocr;
@@ -94,6 +95,7 @@ mod theme_import;
 mod themes;
 mod title_bar;
 mod touch_id;
+mod transcribe;
 #[cfg(test)]
 mod ui_tests;
 mod updates;

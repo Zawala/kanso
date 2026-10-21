@@ -89,6 +89,8 @@ pub enum Needs {
     SignedOut,
     /// The cursor is on a line that is only an image, in the note's text.
     ImageLine,
+    /// The cursor is on a line that links to an audio attachment.
+    AudioLine,
 }
 
 pub struct Command {
@@ -323,6 +325,25 @@ static COMMANDS: &[Command] = &[
         group: Group::Note,
         run: Run::Pick(Picker::ImageSize),
         needs: Needs::ImageLine,
+    },
+    Command {
+        id: "transcribe-recording",
+        label: "Transcribe recording",
+        label_when_pinned: None,
+        description: "Turns the recording linked on the cursor's line into text, on this device, and puts it under the recording.",
+        icon: IconName::Mic,
+        keywords: &[
+            "audio",
+            "voice",
+            "memo",
+            "speech",
+            "text",
+            "transcript",
+            "dictation",
+        ],
+        group: Group::Note,
+        run: action!(crate::transcribe::TranscribeAudio),
+        needs: Needs::AudioLine,
     },
     Command {
         id: "word-goal",

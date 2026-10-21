@@ -366,7 +366,8 @@ mod tests {
                 "kanso-get-outline",
                 "kanso-list-tasks",
                 "kanso-related-notes",
-                "kanso-resolve-wikilink"
+                "kanso-resolve-wikilink",
+                "kanso-search-by-meaning"
             ]
         );
         assert!(validate("kanso-list-tasks", json!({})).is_ok());
@@ -397,6 +398,8 @@ mod tests {
         );
         assert!(validate("kanso-get-outline", json!({})).is_err());
         assert!(validate("kanso-resolve-wikilink", json!({"link": "[[A]]"})).is_ok());
+        assert!(validate("kanso-search-by-meaning", json!({"query": "fruit"})).is_ok());
+        assert!(validate("kanso-search-by-meaning", json!({"limit": 3})).is_err());
     }
 
     #[test]

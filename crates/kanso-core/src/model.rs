@@ -276,6 +276,18 @@ pub const SUPPORTED_IMAGE_TYPES: [&str; 7] = [
     "image/heif",
 ];
 
+/// Audio types the app attaches, so a recording can sit in a note beside
+/// its transcript. The local API's MCP tools keep to images.
+pub const SUPPORTED_AUDIO_TYPES: [&str; 7] = [
+    "audio/mp4",
+    "audio/mpeg",
+    "audio/wav",
+    "audio/aiff",
+    "audio/x-caf",
+    "audio/flac",
+    "audio/ogg",
+];
+
 /// Largest attachment the API accepts, in bytes.
 pub const MAX_ATTACHMENT_SIZE: usize = 10 * 1024 * 1024;
 
