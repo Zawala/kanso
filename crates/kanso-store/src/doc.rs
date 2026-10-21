@@ -14,6 +14,9 @@ pub struct Doc {
     pub deleted: bool,
     /// Fields without `_id`, `_rev` and derived values.
     pub fields: Map<String, Value>,
+    /// A note in a locked notebook (or one inside it): served as a locked
+    /// note is, sealed or not.
+    pub in_locked_notebook: bool,
 }
 
 /// An attachment's bytes as stored in the `blobs` table.
@@ -59,13 +62,18 @@ impl Doc {
 
     /// [`Doc::to_api`] as the local API and MCP serve it to clients: a locked
     /// note goes out with an empty body and without its sealed text, so a
-    /// client can neither read it nor guess the lock password offline.
+    /// client can neither read it nor guess the lock password offline. A
+    /// note in a locked notebook goes out the same way, sealed or not, and a
+    /// locked notebook without its lock.
     pub fn to_served(&self, extra: Map<String, Value>) -> Value {
         let mut out = self.to_api(extra);
-        if let Some(fields) = out.as_object_mut()
-            && fields.remove(kanso_core::model::LOCK_FIELD).is_some()
-        {
-            fields.insert("body".into(), Value::String(String::new()));
+        if let Some(fields) = out.as_object_mut() {
+            let sealed = fields.remove(kanso_core::model::LOCK_FIELD).is_some();
+            if self.doc_type == DocType::Note && (sealed || self.in_locked_notebook) {
+                fields.insert("body".into(), Value::String(String::new()));
+                fields.insert("numOfTasks".into(), 0.into());
+                fields.insert("numOfCheckedTasks".into(), 0.into());
+            }
         }
         out
     }

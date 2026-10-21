@@ -158,7 +158,54 @@ CREATE TABLE file_text (
     r#"
 INSERT INTO notes_fts (notes_fts, rank) VALUES ('secure-delete', 1);
 "#,
+    // Locked notebooks: a notebook whose `kansoLock` is set, and every
+    // notebook inside one. Their notes are read as locked notes are (with
+    // an empty body) by everything but the app, sealed or not.
+    r#"
+CREATE INDEX docs_parent ON docs (type, parent_book_id);
+CREATE VIEW locked_books (id) AS
+WITH RECURSIVE locked (id) AS (
+    SELECT id FROM docs WHERE type = 'book' AND deleted = 0
+        AND json_extract(json, '$.kansoLock') IS NOT NULL
+    UNION
+    SELECT d.id FROM docs d JOIN locked l ON d.parent_book_id = l.id
+        WHERE d.type = 'book' AND d.deleted = 0
+)
+SELECT id FROM locked;
+"#,
 ];
+
+/// A note's body as everything but the app reads it: empty for a locked
+/// note, and for any note in a locked notebook. The argument is the `docs`
+/// table's alias with its dot (`"d."`), or `""`.
+macro_rules! readable_body {
+    ($d:literal) => {
+        concat!(
+            "(CASE WHEN json_extract(",
+            $d,
+            "json, '$.kansoLock') IS NULL AND IFNULL(",
+            $d,
+            "book_id, '') NOT IN (SELECT id FROM locked_books) THEN json_extract(",
+            $d,
+            "json, '$.body') ELSE '' END)"
+        )
+    };
+}
+pub(crate) use readable_body;
+
+/// Whether a note is read as locked: sealed itself, or in a locked notebook.
+macro_rules! note_locked {
+    ($d:literal) => {
+        concat!(
+            "(json_extract(",
+            $d,
+            "json, '$.kansoLock') IS NOT NULL OR IFNULL(",
+            $d,
+            "book_id, '') IN (SELECT id FROM locked_books))"
+        )
+    };
+}
+pub(crate) use note_locked;
 
 pub fn connect(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path)?;
@@ -276,7 +323,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let conn = connect(&dir.path().join("k.db")).unwrap();
         migrate(&conn).unwrap();
-        assert_eq!(MIGRATIONS.len(), 7);
+        assert_eq!(MIGRATIONS.len(), 8);
         assert_eq!(version(&conn), MIGRATIONS.len() as i64);
         assert!(has_column(&conn, "note_tasks", "due"));
         assert!(has_column(&conn, "revisions", "batch_rev"));
@@ -284,7 +331,7 @@ mod tests {
         assert!(has_column(&conn, "file_text", "md5"));
         // Running it again changes nothing.
         migrate(&conn).unwrap();
-        assert_eq!(version(&conn), 7);
+        assert_eq!(version(&conn), 8);
     }
 
     /// A database on version 5 (find and replace) moves to 6 (discovery)
@@ -304,7 +351,7 @@ mod tests {
         assert!(!has_column(&conn, "note_embeddings", "vector"));
         set_meta(&conn, "kept", "yes").unwrap();
         migrate(&conn).unwrap();
-        assert_eq!(version(&conn), 7);
+        assert_eq!(version(&conn), 8);
         assert!(has_column(&conn, "revisions", "batch"));
         assert!(has_column(&conn, "note_embeddings", "vector"));
         assert!(has_column(&conn, "file_text", "text"));

@@ -25,6 +25,7 @@ use kanso_sync::lock::{Envelope, LOCK_KDF, LockError, LockKey, LockPassword};
 use crate::dialogs::{self, Field, FormSpec, FormView, Progress, Submit};
 use crate::editor::NoteEditor;
 use crate::services::Services;
+use crate::touch_id::{secret_store_name, unlock_name};
 use crate::workspace::AppState;
 
 actions!(
@@ -75,7 +76,7 @@ impl LockKeys {
         Self::get(cx).is_some_and(|keys| !keys.keys.is_empty())
     }
 
-    fn fitting(cx: &App, envelope: &Envelope) -> Option<Arc<LockKey>> {
+    pub(crate) fn fitting(cx: &App, envelope: &Envelope) -> Option<Arc<LockKey>> {
         Self::get(cx)?
             .keys
             .iter()
@@ -83,7 +84,7 @@ impl LockKeys {
             .cloned()
     }
 
-    fn add(key: LockKey, cx: &mut App) {
+    pub(crate) fn add(key: LockKey, cx: &mut App) {
         let keys = Self::get_mut(cx);
         if !keys.keys.iter().any(|kept| kept.same_kdf(&key)) {
             keys.keys.push(Arc::new(key));
@@ -93,7 +94,7 @@ impl LockKeys {
 
     /// Takes the keys this session holds, with `key` alone in their place
     /// when given (a new password).
-    fn replace(key: Option<LockKey>, cx: &mut App) {
+    pub(crate) fn replace(key: Option<LockKey>, cx: &mut App) {
         let keys = Self::get_mut(cx);
         keys.keys = key.into_iter().map(Arc::new).collect();
         keys.last_used = Some(Instant::now());
@@ -115,7 +116,7 @@ impl LockKeys {
         })
     }
 
-    fn params(cx: &App) -> KdfParams {
+    pub(crate) fn params(cx: &App) -> KdfParams {
         Self::get(cx)
             .and_then(|keys| keys.params)
             .unwrap_or(LOCK_KDF)
@@ -151,7 +152,7 @@ impl LockView {
 /// is revealed again to the same text.
 pub fn reveal(note: &mut Note, cx: &mut App) -> LockView {
     let envelope = match Envelope::from_extra(&note.extra) {
-        None => return LockView::Plain,
+        None => return reveal_unsealed(note, cx),
         Some(Ok(envelope)) => envelope,
         Some(Err(err)) => {
             note.body.clear();
@@ -171,6 +172,33 @@ pub fn reveal(note: &mut Note, cx: &mut App) -> LockView {
         Err(err) => {
             note.body.clear();
             LockView::Closed(Some(sentence(&err)))
+        }
+    }
+}
+
+/// A note that isn't sealed: plain, unless it is in a locked notebook. There
+/// it is sealed as soon as a key is held, and shows closed until then.
+fn reveal_unsealed(note: &mut Note, cx: &mut App) -> LockView {
+    let Some(store) = cx.try_global::<AppState>().map(|state| state.store.clone()) else {
+        return LockView::Plain;
+    };
+    if !store.note_in_locked_book(&note.id).unwrap_or(false) {
+        return LockView::Plain;
+    }
+    let mut sealing = note.clone();
+    let sealed = seal_for_notebook(&mut sealing, cx)
+        .and_then(|stored| serde_json::to_value(&stored).map_err(|err| err.to_string()))
+        .and_then(|value| store.lock_note(value).map_err(|err| err.to_string()));
+    match sealed {
+        Ok(result) => {
+            sealing.rev = Some(result.rev);
+            *note = sealing;
+            LockKeys::touch(cx);
+            LockView::Open
+        }
+        Err(_) => {
+            note.body.clear();
+            LockView::Closed(None)
         }
     }
 }
@@ -195,13 +223,13 @@ pub fn seal(note: &mut Note, cx: &mut App) -> Result<(), String> {
 
 // MARK: Dialogs
 
-fn store(cx: &App) -> Arc<Store> {
+pub(crate) fn store(cx: &App) -> Arc<Store> {
     cx.global::<AppState>().store.clone()
 }
 
 /// Runs `work` on a thread of its own, then `done` with its result on the
 /// main thread, in `window`, and tells the form how it went.
-fn run_in_background<T: Send + 'static>(
+pub(crate) fn run_in_background<T: Send + 'static>(
     window: &Window,
     cx: &mut App,
     work: impl FnOnce() -> Result<T, String> + Send + 'static,
@@ -234,25 +262,114 @@ fn run_in_background<T: Send + 'static>(
     Submit::Running(listening)
 }
 
-fn password(text: &str) -> Result<LockPassword, Submit> {
+pub(crate) fn password(text: &str) -> Result<LockPassword, Submit> {
     LockPassword::new(text).map_err(|err| Submit::Invalid(format!("For the lock password, {err}.")))
 }
 
-/// The key `password` gives for `note`, once it is seen to open it.
-fn key_for(note: &Note, password: &LockPassword) -> Result<LockKey, String> {
-    let envelope = match Envelope::from_extra(&note.extra) {
-        Some(Ok(envelope)) => envelope,
-        Some(Err(err)) => return Err(sentence(&err)),
-        None => return Err("The note isn't locked.".into()),
-    };
-    let key = LockKey::for_envelope(password, &envelope).map_err(|err| sentence(&err))?;
-    key.open(&note.id, &envelope)
+/// What a password is tried on: a note's lock, or a locked notebook's, with
+/// the ID it is bound to.
+#[derive(Clone, Debug)]
+pub(crate) struct Target {
+    pub id: String,
+    pub envelope: Result<Envelope, LockError>,
+}
+
+impl Target {
+    /// A note's own lock, or, for a note in a locked notebook that isn't
+    /// sealed yet, the notebook's.
+    pub(crate) fn of_note(note: &Note, store: &Store) -> Option<Target> {
+        match Envelope::from_extra(&note.extra) {
+            Some(envelope) => Some(Target {
+                id: note.id.clone(),
+                envelope,
+            }),
+            None => Target::of_book(&note.book_id, store),
+        }
+    }
+
+    /// The lock of notebook `book_id`, or of the locked notebook it is in.
+    pub(crate) fn of_book(book_id: &str, store: &Store) -> Option<Target> {
+        let books = store.books().ok()?;
+        let mut cursor = Some(book_id.to_owned());
+        // A cycle a sync could make ends the walk.
+        for _ in 0..=books.len() {
+            let book = books.iter().find(|b| Some(&b.id) == cursor.as_ref())?;
+            if let Some(envelope) = Envelope::from_extra(&book.extra) {
+                return Some(Target {
+                    id: book.id.clone(),
+                    envelope,
+                });
+            }
+            cursor = book.parent_book_id.clone();
+        }
+        None
+    }
+
+    /// Whether a key this session holds opens it.
+    pub(crate) fn is_open(&self, cx: &App) -> bool {
+        self.envelope
+            .as_ref()
+            .ok()
+            .is_some_and(|envelope| LockKeys::fitting(cx, envelope).is_some())
+    }
+}
+
+/// The key `password` gives for `target`, once it is seen to open it.
+pub(crate) fn key_for(target: &Target, password: &LockPassword) -> Result<LockKey, String> {
+    let envelope = target.envelope.as_ref().map_err(sentence)?;
+    let key = LockKey::for_envelope(password, envelope).map_err(|err| sentence(&err))?;
+    key.open(&target.id, envelope)
         .map_err(|err| sentence(&err))?;
     Ok(key)
 }
 
+/// The key that seals a note going into the locked notebook of `target`
+/// (its own when held), else the one new locks use.
+fn sealing_key(target: Option<&Target>, cx: &App) -> Option<Arc<LockKey>> {
+    target
+        .and_then(|target| target.envelope.as_ref().ok())
+        .and_then(|envelope| LockKeys::fitting(cx, envelope))
+        .or_else(|| LockKeys::current(cx))
+}
+
+/// Seals `note`, which isn't sealed, for the locked notebook it is in or
+/// is going into, keeping its text in `body` for the editor; `stored` is
+/// what the store then takes. Fails when no key is held.
+pub(crate) fn seal_for_notebook(note: &mut Note, cx: &App) -> Result<Note, String> {
+    let target = Target::of_book(&note.book_id, &store(cx));
+    let key = sealing_key(target.as_ref(), cx)
+        .ok_or_else(|| "Unlock the notebook first: its notes are locked.".to_owned())?;
+    let envelope = key.seal(&note.id, &note.body);
+    Envelope::store(Some(&envelope), &mut note.extra);
+    let mut stored = note.clone();
+    stored.body.clear();
+    Ok(stored)
+}
+
+/// Seals the notes in locked notebooks that aren't sealed yet (made there
+/// empty, or put there by another device or an older Kanso), now that a
+/// key is held. One that changed meanwhile waits for the next time.
+pub(crate) fn seal_unsealed(cx: &mut App) {
+    let Some(state) = cx.try_global::<AppState>() else {
+        return;
+    };
+    let store = state.store.clone();
+    let Ok(notes) = store.unsealed_in_locked_books() else {
+        return;
+    };
+    for mut note in notes {
+        if let Ok(stored) = seal_for_notebook(&mut note, cx)
+            && let Ok(value) = serde_json::to_value(&stored)
+            && let Err(err) = store.lock_note(value)
+        {
+            eprintln!("kanso: locked notebooks: couldn't seal a note: {err}");
+        }
+    }
+    LockKeys::touch(cx);
+}
+
 /// A lock error as a sentence.
-fn sentence(err: &LockError) -> String {
+pub(crate) fn sentence(err: &LockError) -> String {
     let words = err.to_string();
     let mut chars = words.chars();
     match chars.next() {
@@ -261,9 +378,10 @@ fn sentence(err: &LockError) -> String {
     }
 }
 
-/// Lock Note: seals the open note. The first time this session, Touch ID
-/// (when on) or the lock password opens the keys, or a password is made when
-/// no note is locked yet. Returns the form when it asks for a password.
+/// Lock Note: seals the open note. The first time this session, Touch ID or
+/// Windows Hello (when on) or the lock password opens the keys, or a
+/// password is made when no note is locked yet. Returns the form when it
+/// asks for a password.
 pub fn lock_open_note(
     editor: Entity<NoteEditor>,
     window: &mut Window,
@@ -290,11 +408,7 @@ pub fn lock_open_note(
         );
         return None;
     }
-    let existing = store(cx)
-        .locked_notes()
-        .ok()
-        .and_then(|notes| notes.into_iter().next());
-    let Some(locked) = existing else {
+    let Some(locked) = any_lock(&store(cx)) else {
         return Some(set_password_form(editor, title, window, cx));
     };
     if touch_id_on(cx) {
@@ -319,10 +433,29 @@ pub fn lock_open_note(
     Some(lock_password_form(editor, locked, title, window, cx))
 }
 
+/// Some lock already made here or elsewhere, to try the lock password on:
+/// a locked note's, or a locked notebook's. `None` when nothing is locked.
+pub(crate) fn any_lock(store: &Store) -> Option<Target> {
+    let note = store
+        .locked_notes()
+        .ok()
+        .and_then(|notes| notes.into_iter().next());
+    if let Some(note) = note {
+        return Target::of_note(&note, store);
+    }
+    let books = store.books().ok()?;
+    books.iter().find_map(|book| {
+        Envelope::from_extra(&book.extra).map(|envelope| Target {
+            id: book.id.clone(),
+            envelope,
+        })
+    })
+}
+
 /// Locking a note with the lock password set before.
 fn lock_password_form(
     editor: Entity<NoteEditor>,
-    locked: Note,
+    locked: Target,
     title: String,
     window: &mut Window,
     cx: &mut App,
@@ -392,7 +525,7 @@ fn set_password_form(
     })
 }
 
-/// Unlock: Touch ID when it's on, else (or when it fails) the lock password,
+/// Unlock: Touch ID or Windows Hello when it's on, else (or when it fails) the lock password,
 /// opens the open note and every other note locked with the same password.
 /// Returns the form when it asks for the password.
 pub fn unlock_open_note(
@@ -404,8 +537,9 @@ pub fn unlock_open_note(
     if !editor.read(cx).lock_view().is_closed() {
         return None;
     }
+    let target = Target::of_note(&note, &store(cx))?;
     if touch_id_on(cx) {
-        let fallback = (editor.clone(), note.clone());
+        let fallback = (editor.clone(), target.clone());
         with_touch_id(
             window,
             cx,
@@ -414,22 +548,22 @@ pub fn unlock_open_note(
                 cx.refresh_windows();
                 // Keys kept before this note was locked elsewhere don't open it.
                 if editor.read(cx).lock_view().is_closed() {
-                    password_unlock(editor, note, window, cx);
+                    password_unlock(editor, target, window, cx);
                 }
             },
             move |window, cx| {
-                let (editor, note) = fallback;
-                password_unlock(editor, note, window, cx);
+                let (editor, target) = fallback;
+                password_unlock(editor, target, window, cx);
             },
         );
         return None;
     }
-    Some(password_unlock(editor, note, window, cx))
+    Some(password_unlock(editor, target, window, cx))
 }
 
 fn password_unlock(
     editor: Entity<NoteEditor>,
-    note: Note,
+    target: Target,
     window: &mut Window,
     cx: &mut App,
 ) -> Entity<FormView> {
@@ -440,14 +574,15 @@ fn password_unlock(
             // A shorter text can't be the password.
             Err(_) => return Submit::Invalid(sentence(&LockError::WrongPassword)),
         };
-        let note = note.clone();
+        let target = target.clone();
         let editor = editor.clone();
         run_in_background(
             window,
             cx,
-            move || key_for(&note, &password),
+            move || key_for(&target, &password),
             move |key, window, cx| {
                 LockKeys::add(key, cx);
+                seal_unsealed(cx);
                 editor.update(cx, |editor, cx| editor.lock_keys_changed(window, cx));
                 cx.refresh_windows();
                 after_password(window, cx);
@@ -457,9 +592,10 @@ fn password_unlock(
     })
 }
 
-// MARK: Touch ID
+// MARK: Touch ID and Windows Hello
 
-/// Whether Touch ID unlocks locked notes on this device now.
+/// Whether Touch ID (or Windows Hello) unlocks locked notes on this device
+/// now.
 pub fn touch_id_on(cx: &App) -> bool {
     cx.try_global::<AppState>()
         .is_some_and(|state| state.config.locked.touch_id == Some(true))
@@ -470,17 +606,17 @@ fn secrets(cx: &App) -> Option<Arc<dyn SecretStore>> {
     cx.try_global::<Services>()?.secrets.clone()
 }
 
-/// The library's ID, which names its Keychain items.
+/// The library's ID, which names its Keychain (or Credential Manager) items.
 fn library_id(store: &Store) -> Result<String, String> {
     kanso_sync::device_identity(store, &kanso_sync::Machine::this_mac())
         .map(|device| device.library_id)
         .map_err(|err| err.to_string())
 }
 
-/// Asks for a fingerprint, takes the lock keys kept for Touch ID into this
-/// session and runs `then`; runs `otherwise` when Touch ID is off, is
+/// Asks for a fingerprint (or Windows Hello), takes the lock keys kept for it
+/// into this session and runs `then`; runs `otherwise` when it is off, is
 /// cancelled or fails, or no keys are kept.
-fn with_touch_id(
+pub(crate) fn with_touch_id(
     window: &mut Window,
     cx: &mut App,
     then: impl FnOnce(&mut Window, &mut App) + 'static,
@@ -514,6 +650,7 @@ fn with_touch_id(
                         for key in keys {
                             LockKeys::add(key, cx);
                         }
+                        seal_unsealed(cx);
                         then(window, cx);
                     }
                     None => otherwise(window, cx),
@@ -544,7 +681,10 @@ fn remember_keys(cx: &mut App) {
             save_lock_keys(secrets.as_ref(), &library_id, &keys).map_err(|err| err.to_string())
         });
         if let Err(err) = saved {
-            eprintln!("kanso: locked notes: couldn't keep the keys for Touch ID: {err}");
+            eprintln!(
+                "kanso: locked notes: couldn't keep the keys for {}: {err}",
+                crate::touch_id::NAME
+            );
         }
     })
     .detach();
@@ -552,19 +692,24 @@ fn remember_keys(cx: &mut App) {
 
 /// After the lock password worked: keeps the keys for Touch ID when it's on,
 /// or offers it once when it could be.
-fn after_password(window: &mut Window, cx: &mut App) {
+pub(crate) fn after_password(window: &mut Window, cx: &mut App) {
     remember_keys(cx);
+    seal_unsealed(cx);
     let asked = cx.global::<AppState>().config.locked.touch_id.is_some();
     if asked || !crate::touch_id::available(cx) || secrets(cx).is_none() {
         return;
     }
     AppState::update_config(cx, |config| config.locked.touch_id = Some(false));
     let notification = Notification::info(
-        "Use Touch ID to unlock your locked notes on this device? The password still works, and other devices need it.",
+        concat!(
+            "Use ",
+            unlock_name!(),
+            " to unlock your locked notes on this device? The password still works, and other devices need it."
+        ),
     )
     .action(|_, _, _| {
         Button::new("turn-on-touch-id")
-            .label("Use Touch ID")
+            .label(concat!("Use ", unlock_name!()))
             .on_click(|_, window, cx| {
                 window.dispatch_action(Box::new(TurnOnTouchId), cx);
             })
@@ -572,27 +717,46 @@ fn after_password(window: &mut Window, cx: &mut App) {
     window.push_notification(notification, cx);
 }
 
-/// Turn On Touch ID: after a fingerprint, keeps the lock keys this session
-/// holds in the Keychain, so Touch ID opens locked notes on this device.
+/// Turn On Touch ID (or Windows Hello): after a fingerprint, keeps the lock
+/// keys this session holds in the Keychain (or the Credential Manager), so
+/// it opens locked notes on this device.
 pub fn turn_on_touch_id(window: &mut Window, cx: &mut App) {
     let say = |words: &str, window: &mut Window, cx: &mut App| {
         window.push_notification(Notification::info(words.to_owned()), cx);
     };
     if !crate::touch_id::available(cx) {
-        return say("Touch ID isn't set up on this device.", window, cx);
-    }
-    let Some(secrets) = secrets(cx) else {
-        return say("This copy of Kanso can't use the Keychain.", window, cx);
-    };
-    if !LockKeys::is_unlocked(cx) {
         return say(
-            "Unlock a locked note with your lock password first, then turn on Touch ID.",
+            concat!(unlock_name!(), " isn't set up on this device."),
             window,
             cx,
         );
     }
-    let Some(answer) = crate::touch_id::authenticate("turn on Touch ID for your locked notes", cx)
-    else {
+    let Some(secrets) = secrets(cx) else {
+        return say(
+            concat!(
+                "This copy of Kanso can't use the ",
+                secret_store_name!(),
+                "."
+            ),
+            window,
+            cx,
+        );
+    };
+    if !LockKeys::is_unlocked(cx) {
+        return say(
+            concat!(
+                "Unlock a locked note with your lock password first, then turn on ",
+                unlock_name!(),
+                "."
+            ),
+            window,
+            cx,
+        );
+    }
+    let Some(answer) = crate::touch_id::authenticate(
+        concat!("turn on ", unlock_name!(), " for your locked notes"),
+        cx,
+    ) else {
         return;
     };
     let keys = LockKeys::get(cx)
@@ -617,14 +781,18 @@ pub fn turn_on_touch_id(window: &mut Window, cx: &mut App) {
                     Ok(()) => {
                         AppState::update_config(cx, |config| config.locked.touch_id = Some(true));
                         window.push_notification(
-                            Notification::success(
-                                "Touch ID now unlocks your locked notes on this device.",
-                            ),
+                            Notification::success(concat!(
+                                unlock_name!(),
+                                " now unlocks your locked notes on this device."
+                            )),
                             cx,
                         );
                     }
                     Err(err) => window.push_notification(
-                        Notification::error(format!("Couldn't turn on Touch ID: {err}")),
+                        Notification::error(format!(
+                            "Couldn't turn on {}: {err}",
+                            crate::touch_id::NAME
+                        )),
                         cx,
                     ),
                 })
@@ -634,7 +802,7 @@ pub fn turn_on_touch_id(window: &mut Window, cx: &mut App) {
     .detach();
 }
 
-/// Turn Off Touch ID: forgets the keys kept for it; the password opens
+/// Turn Off Touch ID (or Windows Hello): forgets the keys kept for it; the password opens
 /// locked notes again.
 pub fn turn_off_touch_id(window: &mut Window, cx: &mut App) {
     AppState::update_config(cx, |config| config.locked.touch_id = Some(false));
@@ -661,6 +829,19 @@ pub fn remove_lock(editor: Entity<NoteEditor>, window: &mut Window, cx: &mut App
     }
     if view.is_closed() {
         unlock_open_note(editor, window, cx);
+        return;
+    }
+    let in_locked_notebook = editor
+        .read(cx)
+        .note_id()
+        .is_some_and(|id| store(cx).note_in_locked_book(id).unwrap_or(false));
+    if in_locked_notebook {
+        window.push_notification(
+            Notification::info(
+                "The note is in a locked notebook, so it stays locked. Move it out first.",
+            ),
+            cx,
+        );
         return;
     }
     // The text as typed is what stays.
@@ -724,15 +905,20 @@ pub fn change_password(
             move || rekey(&store, &old, &new, params),
             move |(key, skipped), window, cx| {
                 LockKeys::replace(Some(key), cx);
-                // Touch ID keeps the new key in place of the old ones.
+                // Touch ID (or Windows Hello) keeps the new key in place of
+                // the old ones.
                 remember_keys(cx);
                 editor.update(cx, |editor, cx| {
                     editor.lock_keys_changed(window, cx);
                     if skipped > 0 {
                         editor.notice(
                             format!(
-                                "{skipped} locked note{} didn't open with the current password and kept it.",
-                                if skipped == 1 { "" } else { "s" }
+                                "{skipped} locked {} didn't open with the current password and kept it.",
+                                if skipped == 1 {
+                                    "note or notebook"
+                                } else {
+                                    "notes or notebooks"
+                                }
                             ),
                             cx,
                         );
@@ -745,8 +931,9 @@ pub fn change_password(
     })
 }
 
-/// Seals every locked note `old` opens again under a new key from `new`.
-/// Returns the new key and how many notes `old` didn't open.
+/// Seals every locked note `old` opens again under a new key from `new`,
+/// and every locked notebook's lock. Returns the new key and how many notes
+/// and notebooks `old` didn't open.
 pub fn rekey(
     store: &Store,
     old: &LockPassword,
@@ -780,7 +967,35 @@ pub fn rekey(
             Err(_) => skipped += 1,
         }
     }
-    if opened.is_empty() && skipped > 0 {
+    // A locked notebook's own lock, which tells the password, moves too.
+    let mut books = Vec::new();
+    for book in store.books().map_err(|err| err.to_string())? {
+        let Some(found) = Envelope::from_extra(&book.extra) else {
+            continue;
+        };
+        let Ok(envelope) = found else {
+            skipped += 1;
+            continue;
+        };
+        if !old_keys.iter().any(|key| key.fits(&envelope)) {
+            match LockKey::for_envelope(old, &envelope) {
+                Ok(key) => old_keys.push(key),
+                Err(_) => {
+                    skipped += 1;
+                    continue;
+                }
+            }
+        }
+        let key = old_keys
+            .iter()
+            .find(|key| key.fits(&envelope))
+            .expect("a key for this salt was just made");
+        match key.open(&book.id, &envelope) {
+            Ok(_) => books.push(book),
+            Err(_) => skipped += 1,
+        }
+    }
+    if opened.is_empty() && books.is_empty() && skipped > 0 {
         return Err(sentence(&LockError::WrongPassword));
     }
     let key = LockKey::create(new, params).map_err(|err| sentence(&err))?;
@@ -792,6 +1007,21 @@ pub fn rekey(
         // A note changed meanwhile keeps its old seal; it opens with the old
         // password until changed again.
         if store.lock_note(value).is_err() {
+            skipped += 1;
+        }
+    }
+    for mut book in books {
+        Envelope::store(Some(&key.seal(&book.id, "")), &mut book.extra);
+        let value = serde_json::to_value(&book).map_err(|err| err.to_string())?;
+        if store
+            .put(
+                kanso_core::DocType::Book,
+                value,
+                kanso_store::Put::Upsert,
+                kanso_store::Origin::Ui,
+            )
+            .is_err()
+        {
             skipped += 1;
         }
     }
@@ -874,6 +1104,30 @@ mod tests {
         assert_eq!(open(&store, &other, &c).unwrap(), "third");
         // Nothing sealed under the old password is left in history.
         assert!(store.revisions(&a).unwrap().is_empty());
+    }
+
+    #[test]
+    fn rekeying_moves_a_locked_notebooks_lock_to_the_new_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().join("k.db")).unwrap();
+        let old = LockKey::create(&password("old password"), KdfParams::TEST).unwrap();
+        let a = locked_note(&store, &old, "first");
+        let book = store.note(&a).unwrap().unwrap().book_id;
+        crate::notebook_lock::seal_notebook(&store, &book, &old).unwrap();
+
+        let (new, skipped) = rekey(
+            &store,
+            &password("old password"),
+            &password("new password"),
+            KdfParams::TEST,
+        )
+        .unwrap();
+        assert_eq!(skipped, 0);
+        let lock = store.books().unwrap()[0].extra["kansoLock"].clone();
+        let envelope: Envelope = serde_json::from_value(lock).unwrap();
+        assert!(new.fits(&envelope));
+        assert_eq!(new.open(&book, &envelope).unwrap().as_str(), "");
+        assert_eq!(open(&store, &new, &a).unwrap(), "first");
     }
 
     #[test]

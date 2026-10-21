@@ -464,22 +464,36 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "touch-id-on",
-        label: "Unlock locked notes with Touch ID",
+        label: concat!("Unlock locked notes with ", crate::touch_id::unlock_name!()),
         label_when_pinned: None,
-        description: "After a fingerprint, keeps the lock keys in this device's Keychain so Touch ID opens locked notes here. The lock password still works, and other devices need it.",
+        description: concat!(
+            "Once ",
+            crate::touch_id::unlock_name!(),
+            " says it's you, keeps the lock keys in this device's ",
+            crate::touch_id::secret_store_name!(),
+            " so it opens locked notes here. The lock password still works, and other devices need it."
+        ),
         icon: IconName::FingerprintPattern,
-        keywords: &["touch id", "fingerprint", "biometric", "lock", "unlock"],
+        keywords: crate::touch_id::KEYWORDS,
         group: Group::Note,
         run: action!(crate::locked::TurnOnTouchId),
         needs: Needs::Nothing,
     },
     Command {
         id: "touch-id-off",
-        label: "Stop using Touch ID for locked notes",
+        label: concat!(
+            "Stop using ",
+            crate::touch_id::unlock_name!(),
+            " for locked notes"
+        ),
         label_when_pinned: None,
-        description: "Forgets the lock keys kept for Touch ID on this device; locked notes open with the lock password again.",
+        description: concat!(
+            "Forgets the lock keys kept for ",
+            crate::touch_id::unlock_name!(),
+            " on this device; locked notes open with the lock password again."
+        ),
         icon: IconName::FingerprintPattern,
-        keywords: &["touch id", "fingerprint", "biometric", "lock", "password"],
+        keywords: crate::touch_id::KEYWORDS,
         group: Group::Note,
         run: action!(crate::locked::TurnOffTouchId),
         needs: Needs::Nothing,

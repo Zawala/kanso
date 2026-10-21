@@ -4272,6 +4272,8 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width",
  "ureq",
+ "windows 0.62.2",
+ "windows-future 0.3.2",
  "windows-sys 0.61.2",
  "zeroize",
 ]

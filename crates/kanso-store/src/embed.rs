@@ -234,12 +234,14 @@ impl Store {
     /// notes worked on most recently are embedded first.
     pub fn embedding_queue(&self, model: &str) -> Result<EmbeddingQueue> {
         self.read(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT d.id, d.title, (CASE WHEN json_extract(d.json, '$.kansoLock') IS NULL THEN json_extract(d.json, '$.body') ELSE '' END), e.content_hash
+            let mut stmt = conn.prepare(concat!(
+                "SELECT d.id, d.title, ",
+                crate::schema::readable_body!("d."),
+                ", e.content_hash
                  FROM docs d LEFT JOIN note_embeddings e ON e.note_id = d.id AND e.model = ?1
                  WHERE d.type = 'note' AND d.deleted = 0 AND IFNULL(d.book_id, '') != 'trash'
-                 ORDER BY d.updated_at DESC, d.id",
-            )?;
+                 ORDER BY d.updated_at DESC, d.id"
+            ))?;
             let mut rows = stmt.query([model])?;
             let mut queue = EmbeddingQueue::default();
             while let Some(row) = rows.next()? {

@@ -23,6 +23,10 @@ pub const OCR_FIELD: &str = "kansoOcr";
 /// (`kanso_sync::lock::Envelope`). A locked note's `body` is always empty:
 /// its text is only in here, so search, links, tasks, embeddings and the
 /// local API never see it. Only the app sets it.
+///
+/// A notebook has it too when it is locked: an envelope sealing nothing
+/// under the lock password, which tells the password and its salt. Every
+/// note in a locked notebook, and in the notebooks inside it, is locked.
 pub const LOCK_FIELD: &str = "kansoLock";
 
 /// Longest note title the API accepts.
@@ -220,6 +224,14 @@ pub struct Book {
     pub updated_at: i64,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+impl Book {
+    /// Whether the notebook itself is locked (a notebook inside it is
+    /// locked too, without its own lock).
+    pub fn is_locked(&self) -> bool {
+        self.extra.contains_key(LOCK_FIELD)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

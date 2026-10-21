@@ -40,6 +40,8 @@ pub enum SidebarEvent {
     },
     RenameBook(String),
     DeleteBook(String),
+    LockBook(String),
+    RemoveBookLock(String),
     RenameTag(String),
     RecolorTag(String, kanso_core::TagColor),
     DeleteTag(String),
@@ -1184,10 +1186,22 @@ impl Render for Sidebar {
         let library = self.library.read(cx);
         let counts = library.counts.clone();
         let recent = library.recent;
-        let books: Vec<(usize, String, String, u32)> = library
+        // Each notebook with whether it is locked, and whether by its own
+        // lock (rather than a notebook it is inside).
+        let books: Vec<(usize, String, String, u32, bool, bool)> = library
             .book_tree()
             .into_iter()
-            .map(|(depth, b)| (depth, b.id.clone(), b.name.clone(), b.count))
+            .map(|(depth, b)| {
+                let locked = library.is_book_locked(&b.id);
+                (
+                    depth,
+                    b.id.clone(),
+                    b.name.clone(),
+                    b.count,
+                    locked,
+                    b.is_locked(),
+                )
+            })
             .collect();
 
         let mut list = v_flex().pb_4();
@@ -1236,10 +1250,17 @@ impl Render for Sidebar {
             cx,
         );
         list = list.child(self.heading("Notebooks", Some(add_book), cx));
-        for (depth, id, name, count) in books {
+        for (depth, id, name, count, locked, own_lock) in books {
             let view = cx.entity();
             let book_id = id.clone();
-            let icon = self.icon(Lucide::Notebook, cx);
+            let icon = self.icon(
+                if locked {
+                    Lucide::Lock
+                } else {
+                    Lucide::Notebook
+                },
+                cx,
+            );
             let row = self
                 .row(
                     SharedString::from(format!("book-{id}")),
@@ -1255,6 +1276,30 @@ impl Render for Sidebar {
                 .context_menu(move |menu, _, _| {
                     let (new, rename, delete) = (view.clone(), view.clone(), view.clone());
                     let (a, b, c) = (book_id.clone(), book_id.clone(), book_id.clone());
+                    let (lock, d) = (view.clone(), book_id.clone());
+                    // A notebook inside a locked one is locked with it, and
+                    // has no lock of its own to take off.
+                    let lock_item = if own_lock {
+                        Some(PopupMenuItem::new("Remove Notebook Lock…").on_click(
+                            move |_, _, cx| {
+                                lock.update(cx, |_, cx| {
+                                    cx.emit(SidebarEvent::RemoveBookLock(d.clone()))
+                                });
+                            },
+                        ))
+                    } else if !locked {
+                        Some(
+                            PopupMenuItem::new("Lock Notebook…").on_click(move |_, _, cx| {
+                                lock.update(cx, |_, cx| cx.emit(SidebarEvent::LockBook(d.clone())));
+                            }),
+                        )
+                    } else {
+                        None
+                    };
+                    let menu = match lock_item {
+                        Some(item) => menu.item(item).separator(),
+                        None => menu,
+                    };
                     menu.item(
                         PopupMenuItem::new("New Sub-notebook").on_click(move |_, _, cx| {
                             new.update(cx, |_, cx| {

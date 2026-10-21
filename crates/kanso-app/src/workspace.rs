@@ -221,8 +221,14 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Remove Lock…", crate::locked::RemoveLock),
             MenuItem::action("Lock Notes Now", crate::locked::LockNotesNow),
             MenuItem::action("Change Lock Password…", crate::locked::ChangeLockPassword),
-            MenuItem::action("Unlock with Touch ID", crate::locked::TurnOnTouchId),
-            MenuItem::action("Stop Using Touch ID", crate::locked::TurnOffTouchId),
+            MenuItem::action(
+                concat!("Unlock with ", crate::touch_id::unlock_name!()),
+                crate::locked::TurnOnTouchId,
+            ),
+            MenuItem::action(
+                concat!("Stop Using ", crate::touch_id::unlock_name!()),
+                crate::locked::TurnOffTouchId,
+            ),
             MenuItem::separator(),
             MenuItem::action("Next Note", NextNote),
             MenuItem::action("Previous Note", PreviousNote),
@@ -395,10 +401,17 @@ impl Workspace {
 
         let subscriptions = vec![
             cx.subscribe_in(&library, window, |this, _, event, window, cx| match event {
-                // A place asked for: the list shows, whatever hid it.
+                // A place asked for: the list shows, whatever hid it. A
+                // locked notebook asks for its password once.
                 LibraryEvent::Shown => {
                     this.leave_settings(window, cx);
                     this.set_focus_mode(false, window, cx);
+                    if let Filter::Book(id) = this.library.read(cx).filter.clone()
+                        && this.library.read(cx).is_book_locked(&id)
+                        && !window.has_active_dialog(cx)
+                    {
+                        crate::notebook_lock::open_notebook(&id, this.editor.clone(), window, cx);
+                    }
                 }
                 // A note someone picked shows; one the app picked itself
                 // (the last note at launch, the first of a new list) waits
@@ -1052,6 +1065,17 @@ impl Workspace {
                         );
                         report(result.map(drop), window, cx);
                     },
+                );
+            }
+            SidebarEvent::LockBook(id) => {
+                crate::notebook_lock::lock_notebook(id.clone(), self.editor.clone(), window, cx);
+            }
+            SidebarEvent::RemoveBookLock(id) => {
+                crate::notebook_lock::remove_notebook_lock(
+                    id.clone(),
+                    self.editor.clone(),
+                    window,
+                    cx,
                 );
             }
             SidebarEvent::DeleteBook(id) => {

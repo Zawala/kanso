@@ -899,12 +899,13 @@ impl NoteEditor {
         }
     }
 
-    /// The keys held changed: a locked note opens or closes to match.
+    /// The keys held changed: a locked note, or a note in a locked
+    /// notebook, opens or closes to match.
     pub fn lock_keys_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(id) = self
             .note
             .as_ref()
-            .filter(|n| n.is_locked())
+            .filter(|n| n.is_locked() || self.store.note_is_locked(&n.id).unwrap_or(false))
             .map(|n| n.id.clone())
         else {
             return;
@@ -1278,6 +1279,21 @@ impl NoteEditor {
         if !std::mem::take(&mut self.keep_edit_time) {
             note.updated_at = Clock::now_ms(cx);
         }
+        // A note going into a locked notebook goes sealed, and is open.
+        let mut sealed_now = false;
+        if !note.is_locked()
+            && self
+                .store
+                .locked_books()
+                .is_ok_and(|books| books.contains(&note.book_id))
+        {
+            if let Err(words) = crate::locked::seal_for_notebook(&mut note, cx) {
+                cx.emit(EditorEvent::Notice(format!("Couldn't save: {words}")));
+                return false;
+            }
+            sealed_now = true;
+        }
+        let open = self.lock == LockView::Open || sealed_now;
         // A sync can move the revision between reading and writing without
         // changing the note: then the write goes on top of the new revision.
         let mut retried = false;
@@ -1286,7 +1302,7 @@ impl NoteEditor {
             // text. One that isn't open can't take any.
             let mut stored = note.clone();
             if stored.is_locked() {
-                let sealed = if self.lock == LockView::Open {
+                let sealed = if open {
                     crate::locked::seal(&mut stored, cx)
                 } else if stored.body.is_empty() {
                     Ok(())
@@ -1309,6 +1325,9 @@ impl NoteEditor {
                 Ok(result) => {
                     note.rev = Some(result.rev);
                     self.note = Some(note);
+                    if sealed_now {
+                        self.lock = LockView::Open;
+                    }
                     // The write was based on the current version, so there is
                     // nothing left to choose between.
                     self.incoming = None;

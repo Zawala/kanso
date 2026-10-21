@@ -1,19 +1,66 @@
-//! Touch ID, for unlocking locked notes without typing the lock password.
+//! Touch ID, and Windows Hello on Windows, for unlocking locked notes
+//! without typing the lock password.
 //!
 //! [`Biometrics`] is the seam: [`SystemTouchId`] asks macOS's
-//! LocalAuthentication in the app, tests set their own. Without the global,
-//! or off macOS, there is no Touch ID and the password is asked for.
+//! LocalAuthentication or Windows's UserConsentVerifier in the app, tests
+//! set their own. Without the global, or on Linux, there is neither and the
+//! password is asked for. Both keep the same lock keys in the system's
+//! secret store ([`kanso_sync::Keychain`]: the login Keychain, or the
+//! Credential Manager, which only the signed-in Windows user can read), and
+//! are offered, turned on and forgotten the same way (`locked.rs`).
 
 use std::sync::Arc;
 
 use gpui_kit::{App, Global};
 
-/// What Touch ID can do.
+/// What the unlock is called on this system, as a literal for `concat!`:
+/// "Windows Hello" on Windows, "Touch ID" elsewhere.
+#[cfg(target_os = "windows")]
+macro_rules! unlock_name {
+    () => {
+        "Windows Hello"
+    };
+}
+#[cfg(not(target_os = "windows"))]
+macro_rules! unlock_name {
+    () => {
+        "Touch ID"
+    };
+}
+pub(crate) use unlock_name;
+
+/// Where the system keeps Kanso's secrets, as a literal for `concat!`.
+#[cfg(target_os = "windows")]
+macro_rules! secret_store_name {
+    () => {
+        "Credential Manager"
+    };
+}
+#[cfg(not(target_os = "windows"))]
+macro_rules! secret_store_name {
+    () => {
+        "Keychain"
+    };
+}
+pub(crate) use secret_store_name;
+
+/// What the unlock is called on this system.
+pub const NAME: &str = unlock_name!();
+
+/// Words people might type for the unlock, in the palette.
+#[cfg(target_os = "windows")]
+pub const KEYWORDS: &[&str] = &["windows hello", "face", "fingerprint", "pin", "biometric"];
+#[cfg(not(target_os = "windows"))]
+pub const KEYWORDS: &[&str] = &["touch id", "fingerprint", "biometric"];
+
+/// What Touch ID (or Windows Hello) can do.
 pub trait Biometrics: Send + Sync {
-    /// Whether this device has Touch ID set up for its user now.
+    /// Whether this device has Touch ID (or Windows Hello) set up for its
+    /// user now.
     fn available(&self) -> bool;
-    /// Asks for a fingerprint, saying why with `reason`; the answer comes
-    /// on the channel (`false` for a cancel or a failure).
+    /// Asks for a fingerprint (or a face or the Windows Hello PIN), saying
+    /// why with `reason`; the answer comes on the channel (`false` for a
+    /// cancel or a failure).
     fn authenticate(&self, reason: &str) -> async_channel::Receiver<bool>;
 }
 
@@ -38,7 +85,9 @@ pub fn authenticate(reason: &str, cx: &App) -> Option<async_channel::Receiver<bo
 }
 
 /// macOS's LocalAuthentication, biometrics only: the fallback is Kanso's own
-/// lock password form, not the account password.
+/// lock password form, not the account password. On Windows, Windows Hello:
+/// a face, a fingerprint or the Windows Hello PIN, never the account
+/// password; the fallback is the lock password form there too.
 pub struct SystemTouchId;
 
 #[cfg(target_os = "macos")]
@@ -100,7 +149,81 @@ mod system {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+mod system {
+    use std::time::Duration;
+
+    use windows::Security::Credentials::UI::{
+        UserConsentVerificationResult, UserConsentVerifier, UserConsentVerifierAvailability,
+    };
+    use windows::Win32::System::WinRT::IUserConsentVerifierInterop;
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    use windows::core::{HSTRING, factory};
+    use windows_future::IAsyncOperation;
+
+    /// How long asking whether Windows Hello is set up may hold the window.
+    const AVAILABILITY_WAIT: Duration = Duration::from_secs(3);
+
+    impl super::Biometrics for super::SystemTouchId {
+        fn available(&self) -> bool {
+            // Asked on a thread of its own, which joins the apartment
+            // WinRT needs; the window waits a moment at most.
+            let (tx, rx) = std::sync::mpsc::channel();
+            let spawned = std::thread::Builder::new()
+                .name("kanso-hello".into())
+                .spawn(move || {
+                    let available = UserConsentVerifier::CheckAvailabilityAsync()
+                        .and_then(|operation| operation.join())
+                        .is_ok_and(|answer| answer == UserConsentVerifierAvailability::Available);
+                    tx.send(available).ok();
+                });
+            spawned.is_ok() && rx.recv_timeout(AVAILABILITY_WAIT).unwrap_or(false)
+        }
+
+        fn authenticate(&self, reason: &str) -> async_channel::Receiver<bool> {
+            let (tx, rx) = async_channel::bounded(1);
+            // Kanso's window is in front when someone asks to unlock, so
+            // Windows Hello's prompt is put over it.
+            // SAFETY: no arguments; a null window is handled below.
+            let window = unsafe { GetForegroundWindow() };
+            let message = HSTRING::from(reason);
+            let request = if window.is_invalid() {
+                UserConsentVerifier::RequestVerificationAsync(&message)
+            } else {
+                factory::<UserConsentVerifier, IUserConsentVerifierInterop>().and_then(|interop| {
+                    // SAFETY: a window handle from the system and a message
+                    // that outlives the call; the answer is the operation
+                    // the interface documents.
+                    unsafe {
+                        interop.RequestVerificationForWindowAsync::<
+                            IAsyncOperation<UserConsentVerificationResult>,
+                        >(window, &message)
+                    }
+                })
+            };
+            let request = match request {
+                Ok(request) => request,
+                Err(_) => {
+                    tx.try_send(false).ok();
+                    return rx;
+                }
+            };
+            // A thread that can't start drops the sender, and the closed
+            // channel reads as a cancel.
+            let _ = std::thread::Builder::new()
+                .name("kanso-hello".into())
+                .spawn(move || {
+                    let verified = request
+                        .join()
+                        .is_ok_and(|answer| answer == UserConsentVerificationResult::Verified);
+                    tx.try_send(verified).ok();
+                });
+            rx
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl Biometrics for SystemTouchId {
     fn available(&self) -> bool {
         false
@@ -159,11 +282,34 @@ impl Biometrics for FakeTouchId {
 mod tests {
     use super::{Biometrics as _, SystemTouchId};
 
-    /// The real LocalAuthentication links and answers whether Touch ID is
-    /// set up, without asking for a fingerprint. Run on demand.
+    // no-prop-test: the system calls are FFI, asked only on demand below;
+    // the names are fixed per platform.
+
+    /// The real LocalAuthentication (or Windows Hello) links and answers
+    /// whether it is set up, without asking for a fingerprint. Run on
+    /// demand.
     #[test]
-    #[ignore = "asks this Mac's LocalAuthentication"]
+    #[ignore = "asks this device's LocalAuthentication or Windows Hello"]
     fn the_system_says_whether_touch_id_is_set_up() {
-        println!("Touch ID available: {}", SystemTouchId.available());
+        println!("{} available: {}", super::NAME, SystemTouchId.available());
+    }
+
+    /// Windows says Windows Hello and the Credential Manager; elsewhere it's
+    /// Touch ID and the Keychain.
+    #[test]
+    fn the_unlock_has_the_systems_name() {
+        let (name, store) = if cfg!(target_os = "windows") {
+            ("Windows Hello", "Credential Manager")
+        } else {
+            ("Touch ID", "Keychain")
+        };
+        assert_eq!(super::NAME, name);
+        assert_eq!(super::unlock_name!(), name);
+        assert_eq!(super::secret_store_name!(), store);
+        assert!(
+            super::KEYWORDS
+                .iter()
+                .any(|word| name.eq_ignore_ascii_case(word))
+        );
     }
 }

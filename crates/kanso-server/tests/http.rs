@@ -795,3 +795,126 @@ async fn a_locked_note_keeps_its_sealed_text_from_the_local_api() {
     assert!(feed.to_string().contains(&id), "{feed}");
     assert!(!feed.to_string().contains("c2FsdA"), "{feed}");
 }
+
+#[tokio::test]
+async fn a_locked_notebook_keeps_its_notes_text_and_its_lock_from_the_local_api_and_mcp() {
+    let app = app();
+    let lock = json!({ "v": 1, "salt": "c2FsdA", "m": 64, "t": 1, "p": 1, "data": "notebook" });
+    let (book, _) = write(&app.router, "/books", json!({ "name": "Private" })).await;
+    let (inner, _) = write(
+        &app.router,
+        "/books",
+        json!({ "name": "Deeper", "parentBookId": book }),
+    )
+    .await;
+    let (id, _) = write(
+        &app.router,
+        "/notes",
+        json!({ "bookId": inner, "title": "Plans", "body": "zebracanary4471" }),
+    )
+    .await;
+    // Locked on another device, before this note was sealed here.
+    let mut locked = app.store.get_api(&book, None, false).unwrap();
+    locked.as_object_mut().unwrap().remove("count");
+    locked["kansoLock"] = lock.clone();
+    app.store
+        .put(
+            kanso_core::DocType::Book,
+            locked,
+            kanso_store::Put::Upsert,
+            kanso_store::Origin::Sync,
+        )
+        .unwrap();
+
+    // The note reads with an empty body everywhere, MCP included.
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["body"], "");
+    assert_eq!(doc["title"], "Plans");
+    for uri in [
+        "/notes?keyword=zebracanary4471".to_owned(),
+        "/notes".to_owned(),
+        "/_changes?include_docs=true".to_owned(),
+    ] {
+        let (_, found) = get(&app.router, &uri).await;
+        assert!(
+            !found.to_string().contains("zebracanary4471"),
+            "{uri}: {found}"
+        );
+    }
+    for (name, arguments) in [
+        ("read-note", json!({ "noteId": id })),
+        ("search-notes", json!({ "keyword": "Plans" })),
+        ("list-notes", json!({ "bookId": inner })),
+    ] {
+        let answer = tool(&app.router, name, arguments).await;
+        assert!(answer.to_string().contains("Plans"), "{name}: {answer}");
+        assert!(
+            !answer.to_string().contains("zebracanary4471"),
+            "{name}: {answer}"
+        );
+    }
+    // Nor is its text changed, emptied, moved out or deleted from here.
+    for (uri, body) in [
+        (format!("/{id}"), json!({ "body": "replaced" })),
+        (format!("/{id}"), json!({ "body": "" })),
+        (format!("/{id}"), json!({ "bookId": "trash" })),
+        (
+            "/notes".to_owned(),
+            json!({ "bookId": book, "title": "New", "body": "plain" }),
+        ),
+    ] {
+        let (status, _) = post(&app.router, &uri, body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{uri}");
+    }
+    let (status, _) = call(&app.router, Method::DELETE, &format!("/{id}"), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // The notebook's lock never goes out, can't be taken off or planted,
+    // and the notebook can't be deleted from here.
+    for uri in [format!("/{book}"), "/books".to_owned()] {
+        let (_, doc) = get(&app.router, &uri).await;
+        assert!(!doc.to_string().contains("c2FsdA"), "{uri}: {doc}");
+    }
+    write(
+        &app.router,
+        &format!("/{book}"),
+        json!({ "kansoLock": null, "name": "Renamed" }),
+    )
+    .await;
+    assert_eq!(
+        app.store
+            .get(&book)
+            .unwrap()
+            .unwrap()
+            .fields
+            .get("kansoLock"),
+        Some(&lock)
+    );
+    write(
+        &app.router,
+        &format!("/{inner}"),
+        json!({ "kansoLock": { "v": 1, "salt": "planted", "m": 64, "t": 1, "p": 1, "data": "x" } }),
+    )
+    .await;
+    assert!(
+        app.store
+            .get(&inner)
+            .unwrap()
+            .unwrap()
+            .fields
+            .get("kansoLock")
+            .is_none()
+    );
+    for target in [&book, &inner] {
+        let (status, _) = call(&app.router, Method::DELETE, &format!("/{target}"), None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    assert!(
+        app.store
+            .note(&id)
+            .unwrap()
+            .unwrap()
+            .body
+            .contains("zebracanary4471")
+    );
+}
