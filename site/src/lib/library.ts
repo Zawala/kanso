@@ -144,14 +144,26 @@ export interface Destination {
   readonly anchor?: string;
 }
 
+/**
+ * A note's destinations: its title, then the headings inside it. Notes are
+ * immutable (an edit makes a new note), so each is parsed once rather than
+ * on every keystroke in quick open.
+ */
+const noteDestinations = new WeakMap<Note, readonly Destination[]>();
+
+function destinationsOf(note: Note): readonly Destination[] {
+  const cached = noteDestinations.get(note);
+  if (cached !== undefined) return cached;
+  const name = title(note.body);
+  const out: Destination[] = [{ id: note.id, label: name, detail: note.notebook }];
+  for (const h of headings(note.body).slice(1)) out.push({ id: note.id, label: h.text, detail: name, anchor: h.id });
+  noteDestinations.set(note, out);
+  return out;
+}
+
 /** What quick open offers for a query: notes by title, then headings inside them. */
 export function destinations(notes: readonly Note[], query: string): Destination[] {
-  const all: Destination[] = [];
-  for (const note of notes) {
-    const name = title(note.body);
-    all.push({ id: note.id, label: name, detail: note.notebook });
-    for (const h of headings(note.body).slice(1)) all.push({ id: note.id, label: h.text, detail: name, anchor: h.id });
-  }
+  const all = notes.flatMap(destinationsOf);
   const pool = query.trim() === "" ? all.filter((d) => d.anchor === undefined) : all;
   return rank(query, pool, (d) => d.label).slice(0, 8);
 }
