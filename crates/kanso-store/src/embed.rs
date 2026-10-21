@@ -235,7 +235,7 @@ impl Store {
     pub fn embedding_queue(&self, model: &str) -> Result<EmbeddingQueue> {
         self.read(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT d.id, d.title, json_extract(d.json, '$.body'), e.content_hash
+                "SELECT d.id, d.title, (CASE WHEN json_extract(d.json, '$.kansoLock') IS NULL THEN json_extract(d.json, '$.body') ELSE '' END), e.content_hash
                  FROM docs d LEFT JOIN note_embeddings e ON e.note_id = d.id AND e.model = ?1
                  WHERE d.type = 'note' AND d.deleted = 0 AND IFNULL(d.book_id, '') != 'trash'
                  ORDER BY d.updated_at DESC, d.id",

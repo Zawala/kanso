@@ -152,6 +152,12 @@ CREATE TABLE file_text (
     text TEXT NOT NULL
 );
 "#,
+    // Locked notes (`Store::lock_note`): the search index forgets a row's
+    // words when it is deleted, rather than leaving them in its segments
+    // until they merge.
+    r#"
+INSERT INTO notes_fts (notes_fts, rank) VALUES ('secure-delete', 1);
+"#,
 ];
 
 pub fn connect(path: &Path) -> Result<Connection> {
@@ -159,6 +165,9 @@ pub fn connect(path: &Path) -> Result<Connection> {
     conn.busy_timeout(std::time::Duration::from_secs(5))?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "synchronous", "NORMAL")?;
+    // Deleted rows are overwritten, not just unlinked: a note's text gone
+    // when it is locked (or deleted) doesn't stay in free pages.
+    conn.pragma_update(None, "secure_delete", "ON")?;
     conn.create_scalar_function(
         "kanso_contains",
         2,
@@ -267,7 +276,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let conn = connect(&dir.path().join("k.db")).unwrap();
         migrate(&conn).unwrap();
-        assert_eq!(MIGRATIONS.len(), 6);
+        assert_eq!(MIGRATIONS.len(), 7);
         assert_eq!(version(&conn), MIGRATIONS.len() as i64);
         assert!(has_column(&conn, "note_tasks", "due"));
         assert!(has_column(&conn, "revisions", "batch_rev"));
@@ -275,7 +284,7 @@ mod tests {
         assert!(has_column(&conn, "file_text", "md5"));
         // Running it again changes nothing.
         migrate(&conn).unwrap();
-        assert_eq!(version(&conn), 6);
+        assert_eq!(version(&conn), 7);
     }
 
     /// A database on version 5 (find and replace) moves to 6 (discovery)
@@ -295,7 +304,7 @@ mod tests {
         assert!(!has_column(&conn, "note_embeddings", "vector"));
         set_meta(&conn, "kept", "yes").unwrap();
         migrate(&conn).unwrap();
-        assert_eq!(version(&conn), 6);
+        assert_eq!(version(&conn), 7);
         assert!(has_column(&conn, "revisions", "batch"));
         assert!(has_column(&conn, "note_embeddings", "vector"));
         assert!(has_column(&conn, "file_text", "text"));

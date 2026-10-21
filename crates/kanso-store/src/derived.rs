@@ -138,7 +138,7 @@ pub(crate) fn rebuild_if_stale(conn: &mut Connection) -> Result<bool> {
     }
     let notes: Vec<(String, Option<String>)> = tx
         .prepare(
-            "SELECT id, json_extract(json, '$.body') FROM docs WHERE type = 'note' AND deleted = 0",
+            "SELECT id, (CASE WHEN json_extract(json, '$.kansoLock') IS NULL THEN json_extract(json, '$.body') ELSE '' END) FROM docs WHERE type = 'note' AND deleted = 0",
         )?
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<rusqlite::Result<_>>()?;
@@ -206,7 +206,7 @@ impl Store {
                 None => None,
             };
             let mut stmt = conn.prepare(
-                "SELECT d.id, d.title, MIN(l.line), json_extract(d.json, '$.body')
+                "SELECT d.id, d.title, MIN(l.line), (CASE WHEN json_extract(d.json, '$.kansoLock') IS NULL THEN json_extract(d.json, '$.body') ELSE '' END)
                  FROM note_links l JOIN docs d ON d.id = l.note_id
                  WHERE d.deleted = 0 AND IFNULL(d.book_id, '') != 'trash' AND d.id != ?1
                    AND (l.target_id = ?1 OR (?2 IS NOT NULL AND l.target_title = ?2))
@@ -250,9 +250,9 @@ impl Store {
                 ""
             };
             let sql = format!(
-                "SELECT d.id, d.title, json_extract(d.json, '$.body') FROM docs d
+                "SELECT d.id, d.title, (CASE WHEN json_extract(d.json, '$.kansoLock') IS NULL THEN json_extract(d.json, '$.body') ELSE '' END) FROM docs d
                  WHERE d.type = 'note' AND d.deleted = 0 AND IFNULL(d.book_id, '') != 'trash'
-                   AND d.id != ?1 AND {prefilter}kanso_contains(json_extract(d.json, '$.body'), ?3)
+                   AND d.id != ?1 AND {prefilter}kanso_contains((CASE WHEN json_extract(d.json, '$.kansoLock') IS NULL THEN json_extract(d.json, '$.body') ELSE '' END), ?3)
                    AND NOT EXISTS (SELECT 1 FROM note_links l WHERE l.note_id = d.id
                        AND (l.target_id = ?1 OR l.target_title = ?4))
                  ORDER BY d.updated_at DESC, d.id"

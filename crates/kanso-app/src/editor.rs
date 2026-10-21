@@ -44,6 +44,7 @@ use crate::empty_state::EmptyNotebook;
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT, leading_inset};
 use crate::library::{Filter, Library};
 use crate::list_edit::{self, TabIntent};
+use crate::locked::LockView;
 use crate::markdown_edit::{self, Edit, Format};
 use crate::pairing::Pairs;
 use crate::preview::{ImageResize, LinkSender, Preview, PreviewEdit, TEXT_INSET, readable_width};
@@ -186,8 +187,12 @@ enum Incoming {
 pub struct NoteEditor {
     store: Arc<Store>,
     library: Entity<Library>,
-    /// The note as last loaded or saved, with its current `_rev`.
+    /// The note as last loaded or saved, with its current `_rev`. A locked
+    /// note that is open has its text in `body` here; the store has it
+    /// sealed.
     note: Option<Note>,
+    /// Whether the open note is locked, and if so whether it is open.
+    lock: LockView,
     /// The next write keeps the note's edit time (publishing isn't editing).
     keep_edit_time: bool,
     title: Entity<InputState>,
@@ -405,6 +410,7 @@ impl NoteEditor {
             store,
             library,
             note: None,
+            lock: LockView::Plain,
             keep_edit_time: false,
             title,
             body,
@@ -722,12 +728,15 @@ impl NoteEditor {
     /// position survive, for reloading the same note.
     fn show(
         &mut self,
-        note: Option<Note>,
+        mut note: Option<Note>,
         keep_place: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.incoming = None;
+        self.lock = note
+            .as_mut()
+            .map_or(LockView::Plain, |note| crate::locked::reveal(note, cx));
         let (title, body) = note.as_ref().map_or((String::new(), String::new()), |n| {
             (n.title.clone(), n.body.clone())
         });
@@ -814,6 +823,85 @@ impl NoteEditor {
     /// The open note's title and body as they are now, for an export.
     pub fn export_text(&self, cx: &App) -> Option<(String, String)> {
         self.note.as_ref().map(|_| self.current_text(cx))
+    }
+
+    /// The open note as it is now: the editor's title and text over the
+    /// note as last loaded or saved.
+    pub fn current_note(&self, cx: &App) -> Option<Note> {
+        let mut note = self.note.clone()?;
+        (note.title, note.body) = self.current_text(cx);
+        Some(note)
+    }
+
+    /// Whether the open note is locked, and open.
+    pub fn lock_view(&self) -> LockView {
+        self.lock.clone()
+    }
+
+    /// Locks the open note with `key`: saves it sealed and forgets its
+    /// earlier versions. It stays open.
+    pub fn lock_with(&mut self, key: &kanso_sync::lock::LockKey, cx: &mut Context<Self>) {
+        self.flush(cx);
+        if self.incoming.is_some() {
+            self.notice("Choose which version to keep before locking the note.", cx);
+            return;
+        }
+        let Some(mut note) = self.note.clone() else {
+            return;
+        };
+        if note.is_locked() {
+            return;
+        }
+        let body = std::mem::take(&mut note.body);
+        kanso_sync::lock::Envelope::store(Some(&key.seal(&note.id, &body)), &mut note.extra);
+        let result = serde_json::to_value(&note)
+            .map_err(StoreError::from)
+            .and_then(|value| self.store.lock_note(value));
+        match result {
+            Ok(result) => {
+                note.rev = Some(result.rev);
+                note.body = body;
+                self.note = Some(note);
+                self.lock = LockView::Open;
+                cx.notify();
+            }
+            Err(err) => self.notice(format!("Couldn't lock the note: {err}"), cx),
+        }
+    }
+
+    /// Takes the open note's lock off: its text is saved as plain text.
+    pub fn remove_lock(&mut self, cx: &mut Context<Self>) {
+        if self.lock != LockView::Open {
+            return;
+        }
+        if self.write(
+            |note, _| kanso_sync::lock::Envelope::store(None, &mut note.extra),
+            Origin::Ui,
+            cx,
+        ) {
+            self.lock = LockView::Plain;
+            cx.notify();
+        }
+    }
+
+    /// The keys held changed: a locked note opens or closes to match.
+    pub fn lock_keys_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(id) = self
+            .note
+            .as_ref()
+            .filter(|n| n.is_locked())
+            .map(|n| n.id.clone())
+        else {
+            return;
+        };
+        if let Ok(note) = self.store.note(&id) {
+            self.show(note, true, window, cx);
+        }
+    }
+
+    /// Something worth telling the user.
+    pub fn notice(&self, message: impl Into<String>, cx: &mut Context<Self>) {
+        cx.emit(EditorEvent::Notice(message.into()));
     }
 
     fn current_text(&self, cx: &App) -> (String, String) {
@@ -1061,9 +1149,30 @@ impl NoteEditor {
         };
         let (title, body) = self.current_text(cx);
         let mut fields = serde_json::Map::new();
+        // A locked note's draft is kept sealed, as its other versions are.
+        let (body, lock) = if note.is_locked() && self.lock == LockView::Open {
+            let mut sealed = Note {
+                body,
+                ..note.clone()
+            };
+            if crate::locked::seal(&mut sealed, cx).is_err() {
+                return;
+            }
+            (
+                String::new(),
+                sealed.extra.get(kanso_core::model::LOCK_FIELD).cloned(),
+            )
+        } else if note.is_locked() {
+            (String::new(), None)
+        } else {
+            (body, None)
+        };
         fields.insert("title".into(), title.into());
         fields.insert("body".into(), body.into());
         fields.insert("bookId".into(), note.book_id.clone().into());
+        if let Some(lock) = lock {
+            fields.insert(kanso_core::model::LOCK_FIELD.into(), lock);
+        }
         let rev = note.rev.clone().unwrap_or_default();
         if let Err(err) = self
             .store
@@ -1088,7 +1197,8 @@ impl NoteEditor {
             return;
         }
         // Settings › Editor: `#tags` in the text become the note's tags.
-        let inline = self.settings.inline_tags.then(|| {
+        // A locked note's `#tags` stay in its text: tags show unlocked.
+        let inline = (self.settings.inline_tags && self.lock == LockView::Plain).then(|| {
             let caret = typing.then(|| self.body.read(cx).cursor());
             (self.store.clone(), caret)
         });
@@ -1157,7 +1267,23 @@ impl NoteEditor {
         // changing the note: then the write goes on top of the new revision.
         let mut retried = false;
         loop {
-            let value = match serde_json::to_value(&note) {
+            // A locked note goes to the store sealed; the editor keeps its
+            // text. One that isn't open can't take any.
+            let mut stored = note.clone();
+            if stored.is_locked() {
+                let sealed = if self.lock == LockView::Open {
+                    crate::locked::seal(&mut stored, cx)
+                } else if stored.body.is_empty() {
+                    Ok(())
+                } else {
+                    Err("Unlock the note to change its text.".to_owned())
+                };
+                if let Err(words) = sealed {
+                    cx.emit(EditorEvent::Notice(format!("Couldn't save: {words}")));
+                    return false;
+                }
+            }
+            let value = match serde_json::to_value(&stored) {
                 Ok(value) => value,
                 Err(err) => {
                     cx.emit(EditorEvent::Notice(format!("Couldn't save: {err}")));
@@ -1175,9 +1301,10 @@ impl NoteEditor {
                     return true;
                 }
                 Err(StoreError::Conflict) => {
-                    let Ok(Some(latest)) = self.store.note(&note.id) else {
+                    let Ok(Some(mut latest)) = self.store.note(&note.id) else {
                         return false;
                     };
+                    crate::locked::reveal(&mut latest, cx);
                     if !retried && same_content(&base, &latest) {
                         retried = true;
                         note.rev = latest.rev;
@@ -1212,9 +1339,10 @@ impl NoteEditor {
         let incoming = if change.deleted {
             Incoming::Deleted
         } else {
-            let Ok(Some(latest)) = self.store.note(&change.id) else {
+            let Ok(Some(mut latest)) = self.store.note(&change.id) else {
                 return;
             };
+            crate::locked::reveal(&mut latest, cx);
             if same_content(note, &latest) {
                 // Only the revision moved (a sync): the editor takes it and
                 // carries on, unsaved typing and all.
@@ -2443,6 +2571,52 @@ impl NoteEditor {
             )
     }
 
+    /// What shows in place of a locked note's text until it is unlocked.
+    fn render_locked(&self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = Colors::get(cx);
+        let problem = match &self.lock {
+            LockView::Closed(problem) => problem.clone(),
+            _ => None,
+        };
+        v_flex()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap_3()
+            .px(px(24.))
+            .pb(px(TOP_BAND_HEIGHT))
+            .debug_selector(|| "locked-note".into())
+            .child(
+                Icon::new(Lucide::Lock)
+                    .size(px(28.))
+                    .text_color(colors.text_muted),
+            )
+            .child(div().text_color(colors.text).child("This note is locked."))
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .text_color(colors.text_muted)
+                    .child(
+                        problem
+                            .clone()
+                            .unwrap_or_else(|| "Its text opens with your lock password.".into()),
+                    ),
+            )
+            .when(problem.is_none(), |el| {
+                el.child(
+                    Button::new("unlock-note")
+                        .small()
+                        .primary()
+                        .label("Unlock…")
+                        .debug_selector(|| "unlock-note".into())
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(crate::locked::UnlockNote), cx)
+                        }),
+                )
+            })
+            .into_any_element()
+    }
+
     fn render_trash_banner(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let tint = Colors::get(cx).fill.into();
         self.banner(tint, "This note is in the trash.", cx).child(
@@ -2739,9 +2913,10 @@ impl Render for NoteEditor {
             .when(!focus_mode, |el| {
                 el.child(v_flex().flex_none().child(self.render_meta(&note, cx)))
             })
-            .when(mode == ViewMode::Edit && !trashed && !focus_mode, |el| {
-                el.child(v_flex().flex_none().child(self.render_format_bar(cx)))
-            });
+            .when(
+                mode == ViewMode::Edit && !trashed && !focus_mode && !self.lock.is_closed(),
+                |el| el.child(v_flex().flex_none().child(self.render_format_bar(cx))),
+            );
 
         // Typewriter scrolling: the caret's line stays in the middle.
         let typewriter = self.settings.typewriter.centres(focus_mode);
@@ -2816,6 +2991,7 @@ impl Render for NoteEditor {
                     .cached(StyleRefinement::default().size_full()),
             );
         let body = match mode {
+            _ if self.lock.is_closed() => self.render_locked(cx),
             ViewMode::Edit => h_flex().size_full().child(source).into_any_element(),
             ViewMode::Preview => h_flex().size_full().child(preview).into_any_element(),
             ViewMode::Split => {

@@ -87,7 +87,7 @@ impl Store {
     ) -> Result<Vec<NoteMatches>> {
         self.read(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, rev, title, book_id, json_extract(json, '$.body') FROM docs
+                "SELECT id, rev, title, book_id, (CASE WHEN json_extract(json, '$.kansoLock') IS NULL THEN json_extract(json, '$.body') ELSE '' END) FROM docs
                  WHERE type = 'note' AND deleted = 0 AND (?1 OR IFNULL(book_id, '') != 'trash')
                  ORDER BY updated_at DESC, id",
             )?;

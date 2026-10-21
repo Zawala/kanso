@@ -20,6 +20,7 @@ pub mod crypto;
 mod engine;
 mod http;
 pub mod keychain;
+pub mod lock;
 mod memory;
 mod remote;
 mod sealed;
