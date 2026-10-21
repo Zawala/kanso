@@ -349,3 +349,108 @@ fn comments_list_in_the_inspector(cx: &mut TestAppContext) {
     assert_eq!(seen.len(), 1);
     assert!(!seen[0].comment.resolved);
 }
+
+#[gpui_kit::test]
+fn an_invitation_can_be_verified_before_accepting(cx: &mut TestAppContext) {
+    let server = MemoryCollab::new();
+    let (owner, member) = (device(&server, 1), device(&server, 2));
+    let book = owner
+        .store
+        .put(DocType::Book, json!({"name": "B"}), Put::Upsert, Origin::Ui)
+        .unwrap()
+        .id;
+    let id = owner
+        .store
+        .put(
+            DocType::Note,
+            json!({"title": "Plan", "body": "Hello", "bookId": book}),
+            Put::Upsert,
+            Origin::Ui,
+        )
+        .unwrap()
+        .id;
+    owner.engine.person("user2").unwrap();
+    owner
+        .engine
+        .share(&id, &[("user2".to_owned(), Role::Comment)])
+        .unwrap();
+    member.engine.refresh().unwrap();
+    let invitations = member.engine.invitations();
+    assert_eq!(invitations.len(), 1);
+    let owner_person = invitations[0].owner.clone();
+    assert!(!owner_person.verified);
+    // The fingerprint shown is the one pinned for the owner's keys.
+    assert_eq!(
+        crate::collab_text::fingerprint_groups(&owner_person.fingerprint).len(),
+        6
+    );
+    let engine = member.engine.clone();
+    cx.update(|cx| {
+        crate::collab::use_engine(engine, cx);
+        cx.global_mut::<crate::collab_model::Collab>().invitations = invitations;
+        crate::collab::verify_owner(owner_person.account_id.clone(), cx);
+    });
+    cx.run_until_parked();
+    let shown = cx.read(|cx| {
+        cx.global::<crate::collab_model::Collab>().invitations[0]
+            .owner
+            .verified
+    });
+    assert!(shown, "the invitation says Verified at once");
+    assert!(
+        member
+            .engine
+            .person_of(&owner_person.account_id)
+            .unwrap()
+            .verified
+    );
+}
+
+#[gpui_kit::test]
+fn a_refused_edit_shows_its_problem(cx: &mut TestAppContext) {
+    use kanso_collab::engine::STATE_LIMIT;
+
+    let server = MemoryCollab::new();
+    let (owner, member) = (device(&server, 1), device(&server, 2));
+    let (_, note) = shared(&owner, &member, Role::Edit);
+    let app = open(cx, &member, &note);
+    let editor = app.editor(cx);
+    let footer =
+        |cx: &mut TestAppContext| cx.read(|cx| editor.read(cx).footer_share_for_test(cx).unwrap());
+    assert!(!footer(cx).contains(crate::collab_text::NEAR_LIMIT));
+
+    // Grown close to the limit, in four-byte characters so the text stays
+    // within a note's length: the footer says it is near.
+    let near = "😀".repeat(1_030_000);
+    assert!(near.len() * 5 >= STATE_LIMIT * 4 && near.len() < STATE_LIMIT);
+    app.update(cx, |e, window, cx| {
+        e.edit_for_test(&near, window, cx);
+        e.collab_sync_for_test(window, cx);
+    });
+    assert!(
+        footer(cx).contains(crate::collab_text::NEAR_LIMIT),
+        "{}",
+        footer(cx)
+    );
+    let early = cx.read(|cx| editor.read(cx).shared_problems().to_vec());
+    assert!(early.is_empty(), "{early:?}");
+
+    // Past the limit: the edit is refused, and the banner says why.
+    let past = format!("{near}{}", "😀".repeat(18_000));
+    assert!(past.len() > STATE_LIMIT);
+    assert!(past.chars().count() <= kanso_core::model::MAX_BODY_LEN);
+    app.update(cx, |e, window, cx| {
+        e.edit_for_test(&past, window, cx);
+        e.collab_sync_for_test(window, cx);
+    });
+    let problems = cx.read(|cx| editor.read(cx).shared_problems().to_vec());
+    assert!(
+        problems.iter().any(|p| p.message.contains("size limit")),
+        "{problems:?}"
+    );
+    assert!(crate::collab_text::problem_banner(&problems).is_some());
+
+    // Dismissed, it goes.
+    app.update(cx, |e, _, cx| e.dismiss_problems(cx));
+    assert!(cx.read(|cx| editor.read(cx).shared_problems().is_empty()));
+}

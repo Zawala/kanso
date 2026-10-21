@@ -47,6 +47,9 @@ pub use live::LiveHandle;
 /// Updates or bytes since the last snapshot after which an editor writes one.
 pub const COMPACT_AFTER_UPDATES: u64 = 500;
 pub const COMPACT_AFTER_BYTES: u64 = 1024 * 1024;
+/// The most a shared note's state may hold: a snapshot of it (with its
+/// envelope) must stay under the server's 4 MiB.
+pub const STATE_LIMIT: usize = envelope::MAX_SNAPSHOT - 4096;
 /// The most text one update inserts: well under the server's 256 KiB cap
 /// on an update, whatever Yrs adds around it.
 pub const UPDATE_PART: usize = 64 * 1024;
@@ -132,6 +135,10 @@ pub struct Engine {
     notes: Mutex<HashMap<String, Arc<Mutex<Loaded>>>>,
     pub(crate) views: Mutex<HashMap<String, ShareView>>,
     pub(crate) invitations: Mutex<Vec<Invitation>>,
+    /// Who the server has in each note this account owns.
+    pub(crate) server_members: Mutex<HashMap<String, std::collections::HashSet<String>>>,
+    /// What the person should hear about.
+    pub(crate) problems: Mutex<Vec<crate::model::Problem>>,
 }
 
 /// The `meta` key holding this account's published identity (sealed).
@@ -153,6 +160,8 @@ impl Engine {
             notes: Mutex::new(HashMap::new()),
             views: Mutex::new(HashMap::new()),
             invitations: Mutex::new(Vec::new()),
+            server_members: Mutex::new(HashMap::new()),
+            problems: Mutex::new(Vec::new()),
         }
     }
 
@@ -339,6 +348,11 @@ impl Engine {
         if loaded.ended || loaded.reloading {
             return Ok(());
         }
+        let note_id = loaded.note.note_id.clone();
+        if self.store.note_is_locked(&note_id)? || self.store.note_in_locked_book(&note_id)? {
+            self.add_problem(&loaded.note.share_id, kanso_store::LOCKED_SHARED);
+            return self.persist(loaded);
+        }
         for _ in 0..5 {
             let (rev, local) = match self.store.note(&loaded.note.note_id)? {
                 Some(note) => (
@@ -351,6 +365,20 @@ impl Engine {
                 self.take_local(loaded, local)?;
             }
             let (title, body) = loaded.text();
+            // The library holds a note's text up to its limits; what is
+            // past them stays in the CRDT and is never taken as deleted.
+            let (title, body) = clamp_text(title, body);
+            if (title.len(), body.len())
+                != (
+                    loaded.doc.text(Field::Title).len(),
+                    loaded.doc.text(Field::Body).len(),
+                )
+            {
+                self.add_problem(
+                    &loaded.note.share_id,
+                    "The shared note is longer than a note can be here: this library keeps the start of it.",
+                );
+            }
             let inbox = self
                 .store
                 .role_book(kanso_core::roles::Role::Inbox, kanso_store::Origin::Collab)?;
@@ -370,6 +398,12 @@ impl Engine {
                 }
                 // Someone wrote the note meanwhile: take that in too.
                 Err(StoreError::Conflict) => continue,
+                // The library won't take it (a lock, a limit): the merge
+                // goes on, and the person hears why the note didn't change.
+                Err(StoreError::Invalid(message)) => {
+                    self.add_problem(&loaded.note.share_id, &message);
+                    return self.persist(loaded);
+                }
                 Err(err) => return Err(err.into()),
             }
         }
@@ -405,6 +439,20 @@ impl Engine {
         local: &(String, String),
     ) -> Result<bool> {
         if local == base || !loaded.role().may_edit() {
+            return Ok(false);
+        }
+        // A note's whole state must fit one snapshot: an edit that would
+        // grow it past that is kept as a private note instead.
+        let growth =
+            local.0.len().saturating_sub(base.0.len()) + local.1.len().saturating_sub(base.1.len());
+        if growth > 0
+            && loaded.doc.encode_state().len() + growth + crate::doc::OP_COST > STATE_LIMIT
+        {
+            self.keep_text_copy(
+                loaded,
+                Some(local),
+                "This shared note is at its size limit: the edit is kept in a private note.",
+            )?;
             return Ok(false);
         }
         let (title_now, body_now) = loaded.text();
@@ -462,6 +510,43 @@ impl Engine {
         );
         self.persist(loaded)?;
         Ok((counter, sealed))
+    }
+
+    // -------------------------------------------------------------- problems
+
+    /// Adds a problem for the person, once while it stands.
+    pub(crate) fn add_problem(&self, share_id: &str, message: &str) {
+        let mut problems = lock(&self.problems);
+        if !problems
+            .iter()
+            .any(|p| p.share_id == share_id && p.message == message)
+        {
+            problems.push(crate::model::Problem {
+                share_id: share_id.to_owned(),
+                message: message.to_owned(),
+                at: now_ms(),
+            });
+        }
+    }
+
+    /// How much of the note's size limit its state uses.
+    pub fn size_use(&self, share_id: &str) -> Option<crate::model::SizeUse> {
+        let loaded = self.loaded(share_id).ok()?;
+        let used = lock(&loaded).doc.encode_state().len();
+        Some(crate::model::SizeUse {
+            used,
+            limit: STATE_LIMIT,
+        })
+    }
+
+    /// What the person should hear about, oldest first.
+    pub fn problems(&self) -> Vec<crate::model::Problem> {
+        lock(&self.problems).clone()
+    }
+
+    /// Forgets the problems of one note, or of all.
+    pub fn dismiss_problems(&self, share_id: Option<&str>) {
+        lock(&self.problems).retain(|p| share_id.is_some_and(|id| id != p.share_id));
     }
 
     // ---------------------------------------------------------------- editor
@@ -750,6 +835,21 @@ impl Engine {
     pub fn role(&self, share_id: &str) -> Option<Role> {
         self.loaded(share_id).ok().map(|l| lock(&l).role())
     }
+}
+
+/// A note's title and body cut to what the library takes, on character
+/// boundaries.
+pub(crate) fn clamp_text(title: String, body: String) -> (String, String) {
+    fn cut(text: String, chars: usize) -> String {
+        match text.char_indices().nth(chars) {
+            Some((at, _)) => text[..at].to_owned(),
+            None => text,
+        }
+    }
+    (
+        cut(title, kanso_core::model::MAX_TITLE_LEN),
+        cut(body, kanso_core::model::MAX_BODY_LEN),
+    )
 }
 
 /// Which of the cursor colours an account gets: the same on every device.

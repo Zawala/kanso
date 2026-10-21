@@ -3599,6 +3599,7 @@ impl Render for NoteEditor {
                     cx,
                 ))
             })
+            .children(self.render_problems(cx))
             .child(div().flex_1().min_h_0().w_full().child(body))
             // Redrawn only when the cursor or the counts change.
             .child(

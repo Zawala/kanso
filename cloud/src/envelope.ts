@@ -49,6 +49,17 @@ export const ROOM_BYTES_PER_DAY = 64 * 1024 * 1024;
 /** WebSocket frames per second per socket, and the burst. */
 export const SOCKET_RATE = 30;
 export const SOCKET_BURST = 60;
+/** Presence frames per second per account in a room, and the burst. */
+export const PRESENCE_RATE = 10;
+export const PRESENCE_BURST = 20;
+/** Open sockets per account per room, and the `retry_after` past that. */
+export const MAX_SOCKETS_PER_ACCOUNT = 8;
+export const SOCKETS_RETRY_MS = 5_000;
+/** Comments a room keeps, in envelope bytes (they are never compacted). */
+export const MAX_COMMENT_BYTES = 8 * 1024 * 1024;
+/** A room writes its size to D1 once it has moved this much, or this long after any change. */
+export const FLUSH_BYTES = 64 * 1024;
+export const FLUSH_DELAY_MS = 30_000;
 /** A log page: entries by default and at most, and the envelope bytes it aims to stay under. */
 export const DEFAULT_LOG_LIMIT = 500;
 export const MAX_LOG_LIMIT = 1000;

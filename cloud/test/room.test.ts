@@ -5,7 +5,7 @@
 // frames when the owner changes the list or stops sharing, the per-socket
 // rate limit, and a room that hibernates between messages.
 
-import { evictDurableObject } from "cloudflare:test";
+import { evictDurableObject, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Account, base64url, resetServer, signUp } from "./helpers";
@@ -158,11 +158,67 @@ describe("frames", () => {
 		// The bucket refills at 30 a second while the room works through the
 		// frames, and a loaded machine works slowly: bound by the time taken.
 		const refilled = Math.ceil((30 * elapsed) / 1000);
-		const limited = answers.filter((m) => "text" in m && m.text.error === "rate_limited").slice(markers - 1);
+		// Presence past the account's own budget is refused too (limit "presence"); only the socket's count here.
+		const limited = answers.filter((m) => "text" in m && m.text.error === "rate_limited" && m.text.limit === "socket").slice(markers - 1);
 		expect(sent - limited.length).toBeLessThanOrEqual(60 + refilled);
 		expect(limited.length).toBeLessThanOrEqual(sent - 60);
 		if (60 + refilled < sent) expect(limited.length).toBeGreaterThan(0);
 		expect(text(limited[0])).toMatchObject({ type: "error", error: "rate_limited", limit: "socket" });
+		b.ws.close();
+	});
+});
+
+describe("presence and socket caps", () => {
+	it("presence is budgeted per account across its sockets: bursts of 20, then rate_limited presence", async () => {
+		const id = await shareWith(alice, [{ account: bob, role: "view" }]);
+		const a = await joined(alice, id);
+		const b1 = await joined(bob, id);
+		const b2 = await joined(bob, id);
+		const frames = await Promise.all(Array.from({ length: 30 }, () => envelope({ kind: "p", epoch: 1, shareId: id, by: bob })));
+		const started = Date.now();
+		frames.forEach((f, i) => (i % 2 === 0 ? b1 : b2).ws.send(f));
+		const refused = [...(await b1.drain(400)), ...(await b2.drain(100))].filter((m) => "text" in m);
+		const relayed = (await a.drain(100)).filter((m) => "bytes" in m);
+		const refill = Math.ceil((10 * (Date.now() - started)) / 1000);
+		for (const m of refused) expect(text(m)).toMatchObject({ type: "error", error: "rate_limited", limit: "presence", kind: "p" });
+		expect(relayed.length + refused.length).toBe(30);
+		expect(relayed.length).toBeGreaterThanOrEqual(20);
+		expect(relayed.length).toBeLessThanOrEqual(20 + refill);
+		// Another account's budget is its own.
+		a.ws.send(await envelope({ kind: "p", epoch: 1, shareId: id, by: alice }));
+		expect(unframe(bytes(await b1.next())).seq).toBe(0);
+		for (const s of [a, b1, b2]) s.ws.close();
+	});
+
+	it("at most 8 sockets per account in a room: the ninth upgrade is 429 rate_limited sockets", async () => {
+		const id = await shareWith(alice, [{ account: bob, role: "view" }]);
+		const open: Socket[] = [];
+		for (let i = 0; i < 8; i++) open.push(await joined(bob, id));
+		const ninth = (await openSocket(bob.token, id)) as Response;
+		expect(ninth.status).toBe(429);
+		expect(await ninth.json()).toMatchObject({ error: "rate_limited", limit: "sockets" });
+		const other = await joined(alice, id);
+		open[0].ws.close();
+		await open[0].closed;
+		await new Promise((r) => setTimeout(r, 50));
+		const again = await joined(bob, id);
+		for (const s of [...open.slice(1), other, again]) s.ws.close();
+	});
+
+	it("a socket's comment past the owner's quota or the room's comment cap is refused with quota_exceeded", async () => {
+		const id = await shareWith(alice, [{ account: bob, role: "comment" }]);
+		const b = await joined(bob, id);
+		await runInDurableObject(env.NOTE_ROOM.get(env.NOTE_ROOM.idFromName(id)), (_room, state) => {
+			state.storage.sql.exec("UPDATE meta SET value = ? WHERE name = 'comment_bytes'", 8 * 1024 * 1024 - 100);
+		});
+		b.ws.send(await envelope({ kind: "c", epoch: 1, shareId: id, by: bob }));
+		expect(text(await b.next())).toMatchObject({ type: "error", error: "quota_exceeded", quota: "comment_bytes", limit: 8 * 1024 * 1024, kind: "c" });
+		await runInDurableObject(env.NOTE_ROOM.get(env.NOTE_ROOM.idFromName(id)), (_room, state) => {
+			state.storage.sql.exec("UPDATE meta SET value = 0 WHERE name = 'comment_bytes'");
+		});
+		await env.DB.prepare("UPDATE accounts SET quota_doc_bytes = 300 WHERE id = ?1").bind(alice.creds.accountId).run();
+		b.ws.send(await envelope({ kind: "c", epoch: 1, shareId: id, by: bob }));
+		expect(text(await b.next())).toMatchObject({ type: "error", error: "quota_exceeded", quota: "doc_bytes", limit: 300 });
 		b.ws.close();
 	});
 });

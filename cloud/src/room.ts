@@ -18,14 +18,28 @@
 // sockets aren't sent snapshots (they hold the state already).
 //
 // Sockets use the hibernation API: each carries its member's account, device
-// and role as its attachment, so the room can sleep between messages. Each
-// socket's rate limit lives in memory and starts full again after a wake.
+// and role as its attachment, so the room can sleep between messages. At most
+// 8 sockets per account. Each socket's rate limit, and each account's presence
+// budget, live in memory and start full again after a wake.
+//
+// Storage caps: comments (never compacted) at most 8 MiB per room, and every
+// stored envelope must keep the owner's documents plus all their shared
+// notes within their document-byte quota. The room reads the owner's figures
+// from D1 on each append and writes its own size back to `collab_shares.bytes`
+// once it has grown by 64 KiB, at a snapshot, and 30 seconds after any change.
 
 import { DurableObject } from "cloudflare:workers";
 import {
 	COMPACT_BYTES,
 	COMPACT_ENTRIES,
 	DEFAULT_LOG_LIMIT,
+	FLUSH_BYTES,
+	FLUSH_DELAY_MS,
+	MAX_COMMENT_BYTES,
+	MAX_SOCKETS_PER_ACCOUNT,
+	PRESENCE_BURST,
+	PRESENCE_RATE,
+	SOCKETS_RETRY_MS,
 	type Kind,
 	LOG_PAGE_BYTES,
 	MAX_ENVELOPE,
@@ -38,6 +52,7 @@ import {
 	parseEnvelope,
 } from "./envelope";
 import type { Env } from "./env";
+import { rateLimited } from "./http";
 
 const DAY = 86_400_000;
 
@@ -73,7 +88,7 @@ export const ROOM_HEADERS = {
 	epoch: "x-kanso-room-epoch",
 } as const;
 
-type Meta = "ready" | "head" | "epoch" | "entries_since" | "bytes_since" | "day" | "day_bytes" | "log_bytes";
+type Meta = "ready" | "head" | "epoch" | "entries_since" | "bytes_since" | "day" | "day_bytes" | "log_bytes" | "comment_bytes" | "flushed_bytes";
 
 const refuse = (status: number, error: string, extras?: Record<string, number | string>): RoomRefusal => ({ ok: false, status, error, extras });
 
@@ -84,6 +99,8 @@ export class NoteRoom extends DurableObject<Env> {
 	private readonly sql: SqlStorage;
 	/** Each socket's token bucket: frames left, and when it was last topped up. */
 	private readonly buckets = new Map<WebSocket, { tokens: number; at: number }>();
+	/** Each account's presence budget in this room, across its sockets. */
+	private readonly presence = new Map<string, { tokens: number; at: number }>();
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -98,6 +115,11 @@ export class NoteRoom extends DurableObject<Env> {
   id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL, base_seq INTEGER NOT NULL, epoch INTEGER NOT NULL,
   author TEXT NOT NULL, envelope BLOB NOT NULL, at INTEGER NOT NULL)`);
 		this.sql.exec("CREATE TABLE IF NOT EXISTS meta (name TEXT PRIMARY KEY, value INTEGER NOT NULL)");
+		this.sql.exec("CREATE TABLE IF NOT EXISTS info (id INTEGER PRIMARY KEY CHECK (id = 1), share_id TEXT NOT NULL)");
+	}
+
+	private shareId(): string | null {
+		return this.sql.exec<{ share_id: string }>("SELECT share_id FROM info WHERE id = 1").toArray()[0]?.share_id ?? null;
 	}
 
 	private get(name: Meta): number {
@@ -160,7 +182,7 @@ export class NoteRoom extends DurableObject<Env> {
 	// ------------------------------------------------------------- the Worker
 
 	/** Stores the first snapshot (base 0, head 0) of a new share. A second call (a retried share) changes nothing. */
-	async init(input: { epoch: number; author: string; envelope: Uint8Array; now: number }): Promise<{ head: number; bytes: number }> {
+	async init(input: { shareId: string; epoch: number; author: string; envelope: Uint8Array; now: number }): Promise<{ head: number; bytes: number }> {
 		this.schema();
 		if (this.get("ready") === 1) return { head: this.get("head"), bytes: this.storedBytes() };
 		this.sql.exec(
@@ -175,6 +197,9 @@ export class NoteRoom extends DurableObject<Env> {
 		this.set("entries_since", 0);
 		this.set("bytes_since", 0);
 		this.set("log_bytes", 0);
+		this.set("comment_bytes", 0);
+		this.set("flushed_bytes", input.envelope.length);
+		this.sql.exec("INSERT INTO info (id, share_id) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET share_id = excluded.share_id", input.shareId);
 		this.countDay(input.now, input.envelope.length);
 		this.set("ready", 1);
 		return { head: 0, bytes: input.envelope.length };
@@ -199,25 +224,71 @@ export class NoteRoom extends DurableObject<Env> {
 		if (!header || (header.kind !== "u" && header.kind !== "c")) return refuse(400, "bad_request");
 		const epoch = this.adoptEpoch(input.epoch);
 		if (header.epoch !== epoch) return refuse(409, "epoch_changed", { epoch });
-		const stored = this.store(header.kind, header.epoch, header.author, input.envelope, input.now);
+		const stored = await this.store(header.kind, header.epoch, header.author, input.envelope, input.now);
 		if (!stored.ok) return stored;
 		this.broadcast(frame(stored.seq, input.envelope));
 		return stored;
 	}
 
-	private store(kind: Kind, epoch: number, author: string, envelope: Uint8Array, now: number): RoomResult<{ seq: number }> {
+	/**
+	 * The owner's quota: their documents, their other shared notes as D1 last
+	 * heard, and this room as it is now, plus `size`, within `quota_doc_bytes`.
+	 * 413 `quota_exceeded` `{quota: "doc_bytes", used, limit}` otherwise; 404
+	 * when the share is gone from D1.
+	 */
+	private async overQuota(size: number): Promise<RoomRefusal | null> {
+		const id = this.shareId();
+		if (id === null) return refuse(404, "not_found");
+		const row = await this.env.DB.prepare(
+			`SELECT a.doc_bytes + coalesce((SELECT sum(o.bytes) FROM collab_shares o WHERE o.owner_id = s.owner_id AND o.id != s.id), 0) AS others,
+  coalesce(a.quota_doc_bytes, d.doc_bytes, 0) AS quota
+  FROM collab_shares s JOIN accounts a ON a.id = s.owner_id, defaults d WHERE s.id = ?1`,
+		)
+			.bind(id)
+			.first<{ others: number; quota: number }>();
+		if (!row) return refuse(404, "not_found");
+		const used = row.others + this.storedBytes();
+		return used + size > row.quota ? refuse(413, "quota_exceeded", { quota: "doc_bytes", used, limit: row.quota }) : null;
+	}
+
+	/** Writes the room's size to `collab_shares.bytes` now when it has moved by `threshold` since the last write, else within 30 s. */
+	private async flush(threshold = FLUSH_BYTES): Promise<void> {
+		const bytes = this.storedBytes();
+		if (Math.abs(bytes - this.get("flushed_bytes")) < threshold) {
+			if (bytes !== this.get("flushed_bytes") && (await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + FLUSH_DELAY_MS);
+			return;
+		}
+		const id = this.shareId();
+		if (id === null) return;
+		await this.env.DB.prepare("UPDATE collab_shares SET bytes = ?2 WHERE id = ?1").bind(id, bytes).run();
+		this.set("flushed_bytes", bytes);
+	}
+
+	override async alarm(): Promise<void> {
+		this.schema();
+		if (this.get("ready") === 1) await this.flush(0);
+	}
+
+	private async store(kind: Kind, epoch: number, author: string, envelope: Uint8Array, now: number): Promise<RoomResult<{ seq: number }>> {
 		if (this.get("entries_since") >= COMPACT_ENTRIES || this.get("bytes_since") >= COMPACT_BYTES) {
 			return refuse(409, "compact_first");
 		}
 		const over = this.overDay(now, envelope.length);
 		if (over) return over;
+		if (kind === "c" && this.get("comment_bytes") + envelope.length > MAX_COMMENT_BYTES) {
+			return refuse(413, "quota_exceeded", { quota: "comment_bytes", used: this.get("comment_bytes"), limit: MAX_COMMENT_BYTES });
+		}
+		const quota = await this.overQuota(envelope.length);
+		if (quota) return quota;
 		const seq = this.get("head") + 1;
 		this.sql.exec("INSERT INTO log (seq, kind, epoch, author, envelope, at) VALUES (?, ?, ?, ?, ?, ?)", seq, kind, epoch, author, blob(envelope), now);
 		this.set("head", seq);
 		this.set("entries_since", this.get("entries_since") + 1);
 		this.set("bytes_since", this.get("bytes_since") + envelope.length);
 		this.set("log_bytes", this.get("log_bytes") + envelope.length);
+		if (kind === "c") this.set("comment_bytes", this.get("comment_bytes") + envelope.length);
 		this.countDay(now, envelope.length);
+		await this.flush();
 		return { ok: true, seq };
 	}
 
@@ -256,6 +327,7 @@ export class NoteRoom extends DurableObject<Env> {
 		this.set("entries_since", 0);
 		this.set("bytes_since", 0);
 		this.countDay(input.now, input.envelope.length);
+		await this.flush(0);
 		return { ok: true, seq, bytes: input.envelope.length + logBytes };
 	}
 
@@ -327,6 +399,8 @@ export class NoteRoom extends DurableObject<Env> {
 	async purge(): Promise<void> {
 		for (const ws of this.ctx.getWebSockets()) this.close(ws, "stopped");
 		this.buckets.clear();
+		this.presence.clear();
+		await this.ctx.storage.deleteAlarm();
 		await this.ctx.storage.deleteAll();
 	}
 
@@ -351,6 +425,9 @@ export class NoteRoom extends DurableObject<Env> {
 		const role = (request.headers.get(ROOM_HEADERS.role) ?? "") as Role;
 		const known = Number(request.headers.get(ROOM_HEADERS.epoch) ?? "0");
 		if (this.get("ready") !== 1) return new Response(null, { status: 404 });
+		if (this.ctx.getWebSockets(account).length >= MAX_SOCKETS_PER_ACCOUNT) {
+			return rateLimited("sockets", SOCKETS_RETRY_MS);
+		}
 		const epoch = this.adoptEpoch(Number.isSafeInteger(known) ? known : 0);
 		const pair = new WebSocketPair();
 		const [client, server] = Object.values(pair);
@@ -361,12 +438,12 @@ export class NoteRoom extends DurableObject<Env> {
 		return new Response(null, { status: 101, webSocket: client });
 	}
 
-	/** Takes one token from the socket's bucket (30 a second, 60 at most); false when it is empty. */
-	private take(ws: WebSocket, now: number): boolean {
-		const bucket = this.buckets.get(ws) ?? { tokens: SOCKET_BURST, at: now };
-		bucket.tokens = Math.min(SOCKET_BURST, bucket.tokens + ((now - bucket.at) / 1000) * SOCKET_RATE);
+	/** Takes one token from `key`'s bucket in `buckets` (`rate` a second, `burst` at most); false when it is empty. */
+	private take<K>(buckets: Map<K, { tokens: number; at: number }>, key: K, now: number, rate: number, burst: number): boolean {
+		const bucket = buckets.get(key) ?? { tokens: burst, at: now };
+		bucket.tokens = Math.min(burst, bucket.tokens + ((now - bucket.at) / 1000) * rate);
 		bucket.at = now;
-		this.buckets.set(ws, bucket);
+		buckets.set(key, bucket);
 		if (bucket.tokens < 1) return false;
 		bucket.tokens -= 1;
 		return true;
@@ -384,7 +461,7 @@ export class NoteRoom extends DurableObject<Env> {
 	 */
 	override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
 		const now = Date.now();
-		if (!this.take(ws, now)) return this.refuseFrame(ws, "rate_limited", { limit: "socket", retry_after: 1 });
+		if (!this.take(this.buckets, ws, now, SOCKET_RATE, SOCKET_BURST)) return this.refuseFrame(ws, "rate_limited", { limit: "socket", retry_after: 1 });
 		if (typeof message === "string") return this.refuseFrame(ws, "bad_request");
 		const attachment = ws.deserializeAttachment() as Attachment;
 		const bytes = new Uint8Array(message);
@@ -397,10 +474,13 @@ export class NoteRoom extends DurableObject<Env> {
 		if (!mayWrite(attachment.role, header.kind)) return this.refuseFrame(ws, "forbidden_role", which);
 		if (bytes.length > MAX_ENVELOPE[header.kind]) return this.refuseFrame(ws, "too_large", which);
 		if (header.kind === "p") {
+			if (!this.take(this.presence, attachment.account, now, PRESENCE_RATE, PRESENCE_BURST)) {
+				return this.refuseFrame(ws, "rate_limited", { ...which, limit: "presence", retry_after: 1 });
+			}
 			this.broadcast(frame(0, bytes), ws);
 			return;
 		}
-		const stored = this.store(header.kind, header.epoch, header.author, bytes, now);
+		const stored = await this.store(header.kind, header.epoch, header.author, bytes, now);
 		if (!stored.ok) return this.refuseFrame(ws, stored.error, { ...which, ...stored.extras });
 		this.broadcast(frame(stored.seq, bytes));
 	}

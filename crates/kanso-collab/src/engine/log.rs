@@ -90,7 +90,11 @@ impl Engine {
             && (base_seq > loaded.note.applied_seq || loaded.note.applied_seq == 0)
         {
             match self.open_entry(loaded, &snapshot, Some(base_seq)) {
-                Ok(opened) if opened.header.kind == Kind::Snapshot && opened.role.may_edit() => {
+                Ok(opened)
+                    if opened.header.kind == Kind::Snapshot
+                        && opened.role.may_edit()
+                        && !past_its_epoch(loaded, opened.header.epoch, base_seq) =>
+                {
                     if apply_safely(&loaded.doc, &opened.plain).is_some_and(|m| !m.is_empty()) {
                         merge.text = true;
                         merge.authors.push(opened.author_name);
@@ -118,6 +122,7 @@ impl Engine {
             let envelope = loaded.inbox.remove(&seq).expect("listed");
             if let Ok(opened) = self.open_entry(loaded, &envelope, None)
                 && opened.header.kind == Kind::Comment
+                && !past_its_epoch(loaded, opened.header.epoch, seq)
             {
                 self.take_comment(loaded, seq, opened, &mut merge)?;
             }
@@ -125,6 +130,8 @@ impl Engine {
         while let Some(envelope) = loaded.inbox.remove(&(loaded.note.applied_seq + 1)) {
             let seq = loaded.note.applied_seq + 1;
             match self.open_entry(loaded, &envelope, None) {
+                // Written under an epoch that had ended by then: dropped.
+                Ok(opened) if past_its_epoch(loaded, opened.header.epoch, seq) => {}
                 Ok(opened) => match opened.header.kind {
                     Kind::Update if opened.role.may_edit() => {
                         // An update that doesn't decode is skipped like a
@@ -277,6 +284,7 @@ impl Engine {
             if let Some(envelope) = loaded.inbox.get(&seq).cloned()
                 && let Ok(opened) = self.open_entry(loaded, &envelope, None)
                 && opened.header.kind == Kind::Comment
+                && !past_its_epoch(loaded, opened.header.epoch, seq)
             {
                 loaded.inbox.remove(&seq);
                 self.take_comment(loaded, seq, opened, &mut merge)?;
@@ -337,6 +345,10 @@ impl Engine {
                     // The role changed: what this device wrote can't go.
                     self.store.drop_outbox(outgoing.id)?;
                     if kind == Kind::Update {
+                        self.keep_unsent_copy(
+                            &guard,
+                            "Your role in this shared note changed before your edits were sent: they are kept in a private note.",
+                        )?;
                         self.restart_doc(&mut guard)?;
                         restarted = true;
                     }
@@ -370,6 +382,10 @@ impl Engine {
                     if kind == Kind::Update {
                         let loaded = self.loaded(share_id)?;
                         let mut guard = lock(&loaded);
+                        self.keep_unsent_copy(
+                            &guard,
+                            "An edit was too large to share: the note as you had it is kept in a private note.",
+                        )?;
                         self.restart_doc(&mut guard)?;
                         restarted = true;
                     }
@@ -484,6 +500,44 @@ impl Engine {
             Err(err) if err.code() == Some("head_moved") => Ok(false),
             Err(err) => Err(err),
         }
+    }
+
+    /// Before starting a note again from the log: keeps its text as this
+    /// library has it (with the edits that can't go) as a private note
+    /// beside it, and tells the person.
+    pub(crate) fn keep_unsent_copy(&self, loaded: &Loaded, message: &str) -> Result<()> {
+        self.keep_text_copy(loaded, None, message)
+    }
+
+    /// Keeps `text` (or, without it, the library's) as a private note beside
+    /// the shared one, and tells the person why.
+    pub(crate) fn keep_text_copy(
+        &self,
+        loaded: &Loaded,
+        text: Option<&(String, String)>,
+        message: &str,
+    ) -> Result<()> {
+        if let Some(note) = self.store.note(&loaded.note.note_id)? {
+            let (title, body) = match text {
+                Some((title, body)) => (title.clone(), body.clone()),
+                None => (note.title, note.body),
+            };
+            let title = format!("{} (not shared)", title.trim());
+            let (title, body) = super::clamp_text(title, body);
+            self.store.put(
+                kanso_core::id::DocType::Note,
+                serde_json::json!({
+                    "_id": kanso_core::id::new_id(kanso_core::id::DocType::Note),
+                    "bookId": note.book_id,
+                    "title": title,
+                    "body": body,
+                }),
+                kanso_store::Put::Upsert,
+                kanso_store::Origin::Collab,
+            )?;
+        }
+        self.add_problem(&loaded.note.share_id, message);
+        Ok(())
     }
 
     /// Starts the note's CRDT again from the log, dropping what this device
@@ -683,6 +737,17 @@ impl Engine {
     pub fn mark_notices_read(&self, share_id: Option<&str>) -> Result<()> {
         Ok(self.store.mark_notices_read(share_id)?)
     }
+}
+
+/// Whether log entry `seq`, written under `epoch`, comes after a later
+/// epoch began (its list's `from_seq`): a removed or demoted editor's write
+/// relayed late.
+pub(crate) fn past_its_epoch(loaded: &Loaded, epoch: u32, seq: u64) -> bool {
+    loaded
+        .lists
+        .range(epoch + 1..)
+        .find_map(|(_, list)| list.from_seq)
+        .is_some_and(|from| seq > from)
 }
 
 /// Applies a Yrs update, `None` when it doesn't decode, or Yrs panics on it.

@@ -43,6 +43,7 @@ pub fn is_well_formed(list: &MemberList) -> bool {
         .collect();
     list.v == 1
         && list.epoch >= 1
+        && (list.epoch == 1) == list.from_seq.is_none()
         && sorted
         && !list.members.is_empty()
         && list.members.len() <= MAX_MEMBERS
@@ -140,6 +141,7 @@ mod tests {
             owner: "a_0".into(),
             key_commit: NoteKey::generate().commit("s", epoch),
             at: 1,
+            from_seq: (epoch > 1).then_some(0),
             members,
         };
         list.sort();

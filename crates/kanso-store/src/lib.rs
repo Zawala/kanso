@@ -29,10 +29,10 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 
 pub use backup::BackupPolicy;
-pub use collab::SharedText;
 pub use collab::model::{
     CommentRecord, Contact, Outgoing, SealedKey, SharedNote, SharedStatus, StoredNotice,
 };
+pub use collab::{LOCKED_SHARED, SharedText};
 pub use derived::{Backlink, DERIVED_VERSION, DERIVED_VERSION_KEY, HeadingHit};
 pub use doc::{Attachment, Doc};
 pub use embed::{

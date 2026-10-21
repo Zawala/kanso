@@ -129,6 +129,18 @@ impl MemoryCollab {
         Ok(state)
     }
 
+    /// Deletes an account as the Worker does: its identity (looking it up
+    /// finds nobody) and its memberships go; the signed lists that name it
+    /// stay until their owners start the next epoch.
+    pub fn delete_account(&self, account_id: &str) {
+        let mut state = self.state.lock().expect("poisoned");
+        state.identities.remove(account_id);
+        for share in state.shares.values_mut() {
+            share.members.remove(account_id);
+            share.wraps.retain(|(account, _), _| account != account_id);
+        }
+    }
+
     /// The next `n` requests fail as if offline.
     pub fn go_offline(&self, n: usize) {
         self.state.lock().expect("poisoned").offline = n;
@@ -591,6 +603,14 @@ impl CollabApi for MemoryCollab {
         }
         let list = state.check_epoch(share_id, caller, &epoch.list, &epoch.wraps, epoch.epoch)?;
         let share = state.share(share_id)?;
+        // The epoch starts from the log's head as it is now.
+        if list.from_seq != Some(share.room.head) {
+            return Err(CollabError::api(
+                409,
+                "head_moved",
+                json!({ "error": "head_moved", "head": share.room.head }),
+            ));
+        }
         let listed: HashSet<String> = list.members.iter().map(|m| m.account.clone()).collect();
         let removed: HashSet<String> = share
             .members

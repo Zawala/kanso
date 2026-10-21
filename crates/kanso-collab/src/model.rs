@@ -85,6 +85,11 @@ pub struct MemberList {
     pub owner: String,
     pub key_commit: String,
     pub at: i64,
+    /// From epoch 2 on: the log's head when the epoch began. Entries of an
+    /// earlier epoch with a later sequence are dropped, so a removed or
+    /// demoted editor's writes can't be slipped in after.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_seq: Option<u64>,
     pub members: Vec<Member>,
 }
 
@@ -271,6 +276,13 @@ pub struct MemberView {
     pub role: Role,
     /// Still to accept the invitation.
     pub invited: bool,
+    /// Left the note or declined it: still in the signed list until the
+    /// owner's device starts the next epoch without them.
+    pub left: bool,
+    /// Their keys couldn't be checked (the account is gone, or the lookup
+    /// failed): no new key is wrapped to them. What they wrote under a list
+    /// that names them still merges, checked against that list's keys.
+    pub unverified: bool,
 }
 
 /// An invite link, as its owner sees it (never its secret).
@@ -329,6 +341,30 @@ pub struct CommentView {
     pub mine: bool,
 }
 
+/// Something the engine had to do that the person should hear about: an
+/// edit it couldn't share (kept as a private note), a note at its size
+/// limit, a note it can't write because it is locked.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Problem {
+    pub share_id: String,
+    pub message: String,
+    pub at: i64,
+}
+
+/// How much of a shared note's size limit is used, in bytes of its state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SizeUse {
+    pub used: usize,
+    pub limit: usize,
+}
+
+impl SizeUse {
+    /// Past 80 %: time to say so.
+    pub fn is_near(&self) -> bool {
+        self.used * 5 >= self.limit * 4
+    }
+}
+
 /// What one sync of a shared note did.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NoteSync {
@@ -353,4 +389,6 @@ pub enum LiveNotice {
     Connection { share_id: String, live: bool },
     /// This account is no longer in the note, or sharing stopped.
     Ended { share_id: String },
+    /// A [`Problem`] was added: read them with `Engine::problems`.
+    Problem { share_id: String },
 }

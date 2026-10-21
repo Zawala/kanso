@@ -789,6 +789,308 @@ fn a_long_paste_goes_in_parts_under_the_cap() {
     assert_eq!(body_of(&b, &share), long);
 }
 
+// --- What the second review found.
+
+/// The members of the note's newest signed list, by username.
+fn listed(device: &Device, share: &str) -> Vec<String> {
+    let loaded = device.engine.loaded(share).unwrap();
+    let guard = lock(&loaded);
+    let (_, list) = guard.lists.iter().next_back().unwrap();
+    list.members.iter().map(|m| m.username.clone()).collect()
+}
+
+#[test]
+fn leaving_or_declining_takes_someone_out_of_the_next_list() {
+    let server = MemoryCollab::new();
+    let (a, b, c, e, f) = (
+        device(&server, 1, 1),
+        device(&server, 2, 1),
+        device(&server, 4, 1),
+        device(&server, 5, 1),
+        device(&server, 6, 1),
+    );
+    let share = shared(&a, &[(&b, Role::Edit), (&c, Role::Edit)], "x");
+    a.engine.person("user5").unwrap();
+    a.engine.invite(&share, "user5", Role::Edit).unwrap();
+    e.engine.refresh().unwrap();
+    e.engine.decline(&share).unwrap();
+    b.engine.leave(&share).unwrap();
+    // The owner's next refresh starts an epoch without them.
+    let before = a.store.shared_note(&share).unwrap().unwrap().epoch;
+    a.engine.refresh().unwrap();
+    assert!(a.store.shared_note(&share).unwrap().unwrap().epoch > before);
+    let names = listed(&a, &share);
+    assert!(!names.contains(&"user2".to_owned()), "{names:?}");
+    assert!(!names.contains(&"user5".to_owned()), "{names:?}");
+    // Inviting someone else later doesn't bring them back.
+    a.engine.person("user6").unwrap();
+    a.engine.invite(&share, "user6", Role::Edit).unwrap();
+    let names = listed(&a, &share);
+    assert!(names.contains(&"user6".to_owned()), "{names:?}");
+    assert!(!names.contains(&"user2".to_owned()), "{names:?}");
+    // And the note goes on for those still in it.
+    f.engine.refresh().unwrap();
+    f.engine.accept(&share).unwrap();
+    let a_id = a.store.shared_note(&share).unwrap().unwrap().note_id;
+    write_body(&a.store, &a_id, "Without them").unwrap();
+    a.engine.sync_note(&share).unwrap();
+    c.engine.refresh().unwrap();
+    sync(&[&c, &f], &share);
+    assert_eq!(body_of(&c, &share), "Without them");
+    assert_eq!(body_of(&f, &share), "Without them");
+}
+
+#[test]
+fn a_deleted_account_doesnt_stop_refresh_sync_or_other_invitations() {
+    let server = MemoryCollab::new();
+    let (a, b, c, d, e) = (
+        device(&server, 1, 1),
+        device(&server, 2, 1),
+        device(&server, 4, 1),
+        device(&server, 5, 1),
+        device(&server, 6, 1),
+    );
+    let id = note(&a.store, "note:shared", "Plan", "Still here");
+    a.engine.person("user2").unwrap();
+    a.engine.person("user4").unwrap();
+    let share = a
+        .engine
+        .share(
+            &id,
+            &[("user2".into(), Role::Edit), ("user4".into(), Role::Edit)],
+        )
+        .unwrap();
+    // Two others invite B; one of them is deleted before B looks.
+    for other in [&d, &e] {
+        let id = note(&other.store, "note:theirs", "Theirs", "t");
+        other.engine.person("user2").unwrap();
+        other
+            .engine
+            .share(&id, &[("user2".into(), Role::Edit)])
+            .unwrap();
+    }
+    server.delete_account(&c.engine.caller().account_id);
+    server.delete_account(&d.engine.caller().account_id);
+    b.engine.refresh().unwrap();
+    // E's invitation shows, though D's can't be checked.
+    let invited: Vec<String> = b
+        .engine
+        .invitations()
+        .into_iter()
+        .map(|i| i.owner.username)
+        .collect();
+    assert!(invited.contains(&"user6".to_owned()), "{invited:?}");
+    assert!(!invited.contains(&"user5".to_owned()), "{invited:?}");
+    b.engine.accept(&share).unwrap();
+    assert_eq!(body_of(&b, &share), "Still here");
+    // C, never seen by B, is shown unverified.
+    let view = b.engine.share_view(&share).unwrap();
+    let c_view = view
+        .members
+        .iter()
+        .find(|m| m.person.account_id == c.engine.caller().account_id)
+        .unwrap();
+    assert!(c_view.unverified);
+    // The owner's refresh and sync go on, and the next epoch leaves C out.
+    a.engine.refresh().unwrap();
+    a.engine
+        .set_role(&share, &b.engine.caller().account_id, Role::Comment)
+        .unwrap();
+    assert!(!listed(&a, &share).contains(&"user4".to_owned()));
+    write_body(&a.store, &id, "Still here, later").unwrap();
+    a.engine.sync_note(&share).unwrap();
+    b.engine.refresh().unwrap();
+    b.engine.sync_note(&share).unwrap();
+    assert_eq!(body_of(&b, &share), "Still here, later");
+}
+
+#[test]
+fn a_title_longer_than_the_library_takes_is_cut_and_merging_goes_on() {
+    let server = MemoryCollab::new();
+    let (a, b) = (device(&server, 1, 1), device(&server, 2, 1));
+    let share = shared(&a, &[(&b, Role::Edit)], "Body");
+    let long = "t".repeat(kanso_core::model::MAX_TITLE_LEN + 50);
+    let update = {
+        let loaded = a.engine.loaded(&share).unwrap();
+        let guard = lock(&loaded);
+        guard.doc.set_text(Field::Title, &long).unwrap()
+    };
+    let envelope = sealed(&a, &share, Kind::Update, &update);
+    server.append(a.engine.caller(), &share, &envelope).unwrap();
+    b.engine.sync_note(&share).unwrap();
+    let b_id = b.store.shared_note(&share).unwrap().unwrap().note_id;
+    let title = b.store.note(&b_id).unwrap().unwrap().title;
+    assert_eq!(title.chars().count(), kanso_core::model::MAX_TITLE_LEN);
+    assert!(b.engine.problems().iter().any(|p| p.share_id == share));
+    // The cut isn't taken as a deletion, and later edits still land.
+    a.engine.sync_note(&share).unwrap();
+    let a_id = a.store.shared_note(&share).unwrap().unwrap().note_id;
+    write_body(&a.store, &a_id, "Body, and more").unwrap();
+    a.engine.sync_note(&share).unwrap();
+    b.engine.sync_note(&share).unwrap();
+    assert_eq!(body_of(&b, &share), "Body, and more");
+    let loaded = b.engine.loaded(&share).unwrap();
+    assert_eq!(lock(&loaded).doc.text(Field::Title), long);
+}
+
+#[test]
+fn an_update_relayed_after_its_epoch_ended_is_dropped() {
+    let server = MemoryCollab::new();
+    let (a, b, c) = (
+        device(&server, 1, 1),
+        device(&server, 2, 1),
+        device(&server, 4, 1),
+    );
+    let share = shared(&a, &[(&b, Role::Edit), (&c, Role::Edit)], "Ours");
+    // B writes under epoch 1; the server holds it back.
+    let late = {
+        let loaded = b.engine.loaded(&share).unwrap();
+        let update = lock(&loaded).doc.set_text(Field::Body, "Late").unwrap();
+        drop(loaded);
+        sealed(&b, &share, Kind::Update, &update)
+    };
+    a.engine
+        .remove(&share, &b.engine.caller().account_id)
+        .unwrap();
+    c.engine.refresh().unwrap();
+    c.engine.sync_note(&share).unwrap();
+    // ...and relays it after epoch 2 began.
+    let loaded = c.engine.loaded(&share).unwrap();
+    let mut guard = lock(&loaded);
+    assert!(guard.lists[&2].from_seq.is_some());
+    let next = guard.note.applied_seq + 1;
+    guard.inbox.insert(next, late);
+    let merge = c.engine.merge_delivered(&mut guard).unwrap();
+    assert!(!merge.text);
+    assert_eq!(guard.doc.text(Field::Body), "Ours");
+}
+
+#[test]
+fn edits_that_cant_be_sent_are_kept_and_the_person_told() {
+    let server = MemoryCollab::new();
+    let (a, b) = (device(&server, 1, 1), device(&server, 2, 1));
+    let share = shared(&a, &[(&b, Role::Edit)], "Steady");
+    let b_id = b.store.shared_note(&share).unwrap().unwrap().note_id;
+    write_body(&b.store, &b_id, "Steady, unsent").unwrap();
+    a.engine
+        .set_role(&share, &b.engine.caller().account_id, Role::View)
+        .unwrap();
+    b.engine.sync_note(&share).unwrap();
+    assert_eq!(body_of(&b, &share), "Steady");
+    let book = b.store.note(&b_id).unwrap().unwrap().book_id;
+    let kept: Vec<_> = b
+        .store
+        .notes_in_books(&[book])
+        .unwrap()
+        .into_iter()
+        .filter(|n| n.title.ends_with("(not shared)"))
+        .collect();
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].body, "Steady, unsent");
+    assert!(b.engine.problems().iter().any(|p| p.share_id == share));
+}
+
+#[test]
+fn an_edit_past_the_size_limit_is_kept_as_a_private_note() {
+    let server = MemoryCollab::new();
+    let (a, b) = (device(&server, 1, 1), device(&server, 2, 1));
+    let share = shared(&a, &[(&b, Role::Edit)], "Small");
+    let loaded = a.engine.loaded(&share).unwrap();
+    let mut guard = lock(&loaded);
+    // The CRDT is already at the limit (history and text the library cut).
+    guard
+        .doc
+        .set_text(Field::Title, &"x".repeat(super::STATE_LIMIT))
+        .unwrap();
+    let local = (guard.base.0.clone(), format!("{} and more", guard.base.1));
+    assert!(!a.engine.take_local(&mut guard, &local).unwrap());
+    assert!(a.store.outbox(&share).unwrap().is_empty());
+    drop(guard);
+    assert!(a.engine.problems().iter().any(|p| p.share_id == share));
+    let use_ = a.engine.size_use(&share).unwrap();
+    assert!(use_.is_near());
+    let a_id = a.store.shared_note(&share).unwrap().unwrap().note_id;
+    let book = a.store.note(&a_id).unwrap().unwrap().book_id;
+    assert!(
+        a.store
+            .notes_in_books(&[book])
+            .unwrap()
+            .iter()
+            .any(|n| n.title.ends_with("(not shared)") && n.body == "Small and more")
+    );
+}
+
+#[test]
+fn coming_back_on_two_devices_makes_one_note() {
+    let server = MemoryCollab::new();
+    let (a, b) = (device(&server, 1, 1), device(&server, 2, 1));
+    let share = shared(&a, &[(&b, Role::Edit)], "Once");
+    a.engine
+        .remove(&share, &b.engine.caller().account_id)
+        .unwrap();
+    b.engine.refresh().unwrap();
+    // B's second device has the private copy too (private sync brings it).
+    let copy = super::sharing::shared_note_id(&share);
+    let b2 = device(&server, 2, 2);
+    note(&b2.store, &copy, "Plan", "Once");
+    a.engine.invite(&share, "user2", Role::Edit).unwrap();
+    b.engine.refresh().unwrap();
+    b.engine.accept(&share).unwrap();
+    b2.engine.refresh().unwrap();
+    b2.engine.sync_note(&share).unwrap();
+    let one = b.store.shared_note(&share).unwrap().unwrap().note_id;
+    let two = b2.store.shared_note(&share).unwrap().unwrap().note_id;
+    assert_eq!(one, two);
+    assert_ne!(one, copy);
+    assert_eq!(body_of(&b2, &share), "Once");
+}
+
+#[test]
+fn a_shared_note_locked_elsewhere_gets_no_shared_text() {
+    let server = MemoryCollab::new();
+    let (a, b) = (device(&server, 1, 1), device(&server, 2, 1));
+    let share = shared(&a, &[(&b, Role::Edit)], "Open");
+    let b_id = b.store.shared_note(&share).unwrap().unwrap().note_id;
+    let mark = b.store.note(&b_id).unwrap().unwrap().extra[kanso_core::model::SHARE_FIELD].clone();
+    // Another of B's devices locked it before it learnt the note is shared.
+    b.store
+        .put(
+            DocType::Note,
+            json!({
+                "_id": b_id,
+                "body": "",
+                "kansoLock": {"v": 1, "salt": "AAAA", "nonce": "AAAA", "sealed": "AAAA"}
+            }),
+            Put::Merge,
+            Origin::Sync,
+        )
+        .unwrap();
+    let written = b.store.write_shared_text(&kanso_store::SharedText {
+        note_id: &b_id,
+        title: "Plan",
+        body: "Open, in the clear",
+        mark: Some(mark),
+        new_in: "",
+        expected_rev: None,
+        authors: &[],
+    });
+    assert!(
+        matches!(&written, Err(kanso_store::StoreError::Invalid(m)) if m == kanso_store::LOCKED_SHARED),
+        "{written:?}"
+    );
+    let a_id = a.store.shared_note(&share).unwrap().unwrap().note_id;
+    write_body(&a.store, &a_id, "Open, in the clear").unwrap();
+    a.engine.sync_note(&share).unwrap();
+    b.engine.sync_note(&share).unwrap();
+    assert_eq!(b.store.note(&b_id).unwrap().unwrap().body, "");
+    assert!(
+        b.engine
+            .problems()
+            .iter()
+            .any(|p| p.share_id == share && p.message == kanso_store::LOCKED_SHARED)
+    );
+}
+
 #[test]
 fn rebase_keeps_a_local_edit_and_the_remote_one() {
     assert_eq!(rebase("abc", "abXc", "Zabc"), "ZabXc");
@@ -920,5 +1222,43 @@ proptest! {
         prop_assert_eq!(rebase(&base, &local, &base), local.clone());
         prop_assert_eq!(rebase(&base, &base, &current), current.clone());
         let _ = rebase(&base, &local, &current);
+    }
+
+    /// What the library is given always fits it, and is the start of the
+    /// shared text (whole characters), or all of it.
+    #[test]
+    fn clamped_text_fits_and_is_a_prefix(title in "[aé😀]{0,200}", extra in 0usize..4) {
+        let body = "b".repeat(kanso_core::model::MAX_BODY_LEN - 2 + extra);
+        let (t, b) = super::clamp_text(title.clone(), body.clone());
+        prop_assert!(t.chars().count() <= kanso_core::model::MAX_TITLE_LEN);
+        prop_assert!(b.chars().count() <= kanso_core::model::MAX_BODY_LEN);
+        prop_assert!(title.starts_with(&t) && body.starts_with(&b));
+        prop_assert_eq!(t == title, title.chars().count() <= kanso_core::model::MAX_TITLE_LEN);
+    }
+
+    /// An entry is dropped as late exactly when a later epoch's list began
+    /// before it.
+    #[test]
+    fn late_means_after_a_later_epochs_start(froms in proptest::collection::vec(proptest::option::of(0u64..50), 1..5), epoch in 1u32..5, seq in 0u64..60) {
+        let server = MemoryCollab::new();
+        let (a, b) = (device(&server, 1, 1), device(&server, 2, 1));
+        let share = shared(&a, &[(&b, Role::Edit)], "x");
+        let loaded = a.engine.loaded(&share).unwrap();
+        let mut guard = lock(&loaded);
+        let template = guard.lists.values().next().unwrap().clone();
+        guard.lists.clear();
+        for (i, from) in froms.iter().enumerate() {
+            let mut list = template.clone();
+            list.epoch = i as u32 + 1;
+            list.from_seq = *from;
+            guard.lists.insert(list.epoch, list);
+        }
+        let expected = froms
+            .iter()
+            .enumerate()
+            .skip(epoch as usize)
+            .find_map(|(_, from)| *from)
+            .is_some_and(|from| seq > from);
+        prop_assert_eq!(super::log::past_its_epoch(&guard, epoch, seq), expected);
     }
 }

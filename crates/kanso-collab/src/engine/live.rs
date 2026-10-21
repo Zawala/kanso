@@ -397,7 +397,9 @@ impl Engine {
             return Ok(false);
         };
         let caller = &self.account.caller;
+        // Presence only under the note's current epoch.
         if opened.header.kind != Kind::Presence
+            || opened.header.epoch != guard.note.epoch
             || (opened.header.author_account == caller.account_id
                 && opened.header.author_device == caller.device_id)
         {

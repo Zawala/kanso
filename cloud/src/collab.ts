@@ -89,14 +89,21 @@ export interface ListMember {
 
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false });
 
+export interface CheckedList {
+	members: ListMember[];
+	/** The log's head when the epoch began: clients drop entries of the epoch before it written after this. Null for epoch 1. */
+	fromSeq: number | null;
+}
+
 /**
  * The members of a signed list the owner sent, after checking what the server
  * relies on: canonical base64url of UTF-8 JSON, `v` 1, this share, this epoch,
- * this owner, a key commitment, members sorted by account ID without
- * duplicates, each with a known role and key shapes, and exactly one `owner`,
- * the owner themself. The signature is the clients' to check.
+ * this owner, a key commitment, `from_seq` (an integer ≥ 0 from epoch 2 on,
+ * absent at epoch 1), members sorted by account ID without duplicates, each
+ * with a known role and key shapes, and exactly one `owner`, the owner
+ * themself. The signature is the clients' to check.
  */
-export function checkList(list: unknown, shareId: string, epoch: number, owner: string): ListMember[] | string {
+export function checkList(list: unknown, shareId: string, epoch: number, owner: string): CheckedList | string {
 	if (typeof list !== "string" || list.length === 0 || list.length > MAX_LIST_CHARS) return `list must be 1–${MAX_LIST_CHARS} base64url characters.`;
 	const bytes = fromBase64url(list);
 	if (!bytes) return "list must be canonical base64url.";
@@ -112,6 +119,13 @@ export function checkList(list: unknown, shareId: string, epoch: number, owner: 
 	}
 	if (typeof value.key_commit !== "string" || !isSha256Hex(value.key_commit)) return "list.key_commit must be 64 lowercase hex digits.";
 	if (!Number.isSafeInteger(value.at)) return "list.at must be an integer.";
+	let fromSeq: number | null = null;
+	if (epoch === 1) {
+		if (Object.hasOwn(value, "from_seq")) return "list.from_seq is only for epochs after the first.";
+	} else {
+		if (!Number.isSafeInteger(value.from_seq) || (value.from_seq as number) < 0) return "list.from_seq must be the log's head, an integer ≥ 0, from epoch 2 on.";
+		fromSeq = value.from_seq as number;
+	}
 	if (!Array.isArray(value.members) || value.members.length === 0) return "list.members must be a non-empty array.";
 	const members: ListMember[] = [];
 	for (const m of value.members) {
@@ -127,7 +141,7 @@ export function checkList(list: unknown, shareId: string, epoch: number, owner: 
 	}
 	const owners = members.filter((m) => m.role === "owner");
 	if (owners.length !== 1 || owners[0].account !== owner) return "list.members must have exactly one owner: you.";
-	return members;
+	return { members, fromSeq };
 }
 
 /** The most wraps one new epoch may carry: 20 per epoch so far, and never more than 400. */
@@ -319,8 +333,9 @@ export const createShare = route(async (request, env, now, session) => {
 	const shareId = b.share_id;
 	if (typeof shareId !== "string" || !isShareId(shareId)) return badRequest("share_id must be 16 bytes of base64url (22 characters).");
 	if (!(await identityOf(env, session.accountId))) return identityRequired();
-	const members = checkList(b.list, shareId, 1, session.accountId);
-	if (typeof members === "string") return badRequest(members);
+	const checked = checkList(b.list, shareId, 1, session.accountId);
+	if (typeof checked === "string") return badRequest(checked);
+	const members = checked.members;
 	if (members.length > MAX_MEMBERS) return error(413, "quota_exceeded", "Over quota.", { quota: "members", used: members.length, limit: MAX_MEMBERS });
 	if (!isB64(b.list_sig, 64)) return badRequest("list_sig must be 86 base64url characters.");
 	const wraps = checkWraps(b.wraps, members, 1, false);
@@ -386,7 +401,7 @@ export const createShare = route(async (request, env, now, session) => {
 				: error(409, "share_id_taken", "That share ID can't be used; share under a new one.");
 		}
 	}
-	const room = await roomOf(env, shareId).init({ epoch: 1, author: session.accountId, envelope: snapshot, now });
+	const room = await roomOf(env, shareId).init({ shareId, epoch: 1, author: session.accountId, envelope: snapshot, now });
 	return json({ share_id: shareId, epoch: 1, head: room.head }, 201);
 });
 
@@ -565,8 +580,9 @@ export function newEpoch(shareId: string): Handler {
 		const epoch = b.epoch as number;
 		const retry = epoch === s.epoch && b.list_sig === s.listSig;
 		if (epoch !== s.epoch + 1 && !retry) return error(409, "epoch_changed", "The note has another epoch.", { epoch: s.epoch });
-		const members = checkList(b.list, shareId, epoch, session.accountId);
-		if (typeof members === "string") return badRequest(members);
+		const checked = checkList(b.list, shareId, epoch, session.accountId);
+		if (typeof checked === "string") return badRequest(checked);
+		const members = checked.members;
 		if (members.length > MAX_MEMBERS) return error(413, "quota_exceeded", "Over quota.", { quota: "members", used: members.length, limit: MAX_MEMBERS });
 		if (!isB64(b.list_sig, 64)) return badRequest("list_sig must be 86 base64url characters.");
 		const wraps = checkWraps(b.wraps, members, epoch, true);
@@ -577,6 +593,12 @@ export function newEpoch(shareId: string): Handler {
 		}
 		const mismatch = await checkMemberKeys(env, members);
 		if (mismatch) return mismatch;
+		// The list says from which seq on the old epoch's writers no longer count; it must be the
+		// head now, or the owner signs a new list (an identical retry of an applied epoch passes).
+		if (!retry) {
+			const { head } = await roomOf(env, shareId).state();
+			if (checked.fromSeq !== head) return error(409, "head_moved", "The log moved on: sign the list again with from_seq at the head.", { head });
+		}
 
 		const accounts = JSON.stringify(members.map((m) => m.account));
 		const values = [shareId, epoch, b.list_sig, b.list, now, session.accountId, accounts, JSON.stringify(members), JSON.stringify(wraps)];
@@ -695,7 +717,12 @@ export function readLog(shareId: string): Handler {
 	});
 }
 
-/** `POST /v2/collab/shares/<id>/log`: one update (edit, owner) or comment (comment, edit, owner), as bytes. 200 `{seq}`. */
+/**
+ * `POST /v2/collab/shares/<id>/log`: one update (edit, owner) or comment
+ * (comment, edit, owner), as bytes. 200 `{seq}`. The room refuses it with 413
+ * `quota_exceeded` when the owner's document bytes would pass their quota
+ * (`quota: "doc_bytes"`) or the room's comments 8 MiB (`quota: "comment_bytes"`).
+ */
 export function appendLog(shareId: string): Handler {
 	return route(async (request, env, now, session) => {
 		const s = await asMember(env, shareId, session);
@@ -728,7 +755,6 @@ export function postSnapshot(shareId: string): Handler {
 		if (header instanceof Response) return header;
 		const result = await roomOf(env, shareId).snapshot({ epoch: s.epoch, baseSeq, envelope: bytes, now });
 		if (!result.ok) return roomRefusal(result);
-		await env.DB.prepare("UPDATE collab_shares SET bytes = ?2 WHERE id = ?1").bind(shareId, result.bytes).run();
 		return json({ seq: result.seq });
 	});
 }
@@ -736,7 +762,8 @@ export function postSnapshot(shareId: string): Handler {
 /**
  * `GET /v2/collab/shares/<id>/live`: the WebSocket, accepted by the room with
  * the member's account, device, role and the epoch read here. A plain GET is
- * 426 `upgrade_required`.
+ * 426 `upgrade_required`; a ninth socket of one account in one room is 429
+ * `rate_limited` with `limit: "sockets"`.
  */
 export function live(shareId: string): Handler {
 	return route(async (request, env, _now, session) => {

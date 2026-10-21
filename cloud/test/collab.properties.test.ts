@@ -5,11 +5,11 @@
 // sealed, nor a key; and the envelope parser, against the shared fixtures and
 // random bytes.
 
-import { runInDurableObject } from "cloudflare:test";
+import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { MIN_ENVELOPE, parseEnvelope } from "../src/envelope";
+import { MAX_ENVELOPE, MIN_ENVELOPE, parseEnvelope } from "../src/envelope";
 import fixture from "./fixtures/collab.json";
 import { type Account, base64url, fromBase64url, resetServer, signUp } from "./helpers";
 import {
@@ -132,7 +132,7 @@ interface Model {
 }
 
 type Op =
-	| { op: "epoch"; bob: Role | null; carol: Role | null }
+	| { op: "epoch"; bob: Role | null; carol: Role | null; staleHead: boolean; again: boolean }
 	| { op: "accept"; who: 1 | 2 }
 	| { op: "append"; who: 0 | 1 | 2; kind: "u" | "c"; stale: boolean }
 	| { op: "snapshot"; who: 0 | 1 | 2; behind: boolean }
@@ -142,7 +142,13 @@ type Op =
 
 const who = fc.constantFrom(0, 1, 2) as fc.Arbitrary<0 | 1 | 2>;
 const genOp: fc.Arbitrary<Op> = fc.oneof(
-	{ arbitrary: fc.record({ op: fc.constant("epoch" as const), bob: fc.option(genRole, { nil: null }), carol: fc.option(genRole, { nil: null }) }), weight: 2 },
+	{ arbitrary: fc.record({
+			op: fc.constant("epoch" as const),
+			bob: fc.option(genRole, { nil: null }),
+			carol: fc.option(genRole, { nil: null }),
+			staleHead: fc.integer({ min: 0, max: 3 }).map((n) => n === 0),
+			again: fc.boolean(),
+		}), weight: 2 },
 	{ arbitrary: fc.record({ op: fc.constant("accept" as const), who: fc.constantFrom(1, 2) as fc.Arbitrary<1 | 2> }), weight: 3 },
 	{ arbitrary: fc.record({ op: fc.constant("append" as const), who, kind: fc.constantFrom("u", "c") as fc.Arbitrary<"u" | "c">, stale: fc.integer({ min: 0, max: 3 }).map((n) => n === 0) }), weight: 12 },
 	{ arbitrary: fc.record({ op: fc.constant("snapshot" as const), who, behind: fc.boolean() }), weight: 4 },
@@ -192,12 +198,20 @@ describe("the routes follow the model", () => {
 							const listed: Listed[] = [];
 							if (op.bob) listed.push({ account: people[1], role: op.bob });
 							if (op.carol) listed.push({ account: people[2], role: op.carol });
-							const r = await collab(alice.token).epoch(id, epochBody(id, m.epoch + 1, alice, listed));
+							// from_seq must be the head; one past it is refused, and the owner signs again.
+							const body = epochBody(id, m.epoch + 1, alice, listed, op.staleHead ? m.head + 1 : m.head);
+							const r = await collab(alice.token).epoch(id, body);
 							if (m.stopped) {
 								expect(r.status, label).toBe(404);
 								break;
 							}
+							if (op.staleHead) {
+								expect(r.body, label).toMatchObject({ error: "head_moved", head: m.head });
+								break;
+							}
 							expect(r.status, label).toBe(200);
+							// The identical request again (a lost answer) still succeeds.
+							if (op.again) expect((await collab(alice.token).epoch(id, body)).status, label).toBe(200);
 							m.epoch += 1;
 							const next = new Map<string, ModelMember>([[ids[0], { role: "owner", status: "member" }]]);
 							for (const l of listed) {
@@ -413,6 +427,73 @@ describe("forged list entries", () => {
 				}
 			}),
 			runs(40),
+		);
+	});
+});
+
+// ------------------------------------------------------------ storage quota
+
+describe("the owner's quota", () => {
+	// Every append, over HTTP or the socket, is stored exactly when the owner's
+	// documents plus the room (snapshot and log) plus the new envelope stay
+	// within quota_doc_bytes; refused ones answer quota_exceeded doc_bytes and
+	// store nothing; and the room's size reaches collab_shares.bytes.
+	it("prop_appends_stay_within_the_owners_document_quota", async () => {
+		await fc.assert(
+			fc.asyncProperty(
+				fc.integer({ min: 0, max: 3000 }),
+				fc.array(
+					fc.record({
+						kind: fc.constantFrom("u", "c") as fc.Arbitrary<"u" | "c">,
+						size: fc.integer({ min: 0, max: 600 }),
+						live: fc.boolean(),
+						// Sized to fill the quota exactly (or one byte over), so the boundary is tried.
+						fill: fc.constantFrom(null, null, 0, 1),
+					}),
+					{ minLength: 1, maxLength: 12 },
+				),
+				async (room, writes) => {
+					const [alice] = await three();
+					const id = newShareId();
+					const body = await shareBody(id, alice, []);
+					const snapshotBytes = fromBase64url(body.snapshot)!.length;
+					const docBytes = 5000;
+					const quota = docBytes + snapshotBytes + room;
+					await env.DB.prepare("UPDATE accounts SET doc_bytes = ?2, quota_doc_bytes = ?3 WHERE id = ?1").bind(alice.creds.accountId, docBytes, quota).run();
+					expect((await collab(alice.token).share(body)).status).toBe(201);
+					const s = await openSocket(alice.token, id);
+					if (s instanceof Response) throw new Error(`live ${s.status}`);
+					await s.next();
+					let stored = snapshotBytes;
+					let head = 0;
+					for (const w of writes) {
+						const left = quota - docBytes - stored - 190 + (w.fill ?? 0);
+						const size = w.fill !== null && left >= 0 && left <= MAX_ENVELOPE.c - 190 ? left : w.size;
+						const bytes = await envelope({ kind: w.kind, epoch: 1, shareId: id, by: alice, size });
+						const fits = docBytes + stored + bytes.length <= quota;
+						if (w.live) {
+							s.ws.send(bytes);
+							const m = await s.next();
+							if (fits) expect("bytes" in m && unframe(m.bytes).seq).toBe(head + 1);
+							else expect("text" in m && m.text).toMatchObject({ type: "error", error: "quota_exceeded", quota: "doc_bytes", limit: quota });
+						} else {
+							const r = await collab(alice.token).append(id, bytes);
+							if (fits) expect(r.body).toEqual({ seq: head + 1 });
+							else expect(r).toMatchObject({ status: 413, body: { error: "quota_exceeded", quota: "doc_bytes", used: docBytes + stored, limit: quota } });
+							if (fits) await s.next();
+						}
+						if (fits) {
+							stored += bytes.length;
+							head += 1;
+						}
+					}
+					expect((await collab(alice.token).log(id)).body.head).toBe(head);
+					await runDurableObjectAlarm(env.NOTE_ROOM.get(env.NOTE_ROOM.idFromName(id)));
+					expect(await env.DB.prepare("SELECT bytes FROM collab_shares WHERE id = ?1").bind(id).first("bytes")).toBe(stored);
+					s.ws.close();
+				},
+			),
+			runs(25),
 		);
 	});
 });

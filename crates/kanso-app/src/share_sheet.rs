@@ -45,6 +45,38 @@ pub fn first_step(signed_in: bool, unshareable: Option<String>) -> SheetStep {
     }
 }
 
+/// How a member's row reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MemberTone {
+    Normal,
+    /// They left or declined: dimmed until the owner's device removes them.
+    Gone,
+    /// Their keys couldn't be checked: a warning tint.
+    Unchecked,
+}
+
+/// The words under a member's name, and how the row reads. Pure.
+pub fn member_status(member: &MemberView, mine: bool) -> (Vec<&'static str>, MemberTone) {
+    let mut detail = Vec::new();
+    if member.left {
+        // Someone who never accepted declined; anyone else left.
+        detail.push(if member.invited { "Declined" } else { "Left" });
+        return (detail, MemberTone::Gone);
+    }
+    if member.invited {
+        detail.push("Invited, hasn't accepted yet");
+    }
+    if mine {
+        detail.push("You");
+    } else if member.unverified {
+        detail.push("Can't be checked");
+        return (detail, MemberTone::Unchecked);
+    } else if member.person.verified {
+        detail.push("Fingerprint verified");
+    }
+    (detail, MemberTone::Normal)
+}
+
 /// Whether this account's role lets it invite, change roles and make
 /// links: the owner's, or a note not shared yet. Pure.
 pub fn manages(role: Option<Role>) -> bool {
@@ -523,71 +555,70 @@ impl ShareSheet {
         let busy = self.busy.is_some();
         let person = &member.person;
         let mine = person.username == me;
-        let mut detail = Vec::new();
-        if member.invited {
-            detail.push("Invited, hasn't accepted yet");
-        }
-        if mine {
-            detail.push("You");
-        } else if person.verified {
-            detail.push("Fingerprint verified");
-        }
+        let (detail, tone) = member_status(member, mine);
         let account = person.account_id.clone();
-        let role_control: AnyElement = if manage && member.role != Role::Owner && !mine {
-            let view = cx.entity();
-            let current = member.role;
-            let account = account.clone();
-            Button::new(("member-role", ix))
-                .outline()
-                .small()
-                .label(current.label())
-                .dropdown_caret(true)
-                .disabled(busy)
-                .dropdown_menu(move |menu, _, _| {
-                    ROLES
-                        .iter()
-                        .fold(menu, |menu, &role| {
-                            let view = view.clone();
-                            let account = account.clone();
-                            menu.item(
-                                PopupMenuItem::new(role.label())
-                                    .checked(role == current)
-                                    .on_click(move |_, _, cx| {
-                                        view.update(cx, |this, cx| {
-                                            this.set_role(account.clone(), role, cx)
-                                        });
-                                    }),
-                            )
-                        })
-                        .separator()
-                        .item({
-                            let view = view.clone();
-                            let account = account.clone();
-                            PopupMenuItem::new("Remove from note").on_click(move |_, _, cx| {
-                                view.update(cx, |this, cx| this.remove(account.clone(), cx));
+        let role_control: AnyElement =
+            if manage && member.role != Role::Owner && !mine && tone != MemberTone::Gone {
+                let view = cx.entity();
+                let current = member.role;
+                let account = account.clone();
+                Button::new(("member-role", ix))
+                    .outline()
+                    .small()
+                    .label(current.label())
+                    .dropdown_caret(true)
+                    .disabled(busy)
+                    .dropdown_menu(move |menu, _, _| {
+                        ROLES
+                            .iter()
+                            .fold(menu, |menu, &role| {
+                                let view = view.clone();
+                                let account = account.clone();
+                                menu.item(
+                                    PopupMenuItem::new(role.label())
+                                        .checked(role == current)
+                                        .on_click(move |_, _, cx| {
+                                            view.update(cx, |this, cx| {
+                                                this.set_role(account.clone(), role, cx)
+                                            });
+                                        }),
+                                )
                             })
-                        })
-                })
-                .into_any_element()
-        } else {
-            div()
-                .text_size(px(12.5))
-                .text_color(colors.text_secondary)
-                .child(member.role.label())
-                .into_any_element()
-        };
+                            .separator()
+                            .item({
+                                let view = view.clone();
+                                let account = account.clone();
+                                PopupMenuItem::new("Remove from note").on_click(move |_, _, cx| {
+                                    view.update(cx, |this, cx| this.remove(account.clone(), cx));
+                                })
+                            })
+                    })
+                    .into_any_element()
+            } else {
+                div()
+                    .text_size(px(12.5))
+                    .text_color(colors.text_secondary)
+                    .child(member.role.label())
+                    .into_any_element()
+            };
+        let warning = Hsla::from(colors.warning);
         h_flex()
             .id(("member", ix))
             .gap_3()
             .py(px(4.))
+            .when(tone == MemberTone::Gone, |el| el.opacity(0.5))
             .child(
-                Icon::new(if person.verified || mine {
-                    Lucide::ShieldCheck
-                } else {
-                    Lucide::CircleUser
+                Icon::new(match tone {
+                    MemberTone::Unchecked => Lucide::ShieldAlert,
+                    _ if person.verified || mine => Lucide::ShieldCheck,
+                    _ => Lucide::CircleUser,
                 })
                 .size(px(16.))
-                .text_color(colors.text_secondary),
+                .text_color(if tone == MemberTone::Unchecked {
+                    warning
+                } else {
+                    colors.text_secondary.into()
+                }),
             )
             .child(
                 v_flex()
@@ -601,7 +632,12 @@ impl ShareSheet {
                             .child(person.username.clone()),
                     )
                     .when(!detail.is_empty(), |el| {
-                        el.child(quiet(detail.join(" · "), colors))
+                        let words = detail.join(" · ");
+                        if tone == MemberTone::Unchecked {
+                            el.child(quiet(words, colors).text_color(warning))
+                        } else {
+                            el.child(quiet(words, colors))
+                        }
                     }),
             )
             .child(role_control)
@@ -788,6 +824,8 @@ impl ShareSheet {
                 person: view.owner.clone(),
                 role: Role::Owner,
                 invited: false,
+                left: false,
+                unverified: false,
             }];
             people.extend(
                 view.members
@@ -1209,10 +1247,48 @@ pub fn open_share(
 
 #[cfg(test)]
 mod tests {
-    use super::{first_step, manages};
+    use super::{MemberTone, first_step, manages, member_status};
     use crate::collab_model::SheetStep;
-    use kanso_collab::Role;
+    use kanso_collab::{MemberView, Person, Role};
     use proptest::prelude::*;
+
+    fn member(invited: bool, left: bool, unverified: bool, verified: bool) -> MemberView {
+        MemberView {
+            person: Person {
+                account_id: "a_2".into(),
+                username: "user2".into(),
+                fingerprint: "1 2 3 4 5 6".into(),
+                verified,
+            },
+            role: Role::Edit,
+            invited,
+            left,
+            unverified,
+        }
+    }
+
+    #[test]
+    fn members_who_went_or_cant_be_checked_say_so() {
+        assert_eq!(
+            member_status(&member(true, true, false, false), false),
+            (vec!["Declined"], MemberTone::Gone)
+        );
+        assert_eq!(
+            member_status(&member(false, true, true, true), false),
+            (vec!["Left"], MemberTone::Gone)
+        );
+        assert_eq!(
+            member_status(&member(false, false, true, true), false),
+            (vec!["Can't be checked"], MemberTone::Unchecked)
+        );
+        assert_eq!(
+            member_status(&member(true, false, false, true), false),
+            (
+                vec!["Invited, hasn't accepted yet", "Fingerprint verified"],
+                MemberTone::Normal
+            )
+        );
+    }
 
     #[test]
     fn steps() {
@@ -1237,6 +1313,25 @@ mod tests {
                 SheetStep::SignedOut => prop_assert!(!signed_in && reason.is_none()),
                 SheetStep::Main => prop_assert!(signed_in && reason.is_none()),
                 _ => prop_assert!(false),
+            }
+        }
+
+        /// A member who left or declined is always dimmed and says which;
+        /// one whose keys can't be checked (and is still in) is always
+        /// warned about, unless it is this account; nobody else is.
+        #[test]
+        fn prop_member_rows_read_their_state(invited: bool, left: bool, unverified: bool, verified: bool, mine: bool) {
+            let (detail, tone) = member_status(&member(invited, left, unverified, verified), mine);
+            if left {
+                prop_assert_eq!(tone, MemberTone::Gone);
+                prop_assert_eq!(detail, vec![if invited { "Declined" } else { "Left" }]);
+            } else if unverified && !mine {
+                prop_assert_eq!(tone, MemberTone::Unchecked);
+                prop_assert!(detail.contains(&"Can't be checked"));
+                prop_assert!(!detail.contains(&"Fingerprint verified"));
+            } else {
+                prop_assert_eq!(tone, MemberTone::Normal);
+                prop_assert!(!detail.contains(&"Can't be checked"));
             }
         }
 

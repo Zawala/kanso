@@ -17,15 +17,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::base::input::TextDecoration;
-use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::button::ButtonVariants as _;
+use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::*;
 use kanso_collab::engine::rebase;
-use kanso_collab::{CommentView, Engine, LiveNotice, Role, Splice, splices};
+use kanso_collab::{CommentView, Engine, LiveNotice, Problem, Role, Splice, splices};
 
 use super::NoteEditor;
 use crate::collab_model::OpenShare;
 use crate::collab_text::{
-    comment_ranges, comment_target, map_selection, remote_marks, share_footer, share_mark,
+    comment_ranges, comment_target, map_selection, problem_banner, remote_marks, share_footer,
+    share_mark,
 };
 use crate::theme::{Colors, cursor_colour};
 
@@ -114,6 +116,8 @@ impl NoteEditor {
             selections: None,
             comments: Vec::new(),
             members: Vec::new(),
+            problems: Vec::new(),
+            size: None,
             sync_task: None,
             _notices: notices_task,
         });
@@ -122,7 +126,7 @@ impl NoteEditor {
         self.collab_sync(window, cx);
         self.refresh_comments(cx);
         self.refresh_cursors(cx);
-        self.collab_footer(cx);
+        self.refresh_problems(cx);
     }
 
     /// Leaves the shared note: its room closes, and merges go to the
@@ -171,7 +175,7 @@ impl NoteEditor {
         let label = self
             .shared
             .as_ref()
-            .map(|open| share_footer(open.role, open.connected, open.ended));
+            .map(|open| share_footer(open.role, open.connected, open.ended, open.size));
         self.footer
             .update(cx, |footer, cx| footer.set_share(label, cx));
     }
@@ -270,7 +274,10 @@ impl NoteEditor {
         }
         let (share_id, engine) = (open.share_id.clone(), open.engine.clone());
         let sent = self.current_text(cx);
-        match engine.sync_editor(&share_id, &sent.0, &sent.1) {
+        let result = engine.sync_editor(&share_id, &sent.0, &sent.1);
+        // A refused edit (at the size limit) or one kept private says why.
+        self.refresh_problems(cx);
+        match result {
             Ok(merge) => Some((sent, merge)),
             Err(err) => {
                 eprintln!("kanso: merging the shared note: {err}");
@@ -456,6 +463,7 @@ impl NoteEditor {
         let mut text = false;
         let mut presence = false;
         let mut comments = false;
+        let mut problems = false;
         for notice in batch {
             let Some(open) = self.shared.as_mut().filter(|s| !s.ended) else {
                 return;
@@ -464,6 +472,7 @@ impl NoteEditor {
                 LiveNotice::Text { share_id } => text |= share_id == open.share_id,
                 LiveNotice::Presence { share_id } => presence |= share_id == open.share_id,
                 LiveNotice::Comments { share_id } => comments |= share_id == open.share_id,
+                LiveNotice::Problem { share_id } => problems |= share_id == open.share_id,
                 LiveNotice::Connection { share_id, live } if share_id == open.share_id => {
                     open.connected = live;
                     self.collab_footer(cx);
@@ -484,6 +493,79 @@ impl NoteEditor {
         if comments {
             self.refresh_comments(cx);
         }
+        if problems {
+            self.refresh_problems(cx);
+        }
+    }
+
+    /// Reads what the engine couldn't do for the open note, and how much of
+    /// its size limit it uses; the banner and the footer follow. A note
+    /// that became a private copy keeps its problems.
+    pub fn refresh_problems(&mut self, cx: &mut Context<Self>) {
+        let Some(open) = self.shared.as_mut() else {
+            return;
+        };
+        let problems: Vec<Problem> = open
+            .engine
+            .problems()
+            .into_iter()
+            .filter(|p| p.share_id == open.share_id)
+            .collect();
+        let size = if open.ended {
+            None
+        } else {
+            open.engine.size_use(&open.share_id)
+        };
+        if open.problems != problems || open.size != size {
+            open.problems = problems;
+            open.size = size;
+            cx.notify();
+        }
+        self.collab_footer(cx);
+    }
+
+    /// Clears the open note's problems, as its banner's Dismiss does.
+    pub fn dismiss_problems(&mut self, cx: &mut Context<Self>) {
+        if let Some(open) = self.shared.as_ref() {
+            open.engine.dismiss_problems(Some(&open.share_id));
+        }
+        self.refresh_problems(cx);
+    }
+
+    /// The open shared note's problems, for the banner above its text.
+    pub fn shared_problems(&self) -> &[Problem] {
+        self.shared.as_ref().map_or(&[], |s| s.problems.as_slice())
+    }
+
+    /// The banner telling the open shared note's problems, with Dismiss.
+    // no-prop-test: drawing; `problem_banner` has the properties and
+    // `a_refused_edit_shows_its_problem` drives it.
+    pub(super) fn render_problems(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let text = problem_banner(self.shared_problems())?;
+        let colors = Colors::get(cx);
+        Some(
+            gpui_kit::component::h_flex()
+                .debug_selector(|| "shared-problems".into())
+                .flex_none()
+                .gap_2()
+                .mx(px(super::TEXT_INSET - 12.))
+                .my_1()
+                .px(px(12.))
+                .py(px(8.))
+                .rounded(px(6.))
+                .bg(Hsla::from(colors.warning).opacity(0.14))
+                .text_size(px(13.))
+                .text_color(colors.text)
+                .child(div().flex_1().child(text))
+                .child(
+                    gpui_kit::component::button::Button::new("dismiss-problems")
+                        .ghost()
+                        .small()
+                        .label("Dismiss")
+                        .on_click(cx.listener(|this, _, _, cx| this.dismiss_problems(cx))),
+                )
+                .into_any_element(),
+        )
     }
 
     /// Tells the room where the caret is, when it moved.

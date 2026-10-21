@@ -120,9 +120,10 @@ impl CollabDoc {
         self.set_text_in_parts(field, new, usize::MAX).pop()
     }
 
-    /// [`CollabDoc::set_text`], as updates that each insert at most `part`
-    /// bytes (and a little more for one character), in the order to send
-    /// them: a long paste goes as several updates under the server's cap.
+    /// [`CollabDoc::set_text`], as updates of at most about `part` bytes
+    /// each (the text they insert, and [`OP_COST`] for each insert and
+    /// delete), in the order to send them: a long paste, or a rewrite with
+    /// many small changes, goes as several updates under the server's cap.
     pub fn set_text_in_parts(&self, field: Field, new: &str, part: usize) -> Vec<Vec<u8>> {
         let old = self.text(field);
         if old == new {
@@ -136,7 +137,14 @@ impl CollabDoc {
         // From the end, so every offset still refers to the old text.
         for edit in edits.iter().rev() {
             if edit.delete > 0 {
+                if inserted >= part {
+                    updates.push(txn.encode_update_v1());
+                    drop(txn);
+                    txn = self.doc.transact_mut();
+                    inserted = 0;
+                }
                 text.remove_range(&mut txn, edit.at as u32, edit.delete as u32);
+                inserted += OP_COST;
             }
             let mut at = edit.at;
             let mut rest = edit.insert.as_str();
@@ -153,7 +161,7 @@ impl CollabDoc {
                 }
                 text.insert(&mut txn, at as u32, &rest[..take]);
                 at += take;
-                inserted += take;
+                inserted += take + OP_COST;
                 rest = &rest[take..];
             }
         }
@@ -201,6 +209,10 @@ impl CollabDoc {
         index.get_offset(&txn).map(|offset| offset.index as usize)
     }
 }
+
+/// What one insert or delete adds to an encoded update besides its text, at
+/// most (its IDs, origins and lengths), counted when splitting updates.
+pub const OP_COST: usize = 48;
 
 /// What a merge did to the note's two texts.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -339,12 +351,15 @@ mod tests {
         /// replica that takes the parts in order; no part inserts much more
         /// than `part` bytes.
         #[test]
-        fn prop_parts_add_up_to_the_edit(old in "[a-zé ]{0,40}", new in "[a-zé ]{0,200}", part in 1usize..32) {
+        fn prop_parts_add_up_to_the_edit(old in "[a-zé ]{0,80}", new in "[a-zé ]{0,200}", part in 64usize..512) {
             let doc = CollabDoc::from_text("", &old);
             let replica = CollabDoc::load(&doc.encode_state()).unwrap();
             let parts = doc.set_text_in_parts(Field::Body, &new, part);
             prop_assert_eq!(doc.text(Field::Body), new.clone());
             for update in &parts {
+                // Encoded, a part stays near its budget: never more than
+                // one more character, one operation and the update's frame.
+                prop_assert!(update.len() <= part + 4 + OP_COST + 64, "{} > {part}", update.len());
                 replica.apply(update).unwrap();
             }
             prop_assert_eq!(replica.text(Field::Body), new);

@@ -2823,11 +2823,14 @@ Routes (session, JSON):
 For each epoch the owner signs the list of who is in the note:
 
     {"v":1,"share":"<share id>","epoch":<n>,"owner":"<account id>","key_commit":"<64 hex>","at":<ms>,
-     "members":[{"account":"a_…","username":"…","role":"owner|edit|comment|view",
+     "from_seq":<n>,"members":[{"account":"a_…","username":"…","role":"owner|edit|comment|view",
                  "sign_pub":"<43>","box_pub":"<43>"}, …]}
 
 Compact JSON, keys in this order, members sorted by account ID, exactly one `owner` (the owner
-themself), at most 20 members. `list_sig = Ed25519(owner sign, "kanso-members" || 0x01 ||
+themself), at most 20 members. `from_seq` (from epoch 2 on; never in epoch 1's list) is the
+log's head when the epoch began: the owner's device signs the head it read, and the server takes
+the epoch only while that is still the head (409 `head_moved` `{head}` otherwise, and the device
+signs again with that head). `list_sig = Ed25519(owner sign, "kanso-members" || 0x01 ||
 list_bytes)`. On the wire both travel as base64url (`list`, `list_sig`), so the bytes signed are
 the bytes received.
 
@@ -2849,7 +2852,23 @@ the bytes received.
   author isn't `edit` or `owner` there is dropped, and so is a comment from a `view` member, even
   though such a member holds the key: the server refuses them (below), and a client would refuse
   them from a server that didn't.
-- **Pending invitations pin only the owner.** The other members are pinned once you accept.
+- **An epoch ends where the next begins.** An envelope of epoch `e` at a sequence number past the
+  `from_seq` of a later epoch's list is dropped: a server can't relay a removed or demoted editor's
+  late writes into the new epoch. (The server's check of `from_seq` against the head isn't atomic
+  with storing the epoch, so clients drop these whatever the server took.)
+- **Leaving and declining.** The member's device tells the server; the owner's device, on its next
+  refresh, sees them gone from the server's members and starts an epoch without them. Until then
+  the Share sheet shows them as left, and no key is wrapped to them again: someone the server no
+  longer has as a member is never put back in a list.
+- **Members whose keys can't be checked.** A listed member first seen when their account is gone
+  (deleted or disabled, so the lookup finds nobody) or the lookup fails is shown as unverified, and
+  the owner's next list leaves them out. What they wrote under a list that names them still merges,
+  checked against that list's keys: the owner checked those keys when adding them, and dropping
+  their entries would make members' copies differ. One share's error (a list that doesn't check,
+  an owner whose account is gone) never stops the others' refresh or sync, or hides other
+  invitations; only being offline or signed out does.
+- **Pending invitations pin only the owner.** The other members are pinned once you accept. The
+  invitation shows the owner's fingerprint, marked verified when it matches one you compared.
 - **The server reads it** (it is not secret: the server knows who is in the note anyway) to know
   each member's role.
 
@@ -2874,8 +2893,24 @@ Everything written to a shared note travels in one envelope:
   names an envelope.
 - The signature makes every change attributable: nobody, the server included, can write as
   someone else, and history says who wrote what from signatures, not from the server.
-- **Long edits go in parts.** One update inserts at most 64 KiB of text; a longer paste (or an API
-  or MCP rewrite) goes as several, in order, each under the 256 KiB cap.
+- **Long edits go in parts.** Parts are cut by their encoded size: at most 64 KiB of inserted text
+  and operations, counting 48 bytes for each operation, so a rewrite with many small changes
+  splits too. Each part is well under the 256 KiB cap. If the server still refuses one as too
+  large, the device keeps the edit as a private note ("<title> (not shared)") beside the shared
+  one, starts the note again from the log, and tells you.
+- **A note's whole state fits one snapshot.** An edit that would grow the state past 4 MiB less
+  4 KiB is kept as a private note instead, and you are told. The Share sheet warns when a note is
+  near that.
+- **The library's limits.** A merged title or body longer than a note can be here (128 and
+  1,048,576 characters) is cut, on whole characters, for the library only; the CRDT keeps all of
+  it, and the cut is never sent as a deletion. A write the library refuses (a limit, a lock) never
+  stops a merge: you are told why the note didn't change.
+- **Locked notes.** A shared note can't be locked or moved into a locked notebook. If one is anyway
+  (another device locked it before it learnt the note is shared), the library refuses to write the
+  shared text into it, and you are told.
+- **Coming back.** A note shared with you is `note:s<share id>` in your library. If that ID is taken
+  by another note (the private copy left when you were removed), it is `note:s<share id>.<epoch>`,
+  the epoch you joined at, so every device of the account picks the same note.
 - **What can't be merged is skipped.** An update that doesn't decode (or that Yrs refuses) is
   skipped like a forged one, so one bad entry never stops a note's log. A device whose updates the
   server refuses for good (its role was lowered) drops them and starts the note again from the
@@ -2918,7 +2953,7 @@ random bytes as 22 base64url characters, chosen by the owner's device.
 | GET | `/v2/collab/shares` | | Every share you are in or invited to: `{shares: [{share_id, owner, owner_username, role, status, epoch, list, list_sig, lists: [{epoch, list, list_sig}], wraps: [{epoch, wrapped}], head}]}` (`lists`: every epoch you hold a wrap for, and the current one, oldest first); for your own shares also `members: [{account, status}]`, `links: [{link_id, role, created_at, expires_at}]` and `requests: [{account, username, link_id, role, requested_at, sign_pub, box_pub, binding}]` |
 | POST | `/v2/collab/shares/<id>/accept` | invited | Accept: 204 |
 | DELETE | `/v2/collab/shares/<id>/membership` | member or invited, not the owner | Leave or decline: 204 |
-| POST | `/v2/collab/shares/<id>/epoch` | owner | New epoch: `{epoch, list, list_sig, wraps: [{account, wrapped, epoch?}]}`, `epoch` the current one + 1, exactly one wrap of the new epoch for every member, and wraps naming an earlier `epoch` for listed accounts only (each account and epoch once, at most min(20 × epoch, 400) in all). Accounts no longer listed lose their rows and every wrap; new ones are `invited`, or `member` when they asked through a link. 200 `{epoch}`; the same request again 200 (a retry); 409 `epoch_changed` `{epoch}` |
+| POST | `/v2/collab/shares/<id>/epoch` | owner | New epoch: `{epoch, list, list_sig, wraps: [{account, wrapped, epoch?}]}`, `epoch` the current one + 1, the list's `from_seq` the room's head (409 `head_moved` `{head}` otherwise), exactly one wrap of the new epoch for every member, and wraps naming an earlier `epoch` for listed accounts only (each account and epoch once, at most min(20 × epoch, 400) in all). Accounts no longer listed lose their rows and every wrap; new ones are `invited`, or `member` when they asked through a link. 200 `{epoch}`; the same request again 200 (a retry); 409 `epoch_changed` `{epoch}` |
 | DELETE | `/v2/collab/shares/<id>` | owner | Stop sharing: every row, wrap, link and request goes, and the log is purged. 204 |
 | GET | `/v2/collab/shares/<id>/log?since=&limit=` | any member | `{head, snapshot: {seq, base_seq, envelope} \| null, entries: [{seq, envelope}], more}`. The snapshot comes when `since` is 0 or below its `base_seq`; entries are every update and comment after `since` (updates the snapshot covers are gone; comments stay), at most `limit` (1–1000, default 500) and about 8 MiB |
 | POST | `/v2/collab/shares/<id>/log` | bytes | Append one envelope: an update (edit, owner) or a comment (comment, edit, owner). 200 `{seq}` |
@@ -2939,8 +2974,9 @@ answer a member 403 `forbidden_role`. Errors are `{"error": <code>, "message", �
 above: 403 `identity_required` (sharing or joining without an identity), 409 `unknown_member`
 `{account}` (a listed account has no identity), 409 `member_keys_mismatch` `{account}` (a listed
 member's keys or username aren't their account's identity), 409 `share_id_taken` and `share_retired`, 409
-`link_id_taken`, and 413 `quota_exceeded` `{quota, used, limit}` with `quota` one of `members`,
-`shares`, `links`, `requests` or `doc_bytes`. Creating a share, an epoch or a link again with the
+`link_id_taken`, 413 `quota_exceeded` `{quota, used, limit}` with `quota` one of `members`,
+`shares`, `links`, `requests`, `doc_bytes` or `comment_bytes`, and 429 `rate_limited` `{limit,
+retry_after}` with `Retry-After`. Creating a share, an epoch or a link again with the
 same request answers success again, so a device can retry after a dropped answer.
 
 **What the server checks on every envelope** (header only; it never opens one), in order: the
@@ -3009,15 +3045,22 @@ notification's.
 | Presence | 2 KiB |
 | Log since the last snapshot | 10,000 entries or 16 MiB; past that, 409 `compact_first` until a snapshot |
 | Room bytes per UTC day | 64 MiB per note, snapshots included, presence not (429 `rate_limited`, `limit` `room-bytes`) |
-| WebSocket messages | 30 a second per socket, in bursts of 60 (an `error` frame `rate_limited`, the frame dropped) |
+| WebSocket messages | 30 a second per socket, in bursts of 60 (an `error` frame `rate_limited`, `limit` `socket`, the frame dropped) |
+| Presence | 10 a second per account in a room, across its sockets, in bursts of 20 (an `error` frame `rate_limited`, `limit` `presence`, the frame dropped) |
+| Sockets | 8 per account per note (429 `rate_limited`, `limit` `sockets`, `retry_after` 5) |
+| Comments | 8 MiB per note (413 `quota_exceeded`, `quota` `comment_bytes`) |
 | Members per note | 20 |
 | Shares owned per account | 200 |
 | Live links per note | 10; pending requests per note 50 |
 | Notifications kept per recipient | 500 |
 
-Shared notes count towards their owner's storage: each room reports its bytes to D1
-(`collab_shares.bytes`) when it compacts, and an owner past `quota_doc_bytes` (with their documents)
-can't share another note.
+Shared notes count towards their owner's storage. Every envelope a room stores is checked against
+the owner's `quota_doc_bytes`: their documents, plus their other shared notes, plus this room's
+live size (snapshot and log, comments included). Past it, 413 `quota_exceeded` `{quota:
+"doc_bytes", used, limit}` (an `error` frame on a socket). Each room reports its size to D1
+(`collab_shares.bytes`) when it has grown 64 KiB since it last did, at every snapshot, and
+otherwise 30 seconds after a change, so the owner's other notes can count up to that late. An
+owner past the quota can't share another note.
 
 ### What the server learns
 
@@ -3046,7 +3089,13 @@ keys.
   an editor. A commenter can write comments only.
 - **Withholding and reordering.** A hostile server can hold back or drop updates, or show members
   different subsets. It can't forge or alter any; the CRDT merges whatever arrives, in any order,
-  to the same text.
+  to the same text. Updates a removed or demoted editor wrote under an earlier epoch can't be
+  slipped in after the next epoch began (`from_seq`).
+- **A malicious editor's snapshot** is signed by them and opens with the note key, but nothing
+  proves it holds everything the log had: an editor (not the server) can write a snapshot that
+  leaves earlier text out, and once the server compacts, devices that start from it never see what
+  was left out. Devices that had already merged that text keep it. Give edit rights to people you
+  trust with the note's history; each device's version history keeps what it saw.
 - **Open sockets.** A socket is checked when it opens. Removal, leaving, stopping and deleting the
   account close it at once; signing out, or an account being disabled, doesn't until it next drops.
 - **Metadata** as listed above.

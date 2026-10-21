@@ -161,9 +161,10 @@ fn finish_sync(
     collab.notices = notices;
     // Comments the sync brought show in the open note.
     crate::workspace::for_each_workspace(cx, |workspace, cx| {
-        workspace
-            .editor
-            .update(cx, |editor, cx| editor.refresh_comments(cx));
+        workspace.editor.update(cx, |editor, cx| {
+            editor.refresh_comments(cx);
+            editor.refresh_problems(cx);
+        });
     });
     cx.refresh_windows();
     if again {
@@ -216,6 +217,27 @@ pub fn accept(share_id: String, cx: &mut App) {
                 notify_windows(move || Notification::error(words.clone()), cx);
             }
             sync_soon(cx);
+        },
+    );
+}
+
+/// Marks the keys pinned for the owner of an invitation as compared and
+/// verified; the invitation says so at once.
+pub fn verify_owner(account_id: String, cx: &mut App) {
+    let account = account_id.clone();
+    run(
+        cx,
+        move |engine| engine.verify_person(&account),
+        move |result, cx| match result {
+            Ok(()) => {
+                for invitation in &mut cx.default_global::<Collab>().invitations {
+                    if invitation.owner.account_id == account_id {
+                        invitation.owner.verified = true;
+                    }
+                }
+                cx.refresh_windows();
+            }
+            Err(words) => notify_windows(move || Notification::error(words.clone()), cx),
         },
     );
 }

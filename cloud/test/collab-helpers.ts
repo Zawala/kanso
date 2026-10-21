@@ -57,7 +57,7 @@ export interface Listed {
 }
 
 /** The owner's signed list for `epoch` as base64url, members sorted by account ID. */
-export function memberList(shareId: string, epoch: number, owner: Account, members: Listed[]): string {
+export function memberList(shareId: string, epoch: number, owner: Account, members: Listed[], fromSeq: number | null = epoch > 1 ? 0 : null): string {
 	const list = {
 		v: 1,
 		share: shareId,
@@ -65,6 +65,8 @@ export function memberList(shareId: string, epoch: number, owner: Account, membe
 		owner: owner.creds.accountId,
 		key_commit: [...random(32)].map((b) => b.toString(16).padStart(2, "0")).join(""),
 		at: 1_800_057_600_000,
+		// From epoch 2 on: the log's head when the epoch began, between `at` and `members`.
+		...(fromSeq === null ? {} : { from_seq: fromSeq }),
 		members: [...members]
 			.sort((x, y) => (x.account.creds.accountId < y.account.creds.accountId ? -1 : 1))
 			.map((m) => {
@@ -161,9 +163,10 @@ export async function shareBody(shareId: string, owner: Account, others: Listed[
 	};
 }
 
-export function epochBody(shareId: string, epoch: number, owner: Account, others: Listed[]) {
+/** A new epoch's body; `fromSeq` must be the room's head (0 until anything is appended). */
+export function epochBody(shareId: string, epoch: number, owner: Account, others: Listed[], fromSeq = 0) {
 	const members = [{ account: owner, role: "owner" as Role }, ...others];
-	return { epoch, list: memberList(shareId, epoch, owner, members), list_sig: b64(64), wraps: wrapsFor(members) };
+	return { epoch, list: memberList(shareId, epoch, owner, members, fromSeq), list_sig: b64(64), wraps: wrapsFor(members) };
 }
 
 const bytesCall = async (path: string, token: string, body: Uint8Array, headers: Record<string, string> = {}) => {

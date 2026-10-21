@@ -676,6 +676,49 @@ fn share_demo(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>) {
     cx.run_until_parked();
 }
 
+/// Shared with me with an invitation waiting, its owner's fingerprint not
+/// verified yet, and a mention unread.
+fn shared_invitation(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    use kanso_collab::{Invitation, Person, Role};
+    let now = cx.update(|cx| Clock::now_ms(cx));
+    cx.update(|cx| {
+        cx.global_mut::<Services>().account = AccountState::SignedIn {
+            username: DEMO_USER.into(),
+        };
+        cx.set_global(crate::collab_model::Collab {
+            invitations: vec![Invitation {
+                share_id: "ieMcmzx2eV1orGMyH9iImw".into(),
+                owner: Person {
+                    account_id: "a_01".into(),
+                    username: "mira".into(),
+                    fingerprint: "40213 77810 05932 61174 39025 88461".into(),
+                    verified: false,
+                },
+                role: Role::Comment,
+            }],
+            notices: vec![kanso_store::StoredNotice {
+                id: "n1".into(),
+                share_id: "s1".into(),
+                comment_id: "c1".into(),
+                from_id: "a_02".into(),
+                from_name: "tendai".into(),
+                title: "Launch plan".into(),
+                excerpt: "@ngoni can you check the dates?".into(),
+                at: now - 20 * MINUTE,
+                read: false,
+            }],
+            ..Default::default()
+        });
+    });
+    let library = cx.update(|cx| workspace.read(cx).library.clone());
+    cx.update(|cx| library.update(cx, |library, cx| library.set_filter(Filter::Shared, cx)));
+}
+
 /// The Share sheet for a shared note: its members, one still invited.
 fn share_sheet(
     cx: &mut HeadlessAppContext,
@@ -3775,6 +3818,8 @@ fn snapshots() {
             dialog_width: crate::share_sheet::SHEET_WIDTH,
             ..shot("light-share-sheet", Light, Edit, share_sheet)
         },
+        shot("dark-shared-invitation", Dark, Edit, shared_invitation),
+        shot("light-shared-invitation", Light, Edit, shared_invitation),
         shot("dark-comments", Dark, Edit, comments),
         shot("light-comments", Light, Split, comments),
         // Importing: choosing the source, the summary, the report.

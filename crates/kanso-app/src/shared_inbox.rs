@@ -1,17 +1,28 @@
 //! The top of the Shared with me list: notes people shared with this
 //! account that wait to be accepted, and comments that mention it, unread
-//! (docs/ACCOUNTS.md › Collaboration). Accepting brings the note in with
-//! the next sync; a mention opens its note.
+//! (docs/ACCOUNTS.md › Collaboration). An invitation shows its owner's
+//! fingerprint, verified or not, to compare before accepting. Accepting
+//! brings the note in with the next sync; a mention opens its note.
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{Icon, Sizable as _, StyledExt as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, StyledExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::collab_model::Collab;
 use crate::library::Library;
 use crate::theme::Colors;
+
+/// What the badge beside an invitation's fingerprint says. Pure.
+pub fn verified_label(verified: bool) -> &'static str {
+    if verified { "Verified" } else { "Not verified" }
+}
+
+/// The line under an invitation's fingerprint. Pure.
+pub fn compare_hint(owner: &str) -> String {
+    format!("Compare it with what {owner} sees for you.")
+}
 
 /// Invitations and unread mentions, or nothing when there are none.
 // no-prop-test: drawing; `Collab::unread` and the sidebar badge carry the
@@ -41,7 +52,74 @@ pub fn render(library: &Entity<Library>, cx: &App) -> Option<AnyElement> {
         .enumerate()
         .map(|(ix, invitation)| {
             let (accept, decline) = (invitation.share_id.clone(), invitation.share_id.clone());
-            row(("invitation", ix))
+            let owner = &invitation.owner;
+            let verify = owner.account_id.clone();
+            let badge = h_flex()
+                .flex_none()
+                .gap(px(4.))
+                .px(px(6.))
+                .h(px(18.))
+                .rounded_full()
+                .text_size(px(11.))
+                .font_medium()
+                .map(|el| {
+                    if owner.verified {
+                        el.bg(Hsla::from(colors.success).opacity(0.16))
+                            .text_color(colors.success)
+                            .child(Icon::new(Lucide::ShieldCheck).size(px(11.)))
+                    } else {
+                        el.bg(Hsla::from(colors.warning).opacity(0.16))
+                            .text_color(colors.warning)
+                            .child(Icon::new(Lucide::ShieldAlert).size(px(11.)))
+                    }
+                })
+                .child(verified_label(owner.verified));
+            // Two lines of three groups, the hint under them, then the
+            // badge and the way to mark them verified.
+            let fingerprint = v_flex()
+                .gap(px(6.))
+                .pl(px(25.))
+                .child(
+                    v_flex()
+                        .px(px(10.))
+                        .py(px(6.))
+                        .rounded(px(6.))
+                        .bg(colors.list)
+                        .font_family(cx.theme().mono_font_family.clone())
+                        .text_size(px(12.5))
+                        .debug_selector(move || format!("invitation-fingerprint-{ix}"))
+                        .children(
+                            crate::account_page::fingerprint_lines(&owner.fingerprint)
+                                .into_iter()
+                                .map(|line| div().child(line)),
+                        ),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(colors.text_muted)
+                        .child(compare_hint(&owner.username)),
+                )
+                .child(
+                    h_flex()
+                        .gap(px(8.))
+                        .child(badge)
+                        .child(div().flex_1())
+                        .when(!owner.verified, |el| {
+                            el.child(
+                                Button::new(("invitation-verify", ix))
+                                    .outline()
+                                    .xsmall()
+                                    .label("Mark as verified")
+                                    .debug_selector(move || format!("invitation-verify-{ix}"))
+                                    .on_click(move |_, _, cx| {
+                                        crate::collab::verify_owner(verify.clone(), cx)
+                                    }),
+                            )
+                        }),
+                );
+            let top = h_flex()
+                .gap(px(10.))
                 .child(
                     Icon::new(Lucide::Users)
                         .size(px(15.))
@@ -76,7 +154,12 @@ pub fn render(library: &Entity<Library>, cx: &App) -> Option<AnyElement> {
                         .label("Accept")
                         .debug_selector(move || format!("invitation-accept-{ix}"))
                         .on_click(move |_, _, cx| crate::collab::accept(accept.clone(), cx)),
-                )
+                );
+            row(("invitation", ix))
+                .flex_col()
+                .items_stretch()
+                .child(top)
+                .child(fingerprint)
         });
     let mentions = unread.into_iter().enumerate().map(|(ix, notice)| {
         let library = library.clone();
@@ -148,4 +231,30 @@ pub fn render(library: &Entity<Library>, cx: &App) -> Option<AnyElement> {
             })
             .into_any_element(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{compare_hint, verified_label};
+    use proptest::prelude::*;
+
+    #[test]
+    fn an_invitation_says_whether_its_keys_were_compared() {
+        assert_eq!(verified_label(true), "Verified");
+        assert_eq!(verified_label(false), "Not verified");
+        assert_eq!(
+            compare_hint("user1"),
+            "Compare it with what user1 sees for you."
+        );
+    }
+
+    proptest! {
+        /// The hint names the owner, as one sentence on one line.
+        #[test]
+        fn prop_the_hint_names_the_owner(owner in "[a-z][a-z0-9_-]{0,20}") {
+            let hint = compare_hint(&owner);
+            prop_assert!(hint.contains(&owner));
+            prop_assert!(hint.ends_with('.') && !hint.contains('\n'));
+        }
+    }
 }

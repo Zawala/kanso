@@ -4,7 +4,7 @@
 // caps and rate limits, stopping, account deletion and the cron, the /j/ page,
 // and the Origin and Content-Type rules.
 
-import { runInDurableObject } from "cloudflare:test";
+import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { sha256Hex } from "../src/crypto";
@@ -395,6 +395,73 @@ describe("epochs", () => {
 		expect(await env.DB.prepare("SELECT count(*) AS n FROM collab_wraps WHERE account_id = ?1").bind(bob.creds.accountId).first("n")).toBe(0);
 		expect((await collab(carol.token).shares()).body.shares[0]).toMatchObject({ status: "invited", role: "view", epoch: 2 });
 		expect((await collab(carol.token).shares()).body.shares[0].wraps.map((w: { epoch: number }) => w.epoch)).toEqual([2]);
+	});
+});
+
+describe("from_seq", () => {
+	it("is required from epoch 2, refused at epoch 1, and must be the head (409 head_moved {head}); an applied retry still answers 200", async () => {
+		await ensureIdentity(alice);
+		await ensureIdentity(bob);
+		const early = await shareBody(newShareId(), alice, []);
+		const withFrom = { ...early, list: memberList(early.share_id, 1, alice, [{ account: alice, role: "owner" }], 0) };
+		expect((await collab(alice.token).share(withFrom)).body.error).toBe("bad_request");
+
+		const id = await shareWith(alice, [{ account: bob, role: "edit" }]);
+		const c = collab(alice.token);
+		const missing = epochBody(id, 2, alice, [], null as unknown as number);
+		expect((await c.epoch(id, missing)).body.error).toBe("bad_request");
+		expect((await c.epoch(id, epochBody(id, 2, alice, [], -1))).body.error).toBe("bad_request");
+		for (let i = 0; i < 3; i++) await c.append(id, await envelope({ kind: "u", epoch: 1, shareId: id, by: alice }));
+		expect(await c.epoch(id, epochBody(id, 2, alice, [], 2))).toMatchObject({ status: 409, body: { error: "head_moved", head: 3 } });
+		expect(await c.epoch(id, epochBody(id, 2, alice, [], 4))).toMatchObject({ status: 409, body: { error: "head_moved", head: 3 } });
+		const good = epochBody(id, 2, alice, [{ account: bob, role: "edit" }], 3);
+		expect(await c.epoch(id, good)).toMatchObject({ status: 200, body: { epoch: 2 } });
+		await collab(bob.token).append(id, await envelope({ kind: "u", epoch: 2, shareId: id, by: bob }));
+		expect(await c.epoch(id, good)).toMatchObject({ status: 200, body: { epoch: 2 } });
+		const list = JSON.parse(new TextDecoder().decode(fromBase64url(good.list)!));
+		expect(Object.keys(list)).toEqual(["v", "share", "epoch", "owner", "key_commit", "at", "from_seq", "members"]);
+	});
+});
+
+describe("room storage caps", () => {
+	it("an append past the owner's document quota is 413 quota_exceeded doc_bytes, counting their documents and every shared note", async () => {
+		const id = await shareWith(alice, [{ account: bob, role: "edit" }]);
+		const other = await shareWith(alice, []);
+		const bytesOf = async (share: string) => (await env.DB.prepare("SELECT bytes FROM collab_shares WHERE id = ?1").bind(share).first<number>("bytes"))!;
+		const u = await envelope({ kind: "u", epoch: 1, shareId: id, by: bob, size: 100 });
+		const used = 1000 + (await bytesOf(id)) + (await bytesOf(other));
+		await env.DB.prepare("UPDATE accounts SET doc_bytes = 1000, quota_doc_bytes = ?2 WHERE id = ?1").bind(alice.creds.accountId, used + u.length - 1).run();
+		expect(await collab(bob.token).append(id, u)).toMatchObject({ status: 413, body: { error: "quota_exceeded", quota: "doc_bytes", used, limit: used + u.length - 1 } });
+		await env.DB.prepare("UPDATE accounts SET quota_doc_bytes = ?2 WHERE id = ?1").bind(alice.creds.accountId, used + u.length).run();
+		expect((await collab(bob.token).append(id, u)).status).toBe(200);
+	});
+
+	it("comments stop at 8 MiB per room: 413 quota_exceeded comment_bytes", async () => {
+		const id = await shareWith(alice, []);
+		await runInDurableObject(env.NOTE_ROOM.get(env.NOTE_ROOM.idFromName(id)), (_room, state) => {
+			state.storage.sql.exec("UPDATE meta SET value = ? WHERE name = 'comment_bytes'", 8 * 1024 * 1024 - 300);
+		});
+		const c = collab(alice.token);
+		const big = await envelope({ kind: "c", epoch: 1, shareId: id, by: alice, size: 200 });
+		expect(await c.append(id, big)).toMatchObject({ status: 413, body: { error: "quota_exceeded", quota: "comment_bytes", used: 8 * 1024 * 1024 - 300, limit: 8 * 1024 * 1024 } });
+		// Updates aren't comments.
+		expect((await c.append(id, await envelope({ kind: "u", epoch: 1, shareId: id, by: alice, size: 200 }))).status).toBe(200);
+		expect((await c.append(id, await envelope({ kind: "c", epoch: 1, shareId: id, by: alice, size: 10 }))).status).toBe(200);
+	});
+
+	it("collab_shares.bytes follows the room: at once past 64 KiB of growth, else on the alarm", async () => {
+		const id = await shareWith(alice, []);
+		const stub = env.NOTE_ROOM.get(env.NOTE_ROOM.idFromName(id));
+		const bytesOf = async () => (await env.DB.prepare("SELECT bytes FROM collab_shares WHERE id = ?1").bind(id).first<number>("bytes"))!;
+		const start = await bytesOf();
+		const small = await envelope({ kind: "u", epoch: 1, shareId: id, by: alice, size: 1000 });
+		await collab(alice.token).append(id, small);
+		expect(await bytesOf()).toBe(start);
+		expect(await runDurableObjectAlarm(stub)).toBe(true);
+		expect(await bytesOf()).toBe(start + small.length);
+		const big = await envelope({ kind: "u", epoch: 1, shareId: id, by: alice, size: 70 * 1024 });
+		await collab(alice.token).append(id, big);
+		expect(await bytesOf()).toBe(start + small.length + big.length);
 	});
 });
 

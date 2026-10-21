@@ -8,7 +8,7 @@
 
 use std::ops::Range;
 
-use kanso_collab::{CommentView, Placement, RemoteCursor, Role, Splice, remap};
+use kanso_collab::{CommentView, Placement, Problem, RemoteCursor, Role, SizeUse, Splice, remap};
 
 use crate::collab_model::RemoteMark;
 
@@ -115,8 +115,9 @@ pub fn comment_ranges(comments: &[CommentView], text: &str) -> Vec<Range<usize>>
 }
 
 /// What the editor's footer says about a shared note: that it is shared,
-/// the role, whether it can be changed here, and whether it is live.
-pub fn share_footer(role: Role, connected: bool, ended: bool) -> String {
+/// the role, whether it can be changed here, whether it is live, and when
+/// it nears its size limit.
+pub fn share_footer(role: Role, connected: bool, ended: bool, size: Option<SizeUse>) -> String {
     if ended {
         return "Private copy · No longer shared".into();
     }
@@ -125,7 +126,25 @@ pub fn share_footer(role: Role, connected: bool, ended: bool) -> String {
         parts.push("Read only");
     }
     parts.push(if connected { "Live" } else { "Offline" });
+    if size.is_some_and(|size| size.is_near()) {
+        parts.push(NEAR_LIMIT);
+    }
     parts.join(" · ")
+}
+
+/// What the footer adds once a shared note nears its size limit.
+pub const NEAR_LIMIT: &str = "Near this shared note's size limit";
+
+/// What the banner above a shared note says of its problems: the newest
+/// one's words, and how many more there are. `None` with none.
+pub fn problem_banner(problems: &[Problem]) -> Option<String> {
+    let newest = problems.iter().max_by_key(|p| p.at)?;
+    let message = newest.message.trim();
+    Some(match problems.len() - 1 {
+        0 => message.to_owned(),
+        1 => format!("{message} (1 more)"),
+        more => format!("{message} ({more} more)"),
+    })
 }
 
 /// A fingerprint's groups of digits, to set apart on screen.
@@ -350,15 +369,15 @@ mod tests {
     #[test]
     fn footer_and_link_words() {
         assert_eq!(
-            share_footer(Role::Edit, true, false),
+            share_footer(Role::Edit, true, false, None),
             "Shared · Can edit · Live"
         );
         assert_eq!(
-            share_footer(Role::View, false, false),
+            share_footer(Role::View, false, false, None),
             "Shared · Can view · Read only · Offline"
         );
         assert_eq!(
-            share_footer(Role::Owner, true, true),
+            share_footer(Role::Owner, true, true, None),
             "Private copy · No longer shared"
         );
         assert_eq!(link_label(Role::Comment, 1), "Can comment, for 1 more day");
@@ -392,6 +411,41 @@ mod tests {
     }
 
     #[test]
+    fn size_and_problems_are_told() {
+        let near = SizeUse {
+            used: 85,
+            limit: 100,
+        };
+        assert_eq!(
+            share_footer(Role::Edit, true, false, Some(near)),
+            "Shared · Can edit · Live · Near this shared note's size limit"
+        );
+        assert_eq!(
+            share_footer(
+                Role::Edit,
+                true,
+                false,
+                Some(SizeUse {
+                    used: 10,
+                    limit: 100
+                })
+            ),
+            "Shared · Can edit · Live"
+        );
+        let problem = |message: &str, at| Problem {
+            share_id: "s".into(),
+            message: message.into(),
+            at,
+        };
+        assert_eq!(problem_banner(&[]), None);
+        assert_eq!(
+            problem_banner(&[problem("Old.", 1), problem("New.", 5), problem("Mid.", 3)])
+                .as_deref(),
+            Some("New. (2 more)")
+        );
+    }
+
+    #[test]
     fn mentions_of_members_stand_out() {
         let members = vec!["user2".to_owned(), "ann-b".to_owned()];
         let runs = |body: &str| -> Vec<(String, bool)> {
@@ -420,6 +474,34 @@ mod tests {
 
     proptest! {
         #![proptest_config(config(256))]
+
+        /// The footer warns exactly when the note is at four fifths of its
+        /// limit or more, and never for a private copy.
+        #[test]
+        fn prop_the_footer_warns_near_the_limit(used in 0usize..2_000, limit in 1usize..1_000, ended: bool) {
+            let size = SizeUse { used, limit };
+            let footer = share_footer(Role::Edit, true, ended, Some(size));
+            prop_assert_eq!(footer.contains(NEAR_LIMIT), !ended && used * 5 >= limit * 4);
+        }
+
+        /// The banner shows the newest problem's words and counts the rest.
+        #[test]
+        fn prop_the_banner_shows_the_newest_problem(ats in prop::collection::vec(0i64..1_000, 0..6)) {
+            let problems: Vec<Problem> = ats
+                .iter()
+                .enumerate()
+                .map(|(i, at)| Problem { share_id: "s".into(), message: format!("P{i}."), at: *at })
+                .collect();
+            match problem_banner(&problems) {
+                None => prop_assert!(problems.is_empty()),
+                Some(text) => {
+                    let newest = ats.iter().max().unwrap();
+                    let shown = problems.iter().find(|p| text.starts_with(&p.message)).unwrap();
+                    prop_assert_eq!(shown.at, *newest);
+                    prop_assert_eq!(text.contains("more)"), problems.len() > 1);
+                }
+            }
+        }
 
         /// Every comment is in exactly one group; the anchored ones in text
         /// order, the orphaned ones in the order their words were.

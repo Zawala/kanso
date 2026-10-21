@@ -21,7 +21,7 @@ use crate::identity::Verified;
 use crate::keys::{LinkSecret, NoteKey, invite_link, parse_invite_link, unwrap, vault_seal, wrap};
 use crate::members::{self, MAX_MEMBERS};
 use crate::model::{
-    Header, Invitation, Kind, LinkView, Member, MemberList, MemberView, RequestView, Role,
+    Header, Invitation, Kind, LinkView, Member, MemberList, MemberView, Person, RequestView, Role,
     ShareView,
 };
 
@@ -138,7 +138,7 @@ impl Engine {
             let person = self.person(username)?;
             people.push((self.pinned(&person.account_id)?, *role));
         }
-        let (list, list_sig, wraps) = self.sign_epoch(&share_id, 1, &key, &people)?;
+        let (list, list_sig, wraps) = self.sign_epoch(&share_id, 1, &key, &people, None)?;
         let doc = CollabDoc::from_text(&note.title, &note.body);
         let state = doc.encode_state();
         let header = Header {
@@ -203,6 +203,7 @@ impl Engine {
         epoch: u32,
         key: &NoteKey,
         people: &[(Verified, Role)],
+        from_seq: Option<u64>,
     ) -> Result<(String, String, Vec<AccountWrap>)> {
         let identity = self.identity()?;
         let mut list = MemberList {
@@ -212,6 +213,7 @@ impl Engine {
             owner: self.account.caller.account_id.clone(),
             key_commit: key.commit(share_id, epoch),
             at: now_ms(),
+            from_seq,
             members: people.iter().map(|(p, role)| member(p, *role)).collect(),
         };
         list.sort();
@@ -230,7 +232,7 @@ impl Engine {
     fn rotate(&self, share_id: &str, people: Vec<(Verified, Role)>) -> Result<()> {
         let loaded = self.loaded(share_id)?;
         let new_epoch;
-        let (identity, key, list, list_sig, new_wraps) = {
+        let (identity, key, everyone, earlier_wraps, head) = {
             let guard = lock(&loaded);
             if guard.role() != Role::Owner {
                 return Err(CollabError::Refused(
@@ -266,11 +268,25 @@ impl Engine {
                 .collect();
             let earlier: Vec<(u32, NoteKey)> =
                 guard.keys.iter().map(|(e, k)| (*e, k.clone())).collect();
-            let (list, list_sig, mut new_wraps) =
-                self.sign_epoch(share_id, new_epoch, &key, &everyone)?;
             // Newcomers get the earlier epochs' keys too, to read the
             // comments written before they came.
-            new_wraps.extend(wraps(share_id, &earlier, &newcomers, Some(new_epoch))?);
+            let earlier_wraps = wraps(share_id, &earlier, &newcomers, Some(new_epoch))?;
+            (
+                identity,
+                key,
+                everyone,
+                earlier_wraps,
+                guard.note.applied_seq,
+            )
+        };
+        // The list names the log's head the epoch starts from; the server
+        // takes it only at that head, so a moved head means signing again.
+        let mut head = head;
+        let mut attempt = 0;
+        let (list, list_sig) = loop {
+            let (list, list_sig, mut new_wraps) =
+                self.sign_epoch(share_id, new_epoch, &key, &everyone, Some(head))?;
+            new_wraps.extend(earlier_wraps.iter().cloned());
             // Kept before the server hears of it, so a lost answer loses
             // no key.
             self.store.put_collab_key(
@@ -279,19 +295,26 @@ impl Engine {
                 &vault_seal(&self.account.roots.vault_key, share_id, new_epoch, &key),
                 Some((&list, &list_sig)),
             )?;
-            (identity, key, list, list_sig, new_wraps)
+            // The network outside the note's lock: the editor never waits
+            // on it.
+            match self.api.new_epoch(
+                &self.account.caller,
+                share_id,
+                &NewEpoch {
+                    epoch: new_epoch,
+                    list: list.clone(),
+                    list_sig: list_sig.clone(),
+                    wraps: new_wraps,
+                },
+            ) {
+                Ok(_) => break (list, list_sig),
+                Err(err) if err.code() == Some("head_moved") && attempt < 5 => {
+                    attempt += 1;
+                    head = err.extra("head").unwrap_or(head);
+                }
+                Err(err) => return Err(err),
+            }
         };
-        // The network outside the note's lock: the editor never waits on it.
-        self.api.new_epoch(
-            &self.account.caller,
-            share_id,
-            &NewEpoch {
-                epoch: new_epoch,
-                list: list.clone(),
-                list_sig: list_sig.clone(),
-                wraps: new_wraps,
-            },
-        )?;
         {
             let mut guard = lock(&loaded);
             if guard.note.epoch + 1 != new_epoch {
@@ -316,16 +339,62 @@ impl Engine {
         Ok(())
     }
 
-    /// The current people of a note (the owner left out), as `rotate` takes them.
+    /// The current people of a note (the owner left out), as `rotate` takes
+    /// them: those still in it on the server (anyone who left, declined or
+    /// whose account is gone drops out here), with the keys pinned for them.
     fn people(&self, share_id: &str) -> Result<Vec<(Verified, Role)>> {
         let loaded = self.loaded(share_id)?;
         let current = lock(&loaded).current.clone();
-        current
-            .members
-            .iter()
-            .filter(|m| m.role != Role::Owner)
-            .map(|m| Ok((self.pin_member(m)?, m.role)))
-            .collect()
+        let present = lock(&self.server_members).get(share_id).cloned();
+        let mut out = Vec::new();
+        for member in current.members.iter().filter(|m| m.role != Role::Owner) {
+            if present
+                .as_ref()
+                .is_some_and(|p| !p.contains(&member.account))
+            {
+                continue;
+            }
+            match self.pinned(&member.account) {
+                Ok(person) if crate::codec::b64(&person.sign_pub) == member.sign_pub => {
+                    out.push((person, member.role));
+                }
+                // No keys of theirs to wrap to: they drop out too.
+                _ => {}
+            }
+        }
+        Ok(out)
+    }
+
+    /// Whether a member's keys are the ones pinned for them (this account's
+    /// own always are).
+    fn checked(&self, member: &Member) -> bool {
+        member.account == self.account.caller.account_id
+            || self
+                .store
+                .contact(&member.account)
+                .ok()
+                .flatten()
+                .is_some_and(|c| c.sign_pub == member.sign_pub && c.box_pub == member.box_pub)
+    }
+
+    /// A member as the Share sheet shows them: their pinned contact, or, when
+    /// their keys couldn't be checked, what the owner's list says, unverified.
+    fn member_person(&self, member: &Member) -> Person {
+        match self.person_of(&member.account) {
+            Ok(person) if self.checked(member) => person,
+            _ => Person {
+                account_id: member.account.clone(),
+                username: member.username.clone(),
+                fingerprint: match (
+                    crate::codec::unb64_array::<32>(&member.sign_pub),
+                    crate::codec::unb64_array::<32>(&member.box_pub),
+                ) {
+                    (Some(sign), Some(boxed)) => crate::identity::fingerprint(&sign, &boxed),
+                    _ => String::new(),
+                },
+                verified: false,
+            },
+        }
     }
 
     /// Invites someone (looked up with [`Engine::person`]) with a role.
@@ -523,19 +592,40 @@ impl Engine {
         let infos = self.api.shares(&self.account.caller)?;
         let mut invitations = Vec::new();
         let mut on_server = HashSet::new();
+        let mut offline = None;
         for info in &infos {
             on_server.insert(info.share_id.clone());
             match self.take_info(info) {
                 Ok(Some(invitation)) => invitations.push(invitation),
                 Ok(None) => {}
-                // One note's trouble (a changed key) doesn't stop the others.
-                Err(CollabError::KeyChanged(_))
-                | Err(CollabError::Crypto(_))
-                | Err(CollabError::List(_)) => {}
-                Err(err) => return Err(err),
+                // Unreachable now: the rest would be too.
+                Err(err) if err.is_offline() || err.status() == Some(401) => {
+                    offline = Some(err);
+                    break;
+                }
+                // One note's trouble (a changed key, a member whose account
+                // is gone) doesn't stop the others.
+                Err(_) => {}
             }
         }
         *lock(&self.invitations) = invitations;
+        if let Some(err) = offline {
+            return Err(err);
+        }
+        // Whoever left an owned note, declined it or whose account is gone
+        // is still in its signed list: the next epoch leaves them out, so
+        // no later key reaches them and nothing more is taken from them.
+        for info in infos
+            .iter()
+            .filter(|i| i.owner == self.account.caller.account_id)
+        {
+            let left = lock(&self.views)
+                .get(&info.share_id)
+                .is_some_and(|view| view.members.iter().any(|m| m.left));
+            if left && let Ok(people) = self.people(&info.share_id) {
+                let _ = self.rotate(&info.share_id, people);
+            }
+        }
         let mut ended = Vec::new();
         for note in self.store.shared_notes()? {
             if note.status == SharedStatus::Active && !on_server.contains(&note.share_id) {
@@ -667,8 +757,20 @@ impl Engine {
                 role,
             }));
         }
+        // Each member's keys pinned, checked against what their account
+        // published; one that can't be checked (the account is gone) is
+        // shown so and stays out of whatever this device wraps.
         for member in &list.members {
-            self.pin_member(member)?;
+            match self.pin_member(member) {
+                Err(err) if err.is_offline() || err.status() == Some(401) => return Err(err),
+                _ => {}
+            }
+        }
+        if info.owner == *me {
+            lock(&self.server_members).insert(
+                info.share_id.clone(),
+                info.members.iter().map(|m| m.account.clone()).collect(),
+            );
         }
         let mut lists = BTreeMap::new();
         let mut texts = BTreeMap::new();
@@ -727,6 +829,15 @@ impl Engine {
                 "no key for the note's current epoch".into(),
             ));
         }
+        // The epoch this account's present membership began: the same on
+        // every one of its devices, so they name the note alike.
+        let joined = lists
+            .iter()
+            .rev()
+            .take_while(|(_, l)| l.role_of(me).is_some())
+            .map(|(epoch, _)| *epoch)
+            .last()
+            .unwrap_or(list.epoch);
         lists.retain(|epoch, _| keys.contains_key(epoch));
         for (epoch, key) in &keys {
             let (text, sig) = &texts[epoch];
@@ -757,13 +868,19 @@ impl Engine {
                 let note_id = match self.store.note_with_share(&info.share_id)? {
                     Some(id) => id,
                     None if info.owner == *me => return Ok(None),
+                    // A private copy from an earlier time holds the note's
+                    // own ID: this membership gets one named by the epoch it
+                    // began, which every device of the account picks alike.
                     None => {
                         let id = shared_note_id(&info.share_id);
-                        if self.store.note(&id)?.is_some() {
-                            kanso_core::id::new_id(kanso_core::id::DocType::Note)
-                        } else {
-                            id
-                        }
+                        let taken = self.store.note(&id)?.is_some_and(|note| {
+                            note.extra
+                                .get(kanso_core::model::SHARE_FIELD)
+                                .and_then(|mark| mark.get("shareId"))
+                                .and_then(serde_json::Value::as_str)
+                                != Some(info.share_id.as_str())
+                        });
+                        if taken { format!("{id}.{joined}") } else { id }
                     }
                 };
                 self.store.put_shared_note(&SharedNote {
@@ -797,10 +914,16 @@ impl Engine {
                     .members
                     .iter()
                     .any(|s| s.account == m.account && s.status == "invited");
+                // Only the owner's view lists who is on the server.
+                let left = info.owner == *me
+                    && m.role != Role::Owner
+                    && !info.members.iter().any(|s| s.account == m.account);
                 Ok(MemberView {
-                    person: self.person_of(&m.account)?,
+                    person: self.member_person(m),
                     role: m.role,
                     invited,
+                    left,
+                    unverified: !self.checked(m),
                 })
             })
             .collect::<Result<Vec<_>>>()?;

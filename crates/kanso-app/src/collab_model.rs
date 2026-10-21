@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use gpui_kit::base::input::TextDecorationCollection;
 use gpui_kit::{AnyWindowHandle, Global, Task};
-use kanso_collab::{CommentView, EditorMerge, Engine, Invitation, LiveHandle, Person, Role};
+use kanso_collab::{
+    CommentView, EditorMerge, Engine, Invitation, LiveHandle, Person, Problem, Role, SizeUse,
+};
 use kanso_store::StoredNotice;
 use kanso_sync::Session;
 
@@ -76,6 +78,10 @@ pub struct OpenShare {
     /// tab, and the usernames in the note, to set @mentions apart.
     pub comments: Vec<CommentView>,
     pub members: Vec<String>,
+    /// What the engine couldn't do for this note, to show above the text.
+    pub problems: Vec<Problem>,
+    /// How much of the note's size limit it uses, as last read.
+    pub size: Option<SizeUse>,
     /// Runs `sync_editor` once typing pauses.
     pub sync_task: Option<Task<()>>,
     /// Takes what the live room says, while the note is open.

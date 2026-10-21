@@ -165,6 +165,11 @@ pub(crate) fn guard_shared(
     Ok(())
 }
 
+/// What [`Store::write_shared_text`] answers for a note that is locked, or
+/// in a locked notebook.
+pub const LOCKED_SHARED: &str =
+    "The shared note is locked, or in a locked notebook: its shared text isn't written to it.";
+
 /// Takes the names that changed a shared note since its last saved version,
 /// leaving none: the version being saved now is theirs.
 pub(crate) fn take_authors(tx: &rusqlite::Transaction, note_id: &str) -> Result<Option<String>> {
@@ -366,6 +371,19 @@ impl Store {
                 && prev.rev != expected
             {
                 return Err(StoreError::Conflict);
+            }
+            // A note that is locked, or in a locked notebook, never gets
+            // shared text in plain: however it got there (private sync from
+            // another device), it is refused, and the engine says so.
+            if let Some(prev) = &previous
+                && text.mark.is_some()
+                && (prev.fields.contains_key(LOCK_FIELD)
+                    || crate::write::in_locked_book(
+                        tx,
+                        prev.fields.get("bookId").and_then(Value::as_str),
+                    )?)
+            {
+                return Err(StoreError::Invalid(LOCKED_SHARED.into()));
             }
             let now = now_ms();
             let mut fields = match &previous {
