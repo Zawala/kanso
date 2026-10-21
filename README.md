@@ -42,8 +42,10 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
   Each device encrypts notes, titles, IDs and attachments before they leave it, with a key the
   server never sees. Conflicts keep both versions: the losing one stays in the note's history.
 - **A local API for agents.** `http://127.0.0.1:19840` is a REST API over your notes, and `/mcp`
-  on the same port is a native MCP endpoint. Its REST API is compatible with popular
-  local-server clients, so clients written for that API work too.
+  on the same port is a native MCP endpoint. Settings › Local API › **Connect an AI agent**
+  copies the setup for Claude Code, Claude Desktop, Codex, Cursor, VS Code, Gemini CLI,
+  Windsurf, Zed or OpenCode. Its REST API is compatible with popular local-server clients, so
+  clients written for that API work too.
 - **History and backups.** Earlier versions of each note, including every version replaced by the
   API, sync or an import, and a daily database backup.
 - **Imports.** Bring in a folder of Markdown files, an Obsidian vault or a Logseq graph, or an
@@ -177,6 +179,7 @@ of ⌥.
 ```bash
 kanso                       # open the app
 kanso serve                 # only the API (REST and /mcp), no window
+kanso mcp                   # MCP over stdin/stdout, for agents that start a program (Kanso open)
 kanso import obsidian ~/Vault --dry-run   # what an import would bring in
 kanso import notion ~/Downloads/Export.zip  # markdown, obsidian, notion, evernote, bear, …
 kanso import pouchdb        # the PouchDB library on this computer; --credentials copies its API settings

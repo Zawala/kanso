@@ -498,7 +498,12 @@ pub fn parse_username(value: &str) -> Result<String, String> {
     }
 }
 
-fn copy_to_clipboard(text: String, message: &'static str, window: &mut Window, cx: &mut App) {
+fn copy_to_clipboard(
+    text: String,
+    message: impl Into<SharedString>,
+    window: &mut Window,
+    cx: &mut App,
+) {
     cx.write_to_clipboard(ClipboardItem::new_string(text));
     window.push_notification(Notification::info(message), cx);
 }
@@ -583,6 +588,8 @@ pub struct SettingsView {
     backing_up: bool,
     /// The quick capture shortcut's control.
     shortcut: Entity<crate::settings_capture::ShortcutRecorder>,
+    /// The AI agent the Local API page has setup for.
+    mcp_agent: crate::mcp_setup::Agent,
     /// Shown instead of the data folder, whose temporary path in a snapshot
     /// changes from run to run.
     #[cfg(test)]
@@ -612,6 +619,7 @@ impl SettingsView {
             leading_inset: px(0.),
             backing_up: false,
             shortcut: cx.new(|_| crate::settings_capture::ShortcutRecorder::new()),
+            mcp_agent: crate::mcp_setup::Agent::ClaudeCode,
             #[cfg(test)]
             data_dir_label: None,
             _tick: tick,
@@ -828,7 +836,7 @@ impl SettingsView {
             SettingsPage::Editor => editor_page(cx),
             SettingsPage::Appearance => crate::settings_themes::page(cx),
             SettingsPage::Account => vec![self.account.clone().into_any_element()],
-            SettingsPage::LocalApi => api_page(cx),
+            SettingsPage::LocalApi => api_page(self.mcp_agent, cx),
             SettingsPage::Updates => crate::updates::page(cx),
         }
     }
@@ -1096,7 +1104,7 @@ fn set_writing(cx: &mut App, change: impl FnOnce(&mut EditorSettings)) {
     update_editors(cx);
 }
 
-fn api_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
+fn api_page(agent: crate::mcp_setup::Agent, cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
     let colors = Colors::get(cx);
     let server = config(cx).server.clone();
     let (state, tip) = match cx.try_global::<Services>() {
@@ -1225,10 +1233,85 @@ fn api_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                                 )
                             }),
                     ),
+                agent_row(agent, &server, cx),
             ],
             colors,
         ),
     ]
+}
+
+/// The row that sets an AI agent up: which agent, where its setup goes, and
+/// a button that copies the setup. A setup with the sign-in in it is copied
+/// as a secret and never shown.
+fn agent_row(
+    agent: crate::mcp_setup::Agent,
+    server: &crate::config::ServerSettings,
+    cx: &mut Context<SettingsView>,
+) -> Row {
+    use crate::mcp_setup::{Agent, Setup};
+    let view = cx.entity();
+    let picker = Button::new("mcp-agent")
+        .debug_selector(|| "mcp-agent".into())
+        .outline()
+        .small()
+        .label(agent.name())
+        .dropdown_caret(true)
+        .dropdown_menu(move |mut menu, _, _| {
+            for option in Agent::ALL {
+                let view = view.clone();
+                menu = menu.item(
+                    PopupMenuItem::new(option.name())
+                        .checked(option == agent)
+                        .on_click(move |_, _, cx| {
+                            view.update(cx, |this, cx| {
+                                this.mcp_agent = option;
+                                cx.notify();
+                            })
+                        }),
+                );
+            }
+            menu
+        });
+    let signed_in = !server.username.is_empty() && !server.password.is_empty();
+    let ready = signed_in || !agent.has_sign_in();
+    let detail = if ready {
+        agent.instructions().to_owned()
+    } else {
+        "Set a username and password above first.".to_owned()
+    };
+    let setup = Setup {
+        endpoint: mcp_endpoint(&server.bind_address, server.port),
+        authorization: kanso_server::basic_header(&server.username, &server.password),
+        program: std::env::current_exe()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|_| "kanso".to_owned()),
+    };
+    let copy = Button::new("copy-mcp-setup")
+        .debug_selector(|| "copy-mcp-setup".into())
+        .outline()
+        .small()
+        .label("Copy")
+        .disabled(!ready)
+        .on_click(move |_, window, cx| {
+            let text = agent.snippet(&setup);
+            let message = format!("Setup for {} copied.", agent.name());
+            if agent.has_sign_in() {
+                if crate::clipboard::copy_secret(&text, cx) {
+                    window.push_notification(
+                        Notification::info(format!(
+                            "{message} It holds your sign-in, so it clears in a minute."
+                        )),
+                        cx,
+                    );
+                }
+            } else {
+                copy_to_clipboard(text, message, window, cx);
+            }
+        });
+    Row::new(Lucide::Bot, "Connect an AI agent")
+        .detail(detail)
+        .trailing(picker)
+        .trailing(copy)
 }
 
 impl Render for SettingsView {

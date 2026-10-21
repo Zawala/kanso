@@ -49,6 +49,8 @@ mod links_tests;
 mod list_edit;
 mod markdown_edit;
 mod markdown_source;
+mod mcp_cli;
+mod mcp_setup;
 mod note_list;
 mod note_menu;
 mod notify_support;
@@ -124,6 +126,9 @@ Commands:
   capture [text]    Save a note to the Inbox, or [--book <name or id>];
                     with no text, from standard input. Works with
                     Kanso open or closed
+  mcp               Serve Kanso's MCP tools over standard input and
+                    output, for AI agents that start a program; needs
+                    Kanso open with its local API on
   theme             Work with themes; `kanso theme help` lists how
   help              Show this message
 
@@ -192,6 +197,7 @@ fn main() -> Result<()> {
         Some("import") => library_import::run_cli(&args.data_dir, &args.rest),
         Some("theme") => theme_import::run_cli(&args.data_dir, &args.rest),
         Some("capture") => capture_cli::run_cli(&args.data_dir, &args.rest),
+        Some("mcp") => mcp_cli::run_cli(&args.data_dir, &args.rest),
         Some("help") => {
             println!("{USAGE}{DATA_DIR_NOTE}");
             Ok(())
