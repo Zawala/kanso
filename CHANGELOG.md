@@ -3,6 +3,23 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## [0.6.1](https://github.com/iamngoni/kanso/compare/v0.6.0...v0.6.1) - 2026-10-21
+
+### New
+
+- **app:** Windows and Linux get a menu bar ([25c1c19](https://github.com/iamngoni/kanso/commit/25c1c198d64c327954248dedffbf99894f137ff9))
+- **app:** A note's menu is the same in the list and the editor ([7912ce4](https://github.com/iamngoni/kanso/commit/7912ce4c27c60ee8fc164f0153bc73e20c7a58ed))
+- **app:** Settings copies the MCP setup for your AI agent ([8a6e575](https://github.com/iamngoni/kanso/commit/8a6e5754a5771e03f1bc109cc94951c42a08c65c))
+- **editor:** A Dictate button starts the system's dictation in the note ([fc99d25](https://github.com/iamngoni/kanso/commit/fc99d253de47b5be1071bac724176d2b36498530))
+- **sync:** Kanso's server is sync.kansoapp.app, and published notes open on share.kansoapp.app ([48a79f8](https://github.com/iamngoni/kanso/commit/48a79f869b475265d157dd1d3e274978abb6094d))
+- **app:** Kanso tells people they can sync, without getting in the way ([7b61dfe](https://github.com/iamngoni/kanso/commit/7b61dfe3c3735ba04b370df1811833c3455c4297))
+
+### Under the hood
+
+- **excerpt:** The sample roadmap lists wiki-links instead of naming another app ([4646f32](https://github.com/iamngoni/kanso/commit/4646f328e9aade7b35967f762b6be04b48af2c8b))
+- Kanso names other apps only where it imports from them ([07761e6](https://github.com/iamngoni/kanso/commit/07761e6cde665538e8b801d92a0b1fc027dc7565))
+- **editor:** Dictation lands in a note as spoken ([a1e0a72](https://github.com/iamngoni/kanso/commit/a1e0a7267eb66220cdab2a493ba5882f8ac52f24))
+
 ## [0.6.0](https://github.com/iamngoni/kanso/compare/v0.5.2...v0.6.0) - 2026-10-20
 
 ### New
