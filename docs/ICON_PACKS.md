@@ -12,7 +12,10 @@ open-source icon sets on [Iconify](https://iconify.design): Lucide, Phosphor,
 Tabler, Material Symbols, Remix, Heroicons and nearly two hundred more, each
 with its author, licence, size and a few of its icons. **Install** downloads
 the set whole (one file, from its package on jsDelivr) into the icon packs
-folder; **Uninstall** removes it again. Only one-color sets are listed, since
+folder; **Uninstall** removes the files it wrote, and the folder once nothing
+else is in it (files you added there stay, and Kanso says which). An install
+carries on if the gallery is closed, and gives up after three minutes if the
+download stalls. Only one-color sets are listed, since
 Kanso draws icons in the theme's color. Nothing is fetched until the gallery
 opens, and nothing about your notes is sent: only the names of the sets and
 icons asked for. A set installed from the gallery keeps its licence in its

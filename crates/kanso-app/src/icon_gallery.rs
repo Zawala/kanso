@@ -47,6 +47,8 @@ const MAX_LIST_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_SAMPLE_BYTES: u64 = 512 * 1024;
 /// Most icons read from an answer for a set's samples.
 const MAX_SAMPLE_ICONS: usize = 64;
+/// Longest a download may take, start to end, before it is given up.
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(180);
 /// How many sets' samples are fetched at once.
 const SAMPLE_WORKERS: usize = 4;
 pub const GALLERY_WIDTH: f32 = 640.;
@@ -85,6 +87,8 @@ impl Default for HttpSource {
             .http_status_as_error(false)
             .timeout_connect(Some(Duration::from_secs(20)))
             .timeout_recv_body(Some(Duration::from_secs(120)))
+            // A server that answers, then stalls, can't hold an install.
+            .timeout_global(Some(DOWNLOAD_TIMEOUT))
             .user_agent("Kanso")
             .build()
             .into();
@@ -207,7 +211,8 @@ pub enum Installed {
 }
 
 pub fn installed(dir: &Path, prefix: &str) -> Installed {
-    if !dir.exists() {
+    // A folder holding nothing but the system's files is no one's pack.
+    if !dir.exists() || files_in(dir).is_empty() {
         return Installed::No;
     }
     let source = std::fs::read(dir.join(MANIFEST))
@@ -261,24 +266,82 @@ pub fn install(source: &dyn Source, packs: &Path, set: &IconSet) -> Result<(), S
         serde_json::to_vec_pretty(&manifest).expect("JSON serializes"),
     )
     .map_err(fail)?;
-    if target.exists() {
-        std::fs::remove_dir_all(&target).map_err(fail)?;
+    if !target.exists() {
+        return std::fs::rename(&staging, &target).map_err(fail);
     }
-    std::fs::rename(&staging, &target).map_err(fail)
+    // Installed before: only the gallery's own files are replaced, and
+    // anything added beside them stays.
+    for file in GALLERY_FILES {
+        std::fs::rename(staging.join(file), target.join(file)).map_err(fail)?;
+    }
+    std::fs::remove_dir(&staging).ok();
+    Ok(())
 }
 
-/// Removes the pack the gallery installed from `prefix`; someone's own pack
-/// of that name is left alone.
-pub fn uninstall(packs: &Path, prefix: &str) -> Result<(), String> {
+/// The files the gallery writes in a pack's folder, the icons first.
+const GALLERY_FILES: [&str; 2] = [ICONIFY_FILE, MANIFEST];
+/// Files the system leaves in a folder that was looked at, not anyone's.
+const SYSTEM_FILES: [&str; 3] = [".DS_Store", "Thumbs.db", "desktop.ini"];
+
+/// The names of the files in `dir`, but the system's own, in order.
+fn files_in(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .map(|read| {
+            read.filter_map(Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|name| !SYSTEM_FILES.contains(&name.as_str()))
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    names
+}
+
+/// Removes the pack the gallery installed from `prefix`: the files it
+/// wrote, then the folder if nothing else is in it. Files someone added
+/// there stay, and are returned by name; someone's own pack of that name is
+/// left alone.
+pub fn uninstall(packs: &Path, prefix: &str) -> Result<Vec<String>, String> {
     let target = packs.join(prefix);
     match installed(&target, prefix) {
-        Installed::No => Ok(()),
+        Installed::No => Ok(Vec::new()),
         Installed::OwnPack => Err(format!(
             "{prefix} wasn't installed from the gallery; remove it from the icon packs folder instead."
         )),
-        Installed::FromGallery => std::fs::remove_dir_all(&target)
-            .map_err(|err| format!("Couldn't remove {prefix}: {err}")),
+        Installed::FromGallery => {
+            let fail = |err: std::io::Error| format!("Couldn't remove {prefix}: {err}");
+            for file in GALLERY_FILES {
+                match std::fs::remove_file(target.join(file)) {
+                    Err(err) if err.kind() != std::io::ErrorKind::NotFound => {
+                        return Err(fail(err));
+                    }
+                    _ => {}
+                }
+            }
+            let kept = files_in(&target);
+            if kept.is_empty() {
+                for file in SYSTEM_FILES {
+                    std::fs::remove_file(target.join(file)).ok();
+                }
+                std::fs::remove_dir(&target).map_err(fail)?;
+            }
+            Ok(kept)
+        }
     }
+}
+
+/// What a notification says once `name` is uninstalled, keeping `kept`.
+/// Pure.
+pub fn uninstalled_words(name: &str, kept: &[String]) -> String {
+    const SHOWN: usize = 4;
+    if kept.is_empty() {
+        return format!("{name} is uninstalled.");
+    }
+    let mut list = kept[..kept.len().min(SHOWN)].join(", ");
+    if kept.len() > SHOWN {
+        list.push_str(&format!(" and {} more", kept.len() - SHOWN));
+    }
+    format!("{name} is uninstalled. Its folder keeps the files you added there: {list}.")
 }
 
 // MARK: The view
@@ -291,10 +354,83 @@ enum List {
 }
 
 /// A set being installed or removed.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Busy {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Busy {
     Installing,
     Removing,
+}
+
+/// The sets being installed or removed, by prefix. The app keeps them
+/// rather than the gallery, so one closed mid-install loses nothing, and
+/// opened again shows what is still going on.
+#[derive(Default)]
+pub struct GalleryJobs(HashMap<String, Busy>);
+
+impl Global for GalleryJobs {}
+
+/// What is going on with set `prefix`, if anything.
+fn busy(prefix: &str, cx: &App) -> Option<Busy> {
+    cx.try_global::<GalleryJobs>()?.0.get(prefix).copied()
+}
+
+/// Whether anything is being installed or removed (tests).
+#[cfg(test)]
+pub fn is_busy(cx: &App) -> bool {
+    cx.try_global::<GalleryJobs>()
+        .is_some_and(|jobs| !jobs.0.is_empty())
+}
+
+/// Installs or removes `set` on a thread of its own, then reads the packs
+/// again, off the UI thread, and says how it went in `window`. Runs to its
+/// end whether or not the gallery stays open.
+// no-prop-test: glue over `install` and `uninstall`, which have the tests.
+pub fn start(set: IconSet, busy: Busy, window: AnyWindowHandle, cx: &mut App) {
+    let jobs = &mut cx.default_global::<GalleryJobs>().0;
+    if jobs.contains_key(&set.prefix) {
+        return;
+    }
+    jobs.insert(set.prefix.clone(), busy);
+    let (source, packs) = (source(cx), packs_dir(cx));
+    let (tx, rx) = async_channel::bounded(1);
+    let job = set.clone();
+    std::thread::Builder::new()
+        .name("kanso-icons".into())
+        .spawn(move || {
+            let result = match busy {
+                Busy::Installing => install(source.as_ref(), &packs, &job).map(|()| Vec::new()),
+                Busy::Removing => uninstall(&packs, &job.prefix),
+            };
+            tx.try_send(result).ok();
+        })
+        .ok();
+    cx.spawn(async move |cx| {
+        let result = rx
+            .recv()
+            .await
+            .unwrap_or_else(|_| Err(format!("Couldn't change {}. Try again.", set.name)));
+        cx.update(icon_packs::reload_soon).await;
+        cx.update(|cx| {
+            cx.default_global::<GalleryJobs>().0.remove(&set.prefix);
+            let notification = match (result, busy) {
+                (Ok(_), Busy::Installing) => Notification::success(format!(
+                    "{} is installed. Its icons are in each notebook's Change Icon…",
+                    set.name
+                )),
+                (Ok(kept), Busy::Removing) => {
+                    Notification::info(uninstalled_words(&set.name, &kept))
+                }
+                (Err(words), _) => Notification::error(words),
+            };
+            window
+                .update(cx, |_, window, cx| {
+                    window.push_notification(notification, cx)
+                })
+                .ok();
+            cx.refresh_windows();
+        });
+    })
+    .detach();
+    cx.refresh_windows();
 }
 
 /// The gallery: a search over the sets, each with its samples and an
@@ -303,9 +439,8 @@ pub struct IconGallery {
     search: Entity<InputState>,
     list: List,
     samples: HashMap<String, Vec<Arc<[u8]>>>,
-    busy: HashMap<String, Busy>,
     scroll: ScrollHandle,
-    _subscription: Subscription,
+    _subscriptions: Vec<Subscription>,
     _tasks: Vec<Task<()>>,
 }
 
@@ -368,9 +503,13 @@ impl IconGallery {
             search,
             list: List::Loading,
             samples: HashMap::new(),
-            busy: HashMap::new(),
             scroll: ScrollHandle::new(),
-            _subscription: subscription,
+            _subscriptions: vec![
+                subscription,
+                // An install or a reload finishing, from wherever it began.
+                cx.observe_global::<GalleryJobs>(|_, cx| cx.notify()),
+                cx.observe_global::<icon_packs::IconPacks>(|_, cx| cx.notify()),
+            ],
             _tasks: Vec::new(),
         };
         gallery.load(cx);
@@ -459,40 +598,7 @@ impl IconGallery {
     }
 
     fn run(&mut self, set: IconSet, busy: Busy, window: &mut Window, cx: &mut Context<Self>) {
-        if self.busy.contains_key(&set.prefix) {
-            return;
-        }
-        self.busy.insert(set.prefix.clone(), busy);
-        let (source, packs) = (source(cx), packs_dir(cx));
-        let prefix = set.prefix.clone();
-        let name = set.name.clone();
-        let handle = window.window_handle();
-        let task = in_background(
-            cx,
-            move || match busy {
-                Busy::Installing => install(source.as_ref(), &packs, &set),
-                Busy::Removing => uninstall(&packs, &set.prefix),
-            },
-            move |this, result, cx| {
-                this.busy.remove(&prefix);
-                icon_packs::reload_soon(cx).detach();
-                let notification = match (result, busy) {
-                    (Ok(()), Busy::Installing) => Notification::success(format!(
-                        "{name} is installed. Its icons are in each notebook's Change Icon…"
-                    )),
-                    (Ok(()), Busy::Removing) => {
-                        Notification::info(format!("{name} is uninstalled."))
-                    }
-                    (Err(words), _) => Notification::error(words),
-                };
-                handle
-                    .update(cx, |_, window, cx| {
-                        window.push_notification(notification, cx)
-                    })
-                    .ok();
-            },
-        );
-        self._tasks.push(task);
+        start(set, busy, window.window_handle(), cx);
         cx.notify();
     }
 
@@ -520,12 +626,6 @@ impl IconGallery {
     #[cfg(test)]
     pub fn samples_loaded(&self) -> usize {
         self.samples.len()
-    }
-
-    /// Whether anything is being installed or removed (tests).
-    #[cfg(test)]
-    pub fn is_busy(&self) -> bool {
-        !self.busy.is_empty()
     }
 
     /// The set with `prefix`, once listed (tests).
@@ -572,7 +672,7 @@ impl IconGallery {
             .child(h_flex().gap(px(2.)).children(tiles.by_ref().take(3)))
             .child(h_flex().gap(px(2.)).children(tiles));
         let installed = installed_ids.contains(&set.prefix);
-        let busy = self.busy.get(&set.prefix).copied();
+        let busy = busy(&set.prefix, cx);
         let action_set = set.clone();
         let prefix = set.prefix.clone();
         let button = Button::new(SharedString::from(format!("icon-set-{prefix}")))
@@ -652,6 +752,17 @@ impl IconGallery {
     }
 }
 
+/// The sets the gallery installed, by prefix: the packs in folders named
+/// for the set they came from, the folders Uninstall acts on. A pack that
+/// names a set but sits in another folder isn't one. Pure.
+pub fn installed_ids(packs: &[Arc<icon_packs::IconPack>]) -> HashSet<String> {
+    packs
+        .iter()
+        .filter(|pack| pack.iconify.as_deref() == Some(pack.id.as_str()))
+        .map(|pack| pack.id.clone())
+        .collect()
+}
+
 /// 6238 as "6,238". Pure.
 pub fn group_digits(n: u32) -> String {
     let digits = n.to_string();
@@ -670,11 +781,7 @@ pub fn group_digits(n: u32) -> String {
 impl Render for IconGallery {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
-        let installed_ids: HashSet<String> = icon_packs::packs(cx)
-            .packs
-            .iter()
-            .filter_map(|pack| pack.iconify.clone())
-            .collect();
+        let installed_ids = installed_ids(&icon_packs::packs(cx).packs);
         let shown = self.shown(cx);
         let count = shown.len();
         let body: AnyElement = match &self.list {
@@ -807,8 +914,8 @@ pub mod tests {
 
     use super::{
         COLLECTIONS_URL, Gallery, IconGallery, Installed, Source, fetch_samples, group_digits,
-        install, installed, open_gallery, parse_collections, samples_url, set_matches, set_url,
-        uninstall,
+        install, installed, installed_ids, is_busy, open_gallery, parse_collections, samples_url,
+        set_matches, set_url, uninstall, uninstalled_words,
     };
     use crate::icon_packs;
     use crate::workspace::AppState;
@@ -910,9 +1017,82 @@ pub mod tests {
         let folders: Vec<_> = std::fs::read_dir(&packs).unwrap().collect();
         assert_eq!(folders.len(), 1);
 
-        uninstall(&packs, "ph").unwrap();
+        assert_eq!(uninstall(&packs, "ph").unwrap(), Vec::<String>::new());
         assert_eq!(installed(&packs.join("ph"), "ph"), Installed::No);
         uninstall(&packs, "ph").unwrap();
+    }
+
+    /// Files someone put in a pack the gallery installed stay through a
+    /// reinstall and an uninstall, which says which it kept; the system's
+    /// own files don't hold the folder.
+    #[test]
+    fn files_added_to_an_installed_pack_stay() {
+        let source = fake();
+        let dir = tempfile::tempdir().unwrap();
+        let packs = icon_packs::packs_dir(dir.path());
+        let sets = parse_collections(COLLECTIONS.as_bytes()).unwrap();
+        let ph = &sets[0];
+        install(source.as_ref(), &packs, ph).unwrap();
+        let folder = packs.join("ph");
+        std::fs::write(folder.join("star.svg"), "<svg/>").unwrap();
+        std::fs::write(folder.join("notes.txt"), "mine").unwrap();
+        std::fs::write(folder.join(".DS_Store"), "").unwrap();
+
+        install(source.as_ref(), &packs, ph).unwrap();
+        assert!(folder.join("star.svg").exists());
+        assert!(folder.join("notes.txt").exists());
+        assert_eq!(installed(&folder, "ph"), Installed::FromGallery);
+        assert!(!packs.join(".installing-ph").exists());
+        let loaded = icon_packs::IconPacks::load(Some(&packs));
+        assert_eq!(loaded.pack("ph").unwrap().icons.len(), 3);
+
+        let kept = uninstall(&packs, "ph").unwrap();
+        assert_eq!(kept, vec!["notes.txt".to_owned(), "star.svg".to_owned()]);
+        assert!(folder.join("star.svg").exists());
+        assert!(!folder.join(super::ICONIFY_FILE).exists());
+        assert!(!folder.join(super::MANIFEST).exists());
+        // What is left is someone's own pack now.
+        assert_eq!(installed(&folder, "ph"), Installed::OwnPack);
+        assert_eq!(
+            uninstalled_words("Phosphor", &kept),
+            "Phosphor is uninstalled. Its folder keeps the files you added there: notes.txt, star.svg."
+        );
+
+        // With only the system's files beside it, the folder goes.
+        std::fs::remove_file(folder.join("star.svg")).unwrap();
+        std::fs::remove_file(folder.join("notes.txt")).unwrap();
+        install(source.as_ref(), &packs, ph).unwrap();
+        assert_eq!(uninstall(&packs, "ph").unwrap(), Vec::<String>::new());
+        assert!(!folder.exists());
+        let many: Vec<String> = (0..6).map(|n| format!("{n}.svg")).collect();
+        assert_eq!(
+            uninstalled_words("Phosphor", &many),
+            "Phosphor is uninstalled. Its folder keeps the files you added there: 0.svg, 1.svg, 2.svg, 3.svg and 2 more."
+        );
+    }
+
+    /// A set counts as installed only in the folder named for it, the one
+    /// Uninstall removes.
+    #[test]
+    fn installed_means_the_folder_named_for_the_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let packs = icon_packs::packs_dir(dir.path());
+        for (folder, source) in [("ph", "ph"), ("copy", "tabler"), ("mine", "")] {
+            let at = packs.join(folder);
+            std::fs::create_dir_all(&at).unwrap();
+            std::fs::write(at.join("a.svg"), "<svg/>").unwrap();
+            if !source.is_empty() {
+                std::fs::write(
+                    at.join(super::MANIFEST),
+                    format!(r#"{{"source": {{"iconify": "{source}"}}}}"#),
+                )
+                .unwrap();
+            }
+        }
+        let loaded = icon_packs::IconPacks::load(Some(&packs));
+        assert_eq!(loaded.packs.len(), 3);
+        let ids = installed_ids(&loaded.packs);
+        assert_eq!(ids.into_iter().collect::<Vec<_>>(), vec!["ph".to_owned()]);
     }
 
     #[test]
@@ -963,18 +1143,19 @@ pub mod tests {
         let gallery = window
             .update(cx, |_, window, cx| open_gallery(window, cx))
             .unwrap();
-        let wait = |cx: &mut gpui_kit::TestAppContext, done: &dyn Fn(&IconGallery) -> bool| {
+        let wait = |cx: &mut gpui_kit::TestAppContext,
+                    done: &dyn Fn(&IconGallery, &gpui_kit::App) -> bool| {
             let deadline = std::time::Instant::now() + Duration::from_secs(30);
             loop {
                 cx.run_until_parked();
-                if cx.read(|cx| done(gallery.read(cx))) {
+                if cx.read(|cx| done(gallery.read(cx), cx)) {
                     break;
                 }
                 assert!(std::time::Instant::now() < deadline, "the gallery settled");
                 std::thread::sleep(Duration::from_millis(2));
             }
         };
-        wait(cx, &|g| g.is_ready() && g.samples.contains_key("ph"));
+        wait(cx, &|g, _| g.is_ready() && g.samples.contains_key("ph"));
         assert_eq!(
             cx.read(|cx| gallery.read(cx).shown_prefixes(cx)),
             vec!["ph".to_owned(), "tabler".to_owned()]
@@ -995,7 +1176,7 @@ pub mod tests {
                 gallery.update(cx, |g, cx| g.install(ph.clone(), window, cx))
             })
             .unwrap();
-        wait(cx, &|g| !g.is_busy());
+        wait(cx, &|_, cx| !is_busy(cx));
         let installed = cx.read(|cx| {
             cx.global::<icon_packs::IconPacks>()
                 .pack("ph")
@@ -1008,8 +1189,61 @@ pub mod tests {
                 gallery.update(cx, |g, cx| g.uninstall(ph.clone(), window, cx))
             })
             .unwrap();
-        wait(cx, &|g| !g.is_busy());
+        wait(cx, &|_, cx| !is_busy(cx));
         assert!(cx.read(|cx| cx.global::<icon_packs::IconPacks>().pack("ph").is_none()));
+    }
+
+    /// Closing the gallery while a set installs: the install still ends,
+    /// its pack is read, and the window says so. Opened again meanwhile,
+    /// the gallery shows the set still installing.
+    #[gpui_kit::test]
+    fn closing_the_gallery_mid_install_keeps_the_install(cx: &mut gpui_kit::TestAppContext) {
+        use gpui_kit::component::WindowExt as _;
+
+        cx.executor().allow_parking();
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(kanso_store::Store::open(dir.path().join("k.db")).unwrap());
+        let data_dir = dir.path().to_path_buf();
+        let (window, _) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(AppState {
+                store,
+                data_dir,
+                config: crate::config::AppConfig::default(),
+            });
+            cx.set_global(Gallery(fake()));
+            gpui_kit::open_window(Default::default(), cx, |_, cx| cx.new(|_| Blank)).unwrap()
+        });
+        let ph = parse_collections(COLLECTIONS.as_bytes()).unwrap()[0].clone();
+        let gallery = window
+            .update(cx, |_, window, cx| open_gallery(window, cx))
+            .unwrap();
+        let weak = gallery.downgrade();
+        window
+            .update(cx, |_, window, cx| {
+                gallery.update(cx, |g, cx| g.install(ph.clone(), window, cx));
+                window.close_dialog(cx);
+            })
+            .unwrap();
+        drop(gallery);
+        assert!(cx.read(is_busy), "the install is under way");
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        while cx.read(is_busy) {
+            assert!(std::time::Instant::now() < deadline, "the install ended");
+            cx.run_until_parked();
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(weak.upgrade().is_none(), "the gallery closed");
+        let installed = cx.read(|cx| {
+            cx.global::<icon_packs::IconPacks>()
+                .pack("ph")
+                .map(|p| p.icons.len())
+        });
+        assert_eq!(installed, Some(2));
+        let told = window
+            .update(cx, |_, window, cx| window.notifications(cx).len())
+            .unwrap();
+        assert_eq!(told, 1, "the window says it is installed");
     }
 
     /// Against the real gallery: the list, a set's samples, and a whole set
