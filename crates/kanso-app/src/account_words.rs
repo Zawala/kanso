@@ -943,10 +943,11 @@ mod tests {
 
     #[test]
     fn small_examples() {
-        assert_eq!(server_label(None), "kanso.antonlabs.cc (default)");
+        assert_eq!(server_label(None), "sync.kansoapp.app (default)");
+        // The same server under its first name reads as the default too.
         assert_eq!(
             server_label(Some("https://kanso.antonlabs.cc/")),
-            "kanso.antonlabs.cc (default)"
+            "sync.kansoapp.app (default)"
         );
         assert_eq!(
             server_label(Some("https://sync.example.dev/")),

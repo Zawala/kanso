@@ -306,9 +306,10 @@ impl KansoPublish {
         }
     }
 
-    /// `<server>/p/<id>#<key>`, which works with or without a short link.
+    /// `<server>/p/<id>#<key>`, which works with or without a short link;
+    /// on the owner's server, at its address for published notes.
     pub fn long_link(&self, server: &str) -> String {
-        share_link(server, &self.share_id, &self.key)
+        share_link(page_server(server), &self.share_id, &self.key)
     }
 
     /// Whether the note's title or body differ from what was published.
@@ -322,6 +323,16 @@ impl KansoPublish {
     /// Whether the link has stopped working at `now_ms`.
     pub fn is_expired(&self, now_ms: i64) -> bool {
         self.expires_at.is_some_and(|at| at <= now_ms)
+    }
+}
+
+/// Where `server` shows published notes: the owner's at
+/// [`crate::OWNER_SHARE_SERVER`], any other at itself. Pure.
+pub fn page_server(server: &str) -> &str {
+    if crate::is_owner_server(server) {
+        crate::OWNER_SHARE_SERVER
+    } else {
+        server
     }
 }
 
@@ -911,6 +922,22 @@ mod tests {
             short_url: None,
             other: Map::new(),
         };
+        // The owner's server shows published notes on its own address, under
+        // any of its names; other servers show them on themselves.
+        for owner in [crate::DEFAULT_SERVER, crate::OWNER_ORIGIN] {
+            assert_eq!(
+                publish.long_link(owner),
+                format!(
+                    "https://share.kansoapp.app/p/{}#{}",
+                    publish.share_id, publish.key
+                )
+            );
+        }
+        assert!(
+            publish
+                .long_link("https://k.example/")
+                .starts_with("https://k.example/p/")
+        );
         let mut extra = Map::new();
         extra.insert("share".into(), "public".into());
         KansoPublish::store(Some(&publish), &mut extra);

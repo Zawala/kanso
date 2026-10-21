@@ -142,8 +142,8 @@ whether to add them to the account or replace them with the account's notes (aft
 of its library). Signing out keeps every note on the device. The Account page also lists your devices,
 signs one out, changes the password and deletes the account.
 
-The default server is the owner's Worker, `kanso.antonlabs.cc`, which takes new
-accounts only when its owner opens sign-ups. To run your own, deploy the Worker in
+The default server is the owner's Worker, `sync.kansoapp.app`, which takes new
+accounts only when its owner opens sign-ups. Published notes open on `share.kansoapp.app`. To run your own, deploy the Worker in
 [cloud/](cloud/README.md) to your Cloudflare account and choose **Use a different server…** before
 creating the account. An account belongs to its server's address, so pick the final URL first.
 

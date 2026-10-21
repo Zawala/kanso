@@ -128,6 +128,22 @@ describe("making a short link", () => {
 		expect(rerout.live()).toEqual(["c1"]);
 	});
 
+	it("leads to SHARE_ORIGIN when it is an https origin, and to where the note was published otherwise", async () => {
+		const a = await signUp("alice");
+		const target = async (SHARE_ORIGIN: string | undefined) => {
+			const before = rerout.sent.length;
+			const id = newShareId();
+			await put(a.token, id, (await seal(id, "x")).bytes, { e: testEnv({ REROUT_API_KEY: KEY, REROUT_PROJECT_ID: PROJECT, SHARE_ORIGIN }) });
+			return { id, sent: JSON.parse(rerout.sent[before].body).target_url };
+		};
+		const shared = await target(" https://Share.KansoApp.app/ ");
+		expect(shared.sent).toBe(`https://share.kansoapp.app/p/${shared.id}`);
+		for (const bad of [undefined, "", "http://share.kansoapp.app", "not a url"]) {
+			const fallback = await target(bad);
+			expect(fallback.sent).toBe(`${ORIGIN}/p/${fallback.id}`);
+		}
+	});
+
 	it("hands out a link on the custom domain only: any other host answered is refused", async () => {
 		const a = await signUp("alice");
 		const onDomain = testEnv({ REROUT_API_KEY: KEY, REROUT_PROJECT_ID: PROJECT, REROUT_DOMAIN: "go.kansoapp.app" });

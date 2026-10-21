@@ -16,4 +16,6 @@ export interface Env {
 	REROUT_PROJECT_ID?: string;
 	/** The custom domain short links are made on (a plain var, `go.kansoapp.app`), added and verified in that project; without it, Rerout's own. */
 	REROUT_DOMAIN?: string;
+	/** Where published notes are shown (a plain var, `https://share.kansoapp.app`): short links lead there. Without it, wherever the note was published. */
+	SHARE_ORIGIN?: string;
 }

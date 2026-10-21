@@ -1,6 +1,11 @@
 # Deployed
 
-https://kanso.antonlabs.cc
+https://sync.kansoapp.app (the apps' default), https://share.kansoapp.app (published notes) and
+https://kanso.antonlabs.cc (its first name, still answering), all one Worker.
+
+Since 2026-10-21 it answers on the kansoapp.app names too (Worker version
+`8748e19d-dae3-4a49-9bc2-9d1a37a7d9a0`), with `SHARE_ORIGIN` set so short links lead to
+share.kansoapp.app. The two short links made before then were pointed there by hand.
 
 Since 2026-10-19 this runs the accounts Worker (protocol v2, migration `0002_accounts`,
 `AUTH_PEPPER`), served only on the custom domain `kanso.antonlabs.cc`; the old
