@@ -1645,3 +1645,68 @@ fn new_notes_under_a_tag_get_it(cx: &mut TestAppContext) {
     // Again: the same tag, not another.
     assert_eq!(made(Filter::TagPath("work".into()), cx), work);
 }
+
+/// The board opens over the window from its action, a card moves a column
+/// with ⇧→ (the note's status changes in the store, the open note's
+/// through the editor), Return opens the card's note and Escape closes it.
+// no-prop-test: drives one window through keystrokes; the moves' rules
+// are properties in board.rs.
+#[gpui_kit::test]
+fn the_board_moves_cards_with_the_keyboard(cx: &mut TestAppContext) {
+    use kanso_core::NoteStatus;
+    let f = setup(cx);
+    cx.update(|cx| {
+        crate::workspace::bind_keys(cx);
+        crate::board_view::bind_keys(cx);
+    });
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    f.select(cx, &f.notes[0]);
+    f.draw(cx);
+    cx.dispatch_action(f.window, crate::board_view::ShowBoard);
+    f.draw(cx);
+    assert!(f.workspace(cx, |w, _| w.board_open));
+    let board = f.workspace(cx, |w, _| w.board.clone().unwrap());
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    let status = |id: &str| f.store.note(id).unwrap().unwrap().status;
+
+    // Both notes start with no status: the first column.
+    vcx.simulate_keystrokes("down");
+    let first = vcx.read(|cx| {
+        board
+            .read(cx)
+            .board
+            .selected_card()
+            .map(|c| c.note_id().to_owned())
+    });
+    let first = first.unwrap();
+    vcx.simulate_keystrokes("shift-right shift-right");
+    f.draw(&mut vcx);
+    assert_eq!(status(&first), NoteStatus::OnHold);
+    vcx.simulate_keystrokes("shift-left");
+    f.draw(&mut vcx);
+    assert_eq!(status(&first), NoteStatus::Active);
+    // The open note's body is kept as typed.
+    let other = if first == f.notes[0] {
+        &f.notes[1]
+    } else {
+        &f.notes[0]
+    };
+    assert_eq!(
+        f.store.note(other).unwrap().unwrap().status,
+        NoteStatus::None
+    );
+
+    vcx.simulate_keystrokes("enter");
+    f.draw(&mut vcx);
+    assert!(!f.workspace(&mut vcx, |w, _| w.board_open));
+    assert_eq!(f.open_note(&mut vcx).as_deref(), Some(first.as_str()));
+
+    vcx.dispatch_action(crate::board_view::ShowTaskBoard);
+    f.draw(&mut vcx);
+    assert!(f.workspace(&mut vcx, |w, _| w.board_open));
+    vcx.simulate_keystrokes("escape");
+    f.draw(&mut vcx);
+    assert!(!f.workspace(&mut vcx, |w, _| w.board_open));
+}

@@ -12,6 +12,8 @@ mod account_flow_tests;
 mod account_page;
 mod account_words;
 mod assets;
+mod board;
+mod board_view;
 mod capture;
 mod capture_cli;
 mod clipboard;
@@ -322,6 +324,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         note_list::bind_keys(cx);
         capture::bind_keys(cx);
         graph_view::bind_keys(cx);
+        board_view::bind_keys(cx);
         workspace::set_menus(cx);
         cx.on_action(|_: &Quit, cx| quit(cx));
         watch_for_quit(cx);

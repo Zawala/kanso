@@ -80,7 +80,7 @@ pub struct TaskId {
 }
 
 impl TaskId {
-    fn of(row: &TaskRow) -> TaskId {
+    pub(crate) fn of(row: &TaskRow) -> TaskId {
         TaskId {
             note_id: row.note_id.clone(),
             line: row.line,
@@ -589,6 +589,20 @@ impl TasksView {
                 )
             })
             .child(div().flex_1())
+            .child(
+                Button::new("tasks-board")
+                    .ghost()
+                    .small()
+                    .icon(
+                        Icon::new(Lucide::SquareKanban)
+                            .size(px(15.))
+                            .text_color(colors.text_secondary),
+                    )
+                    .tooltip("Tasks board")
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(crate::board_view::ShowTaskBoard), cx)
+                    }),
+            )
             .child(filter)
     }
 

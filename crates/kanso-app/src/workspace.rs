@@ -234,6 +234,8 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Toggle Sidebar", ToggleSidebar),
             MenuItem::action("Outline and Backlinks", ToggleInspector),
             MenuItem::action("Graph", crate::graph_view::ShowGraph),
+            MenuItem::action("Board", crate::board_view::ShowBoard),
+            MenuItem::action("Tasks Board", crate::board_view::ShowTaskBoard),
             MenuItem::action("Focus Mode", ToggleFocusMode),
             MenuItem::action("Search All Notes", SearchAllNotes),
             MenuItem::action("Replace in All Notes…", crate::replace::ReplaceInNotes),
@@ -274,7 +276,7 @@ pub fn apply_theme(window: Option<&mut Window>, cx: &mut App) {
 }
 
 pub struct Workspace {
-    store: Arc<Store>,
+    pub(crate) store: Arc<Store>,
     pub(crate) library: Entity<Library>,
     pub(crate) sidebar: Entity<Sidebar>,
     pub(crate) note_list: Entity<NoteList>,
@@ -293,6 +295,11 @@ pub struct Workspace {
     /// (`graph_view.rs`); made the first time it opens.
     pub(crate) graph: Option<Entity<crate::graph_view::GraphView>>,
     pub(crate) graph_open: bool,
+    /// The board over the window while open (`board_view.rs`); made the
+    /// first time it opens.
+    pub(crate) board: Option<Entity<crate::board_view::BoardView>>,
+    pub(crate) board_open: bool,
+    pub(crate) _board_events: Option<Subscription>,
     /// Settings, drawn in place of the list and the editor while open.
     pub(crate) settings: Entity<SettingsView>,
     /// While Settings are open: where the notes were, to go back to.
@@ -540,6 +547,9 @@ impl Workspace {
             inspector_width,
             graph: None,
             graph_open: false,
+            board: None,
+            board_open: false,
+            _board_events: None,
             settings,
             settings_return: None,
             show_sidebar: appearance.show_sidebar,
@@ -557,12 +567,17 @@ impl Workspace {
         }
     }
 
-    fn notify_error(&self, message: impl Into<SharedString>, window: &mut Window, cx: &mut App) {
+    pub(crate) fn notify_error(
+        &self,
+        message: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         window.push_notification(Notification::error(message), cx);
     }
 
     /// Saves the open note before an operation that may touch it.
-    fn flush(&self, cx: &mut App) {
+    pub(crate) fn flush(&self, cx: &mut App) {
         self.editor.update(cx, |editor, cx| editor.flush(cx));
     }
 
@@ -1757,6 +1772,7 @@ impl Render for Workspace {
             .map(|el| crate::replace::on_actions(el, cx))
             .map(|el| crate::updates::on_actions(el, cx))
             .map(|el| crate::graph_view::on_actions(el, cx))
+            .map(|el| crate::board_view::on_actions(el, cx))
             // Off macOS, Kanso's own title bar with the menus.
             .when_some(self.title_bar.clone(), |el, menus| {
                 el.child(crate::title_bar::render(&menus, colors))
@@ -1850,6 +1866,7 @@ impl Render for Workspace {
                     }),
             )
             .children(crate::graph_view::overlay(self))
+            .children(crate::board_view::overlay(self))
             // Over everything else when open.
             .child(self.palette.clone())
             // The system draws the real traffic lights above the palette too.

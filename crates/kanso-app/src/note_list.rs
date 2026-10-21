@@ -752,6 +752,23 @@ impl NoteList {
                 )
             })
             .child(div().flex_1())
+            // The trash has no board: its notes have no status to change.
+            .when(library.filter != Filter::Trash, |el| {
+                el.child(
+                    Button::new("list-board")
+                        .ghost()
+                        .small()
+                        .icon(
+                            Icon::new(Lucide::SquareKanban)
+                                .size(px(15.))
+                                .text_color(colors.text_secondary),
+                        )
+                        .tooltip("Board")
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(crate::board_view::ShowBoard), cx)
+                        }),
+                )
+            })
             .child(filter_menu)
     }
 

@@ -2393,6 +2393,49 @@ fn tasks_view(
     });
 }
 
+/// The board over the window: the demo's notes in a column per status,
+/// one card selected.
+fn status_board(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_board(cx, window, workspace, crate::board::BoardKind::Notes);
+}
+
+/// The tasks board: the demo's tasks as To do and Done.
+fn task_board(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    seed_tasks(store);
+    show_board(cx, window, workspace, crate::board::BoardKind::Tasks);
+}
+
+fn show_board(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    kind: crate::board::BoardKind,
+) {
+    cx.run_until_parked();
+    cx.update_window(window, |_, window, cx| {
+        workspace.update(cx, |workspace, cx| workspace.show_board(kind, window, cx));
+    })
+    .unwrap();
+    cx.update(|cx| {
+        let board = workspace.read(cx).board.clone().unwrap();
+        board.update(cx, |board, cx| {
+            board.reload_now(cx);
+            board.board.step_across(1);
+            board.board.step_down(1);
+        });
+    });
+}
+
 /// A note with due dates: chips in the preview, warm red when overdue.
 fn due_chips(
     cx: &mut HeadlessAppContext,
@@ -3640,6 +3683,10 @@ fn snapshots() {
         shot("light-daily-note", Light, Split, daily_note),
         shot("dark-tasks", Dark, Split, tasks_view),
         shot("light-tasks", Light, Split, tasks_view),
+        shot("dark-board", Dark, Edit, status_board),
+        shot("light-board", Light, Edit, status_board),
+        shot("dark-task-board", Dark, Edit, task_board),
+        shot("light-task-board", Light, Edit, task_board),
         shot("dark-due-chips", Dark, Preview, due_chips),
         shot("light-due-chips", Light, Split, due_chips),
         Shot {
@@ -4315,6 +4362,9 @@ fn snapshots() {
         let palette_open = cx.update(|cx| workspace.read(cx).palette.read(cx).is_open());
         let settings_open = cx.update(|cx| workspace.read(cx).settings_open());
         let graph_open = cx.update(|cx| workspace.read(cx).graph_open);
+        // The board is laid out as the graph is: bands in the list's color
+        // round the editor's.
+        let board_open = cx.update(|cx| workspace.read(cx).board_open);
         let dialog_open = cx
             .update_window(window, |_, window, cx| window.has_active_dialog(cx))
             .unwrap();
@@ -4324,7 +4374,7 @@ fn snapshots() {
             check_palette(&image, shot);
         } else if settings_open {
             check_settings_surfaces(&image, shot);
-        } else if graph_open {
+        } else if graph_open || board_open {
             discovery::check_graph(&image, shot);
         } else {
             let inspector = cx
