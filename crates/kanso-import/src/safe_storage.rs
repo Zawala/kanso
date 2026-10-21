@@ -2,7 +2,7 @@
 //! followed by AES-128-CBC data, keyed by PBKDF2 of the secret in the
 //! Keychain item "<App> Safe Storage".
 //!
-//! Inkdrop keeps its local server credentials this way. Reading the Keychain
+//! The source app keeps its local server credentials this way. Reading the Keychain
 //! item shows the user a macOS prompt, so only call [`keychain_secret`] when
 //! the user asked to copy the credentials. Nothing here prints or logs the
 //! secret or the plaintext.
@@ -14,11 +14,13 @@ use anyhow::{Context as _, bail};
 use base64::Engine as _;
 use serde_json::Value;
 
-use crate::config::{InkdropCredentials, InkdropServerConfig, parse_credentials};
+use crate::config::{LocalServerConfig, LocalServerCredentials, parse_credentials};
 
-/// The Keychain item holding Inkdrop's `safeStorage` secret. Electron names
-/// it after the app's package name, which for Inkdrop is lowercase.
-pub const INKDROP_KEYCHAIN_SERVICE: &str = "inkdrop Safe Storage";
+/// The Keychain item holding the source app's `safeStorage` secret.
+/// Electron names it after the app's package name (lowercase here), and
+/// macOS shows this name when it asks to allow access, so it stays exactly
+/// as written.
+pub const SAFE_STORAGE_SERVICE: &str = "inkdrop Safe Storage";
 
 const SALT: &[u8] = b"saltysalt";
 const ITERATIONS: u32 = 1003;
@@ -70,21 +72,21 @@ pub fn keychain_secret(service: &str) -> anyhow::Result<String> {
     Ok(secret.trim_end_matches('\n').to_owned())
 }
 
-/// Inkdrop's `safeStorage` secret lives in the macOS Keychain; Electron
-/// keeps it elsewhere (DPAPI, libsecret) on other systems, which Kanso
-/// can't read yet. Enter Inkdrop's API credentials by hand instead.
+/// The `safeStorage` secret lives in the macOS Keychain; Electron keeps it
+/// elsewhere (DPAPI, libsecret) on other systems, which Kanso can't read
+/// yet. Enter the API credentials by hand instead.
 #[cfg(not(target_os = "macos"))]
 pub fn keychain_secret(service: &str) -> anyhow::Result<String> {
     bail!(
-        "reading Inkdrop's encrypted credentials (“{service}”) only works on macOS; enter its API username and password instead"
+        "reading the encrypted credentials (“{service}”) only works on macOS; enter the API username and password instead"
     )
 }
 
-impl InkdropServerConfig {
+impl LocalServerConfig {
     /// Decrypts `Encrypted` credentials with the Keychain `secret`, turning
     /// them into `Basic` ones. Other credentials are left as they are.
     pub fn decrypt_credentials(&mut self, secret: &str) -> anyhow::Result<()> {
-        let InkdropCredentials::Encrypted { ciphertext } = &self.credentials else {
+        let LocalServerCredentials::Encrypted { ciphertext } = &self.credentials else {
             return Ok(());
         };
         let data = base64::engine::general_purpose::STANDARD
@@ -97,7 +99,7 @@ impl InkdropServerConfig {
             .filter(Value::is_object)
             .unwrap_or(Value::String(plaintext));
         match parse_credentials(Some(&value)) {
-            credentials @ InkdropCredentials::Basic { .. } => {
+            credentials @ LocalServerCredentials::Basic { .. } => {
                 self.credentials = credentials;
                 Ok(())
             }
@@ -140,11 +142,11 @@ mod tests {
     fn decrypts_encrypted_credentials_into_basic_ones() {
         let data = encrypt(b"alice:s3cret:with:colons", "keychain-secret");
         let ciphertext = base64::engine::general_purpose::STANDARD.encode(&data);
-        let mut config = InkdropServerConfig {
+        let mut config = LocalServerConfig {
             enabled: true,
             port: 19840,
             bind_address: "127.0.0.1".into(),
-            credentials: InkdropCredentials::Encrypted { ciphertext },
+            credentials: LocalServerCredentials::Encrypted { ciphertext },
         };
         assert!(config.clone().decrypt_credentials("wrong").is_err());
         config.decrypt_credentials("keychain-secret").unwrap();

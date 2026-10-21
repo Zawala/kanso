@@ -873,7 +873,7 @@ mod tests {
                 assert_eq!(
                     note.extra.get("share"),
                     None,
-                    "the share field is Inkdrop's"
+                    "the share field belongs to the API's note shape"
                 );
                 KansoPublish::from_extra(&note.extra)
             }

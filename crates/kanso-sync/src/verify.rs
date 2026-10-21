@@ -351,7 +351,7 @@ fn generation(rev: &str) -> Option<u64> {
 /// The `--legacy` check (H4): each live legacy document is in the library
 /// at that revision or a higher generation and passed the checks above;
 /// each live legacy file also has a local blob with the manifest's
-/// `md5digest`. Files imported from Inkdrop may have no `md5digest`; for
+/// `md5digest`. Files imported from a PouchDB library may have no `md5digest`; for
 /// those the blob must exist and its bytes must hash to what the store
 /// recorded for them.
 fn check_legacy(

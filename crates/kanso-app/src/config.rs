@@ -101,8 +101,7 @@ pub enum ThemePreference {
 pub const KANSO_LIGHT: &str = "Kanso Light";
 pub const KANSO_DARK: &str = "Kanso Dark";
 
-/// Which themes color the app, by name, as Inkdrop chooses them: one for the
-/// UI, and the editor's syntax and the preview each the UI's own unless one
+/// Which themes color the app, by name: one for the UI, and the editor's syntax and the preview each the UI's own unless one
 /// is picked for them. Following the system switches the UI between a light
 /// and a dark theme.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -254,9 +253,10 @@ impl Default for Appearance {
     }
 }
 
-/// Whether `server` is the compiled-in default, however it is written.
+/// Whether `server` is the compiled-in default, however it is written, or
+/// the same server under its first name.
 pub fn is_default_server(server: &str) -> bool {
-    kanso_sync::check_endpoint(server).as_deref() == Ok(kanso_sync::DEFAULT_SERVER)
+    kanso_sync::check_endpoint(server).is_ok_and(|server| kanso_sync::is_owner_server(&server))
 }
 
 /// The owner's Worker before it moved to its own domain; v1 files that name
@@ -477,6 +477,17 @@ pub struct AppConfig {
     pub reminders: RemindersSettings,
     pub discovery: DiscoverySettings,
     pub locked: LockedSettings,
+    pub nudges: Nudges,
+}
+
+/// What Kanso has told someone about, so it says it once.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Nudges {
+    /// When Kanso was first opened with this config (ms), for the sync offer.
+    pub first_seen_ms: Option<i64>,
+    /// The note list's sync offer was put away.
+    pub sync_offer_dismissed: bool,
 }
 
 impl Default for AppConfig {
@@ -495,6 +506,7 @@ impl Default for AppConfig {
             reminders: RemindersSettings::default(),
             discovery: DiscoverySettings::default(),
             locked: LockedSettings::default(),
+            nudges: Nudges::default(),
         }
     }
 }
@@ -758,6 +770,10 @@ mod tests {
                     reminders: super::RemindersSettings::default(),
                     discovery: DiscoverySettings::default(),
                     locked: LockedSettings::default(),
+                    nudges: super::Nudges {
+                        first_seen_ms: login.then_some(i64::from(version) * 1_000),
+                        sync_offer_dismissed: version % 2 == 0,
+                    },
                 },
             )
     }

@@ -102,7 +102,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn parses_inkdrop_revisions() {
+    fn parses_imported_revisions() {
         let rev: Rev = "36-805e5889052b3461f2741cd5b702a067".parse().unwrap();
         assert_eq!(rev.generation, 36);
         assert_eq!(rev.to_string(), "36-805e5889052b3461f2741cd5b702a067");

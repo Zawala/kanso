@@ -801,11 +801,11 @@ static COMMANDS: &[Command] = &[
         id: "import",
         label: "Import…",
         label_when_pinned: None,
-        description: "Brings in notes from a folder of Markdown files (Obsidian and Logseq folders too) or an export from Notion, Evernote, Bear, Joplin, Standard Notes, Simplenote, UpNote or Inkdrop. Shows what will come in first; the source is only read.",
+        description: "Brings in notes from a folder of Markdown files (Obsidian and Logseq folders too) or an export from Notion, Evernote, Bear, Joplin, Standard Notes, Simplenote or UpNote, or the notes library found on this computer. Shows what will come in first; the source is only read.",
         icon: IconName::Upload,
         keywords: &[
             "import", "markdown", "obsidian", "notion", "evernote", "enex", "bear", "joplin",
-            "logseq", "inkdrop", "vault", "migrate",
+            "logseq", "vault", "migrate",
         ],
         group: Group::App,
         run: action!(ImportLibrary),

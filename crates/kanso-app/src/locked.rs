@@ -1175,7 +1175,10 @@ mod tests {
             let list = cx.read(|cx| f.workspace.read(cx).note_list.clone());
             let id = f.note.clone();
             list.update(cx, |_, cx| {
-                cx.emit(crate::note_list::NoteListEvent::Duplicate(id))
+                cx.emit(crate::note_list::NoteListEvent::Command(
+                    id,
+                    crate::note_menu::NoteCommand::Duplicate,
+                ))
             });
             cx.run_until_parked();
             let copy = f

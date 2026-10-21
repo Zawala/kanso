@@ -177,7 +177,11 @@ impl RenderOnce for EmptyNotebook {
                                 .min_w_0()
                                 .line_height(px(18.))
                                 .child("Already use Kanso on another device?")
-                                .child(div().text_color(colors.text).child("Sign in to sync")),
+                                .child(
+                                    div()
+                                        .text_color(colors.text)
+                                        .child("Sign in to bring your notes here"),
+                                ),
                         ),
                 )
             })

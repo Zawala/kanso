@@ -93,16 +93,40 @@ pub enum EndpointError {
     Extra,
 }
 
+/// The owner's server under its first name. Every account on it was made
+/// there, and the key derivations bind it, so its later names
+/// ([`OWNER_ALIASES`]) derive as this one.
+pub const OWNER_ORIGIN: &str = "https://kanso.antonlabs.cc";
+
+/// The owner's server's later names, which derive as [`OWNER_ORIGIN`].
+const OWNER_ALIASES: &[&str] = &["https://sync.kansoapp.app"];
+
+/// Where the owner's server shows published notes.
+pub const OWNER_SHARE_SERVER: &str = "https://share.kansoapp.app";
+
 /// The origin of a server URL, as the key derivations bind it:
 /// `url::Url::parse(server)?.origin().ascii_serialization()`: lowercase,
-/// punycode, default port omitted, path dropped. The server never supplies
-/// it. Pure.
+/// punycode, default port omitted, path dropped; one of the owner's
+/// server's later names gives its first, [`OWNER_ORIGIN`]. The server never
+/// supplies it. Pure.
 pub fn origin(server: &str) -> Result<String, EndpointError> {
     let url = url::Url::parse(server.trim()).map_err(|_| EndpointError::Invalid)?;
     match url.origin() {
-        url::Origin::Tuple(..) => Ok(url.origin().ascii_serialization()),
+        url::Origin::Tuple(..) => {
+            let origin = url.origin().ascii_serialization();
+            if OWNER_ALIASES.contains(&origin.as_str()) {
+                Ok(OWNER_ORIGIN.to_owned())
+            } else {
+                Ok(origin)
+            }
+        }
         url::Origin::Opaque(_) => Err(EndpointError::Invalid),
     }
+}
+
+/// Whether `server` is the owner's, under any of its names. Pure.
+pub fn is_owner_server(server: &str) -> bool {
+    origin(server).as_deref() == Ok(OWNER_ORIGIN)
 }
 
 /// Checks a Worker URL and returns it normalized, without a trailing slash.
@@ -138,7 +162,7 @@ pub fn check_endpoint(input: &str) -> Result<String, EndpointError> {
 
 #[cfg(test)]
 mod endpoint_tests {
-    use super::{EndpointError, check_endpoint, origin};
+    use super::{EndpointError, OWNER_ORIGIN, check_endpoint, is_owner_server, origin};
     use proptest::prelude::*;
 
     #[test]
@@ -216,6 +240,18 @@ mod endpoint_tests {
             Ok("https://xn--bcher-kva.example")
         );
         assert_eq!(origin("not a url"), Err(EndpointError::Invalid));
+        // The owner's server derives as its first name under every name.
+        for name in [
+            "https://sync.kansoapp.app",
+            "https://Sync.KansoApp.app/v2/",
+            OWNER_ORIGIN,
+        ] {
+            assert_eq!(origin(name).as_deref(), Ok(OWNER_ORIGIN), "{name}");
+            assert!(is_owner_server(name), "{name}");
+        }
+        assert!(is_owner_server(crate::DEFAULT_SERVER));
+        assert!(!is_owner_server("https://share.kansoapp.app"));
+        assert!(!is_owner_server("https://kansoapp.app"));
     }
 
     fn gen_url() -> impl Strategy<Value = String> {

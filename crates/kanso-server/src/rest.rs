@@ -1,4 +1,4 @@
-//! The REST endpoints of Inkdrop's local HTTP server.
+//! The REST endpoints of the local-server API.
 
 use std::collections::HashMap;
 
@@ -123,11 +123,15 @@ fn alias_id(path: Result<Path<(String, String)>, PathRejection>) -> ApiResult<St
     Ok(with_prefix(doc_type, &id))
 }
 
+/// What `GET /` says the API is compatible with. Clients may check it, so
+/// it stays exactly as written.
+pub const COMPATIBLE_WITH: &str = "inkdrop-local-server";
+
 async fn meta() -> Json<Value> {
     Json(json!({
         "name": "Kanso",
         "version": env!("CARGO_PKG_VERSION"),
-        "compatibleWith": "inkdrop-local-server",
+        "compatibleWith": COMPATIBLE_WITH,
     }))
 }
 

@@ -4,7 +4,7 @@
 //! in sRGB, and the LESS color functions themes use (`fade`, `fadein`,
 //! `fadeout`, `lighten`, `darken`).
 //!
-//! Inkdrop themes write their colors in every one of these forms, and a
+//! Theme packages write their colors in every one of these forms, and a
 //! value is often a shorthand with a color inside it (`1px solid #333`), so
 //! [`extract`] finds the first color among a value's words.
 
@@ -503,8 +503,8 @@ mod tests {
             prop_assert_eq!(parse(&format!("rgba({r}, {g}, {b}, {fraction})")), Some(with_alpha));
         }
 
-        /// Agreement: any color written in `hsl()` (in each syntax Inkdrop
-        /// uses) reads within one step per channel of the color it came from.
+        /// Agreement: any color written in `hsl()` (in each syntax theme
+        /// packages use) reads within one step per channel of the color it came from.
         #[test]
         fn prop_hsl_agrees_with_the_color(rgb in 0u32..=0xFF_FFFF) {
             let (h, s, l) = reference_hsl(rgb);
@@ -543,7 +543,7 @@ mod tests {
     }
 
     #[test]
-    fn the_forms_inkdrop_themes_write() {
+    fn the_forms_theme_packages_write() {
         let rgb = |text: &str| parse(text).map(|c| (c.rgb.hex(), c.alpha));
         assert_eq!(rgb("#fff"), Some(("#FFFFFF".into(), 255)));
         assert_eq!(rgb("#0008"), Some(("#000000".into(), 0x88)));

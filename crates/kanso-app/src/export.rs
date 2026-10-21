@@ -9,6 +9,7 @@ use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::Context as _;
+use kanso_core::links::{FILE_LINK_PREFIX, LINK_SCHEME, NOTE_LINK_PREFIX};
 use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::{Book, Note, NoteStatus};
 use kanso_store::{SearchParams, Store};
@@ -85,7 +86,8 @@ pub fn encode_link(path: &str) -> String {
     out
 }
 
-/// Replaces `inkdrop://note/<id>` and `inkdrop://file:<id>` with what the
+/// Replaces note links ([`NOTE_LINK_PREFIX`]`<id>`) and attachment links
+/// ([`FILE_LINK_PREFIX`]`<id>`) with what the
 /// lookups return for the full IDs (`note:…`, `file:…`). Links the lookups
 /// don't know are left as they are.
 pub fn rewrite_links(
@@ -93,11 +95,11 @@ pub fn rewrite_links(
     note_link: impl Fn(&str) -> Option<String>,
     file_link: impl Fn(&str) -> Option<String>,
 ) -> String {
-    const NOTE: &str = "inkdrop://note/";
-    const FILE: &str = "inkdrop://file:";
+    const NOTE: &str = NOTE_LINK_PREFIX;
+    const FILE: &str = FILE_LINK_PREFIX;
     let mut out = String::with_capacity(body.len());
     let mut rest = body;
-    while let Some(at) = rest.find("inkdrop://") {
+    while let Some(at) = rest.find(LINK_SCHEME) {
         out.push_str(&rest[..at]);
         let tail = &rest[at..];
         let (prefix, kind) = if tail.starts_with(NOTE) {
@@ -105,8 +107,8 @@ pub fn rewrite_links(
         } else if tail.starts_with(FILE) {
             (FILE, "file:")
         } else {
-            out.push_str("inkdrop://");
-            rest = &tail["inkdrop://".len()..];
+            out.push_str(LINK_SCHEME);
+            rest = &tail[LINK_SCHEME.len()..];
             continue;
         };
         let suffix_len = tail[prefix.len()..]

@@ -5,6 +5,8 @@
 
 use std::ops::Range;
 
+use kanso_core::links::LINK_SCHEME;
+
 use crate::markdown_edit::Edit;
 
 /// Whether `text` is a single web address.
@@ -15,9 +17,9 @@ pub fn is_url(text: &str) -> bool {
         .or_else(|| text.strip_prefix("http://"))
         .or_else(|| text.strip_prefix("mailto:"));
     rest.is_some_and(|rest| !rest.is_empty() && !rest.contains(char::is_whitespace))
-        || text.starts_with("inkdrop://")
+        || text.starts_with(LINK_SCHEME)
             && !text.contains(char::is_whitespace)
-            && text.len() > "inkdrop://".len()
+            && text.len() > LINK_SCHEME.len()
 }
 
 /// A web address pasted over selected words on one line makes them a
@@ -111,7 +113,7 @@ pub fn tidy(markdown: &str) -> String {
     out
 }
 
-/// What a pasted or dropped image is stored as: Inkdrop's image types as
+/// What a pasted or dropped image is stored as: the API's image types as
 /// they are, others converted to PNG.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stored {
@@ -137,7 +139,7 @@ pub fn stored_as(extension: &str) -> Option<Stored> {
 }
 
 /// Stores an image (its bytes, and its extension or format name) as an
-/// attachment, converting what Inkdrop doesn't take to PNG. Returns the
+/// attachment, converting what the API doesn't take to PNG. Returns the
 /// attachment's ID (`file:…`), or what to tell the user.
 pub fn attach_image(
     store: &kanso_store::Store,
@@ -203,7 +205,7 @@ fn to_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
 
 /// The Markdown that shows attachment `file_id` (`file:…`).
 pub fn image_markdown(file_id: &str) -> String {
-    format!("![](inkdrop://{file_id})")
+    format!("![]({LINK_SCHEME}{file_id})")
 }
 
 /// Puts `block` (images, say) over `range` as a paragraph of its own: a
@@ -255,7 +257,7 @@ pub fn too_large(bytes: usize, limit: usize) -> String {
     )
 }
 
-/// An `<img>` tag on its own: `<img src="inkdrop://file:…" width="320">`.
+/// An `<img>` tag on its own: `<img src="<attachment link>" width="320">`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImgTag {
     pub src: String,
@@ -476,7 +478,7 @@ mod tests {
         let doc = store.get(&id).unwrap().unwrap();
         assert_eq!(doc.fields["name"], "Screen Shot.png");
 
-        // TIFF isn't an Inkdrop type: stored as a PNG of the same picture.
+        // TIFF isn't one of the API's types: stored as a PNG of the same picture.
         let tiff = encoded(4, 5, 9, image::ImageFormat::Tiff);
         let id = attach_image(&store, &tiff, "tiff", None).unwrap();
         let (content_type, blob) = store.attachment(&id).unwrap().unwrap();

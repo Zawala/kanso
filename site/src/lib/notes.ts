@@ -170,12 +170,14 @@ Links are short and preview with the note's title. Update the page or take it do
 
 Kanso runs a local API and an MCP server on your own computer. Point Claude, Codex, Cursor or any MCP client at it, and they can search, read and write your notes, on 127.0.0.1, with your password, never through a cloud.
 
+In Settings › Local API, **Connect an AI agent** copies the setup for yours, sign-in included:
+
 \`\`\`sh
-claude mcp add --transport http kanso http://127.0.0.1:19840/mcp \\
-  --header "Authorization: Basic $(printf '%s' 'USERNAME:PASSWORD' | base64)"
+claude mcp add --transport http --scope user kanso http://127.0.0.1:19840/mcp \\
+  --header "Authorization: Basic …"
 \`\`\`
 
-Your API username and password are in Settings › Local API. Twenty-four tools cover notes, notebooks, tags and files, plus outlines, tasks, templates, daily notes and related notes. #agents`,
+Claude Code, Claude Desktop, Codex, Cursor, VS Code, Gemini CLI, Windsurf, Zed and OpenCode are covered. Twenty-four tools cover notes, notebooks, tags and files, plus outlines, tasks, templates, daily notes and related notes. #agents`,
   },
   {
     id: "source",

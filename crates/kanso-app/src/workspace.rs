@@ -28,6 +28,7 @@ use crate::layout::{
 };
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::{NoteList, NoteListEvent};
+use crate::note_menu::NoteCommand;
 use crate::palette::{Mode, Palette};
 use crate::paths;
 use crate::settings::{SettingsPage, SettingsReturn, SettingsView};
@@ -53,6 +54,7 @@ actions!(
         NextNote,
         PreviousNote,
         ShowHistory,
+        Dictate,
         OpenSettings,
         ExportNote,
         ExportHtml,
@@ -64,7 +66,7 @@ actions!(
         ChangePassword,
         NewRecoveryKey,
         SignOut,
-        ImportInkdrop,
+        ImportPouchLibrary,
         ImportLibrary,
         OpenFile,
         Quit,
@@ -210,6 +212,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Pin / Unpin Note", TogglePinned),
             MenuItem::action("Move to Trash", TrashNote),
             MenuItem::action("Show History…", ShowHistory),
+            MenuItem::action("Dictate", Dictate),
             MenuItem::action("Publish…", crate::publish::PublishNote),
             MenuItem::separator(),
             MenuItem::action("Lock Note…", crate::locked::LockNote),
@@ -241,6 +244,7 @@ pub fn set_menus(cx: &mut App) {
             crate::updates::ShowWhatsNew,
         )]),
     ]);
+    crate::title_bar::publish_menus(cx);
 }
 
 /// Runs `f` on the workspace in every main window.
@@ -308,6 +312,9 @@ pub struct Workspace {
     /// the window and a headless snapshot can't show.
     #[cfg(test)]
     pub(crate) placeholder_traffic_lights: bool,
+    /// The menus of the title bar Kanso draws where the system draws no
+    /// menu bar (see `title_bar`); none on macOS.
+    pub(crate) title_bar: Option<Entity<gpui_kit::component::menu::AppMenuBar>>,
     _subscriptions: Vec<Subscription>,
     _links: Task<()>,
     /// Locks the notes again once they go unused for a while.
@@ -316,6 +323,17 @@ pub struct Workspace {
 
 impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // The sync offer counts its week from the first launch.
+        if cx
+            .global::<AppState>()
+            .config
+            .nudges
+            .first_seen_ms
+            .is_none()
+        {
+            let now = crate::clock::Clock::now_ms(cx);
+            AppState::update_config(cx, |config| config.nudges.first_seen_ms = Some(now));
+        }
         let state = cx.global::<AppState>();
         let store = state.store.clone();
         let appearance = state.config.appearance.clone();
@@ -422,6 +440,12 @@ impl Workspace {
                     window.push_notification(Notification::error(message.clone()), cx);
                 }
                 EditorEvent::ShowHistory => this.show_history(window, cx),
+                EditorEvent::Command(command) => {
+                    let id = this.editor.read(cx).note_id().map(str::to_owned);
+                    if let Some(id) = id {
+                        this.run_note_command(&id, *command, window, cx);
+                    }
+                }
                 EditorEvent::Pick(picker) => {
                     let mode = Mode::Pick(*picker);
                     this.palette
@@ -524,6 +548,8 @@ impl Workspace {
             band_drag: BandDrag::default(),
             #[cfg(test)]
             placeholder_traffic_lights: false,
+            title_bar: crate::title_bar::SHOWN
+                .then(|| gpui_kit::component::menu::AppMenuBar::new(cx)),
             _subscriptions: subscriptions,
             _links: links,
             _auto_lock: auto_lock,
@@ -802,28 +828,7 @@ impl Workspace {
             NoteListEvent::OpenSelected => self
                 .editor
                 .update(cx, |editor, cx| editor.focus_body(window, cx)),
-            NoteListEvent::TogglePinned(id) => {
-                if !self.with_open_note(id, cx, |editor, cx| editor.toggle_pinned(cx)) {
-                    let pinned = self
-                        .library
-                        .read(cx)
-                        .notes
-                        .iter()
-                        .any(|n| &n.id == id && n.pinned);
-                    self.merge(DocType::Note, id, json!({"pinned": !pinned}), window, cx);
-                }
-            }
-            NoteListEvent::Trash(id) => {
-                if !self.with_open_note(id, cx, |editor, cx| editor.trash(cx)) {
-                    self.merge(
-                        DocType::Note,
-                        id,
-                        json!({"bookId": TRASH_BOOK_ID}),
-                        window,
-                        cx,
-                    );
-                }
-            }
+            NoteListEvent::Command(id, command) => self.run_note_command(id, *command, window, cx),
             NoteListEvent::Restore(id) => {
                 let Some(book) = self.library.read(cx).books.first().map(|b| b.id.clone()) else {
                     return self.notify_error(
@@ -852,7 +857,42 @@ impl Workspace {
                     },
                 );
             }
-            NoteListEvent::Duplicate(id) => {
+        }
+    }
+
+    /// Carries out a choice from a note's menu (see `note_menu`), for the
+    /// note `id`, which may not be the open one.
+    fn run_note_command(
+        &mut self,
+        id: &str,
+        command: NoteCommand,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match command {
+            NoteCommand::TogglePinned => {
+                if !self.with_open_note(id, cx, |editor, cx| editor.toggle_pinned(cx)) {
+                    let pinned = self
+                        .library
+                        .read(cx)
+                        .notes
+                        .iter()
+                        .any(|n| n.id == id && n.pinned);
+                    self.merge(DocType::Note, id, json!({"pinned": !pinned}), window, cx);
+                }
+            }
+            NoteCommand::Trash => {
+                if !self.with_open_note(id, cx, |editor, cx| editor.trash(cx)) {
+                    self.merge(
+                        DocType::Note,
+                        id,
+                        json!({"bookId": TRASH_BOOK_ID}),
+                        window,
+                        cx,
+                    );
+                }
+            }
+            NoteCommand::Duplicate => {
                 self.flush(cx);
                 let Ok(Some(mut note)) = self.store.note(id) else {
                     return;
@@ -886,6 +926,29 @@ impl Workspace {
                     Err(err) => self.notify_error(err, window, cx),
                 }
             }
+            NoteCommand::SetStatus(status) => {
+                if !self.with_open_note(id, cx, |editor, cx| editor.set_status(status, cx)) {
+                    self.merge(
+                        DocType::Note,
+                        id,
+                        json!({"status": status.as_str()}),
+                        window,
+                        cx,
+                    );
+                }
+            }
+            NoteCommand::Export => self.export(Some(vec![id.to_owned()]), window, cx),
+            // These work on the open note, so the note opens first.
+            NoteCommand::ShowHistory => {
+                if self.open_note(id, window, cx) {
+                    self.show_history(window, cx);
+                }
+            }
+            NoteCommand::Publish => {
+                if self.open_note(id, window, cx) {
+                    crate::publish::open_publish(self.editor.clone(), window, cx);
+                }
+            }
         }
     }
 
@@ -901,6 +964,17 @@ impl Workspace {
         let value = serde_json::to_value(&copy).map_err(|err| err.to_string())?;
         self.store.lock_note(value).map_err(|err| err.to_string())?;
         Ok(())
+    }
+
+    /// Selects and opens the note `id`, and says whether it is now open: a
+    /// held Replace can keep the editor on its note.
+    fn open_note(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        self.close_settings(window, cx);
+        self.library
+            .update(cx, |library, cx| library.select(Some(id.to_owned()), cx));
+        self.editor
+            .update(cx, |editor, cx| editor.open(Some(id), window, cx));
+        self.editor.read(cx).note_id() == Some(id)
     }
 
     fn on_sidebar_event(
@@ -1425,7 +1499,8 @@ impl Render for Workspace {
                 let claimed = window.default_prevented()
                     || (cx.has_global::<GlobalState>()
                         && GlobalState::is_text_selection_suppressed(cx));
-                if event.button == MouseButton::Left {
+                // Where Kanso draws a title bar, that is what moves the window.
+                if event.button == MouseButton::Left && this.title_bar.is_none() {
                     let action = this
                         .band_drag
                         .down(event.position, event.click_count, claimed);
@@ -1552,6 +1627,11 @@ impl Render for Workspace {
                 this.close_settings(window, cx);
                 this.editor.update(cx, |editor, cx| editor.trash(cx));
             }))
+            .on_action(cx.listener(|this, _: &Dictate, window, cx| {
+                this.close_settings(window, cx);
+                this.editor
+                    .update(cx, |editor, cx| editor.dictate(window, cx));
+            }))
             .on_action(cx.listener(|this, _: &ShowHistory, window, cx| {
                 this.close_settings(window, cx);
                 this.show_history(window, cx);
@@ -1617,8 +1697,8 @@ impl Render for Workspace {
             .on_action(
                 cx.listener(|this, _: &ExportLibrary, window, cx| this.export(None, window, cx)),
             )
-            .on_action(cx.listener(|_, _: &ImportInkdrop, window, cx| {
-                crate::inkdrop::start_import(window, cx);
+            .on_action(cx.listener(|_, _: &ImportPouchLibrary, window, cx| {
+                crate::pouch_import::start_import(window, cx);
             }))
             .on_action(cx.listener(|_, _: &ImportLibrary, window, cx| {
                 crate::library_import::start(window, cx);
@@ -1677,10 +1757,14 @@ impl Render for Workspace {
             .map(|el| crate::replace::on_actions(el, cx))
             .map(|el| crate::updates::on_actions(el, cx))
             .map(|el| crate::graph_view::on_actions(el, cx))
-            // The panes run the full height: each has its own top band
-            // (the title bar's row) and bottom band. The sidebar and the
-            // list keep their widths and the editor takes the rest; each
-            // pane's left edge drags the pane before it.
+            // Off macOS, Kanso's own title bar with the menus.
+            .when_some(self.title_bar.clone(), |el, menus| {
+                el.child(crate::title_bar::render(&menus, colors))
+            })
+            // The panes run the rest of the height: each has its own top
+            // band (on macOS, the title bar's row) and bottom band. The
+            // sidebar and the list keep their widths and the editor takes
+            // the rest; each pane's left edge drags the pane before it.
             .child(
                 h_flex()
                     .flex_1()

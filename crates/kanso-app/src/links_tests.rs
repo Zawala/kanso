@@ -144,7 +144,7 @@ impl Fixture {
 }
 
 /// `[[` offers notes by title as it is typed; choosing one writes an
-/// `inkdrop://` link in place of the brackets, which undoes in one step. A
+/// ID link in place of the brackets, which undoes in one step. A
 /// title no note has is offered as a new note, written as a wiki-link.
 // no-prop-test: drives the editor with keys; `wikilinks` has the
 // properties of the query and the candidates.

@@ -186,7 +186,7 @@ fn resolve(conn: &Connection, title: &str) -> Result<Option<(String, String)>> {
 
 impl Store {
     /// The other live notes outside the trash that link to note `id`, by
-    /// `inkdrop://note/` link or by a wiki-link to its title (when the title
+    /// ID link or by a wiki-link to its title (when the title
     /// names it), most recently changed first, each with the line of its
     /// first link.
     pub fn backlinks(&self, id: &str) -> Result<Vec<Backlink>> {

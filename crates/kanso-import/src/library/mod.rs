@@ -37,6 +37,7 @@ use std::path::Path;
 
 use anyhow::Context as _;
 use base64::Engine as _;
+use kanso_core::links::{FILE_LINK_PREFIX, NOTE_LINK_PREFIX};
 use kanso_core::model::{MAX_ATTACHMENT_SIZE, MAX_BODY_LEN, MAX_NAME_LEN, MAX_TITLE_LEN};
 use kanso_core::roles::Role;
 use kanso_core::{DocType, Rev, TRASH_BOOK_ID};
@@ -665,7 +666,7 @@ pub fn stable_id(doc_type: DocType, kind: SourceKind, source: &str, key: &str) -
     format!("{}:{suffix}", doc_type.as_str())
 }
 
-/// The part of an ID after its `type:` prefix, as `inkdrop://` links use it.
+/// The part of an ID after its `type:` prefix, as ID links use it.
 fn suffix(id: &str) -> &str {
     id.split_once(':').map_or(id, |(_, s)| s)
 }
@@ -1004,7 +1005,7 @@ impl Rewriter<'_> {
                                 Some(id) => {
                                     edits.push((
                                         found.range.clone(),
-                                        format!("inkdrop://file:{}", suffix(id)),
+                                        format!("{FILE_LINK_PREFIX}{}", suffix(id)),
                                     ));
                                 }
                                 None => report.unresolved_links += 1,
@@ -1020,11 +1021,12 @@ impl Rewriter<'_> {
                             .and_then(|path| self.index.path(from, &path))
                     };
                     let uri = match target {
-                        Some(Target::Note(ix)) => {
-                            Some(format!("inkdrop://note/{}", suffix(&self.entries[ix].id)))
-                        }
+                        Some(Target::Note(ix)) => Some(format!(
+                            "{NOTE_LINK_PREFIX}{}",
+                            suffix(&self.entries[ix].id)
+                        )),
                         Some(Target::File(ix)) => file_target(ix, needed)
-                            .map(|id| format!("inkdrop://file:{}", suffix(&id))),
+                            .map(|id| format!("{FILE_LINK_PREFIX}{}", suffix(&id))),
                         None => {
                             let pseudo = found.target.starts_with(PSEUDO);
                             if pseudo || looks_local(&found.target) {
@@ -1066,7 +1068,7 @@ impl Rewriter<'_> {
         if title.contains(['[', ']', '|', '#']) {
             let text = label.as_deref().unwrap_or(title);
             return format!(
-                "[{}](inkdrop://note/{})",
+                "[{}]({NOTE_LINK_PREFIX}{})",
                 text.replace(['[', ']'], ""),
                 suffix(&self.entries[ix].id)
             );
@@ -1093,7 +1095,7 @@ fn looks_local(target: &str) -> bool {
 /// What a wiki-link or embed of an attachment becomes: an image for an
 /// embedded picture (`![[pic.png|300]]` keeps its width), a link for the rest.
 fn attachment_link(embed: bool, name: &str, label: Option<&str>, id: &str) -> String {
-    let uri = format!("inkdrop://file:{}", suffix(id));
+    let uri = format!("{FILE_LINK_PREFIX}{}", suffix(id));
     let alt = stem(name).replace(['[', ']'], "");
     if embed && is_image(name) {
         match label {

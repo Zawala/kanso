@@ -6,11 +6,16 @@
 //! paths are masked.
 //!
 //! Skipped, with a message, when `node` is not available. Set `KANSO_NODE`
-//! to pick a node binary and `INKDROP_MCP_SERVER_JS` to point at the
+//! to pick a node binary and `KANSO_MCP_SERVER_JS` to point at the
 //! server's `dist/index.js`; otherwise the npx cache is tried, then
 //! `npx -y @inkdropapp/mcp-server@1.5.0`.
 
 mod common;
+
+/// The npm package of the reference MCP server, at the version Kanso's
+/// tools match.
+const MCP_PACKAGE: &str = "@inkdropapp/mcp-server";
+const MCP_PACKAGE_VERSION: &str = "1.5.0";
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -94,13 +99,13 @@ fn node_server_command() -> Result<Command, String> {
     if !works {
         return Err(format!("{} does not run", node.display()));
     }
-    let script = std::env::var_os("INKDROP_MCP_SERVER_JS")
+    let script = std::env::var_os("KANSO_MCP_SERVER_JS")
         .map(PathBuf::from)
         .or_else(|| {
             home().map(|h| {
-                h.join(
-                    ".npm/_npx/bf42cecc764f1052/node_modules/@inkdropapp/mcp-server/dist/index.js",
-                )
+                h.join(".npm/_npx/bf42cecc764f1052/node_modules")
+                    .join(MCP_PACKAGE)
+                    .join("dist/index.js")
             })
         })
         .filter(|p| p.is_file());
@@ -116,13 +121,14 @@ fn node_server_command() -> Result<Command, String> {
         .or_else(|| find_in_path("npx"))
         .ok_or("the MCP server is not cached and npx is not installed")?;
     let mut command = Command::new(npx);
-    command.args(["-y", "@inkdropapp/mcp-server@1.5.0"]);
+    command.args(["-y", &format!("{MCP_PACKAGE}@{MCP_PACKAGE_VERSION}")]);
     Ok(command)
 }
 
 impl NodeMcp {
     fn spawn(mut command: Command, url: &str) -> NodeMcp {
         // Test credentials only; these override anything in the environment.
+        // The variable names are the ones the Node server reads.
         let mut child = command
             .env("INKDROP_LOCAL_SERVER_URL", url)
             .env("INKDROP_LOCAL_USERNAME", USER)
@@ -627,7 +633,7 @@ struct Server {
 fn start_server() -> Server {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(Store::open(dir.path().join("kanso.db")).unwrap());
-    // Port 0: never Inkdrop's 19840.
+    // Port 0: never the API's default 19840.
     let handle = kanso_server::spawn(
         store.clone(),
         ServerConfig {
@@ -721,14 +727,14 @@ fn node_mcp_server_and_native_mcp_agree() {
     };
     let node_server = start_server();
     let mut node = Run::new(
-        "@inkdropapp/mcp-server",
+        MCP_PACKAGE,
         Box::new(NodeMcp::spawn(command, &node_server.url)),
         node_server.url.clone(),
         files.path().join("node-out.png"),
     );
     node.sequence(&png_path);
     eprintln!(
-        "@inkdropapp/mcp-server against Kanso's HTTP API:\n{}",
+        "{MCP_PACKAGE} against Kanso's HTTP API:\n{}",
         summary(&node)
     );
     let names: Vec<&str> = node

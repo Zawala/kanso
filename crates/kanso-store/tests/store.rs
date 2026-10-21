@@ -85,7 +85,7 @@ fn creating_with_a_given_id_keeps_it() {
 }
 
 #[test]
-fn rejects_invalid_references_with_inkdrop_messages() {
+fn rejects_invalid_references_with_the_api_messages() {
     let (_dir, store) = store();
     let err = store
         .put(
@@ -275,7 +275,7 @@ fn deleting_a_tag_removes_it_from_notes() {
 }
 
 #[test]
-fn search_follows_inkdrop_syntax() {
+fn search_follows_the_api_syntax() {
     let (_dir, store) = store();
     let blog = create(&store, DocType::Book, json!({"name": "Desktop App"}));
     let other = create(
@@ -700,7 +700,7 @@ fn recorded_revisions_show_up_in_history() {
 }
 
 #[test]
-fn reimport_keeps_kanso_edits_and_takes_newer_inkdrop_edits() {
+fn reimport_keeps_kanso_edits_and_takes_newer_source_edits() {
     let (_dir, store) = store();
     let book = create(&store, DocType::Book, json!({"name": "B"}));
     let fields = |body: &str| {
@@ -711,7 +711,7 @@ fn reimport_keeps_kanso_edits_and_takes_newer_inkdrop_edits() {
     };
     assert!(
         store
-            .import_doc(DocType::Note, "note:n1", "3-aaa", fields("inkdrop"), None)
+            .import_doc(DocType::Note, "note:n1", "3-aaa", fields("imported"), None)
             .unwrap()
     );
     // Edited in Kanso: generation 4.
@@ -724,28 +724,28 @@ fn reimport_keeps_kanso_edits_and_takes_newer_inkdrop_edits() {
         )
         .unwrap();
     assert!(edited.rev.starts_with("4-"));
-    // Re-importing the old Inkdrop version leaves the Kanso edit alone.
+    // Re-importing the old source version leaves the Kanso edit alone.
     assert!(
         !store
-            .import_doc(DocType::Note, "note:n1", "3-aaa", fields("inkdrop"), None)
+            .import_doc(DocType::Note, "note:n1", "3-aaa", fields("imported"), None)
             .unwrap()
     );
     assert_eq!(store.note("note:n1").unwrap().unwrap().body, "kanso");
-    // A newer Inkdrop edit wins, and the Kanso version stays in history.
+    // A newer source edit wins, and the Kanso version stays in history.
     assert!(
         store
             .import_doc(
                 DocType::Note,
                 "note:n1",
                 "5-bbb",
-                fields("inkdrop again"),
+                fields("imported again"),
                 None
             )
             .unwrap()
     );
     assert_eq!(
         store.note("note:n1").unwrap().unwrap().body,
-        "inkdrop again"
+        "imported again"
     );
     let history = store.revisions("note:n1").unwrap();
     assert_eq!(history[0].fields["body"], "kanso");

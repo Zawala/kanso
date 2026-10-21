@@ -1,5 +1,6 @@
-//! Moving over from Inkdrop: importing its notes, and taking its local API
-//! port and credentials so existing MCP clients keep working unchanged.
+//! Moving over from a PouchDB notes library found on this computer:
+//! importing its notes, and taking its local API port and credentials so
+//! existing MCP clients keep working unchanged.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -8,9 +9,9 @@ use anyhow::{Context as _, bail};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, v_flex};
 use gpui_kit::*;
-use kanso_import::safe_storage::{INKDROP_KEYCHAIN_SERVICE, keychain_secret};
+use kanso_import::safe_storage::{SAFE_STORAGE_SERVICE, keychain_secret};
 use kanso_import::{
-    ImportReport, InkdropCredentials, Phase, Progress, find_inkdrop_db, read_inkdrop_server_config,
+    ImportReport, LocalServerCredentials, Phase, Progress, find_pouch_db, read_local_server_config,
 };
 use kanso_store::Store;
 
@@ -18,34 +19,34 @@ use crate::config::ServerSettings;
 use crate::paths;
 use crate::workspace::AppState;
 
-/// What [`copy_server_settings`] took from Inkdrop.
+/// What [`copy_server_settings`] took from the library's settings.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Copied {
     /// Port, address and credentials.
     Everything,
-    /// Port and address; Inkdrop had no credentials to copy.
+    /// Port and address; there were no credentials to copy.
     PortOnly,
 }
 
-/// Copies Inkdrop's local server port, address and credentials into
+/// Copies the library's local server port, address and credentials into
 /// `settings`. `secret` supplies the Keychain secret when the credentials are
 /// encrypted; it is only called then. On error `settings` is unchanged.
 pub fn copy_server_settings(
-    inkdrop_dir: &Path,
+    library_dir: &Path,
     settings: &mut ServerSettings,
     secret: impl FnOnce() -> anyhow::Result<String>,
 ) -> anyhow::Result<Copied> {
-    let Some(mut server) = read_inkdrop_server_config(inkdrop_dir)? else {
+    let Some(mut server) = read_local_server_config(library_dir)? else {
         bail!(
-            "Inkdrop has no local server settings in {}",
-            inkdrop_dir.display()
+            "there are no local server settings in {}",
+            library_dir.display()
         );
     };
-    if matches!(server.credentials, InkdropCredentials::Encrypted { .. }) {
+    if matches!(server.credentials, LocalServerCredentials::Encrypted { .. }) {
         server.decrypt_credentials(&secret()?)?;
     }
-    if matches!(server.credentials, InkdropCredentials::Unrecognized) {
-        bail!("Inkdrop's credentials are in a format Kanso doesn't know");
+    if matches!(server.credentials, LocalServerCredentials::Unrecognized) {
+        bail!("the credentials are in a format Kanso doesn't know");
     }
     settings.port = server.port;
     settings.bind_address = server.bind_address.clone();
@@ -59,16 +60,17 @@ pub fn copy_server_settings(
     }
 }
 
-/// Inkdrop's data folder, when it has a database to import.
-pub fn find_inkdrop() -> Option<(PathBuf, PathBuf)> {
-    let dir = kanso_import::default_inkdrop_dir()?;
-    let db = find_inkdrop_db(&dir).ok()?;
+/// The PouchDB library's data folder and database, when there is one to
+/// import.
+pub fn find_library() -> Option<(PathBuf, PathBuf)> {
+    let dir = kanso_import::default_pouch_library_dir()?;
+    let db = find_pouch_db(&dir).ok()?;
     Some((dir, db))
 }
 
 fn phase_label(phase: Phase) -> &'static str {
     match phase {
-        Phase::Snapshot => "Copying Inkdrop's database",
+        Phase::Snapshot => "Copying the library",
         Phase::Books => "Notebooks",
         Phase::Tags => "Tags",
         Phase::Files => "Attachments",
@@ -170,7 +172,7 @@ impl Render for ImportView {
                         div()
                             .text_xs()
                             .text_color(muted)
-                            .child("Inkdrop's files are only read; it can keep running."),
+                            .child("The library's files are only read; its app can keep running."),
                     )
             }
             ImportState::Done(report) => v_flex()
@@ -209,16 +211,12 @@ impl Render for ImportView {
 
 use gpui_kit::prelude::FluentBuilder as _;
 
-/// Imports Inkdrop's notes, showing progress in a dialog.
+/// Imports the library's notes, showing progress in a dialog.
 pub fn start_import(window: &mut Window, cx: &mut App) {
-    let Some((_, source)) = find_inkdrop() else {
-        #[cfg(target_os = "macos")]
-        let message =
-            "No Inkdrop database was found in ~/Library/Application Support/inkdrop.".to_owned();
-        #[cfg(not(target_os = "macos"))]
-        let message = match kanso_import::default_inkdrop_dir() {
-            Some(dir) => format!("No Inkdrop database was found in {}.", dir.display()),
-            None => "No Inkdrop database was found.".to_owned(),
+    let Some((_, source)) = find_library() else {
+        let message = match kanso_import::default_pouch_library_dir() {
+            Some(dir) => format!("No notes library was found in {}.", dir.display()),
+            None => "No notes library was found.".to_owned(),
         };
         window.push_notification(Notification::warning(message), cx);
         return;
@@ -227,27 +225,27 @@ pub fn start_import(window: &mut Window, cx: &mut App) {
     let view = cx.new(|cx| ImportView::new(store, source, cx));
     window.open_alert_dialog(cx, move |alert, _, _| {
         alert
-            .title("Import from Inkdrop")
+            .title("Import a notes library")
             .child(view.clone())
             .ok_text("Close")
     });
 }
 
-/// Takes Inkdrop's API port and credentials, after the user agrees to the
+/// Takes the library's API port and credentials, after the user agrees to the
 /// Keychain prompt. `on_done` runs after the settings are saved.
 pub fn start_copy_credentials(
     window: &mut Window,
     cx: &mut App,
     on_done: impl Fn(&mut Window, &mut App) + 'static,
 ) {
-    let Some(inkdrop_dir) = kanso_import::default_inkdrop_dir() else {
+    let Some(library_dir) = kanso_import::default_pouch_library_dir() else {
         return;
     };
     let mut server = cx.global::<AppState>().config.server.clone();
     // Reading the Keychain waits for the user to answer macOS's prompt.
     let copy = cx.background_spawn(async move {
-        copy_server_settings(&inkdrop_dir, &mut server, || {
-            keychain_secret(INKDROP_KEYCHAIN_SERVICE)
+        copy_server_settings(&library_dir, &mut server, || {
+            keychain_secret(SAFE_STORAGE_SERVICE)
         })
         .map(|copied| (copied, server))
     });
@@ -259,16 +257,16 @@ pub fn start_copy_credentials(
                     AppState::update_config(cx, |config| config.server = server);
                     let message = match copied {
                         Copied::Everything => {
-                            "Kanso now uses Inkdrop's API port, username and password."
+                            "Kanso now uses the copied API port, username and password."
                         }
-                        Copied::PortOnly => "Kanso now uses Inkdrop's API port.",
+                        Copied::PortOnly => "Kanso now uses the copied API port.",
                     };
                     window.push_notification(Notification::success(message), cx);
                     on_done(window, cx);
                 }
                 Err(err) => {
                     window.push_notification(
-                        Notification::error(format!("Couldn't copy Inkdrop's settings: {err:#}")),
+                        Notification::error(format!("Couldn't copy the API settings: {err:#}")),
                         cx,
                     );
                 }
@@ -278,29 +276,28 @@ pub fn start_copy_credentials(
         .detach();
 }
 
-/// `kanso import-inkdrop [--inkdrop-dir DIR] [--credentials]`
+/// `kanso import pouchdb [--library-dir DIR] [--credentials]`
 pub fn run_cli(data_dir: &Path, args: &[String]) -> anyhow::Result<()> {
-    let mut inkdrop_dir = None;
+    let mut library_dir = None;
     let mut credentials = false;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--inkdrop-dir" => {
-                inkdrop_dir = Some(PathBuf::from(
-                    args.next().context("--inkdrop-dir needs a folder")?,
+            "--library-dir" => {
+                library_dir = Some(PathBuf::from(
+                    args.next().context("--library-dir needs a folder")?,
                 ))
             }
             "--credentials" => credentials = true,
             other => bail!("unexpected argument `{other}`"),
         }
     }
-    let inkdrop_dir = match inkdrop_dir {
+    let library_dir = match library_dir {
         Some(dir) => dir,
-        None => {
-            kanso_import::default_inkdrop_dir().context("HOME is not set; pass --inkdrop-dir")?
-        }
+        None => kanso_import::default_pouch_library_dir()
+            .context("HOME is not set; pass --library-dir")?,
     };
-    let source = find_inkdrop_db(&inkdrop_dir)?;
+    let source = find_pouch_db(&library_dir)?;
     std::fs::create_dir_all(data_dir)?;
     let Some(_lock) = kanso_store::lock_data_dir(data_dir)? else {
         bail!(
@@ -315,13 +312,13 @@ pub fn run_cli(data_dir: &Path, args: &[String]) -> anyhow::Result<()> {
     if credentials {
         let config_path = paths::config_path(data_dir);
         let mut config = crate::config::AppConfig::load(&config_path)?;
-        let copied = copy_server_settings(&inkdrop_dir, &mut config.server, || {
-            eprintln!("macOS will ask to allow access to “{INKDROP_KEYCHAIN_SERVICE}”.");
-            keychain_secret(INKDROP_KEYCHAIN_SERVICE)
+        let copied = copy_server_settings(&library_dir, &mut config.server, || {
+            eprintln!("macOS will ask to allow access to “{SAFE_STORAGE_SERVICE}”.");
+            keychain_secret(SAFE_STORAGE_SERVICE)
         })?;
         config.save(&config_path)?;
         println!(
-            "Copied Inkdrop's API {} (port {}).",
+            "Copied the library's API {} (port {}).",
             if copied == Copied::Everything {
                 "port and credentials"
             } else {
@@ -343,7 +340,7 @@ mod tests {
     use base64::Engine as _;
     use proptest::prelude::*;
 
-    fn inkdrop_dir(auth: serde_json::Value, port: u16) -> tempfile::TempDir {
+    fn library_dir(auth: serde_json::Value, port: u16) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         let config = serde_json::json!({"*": {"core": {"server": {
             "enabled": true, "port": port, "bindAddress": "127.0.0.1", "auth": auth
@@ -355,13 +352,13 @@ mod tests {
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(64))]
 
-        /// Round-trip: credentials Inkdrop encrypted come out as Kanso's
+        /// Round-trip: credentials the source app encrypted come out as Kanso's
         /// server settings unchanged.
         #[test]
         fn prop_encrypted_credentials_are_copied(user in "[a-z]{1,12}", pass in "[ -~]{1,24}", secret in "[A-Za-z0-9]{16}", port in 1024u16..65535) {
             let data = kanso_import::safe_storage::encrypt(format!("{user}:{pass}").as_bytes(), &secret);
             let auth = base64::engine::general_purpose::STANDARD.encode(data);
-            let dir = inkdrop_dir(serde_json::json!(auth), port);
+            let dir = library_dir(serde_json::json!(auth), port);
             let mut settings = ServerSettings::default();
             let copied = copy_server_settings(dir.path(), &mut settings, || Ok(secret.clone())).unwrap();
             prop_assert_eq!(copied, Copied::Everything);
@@ -372,7 +369,7 @@ mod tests {
     #[test]
     fn a_failed_keychain_read_changes_nothing() {
         let data = kanso_import::safe_storage::encrypt(b"a:b", "s");
-        let dir = inkdrop_dir(
+        let dir = library_dir(
             serde_json::json!(base64::engine::general_purpose::STANDARD.encode(data)),
             4000,
         );
@@ -386,7 +383,7 @@ mod tests {
 
     #[test]
     fn plain_credentials_need_no_keychain() {
-        let dir = inkdrop_dir(serde_json::json!("me:pw"), 19841);
+        let dir = library_dir(serde_json::json!("me:pw"), 19841);
         let mut settings = ServerSettings::default();
         let copied =
             copy_server_settings(dir.path(), &mut settings, || panic!("no keychain needed"))

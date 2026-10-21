@@ -25,7 +25,7 @@ use crate::crypto::{
     FORMAT_V1, KdfParams, NONCE_LEN, Opened, b64, lp, open_raw, random, seal_raw, unb64,
 };
 
-/// Where a note keeps its sealed text, beside Inkdrop's own fields.
+/// Where a note keeps its sealed text, beside its other fields.
 pub const LOCK_KEY: &str = kanso_core::model::LOCK_FIELD;
 
 /// What new lock keys use: 256 MiB, t = 3, p = 4. Unlocking derives once per

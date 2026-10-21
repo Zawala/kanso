@@ -1,7 +1,8 @@
-//! Bringing themes in from Inkdrop and Zed, and the `kanso theme` command.
+//! Bringing themes in from theme packages and Zed, and the `kanso theme`
+//! command.
 //!
-//! An import reads an Inkdrop theme (a package folder, or the `.tgz` its
-//! registry serves), a Zed theme family (`.json`), or a Kanso theme file,
+//! An import reads a theme package (an npm-style package folder, or the
+//! `.tgz` its registry serves), a Zed theme family (`.json`), or a Kanso theme file,
 //! and writes each theme it finds into a themes folder as a Kanso theme
 //! file. What a theme doesn't map onto Kanso confidently is left for Kanso
 //! to derive. Then each imported theme gets a legibility pass: a color that
@@ -13,8 +14,8 @@
 
 mod color;
 mod css;
-mod inkdrop;
-mod inkdrop_base;
+mod package;
+mod package_base;
 mod zed;
 
 use std::path::{Path, PathBuf};
@@ -31,7 +32,7 @@ Usage: kanso theme <command>
 
 Commands:
   import <path>... [--out <dir>]
-                    Convert themes into Kanso theme files: an Inkdrop theme
+                    Convert themes into Kanso theme files: a theme package
                     (its package folder or .tgz), a Zed theme family (.json)
                     or a Kanso theme (.json, checked and copied). They go in
                     --out, or Kanso's themes folder.
@@ -336,7 +337,7 @@ pub fn read_source(source: &Path) -> Result<Vec<ThemeFile>, String> {
             }
             all
         } else {
-            vec![inkdrop::import(source)?]
+            vec![package::import(source)?]
         }
     } else if file_name.ends_with(".tgz") || file_name.ends_with(".tar.gz") {
         vec![read_tarball(source)?]
@@ -344,7 +345,7 @@ pub fn read_source(source: &Path) -> Result<Vec<ThemeFile>, String> {
         return read_json(source);
     } else {
         return Err(
-            "Kanso imports an Inkdrop theme (its folder or a .tgz package) or a Zed theme (.json); this is neither."
+            "Kanso imports a theme package (its folder or a .tgz) or a Zed theme (.json); this is neither."
                 .into(),
         );
     };
@@ -380,7 +381,7 @@ fn read_json(path: &Path) -> Result<Vec<ThemeFile>, String> {
     Err("This JSON file isn't a theme Kanso can import: it is neither a Zed theme family nor a Kanso theme.".into())
 }
 
-/// An Inkdrop package tarball, unpacked with the system's `tar` into a
+/// A theme package tarball, unpacked with the system's `tar` into a
 /// folder of its own in the temporary folder, removed afterwards.
 fn read_tarball(path: &Path) -> Result<ThemeFile, String> {
     read_tarball_in(path, &std::env::temp_dir())
@@ -427,9 +428,9 @@ fn read_tarball_in(path: &Path, parent: &Path) -> Result<ThemeFile, String> {
                     .find(|p| p.join("package.json").is_file())
             })
             .ok_or_else(|| {
-                "This package isn't an Inkdrop theme: it has no package.json.".to_owned()
+                "This package isn't a theme package: it has no package.json.".to_owned()
             })?;
-        inkdrop::import(&root)
+        package::import(&root)
     })();
     let _ = std::fs::remove_dir_all(&dir);
     result
@@ -721,7 +722,7 @@ fn legibility_pass(theme: &mut ThemeFile) {
             ensure_contrast(t.caret, &[c.editor], 3.0, c.text),
         );
     }
-    // The button, darkened or lightened under its text as Inkdrop's light
+    // The button, darkened or lightened under its text as the default light
     // theme needs (white on a mid blue); then the text, if that can't do.
     let c = theme.resolve().colors;
     if contrast(c.button_text, c.button) < 4.5 {
@@ -1120,10 +1121,10 @@ mod tests {
         assert!(run_cli(&data, &args(&["help"])).is_ok());
     }
 
-    /// Inkdrop's own default themes, when their reference copies are at
-    /// `$KANSO_THEME_REFS` (the folders `inkdropapp_default-light` and
-    /// `inkdropapp_default-dark`), import as near-white and near-black
-    /// themes with Inkdrop's blue accent, and read.
+    /// The Default Light and Default Dark theme packages, when reference
+    /// copies are at `$KANSO_THEME_REFS` (in folders named after their
+    /// upstream repositories, `<owner>_<repo>`), import as near-white and
+    /// near-black themes with a blue accent, and read.
     #[test]
     fn the_default_themes_import() {
         let Some(refs) = refs() else {

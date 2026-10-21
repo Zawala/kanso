@@ -1,4 +1,4 @@
-//! Inkdrop's local HTTP server settings from its `config.json`.
+//! The source app's local HTTP server settings, from its `config.json`.
 //!
 //! The credentials are the user's real password. Nothing here prints, logs
 //! or stores them; `Debug` redacts them.
@@ -10,54 +10,55 @@ use anyhow::{Context as _, bail};
 use base64::Engine as _;
 use serde_json::Value;
 
-/// Inkdrop's default local server port.
+/// The local-server API's default port.
 pub const DEFAULT_PORT: u16 = 19840;
-/// Inkdrop's default bind address.
+/// The local-server API's default bind address.
 pub const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1";
 
-/// `core.server` from Inkdrop's `config.json`.
+/// `core.server` from the source app's `config.json`.
 #[derive(Clone, PartialEq, Eq)]
-pub struct InkdropServerConfig {
+pub struct LocalServerConfig {
     pub enabled: bool,
     pub port: u16,
     pub bind_address: String,
-    pub credentials: InkdropCredentials,
+    pub credentials: LocalServerCredentials,
 }
 
-/// The `auth` value of Inkdrop's server settings.
+/// The `auth` value of the local server settings.
 #[derive(Clone, PartialEq, Eq)]
-pub enum InkdropCredentials {
+pub enum LocalServerCredentials {
     /// No `auth` value.
     None,
     /// `"username:password"` (split at the first colon) or `{username, password}`.
     Basic { username: String, password: String },
     /// Electron `safeStorage` ciphertext: base64 of `v10`/`v11` followed by
-    /// AES-CBC data. Only the macOS Keychain item "inkdrop Safe Storage" can
+    /// AES-CBC data. Only the macOS Keychain item
+    /// [`SAFE_STORAGE_SERVICE`](crate::safe_storage::SAFE_STORAGE_SERVICE) can
     /// decrypt it, so the username and password are not available here.
     Encrypted { ciphertext: String },
     /// A value in a shape this importer doesn't recognize.
     Unrecognized,
 }
 
-impl InkdropServerConfig {
+impl LocalServerConfig {
     pub fn username(&self) -> Option<&str> {
         match &self.credentials {
-            InkdropCredentials::Basic { username, .. } => Some(username),
+            LocalServerCredentials::Basic { username, .. } => Some(username),
             _ => None,
         }
     }
 
     pub fn password(&self) -> Option<&str> {
         match &self.credentials {
-            InkdropCredentials::Basic { password, .. } => Some(password),
+            LocalServerCredentials::Basic { password, .. } => Some(password),
             _ => None,
         }
     }
 }
 
-impl fmt::Debug for InkdropServerConfig {
+impl fmt::Debug for LocalServerConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("InkdropServerConfig")
+        f.debug_struct("LocalServerConfig")
             .field("enabled", &self.enabled)
             .field("port", &self.port)
             .field("bind_address", &self.bind_address)
@@ -66,30 +67,30 @@ impl fmt::Debug for InkdropServerConfig {
     }
 }
 
-impl fmt::Debug for InkdropCredentials {
+impl fmt::Debug for LocalServerCredentials {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InkdropCredentials::None => f.write_str("None"),
-            InkdropCredentials::Basic { username, .. } => f
+            LocalServerCredentials::None => f.write_str("None"),
+            LocalServerCredentials::Basic { username, .. } => f
                 .debug_struct("Basic")
                 .field("username", username)
                 .field("password", &"<redacted>")
                 .finish(),
-            InkdropCredentials::Encrypted { .. } => f
+            LocalServerCredentials::Encrypted { .. } => f
                 .debug_struct("Encrypted")
                 .field("ciphertext", &"<redacted>")
                 .finish(),
-            InkdropCredentials::Unrecognized => f.write_str("Unrecognized"),
+            LocalServerCredentials::Unrecognized => f.write_str("Unrecognized"),
         }
     }
 }
 
-pub(crate) fn parse_credentials(auth: Option<&Value>) -> InkdropCredentials {
+pub(crate) fn parse_credentials(auth: Option<&Value>) -> LocalServerCredentials {
     match auth {
-        None | Some(Value::Null) => InkdropCredentials::None,
-        Some(Value::String(s)) if s.is_empty() => InkdropCredentials::None,
+        None | Some(Value::Null) => LocalServerCredentials::None,
+        Some(Value::String(s)) if s.is_empty() => LocalServerCredentials::None,
         Some(Value::String(s)) => match s.split_once(':') {
-            Some((username, password)) => InkdropCredentials::Basic {
+            Some((username, password)) => LocalServerCredentials::Basic {
                 username: username.to_owned(),
                 password: password.to_owned(),
             },
@@ -97,11 +98,11 @@ pub(crate) fn parse_credentials(auth: Option<&Value>) -> InkdropCredentials {
                 let decoded = base64::engine::general_purpose::STANDARD.decode(s.trim());
                 match decoded {
                     Ok(bytes) if bytes.starts_with(b"v10") || bytes.starts_with(b"v11") => {
-                        InkdropCredentials::Encrypted {
+                        LocalServerCredentials::Encrypted {
                             ciphertext: s.clone(),
                         }
                     }
-                    _ => InkdropCredentials::Unrecognized,
+                    _ => LocalServerCredentials::Unrecognized,
                 }
             }
         },
@@ -109,19 +110,19 @@ pub(crate) fn parse_credentials(auth: Option<&Value>) -> InkdropCredentials {
             map.get("username").and_then(Value::as_str),
             map.get("password").and_then(Value::as_str),
         ) {
-            (Some(username), Some(password)) => InkdropCredentials::Basic {
+            (Some(username), Some(password)) => LocalServerCredentials::Basic {
                 username: username.to_owned(),
                 password: password.to_owned(),
             },
-            _ => InkdropCredentials::Unrecognized,
+            _ => LocalServerCredentials::Unrecognized,
         },
-        Some(_) => InkdropCredentials::Unrecognized,
+        Some(_) => LocalServerCredentials::Unrecognized,
     }
 }
 
-/// Parses the server settings from the text of Inkdrop's `config.json`.
+/// Parses the server settings from the text of the source app's `config.json`.
 /// `Ok(None)` when it has no `core.server` section.
-pub fn parse_inkdrop_server_config(json: &str) -> anyhow::Result<Option<InkdropServerConfig>> {
+pub fn parse_local_server_config(json: &str) -> anyhow::Result<Option<LocalServerConfig>> {
     let config: Value = serde_json::from_str(json).context("config.json is not valid JSON")?;
     let Some(server) = config.pointer("/*/core/server") else {
         return Ok(None);
@@ -147,7 +148,7 @@ pub fn parse_inkdrop_server_config(json: &str) -> anyhow::Result<Option<InkdropS
         Some(Value::String(s)) if !s.trim().is_empty() => s.trim().to_owned(),
         Some(_) => bail!("core.server.bindAddress in config.json is not a valid address"),
     };
-    Ok(Some(InkdropServerConfig {
+    Ok(Some(LocalServerConfig {
         enabled,
         port,
         bind_address,
@@ -155,16 +156,14 @@ pub fn parse_inkdrop_server_config(json: &str) -> anyhow::Result<Option<InkdropS
     }))
 }
 
-/// Reads Inkdrop's local server settings from `<inkdrop_dir>/config.json`.
+/// Reads the local server settings from `<library_dir>/config.json`.
 /// `Ok(None)` when the file doesn't exist or has no server section.
-pub fn read_inkdrop_server_config(
-    inkdrop_dir: &Path,
-) -> anyhow::Result<Option<InkdropServerConfig>> {
-    let path = inkdrop_dir.join("config.json");
+pub fn read_local_server_config(library_dir: &Path) -> anyhow::Result<Option<LocalServerConfig>> {
+    let path = library_dir.join("config.json");
     let json = match std::fs::read_to_string(&path) {
         Ok(json) => json,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(err).with_context(|| format!("cannot read {}", path.display())),
     };
-    parse_inkdrop_server_config(&json).with_context(|| format!("in {}", path.display()))
+    parse_local_server_config(&json).with_context(|| format!("in {}", path.display()))
 }

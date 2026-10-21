@@ -1,4 +1,4 @@
-//! Kanso: a Markdown notes app with an Inkdrop-compatible local API.
+//! Kanso: a Markdown notes app with a local REST API.
 //!
 //! `kanso` opens the app. Other commands run without a window; see `--help`.
 
@@ -20,6 +20,7 @@ mod code_lang;
 mod commands;
 mod config;
 mod dialogs;
+mod dictation;
 mod due;
 mod editor;
 mod editor_footer;
@@ -35,7 +36,6 @@ mod history;
 mod history_diff;
 mod hotkey;
 mod image_size;
-mod inkdrop;
 mod inspector;
 mod journal;
 mod keys;
@@ -51,12 +51,16 @@ mod list_edit;
 mod locked;
 mod markdown_edit;
 mod markdown_source;
+mod mcp_cli;
+mod mcp_setup;
 mod note_list;
+mod note_menu;
 mod notify_support;
 mod ocr;
 mod pairing;
 mod palette;
 mod paths;
+mod pouch_import;
 mod preview;
 mod preview_chunks;
 mod preview_rich;
@@ -76,6 +80,7 @@ mod smart_paste;
 #[cfg(test)]
 mod snapshots;
 mod split;
+mod sync_nudge;
 mod table_format;
 mod tag_complete;
 mod tasks_view;
@@ -85,6 +90,7 @@ mod theme;
 mod theme_file;
 mod theme_import;
 mod themes;
+mod title_bar;
 mod touch_id;
 #[cfg(test)]
 mod ui_tests;
@@ -110,20 +116,23 @@ Usage: kanso [command] [--data-dir <dir>]
 
 Commands:
   (none)            Open the app
-  serve             Run only the local API (Inkdrop-compatible REST and
-                    /mcp), without a window
+  serve             Run only the local API (REST and /mcp), without a
+                    window
   import <kind> <path>
                     Import a folder of Markdown or another app's export
                     (markdown, obsidian, notion, evernote, bear, joplin,
                     logseq, standard-notes, simplenote, upnote) [--dry-run];
                     `kanso import help` lists what each takes
-  import-inkdrop    Import notes from Inkdrop
-                    [--inkdrop-dir <dir>] [--credentials]
-                    --credentials also takes Inkdrop's API port, username
+  import pouchdb    Import the PouchDB notes library found on this computer
+                    [--library-dir <dir>] [--credentials]
+                    --credentials also takes its local API port, username
                     and password (macOS asks to allow Keychain access)
   capture [text]    Save a note to the Inbox, or [--book <name or id>];
                     with no text, from standard input. Works with
                     Kanso open or closed
+  mcp               Serve Kanso's MCP tools over standard input and
+                    output, for AI agents that start a program; needs
+                    Kanso open with its local API on
   theme             Work with themes; `kanso theme help` lists how
   help              Show this message
 
@@ -190,9 +199,9 @@ fn main() -> Result<()> {
         None => run_app(args.data_dir, args.after_update),
         Some("serve") => serve(args.data_dir),
         Some("import") => library_import::run_cli(&args.data_dir, &args.rest),
-        Some("import-inkdrop") => inkdrop::run_cli(&args.data_dir, &args.rest),
         Some("theme") => theme_import::run_cli(&args.data_dir, &args.rest),
         Some("capture") => capture_cli::run_cli(&args.data_dir, &args.rest),
+        Some("mcp") => mcp_cli::run_cli(&args.data_dir, &args.rest),
         Some("help") => {
             println!("{USAGE}{DATA_DIR_NOTE}");
             Ok(())
@@ -340,8 +349,9 @@ fn open_main_window(cx: &mut App) {
     let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
     // On macOS the panes run to the top edge; the traffic lights sit in the
     // leftmost pane's top band, and the app moves the window from the bands
-    // itself (see `layout::BandDrag`). Elsewhere Kanso draws no window
-    // controls of its own, so the system's title bar stays.
+    // itself (see `layout::BandDrag`). On Windows Kanso draws the whole
+    // title bar, menus and window buttons included (see `title_bar`). On
+    // Linux the system's title bar stays, with Kanso's menus under it.
     #[cfg(target_os = "macos")]
     let titlebar = TitlebarOptions {
         title: Some(flavour::CURRENT.name.into()),
@@ -354,7 +364,7 @@ fn open_main_window(cx: &mut App) {
     #[cfg(not(target_os = "macos"))]
     let titlebar = TitlebarOptions {
         title: Some(flavour::CURRENT.name.into()),
-        appears_transparent: false,
+        appears_transparent: cfg!(target_os = "windows"),
         traffic_light_position: None,
     };
     let options = WindowOptions {
@@ -393,7 +403,7 @@ fn open_main_window(cx: &mut App) {
 }
 
 /// On a first run with an empty library, offers to bring notes over from
-/// Inkdrop.
+/// a PouchDB notes library found on this computer.
 fn offer_first_import(window: &mut Window, cx: &mut App) {
     let state = cx.global::<AppState>();
     let empty = state
@@ -402,18 +412,18 @@ fn offer_first_import(window: &mut Window, cx: &mut App) {
         .is_ok_and(|counts| counts.get(&kanso_core::DocType::Note).copied().unwrap_or(0) == 0);
     if !empty
         || state.store.meta("import_offered").ok().flatten().is_some()
-        || inkdrop::find_inkdrop().is_none()
+        || pouch_import::find_library().is_none()
     {
         return;
     }
     state.store.set_meta("import_offered", "1").ok();
     dialogs::confirm(
-        "Import your Inkdrop notes?",
-        "Kanso found an Inkdrop library. Its notes, notebooks, tags and attachments can be copied in now; Inkdrop's files are only read.",
+        "Import your notes?",
+        "Kanso found a notes library on this computer. Its notes, notebooks, tags and attachments can be copied in now; its files are only read.",
         "Import",
         window,
         cx,
-        inkdrop::start_import,
+        pouch_import::start_import,
     );
 }
 

@@ -68,11 +68,16 @@ pub const TRAFFIC_LIGHT_INSET: f32 = 76.;
 /// band becomes a window drag, so a click that wobbles stays a click.
 pub const DRAG_THRESHOLD: f32 = 3.;
 
+/// Whether the traffic lights sit in the leftmost pane's top band. Only
+/// macOS draws them there; elsewhere the window buttons are in Kanso's own
+/// title bar, above the panes (see `title_bar`).
+pub const LIGHTS_IN_BAND: bool = cfg!(target_os = "macos");
+
 /// The room at the start of a pane's top band: the traffic lights' in the
 /// leftmost pane, and none in full screen, where they hide with the menu bar.
 // no-prop-test: a two-way choice; `leading_inset_examples` covers it.
 pub fn leading_inset(leftmost: bool, fullscreen: bool) -> f32 {
-    if leftmost && !fullscreen {
+    if LIGHTS_IN_BAND && leftmost && !fullscreen {
         TRAFFIC_LIGHT_INSET
     } else {
         0.
@@ -612,8 +617,8 @@ mod tests {
             prop_assert!(inset_after(lo, fullscreen) >= inset_after(hi, fullscreen));
             prop_assert!(inset_after(lo, fullscreen) >= 0.);
             prop_assert_eq!(inset_after(0., fullscreen), leading_inset(true, fullscreen));
-            if fullscreen {
-                prop_assert_eq!(inset_after(lo, true), 0.);
+            if fullscreen || !LIGHTS_IN_BAND {
+                prop_assert_eq!(inset_after(lo, fullscreen), 0.);
             } else {
                 prop_assert!(lo.max(0.) + inset_after(lo, false) >= TRAFFIC_LIGHT_INSET);
             }
@@ -666,6 +671,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn rail_examples() {
         assert_eq!(rail_width(false), TRAFFIC_LIGHT_INSET);
         assert_eq!(rail_width(true), RAIL_MIN_WIDTH);
@@ -677,6 +683,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn no_inset_without_lights_in_the_band() {
+        assert_eq!(leading_inset(true, false), 0.);
+        assert_eq!(rail_width(false), RAIL_MIN_WIDTH);
+        assert_eq!(inset_after(0., false), 0.);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
     fn leading_inset_examples() {
         assert_eq!(leading_inset(true, false), TRAFFIC_LIGHT_INSET);
         assert_eq!(leading_inset(true, true), 0.);

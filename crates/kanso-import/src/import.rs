@@ -1,4 +1,5 @@
-//! Copies the winning revision of every Inkdrop document into the store.
+//! Copies the winning revision of every document in a PouchDB library into
+//! the store.
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
@@ -52,11 +53,11 @@ fn kind_of(id: &str) -> Kind {
     }
 }
 
-/// Imports the Inkdrop database at `source_sqlite` (the `db/<hash>.sqlite`
+/// Imports the PouchDB library at `source_sqlite` (the `db/<hash>.sqlite`
 /// file) into `store`.
 ///
 /// The source is opened read-only and copied with SQLite's online backup API
-/// into a temporary file first, so Inkdrop may keep running and its files are
+/// into a temporary file first, so the app that owns it may keep running and its files are
 /// never written. Running it again imports nothing new.
 pub fn import(
     source_sqlite: &Path,
@@ -72,7 +73,7 @@ pub fn import(
         .prefix("kanso-import-")
         .tempdir()
         .context("cannot create a temporary directory")?;
-    let snapshot_path = temp.path().join("inkdrop.sqlite");
+    let snapshot_path = temp.path().join("library.sqlite");
     pouch::snapshot(source_sqlite, &snapshot_path)?;
     let conn = Connection::open_with_flags(
         &snapshot_path,

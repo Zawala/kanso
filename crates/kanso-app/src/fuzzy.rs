@@ -284,6 +284,6 @@ mod tests {
 
     #[test]
     fn camel_case_starts_a_word() {
-        assert!(score("ip", "inkdropPort").unwrap() > score("ip", "inkdropport").unwrap());
+        assert!(score("ip", "importPath").unwrap() > score("ip", "importpath").unwrap());
     }
 }

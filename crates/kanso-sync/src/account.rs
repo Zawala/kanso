@@ -29,8 +29,10 @@ use crate::wire::{
 use crate::{DeviceIdentity, EndpointError};
 
 /// The owner's Worker, compiled in as the default server. Accounts are bound
-/// to their server's origin, so it stays this URL (security re-check 14).
-pub const DEFAULT_SERVER: &str = "https://kanso.antonlabs.cc";
+/// to their server's origin (security re-check 14); this name derives as
+/// the server's first one, [`crate::OWNER_ORIGIN`], so accounts made there
+/// keep working under it.
+pub const DEFAULT_SERVER: &str = "https://sync.kansoapp.app";
 
 /// What a running account task is doing, for the button's spinner text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

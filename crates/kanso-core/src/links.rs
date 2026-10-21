@@ -1,8 +1,8 @@
-//! Links between notes, as written in a body: `inkdrop://note/<id>` links,
-//! and hand-typed or imported wiki-links `[[Title]]`, `[[Title#Heading]]`
-//! and `[[Title|alias]]`.
+//! Links between notes, as written in a body: ID links
+//! ([`NOTE_LINK_PREFIX`]`<id>`), and hand-typed or imported wiki-links
+//! `[[Title]]`, `[[Title#Heading]]` and `[[Title|alias]]`.
 //!
-//! An `inkdrop://` link names its note by ID, so it survives renames; a
+//! An ID link names its note by ID, so it survives renames; a
 //! wiki-link names it by title, matched without regard to case or runs of
 //! whitespace ([`normalize_title`]). Wiki-links inside code (fenced blocks
 //! and inline code spans) are text, not links.
@@ -10,6 +10,15 @@
 use std::ops::Range;
 
 use crate::tasks::linked_note_ids;
+
+/// The URL scheme of links inside note bodies. It is the scheme the app
+/// that first wrote these notes uses, so imported notes, API clients and
+/// Kanso's own links all agree; it stays exactly as written.
+pub const LINK_SCHEME: &str = "inkdrop://";
+/// An ID link to a note: this, then the note ID without its `note:` prefix.
+pub const NOTE_LINK_PREFIX: &str = "inkdrop://note/";
+/// An attachment link: this, then the file ID without its `file:` prefix.
+pub const FILE_LINK_PREFIX: &str = "inkdrop://file:";
 
 /// A wiki-link in a body.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -38,7 +47,7 @@ impl WikiLink {
 /// Where a link in a body points.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LinkTarget {
-    /// A note by ID (`note:…`), from an `inkdrop://note/` link.
+    /// A note by ID (`note:…`), from an ID link.
     Note(String),
     /// A note by normalized title, from a wiki-link.
     Title(String),
@@ -230,13 +239,13 @@ pub fn line_text(body: &str, line: u32) -> &str {
         .trim_end_matches('\r')
 }
 
-/// Every link in a body: `inkdrop://note/` links (anywhere, as backlinks
+/// Every link in a body: ID links (anywhere, as backlinks
 /// always found them) and wiki-links outside code, in order of where they
 /// are.
 pub fn note_links(body: &str) -> Vec<NoteLink> {
     let mut found: Vec<(usize, NoteLink)> = Vec::new();
-    if body.contains("inkdrop://note/") {
-        let prefix = "inkdrop://note/";
+    if body.contains(NOTE_LINK_PREFIX) {
+        let prefix = NOTE_LINK_PREFIX;
         for (at, _) in body.match_indices(prefix) {
             let rest = &body[at + prefix.len()..];
             let end = rest
@@ -269,7 +278,7 @@ pub fn note_links(body: &str) -> Vec<NoteLink> {
     found.into_iter().map(|(_, link)| link).collect()
 }
 
-/// Whether `body` links to note `id` with an `inkdrop://note/` link.
+/// Whether `body` links to note `id` with an ID link.
 pub fn links_to_id(body: &str, id: &str) -> bool {
     linked_note_ids(body).iter().any(|linked| linked == id)
 }

@@ -61,7 +61,7 @@ impl fmt::Display for DocType {
 const ID_ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
 const ID_LEN: usize = 8;
 
-/// A fresh random ID in Inkdrop's format: the type prefix and 8 URL-safe characters.
+/// A fresh random ID in the API's format: the type prefix and 8 URL-safe characters.
 pub fn new_id(doc_type: DocType) -> String {
     let suffix: String = (0..ID_LEN)
         .map(|_| ID_ALPHABET[fastrand::usize(..ID_ALPHABET.len())] as char)
@@ -82,7 +82,7 @@ pub fn with_prefix(doc_type: DocType, id: &str) -> String {
 }
 
 /// Whether `id` is a well-formed ID of `doc_type`: the prefix, then 1–120
-/// characters that are safe in URLs and in `inkdrop://` links.
+/// characters that are safe in URLs and in ID links.
 pub fn is_valid_id(doc_type: DocType, id: &str) -> bool {
     let Some(suffix) = id
         .strip_prefix(doc_type.as_str())
@@ -101,7 +101,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_ids_have_the_inkdrop_shape() {
+    fn new_ids_have_the_api_shape() {
         let id = new_id(DocType::Note);
         assert!(id.starts_with("note:"));
         assert_eq!(id.len(), "note:".len() + ID_LEN);
@@ -110,7 +110,7 @@ mod tests {
     }
 
     #[test]
-    fn real_inkdrop_ids_are_valid() {
+    fn real_imported_ids_are_valid() {
         for id in ["note:07HmFZwo", "note:rZmL6-B0", "note:-7d3_V-P"] {
             assert!(is_valid_id(DocType::Note, id), "{id}");
         }

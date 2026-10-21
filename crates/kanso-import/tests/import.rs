@@ -1,4 +1,4 @@
-//! Example tests for the importer against synthetic Inkdrop databases.
+//! Example tests for the importer against synthetic PouchDB libraries.
 
 mod common;
 
@@ -22,7 +22,7 @@ struct Env {
 
 fn env() -> Env {
     let dir = tempfile::tempdir().unwrap();
-    let db_dir = dir.path().join("inkdrop/db");
+    let db_dir = dir.path().join("library/db");
     std::fs::create_dir_all(&db_dir).unwrap();
     let source = db_dir.join("5c172db466294e6a0b7855cdba0b8d18.sqlite");
     let fixture = Fixture::create(&source);
@@ -254,7 +254,7 @@ fn second_import_reports_everything_unchanged() {
 }
 
 #[test]
-fn a_newer_inkdrop_revision_replaces_the_stored_one() {
+fn a_newer_source_revision_replaces_the_stored_one() {
     let env = env();
     env.store
         .import_doc(
@@ -439,20 +439,20 @@ fn file_bytes(path: &Path) -> Option<Vec<u8>> {
 }
 
 #[test]
-fn snapshots_while_inkdrop_writes_and_never_touches_its_files() {
+fn snapshots_while_the_source_app_writes_and_never_touches_its_files() {
     let env = env();
     realistic(&env.fixture);
-    // Inkdrop is "running": another connection holds an open write transaction.
-    let inkdrop = rusqlite::Connection::open(&env.source).unwrap();
-    inkdrop.execute_batch("BEGIN IMMEDIATE").unwrap();
-    inkdrop
+    // The source app is "running": another connection holds an open write transaction.
+    let source_app = rusqlite::Connection::open(&env.source).unwrap();
+    source_app.execute_batch("BEGIN IMMEDIATE").unwrap();
+    source_app
         .execute(
             r#"INSERT INTO "by-sequence" (json, deleted, doc_id, rev) VALUES (?1, 0, 'note:late0001', '1-ff')"#,
             [note_fields("Late", "late", "book:inbox").to_string()],
         )
         .unwrap();
-    let seq = inkdrop.last_insert_rowid();
-    inkdrop
+    let seq = source_app.last_insert_rowid();
+    source_app
         .execute(
             r#"INSERT INTO "document-store" (id, json, winningseq, max_seq) VALUES ('note:late0001', '{}', ?1, ?1)"#,
             [seq],
@@ -472,15 +472,15 @@ fn snapshots_while_inkdrop_writes_and_never_touches_its_files() {
         mtime
     );
 
-    // The import held no lock: Inkdrop's transaction still commits.
-    inkdrop.execute_batch("COMMIT").unwrap();
+    // The import held no lock: the app's transaction still commits.
+    source_app.execute_batch("COMMIT").unwrap();
     let report = run(&env);
     assert_eq!((report.notes, report.unchanged), (1, 12));
     assert!(env.store.get("note:late0001").unwrap().is_some());
 }
 
 #[test]
-fn refuses_files_that_are_not_inkdrop_databases() {
+fn refuses_files_that_are_not_pouchdb_libraries() {
     let env = env();
     let other = env.dir.path().join("other.sqlite");
     rusqlite::Connection::open(&other)
@@ -489,7 +489,7 @@ fn refuses_files_that_are_not_inkdrop_databases() {
         .unwrap();
     let err = import(&other, &env.store, |_| {}).unwrap_err();
     assert!(
-        format!("{err:#}").contains("not an Inkdrop database"),
+        format!("{err:#}").contains("not a PouchDB library"),
         "{err:#}"
     );
 

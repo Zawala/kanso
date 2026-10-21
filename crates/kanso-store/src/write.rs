@@ -474,7 +474,7 @@ fn put_in(
 }
 
 impl Store {
-    /// Deletes a document with Inkdrop's semantics: a notebook's notes move to
+    /// Deletes a document with the local-server API's semantics: a notebook's notes move to
     /// the trash and its sub-notebooks are deleted; a tag is removed from its
     /// notes first; a note or file is deleted outright.
     pub fn delete(&self, id: &str, origin: Origin) -> Result<WriteResult> {

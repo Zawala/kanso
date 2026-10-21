@@ -5,7 +5,7 @@
   "author": "Takuya Matsuyama",
   "license": "MIT",
   "source": "https://github.com/inkdropapp/default-light",
-  "description": "Inkdrop's default light theme, imported from its palette.",
+  "description": "A near-white default light theme with a blue accent, imported from its palette.",
   "appearance": "light",
   "ui": {
     "editor": "#FFFFFF",

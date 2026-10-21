@@ -18,6 +18,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Icon, Selectable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+use kanso_core::links::{FILE_LINK_PREFIX, LINK_SCHEME, NOTE_LINK_PREFIX};
 use kanso_store::Store;
 
 use crate::preview_chunks::{self, End, Prepared, SPLIT_SYNC_BYTES, Splice, Start};
@@ -53,7 +54,7 @@ pub fn readable_width(size: f32, mono: bool) -> f32 {
     }
 }
 
-/// Where clicks on `inkdrop://note/<id>` links go.
+/// Where clicks on note links ([`NOTE_LINK_PREFIX`]`<id>`) go.
 pub type LinkSender = async_channel::Sender<String>;
 
 /// A size picked for an attached image in the preview: the editor puts
@@ -335,13 +336,14 @@ impl Preview {
         -f32::from(self.list.scroll_px_offset_for_scrollbar().y)
     }
 
-    /// Resolves `inkdrop://file:<id>` from the store, caching decoded images.
+    /// Resolves attachment links ([`FILE_LINK_PREFIX`]`<id>`) from the store,
+    /// caching decoded images.
     fn image_resolver(&self) -> impl Fn(&SharedUri) -> ImageSource + Send + Sync + 'static {
         image_resolver(self.store.clone(), self.images.clone())
     }
 }
 
-/// Finds a note's images: `inkdrop://file:<id>` from the store, decoded once
+/// Finds a note's images: attachment links from the store, decoded once
 /// and cached; anything else as the URI says.
 type ImageResolver = Arc<dyn Fn(&SharedUri) -> ImageSource + Send + Sync>;
 
@@ -350,7 +352,7 @@ fn image_resolver(
     images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>>,
 ) -> impl Fn(&SharedUri) -> ImageSource + Send + Sync + 'static {
     move |uri| {
-        let Some(suffix) = uri.strip_prefix("inkdrop://file:") else {
+        let Some(suffix) = uri.strip_prefix(FILE_LINK_PREFIX) else {
             return ImageSource::from(uri.clone());
         };
         let id = format!("file:{suffix}");
@@ -431,7 +433,7 @@ struct Picture {
 /// Whether the preview can show an image from `src`: an attachment or the
 /// web.
 fn showable_src(src: &str) -> bool {
-    src.starts_with("inkdrop://file:") || src.starts_with("https://") || src.starts_with("http://")
+    src.starts_with(FILE_LINK_PREFIX) || src.starts_with("https://") || src.starts_with("http://")
 }
 
 /// The image `node` shows on its own, if it is one: a paragraph of just an
@@ -880,9 +882,10 @@ fn room_below(end: End, rem: Pixels) -> Pixels {
 
 /// The note ID an in-app link points at.
 pub fn linked_note(url: &str) -> Option<String> {
-    let suffix = url
-        .strip_prefix("inkdrop://note/")
-        .or_else(|| url.strip_prefix("inkdrop://note:"))?;
+    let suffix = url.strip_prefix(NOTE_LINK_PREFIX).or_else(|| {
+        url.strip_prefix(LINK_SCHEME)
+            .and_then(|rest| rest.strip_prefix("note:"))
+    })?;
     let suffix = suffix.split(['?', '#', '/']).next()?;
     (!suffix.is_empty()).then(|| format!("note:{suffix}"))
 }

@@ -18,8 +18,9 @@
 //!
 //! What a note publishes is kept in the note, as `note.extra.kansoPublish`
 //! ([`KansoPublish`]), so it syncs end to end encrypted with the note and
-//! the account's other devices can update or unpublish the same link. Inkdrop's
-//! own `share` field is left alone.
+//! the account's other devices can update or unpublish the same link. The
+//! imported `share` field, which belongs to the API's note shape, is left
+//! alone.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -39,7 +40,7 @@ use crate::crypto::{b64, random, sha256_hex, unb64};
 use crate::remote::encode_segment;
 use crate::wire::{ApiError, MAX_AUTH_RESPONSE, SessionToken};
 
-/// Where a note keeps what it published, beside Inkdrop's own fields.
+/// Where a note keeps what it published, beside the API's own fields.
 pub const PUBLISH_KEY: &str = kanso_core::model::PUBLISH_FIELD;
 /// The only format so far.
 pub const SHARE_FORMAT_V1: u8 = 0x01;
@@ -305,9 +306,10 @@ impl KansoPublish {
         }
     }
 
-    /// `<server>/p/<id>#<key>`, which works with or without a short link.
+    /// `<server>/p/<id>#<key>`, which works with or without a short link;
+    /// on the owner's server, at its address for published notes.
     pub fn long_link(&self, server: &str) -> String {
-        share_link(server, &self.share_id, &self.key)
+        share_link(page_server(server), &self.share_id, &self.key)
     }
 
     /// Whether the note's title or body differ from what was published.
@@ -321,6 +323,16 @@ impl KansoPublish {
     /// Whether the link has stopped working at `now_ms`.
     pub fn is_expired(&self, now_ms: i64) -> bool {
         self.expires_at.is_some_and(|at| at <= now_ms)
+    }
+}
+
+/// Where `server` shows published notes: the owner's at
+/// [`crate::OWNER_SHARE_SERVER`], any other at itself. Pure.
+pub fn page_server(server: &str) -> &str {
+    if crate::is_owner_server(server) {
+        crate::OWNER_SHARE_SERVER
+    } else {
+        server
     }
 }
 
@@ -910,13 +922,29 @@ mod tests {
             short_url: None,
             other: Map::new(),
         };
+        // The owner's server shows published notes on its own address, under
+        // any of its names; other servers show them on themselves.
+        for owner in [crate::DEFAULT_SERVER, crate::OWNER_ORIGIN] {
+            assert_eq!(
+                publish.long_link(owner),
+                format!(
+                    "https://share.kansoapp.app/p/{}#{}",
+                    publish.share_id, publish.key
+                )
+            );
+        }
+        assert!(
+            publish
+                .long_link("https://k.example/")
+                .starts_with("https://k.example/p/")
+        );
         let mut extra = Map::new();
         extra.insert("share".into(), "public".into());
         KansoPublish::store(Some(&publish), &mut extra);
         assert_eq!(KansoPublish::from_extra(&extra), Some(publish.clone()));
         assert_eq!(
             extra["share"], "public",
-            "Inkdrop's share field is untouched"
+            "the API's share field is untouched"
         );
         let value = &extra[PUBLISH_KEY];
         assert!(value.get("shareId").is_some() && value.get("publishedRev").is_some());

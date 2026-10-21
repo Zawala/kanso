@@ -1,4 +1,4 @@
-//! Errors in CouchDB's JSON shape, `{"error": …, "reason": …}`, as Inkdrop's
+//! Errors in CouchDB's JSON shape, `{"error": …, "reason": …}`, as the local-server API's
 //! local server returns them.
 
 use axum::Json;

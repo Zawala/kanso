@@ -1,4 +1,4 @@
-//! Property tests for the Inkdrop importer. CI pins the seed with `PROPTEST_RNG_SEED`.
+//! Property tests for the PouchDB library importer. CI pins the seed with `PROPTEST_RNG_SEED`.
 
 mod common;
 
@@ -26,7 +26,7 @@ fn config(cases: u32) -> ProptestConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Generators: a random Inkdrop database with revisions, deletions and attachments.
+// Generators: a random PouchDB library with revisions, deletions and attachments.
 
 #[derive(Clone, Debug)]
 struct GenRev {

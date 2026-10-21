@@ -1,4 +1,4 @@
-//! HTTP Basic authentication. Every route requires it, as in Inkdrop.
+//! HTTP Basic authentication. Every route requires it, as the local-server API does.
 
 use std::sync::Arc;
 

@@ -215,7 +215,7 @@ random 128-bit share ID and a random 256-bit key for the share, and seals the pa
 keeps `{shareId, key, publishedAt, publishedRev, expiresAt?, contentHash, shortUrl?}` in the note as
 `note.extra.kansoPublish`. That travels inside the sealed note, so the account's other devices can
 update the same link (same ID and key, new ciphertext) or unpublish it, and the server never
-receives the key. Inkdrop's own `share` field is left alone. Only the Publish sheet writes
+receives the key. The note's own `share` field, part of the API's note shape, is left alone. Only the Publish sheet writes
 `kansoPublish`: note writes through the local API and MCP keep the note's existing value and
 ignore any they are given. The key lives only in the link's `#fragment`, which browsers never send
 to a server.
@@ -316,7 +316,9 @@ the ciphertext), but can't take back a copy someone already saved.
 - Format version 1 is the byte `0x01`.
 - **Origins.** `origin` is `url::Url::parse(server)?.origin().ascii_serialization()` of the URL the
   client actually connects to, for example `https://kanso.antonlabs.cc`: lowercase,
-  punycode, default port omitted, path dropped. The server never supplies it.
+  punycode, default port omitted, path dropped. The server never supplies it. The owner's server
+  answers to later names too (`https://sync.kansoapp.app`); the client maps those to its first
+  origin, `OWNER_ORIGIN`, before deriving, so accounts made under the first name open under any.
 
 ### Password and KDF
 
@@ -432,7 +434,7 @@ Neither goes on the wire:
 ### Revision generations only grow (M2)
 
 This is the invariant: every revision the server accepts for a document has a higher generation
-than the one it replaces. Local writes already use `Rev::next(current)`. The Inkdrop importer only
+than the one it replaces. Local writes already use `Rev::next(current)`. The PouchDB library importer only
 writes when the incoming generation is higher (`Store::import_doc`).
 
 Two store rules keep it, in `apply_remote`:
@@ -560,7 +562,7 @@ primitives.
 
 ### Conventions
 
-- **Base URL.** The server URL (default `https://kanso.antonlabs.cc`), checked by
+- **Base URL.** The server URL (default `https://sync.kansoapp.app`), checked by
   `check_endpoint`: https, or http to loopback only. A host ending in a dot is refused, since it would
   give the same server a second origin.
 - **Browser requests (M7).** Any request with an `Origin` header gets 403 `forbidden_origin`,
@@ -1482,7 +1484,7 @@ AUTH_PEPPER:<value>` on `wrangler dev`. `.dev.vars` and `cloud/.wrangler/` go in
 ### Public API the app calls
 
 ```rust
-pub const DEFAULT_SERVER: &str = "https://kanso.antonlabs.cc";
+pub const DEFAULT_SERVER: &str = "https://sync.kansoapp.app";
 
 pub trait Backend: Send + Sync { /* api, remote, kdf_floor, kdf_default, retry_pause (1 s, then 4 s) */ }
 pub struct HttpBackend;                 // the app
@@ -2145,7 +2147,7 @@ account] [Sign in].
   - Username, with the hint "3–32 lowercase letters, digits, - or _".
   - Password, with the hint "At least 12 characters. A few random words work well."
   - Confirm password.
-  - Server: "kanso.antonlabs.cc (default)" or the custom URL, with "Use a different
+  - Server: "sync.kansoapp.app (default)" or the custom URL, with "Use a different
     server…". That opens a prompt checked by `check_endpoint` and `server_info`, and a custom server
     shows "Use the default server" next to it.
 
@@ -2472,7 +2474,8 @@ above already say each of them; this list is the index.
     revoked rows per account.
 13. `signups only <name>` checks for an existing account afterwards; `check_endpoint` refuses a
     host ending in a dot.
-14. `DEFAULT_SERVER` stays `https://kanso.antonlabs.cc`.
+14. `DEFAULT_SERVER` is `https://sync.kansoapp.app`, a later name of the owner's server, which
+    derives as its first, `https://kanso.antonlabs.cc` (see Origins).
 
 *Other step-1 decisions:*
 

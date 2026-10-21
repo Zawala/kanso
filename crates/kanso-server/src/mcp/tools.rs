@@ -12,6 +12,7 @@ use base64::Engine as _;
 use base64::engine::DecodePaddingMode;
 use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig, STANDARD};
 use kanso_core::id::with_prefix;
+use kanso_core::links::{LINK_SCHEME, NOTE_LINK_PREFIX};
 use kanso_core::model::{MAX_ATTACHMENT_SIZE, SUPPORTED_IMAGE_TYPES};
 use kanso_core::{DocType, now_ms};
 use kanso_store::{Attachment, Store};
@@ -171,12 +172,12 @@ fn export_html(store: &Store, args: &Args) -> ToolResult {
     result(vec![text(html)])
 }
 
-/// Runs `resources/read` for `inkdrop://note/{noteId}`.
+/// Runs `resources/read` for a note link ([`NOTE_LINK_PREFIX`]`{noteId}`).
 pub(crate) fn read_resource(state: &AppState, uri: &str) -> Result<Value, RpcError> {
     let note_id = uri
-        .get(..10)
-        .filter(|scheme| scheme.eq_ignore_ascii_case("inkdrop://"))
-        .and_then(|_| uri[10..].strip_prefix("note/"))
+        .get(..LINK_SCHEME.len())
+        .filter(|scheme| scheme.eq_ignore_ascii_case(LINK_SCHEME))
+        .and_then(|_| uri[LINK_SCHEME.len()..].strip_prefix("note/"))
         .filter(|id| !id.is_empty() && !id.contains(['/', ',']))
         .ok_or_else(|| {
             RpcError::invalid_params(format!("MCP error -32602: Resource {uri} not found"))
@@ -218,14 +219,17 @@ fn bool_arg(args: &Args, key: &str) -> bool {
     args.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
-/// `inkdrop://note/<id without the note: prefix>`.
+/// [`NOTE_LINK_PREFIX`]`<id without the note: prefix>`.
 fn note_uri(id: &str) -> String {
-    format!("inkdrop://note/{}", id.strip_prefix("note:").unwrap_or(id))
+    format!(
+        "{NOTE_LINK_PREFIX}{}",
+        id.strip_prefix("note:").unwrap_or(id)
+    )
 }
 
-/// `inkdrop://file:<id>`.
+/// [`LINK_SCHEME`]`file:<id>`.
 fn file_uri(id: &str) -> String {
-    format!("inkdrop://{}", with_prefix(DocType::File, id))
+    format!("{LINK_SCHEME}{}", with_prefix(DocType::File, id))
 }
 
 /// JavaScript truthiness.

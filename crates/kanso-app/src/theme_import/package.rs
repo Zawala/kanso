@@ -1,13 +1,14 @@
-//! Inkdrop themes: a package folder with a `package.json`.
+//! Theme packages: an npm-style package folder with a `package.json`, as
+//! Electron notes apps publish their themes.
 //!
-//! Inkdrop 6 themes (`"theme": true`) style the UI, the editor and the
+//! Whole themes (`"theme": true`) style the UI, the editor and the
 //! preview with CSS custom properties, and ship a `palette.json` with every
 //! one resolved; that is read first, then the stylesheets' own
 //! `--name: value` declarations. A variable a theme doesn't set falls back
-//! to Inkdrop's default theme of the same appearance, as it does in
-//! Inkdrop, from the table in `inkdrop_base.rs`.
+//! to the default theme of the same appearance, as it does in the app the
+//! theme was made for, from the table in `package_base.rs`.
 //!
-//! Inkdrop 5 themes do one part each (`"theme": "ui"`, `"syntax"` or
+//! Older single-part themes do one part each (`"theme": "ui"`, `"syntax"` or
 //! `"preview"`). A UI theme uses the same custom properties. A syntax theme
 //! is LESS or CSS styling CodeMirror's `.cm-*` classes, and a preview theme
 //! styles `.mde-preview`'s elements; both are read rule by rule. Such a theme
@@ -20,28 +21,28 @@ use serde_json::Value;
 
 use super::color;
 use super::css::{self, Declaration, Sheet};
-use super::inkdrop_base;
+use super::package_base;
 use crate::theme::Rgb;
 use crate::theme_file::{Appearance, Color, ThemeFile, TokenStyle, contrast, luminance};
 
-/// Which parts of Inkdrop a package styles.
+/// Which parts of the app a package styles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
-    /// Inkdrop 6: all three.
+    /// A whole theme: all three.
     Whole,
     Ui,
     Syntax,
     Preview,
 }
 
-/// The theme in the Inkdrop package at `dir`.
+/// The theme in the theme package at `dir`.
 // no-prop-test: reads a folder; `the_default_themes_import`,
 // `a_night_owl_style_ui_theme` and `a_material_style_syntax_theme` cover it,
 // and the mapping's parts have their own property tests.
 pub fn import(dir: &Path) -> Result<ThemeFile, String> {
     let package_path = dir.join("package.json");
     if !package_path.is_file() {
-        return Err("This folder isn't an Inkdrop theme: it has no package.json.".into());
+        return Err("This folder isn't a theme package: it has no package.json.".into());
     }
     let package: Value = std::fs::read_to_string(&package_path)
         .map_err(|err| format!("Its package.json couldn't be read: {err}."))
@@ -54,7 +55,7 @@ pub fn import(dir: &Path) -> Result<ThemeFile, String> {
     let palette = read_palette(dir)?;
     if sheets.is_empty() && palette.is_none() {
         return Err(
-            "This Inkdrop theme has no stylesheets or palette.json to read its colors from.".into(),
+            "This theme package has no stylesheets or palette.json to read its colors from.".into(),
         );
     }
     let declarations = with_less_variables(&sheets);
@@ -69,7 +70,7 @@ pub fn import(dir: &Path) -> Result<ThemeFile, String> {
     let rules = Rules::read(&declarations, kind);
     let appearance = appearance(&package, palette.as_ref(), &own, &rules, &declarations);
     let dark = appearance.is_dark();
-    let base: HashMap<String, String> = inkdrop_base::defaults(dark)
+    let base: HashMap<String, String> = package_base::defaults(dark)
         .iter()
         .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
         .collect();
@@ -139,11 +140,11 @@ fn kind(package: &Value) -> Result<Kind, String> {
             "syntax" => Ok(Kind::Syntax),
             "preview" => Ok(Kind::Preview),
             other => Err(format!(
-                "This package's \"theme\" is \"{other}\"; Kanso reads Inkdrop themes that are true, \"ui\", \"syntax\" or \"preview\"."
+                "This package's \"theme\" is \"{other}\"; Kanso reads theme packages whose \"theme\" is true, \"ui\", \"syntax\" or \"preview\"."
             )),
         },
         _ => Err(
-            "This package isn't an Inkdrop theme: its package.json doesn't say \"theme\".".into(),
+            "This package isn't a theme package: its package.json doesn't say \"theme\".".into(),
         ),
     }
 }
@@ -263,24 +264,24 @@ fn with_less_variables(sheets: &[Sheet]) -> Vec<Declaration> {
 
 // MARK: Variables
 
-/// The theme's CSS variables, and Inkdrop's defaults beneath them.
+/// The theme's CSS variables, and the default theme's beneath them.
 #[derive(Clone)]
 struct Vars {
     /// What the theme sets itself.
     own: HashMap<String, String>,
-    /// Inkdrop's default theme of the same appearance.
+    /// The default theme of the same appearance.
     base: HashMap<String, String>,
     /// Both, the theme's winning: what `var()` sees.
     all: HashMap<String, String>,
     dark: bool,
-    /// Whether a variable the theme doesn't set takes Inkdrop's default; an
-    /// Inkdrop 5 syntax or preview theme leaves the rest to Kanso.
+    /// Whether a variable the theme doesn't set takes the default theme's; an
+    /// older single-part syntax or preview theme leaves the rest to Kanso.
     use_base: bool,
 }
 
 impl Vars {
     /// The raw value of the first of `names` that reads as `parse` wants:
-    /// the theme's own first, then (when it applies) Inkdrop's default.
+    /// the theme's own first, then (when it applies) the default theme's.
     fn find<T>(&self, names: &[&str], parse: impl Fn(&str) -> Option<T>) -> Option<T> {
         let read = |map: &HashMap<String, String>| {
             names.iter().find_map(|name| {
@@ -337,13 +338,13 @@ fn font_weight(value: &str) -> Option<u16> {
     }
 }
 
-/// What a translucent window shows behind Inkdrop's panes: macOS's window
+/// What a translucent window shows behind the panes: macOS's window
 /// background, roughly.
 fn backdrop(dark: bool) -> Rgb {
     Rgb(if dark { 0x1E1E1E } else { 0xF5F5F5 })
 }
 
-/// The `ui` section from Inkdrop's UI variables, and the editor's color
+/// The `ui` section from the package's UI variables, and the editor's color
 /// (what syntax and preview colors are painted over).
 fn ui_section(vars: &Vars) -> (BTreeMap<&'static str, Color>, Rgb) {
     let mut ui = BTreeMap::new();
@@ -373,7 +374,7 @@ fn ui_section(vars: &Vars) -> (BTreeMap<&'static str, Color>, Rgb) {
         editor,
     );
     let text = vars.over(&["--text-color", "--editor-foreground-color"], editor);
-    // A highlight Kanso draws body text on; Inkdrop's filled ones (a solid
+    // A highlight Kanso draws body text on; the packages' filled ones (a solid
     // accent under white text) are left for Kanso to derive.
     let highlight =
         |rgb: Option<Rgb>| rgb.filter(|bg| text.is_none_or(|t| contrast(t, *bg) >= 4.5));
@@ -478,8 +479,9 @@ fn ui_section(vars: &Vars) -> (BTreeMap<&'static str, Color>, Rgb) {
     (ui, editor)
 }
 
-/// For an Inkdrop 5 syntax or preview theme: the editor, text and accent
-/// Kanso needs, from the theme where it gives them, else Inkdrop's default.
+/// For an older single-part syntax or preview theme: the editor, text and
+/// accent Kanso needs, from the theme where it gives them, else the default
+/// theme's.
 fn required_ui(vars: &Vars, rules: &Rules) -> (BTreeMap<&'static str, Color>, Rgb) {
     let mut ui = BTreeMap::new();
     let app = backdrop(vars.dark);
@@ -696,12 +698,12 @@ fn preview_section(vars: &Vars, editor: Rgb) -> BTreeMap<&'static str, Color> {
     out
 }
 
-// MARK: Inkdrop 5 rules
+// MARK: Single-part theme rules
 
 /// A syntax key and the color, slant and weight rules give it.
 type FoundStyle = (&'static str, Option<Color>, Option<bool>, Option<u16>);
 
-/// What an Inkdrop 5 syntax or preview theme's rules say.
+/// What an older single-part syntax or preview theme's rules say.
 #[derive(Default)]
 struct Rules {
     /// `.CodeMirror`'s or `.mde-preview`'s own background and color.
@@ -1019,7 +1021,7 @@ fn name(package: &Value) -> String {
     if let Some(display) = text(package, "displayName") {
         return display;
     }
-    let raw = text(package, "name").unwrap_or_else(|| "Inkdrop Theme".into());
+    let raw = text(package, "name").unwrap_or_else(|| "Imported Theme".into());
     let raw = raw.rsplit('/').next().unwrap_or(&raw).to_owned();
     title_case(&raw)
 }
@@ -1041,7 +1043,7 @@ pub fn title_case(name: &str) -> String {
         })
         .collect();
     if words.is_empty() {
-        "Inkdrop Theme".into()
+        "Imported Theme".into()
     } else {
         words.join(" ")
     }
@@ -1109,7 +1111,7 @@ pub fn repository_url(raw: &str) -> Option<String> {
 /// table complete.
 #[cfg(test)]
 pub(super) fn variables_read() -> Vec<&'static str> {
-    let source = include_str!("inkdrop.rs");
+    let source = include_str!("package.rs");
     let mut names: Vec<&'static str> = source
         .match_indices("\"--")
         .filter_map(|(at, _)| {
@@ -1193,7 +1195,7 @@ mod tests {
     #[test]
     fn the_base_table_covers_the_mapping() {
         for dark in [false, true] {
-            let table = super::inkdrop_base::defaults(dark);
+            let table = super::package_base::defaults(dark);
             for name in variables_read() {
                 let value = table.iter().find(|(k, _)| *k == name).map(|(_, v)| *v);
                 let value = value.unwrap_or_else(|| panic!("{name} isn't in the base table"));
@@ -1253,7 +1255,7 @@ mod tests {
         assert_eq!(theme.ui["editor"].hex(), "#001628");
         assert_eq!(theme.ui["sidebar"].hex(), "#001628");
         assert_eq!(theme.ui["row_active"].hex(), "#102A44");
-        // The text comes from Inkdrop's default dark theme, and reads.
+        // The text comes from the default dark theme, and reads.
         assert!(contrast(theme.ui["text"].rgb, theme.ui["editor"].rgb) > 7.);
         // A UI theme leaves the syntax and preview to Kanso.
         assert!(theme.syntax.is_empty() && theme.preview.is_empty());
@@ -1324,7 +1326,7 @@ mod tests {
     }
 
     /// A version 6 theme with only a palette subset: what it gives is
-    /// used, and the rest comes from Inkdrop's default of its appearance.
+    /// used, and the rest comes from the default theme of its appearance.
     #[test]
     fn a_palette_subset() {
         let dir = tempfile::tempdir().unwrap();
@@ -1367,7 +1369,7 @@ mod tests {
         assert_eq!(
             theme.ui["sidebar"].hex(),
             "#171717",
-            "Inkdrop's default dark sidebar"
+            "the default dark theme's sidebar"
         );
         let heading = theme.syntax["heading"];
         assert_eq!(
@@ -1382,7 +1384,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(
             import(dir.path()).unwrap_err(),
-            "This folder isn't an Inkdrop theme: it has no package.json."
+            "This folder isn't a theme package: it has no package.json."
         );
         write(dir.path(), &[("package.json", r#"{"name": "plugin"}"#)]);
         assert!(

@@ -205,9 +205,23 @@ export function putShare(id: string) {
 			await env.DB.batch(compensation(env.DB, session.accountId, id, size, actual, now, old));
 			return error(500, "internal", "Couldn't store the note.");
 		}
-		const shortUrl = await shortLink(env, new URL(request.url).origin, session.accountId, id, now, titleHeader(request.headers.get("x-kanso-title")));
+		const shortUrl = await shortLink(env, shareOrigin(env, request), session.accountId, id, now, titleHeader(request.headers.get("x-kanso-title")));
 		return json({ ok: true, id, size, expires_at: expires.value, short_url: shortUrl });
 	});
+}
+
+/** Where published notes are shown: `SHARE_ORIGIN` when it is an https origin, else the origin the note was published to. */
+export function shareOrigin(env: Env, request: Request): string {
+	const configured = env.SHARE_ORIGIN?.trim();
+	if (configured) {
+		try {
+			const url = new URL(configured);
+			if (url.protocol === "https:") return url.origin;
+		} catch {
+			// Not a URL: the request's origin, as without one.
+		}
+	}
+	return new URL(request.url).origin;
 }
 
 /**

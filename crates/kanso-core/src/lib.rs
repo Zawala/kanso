@@ -1,6 +1,6 @@
 //! Kanso's domain layer.
 //!
-//! Documents keep Inkdrop's shapes and IDs (`note:…`, `book:…`, `tag:…`,
+//! Documents keep the shapes and IDs of the local-server API (`note:…`, `book:…`, `tag:…`,
 //! `file:…`) so links inside note bodies, API clients and imported data keep
 //! working unchanged.
 

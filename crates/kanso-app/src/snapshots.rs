@@ -291,7 +291,7 @@ fn set_filter(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, filter
 }
 
 /// The Status group open on Active, while the API's port is taken (by
-/// Inkdrop, say) and sync can't reach its server: the footer's warnings.
+/// another app, say) and sync can't reach its server: the footer's warnings.
 fn status_and_warnings(
     cx: &mut HeadlessAppContext,
     _: AnyWindowHandle,
@@ -2100,7 +2100,7 @@ fn settings_api(
     show_settings(cx, window, workspace, SettingsPage::LocalApi);
 }
 
-/// Inkdrop holds the API's port.
+/// Another app holds the API's port.
 fn settings_api_port_in_use(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
