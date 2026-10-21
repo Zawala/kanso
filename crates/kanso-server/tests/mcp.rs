@@ -848,7 +848,7 @@ async fn related_notes_through_kanso_tools() {
     let rows: Vec<(String, String, Vec<f32>)> = ids
         .iter()
         .zip(vectors)
-        .map(|(id, v)| (id.clone(), "h".to_owned(), v))
+        .map(|(id, v)| (id.clone(), hash_of(&app.store, id), v))
         .collect();
     app.store.put_embeddings("test", &rows).unwrap();
     let found = tool_json(
@@ -925,8 +925,8 @@ async fn search_by_meaning_through_kanso_tools() {
     // On, but no model where the API runs (as under `kanso serve`).
     app.store.set_embedding_model(Some("test")).unwrap();
     let rows = vec![
-        (ids[0].clone(), "h".to_owned(), vec![1., 0.]),
-        (ids[1].clone(), "h".to_owned(), vec![0., 1.]),
+        (ids[0].clone(), hash_of(&app.store, &ids[0]), vec![1., 0.]),
+        (ids[1].clone(), hash_of(&app.store, &ids[1]), vec![0., 1.]),
     ];
     app.store.put_embeddings("test", &rows).unwrap();
     let no_model = search("fruit").await;
@@ -1078,4 +1078,16 @@ async fn daily_notes_and_templates_through_kanso_tools() {
     )
     .await;
     assert_eq!(missing["isError"], true);
+}
+
+/// The hash of note `id`'s words as the embedding worker would send it.
+fn hash_of(store: &kanso_store::Store, id: &str) -> String {
+    store
+        .embedding_queue("test")
+        .unwrap()
+        .pending
+        .into_iter()
+        .find(|pending| pending.id == id)
+        .unwrap()
+        .hash
 }

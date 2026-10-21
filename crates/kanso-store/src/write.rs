@@ -334,6 +334,14 @@ fn in_locked_book_of(tx: &Transaction, fields: &Map<String, Value>) -> Result<bo
 /// local write may not do this to a note with plain text ([`guard_note`]).
 fn books_changed(tx: &Transaction, before: BTreeSet<String>, origin: Origin) -> Result<()> {
     let after = locked_book_ids(tx)?;
+    // Only Kanso (or a lock taken off on another device) unlocks a
+    // notebook: moving one out of a locked notebook would, too.
+    if matches!(origin, Origin::Api | Origin::Import) && before.difference(&after).next().is_some()
+    {
+        return Err(StoreError::Invalid(
+            "The notebook is locked: unlock it in Kanso first.".into(),
+        ));
+    }
     let moved: Vec<&String> = before.symmetric_difference(&after).collect();
     for book in moved {
         let notes: Vec<String> = tx

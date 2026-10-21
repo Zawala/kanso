@@ -281,7 +281,25 @@ impl Store {
                  ON CONFLICT (note_id, model) DO UPDATE SET dim = excluded.dim,
                      vector = excluded.vector, content_hash = excluded.content_hash",
             )?;
+            // The words as the note reads now: one locked (or edited) since
+            // the queue was read keeps no vector made from its old words.
+            let mut now = tx.prepare_cached(concat!(
+                "SELECT title, ",
+                crate::schema::readable_body!(""),
+                " FROM docs WHERE id = ? AND type = 'note' AND deleted = 0"
+            ))?;
             for (id, hash, vector) in rows {
+                let current = now
+                    .query_row([id], |row| {
+                        Ok(content_hash(&embed_text(
+                            row.get::<_, Option<String>>(0)?.as_deref().unwrap_or(""),
+                            row.get::<_, Option<String>>(1)?.as_deref().unwrap_or(""),
+                        )))
+                    })
+                    .optional()?;
+                if current.as_deref() != Some(hash.as_str()) {
+                    continue;
+                }
                 stmt.execute(params![
                     id,
                     model,

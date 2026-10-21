@@ -72,11 +72,19 @@ pub struct Resampler16k {
     frames_out: u64,
 }
 
+/// The rates audio is recorded at that Kanso resamples from.
+pub const SUPPORTED_RATES: std::ops::RangeInclusive<u32> = 4_000..=384_000;
+
 impl Resampler16k {
     /// A resampler from `rate` Hz (more than 0) to 16 kHz.
     pub fn new(rate: u32) -> Result<Self, String> {
         if rate == 0 {
             return Err("the microphone reports a rate of 0 Hz".into());
+        }
+        // A file can say any rate; one no sound card records at would only
+        // make the resampler plan something enormous.
+        if !SUPPORTED_RATES.contains(&rate) {
+            return Err(format!("can't resample {rate} Hz"));
         }
         let inner = if rate == MODEL_RATE {
             None
@@ -261,6 +269,13 @@ mod tests {
     #[test]
     fn a_rate_of_zero_is_refused() {
         assert!(Resampler16k::new(0).is_err());
+    }
+
+    #[test]
+    fn a_rate_no_recorder_uses_is_refused() {
+        assert!(Resampler16k::new(4_294_967_291).is_err());
+        assert!(Resampler16k::new(1_000).is_err());
+        assert!(Resampler16k::new(8_000).is_ok());
     }
 
     proptest! {

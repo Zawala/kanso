@@ -215,7 +215,8 @@ impl Store {
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {
             if let Some(note) = self.note(id)? {
-                out.push(summary(&note));
+                let locked = note.is_locked() || self.note_is_locked(id)?;
+                out.push(summary(&note, locked));
             }
         }
         Ok(out)
@@ -247,7 +248,11 @@ fn is_locked(conn: &Connection, id: &str) -> Result<bool> {
     use rusqlite::OptionalExtension as _;
     Ok(conn
         .query_row(
-            "SELECT json_extract(json, '$.kansoLock') IS NOT NULL FROM docs WHERE id = ?",
+            concat!(
+                "SELECT ",
+                crate::schema::note_locked!(""),
+                " FROM docs WHERE id = ?"
+            ),
             [id],
             |row| row.get(0),
         )
@@ -255,9 +260,9 @@ fn is_locked(conn: &Connection, id: &str) -> Result<bool> {
         .unwrap_or(false))
 }
 
-/// A note as a list row, its snippet from the start of its body.
-fn summary(note: &Note) -> NoteSummary {
-    let locked = note.is_locked();
+/// A note as a list row, its snippet from the start of its body unless
+/// it is `locked` (sealed, or in a locked notebook).
+fn summary(note: &Note, locked: bool) -> NoteSummary {
     let head: String = if locked {
         String::new()
     } else {

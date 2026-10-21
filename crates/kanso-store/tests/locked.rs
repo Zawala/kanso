@@ -421,6 +421,112 @@ fn a_notebook_wont_lock_around_a_note_left_with_its_text() {
     assert_eq!(store.unsealed_in_locked_books().unwrap().len(), 1);
 }
 
+/// A note in a locked notebook that isn't sealed yet, as one written by
+/// another device reads before the app has the key.
+fn unsealed_in_locked_notebook(store: &Store) -> (String, String, String) {
+    let outer = book(store, "Private", None);
+    let inner = book(store, "Deeper", Some(&outer));
+    let a = plain_note(store, &inner, "Plans");
+    store
+        .put(
+            DocType::Book,
+            with_lock(store, &outer),
+            Put::Upsert,
+            Origin::Sync,
+        )
+        .unwrap();
+    assert!(store.note_is_locked(&a).unwrap());
+    (outer, inner, a)
+}
+
+#[test]
+fn a_locked_notebooks_text_never_leaves_by_a_template_or_daily_note() {
+    let (_dir, store) = store();
+    let (_, _, a) = unsealed_in_locked_notebook(&store);
+    let now = kanso_core::dates::DateTime {
+        date: kanso_core::dates::Date::new(2026, 10, 21).unwrap(),
+        hour: 9,
+        minute: 0,
+        second: 0,
+    };
+    let copy = store
+        .create_from_template(&a, None, None, now, Origin::Api)
+        .unwrap();
+    assert!(!store.note(&copy.id).unwrap().unwrap().body.contains(CANARY));
+
+    store.set_daily_template(Some(&a), Origin::Api).unwrap();
+    let daily = store.open_daily(now, Origin::Api).unwrap();
+    assert!(
+        !store
+            .note(&daily.id)
+            .unwrap()
+            .unwrap()
+            .body
+            .contains(CANARY)
+    );
+}
+
+#[test]
+fn the_api_cant_take_a_notebook_out_of_a_locked_one() {
+    let (_dir, store) = store();
+    let (outer, inner, a) = unsealed_in_locked_notebook(&store);
+    let mut moved = store.get_api(&inner, None, false).unwrap();
+    moved.as_object_mut().unwrap().remove("count");
+    moved["parentBookId"] = Value::Null;
+    assert!(matches!(
+        store.put(DocType::Book, moved.clone(), Put::Upsert, Origin::Api),
+        Err(StoreError::Invalid(_))
+    ));
+    assert!(store.note_is_locked(&a).unwrap());
+    assert!(store.locked_books().unwrap().contains(&inner));
+    // Another device moving it is a change the lock already allowed there.
+    store
+        .put(DocType::Book, moved, Put::Upsert, Origin::Sync)
+        .unwrap();
+    assert!(!store.locked_books().unwrap().contains(&inner));
+    assert!(store.locked_books().unwrap().contains(&outer));
+}
+
+#[test]
+fn meaning_rows_of_a_locked_notebook_show_no_text() {
+    let (_dir, store) = store();
+    let (_, _, a) = unsealed_in_locked_notebook(&store);
+    let rows = store.summaries_of(&[a.as_str()]).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].locked);
+    assert!(!rows[0].snippet.contains(CANARY));
+}
+
+#[test]
+fn an_embedding_made_before_a_lock_is_not_kept_after_it() {
+    let (_dir, store) = store();
+    let outer = book(&store, "Private", None);
+    let a = plain_note(&store, &outer, "Plans");
+    store.set_embedding_model(Some("m")).unwrap();
+    // The worker read the note's words, then the notebook was locked.
+    let stale: Vec<_> = store
+        .embedding_queue("m")
+        .unwrap()
+        .pending
+        .into_iter()
+        .map(|pending| (pending.id, pending.hash, vec![1.0, 0.0]))
+        .collect();
+    assert!(stale.iter().any(|(id, _, _)| *id == a));
+    store
+        .put(
+            DocType::Book,
+            with_lock(&store, &outer),
+            Put::Upsert,
+            Origin::Sync,
+        )
+        .unwrap();
+    store.put_embeddings("m", &stale).unwrap();
+    assert_eq!(store.embedded_count("m").unwrap(), 0);
+    // Embedded again as it reads now: by its title alone.
+    embed_everything(&store);
+    assert_eq!(store.embedded_count("m").unwrap(), 1);
+}
+
 #[test]
 fn a_notebook_locked_by_sync_hides_the_text_of_notes_not_sealed_here_yet() {
     let (_dir, store) = store();
