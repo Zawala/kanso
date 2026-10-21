@@ -3,6 +3,7 @@
 //! picker that finds and chooses one.
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::WindowExt as _;
@@ -14,6 +15,7 @@ use gpui_kit::*;
 use kanso_core::Book;
 use kanso_core::model::BOOK_ICON_FIELD;
 
+use crate::icon_packs::{self, IconPacks};
 use crate::theme::Colors;
 
 /// One icon a notebook can show.
@@ -379,42 +381,120 @@ pub fn find(name: &str) -> Option<&'static Choice> {
     CHOICES.iter().find(|choice| choice.name == name)
 }
 
-/// The name of the icon `book` keeps, if it is one of the choices.
-pub fn chosen(book: &Book) -> Option<&'static str> {
+/// What a notebook shows: a built-in icon, or one from an icon pack.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NotebookIcon {
+    Lucide(Lucide),
+    /// The pack icon's SVG.
+    Pack(Arc<[u8]>),
+}
+
+impl From<NotebookIcon> for Icon {
+    fn from(icon: NotebookIcon) -> Icon {
+        match icon {
+            NotebookIcon::Lucide(icon) => Icon::new(icon),
+            NotebookIcon::Pack(svg) => Icon::default().data(&svg),
+        }
+    }
+}
+
+/// The icon `book` keeps, as kept: a built-in icon's name, or
+/// `<pack>/<icon>` for a pack's, whether or not that pack is here.
+pub fn chosen(book: &Book) -> Option<String> {
     let name = book.extra.get(BOOK_ICON_FIELD)?.as_str()?;
-    find(name).map(|choice| choice.name)
+    (find(name).is_some() || icon_packs::split_key(name).is_some()).then(|| name.to_owned())
 }
 
-/// The icon `book` shows: its chosen one, else [`DEFAULT`].
-pub fn book_icon(book: &Book) -> Lucide {
-    chosen(book)
-        .and_then(find)
-        .map_or(DEFAULT, |choice| choice.icon)
+/// The icon a kept name shows: its built-in icon, its pack's icon when the
+/// pack is here, else [`DEFAULT`].
+pub fn icon_for(name: Option<&str>, packs: Option<&IconPacks>) -> NotebookIcon {
+    let Some(name) = name else {
+        return NotebookIcon::Lucide(DEFAULT);
+    };
+    if let Some(choice) = find(name) {
+        return NotebookIcon::Lucide(choice.icon);
+    }
+    packs
+        .and_then(|packs| packs.lookup(name))
+        .map_or(NotebookIcon::Lucide(DEFAULT), |icon| {
+            NotebookIcon::Pack(icon.svg.clone())
+        })
 }
 
-/// The choices a search for `query` finds, in the picker's order: those
-/// whose label, name or keywords hold every word typed, at the start of one
-/// of theirs, ignoring case. Nothing typed finds them all. Pure.
-pub fn matching(query: &str) -> Vec<&'static Choice> {
-    let words: Vec<String> = query
-        .split(|c: char| c.is_whitespace() || c == '-')
+/// The icon `book` shows.
+pub fn book_icon(book: &Book, cx: &App) -> NotebookIcon {
+    icon_for(chosen(book).as_deref(), cx.try_global::<IconPacks>())
+}
+
+/// The words of `query`, lowercased, split at spaces and dashes.
+fn words(query: &str) -> Vec<String> {
+    query
+        .split(|c: char| c.is_whitespace() || c == '-' || c == '_')
         .filter(|word| !word.is_empty())
         .map(str::to_lowercase)
-        .collect();
+        .collect()
+}
+
+/// Whether every word of `query` starts a word of `label`, `name` or
+/// `keywords`, ignoring case. No words match everything. Pure.
+pub fn matches(query: &[String], label: &str, name: &str, keywords: &str) -> bool {
+    let text = format!("{label} {name} {keywords}");
+    let theirs = words(&text);
+    query
+        .iter()
+        .all(|word| theirs.iter().any(|their| their.starts_with(word.as_str())))
+}
+
+/// The built-in choices a search for `query` finds, in the picker's order:
+/// see [`matches`]. Pure.
+#[cfg(test)]
+pub fn matching(query: &str) -> Vec<&'static Choice> {
+    let query = words(query);
     CHOICES
         .iter()
-        .filter(|choice| {
-            let text =
-                format!("{} {} {}", choice.label, choice.name, choice.keywords).to_lowercase();
-            let theirs: Vec<&str> = text
-                .split(|c: char| c.is_whitespace() || c == '-')
-                .filter(|word| !word.is_empty())
-                .collect();
-            words
-                .iter()
-                .all(|word| theirs.iter().any(|their| their.starts_with(word.as_str())))
-        })
+        .filter(|choice| matches(&query, choice.label, choice.name, choice.keywords))
         .collect()
+}
+
+/// One icon in the picker.
+#[derive(Clone)]
+struct Entry {
+    /// What the notebook keeps.
+    key: SharedString,
+    label: SharedString,
+    keywords: SharedString,
+    icon: NotebookIcon,
+}
+
+/// The picker's sections: Kanso's icons, then each pack's, by pack name.
+fn sections(packs: Option<&IconPacks>) -> Vec<(SharedString, Vec<Entry>)> {
+    let builtin = CHOICES
+        .iter()
+        .map(|choice| Entry {
+            key: choice.name.into(),
+            label: choice.label.into(),
+            keywords: choice.keywords.into(),
+            icon: NotebookIcon::Lucide(choice.icon),
+        })
+        .collect();
+    let mut sections = vec![(SharedString::from("Kanso"), builtin)];
+    for pack in packs
+        .map(|packs| packs.packs.as_slice())
+        .unwrap_or_default()
+    {
+        let entries = pack
+            .icons
+            .iter()
+            .map(|icon| Entry {
+                key: format!("{}/{}", pack.id, icon.name).into(),
+                label: icon.label.clone().into(),
+                keywords: format!("{} {}", icon.keywords, pack.name).into(),
+                icon: NotebookIcon::Pack(icon.svg.clone()),
+            })
+            .collect();
+        sections.push((pack.name.clone().into(), entries));
+    }
+    sections
 }
 
 /// Columns in the picker's grid, and the rows it shows before scrolling.
@@ -425,12 +505,14 @@ const GAP: f32 = 4.;
 /// The picker's width: the grid and the dialog's padding.
 pub const PICKER_WIDTH: f32 = COLUMNS as f32 * (CELL + GAP) + 44.;
 
-type PickHandler = Rc<dyn Fn(Option<&'static str>, &mut Window, &mut App)>;
+type PickHandler = Rc<dyn Fn(Option<String>, &mut Window, &mut App)>;
 
-/// The picker's body: a search field over the grid of icons it finds.
+/// The picker's body: a search field over the grid of icons it finds,
+/// Kanso's and each icon pack's.
 pub struct IconPicker {
     search: Entity<InputState>,
-    current: Option<&'static str>,
+    current: Option<String>,
+    sections: Vec<(SharedString, Vec<Entry>)>,
     on_pick: PickHandler,
     scroll: ScrollHandle,
     _subscription: Subscription,
@@ -438,7 +520,8 @@ pub struct IconPicker {
 
 impl IconPicker {
     fn new(
-        current: Option<&'static str>,
+        current: Option<String>,
+        sections: Vec<(SharedString, Vec<Entry>)>,
         on_pick: PickHandler,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -454,9 +537,13 @@ impl IconPicker {
                 }
                 // Enter picks the first icon found.
                 InputEvent::PressEnter { .. } => {
-                    let query = this.search.read(cx).value();
-                    if let Some(first) = matching(&query).first() {
-                        this.pick(Some(first.name), window, cx);
+                    let first = this
+                        .found(cx)
+                        .into_iter()
+                        .flat_map(|(_, entries)| entries)
+                        .next();
+                    if let Some(first) = first {
+                        this.pick(Some(first.key.to_string()), window, cx);
                     }
                 }
                 _ => {}
@@ -465,18 +552,36 @@ impl IconPicker {
         IconPicker {
             search,
             current,
+            sections,
             on_pick,
             scroll: ScrollHandle::new(),
             _subscription: subscription,
         }
     }
 
-    /// Closes the picker and hands on `name`; the first choice is the
+    /// The sections with the icons the search finds, leaving out the empty.
+    fn found(&self, cx: &App) -> Vec<(SharedString, Vec<Entry>)> {
+        let query = words(&self.search.read(cx).value());
+        self.sections
+            .iter()
+            .map(|(title, entries)| {
+                let found: Vec<Entry> = entries
+                    .iter()
+                    .filter(|e| matches(&query, &e.label, &e.key, &e.keywords))
+                    .cloned()
+                    .collect();
+                (title.clone(), found)
+            })
+            .filter(|(_, entries)| !entries.is_empty())
+            .collect()
+    }
+
+    /// Closes the picker and hands on `key`; Kanso's first icon is the
     /// default, so nothing is kept for it.
-    fn pick(&self, name: Option<&'static str>, window: &mut Window, cx: &mut App) {
-        let name = name.filter(|name| *name != CHOICES[0].name);
+    fn pick(&self, key: Option<String>, window: &mut Window, cx: &mut App) {
+        let key = key.filter(|key| key != CHOICES[0].name);
         window.close_dialog(cx);
-        (self.on_pick)(name, window, cx);
+        (self.on_pick)(key, window, cx);
     }
 
     /// Types `query` into the search, as a person would (tests, snapshots).
@@ -488,71 +593,92 @@ impl IconPicker {
         cx.notify();
     }
 
-    /// The names of the icons showing, in order.
+    /// The keys of the icons showing, in order.
     #[cfg(test)]
-    pub fn shown(&self, cx: &App) -> Vec<&'static str> {
-        matching(&self.search.read(cx).value())
+    pub fn shown(&self, cx: &App) -> Vec<String> {
+        self.found(cx)
             .into_iter()
-            .map(|choice| choice.name)
+            .flat_map(|(_, entries)| entries)
+            .map(|entry| entry.key.to_string())
             .collect()
     }
 }
 
-// no-prop-test: drawing; `matching` has the properties and the snapshot
-// shows the picker.
+// no-prop-test: drawing; `matches` has the properties and the snapshots
+// show the picker.
 impl Render for IconPicker {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
-        let found = matching(&self.search.read(cx).value());
-        let current = self.current.unwrap_or(CHOICES[0].name);
-        let cells: Vec<_> = found
-            .iter()
-            .enumerate()
-            .map(|(ix, choice)| {
-                let selected = choice.name == current;
-                let name = choice.name;
-                let label = choice.label;
-                div()
-                    .id(("book-icon", ix))
-                    .debug_selector(move || format!("book-icon-{name}"))
-                    .size(px(CELL))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(8.))
-                    .cursor_pointer()
-                    .when(selected, |el| {
-                        el.bg(colors.sidebar_active)
-                            .border_1()
-                            .border_color(colors.accent)
-                    })
-                    .when(!selected, |el| el.hover(|el| el.bg(colors.sidebar_hover)))
-                    .child(
-                        Icon::new(choice.icon)
-                            .size(px(18.))
-                            .text_color(if selected {
+        let found = self.found(cx);
+        let current: SharedString = self
+            .current
+            .clone()
+            .unwrap_or_else(|| CHOICES[0].name.to_owned())
+            .into();
+        // With only Kanso's icons, no title is needed over them.
+        let titled = self.sections.len() > 1;
+        let mut blocks: Vec<AnyElement> = Vec::new();
+        let mut ix: usize = 0;
+        for (title, entries) in &found {
+            if titled {
+                blocks.push(
+                    div()
+                        .pt(px(4.))
+                        .text_size(px(12.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(colors.text_muted)
+                        .child(title.clone())
+                        .into_any_element(),
+                );
+            }
+            let mut cells: Vec<_> = entries
+                .iter()
+                .map(|entry| {
+                    ix += 1;
+                    let selected = entry.key == current;
+                    let key = entry.key.clone();
+                    let selector = key.clone();
+                    let label = entry.label.clone();
+                    div()
+                        .id(("book-icon", ix))
+                        .debug_selector(move || format!("book-icon-{selector}"))
+                        .size(px(CELL))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(8.))
+                        .cursor_pointer()
+                        .when(selected, |el| {
+                            el.bg(colors.sidebar_active)
+                                .border_1()
+                                .border_color(colors.accent)
+                        })
+                        .when(!selected, |el| el.hover(|el| el.bg(colors.sidebar_hover)))
+                        .child(Icon::from(entry.icon.clone()).size(px(18.)).text_color(
+                            if selected {
                                 colors.text
                             } else {
                                 colors.text_secondary
-                            }),
-                    )
-                    .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(label).build(window, cx)
-                    })
-                    .on_click(
-                        cx.listener(move |this, _, window, cx| this.pick(Some(name), window, cx)),
-                    )
-            })
-            .collect();
-        let mut cells = cells;
-        let mut rows: Vec<Div> = Vec::new();
-        while !cells.is_empty() {
-            let rest = cells.split_off(cells.len().min(COLUMNS));
-            rows.push(
-                h_flex()
-                    .gap(px(GAP))
-                    .children(std::mem::replace(&mut cells, rest)),
-            );
+                            },
+                        ))
+                        .tooltip(move |window, cx| {
+                            gpui_kit::component::tooltip::Tooltip::new(label.clone())
+                                .build(window, cx)
+                        })
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.pick(Some(key.to_string()), window, cx)
+                        }))
+                })
+                .collect();
+            while !cells.is_empty() {
+                let rest = cells.split_off(cells.len().min(COLUMNS));
+                blocks.push(
+                    h_flex()
+                        .gap(px(GAP))
+                        .children(std::mem::replace(&mut cells, rest))
+                        .into_any_element(),
+                );
+            }
         }
         let height = VISIBLE_ROWS as f32 * (CELL + GAP);
         v_flex()
@@ -564,7 +690,7 @@ impl Render for IconPicker {
                     .h(px(height))
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
-                    .child(v_flex().gap(px(GAP)).children(rows))
+                    .child(v_flex().gap(px(GAP)).children(blocks))
                     .when(found.is_empty(), |el| {
                         el.child(
                             div()
@@ -581,19 +707,22 @@ impl Render for IconPicker {
     }
 }
 
-/// Opens the picker for notebook `name`, whose icon is `current` (by name),
-/// with the keyboard in its search. `on_pick` gets the chosen icon's name,
-/// or `None` for the default, and the picker closes. Returns the picker.
+/// Opens the picker for notebook `name`, whose icon is `current` (as kept),
+/// with the keyboard in its search. `on_pick` gets the chosen icon as the
+/// notebook keeps it, or `None` for the default, and the picker closes.
+/// Returns the picker.
 pub fn open_picker(
     name: &str,
-    current: Option<&'static str>,
+    current: Option<String>,
     window: &mut Window,
     cx: &mut App,
-    on_pick: impl Fn(Option<&'static str>, &mut Window, &mut App) + 'static,
+    on_pick: impl Fn(Option<String>, &mut Window, &mut App) + 'static,
 ) -> Entity<IconPicker> {
     let title = SharedString::from(format!("Icon for \u{201c}{name}\u{201d}"));
     let on_pick: PickHandler = Rc::new(on_pick);
-    let picker = cx.new(|cx| IconPicker::new(current, on_pick.clone(), window, cx));
+    let sections = sections(Some(icon_packs::packs(cx)));
+    let has_icon = current.is_some();
+    let picker = cx.new(|cx| IconPicker::new(current, sections, on_pick.clone(), window, cx));
     let search = picker.read(cx).search.clone();
     let first_build = std::cell::Cell::new(true);
     let view = picker.clone();
@@ -615,7 +744,7 @@ pub fn open_picker(
                         Button::new("book-icon-default")
                             .small()
                             .label("Use Default")
-                            .disabled(current.is_none())
+                            .disabled(!has_icon)
                             .on_click(move |_, window, cx| {
                                 window.close_dialog(cx);
                                 reset(None, window, cx);
@@ -642,7 +771,7 @@ mod tests {
     use proptest::prelude::*;
     use serde_json::json;
 
-    use super::{CHOICES, DEFAULT, book_icon, chosen, matching};
+    use super::{CHOICES, DEFAULT, NotebookIcon, chosen, icon_for, matching};
     use crate::assets::KansoAssets;
 
     fn book(icon: serde_json::Value) -> Book {
@@ -678,18 +807,63 @@ mod tests {
 
     #[test]
     fn a_notebook_shows_its_chosen_icon_or_the_default() {
+        let shows = |book: &Book| icon_for(chosen(book).as_deref(), None);
+        let lucide = NotebookIcon::Lucide;
         assert_eq!(
-            book_icon(&book(json!("rocket"))),
-            gpui_kit::assets::IconName::Rocket
+            shows(&book(json!("rocket"))),
+            lucide(gpui_kit::assets::IconName::Rocket)
         );
-        assert_eq!(chosen(&book(json!("rocket"))), Some("rocket"));
+        assert_eq!(chosen(&book(json!("rocket"))).as_deref(), Some("rocket"));
         // Unknown names, other types and none all show the default.
-        for value in [json!("not-an-icon"), json!(3), json!(null)] {
-            assert_eq!(book_icon(&book(value.clone())), DEFAULT, "{value}");
+        for value in [json!("not-an-icon"), json!(3), json!(null), json!("../x/y")] {
+            assert_eq!(shows(&book(value.clone())), lucide(DEFAULT), "{value}");
             assert_eq!(chosen(&book(value)), None);
         }
         let plain: Book = serde_json::from_value(json!({"_id": "book:a", "name": "A"})).unwrap();
-        assert_eq!(book_icon(&plain), DEFAULT);
+        assert_eq!(shows(&plain), lucide(DEFAULT));
+        // A pack's icon is kept whether or not the pack is here, and shows
+        // the default until it is.
+        let packed = book(json!("phosphor/rocket"));
+        assert_eq!(chosen(&packed).as_deref(), Some("phosphor/rocket"));
+        assert_eq!(shows(&packed), lucide(DEFAULT));
+    }
+
+    /// A pack in the folder: its icons show for notebooks that keep them,
+    /// and the picker lists them in a section of their own, found by their
+    /// words and the pack's name.
+    #[test]
+    fn a_packs_icons_show_and_are_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let pack = crate::icon_packs::packs_dir(dir.path()).join("phosphor");
+        std::fs::create_dir_all(&pack).unwrap();
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>"#;
+        std::fs::write(pack.join("orbit.svg"), svg).unwrap();
+        std::fs::write(
+            pack.join("pack.json"),
+            r#"{"name": "Phosphor", "icons": {"orbit": {"keywords": "planet space"}}}"#,
+        )
+        .unwrap();
+        let packs =
+            crate::icon_packs::IconPacks::load(Some(&crate::icon_packs::packs_dir(dir.path())));
+        assert_eq!(
+            icon_for(Some("phosphor/orbit"), Some(&packs)),
+            NotebookIcon::Pack(std::sync::Arc::from(svg.as_bytes()))
+        );
+        let sections = super::sections(Some(&packs));
+        let titles: Vec<&str> = sections.iter().map(|(title, _)| title.as_ref()).collect();
+        assert_eq!(titles, vec!["Kanso", "Phosphor"]);
+        let found = |query: &str| -> Vec<String> {
+            let query = super::words(query);
+            sections
+                .iter()
+                .flat_map(|(_, entries)| entries)
+                .filter(|e| super::matches(&query, &e.label, &e.key, &e.keywords))
+                .map(|e| e.key.to_string())
+                .collect()
+        };
+        assert_eq!(found("planet"), vec!["phosphor/orbit".to_owned()]);
+        assert!(found("phosphor").contains(&"phosphor/orbit".to_owned()));
+        assert!(found("orbit").contains(&"phosphor/orbit".to_owned()));
     }
 
     #[test]
@@ -732,7 +906,7 @@ mod tests {
         use gpui_kit::AppContext as _;
         use gpui_kit::component::WindowExt as _;
 
-        let picked: Rc<RefCell<Vec<Option<&'static str>>>> = Rc::default();
+        let picked: Rc<RefCell<Vec<Option<String>>>> = Rc::default();
         let (window, _) = cx.update(|cx| {
             gpui_kit::init(cx);
             gpui_kit::open_window(Default::default(), cx, |_, cx| cx.new(|_| Blank)).unwrap()
@@ -754,7 +928,10 @@ mod tests {
             })
             .unwrap();
         cx.run_until_parked();
-        assert_eq!(cx.read(|cx| picker.read(cx).shown(cx)), vec!["piggy-bank"]);
+        assert_eq!(
+            cx.read(|cx| picker.read(cx).shown(cx)),
+            vec!["piggy-bank".to_owned()]
+        );
         let search = cx.read(|cx| picker.read(cx).search.clone());
         window
             .update(cx, |_, window, cx| {
@@ -768,7 +945,7 @@ mod tests {
             })
             .unwrap();
         cx.run_until_parked();
-        assert_eq!(*picked.borrow(), vec![Some("piggy-bank")]);
+        assert_eq!(*picked.borrow(), vec![Some("piggy-bank".to_owned())]);
         let open = window
             .update(cx, |_, window, cx| window.has_active_dialog(cx))
             .unwrap();

@@ -55,7 +55,7 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
   you changed in Kanso.
 - Notebooks nest, and fold away in the sidebar like an accordion (the arrow beside one opens it);
   right-click one › **Change Icon…** to search 144 icons and give it one of its own, which syncs with it.
-- Themes, light and dark, and updates that install themselves.
+- Themes, light and dark, icon packs, and updates that install themselves.
 
 ## Download
 
@@ -148,6 +148,13 @@ The default server is the owner's Worker, `sync.kansoapp.app`, which takes new
 accounts only when its owner opens sign-ups. Published notes open on `share.kansoapp.app`. To run your own, deploy the Worker in
 [cloud/](cloud/README.md) to your Cloudflare account and choose **Use a different server…** before
 creating the account. An account belongs to its server's address, so pick the final URL first.
+
+### Icon packs
+
+An icon pack is a folder of SVG icons in the `icon-packs` folder of Kanso's data folder
+(Settings › Themes › Icon packs › **Open Folder**). Its icons join the notebook icon picker in a section
+of their own, and a pack chosen with **Use for App Icons** draws Kanso's own icons where it has a file
+of the same name, from the next launch. [docs/ICON_PACKS.md](docs/ICON_PACKS.md) has the format.
 
 ### Shortcuts
 

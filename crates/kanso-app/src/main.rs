@@ -36,6 +36,7 @@ mod grouping;
 mod history;
 mod history_diff;
 mod hotkey;
+mod icon_packs;
 mod image_size;
 mod inspector;
 mod journal;
@@ -291,6 +292,8 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         }
     });
 
+    // The icon pack chosen for the app's own icons, before any is drawn.
+    icon_packs::apply_at_launch(&data_dir, config.appearance.icon_pack.as_deref());
     let app = application().with_assets(assets::KansoAssets);
     app.on_reopen(|cx| {
         if cx.windows().is_empty() {
@@ -323,6 +326,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         updates::register_app_actions(cx);
         services::apply_server_settings(cx);
         themes::watch(cx);
+        icon_packs::watch(cx);
         // Signed in again once the config, the binding and the Keychain
         // agree; sync starts then.
         account_flow::restore(cx);

@@ -236,6 +236,9 @@ pub struct Appearance {
     pub view_mode: ViewMode,
     /// The full sidebar, or (false) the icon rail it collapses to.
     pub show_sidebar: bool,
+    /// The icon pack drawing the app's own icons, by its folder's name;
+    /// `None` for the built-in ones. Read at launch.
+    pub icon_pack: Option<String>,
 }
 
 impl Default for Appearance {
@@ -249,6 +252,7 @@ impl Default for Appearance {
             readable_width: false,
             view_mode: ViewMode::Split,
             show_sidebar: true,
+            icon_pack: None,
         }
     }
 }
@@ -754,6 +758,7 @@ mod tests {
                         readable_width: readable,
                         view_mode: mode,
                         show_sidebar: sidebar,
+                        icon_pack: None,
                     },
                     launch_at_login: login,
                     last_note: last,

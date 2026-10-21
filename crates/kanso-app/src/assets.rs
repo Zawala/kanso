@@ -132,6 +132,7 @@ icon_assets!(
         Notebook,
         NotebookPen,
         NotebookText,
+        Package,
         PanelRight,
         PartyPopper,
         PawPrint,
@@ -160,6 +161,7 @@ icon_assets!(
         School,
         ScrollText,
         Server,
+        Shapes,
         Shield,
         Ship,
         ShoppingBag,
@@ -203,12 +205,23 @@ icon_assets!(
     ]
 );
 
+/// Whether the app draws an icon named `name` (`chevron-right`): one an
+/// icon pack can draw in its place.
+pub fn is_app_icon(name: &str) -> bool {
+    let path = format!("icons/{name}.svg");
+    matches!(ExtraIcons.load(&path), Ok(Some(_))) || matches!(Assets.load(&path), Ok(Some(_)))
+}
+
 /// The default component icons plus [`ExtraIcons`].
 #[derive(Clone, Copy, Debug, Default)]
 pub struct KansoAssets;
 
 impl AssetSource for KansoAssets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
+        // The icon pack chosen for the app draws the icons it has.
+        if let Some(bytes) = crate::icon_packs::app_icon(path) {
+            return Ok(Some(Cow::Owned(bytes.to_vec())));
+        }
         // The extra set answers `None` for paths it lacks; the default bundle
         // reports them as errors, so it goes last.
         if let Some(bytes) = ExtraIcons.load(path)? {

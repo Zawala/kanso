@@ -1081,7 +1081,7 @@ impl Workspace {
                     window,
                     cx,
                     move |icon, window, cx| {
-                        if let Err(err) = set_book_icon(&store, &id, icon) {
+                        if let Err(err) = set_book_icon(&store, &id, icon.as_deref()) {
                             window.push_notification(
                                 Notification::error(format!("Couldn't change the icon: {err}")),
                                 cx,

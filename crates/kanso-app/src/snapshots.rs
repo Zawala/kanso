@@ -323,7 +323,28 @@ fn book_icon_picker(
 ) {
     cx.update(|cx| cx.set_reduce_motion(true));
     cx.update_window(window, |_, window, cx| {
-        crate::book_icons::open_picker("Design", Some("palette"), window, cx, |_, _, _| {});
+        crate::book_icons::open_picker("Design", Some("palette".into()), window, cx, |_, _, _| {});
+    })
+    .unwrap();
+}
+
+/// The icon picker scrolled down to the demo pack's section.
+fn book_icon_pack_section(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        let picker = crate::book_icons::open_picker(
+            "Ideas",
+            Some("sketch/wave".into()),
+            window,
+            cx,
+            |_, _, _| {},
+        );
+        picker.update(cx, |picker, cx| picker.search_for("sketch", window, cx));
     })
     .unwrap();
 }
@@ -2922,12 +2943,45 @@ fn dev_flavour(
     show_settings(cx, window, workspace, SettingsPage::Updates);
 }
 
+/// A small icon pack in the demo's data folder: the Themes page lists it
+/// and the notebook icon picker has a section for it.
+fn demo_icon_pack(data_dir: &Path) {
+    let pack = crate::icon_packs::packs_dir(data_dir).join("sketch");
+    std::fs::create_dir_all(&pack).unwrap();
+    let svg = |shape: &str| {
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{shape}</svg>"#
+        )
+    };
+    for (name, shape) in [
+        (
+            "circle-dot",
+            r#"<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/>"#,
+        ),
+        ("diamond", r#"<path d="M12 3 21 12 12 21 3 12Z"/>"#),
+        (
+            "hexagon",
+            r#"<path d="M12 3 20 7.5V16.5L12 21 4 16.5V7.5Z"/>"#,
+        ),
+        ("wave", r#"<path d="M3 12c3-6 6 6 9 0s6 6 9 0"/>"#),
+    ] {
+        std::fs::write(pack.join(format!("{name}.svg")), svg(shape)).unwrap();
+    }
+    std::fs::write(
+        pack.join("pack.json"),
+        r#"{"name": "Sketch", "author": "Kanso", "license": "CC0",
+            "icons": {"wave": {"label": "Wave", "keywords": "sea water"}}}"#,
+    )
+    .unwrap();
+}
+
 fn open(
     cx: &mut HeadlessAppContext,
     store: Arc<Store>,
     data_dir: PathBuf,
     shot: &Shot,
 ) -> (AnyWindowHandle, Entity<Workspace>) {
+    demo_icon_pack(&data_dir);
     let mut config = AppConfig::default();
     config.appearance.theme = shot.theme;
     config.appearance.themes = ThemeSettings::from_preference(shot.theme);
@@ -3463,6 +3517,10 @@ fn snapshots() {
         Shot {
             dialog_width: crate::book_icons::PICKER_WIDTH,
             ..shot("dark-book-icons-search", Dark, Edit, book_icon_search)
+        },
+        Shot {
+            dialog_width: crate::book_icons::PICKER_WIDTH,
+            ..shot("dark-book-icons-pack", Dark, Edit, book_icon_pack_section)
         },
         shot("dark-preview", Dark, Preview, open_latest),
         shot("light-preview", Light, Preview, open_latest),

@@ -1256,7 +1256,7 @@ impl Render for Sidebar {
                     id: book.id.clone(),
                     name: book.name.clone(),
                     count: book.count,
-                    icon: crate::book_icons::book_icon(book),
+                    icon: crate::book_icons::book_icon(book, cx),
                     parent,
                     open: parent && open(ix),
                 }
@@ -1622,7 +1622,7 @@ struct BookRow {
     id: String,
     name: String,
     count: u32,
-    icon: Lucide,
+    icon: crate::book_icons::NotebookIcon,
     /// Has notebooks inside it, so it has an arrow.
     parent: bool,
     open: bool,
