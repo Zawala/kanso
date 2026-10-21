@@ -11,14 +11,20 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::Button;
+use gpui_kit::component::notification::Notification;
 use gpui_kit::*;
 use kanso_core::Note;
 use kanso_store::Store;
 use kanso_sync::KdfParams;
+use kanso_sync::SecretStore;
+use kanso_sync::keychain::{delete_lock_keys, load_lock_keys, save_lock_keys};
 use kanso_sync::lock::{Envelope, LOCK_KDF, LockError, LockKey, LockPassword};
 
 use crate::dialogs::{self, Field, FormSpec, FormView, Progress, Submit};
 use crate::editor::NoteEditor;
+use crate::services::Services;
 use crate::workspace::AppState;
 
 actions!(
@@ -28,7 +34,9 @@ actions!(
         UnlockNote,
         RemoveLock,
         LockNotesNow,
-        ChangeLockPassword
+        ChangeLockPassword,
+        TurnOnTouchId,
+        TurnOffTouchId
     ]
 );
 
@@ -253,9 +261,9 @@ fn sentence(err: &LockError) -> String {
     }
 }
 
-/// Lock Note: seals the open note. The first time this session, it asks for
-/// the lock password, or has one made when no note is locked yet. Returns
-/// the form when it asks.
+/// Lock Note: seals the open note. The first time this session, Touch ID
+/// (when on) or the lock password opens the keys, or a password is made when
+/// no note is locked yet. Returns the form when it asks for a password.
 pub fn lock_open_note(
     editor: Entity<NoteEditor>,
     window: &mut Window,
@@ -286,68 +294,107 @@ pub fn lock_open_note(
         .locked_notes()
         .ok()
         .and_then(|notes| notes.into_iter().next());
-    Some(match existing {
-        Some(locked) => {
-            let spec = FormSpec::new("Lock this note", "Lock")
-                .description(format!(
-                    "Type your lock password to lock \u{201c}{title}\u{201d}. Its earlier versions are deleted."
-                ))
-                .field(Field::secret("Lock password"));
-            dialogs::form(spec, window, cx, move |values, window, cx| {
-                let password = match password(&values[0]) {
-                    Ok(password) => password,
-                    Err(submit) => return submit,
-                };
-                let locked = locked.clone();
-                let editor = editor.clone();
-                run_in_background(
-                    window,
-                    cx,
-                    move || key_for(&locked, &password),
-                    move |key, _window, cx| {
-                        LockKeys::add(key, cx);
-                        let key = LockKeys::current(cx).expect("a key was just added");
-                        editor.update(cx, |editor, cx| editor.lock_with(&key, cx));
-                        Ok(())
-                    },
-                )
-            })
-        }
-        None => {
-            let spec = FormSpec::new("Set a lock password", "Lock")
-                .description(format!(
-                    "Locked notes open with this password, on this device and any other that syncs with it. Kanso can't recover it: forget it, and the notes locked with it can't be read. \u{201c}{title}\u{201d}'s earlier versions are deleted."
-                ))
-                .field(Field::secret("Lock password").hint("At least 8 characters."))
-                .field(Field::secret("Type it again"));
-            dialogs::form(spec, window, cx, move |values, window, cx| {
-                if values[0] != values[1] {
-                    return Submit::Invalid("The passwords don't match.".into());
+    let Some(locked) = existing else {
+        return Some(set_password_form(editor, title, window, cx));
+    };
+    if touch_id_on(cx) {
+        // The fingerprint is the go-ahead; without it, the password is.
+        let fallback = (editor.clone(), locked.clone(), title.clone());
+        with_touch_id(
+            window,
+            cx,
+            move |window, cx| match LockKeys::current(cx) {
+                Some(key) => editor.update(cx, |editor, cx| editor.lock_with(&key, cx)),
+                None => {
+                    lock_password_form(editor, locked, title, window, cx);
                 }
-                let password = match password(&values[0]) {
-                    Ok(password) => password,
-                    Err(submit) => return submit,
-                };
-                let params = LockKeys::params(cx);
-                let editor = editor.clone();
-                run_in_background(
-                    window,
-                    cx,
-                    move || LockKey::create(&password, params).map_err(|err| sentence(&err)),
-                    move |key, _window, cx| {
-                        LockKeys::replace(Some(key), cx);
-                        let key = LockKeys::current(cx).expect("a key was just set");
-                        editor.update(cx, |editor, cx| editor.lock_with(&key, cx));
-                        Ok(())
-                    },
-                )
-            })
-        }
+            },
+            move |window, cx| {
+                let (editor, locked, title) = fallback;
+                lock_password_form(editor, locked, title, window, cx);
+            },
+        );
+        return None;
+    }
+    Some(lock_password_form(editor, locked, title, window, cx))
+}
+
+/// Locking a note with the lock password set before.
+fn lock_password_form(
+    editor: Entity<NoteEditor>,
+    locked: Note,
+    title: String,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<FormView> {
+    let spec = FormSpec::new("Lock this note", "Lock")
+        .description(format!(
+            "Type your lock password to lock \u{201c}{title}\u{201d}. Its earlier versions are deleted."
+        ))
+        .field(Field::secret("Lock password"));
+    dialogs::form(spec, window, cx, move |values, window, cx| {
+        let password = match password(&values[0]) {
+            Ok(password) => password,
+            Err(submit) => return submit,
+        };
+        let locked = locked.clone();
+        let editor = editor.clone();
+        run_in_background(
+            window,
+            cx,
+            move || key_for(&locked, &password),
+            move |key, window, cx| {
+                LockKeys::add(key, cx);
+                let key = LockKeys::current(cx).expect("a key was just added");
+                editor.update(cx, |editor, cx| editor.lock_with(&key, cx));
+                after_password(window, cx);
+                Ok(())
+            },
+        )
     })
 }
 
-/// Unlock: asks for the lock password of the open note and opens it, and
-/// every other note locked with it. Returns the form.
+/// Locking the first note: a new lock password, typed twice.
+fn set_password_form(
+    editor: Entity<NoteEditor>,
+    title: String,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<FormView> {
+    let spec = FormSpec::new("Set a lock password", "Lock")
+        .description(format!(
+            "Locked notes open with this password, on this device and any other that syncs with it. Kanso can't recover it: forget it, and the notes locked with it can't be read. \u{201c}{title}\u{201d}'s earlier versions are deleted."
+        ))
+        .field(Field::secret("Lock password").hint("At least 8 characters."))
+        .field(Field::secret("Type it again"));
+    dialogs::form(spec, window, cx, move |values, window, cx| {
+        if values[0] != values[1] {
+            return Submit::Invalid("The passwords don't match.".into());
+        }
+        let password = match password(&values[0]) {
+            Ok(password) => password,
+            Err(submit) => return submit,
+        };
+        let params = LockKeys::params(cx);
+        let editor = editor.clone();
+        run_in_background(
+            window,
+            cx,
+            move || LockKey::create(&password, params).map_err(|err| sentence(&err)),
+            move |key, window, cx| {
+                LockKeys::replace(Some(key), cx);
+                let key = LockKeys::current(cx).expect("a key was just set");
+                editor.update(cx, |editor, cx| editor.lock_with(&key, cx));
+                after_password(window, cx);
+                Ok(())
+            },
+        )
+    })
+}
+
+/// Unlock: Touch ID when it's on, else (or when it fails) the lock password,
+/// opens the open note and every other note locked with the same password.
+/// Returns the form when it asks for the password.
 pub fn unlock_open_note(
     editor: Entity<NoteEditor>,
     window: &mut Window,
@@ -357,32 +404,253 @@ pub fn unlock_open_note(
     if !editor.read(cx).lock_view().is_closed() {
         return None;
     }
+    if touch_id_on(cx) {
+        let fallback = (editor.clone(), note.clone());
+        with_touch_id(
+            window,
+            cx,
+            move |window, cx| {
+                editor.update(cx, |editor, cx| editor.lock_keys_changed(window, cx));
+                cx.refresh_windows();
+                // Keys kept before this note was locked elsewhere don't open it.
+                if editor.read(cx).lock_view().is_closed() {
+                    password_unlock(editor, note, window, cx);
+                }
+            },
+            move |window, cx| {
+                let (editor, note) = fallback;
+                password_unlock(editor, note, window, cx);
+            },
+        );
+        return None;
+    }
+    Some(password_unlock(editor, note, window, cx))
+}
+
+fn password_unlock(
+    editor: Entity<NoteEditor>,
+    note: Note,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<FormView> {
     let spec = FormSpec::new("Unlock note", "Unlock").field(Field::secret("Lock password"));
-    Some(dialogs::form(
-        spec,
-        window,
+    dialogs::form(spec, window, cx, move |values, window, cx| {
+        let password = match LockPassword::new(&values[0]) {
+            Ok(password) => password,
+            // A shorter text can't be the password.
+            Err(_) => return Submit::Invalid(sentence(&LockError::WrongPassword)),
+        };
+        let note = note.clone();
+        let editor = editor.clone();
+        run_in_background(
+            window,
+            cx,
+            move || key_for(&note, &password),
+            move |key, window, cx| {
+                LockKeys::add(key, cx);
+                editor.update(cx, |editor, cx| editor.lock_keys_changed(window, cx));
+                cx.refresh_windows();
+                after_password(window, cx);
+                Ok(())
+            },
+        )
+    })
+}
+
+// MARK: Touch ID
+
+/// Whether Touch ID unlocks locked notes on this device now.
+pub fn touch_id_on(cx: &App) -> bool {
+    cx.try_global::<AppState>()
+        .is_some_and(|state| state.config.locked.touch_id == Some(true))
+        && crate::touch_id::available(cx)
+}
+
+fn secrets(cx: &App) -> Option<Arc<dyn SecretStore>> {
+    cx.try_global::<Services>()?.secrets.clone()
+}
+
+/// The library's ID, which names its Keychain items.
+fn library_id(store: &Store) -> Result<String, String> {
+    kanso_sync::device_identity(store, &kanso_sync::Machine::this_mac())
+        .map(|device| device.library_id)
+        .map_err(|err| err.to_string())
+}
+
+/// Asks for a fingerprint, takes the lock keys kept for Touch ID into this
+/// session and runs `then`; runs `otherwise` when Touch ID is off, is
+/// cancelled or fails, or no keys are kept.
+fn with_touch_id(
+    window: &mut Window,
+    cx: &mut App,
+    then: impl FnOnce(&mut Window, &mut App) + 'static,
+    otherwise: impl FnOnce(&mut Window, &mut App) + 'static,
+) {
+    let answer = if touch_id_on(cx) {
+        crate::touch_id::authenticate("unlock your locked notes", cx)
+    } else {
+        None
+    };
+    let (Some(answer), Some(secrets)) = (answer, secrets(cx)) else {
+        otherwise(window, cx);
+        return;
+    };
+    let store = store(cx);
+    let handle = window.window_handle();
+    cx.spawn(async move |cx| {
+        let keys = if answer.recv().await.unwrap_or(false) {
+            cx.background_spawn(async move {
+                let library_id = library_id(&store).ok()?;
+                load_lock_keys(secrets.as_ref(), &library_id).ok().flatten()
+            })
+            .await
+        } else {
+            None
+        };
+        cx.update(|cx| {
+            handle
+                .update(cx, |_, window, cx| match keys {
+                    Some(keys) => {
+                        for key in keys {
+                            LockKeys::add(key, cx);
+                        }
+                        then(window, cx);
+                    }
+                    None => otherwise(window, cx),
+                })
+                .ok();
+        });
+    })
+    .detach();
+}
+
+/// Keeps the lock keys this session holds for Touch ID, in the background,
+/// when Touch ID is on: after a password opened another one, or a new
+/// password replaced them.
+fn remember_keys(cx: &mut App) {
+    if !touch_id_on(cx) {
+        return;
+    }
+    let Some(secrets) = secrets(cx) else {
+        return;
+    };
+    let keys = LockKeys::get(cx)
+        .map(|keys| keys.keys.clone())
+        .unwrap_or_default();
+    let store = store(cx);
+    cx.background_spawn(async move {
+        let saved = library_id(&store).and_then(|library_id| {
+            let keys: Vec<&LockKey> = keys.iter().map(|key| key.as_ref()).collect();
+            save_lock_keys(secrets.as_ref(), &library_id, &keys).map_err(|err| err.to_string())
+        });
+        if let Err(err) = saved {
+            eprintln!("kanso: locked notes: couldn't keep the keys for Touch ID: {err}");
+        }
+    })
+    .detach();
+}
+
+/// After the lock password worked: keeps the keys for Touch ID when it's on,
+/// or offers it once when it could be.
+fn after_password(window: &mut Window, cx: &mut App) {
+    remember_keys(cx);
+    let asked = cx.global::<AppState>().config.locked.touch_id.is_some();
+    if asked || !crate::touch_id::available(cx) || secrets(cx).is_none() {
+        return;
+    }
+    AppState::update_config(cx, |config| config.locked.touch_id = Some(false));
+    let notification = Notification::info(
+        "Use Touch ID to unlock your locked notes on this device? The password still works, and other devices need it.",
+    )
+    .action(|_, _, _| {
+        Button::new("turn-on-touch-id")
+            .label("Use Touch ID")
+            .on_click(|_, window, cx| {
+                window.dispatch_action(Box::new(TurnOnTouchId), cx);
+            })
+    });
+    window.push_notification(notification, cx);
+}
+
+/// Turn On Touch ID: after a fingerprint, keeps the lock keys this session
+/// holds in the Keychain, so Touch ID opens locked notes on this device.
+pub fn turn_on_touch_id(window: &mut Window, cx: &mut App) {
+    let say = |words: &str, window: &mut Window, cx: &mut App| {
+        window.push_notification(Notification::info(words.to_owned()), cx);
+    };
+    if !crate::touch_id::available(cx) {
+        return say("Touch ID isn't set up on this device.", window, cx);
+    }
+    let Some(secrets) = secrets(cx) else {
+        return say("This copy of Kanso can't use the Keychain.", window, cx);
+    };
+    if !LockKeys::is_unlocked(cx) {
+        return say(
+            "Unlock a locked note with your lock password first, then turn on Touch ID.",
+            window,
+            cx,
+        );
+    }
+    let Some(answer) = crate::touch_id::authenticate("turn on Touch ID for your locked notes", cx)
+    else {
+        return;
+    };
+    let keys = LockKeys::get(cx)
+        .map(|keys| keys.keys.clone())
+        .unwrap_or_default();
+    let store = store(cx);
+    let handle = window.window_handle();
+    cx.spawn(async move |cx| {
+        if !answer.recv().await.unwrap_or(false) {
+            return;
+        }
+        let saved = cx
+            .background_spawn(async move {
+                let library_id = library_id(&store)?;
+                let keys: Vec<&LockKey> = keys.iter().map(|key| key.as_ref()).collect();
+                save_lock_keys(secrets.as_ref(), &library_id, &keys).map_err(|err| err.to_string())
+            })
+            .await;
+        cx.update(|cx| {
+            handle
+                .update(cx, |_, window, cx| match saved {
+                    Ok(()) => {
+                        AppState::update_config(cx, |config| config.locked.touch_id = Some(true));
+                        window.push_notification(
+                            Notification::success(
+                                "Touch ID now unlocks your locked notes on this device.",
+                            ),
+                            cx,
+                        );
+                    }
+                    Err(err) => window.push_notification(
+                        Notification::error(format!("Couldn't turn on Touch ID: {err}")),
+                        cx,
+                    ),
+                })
+                .ok();
+        });
+    })
+    .detach();
+}
+
+/// Turn Off Touch ID: forgets the keys kept for it; the password opens
+/// locked notes again.
+pub fn turn_off_touch_id(window: &mut Window, cx: &mut App) {
+    AppState::update_config(cx, |config| config.locked.touch_id = Some(false));
+    if let Some(secrets) = secrets(cx) {
+        let store = store(cx);
+        cx.background_spawn(async move {
+            if let Ok(library_id) = library_id(&store) {
+                delete_lock_keys(secrets.as_ref(), &library_id).ok();
+            }
+        })
+        .detach();
+    }
+    window.push_notification(
+        Notification::info("Locked notes open with the lock password again on this device."),
         cx,
-        move |values, window, cx| {
-            let password = match LockPassword::new(&values[0]) {
-                Ok(password) => password,
-                // A shorter text can't be the password.
-                Err(_) => return Submit::Invalid(sentence(&LockError::WrongPassword)),
-            };
-            let note = note.clone();
-            let editor = editor.clone();
-            run_in_background(
-                window,
-                cx,
-                move || key_for(&note, &password),
-                move |key, window, cx| {
-                    LockKeys::add(key, cx);
-                    editor.update(cx, |editor, cx| editor.lock_keys_changed(window, cx));
-                    cx.refresh_windows();
-                    Ok(())
-                },
-            )
-        },
-    ))
+    );
 }
 
 /// Remove Lock: keeps the open note's text as plain text again.
@@ -456,6 +724,8 @@ pub fn change_password(
             move || rekey(&store, &old, &new, params),
             move |(key, skipped), window, cx| {
                 LockKeys::replace(Some(key), cx);
+                // Touch ID keeps the new key in place of the old ones.
+                remember_keys(cx);
                 editor.update(cx, |editor, cx| {
                     editor.lock_keys_changed(window, cx);
                     if skipped > 0 {
@@ -653,6 +923,15 @@ mod tests {
         }
 
         fn setup(cx: &mut TestAppContext) -> Fixture {
+            setup_with(cx, None)
+        }
+
+        /// The fixture, with a Touch ID that answers as `touch_id` is told and
+        /// a Keychain in memory.
+        fn setup_with(
+            cx: &mut TestAppContext,
+            touch_id: Option<Arc<crate::touch_id::FakeTouchId>>,
+        ) -> Fixture {
             cx.executor().allow_parking();
             let dir = tempfile::tempdir().unwrap();
             let store = Arc::new(Store::open(dir.path().join("kanso.db")).unwrap());
@@ -677,7 +956,12 @@ mod tests {
                     data_dir,
                     config: AppConfig::default(),
                 });
-                cx.set_global(Services::default());
+                let mut services = Services::default();
+                if let Some(touch_id) = touch_id {
+                    services.secrets = Some(Arc::new(kanso_sync::MemorySecrets::new()));
+                    cx.set_global(crate::touch_id::TouchId(touch_id));
+                }
+                cx.set_global(services);
                 LockKeys::use_test_params(cx);
                 gpui_kit::open_window(Default::default(), cx, |window, cx| {
                     cx.new(|cx| Workspace::new(window, cx))
@@ -701,6 +985,20 @@ mod tests {
         }
 
         impl Fixture {
+            fn dialog_open(&self, cx: &mut TestAppContext) -> bool {
+                self.window
+                    .update(cx, |_, window, cx| window.has_active_dialog(cx))
+                    .unwrap()
+            }
+
+            fn kept_keys(&self, cx: &mut TestAppContext) -> bool {
+                let secrets = cx.read(|cx| cx.global::<Services>().secrets.clone().unwrap());
+                let library_id = super::super::library_id(&self.store).unwrap();
+                kanso_sync::keychain::load_lock_keys(secrets.as_ref(), &library_id)
+                    .unwrap()
+                    .is_some()
+            }
+
             fn submit(&self, cx: &mut TestAppContext, form: &Entity<FormView>, values: &[&str]) {
                 self.window
                     .update(cx, |_, window, cx| {
@@ -896,6 +1194,91 @@ mod tests {
                 key.open(&copy.id, &envelope).unwrap().as_str(),
                 "The secret plan."
             );
+        }
+
+        fn touch_id_setting(cx: &mut TestAppContext) -> Option<bool> {
+            cx.read(|cx| cx.global::<AppState>().config.locked.touch_id)
+        }
+
+        #[gpui_kit::test]
+        fn touch_id_opens_locked_notes_once_turned_on_and_the_password_stays(
+            cx: &mut TestAppContext,
+        ) {
+            let touch = crate::touch_id::FakeTouchId::new(true);
+            let f = setup_with(cx, Some(touch.clone()));
+            let form = f
+                .window
+                .update(cx, |_, window, cx| {
+                    lock_open_note(f.editor.clone(), window, cx)
+                })
+                .unwrap()
+                .unwrap();
+            f.submit(cx, &form, &["correct horse", "correct horse"]);
+            // Offered once, and nothing kept until it is turned on.
+            assert_eq!(touch_id_setting(cx), Some(false));
+            assert!(!f.kept_keys(cx));
+
+            f.window
+                .update(cx, |_, window, cx| {
+                    super::super::turn_on_touch_id(window, cx)
+                })
+                .unwrap();
+            cx.run_until_parked();
+            assert_eq!(touch_id_setting(cx), Some(true));
+            assert!(f.kept_keys(cx));
+            assert_eq!(touch.asked(), 1);
+
+            // Closed again, a fingerprint opens it without the password.
+            f.window
+                .update(cx, |_, window, cx| lock_now(&f.editor, window, cx))
+                .unwrap();
+            cx.run_until_parked();
+            assert_eq!(f.view(cx), LockView::Closed(None));
+            let form = f
+                .window
+                .update(cx, |_, window, cx| {
+                    unlock_open_note(f.editor.clone(), window, cx)
+                })
+                .unwrap();
+            assert!(form.is_none(), "Touch ID asks, not a form");
+            cx.run_until_parked();
+            assert_eq!(f.view(cx), LockView::Open);
+            assert_eq!(f.text(cx), "The secret plan.");
+            assert!(!f.dialog_open(cx));
+
+            // A cancelled fingerprint falls back to the password.
+            f.window
+                .update(cx, |_, window, cx| lock_now(&f.editor, window, cx))
+                .unwrap();
+            touch.answer(false);
+            f.window
+                .update(cx, |_, window, cx| {
+                    unlock_open_note(f.editor.clone(), window, cx)
+                })
+                .unwrap();
+            cx.run_until_parked();
+            assert_eq!(f.view(cx), LockView::Closed(None));
+            assert!(f.dialog_open(cx), "the password form shows");
+            f.window
+                .update(cx, |_, window, cx| window.close_dialog(cx))
+                .unwrap();
+
+            // Turned off, the keys are forgotten and the password is asked.
+            f.window
+                .update(cx, |_, window, cx| {
+                    super::super::turn_off_touch_id(window, cx)
+                })
+                .unwrap();
+            cx.run_until_parked();
+            assert_eq!(touch_id_setting(cx), Some(false));
+            assert!(!f.kept_keys(cx));
+            let form = f
+                .window
+                .update(cx, |_, window, cx| {
+                    unlock_open_note(f.editor.clone(), window, cx)
+                })
+                .unwrap();
+            assert!(form.is_some());
         }
     }
 }

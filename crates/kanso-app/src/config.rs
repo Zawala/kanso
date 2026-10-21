@@ -447,6 +447,15 @@ impl Default for DiscoverySettings {
     }
 }
 
+/// Locked notes on this device.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LockedSettings {
+    /// Whether Touch ID unlocks them here: `None` until Kanso has offered
+    /// it, so it offers once.
+    pub touch_id: Option<bool>,
+}
+
 /// The layout [`AppConfig::migrate`] brings older files up to.
 pub const CONFIG_VERSION: u32 = 3;
 
@@ -467,6 +476,7 @@ pub struct AppConfig {
     pub capture: CaptureSettings,
     pub reminders: RemindersSettings,
     pub discovery: DiscoverySettings,
+    pub locked: LockedSettings,
 }
 
 impl Default for AppConfig {
@@ -484,6 +494,7 @@ impl Default for AppConfig {
             capture: CaptureSettings::default(),
             reminders: RemindersSettings::default(),
             discovery: DiscoverySettings::default(),
+            locked: LockedSettings::default(),
         }
     }
 }
@@ -746,6 +757,7 @@ mod tests {
                     capture: CaptureSettings::default(),
                     reminders: super::RemindersSettings::default(),
                     discovery: DiscoverySettings::default(),
+                    locked: LockedSettings::default(),
                 },
             )
     }

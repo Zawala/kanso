@@ -85,6 +85,7 @@ mod theme;
 mod theme_file;
 mod theme_import;
 mod themes;
+mod touch_id;
 #[cfg(test)]
 mod ui_tests;
 mod updates;
@@ -303,6 +304,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         // Kanso Dev keeps its secrets under its own service.
         services.secrets = Some(Arc::new(flavour::CURRENT.keychain()));
         cx.set_global(services);
+        cx.set_global(touch_id::TouchId(Arc::new(touch_id::SystemTouchId)));
         workspace::bind_keys(cx);
         note_list::bind_keys(cx);
         capture::bind_keys(cx);

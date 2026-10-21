@@ -191,6 +191,49 @@ impl LockKey {
         Ok(LockKey { key, salt, params })
     }
 
+    /// The key with its salt and parameters, as the Keychain keeps it for
+    /// Touch ID: `1:<key>:<salt>:<m>:<t>:<p>`, base64url and decimal.
+    pub fn to_secret(&self) -> Zeroizing<String> {
+        let key = Zeroizing::new(b64(&self.key[..]));
+        Zeroizing::new(format!(
+            "{FORMAT_V1}:{}:{}:{}:{}:{}",
+            key.as_str(),
+            b64(&self.salt),
+            self.params.m_kib,
+            self.params.t,
+            self.params.p
+        ))
+    }
+
+    /// A key [`LockKey::to_secret`] kept.
+    pub fn from_secret(text: &str) -> Result<LockKey, LockError> {
+        let parts: Vec<&str> = text.split(':').collect();
+        let [version, key, salt, m, t, p] = parts[..] else {
+            return Err(LockError::Malformed);
+        };
+        match version.parse::<u8>() {
+            Ok(FORMAT_V1) => {}
+            Ok(_) => return Err(LockError::TooNew),
+            Err(_) => return Err(LockError::Malformed),
+        }
+        let key = Zeroizing::new(unb64(key).ok_or(LockError::Malformed)?);
+        let key =
+            Zeroizing::new(<[u8; 32]>::try_from(key.as_slice()).map_err(|_| LockError::Malformed)?);
+        let salt = unb64(salt)
+            .and_then(|salt| salt.try_into().ok())
+            .ok_or(LockError::Malformed)?;
+        let number = |text: &str| text.parse::<u32>().map_err(|_| LockError::Malformed);
+        Ok(LockKey {
+            key,
+            salt,
+            params: KdfParams {
+                m_kib: number(m)?,
+                t: number(t)?,
+                p: number(p)?,
+            },
+        })
+    }
+
     /// Whether this key was derived for `envelope`'s salt and parameters,
     /// and so is the one to try on it.
     pub fn fits(&self, envelope: &Envelope) -> bool {
@@ -347,6 +390,20 @@ mod tests {
         );
         Envelope::store(None, &mut extra);
         assert_eq!(Envelope::from_extra(&extra), None);
+    }
+
+    #[test]
+    fn a_kept_key_opens_what_the_original_sealed() {
+        let k = key("correct horse");
+        let envelope = k.seal("note:a", "secret");
+        let kept = LockKey::from_secret(&k.to_secret()).unwrap();
+        assert!(kept.fits(&envelope) && kept.same_kdf(&k));
+        assert_eq!(kept.open("note:a", &envelope).unwrap().as_str(), "secret");
+        assert_eq!(
+            LockKey::from_secret("{}").unwrap_err(),
+            LockError::Malformed
+        );
+        assert!(!format!("{kept:?}").contains(&k.to_secret()[..10]));
     }
 
     proptest! {

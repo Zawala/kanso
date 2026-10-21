@@ -33,6 +33,7 @@ icon_assets!(
         Download,
         FileKey,
         FilePlus,
+        FingerprintPattern,
         Focus,
         Goal,
         Hash,

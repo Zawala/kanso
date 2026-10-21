@@ -40,6 +40,7 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
 **Locked notes**
 - Lock a note with a password (**Lock note…** in the palette or the Note menu). Its text is sealed
   on this device, stays sealed in sync, and opens on your other devices with the same password.
+- Unlock them with Touch ID on a Mac that has it, with the password as the fallback.
 
 **Sync, agents and the rest**
 - **End-to-end encrypted sync.** An account on a Cloudflare Worker keeps your devices in step.
@@ -158,6 +159,15 @@ notes locked with it can't be read without it.
 Once you type the password, the notes locked with it open until **Lock notes now**, quitting, or ten
 minutes without opening or saving one. **Remove lock…** keeps a note's text as plain text again, and
 **Change lock password…** seals every locked note again with a new password.
+
+**Touch ID** (macOS): once you've typed the lock password, Kanso offers to unlock with Touch ID
+instead; **Unlock locked notes with Touch ID** in the palette or the Note menu turns it on at any time,
+and **Stop using Touch ID for locked notes** turns it off. With it on, Unlock asks for a fingerprint
+and falls back to the password if you cancel. The lock password still exists and still works: it's
+what other devices and Macs without Touch ID use. Touch ID unlocks the lock *keys*, which Kanso keeps
+in this Mac's login Keychain (never the password itself) and reads only after a fingerprint; macOS
+doesn't enforce the fingerprint on the Keychain item, so this guards against someone using your
+unlocked Mac, not against software running as you. Changing the lock password replaces the kept key.
 
 What locking does and doesn't do:
 

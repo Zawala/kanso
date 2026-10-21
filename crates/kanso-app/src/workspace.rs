@@ -216,6 +216,8 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Remove Lock…", crate::locked::RemoveLock),
             MenuItem::action("Lock Notes Now", crate::locked::LockNotesNow),
             MenuItem::action("Change Lock Password…", crate::locked::ChangeLockPassword),
+            MenuItem::action("Unlock with Touch ID", crate::locked::TurnOnTouchId),
+            MenuItem::action("Stop Using Touch ID", crate::locked::TurnOffTouchId),
             MenuItem::separator(),
             MenuItem::action("Next Note", NextNote),
             MenuItem::action("Previous Note", PreviousNote),
@@ -1600,6 +1602,16 @@ impl Render for Workspace {
             .on_action(
                 cx.listener(|this, _: &crate::locked::ChangeLockPassword, window, cx| {
                     crate::locked::change_password(this.editor.clone(), window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|_, _: &crate::locked::TurnOnTouchId, window, cx| {
+                    crate::locked::turn_on_touch_id(window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|_, _: &crate::locked::TurnOffTouchId, window, cx| {
+                    crate::locked::turn_off_touch_id(window, cx);
                 }),
             )
             .on_action(
