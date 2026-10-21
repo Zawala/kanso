@@ -3,6 +3,47 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## [0.7.0](https://github.com/iamngoni/kanso/compare/v0.6.1...v0.7.0) - 2026-10-21
+
+### New
+
+- **voice:** Kanso turns speech into text on the device with Parakeet ([b300d96](https://github.com/iamngoni/kanso/commit/b300d967354ed458145da8bad4b53dcbfa0d2f17))
+- **editor:** Voice input writes what you say into the note ([8125099](https://github.com/iamngoni/kanso/commit/8125099925324487119dda878bdb650609b0b97b))
+- **search:** The palette finds notes about what you type, not only notes with its words ([351d3b5](https://github.com/iamngoni/kanso/commit/351d3b5ec05f01fc8783348989c7d6b88c1dae75))
+- **tags:** Kanso suggests the tags that notes about the same things have ([7816245](https://github.com/iamngoni/kanso/commit/78162452db0c71630ddf3b16a5dbae0887294fea))
+- **editor:** A note that says nearly the same as another says so, and the two can be merged ([db1e581](https://github.com/iamngoni/kanso/commit/db1e581812dbabaa376dae9f53d89d09906f0f21))
+- **voice:** A recording dropped into a note is transcribed on the device, under its link ([cd22f45](https://github.com/iamngoni/kanso/commit/cd22f45ffa48810a8be67f89fe4325dedc55b29e))
+- **locked:** Windows Hello unlocks locked notes on Windows, with the lock password as the fallback ([6942a92](https://github.com/iamngoni/kanso/commit/6942a926bc0827e46bde246f647a3a27fe0c1d39))
+- **locked:** Lock a whole notebook, and every note in it and in notebooks inside it is sealed, now and when notes go in later ([f3d3785](https://github.com/iamngoni/kanso/commit/f3d378548e6dbf4235099355938b1855e546c300))
+- **board:** A board lays the list's notes out by status, and their tasks as To do and Done, moved by drag or keys ([c3e17e2](https://github.com/iamngoni/kanso/commit/c3e17e2d0eae0aec24f501dd63cdd7c6abf20822))
+- **journal:** A month calendar marks the days with a daily note and opens or starts any day's note ([d4f9057](https://github.com/iamngoni/kanso/commit/d4f9057519791c623edb7887677d77a00e6921b2))
+- **publish:** A notebook publishes as a small site at one link, sealed end to end, with its notes linked and its locked notes left out ([fb6db09](https://github.com/iamngoni/kanso/commit/fb6db0918d60e98bcfc545cd7c19a70ceb27c2ee))
+- **collab:** Share a note with other Kanso users and edit it together, end-to-end encrypted ([ca8f47b](https://github.com/iamngoni/kanso/commit/ca8f47b9961135df853ad01c25b9d4ec8aa90ba6))
+- **sidebar:** Notebooks fold like an accordion, and each can have its own icon ([d5f8aab](https://github.com/iamngoni/kanso/commit/d5f8aab4b75b0b698c441612b55da14a8073e85d)) by @gtchakama
+- **sidebar:** The notebook icon picker has 144 icons and a search ([55c893a](https://github.com/iamngoni/kanso/commit/55c893af7c2fae1b3e69096c1c2e8e25aeb77770)) by @gtchakama
+- **icons:** Icon packs give notebooks more icons and can draw Kanso's own ([3e9b295](https://github.com/iamngoni/kanso/commit/3e9b295a3a93fee9a9eeec5802427a500e01d143)) by @gtchakama
+- **icons:** Browse and install icon packs from inside Kanso ([b012b07](https://github.com/iamngoni/kanso/commit/b012b074a48dec20d3ddca4763441137525cca6b)) by @gtchakama
+- **icons:** An icon pack chosen for the app shows at once, without a restart ([483e991](https://github.com/iamngoni/kanso/commit/483e99198c48d9d88defb4ac73c82fedc3c5915e)) by @gtchakama
+
+### Fixed
+
+- **locked:** A locked notebook's text stays in Kanso through templates, moved notebooks, meaning results and late embeddings ([795bf8a](https://github.com/iamngoni/kanso/commit/795bf8ae13cfa78281ddcb155d5d341da122c53c))
+- **journal:** The calendar builds on Windows and Linux, where the first weekday comes from no system setting ([283d34c](https://github.com/iamngoni/kanso/commit/283d34c3ae1bc06e264a31d529f422341e0b08f5))
+- **collab:** Shared notes survive leaving members, deleted accounts, long text, late updates, large edits and locked copies ([8545620](https://github.com/iamngoni/kanso/commit/854562024a86bb9824816b26c2ca79ac41b560d5))
+- **icons:** A notebook's pack icon shows from launch, and no icon pack, however it is made, can slow or stop Kanso ([2fa94e9](https://github.com/iamngoni/kanso/commit/2fa94e9beaedd605793249849c92d02e81b7cea5))
+- **icons:** Uninstalling a pack keeps the files you added to it, and an install finishes and says so with the gallery closed ([c7ae156](https://github.com/iamngoni/kanso/commit/c7ae15684b66232670d3095cd959a1df7d0f6af6))
+- **sidebar:** The arrow on a notebook around the one showing folds it, and the palette shows a locked notebook's lock ([f6b9ed8](https://github.com/iamngoni/kanso/commit/f6b9ed8a0ec2bb7e2b478c41d50d6f8c06b7dc5a))
+- **icons:** Choosing an app icon pack lets go of the old window as closing it would, and voice input carries over ([2f9c4c0](https://github.com/iamngoni/kanso/commit/2f9c4c0a0eba1823a1ca221c5c15ce6e9d677dc4))
+
+### Under the hood
+
+- **app:** Voice input's rules, apart from the microphone ([da66f3b](https://github.com/iamngoni/kanso/commit/da66f3bbba7b7186795c4534d5b82868811ca758))
+- **app:** The config remembers how voice input listens ([7545a4b](https://github.com/iamngoni/kanso/commit/7545a4b676a8abb1ea0021b319f7bbcd4357b080))
+- **app:** Model downloads carry on where they stopped ([ead993f](https://github.com/iamngoni/kanso/commit/ead993fb0f3ae7d0498116c1efc265743cd2ac4b))
+- **macos:** Kanso may ask for the microphone ([6903679](https://github.com/iamngoni/kanso/commit/690367966122fe788dcaacaee982b2cc4a6636de))
+- **cloud:** The socket rate-limit test passes on a runner slow enough to refill every frame ([e5c76ca](https://github.com/iamngoni/kanso/commit/e5c76ca2b51b7bcf055fd753733d4c1c96e6bf27))
+- **cloud:** The presence budget test waits for every frame's answer on a slow runner ([7f6d2d5](https://github.com/iamngoni/kanso/commit/7f6d2d5c05b35c52c0489f9bda7c077b8aa7d072))
+
 ## [0.6.1](https://github.com/iamngoni/kanso/compare/v0.6.0...v0.6.1) - 2026-10-21
 
 ### New

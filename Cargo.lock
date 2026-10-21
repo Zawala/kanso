@@ -4245,7 +4245,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-app"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -4304,7 +4304,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-collab"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "base64 0.22.1",
  "chacha20poly1305",
@@ -4333,7 +4333,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-core"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "fastrand",
  "md-5",
@@ -4346,7 +4346,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-import"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "aes 0.8.4",
  "anyhow",
@@ -4370,7 +4370,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-render"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "base64 0.22.1",
  "flate2",
@@ -4385,7 +4385,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-server"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -4409,7 +4409,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-store"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "async-channel",
  "base64 0.22.1",
@@ -4425,7 +4425,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-sync"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -4454,7 +4454,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-update"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
@@ -4477,7 +4477,7 @@ dependencies = [
 
 [[package]]
 name = "kanso-voice"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "async-channel",
  "block2 0.6.2",
