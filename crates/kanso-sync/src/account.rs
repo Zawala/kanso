@@ -105,6 +105,18 @@ impl Session {
         self.library_id = Some(library_id.to_owned());
     }
 
+    /// The keys shared notes start from, derived from this session's data
+    /// key (docs/ACCOUNTS.md › Collaboration).
+    pub fn collab_roots(&self) -> crate::crypto::CollabRoots {
+        crate::crypto::CollabRoots::derive(&self.data_key)
+    }
+
+    /// The `Authorization` header of this session's requests, for routes
+    /// other crates send (shared notes). Zeroized on drop.
+    pub fn authorization(&self) -> zeroize::Zeroizing<String> {
+        zeroize::Zeroizing::new(format!("Bearer {}", self.token.expose()))
+    }
+
     /// The library this session was created for or loaded from: its
     /// Keychain items are `sync-account:<library_id>` and friends.
     pub fn library_id(&self) -> Option<&str> {

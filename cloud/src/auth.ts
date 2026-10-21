@@ -8,6 +8,7 @@
 // carries the hash the Worker just checked, so of two concurrent changes one
 // wins and the other finds nothing to change.
 
+import { accountCollabStatements, afterAccountDeleted, memberships } from "./collab";
 import { type PepperKeys, hashToken, hex, hmac16, newToken, proofMatches, randomHex, sha256Hex } from "./crypto";
 import type { Env } from "./env";
 import {
@@ -736,8 +737,10 @@ export const recoveryKey = withSession(async (request, env, now, session) => {
 
 /**
  * The deletion batch: documents, files, published notes (queued for their R2
- * objects' deletion), sessions, account-keyed limits, the purge row, then the
- * account (children first: D1 enforces foreign keys).
+ * objects' deletion), shared notes (its own stopped and their rooms queued for
+ * purging; its identity, memberships, wraps, requests and notifications gone),
+ * sessions, account-keyed limits, the purge row, then the account (children
+ * first: D1 enforces foreign keys).
  * Every statement holds only while the checked auth hash is stored.
  */
 export function deletionStatements(db: D1Database, accountId: string, now: number, authHash: string): D1PreparedStatement[] {
@@ -747,9 +750,11 @@ export function deletionStatements(db: D1Database, accountId: string, now: numbe
 		bind(`DELETE FROM account_docs WHERE account_id = ?1 AND ${guard}`),
 		bind(`DELETE FROM account_files WHERE account_id = ?1 AND ${guard}`),
 		...accountShareStatements(db, accountId, guard, authHash, now),
+		...accountCollabStatements(db, accountId, guard, authHash, now),
 		bind(`DELETE FROM sessions WHERE account_id = ?1 AND ${guard}`),
 		bind(
-			`DELETE FROM limits WHERE key IN ('login-user:' || ?1, 'password-account:' || ?1, 'writes-account:' || ?1, 'uploads-account:' || ?1)
+			`DELETE FROM limits WHERE key IN ('login-user:' || ?1, 'password-account:' || ?1, 'writes-account:' || ?1, 'uploads-account:' || ?1,
+  'lookup-account:' || ?1, 'join-account:' || ?1, 'notify-account:' || ?1)
   AND ${guard}`,
 		),
 		db
@@ -771,10 +776,12 @@ export const deleteAccount = withSession(async (request, env, now, session) => {
 	if (normalizeUsername(b.username) !== account.username) {
 		return error(400, "username_mismatch", "The username doesn't match this account.");
 	}
+	const shared = await memberships(env, account.id);
 	const results = await env.DB.batch(deletionStatements(env.DB, account.id, now, account.auth_hash));
 	if (results[results.length - 1].results.length !== 1) return invalidCredentials();
 	await purgePrefix(env, accountPrefix(account.id), now, now, DELETE_PURGE_ROUNDS);
 	await runSharePurges(env, now);
+	await afterAccountDeleted(env, account.id, shared, now);
 	return json({ deleted: true });
 });
 

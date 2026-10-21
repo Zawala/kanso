@@ -41,7 +41,7 @@ pub use binding::{
     BindError, Choice, DeviceIdentity, Flow, LocalLibrary, Machine, Plan, bind, device_identity,
     device_name, local_library, meta_keys, plan, unbind,
 };
-pub use crypto::{KdfParams, Password, PasswordError, RecoveryKey, RecoveryKeyError};
+pub use crypto::{CollabRoots, KdfParams, Password, PasswordError, RecoveryKey, RecoveryKeyError};
 pub use engine::{
     Schedule, SyncError, SyncOptions, SyncProblem, SyncReport, batches, problem, report_problem,
     sync,

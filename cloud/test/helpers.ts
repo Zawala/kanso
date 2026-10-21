@@ -34,7 +34,7 @@ export const clock = { now: START };
 
 /** The Worker's bindings without AUTH_LIMITER and SESSION_LIMITER, as the fixtures run. */
 export function testEnv(overrides: Partial<Env> = {}): Env {
-	return { DB: env.DB, FILES: env.FILES, AUTH_PEPPER: env.AUTH_PEPPER, ...overrides };
+	return { DB: env.DB, FILES: env.FILES, NOTE_ROOM: env.NOTE_ROOM, AUTH_PEPPER: env.AUTH_PEPPER, ...overrides };
 }
 
 export interface Call {
@@ -239,6 +239,18 @@ export type Client = ReturnType<typeof client>;
 export async function resetServer(settings: Record<string, string> = { signup: "open" }): Promise<void> {
 	const values = { ...SEEDED_SETTINGS, ...settings };
 	await env.DB.batch([
+		// Shared notes first: their rows point at accounts. Rooms keyed by old share IDs are left
+		// alone; tests use fresh IDs.
+		env.DB.prepare("DELETE FROM collab_notifications"),
+		env.DB.prepare("DELETE FROM collab_wraps"),
+		env.DB.prepare("DELETE FROM collab_lists"),
+		env.DB.prepare("DELETE FROM collab_requests"),
+		env.DB.prepare("DELETE FROM collab_links"),
+		env.DB.prepare("DELETE FROM collab_members"),
+		env.DB.prepare("DELETE FROM collab_shares"),
+		env.DB.prepare("DELETE FROM collab_retired"),
+		env.DB.prepare("DELETE FROM collab_purges"),
+		env.DB.prepare("DELETE FROM identities"),
 		env.DB.prepare("DELETE FROM account_docs"),
 		env.DB.prepare("DELETE FROM account_files"),
 		env.DB.prepare("DELETE FROM shares"),

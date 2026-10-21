@@ -1,5 +1,5 @@
 // Purges of R2 prefixes and the cron's other jobs (docs/ACCOUNTS.md › R2
-// layout, purges and the cron).
+// layout, purges and the cron), shared notes' rooms among them.
 //
 // A purge round is one list of up to 1,000 keys and one delete. A purge row
 // goes only when a list comes back empty and the row is more than an hour
@@ -11,6 +11,7 @@
 // round finding the account alive drops the row instead of listing; objects
 // the old account left behind are then orphans, which reconciliation removes.
 
+import { runCollabPurges } from "./collab";
 import type { Env } from "./env";
 import { refusal } from "./http";
 import { expiredLimitsSql } from "./limits";
@@ -311,6 +312,8 @@ export interface CronReport {
 	sharesPurged: number;
 	/** Short links of published notes deleted from Rerout by this run. */
 	shortLinksPurged: number;
+	/** Rooms of shared notes that stopped (or whose owner was deleted) purged by this run. */
+	collabPurged: number;
 }
 
 /** The scheduled jobs, every 15 minutes. */
@@ -319,6 +322,7 @@ export async function runCron(env: Env, now: number): Promise<CronReport> {
 	const sharesExpired = await expireShares(env, now);
 	const sharesPurged = await runSharePurges(env, now);
 	const shortLinksPurged = await runShortLinkPurges(env);
+	const collabPurged = await runCollabPurges(env, now);
 	await env.DB.prepare(expiredLimitsSql()).bind(now).run();
 	const reconciled = await reconcile(env, now);
 	await env.DB.batch([
@@ -327,5 +331,5 @@ export async function runCron(env: Env, now: number): Promise<CronReport> {
 		).bind(now, SESSION_IDLE_MS),
 		env.DB.prepare("DELETE FROM sessions WHERE revoked_at IS NOT NULL AND revoked_at < ?1 - ?2").bind(now, REVOKED_KEEP_MS),
 	]);
-	return { purgeRounds, reconcile: reconciled, sharesExpired, sharesPurged, shortLinksPurged };
+	return { purgeRounds, reconcile: reconciled, sharesExpired, sharesPurged, shortLinksPurged, collabPurged };
 }

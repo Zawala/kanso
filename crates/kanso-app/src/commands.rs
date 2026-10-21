@@ -91,6 +91,8 @@ pub enum Needs {
     ImageLine,
     /// The cursor is on a line that links to an audio attachment.
     AudioLine,
+    /// A shared note this account is in is open.
+    SharedNote,
 }
 
 pub struct Command {
@@ -406,6 +408,57 @@ static COMMANDS: &[Command] = &[
         group: Group::Note,
         run: action!(ExportHtml),
         needs: Needs::Note,
+    },
+    Command {
+        id: "share",
+        label: "Share…",
+        label_when_pinned: None,
+        description: "Invites people to read, comment on or edit the note with you, end-to-end encrypted: your sync server relays it without reading it. Locked notes can't be shared.",
+        icon: IconName::Users,
+        keywords: &[
+            "share",
+            "collaborate",
+            "invite",
+            "members",
+            "together",
+            "link",
+        ],
+        group: Group::Note,
+        run: action!(crate::collab::ShareNote),
+        needs: Needs::UnlockedNote,
+    },
+    Command {
+        id: "join-shared-note",
+        label: "Join a shared note…",
+        label_when_pinned: None,
+        description: "Asks to join a note from an invite link someone sent you. The note shows in Shared with me once its owner lets you in.",
+        icon: IconName::Link2,
+        keywords: &["join", "invite", "link", "shared", "collaborate"],
+        group: Group::Note,
+        run: action!(crate::collab::JoinSharedNote),
+        needs: Needs::SignedIn,
+    },
+    Command {
+        id: "comment",
+        label: "Comment on selection…",
+        label_when_pinned: None,
+        description: "Comments on the selected words of a shared note. Write @ and a member's username to mention them.",
+        icon: IconName::MessageSquarePlus,
+        keywords: &["comment", "note", "remark", "mention", "review"],
+        group: Group::Note,
+        run: action!(crate::collab::CommentOnSelection),
+        needs: Needs::SharedNote,
+    },
+    Command {
+        id: "show-comments",
+        label: "Show comments",
+        label_when_pinned: None,
+        description: "Lists the shared note's comments in the inspector, in the order of the words they are on.",
+        icon: IconName::MessageSquare,
+        keywords: &["comments", "mentions", "resolve", "review", "inspector"],
+        group: Group::View,
+        run: action!(crate::collab::ShowComments),
+        needs: Needs::SharedNote,
     },
     Command {
         id: "publish",

@@ -17,7 +17,17 @@ import { type PepperKeys, hex, hmac16 } from "./crypto";
 import { rateLimited } from "./http";
 import { DAY, HOUR } from "./protocol";
 
-export type Rule = "signup-ip" | "login-user" | "login-ip" | "recover-ip" | "password-account" | "writes-account" | "uploads-account";
+export type Rule =
+	| "signup-ip"
+	| "login-user"
+	| "login-ip"
+	| "recover-ip"
+	| "password-account"
+	| "writes-account"
+	| "uploads-account"
+	| "lookup-account"
+	| "join-account"
+	| "notify-account";
 
 /**
  * Window and maximum of each rule. The two per-account daily rules read their
@@ -28,6 +38,11 @@ export type Rule = "signup-ip" | "login-user" | "login-ip" | "recover-ip" | "pas
  * (1 GiB by default). Without the upload rule one account could spend the whole
  * server-wide `global_upload_bytes_per_day` alone: replacing one 10 MiB file
  * about 480 times costs only 480 writes.
+ *
+ * The collaboration rules (docs/ACCOUNTS.md › Collaboration) count per account:
+ * `lookup-account` every public-key lookup by username, `join-account` every
+ * request to join through a link (each one is a guess at a link's proof), and
+ * `notify-account` every notification sent.
  */
 export const RULES: Record<Rule, { window: number; max: number | null }> = {
 	"signup-ip": { window: HOUR, max: 10 },
@@ -37,6 +52,9 @@ export const RULES: Record<Rule, { window: number; max: number | null }> = {
 	"password-account": { window: 15 * 60_000, max: 5 },
 	"writes-account": { window: DAY, max: null },
 	"uploads-account": { window: DAY, max: null },
+	"lookup-account": { window: HOUR, max: 120 },
+	"join-account": { window: HOUR, max: 20 },
+	"notify-account": { window: DAY, max: 500 },
 };
 
 /**

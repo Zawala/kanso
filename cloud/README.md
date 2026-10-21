@@ -23,6 +23,9 @@ and the counters behind quotas and rate limits; R2 holds sealed file bytes under
 | `PUT` / `DELETE /v2/shares/<id>` | yes | Publish (or replace) a sealed note, or unpublish it |
 | `GET /v2/public/<id>` | | A published note's ciphertext; 410 once expired, rate-limited per IP by the binding, no D1 writes |
 | `GET /p/<id>` | | The viewer page: opens the note with the key in the link's `#fragment` |
+| `PUT` / `GET /v2/account/identity`, `GET /v2/users/<username>` | yes | Identity keys for sharing, and another account's public keys |
+| `/v2/collab/…` | yes | Shared notes: sharing, invitations, epochs, the log, snapshots, the live WebSocket, links, requests and notifications |
+| `GET /j/<link_id>` | | The page an invite link opens: "open Kanso and paste this link" |
 
 A session is `Authorization: Bearer kanso_…`. `/v1` and every other path answer 404. Any request
 with an `Origin` header gets 403, except on the two public routes, and a body with the wrong
@@ -45,6 +48,20 @@ One secret is required, `AUTH_PEPPER`: 32 random bytes as base64url. It keys the
 `prelogin` gives for unknown names and the rate-limit keys of IP addresses. Without it, health and
 the sign-in routes answer 503 `misconfigured`; signed-in devices keep working. `SYNC_TOKEN` is no
 longer read.
+
+## Shared notes
+
+Shared notes ([docs/ACCOUNTS.md › Collaboration](../docs/ACCOUNTS.md#collaboration)) add a
+Durable Object binding, `NOTE_ROOM` (class `NoteRoom`, `src/room.ts`): one room per shared note,
+keyed by share ID, holding the note's sealed log in its own SQLite storage and its members' live
+WebSockets (hibernating). The room is reachable only through the Worker. `wrangler.jsonc` declares
+the class with the Durable Object migration `v1` (`new_sqlite_classes: ["NoteRoom"]`), which
+`wrangler deploy` applies by itself.
+
+D1 needs `migrations/0005_collab.sql` (identities, shares, members, wraps, links, requests,
+notifications, retired IDs and room purges; additive only) **before** the Worker that uses it is
+deployed: run `npm run migrate:remote`, then `npm run deploy`. The cron purges the rooms of shares
+that stopped or whose owner was deleted (`collabPurged` in its report) and drops expired links.
 
 ## Deploying
 
@@ -70,7 +87,7 @@ unset pepper
 # on Rerout; without it, published notes keep their long links.
 npx wrangler secret put REROUT_API_KEY
 
-npm run migrate:remote     # 0002 to 0004 are additive; sign-ups start closed
+npm run migrate:remote     # 0002 to 0005 are additive; sign-ups start closed
 npm run deploy
 ```
 

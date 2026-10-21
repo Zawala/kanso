@@ -1,0 +1,34 @@
+[package]
+name = "kanso-collab"
+description = "Kanso's shared notes: end-to-end encrypted collaboration with merged edits, live cursors, comments and mentions, over the sync server."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+base64.workspace = true
+chacha20poly1305.workspace = true
+curve25519-dalek.workspace = true
+ed25519-dalek.workspace = true
+getrandom.workspace = true
+hkdf.workspace = true
+kanso-core.workspace = true
+kanso-store.workspace = true
+kanso-sync.workspace = true
+rustls.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+similar.workspace = true
+thiserror.workspace = true
+tungstenite.workspace = true
+ureq = "3.4"
+url = "2.5"
+webpki-roots.workspace = true
+yrs.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true

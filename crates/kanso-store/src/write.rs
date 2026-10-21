@@ -116,8 +116,13 @@ pub(crate) fn store_row(
     let salt_now = (is_note && !deleted).then(|| lock_salt(fields)).flatten();
     let in_locked = is_note && !deleted && in_locked_book(tx, book_of(fields))?;
     let locked = salt_now.is_some() || in_locked;
-    if is_note && !deleted && origin != Origin::Sync {
+    if is_note && !deleted && !matches!(origin, Origin::Sync | Origin::Collab) {
         guard_note(tx, fields, previous, in_locked)?;
+        crate::collab::guard_shared(
+            fields,
+            previous.filter(|p| !p.deleted).map(|p| &p.fields),
+            in_locked,
+        )?;
     }
     if let Some(prev) = previous
         && !prev.deleted
@@ -397,7 +402,7 @@ fn lock_salt(fields: &Map<String, Value>) -> Option<String> {
 }
 
 fn snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
-    if origin == Origin::Ui {
+    if matches!(origin, Origin::Ui | Origin::Collab) {
         let last: Option<i64> = tx.query_row(
             "SELECT MAX(saved_at) FROM revisions WHERE doc_id = ?",
             [id],
@@ -413,14 +418,20 @@ fn snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()
 /// Puts `prev` in the document's history, unthrottled, then prunes it.
 pub(crate) fn keep_snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
     let now = now_ms();
+    // A shared note's version is by whoever changed it since the last one.
+    let author = match prev.doc_type {
+        DocType::Note => crate::collab::take_authors(tx, id)?,
+        _ => None,
+    };
     tx.execute(
-        "INSERT INTO revisions (doc_id, rev, json, saved_at, origin) VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO revisions (doc_id, rev, json, saved_at, origin, author) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             id,
             prev.rev,
             serde_json::to_string(&prev.fields)?,
             now,
-            origin.as_str()
+            origin.as_str(),
+            author
         ],
     )?;
     tx.execute(

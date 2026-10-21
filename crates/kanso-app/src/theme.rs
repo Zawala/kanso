@@ -198,6 +198,27 @@ impl Colors {
 /// little enough that secondary text on it still reads at 4.5:1.
 pub const PALETTE_SELECTED_ALPHA: (f32, f32) = (0.22, 0.18);
 
+/// Other people's cursors in a shared note, eight hues apart: each as it
+/// shows on a light editor and on a dark one, at 3:1 or more against both
+/// themes' editors, so a thin caret and its name read on either.
+pub const CURSOR_COLOURS: [(Rgb, Rgb); 8] = [
+    (Rgb(0x2F6AAE), Rgb(0x7FB0EC)),
+    (Rgb(0x2D7A4D), Rgb(0x76C59C)),
+    (Rgb(0xA6531A), Rgb(0xEDA160)),
+    (Rgb(0x7550AE), Rgb(0xB89CEE)),
+    (Rgb(0xB03A3A), Rgb(0xEE8484)),
+    (Rgb(0x1E7474), Rgb(0x6CCBCB)),
+    (Rgb(0x9E3B80), Rgb(0xE68BC6)),
+    (Rgb(0x666C1E), Rgb(0xC6C672)),
+];
+
+/// The colour of cursor `index` (see [`CURSOR_COLOURS`]) on a light or dark
+/// editor.
+pub fn cursor_colour(index: usize, dark: bool) -> Hsla {
+    let (light, on_dark) = CURSOR_COLOURS[index % CURSOR_COLOURS.len()];
+    Hsla::from(if dark { on_dark } else { light })
+}
+
 /// The size of a section's label.
 pub const SECTION_LABEL_SIZE: f32 = 12.;
 
@@ -537,6 +558,22 @@ mod tests {
 
     fn rgb() -> impl Strategy<Value = u32> {
         0u32..=0xFF_FFFF
+    }
+
+    /// Every cursor colour reads at 3:1 on its theme's editor, and the
+    /// eight stay apart from each other.
+    #[test]
+    fn cursor_colours_read_on_both_themes() {
+        for (light, dark) in CURSOR_COLOURS {
+            assert!(contrast_ratio(light.0, LIGHT.editor.0) >= 3.0, "{light:?}");
+            assert!(contrast_ratio(dark.0, DARK.editor.0) >= 3.0, "{dark:?}");
+        }
+        for (i, a) in CURSOR_COLOURS.iter().enumerate() {
+            for b in &CURSOR_COLOURS[i + 1..] {
+                assert_ne!(a.0, b.0);
+                assert_ne!(a.1, b.1);
+            }
+        }
     }
 
     proptest! {

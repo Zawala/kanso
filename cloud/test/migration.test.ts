@@ -19,9 +19,23 @@ async function emptyDatabase(): Promise<void> {
 		.all<{ type: string; name: string }>();
 	for (const { type, name } of results.filter((r) => r.type === "view")) await db.exec(`DROP VIEW "${name}"`);
 	// Children before parents, so foreign keys never point at a dropped table.
-	const order = ["sessions", "account_docs", "account_files", "shares"];
+	const order = [
+		"collab_notifications",
+		"collab_wraps",
+		"collab_lists",
+		"collab_requests",
+		"collab_links",
+		"collab_members",
+		"collab_shares",
+		"identities",
+		"sessions",
+		"account_docs",
+		"account_files",
+		"shares",
+	];
 	const tables = results.filter((r) => r.type === "table").map((r) => r.name);
-	tables.sort((a, b) => Number(order.includes(b)) - Number(order.includes(a)));
+	const rank = (name: string) => (order.includes(name) ? order.indexOf(name) : order.length);
+	tables.sort((a, b) => rank(a) - rank(b));
 	for (const name of tables) await db.exec(`DROP TABLE "${name}"`);
 }
 

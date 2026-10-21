@@ -173,6 +173,10 @@ WITH RECURSIVE locked (id) AS (
 )
 SELECT id FROM locked;
 "#,
+    // Shared notes (`collab/mod.rs`, docs/ACCOUNTS.md › Collaboration):
+    // local to this device, never synced; each device rebuilds them from
+    // the server. Saved versions say who made them.
+    crate::collab::MIGRATION,
 ];
 
 /// A note's body as everything but the app reads it: empty for a locked
@@ -323,7 +327,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let conn = connect(&dir.path().join("k.db")).unwrap();
         migrate(&conn).unwrap();
-        assert_eq!(MIGRATIONS.len(), 8);
+        assert_eq!(MIGRATIONS.len(), 9);
         assert_eq!(version(&conn), MIGRATIONS.len() as i64);
         assert!(has_column(&conn, "note_tasks", "due"));
         assert!(has_column(&conn, "revisions", "batch_rev"));
@@ -331,7 +335,8 @@ mod tests {
         assert!(has_column(&conn, "file_text", "md5"));
         // Running it again changes nothing.
         migrate(&conn).unwrap();
-        assert_eq!(version(&conn), 8);
+        assert_eq!(version(&conn), 9);
+        assert!(has_column(&conn, "revisions", "author"));
     }
 
     /// A database on version 5 (find and replace) moves to 6 (discovery)
@@ -351,7 +356,7 @@ mod tests {
         assert!(!has_column(&conn, "note_embeddings", "vector"));
         set_meta(&conn, "kept", "yes").unwrap();
         migrate(&conn).unwrap();
-        assert_eq!(version(&conn), 8);
+        assert_eq!(version(&conn), 9);
         assert!(has_column(&conn, "revisions", "batch"));
         assert!(has_column(&conn, "note_embeddings", "vector"));
         assert!(has_column(&conn, "file_text", "text"));

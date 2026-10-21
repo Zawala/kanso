@@ -6,6 +6,7 @@
 //! write is broadcast to subscribers as a [`Change`].
 
 mod backup;
+pub mod collab;
 mod derived;
 mod doc;
 mod embed;
@@ -28,6 +29,10 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 
 pub use backup::BackupPolicy;
+pub use collab::SharedText;
+pub use collab::model::{
+    CommentRecord, Contact, Outgoing, SealedKey, SharedNote, SharedStatus, StoredNotice,
+};
 pub use derived::{Backlink, DERIVED_VERSION, DERIVED_VERSION_KEY, HeadingHit};
 pub use doc::{Attachment, Doc};
 pub use embed::{
@@ -84,6 +89,9 @@ pub enum Origin {
     Sync,
     /// The PouchDB library importer.
     Import,
+    /// `kanso-collab` writing a shared note's merged text. Snapshots are
+    /// throttled as for the UI.
+    Collab,
 }
 
 impl Origin {
@@ -93,6 +101,7 @@ impl Origin {
             Origin::Api => "api",
             Origin::Sync => "sync",
             Origin::Import => "import",
+            Origin::Collab => "collab",
         }
     }
 }

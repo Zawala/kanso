@@ -181,6 +181,17 @@ fn check_guard(tx: &rusqlite::Transaction, guard: Option<&SyncGuard>) -> Result<
     Ok(())
 }
 
+/// A document's fields as private sync sends them: a shared note without
+/// its text, which its CRDT carries (docs/ACCOUNTS.md › Collaboration).
+fn private_fields(json: &str) -> Map<String, Value> {
+    let mut fields = match serde_json::from_str(json) {
+        Ok(Value::Object(map)) => map,
+        _ => Map::new(),
+    };
+    crate::collab::private_part(&mut fields);
+    fields
+}
+
 fn updated_at(fields: &Map<String, Value>) -> i64 {
     fields.get("updatedAt").and_then(Value::as_i64).unwrap_or(0)
 }
@@ -201,10 +212,7 @@ impl Store {
                     id: row.get(0)?,
                     rev: row.get(1)?,
                     deleted: row.get(2)?,
-                    fields: match serde_json::from_str(&json) {
-                        Ok(Value::Object(map)) => map,
-                        _ => Map::new(),
-                    },
+                    fields: private_fields(&json),
                     base_rev: row.get(4)?,
                 })
             })?;
@@ -226,10 +234,7 @@ impl Store {
                     id: row.get(0)?,
                     rev: row.get(1)?,
                     deleted: row.get(2)?,
-                    fields: match serde_json::from_str(&json) {
-                        Ok(Value::Object(map)) => map,
-                        _ => Map::new(),
-                    },
+                    fields: private_fields(&json),
                     base_rev: row.get(4)?,
                 })
             })?;
@@ -626,7 +631,13 @@ impl Store {
                 Map::new()
             } else {
                 let created = remote.fields.get("createdAt").and_then(Value::as_i64).unwrap_or(0);
-                normalize(doc_type, &remote.id, remote.fields.clone(), None, created, Refs::Skip)?
+                let mut incoming = remote.fields.clone();
+                // A shared note's text comes from its CRDT, never from private sync.
+                crate::collab::keep_shared_text(
+                    &mut incoming,
+                    local.as_ref().filter(|l| !l.deleted).map(|l| &l.fields),
+                );
+                normalize(doc_type, &remote.id, incoming, None, created, Refs::Skip)?
             };
             let store_blob = |tx: &rusqlite::Transaction| -> Result<()> {
                 if let Some(blob) = &attachment {

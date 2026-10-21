@@ -760,6 +760,32 @@ fn name_aad(account_id: &str, device_id: &str) -> Vec<u8> {
     aad
 }
 
+/// The keys shared notes start from (docs/ACCOUNTS.md › Collaboration),
+/// derived from the data key: `identity_key` seals the account's identity
+/// keys for its devices, `vault_key` seals note keys at rest in the library.
+/// Zeroized on drop.
+pub struct CollabRoots {
+    pub identity_key: Zeroizing<[u8; 32]>,
+    pub vault_key: Zeroizing<[u8; 32]>,
+}
+
+impl fmt::Debug for CollabRoots {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("CollabRoots(<redacted>)")
+    }
+}
+
+impl CollabRoots {
+    /// HKDF(`data_key`, info `"kanso/v1/identity"`) and HKDF(`data_key`,
+    /// info `"kanso/v1/collab-vault"`).
+    pub fn derive(data_key: &DataKey) -> CollabRoots {
+        CollabRoots {
+            identity_key: hkdf32(&data_key.0[..], None, b"kanso/v1/identity"),
+            vault_key: hkdf32(&data_key.0[..], None, b"kanso/v1/collab-vault"),
+        }
+    }
+}
+
 impl ContentKeys {
     /// Derives `doc_key`, `file_key`, `id_key`, `rev_key` and
     /// `device_name_key` from the data key.

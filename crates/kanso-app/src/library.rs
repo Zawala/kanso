@@ -34,6 +34,9 @@ pub enum Filter {
     /// The tasks across notes, in the Tasks view (`crate::tasks_view`),
     /// in the note list's place.
     Tasks,
+    /// Notes other accounts shared with this one (docs/ACCOUNTS.md ›
+    /// Collaboration), with invitations waiting above them.
+    Shared,
 }
 
 impl Filter {
@@ -45,7 +48,9 @@ impl Filter {
             value: value.to_owned(),
         };
         match self {
-            Filter::All | Filter::Pinned | Filter::Recent | Filter::Tasks => Vec::new(),
+            Filter::All | Filter::Pinned | Filter::Recent | Filter::Tasks | Filter::Shared => {
+                Vec::new()
+            }
             Filter::Book(id) => vec![clause(Field::BookId, id)],
             Filter::Tag(id) => vec![clause(Field::TagId, id)],
             Filter::TagPath(path) => vec![clause(Field::Tag, path)],
@@ -132,6 +137,14 @@ pub fn list_notes(
 ) -> Result<Vec<NoteSummary>, StoreError> {
     let mut notes = match filter {
         Filter::Recent => recent_notes(store, params, recent_since)?,
+        Filter::Shared => {
+            let shared: std::collections::HashSet<String> =
+                store.shared_with_me()?.into_iter().collect();
+            let mut notes = store.search_summaries(params)?;
+            notes.retain(|note| shared.contains(&note.id));
+            pinned_first(&mut notes);
+            notes
+        }
         _ => {
             let mut notes = store.search_summaries(params)?;
             pinned_first(&mut notes);
@@ -177,6 +190,8 @@ pub struct Library {
     pub recent: u32,
     /// How many open tasks are overdue, for the sidebar's Tasks badge.
     pub overdue: u32,
+    /// How many notes others shared with this account.
+    pub shared: u32,
     pub filter: Filter,
     pub search: String,
     pub sort: Sort,
@@ -208,6 +223,7 @@ struct Loaded {
     counts: StatusCounts,
     recent: u32,
     overdue: u32,
+    shared: u32,
     /// `None` while the Tasks view shows: the list keeps its notes.
     notes: Option<Vec<NoteSummary>>,
 }
@@ -240,6 +256,7 @@ impl Library {
             counts: StatusCounts::default(),
             recent: 0,
             overdue: 0,
+            shared: 0,
             filter: Filter::All,
             search: String::new(),
             sort: Sort::UpdatedAt,
@@ -316,6 +333,7 @@ impl Library {
                 counts: store.status_counts()?,
                 recent,
                 overdue: store.overdue_count(now)?,
+                shared: u32::try_from(store.shared_with_me()?.len()).unwrap_or(u32::MAX),
                 notes,
             })
         });
@@ -333,6 +351,7 @@ impl Library {
                         this.counts = loaded.counts;
                         this.recent = loaded.recent;
                         this.overdue = loaded.overdue;
+                        this.shared = loaded.shared;
                         if let Some(notes) = loaded.notes {
                             this.notes = notes;
                             this.notes_version += 1;
@@ -548,6 +567,7 @@ impl Library {
             Filter::Status(status) => status.label().into(),
             Filter::Trash => "Trash".into(),
             Filter::Tasks => "Tasks".into(),
+            Filter::Shared => "Shared with me".into(),
         }
     }
 }
@@ -666,8 +686,8 @@ pub fn book_tree(books: &[Book]) -> Vec<(usize, &Book)> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Filter, book_path, book_subtree, book_tree, has_notes_inside, is_book_locked, pinned_first,
-        recent_first, recent_notes, refine_status, search_params,
+        Filter, book_path, book_subtree, book_tree, has_notes_inside, is_book_locked, list_notes,
+        pinned_first, recent_first, recent_notes, refine_status, search_params,
     };
     use kanso_core::{Book, NoteFacts, NoteStatus, Query};
     use kanso_store::{NoteSummary, Sort};
@@ -737,7 +757,7 @@ mod tests {
         /// Metamorphic: a filter only narrows a search, and its clauses come
         /// after the ones typed in the search box.
         #[test]
-        fn prop_filter_appends_its_clauses(search in "[a-z :\"-]{0,20}", which in 0usize..6) {
+        fn prop_filter_appends_its_clauses(search in "[a-z :\"-]{0,20}", which in 0usize..7) {
             let filter = [
                 Filter::All,
                 Filter::Pinned,
@@ -745,6 +765,7 @@ mod tests {
                 Filter::Tag("tag:y".into()),
                 Filter::Status(NoteStatus::Active),
                 Filter::Trash,
+                Filter::Shared,
             ][which].clone();
             let typed = Query::parse(&search);
             let params = search_params(&filter, &search, Sort::Title, false);
@@ -1035,6 +1056,76 @@ mod tests {
             .map(|(d, b)| (d, b.name.as_str()))
             .collect();
         assert_eq!(tree, vec![(0, "Archive"), (0, "Work"), (1, "Projects")]);
+    }
+
+    /// Shared with me lists the notes others shared with this account:
+    /// not the ones it shares itself, not private ones, and not trashed
+    /// ones; the search box still narrows it.
+    #[test]
+    fn shared_with_me_lists_only_others_notes() {
+        use kanso_core::DocType;
+        use kanso_store::{Origin, Put, SharedNote, SharedStatus, Store};
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().join("k.db")).unwrap();
+        let book = store
+            .put(
+                DocType::Book,
+                serde_json::json!({"name": "B"}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let note = |title: &str, book: &str| {
+            store
+                .put(
+                    DocType::Note,
+                    serde_json::json!({"title": title, "bookId": book}),
+                    Put::Upsert,
+                    Origin::Ui,
+                )
+                .unwrap()
+                .id
+        };
+        let theirs = note("Theirs", &book);
+        let mine = note("Mine", &book);
+        let trashed = note("Trashed", "trash");
+        note("Private", &book);
+        for (n, (id, role)) in [(&theirs, "edit"), (&mine, "owner"), (&trashed, "view")]
+            .into_iter()
+            .enumerate()
+        {
+            store
+                .put_shared_note(&SharedNote {
+                    share_id: format!("s{n}"),
+                    note_id: id.clone(),
+                    owner_id: "a_owner".into(),
+                    owner_name: "user2".into(),
+                    role: role.into(),
+                    status: SharedStatus::Active,
+                    epoch: 1,
+                    list: String::new(),
+                    list_sig: String::new(),
+                    state: Vec::new(),
+                    applied_seq: 0,
+                    since_snapshot: 0,
+                    bytes_since_snapshot: 0,
+                    counter: 0,
+                    needs_snapshot: false,
+                    updated_at: 0,
+                })
+                .unwrap();
+        }
+        let listed = |search: &str| -> Vec<String> {
+            let params = search_params(&Filter::Shared, search, Sort::Title, false);
+            list_notes(&store, &Filter::Shared, &params, false, 0)
+                .unwrap()
+                .into_iter()
+                .map(|n| n.title)
+                .collect()
+        };
+        assert_eq!(listed(""), ["Theirs"]);
+        assert!(listed("nothing-like-it").is_empty());
     }
 
     #[test]

@@ -1,0 +1,356 @@
+//! The shapes shared notes are made of (docs/ACCOUNTS.md › Collaboration):
+//! roles, members, comments, presence and what a note's text did when a
+//! change was merged. Logic lives in the modules that use them.
+
+use serde::{Deserialize, Serialize};
+
+/// What a member may do with a shared note.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    View,
+    Comment,
+    Edit,
+    Owner,
+}
+
+impl Role {
+    pub const ALL: [Role; 4] = [Role::View, Role::Comment, Role::Edit, Role::Owner];
+
+    /// As the wire and the member list write it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Role::View => "view",
+            Role::Comment => "comment",
+            Role::Edit => "edit",
+            Role::Owner => "owner",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Role> {
+        Role::ALL.into_iter().find(|role| role.as_str() == text)
+    }
+
+    /// The byte a note-key wrap binds: `o`, `e`, `c` or `v`.
+    pub fn byte(self) -> u8 {
+        match self {
+            Role::View => b'v',
+            Role::Comment => b'c',
+            Role::Edit => b'e',
+            Role::Owner => b'o',
+        }
+    }
+
+    /// Whether this role may change the note's text.
+    pub fn may_edit(self) -> bool {
+        matches!(self, Role::Edit | Role::Owner)
+    }
+
+    /// Whether this role may write comments, and resolve or reopen them.
+    pub fn may_comment(self) -> bool {
+        !matches!(self, Role::View)
+    }
+
+    /// What the Share sheet calls it.
+    pub fn label(self) -> &'static str {
+        match self {
+            Role::View => "Can view",
+            Role::Comment => "Can comment",
+            Role::Edit => "Can edit",
+            Role::Owner => "Owner",
+        }
+    }
+}
+
+/// One person in a member list, with the keys the owner wrapped to.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Member {
+    pub account: String,
+    pub username: String,
+    pub role: Role,
+    /// Ed25519, base64url.
+    pub sign_pub: String,
+    /// X25519, base64url.
+    pub box_pub: String,
+}
+
+/// The list of who is in a shared note for one epoch, as the owner signs it.
+/// Field order is the wire's: `serde_json` writes a struct's fields in
+/// declaration order.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberList {
+    pub v: u32,
+    pub share: String,
+    pub epoch: u32,
+    pub owner: String,
+    pub key_commit: String,
+    pub at: i64,
+    pub members: Vec<Member>,
+}
+
+/// An account's public identity, as `GET /v2/users/<username>` answers it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicIdentity {
+    pub account_id: String,
+    pub username: String,
+    pub sign_pub: String,
+    pub box_pub: String,
+    /// Ed25519 over the account, username and box key, base64url.
+    pub binding: String,
+}
+
+/// What an envelope carries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Kind {
+    Update,
+    Snapshot,
+    Comment,
+    Presence,
+}
+
+impl Kind {
+    pub fn byte(self) -> u8 {
+        match self {
+            Kind::Update => b'u',
+            Kind::Snapshot => b's',
+            Kind::Comment => b'c',
+            Kind::Presence => b'p',
+        }
+    }
+
+    pub fn from_byte(byte: u8) -> Option<Kind> {
+        match byte {
+            b'u' => Some(Kind::Update),
+            b's' => Some(Kind::Snapshot),
+            b'c' => Some(Kind::Comment),
+            b'p' => Some(Kind::Presence),
+            _ => None,
+        }
+    }
+}
+
+/// The readable part of an envelope: who wrote it, when (by epoch) and
+/// what.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Header {
+    pub kind: Kind,
+    pub epoch: u32,
+    pub author_account: String,
+    pub author_device: String,
+    pub counter: u64,
+}
+
+/// One change to a note's text, in UTF-8 byte offsets of the text before
+/// it: `delete` bytes at `at` are replaced by `insert`. A merge reports its
+/// changes in order, each against the text the ones before it left.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Splice {
+    pub at: usize,
+    pub delete: usize,
+    pub insert: String,
+}
+
+/// A comment event, as members write them (`kind` `c`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommentEvent {
+    pub id: String,
+    pub op: CommentOp,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<Anchor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mentions: Vec<String>,
+    pub at: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CommentOp {
+    Add,
+    Edit,
+    Resolve,
+    Reopen,
+    Delete,
+}
+
+/// Where a comment points: two sticky positions in the note's text
+/// (base64url) and the words they held when it was written.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Anchor {
+    pub start: String,
+    pub end: String,
+    pub quote: String,
+}
+
+/// A comment as its events fold up.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Comment {
+    pub id: String,
+    pub author: String,
+    pub author_name: String,
+    pub anchor: Anchor,
+    pub body: String,
+    pub mentions: Vec<String>,
+    pub resolved: bool,
+    pub created_at: i64,
+    pub edited_at: Option<i64>,
+    /// The log sequence of its last event.
+    pub seq: u64,
+}
+
+/// Where a comment sits in the text now.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Placement {
+    /// Its words, as a byte range of the current text.
+    Anchored(std::ops::Range<usize>),
+    /// Its words were deleted: the nearest place left.
+    Orphaned(usize),
+}
+
+/// Someone else's cursor in an open shared note, as presence carries it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PresenceMessage {
+    /// Sticky positions (base64url): where the selection started and where
+    /// the caret is. Equal for a plain caret.
+    pub cursor: String,
+    pub head: String,
+    pub name: String,
+}
+
+/// A remote caret placed in the current text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RemoteCursor {
+    pub account: String,
+    pub device: String,
+    pub name: String,
+    /// The selection as byte offsets: `anchor..head` (either order).
+    pub anchor: usize,
+    pub head: usize,
+    /// Which of [`CURSOR_COLOURS`] this author gets.
+    pub colour: usize,
+    pub seen_at: i64,
+}
+
+/// How many colours remote cursors cycle through (the app owns the
+/// colours themselves).
+pub const CURSOR_COLOURS: usize = 8;
+
+/// A notification about a mention, opened.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Notice {
+    pub comment: String,
+    pub title: String,
+    pub excerpt: String,
+    pub at: i64,
+}
+
+/// Someone this account shares with, with the fingerprint of the keys
+/// pinned for them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Person {
+    pub account_id: String,
+    pub username: String,
+    pub fingerprint: String,
+    /// This account compared fingerprints and marked them verified.
+    pub verified: bool,
+}
+
+/// A note someone shared with this account, waiting to be accepted.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Invitation {
+    pub share_id: String,
+    pub owner: Person,
+    pub role: Role,
+}
+
+/// One person in a shared note, as the Share sheet lists them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MemberView {
+    pub person: Person,
+    pub role: Role,
+    /// Still to accept the invitation.
+    pub invited: bool,
+}
+
+/// An invite link, as its owner sees it (never its secret).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinkView {
+    pub link_id: String,
+    pub role: Role,
+    pub expires_at: i64,
+}
+
+/// Someone who asked to join through a link.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RequestView {
+    pub person: Person,
+    /// The link they asked through.
+    pub link_id: String,
+    /// The role the link gives.
+    pub role: Role,
+    pub at: i64,
+}
+
+/// A shared note as the Share sheet shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShareView {
+    pub share_id: String,
+    pub note_id: String,
+    /// This account's role.
+    pub role: Role,
+    pub owner: Person,
+    pub members: Vec<MemberView>,
+    /// The owner's view only.
+    pub links: Vec<LinkView>,
+    pub requests: Vec<RequestView>,
+    pub epoch: u32,
+}
+
+/// What [`crate::engine::Engine::sync_editor`] did to the open note: the
+/// splices to apply to the editor's title and body (in order), and the text
+/// they lead to.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct EditorMerge {
+    pub title: Vec<Splice>,
+    pub body: Vec<Splice>,
+    pub title_text: String,
+    pub body_text: String,
+}
+
+/// A comment as the Comments panel shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommentView {
+    pub comment: Comment,
+    pub placement: Placement,
+    /// Written on this device and not taken by the server yet.
+    pub pending: bool,
+    /// Written by this account.
+    pub mine: bool,
+}
+
+/// What one sync of a shared note did.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct NoteSync {
+    /// Entries merged from the log.
+    pub pulled: usize,
+    /// Entries this device sent.
+    pub pushed: usize,
+    /// A snapshot was written.
+    pub compacted: bool,
+}
+
+/// What the live connection of an open shared note tells the app.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LiveNotice {
+    /// Remote edits are waiting: call `sync_editor`.
+    Text { share_id: String },
+    /// Someone's cursor moved, came or went.
+    Presence { share_id: String },
+    /// Comments changed.
+    Comments { share_id: String },
+    /// The room is connected (`true`) or not.
+    Connection { share_id: String, live: bool },
+    /// This account is no longer in the note, or sharing stopped.
+    Ended { share_id: String },
+}

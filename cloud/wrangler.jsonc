@@ -40,6 +40,14 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Shared notes (docs/ACCOUNTS.md › Collaboration): one NoteRoom per note, keyed by share ID,
+  // holding the note's log in its own SQLite storage and its members' live WebSockets
+  // (src/room.ts). Reachable only through the Worker. The v1 migration creates the class with
+  // SQLite storage; D1's 0005_collab.sql must be applied (npm run migrate:remote) before deploying.
+  "durable_objects": {
+    "bindings": [{ "name": "NOTE_ROOM", "class_name": "NoteRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NoteRoom"] }],
   "r2_buckets": [
     {
       "binding": "FILES",

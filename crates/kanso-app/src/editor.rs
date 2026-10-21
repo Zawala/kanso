@@ -60,6 +60,8 @@ use crate::wikilinks::{SharedIndex, WikiCompletion, WikiIndex, rewrite_for_previ
 use crate::word_goal::{self, GoalSetting};
 use crate::workspace::{AppState, NewNote};
 
+#[path = "editor_collab.rs"]
+mod collab_glue;
 #[path = "editor_vim.rs"]
 mod vim_glue;
 #[cfg(test)]
@@ -276,6 +278,11 @@ pub struct NoteEditor {
     vim: Option<vim_glue::VimState>,
     /// The tints on tasks' due dates in the text.
     due_marks: crate::due::DueMarks,
+    /// The shared note open, attached to the engine (`editor_collab.rs`).
+    shared: Option<crate::collab_model::OpenShare>,
+    /// The title and text can't be changed: a note shared to view or
+    /// comment on.
+    text_read_only: bool,
     /// What related notes say about the open note: suggested tags, and a
     /// note that says nearly the same.
     meaning: Entity<NoteMeaning>,
@@ -410,7 +417,10 @@ impl NoteEditor {
             // The text editor notifies when the wheel scrolls it (and when
             // its caret blinks): the preview beside it follows at once. Other
             // scrolling is caught as the split is painted.
-            cx.observe(&body, |this, _, cx| this.follow_source_scroll(cx)),
+            cx.observe(&body, |this, _, cx| {
+                this.follow_source_scroll(cx);
+                this.collab_caret(cx);
+            }),
             // Quitting from the Dock, at logout or from the menu.
             cx.on_app_quit(|this, cx| {
                 this.flush(cx);
@@ -465,6 +475,8 @@ impl NoteEditor {
             typewriter: false,
             vim: None,
             due_marks: Default::default(),
+            shared: None,
+            text_read_only: false,
             meaning,
             #[cfg(test)]
             reveal_chrome: false,
@@ -836,6 +848,7 @@ impl NoteEditor {
                 state.set_cursor_position(position, window, cx);
             });
         }
+        self.collab_follow(window, cx);
         cx.notify();
     }
 
@@ -953,6 +966,11 @@ impl NoteEditor {
         // With the question about a change made elsewhere open, nothing is
         // written until it is answered.
         if self.note.is_none() || self.incoming.is_some() {
+            return;
+        }
+        // A shared note's text goes through the engine, never the store.
+        if self.collab_attached() {
+            self.collab_edited(cx);
             return;
         }
         let was_saved = self.autosave.is_none();
@@ -1224,6 +1242,10 @@ impl NoteEditor {
         if self.incoming.is_some() || !self.has_unsaved_edits(cx) || writes_held(cx) {
             return;
         }
+        if self.collab_attached() {
+            self.collab_sync_quiet(cx);
+            return;
+        }
         // Settings › Editor: `#tags` in the text become the note's tags.
         // A locked note's `#tags` stay in its text: tags show unlocked.
         let inline = (self.settings.inline_tags && self.lock == LockView::Plain).then(|| {
@@ -1268,6 +1290,11 @@ impl NoteEditor {
         origin: Origin,
         cx: &mut Context<Self>,
     ) -> bool {
+        // A shared note's typing is merged first; the write then carries
+        // the library's text, not the editor's.
+        if self.collab_attached() {
+            self.collab_sync_quiet(cx);
+        }
         let Some(note) = self.note.clone() else {
             return false;
         };
@@ -1284,9 +1311,11 @@ impl NoteEditor {
         cx: &mut Context<Self>,
     ) -> bool {
         let mut note = base.clone();
-        let (title, body) = self.current_text(cx);
-        note.title = title;
-        note.body = body;
+        if !self.collab_attached() {
+            let (title, body) = self.current_text(cx);
+            note.title = title;
+            note.body = body;
+        }
         change(&mut note, cx);
         if !std::mem::take(&mut self.keep_edit_time) {
             note.updated_at = Clock::now_ms(cx);
@@ -1380,6 +1409,10 @@ impl NoteEditor {
             return;
         };
         if change.id != note.id || note.rev.as_deref() == Some(change.rev.as_str()) {
+            return;
+        }
+        if self.collab_attached() {
+            self.collab_store_change(change.deleted, window, cx);
             return;
         }
         let incoming = if change.deleted {
@@ -1549,7 +1582,7 @@ impl NoteEditor {
     /// Applies a toolbar format to the body at its selection, as one edit
     /// that undoes in one step, and puts the cursor back in the text.
     pub fn apply_format(&mut self, format: Format, window: &mut Window, cx: &mut Context<Self>) {
-        if self.note.is_none() {
+        if self.note.is_none() || self.text_read_only {
             return;
         }
         self.body.update(cx, |state, cx| {
@@ -1566,7 +1599,7 @@ impl NoteEditor {
     /// composed in it (an input method's marked text), so a smart edit may
     /// take a key.
     fn body_takes_edits(&self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if self.note.is_none() || self.view_mode == ViewMode::Preview {
+        if self.note.is_none() || self.view_mode == ViewMode::Preview || self.text_read_only {
             return false;
         }
         self.body.update(cx, |state, cx| {
@@ -2172,6 +2205,13 @@ impl NoteEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.collab_read_only() {
+            self.notice(
+                "The note was shared with you to read: its text can't be changed here.",
+                cx,
+            );
+            return;
+        }
         self.flush(cx);
         self.stash_draft(cx);
         self.title
@@ -2187,7 +2227,8 @@ impl NoteEditor {
 
     /// Whether the open note's text is saved, as the header says it.
     pub(crate) fn save_state(&self, cx: &App) -> SaveState {
-        save_state(self.incoming.is_some(), self.autosave.is_some(), || {
+        let pending = self.autosave.is_some() || self.collab_pending();
+        save_state(self.incoming.is_some(), pending, || {
             self.has_unsaved_edits(cx)
         })
     }
@@ -3462,7 +3503,9 @@ impl Render for NoteEditor {
                             .line_height(relative(BODY_LINE_HEIGHT)),
                     )
                     // Vim's block caret, over the text.
-                    .children(self.vim_caret(window, cx)),
+                    .children(self.vim_caret(window, cx))
+                    // Other people's carets in a shared note.
+                    .children(self.remote_carets(window, cx)),
             );
         let readable = self.readable_width;
         self.preview
@@ -3549,6 +3592,13 @@ impl Render for NoteEditor {
                 el.children(self.render_twin_banner(cx))
             })
             .children(self.render_transcribing(cx))
+            .when(self.shared.as_ref().is_some_and(|s| s.ended), |el| {
+                el.child(self.banner(
+                    colors.fill.into(),
+                    "This note is no longer shared. It's your private copy now.",
+                    cx,
+                ))
+            })
             .child(div().flex_1().min_h_0().w_full().child(body))
             // Redrawn only when the cursor or the counts change.
             .child(

@@ -30,6 +30,13 @@ pub const OCR_FIELD: &str = "kansoOcr";
 /// note in a locked notebook, and in the notebooks inside it, is locked.
 pub const LOCK_FIELD: &str = "kansoLock";
 
+/// The note field (in `extra`) marking a shared note (docs/ACCOUNTS.md ›
+/// Collaboration): `{"shareId", "role", "owner", "ownerName"}`. Its text
+/// is the shared note's CRDT's, written back by `kanso-collab`; private sync
+/// carries the note without its `title` and `body`. Only Kanso sets it: the
+/// local API and MCP keep a note's value and ignore any they're sent.
+pub const SHARE_FIELD: &str = "kansoShare";
+
 /// Longest note title the API accepts.
 pub const MAX_TITLE_LEN: usize = 128;
 /// Longest note body the API accepts, in characters.
