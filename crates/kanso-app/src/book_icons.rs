@@ -421,9 +421,20 @@ pub fn icon_for(name: Option<&str>, packs: Option<&IconPacks>) -> NotebookIcon {
         })
 }
 
-/// The icon `book` shows.
+/// The icon `book` keeps.
 pub fn book_icon(book: &Book, cx: &App) -> NotebookIcon {
     icon_for(chosen(book).as_deref(), cx.try_global::<IconPacks>())
+}
+
+/// What a notebook shows for `icon`: the lock in its place while it is
+/// `locked`, by its own lock or a notebook it is inside, so its own icon
+/// says nothing about it then. Pure.
+pub fn shown(icon: NotebookIcon, locked: bool) -> NotebookIcon {
+    if locked {
+        NotebookIcon::Lucide(Lucide::Lock)
+    } else {
+        icon
+    }
 }
 
 /// The words of `query`, lowercased, split at spaces and dashes.
@@ -831,9 +842,10 @@ mod tests {
     use gpui_kit::AssetSource as _;
     use kanso_core::Book;
     use proptest::prelude::*;
+    use proptest::test_runner::FileFailurePersistence;
     use serde_json::json;
 
-    use super::{CHOICES, DEFAULT, NotebookIcon, chosen, icon_for, matching};
+    use super::{CHOICES, DEFAULT, NotebookIcon, chosen, icon_for, matching, shown};
     use crate::assets::KansoAssets;
 
     fn book(icon: serde_json::Value) -> Book {
@@ -883,6 +895,20 @@ mod tests {
         }
         let plain: Book = serde_json::from_value(json!({"_id": "book:a", "name": "A"})).unwrap();
         assert_eq!(shows(&plain), lucide(DEFAULT));
+        // Locked, any notebook shows the lock instead.
+        let rocket = lucide(gpui_kit::assets::IconName::Rocket);
+        assert_eq!(shown(rocket.clone(), false), rocket);
+        assert_eq!(
+            shown(rocket, true),
+            lucide(gpui_kit::assets::IconName::Lock)
+        );
+        assert_eq!(
+            shown(
+                NotebookIcon::Pack(std::sync::Arc::from(&b"<svg/>"[..])),
+                true
+            ),
+            lucide(gpui_kit::assets::IconName::Lock)
+        );
         // A pack's icon is kept whether or not the pack is here, and shows
         // the default until it is.
         let packed = book(json!("phosphor/rocket"));
@@ -1017,7 +1043,104 @@ mod tests {
         assert!(!open, "the picker closed");
     }
 
+    /// At launch, with no picker or Settings opened: the packs are read in
+    /// the background, and once read, a notebook keeping a pack's icon shows
+    /// it in the sidebar and the palette's notebooks. A locked notebook shows
+    /// the lock in both, whatever its own icon.
+    #[gpui_kit::test]
+    fn a_packs_icon_shows_from_launch(cx: &mut gpui_kit::TestAppContext) {
+        use std::sync::Arc;
+
+        use gpui_kit::AppContext as _;
+        use kanso_core::DocType;
+        use kanso_store::{Origin, Put, Store};
+
+        use crate::palette::Mode;
+
+        let dir = tempfile::tempdir().unwrap();
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>"#;
+        let pack = crate::icon_packs::packs_dir(dir.path()).join("mine");
+        std::fs::create_dir_all(&pack).unwrap();
+        std::fs::write(pack.join("orbit.svg"), svg).unwrap();
+        let store = Arc::new(Store::open(dir.path().join("kanso.db")).unwrap());
+        for book in [
+            json!({"name": "Trips", "kansoIcon": "mine/orbit"}),
+            json!({"name": "Vault", "kansoIcon": "mine/orbit", "kansoLock": {"v": 1}}),
+        ] {
+            store
+                .put(DocType::Book, book, Put::Upsert, Origin::Ui)
+                .unwrap();
+        }
+        let data_dir = dir.path().to_path_buf();
+        let (window, workspace) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(crate::workspace::AppState {
+                store,
+                data_dir,
+                config: crate::config::AppConfig::default(),
+            });
+            cx.set_global(crate::services::Services::default());
+            crate::workspace::bind_keys(cx);
+            crate::icon_packs::watch(cx);
+            // Read off the UI thread: not yet.
+            assert!(!cx.has_global::<crate::icon_packs::IconPacks>());
+            gpui_kit::open_window(Default::default(), cx, |window, cx| {
+                cx.new(|cx| crate::workspace::Workspace::new(window, cx))
+            })
+            .unwrap()
+        });
+        cx.run_until_parked();
+
+        let drawn = NotebookIcon::Pack(Arc::from(svg.as_bytes()));
+        let lock = NotebookIcon::Lucide(gpui_kit::assets::IconName::Lock);
+        let rows = cx.read(|cx| {
+            workspace
+                .read(cx)
+                .sidebar
+                .read(cx)
+                .book_rows_for_test(cx)
+                .into_iter()
+                .map(|(name, icon, _)| (name, icon))
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(
+            rows,
+            vec![
+                ("Trips".to_owned(), drawn.clone()),
+                ("Vault".to_owned(), lock.clone())
+            ]
+        );
+        let palette = cx.read(|cx| workspace.read(cx).palette.clone());
+        window
+            .update(cx, |_, window, cx| {
+                palette.update(cx, |palette, cx| {
+                    palette.open(
+                        Mode::Pick(crate::commands::Picker::GoToNotebook),
+                        window,
+                        cx,
+                    )
+                })
+            })
+            .unwrap();
+        cx.run_until_parked();
+        let listed = cx.read(|cx| palette.read(cx).item_icons());
+        assert_eq!(
+            listed,
+            vec![("Trips".to_owned(), drawn), ("Vault".to_owned(), lock)]
+        );
+    }
+
+    fn config() -> ProptestConfig {
+        ProptestConfig {
+            cases: 256,
+            failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
+            ..ProptestConfig::default()
+        }
+    }
+
     proptest! {
+        #![proptest_config(config())]
+
         /// Invariants: whatever is typed, the icons found keep the picker's
         /// order, and typing more words never finds more.
         #[test]

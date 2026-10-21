@@ -435,6 +435,21 @@ impl Palette {
             .collect()
     }
 
+    /// The entries listed now with the icon each draws (tests).
+    #[cfg(test)]
+    pub fn item_icons(&self) -> Vec<(String, NotebookIcon)> {
+        self.items
+            .iter()
+            .map(|item| {
+                let icon = match &item.pack_icon {
+                    Some(svg) => NotebookIcon::Pack(svg.clone()),
+                    None => NotebookIcon::Lucide(item.icon),
+                };
+                (item.label.to_string(), icon)
+            })
+            .collect()
+    }
+
     /// Types `query` into the field, as the user would.
     #[cfg(test)]
     pub fn set_query(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -605,7 +620,10 @@ impl Palette {
                         let item = Item::notebook(
                             Target::Book(book.id.clone()),
                             book.name.clone(),
-                            crate::book_icons::book_icon(book, cx),
+                            crate::book_icons::shown(
+                                crate::book_icons::book_icon(book, cx),
+                                library.is_book_locked(&book.id),
+                            ),
                         )
                         // Typing flattens the tree into a ranked list.
                         .depth(if query.is_empty() { depth } else { 0 })
@@ -627,7 +645,10 @@ impl Palette {
                         let item = Item::notebook(
                             Target::Show(filter.clone()),
                             book.name.clone(),
-                            crate::book_icons::book_icon(book, cx),
+                            crate::book_icons::shown(
+                                crate::book_icons::book_icon(book, cx),
+                                library.is_book_locked(&book.id),
+                            ),
                         )
                         .depth(if query.is_empty() { depth } else { 0 })
                         .checked(*showing == filter)
