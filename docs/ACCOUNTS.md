@@ -301,6 +301,55 @@ see the viewer page's caveat above). Whoever has the link can read the note, and
 can pass the link on: the key is the link. Unpublishing stops the server serving it (and deletes
 the ciphertext), but can't take back a copy someone already saved.
 
+### Published notebooks
+
+Publishing a notebook (its sidebar menu › Publish Notebook…, Note › Publish Notebook…, or the
+palette › Publish notebook…, which takes the notebook the list shows, else the open note's) puts
+its notes, and those of the notebooks inside it, at one link as a small site: an index grouped by
+sub-notebook, a page for each note, and working links between them. The sheet lists what goes
+before anything is sent: the notes, the locked notes left out, and how many images and other
+files they use.
+
+**One share.** A notebook is published exactly as a note is (› Published notes): the same route,
+the same seal, AAD, 10 MiB limit, quotas, expiry, retirement, short links and unpublishing. Only
+the plaintext differs. Instead of a page it is one JSON bundle (`crates/kanso-sync/src/site.rs`):
+
+    {"kanso": "site", "v": 1, "title": <notebook name>, "index": <html>,
+     "pages": {<slug>: {"title", "html", "downloads": [<file index>]}},
+     "files": [{"name", "type", "data": <base64>}]}
+
+Each page is the note's web page export (`kanso_render::html::page_in`), no scripts, in the same
+theme as a note's. A link to another published note, by ID or as a wiki-link, becomes
+`kanso-page:<slug>`; a link to a note that isn't published (in another notebook, or locked) is
+plain text, so the site never links out to a note it doesn't hold.
+Images are put in `files` once each and shown as `kanso-file:<n>`; other attachments a note links
+to are offered to download on its page. Slugs come from titles (`a-z0-9-`, at most 64, unique). The
+device checks the bundle (every link and file resolves) before sealing it.
+
+**Locked notes are never published.** The plan reads every note again and leaves out any that is
+locked, with its attachments; their titles are listed in the sheet. A note locked after the
+notebook was published stays in the published copy until the notebook is updated or unpublished:
+the sheet then says the notebook has changed.
+
+**What the notebook keeps.** `book.extra.kansoPublish`, the same shape as a note's, travels inside
+the sealed `book:` document, so the account's other devices see the link and can update or
+unpublish it. Its `contentHash` is of the notebook's name and a fingerprint of every published
+note's ID, title and text, so the sheet can tell when the notebook has changed; `publishedRev` is
+empty. As for notes, only the sheet writes it: the local API and MCP keep a notebook's value and
+ignore any they are given. The title sent with the upload (`x-kanso-title`) is the notebook's
+name.
+
+**The viewer page** opens a bundle as well as a page: plaintext that parses as a site shows the
+index at `#<key>` and a page at `#<key>/<slug>`, under a bar with the notebook's name (a link back
+to the index) and the page's downloads. Links between pages become links to the viewer itself at
+the other page's fragment, opened in the top window: the frame is sandboxed with
+`allow-top-navigation-by-user-activation` as well, so a click on a link can move the reader to
+another page and nothing else can, and as only the fragment changes the page never reloads and the
+key never leaves the fragment. The frame still has no scripts and no origin of its own. Images are
+put back as `data:` URLs (only `image/*` types), and downloads are made in the viewer from the
+bundle's bytes. The server sees nothing more than for a note: one share, its size, and the
+notebook's name.
+
 ## Constructions
 
 ### Encodings

@@ -217,6 +217,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Show History…", ShowHistory),
             MenuItem::action("Voice Input", Dictate),
             MenuItem::action("Publish…", crate::publish::PublishNote),
+            MenuItem::action("Publish Notebook…", crate::publish_site::PublishNotebook),
             MenuItem::separator(),
             MenuItem::action("Lock Note…", crate::locked::LockNote),
             MenuItem::action("Remove Lock…", crate::locked::RemoveLock),
@@ -1073,6 +1074,9 @@ impl Workspace {
                     },
                 );
             }
+            SidebarEvent::PublishBook(id) => {
+                self.publish_notebook(Some(id.clone()), window, cx);
+            }
             SidebarEvent::DeleteBook(id) => {
                 let name = self
                     .library
@@ -1775,6 +1779,7 @@ impl Render for Workspace {
             .map(|el| crate::settings::on_actions(el, cx))
             .map(|el| crate::journal::on_actions(el, cx))
             .map(|el| crate::calendar_view::on_actions(el, cx))
+            .map(|el| crate::publish_site::on_actions(el, cx))
             .map(|el| crate::replace::on_actions(el, cx))
             .map(|el| crate::updates::on_actions(el, cx))
             .map(|el| crate::graph_view::on_actions(el, cx))

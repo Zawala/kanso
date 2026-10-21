@@ -70,6 +70,7 @@ mod preview;
 mod preview_chunks;
 mod preview_rich;
 mod publish;
+mod publish_site;
 mod related;
 mod reminders;
 mod replace;
@@ -82,6 +83,7 @@ mod settings_voice;
 #[cfg(test)]
 mod settings_window_tests;
 mod sidebar;
+mod site;
 mod smart_paste;
 #[cfg(test)]
 mod snapshots;

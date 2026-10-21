@@ -746,6 +746,48 @@ async fn the_local_api_never_sets_a_notes_published_link() {
 }
 
 #[tokio::test]
+async fn the_local_api_never_sets_a_notebooks_published_link() {
+    let app = app();
+    let planted = json!({ "shareId": "AAAAAAAAAAAAAAAAAAAAAA", "key": "attacker-key", "publishedAt": 2, "publishedRev": "" });
+    // Made through the API: a link it is given is dropped, and a merge can't add one.
+    let (id, _) = write(
+        &app.router,
+        "/books",
+        json!({ "name": "Site", "kansoPublish": planted }),
+    )
+    .await;
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert!(doc.get("kansoPublish").is_none(), "{doc}");
+    write(
+        &app.router,
+        &format!("/{id}"),
+        json!({ "kansoPublish": planted }),
+    )
+    .await;
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert!(doc.get("kansoPublish").is_none(), "{doc}");
+    // Published by the app: renames through the API keep the app's value.
+    app.store
+        .put(
+            kanso_core::DocType::Book,
+            json!({ "_id": id, "kansoPublish": published() }),
+            kanso_store::Put::Merge,
+            kanso_store::Origin::Ui,
+        )
+        .unwrap();
+    for body in [
+        json!({ "kansoPublish": planted, "name": "Renamed" }),
+        json!({ "kansoPublish": null }),
+    ] {
+        write(&app.router, &format!("/{id}"), body).await;
+        let (_, doc) = get(&app.router, &format!("/{id}")).await;
+        assert_eq!(doc["kansoPublish"], published(), "{doc}");
+    }
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["name"], "Renamed");
+}
+
+#[tokio::test]
 async fn a_locked_note_keeps_its_sealed_text_from_the_local_api() {
     let app = app();
     let sealed = json!({ "v": 1, "salt": "c2FsdA", "m": 64, "t": 1, "p": 1, "data": "sealed" });

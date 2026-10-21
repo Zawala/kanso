@@ -15,6 +15,17 @@
 // taken out as text before the page is parsed: a DOMParser document inherits
 // the policy too, so the browser would refuse to parse them there. Nothing in
 // the note can run, load from the network, or reach this page.
+//
+// A published notebook (docs/ACCOUNTS.md › Published notebooks) is one share
+// too: its plaintext is JSON, `{"kanso":"site",…}`, with the notebook's index
+// and each note's page. `#<key>` shows the index and `#<key>/<slug>` a page.
+// Links between its pages (`kanso-page:<slug>`) become links to this page at
+// the other page's fragment, opened in the top window: the frame may
+// navigate it only when the reader clicks (allow-top-navigation-by-user-
+// activation), and a link to the same page with another fragment never
+// leaves it, so the key stays in the fragment. Links to other places still
+// open in a new tab. Images come back from the bundle's files as data:
+// URLs; other attachments are offered to download in the bar above the page.
 
 import { DEFAULT_TITLE, PREVIEW_DESCRIPTION, PREVIEW_IMAGE_PATH } from "./rerout";
 
@@ -25,6 +36,13 @@ export const VIEWER_STYLE = `:root{color-scheme:light dark;--paper:#fbfaf7;--ink
 html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
 #note{position:fixed;inset:0;width:100%;height:100%;border:0;display:none;background:var(--paper)}
 #note.shown{display:block}
+#bar{display:none;position:fixed;top:0;left:0;right:0;height:44px;align-items:center;gap:14px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--card);overflow:hidden}
+body.site #bar{display:flex}
+body.site #note{top:44px;height:calc(100% - 44px)}
+#bar a{color:var(--ink);font-weight:600;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#bar .files{margin-left:auto;display:flex;gap:8px;overflow:hidden}
+#bar button{font:inherit;font-size:13px;color:var(--ink);background:none;border:1px solid var(--line);border-radius:6px;padding:3px 9px;cursor:pointer;white-space:nowrap}
+.card a{color:var(--ink)}
 #status{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px}
 #status.hidden{display:none}
 .card{max-width:420px;padding:28px 30px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
@@ -32,15 +50,74 @@ html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font:15p
 .card p{margin:0;color:var(--muted)}
 .quiet{color:var(--muted)}`;
 
+/** A published notebook as its bundle carries it (kanso_sync::site::SiteBundle). */
+export interface SiteBundle {
+	kanso: "site";
+	v: 1;
+	title: string;
+	index: string;
+	pages: Record<string, { title: string; html: string; downloads?: number[] }>;
+	files: { name: string; type: string; data: string }[];
+}
+
+// The helpers below are part of the viewer's script, as their source: the
+// tests call the same functions the page runs. They use only `var` and
+// anonymous callbacks, so their source is the same however it is bundled.
+
+/** `#<key>` or `#<key>/<slug>`: the key as written and the page's slug, "" for the index. */
+export function siteRoute(hash: string): { key: string; slug: string } {
+	var text = hash.charAt(0) === "#" ? hash.slice(1) : hash;
+	var cut = text.indexOf("/");
+	return cut < 0 ? { key: text, slug: "" } : { key: text.slice(0, cut), slug: text.slice(cut + 1) };
+}
+
+/** Where a `kanso-page:<slug>` link goes on the viewer at `page` with `key`: that page's fragment, or null for a page the site doesn't have. */
+export function siteHref(href: string, pages: Record<string, unknown>, page: string, key: string): string | null {
+	if (href.indexOf("kanso-page:") !== 0) return null;
+	var slug = href.slice(11);
+	if (slug !== "" && !(/^[a-z0-9-]{1,64}$/.test(slug) && Object.prototype.hasOwnProperty.call(pages, slug))) return null;
+	return page + "#" + key + (slug ? "/" + slug : "");
+}
+
+/** A page's images back from the bundle: `src="kanso-file:<n>"` as the file's data: URL when it is an image, else empty. */
+export function siteImages(html: string, files: { type: string; data: string }[]): string {
+	return html.replace(/src="kanso-file:(\d{1,6})"/g, function (_whole: string, n: string) {
+		var file = files[Number(n)];
+		var ok = !!file && /^image\/[A-Za-z0-9.+-]{1,60}$/.test(file.type) && /^[A-Za-z0-9+\/]*={0,2}$/.test(file.data);
+		return ok ? 'src="data:' + file.type + ";base64," + file.data + '"' : 'src=""';
+	});
+}
+
+/** The bundle, when the opened text is a published notebook's; null for a note's page. */
+export function siteBundle(text: string): SiteBundle | null {
+	if (text.charAt(0) !== "{") return null;
+	var site;
+	try {
+		site = JSON.parse(text);
+	} catch (e) {
+		return null;
+	}
+	var ok =
+		!!site && site.kanso === "site" && site.v === 1 && typeof site.title === "string" && typeof site.index === "string" &&
+		!!site.pages && typeof site.pages === "object" && !Array.isArray(site.pages) && Array.isArray(site.files);
+	return ok ? site : null;
+}
+
 /** The page's only script. Every step that can fail ends in a calm message. */
 export const VIEWER_SCRIPT = `(function(){
 "use strict";
-var status=document.getElementById("status"),frame=document.getElementById("note");
-function say(title,detail){
+${siteRoute.toString()}
+${siteHref.toString()}
+${siteImages.toString()}
+${siteBundle.toString()}
+var status=document.getElementById("status"),frame=document.getElementById("note"),bar=document.getElementById("bar");
+var site=null,note=null;
+function say(title,detail,home){
 status.textContent="";
 var card=document.createElement("div");card.className="card";
 var h=document.createElement("h1");h.textContent=title;card.appendChild(h);
 var p=document.createElement("p");p.textContent=detail;card.appendChild(p);
+if(home){var a=document.createElement("a");a.href=home;a.textContent="Go to the notebook\u2019s first page";var q=document.createElement("p");q.appendChild(a);card.appendChild(q);}
 status.appendChild(card);status.className="";frame.className="";document.title=title;
 }
 function b64url(text){
@@ -50,7 +127,9 @@ try{var bin=atob(s);}catch(e){return null;}
 var out=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out;
 }
 var id=(location.pathname.match(/^\\/p\\/([A-Za-z0-9_-]{22})$/)||[])[1];
-var key=b64url(location.hash.replace(/^#/,""));
+var route=siteRoute(location.hash);
+var key=b64url(route.key);
+var here=location.origin+location.pathname;
 if(!id){say("This link isn\\u2019t complete","Check that the whole link was copied.");return;}
 if(!key||key.length!==32){say("This link is missing its key","The part after # unlocks the note. Ask whoever shared it for the whole link.");return;}
 function clean(html){
@@ -61,7 +140,7 @@ var doc=new DOMParser().parseFromString(html,"text/html");
 doc.querySelectorAll("script,style,template,iframe,frame,object,embed,base,link,meta,form,noscript").forEach(function(el){el.remove();});
 var n=0;
 doc.querySelectorAll("*").forEach(function(el){
-for(var i=el.attributes.length-1;i>=0;i--){var name=el.attributes[i].name;if(/^on/i.test(name)||name==="style")el.removeAttribute(name);}
+for(var i=el.attributes.length-1;i>=0;i--){var name=el.attributes[i].name;if(/^on/i.test(name)||name==="style"||name==="target")el.removeAttribute(name);}
 if(el.hasAttribute("data-kanso-css")){
 var rules="";
 (el.getAttribute("data-kanso-css")||"").split(/;(?![^(]*\\))/).forEach(function(decl){
@@ -73,8 +152,13 @@ el.removeAttribute("data-kanso-css");
 if(rules){n++;el.setAttribute("data-kanso-style",String(n));css+="[data-kanso-style=\\""+n+"\\"]{"+rules+"}\\n";}
 }
 });
-doc.querySelectorAll("a[href]").forEach(function(a){
+doc.querySelectorAll("a[href],area[href]").forEach(function(a){
 var href=a.getAttribute("href")||"";
+if(site&&href.indexOf("kanso-page:")===0){
+var to=siteHref(href,site.pages,here,route.key);
+if(to){a.setAttribute("href",to);a.setAttribute("target","_top");}else a.removeAttribute("href");
+return;
+}
 if(href.charAt(0)==="#")return;
 if(/^(https?:|mailto:)/i.test(href)){a.setAttribute("target","_blank");a.setAttribute("rel","noopener noreferrer");}
 else a.removeAttribute("href");
@@ -85,6 +169,37 @@ var link=doc.createElement("link");link.setAttribute("rel","stylesheet");link.se
 var title=(doc.title||"").trim();
 return {html:"<!doctype html>"+doc.documentElement.outerHTML,title:title};
 }
+function shown(page,fallback){
+document.title=page.title||fallback;
+frame.srcdoc=page.html;frame.className="shown";status.className="hidden";
+}
+function download(file){
+var bin;try{bin=atob(file.data);}catch(e){return;}
+var bytes=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+var url=URL.createObjectURL(new Blob([bytes],{type:"application/octet-stream"}));
+var a=document.createElement("a");a.href=url;a.download=String(file.name||"file");document.body.appendChild(a);a.click();a.remove();
+setTimeout(function(){URL.revokeObjectURL(url);},10000);
+}
+function showSite(){
+var slug=route.slug,page=slug===""?{title:site.title,html:site.index,downloads:[]}:(/^[a-z0-9-]{1,64}$/.test(slug)&&Object.prototype.hasOwnProperty.call(site.pages,slug)?site.pages[slug]:null);
+bar.textContent="";
+var home=document.createElement("a");home.href=here+"#"+route.key;home.textContent=site.title||"Notebook";bar.appendChild(home);
+if(!page){say("This page isn\\u2019t in the notebook","It may have been left out when the notebook was published again.",here+"#"+route.key);return;}
+var files=document.createElement("span");files.className="files";
+(Array.isArray(page.downloads)?page.downloads:[]).forEach(function(ix){
+var file=site.files[ix];if(!file)return;
+var b=document.createElement("button");b.type="button";b.textContent=String(file.name||"file");b.title="Download "+b.textContent;
+b.addEventListener("click",function(){download(file);});files.appendChild(b);
+});
+bar.appendChild(files);
+shown(clean(siteImages(String(page.html),site.files)),site.title||"A notebook");
+}
+window.addEventListener("hashchange",function(){
+var next=siteRoute(location.hash);
+if(next.key!==route.key){location.reload();return;}
+route=next;
+if(site)showSite();
+});
 fetch("/v2/public/"+id,{cache:"no-store",credentials:"omit",referrerPolicy:"no-referrer"}).then(function(r){
 if(r.status===404)throw "gone";
 if(r.status===410)throw "expired";
@@ -99,9 +214,11 @@ return crypto.subtle.importKey("raw",key,{name:"AES-GCM"},false,["decrypt"]).the
 return crypto.subtle.decrypt({name:"AES-GCM",iv:bytes.slice(1,13),additionalData:aad,tagLength:128},k,bytes.slice(13));
 }).catch(function(){throw "key";});
 }).then(function(plain){
-var page=clean(new TextDecoder().decode(plain));
-document.title=page.title||"A note";
-frame.srcdoc=page.html;frame.className="shown";status.className="hidden";
+var text=new TextDecoder().decode(plain);
+site=siteBundle(text);
+if(site){document.body.className="site";showSite();return;}
+note=clean(text);
+shown(note,"A note");
 }).catch(function(why){
 if(why==="gone")say("This note isn\\u2019t published any more","It may have been unpublished, or the link may be mistyped.");
 else if(why==="expired")say("This link has expired","Whoever shared it chose for it to stop working after a while.");
@@ -136,8 +253,9 @@ export const viewerHtml = (origin: string): string => `<!doctype html>
 <style>${VIEWER_STYLE}</style>
 </head>
 <body>
+<nav id="bar"></nav>
 <main id="status"><p class="quiet">Opening the note…</p></main>
-<iframe id="note" title="The note" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>
+<iframe id="note" title="The note" sandbox="allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation" referrerpolicy="no-referrer"></iframe>
 <script>${VIEWER_SCRIPT}</script>
 </body>
 </html>

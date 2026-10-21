@@ -594,6 +594,68 @@ fn publish_outdated(
     publish_sheet(cx, window, workspace, true, Some(false));
 }
 
+/// The Publish sheet for the open note's notebook, signed in: not yet
+/// published, and published.
+fn publish_site_sheet(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+    published: bool,
+) {
+    cx.update(|cx| {
+        cx.set_reduce_motion(true);
+        cx.global_mut::<Services>().account = AccountState::SignedIn {
+            username: DEMO_USER.into(),
+        };
+    });
+    let book = cx
+        .update(|cx| workspace.read(cx).notebook_to_publish(cx))
+        .expect("the open note has a notebook");
+    if published {
+        let now = cx.update(|cx| Clock::now_ms(cx));
+        let plan = crate::site::plan(store, &book).unwrap();
+        let publish = kanso_sync::share::KansoPublish {
+            share_id: "r4U0yX3MnO9wQa5SlZ8bCw".into(),
+            key: kanso_sync::share::ShareKey::from_bytes([0x3c; 32]).to_text(),
+            published_at: now - 3 * DAY,
+            published_rev: String::new(),
+            expires_at: None,
+            content_hash: Some(kanso_sync::share::content_hash(
+                &plan.name,
+                &plan.fingerprint(),
+            )),
+            short_url: None,
+            other: Default::default(),
+        };
+        crate::site::store_book_publish(store, &book, Some(&publish)).unwrap();
+    }
+    cx.update_window(window, |_, window, cx| {
+        workspace.update(cx, |workspace, cx| {
+            crate::publish_site::open_publish_site(workspace, &book, window, cx);
+        });
+    })
+    .unwrap();
+}
+
+fn publish_site_unpublished(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    publish_site_sheet(cx, window, workspace, store, false);
+}
+
+fn publish_site_published(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    publish_site_sheet(cx, window, workspace, store, true);
+}
+
 /// The Obsidian fixture vault the importer's tests use.
 fn import_fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../kanso-import/tests/fixtures/obsidian")
@@ -3606,6 +3668,42 @@ fn snapshots() {
         Shot {
             dialog_width: crate::publish::SHEET_WIDTH,
             ..shot("light-publish-outdated", Light, Edit, publish_outdated)
+        },
+        Shot {
+            dialog_width: crate::publish_site::SHEET_WIDTH,
+            ..shot(
+                "dark-publish-site-unpublished",
+                Dark,
+                Edit,
+                publish_site_unpublished,
+            )
+        },
+        Shot {
+            dialog_width: crate::publish_site::SHEET_WIDTH,
+            ..shot(
+                "light-publish-site-unpublished",
+                Light,
+                Edit,
+                publish_site_unpublished,
+            )
+        },
+        Shot {
+            dialog_width: crate::publish_site::SHEET_WIDTH,
+            ..shot(
+                "dark-publish-site-published",
+                Dark,
+                Edit,
+                publish_site_published,
+            )
+        },
+        Shot {
+            dialog_width: crate::publish_site::SHEET_WIDTH,
+            ..shot(
+                "light-publish-site-published",
+                Light,
+                Edit,
+                publish_site_published,
+            )
         },
         // Focus mode, at rest and with the pointer near the top.
         Shot {

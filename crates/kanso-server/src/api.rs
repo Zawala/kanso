@@ -74,8 +74,9 @@ pub(crate) fn list_docs(
     Ok(store.list_api(doc_type, limit, skip)?)
 }
 
-/// Fields of a document the local API and MCP may not set: a note's
-/// published link and key, which only the app's Publish sheet writes. A
+/// Fields of a document the local API and MCP may not set: a note's or a
+/// notebook's published link and key, which only the app's Publish sheets
+/// write. A
 /// write keeps the document's current value and ignores the one it is sent,
 /// so a client can't plant a link (and a key it knows) for the app to
 /// publish to, or move a published note's link elsewhere. Also the
@@ -91,6 +92,8 @@ fn app_only_fields(doc_type: DocType) -> &'static [&'static str] {
             kanso_core::reminders::ACK_FIELD,
             kanso_core::model::LOCK_FIELD,
         ],
+        // A published notebook's link and key.
+        DocType::Book => &[kanso_core::model::PUBLISH_FIELD],
         // The words the app read in an image: a write of the file keeps them.
         DocType::File => &[kanso_core::model::OCR_FIELD],
         _ => &[],
