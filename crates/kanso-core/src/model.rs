@@ -19,6 +19,12 @@ pub const PUBLISH_FIELD: &str = "kansoPublish";
 /// device that can't read images still finds them by their words.
 pub const OCR_FIELD: &str = "kansoOcr";
 
+/// The note field (in `extra`) holding a locked note's sealed text
+/// (`kanso_sync::lock::Envelope`). A locked note's `body` is always empty:
+/// its text is only in here, so search, links, tasks, embeddings and the
+/// local API never see it. Only the app sets it.
+pub const LOCK_FIELD: &str = "kansoLock";
+
 /// Longest note title the API accepts.
 pub const MAX_TITLE_LEN: usize = 128;
 /// Longest note body the API accepts, in characters.
@@ -185,6 +191,11 @@ pub struct Note {
 impl Note {
     pub fn is_trashed(&self) -> bool {
         self.book_id == TRASH_BOOK_ID
+    }
+
+    /// Whether the note's text is sealed under the lock password.
+    pub fn is_locked(&self) -> bool {
+        self.extra.contains_key(LOCK_FIELD)
     }
 }
 

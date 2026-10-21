@@ -1411,9 +1411,9 @@ pub fn problem_label(problem: &SyncProblem) -> &'static str {
 }
 
 /// The sync line while signed out: quiet, and a click away from signing in.
-pub const SIGN_IN_TO_SYNC: &str = "Sign in to sync";
+pub const SIGN_IN_TO_SYNC: &str = "Set up sync";
 
-/// The sidebar's sync line: "Sign in to sync" while signed out, the step of
+/// The sidebar's sync line: "Set up sync" while signed out, the step of
 /// a running account task, "Synced just now", "Synced yesterday",
 /// "Syncing…", "Sync off", or a problem's label. `when` says when an
 /// instant was, as the editor's header says when a note was edited
@@ -1634,7 +1634,7 @@ mod tests {
 
         /// The problems table: every problem has its own label, a failed
         /// sync and a sync that finished with the problem read alike, with a
-        /// warning, and signed out reads "Sign in to sync" whatever the last
+        /// warning, and signed out reads "Set up sync" whatever the last
         /// state was.
         #[test]
         fn prop_sync_problems_read_from_the_table(problem in strategies::problem(), conflicts in 0usize..3, at in 0i64..1_000_000) {
@@ -1817,7 +1817,7 @@ mod tests {
         // Signed out, the line asks to sign in; an ended session says so.
         assert_eq!(
             sync_line(&synced(0), &AccountState::SignedOut, utc_label(0)),
-            (Tone::Quiet, "Sign in to sync".into())
+            (Tone::Quiet, "Set up sync".into())
         );
         let ended = AccountState::SessionEnded {
             username: "ngoni".into(),

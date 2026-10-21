@@ -744,3 +744,54 @@ async fn the_local_api_never_sets_a_notes_published_link() {
     let (_, doc) = get(&app.router, &format!("/{id}")).await;
     assert_eq!(doc["title"], "merged");
 }
+
+#[tokio::test]
+async fn a_locked_note_keeps_its_sealed_text_from_the_local_api() {
+    let app = app();
+    let sealed = json!({ "v": 1, "salt": "c2FsdA", "m": 64, "t": 1, "p": 1, "data": "sealed" });
+    let (id, _) = app_note(&app, json!({ "bookId": "trash", "title": "t", "body": "" }));
+    let note = app.store.get_api(&id, None, false).unwrap();
+    let mut locked = note.clone();
+    locked["kansoLock"] = sealed.clone();
+    app.store.lock_note(locked).unwrap();
+
+    // Read with an empty body and without the sealed text, which would let
+    // a client guess the password offline; a replace keeps the lock.
+    let sealed_kept = |store: &kanso_store::Store| {
+        store
+            .note(&id)
+            .unwrap()
+            .unwrap()
+            .extra
+            .get("kansoLock")
+            .cloned()
+    };
+    let (_, mut doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["body"], "");
+    assert!(doc.get("kansoLock").is_none(), "{doc}");
+    doc["title"] = "retitled".into();
+    write(&app.router, "/notes", doc).await;
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["title"], "retitled");
+    assert!(doc.get("kansoLock").is_none());
+    assert_eq!(sealed_kept(&app.store), Some(sealed.clone()));
+
+    // Text can't go beside the lock, the lock can't be taken off, and the
+    // note can't be deleted outright.
+    for body in [
+        json!({ "body": "plain" }),
+        json!({ "kansoLock": null, "body": "plain" }),
+    ] {
+        let (status, _) = post(&app.router, &format!("/{id}"), body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let (status, _) = call(&app.router, Method::DELETE, &format!("/{id}"), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (_, doc) = get(&app.router, &format!("/{id}")).await;
+    assert_eq!(doc["body"], "");
+    assert_eq!(sealed_kept(&app.store), Some(sealed));
+    // Nor does the changes feed carry it.
+    let (_, feed) = get(&app.router, "/_changes?include_docs=true").await;
+    assert!(feed.to_string().contains(&id), "{feed}");
+    assert!(!feed.to_string().contains("c2FsdA"), "{feed}");
+}

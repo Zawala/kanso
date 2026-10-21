@@ -1950,6 +1950,26 @@ fn change_password_form(
     });
 }
 
+/// Setting the lock password for the first locked note, both fields
+/// filled; the eye beside each shows what was typed.
+fn lock_password_form(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        let editor = workspace.read(cx).editor.clone();
+        if let Some(form) = crate::locked::lock_open_note(editor, window, cx) {
+            form.update(cx, |form, cx| {
+                form.fill(&["correct horse", "correct horse"], window, cx)
+            });
+        }
+    })
+    .unwrap();
+}
+
 /// The change running: fields disabled, the step on the button.
 fn change_password_busy(
     cx: &mut HeadlessAppContext,
@@ -3997,6 +4017,7 @@ fn snapshots() {
         form("light-account-binding-question", Light, binding_question),
         form("dark-account-change-password", Dark, change_password_form),
         form("light-account-change-password", Light, change_password_form),
+        form("dark-lock-password", Dark, lock_password_form),
         form(
             "dark-account-change-password-busy",
             Dark,

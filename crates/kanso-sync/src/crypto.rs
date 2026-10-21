@@ -28,7 +28,7 @@ use kanso_store::SyncDoc;
 
 /// The format byte of every wrap and sealed value (format version 1).
 pub const FORMAT_V1: u8 = 0x01;
-const NONCE_LEN: usize = 24;
+pub(crate) const NONCE_LEN: usize = 24;
 const TAG_LEN: usize = 16;
 /// What sealing adds to a plaintext: the format byte, the nonce and the tag.
 pub const SEAL_OVERHEAD: usize = 1 + NONCE_LEN + TAG_LEN;
@@ -98,7 +98,12 @@ pub(crate) fn hmac(key: &[u8], parts: &[&[u8]]) -> [u8; 32] {
 }
 
 /// `0x01 || nonce || XChaCha20-Poly1305(key, nonce, aad, plaintext)`.
-fn seal_raw(key: &[u8; 32], nonce: &[u8; NONCE_LEN], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+pub(crate) fn seal_raw(
+    key: &[u8; 32],
+    nonce: &[u8; NONCE_LEN],
+    aad: &[u8],
+    plaintext: &[u8],
+) -> Vec<u8> {
     let cipher = XChaCha20Poly1305::new_from_slice(key).expect("a 32-byte key");
     let body = cipher
         .encrypt(
@@ -118,7 +123,7 @@ fn seal_raw(key: &[u8; 32], nonce: &[u8; NONCE_LEN], aad: &[u8], plaintext: &[u8
 
 /// Opens [`seal_raw`]'s output: a format byte above 1 is too new; anything
 /// else that doesn't open under this key and AAD is undecryptable.
-fn open_raw(key: &[u8; 32], aad: &[u8], sealed: &[u8]) -> Opened<Zeroizing<Vec<u8>>> {
+pub(crate) fn open_raw(key: &[u8; 32], aad: &[u8], sealed: &[u8]) -> Opened<Zeroizing<Vec<u8>>> {
     match sealed.first() {
         Some(&format) if format > FORMAT_V1 => Opened::TooNew,
         Some(&FORMAT_V1) if sealed.len() >= SEAL_OVERHEAD => {

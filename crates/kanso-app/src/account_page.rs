@@ -17,7 +17,7 @@ use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Sizable as _, StyledExt as _, WindowExt as _, h_flex,
+    ActiveTheme as _, Disableable as _, Icon, Sizable as _, StyledExt as _, WindowExt as _, h_flex,
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -368,8 +368,19 @@ impl AccountPage {
             div()
                 .w(px(FIELD_WIDTH))
                 .debug_selector(move || selector.into())
-                .child(Input::new(input).disabled(disabled)),
+                .child(
+                    Input::new(input)
+                        .disabled(disabled)
+                        .when(self.is_password(input), |input| input.mask_toggle()),
+                ),
         )
+    }
+
+    /// Whether `input` is one of the password fields, which can be shown.
+    fn is_password(&self, input: &Entity<InputState>) -> bool {
+        [&self.password, &self.confirm]
+            .iter()
+            .any(|field| field.entity_id() == input.entity_id())
     }
 
     /// The Server row: the forms' server, and the way to change it.
@@ -425,6 +436,39 @@ impl AccountPage {
         );
         let mut page = vec![status_row(&status, Self::tooltip(cx), None, colors)];
         if form == SignedOutForm::None {
+            // What an account gives, before what it asks.
+            let benefit = |icon: Lucide, text: &'static str| {
+                h_flex()
+                    .gap(px(10.))
+                    .child(
+                        Icon::new(icon)
+                            .size(px(16.))
+                            .text_color(colors.text_secondary),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.5))
+                            .line_height(px(20.))
+                            .text_color(colors.text)
+                            .child(text),
+                    )
+            };
+            page.push(
+                v_flex()
+                    .mt(px(18.))
+                    .gap(px(8.))
+                    .child(benefit(
+                        Lucide::MonitorSmartphone,
+                        "Your notes on all your devices",
+                    ))
+                    .child(benefit(Lucide::CloudUpload, "A backup off this computer"))
+                    .child(benefit(Lucide::Lock, "Locked so only you can read them"))
+                    .child(benefit(
+                        Lucide::Gift,
+                        "Free, and your notes stay here if you never sign up",
+                    ))
+                    .into_any_element(),
+            );
             page.push(
                 h_flex()
                     .mt(px(18.))

@@ -15,6 +15,9 @@ heading compares the release with the one before.
 """
 body = """
 {%- set repo = "https://github.com/iamngoni/kanso" -%}
+{#- Entries by anyone else end "by @login" (their GitHub no-reply address)
+    or "by Name", so each feature is credited to whoever made it. -#}
+{%- set owners = ["@iamngoni", "Ngonidzashe Mangudya"] -%}
 {% if version -%}
 ## [{{ version | trim_start_matches(pat="v") }}]\
 ({% if previous.version %}{{ repo }}/compare/{{ previous.version }}...{{ version }}\
@@ -27,7 +30,15 @@ body = """
 {% for commit in commits %}
 - {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | split(pat="\n") | first | trim | upper_first }} \
 ([{{ commit.id | truncate(length=7, end="") }}]({{ repo }}/commit/{{ commit.id }}))\
-{% if commit.breaking %} **(breaking)**{% endif %}
+{% if commit.breaking %} **(breaking)**{% endif %}\
+{%- set email = commit.author.email | default(value="") -%}
+{%- if email is ending_with("@users.noreply.github.com") -%}
+{%- set login = email | split(pat="@") | first | split(pat="+") | last -%}
+{%- set who = "@" ~ login -%}
+{%- else -%}
+{%- set who = commit.author.name | default(value="") -%}
+{%- endif -%}
+{%- if who and who not in owners %} by {{ who }}{% endif %}
 {%- endfor %}
 {% endfor %}
 """

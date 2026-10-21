@@ -207,14 +207,14 @@ pub fn problem_help(problem: &SyncProblem, resume: impl FnOnce(i64) -> String) -
 }
 
 /// What the Account page's status says while signed out.
-pub const NOT_SIGNED_IN: &str = "Not signed in";
-pub const SIGNED_OUT_DETAIL: &str = "Sync your notes between your devices, end-to-end encrypted. Your notes stay on this device either way.";
+pub const NOT_SIGNED_IN: &str = "Sync is off";
+pub const SIGNED_OUT_DETAIL: &str = "Your notes are only on this device. With a free account they sync to all your devices and are backed up, locked so only you can read them.";
 
 /// The Account page's status: the sidebar's words ("Synced just now",
 /// "Syncing…", a problem's label) and what they mean here, with `when`
 /// naming the last sync's time as the sidebar does (see [`sync_line`]) and
 /// `resume` the end of a pause (see [`problem_help`]). Signed out, it reads
-/// "Not signed in". A conflict names the note it was in, by
+/// "Sync is off". A conflict names the note it was in, by
 /// `conflicted_title` when that is known.
 pub fn sync_status_line(
     state: &SyncState,
@@ -1965,7 +1965,7 @@ mod tests {
         );
         assert_eq!(
             (out.tone, out.label.as_str(), out.detail.as_str()),
-            (Tone::Quiet, "Not signed in", SIGNED_OUT_DETAIL)
+            (Tone::Quiet, "Sync is off", SIGNED_OUT_DETAIL)
         );
         // The server ended the session: the reason, and what to do.
         let ended = sync_status_line(
@@ -2205,7 +2205,7 @@ mod tests {
         #![proptest_config(config())]
 
         /// The Account page says what the sidebar says, with the same
-        /// color, except that signed out it reads "Not signed in"; and it
+        /// color, except that signed out it reads "Sync is off"; and it
         /// promises syncing on its own only when it will.
         #[test]
         fn prop_sync_status_agrees_with_the_sidebar(

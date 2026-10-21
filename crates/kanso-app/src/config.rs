@@ -468,6 +468,15 @@ pub struct VoiceSettings {
     pub engine: VoiceEngine,
 }
 
+/// Locked notes on this device.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LockedSettings {
+    /// Whether Touch ID unlocks them here: `None` until Kanso has offered
+    /// it, so it offers once.
+    pub touch_id: Option<bool>,
+}
+
 /// The layout [`AppConfig::migrate`] brings older files up to.
 pub const CONFIG_VERSION: u32 = 3;
 
@@ -489,6 +498,18 @@ pub struct AppConfig {
     pub reminders: RemindersSettings,
     pub discovery: DiscoverySettings,
     pub voice: VoiceSettings,
+    pub locked: LockedSettings,
+    pub nudges: Nudges,
+}
+
+/// What Kanso has told someone about, so it says it once.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Nudges {
+    /// When Kanso was first opened with this config (ms), for the sync offer.
+    pub first_seen_ms: Option<i64>,
+    /// The note list's sync offer was put away.
+    pub sync_offer_dismissed: bool,
 }
 
 impl Default for AppConfig {
@@ -507,6 +528,8 @@ impl Default for AppConfig {
             reminders: RemindersSettings::default(),
             discovery: DiscoverySettings::default(),
             voice: VoiceSettings::default(),
+            locked: LockedSettings::default(),
+            nudges: Nudges::default(),
         }
     }
 }
@@ -777,6 +800,11 @@ mod tests {
                     reminders: super::RemindersSettings::default(),
                     discovery: DiscoverySettings::default(),
                     voice: VoiceSettings::default(),
+                    locked: LockedSettings::default(),
+                    nudges: super::Nudges {
+                        first_seen_ms: login.then_some(i64::from(version) * 1_000),
+                        sync_offer_dismissed: version % 2 == 0,
+                    },
                 },
             )
     }
