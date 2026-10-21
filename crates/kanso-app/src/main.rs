@@ -84,6 +84,7 @@ mod theme;
 mod theme_file;
 mod theme_import;
 mod themes;
+mod title_bar;
 #[cfg(test)]
 mod ui_tests;
 mod updates;
@@ -336,8 +337,9 @@ fn open_main_window(cx: &mut App) {
     let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
     // On macOS the panes run to the top edge; the traffic lights sit in the
     // leftmost pane's top band, and the app moves the window from the bands
-    // itself (see `layout::BandDrag`). Elsewhere Kanso draws no window
-    // controls of its own, so the system's title bar stays.
+    // itself (see `layout::BandDrag`). On Windows Kanso draws the whole
+    // title bar, menus and window buttons included (see `title_bar`). On
+    // Linux the system's title bar stays, with Kanso's menus under it.
     #[cfg(target_os = "macos")]
     let titlebar = TitlebarOptions {
         title: Some(flavour::CURRENT.name.into()),
@@ -350,7 +352,7 @@ fn open_main_window(cx: &mut App) {
     #[cfg(not(target_os = "macos"))]
     let titlebar = TitlebarOptions {
         title: Some(flavour::CURRENT.name.into()),
-        appears_transparent: false,
+        appears_transparent: cfg!(target_os = "windows"),
         traffic_light_position: None,
     };
     let options = WindowOptions {

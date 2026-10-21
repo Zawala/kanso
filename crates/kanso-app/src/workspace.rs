@@ -234,6 +234,7 @@ pub fn set_menus(cx: &mut App) {
             crate::updates::ShowWhatsNew,
         )]),
     ]);
+    crate::title_bar::publish_menus(cx);
 }
 
 /// Runs `f` on the workspace in every main window.
@@ -301,6 +302,9 @@ pub struct Workspace {
     /// the window and a headless snapshot can't show.
     #[cfg(test)]
     pub(crate) placeholder_traffic_lights: bool,
+    /// The menus of the title bar Kanso draws where the system draws no
+    /// menu bar (see `title_bar`); none on macOS.
+    pub(crate) title_bar: Option<Entity<gpui_kit::component::menu::AppMenuBar>>,
     _subscriptions: Vec<Subscription>,
     _links: Task<()>,
 }
@@ -499,6 +503,8 @@ impl Workspace {
             band_drag: BandDrag::default(),
             #[cfg(test)]
             placeholder_traffic_lights: false,
+            title_bar: crate::title_bar::SHOWN
+                .then(|| gpui_kit::component::menu::AppMenuBar::new(cx)),
             _subscriptions: subscriptions,
             _links: links,
         }
@@ -1364,7 +1370,8 @@ impl Render for Workspace {
                 let claimed = window.default_prevented()
                     || (cx.has_global::<GlobalState>()
                         && GlobalState::is_text_selection_suppressed(cx));
-                if event.button == MouseButton::Left {
+                // Where Kanso draws a title bar, that is what moves the window.
+                if event.button == MouseButton::Left && this.title_bar.is_none() {
                     let action = this
                         .band_drag
                         .down(event.position, event.click_count, claimed);
@@ -1579,10 +1586,14 @@ impl Render for Workspace {
             .map(|el| crate::replace::on_actions(el, cx))
             .map(|el| crate::updates::on_actions(el, cx))
             .map(|el| crate::graph_view::on_actions(el, cx))
-            // The panes run the full height: each has its own top band
-            // (the title bar's row) and bottom band. The sidebar and the
-            // list keep their widths and the editor takes the rest; each
-            // pane's left edge drags the pane before it.
+            // Off macOS, Kanso's own title bar with the menus.
+            .when_some(self.title_bar.clone(), |el, menus| {
+                el.child(crate::title_bar::render(&menus, colors))
+            })
+            // The panes run the rest of the height: each has its own top
+            // band (on macOS, the title bar's row) and bottom band. The
+            // sidebar and the list keep their widths and the editor takes
+            // the rest; each pane's left edge drags the pane before it.
             .child(
                 h_flex()
                     .flex_1()
