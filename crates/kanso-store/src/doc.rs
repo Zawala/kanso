@@ -57,6 +57,19 @@ impl Doc {
         Value::Object(out)
     }
 
+    /// [`Doc::to_api`] as the local API and MCP serve it to clients: a locked
+    /// note goes out with an empty body and without its sealed text, so a
+    /// client can neither read it nor guess the lock password offline.
+    pub fn to_served(&self, extra: Map<String, Value>) -> Value {
+        let mut out = self.to_api(extra);
+        if let Some(fields) = out.as_object_mut()
+            && fields.remove(kanso_core::model::LOCK_FIELD).is_some()
+        {
+            fields.insert("body".into(), Value::String(String::new()));
+        }
+        out
+    }
+
     /// The API form of a file document. With `data`, the attachment carries its
     /// base64 bytes; otherwise it is a stub, as in CouchDB.
     pub fn file_to_api(&self, content_type: &str, attachment: &Attachment, data: bool) -> Value {

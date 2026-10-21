@@ -108,6 +108,9 @@ pub struct Store {
     writer: Mutex<Connection>,
     readers: Mutex<Vec<Connection>>,
     subscribers: Mutex<Vec<async_channel::Sender<Change>>>,
+    /// A note's forgotten text may still be in the write-ahead log: a reader
+    /// kept the last write from emptying it, so the next write tries again.
+    wal_to_empty: std::sync::atomic::AtomicBool,
 }
 
 impl Store {
@@ -126,6 +129,7 @@ impl Store {
             writer: Mutex::new(writer),
             readers: Mutex::new(Vec::new()),
             subscribers: Mutex::new(Vec::new()),
+            wal_to_empty: Default::default(),
         })
     }
 
@@ -172,11 +176,17 @@ impl Store {
         &self,
         f: impl FnOnce(&rusqlite::Transaction, &mut Vec<Change>) -> Result<T>,
     ) -> Result<T> {
+        use std::sync::atomic::Ordering;
         let mut conn = self.writer.lock().expect("writer poisoned");
         let tx = rusqlite::Transaction::new(&mut conn, rusqlite::TransactionBehavior::Immediate)?;
         let mut changes = Vec::new();
-        let value = f(&tx, &mut changes)?;
-        tx.commit()?;
+        let written = f(&tx, &mut changes).and_then(|value| Ok(tx.commit().map(|()| value)?));
+        let forgot = write::forgot_text();
+        let value = written?;
+        if forgot || self.wal_to_empty.load(Ordering::Relaxed) {
+            self.wal_to_empty
+                .store(!empty_wal(&conn), Ordering::Relaxed);
+        }
         drop(conn);
         self.broadcast(&changes);
         Ok(value)
@@ -191,6 +201,16 @@ impl Store {
     pub fn set_meta(&self, key: &str, value: &str) -> Result<()> {
         self.write(|tx, _| schema::set_meta(tx, key, value))
     }
+}
+
+/// Moves the write-ahead log into the database and empties it, so a note's
+/// forgotten text doesn't linger there (freed pages are overwritten, as
+/// `secure_delete` is on). Whether it could: not while a reader holds it.
+fn empty_wal(conn: &Connection) -> bool {
+    conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+        row.get::<_, i64>(0)
+    })
+    .is_ok_and(|busy| busy == 0)
 }
 
 /// An exclusive lock on a data directory, held for the process lifetime.

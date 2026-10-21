@@ -105,11 +105,53 @@ pub(crate) fn store_row(
     origin: Origin,
     changes: &mut Vec<Change>,
 ) -> Result<()> {
+    // A locked note keeps only versions sealed under its current key, on
+    // every device: locking it, or changing the lock password, anywhere
+    // forgets its plain and old-key versions here too, however the new
+    // version arrived (sync included).
+    let salt_now = (doc_type == DocType::Note && !deleted)
+        .then(|| lock_salt(fields))
+        .flatten();
     if let Some(prev) = previous
         && !prev.deleted
+        && (salt_now.is_none() || salt_now == lock_salt(&prev.fields))
     {
         snapshot(tx, id, prev, origin)?;
     }
+    if let Some(salt) = &salt_now {
+        let forgotten = tx.execute(
+            "DELETE FROM revisions WHERE doc_id = ?1
+             AND json_extract(json, '$.kansoLock.salt') IS NOT ?2",
+            params![id, salt],
+        )?;
+        let newly_locked = previous.is_some_and(|prev| lock_salt(&prev.fields).is_none());
+        if newly_locked {
+            crate::embed::forget_note(tx, id)?;
+        }
+        if forgotten > 0 || newly_locked {
+            FORGOT_TEXT.set(true);
+        }
+    }
+    // Its text is only ever the sealed one: whatever an older Kanso put
+    // beside the lock is kept as it came, but isn't searched, linked or
+    // listed as tasks (and the API doesn't return it, `Doc::to_api`).
+    let blanked;
+    let indexed = match salt_now {
+        Some(_)
+            if fields
+                .get("body")
+                .and_then(Value::as_str)
+                .is_some_and(|b| !b.is_empty()) =>
+        {
+            blanked = {
+                let mut blank = fields.clone();
+                blank.insert("body".into(), Value::String(String::new()));
+                blank
+            };
+            &blanked
+        }
+        _ => fields,
+    };
     let seq = schema::next_seq(tx)?;
     let json = serde_json::to_string(fields)?;
     let synced_rev = match synced {
@@ -141,15 +183,15 @@ pub(crate) fn store_row(
                     "INSERT INTO notes_fts (note_id, title, body) VALUES (?1, ?2, ?3)",
                     params![
                         id,
-                        fields.get("title").and_then(Value::as_str).unwrap_or(""),
-                        fields.get("body").and_then(Value::as_str).unwrap_or(""),
+                        indexed.get("title").and_then(Value::as_str).unwrap_or(""),
+                        indexed.get("body").and_then(Value::as_str).unwrap_or(""),
                     ],
                 )?;
             }
         }
     }
     if crate::derived::applies(doc_type) {
-        crate::derived::write_note(tx, id, (!deleted).then_some(fields))?;
+        crate::derived::write_note(tx, id, (!deleted).then_some(indexed))?;
     }
     if doc_type == DocType::File && deleted {
         tx.execute("DELETE FROM blobs WHERE file_id = ?", [id])?;
@@ -168,6 +210,28 @@ pub(crate) fn store_row(
         origin,
     });
     Ok(())
+}
+
+thread_local! {
+    /// Set by a write that overwrote a note's plain or old-key text, so the
+    /// store empties the write-ahead log, where that text still is, once the
+    /// write commits ([`forgot_text`]).
+    static FORGOT_TEXT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the write just made forgot a note's text; clears it.
+pub(crate) fn forgot_text() -> bool {
+    FORGOT_TEXT.replace(false)
+}
+
+/// The salt a locked note's text is sealed under; `None` when it isn't
+/// locked.
+fn lock_salt(fields: &Map<String, Value>) -> Option<String> {
+    fields
+        .get(LOCK_FIELD)?
+        .get("salt")?
+        .as_str()
+        .map(str::to_owned)
 }
 
 fn snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
@@ -296,8 +360,9 @@ impl Store {
     /// password, and forgets what the note said before: its saved versions
     /// (all in plain text until now), its embedding, and the pages SQLite
     /// freed for them, which are overwritten, and the write-ahead log, which
-    /// is emptied. One transaction: there is no moment with the note locked
-    /// and its old text still in history. Refused unless `body` is locked.
+    /// is emptied once no reader holds it (`Store::write`). One transaction:
+    /// there is no moment with the note locked and its old text still in
+    /// history. Refused unless `body` is locked.
     pub fn lock_note(&self, body: Value) -> Result<WriteResult> {
         let Value::Object(fields) = body else {
             return Err(StoreError::Invalid("Expected a JSON object.".into()));
@@ -317,18 +382,10 @@ impl Store {
             )?;
             tx.execute("DELETE FROM revisions WHERE doc_id = ?", [&result.id])?;
             crate::embed::forget_note(tx, &result.id)?;
+            FORGOT_TEXT.set(true);
             Ok(result)
         })?;
-        self.checkpoint()?;
         Ok(result)
-    }
-
-    /// Moves everything in the write-ahead log into the database and empties
-    /// the log, so text just deleted doesn't linger in it.
-    fn checkpoint(&self) -> Result<()> {
-        let conn = self.writer.lock().expect("writer poisoned");
-        conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
-        Ok(())
     }
 }
 

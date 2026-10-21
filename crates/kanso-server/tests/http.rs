@@ -755,15 +755,26 @@ async fn a_locked_note_keeps_its_sealed_text_from_the_local_api() {
     locked["kansoLock"] = sealed.clone();
     app.store.lock_note(locked).unwrap();
 
-    // Read with an empty body; a replace that leaves the lock out keeps it.
+    // Read with an empty body and without the sealed text, which would let
+    // a client guess the password offline; a replace keeps the lock.
+    let sealed_kept = |store: &kanso_store::Store| {
+        store
+            .note(&id)
+            .unwrap()
+            .unwrap()
+            .extra
+            .get("kansoLock")
+            .cloned()
+    };
     let (_, mut doc) = get(&app.router, &format!("/{id}")).await;
     assert_eq!(doc["body"], "");
-    doc.as_object_mut().unwrap().remove("kansoLock");
+    assert!(doc.get("kansoLock").is_none(), "{doc}");
     doc["title"] = "retitled".into();
     write(&app.router, "/notes", doc).await;
     let (_, doc) = get(&app.router, &format!("/{id}")).await;
     assert_eq!(doc["title"], "retitled");
-    assert_eq!(doc["kansoLock"], sealed);
+    assert!(doc.get("kansoLock").is_none());
+    assert_eq!(sealed_kept(&app.store), Some(sealed.clone()));
 
     // Text can't go beside the lock, the lock can't be taken off, and the
     // note can't be deleted outright.
@@ -777,6 +788,10 @@ async fn a_locked_note_keeps_its_sealed_text_from_the_local_api() {
     let (status, _) = call(&app.router, Method::DELETE, &format!("/{id}"), None).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     let (_, doc) = get(&app.router, &format!("/{id}")).await;
-    assert_eq!(doc["kansoLock"], sealed);
     assert_eq!(doc["body"], "");
+    assert_eq!(sealed_kept(&app.store), Some(sealed));
+    // Nor does the changes feed carry it.
+    let (_, feed) = get(&app.router, "/_changes?include_docs=true").await;
+    assert!(feed.to_string().contains(&id), "{feed}");
+    assert!(!feed.to_string().contains("c2FsdA"), "{feed}");
 }

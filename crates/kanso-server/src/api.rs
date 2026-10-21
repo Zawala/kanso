@@ -180,7 +180,7 @@ pub(crate) fn changes(
                 row["doc"] = if doc.deleted {
                     json!({ "_id": doc.id, "_rev": doc.rev, "_deleted": true })
                 } else {
-                    doc.to_api(Default::default())
+                    doc.to_served(Default::default())
                 };
             }
             row
