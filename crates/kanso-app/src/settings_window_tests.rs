@@ -1005,13 +1005,24 @@ fn picking_a_theme_applies_it_everywhere(cx: &mut TestAppContext) {
 
 /// Choosing an icon pack for the app opens the main window again in its
 /// place: the old one closes, the note being written is saved first, and
-/// the new one shows Settings › Themes, so the new icons show at once.
+/// the new one shows Settings › Themes, so the new icons show at once. The
+/// old window's editor is let go, as when a window closes by hand, and a
+/// transcript still coming goes into the same note in the new window.
 #[gpui_kit::test]
 fn reopening_the_main_window_saves_the_note_and_returns_to_themes(cx: &mut TestAppContext) {
-    let f = setup(cx);
-    let editor = cx.read(|cx| f.workspace.read(cx).editor.clone());
+    use crate::voice::{ModelState, Voice};
+    use crate::voice_state::Phase;
+
+    let Fixture {
+        _dir,
+        window,
+        workspace,
+        note,
+        ..
+    } = setup(cx);
+    let editor = cx.read(|cx| workspace.read(cx).editor.clone());
     let body = cx.read(|cx| editor.read(cx).body_state());
-    f.window
+    window
         .update(cx, |_, window, cx| {
             body.update(cx, |state, cx| {
                 state.set_selected_range(0..0, cx);
@@ -1019,31 +1030,74 @@ fn reopening_the_main_window_saves_the_note_and_returns_to_themes(cx: &mut TestA
             })
         })
         .unwrap();
-    f.window
+    // The microphone off, the model still turning what it heard into text.
+    let transcribing = Phase::Transcribing { session: 1 };
+    cx.update(|cx| {
+        cx.set_global(Voice::for_snapshot(
+            transcribing,
+            &editor,
+            window,
+            (0.5, Duration::from_secs(3)),
+            ModelState::Ready,
+        ))
+    });
+    let old_editor = editor.downgrade();
+    let old_workspace = workspace.downgrade();
+    drop((editor, body, workspace));
+    window
         .update(cx, |_, window, cx| crate::reopen_main_window(window, cx))
         .unwrap();
     cx.run_until_parked();
 
     let windows = cx.update(|cx| cx.windows());
     assert_eq!(windows.len(), 1, "the old window closed");
-    assert_ne!(windows[0].window_id(), f.window.window_id());
+    assert_ne!(windows[0].window_id(), window.window_id());
+    assert!(old_editor.upgrade().is_none(), "the old editor is let go");
+    assert!(
+        old_workspace.upgrade().is_none(),
+        "the old window is let go"
+    );
     let saved = cx.read(|cx| {
         cx.global::<AppState>()
             .store
-            .note(&f.note)
+            .note(&note)
             .unwrap()
             .unwrap()
             .body
     });
     assert!(saved.starts_with("Typed just now. "), "{}", &saved[..40]);
     let mut shown = Vec::new();
+    let mut editors = Vec::new();
     cx.update(|cx| {
         for_each_workspace(cx, |workspace, cx| {
             shown.push((
                 workspace.settings_open(),
                 workspace.settings.read(cx).page(),
             ));
+            editors.push(workspace.editor.clone());
         })
     });
     assert_eq!(shown, vec![(true, SettingsPage::Appearance)]);
+    let new_editor = editors.pop().unwrap();
+    assert_eq!(
+        cx.read(|cx| new_editor.read(cx).note_id().map(str::to_owned)),
+        Some(note)
+    );
+    assert!(
+        cx.read(|cx| cx.global::<Voice>().is_for(&new_editor)),
+        "the transcript goes to the new window's note"
+    );
+
+    // Listening there when it gives way: the microphone stops.
+    cx.update(|cx| {
+        cx.set_global(Voice::for_snapshot(
+            Phase::Listening { session: 2 },
+            &new_editor,
+            windows[0],
+            (0.5, Duration::from_secs(3)),
+            ModelState::Ready,
+        ));
+        crate::voice::finish_in(windows[0], cx);
+        assert!(!cx.global::<Voice>().phase.is_active());
+    });
 }

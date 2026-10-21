@@ -381,21 +381,36 @@ fn open_main_window(cx: &mut App) {
 /// Opens the main window again where `window` is, and closes `window`, with
 /// Settings › Themes showing in the new one. A new window draws every icon
 /// afresh, so an icon pack just chosen for the app's icons shows at once,
-/// with no restart. The note being written is saved first.
+/// with no restart.
+///
+/// The old window goes as it would closed by hand: the note being written
+/// is saved first, and the window and everything in it, a locked note's
+/// text included, is let go. Voice input listening there stops, and what it
+/// heard goes into the same note in the new window (`voice::finish_in`).
+/// The new window opens the last note afresh, so what isn't carried over is
+/// what lives only in a window: the note's undo history, its scroll and
+/// caret, an open dialog, the palette or find, and the system's own
+/// dictation, which stops with the window it typed in.
 pub(crate) fn reopen_main_window(window: &mut Window, cx: &mut App) {
+    let old = window.window_handle();
+    let mut note = None;
     if let Some(Some(root)) = window.root::<gpui_kit::base::Root>()
         && let Ok(workspace) = root.read(cx).view().clone().downcast::<Workspace>()
     {
         let editor = workspace.read(cx).editor.clone();
         editor.update(cx, |editor, cx| editor.flush(cx));
+        note = editor.read(cx).note_id().map(str::to_owned);
     }
+    voice::finish_in(old, cx);
     let bounds = window.window_bounds();
-    let old = window.window_handle();
     cx.defer(move |cx| {
         let Some((new, workspace)) = open_main_window_at(Some(bounds), cx) else {
             return;
         };
         old.update(cx, |_, window, _| window.remove_window()).ok();
+        // Once the new window has opened the note it shows.
+        let editor = workspace.read(cx).editor.clone();
+        cx.defer(move |cx| voice::moved(old, note.as_deref(), &editor, new, cx));
         new.update(cx, |_, window, cx| {
             workspace.update(cx, |workspace, cx| {
                 workspace.open_settings(Some(settings::SettingsPage::Appearance), window, cx)
