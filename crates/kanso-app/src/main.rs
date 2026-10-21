@@ -36,6 +36,7 @@ mod grouping;
 mod history;
 mod history_diff;
 mod hotkey;
+mod icon_gallery;
 mod icon_packs;
 mod image_size;
 mod inspector;
@@ -315,6 +316,10 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         // Kanso Dev keeps its secrets under its own service.
         services.secrets = Some(Arc::new(flavour::CURRENT.keychain()));
         cx.set_global(services);
+        // The icon pack gallery fetches over HTTPS; tests leave it out.
+        cx.set_global(icon_gallery::Gallery(Arc::new(
+            icon_gallery::HttpSource::default(),
+        )));
         workspace::bind_keys(cx);
         note_list::bind_keys(cx);
         capture::bind_keys(cx);

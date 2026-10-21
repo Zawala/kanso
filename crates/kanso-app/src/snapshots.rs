@@ -349,6 +349,130 @@ fn book_icon_pack_section(
     .unwrap();
 }
 
+/// The icon pack gallery, with a few sets as Iconify lists them and one
+/// of them installed.
+fn icon_gallery(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    use crate::icon_gallery::tests::FakeSource;
+    use crate::icon_gallery::{COLLECTIONS_URL, Gallery, open_gallery, samples_url};
+    let shapes = [
+        "<circle cx='12' cy='12' r='9' fill='none' stroke='currentColor' stroke-width='2'/>",
+        "<path d='M12 3 21 12 12 21 3 12Z' fill='none' stroke='currentColor' stroke-width='2'/>",
+        "<path d='M4 4h16v16H4Z' fill='none' stroke='currentColor' stroke-width='2'/>",
+        "<path d='M12 3 21 20H3Z' fill='none' stroke='currentColor' stroke-width='2'/>",
+        "<path d='M3 12c3-6 6 6 9 0s6 6 9 0' fill='none' stroke='currentColor' stroke-width='2'/>",
+        "<path d='M12 4v16M4 12h16' stroke='currentColor' stroke-width='2'/>",
+    ];
+    let sets = [
+        (
+            "lucide",
+            "Lucide",
+            1903,
+            "Lucide Contributors",
+            "ISC",
+            "UI 24px",
+        ),
+        (
+            "ph",
+            "Phosphor",
+            9072,
+            "Phosphor Icons",
+            "MIT",
+            "UI Other / Mixed Grid",
+        ),
+        (
+            "tabler",
+            "Tabler Icons",
+            6238,
+            "Paweł Kuna",
+            "MIT",
+            "UI 24px",
+        ),
+        (
+            "material-symbols",
+            "Material Symbols",
+            15728,
+            "Google",
+            "Apache 2.0",
+            "Material",
+        ),
+        (
+            "ri",
+            "Remix Icon",
+            3188,
+            "Remix Design",
+            "Apache 2.0",
+            "UI 24px",
+        ),
+        (
+            "heroicons",
+            "HeroIcons",
+            1288,
+            "Refactoring UI Inc",
+            "MIT",
+            "UI Other / Mixed Grid",
+        ),
+    ];
+    let source = FakeSource::default();
+    let names: Vec<String> = (0..6).map(|ix| format!("s{ix}")).collect();
+    let mut list = serde_json::Map::new();
+    for (prefix, name, total, author, license, category) in sets {
+        list.insert(
+            prefix.into(),
+            json!({"name": name, "total": total, "author": {"name": author},
+                   "license": {"title": license}, "category": category, "samples": names}),
+        );
+        let icons: serde_json::Map<String, serde_json::Value> = names
+            .iter()
+            .zip(shapes)
+            .map(|(n, body)| (n.clone(), json!({"body": body})))
+            .collect();
+        source.answer(
+            &samples_url(prefix, &names),
+            &json!({"prefix": prefix, "width": 24, "height": 24, "icons": icons}).to_string(),
+        );
+    }
+    source.answer(
+        COLLECTIONS_URL,
+        &serde_json::Value::Object(list).to_string(),
+    );
+    cx.update(|cx| {
+        cx.set_reduce_motion(true);
+        cx.set_global(Gallery(std::sync::Arc::new(source)));
+    });
+    // Phosphor, installed.
+    let data_dir = cx.update(|cx| cx.global::<AppState>().data_dir.clone());
+    let ph = crate::icon_packs::packs_dir(&data_dir).join("ph");
+    std::fs::create_dir_all(&ph).unwrap();
+    std::fs::write(
+        ph.join("pack.json"),
+        r#"{"name": "Phosphor", "source": {"iconify": "ph"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        ph.join("icons.json"),
+        r#"{"icons": {"dot": {"body": "<circle cx='8' cy='8' r='4'/>"}}}"#,
+    )
+    .unwrap();
+    cx.update(|cx| {
+        crate::icon_packs::reload(cx);
+    });
+    let gallery = cx
+        .update_window(window, |_, window, cx| open_gallery(window, cx))
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < deadline
+        && !cx.update(|cx| gallery.read(cx).is_ready() && gallery.read(cx).samples_loaded() == 6)
+    {
+        cx.run_until_parked();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
 /// The icon picker searching for "money".
 fn book_icon_search(
     cx: &mut HeadlessAppContext,
@@ -3521,6 +3645,10 @@ fn snapshots() {
         Shot {
             dialog_width: crate::book_icons::PICKER_WIDTH,
             ..shot("dark-book-icons-pack", Dark, Edit, book_icon_pack_section)
+        },
+        Shot {
+            dialog_width: crate::icon_gallery::GALLERY_WIDTH,
+            ..shot("dark-icon-gallery", Dark, Edit, icon_gallery)
         },
         shot("dark-preview", Dark, Preview, open_latest),
         shot("light-preview", Light, Preview, open_latest),

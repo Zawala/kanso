@@ -4,6 +4,24 @@ An icon pack is a folder of SVG icons. Kanso reads packs from the
 `icon-packs` folder in its data folder (Settings › Themes › Icon packs ›
 Open Folder) and picks up changes within a couple of seconds, or on Reload.
 
+## Getting packs
+
+**Browse Icon Packs…** (Settings › Themes › Icon packs, the palette, View ›
+Icon Packs…, or **Get More Icons…** in a notebook's icon picker) lists the
+open-source icon sets on [Iconify](https://iconify.design): Lucide, Phosphor,
+Tabler, Material Symbols, Remix, Heroicons and nearly two hundred more, each
+with its author, licence, size and a few of its icons. **Install** downloads
+the set whole (one file, from its package on jsDelivr) into the icon packs
+folder; **Uninstall** removes it again. Only one-color sets are listed, since
+Kanso draws icons in the theme's color. Nothing is fetched until the gallery
+opens, and nothing about your notes is sent: only the names of the sets and
+icons asked for. A set installed from the gallery keeps its licence in its
+`pack.json`.
+
+You can also make or copy a pack by hand, as below.
+
+## What a pack does
+
 A pack does two things:
 
 - **Notebook icons.** Its icons join the picker in a notebook's menu
@@ -20,6 +38,10 @@ A pack does two things:
   [Lucide](https://lucide.dev/icons)'s, so a pack made for Lucide names fits.
 
 ## The format
+
+A pack holds its icons as SVG files, or all of them in one `icons.json` in
+[Iconify's format](https://iconify.design/docs/types/iconify-json.html), as the
+gallery installs them:
 
 ```
 icon-packs/
@@ -54,8 +76,8 @@ its built-in icons, so a pack matches every light and dark theme. That means:
   multicolored icon shows as a single-color silhouette.
 - Draw on a square `viewBox`, such as `0 0 24 24`. Strokes and fills both
   work; `stroke="currentColor"` is fine.
-- An icon is at most 256 KB, and a pack at most 4,000 icons; Kanso reads up to
-  64 packs.
+- An icon is at most 256 KB, an `icons.json` at most 48 MB, and a pack at most
+  40,000 icons; Kanso reads up to 64 packs.
 
 A file that can't be used (a name with capitals or spaces, a file that isn't
 an SVG, one that is too large) is skipped, and Settings › Themes lists it with

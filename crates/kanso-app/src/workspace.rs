@@ -226,6 +226,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Toggle Sidebar", ToggleSidebar),
             MenuItem::action("Outline and Backlinks", ToggleInspector),
             MenuItem::action("Graph", crate::graph_view::ShowGraph),
+            MenuItem::action("Icon Packs…", crate::icon_gallery::BrowseIconPacks),
             MenuItem::action("Focus Mode", ToggleFocusMode),
             MenuItem::action("Search All Notes", SearchAllNotes),
             MenuItem::action("Replace in All Notes…", crate::replace::ReplaceInNotes),
@@ -1617,6 +1618,11 @@ impl Render for Workspace {
                 this.close_settings(window, cx);
                 this.export_page(true, window, cx);
             }))
+            .on_action(
+                cx.listener(|_, _: &crate::icon_gallery::BrowseIconPacks, window, cx| {
+                    crate::icon_gallery::open_gallery(window, cx);
+                }),
+            )
             .on_action(
                 cx.listener(|this, _: &crate::publish::PublishNote, window, cx| {
                     this.close_settings(window, cx);

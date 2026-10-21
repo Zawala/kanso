@@ -499,6 +499,8 @@ fn sections(packs: Option<&IconPacks>) -> Vec<(SharedString, Vec<Entry>)> {
 
 /// Columns in the picker's grid, and the rows it shows before scrolling.
 const COLUMNS: usize = 8;
+/// Most icons a section draws; typing finds the rest.
+const SECTION_LIMIT: usize = 240;
 const VISIBLE_ROWS: usize = 6;
 const CELL: f32 = 36.;
 const GAP: f32 = 4.;
@@ -513,9 +515,20 @@ pub struct IconPicker {
     search: Entity<InputState>,
     current: Option<String>,
     sections: Vec<(SharedString, Vec<Entry>)>,
+    /// What the search last found, for the query it found it for.
+    found: Option<(String, Vec<Found>)>,
     on_pick: PickHandler,
     scroll: ScrollHandle,
     _subscription: Subscription,
+}
+
+/// A section's icons the search found: the first [`SECTION_LIMIT`] of
+/// them, and how many there are in all.
+#[derive(Clone)]
+struct Found {
+    title: SharedString,
+    entries: Vec<Entry>,
+    total: usize,
 }
 
 impl IconPicker {
@@ -540,7 +553,7 @@ impl IconPicker {
                     let first = this
                         .found(cx)
                         .into_iter()
-                        .flat_map(|(_, entries)| entries)
+                        .flat_map(|found| found.entries)
                         .next();
                     if let Some(first) = first {
                         this.pick(Some(first.key.to_string()), window, cx);
@@ -553,27 +566,46 @@ impl IconPicker {
             search,
             current,
             sections,
+            found: None,
             on_pick,
             scroll: ScrollHandle::new(),
             _subscription: subscription,
         }
     }
 
-    /// The sections with the icons the search finds, leaving out the empty.
-    fn found(&self, cx: &App) -> Vec<(SharedString, Vec<Entry>)> {
-        let query = words(&self.search.read(cx).value());
-        self.sections
+    /// The sections with the icons the search finds, leaving out the empty,
+    /// worked out again only when the search changes.
+    fn found(&mut self, cx: &App) -> Vec<Found> {
+        let query = self.search.read(cx).value().to_string();
+        if let Some((kept, found)) = &self.found
+            && *kept == query
+        {
+            return found.clone();
+        }
+        let words = words(&query);
+        let found: Vec<Found> = self
+            .sections
             .iter()
-            .map(|(title, entries)| {
-                let found: Vec<Entry> = entries
-                    .iter()
-                    .filter(|e| matches(&query, &e.label, &e.key, &e.keywords))
-                    .cloned()
-                    .collect();
-                (title.clone(), found)
+            .filter_map(|(title, entries)| {
+                let mut total = 0;
+                let mut shown = Vec::new();
+                for entry in entries {
+                    if matches(&words, &entry.label, &entry.key, &entry.keywords) {
+                        total += 1;
+                        if shown.len() < SECTION_LIMIT {
+                            shown.push(entry.clone());
+                        }
+                    }
+                }
+                (total > 0).then(|| Found {
+                    title: title.clone(),
+                    entries: shown,
+                    total,
+                })
             })
-            .filter(|(_, entries)| !entries.is_empty())
-            .collect()
+            .collect();
+        self.found = Some((query, found.clone()));
+        found
     }
 
     /// Closes the picker and hands on `key`; Kanso's first icon is the
@@ -595,10 +627,10 @@ impl IconPicker {
 
     /// The keys of the icons showing, in order.
     #[cfg(test)]
-    pub fn shown(&self, cx: &App) -> Vec<String> {
+    pub fn shown(&mut self, cx: &App) -> Vec<String> {
         self.found(cx)
             .into_iter()
-            .flat_map(|(_, entries)| entries)
+            .flat_map(|found| found.entries)
             .map(|entry| entry.key.to_string())
             .collect()
     }
@@ -619,7 +651,12 @@ impl Render for IconPicker {
         let titled = self.sections.len() > 1;
         let mut blocks: Vec<AnyElement> = Vec::new();
         let mut ix: usize = 0;
-        for (title, entries) in &found {
+        for Found {
+            title,
+            entries,
+            total,
+        } in &found
+        {
             if titled {
                 blocks.push(
                     div()
@@ -676,6 +713,20 @@ impl Render for IconPicker {
                     h_flex()
                         .gap(px(GAP))
                         .children(std::mem::replace(&mut cells, rest))
+                        .into_any_element(),
+                );
+            }
+            if *total > entries.len() {
+                blocks.push(
+                    div()
+                        .py(px(4.))
+                        .text_size(px(12.))
+                        .text_color(colors.text_muted)
+                        .child(format!(
+                            "{} of {} icons. Type to find the others.",
+                            entries.len(),
+                            total
+                        ))
                         .into_any_element(),
                 );
             }
@@ -740,6 +791,17 @@ pub fn open_picker(
                     .w_full()
                     .gap_2()
                     .justify_end()
+                    .child(
+                        Button::new("book-icon-more")
+                            .small()
+                            .ghost()
+                            .label("Get More Icons…")
+                            .on_click(|_, window, cx| {
+                                window.close_dialog(cx);
+                                crate::icon_gallery::open_gallery(window, cx);
+                            }),
+                    )
+                    .child(div().flex_1())
                     .child(
                         Button::new("book-icon-default")
                             .small()
@@ -921,7 +983,10 @@ mod tests {
             })
             .unwrap();
         cx.run_until_parked();
-        assert_eq!(cx.read(|cx| picker.read(cx).shown(cx)).len(), CHOICES.len());
+        assert_eq!(
+            picker.update(cx, |picker, cx| picker.shown(cx)).len(),
+            CHOICES.len()
+        );
         window
             .update(cx, |_, window, cx| {
                 picker.update(cx, |picker, cx| picker.search_for("piggy", window, cx))
@@ -929,7 +994,7 @@ mod tests {
             .unwrap();
         cx.run_until_parked();
         assert_eq!(
-            cx.read(|cx| picker.read(cx).shown(cx)),
+            picker.update(cx, |picker, cx| picker.shown(cx)),
             vec!["piggy-bank".to_owned()]
         );
         let search = cx.read(|cx| picker.read(cx).search.clone());

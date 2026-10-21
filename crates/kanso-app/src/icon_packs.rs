@@ -9,6 +9,10 @@
 //!   "icons": { "rocket": { "label": "Rocket", "keywords": "launch space" } } }
 //! ```
 //!
+//! Instead of SVG files, a pack can hold its icons in one `icons.json` in
+//! Iconify's format (`{"icons": {"name": {"body": "<path …/>"}}, "width":
+//! 24, "height": 24}`), as the gallery installs them (`icon_gallery`).
+//!
 //! Its icons join the notebook icon picker (a notebook keeps one as
 //! `<pack>/<icon>`). Chosen in Settings › Themes, a pack also draws the app's
 //! own icons: an SVG named like one of them (`pin.svg`, `chevron-right.svg`)
@@ -34,11 +38,15 @@ use crate::workspace::AppState;
 /// Largest SVG a pack may hold.
 pub const MAX_SVG_BYTES: u64 = 256 * 1024;
 /// Most icons one pack may hold; the rest are skipped.
-pub const MAX_ICONS: usize = 4000;
+pub const MAX_ICONS: usize = 40_000;
+/// Largest `icons.json` a pack may hold.
+pub const MAX_JSON_BYTES: u64 = 48 * 1024 * 1024;
+/// The file holding a pack's icons in Iconify's format.
+pub const ICONIFY_FILE: &str = "icons.json";
 /// Most packs read.
 pub const MAX_PACKS: usize = 64;
 const WATCH_INTERVAL: Duration = Duration::from_secs(2);
-const MANIFEST: &str = "pack.json";
+pub const MANIFEST: &str = "pack.json";
 
 /// The folder icon packs go in.
 pub fn packs_dir(data_dir: &Path) -> PathBuf {
@@ -64,6 +72,8 @@ pub struct IconPack {
     pub name: String,
     pub author: Option<String>,
     pub license: Option<String>,
+    /// The Iconify set the gallery installed it from, if it did.
+    pub iconify: Option<String>,
     /// In name order.
     pub icons: Vec<PackIcon>,
 }
@@ -91,7 +101,94 @@ struct Manifest {
     name: Option<String>,
     author: Option<String>,
     license: Option<String>,
+    source: Source,
     icons: HashMap<String, IconWords>,
+}
+
+/// Where a pack came from, as the gallery writes it.
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct Source {
+    iconify: Option<String>,
+}
+
+/// An `icons.json` in Iconify's format: the parts Kanso draws.
+#[derive(Deserialize)]
+pub struct IconifyJson {
+    pub icons: HashMap<String, IconifyIcon>,
+    #[serde(default)]
+    pub aliases: HashMap<String, IconifyAlias>,
+    #[serde(default)]
+    pub width: Option<f32>,
+    #[serde(default)]
+    pub height: Option<f32>,
+    #[serde(default)]
+    pub left: Option<f32>,
+    #[serde(default)]
+    pub top: Option<f32>,
+}
+
+#[derive(Deserialize)]
+pub struct IconifyIcon {
+    pub body: String,
+    #[serde(default)]
+    pub width: Option<f32>,
+    #[serde(default)]
+    pub height: Option<f32>,
+    #[serde(default)]
+    pub left: Option<f32>,
+    #[serde(default)]
+    pub top: Option<f32>,
+    #[serde(default)]
+    pub hidden: bool,
+}
+
+/// Another name for an icon; one that turns or flips it is left out.
+#[derive(Deserialize)]
+pub struct IconifyAlias {
+    pub parent: String,
+    #[serde(default)]
+    pub rotate: Option<u8>,
+    #[serde(default, rename = "hFlip")]
+    pub h_flip: bool,
+    #[serde(default, rename = "vFlip")]
+    pub v_flip: bool,
+    #[serde(default)]
+    pub hidden: bool,
+}
+
+impl IconifyJson {
+    /// Each icon as a whole SVG, by name: aliases that only rename an icon
+    /// included, hidden icons left out. Pure.
+    pub fn svgs(&self) -> Vec<(String, String)> {
+        let svg = |icon: &IconifyIcon| {
+            let left = icon.left.or(self.left).unwrap_or(0.);
+            let top = icon.top.or(self.top).unwrap_or(0.);
+            let width = icon.width.or(self.width).unwrap_or(16.);
+            let height = icon.height.or(self.height).unwrap_or(16.);
+            format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{left} {top} {width} {height}">{}</svg>"#,
+                icon.body
+            )
+        };
+        let mut out: Vec<(String, String)> = self
+            .icons
+            .iter()
+            .filter(|(_, icon)| !icon.hidden)
+            .map(|(name, icon)| (name.clone(), svg(icon)))
+            .collect();
+        for (name, alias) in &self.aliases {
+            let plain = alias.rotate.unwrap_or(0) == 0 && !alias.h_flip && !alias.v_flip;
+            if plain
+                && !alias.hidden
+                && let Some(parent) = self.icons.get(&alias.parent)
+            {
+                out.push((name.clone(), svg(parent)));
+            }
+        }
+        out.sort();
+        out
+    }
 }
 
 #[derive(Default, Deserialize)]
@@ -220,7 +317,9 @@ pub fn read_pack(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconPack> {
             svg: Arc::from(bytes),
         });
     }
+    read_iconify(dir, &id, &manifest, &mut icons, notices);
     icons.sort_by(|a, b| a.name.cmp(&b.name));
+    icons.dedup_by(|a, b| a.name == b.name);
     if icons.is_empty() {
         notices.push(Notice {
             file: id,
@@ -235,9 +334,71 @@ pub fn read_pack(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconPack> {
             .unwrap_or_else(|| label_from_name(&id)),
         author: manifest.author.filter(|a| !a.trim().is_empty()),
         license: manifest.license.filter(|l| !l.trim().is_empty()),
+        iconify: manifest
+            .source
+            .iconify
+            .filter(|prefix| is_valid_name(prefix)),
         id,
         icons,
     })
+}
+
+/// Adds the icons in the pack's `icons.json`, if it has one, after any SVG
+/// files of the same names.
+fn read_iconify(
+    dir: &Path,
+    id: &str,
+    manifest: &Manifest,
+    icons: &mut Vec<PackIcon>,
+    notices: &mut Vec<Notice>,
+) {
+    let path = dir.join(ICONIFY_FILE);
+    let Ok(meta) = std::fs::metadata(&path) else {
+        return;
+    };
+    let file = format!("{id}/{ICONIFY_FILE}");
+    if meta.len() > MAX_JSON_BYTES {
+        notices.push(Notice {
+            file,
+            message: format!("is larger than {} MB", MAX_JSON_BYTES / (1024 * 1024)),
+        });
+        return;
+    }
+    let parsed = std::fs::read(&path)
+        .map_err(|err| format!("couldn't be read: {err}"))
+        .and_then(|bytes| {
+            serde_json::from_slice::<IconifyJson>(&bytes)
+                .map_err(|err| format!("isn't an Iconify icon set: {err}"))
+        });
+    let set = match parsed {
+        Ok(set) => set,
+        Err(message) => {
+            notices.push(Notice { file, message });
+            return;
+        }
+    };
+    for (name, svg) in set.svgs() {
+        if icons.len() >= MAX_ICONS {
+            notices.push(Notice {
+                file: id.to_owned(),
+                message: format!("has more than {MAX_ICONS} icons; the rest are left out"),
+            });
+            break;
+        }
+        if !is_valid_name(&name) || svg.len() as u64 > MAX_SVG_BYTES {
+            continue;
+        }
+        let words = manifest.icons.get(&name);
+        icons.push(PackIcon {
+            label: words
+                .and_then(|w| w.label.clone())
+                .filter(|label| !label.trim().is_empty())
+                .unwrap_or_else(|| label_from_name(&name)),
+            keywords: words.and_then(|w| w.keywords.clone()).unwrap_or_default(),
+            name,
+            svg: Arc::from(svg.into_bytes()),
+        });
+    }
 }
 
 /// Every file in the packs folder with its size and time, to tell when it
@@ -290,6 +451,12 @@ impl IconPacks {
                 .filter_map(Result::ok)
                 .map(|entry| entry.path())
                 .filter(|path| path.is_dir())
+                // A download in progress, or a system folder.
+                .filter(|path| {
+                    !path
+                        .file_name()
+                        .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+                })
                 .collect();
             folders.sort();
             for folder in folders.into_iter().take(MAX_PACKS) {
@@ -520,6 +687,46 @@ mod tests {
     }
 
     #[test]
+    fn a_pack_reads_an_iconify_icon_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = packs_dir(dir.path());
+        let pack = root.join("ph");
+        write(
+            &pack,
+            MANIFEST,
+            r#"{"name": "Phosphor", "source": {"iconify": "ph"}}"#,
+        );
+        write(
+            &pack,
+            ICONIFY_FILE,
+            r#"{"prefix": "ph", "width": 256, "height": 256,
+                "icons": {"acorn": {"body": "<path d='M1 1'/>"},
+                          "tall": {"body": "<g/>", "height": 300},
+                          "secret": {"body": "<g/>", "hidden": true}},
+                "aliases": {"nut": {"parent": "acorn"},
+                            "acorn-turned": {"parent": "acorn", "rotate": 1}}}"#,
+        );
+        let packs = IconPacks::load(Some(&root));
+        let p = &packs.packs[0];
+        assert_eq!(p.iconify.as_deref(), Some("ph"));
+        let names: Vec<&str> = p.icons.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, vec!["acorn", "nut", "tall"]);
+        let svg = |name: &str| String::from_utf8(p.icon(name).unwrap().svg.to_vec()).unwrap();
+        assert!(
+            svg("acorn").contains(r#"viewBox="0 0 256 256""#),
+            "{}",
+            svg("acorn")
+        );
+        assert!(svg("acorn").contains("<path d='M1 1'/>"));
+        assert_eq!(svg("nut"), svg("acorn"));
+        assert!(svg("tall").contains(r#"viewBox="0 0 256 300""#));
+        // A damaged set is reported, and leaves the pack without icons.
+        write(&root.join("bad"), ICONIFY_FILE, "{ nope");
+        let packs = IconPacks::load(Some(&root));
+        assert!(packs.notices.iter().any(|n| n.file == "bad/icons.json"));
+    }
+
+    #[test]
     fn a_pack_without_a_manifest_is_named_after_its_folder() {
         let dir = tempfile::tempdir().unwrap();
         let root = packs_dir(dir.path());
@@ -552,5 +759,29 @@ mod tests {
         assert_eq!(app_icon("pin.svg"), None);
         use_for_app(None);
         assert_eq!(app_icon("icons/pin.svg"), None);
+    }
+}
+
+#[cfg(test)]
+mod real_sets {
+    /// A real Iconify set at `KANSO_ICONIFY_JSON` loads whole, and quickly.
+    /// Run on demand.
+    #[test]
+    #[ignore = "reads a downloaded Iconify set"]
+    fn a_downloaded_set_loads() {
+        let source = std::env::var("KANSO_ICONIFY_JSON").expect("set KANSO_ICONIFY_JSON");
+        let dir = tempfile::tempdir().unwrap();
+        let pack = super::packs_dir(dir.path()).join("real");
+        std::fs::create_dir_all(&pack).unwrap();
+        std::fs::copy(&source, pack.join(super::ICONIFY_FILE)).unwrap();
+        let started = std::time::Instant::now();
+        let packs = super::IconPacks::load(Some(&super::packs_dir(dir.path())));
+        let icons = packs.packs[0].icons.len();
+        println!(
+            "{icons} icons in {:?}; notices {:?}",
+            started.elapsed(),
+            packs.notices
+        );
+        assert!(icons > 1000);
     }
 }

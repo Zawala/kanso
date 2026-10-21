@@ -434,6 +434,21 @@ fn icon_packs_section(cx: &mut Context<SettingsView>) -> AnyElement {
                     .on_click(|_, window, cx| reload_icon_packs(window, cx)),
             ),
     );
+    rows.insert(
+        0,
+        Row::new(Lucide::Download, "Get icon packs")
+            .detail("Browse open-source icon sets and install one in a click.")
+            .trailing(
+                Button::new("browse-icon-packs")
+                    .outline()
+                    .small()
+                    .label("Browse Icon Packs…")
+                    .debug_selector(|| "browse-icon-packs".into())
+                    .on_click(|_, window, cx| {
+                        crate::icon_gallery::open_gallery(window, cx);
+                    }),
+            ),
+    );
     for (ix, notice) in notices.iter().enumerate() {
         rows.push(
             Row::new(Lucide::TriangleAlert, notice.file.clone())
