@@ -14,6 +14,8 @@ mod account_words;
 mod assets;
 mod board;
 mod board_view;
+mod calendar;
+mod calendar_view;
 mod capture;
 mod capture_cli;
 mod clipboard;

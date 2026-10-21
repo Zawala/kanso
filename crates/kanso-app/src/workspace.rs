@@ -170,6 +170,7 @@ pub fn bind_keys(cx: &mut App) {
     ]);
     crate::palette::bind_keys(cx);
     crate::journal::bind_keys(cx);
+    crate::calendar_view::bind_keys(cx);
     crate::tasks_view::bind_keys(cx);
     crate::replace::bind_keys(cx);
     crate::settings::bind_keys(cx);
@@ -191,6 +192,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("New Notebook", NewNotebook),
             MenuItem::action("New from Template…", crate::journal::NewFromTemplate),
             MenuItem::action("Today's Note", crate::journal::OpenToday),
+            MenuItem::action("Journal Calendar…", crate::calendar_view::ShowCalendar),
             MenuItem::action("Quick Note", crate::journal::QuickCapture),
             MenuItem::separator(),
             MenuItem::action("Open…", OpenFile),
@@ -300,6 +302,8 @@ pub struct Workspace {
     pub(crate) board: Option<Entity<crate::board_view::BoardView>>,
     pub(crate) board_open: bool,
     pub(crate) _board_events: Option<Subscription>,
+    /// The open calendar sheet's picks.
+    pub(crate) _calendar_events: Option<Subscription>,
     /// Settings, drawn in place of the list and the editor while open.
     pub(crate) settings: Entity<SettingsView>,
     /// While Settings are open: where the notes were, to go back to.
@@ -550,6 +554,7 @@ impl Workspace {
             board: None,
             board_open: false,
             _board_events: None,
+            _calendar_events: None,
             settings,
             settings_return: None,
             show_sidebar: appearance.show_sidebar,
@@ -1769,6 +1774,7 @@ impl Render for Workspace {
             })
             .map(|el| crate::settings::on_actions(el, cx))
             .map(|el| crate::journal::on_actions(el, cx))
+            .map(|el| crate::calendar_view::on_actions(el, cx))
             .map(|el| crate::replace::on_actions(el, cx))
             .map(|el| crate::updates::on_actions(el, cx))
             .map(|el| crate::graph_view::on_actions(el, cx))

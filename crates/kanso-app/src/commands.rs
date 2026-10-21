@@ -669,6 +669,17 @@ static COMMANDS: &[Command] = &[
         needs: Needs::Nothing,
     },
     Command {
+        id: "journal-calendar",
+        label: "Journal calendar…",
+        label_when_pinned: None,
+        description: "Shows a month with the days that have a daily note marked. Click a day to open its note, or to start it from the daily template.",
+        icon: IconName::CalendarDays,
+        keywords: &["daily", "journal", "calendar", "month", "date", "diary"],
+        group: Group::GoTo,
+        run: action!(crate::calendar_view::ShowCalendar),
+        needs: Needs::Nothing,
+    },
+    Command {
         id: "previous-day",
         label: "Previous day",
         label_when_pinned: None,

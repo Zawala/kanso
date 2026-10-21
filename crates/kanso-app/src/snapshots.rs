@@ -2595,6 +2595,46 @@ fn daily_note(
     .unwrap();
 }
 
+/// The Journal's calendar over today's note: May 2026 with a few days'
+/// notes marked, today (the 28th) ringed, Monday first.
+fn journal_calendar(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    daily_note(cx, window, workspace, store);
+    for day in [4, 11, 12, 19, 21] {
+        let date = kanso_core::dates::Date::new(2026, 5, day).unwrap();
+        store
+            .daily_note(
+                date,
+                &kanso_store::NewNote {
+                    title: kanso_core::roles::daily_title(date),
+                    ..Default::default()
+                },
+                Origin::Ui,
+            )
+            .unwrap();
+    }
+    cx.run_until_parked();
+    cx.update(|cx| cx.set_reduce_motion(true));
+    let view = cx
+        .update_window(window, |_, window, cx| {
+            workspace.update(cx, |workspace, cx| {
+                crate::calendar_view::open_calendar(workspace, window, cx)
+            })
+        })
+        .unwrap();
+    cx.update(|cx| {
+        view.update(cx, |view, cx| {
+            view.week_start = 0;
+            view.read_days();
+            cx.notify();
+        })
+    });
+}
+
 const VIM_NOTE: &str = "# Vim keys\n\nMove with h j k l, by words with w and b, and change a word with cw.\n\n- Delete with d and a motion: dw, d$ or dip\n- Yank with y and put it back with p\n- Visual mode selects; V takes whole lines\n\nEscape leaves Insert mode, and Escape again leaves focus mode.\n";
 
 /// A note with Vim keys on, after `keys` (space-separated keystrokes);
@@ -3681,6 +3721,14 @@ fn snapshots() {
         shot("light-tags-tree", Light, Edit, tags_tree),
         shot("dark-daily-note", Dark, Edit, daily_note),
         shot("light-daily-note", Light, Split, daily_note),
+        Shot {
+            dialog_width: crate::calendar_view::SHEET_WIDTH,
+            ..shot("dark-journal-calendar", Dark, Edit, journal_calendar)
+        },
+        Shot {
+            dialog_width: crate::calendar_view::SHEET_WIDTH,
+            ..shot("light-journal-calendar", Light, Edit, journal_calendar)
+        },
         shot("dark-tasks", Dark, Split, tasks_view),
         shot("light-tasks", Light, Split, tasks_view),
         shot("dark-board", Dark, Edit, status_board),

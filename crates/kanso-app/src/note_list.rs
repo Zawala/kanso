@@ -841,6 +841,10 @@ impl NoteList {
                                 Box::new(crate::journal::NewFromTemplate),
                             )
                             .menu("Today's Note", Box::new(crate::journal::OpenToday))
+                            .menu(
+                                "Journal Calendar…",
+                                Box::new(crate::calendar_view::ShowCalendar),
+                            )
                             .menu("Quick Note", Box::new(crate::journal::QuickCapture))
                             .separator()
                             .menu("New Template", Box::new(crate::journal::NewTemplate))

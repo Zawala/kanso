@@ -1710,3 +1710,71 @@ fn the_board_moves_cards_with_the_keyboard(cx: &mut TestAppContext) {
     f.draw(&mut vcx);
     assert!(!f.workspace(&mut vcx, |w, _| w.board_open));
 }
+
+/// The Journal's calendar opens on today's month, the keyboard moves the
+/// day and the month, and Return opens the day's note: made in the Journal
+/// when missing, with the calendar closed; a day with a note opens it.
+// no-prop-test: drives one window through keystrokes; the month grid's
+// rules are properties in calendar.rs.
+#[gpui_kit::test]
+fn the_calendar_opens_and_makes_a_days_note(cx: &mut TestAppContext) {
+    use gpui_kit::component::WindowExt as _;
+    let f = setup(cx);
+    cx.update(|cx| {
+        crate::workspace::bind_keys(cx);
+        crate::calendar_view::bind_keys(cx);
+    });
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    f.draw(cx);
+    let view = f
+        .window
+        .update(cx, |_, window, cx| {
+            f.workspace.update(cx, |workspace, cx| {
+                crate::calendar_view::open_calendar(workspace, window, cx)
+            })
+        })
+        .unwrap();
+    f.draw(cx);
+    let today = cx.read(|cx| crate::journal::now(cx).date);
+    let (focused, month) = cx.read(|cx| {
+        let v = view.read(cx);
+        (v.focused, (v.year, v.month))
+    });
+    assert_eq!(focused, today);
+    assert_eq!(month, (today.year, today.month));
+
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    vcx.simulate_keystrokes("pageup left up");
+    let picked = vcx.read(|cx| view.read(cx).focused);
+    let expected = crate::calendar::add_months(today, -1).add_days(-8);
+    assert_eq!(picked, expected);
+    vcx.simulate_keystrokes("t");
+    assert_eq!(vcx.read(|cx| view.read(cx).focused), today);
+    vcx.simulate_keystrokes("left enter");
+    f.draw(&mut vcx);
+    let yesterday = today.add_days(-1);
+    let id = kanso_core::roles::daily_id(yesterday);
+    assert_eq!(f.open_note(&mut vcx).as_deref(), Some(id.as_str()));
+    assert!(f.store.note(&id).unwrap().is_some(), "made");
+    let open = vcx.update(|window, cx| window.has_active_dialog(cx));
+    assert!(!open, "the calendar closed");
+
+    // Opened again from the daily note, it is on that note's month and
+    // marks the day.
+    let view = f
+        .window
+        .update(&mut vcx, |_, window, cx| {
+            f.workspace.update(cx, |workspace, cx| {
+                crate::calendar_view::open_calendar(workspace, window, cx)
+            })
+        })
+        .unwrap();
+    let (focused, marked) = vcx.read(|cx| {
+        let v = view.read(cx);
+        (v.focused, v.days.contains(&yesterday))
+    });
+    assert_eq!(focused, yesterday);
+    assert!(marked);
+}
