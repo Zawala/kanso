@@ -163,7 +163,8 @@ describe("frames", () => {
 		expect(sent - limited.length).toBeLessThanOrEqual(60 + refilled);
 		expect(limited.length).toBeLessThanOrEqual(sent - 60);
 		if (60 + refilled < sent) expect(limited.length).toBeGreaterThan(0);
-		expect(text(limited[0])).toMatchObject({ type: "error", error: "rate_limited", limit: "socket" });
+		// A machine slow enough refills the bucket for every frame: nothing to read then.
+		for (const m of limited) expect(text(m)).toMatchObject({ type: "error", error: "rate_limited", limit: "socket" });
 		b.ws.close();
 	});
 });
