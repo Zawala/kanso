@@ -236,6 +236,9 @@ pub struct Appearance {
     pub view_mode: ViewMode,
     /// The full sidebar, or (false) the icon rail it collapses to.
     pub show_sidebar: bool,
+    /// The icon pack drawing the app's own icons, by its folder's name;
+    /// `None` for the built-in ones. Read at launch.
+    pub icon_pack: Option<String>,
 }
 
 impl Default for Appearance {
@@ -249,6 +252,7 @@ impl Default for Appearance {
             readable_width: false,
             view_mode: ViewMode::Split,
             show_sidebar: true,
+            icon_pack: None,
         }
     }
 }
@@ -302,6 +306,9 @@ pub struct WindowLayout {
     pub inspector_open: bool,
     pub inspector_width: f32,
     pub inspector_tab: InspectorTab,
+    /// The sidebar's notebooks opened to show the ones inside them, by ID;
+    /// the rest are folded.
+    pub open_books: Vec<String>,
 }
 
 impl Default for WindowLayout {
@@ -313,6 +320,7 @@ impl Default for WindowLayout {
             inspector_open: false,
             inspector_width: crate::layout::INSPECTOR_WIDTH,
             inspector_tab: InspectorTab::Outline,
+            open_books: Vec::new(),
         }
     }
 }
@@ -726,6 +734,7 @@ mod tests {
                         inspector_open,
                         inspector_width,
                         inspector_tab,
+                        open_books: Vec::new(),
                     }
                 },
             )
@@ -793,6 +802,7 @@ mod tests {
                         readable_width: readable,
                         view_mode: mode,
                         show_sidebar: sidebar,
+                        icon_pack: None,
                     },
                     launch_at_login: login,
                     last_note: last,

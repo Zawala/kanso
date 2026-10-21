@@ -20,6 +20,12 @@ pub const PUBLISH_FIELD: &str = "kansoPublish";
 /// device that can't read images still finds them by their words.
 pub const OCR_FIELD: &str = "kansoOcr";
 
+/// The notebook field (in `extra`) naming the icon it shows in the sidebar
+/// and lists: one of the app's choices, by its Lucide name (`"rocket"`).
+/// It syncs with the notebook; a name the app doesn't know shows the
+/// default icon.
+pub const BOOK_ICON_FIELD: &str = "kansoIcon";
+
 /// The note field (in `extra`) holding a locked note's sealed text
 /// (`kanso_sync::lock::Envelope`). A locked note's `body` is always empty:
 /// its text is only in here, so search, links, tasks, embeddings and the

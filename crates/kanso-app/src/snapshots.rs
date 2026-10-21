@@ -81,8 +81,19 @@ fn demo_store(path: &Path) -> Store {
     let engineering = book("Engineering", None);
     let platform = book("Platform", Some(&engineering));
     let product = book("Product", None);
-    book("Research", None);
+    let research = book("Research", None);
     let design = book("Design", None);
+    // Two notebooks with icons of their own.
+    for (id, icon) in [(&research, "flask-conical"), (&design, "palette")] {
+        store
+            .put(
+                DocType::Book,
+                json!({"_id": id, "kansoIcon": icon}),
+                Put::Merge,
+                Origin::Ui,
+            )
+            .unwrap();
+    }
     let personal = book("Personal", None);
     let tag = |name: &str, color: &str| {
         store
@@ -285,6 +296,198 @@ struct Shot {
 
 /// The most recently edited note, as after a restart.
 fn open_latest(_: &mut HeadlessAppContext, _: AnyWindowHandle, _: &Entity<Workspace>, _: &Store) {}
+
+/// Engineering opened in the sidebar, showing Platform inside it.
+fn notebook_open(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let engineering = store
+        .books()
+        .unwrap()
+        .into_iter()
+        .find(|b| b.name == "Engineering")
+        .unwrap()
+        .id;
+    let sidebar = cx.update(|cx| workspace.read(cx).sidebar.clone());
+    cx.update(|cx| sidebar.update(cx, |sidebar, cx| sidebar.toggle_book(&engineering, cx)));
+}
+
+/// The icon picker for a notebook with an icon of its own.
+fn book_icon_picker(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        crate::book_icons::open_picker("Design", Some("palette".into()), window, cx, |_, _, _| {});
+    })
+    .unwrap();
+}
+
+/// The icon picker scrolled down to the demo pack's section.
+fn book_icon_pack_section(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        let picker = crate::book_icons::open_picker(
+            "Ideas",
+            Some("sketch/wave".into()),
+            window,
+            cx,
+            |_, _, _| {},
+        );
+        picker.update(cx, |picker, cx| picker.search_for("sketch", window, cx));
+    })
+    .unwrap();
+}
+
+/// The icon pack gallery, with a few sets as Iconify lists them and one
+/// of them installed.
+fn icon_gallery(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    use crate::icon_gallery::tests::FakeSource;
+    use crate::icon_gallery::{COLLECTIONS_URL, Gallery, open_gallery, samples_url};
+    let shapes = [
+        "<circle cx='12' cy='12' r='9' fill='none' stroke='currentColor' stroke-width='2'/>",
+        "<path d='M12 3 21 12 12 21 3 12Z' fill='none' stroke='currentColor' stroke-width='2'/>",
+        "<path d='M4 4h16v16H4Z' fill='none' stroke='currentColor' stroke-width='2'/>",
+        "<path d='M12 3 21 20H3Z' fill='none' stroke='currentColor' stroke-width='2'/>",
+        "<path d='M3 12c3-6 6 6 9 0s6 6 9 0' fill='none' stroke='currentColor' stroke-width='2'/>",
+        "<path d='M12 4v16M4 12h16' stroke='currentColor' stroke-width='2'/>",
+    ];
+    let sets = [
+        (
+            "lucide",
+            "Lucide",
+            1903,
+            "Lucide Contributors",
+            "ISC",
+            "UI 24px",
+        ),
+        (
+            "ph",
+            "Phosphor",
+            9072,
+            "Phosphor Icons",
+            "MIT",
+            "UI Other / Mixed Grid",
+        ),
+        (
+            "tabler",
+            "Tabler Icons",
+            6238,
+            "Paweł Kuna",
+            "MIT",
+            "UI 24px",
+        ),
+        (
+            "material-symbols",
+            "Material Symbols",
+            15728,
+            "Google",
+            "Apache 2.0",
+            "Material",
+        ),
+        (
+            "ri",
+            "Remix Icon",
+            3188,
+            "Remix Design",
+            "Apache 2.0",
+            "UI 24px",
+        ),
+        (
+            "heroicons",
+            "HeroIcons",
+            1288,
+            "Refactoring UI Inc",
+            "MIT",
+            "UI Other / Mixed Grid",
+        ),
+    ];
+    let source = FakeSource::default();
+    let names: Vec<String> = (0..6).map(|ix| format!("s{ix}")).collect();
+    let mut list = serde_json::Map::new();
+    for (prefix, name, total, author, license, category) in sets {
+        list.insert(
+            prefix.into(),
+            json!({"name": name, "total": total, "author": {"name": author},
+                   "license": {"title": license}, "category": category, "samples": names}),
+        );
+        let icons: serde_json::Map<String, serde_json::Value> = names
+            .iter()
+            .zip(shapes)
+            .map(|(n, body)| (n.clone(), json!({"body": body})))
+            .collect();
+        source.answer(
+            &samples_url(prefix, &names),
+            &json!({"prefix": prefix, "width": 24, "height": 24, "icons": icons}).to_string(),
+        );
+    }
+    source.answer(
+        COLLECTIONS_URL,
+        &serde_json::Value::Object(list).to_string(),
+    );
+    cx.update(|cx| {
+        cx.set_reduce_motion(true);
+        cx.set_global(Gallery(std::sync::Arc::new(source)));
+    });
+    // Phosphor, installed.
+    let data_dir = cx.update(|cx| cx.global::<AppState>().data_dir.clone());
+    let ph = crate::icon_packs::packs_dir(&data_dir).join("ph");
+    std::fs::create_dir_all(&ph).unwrap();
+    std::fs::write(
+        ph.join("pack.json"),
+        r#"{"name": "Phosphor", "source": {"iconify": "ph"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        ph.join("icons.json"),
+        r#"{"icons": {"dot": {"body": "<circle cx='8' cy='8' r='4'/>"}}}"#,
+    )
+    .unwrap();
+    cx.update(|cx| {
+        crate::icon_packs::reload(cx);
+    });
+    let gallery = cx
+        .update_window(window, |_, window, cx| open_gallery(window, cx))
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < deadline
+        && !cx.update(|cx| gallery.read(cx).is_ready() && gallery.read(cx).samples_loaded() == 6)
+    {
+        cx.run_until_parked();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+/// The icon picker searching for "money".
+fn book_icon_search(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        let picker = crate::book_icons::open_picker("Finance", None, window, cx, |_, _, _| {});
+        picker.update(cx, |picker, cx| picker.search_for("money", window, cx));
+    })
+    .unwrap();
+}
 
 fn set_filter(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, filter: Filter) {
     let library = cx.update(|cx| workspace.read(cx).library.clone());
@@ -3221,12 +3424,45 @@ fn dev_flavour(
     show_settings(cx, window, workspace, SettingsPage::Updates);
 }
 
+/// A small icon pack in the demo's data folder: the Themes page lists it
+/// and the notebook icon picker has a section for it.
+fn demo_icon_pack(data_dir: &Path) {
+    let pack = crate::icon_packs::packs_dir(data_dir).join("sketch");
+    std::fs::create_dir_all(&pack).unwrap();
+    let svg = |shape: &str| {
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{shape}</svg>"#
+        )
+    };
+    for (name, shape) in [
+        (
+            "circle-dot",
+            r#"<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/>"#,
+        ),
+        ("diamond", r#"<path d="M12 3 21 12 12 21 3 12Z"/>"#),
+        (
+            "hexagon",
+            r#"<path d="M12 3 20 7.5V16.5L12 21 4 16.5V7.5Z"/>"#,
+        ),
+        ("wave", r#"<path d="M3 12c3-6 6 6 9 0s6 6 9 0"/>"#),
+    ] {
+        std::fs::write(pack.join(format!("{name}.svg")), svg(shape)).unwrap();
+    }
+    std::fs::write(
+        pack.join("pack.json"),
+        r#"{"name": "Sketch", "author": "Kanso", "license": "CC0",
+            "icons": {"wave": {"label": "Wave", "keywords": "sea water"}}}"#,
+    )
+    .unwrap();
+}
+
 fn open(
     cx: &mut HeadlessAppContext,
     store: Arc<Store>,
     data_dir: PathBuf,
     shot: &Shot,
 ) -> (AnyWindowHandle, Entity<Workspace>) {
+    demo_icon_pack(&data_dir);
     let mut config = AppConfig::default();
     config.appearance.theme = shot.theme;
     config.appearance.themes = ThemeSettings::from_preference(shot.theme);
@@ -3754,6 +3990,23 @@ fn snapshots() {
         shot("light-split", Light, Split, open_latest),
         shot("dark-edit", Dark, Edit, open_latest),
         shot("light-edit", Light, Edit, open_latest),
+        shot("dark-notebook-open", Dark, Edit, notebook_open),
+        Shot {
+            dialog_width: crate::book_icons::PICKER_WIDTH,
+            ..shot("dark-book-icons", Dark, Edit, book_icon_picker)
+        },
+        Shot {
+            dialog_width: crate::book_icons::PICKER_WIDTH,
+            ..shot("dark-book-icons-search", Dark, Edit, book_icon_search)
+        },
+        Shot {
+            dialog_width: crate::book_icons::PICKER_WIDTH,
+            ..shot("dark-book-icons-pack", Dark, Edit, book_icon_pack_section)
+        },
+        Shot {
+            dialog_width: crate::icon_gallery::GALLERY_WIDTH,
+            ..shot("dark-icon-gallery", Dark, Edit, icon_gallery)
+        },
         shot("dark-preview", Dark, Preview, open_latest),
         shot("light-preview", Light, Preview, open_latest),
         shot("dark-edit-mono", Dark, Edit, mono_font),

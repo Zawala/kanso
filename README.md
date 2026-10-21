@@ -64,7 +64,9 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
   notes library found on this computer, with their notebooks, tags, links and attachments. The source is only read, you see what will come
   in before anything is written, and importing again picks up newer edits without reverting notes
   you changed in Kanso.
-- Themes, light and dark, and updates that install themselves.
+- Notebooks nest, and fold away in the sidebar like an accordion (the arrow beside one opens it);
+  right-click one › **Change Icon…** to search 144 icons and give it one of its own, which syncs with it.
+- Themes, light and dark, icon packs, and updates that install themselves.
 
 ## Download
 
@@ -221,6 +223,15 @@ What locking does and doesn't do:
   be published.
 - Every device needs this version of Kanso: an older one shows a locked note as empty, and doesn't
   know a notebook is locked, so a note it makes there stays plain until this version seals it.
+
+### Icon packs
+
+**Browse Icon Packs…** (Settings › Themes, the palette, or **Get More Icons…** in a notebook's icon
+picker) lists nearly two hundred open-source icon sets from Iconify, such as Lucide, Phosphor, Tabler
+and Material Symbols, to install or uninstall in a click. An icon pack can also be a folder of SVG icons
+you add to the `icon-packs` folder of Kanso's data folder (Settings › Themes › Icon packs › **Open Folder**). Its icons join the notebook icon picker in a section
+of their own, and a pack chosen with **Use for App Icons** draws Kanso's own icons where it has a file
+of the same name, at once. [docs/ICON_PACKS.md](docs/ICON_PACKS.md) has the format.
 
 ### Shortcuts
 
