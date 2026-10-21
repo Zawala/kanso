@@ -246,6 +246,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Graph", crate::graph_view::ShowGraph),
             MenuItem::action("Board", crate::board_view::ShowBoard),
             MenuItem::action("Tasks Board", crate::board_view::ShowTaskBoard),
+            MenuItem::action("Icon Packs…", crate::icon_gallery::BrowseIconPacks),
             MenuItem::action("Focus Mode", ToggleFocusMode),
             MenuItem::action("Search All Notes", SearchAllNotes),
             MenuItem::action("Replace in All Notes…", crate::replace::ReplaceInNotes),
@@ -1168,6 +1169,33 @@ impl Workspace {
                     },
                 );
             }
+            SidebarEvent::ChangeBookIcon(id) => {
+                let Ok(Some(book)) = self.store.get(id) else {
+                    return;
+                };
+                let Ok(book) =
+                    serde_json::from_value::<kanso_core::Book>(book.to_api(Default::default()))
+                else {
+                    return;
+                };
+                let current = crate::book_icons::chosen(&book);
+                let store = self.store.clone();
+                let id = id.clone();
+                crate::book_icons::open_picker(
+                    &book.name,
+                    current,
+                    window,
+                    cx,
+                    move |icon, window, cx| {
+                        if let Err(err) = set_book_icon(&store, &id, icon.as_deref()) {
+                            window.push_notification(
+                                Notification::error(format!("Couldn't change the icon: {err}")),
+                                cx,
+                            );
+                        }
+                    },
+                );
+            }
             SidebarEvent::RecolorTag(id, color) => {
                 self.merge(
                     DocType::Tag,
@@ -1721,6 +1749,11 @@ impl Render for Workspace {
                 this.export_page(true, window, cx);
             }))
             .on_action(
+                cx.listener(|_, _: &crate::icon_gallery::BrowseIconPacks, window, cx| {
+                    crate::icon_gallery::open_gallery(window, cx);
+                }),
+            )
+            .on_action(
                 cx.listener(|this, _: &crate::publish::PublishNote, window, cx| {
                     this.close_settings(window, cx);
                     crate::publish::open_publish(this.editor.clone(), window, cx);
@@ -1928,4 +1961,24 @@ impl Render for Workspace {
             // The system draws the real traffic lights above the palette too.
             .children(self.render_placeholder_traffic_lights())
     }
+}
+
+/// Gives notebook `id` the icon named `icon`, or takes its icon away for the
+/// default. A whole write, since a merge can't remove a field.
+fn set_book_icon(
+    store: &Store,
+    id: &str,
+    icon: Option<&str>,
+) -> Result<(), kanso_store::StoreError> {
+    let doc = store.get(id)?.ok_or(kanso_store::StoreError::NotFound)?;
+    let mut book = doc.to_api(Default::default());
+    let Some(fields) = book.as_object_mut() else {
+        return Err(kanso_store::StoreError::NotFound);
+    };
+    match icon {
+        Some(icon) => fields.insert(kanso_core::model::BOOK_ICON_FIELD.into(), icon.into()),
+        None => fields.remove(kanso_core::model::BOOK_ICON_FIELD),
+    };
+    store.put(DocType::Book, book, Put::Upsert, Origin::Ui)?;
+    Ok(())
 }

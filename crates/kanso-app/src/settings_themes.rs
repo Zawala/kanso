@@ -4,7 +4,8 @@
 //! outlined. Following the system's light and dark mode outlines a light
 //! and a dark UI theme at once, and a click sets the one of its kind.
 //! Below them: the themes folder, Reload, Import, and any theme file that
-//! couldn't be used.
+//! couldn't be used; then the icon packs, one of which can draw the app's
+//! own icons.
 
 use std::sync::Arc;
 
@@ -13,11 +14,14 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{Sizable as _, StyledExt as _, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::{
+    Disableable as _, Sizable as _, StyledExt as _, WindowExt as _, h_flex, v_flex,
+};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::config::{ThemePreference, ThemeSettings};
+use crate::icon_packs;
 use crate::settings::{Row, SettingsView, section};
 use crate::theme::{Colors, Rgb, SYSTEM_MONO};
 use crate::theme_file::{PreviewColors, TokenStyle, fit_preview, fit_syntax};
@@ -305,7 +309,155 @@ pub fn page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
         );
     }
     pages.push(section("Theme files", rows, colors));
+    pages.push(icon_packs_section(cx));
     pages
+}
+
+/// Chooses the icon pack that draws the app's own icons (`None`: the
+/// built-in ones), and shows it at once: the main window opens again in its
+/// place, since a window keeps the icons it has drawn.
+fn use_icon_pack(id: Option<String>, window: &mut Window, cx: &mut App) {
+    let pack = id
+        .as_deref()
+        .and_then(|id| icon_packs::packs(cx).pack(id).cloned());
+    AppState::update_config(cx, |config| config.appearance.icon_pack = id);
+    icon_packs::use_for_app(pack.as_deref(), cx);
+    crate::reopen_main_window(window, cx);
+}
+
+/// Reads the icon packs folder again, off the UI thread, and says what
+/// couldn't be used.
+fn reload_icon_packs(window: &mut Window, cx: &mut App) {
+    let reload = icon_packs::reload_soon(cx);
+    let handle = window.window_handle();
+    cx.spawn(async move |cx| {
+        let notices = reload.await;
+        cx.update(|cx| {
+            let count = cx.global::<icon_packs::IconPacks>().packs.len();
+            let message = match notices.len() {
+                0 => Notification::success(match count {
+                    1 => "1 icon pack ready.".to_owned(),
+                    n => format!("{n} icon packs ready."),
+                }),
+                1 => Notification::warning(notices[0].sentence()),
+                n => Notification::warning(format!(
+                    "{n} icon pack files couldn't be used; the Themes page lists them."
+                )),
+            };
+            handle
+                .update(cx, |_, window, cx| window.push_notification(message, cx))
+                .ok();
+        });
+    })
+    .detach();
+}
+
+/// What a pack's row says about it. Pure.
+pub fn pack_detail(pack: &icon_packs::IconPack) -> String {
+    let mut parts = vec![match pack.icons.len() {
+        1 => "1 icon".to_owned(),
+        n => format!("{n} icons"),
+    }];
+    if let Some(author) = &pack.author {
+        parts.push(format!("by {author}"));
+    }
+    if let Some(license) = &pack.license {
+        parts.push(license.clone());
+    }
+    parts.push(match pack.replaces {
+        0 => "for notebooks".to_owned(),
+        1 => "for notebooks, and 1 of Kanso's icons".to_owned(),
+        n => format!("for notebooks, and {n} of Kanso's icons"),
+    });
+    parts.join(" · ")
+}
+
+/// Icon packs: which draws the app's own icons, the folder, and what
+/// couldn't be used.
+fn icon_packs_section(cx: &mut Context<SettingsView>) -> AnyElement {
+    let colors = Colors::get(cx);
+    let dir = icon_packs::packs_dir(&cx.global::<AppState>().data_dir);
+    let chosen = cx.global::<AppState>().config.appearance.icon_pack.clone();
+    let packs = icon_packs::packs(cx);
+    let (list, notices) = (packs.packs.clone(), packs.notices.clone());
+    let use_button = |id: Option<String>, ix: usize| {
+        let selected = chosen == id;
+        Button::new(("use-icon-pack", ix))
+            .outline()
+            .small()
+            .label(if selected {
+                "In Use"
+            } else {
+                "Use for App Icons"
+            })
+            .disabled(selected)
+            .on_click(move |_, window, cx| use_icon_pack(id.clone(), window, cx))
+    };
+    let mut rows = vec![
+        Row::new(Lucide::Shapes, "Kanso's icons")
+            .detail("The built-in icons, from Lucide.")
+            .trailing(use_button(None, 0)),
+    ];
+    for (ix, pack) in list.iter().enumerate() {
+        let row = Row::new(Lucide::Package, pack.name.clone()).detail(pack_detail(pack));
+        rows.push(if pack.replaces > 0 {
+            row.trailing(use_button(Some(pack.id.clone()), ix + 1))
+        } else {
+            row
+        });
+    }
+    // A chosen pack that has gone is drawn only by windows open already.
+    if let Some(id) = &chosen
+        && !list.iter().any(|pack| &pack.id == id)
+    {
+        rows.push(Row::new(Lucide::TriangleAlert, id.clone()).detail(
+            "The chosen icon pack isn't in the folder any more; Kanso's own icons show from the next launch.",
+        ));
+    }
+    rows.push(
+        Row::new(Lucide::FolderOpen, "Icon packs folder")
+            .detail("Add a folder of SVG icons here, with an optional pack.json; Kanso picks up changes on its own.")
+            .trailing(
+                Button::new("open-icon-packs-folder")
+                    .outline()
+                    .small()
+                    .label("Open Folder")
+                    .on_click(move |_, _, cx| {
+                        std::fs::create_dir_all(&dir).ok();
+                        cx.open_with_system(&dir);
+                    }),
+            )
+            .trailing(
+                Button::new("reload-icon-packs")
+                    .outline()
+                    .small()
+                    .label("Reload")
+                    .on_click(|_, window, cx| reload_icon_packs(window, cx)),
+            ),
+    );
+    rows.insert(
+        0,
+        Row::new(Lucide::Download, "Get icon packs")
+            .detail("Browse open-source icon sets and install one in a click.")
+            .trailing(
+                Button::new("browse-icon-packs")
+                    .outline()
+                    .small()
+                    .label("Browse Icon Packs…")
+                    .debug_selector(|| "browse-icon-packs".into())
+                    .on_click(|_, window, cx| {
+                        crate::icon_gallery::open_gallery(window, cx);
+                    }),
+            ),
+    );
+    for (ix, notice) in notices.iter().enumerate() {
+        rows.push(
+            Row::new(Lucide::TriangleAlert, notice.file.clone())
+                .detail(notice.sentence())
+                .trailing(div().id(("icon-pack-notice", ix))),
+        );
+    }
+    section("Icon packs", rows, colors)
 }
 
 /// A titled grid of cards.

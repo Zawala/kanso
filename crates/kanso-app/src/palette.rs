@@ -30,6 +30,7 @@ use kanso_store::{
 };
 use serde_json::json;
 
+use crate::book_icons::NotebookIcon;
 use crate::commands::{self, Command, Group, Needs, Picker, Run};
 use crate::config::ViewMode;
 use crate::editor::{NoteEditor, rgb_color};
@@ -138,6 +139,8 @@ struct Item {
     checked: bool,
     /// Muted text at the end of the row, such as a count.
     hint: Option<SharedString>,
+    /// An icon pack's SVG, drawn in place of `icon`.
+    pack_icon: Option<std::sync::Arc<[u8]>>,
 }
 
 impl Item {
@@ -150,6 +153,18 @@ impl Item {
             depth: 0,
             checked: false,
             hint: None,
+            pack_icon: None,
+        }
+    }
+
+    /// An entry for a notebook, with the notebook's own icon.
+    fn notebook(target: Target, label: impl Into<SharedString>, icon: NotebookIcon) -> Self {
+        match icon {
+            NotebookIcon::Lucide(icon) => Item::new(target, label, icon),
+            NotebookIcon::Pack(svg) => Item {
+                pack_icon: Some(svg),
+                ..Item::new(target, label, crate::book_icons::DEFAULT)
+            },
         }
     }
 
@@ -420,6 +435,21 @@ impl Palette {
             .collect()
     }
 
+    /// The entries listed now with the icon each draws (tests).
+    #[cfg(test)]
+    pub fn item_icons(&self) -> Vec<(String, NotebookIcon)> {
+        self.items
+            .iter()
+            .map(|item| {
+                let icon = match &item.pack_icon {
+                    Some(svg) => NotebookIcon::Pack(svg.clone()),
+                    None => NotebookIcon::Lucide(item.icon),
+                };
+                (item.label.to_string(), icon)
+            })
+            .collect()
+    }
+
     /// Types `query` into the field, as the user would.
     #[cfg(test)]
     pub fn set_query(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -587,10 +617,13 @@ impl Palette {
                     .book_tree()
                     .into_iter()
                     .map(|(depth, book)| {
-                        let item = Item::new(
+                        let item = Item::notebook(
                             Target::Book(book.id.clone()),
                             book.name.clone(),
-                            IconName::Notebook,
+                            crate::book_icons::shown(
+                                crate::book_icons::book_icon(book, cx),
+                                library.is_book_locked(&book.id),
+                            ),
                         )
                         // Typing flattens the tree into a ranked list.
                         .depth(if query.is_empty() { depth } else { 0 })
@@ -609,10 +642,13 @@ impl Palette {
                     .into_iter()
                     .map(|(depth, book)| {
                         let filter = Filter::Book(book.id.clone());
-                        let item = Item::new(
+                        let item = Item::notebook(
                             Target::Show(filter.clone()),
                             book.name.clone(),
-                            IconName::Notebook,
+                            crate::book_icons::shown(
+                                crate::book_icons::book_icon(book, cx),
+                                library.is_book_locked(&book.id),
+                            ),
                         )
                         .depth(if query.is_empty() { depth } else { 0 })
                         .checked(*showing == filter)
@@ -1269,7 +1305,13 @@ impl Palette {
             .when(selected, |el| el.bg(selected_fill(cx)))
             .child({
                 let (icon, color) = item.glyph(colors, colors.quiet(selected));
-                Icon::new(icon).size_4().flex_none().text_color(color)
+                match &item.pack_icon {
+                    Some(svg) => Icon::default().data(svg),
+                    None => Icon::new(icon),
+                }
+                .size_4()
+                .flex_none()
+                .text_color(color)
             })
             .child(
                 div()

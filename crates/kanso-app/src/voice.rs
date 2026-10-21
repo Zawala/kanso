@@ -209,6 +209,57 @@ pub fn cancel(cx: &mut App) {
     step(Event::Cancel, None, cx);
 }
 
+/// Before `window`, which voice input may be listening in, closes for a new
+/// main window in its place (`reopen_main_window`): the microphone stops and
+/// what it heard is still turned into text, to go where [`moved`] says. One
+/// still asking for the microphone has heard nothing, and just stops.
+// no-prop-test: glue over `Phase::next`.
+pub fn finish_in(window: AnyWindowHandle, cx: &mut App) {
+    let Some(voice) = cx.try_global::<Voice>() else {
+        return;
+    };
+    let here = voice
+        .target
+        .as_ref()
+        .is_some_and(|(_, target)| *target == window);
+    if !here || !matches!(voice.phase, Phase::Listening { .. }) {
+        return;
+    }
+    let event = if voice.dictation.is_some() {
+        Event::Press
+    } else {
+        Event::Cancel
+    };
+    step(event, None, cx);
+}
+
+/// Voice input's window `old` gave way to `window`, showing `editor`: a
+/// transcript still coming goes into `editor` when it shows the same note,
+/// `note`, as the old one did; otherwise onto the clipboard, said in
+/// `window`.
+// no-prop-test: glue.
+pub fn moved(
+    old: AnyWindowHandle,
+    note: Option<&str>,
+    editor: &Entity<NoteEditor>,
+    window: AnyWindowHandle,
+    cx: &mut App,
+) {
+    let same_note = note.is_some() && editor.read(cx).note_id() == note;
+    if !cx.has_global::<Voice>() {
+        return;
+    }
+    let voice = cx.global_mut::<Voice>();
+    if let Some((target, target_window)) = &mut voice.target
+        && *target_window == old
+    {
+        *target_window = window;
+        if same_note {
+            *target = editor.downgrade();
+        }
+    }
+}
+
 /// The first press: on this device, or the system's dictation.
 // no-prop-test: dialog glue; the snapshots show it.
 fn ask(editor: Entity<NoteEditor>, window: &mut Window, cx: &mut App) {
