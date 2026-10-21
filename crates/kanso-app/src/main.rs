@@ -95,6 +95,7 @@ mod theme_import;
 mod themes;
 mod title_bar;
 mod touch_id;
+mod transcribe;
 #[cfg(test)]
 mod ui_tests;
 mod updates;

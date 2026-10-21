@@ -3848,6 +3848,18 @@ fn snapshots() {
         ),
         shot("dark-voice-writing", Dark, Edit, voice::editor_writing),
         shot(
+            "dark-editor-transcribing",
+            Dark,
+            Edit,
+            voice::editor_transcribing,
+        ),
+        shot(
+            "light-editor-transcribing",
+            Light,
+            Split,
+            voice::editor_transcribing,
+        ),
+        shot(
             "light-settings-voice-missing",
             Light,
             Edit,

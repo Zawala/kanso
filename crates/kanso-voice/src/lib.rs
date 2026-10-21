@@ -9,6 +9,9 @@
 //! while recording goes on ([`engine::Parakeet`]), so stopping waits for the
 //! last piece only.
 //!
+//! [`file::transcribe`] does the same for an audio file, decoding it a
+//! piece at a time so a long recording never sits in memory whole.
+//!
 //! Nothing leaves the device: ONNX Runtime is linked in, runs on the CPU,
 //! and its telemetry is off.
 
@@ -17,6 +20,7 @@ pub mod chunk;
 pub mod decode;
 mod dictation;
 pub mod engine;
+pub mod file;
 pub mod model;
 pub mod permission;
 pub mod text;
@@ -50,4 +54,8 @@ pub enum VoiceError {
     /// The recording held no words.
     #[error("no speech was heard")]
     NothingHeard,
+    /// An audio file that can't be read: not audio, damaged, or in a
+    /// format Kanso doesn't decode.
+    #[error("the audio can't be read: {0}")]
+    Audio(String),
 }

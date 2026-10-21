@@ -149,3 +149,19 @@ fn a_missing_model_is_a_model_error() {
     let result = Parakeet::load(std::path::Path::new("/nonexistent/kanso-voice-model"));
     assert!(matches!(result, Err(VoiceError::Model(_))));
 }
+
+#[test]
+#[ignore = "needs the downloaded model in KANSO_VOICE_MODEL_DIR"]
+fn the_model_transcribes_an_audio_file() {
+    let source = kanso_voice::file::from_path(std::path::Path::new(FIXTURE)).unwrap();
+    let cancel = AtomicBool::new(false);
+    let mut steps = Vec::new();
+    let text =
+        kanso_voice::file::transcribe(source, Some("wav"), &model_dir(), &cancel, &mut |p| {
+            steps.push(p)
+        })
+        .unwrap();
+    println!("file transcript: {text:?}");
+    assert_eq!(words(&text), words(SPOKEN));
+    assert_eq!(steps.last().and_then(|p| p.share()), Some(1.));
+}

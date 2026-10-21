@@ -425,6 +425,9 @@ pub fn error_words(err: &VoiceError) -> Option<String> {
         }
         VoiceError::Device(why) => format!("The microphone stopped working: {why}"),
         VoiceError::Model(why) => format!("The voice model couldn't run: {why}"),
+        VoiceError::Audio(why) => format!(
+            "Kanso can't read that recording ({why}). It reads M4A, MP3, WAV, AIFF, CAF, FLAC and Ogg Vorbis."
+        ),
     })
 }
 

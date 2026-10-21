@@ -784,6 +784,7 @@ impl Palette {
             .is_some_and(|services| services.signed_in());
         let in_trash = note.is_some_and(|n| n.book_id == TRASH_BOOK_ID);
         let image_line = !in_trash && self.editor.read(cx).image_on_caret_line(cx).is_some();
+        let audio_line = !in_trash && self.editor.read(cx).audio_on_caret_line(cx).is_some();
         commands::all()
             .iter()
             .filter(|command| command.group == group)
@@ -797,6 +798,7 @@ impl Palette {
                 Needs::SignedIn => signed_in,
                 Needs::SignedOut => !signed_in,
                 Needs::ImageLine => image_line,
+                Needs::AudioLine => audio_line,
             })
             .map(|command| {
                 let (label, icon) = match command.label_when_pinned {

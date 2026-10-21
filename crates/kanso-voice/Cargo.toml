@@ -21,6 +21,9 @@ regex.workspace = true
 rtrb = "0.3"
 # The microphone's own rate to the model's 16 kHz.
 rubato = "5"
+# Audio files to transcribe, in pure Rust: WAV, AIFF, CAF, MP3, M4A (AAC or
+# ALAC), FLAC and Ogg Vorbis. Only the decoders for these are built.
+symphonia = { version = "0.5.5", default-features = false, features = ["aac", "adpcm", "aiff", "alac", "caf", "flac", "isomp4", "mp3", "ogg", "pcm", "vorbis", "wav"] }
 thiserror.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -1779,10 +1779,17 @@ impl NoteEditor {
             .filter(|path| image_path(path) || is_drawing(path))
             .map(|path| Pasted::File(path.clone()))
             .collect();
-        if images.is_empty() {
+        let audio: Vec<std::path::PathBuf> = paths
+            .paths()
+            .iter()
+            .filter(|path| crate::transcribe::is_audio(path))
+            .cloned()
+            .collect();
+        if images.is_empty() && audio.is_empty() {
             if !paths.paths().is_empty() {
                 cx.emit(EditorEvent::Notice(
-                    "Only images and Excalidraw drawings can be dropped into a note.".into(),
+                    "Only images, recordings and Excalidraw drawings can be dropped into a note."
+                        .into(),
                 ));
             }
             return;
@@ -1793,7 +1800,131 @@ impl NoteEditor {
             Some(utf8_offset(&state.value(), utf16))
         });
         self.focus_body(window, cx);
-        self.attach_images(images, at, window, cx);
+        if !audio.is_empty() {
+            self.attach_recordings(audio, at, window, cx);
+        }
+        if !images.is_empty() {
+            self.attach_images(images, at, window, cx);
+        }
+    }
+
+    /// Attaches recordings dropped at `at` (those up to the attachment
+    /// limit), puts their links there, and transcribes the first: its words
+    /// go under its link, or at the end of the note for one too long to
+    /// attach.
+    // no-prop-test: glue; `transcribe::transcript_edit` and `attach_audio`
+    // have the tests.
+    fn attach_recordings(
+        &mut self,
+        paths: Vec<std::path::PathBuf>,
+        at: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let store = self.store.clone();
+        let length = self.body.read(cx).text().len();
+        let work = cx.background_executor().spawn(async move {
+            paths
+                .into_iter()
+                .map(|path| {
+                    let attached = crate::transcribe::attach_audio(&store, &path);
+                    (path, attached)
+                })
+                .collect::<Vec<_>>()
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let results = work.await;
+            this.update_in(cx, |this, window, cx| {
+                if this.note.is_none() {
+                    return;
+                }
+                let mut links = Vec::new();
+                let mut first = None;
+                for (path, attached) in results {
+                    let name = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("recording")
+                        .to_owned();
+                    match attached {
+                        Ok(Some((file_id, link))) => {
+                            links.push(link);
+                            first.get_or_insert(crate::transcribe::Source::Path {
+                                path,
+                                file_id: Some(file_id),
+                                name,
+                            });
+                        }
+                        Ok(None) => {
+                            first.get_or_insert(crate::transcribe::Source::Path {
+                                path,
+                                file_id: None,
+                                name,
+                            });
+                        }
+                        Err(message) => cx.emit(EditorEvent::Notice(message)),
+                    }
+                }
+                if !links.is_empty() {
+                    let block = links.join("\n\n");
+                    this.smart_edit(window, cx, |_, text, selection| {
+                        let range = match at {
+                            Some(at) if text.len() == length && text.is_char_boundary(at) => at..at,
+                            _ => selection,
+                        };
+                        Some(smart_paste::block_insert(text, range, &block))
+                    });
+                    this.save(cx);
+                }
+                if let Some(source) = first {
+                    let editor = cx.entity();
+                    crate::transcribe::start(editor, source, window, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Puts a transcript in the note as a paragraph of its own, under the
+    /// line linking to `file_id` (or at the end), as one undo step, leaving
+    /// the caret where it was. False when the note's text can't take it.
+    // no-prop-test: glue over `transcribe::transcript_edit`, which has the properties.
+    pub fn insert_transcript_below(
+        &mut self,
+        file_id: Option<&str>,
+        transcript: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.note.is_none() || matches!(self.lock, LockView::Closed(_)) {
+            return false;
+        }
+        self.smart_edit(window, cx, |_, text, selection| {
+            crate::transcribe::transcript_edit(text, file_id, transcript, selection)
+        });
+        self.schedule_autosave(cx);
+        true
+    }
+
+    /// The audio attachment linked on the caret's line: its file ID and
+    /// name.
+    pub fn audio_on_caret_line(&self, cx: &App) -> Option<(String, String)> {
+        self.note.as_ref()?;
+        let state = self.body.read(cx);
+        let text = state.value();
+        let caret = state.selected_range().start.min(text.len());
+        let start = text[..caret].rfind('\n').map_or(0, |i| i + 1);
+        let end = text[caret..].find('\n').map_or(text.len(), |i| caret + i);
+        crate::transcribe::linked_files(&text[start..end])
+            .into_iter()
+            .find_map(|id| {
+                let doc = self.store.get(&id).ok()??;
+                let content_type = doc.str_field("contentType")?;
+                kanso_voice::file::extension(content_type)?;
+                let name = doc.str_field("name").unwrap_or("recording").to_owned();
+                Some((id, name))
+            })
     }
 
     /// Stores `images` as attachments in the background, then puts them in
@@ -2754,6 +2885,69 @@ impl NoteEditor {
         )
     }
 
+    /// While a recording is transcribed into this note: its name, how far
+    /// along it is, and Cancel.
+    fn render_transcribing(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let shown = crate::transcribe::shown_for(self.note_id()?, cx)?;
+        let colors = Colors::get(cx);
+        let words = match (shown.waiting, shown.share) {
+            (true, _) => format!(
+                "“{}” is transcribed once the speech model has downloaded",
+                shown.name
+            ),
+            (false, Some(share)) => format!(
+                "Transcribing “{}”… {}%",
+                shown.name,
+                (share * 100.).floor() as u32
+            ),
+            (false, None) => format!("Transcribing “{}”…", shown.name),
+        };
+        let share = shown.share.unwrap_or(0.);
+        Some(
+            h_flex()
+                .flex_none()
+                .gap_2()
+                .mx(px(TEXT_INSET - 12.))
+                .my_1()
+                .px(px(12.))
+                .py(px(5.))
+                .rounded(px(6.))
+                .bg(colors.fill)
+                .text_size(px(12.5))
+                .text_color(colors.text_secondary)
+                .debug_selector(|| "transcribing".into())
+                .child(
+                    Icon::new(Lucide::Mic)
+                        .size(px(13.))
+                        .text_color(colors.text_muted),
+                )
+                .child(div().flex_1().min_w_0().truncate().child(words))
+                .child(
+                    div()
+                        .flex_none()
+                        .w(px(80.))
+                        .h(px(4.))
+                        .rounded_full()
+                        .bg(colors.divider)
+                        .child(
+                            div()
+                                .h_full()
+                                .w(px(80. * share.clamp(0., 1.)))
+                                .rounded_full()
+                                .bg(colors.accent),
+                        ),
+                )
+                .child(
+                    Button::new("transcribe-cancel")
+                        .ghost()
+                        .xsmall()
+                        .label("Cancel")
+                        .on_click(|_, _, cx| crate::transcribe::cancel(cx)),
+                )
+                .into_any_element(),
+        )
+    }
+
     /// Asks before merging note `other` into the open note.
     fn ask_to_merge(
         &mut self,
@@ -3323,6 +3517,7 @@ impl Render for NoteEditor {
             .when(!trashed && self.incoming.is_none(), |el| {
                 el.children(self.render_twin_banner(cx))
             })
+            .children(self.render_transcribing(cx))
             .child(div().flex_1().min_h_0().w_full().child(body))
             // Redrawn only when the cursor or the counts change.
             .child(
@@ -3607,6 +3802,69 @@ mod tests {
         assert_eq!(store.note(&id).unwrap().unwrap().body, "## Goals\n**next**");
         let label = cx.read(|cx| editor.read(cx).footer.read(cx).label());
         assert!(label.ends_with("2 words · 17 chars"), "{label}");
+    }
+
+    /// A recording linked on the caret's line is found for Transcribe
+    /// Recording, and its transcript goes in under it as one edit, saved,
+    /// with the caret left where it was.
+    // no-prop-test: glue; `transcribe::transcript_edit` has the properties.
+    #[gpui_kit::test]
+    fn a_transcript_goes_under_its_recording(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let (window, editor, store, id) = editor_on(cx, dir.path(), "");
+        let wav = dir.path().join("memo.wav");
+        std::fs::write(&wav, b"RIFF").unwrap();
+        let (file_id, link) = crate::transcribe::attach_audio(&store, &wav)
+            .unwrap()
+            .unwrap();
+        let rev = store.note(&id).unwrap().unwrap().rev.unwrap();
+        let body = format!("Notes\n{link}\nLater");
+        store
+            .put(
+                DocType::Note,
+                json!({"_id": id, "_rev": rev, "body": body}),
+                Put::Merge,
+                Origin::Ui,
+            )
+            .unwrap();
+        let run = |cx: &mut TestAppContext,
+                   f: &dyn Fn(
+            &mut NoteEditor,
+            &mut gpui_kit::Window,
+            &mut gpui_kit::Context<NoteEditor>,
+        )| {
+            window
+                .update(cx, |_, window, cx| {
+                    editor.update(cx, |editor, cx| f(editor, window, cx))
+                })
+                .unwrap();
+            cx.executor().advance_clock(Duration::from_secs(2));
+            cx.run_until_parked();
+        };
+        run(cx, &|editor, window, cx| editor.open(Some(&id), window, cx));
+        // On the first line: no recording there.
+        run(cx, &|editor, _, cx| {
+            editor
+                .body
+                .update(cx, |body, cx| body.set_selected_range(2..2, cx))
+        });
+        assert_eq!(cx.read(|cx| editor.read(cx).audio_on_caret_line(cx)), None);
+        run(cx, &|editor, _, cx| {
+            editor
+                .body
+                .update(cx, |body, cx| body.set_selected_range(8..8, cx))
+        });
+        let found = cx.read(|cx| editor.read(cx).audio_on_caret_line(cx));
+        assert_eq!(found, Some((file_id.clone(), "memo.wav".to_owned())));
+        run(cx, &|editor, window, cx| {
+            editor.insert_transcript_below(Some(&file_id), "Spoken words.", window, cx);
+        });
+        assert_eq!(
+            store.note(&id).unwrap().unwrap().body,
+            format!("Notes\n{link}\n\nSpoken words.\n\nLater")
+        );
+        let caret = cx.read(|cx| editor.read(cx).body.read(cx).selected_range());
+        assert_eq!(caret, 8..8);
     }
 
     /// A note that says nearly the same as another is mentioned once both
