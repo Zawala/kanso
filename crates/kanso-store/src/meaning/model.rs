@@ -14,3 +14,12 @@ pub enum MeaningSearch {
     /// The notes nearest the search, most similar first.
     Found(Vec<RelatedNote>),
 }
+
+/// A tag a note's nearest notes have and it hasn't.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TagSuggestion {
+    pub tag_id: String,
+    pub name: String,
+    /// The similarities of the near notes that have it, added up.
+    pub weight: f32,
+}

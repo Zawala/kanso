@@ -327,6 +327,47 @@ pub(super) fn palette_meaning(
     });
 }
 
+/// Tags close notes have, as the open note's suggestions.
+fn suggest_tags(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, store: &Store) {
+    let suggested: Vec<kanso_store::TagSuggestion> = [("roadmap", 1.4), ("rust", 0.6)]
+        .into_iter()
+        .map(|(name, weight)| kanso_store::TagSuggestion {
+            tag_id: store.tag_named(name, Origin::Ui).unwrap(),
+            name: name.into(),
+            weight,
+        })
+        .collect();
+    cx.update(|cx| {
+        let meaning = workspace.read(cx).editor.read(cx).meaning().clone();
+        meaning.update(cx, |meaning, cx| {
+            meaning.set_suggested_for_test(suggested);
+            cx.notify();
+        });
+    });
+}
+
+/// The Related tab with tags to suggest above the related notes.
+pub(super) fn inspector_related_tags(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    inspector_related(cx, window, workspace, store);
+    suggest_tags(cx, workspace, store);
+}
+
+/// The tag list from the header, the suggested tags first.
+pub(super) fn palette_suggested_tags(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    suggest_tags(cx, workspace, store);
+    super::pick_from_header(cx, window, workspace, crate::commands::Picker::Tag, "");
+}
+
 /// The Related tab while the feature is off.
 pub(super) fn inspector_related_off(
     cx: &mut HeadlessAppContext,

@@ -46,6 +46,7 @@ use crate::library::{Filter, Library};
 use crate::list_edit::{self, TabIntent};
 use crate::locked::LockView;
 use crate::markdown_edit::{self, Edit, Format};
+use crate::note_meaning::NoteMeaning;
 use crate::pairing::Pairs;
 use crate::preview::{ImageResize, LinkSender, Preview, PreviewEdit, TEXT_INSET, readable_width};
 use crate::smart_paste;
@@ -263,6 +264,8 @@ pub struct NoteEditor {
     vim: Option<vim_glue::VimState>,
     /// The tints on tasks' due dates in the text.
     due_marks: crate::due::DueMarks,
+    /// What related notes say about the open note: suggested tags.
+    meaning: Entity<NoteMeaning>,
     /// Shows the hidden header in focus mode, as a hover would.
     #[cfg(test)]
     pub(crate) reveal_chrome: bool,
@@ -307,12 +310,14 @@ impl NoteEditor {
                 .auto_close(false)
         });
         let wiki: SharedIndex = Rc::new(RefCell::new(Arc::new(WikiIndex::default())));
+        let meaning = cx.new(|cx| NoteMeaning::new(store.clone(), cx));
         body.update(cx, |state, _| {
             // `#tags` beside `[[` wiki-links: the editor takes one provider.
             state.lsp_mut().completion_provider =
                 Some(Rc::new(crate::tag_complete::NoteCompletion::new(
                     WikiCompletion::new(wiki.clone()),
                     library.clone(),
+                    meaning.clone(),
                 )));
         });
         let settings = cx
@@ -447,6 +452,7 @@ impl NoteEditor {
             typewriter: false,
             vim: None,
             due_marks: Default::default(),
+            meaning,
             #[cfg(test)]
             reveal_chrome: false,
             _subscriptions: subscriptions,
@@ -696,6 +702,11 @@ impl NoteEditor {
         ))
     }
 
+    /// What related notes say about the open note.
+    pub fn meaning(&self) -> &Entity<NoteMeaning> {
+        &self.meaning
+    }
+
     pub fn note_id(&self) -> Option<&str> {
         self.note.as_ref().map(|n| n.id.as_str())
     }
@@ -789,6 +800,9 @@ impl NoteEditor {
         } else {
             self.vim_reset(cx);
         }
+        let id = self.note_id().map(str::to_owned);
+        self.meaning
+            .update(cx, |meaning, cx| meaning.follow(id.as_deref(), cx));
         let has_note = self.note.is_some();
         self.footer
             .update(cx, |footer, cx| footer.note_opened(has_note, cx));

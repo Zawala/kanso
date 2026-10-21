@@ -1,7 +1,8 @@
 //! Meaning, from the embeddings related notes keep (`embed.rs`): searching
-//! notes by what they are about.
+//! notes by what they are about, and tags suggested by the nearest notes.
 //!
-//! A search needs its words turned
+//! The vectors are read from the store, so tag suggestions work without a
+//! model. A search needs its words turned
 //! into a vector by the same model the notes were embedded with: the app
 //! lends the store its model while it is loaded ([`Store::lend_embedder`]),
 //! and a store opened without the app answers [`MeaningSearch::NoModel`].
@@ -15,9 +16,15 @@ use std::sync::Arc;
 use kanso_core::Note;
 use kanso_core::excerpt::{HEAD_CHARS, excerpt_around};
 
-use crate::embed::{embedded_notes, nearest};
+use rusqlite::{Connection, params};
+
+use crate::embed::{embedded_notes, nearest, own_vector};
 use crate::{Embedder, NoteSummary, Result, Store};
-use model::MeaningSearch;
+use model::{MeaningSearch, TagSuggestion};
+use rank::suggest_tags;
+
+/// How many of a note's nearest notes its tag suggestions come from.
+const TAG_NEIGHBOURS: usize = 12;
 
 impl Store {
     /// Lends the store the app's embedding model while it is loaded
@@ -57,6 +64,43 @@ impl Store {
         })
     }
 
+    /// Tags for note `id` from its nearest notes by `model` (linked ones
+    /// too), that it hasn't got: at most `limit`, heaviest first. `None`
+    /// while the note has no embedding.
+    pub fn tag_suggestions(
+        &self,
+        id: &str,
+        model: &str,
+        limit: usize,
+    ) -> Result<Option<Vec<TagSuggestion>>> {
+        self.read(|conn| {
+            let Some(query) = own_vector(conn, id, model)? else {
+                return Ok(None);
+            };
+            let skip = HashSet::from([id.to_owned()]);
+            let candidates = embedded_notes(conn, model, &skip, false)?;
+            let near = nearest(&query, &candidates, TAG_NEIGHBOURS);
+            let neighbours: Vec<(f32, Vec<String>)> = near
+                .iter()
+                .map(|note| Ok((note.score, note_tags(conn, &note.id)?)))
+                .collect::<Result<_>>()?;
+            let own = note_tags(conn, id)?;
+            suggest_tags(&neighbours, &own, limit)
+                .into_iter()
+                .filter_map(|(tag_id, weight)| match tag_name(conn, &tag_id) {
+                    Ok(Some(name)) => Some(Ok(TagSuggestion {
+                        tag_id,
+                        name,
+                        weight,
+                    })),
+                    Ok(None) => None,
+                    Err(err) => Some(Err(err)),
+                })
+                .collect::<Result<Vec<_>>>()
+                .map(Some)
+        })
+    }
+
     /// The live notes with `ids` as the note list shows them, in that
     /// order; any gone meanwhile are left out.
     pub fn summaries_of(&self, ids: &[&str]) -> Result<Vec<NoteSummary>> {
@@ -68,6 +112,27 @@ impl Store {
         }
         Ok(out)
     }
+}
+
+/// The tag IDs note `id` has.
+fn note_tags(conn: &Connection, id: &str) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare_cached("SELECT tag_id FROM note_tags WHERE note_id = ?")?;
+    let rows = stmt.query_map([id], |row| row.get::<_, String>(0))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// A live tag's name.
+fn tag_name(conn: &Connection, id: &str) -> Result<Option<String>> {
+    use rusqlite::OptionalExtension as _;
+    Ok(conn
+        .query_row(
+            "SELECT json_extract(json, '$.name') FROM docs
+             WHERE id = ? AND type = 'tag' AND deleted = 0",
+            params![id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten())
 }
 
 /// A note as a list row, its snippet from the start of its body.
@@ -205,5 +270,25 @@ mod tests {
             MeaningSearch::NoModel
         );
         store.lend_embedder(None);
+    }
+
+    #[test]
+    fn tags_are_suggested_from_close_notes() {
+        let (_dir, store) = open();
+        let a = note(&store, "aaa", "aaaa bbb", &["mine"]);
+        note(&store, "aab", "aaaa bb", &["mine", "letters", "ab"]);
+        note(&store, "aaa", "aaa bbbb", &["letters"]);
+        note(&store, "zzz", "zzzz", &["far"]);
+        store.set_embedding_model(Some("letters")).unwrap();
+        assert_eq!(store.tag_suggestions(&a, "letters", 5).unwrap(), None);
+        index(&store);
+        let names: Vec<String> = store
+            .tag_suggestions(&a, "letters", 5)
+            .unwrap()
+            .unwrap()
+            .into_iter()
+            .map(|s| s.name)
+            .collect();
+        assert_eq!(names, ["letters", "ab"]);
     }
 }

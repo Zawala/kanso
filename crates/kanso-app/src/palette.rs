@@ -279,6 +279,13 @@ impl Palette {
                 }
                 _ => {}
             }),
+            // Tag suggestions for the open note arrive in the background.
+            cx.observe(&editor.read(cx).meaning().clone(), |this, _, cx| {
+                if this.mode == Some(Mode::Pick(Picker::Tag)) {
+                    this.rebuild(cx);
+                    cx.notify();
+                }
+            }),
             // Notebooks and tags can change while the palette is open, by
             // sync or the API.
             cx.observe(&library, |this, _, cx| {
@@ -641,7 +648,24 @@ impl Palette {
             Some(Mode::Pick(Picker::Tag)) => {
                 let library = self.library.read(cx);
                 let on_note = self.note.as_ref().map_or(&[][..], |n| &n.tags[..]);
-                let mut tags: Vec<_> = library.tags.iter().collect();
+                // Before anything is typed, the tags close notes have lead.
+                let suggested: Vec<_> = if query.is_empty() && self.note.is_some() {
+                    self.editor
+                        .read(cx)
+                        .meaning()
+                        .read(cx)
+                        .suggested_tags(on_note)
+                        .into_iter()
+                        .filter_map(|s| library.tag(&s.tag_id).cloned())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                let mut tags: Vec<_> = library
+                    .tags
+                    .iter()
+                    .filter(|t| !suggested.iter().any(|s| s.id == t.id))
+                    .collect();
                 tags.sort_by_key(|t| t.name.to_lowercase());
                 // Tags show as "#mcp", so "#mcp" typed finds "mcp".
                 let name = tag_name(query);
@@ -669,7 +693,24 @@ impl Palette {
                     // Last, but always there.
                     entries.push((item, Some(i64::MIN / 8)));
                 }
-                vec![section("Tags", entries, false)]
+                let mut sections = Vec::new();
+                if !suggested.is_empty() {
+                    let entries = suggested
+                        .iter()
+                        .map(|tag| {
+                            let item = Item::new(
+                                Target::Tag(tag.id.clone()),
+                                tag.name.clone(),
+                                IconName::Sparkles,
+                            )
+                            .hint(tag.count.to_string());
+                            (item, None)
+                        })
+                        .collect();
+                    sections.push(section(SUGGESTED_HEADING, entries, true));
+                }
+                sections.push(section("Tags", entries, false));
+                sections
             }
             Some(Mode::Pick(Picker::Status)) => {
                 let current = self.note.as_ref().map(|n| n.status);
@@ -1509,6 +1550,11 @@ impl Palette {
                             "The note has #{}; choosing it takes the tag off.",
                             item.label
                         )
+                    } else if item.icon == IconName::Sparkles {
+                        format!(
+                            "Adds #{} to the note. Notes about the same things have it.",
+                            item.label
+                        )
                     } else {
                         format!("Adds #{} to the note.", item.label)
                     }
@@ -1796,6 +1842,9 @@ fn merge_by_id(first: Vec<NoteSummary>, then: Vec<NoteSummary>, limit: usize) ->
     }
     merged
 }
+
+/// The heading over the tags close notes suggest.
+const SUGGESTED_HEADING: &str = "Suggested by close notes";
 
 /// The heading over notes found by meaning.
 const ABOUT_HEADING: &str = "Similar in meaning";
@@ -2108,8 +2157,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        ABOUT_HEADING, MODIFIER_SYMBOLS, Mode, Palette, Row, meaning_query, merge_by_id, shortcut,
-        shortcut_parts, tag_name, title_search,
+        ABOUT_HEADING, MODIFIER_SYMBOLS, Mode, Palette, Row, SUGGESTED_HEADING, meaning_query,
+        merge_by_id, shortcut, shortcut_parts, tag_name, title_search,
     };
     use crate::config::AppConfig;
     use crate::library::Filter;
@@ -2921,6 +2970,74 @@ mod tests {
             "Raised beds"
         );
         f.store.lend_embedder(None);
+    }
+
+    /// The tag list leads with the tags close notes have and the open note
+    /// hasn't, once each; adding one takes it off the suggestions.
+    #[gpui_kit::test]
+    fn the_tag_list_suggests_tags_from_close_notes(cx: &mut TestAppContext) {
+        use crate::commands::Picker;
+        use crate::related::{MODEL_ID, Related};
+        let f = setup(cx);
+        let book = f.store.note(&f.note).unwrap().unwrap().book_id;
+        let tagged = |title: &str, body: &str, tag: &str| {
+            let tag = f.store.tag_named(tag, Origin::Ui).unwrap();
+            f.store
+                .put(
+                    DocType::Note,
+                    json!({"title": title, "body": body, "bookId": book, "tags": [tag]}),
+                    Put::Upsert,
+                    Origin::Ui,
+                )
+                .unwrap();
+        };
+        tagged("Retro", "the schedule and agenda", "planning");
+        tagged("Raised beds", "tomatoes and basil", "garden");
+        f.store.set_embedding_model(Some(MODEL_ID)).unwrap();
+        let queue = f.store.embedding_queue(MODEL_ID).unwrap();
+        let texts: Vec<String> = queue.pending.iter().map(|p| p.text.clone()).collect();
+        let rows: Vec<_> = queue
+            .pending
+            .into_iter()
+            .zip(kanso_store::Embedder::embed(&Subjects, &texts))
+            .map(|(p, v)| (p.id, p.hash, v))
+            .collect();
+        f.store.put_embeddings(MODEL_ID, &rows).unwrap();
+        // New embeddings: the open note's suggestions are read again.
+        cx.update(|cx| {
+            cx.set_global(Related::default());
+            gpui_kit::BorrowAppContext::update_global::<Related, _>(cx, |related, _| {
+                related.generation = 1
+            });
+        });
+        cx.run_until_parked();
+        let headings = |cx: &mut TestAppContext| {
+            let palette = f.palette(cx);
+            cx.read(|cx| {
+                palette
+                    .read(cx)
+                    .rows
+                    .iter()
+                    .filter_map(|row| match row {
+                        Row::Heading(h) => Some(h.to_string()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            })
+        };
+        f.open(cx, Mode::Pick(Picker::Tag));
+        assert_eq!(headings(cx), [SUGGESTED_HEADING, "Tags"]);
+        let labels = f.labels(cx);
+        assert_eq!(labels, ["planning", "garden"]);
+        // Typing searches every tag as before.
+        f.type_query(cx, "gar");
+        assert_eq!(headings(cx), ["Tags"]);
+        f.type_query(cx, "");
+        f.keys(cx, "enter");
+        let tags = f.store.note(&f.note).unwrap().unwrap().tags;
+        assert_eq!(tags, [f.store.tag_named("planning", Origin::Ui).unwrap()]);
+        f.open(cx, Mode::Pick(Picker::Tag));
+        assert_eq!(headings(cx), ["Tags"]);
     }
 
     #[test]

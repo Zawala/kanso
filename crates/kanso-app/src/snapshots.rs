@@ -3736,6 +3736,18 @@ fn snapshots() {
             discovery::palette_meaning,
         ),
         shot(
+            "light-inspector-related-tags",
+            Light,
+            Edit,
+            discovery::inspector_related_tags,
+        ),
+        shot(
+            "dark-palette-suggested-tags",
+            Dark,
+            Edit,
+            discovery::palette_suggested_tags,
+        ),
+        shot(
             "dark-inspector-related-off",
             Dark,
             Edit,
