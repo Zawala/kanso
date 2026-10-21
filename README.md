@@ -54,7 +54,7 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
   in before anything is written, and importing again picks up newer edits without reverting notes
   you changed in Kanso.
 - Notebooks nest, and fold away in the sidebar like an accordion (the arrow beside one opens it);
-  right-click one › **Change Icon…** to give it an icon of its own, which syncs with it.
+  right-click one › **Change Icon…** to search 144 icons and give it one of its own, which syncs with it.
 - Themes, light and dark, and updates that install themselves.
 
 ## Download

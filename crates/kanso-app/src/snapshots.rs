@@ -328,6 +328,21 @@ fn book_icon_picker(
     .unwrap();
 }
 
+/// The icon picker searching for "money".
+fn book_icon_search(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    _: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        let picker = crate::book_icons::open_picker("Finance", None, window, cx, |_, _, _| {});
+        picker.update(cx, |picker, cx| picker.search_for("money", window, cx));
+    })
+    .unwrap();
+}
+
 fn set_filter(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>, filter: Filter) {
     let library = cx.update(|cx| workspace.read(cx).library.clone());
     cx.update(|cx| library.update(cx, |library, cx| library.set_filter(filter, cx)));
@@ -3444,6 +3459,10 @@ fn snapshots() {
         Shot {
             dialog_width: crate::book_icons::PICKER_WIDTH,
             ..shot("dark-book-icons", Dark, Edit, book_icon_picker)
+        },
+        Shot {
+            dialog_width: crate::book_icons::PICKER_WIDTH,
+            ..shot("dark-book-icons-search", Dark, Edit, book_icon_search)
         },
         shot("dark-preview", Dark, Preview, open_latest),
         shot("light-preview", Light, Preview, open_latest),
