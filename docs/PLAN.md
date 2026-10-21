@@ -1,19 +1,19 @@
 # Kanso plan
 
 Kanso is a local-first markdown notes app. It has a GPUI desktop UI,
-serves Inkdrop's local HTTP API on `127.0.0.1:19840` so existing MCP setups keep working,
-imports an Inkdrop database losslessly, and syncs end-to-end encrypted through Cloudflare.
+serves a widely used local-server REST API on `127.0.0.1:19840` so existing MCP setups keep
+working, imports a PouchDB notes library losslessly, and syncs end-to-end encrypted through Cloudflare.
 
 ## Decisions
 
 | Topic | Decision |
 |---|---|
 | UI | GPUI through `gpui-kit = "=0.7.3"` (gpui-component, `EditorState` for markdown source, base `TextView` for preview). Pinned exactly; upgrade on purpose. |
-| API | Inkdrop local-server compatible REST on `127.0.0.1:19840` with Basic auth. The official `@inkdropapp/mcp-server` runs against it unchanged. |
+| API | Local-server compatible REST on `127.0.0.1:19840` with Basic auth. The reference MCP server (below) runs against it unchanged. |
 | MCP | Native `/mcp` endpoint on the same port with the same 17 tool names and params, added after the REST API passes contract tests. |
-| Credentials | Port, username and password are copied from Inkdrop's `config.json` at import time and kept in Kanso's own config. Never logged. |
-| Storage | rusqlite (bundled), WAL. Each document stored as verbatim Inkdrop-shaped JSON with derived index columns. |
-| Search | FTS5 `trigram` over title and body, the same design Inkdrop 5.9+ uses. |
+| Credentials | Port, username and password are copied from the source app's `config.json` at import time and kept in Kanso's own config. Never logged. |
+| Storage | rusqlite (bundled), WAL. Each document stored as verbatim JSON in the API's shape with derived index columns. |
+| Search | FTS5 `trigram` over title and body, the same design the source app uses. |
 | Sync | Accounts with end-to-end encryption on a Cloudflare Worker + D1 (accounts, sessions, sealed documents) + R2 (sealed attachment bytes). See "Sync" and [ACCOUNTS.md](ACCOUNTS.md). |
 | Server placement | In the app process; the app stays alive with no window open. `kanso serve` runs headless. An `flock` on the data directory decides who owns the database and the port. |
 
@@ -23,7 +23,7 @@ imports an Inkdrop database losslessly, and syncs end-to-end encrypted through C
 crates/
   kanso-core     domain types, IDs, revs, search-query parser
   kanso-store    SQLite store, FTS, revisions, backups, sync state
-  kanso-import   Inkdrop PouchDB importer; Markdown folders and other apps' exports (library/)
+  kanso-import   PouchDB library importer; Markdown folders and other apps' exports (library/)
   kanso-server   axum REST API (+ /mcp later)
   kanso-sync     accounts, encrypted sync client, `kanso-sync` command
   kanso-app      GPUI app, binary `kanso`
@@ -32,8 +32,8 @@ cloud/           Cloudflare Worker (D1 + R2) and admin script
 
 ## Data model
 
-Documents keep Inkdrop's IDs and shapes so `inkdrop://note/<id>` links and `inkdrop://file:<id>`
-image embeds inside note bodies keep working, and API clients see what they expect.
+Documents keep the source library's IDs and shapes so note links and attachment embeds written
+with the legacy note-link scheme inside note bodies keep working, and API clients see what they expect.
 
 - `note:<8 chars>`: `title, body, bookId, tags[], status (none|active|onHold|completed|dropped),
   share (private|public), pinned, doctype=markdown, createdAt, updatedAt, timestamp,
@@ -89,21 +89,21 @@ Documented but unused in 9 months of logs (later): `skip`, `sort=tagCount|rank`,
 Terms and quoted phrases match title or body as case-insensitive substrings (trigram phrase
 queries; terms under 3 characters fall back to an `instr` scan). Qualifiers: `book:Name`,
 `book:"Two Words"`, `bookId:<id without prefix>`, `tag:Name`, `tagId:tag:<id>`, `status:onHold`,
-`title:"..."`, `body:word`, and `-` to negate any of them. Backlinks search for
-`inkdrop://note/<id>`. Priorities from 1,629 real queries: quoted phrases (49%), `title:` (39%),
+`title:"..."`, `body:word`, and `-` to negate any of them. Backlinks search for the note's ID
+link. Priorities from 1,629 real queries: quoted phrases (49%), `title:` (39%),
 `bookId:` (33%), `book:` (5%), everything else under 1%.
 
 ## Importer
 
-- Requires Inkdrop to be quit. Copies `<hash>.sqlite` and its `-wal` to a temp dir and reads the copy.
-  Never writes to Inkdrop's folder. Ignores the stale LevelDB folders, `mrview-*` and `fts.db`.
+- Reads a consistent snapshot of `<hash>.sqlite` (with its `-wal`), so the source app may keep
+  running. Never writes to the source app's folder. Ignores the stale LevelDB folders, `mrview-*` and `fts.db`.
 - Reads the winning, non-deleted revision of every `note:`, `book:`, `tag:` and `file:` doc
   (`document-store.winningseq` → `by-sequence`).
 - Attachments live in `attach-store.body` as PouchDB binary strings (one char per byte).
   Decoding is verified against `_attachments.index.digest` (`md5-<base64>`) for every file.
 - Skips `_design/*`, `config` and `_local` docs. Keeps `activity:` docs raw in an archive table.
 - Idempotent (upsert by ID) and ends with a verification report against the source counts.
-- Copies the server port and credentials from Inkdrop's `config.json`.
+- Copies the server port and credentials from the source app's `config.json`.
 
 ## Other sources (`kanso-import/src/library`)
 
@@ -113,8 +113,8 @@ queries; terms under 3 characters fall back to an `instr` scan). Qualifiers: `bo
   ever written to the source.
 - The engine (`library/mod.rs`) reads the notes twice: once for an index of keys, paths, titles and
   aliases (`resolve.rs`), once to write. Links are pointed at what the import makes: wiki-links to
-  the note's Kanso title, Markdown links to notes as `inkdrop://note/<id>`, pictures and files as
-  `inkdrop://file:<id>`. Attachments are read last, only those a note links to, each capped at
+  the note's Kanso title, Markdown links to notes as ID links, pictures and files as attachment
+  links (both in the legacy note-link scheme). Attachments are read last, only those a note links to, each capped at
   10 MB; unlinked files are reported as skipped.
 - IDs come from a SHA-1 of the source kind, the source's name and a stable key (a vault-relative
   path, or the app's own ID), so a second import finds the first one's documents. Every document
@@ -160,7 +160,7 @@ The full design, protocol and rollout are in [ACCOUNTS.md](ACCOUNTS.md). In shor
 |---|---|---|
 | M0 | GPUI editor spike (timebox 2 days) | The go/no-go below passes |
 | M1 | core, store, importer, revisions, backups | The real DB imports with matching counts and all attachments verified |
-| M2 | REST API, search parser | The real `@inkdropapp/mcp-server` passes all 17 tools against Kanso; parser property tests pass |
+| M2 | REST API, search parser | The real reference MCP server passes all 17 tools against Kanso; parser property tests pass |
 | M3 | GPUI app MVP | Sidebar (notebooks, tags, statuses, trash), note list, editor + preview, search, pickers, links, images, autosave, external-change banner |
 | M4 | Cloudflare sync | Two machines converge; conflicts keep both versions |
 | M5 | Native `/mcp` endpoint | Same 17 tools, outputs match the Node server |
@@ -174,12 +174,12 @@ All milestones are built and tested.
   and undo grouping still need a hands-on check.
 - M1: the real library imported (823 notes, 43 notebooks, 28 tags, 15 attachments, all verified);
   a second import changes nothing.
-- M2 and M5: the real `@inkdropapp/mcp-server` runs all 17 tools against Kanso, and `/mcp` gives the
+- M2 and M5: the real reference MCP server runs all 17 tools against Kanso, and `/mcp` gives the
   same results (`crates/kanso-server/tests/contract.rs`).
 - M4: deployed to Cloudflare and checked end to end between two data folders.
-- Inkdrop's stored task counts were stale on 21 notes; Kanso recounts from the body like GFM does.
-- Inkdrop's API credentials are encrypted with Electron safeStorage, so copying them needs the
-  "inkdrop Safe Storage" Keychain item, which macOS asks the user to allow.
+- The source library's stored task counts were stale on 21 notes; Kanso recounts from the body like GFM does.
+- The source app's API credentials are encrypted with Electron safeStorage, so copying them needs
+  its "Safe Storage" Keychain item, which macOS asks the user to allow.
 - A code review of the app found ways to lose typed text (switching notes or quitting while the
   "changed elsewhere" question was open, ⌘Q, a note deleted elsewhere). All are fixed, and a
   model-based test (`prop_typed_text_is_never_lost`) runs random sequences of typing, outside
@@ -234,7 +234,7 @@ plaintext v1 engine and its Worker routes are gone, and `kanso-sync unbind` is t
 - IME composition, press-and-hold accents and emoji work.
 - Undo groups sensibly.
 - Reloading a note can keep the cursor and scroll position.
-- The preview renders that note, including `inkdrop://file:` images, in under 300 ms.
+- The preview renders that note, including attached images, in under 300 ms.
 
 If IME or latency fails, fork only the input module.
 
@@ -242,9 +242,9 @@ If IME or latency fails, fork only the input module.
 
 - gpui-kit is young and pins a weekly GPUI snapshot (`gpui-pre =0.3.9`). Exact pins and a
   committed `Cargo.lock`.
-- Inkdrop still running holds port 19840. Kanso shows "API off: port in use" with a retry and never
+- Another app serving the same API holds port 19840. Kanso shows "API off: port in use" with a retry and never
   silently moves to another port.
-- No live Inkdrop to compare search results against (it no longer loads the database since the
-  subscription lapsed). Parser tests are built from the request history in Inkdrop's `server.log`.
+- No live server of the source app to compare search results against. Parser tests are built from
+  the request history in its `server.log`.
 - Testing: property tests (proptest) for the query parser, rev/conflict rules and attachment
   decoding; integration tests on temp databases; contract tests with the real MCP server.

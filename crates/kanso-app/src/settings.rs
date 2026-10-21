@@ -40,7 +40,7 @@ use crate::text_stats::format_count;
 use crate::theme::Colors;
 use crate::word_goal::PRESETS;
 use crate::workspace::{AppState, OpenSettings, Workspace, for_each_workspace};
-use crate::{dialogs, inkdrop, launch, paths};
+use crate::{dialogs, launch, paths, pouch_import};
 
 actions!(
     kanso,
@@ -517,15 +517,18 @@ fn change_password(window: &mut Window, cx: &mut App) {
     );
 }
 
-fn copy_from_inkdrop(window: &mut Window, cx: &mut App) {
+fn copy_local_api_settings(window: &mut Window, cx: &mut App) {
     dialogs::confirm(
-        "Use Inkdrop's port, username and password?",
-        "Inkdrop keeps its password encrypted with a key in your Keychain. macOS will ask you to allow Kanso to read “inkdrop Safe Storage”.",
+        "Use the other app's API port, username and password?",
+        format!(
+            "That app keeps its password in its encrypted settings, with a key in your Keychain. macOS will ask you to allow Kanso to read “{}”.",
+            kanso_import::safe_storage::SAFE_STORAGE_SERVICE
+        ),
         "Continue",
         window,
         cx,
         |window, cx| {
-            inkdrop::start_copy_credentials(window, cx, |_, cx| {
+            pouch_import::start_copy_credentials(window, cx, |_, cx| {
                 services::apply_server_settings(cx)
             });
         },
@@ -899,14 +902,14 @@ impl SettingsView {
                                 .label("Import…")
                                 .on_click(|_, window, cx| crate::library_import::start(window, cx)),
                         ),
-                    Row::new(Lucide::Upload, "Import from Inkdrop")
-                        .detail("Copies notes, notebooks, tags and attachments. Inkdrop's files are only read.")
+                    Row::new(Lucide::Upload, "Notes library on this computer")
+                        .detail("Copies notes, notebooks, tags and attachments from the notes library found on this computer. Its files are only read.")
                         .trailing(
-                            Button::new("import-inkdrop")
+                            Button::new("import-pouch-library")
                                 .outline()
                                 .small()
                                 .label("Import…")
-                                .on_click(|_, window, cx| inkdrop::start_import(window, cx)),
+                                .on_click(|_, window, cx| pouch_import::start_import(window, cx)),
                         ),
                 ],
                 colors,
@@ -1134,7 +1137,7 @@ fn api_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
             "Server",
             vec![
                 Row::new(Lucide::Plug, "Enable the local API")
-                    .detail("REST and MCP for local agents. It speaks the same API as Inkdrop's local server, so clients written for that work too.")
+                    .detail("REST and MCP for local agents. It speaks a widely used local-server REST API, so clients written for that API work too.")
                     .trailing(Switch::new("api-enabled").checked(server.enabled).on_click(
                         |on, _, cx| {
                             let on = *on;
@@ -1191,14 +1194,14 @@ fn api_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                     .into_any_element(),
                 ]),
                 Row::new(Lucide::KeyRound, "Password").trailing_all(password_controls),
-                Row::new(Lucide::Copy, "Settings from Inkdrop")
-                    .detail("Takes Inkdrop's port, username and password, so clients already set up for it keep working.")
+                Row::new(Lucide::Copy, "Settings from another app")
+                    .detail("Takes the API port, username and password of the notes app found on this computer, so clients already set up for it keep working.")
                     .trailing(
-                        Button::new("copy-inkdrop")
+                        Button::new("copy-local-api-settings")
                             .outline()
                             .small()
-                            .label("Use settings from Inkdrop…")
-                            .on_click(|_, window, cx| copy_from_inkdrop(window, cx)),
+                            .label("Copy local API settings…")
+                            .on_click(|_, window, cx| copy_local_api_settings(window, cx)),
                     ),
             ],
             colors,

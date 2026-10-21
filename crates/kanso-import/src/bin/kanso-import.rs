@@ -1,46 +1,48 @@
-//! `kanso-import [--inkdrop-dir DIR] [--db FILE] --data-dir DIR`
+//! `kanso-import [--library-dir DIR] [--db FILE] --data-dir DIR`
 //!
-//! Imports Inkdrop's database into `DIR/kanso.db` and prints a report.
-//! Inkdrop may keep running; its files are only read. Credentials from
-//! Inkdrop's config are never printed.
+//! Imports a PouchDB notes library into `DIR/kanso.db` and prints a report.
+//! The app that owns it may keep running; its files are only read.
+//! Credentials from its config are never printed.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::{Context as _, bail};
+use kanso_import::safe_storage::SAFE_STORAGE_SERVICE;
 use kanso_import::{
-    InkdropCredentials, Phase, default_inkdrop_dir, find_inkdrop_db, import,
-    read_inkdrop_server_config,
+    LocalServerCredentials, Phase, default_pouch_library_dir, find_pouch_db, import,
+    read_local_server_config,
 };
 use kanso_store::Store;
 
 const USAGE: &str = "\
-Usage: kanso-import [--inkdrop-dir DIR] [--db FILE] --data-dir DIR
+Usage: kanso-import [--library-dir DIR] [--db FILE] --data-dir DIR
 
-Imports an Inkdrop database into DIR/kanso.db. Safe to run again: documents
-already imported at the same revision are left alone.
+Imports the PouchDB notes library found on this computer into
+DIR/kanso.db. Safe to run again: documents already imported at the same
+revision are left alone.
 
-  --inkdrop-dir DIR  Inkdrop's data directory
-                     (default: ~/Library/Application Support/inkdrop)
-  --db FILE          The Inkdrop database file (default: the single
-                     db/<32 hex>.sqlite in the Inkdrop directory)
+  --library-dir DIR  The library's data directory (default: the one found
+                     on this computer)
+  --db FILE          The library's database file (default: the single
+                     db/<32 hex>.sqlite in the library directory)
   --data-dir DIR     Kanso's data directory (required)";
 
 struct Args {
-    inkdrop_dir: Option<PathBuf>,
+    library_dir: Option<PathBuf>,
     db: Option<PathBuf>,
     data_dir: PathBuf,
 }
 
 fn parse_args() -> anyhow::Result<Option<Args>> {
-    let mut inkdrop_dir = None;
+    let mut library_dir = None;
     let mut db = None;
     let mut data_dir = None;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         let slot = match arg.to_str() {
             Some("-h" | "--help") => return Ok(None),
-            Some("--inkdrop-dir") => &mut inkdrop_dir,
+            Some("--library-dir") => &mut library_dir,
             Some("--db") => &mut db,
             Some("--data-dir") => &mut data_dir,
             _ => bail!("unexpected argument {arg:?}\n\n{USAGE}"),
@@ -52,7 +54,7 @@ fn parse_args() -> anyhow::Result<Option<Args>> {
     }
     let data_dir = data_dir.with_context(|| format!("--data-dir is required\n\n{USAGE}"))?;
     Ok(Some(Args {
-        inkdrop_dir,
+        library_dir,
         db,
         data_dir,
     }))
@@ -70,14 +72,14 @@ fn phase_name(phase: Phase) -> &'static str {
     }
 }
 
-fn describe(credentials: &InkdropCredentials) -> &'static str {
+fn describe(credentials: &LocalServerCredentials) -> String {
     match credentials {
-        InkdropCredentials::None => "none",
-        InkdropCredentials::Basic { .. } => "username and password present",
-        InkdropCredentials::Encrypted { .. } => {
-            "encrypted with Electron safeStorage (needs the \"inkdrop Safe Storage\" Keychain item)"
-        }
-        InkdropCredentials::Unrecognized => "in an unrecognized format",
+        LocalServerCredentials::None => "none".to_owned(),
+        LocalServerCredentials::Basic { .. } => "username and password present".to_owned(),
+        LocalServerCredentials::Encrypted { .. } => format!(
+            "encrypted with Electron safeStorage (needs the \"{SAFE_STORAGE_SERVICE}\" Keychain item)"
+        ),
+        LocalServerCredentials::Unrecognized => "in an unrecognized format".to_owned(),
     }
 }
 
@@ -86,13 +88,13 @@ fn run() -> anyhow::Result<ExitCode> {
         println!("{USAGE}");
         return Ok(ExitCode::SUCCESS);
     };
-    let inkdrop_dir = match args.inkdrop_dir {
+    let library_dir = match args.library_dir {
         Some(dir) => dir,
-        None => default_inkdrop_dir().context("HOME is not set; pass --inkdrop-dir")?,
+        None => default_pouch_library_dir().context("HOME is not set; pass --library-dir")?,
     };
     let source = match args.db {
         Some(db) => db,
-        None => find_inkdrop_db(&inkdrop_dir)?,
+        None => find_pouch_db(&library_dir)?,
     };
     let Some(_lock) = kanso_store::lock_data_dir(&args.data_dir)? else {
         bail!(
@@ -112,9 +114,9 @@ fn run() -> anyhow::Result<ExitCode> {
     })?;
     println!("{report}");
 
-    match read_inkdrop_server_config(&inkdrop_dir) {
+    match read_local_server_config(&library_dir) {
         Ok(Some(server)) => println!(
-            "Inkdrop API server: {} on {}:{}; credentials {}.",
+            "Local API server: {} on {}:{}; credentials {}.",
             if server.enabled {
                 "enabled"
             } else {
@@ -124,8 +126,8 @@ fn run() -> anyhow::Result<ExitCode> {
             server.port,
             describe(&server.credentials),
         ),
-        Ok(None) => println!("Inkdrop API server: not configured."),
-        Err(err) => eprintln!("Could not read Inkdrop's server settings: {err:#}"),
+        Ok(None) => println!("Local API server: not configured."),
+        Err(err) => eprintln!("Could not read the library's server settings: {err:#}"),
     }
 
     Ok(if report.is_clean() {

@@ -1,8 +1,8 @@
 //! Kanso's local HTTP API.
 //!
-//! The REST endpoints are wire-compatible with Inkdrop's local HTTP server,
-//! so the official `@inkdropapp/mcp-server` and scripts written for Inkdrop
-//! work against Kanso unchanged. `/mcp` serves the same 17 MCP tools natively
+//! The REST endpoints speak a widely used local-server REST API, wire for
+//! wire, so the MCP server `@inkdropapp/mcp-server` and scripts written for
+//! that API work against Kanso unchanged. `/mcp` serves the same 17 MCP tools natively
 //! on the same port. Every route requires HTTP Basic authentication.
 //!
 //! The server stays thin: validation, conflicts and search live in

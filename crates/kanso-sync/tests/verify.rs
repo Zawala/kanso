@@ -176,7 +176,7 @@ fn a_library_bound_elsewhere_is_refused() {
     ));
 }
 
-/// Files imported from Inkdrop can have no `md5digest` in the manifest;
+/// Files imported from a PouchDB library can have no `md5digest` in the manifest;
 /// they pass when the library holds bytes that hash to what it recorded
 /// (the owner's migration, 2026-10-19: 9 such files failed before).
 #[test]

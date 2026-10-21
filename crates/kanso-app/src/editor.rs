@@ -3048,7 +3048,7 @@ impl NoteEditor {
 }
 
 /// Notes outside the trash that link to note `id`, from the store's index
-/// of links: by `inkdrop://note/` link, or by a wiki-link to its title.
+/// of links: by ID link, or by a wiki-link to its title.
 pub fn backlinks(store: &Store, id: &str) -> Vec<Backlink> {
     store.backlinks(id).unwrap_or_default()
 }

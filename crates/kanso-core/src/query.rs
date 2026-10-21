@@ -1,4 +1,4 @@
-//! Inkdrop's note search language.
+//! The note search language of the local-server API.
 //!
 //! A query is a list of clauses that must all hold. A clause is free text
 //! (a bare word or a `"quoted phrase"`) or a qualifier such as `book:Blog`,
@@ -369,7 +369,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_inkdrop_examples() {
+    fn parses_documented_examples() {
         assert_eq!(
             Query::parse(r#"-book:Backend "closure functions""#).clauses,
             vec![

@@ -215,7 +215,7 @@ random 128-bit share ID and a random 256-bit key for the share, and seals the pa
 keeps `{shareId, key, publishedAt, publishedRev, expiresAt?, contentHash, shortUrl?}` in the note as
 `note.extra.kansoPublish`. That travels inside the sealed note, so the account's other devices can
 update the same link (same ID and key, new ciphertext) or unpublish it, and the server never
-receives the key. Inkdrop's own `share` field is left alone. Only the Publish sheet writes
+receives the key. The note's own `share` field, part of the API's note shape, is left alone. Only the Publish sheet writes
 `kansoPublish`: note writes through the local API and MCP keep the note's existing value and
 ignore any they are given. The key lives only in the link's `#fragment`, which browsers never send
 to a server.
@@ -432,7 +432,7 @@ Neither goes on the wire:
 ### Revision generations only grow (M2)
 
 This is the invariant: every revision the server accepts for a document has a higher generation
-than the one it replaces. Local writes already use `Rev::next(current)`. The Inkdrop importer only
+than the one it replaces. Local writes already use `Rev::next(current)`. The PouchDB library importer only
 writes when the incoming generation is higher (`Store::import_doc`).
 
 Two store rules keep it, in `apply_remote`:

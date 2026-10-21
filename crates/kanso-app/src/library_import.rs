@@ -29,32 +29,33 @@ use crate::workspace::AppState;
 /// The width of the Import window.
 pub(crate) const WIDTH: f32 = 500.;
 
-/// Where notes can come from: the library kinds, then Inkdrop's database.
+/// Where notes can come from: the library kinds, then the PouchDB library
+/// found on this computer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Choice {
     Library(SourceKind),
-    Inkdrop,
+    PouchLibrary,
 }
 
 impl Choice {
     pub fn all() -> Vec<Choice> {
         let mut all: Vec<Choice> = SourceKind::ALL.into_iter().map(Choice::Library).collect();
-        all.push(Choice::Inkdrop);
+        all.push(Choice::PouchLibrary);
         all
     }
 
     fn label(self) -> &'static str {
         match self {
             Choice::Library(kind) => kind.label(),
-            Choice::Inkdrop => "Inkdrop library",
+            Choice::PouchLibrary => "Inkdrop library",
         }
     }
 
     fn hint(self) -> &'static str {
         match self {
             Choice::Library(kind) => kind.hint(),
-            Choice::Inkdrop => {
-                "Found on this computer and read in place; Inkdrop can keep running."
+            Choice::PouchLibrary => {
+                "Found on this computer and read in place; its app can keep running."
             }
         }
     }
@@ -215,9 +216,9 @@ impl ImportView {
 
     fn choose(&mut self, choice: Choice, window: &mut Window, cx: &mut Context<Self>) {
         let kind = match choice {
-            Choice::Inkdrop => {
+            Choice::PouchLibrary => {
                 window.close_dialog(cx);
-                crate::inkdrop::start_import(window, cx);
+                crate::pouch_import::start_import(window, cx);
                 return;
             }
             Choice::Library(kind) => kind,
@@ -686,13 +687,19 @@ Kinds:
   standard-notes  A decrypted Standard Notes backup (.txt, .json or .zip)
   simplenote      Simplenote's export (.zip or notes.json)
   upnote          An UpNote Markdown export folder
-  inkdrop         Inkdrop's library (same as `kanso import-inkdrop`)";
+  pouchdb         The PouchDB notes library found on this computer, read in
+                  place [--library-dir DIR] [--credentials]; --credentials
+                  also copies its local API port, username and password";
+
+/// The `kanso import` kind for the PouchDB notes library found on this
+/// computer.
+const POUCH_KIND: &str = "pouchdb";
 
 /// `kanso import` with its arguments read.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Cli {
     Help,
-    Inkdrop(Vec<String>),
+    PouchLibrary(Vec<String>),
     Library {
         kind: SourceKind,
         path: PathBuf,
@@ -708,8 +715,8 @@ pub fn parse_cli(args: &[String]) -> anyhow::Result<Cli> {
         match arg.as_str() {
             "-h" | "--help" | "help" if positional.is_empty() => return Ok(Cli::Help),
             "--dry-run" | "-n" => dry_run = true,
-            _ if positional.first().map(String::as_str) == Some("inkdrop") => {
-                return Ok(Cli::Inkdrop(args[ix..].to_vec()));
+            _ if positional.first().map(String::as_str) == Some(POUCH_KIND) => {
+                return Ok(Cli::PouchLibrary(args[ix..].to_vec()));
             }
             other if other.starts_with("--") => bail!("unknown option `{other}`\n\n{USAGE}"),
             other => positional.push(other.to_owned()),
@@ -717,7 +724,7 @@ pub fn parse_cli(args: &[String]) -> anyhow::Result<Cli> {
     }
     match positional.as_slice() {
         [] => Ok(Cli::Help),
-        [kind] if kind == "inkdrop" => Ok(Cli::Inkdrop(Vec::new())),
+        [kind] if kind == POUCH_KIND => Ok(Cli::PouchLibrary(Vec::new())),
         [kind, path] => {
             let kind = SourceKind::parse(kind)
                 .with_context(|| format!("unknown kind `{kind}`\n\n{USAGE}"))?;
@@ -739,7 +746,7 @@ pub fn run_cli(data_dir: &Path, args: &[String]) -> anyhow::Result<()> {
             println!("{USAGE}");
             return Ok(());
         }
-        Cli::Inkdrop(rest) => return crate::inkdrop::run_cli(data_dir, &rest),
+        Cli::PouchLibrary(rest) => return crate::pouch_import::run_cli(data_dir, &rest),
         Cli::Library {
             kind,
             path,
@@ -790,8 +797,8 @@ mod tests {
             }
         );
         assert_eq!(
-            parse_cli(&args(&["inkdrop", "--credentials"])).unwrap(),
-            Cli::Inkdrop(args(&["--credentials"]))
+            parse_cli(&args(&["pouchdb", "--credentials"])).unwrap(),
+            Cli::PouchLibrary(args(&["--credentials"]))
         );
         assert!(parse_cli(&args(&["word", "/x"])).is_err());
         assert!(parse_cli(&args(&["notion"])).is_err());

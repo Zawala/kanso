@@ -1,4 +1,5 @@
-//! PouchDB's SQLite layout (the websql / node-websql adapter Inkdrop uses).
+//! PouchDB's SQLite layout (the websql / node-websql adapter Electron notes
+//! apps use).
 //!
 //! - `document-store(id, json, winningseq, max_seq)`: one row per document;
 //!   `winningseq` points at the current revision in `by-sequence`.
@@ -104,7 +105,7 @@ fn read_only_uri(path: &Path) -> anyhow::Result<String> {
 
 /// The read-only `file:` URI for the absolute path `text`. On Windows the
 /// path is written the way SQLite's URI docs show it: forward slashes, and a
-/// slash before the drive, as in `file:/C:/Users/me/inkdrop.db`. Pure.
+/// slash before the drive, as in `file:/C:/Users/me/notes.db`. Pure.
 fn uri_for(text: &str, windows: bool) -> String {
     let mut path = text.to_owned();
     if windows {
@@ -131,7 +132,7 @@ fn uri_for(text: &str, windows: bool) -> String {
 
 /// Copies a consistent snapshot of the database at `source` into a new
 /// database at `dest`, using SQLite's online backup API on a read-only
-/// connection. Works while another process (Inkdrop) has the source open.
+/// connection. Works while another process (the app that owns it) has the source open.
 pub fn snapshot(source: &Path, dest: &Path) -> anyhow::Result<()> {
     if !source.is_file() {
         bail!("{} does not exist", source.display());
@@ -148,18 +149,18 @@ pub fn snapshot(source: &Path, dest: &Path) -> anyhow::Result<()> {
         .with_context(|| format!("cannot create the snapshot {}", dest.display()))?;
     let backup = Backup::new(&src, &mut dst)?;
     // Copying every page in one step holds a single read transaction, so the
-    // snapshot is consistent even if Inkdrop writes meanwhile.
+    // snapshot is consistent even if the app writes meanwhile.
     for _ in 0..200 {
         match backup
             .step(-1)
-            .context("snapshot of the Inkdrop database failed")?
+            .context("snapshot of the PouchDB library failed")?
         {
             StepResult::Done => return Ok(()),
             StepResult::More => {}
             _ => std::thread::sleep(Duration::from_millis(50)),
         }
     }
-    bail!("the Inkdrop database stayed locked; try again or quit Inkdrop")
+    bail!("the PouchDB library stayed locked; try again, or quit the app that uses it")
 }
 
 /// Fails unless `conn` has PouchDB's tables.
@@ -174,7 +175,7 @@ pub fn check_layout(conn: &Connection) -> anyhow::Result<()> {
             .optional()?
             .is_some();
         if !found {
-            bail!("not an Inkdrop database: the `{table}` table is missing");
+            bail!("not a PouchDB library: the `{table}` table is missing");
         }
     }
     Ok(())
@@ -311,8 +312,8 @@ mod tests {
     #[test]
     fn windows_uri_has_forward_slashes_and_the_drive_first() {
         assert_eq!(
-            uri_for(r"C:\Users\a b\Inkdrop\c?d.db", true),
-            "file:/C:/Users/a%20b/Inkdrop/c%3Fd.db?mode=ro"
+            uri_for(r"C:\Users\a b\Notes\c?d.db", true),
+            "file:/C:/Users/a%20b/Notes/c%3Fd.db?mode=ro"
         );
     }
 

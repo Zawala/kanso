@@ -1,4 +1,4 @@
-//! Kanso: a Markdown notes app with an Inkdrop-compatible local API.
+//! Kanso: a Markdown notes app with a local REST API.
 //!
 //! `kanso` opens the app. Other commands run without a window; see `--help`.
 
@@ -35,7 +35,6 @@ mod history;
 mod history_diff;
 mod hotkey;
 mod image_size;
-mod inkdrop;
 mod inspector;
 mod journal;
 mod keys;
@@ -56,6 +55,7 @@ mod ocr;
 mod pairing;
 mod palette;
 mod paths;
+mod pouch_import;
 mod preview;
 mod preview_chunks;
 mod preview_rich;
@@ -108,16 +108,16 @@ Usage: kanso [command] [--data-dir <dir>]
 
 Commands:
   (none)            Open the app
-  serve             Run only the local API (Inkdrop-compatible REST and
-                    /mcp), without a window
+  serve             Run only the local API (REST and /mcp), without a
+                    window
   import <kind> <path>
                     Import a folder of Markdown or another app's export
                     (markdown, obsidian, notion, evernote, bear, joplin,
                     logseq, standard-notes, simplenote, upnote) [--dry-run];
                     `kanso import help` lists what each takes
-  import-inkdrop    Import notes from Inkdrop
-                    [--inkdrop-dir <dir>] [--credentials]
-                    --credentials also takes Inkdrop's API port, username
+  import pouchdb    Import the PouchDB notes library found on this computer
+                    [--library-dir <dir>] [--credentials]
+                    --credentials also takes its local API port, username
                     and password (macOS asks to allow Keychain access)
   capture [text]    Save a note to the Inbox, or [--book <name or id>];
                     with no text, from standard input. Works with
@@ -188,7 +188,6 @@ fn main() -> Result<()> {
         None => run_app(args.data_dir, args.after_update),
         Some("serve") => serve(args.data_dir),
         Some("import") => library_import::run_cli(&args.data_dir, &args.rest),
-        Some("import-inkdrop") => inkdrop::run_cli(&args.data_dir, &args.rest),
         Some("theme") => theme_import::run_cli(&args.data_dir, &args.rest),
         Some("capture") => capture_cli::run_cli(&args.data_dir, &args.rest),
         Some("help") => {
@@ -390,7 +389,7 @@ fn open_main_window(cx: &mut App) {
 }
 
 /// On a first run with an empty library, offers to bring notes over from
-/// Inkdrop.
+/// a PouchDB notes library found on this computer.
 fn offer_first_import(window: &mut Window, cx: &mut App) {
     let state = cx.global::<AppState>();
     let empty = state
@@ -399,18 +398,18 @@ fn offer_first_import(window: &mut Window, cx: &mut App) {
         .is_ok_and(|counts| counts.get(&kanso_core::DocType::Note).copied().unwrap_or(0) == 0);
     if !empty
         || state.store.meta("import_offered").ok().flatten().is_some()
-        || inkdrop::find_inkdrop().is_none()
+        || pouch_import::find_library().is_none()
     {
         return;
     }
     state.store.set_meta("import_offered", "1").ok();
     dialogs::confirm(
-        "Import your Inkdrop notes?",
-        "Kanso found an Inkdrop library. Its notes, notebooks, tags and attachments can be copied in now; Inkdrop's files are only read.",
+        "Import your notes?",
+        "Kanso found a notes library on this computer. Its notes, notebooks, tags and attachments can be copied in now; its files are only read.",
         "Import",
         window,
         cx,
-        inkdrop::start_import,
+        pouch_import::start_import,
     );
 }
 

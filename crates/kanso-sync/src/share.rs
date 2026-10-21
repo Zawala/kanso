@@ -18,8 +18,9 @@
 //!
 //! What a note publishes is kept in the note, as `note.extra.kansoPublish`
 //! ([`KansoPublish`]), so it syncs end to end encrypted with the note and
-//! the account's other devices can update or unpublish the same link. Inkdrop's
-//! own `share` field is left alone.
+//! the account's other devices can update or unpublish the same link. The
+//! imported `share` field, which belongs to the API's note shape, is left
+//! alone.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -39,7 +40,7 @@ use crate::crypto::{b64, random, sha256_hex, unb64};
 use crate::remote::encode_segment;
 use crate::wire::{ApiError, MAX_AUTH_RESPONSE, SessionToken};
 
-/// Where a note keeps what it published, beside Inkdrop's own fields.
+/// Where a note keeps what it published, beside the API's own fields.
 pub const PUBLISH_KEY: &str = kanso_core::model::PUBLISH_FIELD;
 /// The only format so far.
 pub const SHARE_FORMAT_V1: u8 = 0x01;
@@ -916,7 +917,7 @@ mod tests {
         assert_eq!(KansoPublish::from_extra(&extra), Some(publish.clone()));
         assert_eq!(
             extra["share"], "public",
-            "Inkdrop's share field is untouched"
+            "the API's share field is untouched"
         );
         let value = &extra[PUBLISH_KEY];
         assert!(value.get("shareId").is_some() && value.get("publishedRev").is_some());

@@ -34,7 +34,8 @@ pub enum ApiState {
     #[default]
     Off,
     Running(String),
-    /// The port is taken, usually by Inkdrop; Kanso keeps trying.
+    /// The port is taken, usually by another app serving the same API; Kanso
+    /// keeps trying.
     PortInUse(u16),
     Failed(String),
 }

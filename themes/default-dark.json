@@ -5,7 +5,7 @@
   "author": "Takuya Matsuyama",
   "license": "MIT",
   "source": "https://github.com/inkdropapp/default-dark",
-  "description": "Inkdrop's default dark theme, imported from its palette.",
+  "description": "A near-black default dark theme with a blue accent, imported from its palette.",
   "appearance": "dark",
   "ui": {
     "editor": "#0A0A0A",

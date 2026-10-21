@@ -1,4 +1,4 @@
-//! The Themes page of Settings, after Inkdrop's: three grids of cards, one
+//! The Themes page of Settings: three grids of cards, one
 //! for the UI theme, one for the editor's syntax and one for the preview,
 //! each card a small live picture of its theme with the chosen one
 //! outlined. Following the system's light and dark mode outlines a light
@@ -123,7 +123,7 @@ pub fn reload(window: &mut Window, cx: &mut App) {
     window.push_notification(message, cx);
 }
 
-/// Asks for an Inkdrop theme (a folder or a .tgz) or a Zed theme (.json),
+/// Asks for a theme package (a folder or a .tgz) or a Zed theme (.json),
 /// converts it into the themes folder, and reloads.
 fn import(window: &mut Window, cx: &mut App) {
     let dir = themes_dir(&cx.global::<AppState>().data_dir);
@@ -288,7 +288,7 @@ pub fn page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                     .on_click(|_, window, cx| reload(window, cx)),
             ),
         Row::new(Lucide::Download, "Import theme")
-            .detail("An Inkdrop theme (its folder or .tgz) or a Zed theme (.json), converted into the themes folder.")
+            .detail("A theme package (its folder or .tgz) or a Zed theme (.json), converted into the themes folder.")
             .trailing(
                 Button::new("import-theme")
                     .outline()

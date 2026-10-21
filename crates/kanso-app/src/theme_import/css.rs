@@ -1,4 +1,4 @@
-//! A forgiving reader for the CSS and LESS in Inkdrop themes.
+//! A forgiving reader for the CSS and LESS in theme packages.
 //!
 //! It doesn't build a full stylesheet model, only what the importer needs:
 //! every declaration with the full selector it applies to (LESS nesting

@@ -1,4 +1,4 @@
-//! Facts derived from a note body: task-list counts and `inkdrop://` links,
+//! Facts derived from a note body: task-list counts and ID links,
 //! and the due dates tasks carry (`@2026-10-25`, `@2026-10-25T09:00`).
 
 use crate::dates::{Date, DateTime};
@@ -380,10 +380,10 @@ pub fn toggle_task(body: &str, index: usize) -> Option<String> {
     None
 }
 
-/// IDs (`note:…`) of the notes a body links to with `inkdrop://note/<id>`, in order, deduplicated.
+/// IDs (`note:…`) of the notes a body links to with ID links, in order, deduplicated.
 pub fn linked_note_ids(body: &str) -> Vec<String> {
     let mut ids = Vec::new();
-    for suffix in uri_suffixes(body, "inkdrop://note/") {
+    for suffix in uri_suffixes(body, crate::links::NOTE_LINK_PREFIX) {
         let id = format!("note:{suffix}");
         if !ids.contains(&id) {
             ids.push(id);
@@ -392,10 +392,10 @@ pub fn linked_note_ids(body: &str) -> Vec<String> {
     ids
 }
 
-/// IDs (`file:…`) of the attachments a body embeds with `inkdrop://file:<id>`, deduplicated.
+/// IDs (`file:…`) of the attachments a body embeds with attachment links, deduplicated.
 pub fn linked_file_ids(body: &str) -> Vec<String> {
     let mut ids = Vec::new();
-    for suffix in uri_suffixes(body, "inkdrop://file:") {
+    for suffix in uri_suffixes(body, crate::links::FILE_LINK_PREFIX) {
         let id = format!("file:{suffix}");
         if !ids.contains(&id) {
             ids.push(id);

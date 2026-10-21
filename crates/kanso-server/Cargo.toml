@@ -1,6 +1,6 @@
 [package]
 name = "kanso-server"
-description = "Kanso's local HTTP API: REST endpoints, compatible with Inkdrop's local API, and a native MCP endpoint."
+description = "Kanso's local HTTP API: REST endpoints that speak a widely used local-server API, and a native MCP endpoint."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

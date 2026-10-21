@@ -1,4 +1,4 @@
-//! Typed views of the four document kinds, in Inkdrop's JSON shape.
+//! Typed views of the four document kinds, in the local-server API's JSON shape.
 //!
 //! Unknown fields are kept in `extra` so documents round-trip unchanged.
 
@@ -19,11 +19,11 @@ pub const PUBLISH_FIELD: &str = "kansoPublish";
 /// device that can't read images still finds them by their words.
 pub const OCR_FIELD: &str = "kansoOcr";
 
-/// Longest note title Inkdrop accepts.
+/// Longest note title the API accepts.
 pub const MAX_TITLE_LEN: usize = 128;
-/// Longest note body Inkdrop accepts, in characters.
+/// Longest note body the API accepts, in characters.
 pub const MAX_BODY_LEN: usize = 1_048_576;
-/// Longest notebook or tag name Inkdrop accepts.
+/// Longest notebook or tag name the API accepts.
 pub const MAX_NAME_LEN: usize = 64;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -254,7 +254,7 @@ pub struct FileMeta {
     pub extra: Map<String, Value>,
 }
 
-/// Image types Inkdrop accepts as attachments.
+/// Image types the API accepts as attachments.
 pub const SUPPORTED_IMAGE_TYPES: [&str; 7] = [
     "image/png",
     "image/jpeg",
@@ -265,7 +265,7 @@ pub const SUPPORTED_IMAGE_TYPES: [&str; 7] = [
     "image/heif",
 ];
 
-/// Largest attachment Inkdrop accepts, in bytes.
+/// Largest attachment the API accepts, in bytes.
 pub const MAX_ATTACHMENT_SIZE: usize = 10 * 1024 * 1024;
 
 #[cfg(test)]

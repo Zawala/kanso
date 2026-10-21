@@ -59,7 +59,7 @@ CREATE TABLE meta (
     value TEXT NOT NULL
 );
 
--- Imported documents Kanso doesn't use (Inkdrop's activity log), kept verbatim.
+-- Imported documents Kanso doesn't use (an imported library's activity log), kept verbatim.
 CREATE TABLE archive (
     id TEXT PRIMARY KEY NOT NULL,
     json TEXT NOT NULL
@@ -88,7 +88,7 @@ ALTER TABLE docs ADD COLUMN sent_rev TEXT;
 CREATE TABLE note_links (
     note_id TEXT NOT NULL,
     ord INTEGER NOT NULL,
-    -- `note:…` for an `inkdrop://note/` link.
+    -- `note:…` for an ID link to a note.
     target_id TEXT,
     -- The normalized title for a wiki-link.
     target_title TEXT,

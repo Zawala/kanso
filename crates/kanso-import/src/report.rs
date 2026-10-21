@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-/// Live documents of each kind found in the Inkdrop database.
+/// Live documents of each kind found in the PouchDB library.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SourceCounts {
     pub notes: usize,
@@ -44,9 +44,11 @@ pub struct ImportReport {
     pub rejected: Vec<String>,
     /// IDs that are not in the store at their source revision after the import.
     pub unverified: Vec<String>,
-    /// Notes whose body links another note with `inkdrop://note/<id>`.
+    /// Notes whose body links another note with a note link
+    /// ([`NOTE_LINK_PREFIX`](kanso_core::links::NOTE_LINK_PREFIX)`<id>`).
     pub notes_linking_notes: usize,
-    /// Notes whose body embeds a file with `inkdrop://file:<id>`.
+    /// Notes whose body embeds a file with an attachment link
+    /// ([`FILE_LINK_PREFIX`](kanso_core::links::FILE_LINK_PREFIX)`<id>`).
     pub notes_embedding_files: usize,
     /// Distinct linked note IDs that don't exist after the import.
     pub dangling_note_links: usize,
@@ -78,7 +80,7 @@ impl fmt::Display for ImportReport {
         let s = &self.source;
         writeln!(
             f,
-            "Inkdrop database: {} ({} in trash), {}, {}, {}, {}.",
+            "PouchDB library: {} ({} in trash), {}, {}, {}, {}.",
             plural(s.notes, "note", "notes"),
             s.trashed_notes,
             plural(s.books, "notebook", "notebooks"),

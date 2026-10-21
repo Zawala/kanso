@@ -101,8 +101,7 @@ pub enum ThemePreference {
 pub const KANSO_LIGHT: &str = "Kanso Light";
 pub const KANSO_DARK: &str = "Kanso Dark";
 
-/// Which themes color the app, by name, as Inkdrop chooses them: one for the
-/// UI, and the editor's syntax and the preview each the UI's own unless one
+/// Which themes color the app, by name: one for the UI, and the editor's syntax and the preview each the UI's own unless one
 /// is picked for them. Following the system switches the UI between a light
 /// and a dark theme.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

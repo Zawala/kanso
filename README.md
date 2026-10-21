@@ -42,13 +42,13 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
   Each device encrypts notes, titles, IDs and attachments before they leave it, with a key the
   server never sees. Conflicts keep both versions: the losing one stays in the note's history.
 - **A local API for agents.** `http://127.0.0.1:19840` is a REST API over your notes, and `/mcp`
-  on the same port is a native MCP endpoint. Its REST API matches Inkdrop's local server, so
-  clients written for that work too.
+  on the same port is a native MCP endpoint. Its REST API is compatible with popular
+  local-server clients, so clients written for that API work too.
 - **History and backups.** Earlier versions of each note, including every version replaced by the
   API, sync or an import, and a daily database backup.
 - **Imports.** Bring in a folder of Markdown files, an Obsidian vault or a Logseq graph, or an
-  export from Notion, Evernote, Bear, Joplin, Standard Notes, Simplenote, UpNote or Inkdrop, with
-  their notebooks, tags, links and attachments. The source is only read, you see what will come
+  export from Notion, Evernote, Bear, Joplin, Standard Notes, Simplenote or UpNote, or a PouchDB
+  notes library found on this computer, with their notebooks, tags, links and attachments. The source is only read, you see what will come
   in before anything is written, and importing again picks up newer edits without reverting notes
   you changed in Kanso.
 - Themes, light and dark, and updates that install themselves.
@@ -87,7 +87,7 @@ scripts/bundle-macos.sh
 
 It builds an ad-hoc signed `target/release/Kanso.app`; copy it to `/Applications`. On Windows and
 Linux, `cargo build --release -p kanso-app` builds `target/release/kanso`. On first run with an
-empty library, Kanso offers to import any Inkdrop library it finds.
+empty library, Kanso offers to import a PouchDB notes library if it finds one on this computer.
 
 ## Using it
 
@@ -114,7 +114,7 @@ it links to) as a note in the Inbox and opens it; opening it again updates that 
 | Standard Notes | a decrypted backup (`.txt`/`.json`, or the `.zip`) | Notes, nested tags, pinned, archived and trashed notes. Encrypted backups can't be read; export a decrypted one. |
 | Simplenote | the `.zip` from Export Notes, or its `notes.json` | Notes (the first line is the title), tags, pinned and trashed notes. |
 | UpNote | a folder from Export › Markdown | Read as a Markdown folder. |
-| Inkdrop | found on this computer | Notes, notebooks, tags, statuses and attachments, keeping their IDs (below). |
+| PouchDB notes library | found on this computer | Notes, notebooks, tags, statuses and attachments, keeping their IDs (below). |
 
 Attachments larger than 10 MB, the most a Kanso attachment can be, are skipped and listed, and
 links to them stay as they were. Apple Notes has no export of its own; tools that save its notes
@@ -123,12 +123,13 @@ as Markdown files make a folder Kanso can import.
 From a terminal, with Kanso closed, `kanso import <kind> <path>` does the same (`kanso import help`
 lists the kinds); `--dry-run` prints the summary and writes nothing.
 
-**Importing from Inkdrop.** Choosing Inkdrop in **Import…** (or `kanso import-inkdrop`) copies an
-Inkdrop library in, keeping its IDs and revisions. The local API listens on port 19840; if another app already uses that port, the
-plug icon at the bottom of the sidebar turns amber, and Kanso keeps trying until it's free or you
-choose another port in Settings › Local API. To keep MCP clients you had set up for Inkdrop, **Use
-settings from Inkdrop…** on that page takes its port, username and password; macOS asks you to allow
-access to the Keychain item "inkdrop Safe Storage", where Inkdrop keeps them encrypted.
+**Importing a PouchDB notes library.** Choosing it in **Import…** (or `kanso import pouchdb`)
+copies the library found on this computer in, keeping its IDs and revisions; its files are only
+read. The local API listens on port 19840; if another app already uses that port, the plug icon at
+the bottom of the sidebar turns amber, and Kanso keeps trying until it's free or you choose another
+port in Settings › Local API. To keep MCP clients you had set up against that app's local server,
+**Copy local API settings…** on that page takes its port, username and password; macOS asks you to
+allow access to the app's "Safe Storage" Keychain item, where its encrypted settings keep them.
 
 **Sync.** Settings › Account › **Create account** picks a username and a password of at least 12
 characters; this device's notes are encrypted and uploaded. Kanso then shows a **recovery key**: save
@@ -178,7 +179,7 @@ kanso                       # open the app
 kanso serve                 # only the API (REST and /mcp), no window
 kanso import obsidian ~/Vault --dry-run   # what an import would bring in
 kanso import notion ~/Downloads/Export.zip  # markdown, obsidian, notion, evernote, bear, …
-kanso import-inkdrop        # import from Inkdrop; --credentials also copies its API settings
+kanso import pouchdb        # the PouchDB library on this computer; --credentials copies its API settings
 kanso capture "Call Sam"    # save a note to the Inbox (--book <name> picks the notebook)
 pbpaste | kanso capture     # with no text, it reads standard input
 ```
@@ -200,8 +201,8 @@ cloud/scripts/e2e-local.sh   # the Worker under wrangler dev and the Rust client
 |---|---|
 | `kanso-core` | Document types, revisions, the search query language, task and link parsing |
 | `kanso-store` | SQLite store: writes, search, history, change feed, backups, sync bookkeeping |
-| `kanso-import` | Inkdrop (PouchDB on SQLite) importer and Electron safeStorage decryption |
-| `kanso-server` | The local HTTP API (compatible with Inkdrop's) and the native MCP endpoint |
+| `kanso-import` | Importers for folders of Markdown, other apps' exports and PouchDB-on-SQLite libraries, and Electron safeStorage decryption |
+| `kanso-server` | The local REST API (compatible with popular local-server clients) and the native MCP endpoint |
 | `kanso-sync` | Accounts and end-to-end encrypted sync, and the `kanso-sync` command (`verify`, `estimate`, `unbind`) |
 | `kanso-app` | The GPUI app and the `kanso` command |
 | `cloud/` | The sync Worker (TypeScript, D1, R2) and its admin script |

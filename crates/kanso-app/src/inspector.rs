@@ -285,7 +285,8 @@ impl Inspector {
             return;
         };
         let uri = format!(
-            "inkdrop://note/{}",
+            "{}{}",
+            kanso_core::links::NOTE_LINK_PREFIX,
             target.strip_prefix("note:").unwrap_or(&target)
         );
         let Some(body) = kanso_core::links::link_mention(&note.body, mention.line, &title, &uri)

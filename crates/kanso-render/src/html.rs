@@ -35,9 +35,16 @@ enum Piece {
     Inline(String),
 }
 
-/// The attachment ID an `inkdrop://file:` URL points at. Pure.
+/// The prefix of an attachment link inside a note body, then the file ID.
+/// It is the scheme the app that first wrote these notes uses, and the same
+/// as `kanso_core::links::FILE_LINK_PREFIX` (this crate doesn't depend on
+/// `kanso-core`); it stays exactly as written.
+pub const FILE_LINK_PREFIX: &str = "inkdrop://file:";
+
+/// The attachment ID an attachment link ([`FILE_LINK_PREFIX`]) points at.
+/// Pure.
 pub fn attachment_id(url: &str) -> Option<String> {
-    let id = url.strip_prefix("inkdrop://file:")?;
+    let id = url.strip_prefix(FILE_LINK_PREFIX)?;
     let id = id.split(['?', '#', '/', ')', ' ']).next()?;
     (!id.is_empty()).then(|| format!("file:{id}"))
 }
@@ -197,7 +204,7 @@ fn fence_is(lang: &Option<String>, want: &str) -> bool {
 }
 
 /// The attached Excalidraw scene a paragraph is, if it is only a link (or
-/// image) to an `inkdrop://file:` named `….excalidraw`. Pure.
+/// image) to an attachment named `….excalidraw`. Pure.
 pub fn attached_scene(node: &Node) -> Option<String> {
     let Node::Paragraph(paragraph) = node else {
         return None;

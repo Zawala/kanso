@@ -141,9 +141,10 @@ colors are shaded until they read on that theme's surfaces.
 
 `Import Theme…` on the Themes page, or `kanso theme import <path>`, converts:
 
-- an **Inkdrop** theme: a v6 package (`package.json` with `"theme": true`,
-  `ui.css`, `syntax.css`, `preview.css`) as a folder or `.tgz`, and, as well as
-  it can, a v5 UI, syntax or preview package;
+- a **theme package**: an npm-style package (`package.json` with
+  `"theme": true`, `ui.css`, `syntax.css`, `preview.css`) as a folder or
+  `.tgz`, and, as well as it can, an older single-part UI, syntax or preview
+  package;
 - a **Zed** theme family (`.json`, one Kanso theme per theme in it).
 
 The result lands in the themes folder as an ordinary theme file to edit.

@@ -5,15 +5,14 @@
 //! Standard Notes, Simplenote, UpNote), and is the importer behind
 //! `kanso import` and the app's Import… window.
 //!
-//! The rest of the crate imports an Inkdrop database.
-//!
-//! Inkdrop keeps its documents in PouchDB on SQLite at
-//! `~/Library/Application Support/inkdrop/db/<32 hex>.sqlite` on macOS (see
-//! [`default_inkdrop_dir`] for Windows and Linux). The importer
-//! snapshots that file read-only (it may be open in Inkdrop), then copies the
-//! winning revision of every note, notebook, tag and file, keeping their IDs
-//! and revisions. Attachment bytes are checked against their MD5 digests;
-//! Inkdrop's `activity:` log is archived verbatim; design documents, `config`
+//! The rest of the crate imports a PouchDB notes library: an Electron notes
+//! app that keeps its documents in PouchDB on SQLite, in
+//! `<data dir>/db/<32 hex>.sqlite` (see [`default_pouch_library_dir`] for
+//! where the data folder is on each system). The importer snapshots that
+//! file read-only (the app may have it open), then copies the winning
+//! revision of every note, notebook, tag and file, keeping their IDs and
+//! revisions. Attachment bytes are checked against their MD5 digests; the
+//! library's `activity:` log is archived verbatim; design documents, `config`
 //! and `_local` documents are skipped.
 
 mod config;
@@ -28,37 +27,45 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, bail};
 
 pub use config::{
-    DEFAULT_BIND_ADDRESS, DEFAULT_PORT, InkdropCredentials, InkdropServerConfig,
-    parse_inkdrop_server_config, read_inkdrop_server_config,
+    DEFAULT_BIND_ADDRESS, DEFAULT_PORT, LocalServerConfig, LocalServerCredentials,
+    parse_local_server_config, read_local_server_config,
 };
 pub use import::{Phase, Progress, import};
 pub use report::{ImportReport, SourceCounts};
 
-/// Inkdrop's data directory on macOS: `~/Library/Application Support/inkdrop`.
-/// `None` when `HOME` is not set.
+/// The name of the source app's data folder, its Electron `userData`
+/// folder. The app chose it, so it stays exactly as written.
+pub const DATA_DIR_NAME: &str = "inkdrop";
+
+/// The library's data folder on macOS:
+/// `~/Library/Application Support/<DATA_DIR_NAME>`. `None` when `HOME` is
+/// not set.
 #[cfg(target_os = "macos")]
-pub fn default_inkdrop_dir() -> Option<PathBuf> {
-    non_empty_var("HOME")
-        .map(|home| PathBuf::from(home).join("Library/Application Support/inkdrop"))
+pub fn default_pouch_library_dir() -> Option<PathBuf> {
+    non_empty_var("HOME").map(|home| {
+        PathBuf::from(home)
+            .join("Library/Application Support")
+            .join(DATA_DIR_NAME)
+    })
 }
 
-/// Inkdrop's data directory on Windows, Electron's `userData`:
-/// `%APPDATA%\inkdrop`. `None` when `APPDATA` is not set.
+/// The library's data folder on Windows, Electron's `userData`:
+/// `%APPDATA%\<DATA_DIR_NAME>`. `None` when `APPDATA` is not set.
 #[cfg(target_os = "windows")]
-pub fn default_inkdrop_dir() -> Option<PathBuf> {
-    non_empty_var("APPDATA").map(|dir| PathBuf::from(dir).join("inkdrop"))
+pub fn default_pouch_library_dir() -> Option<PathBuf> {
+    non_empty_var("APPDATA").map(|dir| PathBuf::from(dir).join(DATA_DIR_NAME))
 }
 
-/// Inkdrop's data directory on Linux, Electron's `userData`:
-/// `$XDG_CONFIG_HOME/inkdrop` or `~/.config/inkdrop`. `None` when neither
-/// is set.
+/// The library's data folder on Linux, Electron's `userData`:
+/// `$XDG_CONFIG_HOME/<DATA_DIR_NAME>` or `~/.config/<DATA_DIR_NAME>`. `None`
+/// when neither is set.
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub fn default_inkdrop_dir() -> Option<PathBuf> {
+pub fn default_pouch_library_dir() -> Option<PathBuf> {
     non_empty_var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .filter(|dir| dir.is_absolute())
         .or_else(|| non_empty_var("HOME").map(|home| PathBuf::from(home).join(".config")))
-        .map(|config| config.join("inkdrop"))
+        .map(|config| config.join(DATA_DIR_NAME))
 }
 
 fn non_empty_var(name: &str) -> Option<std::ffi::OsString> {
@@ -72,9 +79,9 @@ fn is_main_db_name(name: &str) -> bool {
         .is_some_and(|stem| stem.len() == 32 && stem.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
-/// The main database in `<inkdrop_dir>/db`: the single `<32 hex>.sqlite` file.
-pub fn find_inkdrop_db(inkdrop_dir: &Path) -> anyhow::Result<PathBuf> {
-    let db_dir = inkdrop_dir.join("db");
+/// The main database in `<library_dir>/db`: the single `<32 hex>.sqlite` file.
+pub fn find_pouch_db(library_dir: &Path) -> anyhow::Result<PathBuf> {
+    let db_dir = library_dir.join("db");
     let entries =
         std::fs::read_dir(&db_dir).with_context(|| format!("cannot list {}", db_dir.display()))?;
     let mut found = Vec::new();
@@ -88,12 +95,12 @@ pub fn find_inkdrop_db(inkdrop_dir: &Path) -> anyhow::Result<PathBuf> {
     found.sort();
     match found.len() {
         0 => bail!(
-            "no Inkdrop database (<32 hex digits>.sqlite) in {}",
+            "no PouchDB library (<32 hex digits>.sqlite) in {}",
             db_dir.display()
         ),
         1 => Ok(found.remove(0)),
         _ => bail!(
-            "several Inkdrop databases in {}: {}",
+            "several PouchDB libraries in {}: {}",
             db_dir.display(),
             found
                 .iter()

@@ -2,8 +2,7 @@
 //! it, and the view transform the graph view draws it through. All pure;
 //! `graph_view.rs` draws it.
 //!
-//! The graph comes from the store's `note_links` index: `inkdrop://note/`
-//! links by ID, and wiki-links by title, resolved as everywhere else to
+//! The graph comes from the store's `note_links` index: ID links by ID, and wiki-links by title, resolved as everywhere else to
 //! the first-created live note with that title. Links are undirected for
 //! drawing: A→B and B→A are one edge. A note linking to itself keeps its
 //! self-loop (it is real), but is never its own neighbour.

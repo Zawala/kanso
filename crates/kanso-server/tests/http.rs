@@ -428,7 +428,7 @@ async fn files_carry_attachments() {
 }
 
 #[tokio::test]
-async fn deletes_follow_inkdrop_semantics() {
+async fn deletes_follow_the_api_semantics() {
     let app = app();
     let book_id = book(&app, "B").await;
     let tag_id = tag(&app, "T").await;

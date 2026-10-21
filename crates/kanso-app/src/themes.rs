@@ -6,7 +6,7 @@
 //! Reload. A file that can't be read is skipped with a notice that says
 //! why; it never stops the others or the app.
 //!
-//! Three themes are in use at once, as in Inkdrop: the UI theme colors the
+//! Three themes are in use at once: the UI theme colors the
 //! panes and controls (through the component library's theme too, so menus
 //! and popovers match), the syntax theme the editor's Markdown and code, and
 //! the preview theme the rendered note. The last two default to the UI

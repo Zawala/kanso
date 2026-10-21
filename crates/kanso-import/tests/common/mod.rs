@@ -1,5 +1,5 @@
-//! A synthetic Inkdrop database: PouchDB's six SQLite tables with the real
-//! column layout (copied from a real Inkdrop 5 database), filled with
+//! A synthetic PouchDB library: PouchDB's six SQLite tables with the real
+//! column layout (copied from a real library's database), filled with
 //! documents, revisions and attachments.
 
 #![allow(dead_code)]
@@ -10,7 +10,7 @@ use kanso_store::Attachment;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Map, Value, json};
 
-/// The schema of a real Inkdrop `db/<hash>.sqlite`, verbatim.
+/// The schema of a real library's `db/<hash>.sqlite`, verbatim.
 pub const POUCHDB_SCHEMA: &str = r#"
 CREATE TABLE 'attach-store' (digest UNIQUE, escaped TINYINT(1), body BLOB);
 CREATE TABLE 'local-store' (id UNIQUE, rev, json);
@@ -83,7 +83,7 @@ pub struct Fixture {
 }
 
 impl Fixture {
-    /// Creates the database at `path` in WAL mode, as Inkdrop keeps it.
+    /// Creates the database at `path` in WAL mode, as the app keeps it.
     pub fn create(path: &Path) -> Fixture {
         let conn = Connection::open(path).unwrap();
         conn.pragma_update(None, "journal_mode", "WAL").unwrap();
@@ -188,7 +188,7 @@ impl Fixture {
     }
 }
 
-/// A complete, canonical note as Inkdrop writes it.
+/// A complete, canonical note as the app writes it.
 pub fn note_fields(title: &str, body: &str, book_id: &str) -> Value {
     let tasks = kanso_core::tasks::count_tasks(body);
     json!({

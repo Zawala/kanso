@@ -2,12 +2,13 @@
 //! shows them, and `[[` autocomplete in the editor.
 //!
 //! The preview is handed the note's Markdown with each wiki-link written as
-//! an ordinary link ([`rewrite_for_preview`]): to `inkdrop://note/<id>` when
+//! an ordinary link ([`rewrite_for_preview`]): to an ID link
+//! ([`NOTE_LINK_PREFIX`]`<id>`) when
 //! its title names a note, so it opens like any note link, and to a
 //! `kanso-new:` link when it names none. [`UnresolvedLink`] draws those
 //! dashed, and clicking one creates the note.
 //!
-//! Autocomplete ([`WikiCompletion`]) writes `[Title](inkdrop://note/<id>)`,
+//! Autocomplete ([`WikiCompletion`]) writes `[Title](<ID link>)`,
 //! which names the note by ID and so survives renames.
 
 use std::cell::{Cell, RefCell};
@@ -22,7 +23,7 @@ use gpui_kit::base::text::{
     markdown_ast,
 };
 use gpui_kit::*;
-use kanso_core::links::{code_ranges, normalize_title, wiki_links};
+use kanso_core::links::{NOTE_LINK_PREFIX, code_ranges, normalize_title, wiki_links};
 use lsp_types::{
     CompletionContext, CompletionItem, CompletionItemKind, CompletionResponse, CompletionTextEdit,
     TextEdit,
@@ -126,7 +127,10 @@ pub fn rewrite_for_preview(text: &SharedString, index: &WikiIndex) -> SharedStri
         out.push_str(&text[last..link.range.start]);
         let label = escape_label(&link.label());
         let target = match index.resolve(&link.title) {
-            Some((id, _)) => format!("inkdrop://note/{}", id.strip_prefix("note:").unwrap_or(id)),
+            Some((id, _)) => format!(
+                "{NOTE_LINK_PREFIX}{}",
+                id.strip_prefix("note:").unwrap_or(id)
+            ),
             None => new_note_url(&link.title),
         };
         out.push('[');
@@ -330,7 +334,7 @@ pub fn matched_prefix<'a>(title: &'a str, query: &str) -> &'a str {
     if pending.is_some() { "" } else { &title[..end] }
 }
 
-/// `[[` autocomplete: notes by title, inserted as `[Title](inkdrop://note/<id>)`.
+/// `[[` autocomplete: notes by title, inserted as `[Title](<ID link>)`.
 /// When no title matches what was typed exactly, the last entry writes
 /// `[[typed]]`, which the preview offers to create.
 pub struct WikiCompletion {
@@ -410,7 +414,10 @@ impl CompletionProvider for WikiCompletion {
                         filter_text: Some(matched_prefix(&shown, &query).to_owned()),
                         label: shown,
                         kind: Some(CompletionItemKind::FILE),
-                        text_edit: edit(format!("[{}](inkdrop://note/{suffix})", link_text(title))),
+                        text_edit: edit(format!(
+                            "[{}]({NOTE_LINK_PREFIX}{suffix})",
+                            link_text(title)
+                        )),
                         ..Default::default()
                     }
                 })

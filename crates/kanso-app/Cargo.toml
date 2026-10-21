@@ -30,7 +30,7 @@ global-hotkey = "0.9"
 gpui-kit.workspace = true
 # HTML on the clipboard pasted as Markdown (Apache-2.0).
 htmd = "0.5.6"
-# Pasted images Inkdrop doesn't take (TIFF, WebP, BMP) are stored as PNG.
+# Pasted images the API doesn't take (TIFF, WebP, BMP) are stored as PNG.
 # GPUI already builds these decoders.
 image = { version = "0.25", default-features = false, features = ["png", "tiff", "webp", "bmp", "ico"] }
 kanso-core.workspace = true

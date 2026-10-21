@@ -1,6 +1,6 @@
 //! Kanso's document store.
 //!
-//! Every document is kept as its Inkdrop-shaped JSON plus indexed columns
+//! Every document is kept as its JSON, in the local-server API's shape, plus indexed columns
 //! derived from it. Writes are serialized through one connection inside
 //! `BEGIN IMMEDIATE`; reads use a small pool of connections. Each committed
 //! write is broadcast to subscribers as a [`Change`].
@@ -76,7 +76,7 @@ pub enum Origin {
     Api,
     /// The Cloudflare sync client applying a remote change.
     Sync,
-    /// The Inkdrop importer.
+    /// The PouchDB library importer.
     Import,
 }
 

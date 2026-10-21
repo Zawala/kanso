@@ -64,7 +64,7 @@ actions!(
         ChangePassword,
         NewRecoveryKey,
         SignOut,
-        ImportInkdrop,
+        ImportPouchLibrary,
         ImportLibrary,
         OpenFile,
         Quit,
@@ -1519,8 +1519,8 @@ impl Render for Workspace {
             .on_action(
                 cx.listener(|this, _: &ExportLibrary, window, cx| this.export(None, window, cx)),
             )
-            .on_action(cx.listener(|_, _: &ImportInkdrop, window, cx| {
-                crate::inkdrop::start_import(window, cx);
+            .on_action(cx.listener(|_, _: &ImportPouchLibrary, window, cx| {
+                crate::pouch_import::start_import(window, cx);
             }))
             .on_action(cx.listener(|_, _: &ImportLibrary, window, cx| {
                 crate::library_import::start(window, cx);

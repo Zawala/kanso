@@ -1,12 +1,12 @@
-//! Inkdrop's default themes' values for the CSS variables the importer
-//! reads, so a theme that sets only some of them falls back to Inkdrop's own
-//! look, as it does in Inkdrop.
+//! The default themes' values for the CSS variables the importer reads, so
+//! a theme package that sets only some of them falls back to the default
+//! look, as it does in the app it was made for.
 //!
-//! Generated from the `palette.json` of Inkdrop's Default Light and Default
-//! Dark themes (https://github.com/inkdropapp/default-light and
+//! Generated from the `palette.json` of the Default Light and Default Dark
+//! themes (https://github.com/inkdropapp/default-light and
 //! https://github.com/inkdropapp/default-dark, version 3.0.0), which are
 //! Copyright (c) Takuya Matsuyama and published under the MIT license. Only
-//! the variables `inkdrop.rs` reads are kept; `the_base_table_covers_the_mapping`
+//! the variables `package.rs` reads are kept; `the_base_table_covers_the_mapping`
 //! fails when the mapping reads one that is missing.
 
 // The values as the palettes write them.

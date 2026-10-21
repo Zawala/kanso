@@ -1,5 +1,6 @@
 //! A native MCP endpoint at `/mcp`: the 17 tools of `@inkdropapp/mcp-server`
-//! 1.5.0 and its `inkdrop://note/{noteId}` resource template.
+//! 1.5.0 and its note resource template
+//! ([`NOTE_LINK_PREFIX`](kanso_core::links::NOTE_LINK_PREFIX)`{noteId}`).
 //!
 //! The transport is MCP's streamable HTTP in its simplest conforming form:
 //! each POST carries a JSON-RPC message (or a batch) and requests get a JSON
@@ -224,7 +225,7 @@ fn call(state: &AppState, method: &str, params: Option<&Value>) -> Result<Value,
         "resources/templates/list" => Ok(json!({
             "resourceTemplates": [{
                 "name": "note",
-                "uriTemplate": "inkdrop://note/{noteId}",
+                "uriTemplate": format!("{}{{noteId}}", kanso_core::links::NOTE_LINK_PREFIX),
                 "description": "A note data",
                 "mimeType": "application/json",
             }]

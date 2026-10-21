@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::text_stats::format_count;
 
-/// Where a note keeps its goal, beside Inkdrop's own fields.
+/// Where a note keeps its goal, beside the API's own fields.
 pub const GOAL_KEY: &str = "kansoWordGoal";
 
 /// The goals offered in the footer's menu and the palette.
