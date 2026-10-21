@@ -17,6 +17,12 @@ Since 2026-10-20 it also runs migration `0003_shares` (published links: the `sha
 ciphertext in R2 under `shares/<id>`), deployed as Worker version
 `f9acbb57-2eb8-4302-a8fd-a5e62bdc468d`.
 
+Since 2026-10-21 (with Kanso 0.7.0) it also runs migration `0005_collab` (shared notes:
+identities, `collab_*` tables) and the `NoteRoom` Durable Object (one per shared note, SQLite
+storage, migration tag `v1`), deployed as Worker version `a0084598-4b14-4106-a56c-329721b1e89e`.
+The D1 Time Travel bookmark from just before the migration is
+`000005fe-00000000-0000510b-6bef7dc050eff27b48f8086073e12b82`.
+
 ## Restoring D1
 
 Only with `npm run -s admin -- restore <time | bookmark>`, run first without `--confirm` to see
