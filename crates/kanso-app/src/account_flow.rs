@@ -603,6 +603,7 @@ fn forget_account(cx: &mut App) {
     let services = cx.global_mut::<Services>();
     services.clear_session(AccountState::SignedOut);
     services.pending_key = None;
+    crate::collab::signed_out(cx);
     AppState::update_config(cx, |config| config.sync.account = None);
     cx.refresh_windows();
 }

@@ -160,6 +160,34 @@ impl NoteEditor {
         }
     }
 
+    /// Someone else's edits were merged into the text: Vim's cursor and
+    /// Visual selection follow their text, a Normal mode cursor stays on a
+    /// character, and an Insert session can't be made one undo step any
+    /// more (its text changed under it).
+    pub(super) fn vim_after_merge(
+        &mut self,
+        splices: &[kanso_collab::Splice],
+        cx: &mut Context<Self>,
+    ) {
+        let text = self.body.read(cx).value();
+        let Some(state) = self.vim.as_mut() else {
+            return;
+        };
+        let normal = state.vim.mode() == Mode::Normal;
+        let (head, shown) =
+            crate::collab_text::map_vim(state.head, state.shown.clone(), normal, splices, &text);
+        state.head = head;
+        state.shown = shown;
+        state.base = None;
+        state.entry = None;
+        if normal {
+            let at = clamp_normal(&text, self.body.read(cx).cursor());
+            self.body
+                .update(cx, |body, cx| body.set_selected_range(at..at, cx));
+        }
+        self.vim_footer(cx);
+    }
+
     /// The mode in the footer, and in Visual modes where Vim's cursor is
     /// (the editor's is at the selection's end).
     fn vim_footer(&self, cx: &mut Context<Self>) {
@@ -268,6 +296,14 @@ impl NoteEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A note shared to read: Vim moves through it, but changes nothing.
+        if self.text_read_only && (out.edit.is_some() || out.mode == Mode::Insert) {
+            if let Some(state) = self.vim.as_mut() {
+                state.vim.reset();
+            }
+            self.vim_footer(cx);
+            return;
+        }
         let entering = out.mode == Mode::Insert && was != Mode::Insert;
         if entering {
             // The mark the session's undo steps are gathered back to.

@@ -210,6 +210,9 @@ pub struct Services {
     /// Published notes' seam: `HttpShares` in the app, `MemoryShares` in
     /// tests. Without one, nothing is published.
     pub shares: Option<Arc<dyn kanso_sync::share::ShareApi>>,
+    /// Shared notes' seam: `HttpCollab` in the app, `MemoryCollab` in
+    /// tests. Without one, nothing is shared (`crate::collab`).
+    pub collab: Option<Arc<dyn kanso_collab::CollabApi>>,
     /// The Keychain's seam: `Keychain` in the app, `MemorySecrets` in tests.
     pub secrets: Option<Arc<dyn SecretStore>>,
     /// This Mac, as tests fake it; `None` asks the system (on a background
@@ -499,11 +502,15 @@ pub fn apply_sync_settings(cx: &mut App) {
         cx.refresh_windows();
         return;
     }
+    let interval = Duration::from_secs(settings.interval_secs.max(60));
+    // Shared notes sync on the same cadence, whether or not the library
+    // syncs on its own: invitations and mentions come that way.
+    let shared = crate::collab::periodic(interval, cx);
     if !settings.enabled {
+        cx.global_mut::<Services>().sync_tasks = vec![shared];
         cx.refresh_windows();
         return;
     }
-    let interval = Duration::from_secs(settings.interval_secs.max(60));
     let periodic = cx.spawn(async move |cx| {
         loop {
             cx.update(|cx| start_sync(false, cx));
@@ -526,13 +533,14 @@ pub fn apply_sync_settings(cx: &mut App) {
         }
     });
     let services = cx.global_mut::<Services>();
-    services.sync_tasks = vec![periodic, after_edits];
+    services.sync_tasks = vec![periodic, after_edits, shared];
 }
 
 /// Syncs once, now, on its own thread ("Sync now"): it runs whatever held
 /// automatic syncs back. A request during a sync runs right after it.
 pub fn sync_now(cx: &mut App) {
     start_sync(true, cx);
+    crate::collab::sync_soon(cx);
 }
 
 /// Starts an automatic sync again after an account task stopped one and
@@ -745,6 +753,7 @@ pub fn end_session(reason: SignOutReason, cx: &mut App) {
     let library_id = services.library_id.clone();
     let ended = services.session.clone();
     services.clear_session(AccountState::SessionEnded { username, reason });
+    crate::collab::signed_out(cx);
     if let (Some(secrets), Some(library_id)) = (secrets, library_id) {
         cx.spawn(async move |cx| {
             let stale = cx

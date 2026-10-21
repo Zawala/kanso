@@ -564,9 +564,22 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 				`INSERT INTO share_purges (id, requested_at) SELECT id, ${now} FROM shares WHERE account_id = ${id}
   ON CONFLICT (id) DO UPDATE SET requested_at = excluded.requested_at`,
 				`DELETE FROM shares WHERE account_id = ${id}`,
+				// Shared notes, as the Worker's deletion: its own are stopped (their rooms queued for the
+				// cron, their IDs retired by a trigger); its identity and its place in others' go.
+				`INSERT INTO collab_purges (id, requested_at) SELECT id, ${now} FROM collab_shares WHERE owner_id = ${id}
+  ON CONFLICT (id) DO UPDATE SET requested_at = excluded.requested_at`,
+				`DELETE FROM collab_notifications WHERE recipient_id = ${id} OR sender_id = ${id}
+  OR share_id IN (SELECT id FROM collab_shares WHERE owner_id = ${id})`,
+				`DELETE FROM collab_wraps WHERE account_id = ${id} OR share_id IN (SELECT id FROM collab_shares WHERE owner_id = ${id})`,
+				`DELETE FROM collab_lists WHERE share_id IN (SELECT id FROM collab_shares WHERE owner_id = ${id})`,
+				`DELETE FROM collab_requests WHERE account_id = ${id} OR share_id IN (SELECT id FROM collab_shares WHERE owner_id = ${id})`,
+				`DELETE FROM collab_links WHERE share_id IN (SELECT id FROM collab_shares WHERE owner_id = ${id})`,
+				`DELETE FROM collab_members WHERE account_id = ${id} OR share_id IN (SELECT id FROM collab_shares WHERE owner_id = ${id})`,
+				`DELETE FROM collab_shares WHERE owner_id = ${id}`,
+				`DELETE FROM identities WHERE account_id = ${id}`,
 				`DELETE FROM sessions WHERE account_id = ${id}`,
 				`DELETE FROM limits WHERE key IN ('login-user:' || ${id}, 'password-account:' || ${id}, 'writes-account:' || ${id},
-  'uploads-account:' || ${id})`,
+  'uploads-account:' || ${id}, 'lookup-account:' || ${id}, 'join-account:' || ${id}, 'notify-account:' || ${id})`,
 				`INSERT INTO purges (prefix, requested_at) SELECT 'accounts/' || id || '/', ${now} FROM accounts WHERE username = ${sqlText(user)}
   ON CONFLICT (prefix) DO UPDATE SET requested_at = excluded.requested_at`,
 				`DELETE FROM accounts WHERE username = ${sqlText(user)} RETURNING id`,
@@ -574,7 +587,7 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 			const deleted = results[results.length - 1].results[0];
 			return deleted
 				? ok(
-						`Deleted ${user} (${String(deleted.id)}). The cron empties accounts/${String(deleted.id)}/ and deletes its published notes in R2 within 15 minutes.`,
+						`Deleted ${user} (${String(deleted.id)}). The cron empties accounts/${String(deleted.id)}/, deletes its published notes in R2 and purges the notes it shared within 15 minutes.`,
 					)
 				: refused(`No account is named ${user}.`);
 		}

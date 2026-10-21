@@ -2712,6 +2712,415 @@ e2e.
 - **Client-only problems.** Sign out (notes stay), install a fixed build, and sign in. "Same"
   resumes.
 
+## Collaboration
+
+Kanso users can share a note with each other and edit it together, live or each on their own
+time, with comments and @mentions. The server stores and relays what they write and can't read
+any of it. Private notes are untouched: they sync as above, and only a shared note changes how it
+travels.
+
+### What it is
+
+- **Sharing.** The note's ⋯ menu, Note › Share…, or the palette › Share… opens the Share sheet. The
+  owner invites another Kanso user by username, or makes an invite link, and gives each person a
+  role:
+
+  | Role | Read | Comment | Edit | Manage people |
+  |---|---|---|---|---|
+  | View | ✓ | | | |
+  | Comment | ✓ | ✓ | | |
+  | Edit | ✓ | ✓ | ✓ | |
+  | Owner | ✓ | ✓ | ✓ | ✓ |
+
+  A shared note has one owner, who shared it. The owner changes roles, removes people, cancels
+  links, approves link requests and stops sharing. Anyone else can leave.
+- **Shared with me.** Notes others shared with you sit under "Shared with me" in the sidebar,
+  beside the invitations waiting for you, on every device signed in to your account. Accepting an
+  invitation brings the note in. A note you were removed from, or whose owner stopped sharing,
+  stays as a private copy of its last text, marked as no longer shared.
+- **Merging.** Two people editing the same note at the same time, or one of them offline, both
+  keep their edits: shared notes are merged by a CRDT (Yrs, the Rust port of Yjs, wrapped in
+  `crates/kanso-collab`), never settled as "theirs vs mine".
+- **Live.** While a shared note is open, edits arrive within about a second, and everyone in it
+  sees where the others' cursors and selections are, each in their own colour, with their name.
+  Remote edits never move your cursor or selection, in Vim mode too.
+- **Comments.** Select text and choose Comment (or the Comments tab in the inspector). Comments sit
+  outside the note's text, anchored to the words they are about; a comment whose words were deleted
+  shows as orphaned, at the nearest place that is left. Comments can be edited and deleted by their
+  author and resolved or reopened by anyone who may comment.
+- **@mentions.** `@username` in a comment, for a member of the note, sends them a notification;
+  they see it in "Shared with me".
+- **History.** The note's history says who made each version.
+- **Locked notes are never shared.** A locked note, or a note in a locked notebook, can't be
+  shared; a shared note can't be locked, or moved into a locked notebook, until sharing stops.
+
+### Identity keys
+
+Sharing needs a public key per account, which v1 accounts didn't have. The first time a signed-in
+device needs one (opening the Share sheet, Shared with me, or Settings › Account), it makes them,
+on the device:
+
+| Key | Algorithm | Use |
+|---|---|---|
+| `sign` | Ed25519 (`ed25519-dalek`) | Signs every update, comment, presence message and member list the account writes |
+| `box` | X25519 (`curve25519-dalek`'s Montgomery ladder, clamped) | Receives note keys and notifications |
+
+- **Sealed for the account's devices.** `identity_key = HKDF(data_key, info "kanso/v1/identity")`.
+  `sealed_identity = base64url(0x01 || nonce(24) || XChaCha20-Poly1305(identity_key, nonce, aad,
+  sign_seed || box_secret))`, 105 bytes or 140 characters, with `aad = "kanso-identity" || 0x01 ||
+  lp(account_id) || sign_pub || box_pub`. The server keeps it, so every device of the account opens
+  the same keys; the server can't.
+- **Binding.** `binding = Ed25519(sign, "kanso-identity-bind" || 0x01 || lp(account_id) ||
+  lp(username) || box_pub)`, 64 bytes. It ties the box key to the sign key, the account and the
+  username; a client checks it on every public key it is given.
+- **Fingerprint.** `SHA-256("kanso-fingerprint" || 0x01 || sign_pub || box_pub)`, its first 30
+  bytes read as six 5-byte big-endian numbers, each mod 100,000 and written as five digits:
+  `48213 00917 66305 12874 90321 55102`. Settings › Account shows yours.
+- **Verified on first share.** The server hands out public keys, so a hostile server could hand out
+  its own. The first time you share with someone (or accept from them), the sheet shows their
+  fingerprint beside yours and asks you to compare them some other way (in person, a call, a
+  message); "Mark as verified" pins it. Kanso pins every key it has seen to its account ID
+  (`collab_contacts`): a key that changes for a pinned account is refused with "<name>'s key
+  changed", and nothing is wrapped to it until you look at the new fingerprint and accept it.
+- **Accepting a changed key** pins exactly the keys whose fingerprint you compared: if the server
+  offers others by then, nothing is pinned.
+- **Never replaced silently.** The server refuses a different identity once one is set (409
+  `identity_exists`). There is no way to change it in this version; it lasts as long as the
+  account.
+
+Routes (session, JSON):
+
+- `PUT /v2/account/identity` `{sign_pub, box_pub, binding, sealed}` (43, 43, 86 and 140
+  characters) → 201 `{ok}`; 200 when the same identity is already set; 409 `identity_exists` for a
+  different one.
+- `GET /v2/account/identity` → `{sign_pub, box_pub, binding, sealed}`, or 404.
+- `GET /v2/users/<username>` → `{account_id, username, sign_pub, box_pub, binding}`; 404 for an
+  unknown or disabled account, or one without an identity. Counted by the `lookup-account` rule
+  (120 an hour per account).
+
+### Keys for shared notes
+
+- **`note_key`.** 32 random bytes per shared note per **epoch**. Epochs count from 1. Every change
+  to who is in the note, or to anyone's role, starts a new epoch with a new key.
+- **Wrapped to each member.** For a member with box key `B`: a fresh ephemeral X25519 pair
+  `(e, E)`; `dh = X25519(e, B)`, refused when all zero; `k = HKDF(ikm dh, salt E || B, info
+  "kanso/v1/note-key")`; `wrapped = 0x01 || E || nonce(24) || XChaCha20-Poly1305(k, nonce, aad,
+  note_key)`, 105 bytes, 140 characters, with `aad = "kanso-note-key" || 0x01 || lp(share_id) ||
+  u32(epoch) || lp(member_account) || role`. `role` is one byte: `o`, `e`, `c` or `v`. A wrap
+  opens only for its member, note, epoch and role.
+- **Key commitment.** `key_commit = hex(SHA-256("kanso-note-key-commit" || 0x01 || lp(share_id) ||
+  u32(epoch) || note_key))` is in the signed member list. The wrap itself doesn't say who made it,
+  so a member also checks that the key it opened matches the owner's commitment: a server can't
+  hand a member a key of its own choosing.
+- **At rest on a device.** Opened note keys are kept in the library (`collab_keys`), sealed under
+  `vault_key = HKDF(data_key, info "kanso/v1/collab-vault")` with `aad = "kanso-vault" || 0x01 ||
+  lp(share_id) || u32(epoch)`.
+
+`u32(n)` and `u64(n)` are big-endian.
+
+### The member list
+
+For each epoch the owner signs the list of who is in the note:
+
+    {"v":1,"share":"<share id>","epoch":<n>,"owner":"<account id>","key_commit":"<64 hex>","at":<ms>,
+     "from_seq":<n>,"members":[{"account":"a_…","username":"…","role":"owner|edit|comment|view",
+                 "sign_pub":"<43>","box_pub":"<43>"}, …]}
+
+Compact JSON, keys in this order, members sorted by account ID, exactly one `owner` (the owner
+themself), at most 20 members. `from_seq` (from epoch 2 on; never in epoch 1's list) is the
+log's head when the epoch began: the owner's device signs the head it read, and the server takes
+the epoch only while that is still the head (409 `head_moved` `{head}` otherwise, and the device
+signs again with that head). `list_sig = Ed25519(owner sign, "kanso-members" || 0x01 ||
+list_bytes)`. On the wire both travel as base64url (`list`, `list_sig`), so the bytes signed are
+the bytes received.
+
+- **Clients check every list:** the signature under the owner's pinned key (looked up, its binding
+  checked, and pinned the first time), its share ID, the owner's own entry, and each member's keys
+  against the pinned ones. A member seen for the first time is looked up by username: the keys
+  their account published (binding checked) must be the list's, or the list is refused. A list
+  never pins anyone else's keys.
+- **No going back.** The current list must be no older than the newest epoch the account has
+  seen: on the device, or on another of its devices, through the epoch in the note's `kansoShare`
+  (which private sync carries end-to-end encrypted). A server replaying an older list, with
+  someone removed since still in it, is refused.
+- **A list per epoch.** The server keeps every epoch's list (`collab_lists`) and gives each member
+  the lists of the epochs it holds keys for. A key is kept only when its epoch's list is the
+  owner's and the key matches that list's `key_commit`; a wrap opens with the member's role in
+  that list (or, for an epoch from before they came, the role they have now).
+- **Clients enforce roles too.** Every envelope's author must be in the owner-signed list of the
+  envelope's own epoch, with that list's keys; nobody else's envelope is opened. An update whose
+  author isn't `edit` or `owner` there is dropped, and so is a comment from a `view` member, even
+  though such a member holds the key: the server refuses them (below), and a client would refuse
+  them from a server that didn't.
+- **An epoch ends where the next begins.** An envelope of epoch `e` at a sequence number past the
+  `from_seq` of a later epoch's list is dropped: a server can't relay a removed or demoted editor's
+  late writes into the new epoch. (The server's check of `from_seq` against the head isn't atomic
+  with storing the epoch, so clients drop these whatever the server took.)
+- **Leaving and declining.** The member's device tells the server; the owner's device, on its next
+  refresh, sees them gone from the server's members and starts an epoch without them. Until then
+  the Share sheet shows them as left, and no key is wrapped to them again: someone the server no
+  longer has as a member is never put back in a list.
+- **Members whose keys can't be checked.** A listed member first seen when their account is gone
+  (deleted or disabled, so the lookup finds nobody) or the lookup fails is shown as unverified, and
+  the owner's next list leaves them out. What they wrote under a list that names them still merges,
+  checked against that list's keys: the owner checked those keys when adding them, and dropping
+  their entries would make members' copies differ. One share's error (a list that doesn't check,
+  an owner whose account is gone) never stops the others' refresh or sync, or hides other
+  invitations; only being offline or signed out does.
+- **Pending invitations pin only the owner.** The other members are pinned once you accept. The
+  invitation shows the owner's fingerprint, marked verified when it matches one you compared.
+- **The server reads it** (it is not secret: the server knows who is in the note anyway) to know
+  each member's role.
+
+### Updates, snapshots, comments and presence
+
+Everything written to a shared note travels in one envelope:
+
+    header   = 0x01 || kind || u32(epoch) || lp(author_account) || lp(author_device) || u64(counter)
+    sealed   = XChaCha20-Poly1305(note_key[epoch], nonce(24), aad, plaintext)
+    aad      = "kanso-collab" || 0x01 || lp(share_id) || header            (|| u64(base_seq) for a snapshot)
+    signature= Ed25519(author sign, "kanso-collab-sig" || 0x01 || lp(share_id) || header || nonce || sealed)
+    envelope = header || nonce || sealed || signature
+
+| Kind | Byte | Plaintext | Stored |
+|---|---|---|---|
+| Update | `u` | A Yrs v1 update | In the note's log until a snapshot covers it |
+| Snapshot | `s` | The whole Yrs state, as a v1 update from the empty state | Replaces every update up to `base_seq` |
+| Comment | `c` | A comment event (JSON, below) | In the log, never compacted |
+| Presence | `p` | `{"cursor","head","name"}` (sticky positions as base64url) | Never: relayed live only |
+
+- `counter` grows by one for each envelope a device writes to a note; with the author and device it
+  names an envelope.
+- The signature makes every change attributable: nobody, the server included, can write as
+  someone else, and history says who wrote what from signatures, not from the server.
+- **Long edits go in parts.** Parts are cut by their encoded size: at most 64 KiB of inserted text
+  and operations, counting 48 bytes for each operation, so a rewrite with many small changes
+  splits too. Each part is well under the 256 KiB cap. If the server still refuses one as too
+  large, the device keeps the edit as a private note ("<title> (not shared)") beside the shared
+  one, starts the note again from the log, and tells you.
+- **A note's whole state fits one snapshot.** An edit that would grow the state past 4 MiB less
+  4 KiB is kept as a private note instead, and you are told. The Share sheet warns when a note is
+  near that.
+- **The library's limits.** A merged title or body longer than a note can be here (128 and
+  1,048,576 characters) is cut, on whole characters, for the library only; the CRDT keeps all of
+  it, and the cut is never sent as a deletion. A write the library refuses (a limit, a lock) never
+  stops a merge: you are told why the note didn't change.
+- **Locked notes.** A shared note can't be locked or moved into a locked notebook. If one is anyway
+  (another device locked it before it learnt the note is shared), the library refuses to write the
+  shared text into it, and you are told.
+- **Coming back.** A note shared with you is `note:s<share id>` in your library. If that ID is taken
+  by another note (the private copy left when you were removed), it is `note:s<share id>.<epoch>`,
+  the epoch you joined at, so every device of the account picks the same note.
+- **What can't be merged is skipped.** An update that doesn't decode (or that Yrs refuses) is
+  skipped like a forged one, so one bad entry never stops a note's log. A device whose updates the
+  server refuses for good (its role was lowered) drops them and starts the note again from the
+  log; the library keeps its text until the log's has merged.
+- **Keystrokes are batched.** The editor turns its changes into Yrs operations as you type, and
+  sends what it has every 250 ms while live, or once on the next sync otherwise.
+- **The body stays plain text locally.** A shared note's `body` (and `title`) in the library are
+  the CRDT's text, written back after every merge. Search, links, the graph, export, the local
+  REST API and MCP read it as they read any note. Every local write (the editor, the API, MCP)
+  becomes Yrs operations by diffing the text the CRDT last had against the new text
+  (`similar`, by characters); the CRDT is never written directly.
+- **Comment events.** `{"id": <22>, "op": "add|edit|resolve|reopen|delete", "anchor": {"start",
+  "end", "quote"}, "body", "mentions": [<account>], "at"}`. `anchor` and `mentions` only on `add`;
+  `body` on `add` and `edit`. A comment is folded from its events in log order: `edit` and
+  `delete` count only from the comment's author; `resolve` and `reopen` from any member who may
+  comment; events from a `view` member, or for a comment never added, are dropped. The anchor's
+  `start` and `end` are Yrs sticky positions; when both resolve to the same place and the quoted
+  text is gone, the comment is orphaned.
+- **Snapshots (compaction).** After 500 updates or 1 MiB of them since the last snapshot, an
+  editor's device writes a snapshot of the whole state at the log's head. The server takes it only
+  if `base_seq` is still the head (compare-and-swap, 409 `head_moved` otherwise, and the device
+  tries again after reading what's new). A snapshot takes no sequence number of its own: its `seq`
+  is its `base_seq`. A new epoch gets a snapshot under its key, written by the owner's device right
+  after the epoch changes (or on its next sync).
+- **Newcomers read what came before.** A member added in a later epoch is also given the keys of
+  the earlier epochs (wraps that name their `epoch`), so they can read the comments written before
+  they came, which are never compacted, and any updates the newest snapshot doesn't cover yet.
+- **Order.** A device merges the log strictly in sequence order, never skipping a gap: entries the
+  room sends ahead of a gap wait until the log has filled it. Presence is sealed under counter 0
+  and never stored.
+
+### The server: routes
+
+All are session routes under `/v2/collab/`, JSON unless they say bytes. `<id>` is a share ID: 16
+random bytes as 22 base64url characters, chosen by the owner's device.
+
+| Method | Path | Who | Does |
+|---|---|---|---|
+| POST | `/v2/collab/shares` | anyone with an identity | Share a note: `{share_id, list, list_sig, wraps: [{account, wrapped}], snapshot}` (epoch 1, the snapshot's `base_seq` 0). Other members start as `invited`. 201 `{share_id, epoch, head}` |
+| GET | `/v2/collab/shares` | | Every share you are in or invited to: `{shares: [{share_id, owner, owner_username, role, status, epoch, list, list_sig, lists: [{epoch, list, list_sig}], wraps: [{epoch, wrapped}], head}]}` (`lists`: every epoch you hold a wrap for, and the current one, oldest first); for your own shares also `members: [{account, status}]`, `links: [{link_id, role, created_at, expires_at}]` and `requests: [{account, username, link_id, role, requested_at, sign_pub, box_pub, binding}]` |
+| POST | `/v2/collab/shares/<id>/accept` | invited | Accept: 204 |
+| DELETE | `/v2/collab/shares/<id>/membership` | member or invited, not the owner | Leave or decline: 204 |
+| POST | `/v2/collab/shares/<id>/epoch` | owner | New epoch: `{epoch, list, list_sig, wraps: [{account, wrapped, epoch?}]}`, `epoch` the current one + 1, the list's `from_seq` the room's head (409 `head_moved` `{head}` otherwise), exactly one wrap of the new epoch for every member, and wraps naming an earlier `epoch` for listed accounts only (each account and epoch once, at most min(20 × epoch, 400) in all). Accounts no longer listed lose their rows and every wrap; new ones are `invited`, or `member` when they asked through a link. 200 `{epoch}`; the same request again 200 (a retry); 409 `epoch_changed` `{epoch}` |
+| DELETE | `/v2/collab/shares/<id>` | owner | Stop sharing: every row, wrap, link and request goes, and the log is purged. 204 |
+| GET | `/v2/collab/shares/<id>/log?since=&limit=` | any member | `{head, snapshot: {seq, base_seq, envelope} \| null, entries: [{seq, envelope}], more}`. The snapshot comes when `since` is 0 or below its `base_seq`; entries are every update and comment after `since` (updates the snapshot covers are gone; comments stay), at most `limit` (1–1000, default 500) and about 8 MiB |
+| POST | `/v2/collab/shares/<id>/log` | bytes | Append one envelope: an update (edit, owner) or a comment (comment, edit, owner). 200 `{seq}` |
+| POST | `/v2/collab/shares/<id>/snapshot` | bytes, `x-kanso-base-seq` | Edit or owner. 200 `{seq}` (its `base_seq`; the head doesn't move); 409 `head_moved` `{head}` |
+| GET | `/v2/collab/shares/<id>/live` | WebSocket | Live editing (below); 426 `upgrade_required` without `Upgrade: websocket` |
+| POST | `/v2/collab/shares/<id>/links` | owner | `{link_id, proof_hash, role, expires_at}` (role edit, comment or view; at most 30 days; at most 10 live links). 201 |
+| DELETE | `/v2/collab/shares/<id>/links/<link_id>` | owner | 204 |
+| POST | `/v2/collab/join/<link_id>` | anyone with an identity | `{proof}`: asks to join. 202 `{share_id, owner_username, role}`; 404 for an unknown, expired or cancelled link or a wrong proof alike. Counted by `join-account` (20 an hour) |
+| DELETE | `/v2/collab/shares/<id>/requests/<account>` | owner | Decline a request: 204 |
+| POST | `/v2/collab/notifications` | member who may comment | `{share_id, recipient, sealed}` for a member or invitee of that note. 201. Counted by `notify-account` (500 a day) |
+| GET | `/v2/collab/notifications` | | `{notifications: [{id, share_id, from, sealed, at}]}`, oldest first, at most 500 kept |
+| DELETE | `/v2/collab/notifications/<id>` | recipient | 204 |
+| GET | `/j/<link_id>` | public | A static page: "Open Kanso, choose Join a shared note…, and paste this link." It never reads D1 |
+
+**Who sees what.** Someone not in a share gets 404 on all of its routes; an invited account that
+hasn't accepted gets 404 on the log, snapshots, `/live` and notifications too. Owner-only routes
+answer a member 403 `forbidden_role`. Errors are `{"error": <code>, "message", …}`; besides those
+above: 403 `identity_required` (sharing or joining without an identity), 409 `unknown_member`
+`{account}` (a listed account has no identity), 409 `member_keys_mismatch` `{account}` (a listed
+member's keys or username aren't their account's identity), 409 `share_id_taken` and `share_retired`, 409
+`link_id_taken`, 413 `quota_exceeded` `{quota, used, limit}` with `quota` one of `members`,
+`shares`, `links`, `requests`, `doc_bytes` or `comment_bytes`, and 429 `rate_limited` `{limit,
+retry_after}` with `Retry-After`. Creating a share, an epoch or a link again with the
+same request answers success again, so a device can retry after a dropped answer.
+
+**What the server checks on every envelope** (header only; it never opens one), in order: the
+route's body cap (413 `too_large`); a well-formed header (the format byte, a known kind, an epoch
+of 1 or more, the author an account ID `a_<32 hex>` and the device a device ID `d_<32 hex>`, so a
+header is always 86 bytes, then room for a nonce, a tag and a signature) and the kind for the
+route (else 400 `bad_request`); `epoch` equal to the share's current epoch (else 409
+`epoch_changed` `{epoch}`); `author_account` and `author_device` equal to the session's (else 403
+`forbidden_author`); the caller's role for the kind (else 403 `forbidden_role`); the envelope's
+size for its kind (413 `too_large`). `cloud/test/fixtures/collab.json` pins the header cases; the
+Worker and `kanso-collab` both run every one. The server checks the member list's shape (share,
+epoch, owner, key commitment, sorted unique members, one owner) but not its signature: members do.
+
+**Links.** The device that makes a link remembers its role, and approving gives that role,
+whatever the server says the request asked for. An invite link is `<server>/j/<link_id>#<secret>`: a 16-byte ID and a 32-byte secret,
+both base64url, the secret only ever in the fragment. `proof = HKDF(secret, info
+"kanso/v1/join-proof")`, and the server keeps `proof_hash = hex(SHA-256(proof))`. Someone with
+the link asks to join with the proof; the owner sees their username and fingerprint in the Share
+sheet and approves (a new epoch with them in it) or declines. A link alone grants nothing: a leaked
+link lets a stranger ask, not read.
+
+**Notifications.** `sealed` is the note-key wrap construction for the recipient's box key, with
+`info "kanso/v1/notice"` and `aad = "kanso-notice" || 0x01 || lp(recipient) || lp(share_id) ||
+lp(sender)`, over `{"comment": <id>, "title", "excerpt", "at"}` (at most 4 KiB sealed). It only
+points at the comment: the seal doesn't say who made it, so the recipient keeps a notification
+only once the note's log has that comment, signed by its sender, adding it and mentioning them,
+and shows the note's title and the comment's words from its own library, never the
+notification's.
+
+### The server: storage and the live room
+
+- **D1** (migration `0005_collab.sql`, which only adds tables): `identities`, `collab_shares`
+  (owner, epoch, the current list and signature), `collab_members` (role and status), `collab_wraps`
+  (per member per epoch), `collab_links`, `collab_requests`, `collab_notifications`,
+  `collab_retired` (a share ID that stopped is never used again) and `collab_purges`.
+- **One Durable Object per shared note** (`NoteRoom`, binding `NOTE_ROOM`, keyed by share ID) holds
+  the note's log in its own SQLite storage (`log(seq, kind, epoch, author, envelope, at)`, the
+  snapshot, the head, the counters), so a keystroke never writes to D1. The Worker authenticates
+  the session and reads the caller's role and the epoch from D1, then forwards to the room with
+  them; the room is reachable only through the Worker. On a new epoch, a removal or stop, the
+  Worker tells the room, which updates or closes the sockets at once.
+- **WebSockets with hibernation.** `GET …/live` upgrades to a WebSocket accepted by
+  `ctx.acceptWebSocket` with the caller's account, device and role in its attachment
+  (`serializeAttachment`), so the room can sleep between messages without being billed. Frames:
+  - client → room, binary: one envelope (`u`, `c` or `p`).
+  - room → clients, binary: `u64(seq) || envelope`, to everyone in the room the sender included
+    (that is the sender's acknowledgement), `seq` 0 for presence, which goes to the others only and
+    is never stored.
+  - room → client, text JSON: `{"type":"hello","head","epoch"}` on connect, `{"type":"epoch",
+    "epoch"}` when it changes, `{"type":"error","error":<code>,…}` for a refused frame (with its
+    `kind` and `counter`, as a decimal string, when the header parsed; the frame is dropped), and
+    `{"type":"closed","reason":"removed"|"stopped"}` before the room closes the socket with code
+    1000.
+  - The upgrade request carries `Authorization: Bearer …` and no `Origin`. Snapshots are never
+    sent to sockets.
+  The device reads anything it missed (over `…/log`) when it connects, then lives on frames, and
+  falls back to HTTP when the socket drops.
+
+### Limits
+
+| Limit | Value |
+|---|---|
+| Update | 256 KiB |
+| Snapshot | 4 MiB |
+| Comment | 16 KiB |
+| Presence | 2 KiB |
+| Log since the last snapshot | 10,000 entries or 16 MiB; past that, 409 `compact_first` until a snapshot |
+| Room bytes per UTC day | 64 MiB per note, snapshots included, presence not (429 `rate_limited`, `limit` `room-bytes`) |
+| WebSocket messages | 30 a second per socket, in bursts of 60 (an `error` frame `rate_limited`, `limit` `socket`, the frame dropped) |
+| Presence | 10 a second per account in a room, across its sockets, in bursts of 20 (an `error` frame `rate_limited`, `limit` `presence`, the frame dropped) |
+| Sockets | 8 per account per note (429 `rate_limited`, `limit` `sockets`, `retry_after` 5) |
+| Comments | 8 MiB per note (413 `quota_exceeded`, `quota` `comment_bytes`) |
+| Members per note | 20 |
+| Shares owned per account | 200 |
+| Live links per note | 10; pending requests per note 50 |
+| Notifications kept per recipient | 500 |
+
+Shared notes count towards their owner's storage. Every envelope a room stores is checked against
+the owner's `quota_doc_bytes`: their documents, plus their other shared notes, plus this room's
+live size (snapshot and log, comments included). Past it, 413 `quota_exceeded` `{quota:
+"doc_bytes", used, limit}` (an `error` frame on a socket). Each room reports its size to D1
+(`collab_shares.bytes`) when it has grown 64 KiB since it last did, at every snapshot, and
+otherwise 30 seconds after a change, so the owner's other notes can count up to that late. An
+owner past the quota can't share another note.
+
+### What the server learns
+
+On top of what it learns from private sync, the server sees: each account's public keys and its
+sealed private keys; who shares which (opaque) note with whom, with which roles, invited and
+accepted when; who asked through which link; when each member reads and writes the note, the
+size and timing of every update (keystroke timing, bucketed by the 250 ms batches), comment and
+presence message, and who is in a note together live; who mentions whom, and when. It does not
+see the note's title or text, comments, cursor positions, names typed in comments, or the note
+keys.
+
+### Threat model
+
+- **A curious or compromised server** can't read shared notes, comments, presence or
+  notifications, can't write as a member (every envelope is signed), can't add a member (clients
+  only wrap keys to, and accept updates from, the members of a list the owner signed), and can't
+  give a member a key of its own (the key commitment).
+- **Key substitution.** The server hands out public keys. Until you compare fingerprints, it could
+  give you its own key for someone you share with, the first time only (keys are pinned after
+  that). Compare fingerprints for anything sensitive.
+- **Removing a member** starts a new epoch whose key they never get, so they can't read anything
+  written after, and the server stops serving them the log. They keep whatever they already had:
+  no system can take that back, and the sheet says so.
+- **A viewer holds the key,** so cryptography alone can't stop them writing. The server refuses
+  their updates, and every member's client drops updates from anyone the signed list doesn't make
+  an editor. A commenter can write comments only.
+- **Withholding and reordering.** A hostile server can hold back or drop updates, or show members
+  different subsets. It can't forge or alter any; the CRDT merges whatever arrives, in any order,
+  to the same text. Updates a removed or demoted editor wrote under an earlier epoch can't be
+  slipped in after the next epoch began (`from_seq`).
+- **A malicious editor's snapshot** is signed by them and opens with the note key, but nothing
+  proves it holds everything the log had: an editor (not the server) can write a snapshot that
+  leaves earlier text out, and once the server compacts, devices that start from it never see what
+  was left out. Devices that had already merged that text keep it. Give edit rights to people you
+  trust with the note's history; each device's version history keeps what it saw.
+- **Open sockets.** A socket is checked when it opens. Removal, leaving, stopping and deleting the
+  account close it at once; signing out, or an account being disabled, doesn't until it next drops.
+- **Metadata** as listed above.
+
+### Rust crates
+
+`crates/kanso-collab` holds the protocol and wraps Yrs (`yrs = "0.28"`, MIT), so a switch to Loro
+stays a change inside it: `identity.rs`, `keys.rs`, `members.rs`, `envelope.rs`, `doc.rs` (the
+CRDT, diffing and sticky positions), `comments.rs`, `api.rs` (`CollabApi` and the wire shapes),
+`http.rs` (`HttpCollab` over `ureq`, and the WebSocket client over `tungstenite` and `rustls`),
+`memory.rs` (`MemoryCollab`, an in-memory server with the Worker's rules, for tests) and `engine/`:
+`sharing.rs` (sharing, epochs, links, invitations), `log.rs` (pulling, pushing, compaction,
+notifications), `live.rs` (one thread per open note's room), `people.rs` (lookups and pinned keys)
+and `mod.rs` (the open editor, comments, presence) against a `Store`. A note shared with you gets
+the ID `note:s<share id>` in your libraries; the owner's devices keep the note's own ID. `ed25519-dalek` and `curve25519-dalek`
+were already in `Cargo.lock`. The library keeps its side in `collab_*` tables (store migration 9):
+the CRDT state of each shared note, its note keys (sealed), the outbox, folded comments, pinned
+contacts and notifications. Shared notes carry `kansoShare` (`{shareId, role, owner, ownerName, epoch}`) in the note
+so the account's other devices see it; private sync sends a shared note without its `body` and
+`title` (the CRDT carries those), and keeps the local text when it applies one. Only Kanso writes
+`kansoShare`: the local API and MCP keep it as they keep `kansoPublish`, and a `view` or `comment`
+member's local writes to the text are refused. While a shared note is open, the editor's text
+reaches the library only through the engine (`sync_editor`), which merges it with what arrived and
+hands the editor back splices that never move its caret.
+
 ## Threat model
 
 Protected against: a curious or compromised server or owner; a leaked D1 database, R2 bucket or
@@ -2788,7 +3197,8 @@ Residual risks:
   changed URL; owners must keep the URL. Later, a move would work like a password change:
   connected through the new URL, derive the current key with the old origin from the Keychain item,
   and the new one with the new origin. No format change.
-- **Sharing, email, 2FA, web client:** out of scope.
+- **Email, 2FA, a web client, suggested edits (track changes) and editing shared notes on the web:** out
+  of scope. Sharing is in "Collaboration".
 
 ## Critical Files for Implementation
 

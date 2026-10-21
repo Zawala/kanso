@@ -986,6 +986,11 @@ impl Workspace {
                     crate::publish::open_publish(self.editor.clone(), window, cx);
                 }
             }
+            NoteCommand::Share => {
+                if self.open_note(id, window, cx) {
+                    crate::share_sheet::open_share(self.editor.clone(), window, cx);
+                }
+            }
         }
     }
 
@@ -1759,6 +1764,43 @@ impl Render for Workspace {
                     crate::publish::open_publish(this.editor.clone(), window, cx);
                 }),
             )
+            .on_action(cx.listener(|this, _: &crate::collab::ShareNote, window, cx| {
+                this.close_settings(window, cx);
+                crate::share_sheet::open_share(this.editor.clone(), window, cx);
+            }))
+            .on_action(cx.listener(|_, _: &crate::collab::JoinSharedNote, window, cx| {
+                crate::collab::join_dialog(window, cx);
+            }))
+            .on_action(
+                cx.listener(|this, _: &crate::collab::CommentOnSelection, window, cx| {
+                    let editor = this.editor.clone();
+                    let workspace = cx.entity().downgrade();
+                    crate::dialogs::prompt_checked(
+                        "Comment on the selection",
+                        "",
+                        "Comment",
+                        window,
+                        cx,
+                        move |text, window, cx| {
+                            editor.update(cx, |editor, cx| {
+                                editor.comment_on_selection(&text, window, cx)
+                            })?;
+                            // The new comment, among the others.
+                            workspace
+                                .update(cx, |workspace, cx| {
+                                    workspace.show_inspector(Some(InspectorTab::Comments), cx)
+                                })
+                                .ok();
+                            Ok(())
+                        },
+                    );
+                }),
+            )
+            .on_action(cx.listener(|this, _: &crate::collab::ShowComments, window, cx| {
+                this.close_settings(window, cx);
+                this.set_focus_mode(false, window, cx);
+                this.show_inspector(Some(InspectorTab::Comments), cx);
+            }))
             .on_action(
                 cx.listener(|this, _: &crate::locked::LockNote, window, cx| {
                     this.close_settings(window, cx);

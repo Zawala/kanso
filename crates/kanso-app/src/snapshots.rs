@@ -761,6 +761,197 @@ fn publish_sheet(
     .unwrap();
 }
 
+/// Words of a note's prose to comment on: whole words of five letters or
+/// more, outside headings, tables and code.
+fn prose_words(body: &str) -> Vec<std::ops::Range<usize>> {
+    let mut out = Vec::new();
+    let mut line_start = 0;
+    let mut in_code = false;
+    for line in body.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") {
+            in_code = !in_code;
+        } else if !in_code && !trimmed.starts_with(['#', '|', '!', '>']) {
+            let mut at = 0;
+            for word in line.split(' ') {
+                if word.len() >= 5 && word.chars().all(|c| c.is_ascii_alphabetic()) {
+                    out.push(line_start + at..line_start + at + word.len());
+                }
+                at += word.len() + 1;
+            }
+        }
+        line_start += line.len();
+    }
+    out
+}
+
+/// The open note shared by the demo account with user2, who can edit and
+/// has commented, and user3, invited to comment and yet to accept. It has
+/// comments on its words, one resolved and one whose words were deleted
+/// since; the editor follows it as a shared note.
+fn share_demo(cx: &mut HeadlessAppContext, workspace: &Entity<Workspace>) {
+    use kanso_collab::Role;
+    use kanso_collab::memory::MemoryCollab;
+
+    use crate::collab_tests::{device, engine_over};
+
+    let editor = cx.update(|cx| workspace.read(cx).editor.clone());
+    let Some(id) = cx.update(|cx| editor.read(cx).note_id().map(str::to_owned)) else {
+        return;
+    };
+    let server = MemoryCollab::new();
+    let store = cx.update(|cx| cx.global::<AppState>().store.clone());
+    let owner = engine_over(&server, store.clone(), 1, DEMO_USER);
+    // The other members' devices live as long as the shot.
+    let member = Box::leak(Box::new(device(&server, 2)));
+    Box::leak(Box::new(device(&server, 3)));
+    let body = store.note(&id).unwrap().unwrap().body;
+    let words = prose_words(&body);
+    if words.len() < 12 {
+        return;
+    }
+    owner.person("user2").unwrap();
+    owner.person("user3").unwrap();
+    let share = owner
+        .share(
+            &id,
+            &[
+                ("user2".to_owned(), Role::Edit),
+                ("user3".to_owned(), Role::Comment),
+            ],
+        )
+        .unwrap();
+    member.engine.refresh().unwrap();
+    member.engine.accept(&share).unwrap();
+    owner
+        .add_comment(
+            &share,
+            words[1].clone(),
+            "Is this still true since the move?",
+        )
+        .unwrap();
+    let gone = words[words.len() / 2].clone();
+    owner
+        .add_comment(&share, gone.clone(), "Worth a link to the details here.")
+        .unwrap();
+    owner.sync_note(&share).unwrap();
+    member.engine.sync_note(&share).unwrap();
+    member
+        .engine
+        .add_comment(
+            &share,
+            words[4].clone(),
+            "Yes, @ngoni, I checked it this morning.",
+        )
+        .unwrap();
+    let fixed = member
+        .engine
+        .add_comment(&share, words[8].clone(), "A typo here, I think.")
+        .unwrap();
+    member.engine.sync_note(&share).unwrap();
+    owner.sync_note(&share).unwrap();
+    owner.resolve_comment(&share, &fixed, true).unwrap();
+    // The words of one comment are deleted.
+    let mut cut = body.clone();
+    cut.replace_range(gone, "");
+    store
+        .put(
+            DocType::Note,
+            json!({"_id": id, "body": cut}),
+            Put::Merge,
+            Origin::Ui,
+        )
+        .unwrap();
+    owner.sync_note(&share).unwrap();
+    owner.refresh().unwrap();
+    cx.update(|cx| {
+        cx.set_reduce_motion(true);
+        cx.global_mut::<Services>().account = AccountState::SignedIn {
+            username: DEMO_USER.into(),
+        };
+        crate::collab::use_engine(owner, cx);
+    });
+    // The note shown again, as a shared note now.
+    let library = cx.update(|cx| workspace.read(cx).library.clone());
+    cx.update(|cx| library.update(cx, |library, cx| library.select(None, cx)));
+    cx.run_until_parked();
+    cx.update(|cx| library.update(cx, |library, cx| library.select(Some(id), cx)));
+    cx.run_until_parked();
+}
+
+/// Shared with me with an invitation waiting, its owner's fingerprint not
+/// verified yet, and a mention unread.
+fn shared_invitation(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    use kanso_collab::{Invitation, Person, Role};
+    let now = cx.update(|cx| Clock::now_ms(cx));
+    cx.update(|cx| {
+        cx.global_mut::<Services>().account = AccountState::SignedIn {
+            username: DEMO_USER.into(),
+        };
+        cx.set_global(crate::collab_model::Collab {
+            invitations: vec![Invitation {
+                share_id: "ieMcmzx2eV1orGMyH9iImw".into(),
+                owner: Person {
+                    account_id: "a_01".into(),
+                    username: "mira".into(),
+                    fingerprint: "40213 77810 05932 61174 39025 88461".into(),
+                    verified: false,
+                },
+                role: Role::Comment,
+            }],
+            notices: vec![kanso_store::StoredNotice {
+                id: "n1".into(),
+                share_id: "s1".into(),
+                comment_id: "c1".into(),
+                from_id: "a_02".into(),
+                from_name: "tendai".into(),
+                title: "Launch plan".into(),
+                excerpt: "@ngoni can you check the dates?".into(),
+                at: now - 20 * MINUTE,
+                read: false,
+            }],
+            ..Default::default()
+        });
+    });
+    let library = cx.update(|cx| workspace.read(cx).library.clone());
+    cx.update(|cx| library.update(cx, |library, cx| library.set_filter(Filter::Shared, cx)));
+}
+
+/// The Share sheet for a shared note: its members, one still invited.
+fn share_sheet(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    share_demo(cx, workspace);
+    let editor = cx.update(|cx| workspace.read(cx).editor.clone());
+    cx.update_window(window, |_, window, cx| {
+        crate::share_sheet::open_share(editor, window, cx);
+    })
+    .unwrap();
+}
+
+/// A shared note's comments in the inspector, beside the words they tint.
+fn comments(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    share_demo(cx, workspace);
+    cx.update(|cx| {
+        workspace.update(cx, |workspace, cx| {
+            workspace.show_inspector(Some(InspectorTab::Comments), cx)
+        })
+    });
+}
+
 fn publish_signed_out(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
@@ -3871,6 +4062,19 @@ fn snapshots() {
         // The open note's earlier versions.
         shot("dark-history", Dark, Edit, history),
         shot("light-history", Light, Edit, history),
+        // A shared note: who it is shared with, and its comments.
+        Shot {
+            dialog_width: crate::share_sheet::SHEET_WIDTH,
+            ..shot("dark-share-sheet", Dark, Edit, share_sheet)
+        },
+        Shot {
+            dialog_width: crate::share_sheet::SHEET_WIDTH,
+            ..shot("light-share-sheet", Light, Edit, share_sheet)
+        },
+        shot("dark-shared-invitation", Dark, Edit, shared_invitation),
+        shot("light-shared-invitation", Light, Edit, shared_invitation),
+        shot("dark-comments", Dark, Edit, comments),
+        shot("light-comments", Light, Split, comments),
         // Importing: choosing the source, the summary, the report.
         Shot {
             dialog_width: crate::library_import::WIDTH,

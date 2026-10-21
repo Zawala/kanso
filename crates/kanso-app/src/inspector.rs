@@ -6,8 +6,12 @@
 //! notes that link here, each with the line it links on, and below them the
 //! notes that mention the title without linking, each with Link to make the
 //! mention a link. Graph draws the notes around the open one
-//! (`graph_view.rs`), and Related lists the notes about the same things
-//! (`related.rs`).
+//! (`graph_view.rs`), Related lists the notes about the same things
+//! (`related.rs`), and Comments a shared note's comments
+//! (`inspector_comments.rs`).
+
+#[path = "inspector_comments.rs"]
+mod comments;
 
 use std::sync::Arc;
 
@@ -52,6 +56,7 @@ struct DrawnFrom {
     outline: Option<u64>,
     active: Option<usize>,
     backlinks: Vec<Backlink>,
+    comments: Option<Vec<kanso_collab::CommentView>>,
 }
 
 /// How long typing pauses before the outline catches up.
@@ -206,6 +211,9 @@ impl Inspector {
             active: outline.and_then(|(_, _, h)| current_heading(h, editor.caret_line(cx))),
             note,
             backlinks: editor.backlinks().to_vec(),
+            comments: editor
+                .shared_comments()
+                .map(|(_, comments, _)| comments.to_vec()),
         }
     }
 
@@ -323,8 +331,9 @@ impl Inspector {
     fn render_tabs(&self, backlinks: usize, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
         let tab = self.tab;
-        // Four tabs share the pane's width: each shows its icon, the open
-        // one its name too, and Backlinks its count.
+        let open_comments = self.open_comments(cx);
+        // Five tabs share the pane's width: each shows its icon, the open
+        // one its name too, and Backlinks and Comments their counts.
         let tabs = [
             (
                 "tab-outline",
@@ -354,12 +363,20 @@ impl Inspector {
                 None,
                 InspectorTab::Related,
             ),
+            (
+                "tab-comments",
+                Lucide::MessageSquare,
+                "Comments",
+                (open_comments > 0).then(|| open_comments.to_string()),
+                InspectorTab::Comments,
+            ),
         ];
         let options = [
             InspectorTab::Outline,
             InspectorTab::Backlinks,
             InspectorTab::Graph,
             InspectorTab::Related,
+            InspectorTab::Comments,
         ];
         h_flex()
             .h(px(TOP_BAND_HEIGHT))
@@ -643,6 +660,7 @@ impl Inspector {
                 }
                 _ => String::new(),
             },
+            InspectorTab::Comments => self.comments_band(cx),
         };
         let graph_controls = (self.tab == InspectorTab::Graph).then(|| {
             let hops = self.graph.read(cx).hops;
@@ -1058,6 +1076,7 @@ impl Render for Inspector {
             InspectorTab::Backlinks => self.render_backlinks(cx),
             InspectorTab::Graph => self.render_graph(cx),
             InspectorTab::Related => self.render_related(cx),
+            InspectorTab::Comments => self.render_comments(cx),
         };
         if self.tab != InspectorTab::Graph {
             self.graph.update(cx, |graph, _| graph.visible = false);

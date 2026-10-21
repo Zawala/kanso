@@ -971,6 +971,7 @@ impl AccountPage {
                                     new_recovery_key_dialog(window, cx);
                                 }),
                         ),
+                fingerprint_row(cx),
                     Row::new(Lucide::LockKeyhole, "Forgot your password?")
                         .detail("Set a new one with your recovery key.")
                         .trailing(
@@ -1076,6 +1077,48 @@ fn device_rows(details: &AccountDetails, busy: bool, cx: &App) -> Vec<Row> {
                 )
             }
         })
+        .collect()
+}
+
+/// This account's fingerprint, for the people it shares notes with to
+/// compare: six groups in two lines of the monospaced face.
+// no-prop-test: drawing; `fingerprint_lines` has the properties.
+fn fingerprint_row(cx: &App) -> Row {
+    let row = Row::new(Lucide::FingerprintPattern, "Your fingerprint");
+    let Some(fingerprint) = cx
+        .try_global::<crate::collab_model::Collab>()
+        .and_then(|c| c.fingerprint.clone())
+    else {
+        return row.detail("Shows once your keys for shared notes are made, at the next sync.");
+    };
+    let colors = Colors::get(cx);
+    row.detail(FINGERPRINT_SENTENCE).trailing(
+        v_flex()
+            .debug_selector(|| "account-fingerprint".into())
+            .px(px(10.))
+            .py(px(6.))
+            .gap(px(2.))
+            .rounded(px(6.))
+            .bg(colors.fill)
+            .font_family(cx.theme().mono_font_family.clone())
+            .text_size(px(13.))
+            .text_color(colors.text)
+            .children(
+                fingerprint_lines(&fingerprint)
+                    .into_iter()
+                    .map(|line| div().child(line)),
+            ),
+    )
+}
+
+/// What the fingerprint row says about it.
+pub const FINGERPRINT_SENTENCE: &str = "Compare these numbers with what the people you share with see for you, in person or on a call.";
+
+/// A fingerprint's groups, three to a line. Pure.
+pub fn fingerprint_lines(fingerprint: &str) -> Vec<String> {
+    crate::collab_text::fingerprint_groups(fingerprint)
+        .chunks(3)
+        .map(|groups| groups.join(" "))
         .collect()
 }
 
@@ -1331,7 +1374,10 @@ fn write_and_tell(path: &Path, text: &str, window: &mut Window, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-    use super::{SignedOutForm, device_detail, form_for, storage_detail, write_key_file};
+    use super::{
+        FINGERPRINT_SENTENCE, SignedOutForm, device_detail, fingerprint_lines, form_for,
+        storage_detail, write_key_file,
+    };
     use crate::services::{AccountDetails, AccountState, strategies};
     use kanso_sync::{DeviceInfo, Quota, Usage};
     use proptest::prelude::*;
@@ -1438,5 +1484,26 @@ mod tests {
                 prop_assert_eq!(line, format!("Last active t{at}"));
             }
         }
+
+        /// The fingerprint's lines keep every group, in order, at most
+        /// three to a line.
+        #[test]
+        fn prop_fingerprint_lines_keep_every_group(groups in prop::collection::vec("[0-9]{5}", 0..9)) {
+            let fingerprint = groups.join(" ");
+            let lines = fingerprint_lines(&fingerprint);
+            prop_assert!(lines.iter().all(|l| l.split(' ').count() <= 3));
+            prop_assert_eq!(lines.join(" "), fingerprint);
+        }
+    }
+
+    #[test]
+    fn the_fingerprint_shows_in_two_lines_of_three() {
+        assert_eq!(
+            fingerprint_lines("01234 56789 00000 11111 22222 33333"),
+            ["01234 56789 00000", "11111 22222 33333"]
+        );
+        // One plain sentence.
+        assert_eq!(FINGERPRINT_SENTENCE.matches(". ").count(), 0);
+        assert!(FINGERPRINT_SENTENCE.ends_with('.'));
     }
 }

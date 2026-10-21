@@ -149,6 +149,12 @@ impl NoteList {
         });
         let subscriptions = vec![
             cx.observe(&library, |_, _, cx| cx.notify()),
+            // Invitations and mentions, over Shared with me.
+            cx.observe_global::<crate::collab_model::Collab>(|this, cx| {
+                if this.library.read(cx).filter == Filter::Shared {
+                    cx.notify();
+                }
+            }),
             // Follow the selection when it moves, but not on every reload,
             // which would pull the list back while it's being scrolled.
             cx.subscribe(&library, |this, library, event, cx| {
@@ -965,6 +971,16 @@ impl NoteList {
             }
             // The Tasks view shows in the list's place.
             Filter::Tasks => div().into_any_element(),
+            Filter::Shared => quiet_empty(
+                Lucide::Users,
+                "Nothing shared with you yet".into(),
+                Some(
+                    "Notes other people share with you show here. Invitations wait above them."
+                        .into(),
+                ),
+                colors,
+            )
+            .into_any_element(),
         }
     }
 }
@@ -1275,6 +1291,7 @@ impl Render for NoteList {
         let library = self.library.read(cx);
         let error = library.load_error.clone();
         let empty = library.notes.is_empty();
+        let shared_list = library.filter == Filter::Shared;
         let colors = Colors::get(cx);
 
         let body = if empty {
@@ -1297,6 +1314,9 @@ impl Render for NoteList {
             .bg(colors.list)
             .child(self.render_top_band(cx))
             .child(self.render_search(window, cx))
+            .when(shared_list, |el| {
+                el.children(crate::shared_inbox::render(&self.library, cx))
+            })
             .when_some(error, |el, error| {
                 el.child(
                     div()

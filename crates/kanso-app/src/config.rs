@@ -288,6 +288,8 @@ pub enum InspectorTab {
     Graph,
     /// Notes about the same things (`related.rs`).
     Related,
+    /// A shared note's comments (`inspector_comments.rs`).
+    Comments,
 }
 
 /// How the window's panes were left: focus mode, where the split divides,
@@ -713,6 +715,7 @@ mod tests {
                 InspectorTab::Backlinks,
                 InspectorTab::Graph,
                 InspectorTab::Related,
+                InspectorTab::Comments,
             ]),
         )
             .prop_map(

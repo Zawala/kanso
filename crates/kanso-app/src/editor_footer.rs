@@ -56,6 +56,9 @@ pub struct EditorFooter {
     /// In Vim's Visual modes, its cursor (the editor's is at the
     /// selection's end).
     vim_cursor: Option<Position>,
+    /// For a shared note: shared, the role, and whether it is live
+    /// (`collab_text::share_footer`).
+    share: Option<String>,
     /// Shows the counts in focus mode, as a hover would.
     #[cfg(test)]
     pub(crate) reveal: bool,
@@ -93,6 +96,7 @@ impl EditorFooter {
             default_goal: None,
             vim: None,
             vim_cursor: None,
+            share: None,
             #[cfg(test)]
             reveal: false,
             count_task: None,
@@ -146,6 +150,20 @@ impl EditorFooter {
             self.vim_cursor = cursor;
             cx.notify();
         }
+    }
+
+    /// What the band says about the open note's sharing, if it is shared.
+    pub fn set_share(&mut self, share: Option<String>, cx: &mut Context<Self>) {
+        if self.share != share {
+            self.share = share;
+            cx.notify();
+        }
+    }
+
+    /// What the band says about sharing.
+    #[cfg(test)]
+    pub fn share_shown(&self) -> Option<&str> {
+        self.share.as_deref()
     }
 
     /// The Vim mode and pending command shown.
@@ -422,6 +440,14 @@ impl Render for EditorFooter {
                         .truncate()
                         .child(self.label()),
                 )
+                .when_some(self.share.clone(), |el, share| {
+                    el.child(
+                        div()
+                            .flex_none()
+                            .debug_selector(|| "share-state".into())
+                            .child(share),
+                    )
+                })
                 .when(!self.quiet, |el| {
                     el.child(item(div()).flex_none().child("Markdown"))
                 })

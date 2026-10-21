@@ -22,6 +22,11 @@ mod capture_cli;
 mod clipboard;
 mod clock;
 mod code_lang;
+mod collab;
+mod collab_model;
+#[cfg(test)]
+mod collab_tests;
+mod collab_text;
 mod commands;
 mod config;
 mod dialogs;
@@ -88,6 +93,8 @@ mod settings_themes;
 mod settings_voice;
 #[cfg(test)]
 mod settings_window_tests;
+mod share_sheet;
+mod shared_inbox;
 mod sidebar;
 mod site;
 mod smart_paste;
@@ -331,6 +338,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         let mut services = Services::default();
         services.backend = Some(Arc::new(kanso_sync::HttpBackend::new()));
         services.shares = Some(Arc::new(kanso_sync::share::HttpShares));
+        services.collab = Some(Arc::new(kanso_collab::http::HttpCollab));
         // Kanso Dev keeps its secrets under its own service.
         services.secrets = Some(Arc::new(flavour::CURRENT.keychain()));
         cx.set_global(services);

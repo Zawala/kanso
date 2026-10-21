@@ -1,7 +1,11 @@
+import type { NoteRoom } from "./room";
+
 /** The Worker's bindings (docs/ACCOUNTS.md › Worker configuration). */
 export interface Env {
 	DB: D1Database;
 	FILES: R2Bucket;
+	/** One NoteRoom per shared note, keyed by share ID (docs/ACCOUNTS.md › Collaboration). */
+	NOTE_ROOM: DurableObjectNamespace<NoteRoom>;
 	/** 32 bytes of base64url; `wrangler secret put AUTH_PEPPER`. Missing or malformed answers 503 where it is needed. */
 	AUTH_PEPPER?: string;
 	/** The write-free front filter of the auth routes, keyed by IP group; absent in unit tests. */

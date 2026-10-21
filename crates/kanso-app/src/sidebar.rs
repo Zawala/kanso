@@ -114,6 +114,9 @@ impl Sidebar {
             cx.notify();
         })
         .detach();
+        // Mentions read or new: the Shared with me badge follows.
+        cx.observe_global::<crate::collab_model::Collab>(|_, cx| cx.notify())
+            .detach();
         let tick = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(TICK).await;
@@ -421,6 +424,78 @@ impl Sidebar {
             .on_click(move |_, _, cx| {
                 library.update(cx, |library, cx| library.set_filter(Filter::Tasks, cx));
             })
+    }
+
+    /// Shared with me, with its notes counted and, when there are any,
+    /// the unread mentions in an accent pill; `None` while nothing is
+    /// shared and the account is signed out.
+    // no-prop-test: drawing; `shows_shared` and `mention_badge` have the
+    // tests, and the sidebar snapshots show the row.
+    fn shared_row(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        let (shown, unread) = shared_state(self.library.read(cx).shared, cx);
+        if !shown {
+            return None;
+        }
+        let count = self.library.read(cx).shared;
+        let selected = !self.settings_open && self.library.read(cx).filter == Filter::Shared;
+        let colors = Colors::get(cx);
+        let icon = self.icon(Lucide::Users, cx);
+        let library = self.library.clone();
+        let badge = mention_badge(unread);
+        Some(
+            div()
+                .id("shared")
+                .h(px(ROW_HEIGHT))
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap(px(10.))
+                .mx_2()
+                .pr(px(10.))
+                .pl(px(10.))
+                .rounded(px(6.))
+                .text_size(px(13.5))
+                .cursor_pointer()
+                .when(selected, |el| el.bg(colors.sidebar_active))
+                .when(!selected, |el| el.hover(|el| el.bg(colors.sidebar_hover)))
+                .child(icon)
+                .child(div().flex_1().min_w_0().truncate().child("Shared with me"))
+                .when_some(badge, |el, badge| {
+                    el.child(
+                        div()
+                            .id("shared-mentions")
+                            .debug_selector(|| "shared-mentions".into())
+                            .px(px(6.))
+                            .h(px(17.))
+                            .flex()
+                            .items_center()
+                            .rounded_full()
+                            .bg(Hsla::from(colors.accent).opacity(0.16))
+                            .text_size(px(11.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(colors.accent)
+                            .child(badge)
+                            .tooltip(move |window, cx| {
+                                Tooltip::new(format!(
+                                    "{unread} unread mention{}",
+                                    if unread == 1 { "" } else { "s" }
+                                ))
+                                .build(window, cx)
+                            }),
+                    )
+                })
+                .when(unread == 0, |el| {
+                    el.child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(colors.quiet(selected))
+                            .child(count.to_string()),
+                    )
+                })
+                .on_click(move |_, _, cx| {
+                    library.update(cx, |library, cx| library.set_filter(Filter::Shared, cx));
+                }),
+        )
     }
 
     /// A section title, with an optional control on the right.
@@ -1097,6 +1172,7 @@ impl Sidebar {
         let api_warning = matches!(api, ApiState::PortInUse(_) | ApiState::Failed(_));
         let api_glyph = api_icon(&api);
         let trash_view = cx.entity();
+        let (shared_shown, shared_unread) = shared_state(self.library.read(cx).shared, cx);
 
         // Under the traffic lights, near where the full sidebar's own
         // button was: the way back to the full sidebar.
@@ -1243,6 +1319,30 @@ impl Sidebar {
                         Filter::Tasks,
                         cx,
                     ))
+                    .when(shared_shown, |el| {
+                        el.child(
+                            self.rail_place(
+                                "rail-shared",
+                                Lucide::Users,
+                                "Shared with me",
+                                Filter::Shared,
+                                cx,
+                            )
+                            .relative()
+                            .when(shared_unread > 0, |el| {
+                                // A dot for unread mentions.
+                                el.child(
+                                    div()
+                                        .absolute()
+                                        .top(px(5.))
+                                        .right(px(5.))
+                                        .size(px(7.))
+                                        .rounded_full()
+                                        .bg(colors.accent),
+                                )
+                            }),
+                        )
+                    })
                     .child(
                         div()
                             .flex_none()
@@ -1345,6 +1445,7 @@ impl Render for Sidebar {
             cx,
         ));
         list = list.child(self.tasks_row(cx));
+        list = list.children(self.shared_row(cx));
 
         let add_book = self.add_button(
             "add-book",
@@ -1827,6 +1928,35 @@ pub fn visible_tags(
     shown
 }
 
+/// Whether the sidebar lists Shared with me, and how many mentions are
+/// unread: the row shows once a note is shared with this account, while
+/// signed in, and whenever invitations or mentions wait.
+fn shared_state(shared: u32, cx: &App) -> (bool, usize) {
+    let signed_in = cx.try_global::<Services>().is_some_and(Services::signed_in);
+    let (unread, invitations) = cx
+        .try_global::<crate::collab_model::Collab>()
+        .map_or((0, 0), |c| (c.unread(), c.invitations.len()));
+    (
+        shows_shared(shared, signed_in, unread + invitations),
+        unread,
+    )
+}
+
+/// Whether Shared with me is listed: something is shared with this
+/// account, it is signed in, or something waits there. Pure.
+pub(crate) fn shows_shared(shared: u32, signed_in: bool, waiting: usize) -> bool {
+    shared > 0 || signed_in || waiting > 0
+}
+
+/// The unread-mentions badge: nothing for none, "99+" past 99. Pure.
+pub(crate) fn mention_badge(unread: usize) -> Option<String> {
+    match unread {
+        0 => None,
+        1..=99 => Some(unread.to_string()),
+        _ => Some("99+".into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1836,6 +1966,7 @@ mod tests {
     use std::collections::HashSet;
 
     use super::{BookFolds, flat_tag_ids, visible_book_rows, visible_tag_rows};
+    use super::{mention_badge, shows_shared};
     use crate::account_words::step_label;
     use crate::grouping::utc_label;
     use crate::services::{AccountState, strategies};
@@ -1885,8 +2016,40 @@ mod tests {
         assert_eq!(status_choice_after(picked, true, false), Some(true));
     }
 
+    #[test]
+    fn shared_with_me_shows_with_its_mentions() {
+        assert!(!shows_shared(0, false, 0));
+        assert!(shows_shared(0, true, 0));
+        assert!(shows_shared(2, false, 0));
+        assert!(shows_shared(0, false, 1));
+        assert_eq!(mention_badge(0), None);
+        assert_eq!(mention_badge(3).as_deref(), Some("3"));
+        assert_eq!(mention_badge(140).as_deref(), Some("99+"));
+    }
+
     proptest! {
         #![proptest_config(config())]
+
+        /// The badge shows exactly when a mention is unread, never wider
+        /// than three characters, and reads the count while it fits.
+        #[test]
+        fn prop_the_mention_badge_counts_unread(unread in 0usize..100_000) {
+            let badge = mention_badge(unread);
+            prop_assert_eq!(badge.is_some(), unread > 0);
+            if let Some(badge) = badge {
+                prop_assert!(badge.len() <= 3);
+                if unread <= 99 {
+                    prop_assert_eq!(badge, unread.to_string());
+                }
+            }
+        }
+
+        /// Shared with me hides only when nothing is shared, nothing waits
+        /// and the account is signed out.
+        #[test]
+        fn prop_shared_with_me_hides_only_when_empty(shared in 0u32..5, signed_in: bool, waiting in 0usize..5) {
+            prop_assert_eq!(!shows_shared(shared, signed_in, waiting), shared == 0 && !signed_in && waiting == 0);
+        }
 
         /// Invariants: clicking the Status header always shows or hides its
         /// rows, whatever the filter; a status picked from elsewhere opens

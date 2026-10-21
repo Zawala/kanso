@@ -17,6 +17,7 @@ kanso-sync = { path = "crates/kanso-sync" }
 kanso-update = { path = "crates/kanso-update" }
 kanso-render = { path = "crates/kanso-render" }
 kanso-voice = { path = "crates/kanso-voice" }
+kanso-collab = { path = "crates/kanso-collab" }
 
 aes = "0.8"
 # Published notes (kanso-sync share.rs): AES-256-GCM, which browsers open with WebCrypto.
@@ -28,6 +29,10 @@ argon2 = { version = "0.6", default-features = false, features = ["alloc", "para
 async-channel = "2.5"
 base64 = "0.22"
 cbc = { version = "0.1", features = ["alloc"] }
+# Shared notes (docs/ACCOUNTS.md › Collaboration): X25519 receives note keys, Ed25519 signs
+# what each member writes. Both were already in Cargo.lock.
+curve25519-dalek = "5.0"
+ed25519-dalek = { version = "3.0", features = ["zeroize"] }
 chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 fastrand = "2"
@@ -43,6 +48,9 @@ proptest = "1.12"
 regex = "1.11"
 similar = { version = "2.7", features = ["inline"] }
 semver = "1.0"
+# The live channel of shared notes: a WebSocket over the rustls (ring) and web PKI roots
+# ureq already uses.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rusqlite = { version = "0.40", features = ["bundled", "functions", "backup"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -50,7 +58,11 @@ sha1 = "0.10"
 sha2 = "0.11"
 thiserror = "2"
 tempfile = "3"
+tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
 unicode-normalization = "0.1"
+webpki-roots = "1"
+# The CRDT of shared notes (MIT), wrapped by kanso-collab so it can be swapped.
+yrs = "0.28"
 zeroize = "1.9"
 # Grammars for the Markdown source and for code blocks in the editor and the
 # preview (`code_lang.rs` maps fence names onto them). There is no Dart

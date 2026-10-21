@@ -8,6 +8,10 @@
 //! `KANSO_BENCH_INSPECTOR=1` measures with the outline open beside the
 //! note.
 //!
+//! `remote_merge_bench` measures someone else's edit to an open shared
+//! note merging into the editor (`cargo test -p kanso-app
+//! remote_merge_bench -- --ignored --nocapture`).
+//!
 //! Keystrokes arrive on a simulated clock (one every [`typing_interval`],
 //! frames every [`FRAME`]), so the delays the editor chooses are measured
 //! exactly; the work each frame does (parsing, layout, painting) is timed on
@@ -546,6 +550,100 @@ fn run(bytes: usize, place: &str, keys: Option<bool>) {
         preview_frames.len(),
         percentile(&mut other_frames, 0.5),
     );
+}
+
+/// Another member's edits to a shared note of about `bytes` open here, in
+/// Split: each round the owner writes a sentence in the middle and both
+/// sides sync with the in-memory server (timed apart, as the network
+/// would be), then the editor takes the merge and draws a frame.
+fn run_remote(bytes: usize) {
+    use kanso_collab::Role;
+    use kanso_collab::memory::MemoryCollab;
+
+    use crate::collab_tests::{body_of, device, shared_body};
+
+    const ROUNDS: usize = 20;
+    let server = MemoryCollab::new();
+    let (owner, member) = (device(&server, 1), device(&server, 2));
+    let (share, note) = shared_body(&owner, &member, Role::Edit, &realistic_note(bytes));
+    let dir = tempfile::tempdir().unwrap();
+    let mut cx = crate::snapshots::context(None);
+    cx.update(|cx| crate::collab::use_engine(member.engine.clone(), cx));
+    let (window, workspace) = open_split(&mut cx, member.store.clone(), dir.path(), &note);
+    let mut bench = Bench {
+        cx,
+        window,
+        workspace,
+        _dir: dir,
+    };
+    for _ in 0..4 {
+        bench.cx.advance_clock(Duration::from_millis(500));
+        bench.cx.run_until_parked();
+        bench.draw(true);
+    }
+    let owner_note = owner.store.note_with_share(&share).unwrap().unwrap();
+    let (mut network, mut merges, mut frames) = (Vec::new(), Vec::new(), Vec::new());
+    for round in 0..ROUNDS {
+        let mut body = owner.store.note(&owner_note).unwrap().unwrap().body;
+        let middle = crate::collab_text::floor_boundary(&body, body.len() / 2);
+        body.insert_str(middle, &format!("A remote sentence, number {round}. "));
+        owner
+            .store
+            .put(
+                DocType::Note,
+                json!({"_id": owner_note, "body": body}),
+                Put::Merge,
+                Origin::Ui,
+            )
+            .unwrap();
+        let start = Instant::now();
+        owner.engine.sync_note(&share).unwrap();
+        member.engine.sync_note(&share).unwrap();
+        network.push(ms(start.elapsed()));
+        let editor = bench
+            .cx
+            .update(|cx| bench.workspace.read(cx).editor.clone());
+        let start = Instant::now();
+        bench
+            .cx
+            .update_window(bench.window, |_, window, cx| {
+                editor.update(cx, |editor, cx| editor.collab_sync_for_test(window, cx))
+            })
+            .unwrap();
+        merges.push(ms(start.elapsed()));
+        let start = Instant::now();
+        bench.draw(false);
+        frames.push(ms(start.elapsed()));
+        bench.cx.advance_clock(FRAME);
+        bench.cx.run_until_parked();
+    }
+    assert_eq!(
+        bench.text(),
+        body_of(&owner, &share),
+        "every edit merged in"
+    );
+    println!(
+        "remote merge, {} KB: sync p50 {:.2} ms; merge into the editor p50 {:.2} / p95 {:.2} / max {:.2} ms; \
+         next frame p50 {:.2} / max {:.2} ms (n={ROUNDS})",
+        bytes / 1024,
+        percentile(&mut network, 0.5),
+        percentile(&mut merges.clone(), 0.5),
+        percentile(&mut merges.clone(), 0.95),
+        percentile(&mut merges, 1.0),
+        percentile(&mut frames.clone(), 0.5),
+        percentile(&mut frames, 1.0),
+    );
+}
+
+#[test]
+#[ignore = "a benchmark: run with --ignored --nocapture"]
+fn remote_merge_bench() {
+    let sizes = std::env::var("KANSO_BENCH_KB").map_or(vec![20, 100], |v| {
+        v.split(',').map(|n| n.parse().unwrap()).collect()
+    });
+    for kb in sizes {
+        run_remote(kb * 1024);
+    }
 }
 
 #[test]

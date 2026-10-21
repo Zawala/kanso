@@ -821,6 +821,7 @@ impl Palette {
         let in_trash = note.is_some_and(|n| n.book_id == TRASH_BOOK_ID);
         let image_line = !in_trash && self.editor.read(cx).image_on_caret_line(cx).is_some();
         let audio_line = !in_trash && self.editor.read(cx).audio_on_caret_line(cx).is_some();
+        let shared_note = self.editor.read(cx).shared_role().is_some();
         commands::all()
             .iter()
             .filter(|command| command.group == group)
@@ -835,6 +836,7 @@ impl Palette {
                 Needs::SignedOut => !signed_in,
                 Needs::ImageLine => image_line,
                 Needs::AudioLine => audio_line,
+                Needs::SharedNote => shared_note,
             })
             .map(|command| {
                 let (label, icon) = match command.label_when_pinned {
@@ -913,6 +915,15 @@ impl Palette {
                 &["status"],
             );
             places.push((item.status(status), score));
+        }
+        if library.shared > 0 || cx.try_global::<Services>().is_some_and(Services::signed_in) {
+            places.push(place(
+                Filter::Shared,
+                "Shared with me".into(),
+                IconName::Users,
+                library.shared,
+                &["shared", "collaboration", "invitations", "others"],
+            ));
         }
         places.push(place(
             Filter::Trash,
@@ -1434,7 +1445,11 @@ impl Palette {
                 }
                 if matches!(
                     command.needs,
-                    Needs::Note | Needs::LiveNote | Needs::UnlockedNote | Needs::LockedNote
+                    Needs::Note
+                        | Needs::LiveNote
+                        | Needs::UnlockedNote
+                        | Needs::LockedNote
+                        | Needs::SharedNote
                 ) && let Some(title) = note_title.clone()
                 {
                     detail
@@ -1463,6 +1478,7 @@ impl Palette {
                             format!("Shows the notes tagged #{path} or a tag inside it.")
                         }
                         Filter::Tasks => "Shows the open tasks in every note, overdue first, then today's, the upcoming ones and those without a date.".to_owned(),
+                        Filter::Shared => "Shows the notes other people shared with you, with invitations waiting above them.".to_owned(),
                     }
                     .into(),
                 );

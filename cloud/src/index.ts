@@ -26,15 +26,41 @@
 //   DELETE /v2/shares/<id>              unpublish it                                  (session)
 //   GET    /v2/public/<id>              a published note's sealed bytes               (public)
 //   GET    /p/<id>                      the page that opens it with the link's key    (public)
+//   PUT    /v2/account/identity         set this account's identity keys, once         (session)
+//   GET    /v2/account/identity         this account's identity keys                  (session)
+//   GET    /v2/users/<username>         another account's public keys                 (session)
+//   POST   /v2/collab/shares            share a note                                  (session)
+//   GET    /v2/collab/shares            the shares you are in or invited to           (session)
+//   DELETE /v2/collab/shares/<id>       stop sharing                                  (session)
+//   POST   /v2/collab/shares/<id>/accept       accept an invitation                  (session)
+//   DELETE /v2/collab/shares/<id>/membership   leave, or decline                     (session)
+//   POST   /v2/collab/shares/<id>/epoch        a new member list and note key        (session)
+//   GET    /v2/collab/shares/<id>/log          the note's snapshot and log           (session)
+//   POST   /v2/collab/shares/<id>/log          append an update or comment           (session)
+//   POST   /v2/collab/shares/<id>/snapshot     compact the log                       (session)
+//   GET    /v2/collab/shares/<id>/live         the live WebSocket                    (session)
+//   POST   /v2/collab/shares/<id>/links        make an invite link                   (session)
+//   DELETE /v2/collab/shares/<id>/links/<link> cancel it                             (session)
+//   DELETE /v2/collab/shares/<id>/requests/<account>  decline a request to join      (session)
+//   POST   /v2/collab/join/<link_id>    ask to join through a link                    (session)
+//   POST   /v2/collab/notifications     notify a member (sealed)                      (session)
+//   GET    /v2/collab/notifications     your notifications                            (session)
+//   DELETE /v2/collab/notifications/<id> dismiss one                                  (session)
+//   GET    /j/<link_id>                 the page an invite link opens                 (public)
 //
 // /v1 and every other path answer 404. Any request with an Origin header gets
-// 403 before anything else, except on the two public routes, which hold no
+// 403 before anything else, except on the three public routes, which hold no
 // credentials and only ever read; a body with the wrong Content-Type gets 415.
+//
+// Each shared note's log lives in its own Durable Object, NoteRoom (room.ts),
+// exported here so the runtime can find the class.
 
 import * as auth from "./auth";
+import * as collab from "./collab";
 import { pepperKeys } from "./crypto";
 import type { Env } from "./env";
 import { error, isContentType, methodNotAllowed, notFound } from "./http";
+import * as identity from "./identity";
 import { bindingFilter } from "./limits";
 import { runCron } from "./purge";
 import * as shares from "./shares";
@@ -42,6 +68,7 @@ import * as sync from "./sync";
 
 export type { Env } from "./env";
 export { runCron } from "./purge";
+export { NoteRoom } from "./room";
 
 type Handler = (request: Request, env: Env, now: number) => Promise<Response>;
 type PepperHandler = (request: Request, env: Env, now: number, keys: import("./crypto").PepperKeys) => Promise<Response>;
@@ -82,7 +109,29 @@ const ROUTES: Record<string, Route> = {
 	"/v2/account/devices": { name: "devices", methods: { GET: { handler: auth.devices } } },
 	"/v2/push": { name: "push", methods: { POST: json(sync.push) } },
 	"/v2/changes": { name: "changes", methods: { GET: { handler: sync.changes } } },
+	"/v2/account/identity": { name: "identity", methods: { PUT: json(identity.putIdentity), GET: { handler: identity.getIdentity } } },
+	"/v2/collab/shares": { name: "collab_shares", methods: { POST: json(collab.createShare), GET: { handler: collab.listShares } } },
+	"/v2/collab/notifications": { name: "collab_notifications", methods: { POST: json(collab.notify), GET: { handler: collab.listNotifications } } },
 };
+
+/** The routes under /v2/collab/shares/<id>/, by what follows the ID. */
+function collabShareRoute(id: string, rest: string): Route | null {
+	if (rest === "") return { name: "collab_share", methods: { DELETE: { handler: collab.stopShare(id) } } };
+	if (rest === "/accept") return { name: "collab_accept", methods: { POST: { handler: collab.accept(id) } } };
+	if (rest === "/membership") return { name: "collab_membership", methods: { DELETE: { handler: collab.leave(id) } } };
+	if (rest === "/epoch") return { name: "collab_epoch", methods: { POST: json(collab.newEpoch(id)) } };
+	if (rest === "/log") {
+		return { name: "collab_log", methods: { GET: { handler: collab.readLog(id) }, POST: { handler: collab.appendLog(id), body: "bytes" } } };
+	}
+	if (rest === "/snapshot") return { name: "collab_snapshot", methods: { POST: { handler: collab.postSnapshot(id), body: "bytes" } } };
+	if (rest === "/live") return { name: "collab_live", methods: { GET: { handler: collab.live(id) } } };
+	if (rest === "/links") return { name: "collab_links", methods: { POST: json(collab.createLink(id)) } };
+	const link = /^\/links\/([^/]+)$/.exec(rest);
+	if (link) return { name: "collab_link", methods: { DELETE: { handler: collab.deleteLink(id, segment(link[1])) } } };
+	const request = /^\/requests\/([^/]+)$/.exec(rest);
+	if (request) return { name: "collab_request", methods: { DELETE: { handler: collab.declineRequest(id, segment(request[1])) } } };
+	return null;
+}
 
 /** A path segment, percent-decoded; "" (which no handler accepts) when it can't be. */
 function segment(raw: string): string {
@@ -110,6 +159,16 @@ function match(path: string): Route | null {
 	}
 	const published = /^\/v2\/public\/([^/]+)$/.exec(path);
 	if (published) return { name: "public", public: true, methods: { GET: { handler: shares.getPublic(segment(published[1])) } } };
+	const user = /^\/v2\/users\/([^/]+)$/.exec(path);
+	if (user) return { name: "user", methods: { GET: { handler: identity.getUser(segment(user[1])) } } };
+	const collabShare = /^\/v2\/collab\/shares\/([^/]+)((?:\/[^/]+)*)$/.exec(path);
+	if (collabShare) return collabShareRoute(segment(collabShare[1]), collabShare[2]);
+	const joinLink = /^\/v2\/collab\/join\/([^/]+)$/.exec(path);
+	if (joinLink) return { name: "collab_join", methods: { POST: json(collab.join(segment(joinLink[1]))) } };
+	const notification = /^\/v2\/collab\/notifications\/([^/]+)$/.exec(path);
+	if (notification) return { name: "collab_notification", methods: { DELETE: { handler: collab.deleteNotification(segment(notification[1])) } } };
+	const invite = /^\/j\/([^/]+)$/.exec(path);
+	if (invite) return { name: "invite", public: true, methods: { GET: { handler: collab.invitePage(segment(invite[1])) } } };
 	const viewer = /^\/p\/([^/]+)$/.exec(path);
 	if (viewer) return { name: "viewer", public: true, methods: { GET: { handler: shares.getViewer(segment(viewer[1])) } } };
 	return null;

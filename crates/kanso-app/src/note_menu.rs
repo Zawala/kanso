@@ -18,6 +18,7 @@ pub enum NoteCommand {
     ShowHistory,
     Export,
     Publish,
+    Share,
     Trash,
 }
 
@@ -58,6 +59,7 @@ pub fn items(
     .separator()
     .item(item("Show History…", NoteCommand::ShowHistory))
     .item(item("Export Note…", NoteCommand::Export))
+    .item(item("Share…", NoteCommand::Share))
     .item(item("Publish to the Web…", NoteCommand::Publish))
     .separator()
     .item(item("Move to Trash", NoteCommand::Trash))

@@ -86,13 +86,17 @@ pub(crate) fn list_docs(
 /// note with an empty body and can't lock, unlock or replace its text (the
 /// store refuses text beside the lock). A notebook's lock likewise: a client
 /// can't lock or unlock a notebook, nor write text into the notes of a
-/// locked one (the store refuses that too).
+/// locked one (the store refuses that too). And a shared note's mark
+/// (`kansoShare`): only Kanso shares a note, and a client's writes to a
+/// shared note's text reach the other members through the CRDT (the store
+/// refuses them from a member who may only view or comment).
 fn app_only_fields(doc_type: DocType) -> &'static [&'static str] {
     match doc_type {
         DocType::Note => &[
             kanso_core::model::PUBLISH_FIELD,
             kanso_core::reminders::ACK_FIELD,
             kanso_core::model::LOCK_FIELD,
+            kanso_core::model::SHARE_FIELD,
         ],
         // A notebook's lock, and a published notebook's link and key.
         DocType::Book => &[

@@ -26,8 +26,22 @@ pub fn origin_label(origin: &str) -> &'static str {
         "api" => "Replaced through the API",
         "sync" => "Replaced by sync",
         "import" => "Replaced by an import",
+        "collab" => "Edited in a shared note",
         _ => "Saved version",
     }
+}
+
+/// "by user2, user3": who made a version of a shared note, from names
+/// listed with commas; each once, in the order first named. `None` when
+/// nobody is named. Pure.
+pub fn authors_label<'a>(names: impl IntoIterator<Item = &'a str>) -> Option<String> {
+    let mut seen: Vec<&str> = Vec::new();
+    for name in names.into_iter().flat_map(|n| n.split(',')).map(str::trim) {
+        if !name.is_empty() && !seen.contains(&name) {
+            seen.push(name);
+        }
+    }
+    (!seen.is_empty()).then(|| format!("by {}", seen.join(", ")))
 }
 
 /// The dialog's width and its body's height, and the width of its list of
@@ -52,6 +66,8 @@ pub struct HistoryView {
     scroll: ScrollHandle,
     /// The note's text now, to compare with.
     current: String,
+    /// Who changed a shared note since its last saved version.
+    current_authors: Option<String>,
     pub(crate) pane: Pane,
     /// The section last copied, for its button to say so.
     copied: Option<(usize, usize)>,
@@ -344,6 +360,16 @@ impl Render for HistoryView {
                             .text_color(colors.quiet(selected))
                             .child(origin_label(&revision.origin)),
                     )
+                    .when_some(authors_label(revision.author.as_deref()), |el, authors| {
+                        el.child(
+                            div()
+                                .text_size(px(12.))
+                                .line_height(px(16.))
+                                .truncate()
+                                .text_color(colors.quiet(selected))
+                                .child(authors),
+                        )
+                    })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.selected = ix;
                         cx.notify();
@@ -385,7 +411,38 @@ impl Render for HistoryView {
                     .flex_none()
                     .h_full()
                     .overflow_y_scroll()
-                    .child(v_flex().gap(px(2.)).children(rows)),
+                    .child(
+                        v_flex()
+                            .gap(px(2.))
+                            // The note as it is now, when others changed it
+                            // since its last version.
+                            .when_some(self.current_authors.clone(), |el, authors| {
+                                el.child(
+                                    v_flex()
+                                        .id("current-authors")
+                                        .px(px(10.))
+                                        .py(px(7.))
+                                        .gap(px(1.))
+                                        .child(
+                                            div()
+                                                .text_size(px(13.))
+                                                .line_height(px(18.))
+                                                .font_medium()
+                                                .text_color(colors.text)
+                                                .child("Now"),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(12.))
+                                                .line_height(px(16.))
+                                                .truncate()
+                                                .text_color(colors.text_secondary)
+                                                .child(authors),
+                                        ),
+                                )
+                            })
+                            .children(rows),
+                    ),
             )
             .child(
                 v_flex()
@@ -435,11 +492,14 @@ pub fn open_history(editor: Entity<NoteEditor>, window: &mut Window, cx: &mut Ap
     let revisions = store.revisions(&id).unwrap_or_default();
     let has_revisions = !revisions.is_empty();
     let current = editor.read(cx).body_text(cx).to_string();
+    let shared_authors = store.shared_authors(&id).unwrap_or_default();
+    let current_authors = authors_label(shared_authors.iter().map(String::as_str));
     let view = cx.new(|_| HistoryView {
         revisions,
         selected: 0,
         scroll: ScrollHandle::new(),
         current,
+        current_authors,
         pane: Pane::default(),
         copied: None,
         hunks: None,
@@ -473,7 +533,44 @@ pub fn open_history(editor: Entity<NoteEditor>, window: &mut Window, cx: &mut Ap
 
 #[cfg(test)]
 mod tests {
-    use super::origin_label;
+    use super::{authors_label, origin_label};
+    use proptest::prelude::*;
+
+    #[test]
+    fn versions_name_who_made_them() {
+        assert_eq!(
+            authors_label(Some("user2, user3")).as_deref(),
+            Some("by user2, user3")
+        );
+        assert_eq!(
+            authors_label(["user2", "user3,user2", " "]).as_deref(),
+            Some("by user2, user3")
+        );
+        assert_eq!(authors_label(None), None);
+        assert_eq!(authors_label([" , "]), None);
+    }
+
+    proptest! {
+        /// Every name given shows once, in the order first named, and only
+        /// those.
+        #[test]
+        fn prop_authors_label_names_each_once(names in prop::collection::vec("[a-z][a-z0-9]{0,6}", 0..6)) {
+            let joined = names.join(", ");
+            match authors_label([joined.as_str()]) {
+                None => prop_assert!(names.is_empty()),
+                Some(label) => {
+                    let listed: Vec<&str> = label.strip_prefix("by ").unwrap().split(", ").collect();
+                    let mut expected: Vec<&str> = Vec::new();
+                    for name in &names {
+                        if !expected.contains(&name.as_str()) {
+                            expected.push(name);
+                        }
+                    }
+                    prop_assert_eq!(listed, expected);
+                }
+            }
+        }
+    }
 
     #[test]
     fn every_origin_has_a_label() {
@@ -482,6 +579,7 @@ mod tests {
             kanso_store::Origin::Api,
             kanso_store::Origin::Sync,
             kanso_store::Origin::Import,
+            kanso_store::Origin::Collab,
         ] {
             assert_ne!(origin_label(origin.as_str()), "Saved version");
         }
