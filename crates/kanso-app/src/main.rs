@@ -69,6 +69,10 @@ mod mcp_cli;
 mod mcp_setup;
 mod model_fetch;
 mod models;
+mod nav_history;
+#[cfg(test)]
+mod nav_tests;
+mod note_link;
 mod note_list;
 mod note_meaning;
 mod note_menu;

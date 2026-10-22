@@ -47,6 +47,7 @@ use crate::library::{Filter, Library};
 use crate::list_edit::{self, TabIntent};
 use crate::locked::LockView;
 use crate::markdown_edit::{self, Edit, Format};
+use crate::models::note_visit::NotePlace;
 use crate::note_meaning::NoteMeaning;
 use crate::pairing::Pairs;
 use crate::preview::{ImageResize, LinkSender, Preview, PreviewEdit, TEXT_INSET, readable_width};
@@ -250,6 +251,12 @@ pub struct NoteEditor {
     /// A byte offset of note `.0`'s text to put the caret at once it
     /// opens: where a template's `{{cursor}}` was.
     pending_caret: Option<(String, usize)>,
+    /// Where to put the caret and scroll back to once note `.0` opens, on
+    /// going back or forward to it.
+    pending_place: Option<(String, NotePlace)>,
+    /// Where the reader was in the note last switched away from, for the
+    /// workspace's back-and-forward history to keep.
+    left_place: Option<(String, NotePlace)>,
     /// The note's saved title when its title field got the keyboard, to
     /// tell a rename when it loses it.
     title_on_focus: Option<(String, String)>,
@@ -475,6 +482,8 @@ impl NoteEditor {
             wiki_task: None,
             pending_reveal: None,
             pending_caret: None,
+            pending_place: None,
+            left_place: None,
             title_on_focus: None,
             text_version: 0,
             inspector_open: false,
@@ -763,6 +772,7 @@ impl NoteEditor {
             return;
         }
         self.flush(cx);
+        self.left_place = self.place(cx);
         let note = match id.map(|id| self.store.note(id)) {
             Some(Ok(note)) => note,
             Some(Err(err)) => {
@@ -863,6 +873,11 @@ impl NoteEditor {
                     gpui_kit::base::input::RopeExt::offset_to_position(state.text(), offset);
                 state.set_cursor_position(position, window, cx);
             });
+        }
+        if let Some((id, place)) = self.pending_place.take()
+            && self.note_id() == Some(id.as_str())
+        {
+            self.restore_place(place, window, cx);
         }
         self.collab_follow(window, cx);
         cx.notify();
@@ -1148,6 +1163,44 @@ impl NoteEditor {
     /// Puts the caret at byte `offset` of note `id`'s text once it opens.
     pub fn caret_after_open(&mut self, id: String, offset: usize) {
         self.pending_caret = Some((id, offset));
+    }
+
+    /// Where the reader is in the open note: its ID, the caret and how far
+    /// the text and preview are scrolled.
+    pub fn place(&self, cx: &App) -> Option<(String, NotePlace)> {
+        let id = self.note_id()?.to_owned();
+        let body = self.body.read(cx);
+        let caret = body.cursor_position();
+        let scroll = body.scroll_offset();
+        let place = NotePlace {
+            caret_line: caret.line,
+            caret_column: caret.character,
+            scroll_x: f32::from(scroll.x),
+            scroll_y: f32::from(scroll.y),
+            preview_top: self.preview.read(cx).scroll_top(),
+        };
+        Some((id, place))
+    }
+
+    /// Puts the caret and scroll back at `place` once note `id` opens.
+    pub fn place_after_open(&mut self, id: String, place: NotePlace) {
+        self.pending_place = Some((id, place));
+    }
+
+    /// Where the reader was in the note last switched away from, once.
+    pub fn take_left_place(&mut self) -> Option<(String, NotePlace)> {
+        self.left_place.take()
+    }
+
+    fn restore_place(&mut self, place: NotePlace, window: &mut Window, cx: &mut Context<Self>) {
+        self.body.update(cx, |state, cx| {
+            let lines = gpui_kit::base::input::RopeExt::lines_len(state.text()).max(1);
+            let line = place.caret_line.min(lines as u32 - 1);
+            state.set_cursor_position(Position::new(line, place.caret_column), window, cx);
+            state.set_scroll_offset(point(px(place.scroll_x), px(place.scroll_y)), cx);
+        });
+        self.preview
+            .update(cx, |preview, cx| preview.scroll_to(place.preview_top, cx));
     }
 
     /// The title field lost the keyboard or took Enter: if that renamed the

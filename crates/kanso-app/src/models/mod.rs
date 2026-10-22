@@ -2,3 +2,4 @@
 //! that reads, checks and draws it.
 
 pub mod icon_theme;
+pub mod note_visit;
