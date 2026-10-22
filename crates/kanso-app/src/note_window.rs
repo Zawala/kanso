@@ -30,9 +30,10 @@ use crate::library::{Library, LibraryEvent};
 use crate::note_menu::NoteCommand;
 use crate::theme::Colors;
 use crate::workspace::{
-    AppState, Dictate, ExportNote, FocusEditor, FormatTable, NewDrawing, NewNote,
-    OpenCommandPalette, OpenNotePicker, PastePlainText, SaveNote, SearchAllNotes, ShowBacklinks,
-    ShowEditor, ShowHistory, ShowPreview, ShowSplit, TogglePinned, TrashNote, Workspace,
+    AppState, CopyKansoLink, CopyNoteLink, Dictate, ExportNote, FocusEditor, FormatTable,
+    NewDrawing, NewNote, OpenCommandPalette, OpenNotePicker, PastePlainText, SaveNote,
+    SearchAllNotes, ShowBacklinks, ShowEditor, ShowHistory, ShowPreview, ShowSplit, TogglePinned,
+    TrashNote, Workspace,
 };
 
 actions!(kanso, [OpenInNewWindow, CloseNoteWindow]);
@@ -663,6 +664,12 @@ impl Render for NoteWindow {
             .on_action(|_: &OpenInNewWindow, window, _| window.activate_window())
             .on_action(cx.listener(|this, _: &ExportNote, window, cx| {
                 this.run_command(NoteCommand::Export, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &CopyNoteLink, window, cx| {
+                this.run_command(NoteCommand::CopyLink, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &CopyKansoLink, window, cx| {
+                this.run_command(NoteCommand::CopyKansoLink, window, cx);
             }))
             .on_action(cx.listener(|this, _: &Dictate, window, cx| {
                 crate::voice::press(this.editor.clone(), window, cx);

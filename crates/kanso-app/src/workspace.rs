@@ -377,6 +377,8 @@ pub struct Workspace {
     band_drag: BandDrag,
     /// The notes this window opened, to go back and forward through.
     pub(crate) nav: crate::nav_history::NavHistory,
+    /// [`Workspace::nav_reach`] until a visit or a change to the notes.
+    pub(crate) nav_reach: Option<(bool, bool)>,
     /// Draws stand-ins for the traffic lights, which the system draws over
     /// the window and a headless snapshot can't show.
     #[cfg(test)]
@@ -491,6 +493,7 @@ impl Workspace {
                     AppState::update_config_soon(cx, |config| config.last_note = id);
                 }
                 LibraryEvent::Changed(change) => {
+                    this.nav_reach = None;
                     let change = change.clone();
                     let note = change.id.starts_with("note:");
                     this.editor.update(cx, |editor, cx| {
@@ -631,6 +634,7 @@ impl Workspace {
             focus,
             band_drag: BandDrag::default(),
             nav: Default::default(),
+            nav_reach: None,
             #[cfg(test)]
             placeholder_traffic_lights: false,
             title_bar: crate::title_bar::SHOWN

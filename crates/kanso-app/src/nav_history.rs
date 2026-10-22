@@ -147,6 +147,7 @@ impl Workspace {
     /// After a note was selected: once the editor shows it, it is a visit,
     /// and the note the editor left keeps where the reader was in it.
     pub(crate) fn record_visit(&mut self, cx: &mut Context<Self>) {
+        self.nav_reach = None;
         if let Some((id, place)) = self.editor.update(cx, |editor, _| editor.take_left_place()) {
             self.nav.leave(&id, place);
         }
@@ -155,10 +156,16 @@ impl Workspace {
         }
     }
 
-    /// Whether going back, and going forward, would land anywhere.
-    pub(crate) fn nav_reach(&self) -> (bool, bool) {
+    /// Whether going back, and going forward, would land anywhere; asked
+    /// of the store once per visit or change to the notes, not per frame.
+    pub(crate) fn nav_reach(&mut self) -> (bool, bool) {
+        if let Some(reach) = self.nav_reach {
+            return reach;
+        }
         let live = |id: &str| live(&self.store, id);
-        (self.nav.can_go_back(live), self.nav.can_go_forward(live))
+        let reach = (self.nav.can_go_back(live), self.nav.can_go_forward(live));
+        self.nav_reach = Some(reach);
+        reach
     }
 
     pub(crate) fn go_back(&mut self, cx: &mut Context<Self>) {
@@ -172,6 +179,7 @@ impl Workspace {
     /// Opens the note going back (or forward) lands on, where the reader
     /// left it. Selecting it records no visit: it is already current.
     fn go(&mut self, back: bool, cx: &mut Context<Self>) {
+        self.nav_reach = None;
         if let Some((id, place)) = self.editor.read(cx).place(cx) {
             self.nav.leave(&id, place);
         }
