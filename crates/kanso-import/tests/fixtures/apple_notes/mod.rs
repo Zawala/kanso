@@ -17,7 +17,7 @@ const ATTACHMENT: i64 = 65;
 const MEDIA: i64 = 87;
 const ACCOUNT_A: i64 = 1;
 const ACCOUNT_B: i64 = 2;
-pub const GOLDEN_WIRE_HEX: &str = "10011a08120248692a020802";
+pub const GOLDEN_WIRE_HEX: &str = "120c10011a08120248692a020802";
 
 #[derive(Clone, Default)]
 struct Run {
@@ -59,6 +59,12 @@ impl Run {
             ..Self::default()
         }
     }
+}
+
+#[derive(Clone, PartialEq, Message)]
+struct WireNoteStore {
+    #[prost(message, optional, tag = "2")]
+    document: Option<WireDocument>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -752,8 +758,9 @@ pub fn build_full_fixture(directory: &Path) -> PathBuf {
 
 pub fn build_golden_wire_fixture(directory: &Path) -> PathBuf {
     let (connection, database_path) = build_base(directory);
-    // Independently specified protobuf wire bytes. Document(version=1, note={
-    // noteText="Hi", attributeRun=[{length=2}]}) uses tags 2, 3, 2 and 5.
+    // Independently specified protobuf wire bytes. NoteStoreProto.document wraps
+    // Document(version=1, note={noteText="Hi", attributeRun=[{length=2}]});
+    // the wrapper uses tag 2 and the document uses tags 2, 3, 2 and 5.
     let wire = decode_hex(GOLDEN_WIRE_HEX);
     add_note(
         &connection,
@@ -1202,11 +1209,13 @@ fn note_payload(runs: &[Run]) -> Vec<u8> {
         });
     }
     gzip(
-        &WireDocument {
-            version: Some(1),
-            note: Some(WireNote {
-                note_text: text,
-                attribute_run,
+        &WireNoteStore {
+            document: Some(WireDocument {
+                version: Some(1),
+                note: Some(WireNote {
+                    note_text: text,
+                    attribute_run,
+                }),
             }),
         }
         .encode_to_vec(),

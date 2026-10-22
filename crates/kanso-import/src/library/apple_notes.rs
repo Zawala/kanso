@@ -27,8 +27,22 @@ mod convert;
 #[path = "apple_notes/proto.rs"]
 mod proto;
 
-#[cfg(target_os = "macos")]
-const DATABASE_NAME: &str = "NoteStore.sqlite";
+/// The database inside Apple Notes' group container.
+pub const DATABASE_NAME: &str = "NoteStore.sqlite";
+/// The group container macOS gives Apple Notes.
+pub const GROUP_CONTAINER_NAME: &str = "group.com.apple.notes";
+
+/// Where Apple Notes keeps its data for `home`.
+pub fn default_data_root(home: &Path) -> PathBuf {
+    home.join("Library")
+        .join("Group Containers")
+        .join(GROUP_CONTAINER_NAME)
+}
+
+/// The database in Apple Notes' standard data root for `home`.
+pub fn default_database_path(home: &Path) -> PathBuf {
+    default_data_root(home).join(DATABASE_NAME)
+}
 #[cfg(target_os = "macos")]
 const SNAPSHOT_ATTEMPTS: u32 = 20;
 const CORE_TIME_OFFSET_SECONDS: f64 = 978_307_200.0;
@@ -117,6 +131,34 @@ struct AttachmentObject {
     mergeable_data_len: Option<i64>,
 }
 
+/// Confirm that the Notes folder, database and WAL sidecars are readable.
+///
+/// macOS can keep a grant for `NoteStore.sqlite` from an earlier file picker
+/// while still denying its `-wal`/`-shm` sidecars. Opening the database alone
+/// then fails inside SQLite with `SQLITE_CANTOPEN`. Probe the folder and each
+/// sidecar up front so the app can ask for the folder grant the Notes database
+/// actually needs.
+pub fn check_read_access(database_path: &Path) -> io::Result<()> {
+    let data_root = database_path.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "Apple Notes database path has no parent directory",
+        )
+    })?;
+    std::fs::read_dir(data_root)?;
+    std::fs::File::open(database_path)?;
+    for suffix in ["-wal", "-shm"] {
+        let mut sidecar = database_path.as_os_str().to_owned();
+        sidecar.push(suffix);
+        match std::fs::File::open(PathBuf::from(sidecar)) {
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
 /// Open an Apple Notes group-container folder or a `NoteStore.sqlite` file.
 ///
 /// On platforms other than macOS this function is available but opening fails
@@ -145,9 +187,20 @@ impl AppleNotesSource {
         };
         anyhow::ensure!(
             database_path.is_file(),
-            "Apple Notes database not found at {} (select the group.com.apple.notes folder or NoteStore.sqlite)",
+            "Apple Notes database not found at {}. Open Notes once, or choose the group.com.apple.notes folder or NoteStore.sqlite",
             database_path.display()
         );
+        match check_read_access(&database_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::PermissionDenied => anyhow::bail!(
+                "macOS did not allow Kanso to read Apple Notes. Allow access when macOS asks, or choose the group.com.apple.notes folder again."
+            ),
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("could not read Apple Notes at {}", database_path.display())
+                });
+            }
+        }
 
         let data_root = database_path
             .parent()
@@ -1572,6 +1625,33 @@ mod tests {
         // No exact match: the case-insensitive fallback takes the first row.
         assert_eq!(alt("Calc-1").as_deref(), Some("lower"));
         assert!(alt("calc-2").is_none());
+    }
+
+    #[test]
+    fn default_location_is_the_notes_group_container() {
+        let home = Path::new("/Users/example");
+        assert_eq!(
+            default_data_root(home),
+            home.join("Library/Group Containers/group.com.apple.notes")
+        );
+        assert_eq!(
+            default_database_path(home),
+            home.join("Library/Group Containers/group.com.apple.notes/NoteStore.sqlite")
+        );
+    }
+
+    #[test]
+    fn access_probe_allows_a_database_without_wal_sidecars() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join(DATABASE_NAME);
+        std::fs::write(&database, b"SQLite format 3\0").unwrap();
+        check_read_access(&database).expect("a standalone database is readable");
+
+        std::fs::remove_file(&database).unwrap();
+        assert_eq!(
+            check_read_access(&database).unwrap_err().kind(),
+            io::ErrorKind::NotFound
+        );
     }
 
     #[test]

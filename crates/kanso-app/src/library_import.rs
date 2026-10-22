@@ -1,12 +1,13 @@
 //! Import…: notes from a folder of Markdown or another app's export, with
 //! a summary to look over before anything is written, progress while it
 //! runs and a report after. File › Open… brings in one Markdown file.
-//! `kanso import <kind> <path>` does the same from a terminal.
+//! `kanso import <kind> [path]` does the same from a terminal.
 //!
 //! The source is only ever read. Importing again updates what the last
 //! import made and never undoes changes made in Kanso
 //! ([`kanso_import::library`]).
 
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -17,8 +18,8 @@ use gpui_kit::component::{Disableable as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_import::library::{
-    LibraryPhase, LibraryProgress, LibraryReport, SourceKind, import_markdown_file, import_source,
-    preview,
+    LibraryPhase, LibraryProgress, LibraryReport, SourceKind, apple_notes, import_markdown_file,
+    import_source, preview,
 };
 use kanso_store::Store;
 
@@ -26,6 +27,14 @@ use crate::paths;
 use crate::theme::{Colors, Rgb};
 use crate::workspace::AppState;
 use crate::zoom::px;
+
+#[cfg(target_os = "macos")]
+mod mac;
+
+/// Apple Notes' usual data folder on this Mac.
+fn apple_notes_data_root() -> PathBuf {
+    apple_notes::default_data_root(&paths::home())
+}
 
 /// The width of the Import window.
 pub(crate) const WIDTH: f32 = 500.;
@@ -237,6 +246,10 @@ impl ImportView {
             }
             Choice::Library(kind) => kind,
         };
+        if kind == SourceKind::AppleNotes {
+            self.choose_apple_notes(cx);
+            return;
+        }
         let (files, directories) = picks(kind);
         let picked = cx.prompt_for_paths(PathPromptOptions {
             files,
@@ -254,6 +267,57 @@ impl ImportView {
             this.update(cx, |this, cx| this.start_preview(kind, path, cx))
                 .ok();
         }));
+    }
+
+    /// Apple Notes has a fixed home. Try it without making the user find it;
+    /// only ask macOS for access when its privacy gate blocks the read.
+    fn choose_apple_notes(&mut self, cx: &mut Context<Self>) {
+        let root = apple_notes_data_root();
+        let database = root.join(apple_notes::DATABASE_NAME);
+        match apple_notes::check_read_access(&database) {
+            Ok(()) => self.start_preview(SourceKind::AppleNotes, root, cx),
+            Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+                self.ask_for_apple_notes(&root, cx);
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                self.stage = Stage::Failed(
+                    "Apple Notes hasn't created a library on this Mac yet. Open Notes once, then try again."
+                        .into(),
+                );
+                cx.notify();
+            }
+            Err(error) => {
+                self.stage = Stage::Failed(format!("Couldn't read Apple Notes: {error}"));
+                cx.notify();
+            }
+        }
+    }
+
+    /// Ask for the one grant macOS requires, with the picker already inside
+    /// the Notes folder. Cancelling leaves the chooser where it was.
+    #[cfg(target_os = "macos")]
+    fn ask_for_apple_notes(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let (sender, picked) = async_channel::bounded(1);
+        if let Err(error) = mac::choose_apple_notes_folder(root, sender) {
+            self.stage = Stage::Failed(format!("Couldn't ask macOS for Notes access: {error}"));
+            cx.notify();
+            return;
+        }
+        self._task = Some(cx.spawn(async move |this, cx| {
+            let Ok(Some(path)) = picked.recv().await else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                this.start_preview(SourceKind::AppleNotes, path, cx)
+            })
+            .ok();
+        }));
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn ask_for_apple_notes(&mut self, _root: &Path, cx: &mut Context<Self>) {
+        self.stage = Stage::Failed("Apple Notes import is supported only on macOS".into());
+        cx.notify();
     }
 
     /// Runs `job` on a thread, showing its progress, then `done`.
@@ -403,11 +467,16 @@ fn lines(lines: Vec<String>, color: Rgb, size: f32) -> Div {
         }))
 }
 
-fn path_line(path: &Path, cx: &App) -> Div {
+fn source_line(kind: SourceKind, path: &Path, cx: &App) -> Div {
+    let label = if kind == SourceKind::AppleNotes {
+        "Apple Notes on this Mac".to_owned()
+    } else {
+        path.display().to_string()
+    };
     div()
         .text_size(px(12.))
         .text_color(Colors::get(cx).text_muted)
-        .child(path.display().to_string())
+        .child(label)
 }
 
 // no-prop-test: drawing; `summary` and `skipped_lines` carry the logic.
@@ -454,7 +523,7 @@ impl Render for ImportView {
                             .text_size(px(13.))
                             .line_height(px(18.))
                             .text_color(colors.text_secondary)
-                            .child("Choose where your notes are. Nothing is written until you've seen what will come in, and the source is only read."),
+                            .child("Choose what to import. Nothing is written until you've seen what will come in, and the source is only read."),
                     )
                     .child(
                         h_flex()
@@ -468,15 +537,22 @@ impl Render for ImportView {
                             .children(cards),
                     )
             }
-            Stage::Reading { path, progress, .. } => v_flex()
+            Stage::Reading {
+                kind,
+                path,
+                progress,
+                ..
+            } => v_flex()
                 .gap(px(10.))
-                .child(path_line(path, cx))
+                .child(source_line(*kind, path, cx))
                 .child(progress_bar(*progress, cx)),
-            Stage::Preview { path, report, .. } => {
+            Stage::Preview {
+                kind, path, report, ..
+            } => {
                 let empty = report.found.notes == 0;
                 v_flex()
                     .gap(px(10.))
-                    .child(path_line(path, cx))
+                    .child(source_line(*kind, path, cx))
                     .when(empty, |el| {
                         el.child(
                             div()
@@ -699,7 +775,7 @@ fn open_paths(paths: &[PathBuf], store: &Store) -> anyhow::Result<(Option<String
 // MARK: Command line
 
 pub const USAGE: &str = "\
-Usage: kanso import <kind> <path> [--dry-run]
+Usage: kanso import <kind> [path] [--dry-run]
 
 Imports notes from a folder or an export file. The source is only read;
 importing it again updates what the last import made, and never undoes
@@ -717,7 +793,8 @@ Kinds:
   standard-notes  A decrypted Standard Notes backup (.txt, .json or .zip)
   simplenote      Simplenote's export (.zip or notes.json)
   upnote          An UpNote Markdown export folder
-  apple-notes     Apple Notes' data folder or NoteStore.sqlite (macOS)
+  apple-notes     The Notes library on this Mac, found automatically (macOS);
+                  a folder or NoteStore.sqlite can still be given
   apple-journal   Apple Journal entry HTML files, folder or .zip
   google-keep     Google Keep JSON, Takeout .zip or folder
   html            HTML file, folder or .zip
@@ -739,7 +816,9 @@ pub enum Cli {
     PouchLibrary(Vec<String>),
     Library {
         kind: SourceKind,
-        path: PathBuf,
+        /// `None` means the source's standard location; only Apple Notes
+        /// currently has one.
+        path: Option<PathBuf>,
         dry_run: bool,
     },
 }
@@ -767,16 +846,21 @@ pub fn parse_cli(args: &[String]) -> anyhow::Result<Cli> {
                 .with_context(|| format!("unknown kind `{kind}`\n\n{USAGE}"))?;
             Ok(Cli::Library {
                 kind,
-                path: PathBuf::from(path),
+                path: Some(PathBuf::from(path)),
                 dry_run,
             })
         }
+        [kind] if SourceKind::parse(kind) == Some(SourceKind::AppleNotes) => Ok(Cli::Library {
+            kind: SourceKind::AppleNotes,
+            path: None,
+            dry_run,
+        }),
         [kind] => bail!("`kanso import {kind}` needs a folder or file to import\n\n{USAGE}"),
         _ => bail!("too many arguments\n\n{USAGE}"),
     }
 }
 
-/// `kanso import <kind> <path> [--dry-run]`
+/// `kanso import <kind> [path] [--dry-run]`
 pub fn run_cli(data_dir: &Path, args: &[String]) -> anyhow::Result<()> {
     let (kind, path, dry_run) = match parse_cli(args)? {
         Cli::Help => {
@@ -790,6 +874,7 @@ pub fn run_cli(data_dir: &Path, args: &[String]) -> anyhow::Result<()> {
             dry_run,
         } => (kind, path, dry_run),
     };
+    let path = path.unwrap_or_else(apple_notes_data_root);
     std::fs::create_dir_all(data_dir)?;
     let Some(_lock) = kanso_store::lock_data_dir(data_dir)? else {
         bail!(
@@ -829,13 +914,29 @@ mod tests {
             parse_cli(&args(&["obsidian", "/v", "--dry-run"])).unwrap(),
             Cli::Library {
                 kind: SourceKind::Obsidian,
-                path: "/v".into(),
+                path: Some("/v".into()),
                 dry_run: true
             }
         );
         assert_eq!(
             parse_cli(&args(&["pouchdb", "--credentials"])).unwrap(),
             Cli::PouchLibrary(args(&["--credentials"]))
+        );
+        assert_eq!(
+            parse_cli(&args(&["apple-notes"])).unwrap(),
+            Cli::Library {
+                kind: SourceKind::AppleNotes,
+                path: None,
+                dry_run: false
+            }
+        );
+        assert_eq!(
+            parse_cli(&args(&["apple-notes", "/backup", "--dry-run"])).unwrap(),
+            Cli::Library {
+                kind: SourceKind::AppleNotes,
+                path: Some("/backup".into()),
+                dry_run: true
+            }
         );
         assert!(parse_cli(&args(&["word", "/x"])).is_err());
         assert!(parse_cli(&args(&["notion"])).is_err());
@@ -870,7 +971,7 @@ mod tests {
             list.insert(at.min(2), "--dry-run".to_owned());
             prop_assert_eq!(
                 parse_cli(&list).unwrap(),
-                Cli::Library { kind, path: PathBuf::from(path), dry_run: true }
+                Cli::Library { kind, path: Some(PathBuf::from(path)), dry_run: true }
             );
         }
 

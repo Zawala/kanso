@@ -191,7 +191,7 @@ impl SourceKind {
             SourceKind::Simplenote => "The .zip from Export Notes, or the notes.json in it.",
             SourceKind::UpNote => "A folder from Export › Markdown.",
             SourceKind::AppleNotes => {
-                "The Notes data folder or its NoteStore.sqlite. macOS may ask for access; locked or undownloaded notes are listed."
+                "Kanso finds the Notes library on this Mac. macOS may ask you to allow read-only access; locked or undownloaded notes are listed."
             }
             SourceKind::AppleJournal => {
                 "Journal entry .html files, or the folder Apple Journal exports them to."
