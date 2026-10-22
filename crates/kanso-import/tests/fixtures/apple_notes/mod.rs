@@ -771,6 +771,88 @@ pub fn build_golden_wire_fixture(directory: &Path) -> PathBuf {
     database_path
 }
 
+/// Rows marked for deletion, and inline attachments beyond tags, mentions
+/// and note links.
+pub fn build_deletion_and_inline_fixture(directory: &Path) -> PathBuf {
+    let (connection, database_path) = build_base(directory);
+    add_folder(
+        &connection,
+        24,
+        "Purged",
+        "purged-folder",
+        None,
+        ACCOUNT_A,
+        0,
+    );
+    mark_for_deletion(&connection, 24);
+    add_note(
+        &connection,
+        100,
+        "Live",
+        "note-live",
+        21,
+        None,
+        None,
+        0,
+        0,
+        Some(note_payload(&[
+            Run::text("Live\n"),
+            Run::text("Total "),
+            Run::attachment(
+                "CALC-1",
+                "com.apple.notes.inlinetextattachment.calculateresult",
+            ),
+            Run::text(" and "),
+            Run::attachment(
+                "CALC-EMPTY",
+                "com.apple.notes.inlinetextattachment.calculategraphexpression",
+            ),
+        ])),
+    );
+    add_note(
+        &connection,
+        101,
+        "Purged note",
+        "note-purged",
+        21,
+        None,
+        None,
+        0,
+        0,
+        Some(note_payload(&[Run::text("Purged\n"), Run::text("Gone.")])),
+    );
+    mark_for_deletion(&connection, 101);
+    add_note(
+        &connection,
+        102,
+        "Orphan",
+        "note-in-purged-folder",
+        24,
+        None,
+        None,
+        0,
+        0,
+        Some(note_payload(&[Run::text("Orphan\n"), Run::text("Body.")])),
+    );
+    for (pk, identifier, alt_text) in [(200, "CALC-1", Some("= 42")), (201, "CALC-EMPTY", None)] {
+        add_attachment(
+            &connection,
+            pk,
+            identifier,
+            None,
+            alt_text,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+    }
+    drop(connection);
+    database_path
+}
+
 pub fn build_malformed_fixture(directory: &Path) -> PathBuf {
     let (connection, database_path) = build_base(directory);
     add_note(
@@ -926,6 +1008,15 @@ fn add_folder(
             ("ZFOLDERTYPE", Value::Integer(kind)),
         ],
     );
+}
+
+fn mark_for_deletion(connection: &Connection, pk: i64) {
+    connection
+        .execute(
+            "UPDATE ZICCloudSyncingObject SET ZMARKEDFORDELETION = 1 WHERE Z_PK = ?1",
+            [pk],
+        )
+        .expect("mark Core Data object for deletion");
 }
 
 #[allow(clippy::too_many_arguments)]

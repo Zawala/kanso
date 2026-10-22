@@ -1,5 +1,6 @@
 //! Apple Notes importer tests use only Rust-built synthetic Core Data stores.
 
+#[cfg(target_os = "macos")]
 #[path = "fixtures/apple_notes/mod.rs"]
 mod fixture;
 
@@ -87,7 +88,7 @@ mod macos_tests {
             "@Ada",
             "[Linked note](kanso-import:note/note-target)",
             "[**Example card**](https://example.test/card)",
-            "<p style=\"text-align:center;margin:0\">Centered</p>",
+            "\nCentered\n",
             "> Quoted",
             "- First\n\t- Child",
             "- [x] Done",
@@ -100,6 +101,7 @@ mod macos_tests {
                 overview.body
             );
         }
+        assert!(!overview.body.contains("<p"), "{}", overview.body);
         assert_eq!(overview.folder, ["iCloud", "Work", "Projects"]);
         assert!(
             notes
@@ -428,6 +430,43 @@ mod macos_tests {
     }
 
     #[test]
+    fn rows_marked_for_deletion_are_left_out_rather_than_trashed() {
+        let env = TestEnv::new();
+        let database = fixture::build_deletion_and_inline_fixture(&env.source_directory());
+        let mut source = open(&database).expect("open synthetic Apple Notes database");
+        let notes = collect_notes(&mut source, false);
+        let keys: Vec<_> = notes.iter().map(|note| note.key.as_str()).collect();
+        assert_eq!(keys, ["note-live", "note-in-purged-folder"]);
+        assert!(notes.iter().all(|note| !note.trashed));
+        let orphan = notes
+            .iter()
+            .find(|note| note.key == "note-in-purged-folder")
+            .unwrap();
+        assert!(orphan.folder.is_empty(), "{:?}", orphan.folder);
+    }
+
+    #[test]
+    fn other_inline_attachments_render_their_alt_text() {
+        let env = TestEnv::new();
+        let database = fixture::build_deletion_and_inline_fixture(&env.source_directory());
+        let mut source = open(&database).expect("open synthetic Apple Notes database");
+        let notes = collect_notes(&mut source, true);
+        let live = notes.iter().find(|note| note.key == "note-live").unwrap();
+        assert_eq!(
+            live.body,
+            "Total = 42 and **(attachment unavailable: inline text)**"
+        );
+        assert!(live.embedded.is_empty());
+        let skipped = source.skipped();
+        assert!(
+            skipped
+                .iter()
+                .any(|skip| skip.reason == "inline attachment CALC-EMPTY has no text"),
+            "{skipped:#?}"
+        );
+    }
+
+    #[test]
     fn source_name_is_fixed_for_folder_and_file_inputs() {
         let env = TestEnv::new();
         let folder = env.source_directory();
@@ -442,7 +481,9 @@ mod macos_tests {
 #[cfg(not(target_os = "macos"))]
 #[test]
 fn opening_apple_notes_on_unsupported_platform_has_a_clear_error() {
-    let error = kanso_import::library::apple_notes::open(std::path::Path::new("missing"))
-        .expect_err("Apple Notes opening is macOS-only");
+    let Err(error) = kanso_import::library::apple_notes::open(std::path::Path::new("missing"))
+    else {
+        panic!("Apple Notes opening is macOS-only");
+    };
     assert!(error.to_string().contains("only on macOS"), "{error:#}");
 }

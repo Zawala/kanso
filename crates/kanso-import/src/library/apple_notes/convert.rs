@@ -7,7 +7,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::proto::{AttributeRun, MergeableDataProto, Note, ParagraphStyle};
+use kanso_core::model::MAX_TITLE_LEN;
+
+use super::proto::{AttributeRun, MergeableDataProto, Note, OrderedSetOrdering, ParagraphStyle};
 use super::{AttachmentResult, proto};
 
 const STYLE_TITLE: i32 = 0;
@@ -98,6 +100,7 @@ pub(super) fn render_note(
         && note.note_text.contains('\n')
         && !is_url_only(note)
         && !first_line_has_attachment(note)
+        && first_line_fits_title(note)
         && !starts_nested_list(&paragraphs);
     if skip_first && !paragraphs.is_empty() {
         paragraphs.remove(0);
@@ -220,36 +223,31 @@ pub(super) fn render_note(
                 output.push_str(&text.replace(SOFT_RETURN, "\n"));
             }
         } else {
-            for piece in paragraph {
-                append_piece(
-                    &mut output,
-                    &piece,
-                    note_keys,
-                    resolve,
-                    &mut embedded,
-                    &mut embedded_keys,
-                    &mut tags,
-                );
+            // Paragraph alignment is dropped, as every other importer does: a
+            // `<p>` wrapper would turn the Markdown inside it into literal text.
+            let mut pieces = paragraph.into_iter().peekable();
+            while let Some(piece) = pieces.next() {
+                let Some(link) = text_link(&piece).map(str::to_owned) else {
+                    append_piece(
+                        &mut output,
+                        &piece,
+                        note_keys,
+                        resolve,
+                        &mut embedded,
+                        &mut embedded_keys,
+                        &mut tags,
+                    );
+                    continue;
+                };
+                // Runs that share a link but differ in format become one link.
+                let mut raw = piece.text.clone();
+                let mut inner = format_styles(&piece.text, &piece.attributes);
+                while let Some(next) = pieces.next_if(|next| text_link(next) == Some(&link)) {
+                    raw.push_str(&next.text);
+                    inner.push_str(&format_styles(&next.text, &next.attributes));
+                }
+                output.push_str(&link_markdown(&inner, &raw, &link, note_keys));
             }
-        }
-
-        if !in_code
-            && let Some(alignment) = style
-                .as_ref()
-                .and_then(|value| value.alignment)
-                .filter(|value| *value != 0)
-        {
-            let (start, end) = match alignment {
-                1 => ("<p style=\"text-align:center;margin:0\">", "</p>"),
-                2 => ("<p style=\"text-align:right;margin:0\">", "</p>"),
-                3 => ("<p style=\"text-align:justify;margin:0\">", "</p>"),
-                _ => ("<p style=\"text-align:left;margin:0\">", "</p>"),
-            };
-            // The prefix/content were appended directly; wrap this paragraph in-place.
-            let end_index = output.len();
-            let paragraph_start = output.rfind('\n').map_or(0, |position| position + 1);
-            output.insert_str(paragraph_start, start);
-            output.insert_str(end_index + start.len(), end);
         }
         let _ = title;
     }
@@ -312,31 +310,68 @@ fn format_inline(
     attributes: &AttributeRun,
     note_keys: &HashMap<String, String>,
 ) -> String {
-    let mut output = String::new();
-    let normalized = text.replace(SOFT_RETURN, "\n");
-    let mut token = String::new();
-    for character in normalized.chars() {
-        if character.is_whitespace() {
-            if !token.is_empty() {
-                output.push_str(&format_word(&token, attributes, note_keys));
-                token.clear();
-            }
-            output.push(character);
-        } else {
-            token.push(character);
-        }
+    let styled = format_styles(text, attributes);
+    match attributes.link.as_deref().filter(|link| !link.is_empty()) {
+        Some(link) => link_markdown(&styled, text, link, note_keys),
+        None => styled,
     }
-    if !token.is_empty() {
-        output.push_str(&format_word(&token, attributes, note_keys));
-    }
-    output
 }
 
-fn format_word(
-    text: &str,
-    attributes: &AttributeRun,
+/// The link a run of plain text carries, if any.
+fn text_link(piece: &Piece) -> Option<&str> {
+    if piece.attributes.attachment_info.is_some() {
+        return None;
+    }
+    piece
+        .attributes
+        .link
+        .as_deref()
+        .filter(|link| !link.is_empty())
+}
+
+/// Formats a whole run at once, line by line, so markers wrap the run's words
+/// together and never sit against the whitespace around them.
+fn format_styles(text: &str, attributes: &AttributeRun) -> String {
+    text.replace(SOFT_RETURN, "\n")
+        .split('\n')
+        .map(|line| around_whitespace(line, |core| format_word(core, attributes)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Applies `wrap` to `text` without its surrounding whitespace.
+fn around_whitespace(text: &str, wrap: impl FnOnce(&str) -> String) -> String {
+    let core = text.trim();
+    if core.is_empty() {
+        return text.to_owned();
+    }
+    let leading = &text[..text.len() - text.trim_start().len()];
+    let trailing = &text[text.trim_end().len()..];
+    format!("{leading}{}{trailing}", wrap(core))
+}
+
+/// Links already-formatted `inner`, whose source text is `raw`. A bare URL
+/// stays as it is, and so does a link to a note this import doesn't have.
+fn link_markdown(
+    inner: &str,
+    raw: &str,
+    link: &str,
     note_keys: &HashMap<String, String>,
 ) -> String {
+    if raw.trim() == link {
+        return inner.to_owned();
+    }
+    let target = match apple_note_identifier(link) {
+        Some(identifier) => match note_keys.get(&identifier.to_ascii_lowercase()) {
+            Some(key) => format!("kanso-import:note/{key}"),
+            None => return inner.to_owned(),
+        },
+        None => escape_url(link),
+    };
+    around_whitespace(inner, |core| format!("[{core}]({target})"))
+}
+
+fn format_word(text: &str, attributes: &AttributeRun) -> String {
     let paragraph = attributes.paragraph_style.as_ref();
     let heading_text = paragraph.is_some_and(|style| {
         matches!(
@@ -374,19 +409,6 @@ fn format_word(
             _ => "",
         };
         output = format!("=={marker}{output}==");
-    }
-    if let Some(link) = attributes
-        .link
-        .as_deref()
-        .filter(|link| !link.is_empty() && *link != text)
-    {
-        if let Some(identifier) = apple_note_identifier(link) {
-            if let Some(key) = note_keys.get(&identifier.to_ascii_lowercase()) {
-                output = format!("[{output}](kanso-import:note/{key})");
-            }
-        } else {
-            output = format!("[{output}]({})", escape_url(link));
-        }
     }
     output
 }
@@ -490,6 +512,18 @@ fn first_line(note: &Note) -> String {
         .to_owned()
 }
 
+/// Whether the first line fits in a title whole. A longer one stays in the
+/// body too, or the text past the title's limit would be lost.
+fn first_line_fits_title(note: &Note) -> bool {
+    first_line(note)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .count()
+        <= MAX_TITLE_LEN
+}
+
 fn first_line_has_attachment(note: &Note) -> bool {
     note.note_text
         .split('\n')
@@ -573,10 +607,8 @@ pub(super) fn render_table(message: &MergeableDataProto) -> Result<String, Strin
     let Some(root) = root.and_then(|entry| entry.custom_map.as_ref()) else {
         return Err("has unsupported CRDT structure: ICTable root is missing".to_owned());
     };
-    let mut row_locations = HashMap::new();
-    let mut column_locations = HashMap::new();
-    let mut row_count = 0usize;
-    let mut column_count = 0usize;
+    let mut rows = None;
+    let mut columns = None;
     let mut cell_data = None;
 
     for entry in &root.map_entry {
@@ -592,12 +624,8 @@ pub(super) fn render_table(message: &MergeableDataProto) -> Result<String, Strin
             continue;
         };
         match name.as_str() {
-            "crRows" => {
-                (row_locations, row_count) = find_locations(object, objects, uuids);
-            }
-            "crColumns" => {
-                (column_locations, column_count) = find_locations(object, objects, uuids);
-            }
+            "crRows" => rows = ordering(object),
+            "crColumns" => columns = ordering(object),
             "cellColumns" => cell_data = Some(object),
             _ => {}
         }
@@ -605,12 +633,19 @@ pub(super) fn render_table(message: &MergeableDataProto) -> Result<String, Strin
     let Some(cell_data) = cell_data.and_then(|entry| entry.dictionary.as_ref()) else {
         return Err("has unsupported CRDT structure: cellColumns is missing".to_owned());
     };
+    // The limit is checked before any location is worked out.
+    let row_count = rows.map_or(0, ordered_count);
+    let column_count = columns.map_or(0, ordered_count);
     if row_count == 0 || column_count == 0 {
         return Err("has unsupported CRDT structure: rows or columns are missing".to_owned());
     }
     if row_count.saturating_mul(column_count) > 10_000 {
         return Err("exceeds the 10000-cell rendering limit".to_owned());
     }
+    let row_locations = rows.map_or_else(HashMap::new, |rows| find_locations(rows, objects, uuids));
+    let column_locations = columns.map_or_else(HashMap::new, |columns| {
+        find_locations(columns, objects, uuids)
+    });
     let mut grid = vec![vec![String::new(); column_count]; row_count];
     for column in &cell_data.element {
         let Some(column_uuid) = column
@@ -673,29 +708,33 @@ pub(super) fn render_table(message: &MergeableDataProto) -> Result<String, Strin
     Ok(result)
 }
 
-fn find_locations(
-    entry: &proto::MergeableEntry,
-    objects: &[proto::MergeableEntry],
-    uuids: &[Vec<u8>],
-) -> (HashMap<String, usize>, usize) {
-    let Some(ordering) = entry
-        .ordered_set
-        .as_ref()
-        .and_then(|set| set.ordering.as_ref())
-    else {
-        return (HashMap::new(), 0);
-    };
-    let order: Vec<String> = ordering
+fn ordering(entry: &proto::MergeableEntry) -> Option<&OrderedSetOrdering> {
+    entry.ordered_set.as_ref()?.ordering.as_ref()
+}
+
+fn ordered_count(ordering: &OrderedSetOrdering) -> usize {
+    ordering
         .array
         .as_ref()
-        .map(|array| {
-            array
-                .attachment
-                .iter()
-                .map(|attachment| hex(&attachment.uuid))
-                .collect()
-        })
-        .unwrap_or_default();
+        .map_or(0, |array| array.attachment.len())
+}
+
+/// Maps each row or column identity to its position in the ordering.
+fn find_locations(
+    ordering: &OrderedSetOrdering,
+    objects: &[proto::MergeableEntry],
+    uuids: &[Vec<u8>],
+) -> HashMap<String, usize> {
+    // A UUID listed twice keeps its first position.
+    let mut positions = HashMap::new();
+    for (index, attachment) in ordering
+        .array
+        .iter()
+        .flat_map(|array| &array.attachment)
+        .enumerate()
+    {
+        positions.entry(hex(&attachment.uuid)).or_insert(index);
+    }
     let mut locations = HashMap::new();
     if let Some(contents) = ordering.contents.as_ref() {
         for element in &contents.element {
@@ -713,12 +752,12 @@ fn find_locations(
             else {
                 continue;
             };
-            if let Some(index) = order.iter().position(|uuid| uuid == &key) {
+            if let Some(&index) = positions.get(&key) {
                 locations.insert(value, index);
             }
         }
     }
-    (locations, order.len())
+    locations
 }
 
 fn target_uuid(
@@ -778,7 +817,8 @@ fn hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use crate::library::apple_notes::proto::{
-        MergeableDataObject, MergeableDataStore, MergeableEntry, MergeableMap,
+        Dictionary, DictionaryElement, MapEntry, MergeableDataObject, MergeableDataStore,
+        MergeableEntry, MergeableMap, ObjectId, OrderedSet, OrderedSetArray, OrderedSetAttachment,
     };
 
     #[test]
@@ -804,5 +844,232 @@ mod tests {
             render_table(&message).unwrap_err(),
             "has unsupported CRDT structure: cellColumns is missing"
         );
+    }
+
+    const LINK: &str = "https://example.test/x";
+
+    fn run(text: &str, attributes: AttributeRun) -> (String, AttributeRun) {
+        (text.to_owned(), attributes)
+    }
+
+    fn styled(style_type: i32, alignment: i32) -> AttributeRun {
+        AttributeRun {
+            paragraph_style: Some(ParagraphStyle {
+                style_type: Some(style_type),
+                alignment: Some(alignment),
+                ..ParagraphStyle::default()
+            }),
+            ..AttributeRun::default()
+        }
+    }
+
+    fn note(runs: &[(String, AttributeRun)]) -> Note {
+        Note {
+            note_text: runs.iter().map(|(text, _)| text.as_str()).collect(),
+            attribute_run: runs
+                .iter()
+                .map(|(text, attributes)| AttributeRun {
+                    length: text.encode_utf16().count() as i32,
+                    ..attributes.clone()
+                })
+                .collect(),
+        }
+    }
+
+    fn render(note: &Note, omit_first_line: bool) -> String {
+        let mut resolve = |_: &str, _: &str| -> AttachmentResult { unreachable!() };
+        render_note(note, "", "", &HashMap::new(), omit_first_line, &mut resolve).body
+    }
+
+    #[test]
+    fn aligned_headings_list_items_and_paragraphs_stay_markdown() {
+        let body = render(
+            &note(&[
+                run("Heading\n", styled(STYLE_HEADING, 1)),
+                run("Item\n", styled(STYLE_DOTTED_LIST, 2)),
+                run("Body\u{2028}second line", styled(-1, 1)),
+            ]),
+            false,
+        );
+        assert_eq!(body, "## Heading\n- Item\nBody\nsecond line");
+    }
+
+    #[test]
+    fn a_link_over_several_words_is_one_link() {
+        let linked = AttributeRun {
+            link: Some(LINK.to_owned()),
+            ..AttributeRun::default()
+        };
+        let bold = AttributeRun {
+            font_weight: Some(1),
+            ..AttributeRun::default()
+        };
+        let body = render(
+            &note(&[
+                run("See ", AttributeRun::default()),
+                run("Apple Inc", linked),
+                run(" and ", AttributeRun::default()),
+                run("two words", bold),
+            ]),
+            false,
+        );
+        assert_eq!(body, format!("See [Apple Inc]({LINK}) and **two words**"));
+    }
+
+    /// A table builder: `rows` lists each row's UUID slot in order, and
+    /// `contents` maps an ordering slot to an identity slot.
+    fn table(rows: &[u64], contents: &[(u64, u64)], slots: u64) -> MergeableDataProto {
+        let reference = |index: usize| ObjectId {
+            object_index: Some(index as i32),
+            ..ObjectId::default()
+        };
+        // Objects 0..4: root, rows, columns, cells; then one per UUID slot.
+        let uuid_object = |slot: u64| reference(4 + slot as usize);
+        let mut entry = vec![MergeableEntry::default(); 4];
+        entry[0].custom_map = Some(MergeableMap {
+            type_index: Some(0),
+            map_entry: (0..3)
+                .map(|key| MapEntry {
+                    key,
+                    value: Some(reference(key as usize + 1)),
+                })
+                .collect(),
+        });
+        let ordering = |order: &[u64], contents: &[(u64, u64)]| OrderedSet {
+            ordering: Some(OrderedSetOrdering {
+                array: Some(OrderedSetArray {
+                    attachment: order
+                        .iter()
+                        .map(|slot| OrderedSetAttachment {
+                            index: Some(0),
+                            uuid: slot.to_be_bytes().to_vec(),
+                        })
+                        .collect(),
+                    ..OrderedSetArray::default()
+                }),
+                contents: Some(Dictionary {
+                    element: contents
+                        .iter()
+                        .map(|&(key, value)| DictionaryElement {
+                            key: Some(uuid_object(key)),
+                            value: Some(uuid_object(value)),
+                        })
+                        .collect(),
+                }),
+            }),
+            ..OrderedSet::default()
+        };
+        entry[1].ordered_set = Some(ordering(rows, contents));
+        entry[2].ordered_set = Some(ordering(&[0], &[]));
+        entry[3].dictionary = Some(Dictionary::default());
+        for slot in 0..slots {
+            entry.push(MergeableEntry {
+                custom_map: Some(MergeableMap {
+                    type_index: Some(1),
+                    map_entry: vec![MapEntry {
+                        key: 0,
+                        value: Some(ObjectId {
+                            unsigned_integer_value: Some(slot),
+                            ..ObjectId::default()
+                        }),
+                    }],
+                }),
+                ..MergeableEntry::default()
+            });
+        }
+        MergeableDataProto {
+            mergable_data_object: Some(MergeableDataObject {
+                data: Some(MergeableDataStore {
+                    entry,
+                    key_item: ["crRows", "crColumns", "cellColumns"]
+                        .map(str::to_owned)
+                        .into(),
+                    type_item: vec!["com.apple.notes.ICTable".to_owned()],
+                    uuid_item: (0..slots).map(|slot| slot.to_be_bytes().to_vec()).collect(),
+                }),
+                ..MergeableDataObject::default()
+            }),
+        }
+    }
+
+    #[test]
+    fn an_oversized_table_is_refused_before_its_rows_are_located() {
+        // Each entry's row sits last in the ordering, so searching the whole
+        // ordering per entry was quadratic; the limit now refuses it first.
+        let rows: Vec<u64> = (1..60_000).chain([0]).collect();
+        let contents = vec![(0, 0); 60_000];
+        let message = table(&rows, &contents, 1);
+        assert_eq!(
+            render_table(&message).unwrap_err(),
+            "exceeds the 10000-cell rendering limit"
+        );
+    }
+
+    proptest::proptest! {
+        /// Every location is the key's first position in the ordering, as a
+        /// linear search over the ordering finds it.
+        #[test]
+        fn prop_locations_match_first_positions(
+            order in proptest::collection::vec(0u64..8, 0..24),
+            contents in proptest::collection::vec((0u64..8, 0u64..8), 0..24),
+        ) {
+            let message = table(&order, &contents, 8);
+            let data = message.mergable_data_object.as_ref().unwrap().data.as_ref().unwrap();
+            let rows = ordering(&data.entry[1]).unwrap();
+            let found = find_locations(rows, &data.entry, &data.uuid_item);
+
+            let mut expected = HashMap::new();
+            for (key, value) in &contents {
+                if let Some(index) = order.iter().position(|slot| slot == key) {
+                    expected.insert(hex(&value.to_be_bytes()), index);
+                }
+            }
+            proptest::prop_assert_eq!(found, expected);
+        }
+
+        /// No first-line text is lost: either the whole line is the title, or
+        /// the line also stays in the body.
+        #[test]
+        fn prop_first_line_is_kept_whole_somewhere(
+            words in proptest::collection::vec("[a-z]{1,12}", 1..40),
+        ) {
+            let first = words.join(" ");
+            let source = note(&[run(&format!("{first}\n0 1 2"), AttributeRun::default())]);
+            let title = crate::library::clean_title(&note_title(&source.note_text, ""));
+            let body = render(&source, true);
+            let long = first.chars().count() > MAX_TITLE_LEN;
+            proptest::prop_assert_eq!(body.contains(&first), long);
+            proptest::prop_assert!(long || title == first);
+            proptest::prop_assert!(body.ends_with("0 1 2"));
+        }
+
+        /// However its words are formatted, text under one link is one link
+        /// holding every word in order.
+        #[test]
+        fn prop_one_link_however_its_words_are_formatted(
+            words in proptest::collection::vec(("[a-z]{1,8}", 0i32..4), 1..8),
+        ) {
+            let last = words.len() - 1;
+            let runs: Vec<_> = words
+                .iter()
+                .enumerate()
+                .map(|(index, (word, weight))| {
+                    let text = if index == last { word.clone() } else { format!("{word} ") };
+                    run(&text, AttributeRun {
+                        font_weight: Some(*weight),
+                        link: Some(LINK.to_owned()),
+                        ..AttributeRun::default()
+                    })
+                })
+                .collect();
+            let body = render(&note(&runs), false);
+            let target = format!("]({LINK})");
+            proptest::prop_assert_eq!(body.matches(&target).count(), 1, "{}", body);
+            let words: Vec<_> = words.iter().map(|(word, _)| word.as_str()).collect();
+            proptest::prop_assert_eq!(
+                body.replace('*', ""),
+                format!("[{}]({LINK})", words.join(" "))
+            );
+        }
     }
 }
