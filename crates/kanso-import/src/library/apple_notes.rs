@@ -7,11 +7,15 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
+#[cfg(target_os = "macos")]
 use std::time::Duration;
 
 use anyhow::Context as _;
-use rusqlite::backup::Backup;
-use rusqlite::{Connection, OpenFlags, Row};
+use rusqlite::Connection;
+#[cfg(target_os = "macos")]
+use rusqlite::backup::{Backup, StepResult};
+#[cfg(target_os = "macos")]
+use rusqlite::{OpenFlags, Row};
 use tempfile::TempDir;
 
 use super::report::Skipped;
@@ -23,11 +27,15 @@ mod convert;
 #[path = "apple_notes/proto.rs"]
 mod proto;
 
+#[cfg(target_os = "macos")]
 const DATABASE_NAME: &str = "NoteStore.sqlite";
+#[cfg(target_os = "macos")]
+const SNAPSHOT_ATTEMPTS: u32 = 20;
 const CORE_TIME_OFFSET_SECONDS: f64 = 978_307_200.0;
 const MAX_COMPRESSED_NOTE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_NOTE_PROTO_BYTES: usize = 16 * 1024 * 1024;
 const MAX_ATTACHMENT_BYTES: u64 = kanso_core::model::MAX_ATTACHMENT_SIZE as u64;
+const INLINE_ATTACHMENT_PREFIX: &str = "com.apple.notes.inlinetextattachment.";
 
 /// A stable, read-only view of one Apple Notes database.
 pub struct AppleNotesSource {
@@ -48,8 +56,12 @@ pub struct AppleNotesSource {
 
 #[derive(Clone, Copy)]
 struct EntityIds {
+    // Only the loaders read these, and they run on macOS alone.
+    #[cfg(target_os = "macos")]
     account: Option<i64>,
+    #[cfg(target_os = "macos")]
     folder: i64,
+    #[cfg(target_os = "macos")]
     note: i64,
     attachment: Option<i64>,
     media: Option<i64>,
@@ -75,6 +87,7 @@ struct NoteMeta {
     pk: i64,
     title: String,
     key: String,
+    #[cfg(target_os = "macos")]
     identifier: Option<String>,
     folder: Option<i64>,
     creation1: Option<f64>,
@@ -83,7 +96,6 @@ struct NoteMeta {
     modification: Option<f64>,
     password_protected: bool,
     pinned: bool,
-    deleted: bool,
 }
 
 struct AttachmentResult {
@@ -302,11 +314,9 @@ impl AppleNotesSource {
     }
 
     fn note_trashed(&self, note: &NoteMeta) -> bool {
-        note.deleted
-            || note
-                .folder
-                .and_then(|id| self.folders.get(&id))
-                .is_some_and(|folder| folder.kind == 1)
+        note.folder
+            .and_then(|id| self.folders.get(&id))
+            .is_some_and(|folder| folder.kind == 1)
     }
 
     fn resolve_attachment(
@@ -355,6 +365,24 @@ impl AppleNotesSource {
                 );
             };
             return self.internal_link(&target, row.alt_text);
+        }
+
+        // Other inline attachments (iOS 18 Math Notes results, for one) have
+        // no file behind them; ZALTTEXT holds the text Notes displays.
+        if uti.starts_with(INLINE_ATTACHMENT_PREFIX) {
+            let Some(text) = row.alt_text.filter(|value| !value.trim().is_empty()) else {
+                return self.unavailable(
+                    note,
+                    format!("inline attachment {identifier} has no text"),
+                    uti,
+                );
+            };
+            return AttachmentResult {
+                markdown: text,
+                embedded: Vec::new(),
+                skipped: Vec::new(),
+                tags: Vec::new(),
+            };
         }
 
         if uti == "public.url" {
@@ -866,43 +894,7 @@ impl AppleNotesSource {
     }
 
     fn object_by_identifier(&self, identifier: &str) -> Option<AttachmentObject> {
-        let pk = column_expr(&self.columns, "Z_PK", "NULL");
-        let alt_text = column_expr(&self.columns, "ZALTTEXT", "NULL");
-        let target = column_expr(&self.columns, "ZTOKENCONTENTIDENTIFIER", "NULL");
-        let url = column_expr(&self.columns, "ZURLSTRING", "NULL");
-        let title = column_expr(&self.columns, "ZTITLE", "NULL");
-        let media = column_expr(&self.columns, "ZMEDIA", "NULL");
-        let mergeable_column = column_expr(&self.columns, "ZMERGEABLEDATA1", "NULL");
-        let mergeable = if self.columns.contains("zmergeabledata1") {
-            format!(
-                "substr({mergeable_column}, 1, {})",
-                MAX_COMPRESSED_NOTE_BYTES + 1
-            )
-        } else {
-            "NULL".to_owned()
-        };
-        let mergeable_len = if self.columns.contains("zmergeabledata1") {
-            "length(ZMERGEABLEDATA1)".to_owned()
-        } else {
-            "NULL".to_owned()
-        };
-        let sql = format!(
-            "SELECT {pk}, {alt_text}, {target}, {url}, {title}, {media}, {mergeable}, {mergeable_len} FROM ZICCloudSyncingObject WHERE ZIDENTIFIER = ?1 COLLATE NOCASE ORDER BY Z_PK LIMIT 1"
-        );
-        self.database
-            .query_row(&sql, [identifier], |row| {
-                Ok(AttachmentObject {
-                    pk: row.get(0)?,
-                    alt_text: row.get(1)?,
-                    target_identifier: row.get(2)?,
-                    url: row.get(3)?,
-                    title: row.get(4)?,
-                    media: row.get(5)?,
-                    mergeable_data: row.get(6)?,
-                    mergeable_data_len: row.get(7)?,
-                })
-            })
-            .ok()
+        object_by_identifier(&self.database, &self.columns, identifier)
     }
 
     fn push_skipped(&mut self, path: impl Into<String>, reason: impl Into<String>) {
@@ -1010,6 +1002,11 @@ impl Source for AppleNotesSource {
     }
 }
 
+/// Copy the database in one backup step, under one read transaction.
+///
+/// An incremental backup restarts whenever another connection writes the
+/// source, so a large store Notes.app keeps syncing might never finish.
+#[cfg(target_os = "macos")]
 fn snapshot_database(source_path: &Path, snapshot_path: &Path) -> anyhow::Result<()> {
     let source = Connection::open_with_flags(
         source_path,
@@ -1028,10 +1025,26 @@ fn snapshot_database(source_path: &Path, snapshot_path: &Path) -> anyhow::Result
             | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .context("could not create the Apple Notes snapshot database")?;
-    Backup::new(&source, &mut destination)
-        .context("could not start the Apple Notes SQLite snapshot")?
-        .run_to_completion(128, Duration::from_millis(10), None)
-        .context("could not finish the Apple Notes SQLite snapshot")?;
+    {
+        let backup = Backup::new(&source, &mut destination)
+            .context("could not start the Apple Notes SQLite snapshot")?;
+        let mut attempts = 0;
+        loop {
+            match backup
+                .step(-1)
+                .context("could not finish the Apple Notes SQLite snapshot")?
+            {
+                StepResult::Done => break,
+                _ if attempts + 1 < SNAPSHOT_ATTEMPTS => {
+                    attempts += 1;
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                _ => anyhow::bail!(
+                    "could not snapshot the Apple Notes database: it stayed locked (quit Notes and try again)"
+                ),
+            }
+        }
+    }
     destination
         .close()
         .map_err(|(_, error)| error)
@@ -1039,6 +1052,7 @@ fn snapshot_database(source_path: &Path, snapshot_path: &Path) -> anyhow::Result
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn expand_home(path: &Path) -> PathBuf {
     if path == Path::new("~") {
         return std::env::var_os("HOME")
@@ -1054,6 +1068,7 @@ fn expand_home(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
+#[cfg(target_os = "macos")]
 fn table_names(database: &Connection) -> anyhow::Result<HashSet<String>> {
     let mut statement = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")?;
     let names = statement
@@ -1065,6 +1080,7 @@ fn table_names(database: &Connection) -> anyhow::Result<HashSet<String>> {
         .collect())
 }
 
+#[cfg(target_os = "macos")]
 fn table_columns(database: &Connection, table: &str) -> anyhow::Result<HashSet<String>> {
     let mut statement = database.prepare(&format!("PRAGMA table_info({table})"))?;
     let names = statement
@@ -1076,6 +1092,7 @@ fn table_columns(database: &Connection, table: &str) -> anyhow::Result<HashSet<S
         .collect())
 }
 
+#[cfg(target_os = "macos")]
 fn load_entities(database: &Connection) -> anyhow::Result<EntityIds> {
     let mut statement = database.prepare("SELECT Z_NAME, Z_ENT FROM Z_PRIMARYKEY")?;
     let rows = statement
@@ -1104,6 +1121,7 @@ fn load_entities(database: &Connection) -> anyhow::Result<EntityIds> {
     })
 }
 
+#[cfg(target_os = "macos")]
 fn load_accounts(
     database: &Connection,
     ids: EntityIds,
@@ -1141,6 +1159,7 @@ fn load_accounts(
     Ok(accounts)
 }
 
+#[cfg(target_os = "macos")]
 fn load_folders(
     database: &Connection,
     ids: EntityIds,
@@ -1151,8 +1170,9 @@ fn load_folders(
     let parent = column_expr(columns, "ZPARENT", "NULL");
     let owner = column_expr(columns, "ZOWNER", "NULL");
     let kind = column_expr(columns, "ZFOLDERTYPE", "0");
+    let live = live_filter(columns);
     let sql = format!(
-        "SELECT Z_PK, {title}, {identifier}, {parent}, {owner}, {kind} FROM ZICCloudSyncingObject WHERE Z_ENT = ?1 ORDER BY Z_PK"
+        "SELECT Z_PK, {title}, {identifier}, {parent}, {owner}, {kind} FROM ZICCloudSyncingObject WHERE Z_ENT = ?1{live} ORDER BY Z_PK"
     );
     let mut statement = database.prepare(&sql)?;
     let rows = statement.query_map([ids.folder], |row| {
@@ -1182,6 +1202,7 @@ fn load_folders(
     Ok(folders)
 }
 
+#[cfg(target_os = "macos")]
 fn load_notes(
     database: &Connection,
     ids: EntityIds,
@@ -1196,9 +1217,9 @@ fn load_notes(
     let modification = column_expr(columns, "ZMODIFICATIONDATE1", "NULL");
     let locked = column_expr(columns, "ZISPASSWORDPROTECTED", "0");
     let pinned = column_expr(columns, "ZISPINNED", "0");
-    let deleted = column_expr(columns, "ZMARKEDFORDELETION", "0");
+    let live = live_filter(columns);
     let sql = format!(
-        "SELECT Z_PK, {title}, {identifier}, {folder}, {creation1}, {creation2}, {creation3}, {modification}, {locked}, {pinned}, {deleted} FROM ZICCloudSyncingObject WHERE Z_ENT = ?1 ORDER BY Z_PK"
+        "SELECT Z_PK, {title}, {identifier}, {folder}, {creation1}, {creation2}, {creation3}, {modification}, {locked}, {pinned} FROM ZICCloudSyncingObject WHERE Z_ENT = ?1{live} ORDER BY Z_PK"
     );
     let mut statement = database.prepare(&sql)?;
     let rows = statement.query_map([ids.note], read_note_meta)?;
@@ -1215,7 +1236,6 @@ fn load_notes(
             modification,
             locked,
             pinned,
-            deleted,
         ) = row?;
         let identifier = identifier.filter(|value| !value.trim().is_empty());
         let key = identifier
@@ -1234,12 +1254,12 @@ fn load_notes(
             modification,
             password_protected: locked.unwrap_or(0) != 0,
             pinned: pinned.unwrap_or(0) != 0,
-            deleted: deleted.unwrap_or(0) != 0,
         });
     }
     Ok(notes)
 }
 
+#[cfg(target_os = "macos")]
 type NoteMetaRow = (
     i64,
     Option<String>,
@@ -1251,9 +1271,9 @@ type NoteMetaRow = (
     Option<f64>,
     Option<i64>,
     Option<i64>,
-    Option<i64>,
 );
 
+#[cfg(target_os = "macos")]
 fn read_note_meta(row: &Row<'_>) -> rusqlite::Result<NoteMetaRow> {
     Ok((
         row.get(0)?,
@@ -1266,8 +1286,63 @@ fn read_note_meta(row: &Row<'_>) -> rusqlite::Result<NoteMetaRow> {
         row.get(7)?,
         row.get(8)?,
         row.get(9)?,
-        row.get(10)?,
     ))
+}
+
+/// Leave out rows Notes has marked for deletion: they are purged at the next
+/// sync, unlike notes in Recently Deleted. Older stores lack the column.
+#[cfg(target_os = "macos")]
+fn live_filter(columns: &HashSet<String>) -> &'static str {
+    if columns.contains("zmarkedfordeletion") {
+        " AND COALESCE(ZMARKEDFORDELETION, 0) = 0"
+    } else {
+        ""
+    }
+}
+
+/// Find an attachment's row, preferring an exact identifier match: that one
+/// can use the ZIDENTIFIER index, which a case-insensitive match cannot.
+fn object_by_identifier(
+    database: &Connection,
+    columns: &HashSet<String>,
+    identifier: &str,
+) -> Option<AttachmentObject> {
+    let pk = column_expr(columns, "Z_PK", "NULL");
+    let alt_text = column_expr(columns, "ZALTTEXT", "NULL");
+    let target = column_expr(columns, "ZTOKENCONTENTIDENTIFIER", "NULL");
+    let url = column_expr(columns, "ZURLSTRING", "NULL");
+    let title = column_expr(columns, "ZTITLE", "NULL");
+    let media = column_expr(columns, "ZMEDIA", "NULL");
+    let (mergeable, mergeable_len) = if columns.contains("zmergeabledata1") {
+        (
+            format!(
+                "substr(ZMERGEABLEDATA1, 1, {})",
+                MAX_COMPRESSED_NOTE_BYTES + 1
+            ),
+            "length(ZMERGEABLEDATA1)",
+        )
+    } else {
+        ("NULL".to_owned(), "NULL")
+    };
+    ["", " COLLATE NOCASE"].into_iter().find_map(|collation| {
+        let sql = format!(
+            "SELECT {pk}, {alt_text}, {target}, {url}, {title}, {media}, {mergeable}, {mergeable_len} FROM ZICCloudSyncingObject WHERE ZIDENTIFIER = ?1{collation} ORDER BY Z_PK LIMIT 1"
+        );
+        database
+            .query_row(&sql, [identifier], |row| {
+                Ok(AttachmentObject {
+                    pk: row.get(0)?,
+                    alt_text: row.get(1)?,
+                    target_identifier: row.get(2)?,
+                    url: row.get(3)?,
+                    title: row.get(4)?,
+                    media: row.get(5)?,
+                    mergeable_data: row.get(6)?,
+                    mergeable_data_len: row.get(7)?,
+                })
+            })
+            .ok()
+    })
 }
 
 fn column_expr(columns: &HashSet<String>, name: &str, fallback: &str) -> String {
@@ -1396,6 +1471,7 @@ fn plain_label(uti: &str) -> &str {
         "com.apple.paper" | "com.apple.drawing" | "com.apple.drawing.2" => "drawing",
         "com.apple.notes.table" => "table",
         "public.url" => "URL card",
+        _ if uti.starts_with(INLINE_ATTACHMENT_PREFIX) => "inline text",
         _ => "file",
     }
 }
@@ -1464,4 +1540,88 @@ fn escape_url(value: &str) -> String {
         .replace(')', "%29")
         .replace('(', "%28")
         .replace(' ', "%20")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn object_table() -> (Connection, HashSet<String>) {
+        let database = Connection::open_in_memory().unwrap();
+        database
+            .execute_batch(
+                "CREATE TABLE ZICCloudSyncingObject (Z_PK INTEGER PRIMARY KEY, ZIDENTIFIER TEXT, ZALTTEXT TEXT);
+                 CREATE INDEX identifier ON ZICCloudSyncingObject (ZIDENTIFIER);
+                 INSERT INTO ZICCloudSyncingObject VALUES (1, 'calc-1', 'lower'), (2, 'CALC-1', 'upper');",
+            )
+            .unwrap();
+        let columns = ["z_pk", "zidentifier", "zalttext"]
+            .map(str::to_owned)
+            .into();
+        (database, columns)
+    }
+
+    #[test]
+    fn exact_identifier_match_wins_over_an_earlier_case_variant() {
+        let (database, columns) = object_table();
+        let alt = |identifier| {
+            object_by_identifier(&database, &columns, identifier).and_then(|row| row.alt_text)
+        };
+        assert_eq!(alt("CALC-1").as_deref(), Some("upper"));
+        assert_eq!(alt("calc-1").as_deref(), Some("lower"));
+        // No exact match: the case-insensitive fallback takes the first row.
+        assert_eq!(alt("Calc-1").as_deref(), Some("lower"));
+        assert!(alt("calc-2").is_none());
+    }
+
+    #[test]
+    fn unknown_inline_attachments_are_labelled_as_inline_text() {
+        assert_eq!(
+            plain_label("com.apple.notes.inlinetextattachment.calculateresult"),
+            "inline text"
+        );
+        assert_eq!(plain_label("public.data"), "file");
+    }
+
+    /// A writer committing throughout the copy restarted the old incremental
+    /// backup each time, so it never finished; a single step always does.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn snapshot_finishes_while_another_connection_keeps_writing() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let directory = tempfile::tempdir().unwrap();
+        let source_path = directory.path().join(DATABASE_NAME);
+        let writer = Connection::open(&source_path).unwrap();
+        writer
+            .execute_batch(
+                "PRAGMA journal_mode = WAL;
+                 CREATE TABLE filler (id INTEGER PRIMARY KEY, data BLOB);
+                 WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 2000)
+                 INSERT INTO filler (data) SELECT randomblob(1024) FROM n;",
+            )
+            .unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let writing = {
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || {
+                writer.busy_timeout(Duration::from_secs(1)).unwrap();
+                while !stop.load(Ordering::Relaxed) {
+                    let _ = writer.execute("INSERT INTO filler (data) VALUES (randomblob(64))", []);
+                }
+            })
+        };
+
+        let snapshot_path = directory.path().join("snapshot.sqlite");
+        let result = snapshot_database(&source_path, &snapshot_path);
+        stop.store(true, Ordering::Relaxed);
+        writing.join().unwrap();
+        result.unwrap();
+        let rows: i64 = Connection::open(&snapshot_path)
+            .unwrap()
+            .query_row("SELECT count(*) FROM filler", [], |row| row.get(0))
+            .unwrap();
+        assert!(rows >= 2000, "{rows}");
+    }
 }

@@ -4,6 +4,7 @@ use std::{io, path::Path};
 
 use serde_json::Value;
 
+use super::html;
 use super::tree::{Tree, TreeFile, extension, file_name, parent_of};
 use super::{Skipped, Source, SourceNote};
 
@@ -85,12 +86,12 @@ impl Source for GoogleKeepSource {
                     continue;
                 }
             };
-            let Some(note) = parse_note(&file, &value, &self.files) else {
-                push_skipped_once(
-                    &mut self.skipped,
-                    Skipped::new(file.path, "missing or invalid Keep timestamps"),
-                );
-                continue;
+            let note = match parse_note(&file, &value, &self.files) {
+                Ok(note) => note,
+                Err(reason) => {
+                    push_skipped_once(&mut self.skipped, Skipped::new(file.path, reason));
+                    continue;
+                }
             };
             each(note)?;
         }
@@ -110,9 +111,20 @@ fn push_skipped_once(skipped: &mut Vec<Skipped>, item: Skipped) {
     }
 }
 
-fn parse_note(file: &TreeFile, value: &Value, files: &[TreeFile]) -> Option<SourceNote> {
-    let created = keep_time(value.get("createdTimestampUsec")?, false)?;
-    let updated = keep_time(value.get("userEditedTimestampUsec")?, true)
+/// The note in one Keep JSON file, or why it can't be imported.
+fn parse_note(
+    file: &TreeFile,
+    value: &Value,
+    files: &[TreeFile],
+) -> Result<SourceNote, &'static str> {
+    const BAD_TIME: &str = "missing or invalid Keep timestamps";
+    let created = value
+        .get("createdTimestampUsec")
+        .and_then(|t| keep_time(t, false))
+        .ok_or(BAD_TIME)?;
+    let updated = value
+        .get("userEditedTimestampUsec")
+        .and_then(|t| keep_time(t, true))
         .filter(|updated| *updated > 0)
         .unwrap_or(created);
     let raw_title = value
@@ -132,27 +144,27 @@ fn parse_note(file: &TreeFile, value: &Value, files: &[TreeFile]) -> Option<Sour
     } else {
         first_title.to_owned()
     };
-    let body_text = value
+    let text = value
         .get("textContent")
         .and_then(Value::as_str)
-        .filter(|text| !text.is_empty())
-        .map(str::to_owned)
-        .or_else(|| {
-            value
-                .get("textContentHtml")
-                .and_then(Value::as_str)
-                .and_then(|html| htmd::convert(html).ok())
-        })
-        .unwrap_or_default();
-    let mut body = body_text;
+        .filter(|text| !text.is_empty());
+    let mut body = match (text, value.get("textContentHtml").and_then(Value::as_str)) {
+        (Some(text), _) => text.to_owned(),
+        // The body is all there is: rather than drop it, skip the note.
+        (None, Some(html)) => {
+            html::to_markdown(html).ok_or("note text nested too deeply to convert")?
+        }
+        (None, None) => String::new(),
+    };
     let mut list = Vec::new();
     if let Some(items) = value.get("listContent").and_then(Value::as_array) {
         for item in items {
             if let Some(text) = item.get("text").and_then(Value::as_str) {
+                // An item's formatting is optional: its plain text will do.
                 let text = item
                     .get("textHtml")
                     .and_then(Value::as_str)
-                    .and_then(|html| htmd::convert(html).ok())
+                    .and_then(html::to_markdown)
                     .unwrap_or_else(|| text.to_owned());
                 let checked = item
                     .get("isChecked")
@@ -244,7 +256,7 @@ fn parse_note(file: &TreeFile, value: &Value, files: &[TreeFile]) -> Option<Sour
                 .join("\n"),
         );
     }
-    Some(SourceNote {
+    Ok(SourceNote {
         key: file.path.clone(),
         path: Some(file.path.clone()),
         folder: {
@@ -363,6 +375,29 @@ mod tests {
         assert_eq!(note.title, "Trip");
         assert_eq!(note.aliases, ["Holiday"]);
         assert_eq!(note.created, Some(1_700_000_000_000));
+    }
+    #[test]
+    fn over_deep_html_skips_the_body_but_not_a_list_item() {
+        let file = TreeFile {
+            path: "Note.json".into(),
+            size: 0,
+            modified: None,
+            created: None,
+        };
+        let deep = "<div>".repeat(10_000);
+        let times = serde_json::json!({"createdTimestampUsec":1, "userEditedTimestampUsec":1});
+        let mut item = times.clone();
+        item["listContent"] = serde_json::json!([{"text":"Milk","textHtml":deep}]);
+        let note = parse_note(&file, &item, &[]).unwrap();
+        assert_eq!(note.body, "- [ ] Milk");
+        let mut body = times.clone();
+        body["textContentHtml"] = deep.into();
+        assert_eq!(
+            parse_note(&file, &body, &[]).unwrap_err(),
+            "note text nested too deeply to convert"
+        );
+        body["textContent"] = "Plain".into();
+        assert_eq!(parse_note(&file, &body, &[]).unwrap().body, "Plain");
     }
     #[test]
     fn rejects_unusable_timestamps() {

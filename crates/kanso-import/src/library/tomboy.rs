@@ -1,10 +1,15 @@
 //! Imports Tomboy and Gnote XML notes with stable file-based identities.
 
-use std::{collections::HashMap, io, path::Path};
+use std::collections::hash_map::Entry;
+use std::{
+    collections::{HashMap, HashSet},
+    io,
+    path::Path,
+};
 
 use quick_xml::{Reader, events::Event};
 
-use super::tree::{Tree, TreeFile, extension, parent_of};
+use super::tree::{Tree, TreeFile, extension, file_name, parent_of};
 use super::{Skipped, Source, SourceNote, dates};
 
 const MAX_NOTE: u64 = 8 * 1024 * 1024;
@@ -26,10 +31,17 @@ pub fn open(path: &Path) -> anyhow::Result<TomboySource> {
         Tree::Single(path.to_owned())
     };
     let listed = tree.files()?;
+    let live: HashSet<String> = listed
+        .iter()
+        .filter(|file| extension(&file.path) == "note" && !in_backup(&file.path))
+        .map(|file| file_name(&file.path).to_owned())
+        .collect();
     let mut notes = Vec::new();
     let mut files = Vec::new();
     let mut skipped = Vec::new();
-    let mut titles = HashMap::new();
+    // Title -> (in the backup, path): a live note wins over a deleted one,
+    // then the first path, whatever order the files come in.
+    let mut titles: HashMap<String, (bool, String)> = HashMap::new();
     for file in listed {
         if extension(&file.path) != "note" {
             files.push(file);
@@ -39,13 +51,31 @@ pub fn open(path: &Path) -> anyhow::Result<TomboySource> {
             skipped.push(Skipped::new(file.path, "too large for a Tomboy note"));
             continue;
         }
+        let backup = in_backup(&file.path);
+        if backup && live.contains(file_name(&file.path)) {
+            skipped.push(Skipped::new(
+                file.path,
+                "an older copy of a Tomboy note that is also in the export",
+            ));
+            continue;
+        }
         let raw = tree.read_text(&file.path, MAX_NOTE)?;
         match parse_xml(&raw) {
+            Ok(parsed) if parsed.template => {
+                skipped.push(Skipped::new(file.path, "a Tomboy note template"));
+            }
             Ok(parsed) => {
-                titles.insert(
-                    parsed.title.to_lowercase(),
-                    file.path.trim_end_matches(".note").to_owned(),
-                );
+                let key = file.path.trim_end_matches(".note").to_owned();
+                let rank = (backup, key);
+                match titles.entry(parsed.title.to_lowercase()) {
+                    Entry::Occupied(mut held) if rank < *held.get() => {
+                        held.insert(rank);
+                    }
+                    Entry::Occupied(_) => {}
+                    Entry::Vacant(slot) => {
+                        slot.insert(rank);
+                    }
+                }
                 notes.push(file);
             }
             Err(err) => skipped.push(Skipped::new(
@@ -54,6 +84,10 @@ pub fn open(path: &Path) -> anyhow::Result<TomboySource> {
             )),
         }
     }
+    let titles = titles
+        .into_iter()
+        .map(|(title, (_, key))| (title, key))
+        .collect();
     Ok(TomboySource {
         tree,
         notes,
@@ -93,19 +127,28 @@ impl Source for TomboySource {
                 .map(str::trim_start)
                 .unwrap_or(&body)
                 .to_owned();
-            each(SourceNote {
-                key: file.path.trim_end_matches(".note").to_owned(),
-                path: Some(file.path.clone()),
-                folder: parent_of(&file.path)
+            let trashed = in_backup(&file.path);
+            // Tomboy's notebooks are flat and named by a tag; without one,
+            // the note's folders (but not the backup's) stand in for it.
+            let folder = match parsed.notebook {
+                Some(notebook) => vec![notebook],
+                None if trashed => Vec::new(),
+                None => parent_of(&file.path)
                     .split('/')
                     .filter(|s| !s.is_empty())
                     .map(str::to_owned)
                     .collect(),
+            };
+            each(SourceNote {
+                key: file.path.trim_end_matches(".note").to_owned(),
+                path: Some(file.path.clone()),
+                folder,
                 title: parsed.title,
                 body,
                 tags: parsed.tags,
                 created: parsed.created,
                 updated: parsed.updated,
+                trashed,
                 ..SourceNote::default()
             })?;
         }
@@ -119,10 +162,19 @@ impl Source for TomboySource {
     }
 }
 
+/// Whether a note is in Tomboy's `Backup` folder, where deleted notes go.
+fn in_backup(path: &str) -> bool {
+    parent_of(path).split('/').any(|folder| folder == "Backup")
+}
+
 struct Parsed {
     title: String,
     body: String,
     tags: Vec<String>,
+    /// From the `system:notebook:NAME` tag.
+    notebook: Option<String>,
+    /// Tagged `system:template`: the note new notes start from.
+    template: bool,
     created: Option<i64>,
     updated: Option<i64>,
 }
@@ -134,6 +186,8 @@ fn parse_xml(xml: &str) -> anyhow::Result<Parsed> {
     let mut title = String::new();
     let mut body = String::new();
     let mut tags = Vec::new();
+    let mut notebook = None;
+    let mut template = false;
     let mut created = None;
     let mut updated = None;
     let mut capture = String::new();
@@ -193,8 +247,12 @@ fn parse_xml(xml: &str) -> anyhow::Result<Parsed> {
                 }
                 if name == "tag" {
                     let tag = captured_text.trim();
-                    if let Some(notebook) = tag.strip_prefix("system:notebook:") {
-                        tags.push(notebook.to_owned());
+                    if let Some(name) = tag.strip_prefix("system:notebook:") {
+                        if !name.trim().is_empty() && notebook.is_none() {
+                            notebook = Some(name.trim().to_owned());
+                        }
+                    } else if tag == "system:template" {
+                        template = true;
                     } else if !tag.is_empty() && !tag.starts_with("system:") {
                         tags.push(tag.to_owned());
                     }
@@ -247,6 +305,8 @@ fn parse_xml(xml: &str) -> anyhow::Result<Parsed> {
         title: title.trim().to_owned(),
         body: body.trim().to_owned(),
         tags,
+        notebook,
+        template,
         created,
         updated,
     })
@@ -343,7 +403,8 @@ mod tests {
         let note = parse_xml(xml).unwrap();
         assert!(note.body.contains("**strong**"));
         assert!(note.body.contains("==mark=="));
-        assert_eq!(note.tags, ["Work"]);
+        assert_eq!(note.notebook.as_deref(), Some("Work"));
+        assert!(note.tags.is_empty() && !note.template);
         assert!(note.created.is_some());
     }
     #[test]

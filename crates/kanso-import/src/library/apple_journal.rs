@@ -3,6 +3,7 @@
 use std::{io, path::Path};
 
 use chrono::NaiveDate;
+use percent_encoding::{percent_decode_str, utf8_percent_encode};
 
 use super::tree::{Tree, TreeFile, extension, file_name, parent_of, stem};
 use super::{Skipped, Source, SourceNote};
@@ -92,50 +93,50 @@ impl Source for AppleJournalSource {
     }
 }
 
+/// The classes of an entry's text elements: its prompt and paragraphs.
+const TEXT_CLASSES: [&str; 3] = ["reflectionPrompt", "p2", "p3"];
+
 fn parse_entry(file: &TreeFile, html: &str) -> SourceNote {
-    let prompt = elements_with_class(html, "reflectionPrompt")
+    // In document order, so the prompt and paragraphs read as written.
+    let body_html = elements_with_classes(html, &TEXT_CLASSES)
         .into_iter()
-        .next()
-        .unwrap_or_default();
-    let paragraphs = elements_with_class(html, "p2")
-        .into_iter()
-        .chain(elements_with_class(html, "p3"))
-        .map(|p| format!("<p>{p}</p>"))
+        .map(|(class, inner)| {
+            if class.eq_ignore_ascii_case("reflectionPrompt") {
+                inner
+            } else {
+                format!("<p>{inner}</p>")
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n");
-    let body_html = format!("{prompt}\n{paragraphs}");
-    let body = htmd::convert(&body_html).unwrap_or_else(|_| strip_tags(&body_html));
-    let header = elements_with_class(html, "pageHeader")
+    let body = super::html::to_markdown(&body_html).unwrap_or_else(|| strip_tags(&body_html));
+    let mut body = body.trim().to_owned();
+    // Photos, videos and recordings, linked so they come along with the entry.
+    for src in media_sources(html) {
+        let src = percent_decode_str(&src).decode_utf8_lossy().into_owned();
+        let target = utf8_percent_encode(&src, super::html::PATH);
+        body.push_str(&format!("\n\n![]({target})"));
+    }
+    let created = elements_with_classes(html, &["pageHeader"])
         .into_iter()
         .next()
-        .unwrap_or_default();
-    let header = strip_tags(&header);
-    let created = header
-        .trim()
-        .split_once(", ")
-        .and_then(|(_, date)| parse_english_date(date))
+        .and_then(|(_, header)| parse_entry_date(&strip_tags(&header)))
         .and_then(|d| {
             d.and_hms_opt(12, 0, 0)
                 .map(|dt| dt.and_utc().timestamp_millis())
         });
-    let tokens = elements_with_class(html, "assetGrid")
-        .into_iter()
-        .flat_map(|s| overlay_tokens(&s))
-        .collect::<Vec<_>>();
-    let tags = tokens
-        .iter()
-        .filter(|t| !t.starts_with("property:"))
-        .cloned()
-        .collect();
-    let mut body = body.trim().to_owned();
-    if !tokens.is_empty() {
-        let props = tokens
-            .iter()
-            .filter_map(|t| t.strip_prefix("property:"))
-            .collect::<Vec<_>>();
-        if !props.is_empty() {
-            body.push_str(&format!("\n\nJournal details: {}", props.join(", ")));
+    // The asset grid's captions (a place, a workout, a song) are details of
+    // the entry, kept whole: "San Francisco" is one place, not two tags.
+    let mut details: Vec<String> = Vec::new();
+    for (_, grid) in elements_with_classes(html, &["assetGrid"]) {
+        for line in strip_tags_to_lines(&grid) {
+            if !details.contains(&line) {
+                details.push(line);
+            }
         }
+    }
+    if !details.is_empty() {
+        body.push_str(&format!("\n\nJournal details: {}", details.join(", ")));
     }
     SourceNote {
         key: file.path.clone(),
@@ -147,79 +148,163 @@ fn parse_entry(file: &TreeFile, html: &str) -> SourceNote {
             .collect(),
         title: stem(file_name(&file.path)).replace(['_', '-'], " "),
         body,
-        tags,
         created,
         updated: created,
         ..SourceNote::default()
     }
 }
 
-fn parse_english_date(text: &str) -> Option<NaiveDate> {
-    let fields: Vec<&str> = text.split_whitespace().collect();
-    if fields.len() != 3 {
-        return None;
+const MONTHS: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
+
+/// An entry's date, as "Monday, 1 January 2024" or "Monday, January 1,
+/// 2024", with or without the weekday.
+fn parse_entry_date(text: &str) -> Option<NaiveDate> {
+    let text = text.replace(',', " ");
+    let mut fields: Vec<&str> = text.split_whitespace().collect();
+    if fields.len() == 4 {
+        fields.remove(0);
     }
-    let day = fields[0].parse::<u32>().ok()?;
-    let month = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ]
-    .iter()
-    .position(|month| month.eq_ignore_ascii_case(fields[1]))? as u32
-        + 1;
-    NaiveDate::from_ymd_opt(fields[2].parse().ok()?, month, day)
+    let [first, second, year] = fields[..] else {
+        return None;
+    };
+    let month = |name: &str| {
+        MONTHS
+            .iter()
+            .position(|month| month.eq_ignore_ascii_case(name))
+            .map(|at| at as u32 + 1)
+    };
+    let (day, month) = match (first.parse::<u32>(), month(second)) {
+        (Ok(day), Some(month)) => (day, month),
+        _ => (second.parse().ok()?, month(first)?),
+    };
+    NaiveDate::from_ymd_opt(year.parse().ok()?, month, day)
 }
 
-fn elements_with_class(html: &str, class: &str) -> Vec<String> {
-    let lower = html.to_ascii_lowercase();
-    let class = class.to_ascii_lowercase();
-    let mut found = Vec::new();
+/// The opening tags in `html`: each one's name and the text inside `<…>`,
+/// with where it ends.
+fn opening_tags(html: &str) -> impl Iterator<Item = (String, &str, usize)> {
     let mut cursor = 0;
-    while let Some(rel) = lower[cursor..].find(&class) {
-        let at = cursor + rel;
-        let Some(open) = lower[..at].rfind('<') else {
-            break;
-        };
-        let Some(gt_rel) = lower[at..].find('>') else {
-            break;
-        };
-        let gt = at + gt_rel;
-        if !lower[open..gt].contains("class=") {
+    std::iter::from_fn(move || {
+        loop {
+            let open = cursor + html[cursor..].find('<')?;
+            let gt = open + html[open..].find('>')?;
             cursor = gt + 1;
+            let inside = &html[open + 1..gt];
+            let name: String = inside
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .collect::<String>()
+                .to_ascii_lowercase();
+            if !name.is_empty() {
+                return Some((name, inside, gt + 1));
+            }
+        }
+    })
+}
+
+/// The value of `name` in a tag's attributes, if it has one.
+fn attribute(tag: &str, name: &str) -> Option<String> {
+    let lower = tag.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(rel) = lower[from..].find(name) {
+        let at = from + rel;
+        from = at + name.len();
+        let before = lower[..at].chars().next_back();
+        if !before.is_some_and(char::is_whitespace) {
             continue;
         }
-        let tag = lower[open + 1..]
-            .split(|c: char| c.is_whitespace() || c == '>')
-            .next()
-            .unwrap_or("div");
-        let close = format!("</{tag}");
-        if let Some(end_rel) = lower[gt + 1..].find(&close) {
-            let end = gt + 1 + end_rel;
-            found.push(html[gt + 1..end].to_owned());
-            cursor = end + close.len();
+        let rest = lower[from..].trim_start();
+        let Some(rest) = rest.strip_prefix('=') else {
+            continue;
+        };
+        let start = lower.len() - rest.trim_start().len();
+        let quote = tag[start..].chars().next()?;
+        return Some(if quote == '"' || quote == '\'' {
+            let value = &tag[start + 1..];
+            value[..value.find(quote).unwrap_or(value.len())].to_owned()
         } else {
-            cursor = gt + 1;
+            let value = &tag[start..];
+            value[..value.find(char::is_whitespace).unwrap_or(value.len())]
+                .trim_end_matches('/')
+                .to_owned()
+        });
+    }
+    None
+}
+
+/// The inside of each element whose class list has one of `classes` (whole
+/// names, any case), with the class matched, in document order.
+fn elements_with_classes(html: &str, classes: &[&str]) -> Vec<(String, String)> {
+    let lower = html.to_ascii_lowercase();
+    let mut found = Vec::new();
+    let mut skip_to = 0;
+    for (name, tag, end) in opening_tags(html) {
+        if end <= skip_to {
+            continue;
         }
+        let Some(list) = attribute(tag, "class") else {
+            continue;
+        };
+        let Some(class) = list.split_whitespace().find_map(|token| {
+            classes
+                .iter()
+                .find(|class| class.eq_ignore_ascii_case(token))
+        }) else {
+            continue;
+        };
+        let Some(close) = lower[end..].find(&format!("</{name}")) else {
+            continue;
+        };
+        found.push(((*class).to_owned(), html[end..end + close].to_owned()));
+        skip_to = end + close;
     }
     found
 }
 
-fn overlay_tokens(html: &str) -> Vec<String> {
-    let text = strip_tags(html);
-    text.split(|c: char| !c.is_alphanumeric() && c != '-' && c != '_' && c != ':')
-        .filter(|s| s.len() > 1)
-        .map(str::to_owned)
-        .collect()
+/// The local files an entry's images, videos and recordings point at.
+fn media_sources(html: &str) -> Vec<String> {
+    let mut sources = Vec::new();
+    for (name, tag, _) in opening_tags(html) {
+        if !matches!(name.as_str(), "img" | "video" | "audio" | "source") {
+            continue;
+        }
+        let Some(src) = attribute(tag, "src") else {
+            continue;
+        };
+        let src = src.trim();
+        let remote = src.contains("://") || src.starts_with("data:") || src.starts_with('/');
+        if !src.is_empty() && !remote && !sources.iter().any(|s| s == src) {
+            sources.push(src.to_owned());
+        }
+    }
+    sources
+}
+
+/// The text in `html`, one line per run of text between tags.
+fn strip_tags_to_lines(html: &str) -> Vec<String> {
+    let mut lines = Vec::new();
+    for run in html.split('<') {
+        let text = run.split_once('>').map_or(run, |(_, text)| text);
+        let text = strip_tags(text);
+        let text = text.trim();
+        if !text.is_empty() {
+            lines.push(text.to_owned());
+        }
+    }
+    lines
 }
 
 fn strip_tags(s: &str) -> String {
@@ -242,27 +327,56 @@ fn strip_tags(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn extracts_prompt_paragraphs_date_and_overlay_tokens() {
-        let file = TreeFile {
+
+    fn file() -> TreeFile {
+        TreeFile {
             path: "2024/Entry.html".into(),
             size: 0,
             modified: None,
             created: None,
-        };
-        assert_eq!(
-            parse_english_date("1 January 2024"),
-            NaiveDate::from_ymd_opt(2024, 1, 1)
-        );
-        let html = r#"<h2 class="pageHeader">Monday, 1 January 2024</h2><div class="reflectionPrompt">What mattered?</div><p class="p2">First paragraph.</p><p class="p3">Second paragraph.</p><div class="assetGrid"><span>Walk Nature</span></div>"#;
-        assert_eq!(
-            elements_with_class(html, "pageHeader"),
-            ["Monday, 1 January 2024"]
-        );
-        let note = parse_entry(&file, html);
+        }
+    }
+
+    #[test]
+    fn extracts_prompt_paragraphs_date_and_details() {
+        let html = r#"<h2 class="pageHeader">Monday, 1 January 2024</h2><div class="reflectionPrompt">What mattered?</div><p class="p2">First paragraph.</p><p class="p3">Second paragraph.</p><div class="assetGrid"><span>San Francisco</span><span>Walk</span></div>"#;
+        let note = parse_entry(&file(), html);
         assert_eq!(note.created, Some(1_704_110_400_000));
         assert!(note.body.contains("What mattered?"));
         assert!(note.body.contains("First paragraph."));
-        assert_eq!(note.tags, ["Walk", "Nature"]);
+        assert!(note.body.ends_with("Journal details: San Francisco, Walk"));
+        assert!(note.tags.is_empty());
+    }
+
+    #[test]
+    fn keeps_paragraph_order_and_whole_class_names() {
+        let html = r#"<p class="p3">One.</p><p class="p2 s1">Two.</p><p class="p20">Not text.</p><p class="x">p2</p><p class='p3'>Three.</p>"#;
+        let body = parse_entry(&file(), html).body;
+        let at = |text: &str| body.find(text).unwrap();
+        assert!(at("One.") < at("Two.") && at("Two.") < at("Three."));
+        assert!(!body.contains("Not text.") && !body.contains("p2"));
+    }
+
+    #[test]
+    fn links_the_entrys_media() {
+        let html = r#"<p class="p2">Look.</p><div class="assetGrid"><img src="../Resources/A B.jpeg"><video><source src='../Resources/clip.mov'></video><img src="https://e.com/x.png"></div>"#;
+        let body = parse_entry(&file(), html).body;
+        assert!(body.contains("![](../Resources/A%20B.jpeg)"));
+        assert!(body.contains("![](../Resources/clip.mov)"));
+        assert!(!body.contains("e.com"));
+    }
+
+    #[test]
+    fn reads_dates_written_either_way() {
+        let day = NaiveDate::from_ymd_opt(2024, 1, 1);
+        for text in [
+            "1 January 2024",
+            "Monday, 1 January 2024",
+            "January 1, 2024",
+            "Monday, January 1, 2024",
+        ] {
+            assert_eq!(parse_entry_date(text), day, "{text}");
+        }
+        assert_eq!(parse_entry_date("Someday"), None);
     }
 }
