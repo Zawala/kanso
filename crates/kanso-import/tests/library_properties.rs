@@ -144,7 +144,8 @@ fn piece() -> impl Strategy<Value = Piece> {
         1 => name.prop_map(Piece::Embed),
         1 => ("[A-Za-z ]{1,10}", path).prop_map(|(t, p)| Piece::Link(t, p)),
         1 => path.prop_map(Piece::Image),
-        1 => "[A-Za-z0-9 \\[\\]()!]{0,20}".prop_map(Piece::Code),
+        // Not empty: two backticks would open a code span running on.
+        1 => "[A-Za-z0-9 \\[\\]()!]{1,20}".prop_map(Piece::Code),
     ]
 }
 
