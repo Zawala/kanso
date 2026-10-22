@@ -971,6 +971,7 @@ fn import_choose(
     _: &Entity<Workspace>,
     _: &Store,
 ) {
+    cx.update(|cx| cx.set_reduce_motion(true));
     cx.update_window(window, |_, window, cx| {
         crate::library_import::start(window, cx);
     })
@@ -984,6 +985,7 @@ fn import_preview(
     _: &Entity<Workspace>,
     store: &Store,
 ) {
+    cx.update(|cx| cx.set_reduce_motion(true));
     let path = import_fixture();
     let report = kanso_import::library::preview(
         kanso_import::library::SourceKind::Obsidian,
@@ -1011,6 +1013,7 @@ fn import_done(
     _: &Entity<Workspace>,
     store: &Store,
 ) {
+    cx.update(|cx| cx.set_reduce_motion(true));
     let report = kanso_import::library::import_source(
         kanso_import::library::SourceKind::Obsidian,
         &import_fixture(),

@@ -1276,7 +1276,9 @@ mod tests {
         #[test]
         fn prop_every_adjacent_transposition_is_detected(bytes in key_bytes(), at in 0..25usize) {
             let shown: Vec<u8> = RecoveryKey::from_bytes(bytes).display().bytes().filter(|&b| b != b'-').collect();
-            prop_assume!(shown[at] != shown[at + 1]);
+            if shown[at] == shown[at + 1] {
+                return Ok(());
+            }
             let mut typo = shown.clone();
             typo.swap(at, at + 1);
             prop_assert!(RecoveryKey::parse(std::str::from_utf8(&typo).unwrap()).is_err());

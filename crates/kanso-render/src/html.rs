@@ -802,6 +802,15 @@ mod tests {
         assert!(!html.contains("$$"));
     }
 
+    /// Whether `[[` remains outside an inline or fenced code element.
+    fn wikilink_markup_outside_code(html: &str) -> bool {
+        html.match_indices("[[").any(|(at, _)| {
+            let open = html[..at].rfind("<code");
+            let close = html[..at].rfind("</code>");
+            open.is_none_or(|open| close.is_some_and(|close| close > open))
+        })
+    }
+
     proptest! {
         /// Invariant: in a site page, every link to another page goes to a
         /// page the site said is published (or to the index), and no
@@ -826,7 +835,7 @@ mod tests {
                 let slug = &rest[..rest.find('"').unwrap()];
                 prop_assert!(["", "plans", "abc-page"].contains(&slug), "{}", slug);
             }
-            prop_assert!(!html.contains("[["));
+            prop_assert!(!wikilink_markup_outside_code(&html));
         }
     }
 
@@ -835,6 +844,8 @@ mod tests {
         /// `$$…$$` and nothing else, and the formula is what is inside.
         #[test]
         fn prop_display_math_paragraphs(formula in "[a-z0-9+=^]{1,12}", before in "[A-Za-z ]{0,6}") {
+            // Four spaces start an indented code block, which is not a paragraph.
+            prop_assume!(!before.starts_with("    "));
             let markdown = format!("{before}$${formula}$$");
             let tree = markdown::to_mdast(&markdown, &parse_options()).unwrap();
             let Some(paragraph) = tree.children().and_then(|c| c.first()) else {

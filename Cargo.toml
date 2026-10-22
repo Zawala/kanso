@@ -34,6 +34,7 @@ cbc = { version = "0.1", features = ["alloc"] }
 curve25519-dalek = "5.0"
 ed25519-dalek = { version = "3.0", features = ["zeroize"] }
 chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
+flate2 = "1.1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 fastrand = "2"
 getrandom = "0.4"
@@ -45,6 +46,7 @@ markdown = { version = "=1.0.0", features = ["serde"] }
 md-5 = "0.10"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 proptest = "1.12"
+prost = "0.14"
 regex = "1.11"
 similar = { version = "2.7", features = ["inline"] }
 semver = "1.0"

@@ -18,10 +18,14 @@
 //! - kept when it was edited in Kanso since (its generation is higher), or
 //!   deleted there. An import never reverts a change made in Kanso.
 
+pub mod apple_journal;
+pub mod apple_notes;
 pub mod bear;
 pub mod dates;
 pub mod enex;
 pub mod frontmatter;
+pub mod google_keep;
+pub mod html;
 pub mod joplin;
 pub mod jsonexports;
 pub mod links;
@@ -29,6 +33,9 @@ pub mod markdown;
 pub mod notion;
 mod report;
 pub mod resolve;
+pub mod roam;
+pub mod textbundle;
+pub mod tomboy;
 pub mod tree;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -67,10 +74,17 @@ pub enum SourceKind {
     StandardNotes,
     Simplenote,
     UpNote,
+    AppleNotes,
+    AppleJournal,
+    GoogleKeep,
+    Html,
+    Roam,
+    TextBundle,
+    Tomboy,
 }
 
 impl SourceKind {
-    pub const ALL: [SourceKind; 10] = [
+    pub const ALL: [SourceKind; 17] = [
         SourceKind::Markdown,
         SourceKind::Obsidian,
         SourceKind::Notion,
@@ -81,6 +95,13 @@ impl SourceKind {
         SourceKind::StandardNotes,
         SourceKind::Simplenote,
         SourceKind::UpNote,
+        SourceKind::AppleNotes,
+        SourceKind::AppleJournal,
+        SourceKind::GoogleKeep,
+        SourceKind::Html,
+        SourceKind::Roam,
+        SourceKind::TextBundle,
+        SourceKind::Tomboy,
     ];
 
     /// The name the command line takes, and the one recorded on documents.
@@ -96,6 +117,13 @@ impl SourceKind {
             SourceKind::StandardNotes => "standard-notes",
             SourceKind::Simplenote => "simplenote",
             SourceKind::UpNote => "upnote",
+            SourceKind::AppleNotes => "apple-notes",
+            SourceKind::AppleJournal => "apple-journal",
+            SourceKind::GoogleKeep => "google-keep",
+            SourceKind::Html => "html",
+            SourceKind::Roam => "roam",
+            SourceKind::TextBundle => "textbundle",
+            SourceKind::Tomboy => "tomboy",
         }
     }
 
@@ -105,6 +133,12 @@ impl SourceKind {
             "md" | "folder" => "markdown",
             "enex" => "evernote",
             "standardnotes" | "sn" => "standard-notes",
+            "apple notes" | "applenotes" => "apple-notes",
+            "apple journal" | "applejournal" => "apple-journal",
+            "google keep" | "googlekeep" | "keep" => "google-keep",
+            "roam json" | "roam-json" => "roam",
+            "textbundle" | "text pack" | "textpack" => "textbundle",
+            "gnote" => "tomboy",
             other => other,
         };
         SourceKind::ALL.into_iter().find(|k| k.as_str() == name)
@@ -123,6 +157,13 @@ impl SourceKind {
             SourceKind::StandardNotes => "Standard Notes backup",
             SourceKind::Simplenote => "Simplenote export",
             SourceKind::UpNote => "UpNote export",
+            SourceKind::AppleNotes => "Apple Notes",
+            SourceKind::AppleJournal => "Apple Journal",
+            SourceKind::GoogleKeep => "Google Keep",
+            SourceKind::Html => "HTML files",
+            SourceKind::Roam => "Roam export",
+            SourceKind::TextBundle => "TextBundle/TextPack",
+            SourceKind::Tomboy => "Tomboy/Gnote",
         }
     }
 
@@ -149,6 +190,23 @@ impl SourceKind {
             }
             SourceKind::Simplenote => "The .zip from Export Notes, or the notes.json in it.",
             SourceKind::UpNote => "A folder from Export › Markdown.",
+            SourceKind::AppleNotes => {
+                "The Notes data folder or its NoteStore.sqlite. macOS may ask for access; locked or undownloaded notes are listed."
+            }
+            SourceKind::AppleJournal => {
+                "Journal entry .html files, or the folder Apple Journal exports them to."
+            }
+            SourceKind::GoogleKeep => {
+                "A Keep .json file, or the Google Takeout .zip/folder with its notes and attachments."
+            }
+            SourceKind::Html => {
+                "An .html/.htm file, a folder of pages, or a .zip. Local links and files come along."
+            }
+            SourceKind::Roam => "A Roam graph export in JSON.",
+            SourceKind::TextBundle => {
+                "A .textbundle folder, a .textpack, or a .zip holding one or more bundles."
+            }
+            SourceKind::Tomboy => "A .note file, or a Tomboy/Gnote notes folder.",
         }
     }
 
@@ -156,7 +214,15 @@ impl SourceKind {
     pub fn picks_folder(self) -> bool {
         matches!(
             self,
-            SourceKind::Markdown | SourceKind::Obsidian | SourceKind::Logseq | SourceKind::UpNote
+            SourceKind::Markdown
+                | SourceKind::Obsidian
+                | SourceKind::Logseq
+                | SourceKind::UpNote
+                | SourceKind::AppleJournal
+                | SourceKind::GoogleKeep
+                | SourceKind::Html
+                | SourceKind::TextBundle
+                | SourceKind::Tomboy
         )
     }
 
@@ -164,6 +230,13 @@ impl SourceKind {
     pub fn file_extensions(self) -> &'static [&'static str] {
         match self {
             SourceKind::Notion => &["zip"],
+            SourceKind::AppleNotes => &["sqlite"],
+            SourceKind::AppleJournal => &["html", "htm", "zip"],
+            SourceKind::GoogleKeep => &["json", "zip"],
+            SourceKind::Html => &["html", "htm", "zip"],
+            SourceKind::Roam => &["json"],
+            SourceKind::TextBundle => &["textbundle", "textpack", "zip"],
+            SourceKind::Tomboy => &["note"],
             SourceKind::Bear => &["bear2bk", "zip"],
             SourceKind::Evernote => &["enex"],
             SourceKind::Joplin => &["jex"],
@@ -262,6 +335,13 @@ pub fn open(kind: SourceKind, path: &Path) -> anyhow::Result<Box<dyn Source>> {
         SourceKind::Joplin => Box::new(joplin::open(path)?),
         SourceKind::StandardNotes => Box::new(jsonexports::standard_notes(path)?),
         SourceKind::Simplenote => Box::new(jsonexports::simplenote(path)?),
+        SourceKind::AppleNotes => Box::new(apple_notes::open(path)?),
+        SourceKind::AppleJournal => Box::new(apple_journal::open(path)?),
+        SourceKind::GoogleKeep => Box::new(google_keep::open(path)?),
+        SourceKind::Html => Box::new(html::open(path)?),
+        SourceKind::Roam => Box::new(roam::open(path)?),
+        SourceKind::TextBundle => Box::new(textbundle::open(path)?),
+        SourceKind::Tomboy => Box::new(tomboy::open(path)?),
     })
 }
 

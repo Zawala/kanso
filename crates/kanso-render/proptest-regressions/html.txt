@@ -5,3 +5,5 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc ffc5c68da244fb68ff0b1c938d0dd157bc40eb16306e13d0c20fb455128454a5 # shrinks to title = "a", heading = None, alias = None, before = "    ", after = "", heading_line = false
+cc b4b3394633703a95335185aab170299a69d2c7f7194b734f523fac76ded612e4 # shrinks to parts = ["   ", "[[Plans]]"]
+cc b0698b650c2c33fc4e142d76bda3b345d0bedc70e55d85ce884fb9132fbe7c9d # shrinks to formula = "=", before = "    "

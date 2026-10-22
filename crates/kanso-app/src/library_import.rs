@@ -40,7 +40,13 @@ pub enum Choice {
 
 impl Choice {
     pub fn all() -> Vec<Choice> {
-        let mut all: Vec<Choice> = SourceKind::ALL.into_iter().map(Choice::Library).collect();
+        let mut all: Vec<Choice> = SourceKind::ALL
+            .into_iter()
+            // Apple Notes can only be read from its macOS database. The CLI
+            // still lists it everywhere and returns a precise platform error.
+            .filter(|kind| cfg!(target_os = "macos") || *kind != SourceKind::AppleNotes)
+            .map(Choice::Library)
+            .collect();
         all.push(Choice::PouchLibrary);
         all
     }
@@ -68,10 +74,17 @@ pub fn picks(kind: SourceKind) -> (bool, bool) {
         SourceKind::Markdown | SourceKind::Obsidian | SourceKind::Logseq | SourceKind::UpNote => {
             (false, true)
         }
-        SourceKind::StandardNotes | SourceKind::Simplenote => (true, false),
-        SourceKind::Notion | SourceKind::Bear | SourceKind::Evernote | SourceKind::Joplin => {
-            (true, true)
-        }
+        SourceKind::StandardNotes | SourceKind::Simplenote | SourceKind::Roam => (true, false),
+        SourceKind::Notion
+        | SourceKind::Bear
+        | SourceKind::Evernote
+        | SourceKind::Joplin
+        | SourceKind::AppleNotes
+        | SourceKind::AppleJournal
+        | SourceKind::GoogleKeep
+        | SourceKind::Html
+        | SourceKind::TextBundle
+        | SourceKind::Tomboy => (true, true),
     }
 }
 
@@ -433,9 +446,13 @@ impl Render for ImportView {
                     )
                     .child(
                         h_flex()
+                            .id("import-sources")
                             .flex_wrap()
                             .items_stretch()
                             .gap(px(8.))
+                            .max_h(px(440.))
+                            .overflow_y_scroll()
+                            .pr(px(4.))
                             .children(cards),
                     )
             }
@@ -688,6 +705,13 @@ Kinds:
   standard-notes  A decrypted Standard Notes backup (.txt, .json or .zip)
   simplenote      Simplenote's export (.zip or notes.json)
   upnote          An UpNote Markdown export folder
+  apple-notes     Apple Notes' data folder or NoteStore.sqlite (macOS)
+  apple-journal   Apple Journal entry HTML files, folder or .zip
+  google-keep     Google Keep JSON, Takeout .zip or folder
+  html            HTML file, folder or .zip
+  roam            A Roam JSON graph export
+  textbundle      A TextBundle folder, TextPack, or a .zip of bundles
+  tomboy          Tomboy/Gnote .note files or folder
   pouchdb         The PouchDB notes library found on this computer, read in
                   place [--library-dir DIR] [--credentials]; --credentials
                   also copies its local API port, username and password";
