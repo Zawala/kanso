@@ -168,7 +168,7 @@ impl Store {
                         plan.id,
                         row.rev,
                         serde_json::to_string(&row.fields)?,
-                        crate::history::version_time(&tx, &plan.id)?,
+                        crate::history::version_time(tx, &plan.id)?,
                         batch,
                         rev
                     ],
