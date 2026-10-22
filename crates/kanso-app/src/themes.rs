@@ -366,6 +366,7 @@ pub fn apply(window: Option<&mut Window>, cx: &mut App) {
         }
     }
     Theme::change(mode, window, cx);
+    crate::zoom::apply_to_theme(cx);
 
     let preview = fit_preview(&preview_theme.resolved.preview, colors);
     if preview_theme.name() != syntax.name() {

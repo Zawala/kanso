@@ -26,6 +26,7 @@ use kanso_store::Store;
 
 use crate::preview::{PreviewEdit, ResizeSender};
 use crate::theme::Colors;
+use crate::zoom::px;
 
 /// The custom nodes.
 const MATH: &str = "kanso-math";
@@ -190,7 +191,8 @@ impl MarkdownPlugin for MathPlugin {
             // A mistake shows as its source, set apart.
             Err(_) => return None,
         };
-        let scale = f32::from(context.font_size()) / kanso_render::TEXT_SIZE;
+        // In the layout's units: `px` below adds the zoom.
+        let scale = crate::zoom::unscaled(context.font_size()) / kanso_render::TEXT_SIZE;
         // Whole points tall: the text view drops an inline element whose
         // baseline falls below its (pixel-snapped) bottom, as a formula
         // without descenders can by a fraction.

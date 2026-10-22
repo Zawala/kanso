@@ -251,6 +251,8 @@ pub struct Appearance {
     /// makes the icon theme; never written.
     #[serde(rename = "iconPack", skip_serializing)]
     pub legacy_icon_pack: Option<String>,
+    /// How large the whole app is drawn, in percent; see [`crate::zoom`].
+    pub zoom: u32,
 }
 
 impl Default for Appearance {
@@ -270,6 +272,7 @@ impl Default for Appearance {
             show_sidebar: true,
             icon_theme: None,
             legacy_icon_pack: None,
+            zoom: crate::zoom::DEFAULT_ZOOM,
         }
     }
 }
@@ -794,7 +797,7 @@ mod tests {
             any::<bool>(),
             prop::option::of("note:[a-zA-Z0-9]{8}"),
             0u32..=CONFIG_VERSION + 1,
-            (gen_themes(), gen_fonts()),
+            (gen_themes(), gen_fonts(), gen_zoom()),
         )
             .prop_map(
                 |(
@@ -808,7 +811,7 @@ mod tests {
                     login,
                     last,
                     version,
-                    (themes, (writing, mono, preview, preview_size)),
+                    (themes, (writing, mono, preview, preview_size), zoom),
                 )| AppConfig {
                     version,
                     server: ServerSettings {
@@ -834,6 +837,7 @@ mod tests {
                         show_sidebar: sidebar,
                         icon_theme: None,
                         legacy_icon_pack: None,
+                        zoom,
                     },
                     launch_at_login: login,
                     last_note: last,
@@ -956,6 +960,14 @@ mod tests {
 
     fn gen_font() -> impl Strategy<Value = EditorFont> {
         prop::sample::select(vec![EditorFont::Auto, EditorFont::Sans, EditorFont::Mono])
+    }
+
+    /// Zooms: every step, and values a hand-edited file might hold.
+    fn gen_zoom() -> impl Strategy<Value = u32> {
+        prop_oneof![
+            (0u32..=7).prop_map(|step| crate::zoom::ZOOM_RANGE.0 + step * crate::zoom::ZOOM_STEP),
+            any::<u32>(),
+        ]
     }
 
     fn gen_mode() -> impl Strategy<Value = ViewMode> {
@@ -1140,6 +1152,23 @@ mod tests {
         let mut none: AppConfig = serde_json::from_str(r#"{"version": 3}"#).unwrap();
         assert!(none.migrate());
         assert_eq!(none.appearance.icon_theme, None);
+    }
+
+    /// A file from before zoom opens at actual size; a chosen zoom is
+    /// written as `zoom` and read back.
+    #[test]
+    fn zoom_defaults_to_actual_size_and_is_kept() {
+        let old: AppConfig =
+            serde_json::from_str(r#"{"version": 4, "appearance": {"editorFontSize": 15}}"#)
+                .unwrap();
+        assert_eq!(old.appearance.zoom, 100);
+        assert_eq!(old.appearance.editor_font_size, 15.0);
+        let mut zoomed = AppConfig::default();
+        zoomed.appearance.zoom = 120;
+        let value = serde_json::to_value(&zoomed).unwrap();
+        assert_eq!(value["appearance"]["zoom"], 120);
+        let back: AppConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(back.appearance.zoom, 120);
     }
 
     #[test]

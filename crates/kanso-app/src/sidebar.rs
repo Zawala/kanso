@@ -32,6 +32,7 @@ use crate::services::{AccountState, ApiState, Services, SyncState};
 use crate::settings::OpenAccountSettings;
 use crate::theme::{Colors, Rgb, muted_tag_color, section_label, status_glyph};
 use crate::workspace::{AppState, NewNote, OpenSettings, ToggleSidebar};
+use crate::zoom::px;
 
 /// Things only the workspace can do (it owns dialogs and the editor).
 pub enum SidebarEvent {

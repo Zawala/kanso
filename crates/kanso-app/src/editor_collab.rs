@@ -30,6 +30,7 @@ use crate::collab_text::{
     share_mark,
 };
 use crate::theme::{Colors, cursor_colour};
+use crate::zoom::px;
 
 /// How long typing pauses before the editor's text is merged.
 const SYNC_DELAY: Duration = Duration::from_millis(200);

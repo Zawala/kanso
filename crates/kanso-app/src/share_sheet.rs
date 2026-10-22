@@ -28,6 +28,7 @@ use crate::collab_text::{days_until, fingerprint_groups, link_label};
 use crate::editor::NoteEditor;
 use crate::publish::paragraph;
 use crate::theme::Colors;
+use crate::zoom::px;
 
 /// The sheet's width.
 pub const SHEET_WIDTH: f32 = 520.;

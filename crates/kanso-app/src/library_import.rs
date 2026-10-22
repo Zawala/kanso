@@ -25,6 +25,7 @@ use kanso_store::Store;
 use crate::paths;
 use crate::theme::{Colors, Rgb};
 use crate::workspace::AppState;
+use crate::zoom::px;
 
 /// The width of the Import window.
 pub(crate) const WIDTH: f32 = 500.;

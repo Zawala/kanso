@@ -28,6 +28,7 @@ use crate::note_list::quiet_empty;
 use crate::tasks_view::display_text;
 use crate::theme::{Colors, section_label, status_glyph};
 use crate::workspace::Workspace;
+use crate::zoom::px;
 
 const COLUMN_WIDTH: f32 = 272.;
 /// How long the library stays still before a shown board is read again.

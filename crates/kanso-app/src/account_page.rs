@@ -39,6 +39,7 @@ use crate::services::{
 use crate::settings::{Row, SYNC_INTERVALS, interval_label, section, status_row, sync_status_line};
 use crate::theme::Colors;
 use crate::workspace::AppState;
+use crate::zoom::px;
 
 /// How wide the forms' fields are, beside their labels.
 const FIELD_WIDTH: f32 = 280.;

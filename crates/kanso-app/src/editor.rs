@@ -60,6 +60,7 @@ use crate::theme::{Colors, muted_tag_color, status_glyph};
 use crate::wikilinks::{SharedIndex, WikiCompletion, WikiIndex, rewrite_for_preview};
 use crate::word_goal::{self, GoalSetting};
 use crate::workspace::{AppState, NewNote};
+use crate::zoom::px;
 
 #[path = "editor_collab.rs"]
 mod collab_glue;
@@ -659,8 +660,12 @@ impl NoteEditor {
             return;
         }
         self.split_placed_for = width;
-        let target = split_left(self.split_ratio, f32::from(width));
-        let current = state.sizes().first().map(|size| f32::from(*size));
+        // In the layout's units, as the sides' minimums are.
+        let target = split_left(self.split_ratio, crate::zoom::unscaled(width));
+        let current = state
+            .sizes()
+            .first()
+            .map(|size| crate::zoom::unscaled(*size));
         if current.is_some_and(|current| (current - target).abs() > 0.5) {
             self.split.update(cx, |state, cx| {
                 state.resize_panel(0, px(target), window, cx)
@@ -715,7 +720,7 @@ impl NoteEditor {
         } else {
             0.
         };
-        let text_width = f32::from(bounds.size.width) - numbers - SOURCE_EDGES;
+        let text_width = crate::zoom::unscaled(bounds.size.width) - numbers - SOURCE_EDGES;
         let em = if self.editor_font.face(self.view_mode).mono {
             MONO_EM
         } else {
@@ -3699,10 +3704,11 @@ impl Render for NoteEditor {
                 // may be dragged narrower than the editor has room for, so
                 // the preview never runs past the window.
                 let ratio = self.split_ratio.clamp(0., 1.);
-                let min_side = split_min_side(f32::from(self.split.read(cx).container_size()));
+                let min_side =
+                    split_min_side(crate::zoom::unscaled(self.split.read(cx).container_size()));
                 let side = |share: f32| {
                     let mut panel = resizable_panel()
-                        .size_range(px(min_side)..px(f32::MAX))
+                        .size_range(px(min_side)..gpui_kit::px(f32::MAX))
                         .min_w_0()
                         .flex_basis(px(0.));
                     panel.style().flex_grow = Some(share);
@@ -3798,7 +3804,7 @@ impl Render for NoteEditor {
         // The note is leftmost now: a column as wide as the window leaves
         // the traffic lights their room on both sides.
         let lights = leading_inset(true, window.is_fullscreen());
-        let width = width.min(f32::from(window.viewport_size().width) - 2. * lights);
+        let width = width.min(crate::zoom::unscaled(window.viewport_size().width) - 2. * lights);
         h_flex()
             .size_full()
             .justify_center()

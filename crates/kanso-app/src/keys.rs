@@ -7,6 +7,7 @@ use gpui_kit::*;
 
 use crate::palette::shortcut;
 use crate::theme::Colors;
+use crate::zoom::px;
 
 /// A key or a whole shortcut ("⌘K", "⇧⌘F", "esc") in a bordered chip.
 // no-prop-test: drawing; the snapshots show it.

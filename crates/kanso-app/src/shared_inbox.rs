@@ -13,6 +13,7 @@ use gpui_kit::*;
 use crate::collab_model::Collab;
 use crate::library::Library;
 use crate::theme::Colors;
+use crate::zoom::px;
 
 /// What the badge beside an invitation's fingerprint says. Pure.
 pub fn verified_label(verified: bool) -> &'static str {

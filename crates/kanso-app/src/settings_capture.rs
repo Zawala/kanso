@@ -16,6 +16,7 @@ use crate::hotkey::{self, Shortcut, Status};
 use crate::settings::{Row, section};
 use crate::theme::Colors;
 use crate::workspace::AppState;
+use crate::zoom::px;
 
 /// The shortcut's control: its keys, and Change, which takes the next
 /// shortcut pressed.

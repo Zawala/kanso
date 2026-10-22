@@ -28,6 +28,7 @@ use crate::clock::Clock;
 use crate::editor::NoteEditor;
 use crate::theme::{Colors, section_label};
 use crate::workspace::{AppState, Workspace};
+use crate::zoom::px;
 
 actions!(replace, [ReplaceInNotes]);
 

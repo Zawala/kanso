@@ -42,6 +42,7 @@ use crate::text_stats::format_count;
 use crate::theme::Colors;
 use crate::word_goal::PRESETS;
 use crate::workspace::{AppState, OpenSettings, Workspace, for_each_workspace};
+use crate::zoom::px;
 use crate::{dialogs, launch, paths, pouch_import};
 
 actions!(
@@ -603,6 +604,43 @@ fn size_stepper(
         )
 }
 
+/// The zoom as a percentage, with Zoom Out and Zoom In either side.
+// no-prop-test: layout; `zoom::stepped` has the properties.
+fn zoom_stepper(zoom: u32, colors: &Colors) -> Div {
+    let zoom = crate::zoom::normalize(zoom);
+    h_flex()
+        .gap(px(6.))
+        .child(
+            Button::new("zoom-out")
+                .debug_selector(|| "zoom-out".into())
+                .outline()
+                .small()
+                .icon(Lucide::Minus)
+                .tooltip_with_action("Zoom Out", &crate::zoom::ZoomOut, None)
+                .disabled(zoom <= crate::zoom::ZOOM_RANGE.0)
+                .on_click(|_, _, cx| crate::zoom::step(-1, cx)),
+        )
+        .child(
+            div()
+                .w(px(44.))
+                .text_center()
+                .text_size(px(13.5))
+                .text_color(colors.text)
+                .debug_selector(|| "zoom-percent".into())
+                .child(format!("{zoom}%")),
+        )
+        .child(
+            Button::new("zoom-in")
+                .debug_selector(|| "zoom-in".into())
+                .outline()
+                .small()
+                .icon(Lucide::Plus)
+                .tooltip_with_action("Zoom In", &crate::zoom::ZoomIn, None)
+                .disabled(zoom >= crate::zoom::ZOOM_RANGE.1)
+                .on_click(|_, _, cx| crate::zoom::step(1, cx)),
+        )
+}
+
 fn set_line_numbers(on: bool, cx: &mut App) {
     AppState::update_config(cx, |config| config.appearance.line_numbers = on);
     update_editors(cx);
@@ -1044,7 +1082,18 @@ impl SettingsView {
                 colors,
             )
         });
-        startup.into_iter().chain([
+        let zoom = section(
+            "Display",
+            vec![
+                Row::new(Lucide::ZoomIn, "Zoom")
+                    .detail(
+                        "The whole app, in every window. The text sizes in Editor apply on top.",
+                    )
+                    .trailing(zoom_stepper(state.config.appearance.zoom, colors)),
+            ],
+            colors,
+        );
+        [zoom].into_iter().chain(startup).chain([
             crate::settings_capture::capture_section(&self.shortcut, cx),
             crate::settings_capture::journal_section(cx),
             crate::reminders::reminders_section(cx),

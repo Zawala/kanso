@@ -14,6 +14,7 @@ use crate::keys::shortcut_chip;
 use crate::services::Services;
 use crate::theme::Colors;
 use crate::workspace::{ImportLibrary, NewNote, OpenCommandPalette, ShowSignIn};
+use crate::zoom::px;
 
 use gpui_kit::assets::IconName as Lucide;
 

@@ -13,6 +13,7 @@ use crate::related::{self, Related, Status};
 use crate::settings::{Row, SettingsView, section};
 use crate::theme::Colors;
 use crate::workspace::AppState;
+use crate::zoom::px;
 
 /// What the device is called in the settings' words.
 pub fn this_device() -> &'static str {

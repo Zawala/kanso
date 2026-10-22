@@ -20,6 +20,7 @@ use crate::calendar::{MonthGrid, add_months, shift_month, system_week_start, wee
 use crate::journal::now;
 use crate::theme::Colors;
 use crate::workspace::Workspace;
+use crate::zoom::px;
 
 /// The sheet's width.
 pub const SHEET_WIDTH: f32 = 392.;

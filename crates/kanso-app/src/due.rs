@@ -25,6 +25,7 @@ use kanso_core::tasks::{Due, TaskGroup, due_label, due_spans, task_group, task_i
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionTextEdit, TextEdit};
 
 use crate::theme::Colors;
+use crate::zoom::px;
 
 /// The scheme of the links due dates become in the preview.
 pub const DUE_SCHEME: &str = "kanso-due:";

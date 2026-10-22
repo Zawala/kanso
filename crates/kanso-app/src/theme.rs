@@ -15,7 +15,9 @@ use std::sync::OnceLock;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Theme;
-use gpui_kit::{App, Fill, FontWeight, Hsla, Styled, TextSystem, font, px};
+use gpui_kit::{App, Fill, FontWeight, Hsla, Styled, TextSystem, font};
+
+use crate::zoom::px;
 use kanso_core::NoteStatus;
 use serde_json::{Value, json};
 

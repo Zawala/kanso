@@ -25,6 +25,7 @@ use crate::preview_chunks::{self, End, Prepared, SPLIT_SYNC_BYTES, Splice, Start
 use crate::preview_rich::{self, Rich};
 use crate::theme::Colors;
 use crate::theme_file::PreviewColors;
+use crate::zoom::px;
 
 /// The rendered text's line height; its size and face are a setting
 /// ([`preview_type`]).
@@ -329,7 +330,9 @@ impl Preview {
     pub fn scroll_to(&mut self, top: f32, cx: &mut Context<Self>) {
         let top = top.max(0.);
         if (self.scroll_top() - top).abs() >= 0.5 {
-            self.list.set_offset_from_scrollbar(point(px(0.), px(-top)));
+            // Scroll offsets are the window's own pixels, at any zoom.
+            self.list
+                .set_offset_from_scrollbar(point(gpui_kit::px(0.), gpui_kit::px(-top)));
             cx.notify();
         }
     }
@@ -595,7 +598,7 @@ fn render_picture(
                 cx.stop_propagation();
                 drag.update(cx, |drag, cx| {
                     let width = crate::image_size::drag_width(
-                        f32::from(event.position.x),
+                        crate::zoom::unscaled(event.position.x),
                         drag.left,
                         drag.room,
                     );
@@ -624,8 +627,9 @@ fn render_picture(
             let drag = drag.clone();
             move |bounds, _, cx| {
                 drag.update(cx, |drag, _| {
-                    drag.left = f32::from(bounds.left());
-                    drag.room = f32::from(bounds.size.width);
+                    // In the layout's units, as the width is written.
+                    drag.left = crate::zoom::unscaled(bounds.left());
+                    drag.room = crate::zoom::unscaled(bounds.size.width);
                 });
             }
         },
@@ -644,7 +648,7 @@ fn render_picture(
                         drag.update(cx, |drag, cx| {
                             if drag.width.is_some() {
                                 let width = crate::image_size::drag_width(
-                                    f32::from(event.position.x),
+                                    crate::zoom::unscaled(event.position.x),
                                     drag.left,
                                     drag.room,
                                 );
@@ -977,6 +981,8 @@ pub(crate) fn text_style(colors: &Colors, p: &PreviewColors, dark: bool) -> Text
 pub(crate) struct PreviewType {
     pub size: f32,
     pub family: SharedString,
+    /// The app's zoom, which changes every chunk's height like the size.
+    pub zoom: f32,
 }
 
 // no-prop-test: reads the settings; `fonts::family` has the properties.
@@ -999,6 +1005,7 @@ pub(crate) fn preview_type(cx: &mut App) -> PreviewType {
             &installed,
             cx.theme().font_family.clone(),
         ),
+        zoom: crate::zoom::scale(),
     }
 }
 

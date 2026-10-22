@@ -28,6 +28,7 @@ use serde_json::json;
 use crate::config::ViewMode;
 use crate::theme::Colors;
 use crate::workspace::AppState;
+use crate::zoom::px;
 
 actions!(kanso, [SaveCapture, CancelCapture]);
 
