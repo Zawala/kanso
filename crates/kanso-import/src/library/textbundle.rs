@@ -157,7 +157,7 @@ fn parse_note(file: &TreeFile, bundle: &str, text: &str, info: Option<&Value>) -
         .and_then(|v| v.get("title"))
         .and_then(Value::as_str)
         .map(str::to_owned)
-        .unwrap_or_else(|| stem(file_name(&bundle)).to_owned());
+        .unwrap_or_else(|| stem(file_name(bundle)).to_owned());
     let mut body = text.trim_start_matches('\n').to_owned();
     if body.starts_with("# ") {
         if let Some((_, rest)) = body.split_once('\n') {
