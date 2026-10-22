@@ -545,6 +545,7 @@ pub fn unlock_open_note(
             cx,
             move |window, cx| {
                 editor.update(cx, |editor, cx| editor.lock_keys_changed(window, cx));
+                crate::editor::peers::lock_keys_changed_everywhere(cx);
                 cx.refresh_windows();
                 // Keys kept before this note was locked elsewhere don't open it.
                 if editor.read(cx).lock_view().is_closed() {
@@ -584,6 +585,7 @@ fn password_unlock(
                 LockKeys::add(key, cx);
                 seal_unsealed(cx);
                 editor.update(cx, |editor, cx| editor.lock_keys_changed(window, cx));
+                crate::editor::peers::lock_keys_changed_everywhere(cx);
                 cx.refresh_windows();
                 after_password(window, cx);
                 Ok(())
@@ -863,8 +865,11 @@ pub fn lock_now(editor: &Entity<NoteEditor>, window: &mut Window, cx: &mut App) 
         return;
     }
     editor.update(cx, |editor, cx| editor.flush(cx));
+    // Editors in other windows save too, while the keys can still seal.
+    crate::workspace::for_each_editor(cx, |editor, cx| editor.flush(cx));
     LockKeys::replace(None, cx);
     editor.update(cx, |editor, cx| editor.lock_keys_changed(window, cx));
+    crate::editor::peers::lock_keys_changed_everywhere(cx);
     cx.refresh_windows();
 }
 
@@ -908,6 +913,7 @@ pub fn change_password(
                 // Touch ID (or Windows Hello) keeps the new key in place of
                 // the old ones.
                 remember_keys(cx);
+                crate::editor::peers::lock_keys_changed_everywhere(cx);
                 editor.update(cx, |editor, cx| {
                     editor.lock_keys_changed(window, cx);
                     if skipped > 0 {

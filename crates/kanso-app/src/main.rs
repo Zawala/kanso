@@ -72,6 +72,9 @@ mod models;
 mod note_list;
 mod note_meaning;
 mod note_menu;
+mod note_window;
+#[cfg(test)]
+mod note_window_tests;
 mod notebook_lock;
 mod notify_support;
 mod ocr;
@@ -322,8 +325,10 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
     });
 
     let app = application().with_assets(assets::KansoAssets);
+    // The Dock's icon brings the main window back, even while notes are
+    // open in windows of their own.
     app.on_reopen(|cx| {
-        if cx.windows().is_empty() {
+        if workspace::main_workspace(cx).is_none() {
             open_main_window(cx);
         }
     });
@@ -346,6 +351,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         cx.set_global(touch_id::TouchId(Arc::new(touch_id::SystemTouchId)));
         workspace::bind_keys(cx);
         note_list::bind_keys(cx);
+        note_window::bind_keys(cx);
         capture::bind_keys(cx);
         graph_view::bind_keys(cx);
         board_view::bind_keys(cx);
@@ -372,6 +378,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         voice::init(cx);
         ocr::init(cx);
         open_main_window(cx);
+        note_window::restore(cx);
         cx.activate(true);
         // Held until the process exits so no second Kanso opens this folder.
         let _ = &lock;
@@ -483,9 +490,7 @@ fn watch_for_quit(cx: &mut App) {
 /// update, so the work waits until that update ends.
 fn quit(cx: &mut App) {
     cx.defer(|cx| {
-        workspace::for_each_workspace(cx, |workspace, cx| {
-            workspace.editor.update(cx, |editor, cx| editor.flush(cx));
-        });
+        workspace::for_each_editor(cx, |editor, cx| editor.flush(cx));
         services::stop_server(cx);
         cx.quit();
     });

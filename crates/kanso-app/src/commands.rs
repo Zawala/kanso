@@ -259,6 +259,17 @@ static COMMANDS: &[Command] = &[
         needs: Needs::LiveNote,
     },
     Command {
+        id: "open-in-new-window",
+        label: "Open in new window",
+        label_when_pinned: None,
+        description: "Opens the note in a window of its own, beside this one. Typing in either shows in the other at once.",
+        icon: IconName::ExternalLink,
+        keywords: &["window", "separate", "detach", "pop out", "float"],
+        group: Group::Note,
+        run: action!(crate::note_window::OpenInNewWindow),
+        needs: Needs::Note,
+    },
+    Command {
         id: "move",
         label: "Move to notebook…",
         label_when_pinned: None,

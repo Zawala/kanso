@@ -41,7 +41,7 @@ use crate::sidebar::{Tone, sync_line, tone_color};
 use crate::text_stats::format_count;
 use crate::theme::Colors;
 use crate::word_goal::PRESETS;
-use crate::workspace::{AppState, OpenSettings, Workspace, for_each_workspace};
+use crate::workspace::{AppState, OpenSettings, Workspace};
 use crate::{dialogs, launch, paths, pouch_import};
 
 actions!(
@@ -529,18 +529,16 @@ fn update_editors(cx: &mut App) {
     cx.defer(|cx| {
         let appearance = config(cx).appearance.clone();
         let writing = config(cx).editor;
-        for_each_workspace(cx, |workspace, cx| {
-            workspace.editor.update(cx, |editor, cx| {
-                editor.set_settings(writing, cx);
-                editor.editor_font = appearance.editor_font;
-                editor.font_size = appearance.editor_font_size;
-                editor.font_family = appearance.editor_font_family.clone();
-                editor.mono_family = appearance.editor_mono_family.clone();
-                editor.refresh_preview_type(cx);
-                editor.allow_line_numbers = appearance.line_numbers;
-                editor.readable_width = appearance.readable_width;
-                cx.notify();
-            });
+        crate::workspace::for_each_editor(cx, |editor, cx| {
+            editor.set_settings(writing, cx);
+            editor.editor_font = appearance.editor_font;
+            editor.font_size = appearance.editor_font_size;
+            editor.font_family = appearance.editor_font_family.clone();
+            editor.mono_family = appearance.editor_mono_family.clone();
+            editor.refresh_preview_type(cx);
+            editor.allow_line_numbers = appearance.line_numbers;
+            editor.readable_width = appearance.readable_width;
+            cx.notify();
         });
     });
 }

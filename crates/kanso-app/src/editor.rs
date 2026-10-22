@@ -63,6 +63,8 @@ use crate::workspace::{AppState, NewNote};
 
 #[path = "editor_collab.rs"]
 mod collab_glue;
+#[path = "editor_peers.rs"]
+pub(crate) mod peers;
 #[path = "editor_vim.rs"]
 mod vim_glue;
 #[cfg(test)]
@@ -297,6 +299,14 @@ pub struct NoteEditor {
     /// What related notes say about the open note: suggested tags, and a
     /// note that says nearly the same.
     meaning: Entity<NoteMeaning>,
+    /// The text last taken from another editor of the same note
+    /// (`editor_peers.rs`), to tell its echo from typing.
+    peer_echo: Option<(String, String)>,
+    /// The text shown came from another editor, which saves it.
+    from_peer: bool,
+    /// In a note's own window (`note_window.rs`): the leftmost pane, with
+    /// no inspector beside it.
+    standalone: bool,
     /// Shows the hidden header in focus mode, as a hover would.
     #[cfg(test)]
     pub(crate) reveal_chrome: bool,
@@ -396,7 +406,9 @@ impl NoteEditor {
             cx.subscribe_in(&title, window, |this, _, event, window, cx| match event {
                 // The breadcrumb shows the title as it's typed.
                 InputEvent::Change => {
-                    this.schedule_autosave(cx);
+                    if !this.peer_change(cx) {
+                        this.schedule_autosave(cx);
+                    }
                     cx.notify();
                 }
                 InputEvent::PressEnter { .. } => {
@@ -416,7 +428,10 @@ impl NoteEditor {
                     }
                     this.text_version += 1;
                     this.source_lines = None;
-                    this.schedule_autosave(cx);
+                    // Text from another editor of the note is saved there.
+                    if !this.peer_change(cx) {
+                        this.schedule_autosave(cx);
+                    }
                     this.schedule_preview(window, cx);
                     let (body, me) = (this.body.clone(), cx.entity().downgrade());
                     this.due_marks.refresh_soon(
@@ -494,13 +509,25 @@ impl NoteEditor {
             shared: None,
             text_read_only: false,
             meaning,
+            peer_echo: None,
+            from_peer: false,
+            standalone: false,
             #[cfg(test)]
             reveal_chrome: false,
             _subscriptions: subscriptions,
             _resizes: resize_task,
         };
         editor.set_vim(settings.vim, cx);
+        peers::register(cx.entity().downgrade(), window.window_handle(), cx);
         editor
+    }
+
+    /// Puts the editor in a note's own window: it is the leftmost pane, so
+    /// its top band leaves the traffic lights their room, and there is no
+    /// inspector to open.
+    pub fn set_standalone(&mut self, cx: &mut Context<Self>) {
+        self.standalone = true;
+        cx.notify();
     }
 
     /// The writing aids as Settings › Editor has them now.
@@ -774,6 +801,7 @@ impl NoteEditor {
             None => None,
         };
         self.show(note, false, window, cx);
+        self.catch_up_with_peers(window, cx);
     }
 
     /// Puts `note` in the editor. With `keep_place`, the cursor and scroll
@@ -786,6 +814,7 @@ impl NoteEditor {
         cx: &mut Context<Self>,
     ) {
         self.incoming = None;
+        self.from_peer = false;
         self.lock = note
             .as_mut()
             .map_or(LockView::Plain, |note| crate::locked::reveal(note, cx));
@@ -793,6 +822,8 @@ impl NoteEditor {
             (n.title.clone(), n.body.clone())
         });
         self.note = note;
+        // Loading isn't typing: the text set here goes to no other editor.
+        self.peer_echo = Some((title.clone(), body.clone()));
         self.title.update(cx, |state, cx| {
             if state.value().as_ref() != title {
                 state.set_value(title, window, cx);
@@ -1388,6 +1419,7 @@ impl NoteEditor {
                 Ok(result) => {
                     note.rev = Some(result.rev);
                     self.note = Some(note);
+                    self.from_peer = false;
                     if sealed_now {
                         self.lock = LockView::Open;
                     }
@@ -1402,7 +1434,19 @@ impl NoteEditor {
                         return false;
                     };
                     crate::locked::reveal(&mut latest, cx);
-                    if !retried && same_content(&base, &latest) {
+                    // Another editor of this note saved this very text
+                    // first (`editor_peers.rs`): its version is this one.
+                    if peers::writes_the_same(&note, &latest) {
+                        self.note = Some(latest);
+                        self.from_peer = false;
+                        self.incoming = None;
+                        cx.notify();
+                        return true;
+                    }
+                    if !retried
+                        && (same_content(&base, &latest)
+                            || peers::text_caught_up(&base, &latest, &note))
+                    {
                         retried = true;
                         note.rev = latest.rev;
                         continue;
@@ -1450,6 +1494,10 @@ impl NoteEditor {
                 if let Some(note) = &mut self.note {
                     note.rev = latest.rev;
                 }
+                return;
+            }
+            // Another editor of the note saved what this one shows.
+            if self.adopt_if_same_text(&latest, cx) {
                 return;
             }
             Incoming::Changed(Box::new(latest))
@@ -2370,9 +2418,13 @@ impl NoteEditor {
     /// Whether the open note's text is saved, as the header says it.
     pub(crate) fn save_state(&self, cx: &App) -> SaveState {
         let pending = self.autosave.is_some() || self.collab_pending();
-        save_state(self.incoming.is_some(), pending, || {
+        match save_state(self.incoming.is_some(), pending, || {
             self.has_unsaved_edits(cx)
-        })
+        }) {
+            // Another editor of the note has the text, and saves it.
+            SaveState::NotSaved if self.from_peer && self.incoming.is_none() => SaveState::Saving,
+            state => state,
+        }
     }
 
     /// The top band: where the note lives (click it to move the note),
@@ -2427,7 +2479,7 @@ impl NoteEditor {
         })
     }
 
-    fn render_band(&self, note: &Note, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_band(&self, note: &Note, inset: f32, cx: &mut Context<Self>) -> impl IntoElement {
         let library = self.library.read(cx);
         let path: Vec<String> = if note.book_id == TRASH_BOOK_ID {
             vec!["Trash".to_owned()]
@@ -2566,7 +2618,7 @@ impl NoteEditor {
             .flex_none()
             .h(px(TOP_BAND_HEIGHT))
             // The ghost button's padding lines its text up with the title.
-            .pl(px(TEXT_INSET - 8.))
+            .pl(px(inset + TEXT_INSET - 8.))
             .pr(px(12.))
             .gap(px(4.))
             // When the pane is narrow the save state gives way first, then
@@ -2677,25 +2729,27 @@ impl NoteEditor {
                         crate::note_menu::items(menu, pinned, status, run, window, cx)
                     }),
             )
-            .child(
-                Button::new("inspector")
-                    .ghost()
-                    .small()
-                    .tab_stop(tab_stop)
-                    .icon(Icon::new(Lucide::PanelRight).text_color(if inspector_open {
-                        colors.text
-                    } else {
-                        colors.text_secondary
-                    }))
-                    .selected(inspector_open)
-                    .tooltip(if inspector_open {
-                        "Hide outline and backlinks"
-                    } else {
-                        "Show outline and backlinks"
-                    })
-                    .debug_selector(|| "inspector-toggle".into())
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(EditorEvent::ToggleInspector))),
-            )
+            .when(!self.standalone, |el| {
+                el.child(
+                    Button::new("inspector")
+                        .ghost()
+                        .small()
+                        .tab_stop(tab_stop)
+                        .icon(Icon::new(Lucide::PanelRight).text_color(if inspector_open {
+                            colors.text
+                        } else {
+                            colors.text_secondary
+                        }))
+                        .selected(inspector_open)
+                        .tooltip(if inspector_open {
+                            "Hide outline and backlinks"
+                        } else {
+                            "Show outline and backlinks"
+                        })
+                        .debug_selector(|| "inspector-toggle".into())
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(EditorEvent::ToggleInspector))),
+                )
+            })
     }
 
     /// The note's title: the field while it has the keyboard, and otherwise
@@ -3587,6 +3641,12 @@ impl Render for NoteEditor {
         // tags and toolbar go: kept in place, invisible, they left a wide
         // empty band between the title and the text.
         let hide_chrome = self.chrome_hidden();
+        // Alone in its window, the band starts after the traffic lights.
+        let band_inset = if self.standalone && !focus_mode {
+            leading_inset(true, window.is_fullscreen())
+        } else {
+            0.
+        };
         let chrome = |el: Div| {
             el.flex_none().when(hide_chrome, |el| {
                 el.opacity(0.)
@@ -3596,7 +3656,7 @@ impl Render for NoteEditor {
         let top = v_flex()
             .flex_none()
             .group(TOP_GROUP)
-            .child(chrome(v_flex()).child(self.render_band(&note, cx)))
+            .child(chrome(v_flex()).child(self.render_band(&note, band_inset, cx)))
             .child(
                 div()
                     .flex_none()

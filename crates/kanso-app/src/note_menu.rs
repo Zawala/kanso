@@ -14,6 +14,8 @@ use kanso_core::NoteStatus;
 pub enum NoteCommand {
     TogglePinned,
     Duplicate,
+    /// The note in a window of its own (`note_window.rs`).
+    OpenInNewWindow,
     SetStatus(NoteStatus),
     ShowHistory,
     Export,
@@ -45,6 +47,7 @@ pub fn items(
         NoteCommand::TogglePinned,
     ))
     .item(item("Duplicate", NoteCommand::Duplicate))
+    .item(item("Open in New Window", NoteCommand::OpenInNewWindow))
     .submenu("Status", window, cx, move |mut menu, _, _| {
         for option in NoteStatus::ALL {
             let run = statuses.clone();

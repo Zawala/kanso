@@ -213,6 +213,7 @@ pub fn set_menus(cx: &mut App) {
         ]),
         Menu::new("Note").items([
             MenuItem::action("Pin / Unpin Note", TogglePinned),
+            MenuItem::action("Open in New Window", crate::note_window::OpenInNewWindow),
             MenuItem::action("Move to Trash", TrashNote),
             MenuItem::action("Show History…", ShowHistory),
             MenuItem::action("Voice Input", Dictate),
@@ -277,6 +278,35 @@ pub fn for_each_workspace(
                 }
             })
             .ok();
+    }
+}
+
+/// The first main window and its workspace, if one is open.
+pub fn main_workspace(cx: &mut App) -> Option<(AnyWindowHandle, Entity<Workspace>)> {
+    cx.windows().into_iter().find_map(|window| {
+        let workspace = window
+            .update(cx, |root, _, cx| {
+                let root = root.downcast::<gpui_kit::base::Root>().ok()?;
+                root.read(cx).view().clone().downcast::<Workspace>().ok()
+            })
+            .ok()
+            .flatten()?;
+        Some((window, workspace))
+    })
+}
+
+/// Runs `f` on every note editor: each main window's, and each note's own
+/// window's (`note_window.rs`).
+pub fn for_each_editor(cx: &mut App, mut f: impl FnMut(&mut NoteEditor, &mut Context<NoteEditor>)) {
+    let mut editors = Vec::new();
+    for_each_workspace(cx, |workspace, _| editors.push(workspace.editor.clone()));
+    editors.extend(
+        crate::note_window::note_windows(cx)
+            .into_iter()
+            .map(|(_, view)| view.read(cx).editor.clone()),
+    );
+    for editor in editors {
+        editor.update(cx, &mut f);
     }
 }
 
@@ -745,7 +775,7 @@ impl Workspace {
     /// After a rename, offers to point the wiki-links that used the old
     /// title at the new one.
     #[allow(clippy::too_many_arguments)]
-    fn offer_relink(
+    pub(crate) fn offer_relink(
         &mut self,
         id: &str,
         old: &str,
@@ -898,7 +928,7 @@ impl Workspace {
 
     /// Carries out a choice from a note's menu (see `note_menu`), for the
     /// note `id`, which may not be the open one.
-    fn run_note_command(
+    pub(crate) fn run_note_command(
         &mut self,
         id: &str,
         command: NoteCommand,
@@ -974,6 +1004,7 @@ impl Workspace {
                 }
             }
             NoteCommand::Export => self.export(Some(vec![id.to_owned()]), window, cx),
+            NoteCommand::OpenInNewWindow => self.open_in_new_window(id, window, cx),
             // These work on the open note, so the note opens first.
             NoteCommand::ShowHistory => {
                 if self.open_note(id, window, cx) {
@@ -990,6 +1021,57 @@ impl Workspace {
                     crate::share_sheet::open_share(self.editor.clone(), window, cx);
                 }
             }
+        }
+    }
+
+    /// Opens note `id` in a window of its own (`note_window.rs`), beside
+    /// this one. Its typing waiting here is saved first, so it opens with it.
+    pub(crate) fn open_in_new_window(
+        &mut self,
+        id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.flush(cx);
+        let id = id.to_owned();
+        let bounds = window.bounds();
+        let from = (
+            f32::from(bounds.origin.x),
+            f32::from(bounds.origin.y),
+            f32::from(bounds.size.width),
+            f32::from(bounds.size.height),
+        );
+        // The windows can't be looked through from inside this one's update.
+        cx.defer(move |cx| crate::note_window::open_note_window(&id, Some(from), cx));
+    }
+
+    /// For a note's own window: opens note `id` here and the palette's
+    /// list `picker` for it.
+    pub(crate) fn pick_for_note(
+        &mut self,
+        id: &str,
+        picker: Picker,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.open_note(id, window, cx) {
+            self.palette.update(cx, |palette, cx| {
+                palette.open(Mode::Pick(picker), window, cx)
+            });
+        }
+    }
+
+    /// For a note's own window: opens note `id` here with its backlinks
+    /// beside it.
+    pub(crate) fn show_backlinks_of(
+        &mut self,
+        id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.open_note(id, window, cx) {
+            self.set_focus_mode(false, window, cx);
+            self.show_inspector(Some(InspectorTab::Backlinks), cx);
         }
     }
 
@@ -1737,6 +1819,15 @@ impl Render for Workspace {
                 this.close_settings(window, cx);
                 this.show_history(window, cx);
             }))
+            .on_action(cx.listener(
+                |this, _: &crate::note_window::OpenInNewWindow, window, cx| {
+                    this.close_settings(window, cx);
+                    let id = this.editor.read(cx).note_id().map(str::to_owned);
+                    if let Some(id) = id {
+                        this.open_in_new_window(&id, window, cx);
+                    }
+                },
+            ))
             .on_action(cx.listener(|this, _: &ExportNote, window, cx| {
                 this.close_settings(window, cx);
                 let id = this.editor.read(cx).note_id().map(str::to_owned);

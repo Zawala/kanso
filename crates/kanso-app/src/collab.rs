@@ -91,11 +91,7 @@ pub fn signed_out(cx: &mut App) {
     }
     // A window can't be reached from inside its own update.
     cx.defer(|cx| {
-        crate::workspace::for_each_workspace(cx, |workspace, cx| {
-            workspace
-                .editor
-                .update(cx, |editor, cx| editor.collab_signed_out(cx));
-        });
+        crate::workspace::for_each_editor(cx, |editor, cx| editor.collab_signed_out(cx));
     });
 }
 
@@ -160,11 +156,9 @@ fn finish_sync(
     }
     collab.notices = notices;
     // Comments the sync brought show in the open note.
-    crate::workspace::for_each_workspace(cx, |workspace, cx| {
-        workspace.editor.update(cx, |editor, cx| {
-            editor.refresh_comments(cx);
-            editor.refresh_problems(cx);
-        });
+    crate::workspace::for_each_editor(cx, |editor, cx| {
+        editor.refresh_comments(cx);
+        editor.refresh_problems(cx);
     });
     cx.refresh_windows();
     if again {
