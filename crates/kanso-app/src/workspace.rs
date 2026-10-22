@@ -967,7 +967,10 @@ impl Workspace {
             NoteCommand::Duplicate
             | NoteCommand::ShowHistory
             | NoteCommand::Publish
-            | NoteCommand::Share => {
+            | NoteCommand::Share
+            | NoteCommand::CopyLink
+            | NoteCommand::CopyKansoLink
+            | NoteCommand::OpenInNewWindow => {
                 if let Some(id) = self.library.read(cx).selected.clone() {
                     self.run_note_command(&id, command, window, cx);
                 }

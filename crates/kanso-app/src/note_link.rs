@@ -5,8 +5,9 @@
 
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::notification::Notification;
-use gpui_kit::{ClipboardItem, Context, Window};
+use gpui_kit::{App, ClipboardItem, Context, Window};
 use kanso_core::links::parse_target;
+use kanso_store::Store;
 
 use crate::workspace::Workspace;
 
@@ -56,28 +57,33 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         self.flush(cx);
-        let Ok(Some(note)) = self.store.note(id) else {
-            return;
-        };
-        let resolves_to = self
-            .store
-            .resolve_title(&note.title)
-            .ok()
-            .flatten()
-            .map(|(other, _)| other);
-        let (link, instead) = link_for(id, &note.title, kanso, resolves_to.as_deref());
-        cx.write_to_clipboard(ClipboardItem::new_string(link));
-        let message = if instead {
-            if wiki_link(&note.title).is_none() {
-                "Copied a Kanso link: the title can't be a [[wiki-link]]."
-            } else {
-                "Copied a Kanso link: an older note has the same title."
-            }
-        } else {
-            "Link copied."
-        };
-        window.push_notification(Notification::info(message), cx);
+        copy_link(&self.store, id, kanso, window, cx);
     }
+}
+
+/// Copies note `id`'s link from `store`, and says what was copied: the
+/// work behind [`Workspace::copy_link_of`], for any window.
+pub(crate) fn copy_link(store: &Store, id: &str, kanso: bool, window: &mut Window, cx: &mut App) {
+    let Ok(Some(note)) = store.note(id) else {
+        return;
+    };
+    let resolves_to = store
+        .resolve_title(&note.title)
+        .ok()
+        .flatten()
+        .map(|(other, _)| other);
+    let (link, instead) = link_for(id, &note.title, kanso, resolves_to.as_deref());
+    cx.write_to_clipboard(ClipboardItem::new_string(link));
+    let message = if instead {
+        if wiki_link(&note.title).is_none() {
+            "Copied a Kanso link: the title can't be a [[wiki-link]]."
+        } else {
+            "Copied a Kanso link: an older note has the same title."
+        }
+    } else {
+        "Link copied."
+    };
+    window.push_notification(Notification::info(message), cx);
 }
 
 #[cfg(test)]

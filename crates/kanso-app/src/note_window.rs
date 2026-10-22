@@ -458,6 +458,12 @@ impl NoteWindow {
                 crate::share_sheet::open_share(self.editor.clone(), window, cx);
             }
             NoteCommand::OpenInNewWindow => window.activate_window(),
+            NoteCommand::CopyLink | NoteCommand::CopyKansoLink => {
+                self.editor.update(cx, |editor, cx| editor.flush(cx));
+                let store = cx.global::<AppState>().store.clone();
+                let kanso = matches!(command, NoteCommand::CopyKansoLink);
+                crate::note_link::copy_link(&store, &self.note_id, kanso, window, cx);
+            }
             NoteCommand::Duplicate | NoteCommand::Export => {
                 self.editor.update(cx, |editor, cx| editor.flush(cx));
                 let id = self.note_id.clone();
