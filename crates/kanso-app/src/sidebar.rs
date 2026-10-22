@@ -28,6 +28,8 @@ use crate::editor::rgb_color;
 use crate::icon_themes::{Slot, library_icon};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library};
+use crate::note_batch::Change as NoteChange;
+use crate::note_list::DraggedNotes;
 use crate::services::{AccountState, ApiState, Services, SyncState};
 use crate::settings::OpenAccountSettings;
 use crate::theme::{Colors, Rgb, muted_tag_color, section_label, status_glyph};
@@ -55,6 +57,9 @@ pub enum SidebarEvent {
     GoToNotebook,
     /// The rail's tags button: the palette lists them to go to one.
     GoToTag,
+    /// Notes dragged from the list and let go on a notebook, a tag or the
+    /// trash: the change to make to all of them.
+    DropNotes(Vec<String>, NoteChange),
 }
 
 const ROW_HEIGHT: f32 = 28.;
@@ -376,6 +381,25 @@ impl Sidebar {
             })
     }
 
+    /// Makes `el` take notes dragged from the list: it lights up while they
+    /// are over it, and letting go makes `change` to them.
+    fn drop_notes(
+        &self,
+        el: Stateful<Div>,
+        change: NoteChange,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let accent = Hsla::from(Colors::get(cx).accent);
+        el.drag_over::<DraggedNotes>(move |style, _, _, _| {
+            style
+                .bg(accent.opacity(0.26))
+                .border_color(accent.opacity(0.7))
+        })
+        .on_drop(cx.listener(move |_, notes: &DraggedNotes, _, cx| {
+            cx.emit(SidebarEvent::DropNotes(notes.ids.to_vec(), change.clone()));
+        }))
+    }
+
     /// Tasks, with the overdue ones counted in a warm red pill (nothing
     /// when none are).
     // no-prop-test: drawing; the Tasks snapshots show it.
@@ -655,7 +679,7 @@ impl Sidebar {
             let filter = Filter::Tag(id.clone());
             let selected = !self.settings_open && self.library.read(cx).filter == filter;
             let tag_id = id.clone();
-            div()
+            let chip = div()
                 .id(SharedString::from(format!("tag-{id}")))
                 .flex()
                 .items_center()
@@ -696,9 +720,13 @@ impl Sidebar {
                 )
                 .on_click(move |_, _, cx| {
                     library.update(cx, |library, cx| library.set_filter(filter.clone(), cx));
-                })
+                });
+            let selector = format!("tag-{id}");
+            self.drop_notes(chip, NoteChange::AddTag(id.clone()), cx)
+                .debug_selector(move || selector)
                 .context_menu(move |menu, window, cx| tag_menu(menu, &view, &tag_id, window, cx))
         });
+        let chips: Vec<_> = chips.collect();
         let toggle = more.then(|| {
             div()
                 .id("more-tags")
@@ -814,6 +842,7 @@ impl Sidebar {
             let row = match node.tag_id.clone() {
                 Some(tag_id) => {
                     let view = cx.entity();
+                    let row = self.drop_notes(row, NoteChange::AddTag(tag_id.clone()), cx);
                     row.context_menu(move |menu, window, cx| {
                         tag_menu(menu, &view, &tag_id, window, cx)
                     })
@@ -1495,18 +1524,21 @@ impl Render for Sidebar {
                     cx,
                 ))
                 .into_any_element();
+            let row = self.row(
+                SharedString::from(format!("book-{id}")),
+                Filter::Book(id.clone()),
+                Entry {
+                    icon: Some(icon),
+                    label: name.into(),
+                    count,
+                    depth,
+                },
+                cx,
+            );
+            let selector = format!("book-{id}");
             let row = self
-                .row(
-                    SharedString::from(format!("book-{id}")),
-                    Filter::Book(id.clone()),
-                    Entry {
-                        icon: Some(icon),
-                        label: name.into(),
-                        count,
-                        depth,
-                    },
-                    cx,
-                )
+                .drop_notes(row, NoteChange::Move(id.clone()), cx)
+                .debug_selector(move || selector)
                 .context_menu(move |menu, _, _| {
                     let (new, rename, delete) = (view.clone(), view.clone(), view.clone());
                     let (a, b, c) = (book_id.clone(), book_id.clone(), book_id.clone());
@@ -1579,27 +1611,28 @@ impl Render for Sidebar {
             .child(div().h(px(10.)));
 
         let trash_view = cx.entity();
-        list = list.child(
-            self.row(
-                "trash",
-                Filter::Trash,
-                Entry {
-                    icon: None,
-                    label: "Trash".into(),
-                    count: counts.trash,
-                    depth: 0,
-                },
-                cx,
-            )
-            .context_menu(move |menu, _, _| {
+        let trash = self.row(
+            "trash",
+            Filter::Trash,
+            Entry {
+                icon: None,
+                label: "Trash".into(),
+                count: counts.trash,
+                depth: 0,
+            },
+            cx,
+        );
+        let trash_change = NoteChange::Move(kanso_core::model::TRASH_BOOK_ID.into());
+        list = list.child(self.drop_notes(trash, trash_change, cx).context_menu(
+            move |menu, _, _| {
                 let view = trash_view.clone();
                 menu.item(
                     PopupMenuItem::new("Empty Trash…").on_click(move |_, _, cx| {
                         view.update(cx, |_, cx| cx.emit(SidebarEvent::EmptyTrash));
                     }),
                 )
-            }),
-        );
+            },
+        ));
 
         let colors = Colors::get(cx);
         v_flex()

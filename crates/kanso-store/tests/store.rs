@@ -751,3 +751,43 @@ fn reimport_keeps_kanso_edits_and_takes_newer_source_edits() {
     assert_eq!(history[0].fields["body"], "kanso");
     assert_eq!(history[0].origin, "import");
 }
+
+#[test]
+fn merge_many_changes_every_note_or_none() {
+    let (_dir, store) = store();
+    let book = create(&store, DocType::Book, json!({"name": "Blog"}));
+    let other = create(&store, DocType::Book, json!({"name": "Work"}));
+    let a = create(&store, DocType::Note, json!({"bookId": book, "title": "a"}));
+    let b = create(&store, DocType::Note, json!({"bookId": book, "title": "b"}));
+    let written = store
+        .merge_many(
+            DocType::Note,
+            vec![
+                json!({"_id": a, "bookId": other, "pinned": true}),
+                json!({"_id": b, "bookId": other}),
+            ],
+            Origin::Ui,
+        )
+        .unwrap();
+    assert_eq!(written.len(), 2);
+    assert_eq!(store.note(&a).unwrap().unwrap().book_id, other);
+    assert!(store.note(&a).unwrap().unwrap().pinned);
+    assert_eq!(
+        store.note(&a).unwrap().unwrap().title,
+        "a",
+        "a merge keeps the rest"
+    );
+    assert_eq!(store.note(&b).unwrap().unwrap().book_id, other);
+
+    // One bad merge and the others don't happen either.
+    let refused = store.merge_many(
+        DocType::Note,
+        vec![
+            json!({"_id": a, "bookId": book}),
+            json!({"_id": "note:missing", "bookId": book}),
+        ],
+        Origin::Ui,
+    );
+    assert!(refused.is_err());
+    assert_eq!(store.note(&a).unwrap().unwrap().book_id, other);
+}
