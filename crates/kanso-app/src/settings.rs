@@ -1269,9 +1269,7 @@ fn writing_section(cx: &mut Context<SettingsView>) -> AnyElement {
             }
             menu
         });
-    section(
-        "Writing",
-        vec![
+    let mut rows = vec![
             Row::new(Lucide::Brackets, "Close brackets and markers")
                 .detail("Typing ( [ { \" * _ or ` adds its closer, and wraps selected text.")
                 .trailing(switch("auto-pair", writing.auto_pair, |e, on| e.auto_pair = on)),
@@ -1311,9 +1309,17 @@ fn writing_section(cx: &mut Context<SettingsView>) -> AnyElement {
                     if cfg!(target_os = "macos") { "⌘" } else { "Ctrl" }
                 ))
                 .trailing(switch("vim-keys", writing.vim, |e, on| e.vim = on)),
-        ],
-        colors,
-    )
+    ];
+    // Only where the system has a dictionary to check with.
+    if crate::spellcheck::AVAILABLE {
+        rows.insert(
+            3,
+            Row::new(Lucide::SpellCheck, "Check spelling")
+                .detail("Underlines misspelled words as you write; right-click one for suggestions. Code, links and tags are left alone.")
+                .trailing(switch("spellcheck", writing.spellcheck, |e, on| e.spellcheck = on)),
+        );
+    }
+    section("Writing", rows, colors)
 }
 
 /// A keystroke as GPUI writes it (`secondary-shift-v`), shown as this

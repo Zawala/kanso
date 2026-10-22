@@ -179,6 +179,7 @@ icon_assets!(
         Snowflake,
         Sofa,
         Sparkles,
+        SpellCheck,
         Split,
         SquareCheck,
         SquareKanban,

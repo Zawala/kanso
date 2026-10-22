@@ -20,11 +20,14 @@ use std::time::Duration;
 
 use gpui_kit::EntityInputHandler as _;
 use gpui_kit::assets::IconName as Lucide;
-use gpui_kit::base::input::{Backspace, Enter, IndentInline, OutdentInline, Paste};
+use gpui_kit::base::input::{
+    Backspace, Copy, Cut, Enter, IndentInline, OutdentInline, Paste, SelectAll,
+};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::input::{Editor, EditorState, Input, InputEvent, InputState, Position};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{
@@ -52,6 +55,9 @@ use crate::note_meaning::NoteMeaning;
 use crate::pairing::Pairs;
 use crate::preview::{ImageResize, LinkSender, Preview, PreviewEdit, TEXT_INSET, readable_width};
 use crate::smart_paste;
+use crate::spellcheck::{
+    self, CorrectSpelling, IgnoreSpelling, LearnSpelling, Misspelling, SpellMarks,
+};
 use crate::split::{
     scroll_sync, source_scroll_max, split_left, split_min_side, split_ratio, wrapped_rows,
 };
@@ -65,6 +71,9 @@ use crate::zoom::px;
 
 #[path = "editor_collab.rs"]
 mod collab_glue;
+#[cfg(test)]
+#[path = "spellcheck_tests.rs"]
+mod spellcheck_tests;
 #[path = "editor_vim.rs"]
 mod vim_glue;
 #[cfg(test)]
@@ -297,6 +306,8 @@ pub struct NoteEditor {
     vim: Option<vim_glue::VimState>,
     /// The tints on tasks' due dates in the text.
     due_marks: crate::due::DueMarks,
+    /// The underlines under misspelled words in the text.
+    spell_marks: SpellMarks,
     /// The shared note open, attached to the engine (`editor_collab.rs`).
     shared: Option<crate::collab_model::OpenShare>,
     /// The title and text can't be changed: a note shared to view or
@@ -433,14 +444,22 @@ impl NoteEditor {
                         |editor: &mut NoteEditor| &mut editor.due_marks,
                         cx,
                     );
+                    this.check_spelling(spellcheck::CHECK_DELAY, cx);
                 }
             }),
             // The text editor notifies when the wheel scrolls it (and when
             // its caret blinks): the preview beside it follows at once. Other
             // scrolling is caught as the split is painted.
-            cx.observe(&body, |this, _, cx| {
+            cx.observe(&body, |this, body, cx| {
                 this.follow_source_scroll(cx);
                 this.collab_caret(cx);
+                let me = cx.entity().downgrade();
+                this.spell_marks.follow_scroll(
+                    body,
+                    me,
+                    |editor: &mut NoteEditor| &mut editor.spell_marks,
+                    cx,
+                );
             }),
             // Quitting from the Dock, at logout or from the menu.
             cx.on_app_quit(|this, cx| {
@@ -501,6 +520,7 @@ impl NoteEditor {
             typewriter: false,
             vim: None,
             due_marks: Default::default(),
+            spell_marks: Default::default(),
             shared: None,
             text_read_only: false,
             meaning,
@@ -510,6 +530,7 @@ impl NoteEditor {
             _resizes: resize_task,
         };
         editor.set_vim(settings.vim, cx);
+        editor.spell_marks.set_enabled(settings.spellcheck, cx);
         editor
     }
 
@@ -523,8 +544,22 @@ impl NoteEditor {
             self.pairs.clear();
         }
         self.set_vim(settings.vim, cx);
+        self.spell_marks.set_enabled(settings.spellcheck, cx);
+        self.check_spelling(Duration::ZERO, cx);
         self.update_footer_goal(cx);
         cx.notify();
+    }
+
+    /// Checks the spelling of the text in view after `delay`.
+    fn check_spelling(&mut self, delay: Duration, cx: &mut Context<Self>) {
+        let (body, me) = (self.body.clone(), cx.entity().downgrade());
+        self.spell_marks.refresh_soon(
+            delay,
+            body,
+            me,
+            |editor: &mut NoteEditor| &mut editor.spell_marks,
+            cx,
+        );
     }
 
     /// The open note's word goal: its own, the default, or none.
@@ -832,6 +867,7 @@ impl NoteEditor {
             }
         });
         self.due_marks.refresh(&self.body, cx);
+        self.check_spelling(Duration::ZERO, cx);
         // The kept line lengths describe the old text, which may have had
         // the same length.
         self.source_lines = None;
@@ -1829,6 +1865,79 @@ impl NoteEditor {
             state.set_selected_range(edit.selection, cx);
             state.focus(window, cx);
         });
+    }
+
+    /// The text's right-click menu: for a misspelled word, its guesses,
+    /// Learn Spelling and Ignore Spelling, then Cut, Copy, Paste and
+    /// Select All, as the editor's own menu has them.
+    fn text_menu(&self, cx: &App) -> NativeMenu {
+        let editable = self.note.is_some() && !self.text_read_only;
+        let copyable = !self.body.read(cx).selected_range().is_empty();
+        let mut menu = NativeMenu::new();
+        let spelling = self.spelling_items(cx);
+        if !spelling.is_empty() {
+            for (label, action) in spelling {
+                menu = menu.menu(label, action);
+            }
+            menu = menu.separator();
+        }
+        menu.menu_with_disabled("Cut", !(editable && copyable), Box::new(Cut))
+            .menu_with_disabled("Copy", !copyable, Box::new(Copy))
+            .menu_with_disabled("Paste", !editable, Box::new(Paste))
+            .separator()
+            .menu("Select All", Box::new(SelectAll))
+    }
+
+    /// The spelling items for the misspelled word the right-click landed
+    /// on, if it did.
+    fn spelling_items(&self, cx: &App) -> Vec<(String, Box<dyn Action>)> {
+        let selected = self.body.read(cx).selected_range();
+        let Some(misspelling) = self
+            .spell_marks
+            .at(&self.body, selected.start, cx)
+            .filter(|m: &Misspelling| m.range.end >= selected.end)
+        else {
+            return Vec::new();
+        };
+        let guesses = spellcheck::speller(cx)
+            .map(|speller| speller.guesses(&misspelling.word))
+            .unwrap_or_default();
+        let editable = self.note.is_some() && !self.text_read_only;
+        spellcheck::menu_items(&misspelling, guesses, editable)
+    }
+
+    fn correct_spelling(
+        &mut self,
+        action: &CorrectSpelling,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.note.is_none() || self.text_read_only {
+            return;
+        }
+        let range = action.range.clone();
+        if self.body.read(cx).value().get(range.clone()) != Some(action.word.as_str()) {
+            return;
+        }
+        self.spell_marks.forget_range(&self.body, &range, cx);
+        self.body.update(cx, |state, cx| {
+            state.set_selected_range(range, cx);
+            state.replace(action.with.clone(), window, cx);
+        });
+    }
+
+    fn learn_spelling(&mut self, action: &LearnSpelling, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some(speller) = spellcheck::speller(cx) {
+            speller.learn(&action.word);
+        }
+        self.spell_marks.forget(&self.body, &action.word, cx);
+    }
+
+    fn ignore_spelling(&mut self, action: &IgnoreSpelling, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some(speller) = spellcheck::speller(cx) {
+            speller.ignore(&action.word);
+        }
+        self.spell_marks.forget(&self.body, &action.word, cx);
     }
 
     /// Whether the note's text has the keyboard and nothing is being
@@ -3741,6 +3850,9 @@ impl Render for NoteEditor {
             )
             .capture_action(cx.listener(Self::on_enter))
             .capture_action(cx.listener(Self::on_paste))
+            .on_action(cx.listener(Self::correct_spelling))
+            .on_action(cx.listener(Self::learn_spelling))
+            .on_action(cx.listener(Self::ignore_spelling))
             .on_drop(cx.listener(Self::on_drop))
             .pl(px(TEXT_INSET - SOURCE_TEXT_LEFT))
             .pr_4()
@@ -3764,6 +3876,13 @@ impl Render for NoteEditor {
                     .when_some(measure, |el, width| el.max_w(width))
                     .child(
                         Editor::new(&self.body)
+                            .context_menu({
+                                let view = cx.entity().downgrade();
+                                move |menu, _, cx| {
+                                    view.upgrade()
+                                        .map_or(menu, |view| view.read(cx).text_menu(cx))
+                                }
+                            })
                             .bordered(false)
                             .h_full()
                             .font_family(family)
@@ -3915,6 +4034,16 @@ impl NoteEditor {
     /// The source editor's state, to type into.
     pub fn body_state(&self) -> Entity<EditorState> {
         self.body.clone()
+    }
+
+    /// How many misspelled words the text has underlined.
+    pub fn spelling_marks_for_test(&self) -> usize {
+        self.spell_marks.count()
+    }
+
+    /// The spelling items of the context menu, where the selection is.
+    pub fn spelling_menu_for_test(&self, cx: &App) -> Vec<(String, Box<dyn Action>)> {
+        self.spelling_items(cx)
     }
 
     /// How many due dates the text has tinted.
