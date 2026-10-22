@@ -208,6 +208,15 @@ pub fn builtins() -> &'static [Arc<IconTheme>] {
     })
 }
 
+/// The built-in theme with the folder name `id`.
+#[cfg(test)]
+pub fn builtin(id: &str) -> &'static Arc<IconTheme> {
+    builtins()
+        .iter()
+        .find(|theme| theme.id == id)
+        .unwrap_or_else(|| panic!("no built-in icon theme {id}"))
+}
+
 /// Kanso's own icons: the theme that draws nothing over them.
 pub fn default_theme() -> &'static Arc<IconTheme> {
     static EMPTY: OnceLock<Arc<IconTheme>> = OnceLock::new();
@@ -513,6 +522,61 @@ pub const PREVIEW: &[&str] = &[
     "icons/trash.svg",
 ];
 
+/// The icons a theme's card shows, up to as many as [`PREVIEW`] has: first the
+/// ones the theme draws, [`PREVIEW`]'s before its others and each drawing
+/// once, then [`PREVIEW`]'s Kanso draws, in its order. A theme that draws only a few
+/// icons (one from Zed draws its folders and files) still looks like
+/// itself. Pure.
+pub fn card_icons(theme: &IconTheme) -> Vec<SharedString> {
+    let paths = themed_paths(theme);
+    let svgs: HashMap<SharedString, &Arc<[u8]>> = theme
+        .icons
+        .iter()
+        .map(|(name, svg)| (themed_path(theme, name), svg))
+        .chain(
+            theme
+                .library
+                .iter()
+                .map(|(slot, svg)| (themed_slot_path(theme, *slot), svg)),
+        )
+        .collect();
+    let drawn = |path: &str| {
+        paths
+            .get(path)
+            .cloned()
+            .unwrap_or_else(|| SharedString::from(path.to_owned()))
+    };
+    let mut others: Vec<&str> = paths
+        .keys()
+        .map(String::as_str)
+        .filter(|path| !PREVIEW.contains(path))
+        .collect();
+    others.sort_unstable();
+    let mut shown: Vec<SharedString> = Vec::new();
+    let mut seen: Vec<&[u8]> = Vec::new();
+    for path in PREVIEW.iter().copied().chain(others) {
+        if shown.len() == PREVIEW.len() {
+            return shown;
+        }
+        let path = drawn(path);
+        let Some(svg) = svgs.get(&path) else { continue };
+        if !seen.contains(&svg.as_ref()) {
+            seen.push(svg);
+            shown.push(path);
+        }
+    }
+    for path in PREVIEW {
+        if shown.len() == PREVIEW.len() {
+            break;
+        }
+        let path = drawn(path);
+        if !path.starts_with(THEMED_PREFIX) {
+            shown.push(path);
+        }
+    }
+    shown
+}
+
 /// What `path` is drawn as under `theme`: the path [`themed_paths`] gives,
 /// or `path` itself. Pure.
 #[cfg(test)]
@@ -558,9 +622,29 @@ mod tests {
             }
         }
         let ids: Vec<&str> = builtins().iter().map(|t| t.id.as_str()).collect();
-        assert_eq!(ids, vec!["lucide", "phosphor"]);
+        // Every theme folder of the repository's `icon-themes/`, Lucide first
+        // and the rest by name; each but Lucide draws something.
+        let mut folders: Vec<String> =
+            std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../../icon-themes"))
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|e| e.path().is_dir() && e.file_name() != "schema")
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect();
+        folders.sort();
+        let mut sorted = ids.clone();
+        sorted.sort_unstable();
+        assert_eq!(sorted, folders);
+        assert_eq!(ids[0], DEFAULT_ID);
+        assert!(ids.len() > 2);
+        let names: Vec<String> = builtins()[1..]
+            .iter()
+            .map(|t| t.name.to_lowercase())
+            .collect();
+        assert!(names.is_sorted(), "{names:?}");
+        assert!(builtins()[1..].iter().all(|t| t.count() > 0));
         assert_eq!(default_theme().count(), 0);
-        let phosphor = &builtins()[1];
+        let phosphor = builtin("phosphor");
         assert_eq!(phosphor.license, "MIT");
         let all = crate::assets::app_icon_names();
         let missing: Vec<&String> = all
@@ -570,6 +654,29 @@ mod tests {
         assert!(missing.is_empty(), "Phosphor lacks {missing:?}");
         assert!(phosphor.library.len() >= 20);
         assert!(phosphor.extras.len() >= 20);
+    }
+
+    /// Lucide's card is the preview as it is; Phosphor's is the preview in
+    /// Phosphor; Catppuccin's, which draws only folders and files, opens
+    /// with its notebook and fills up with Kanso's own.
+    #[test]
+    fn cards_show_what_each_theme_draws() {
+        let lucide: Vec<SharedString> = PREVIEW
+            .iter()
+            .map(|p| drawn_as(default_theme(), p))
+            .collect();
+        assert_eq!(card_icons(default_theme()), lucide);
+        let phosphor = builtin("phosphor");
+        let drawn: Vec<SharedString> = PREVIEW.iter().map(|p| drawn_as(phosphor, p)).collect();
+        assert_eq!(card_icons(phosphor), drawn);
+        let catppuccin = builtin("catppuccin-icons");
+        let card = card_icons(catppuccin);
+        assert_eq!(card[0], drawn_as(catppuccin, "icons/library/notebook.svg"));
+        assert!(card[0].starts_with(THEMED_PREFIX));
+        assert!(
+            card.last().unwrap().starts_with("icons/")
+                && !card.last().unwrap().starts_with(THEMED_PREFIX)
+        );
     }
 
     /// With no theme in use, a slot loads the built-in icon it falls back to.
@@ -593,7 +700,7 @@ mod tests {
     #[test]
     fn themed_paths_load_the_themes_svgs() {
         use gpui_kit::AssetSource as _;
-        let phosphor = builtins()[1].clone();
+        let phosphor = builtin("phosphor").clone();
         let path = themed_path(&phosphor, "search");
         let loaded = crate::assets::KansoAssets.load(&path).unwrap().unwrap();
         assert_eq!(loaded.as_ref(), phosphor.icons["search"].as_ref());
@@ -733,6 +840,33 @@ mod tests {
             }
         }
 
+        /// A card shows up to as many icons as the preview has: every picture the
+        /// theme draws, once each, up to that many, before any of Kanso's
+        /// own, which are the preview's as drawn, in its order.
+        #[test]
+        fn prop_a_card_leads_with_the_themes_own_icons(t in any_theme("a")) {
+            let shown = card_icons(&t);
+            let themed = shown.iter().take_while(|p| p.starts_with(THEMED_PREFIX)).count();
+            let mut unique = shown[..themed].to_vec();
+            unique.sort();
+            unique.dedup();
+            prop_assert_eq!(unique.len(), themed);
+            let mut pictures: Vec<&[u8]> = t.icons.values().chain(t.library.values()).map(AsRef::as_ref).collect();
+            pictures.sort_unstable();
+            pictures.dedup();
+            prop_assert_eq!(themed, pictures.len().min(PREVIEW.len()));
+            let own: Vec<SharedString> = PREVIEW
+                .iter()
+                .map(|p| drawn_as(&t, p))
+                .filter(|p| !p.starts_with(THEMED_PREFIX))
+                .take(PREVIEW.len() - themed)
+                .collect();
+            prop_assert_eq!(&shown[themed..], &own[..]);
+            // Short only when a picture the theme draws twice leaves nothing to fill with.
+            prop_assert!(shown.len() <= PREVIEW.len());
+            prop_assert!(shown.len() == PREVIEW.len() || own.len() < PREVIEW.len() - themed);
+        }
+
         /// A theme edited on disk gets a new key, so its icons draw anew.
         #[test]
         fn prop_a_changed_svg_changes_the_key(t in any_theme("a"), byte in 3u8..9) {
@@ -769,7 +903,9 @@ mod tests {
         }
         let themes = IconThemes::load(Some(dir.path()));
         let names: Vec<&str> = themes.entries.iter().map(|t| t.name.as_str()).collect();
-        assert_eq!(names, vec!["Lucide", "Phosphor", "Apple", "Zest"]);
+        let builtin_names: Vec<&str> = builtins().iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names[..builtin_names.len()], builtin_names[..]);
+        assert_eq!(names[builtin_names.len()..], ["Apple", "Zest"]);
         let said: Vec<String> = themes.notices.iter().map(Notice::sentence).collect();
         assert!(
             said.iter()
@@ -780,6 +916,6 @@ mod tests {
             said.iter().any(|s| s.starts_with("zz-copy is named")),
             "{said:?}"
         );
-        assert!(IconThemes::load(None).entries.len() == 2);
+        assert_eq!(IconThemes::load(None).entries.len(), builtins().len());
     }
 }

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "schema_version": 1,
+  "name": "JetBrains New UI Icons",
+  "author": "ankddev",
+  "license": "Apache-2.0",
+  "source": "https://github.com/ankddev/zed-jetbrains-newui-icons",
+  "description": "The JetBrains IDEs' New UI icons, from ankddev's Zed extension.",
+  "library": {
+    "notebook": "icons/folder_dark.svg",
+    "notebook-open": "icons/folder_dark.svg",
+    "note": "icons/anyType_dark.svg",
+    "attachment-pdf": "icons/text.svg",
+    "attachment-image": "icons/image_dark.svg"
+  }
+}

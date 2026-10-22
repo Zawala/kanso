@@ -920,7 +920,7 @@ mod tests {
     #[test]
     fn a_notebook_shows_its_chosen_icon_or_the_default() {
         let lucide = icon_themes::default_theme();
-        let phosphor = &icon_themes::builtins()[1];
+        let phosphor = icon_themes::builtin("phosphor");
         let shows = |book: &Book| icon_for(chosen(book).as_deref(), role(book), lucide);
         let choice = NotebookIcon::Choice;
         let notebook = NotebookIcon::Slot(Slot::Notebook);
@@ -983,7 +983,7 @@ mod tests {
     /// their own, found by their words and the theme's name.
     #[test]
     fn a_themes_icons_are_found() {
-        let phosphor = &icon_themes::builtins()[1];
+        let phosphor = icon_themes::builtin("phosphor");
         let sections = super::sections(phosphor);
         let titles: Vec<&str> = sections.iter().map(|(title, _)| title.as_ref()).collect();
         assert_eq!(titles, vec!["Kanso", "Phosphor"]);
@@ -1135,7 +1135,7 @@ mod tests {
         });
         cx.run_until_parked();
 
-        let phosphor = icon_themes::builtins()[1].clone();
+        let phosphor = icon_themes::builtin("phosphor").clone();
         let planet = NotebookIcon::Theme(icon_themes::extra_path(&phosphor, "planet"));
         let lock = NotebookIcon::Slot(Slot::NotebookLocked);
         let inbox = NotebookIcon::Slot(Slot::Inbox);

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "schema_version": 1,
+  "name": "Monospace Icons",
+  "author": "Isheunopa Ralph Mhonde",
+  "license": "Apache-2.0",
+  "source": "https://github.com/irmhonde/monospace-icon-theme",
+  "description": "Firebase Studio's Monospace icons, from Isheunopa Ralph Mhonde's Zed extension.",
+  "library": {
+    "notebook": "icons/folder_light.svg",
+    "notebook-open": "icons/folder_light_expanded.svg",
+    "attachment-pdf": "icons/pdf_light.svg",
+    "attachment-image": "icons/image_light.svg",
+    "attachment-audio": "icons/audio.svg"
+  }
+}

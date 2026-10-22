@@ -48,6 +48,7 @@ actions!(
         OpenGeneralSettings,
         OpenEditorSettings,
         OpenAppearanceSettings,
+        OpenIconThemeSettings,
         OpenAccountSettings,
         OpenApiSettings,
         OpenUpdateSettings,
@@ -85,6 +86,7 @@ pub enum SettingsPage {
     General,
     Editor,
     Appearance,
+    IconThemes,
     Account,
     LocalApi,
     Updates,
@@ -92,10 +94,11 @@ pub enum SettingsPage {
 
 impl SettingsPage {
     /// In the order the column lists them.
-    pub const ALL: [SettingsPage; 6] = [
+    pub const ALL: [SettingsPage; 7] = [
         SettingsPage::General,
         SettingsPage::Editor,
         SettingsPage::Appearance,
+        SettingsPage::IconThemes,
         SettingsPage::Account,
         SettingsPage::LocalApi,
         SettingsPage::Updates,
@@ -106,6 +109,7 @@ impl SettingsPage {
             SettingsPage::General => "General",
             SettingsPage::Editor => "Editor",
             SettingsPage::Appearance => "Themes",
+            SettingsPage::IconThemes => "Icon Themes",
             SettingsPage::Account => "Account",
             SettingsPage::LocalApi => "Local API",
             SettingsPage::Updates => "Updates",
@@ -117,6 +121,7 @@ impl SettingsPage {
             SettingsPage::General => Lucide::Settings,
             SettingsPage::Editor => Lucide::Pencil,
             SettingsPage::Appearance => Lucide::Palette,
+            SettingsPage::IconThemes => Lucide::Shapes,
             SettingsPage::Account => Lucide::CircleUser,
             SettingsPage::LocalApi => Lucide::Plug,
             SettingsPage::Updates => Lucide::CircleArrowDown,
@@ -128,6 +133,7 @@ impl SettingsPage {
             SettingsPage::General => "settings-general",
             SettingsPage::Editor => "settings-editor",
             SettingsPage::Appearance => "settings-appearance",
+            SettingsPage::IconThemes => "settings-icon-themes",
             SettingsPage::Account => "settings-account",
             SettingsPage::LocalApi => "settings-api",
             SettingsPage::Updates => "settings-updates",
@@ -837,6 +843,7 @@ impl SettingsView {
             SettingsPage::General => self.general_page(cx),
             SettingsPage::Editor => editor_page(cx),
             SettingsPage::Appearance => crate::settings_themes::page(cx),
+            SettingsPage::IconThemes => crate::settings_themes::icon_theme_page(cx),
             SettingsPage::Account => vec![self.account.clone().into_any_element()],
             SettingsPage::LocalApi => api_page(self.mcp_agent, cx),
             SettingsPage::Updates => crate::updates::page(cx),
@@ -1710,6 +1717,7 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
     let general = page(SettingsPage::General);
     let editor = page(SettingsPage::Editor);
     let appearance = page(SettingsPage::Appearance);
+    let icon_themes = page(SettingsPage::IconThemes);
     let account = page(SettingsPage::Account);
     let api = page(SettingsPage::LocalApi);
     let updates = page(SettingsPage::Updates);
@@ -1725,6 +1733,11 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
     .on_action(
         cx.listener(move |this, _: &OpenAppearanceSettings, window, cx| {
             appearance(this, window, cx)
+        }),
+    )
+    .on_action(
+        cx.listener(move |this, _: &OpenIconThemeSettings, window, cx| {
+            icon_themes(this, window, cx)
         }),
     )
     .on_action(
@@ -1764,6 +1777,9 @@ pub fn register_app_actions(cx: &mut App, open_main_window: fn(&mut App)) {
     });
     cx.on_action(move |_: &OpenAppearanceSettings, cx| {
         show(Some(SettingsPage::Appearance), open_main_window, cx)
+    });
+    cx.on_action(move |_: &OpenIconThemeSettings, cx| {
+        show(Some(SettingsPage::IconThemes), open_main_window, cx)
     });
     cx.on_action(move |_: &OpenAccountSettings, cx| {
         show(Some(SettingsPage::Account), open_main_window, cx)
@@ -2074,7 +2090,7 @@ mod tests {
             "/Users/meg/Kanso"
         );
         assert_eq!(SettingsPage::General.step(-1), SettingsPage::General);
-        assert_eq!(SettingsPage::General.step(3), SettingsPage::Account);
+        assert_eq!(SettingsPage::General.step(3), SettingsPage::IconThemes);
         assert_eq!(SettingsPage::LocalApi.step(1), SettingsPage::Updates);
         assert_eq!(SettingsPage::Updates.step(1), SettingsPage::Updates);
         assert_eq!(SettingsPage::Account.title(), "Account");

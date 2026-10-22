@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "schema_version": 1,
+  "name": "JetBrains Icons",
+  "author": "Zeeshan Ahmad",
+  "license": "Apache-2.0",
+  "source": "https://github.com/ziishaned/zed-jetbrains-icons",
+  "description": "JetBrains IntelliJ's product icons, from Zeeshan Ahmad's Zed extension.",
+  "library": {
+    "notebook": "icons/dark/folder.svg",
+    "notebook-open": "icons/dark/folder.svg",
+    "fold-closed": "icons/dark/chevron_right.svg",
+    "fold-open": "icons/dark/chevron_down.svg",
+    "note": "icons/dark/text.svg",
+    "attachment-pdf": "icons/dark/text.svg",
+    "attachment-image": "icons/dark/image.svg",
+    "attachment-audio": "icons/dark/text.svg"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "schema_version": 1,
+  "name": "Catppuccin Icons",
+  "author": "Catppuccin",
+  "license": "MIT",
+  "source": "https://github.com/catppuccin/zed-icons",
+  "description": "Catppuccin's file and folder icons, from the Zed extension.",
+  "library": {
+    "notebook": "icons/latte/_folder.svg",
+    "notebook-open": "icons/latte/_folder_open.svg",
+    "templates": "icons/latte/folder_templates.svg",
+    "attachment-pdf": "icons/latte/pdf.svg",
+    "attachment-image": "icons/latte/image.svg",
+    "attachment-audio": "icons/latte/audio.svg"
+  }
+}
