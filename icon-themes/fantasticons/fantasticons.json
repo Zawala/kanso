@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "schema_version": 1,
+  "name": "FantastIcons",
+  "author": "Caio Landgraf",
+  "license": "MIT",
+  "source": "https://github.com/caiolandgraf/fantasticons-zed",
+  "description": "FantastIcons, from the Zed extension.",
+  "library": {
+    "notebook": "icons/folder.svg",
+    "notebook-open": "icons/folder_open.svg",
+    "templates": "icons/folder_template.svg",
+    "note": "icons/_file.svg",
+    "attachment-pdf": "icons/pdf.svg",
+    "attachment-image": "icons/image.svg",
+    "attachment-audio": "icons/audio.svg"
+  }
+}

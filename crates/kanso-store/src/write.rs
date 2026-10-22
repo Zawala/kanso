@@ -417,7 +417,7 @@ fn snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()
 
 /// Puts `prev` in the document's history, unthrottled, then prunes it.
 pub(crate) fn keep_snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
-    let now = now_ms();
+    let now = crate::history::version_time(tx, id)?;
     // A shared note's version is by whoever changed it since the last one.
     let author = match prev.doc_type {
         DocType::Note => crate::collab::take_authors(tx, id)?,

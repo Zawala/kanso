@@ -3,23 +3,39 @@
 Icon themes for [Kanso](https://github.com/iamngoni/kanso), the Markdown
 notes app. Each theme is a folder: one JSON file and the SVGs it names.
 Kanso compiles the themes in this folder in, and reads more from the
-`icon-themes` folder in its data folder (Settings › Themes › Icon theme
+`icon-themes` folder in its data folder (Settings › Icon Themes › Icon theme
 files › Open Folder), so you can try a theme by dropping its folder there:
 Kanso picks up the change within a couple of seconds.
 
 The icon theme draws every icon in Kanso: the sidebar, the note list, the
 toolbar, menus, the palette and every control, the component library's own
 (a checkbox's check, a menu's arrow) included. Choose one in
-Settings › Themes › Icon theme, or with **Change icon theme…** in the
+Settings › Icon Themes, or with **Change icon theme…** in the
 palette; the new icons show at once, in every window. An icon a theme
 leaves out stays Kanso's own, icon by icon.
 
-Two are built in:
+These are built in:
 
 - **Lucide**, Kanso's own icons ([Lucide](https://lucide.dev), ISC);
 - **Phosphor**, the regular weight of [Phosphor](https://phosphoricons.com)
   (MIT), drawn for every icon Kanso has, with its own notebook, Inbox and
-  Journal icons and 34 more icons for notebooks.
+  Journal icons and 34 more icons for notebooks;
+
+and these, converted from Zed icon themes, which draw a notebook (folded and
+open), a note and attachments, and leave the rest to Kanso's own:
+
+- **Catppuccin Icons** by Catppuccin ([source](https://github.com/catppuccin/zed-icons), MIT);
+- **Charmed Icons** by littensy, jmesrje ([source](https://github.com/jmesrje/zed-charmed-icons), MIT);
+- **FantastIcons** by Caio Landgraf ([source](https://github.com/caiolandgraf/fantasticons-zed), MIT);
+- **JetBrains Icons** by Zeeshan Ahmad ([source](https://github.com/ziishaned/zed-jetbrains-icons), Apache-2.0);
+- **JetBrains New UI Icons** by ankddev ([source](https://github.com/ankddev/zed-jetbrains-newui-icons), Apache-2.0);
+- **Kokedera Icons** by Florian Mühlhans ([source](https://github.com/cappuccinotogo/kokedera-icons-extension-zed), MIT);
+- **Material Icon Theme** by Zed Industries ([source](https://github.com/zed-extensions/material-icon-theme), MIT);
+- **Min Icons** by Phillip Bronzel ([source](https://github.com/phibr0/zed-min-theme), MIT);
+- **Monospace Icons** by Isheunopa Ralph Mhonde ([source](https://github.com/irmhonde/monospace-icon-theme), Apache-2.0);
+- **Phosphor Icons Theme** by Theo Luciano ([source](https://github.com/theoluciano/phosphor-icons-theme), MIT);
+- **Serendipity Icons** by Nguyen Dang Vinh ([source](https://github.com/meocoder31099/Serendipity-Icon-Theme-Zed), MIT);
+- **Symbols** by Joan Garcia ([source](https://github.com/joangarciaa-dev/zed-symbols), MIT).
 
 ## The format
 
@@ -120,13 +136,13 @@ absolute paths, and a link that leads out isn't followed); Kanso reads up to
 64 themes. Nothing is fetched: a theme is only ever local files.
 
 A theme file that can't be read (not JSON, an unknown key, a name that's
-taken) is skipped, and Settings › Themes lists it with the reason. An SVG
+taken) is skipped, and Settings › Icon Themes lists it with the reason. An SVG
 that can't be used (missing, too large, not an SVG) is listed too, and the
 rest of the theme still draws.
 
 ## Importing
 
-**Import…** under Settings › Themes › Icon theme files, **Import Icon
+**Import…** under Settings › Icon Themes › Icon theme files, **Import Icon
 Theme…** in the palette, or `kanso icon-theme import <path>`, converts:
 
 - a **Zed** icon theme: an extension's `icon_themes/*.json`, its folder, or
@@ -168,7 +184,7 @@ anything wrong, and `kanso icon-theme schema` prints the schema.
 2. Run `kanso icon-theme check icon-themes/your-theme`, and
    `cargo test -p kanso-app icon_themes`: every SVG in the folder has to be
    used.
-3. Open a pull request with a screenshot of Settings › Themes.
+3. Open a pull request with a screenshot of Settings › Icon Themes.
 
 ## Licenses
 

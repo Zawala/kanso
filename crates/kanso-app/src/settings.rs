@@ -17,6 +17,8 @@ use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::notification::Notification;
+use gpui_kit::component::searchable_list::SearchableVec;
+use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{
@@ -48,6 +50,7 @@ actions!(
         OpenGeneralSettings,
         OpenEditorSettings,
         OpenAppearanceSettings,
+        OpenIconThemeSettings,
         OpenAccountSettings,
         OpenApiSettings,
         OpenUpdateSettings,
@@ -85,6 +88,7 @@ pub enum SettingsPage {
     General,
     Editor,
     Appearance,
+    IconThemes,
     Account,
     LocalApi,
     Updates,
@@ -92,10 +96,11 @@ pub enum SettingsPage {
 
 impl SettingsPage {
     /// In the order the column lists them.
-    pub const ALL: [SettingsPage; 6] = [
+    pub const ALL: [SettingsPage; 7] = [
         SettingsPage::General,
         SettingsPage::Editor,
         SettingsPage::Appearance,
+        SettingsPage::IconThemes,
         SettingsPage::Account,
         SettingsPage::LocalApi,
         SettingsPage::Updates,
@@ -106,6 +111,7 @@ impl SettingsPage {
             SettingsPage::General => "General",
             SettingsPage::Editor => "Editor",
             SettingsPage::Appearance => "Themes",
+            SettingsPage::IconThemes => "Icon Themes",
             SettingsPage::Account => "Account",
             SettingsPage::LocalApi => "Local API",
             SettingsPage::Updates => "Updates",
@@ -117,6 +123,7 @@ impl SettingsPage {
             SettingsPage::General => Lucide::Settings,
             SettingsPage::Editor => Lucide::Pencil,
             SettingsPage::Appearance => Lucide::Palette,
+            SettingsPage::IconThemes => Lucide::Shapes,
             SettingsPage::Account => Lucide::CircleUser,
             SettingsPage::LocalApi => Lucide::Plug,
             SettingsPage::Updates => Lucide::CircleArrowDown,
@@ -128,6 +135,7 @@ impl SettingsPage {
             SettingsPage::General => "settings-general",
             SettingsPage::Editor => "settings-editor",
             SettingsPage::Appearance => "settings-appearance",
+            SettingsPage::IconThemes => "settings-icon-themes",
             SettingsPage::Account => "settings-account",
             SettingsPage::LocalApi => "settings-api",
             SettingsPage::Updates => "settings-updates",
@@ -389,6 +397,118 @@ pub fn display_path(path: &Path, home: &Path) -> String {
     }
 }
 
+/// A font setting: the editor's prose and monospace faces, and the
+/// preview's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FontSlot {
+    Writing,
+    Code,
+    Preview,
+}
+
+impl FontSlot {
+    fn get(self, appearance: &crate::config::Appearance) -> Option<&str> {
+        match self {
+            FontSlot::Writing => appearance.editor_font_family.as_deref(),
+            FontSlot::Code => appearance.editor_mono_family.as_deref(),
+            FontSlot::Preview => appearance.preview_font_family.as_deref(),
+        }
+    }
+
+    fn set(self, appearance: &mut crate::config::Appearance, family: Option<String>) {
+        match self {
+            FontSlot::Writing => appearance.editor_font_family = family,
+            FontSlot::Code => appearance.editor_mono_family = family,
+            FontSlot::Preview => appearance.preview_font_family = family,
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            FontSlot::Writing => "font-writing",
+            FontSlot::Code => "font-code",
+            FontSlot::Preview => "font-preview",
+        }
+    }
+}
+
+type FontSelect = SelectState<SearchableVec<SharedString>>;
+
+/// Settings › Editor's font pickers: each lists every installed family,
+/// to search by typing, with Kanso's own font first.
+struct FontPickers {
+    writing: Entity<FontSelect>,
+    code: Entity<FontSelect>,
+    preview: Entity<FontSelect>,
+    _subscriptions: Vec<Subscription>,
+}
+
+impl FontPickers {
+    // no-prop-test: builds controls; `fonts::choices`, `picked` and
+    // `position` have the properties.
+    fn new(window: &mut Window, cx: &mut Context<SettingsView>) -> FontPickers {
+        let choices = crate::fonts::choices(&crate::fonts::installed(cx));
+        let mut subscriptions = Vec::new();
+        let mut picker = |slot: FontSlot, cx: &mut Context<SettingsView>| {
+            let at = crate::fonts::position(slot.get(&config(cx).appearance), &choices);
+            let list = SearchableVec::new(choices.clone());
+            let state = cx.new(|cx| {
+                SelectState::new(
+                    list,
+                    Some(gpui_kit::component::IndexPath::new(at)),
+                    window,
+                    cx,
+                )
+                .searchable(true)
+            });
+            subscriptions.push(cx.subscribe(
+                &state,
+                move |_, _, event: &SelectEvent<SearchableVec<SharedString>>, cx| {
+                    let SelectEvent::Confirm(entry) = event;
+                    let family = entry.as_deref().and_then(crate::fonts::picked);
+                    AppState::update_config(cx, |config| slot.set(&mut config.appearance, family));
+                    update_editors(cx);
+                },
+            ));
+            state
+        };
+        let writing = picker(FontSlot::Writing, cx);
+        let code = picker(FontSlot::Code, cx);
+        let preview = picker(FontSlot::Preview, cx);
+        FontPickers {
+            writing,
+            code,
+            preview,
+            _subscriptions: subscriptions,
+        }
+    }
+
+    fn get(&self, slot: FontSlot) -> &Entity<FontSelect> {
+        match slot {
+            FontSlot::Writing => &self.writing,
+            FontSlot::Code => &self.code,
+            FontSlot::Preview => &self.preview,
+        }
+    }
+}
+
+/// A font picker's control, or nothing before the pickers are made.
+fn font_select(fonts: Option<&FontPickers>, slot: FontSlot) -> AnyElement {
+    let Some(fonts) = fonts else {
+        return div().into_any_element();
+    };
+    div()
+        .w(px(220.))
+        .debug_selector(move || slot.id().into())
+        .child(
+            Select::new(fonts.get(slot))
+                .small()
+                .search_placeholder("Search fonts")
+                .menu_width(px(260.)),
+        )
+        .into_any_element()
+}
+
 fn font_detail(font: EditorFont) -> &'static str {
     match font {
         EditorFont::Auto => "Proportional for writing; monospace beside the preview.",
@@ -414,6 +534,9 @@ fn update_editors(cx: &mut App) {
                 editor.set_settings(writing, cx);
                 editor.editor_font = appearance.editor_font;
                 editor.font_size = appearance.editor_font_size;
+                editor.font_family = appearance.editor_font_family.clone();
+                editor.mono_family = appearance.editor_mono_family.clone();
+                editor.refresh_preview_type(cx);
                 editor.allow_line_numbers = appearance.line_numbers;
                 editor.readable_width = appearance.readable_width;
                 cx.notify();
@@ -431,6 +554,53 @@ fn step_editor_size(step: i32, cx: &mut App) {
     let size = step_font_size(config(cx).appearance.editor_font_size, step);
     AppState::update_config(cx, |config| config.appearance.editor_font_size = size);
     update_editors(cx);
+}
+
+fn step_preview_size(step: i32, cx: &mut App) {
+    let size = step_font_size(config(cx).appearance.preview_font_size, step);
+    AppState::update_config(cx, |config| config.appearance.preview_font_size = size);
+    update_editors(cx);
+}
+
+/// A text size with a smaller and a larger button either side, as Settings
+/// › Editor shows the editor's and the preview's.
+// no-prop-test: layout; `step_font_size` has the properties.
+fn size_stepper(
+    (smaller, larger): (&'static str, &'static str),
+    size: f32,
+    step: fn(i32, &mut App),
+    colors: &Colors,
+) -> Div {
+    h_flex()
+        .gap(px(6.))
+        .child(
+            Button::new(smaller)
+                .debug_selector(move || smaller.into())
+                .outline()
+                .small()
+                .icon(Lucide::Minus)
+                .tooltip("Smaller")
+                .disabled(size <= FONT_SIZES.0)
+                .on_click(move |_, _, cx| step(-1, cx)),
+        )
+        .child(
+            div()
+                .w(px(44.))
+                .text_center()
+                .text_size(px(13.5))
+                .text_color(colors.text)
+                .child(format!("{size:.0} pt")),
+        )
+        .child(
+            Button::new(larger)
+                .debug_selector(move || larger.into())
+                .outline()
+                .small()
+                .icon(Lucide::Plus)
+                .tooltip("Larger")
+                .disabled(size >= FONT_SIZES.1)
+                .on_click(move |_, _, cx| step(1, cx)),
+        )
 }
 
 fn set_line_numbers(on: bool, cx: &mut App) {
@@ -592,6 +762,8 @@ pub struct SettingsView {
     shortcut: Entity<crate::settings_capture::ShortcutRecorder>,
     /// The AI agent the Local API page has setup for.
     mcp_agent: crate::mcp_setup::Agent,
+    /// Settings › Editor's font pickers, made the first time it shows.
+    fonts: Option<FontPickers>,
     /// Shown instead of the data folder, whose temporary path in a snapshot
     /// changes from run to run.
     #[cfg(test)]
@@ -622,6 +794,7 @@ impl SettingsView {
             backing_up: false,
             shortcut: cx.new(|_| crate::settings_capture::ShortcutRecorder::new()),
             mcp_agent: crate::mcp_setup::Agent::ClaudeCode,
+            fonts: None,
             #[cfg(test)]
             data_dir_label: None,
             _tick: tick,
@@ -835,8 +1008,9 @@ impl SettingsView {
     fn render_page(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         match self.page {
             SettingsPage::General => self.general_page(cx),
-            SettingsPage::Editor => editor_page(cx),
+            SettingsPage::Editor => editor_page(self.fonts.as_ref(), cx),
             SettingsPage::Appearance => crate::settings_themes::page(cx),
+            SettingsPage::IconThemes => crate::settings_themes::icon_theme_page(cx),
             SettingsPage::Account => vec![self.account.clone().into_any_element()],
             SettingsPage::LocalApi => api_page(self.mcp_agent, cx),
             SettingsPage::Updates => crate::updates::page(cx),
@@ -930,40 +1104,15 @@ impl SettingsView {
     }
 }
 
-fn editor_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
+fn editor_page(fonts: Option<&FontPickers>, cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
     let colors = Colors::get(cx);
     let appearance = config(cx).appearance.clone();
-    let size = appearance.editor_font_size;
-    let stepper = h_flex()
-        .gap(px(6.))
-        .child(
-            Button::new("font-smaller")
-                .debug_selector(|| "font-smaller".into())
-                .outline()
-                .small()
-                .icon(Lucide::Minus)
-                .tooltip("Smaller")
-                .disabled(size <= FONT_SIZES.0)
-                .on_click(|_, _, cx| step_editor_size(-1, cx)),
-        )
-        .child(
-            div()
-                .w(px(44.))
-                .text_center()
-                .text_size(px(13.5))
-                .text_color(colors.text)
-                .child(format!("{size:.0} pt")),
-        )
-        .child(
-            Button::new("font-larger")
-                .debug_selector(|| "font-larger".into())
-                .outline()
-                .small()
-                .icon(Lucide::Plus)
-                .tooltip("Larger")
-                .disabled(size >= FONT_SIZES.1)
-                .on_click(|_, _, cx| step_editor_size(1, cx)),
-        );
+    let stepper = size_stepper(
+        ("font-smaller", "font-larger"),
+        appearance.editor_font_size,
+        step_editor_size,
+        colors,
+    );
     vec![section(
         "Text",
         vec![
@@ -980,6 +1129,12 @@ fn editor_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                     |font, _, cx| set_editor_font(font, cx),
                     colors,
                 )),
+            Row::new(Lucide::CaseSensitive, "Writing font")
+                .detail("The font prose is written in. Default is Kanso's own.")
+                .trailing(font_select(fonts, FontSlot::Writing)),
+            Row::new(Lucide::Code, "Monospace font")
+                .detail("The font for the monospace face, beside the preview or in every view.")
+                .trailing(font_select(fonts, FontSlot::Code)),
             Row::new(Lucide::ALargeSmall, "Text size")
                 .detail("The Markdown source, in every view.")
                 .trailing(stepper),
@@ -1001,6 +1156,22 @@ fn editor_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                             .on_click(|on, _, cx| set_readable_width(*on, cx)),
                     ),
                 ),
+        ],
+        colors,
+    ),
+    section(
+        "Preview",
+        vec![
+            Row::new(Lucide::CaseSensitive, "Font")
+                .detail("The font the preview sets text in. Code keeps the monospace font.")
+                .trailing(font_select(fonts, FontSlot::Preview)),
+            Row::new(Lucide::ALargeSmall, "Text size")
+                .detail("The preview's text, in Split and Preview.")
+                .trailing(size_stepper(("preview-smaller", "preview-larger"),
+                    appearance.preview_font_size,
+                    step_preview_size,
+                    colors,
+                )),
         ],
         colors,
     ),
@@ -1320,6 +1491,9 @@ fn agent_row(
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
+        if self.page == SettingsPage::Editor && self.fonts.is_none() {
+            self.fonts = Some(FontPickers::new(window, cx));
+        }
         let page = self.render_page(cx);
         h_flex()
             .size_full()
@@ -1710,6 +1884,7 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
     let general = page(SettingsPage::General);
     let editor = page(SettingsPage::Editor);
     let appearance = page(SettingsPage::Appearance);
+    let icon_themes = page(SettingsPage::IconThemes);
     let account = page(SettingsPage::Account);
     let api = page(SettingsPage::LocalApi);
     let updates = page(SettingsPage::Updates);
@@ -1725,6 +1900,11 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
     .on_action(
         cx.listener(move |this, _: &OpenAppearanceSettings, window, cx| {
             appearance(this, window, cx)
+        }),
+    )
+    .on_action(
+        cx.listener(move |this, _: &OpenIconThemeSettings, window, cx| {
+            icon_themes(this, window, cx)
         }),
     )
     .on_action(
@@ -1764,6 +1944,9 @@ pub fn register_app_actions(cx: &mut App, open_main_window: fn(&mut App)) {
     });
     cx.on_action(move |_: &OpenAppearanceSettings, cx| {
         show(Some(SettingsPage::Appearance), open_main_window, cx)
+    });
+    cx.on_action(move |_: &OpenIconThemeSettings, cx| {
+        show(Some(SettingsPage::IconThemes), open_main_window, cx)
     });
     cx.on_action(move |_: &OpenAccountSettings, cx| {
         show(Some(SettingsPage::Account), open_main_window, cx)
@@ -2074,7 +2257,7 @@ mod tests {
             "/Users/meg/Kanso"
         );
         assert_eq!(SettingsPage::General.step(-1), SettingsPage::General);
-        assert_eq!(SettingsPage::General.step(3), SettingsPage::Account);
+        assert_eq!(SettingsPage::General.step(3), SettingsPage::IconThemes);
         assert_eq!(SettingsPage::LocalApi.step(1), SettingsPage::Updates);
         assert_eq!(SettingsPage::Updates.step(1), SettingsPage::Updates);
         assert_eq!(SettingsPage::Account.title(), "Account");

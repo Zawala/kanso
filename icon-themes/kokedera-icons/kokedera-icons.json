@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "schema_version": 1,
+  "name": "Kokedera Icons",
+  "author": "Florian Mühlhans",
+  "license": "MIT",
+  "source": "https://github.com/cappuccinotogo/kokedera-icons-extension-zed",
+  "description": "Moss temple icons, from the Kokedera Zed extension.",
+  "library": {
+    "notebook": "icons/morning/folder-closed.svg",
+    "notebook-open": "icons/morning/folder-open.svg",
+    "fold-closed": "icons/morning/chevron-closed.svg",
+    "fold-open": "icons/morning/chevron-open.svg",
+    "templates": "icons/morning/folder-pages-closed.svg",
+    "note": "icons/morning/default.svg",
+    "attachment-pdf": "icons/morning/pdf.svg",
+    "attachment-image": "icons/morning/image.svg",
+    "attachment-audio": "icons/morning/audio.svg"
+  }
+}

@@ -395,4 +395,29 @@ proptest! {
         prop_assert_eq!(&revisions[0].fields["body"], &json!(bodies[last]));
         prop_assert_eq!(&revisions[0].rev, &format!("{}-x", last + 1));
     }
+
+    /// Versions kept from another clock, ahead of this one or behind it,
+    /// never put a version saved here now below them: each version saved
+    /// here is the newest in the history, as when the clock stepped back.
+    #[test]
+    fn prop_a_version_saved_now_is_newest_whatever_the_clock(
+        steps in prop::collection::vec(prop::option::of(-10_000_000i64..10_000_000), 1..30),
+    ) {
+        let (_dir, store) = temp_store();
+        let now = kanso_core::now_ms();
+        for (n, step) in steps.iter().enumerate() {
+            let fields = json!({"title": format!("v{n}"), "body": ""}).as_object().unwrap().clone();
+            let rev = format!("{}-x", n + 1);
+            match step {
+                Some(offset) => store
+                    .record_revision_at("note:r2", &rev, &fields, Origin::Sync, now + offset)
+                    .unwrap(),
+                None => {
+                    store.record_revision("note:r2", &rev, &fields, Origin::Ui).unwrap();
+                    let revisions = store.revisions("note:r2").unwrap();
+                    prop_assert_eq!(&revisions[0].rev, &rev);
+                }
+            }
+        }
+    }
 }

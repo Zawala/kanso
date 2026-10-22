@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "schema_version": 1,
+  "name": "Charmed Icons",
+  "author": "littensy, jmesrje",
+  "license": "MIT",
+  "source": "https://github.com/jmesrje/zed-charmed-icons",
+  "description": "littensy's Charmed Icons, from jmesrje's Zed extension.",
+  "library": {
+    "notebook": "icons/base/_folder.svg",
+    "notebook-open": "icons/base/_folder_open.svg",
+    "note": "icons/base/_file.svg",
+    "attachment-pdf": "icons/base/pdf.svg",
+    "attachment-image": "icons/base/image.svg",
+    "attachment-audio": "icons/base/audio.svg"
+  }
+}

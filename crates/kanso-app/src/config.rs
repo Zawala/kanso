@@ -229,6 +229,14 @@ pub struct Appearance {
     pub themes: ThemeSettings,
     pub editor_font: EditorFont,
     pub editor_font_size: f32,
+    /// The installed font the editor writes prose in, and the one for its
+    /// monospace face; `None` for Kanso's own.
+    pub editor_font_family: Option<String>,
+    pub editor_mono_family: Option<String>,
+    /// The installed font the preview sets text in (`None` for Kanso's
+    /// own), and its size.
+    pub preview_font_family: Option<String>,
+    pub preview_font_size: f32,
     /// Whether monospace text shows line numbers beside it.
     pub line_numbers: bool,
     /// Whether text keeps to a readable measure, or fills the pane.
@@ -252,6 +260,10 @@ impl Default for Appearance {
             themes: ThemeSettings::default(),
             editor_font: EditorFont::Auto,
             editor_font_size: DEFAULT_FONT_SIZE,
+            editor_font_family: None,
+            editor_mono_family: None,
+            preview_font_family: None,
+            preview_font_size: DEFAULT_FONT_SIZE,
             line_numbers: true,
             readable_width: false,
             view_mode: ViewMode::Split,
@@ -782,7 +794,7 @@ mod tests {
             any::<bool>(),
             prop::option::of("note:[a-zA-Z0-9]{8}"),
             0u32..=CONFIG_VERSION + 1,
-            gen_themes(),
+            (gen_themes(), gen_fonts()),
         )
             .prop_map(
                 |(
@@ -796,7 +808,7 @@ mod tests {
                     login,
                     last,
                     version,
-                    themes,
+                    (themes, (writing, mono, preview, preview_size)),
                 )| AppConfig {
                     version,
                     server: ServerSettings {
@@ -812,6 +824,10 @@ mod tests {
                         themes,
                         editor_font: font,
                         editor_font_size: size,
+                        editor_font_family: writing,
+                        editor_mono_family: mono,
+                        preview_font_family: preview,
+                        preview_font_size: preview_size,
                         line_numbers: numbers,
                         readable_width: readable,
                         view_mode: mode,
@@ -923,6 +939,19 @@ mod tests {
         assert_eq!(chosen.appearance.themes.syntax_for(true), "Dracula");
         assert_eq!(chosen.appearance.themes.preview_for(true), "Nord");
         assert_eq!(chosen.appearance.themes.light, KANSO_LIGHT);
+    }
+
+    /// The fonts picked for writing, monospace and the preview, and the
+    /// preview's size.
+    #[allow(clippy::type_complexity)]
+    fn gen_fonts() -> impl Strategy<Value = (Option<String>, Option<String>, Option<String>, f32)> {
+        let family = || prop::option::of("[A-Za-z][A-Za-z0-9 ]{0,15}");
+        (
+            family(),
+            family(),
+            family(),
+            prop_oneof![Just(DEFAULT_FONT_SIZE), 10.0f32..28.0],
+        )
     }
 
     fn gen_font() -> impl Strategy<Value = EditorFont> {
