@@ -1079,7 +1079,16 @@ impl Rewriter<'_> {
                 Kind::Link | Kind::Image | Kind::Definition | Kind::HtmlImage => {
                     let target = if let Some(pseudo) = found.target.strip_prefix(PSEUDO) {
                         if let Some(key) = pseudo.strip_prefix("note/") {
-                            self.by_key.get(key).map(|&ix| Target::Note(ix))
+                            // As written, then `%`-decoded: a key in a
+                            // Markdown link may need encoding (`a%20b.html`).
+                            self.by_key
+                                .get(key)
+                                .or_else(|| {
+                                    let decoded =
+                                        percent_encoding::percent_decode_str(key).decode_utf8();
+                                    self.by_key.get(decoded.ok()?.as_ref())
+                                })
+                                .map(|&ix| Target::Note(ix))
                         } else if let Some(key) = pseudo.strip_prefix("embedded/") {
                             match embedded.get(key) {
                                 Some(id) => {

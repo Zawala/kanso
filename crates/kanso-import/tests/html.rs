@@ -99,3 +99,29 @@ fn html_keeps_links_that_escape_the_archive_root() {
     assert!(!start.body.contains("kanso-import:note/root.html"));
     assert!(start.body.contains("../../root.html"));
 }
+
+#[test]
+fn html_links_pages_and_files_with_spaces_and_parentheses() {
+    let input = tempfile::tempdir().unwrap();
+    std::fs::write(
+        input.path().join("start.html"),
+        "<h1>Start</h1><a href='My Page (draft).html'>Draft</a>\
+         <img src='Photo%20(1).png'><a href='doc (2).pdf'>Doc</a>",
+    )
+    .unwrap();
+    std::fs::write(input.path().join("My Page (draft).html"), "<h1>Draft</h1>").unwrap();
+    std::fs::write(input.path().join("Photo (1).png"), [1, 2]).unwrap();
+    std::fs::write(input.path().join("doc (2).pdf"), [3]).unwrap();
+    // Too deep for the converter's recursion: skipped, not a crash.
+    let deep = format!("<h1>Deep</h1>{}", "<div>".repeat(5_000));
+    std::fs::write(input.path().join("deep.html"), deep).unwrap();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let store = Store::open(tmp.path().join("db")).unwrap();
+    let report = import_source(SourceKind::Html, input.path(), &store, |_| {}).unwrap();
+    assert_eq!(report.unresolved_links, 0);
+    assert_eq!(report.notes.created, 2);
+    assert_eq!(report.attachments.created, 2);
+    let skipped: Vec<_> = report.skipped.iter().map(|s| s.path.as_str()).collect();
+    assert_eq!(skipped, ["deep.html"]);
+}

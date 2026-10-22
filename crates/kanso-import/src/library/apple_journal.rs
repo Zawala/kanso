@@ -104,7 +104,7 @@ fn parse_entry(file: &TreeFile, html: &str) -> SourceNote {
         .collect::<Vec<_>>()
         .join("\n");
     let body_html = format!("{prompt}\n{paragraphs}");
-    let body = htmd::convert(&body_html).unwrap_or_else(|_| strip_tags(&body_html));
+    let body = super::html::to_markdown(&body_html).unwrap_or_else(|| strip_tags(&body_html));
     let header = elements_with_class(html, "pageHeader")
         .into_iter()
         .next()
