@@ -416,9 +416,7 @@ pub fn apply_server_settings(cx: &mut App) {
 /// held, and the local API (with MCP) is taken out to be stopped off the
 /// main thread. Returns it, and whether it is started again afterwards.
 pub fn hold_writes(cx: &mut App) -> (Option<ServerHandle>, bool) {
-    crate::workspace::for_each_workspace(cx, |workspace, cx| {
-        workspace.editor.update(cx, |editor, cx| editor.flush(cx));
-    });
+    crate::workspace::for_each_editor(cx, |editor, cx| editor.flush(cx));
     let services = cx.global_mut::<Services>();
     services.writes_held = true;
     let restart = services.server.is_some() || services.port_retry.is_some();
@@ -434,11 +432,7 @@ pub fn release_writes(restart: bool, cx: &mut App) {
     if restart {
         apply_server_settings(cx);
     }
-    crate::workspace::for_each_workspace(cx, |workspace, cx| {
-        workspace
-            .editor
-            .update(cx, |editor, cx| editor.save_held(cx));
-    });
+    crate::workspace::for_each_editor(cx, |editor, cx| editor.save_held(cx));
 }
 
 /// Stops the API before quitting.

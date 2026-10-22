@@ -57,6 +57,13 @@ impl NoteEditor {
     // drives it.
     pub(super) fn collab_follow(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let mark = self.note.as_ref().and_then(|n| share_mark(&n.extra));
+        // A note's own window doesn't join its room: the engine holds one
+        // editor per shared note, the main window's. The note shows read
+        // only there, as the library has it.
+        if self.standalone {
+            self.set_text_read_only(mark.is_some(), cx);
+            return;
+        }
         if let Some(open) = &self.shared {
             let same_note =
                 self.note.as_ref().map(|n| n.id.as_str()) == Some(open.note_id.as_str());

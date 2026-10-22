@@ -596,9 +596,21 @@ impl NoteList {
                     }
                 }),
             )
-            .on_click(move |_, window, cx| {
-                window.focus(&focus, cx);
-                library.update(cx, |library, cx| library.select(Some(id.clone()), cx));
+            .on_click({
+                let view = view.clone();
+                move |event, window, cx| {
+                    // ⌥-click: the note in a window of its own. (⌘ and ⇧
+                    // are for choosing several rows.)
+                    if event.modifiers().alt {
+                        let id = id.clone();
+                        view.update(cx, |_, cx| {
+                            cx.emit(NoteListEvent::Command(id, NoteCommand::OpenInNewWindow))
+                        });
+                        return;
+                    }
+                    window.focus(&focus, cx);
+                    library.update(cx, |library, cx| library.select(Some(id.clone()), cx));
+                }
             })
             .context_menu(move |menu, window, cx| {
                 let emit = |event: fn(String) -> NoteListEvent| {

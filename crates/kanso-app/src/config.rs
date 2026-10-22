@@ -329,6 +329,21 @@ pub struct WindowLayout {
     /// The sidebar's notebooks opened to show the ones inside them, by ID;
     /// the rest are folded.
     pub open_books: Vec<String>,
+    /// The notes open in windows of their own (`note_window.rs`), to open
+    /// again at the next launch where they were.
+    pub note_windows: Vec<NoteWindowFrame>,
+}
+
+/// A note's own window: which note, and where the window was on screen, in
+/// points from the top left of the main display.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteWindowFrame {
+    pub note_id: String,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 impl Default for WindowLayout {
@@ -341,6 +356,7 @@ impl Default for WindowLayout {
             inspector_width: crate::layout::INSPECTOR_WIDTH,
             inspector_tab: InspectorTab::Outline,
             open_books: Vec::new(),
+            note_windows: Vec::new(),
         }
     }
 }
@@ -771,6 +787,16 @@ mod tests {
                 InspectorTab::Related,
                 InspectorTab::Comments,
             ]),
+            prop::collection::vec(
+                (
+                    "note:[a-z0-9]{1,8}",
+                    -4000.0f32..4000.,
+                    -4000.0f32..4000.,
+                    0.0f32..4000.,
+                    0.0f32..4000.,
+                ),
+                0..3,
+            ),
         )
             .prop_map(
                 |(
@@ -780,6 +806,7 @@ mod tests {
                     inspector_open,
                     inspector_width,
                     inspector_tab,
+                    note_windows,
                 )| {
                     WindowLayout {
                         focus_mode,
@@ -789,6 +816,16 @@ mod tests {
                         inspector_width,
                         inspector_tab,
                         open_books: Vec::new(),
+                        note_windows: note_windows
+                            .into_iter()
+                            .map(|(note_id, x, y, width, height)| NoteWindowFrame {
+                                note_id,
+                                x,
+                                y,
+                                width,
+                                height,
+                            })
+                            .collect(),
                     }
                 },
             )
