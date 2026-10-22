@@ -34,6 +34,8 @@ body = """
 {%- set email = commit.author.email | default(value="") -%}
 {%- if email is ending_with("@users.noreply.github.com") -%}
 {%- set login = email | split(pat="@") | first | split(pat="+") | last -%}
+{#- The CI fixer's commits come from its app account; it's known as gridopsbot. -#}
+{%- if login == "gridops-self-hosted[bot]" %}{% set login = "gridopsbot[bot]" %}{% endif -%}
 {%- set who = "@" ~ login -%}
 {%- else -%}
 {%- set who = commit.author.name | default(value="") -%}
@@ -91,4 +93,6 @@ commit_parsers = [
   { message = "^chore", group = "<!-- 3 -->Under the hood" },
   { message = "^test", group = "<!-- 3 -->Under the hood" },
   { message = "^docs", group = "<!-- 3 -->Under the hood" },
+  # Any other type (e.g. `site:`) is still a change worth listing.
+  { message = "^[a-z]+(\\(.*\\))?!?:", group = "<!-- 3 -->Under the hood" },
 ]

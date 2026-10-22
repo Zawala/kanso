@@ -19,7 +19,7 @@ heading compares the release with the one before.
 - **icons:** The component library's own icons can follow an icon theme ([b6774a4](https://github.com/iamngoni/kanso/commit/b6774a4160c82aca64d121a6aa4df566ed730abb))
 - **icons:** The README and the icon themes guide explain how to make, import and choose an icon theme ([b4c2186](https://github.com/iamngoni/kanso/commit/b4c2186c3a0923bd49c61def048244543de6741f))
 - **cloud:** Record the 0.7.0 Worker deployment, its collaboration migration and the bookmark before it ([dba36ff](https://github.com/iamngoni/kanso/commit/dba36ff9c702d45339df1b0222b6892bd51fdd13))
-- **site:** Parse each note once for quick open's destinations ([8bbd15a](https://github.com/iamngoni/kanso/commit/8bbd15a94fd82b68c706d75b4dd801b9282e7db2))
+- **site:** Parse each note once for quick open's destinations ([8bbd15a](https://github.com/iamngoni/kanso/commit/8bbd15a94fd82b68c706d75b4dd801b9282e7db2)) by @gridopsbot[bot]
 
 ## [0.7.0](https://github.com/iamngoni/kanso/compare/v0.6.1...v0.7.0) - 2026-10-21
 
