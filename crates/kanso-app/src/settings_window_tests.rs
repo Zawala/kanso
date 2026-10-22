@@ -1181,3 +1181,30 @@ fn picking_an_icon_theme_in_settings_applies_it(cx: &mut TestAppContext) {
         "lucide"
     );
 }
+
+/// Settings › Editor has font pickers for writing, monospace and the
+/// preview, and the preview's text size steps on its own, apart from the
+/// editor's, and is saved.
+#[gpui_kit::test]
+fn the_preview_has_its_own_text_size_and_font(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    f.dispatch(cx, Box::new(OpenEditorSettings));
+    for picker in ["font-writing", "font-code", "font-preview"] {
+        assert!(f.drawn(cx, picker), "{picker}");
+    }
+    let sizes = |cx: &mut TestAppContext| {
+        cx.read(|cx| {
+            let appearance = &cx.global::<AppState>().config.appearance;
+            (appearance.editor_font_size, appearance.preview_font_size)
+        })
+    };
+    let (editor, preview) = sizes(cx);
+    f.click(cx, "preview-larger");
+    assert_eq!(sizes(cx), (editor, preview + 1.));
+    let saved = cx.read(|cx| {
+        let state = cx.global::<AppState>();
+        AppConfig::load(&crate::paths::config_path(&state.data_dir)).unwrap()
+    });
+    assert_eq!(saved.appearance.preview_font_size, preview + 1.);
+    assert_eq!(saved.appearance.editor_font_size, editor);
+}

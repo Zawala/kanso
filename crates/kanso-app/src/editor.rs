@@ -220,6 +220,10 @@ pub struct NoteEditor {
     pub view_mode: ViewMode,
     pub editor_font: EditorFont,
     pub font_size: f32,
+    /// The installed fonts picked for prose and for the monospace face
+    /// (settings); `None` for Kanso's own.
+    pub font_family: Option<String>,
+    pub mono_family: Option<String>,
     /// Whether monospace text may show line numbers (a setting).
     pub allow_line_numbers: bool,
     /// Whether the text keeps to a readable measure (a setting), or fills
@@ -315,6 +319,8 @@ impl NoteEditor {
             readable_width,
             ..
         } = *appearance;
+        let font_family = appearance.editor_font_family.clone();
+        let mono_family = appearance.editor_mono_family.clone();
         let title = cx.new(|cx| InputState::new(window, cx).placeholder("Untitled"));
         let line_numbers = editor_font
             .face(view_mode)
@@ -450,6 +456,8 @@ impl NoteEditor {
             view_mode,
             editor_font,
             font_size,
+            font_family,
+            mono_family,
             allow_line_numbers,
             readable_width,
             line_numbers,
@@ -1023,6 +1031,12 @@ impl NoteEditor {
                 }
             }
         }));
+    }
+
+    /// The preview's text size or font changed (a setting): it draws
+    /// again, measuring its text anew.
+    pub fn refresh_preview_type(&mut self, cx: &mut Context<Self>) {
+        self.preview.update(cx, |_, cx| cx.notify());
     }
 
     fn refresh_preview(&mut self, cx: &mut Context<Self>) {
@@ -3401,10 +3415,19 @@ impl Render for NoteEditor {
         };
         let trashed = note.is_trashed();
         let mode = self.view_mode;
+        let installed = crate::fonts::installed(cx);
         let family = if face.mono {
-            cx.theme().mono_font_family.clone()
+            crate::fonts::family(
+                self.mono_family.as_deref(),
+                &installed,
+                cx.theme().mono_font_family.clone(),
+            )
         } else {
-            cx.theme().font_family.clone()
+            crate::fonts::family(
+                self.font_family.as_deref(),
+                &installed,
+                cx.theme().font_family.clone(),
+            )
         };
         let size = self.font_size;
         // Alone, the source keeps to a readable measure for its face and
