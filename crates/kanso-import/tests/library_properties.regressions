@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 65d78093d0a7b57e8f10cdec9e67e2359a8cc8a79b7455666164001c55080e02 # shrinks to pieces = [Code(""), Wiki("Aa"), Code("")]
+cc 6db58bb5c38d74cfe46f59778eee509a33f12db31410a03e56df2e59744c6653 # shrinks to body = "[a[](](> )"

@@ -64,19 +64,36 @@ pub fn scan(body: &str) -> Vec<Found> {
                     continue;
                 }
             } else if i >= wiki_end
-                && let Some(link) = inline_at(body, i)
+                && let Some(inline) = inline_at(body, i)
             {
-                found.push(link);
+                // Markdown does not allow a link inside another link, but
+                // images may sit inside a link's label. Scan the label for
+                // images only, then skip the whole link so brackets in its
+                // destination or text cannot produce overlapping candidates.
+                let offset = inline.label.start;
+                for mut nested in scan(&body[inline.label.clone()]) {
+                    if matches!(nested.kind, Kind::Image | Kind::HtmlImage) {
+                        nested.range = nested.range.start + offset..nested.range.end + offset;
+                        found.push(nested);
+                    }
+                }
+                found.push(inline.found);
+                i = inline.end;
+                continue;
             } else if i >= wiki_end
-                && let Some(link) = definition_at(body, i)
+                && let Some((link, end)) = definition_at(body, i)
             {
                 found.push(link);
+                i = end;
+                continue;
             }
         } else if b == b'<'
             && !in_code(i)
-            && let Some(link) = html_image_at(body, i)
+            && let Some((link, end)) = html_image_at(body, i)
         {
             found.push(link);
+            i = end;
+            continue;
         }
         i += 1;
     }
@@ -124,7 +141,13 @@ fn close_bracket(body: &str, open: usize) -> Option<usize> {
     None
 }
 
-fn inline_at(body: &str, open: usize) -> Option<Found> {
+struct Inline {
+    found: Found,
+    label: Range<usize>,
+    end: usize,
+}
+
+fn inline_at(body: &str, open: usize) -> Option<Inline> {
     let bytes = body.as_bytes();
     let close = close_bracket(body, open)?;
     if bytes.get(close) != Some(&b'(') {
@@ -132,26 +155,31 @@ fn inline_at(body: &str, open: usize) -> Option<Found> {
     }
     let image = open > 0 && bytes[open - 1] == b'!';
     let text = &body[open + 1..close - 1];
-    let (range, target) = destination(body, close + 1, b')')?;
-    Some(Found {
-        kind: if image { Kind::Image } else { Kind::Link },
-        range,
-        target,
-        heading: None,
-        label: Some(text.to_owned()),
+    let (range, target, end) = destination(body, close + 1, b')')?;
+    Some(Inline {
+        found: Found {
+            kind: if image { Kind::Image } else { Kind::Link },
+            range,
+            target,
+            heading: None,
+            label: Some(text.to_owned()),
+        },
+        label: open + 1..close - 1,
+        end,
     })
 }
 
 /// Reads a destination starting at `from` (after the `(`), up to an
 /// optional title and the `close` byte. Returns the destination's range
-/// (inside any `<…>`) and its text.
-fn destination(body: &str, from: usize, close: u8) -> Option<(Range<usize>, String)> {
+/// (inside any `<…>`), its text, and where scanning can resume after the
+/// whole link or definition.
+fn destination(body: &str, from: usize, close: u8) -> Option<(Range<usize>, String, usize)> {
     let bytes = body.as_bytes();
     let mut i = from;
     while bytes.get(i).is_some_and(|&b| b == b' ' || b == b'\t') {
         i += 1;
     }
-    let (start, end) = if bytes.get(i) == Some(&b'<') {
+    let (start, destination_end) = if bytes.get(i) == Some(&b'<') {
         let start = i + 1;
         let len = body[start..].find(['>', '\n'])?;
         if bytes[start + len] != b'>' {
@@ -210,14 +238,19 @@ fn destination(body: &str, from: usize, close: u8) -> Option<(Range<usize>, Stri
             return None;
         }
     }
-    if start == end {
+    if start == destination_end {
         return None;
     }
-    Some((start..end, body[start..end].to_owned()))
+    let resume = if close == b')' { i + 1 } else { i };
+    Some((
+        start..destination_end,
+        body[start..destination_end].to_owned(),
+        resume,
+    ))
 }
 
 /// `[label]: destination` at the start of a line (up to three spaces in).
-fn definition_at(body: &str, open: usize) -> Option<Found> {
+fn definition_at(body: &str, open: usize) -> Option<(Found, usize)> {
     let line_start = body[..open].rfind('\n').map_or(0, |at| at + 1);
     let indent = &body[line_start..open];
     if indent.len() > 3 || !indent.bytes().all(|b| b == b' ') {
@@ -232,18 +265,21 @@ fn definition_at(body: &str, open: usize) -> Option<Found> {
         // A footnote, not a link.
         return None;
     }
-    let (range, target) = destination(body, close + 1, b'\n')?;
-    Some(Found {
-        kind: Kind::Definition,
-        range,
-        target,
-        heading: None,
-        label: Some(label.to_owned()),
-    })
+    let (range, target, end) = destination(body, close + 1, b'\n')?;
+    Some((
+        Found {
+            kind: Kind::Definition,
+            range,
+            target,
+            heading: None,
+            label: Some(label.to_owned()),
+        },
+        end,
+    ))
 }
 
 /// `<img … src="…" …>`: the `src` value.
-fn html_image_at(body: &str, open: usize) -> Option<Found> {
+fn html_image_at(body: &str, open: usize) -> Option<(Found, usize)> {
     let rest = &body[open..];
     if !rest.get(..4)?.eq_ignore_ascii_case("<img") {
         return None;
@@ -264,13 +300,16 @@ fn html_image_at(body: &str, open: usize) -> Option<Found> {
         return None;
     }
     let range = open + start..open + start + len;
-    Some(Found {
-        kind: Kind::HtmlImage,
-        target: body[range.clone()].to_owned(),
-        range,
-        heading: None,
-        label: None,
-    })
+    Some((
+        Found {
+            kind: Kind::HtmlImage,
+            target: body[range.clone()].to_owned(),
+            range,
+            heading: None,
+            label: None,
+        },
+        open + end + 1,
+    ))
 }
 
 /// `body` with each `(range, text)` replacing those bytes. Edits must not
@@ -368,6 +407,20 @@ mod tests {
                 (Kind::Link, "https://x.com".to_owned()),
             ]
         );
+    }
+
+    #[test]
+    fn malformed_nested_links_do_not_overlap() {
+        let body = "[a[](](> )";
+        let found = scan(body);
+        for pair in found.windows(2) {
+            assert!(pair[0].range.end <= pair[1].range.start);
+        }
+        let edits = found
+            .iter()
+            .map(|f| (f.range.clone(), body[f.range.clone()].to_owned()))
+            .collect();
+        assert_eq!(apply(body, edits), body);
     }
 
     #[test]
