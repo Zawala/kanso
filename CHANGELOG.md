@@ -3,6 +3,12 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## [0.8.2](https://github.com/iamngoni/kanso/compare/v0.8.1...v0.8.2) - 2026-10-22
+
+### New
+
+- Add support for seven new library import formats ([78d0792](https://github.com/iamngoni/kanso/commit/78d0792cbb972faf1576c283b668562652282826))
+
 ## [0.8.1](https://github.com/iamngoni/kanso/compare/v0.8.0...v0.8.1) - 2026-10-22
 
 ### New
