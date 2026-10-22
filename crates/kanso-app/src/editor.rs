@@ -2491,6 +2491,7 @@ impl NoteEditor {
             .children(self.voice_pill(colors, cx))
             .child(
                 Button::new("dictate")
+                    .debug_selector(|| "dictate".into())
                     .ghost()
                     .small()
                     .tab_stop(tab_stop)
@@ -2505,11 +2506,13 @@ impl NoteEditor {
                     } else {
                         "Voice input"
                     })
-                    .on_click(
-                        cx.listener(|_, _, window, cx| {
-                            crate::voice::press(cx.entity(), window, cx)
-                        }),
-                    ),
+                    // Not a listener: `press` updates this editor (System
+                    // Dictation puts the keyboard in the note), which can't be
+                    // done while a listener of its own is updating it.
+                    .on_click({
+                        let editor = cx.entity();
+                        move |_, window, cx| crate::voice::press(editor.clone(), window, cx)
+                    }),
             )
             .child(
                 Button::new("history")
