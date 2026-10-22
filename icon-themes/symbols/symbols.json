@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "schema_version": 1,
+  "name": "Symbols",
+  "author": "Joan Garcia",
+  "license": "MIT",
+  "source": "https://github.com/joangarciaa-dev/zed-symbols",
+  "description": "Miguel Solorio's Symbols, from Joan Garcia's Zed extension.",
+  "library": {
+    "notebook": "icons/folders/folder.svg",
+    "notebook-open": "icons/folders/folder-open.svg",
+    "attachment-pdf": "icons/files/pdf.svg",
+    "attachment-image": "icons/files/image.svg",
+    "attachment-audio": "icons/files/audio.svg"
+  }
+}

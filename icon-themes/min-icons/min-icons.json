@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "schema_version": 1,
+  "name": "Min Icons",
+  "author": "Phillip Bronzel",
+  "license": "MIT",
+  "source": "https://github.com/phibr0/zed-min-theme",
+  "description": "Artem Laman's Chalice icons, from Phillip Bronzel's Min theme for Zed.",
+  "library": {
+    "notebook": "icons/folder-closed.svg",
+    "notebook-open": "icons/folder-open.svg",
+    "note": "icons/file.svg",
+    "attachment-pdf": "icons/file-image.svg",
+    "attachment-image": "icons/file-image.svg",
+    "attachment-audio": "icons/file-image.svg"
+  }
+}

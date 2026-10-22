@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "schema_version": 1,
+  "name": "Serendipity Icons",
+  "author": "Nguyen Dang Vinh",
+  "license": "MIT",
+  "source": "https://github.com/meocoder31099/Serendipity-Icon-Theme-Zed",
+  "description": "A tiny set of file and folder icons, from the Zed extension.",
+  "library": {
+    "notebook": "icons/folder.svg",
+    "notebook-open": "icons/folder-open.svg",
+    "note": "icons/file.svg",
+    "attachment-pdf": "icons/file.svg",
+    "attachment-image": "icons/file.svg",
+    "attachment-audio": "icons/file.svg"
+  }
+}

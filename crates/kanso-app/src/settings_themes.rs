@@ -4,8 +4,8 @@
 //! outlined. Following the system's light and dark mode outlines a light
 //! and a dark UI theme at once, and a click sets the one of its kind.
 //! Below them: the themes folder, Reload, Import, and any theme file that
-//! couldn't be used; then the icon theme chooser, each theme with a row of
-//! its icons, and the icon themes folder.
+//! couldn't be used. The Icon Themes page is here too: the icon theme
+//! chooser, each theme with a row of its icons, and the icon themes folder.
 
 use std::sync::Arc;
 
@@ -307,8 +307,12 @@ pub fn page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
         );
     }
     pages.push(section("Theme files", rows, colors));
-    pages.push(icon_theme_section(cx));
     pages
+}
+
+/// Settings › Icon Themes: the icon themes' cards and their files.
+pub fn icon_theme_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
+    vec![icon_theme_section(cx)]
 }
 
 /// Reads the icon themes folder again, off the UI thread, and says what
@@ -324,7 +328,7 @@ pub fn reload_icon_themes(window: &mut Window, cx: &mut App) {
                 0 => Notification::success(format!("{count} icon themes ready.")),
                 1 => Notification::warning(notices[0].sentence()),
                 n => Notification::warning(format!(
-                    "{n} icon theme files couldn't be used; the Themes page lists them."
+                    "{n} icon theme files couldn't be used; the Icon Themes page lists them."
                 )),
             };
             handle
@@ -475,12 +479,7 @@ fn icon_theme_section(cx: &mut Context<SettingsView>) -> AnyElement {
 
 /// A theme's card: a row of its icons, outlined when chosen, and its name.
 fn icon_theme_card(theme: &Arc<IconTheme>, chosen: bool, colors: &Colors) -> AnyElement {
-    let paths = icon_themes::themed_paths(theme);
-    let icons = icon_themes::PREVIEW.iter().map(|path| {
-        let drawn = paths
-            .get(*path)
-            .cloned()
-            .unwrap_or_else(|| SharedString::from((*path).to_owned()));
+    let icons = icon_themes::card_icons(theme).into_iter().map(|drawn| {
         Icon::default()
             .path(icon_themes::unresolved(drawn))
             .size(px(16.))

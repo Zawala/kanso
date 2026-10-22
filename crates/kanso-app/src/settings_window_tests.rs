@@ -1108,7 +1108,7 @@ fn switching_icon_theme_redraws_controls_and_kanso_icons_in_one_window(cx: &mut 
             config: AppConfig::default(),
         });
     });
-    let phosphor = crate::icon_themes::builtins()[1].clone();
+    let phosphor = crate::icon_themes::builtin("phosphor").clone();
     cx.update(|cx| {
         cx.global_mut::<AppState>().config.appearance.icon_theme = Some("phosphor".into());
         crate::icon_themes::apply(cx);
@@ -1139,26 +1139,20 @@ fn switching_icon_theme_redraws_controls_and_kanso_icons_in_one_window(cx: &mut 
     assert_eq!(drawn_for(&seen, "icons/check.svg"), vec!["icons/check.svg"]);
 }
 
-/// Picking an icon theme's card on the Themes page draws the main window's
+/// Picking an icon theme's card on the Icon Themes page draws the main window's
 /// icons with it at once (the sidebar's among them), and saves the choice;
 /// the palette lists the themes with the one in use checked.
 #[gpui_kit::test]
 fn picking_an_icon_theme_in_settings_applies_it(cx: &mut TestAppContext) {
-    use crate::settings::OpenAppearanceSettings;
+    use crate::settings::OpenIconThemeSettings;
     let f = setup(cx);
     let seen = cx.update(record_icons);
-    f.dispatch(cx, Box::new(OpenAppearanceSettings));
-    cx.update(|cx| {
-        f.workspace
-            .read(cx)
-            .settings
-            .clone()
-            .update(cx, |settings, _| settings.scroll_to_end_for_test())
-    });
+    f.dispatch(cx, Box::new(OpenIconThemeSettings));
+    assert_eq!(f.page(cx), SettingsPage::IconThemes);
     f.draw(cx);
     seen.borrow_mut().clear();
     f.click(cx, "icon-theme-phosphor");
-    let phosphor = crate::icon_themes::builtins()[1].clone();
+    let phosphor = crate::icon_themes::builtin("phosphor").clone();
     let saved = cx.read(|cx| {
         let state = cx.global::<AppState>();
         AppConfig::load(&crate::paths::config_path(&state.data_dir)).unwrap()

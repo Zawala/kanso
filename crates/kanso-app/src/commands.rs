@@ -10,7 +10,8 @@ use gpui_kit::assets::IconName;
 use crate::journal::{NewTemplate, NextDay, OpenToday, PreviousDay, QuickCapture};
 use crate::settings::{
     CloseSettings, ImportIconTheme, OpenAccountSettings, OpenApiSettings, OpenAppearanceSettings,
-    OpenEditorSettings, OpenGeneralSettings, OpenUpdateSettings, ReloadIconThemes, ReloadThemes,
+    OpenEditorSettings, OpenGeneralSettings, OpenIconThemeSettings, OpenUpdateSettings,
+    ReloadIconThemes, ReloadThemes,
 };
 use crate::workspace::{
     ChangePassword, Dictate, ExportHtml, ExportLibrary, ExportNote, ExportPdf, FocusNoteList,
@@ -1093,6 +1094,24 @@ static COMMANDS: &[Command] = &[
         ],
         group: Group::App,
         run: action!(OpenAppearanceSettings),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "settings-icon-themes",
+        label: "Settings: Icon Themes",
+        label_when_pinned: None,
+        description: "The icon theme that draws every icon in Kanso, and your icon themes folder.",
+        icon: IconName::Shapes,
+        keywords: &[
+            "preferences",
+            "icons",
+            "icon theme",
+            "icon pack",
+            "import",
+            "zed",
+        ],
+        group: Group::App,
+        run: action!(OpenIconThemeSettings),
         needs: Needs::Nothing,
     },
     Command {

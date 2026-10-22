@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/schema/kanso-icon-theme-v1.json",
+  "schema_version": 1,
+  "name": "Phosphor Icons Theme",
+  "author": "Theo Luciano",
+  "license": "MIT",
+  "source": "https://github.com/theoluciano/phosphor-icons-theme",
+  "description": "Phosphor's icons as Theo Luciano's Zed extension picks them.",
+  "library": {
+    "notebook": "icons/folder-closed.svg",
+    "notebook-open": "icons/folder-open.svg",
+    "fold-closed": "icons/caret-right.svg",
+    "fold-open": "icons/caret-down.svg",
+    "note": "icons/document.svg",
+    "attachment-pdf": "icons/pdf.svg",
+    "attachment-image": "icons/image.svg",
+    "attachment-audio": "icons/audio.svg"
+  }
+}

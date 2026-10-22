@@ -361,8 +361,7 @@ fn book_icon_theme_section(
     .unwrap();
 }
 
-/// Settings › Themes scrolled to the icon theme chooser, with Phosphor
-/// chosen.
+/// Settings › Icon Themes, with Phosphor chosen.
 fn settings_icon_themes(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
@@ -370,12 +369,7 @@ fn settings_icon_themes(
     _: &Store,
 ) {
     use_icon_theme(cx, "phosphor");
-    show_settings(cx, window, workspace, SettingsPage::Appearance);
-    // The icon theme chooser closes the page.
-    cx.update(|cx| {
-        let settings = workspace.read(cx).settings.clone();
-        settings.update(cx, |settings, _| settings.scroll_to_end_for_test());
-    });
+    show_settings(cx, window, workspace, SettingsPage::IconThemes);
 }
 
 /// The app drawn with Phosphor's icons, Engineering open in the sidebar.
