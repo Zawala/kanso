@@ -14,6 +14,10 @@ use kanso_core::NoteStatus;
 pub enum NoteCommand {
     TogglePinned,
     Duplicate,
+    /// Copies the note's `[[Title]]` wiki-link (`note_link`).
+    CopyLink,
+    /// Copies Kanso's own link to the note, by ID.
+    CopyKansoLink,
     SetStatus(NoteStatus),
     ShowHistory,
     Export,
@@ -45,6 +49,8 @@ pub fn items(
         NoteCommand::TogglePinned,
     ))
     .item(item("Duplicate", NoteCommand::Duplicate))
+    .item(item("Copy Note Link", NoteCommand::CopyLink))
+    .item(item("Copy Kanso Link", NoteCommand::CopyKansoLink))
     .submenu("Status", window, cx, move |mut menu, _, _| {
         for option in NoteStatus::ALL {
             let run = statuses.clone();

@@ -87,6 +87,10 @@ actions!(kanso, [ToggleFocusMode, ExitFocusMode]);
 // An empty Excalidraw drawing at the cursor.
 actions!(kanso, [NewDrawing]);
 
+// Back and forward between the notes a window opened (`nav_history`), and
+// the open note's link to paste elsewhere (`note_link`).
+actions!(kanso, [GoBack, GoForward, CopyNoteLink, CopyKansoLink]);
+
 /// Process-wide state: the store, the data folder and the settings.
 pub struct AppState {
     pub store: Arc<Store>,
@@ -169,6 +173,7 @@ pub fn bind_keys(cx: &mut App) {
         // In the note's text: the clipboard's plain text, as it is.
         KeyBinding::new("secondary-shift-v", PastePlainText, Some("Input")),
     ]);
+    crate::nav_history::bind_keys(cx);
     crate::palette::bind_keys(cx);
     crate::journal::bind_keys(cx);
     crate::calendar_view::bind_keys(cx);
@@ -237,6 +242,11 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::separator(),
             MenuItem::action("Next Note", NextNote),
             MenuItem::action("Previous Note", PreviousNote),
+            MenuItem::action("Go Back", GoBack),
+            MenuItem::action("Go Forward", GoForward),
+            MenuItem::separator(),
+            MenuItem::action("Copy Note Link", CopyNoteLink),
+            MenuItem::action("Copy Kanso Link", CopyKansoLink),
         ]),
         Menu::new("View").items([
             MenuItem::action("Editor Only", ShowEditor),
@@ -334,6 +344,8 @@ pub struct Workspace {
     pub(crate) focus: FocusHandle,
     /// A press in a top band that may become a window drag.
     band_drag: BandDrag,
+    /// The notes this window opened, to go back and forward through.
+    pub(crate) nav: crate::nav_history::NavHistory,
     /// Draws stand-ins for the traffic lights, which the system draws over
     /// the window and a headless snapshot can't show.
     #[cfg(test)]
@@ -441,6 +453,7 @@ impl Workspace {
                     let id = id.clone();
                     this.editor
                         .update(cx, |editor, cx| editor.open(id.as_deref(), window, cx));
+                    this.record_visit(cx);
                     AppState::update_config_soon(cx, |config| config.last_note = id);
                 }
                 LibraryEvent::Changed(change) => {
@@ -583,6 +596,7 @@ impl Workspace {
             pane_widths: PaneWidths::default(),
             focus,
             band_drag: BandDrag::default(),
+            nav: Default::default(),
             #[cfg(test)]
             placeholder_traffic_lights: false,
             title_bar: crate::title_bar::SHOWN
@@ -980,6 +994,8 @@ impl Workspace {
                 }
             }
             NoteCommand::Export => self.export(Some(vec![id.to_owned()]), window, cx),
+            NoteCommand::CopyLink => self.copy_link_of(id, false, window, cx),
+            NoteCommand::CopyKansoLink => self.copy_link_of(id, true, window, cx),
             // These work on the open note, so the note opens first.
             NoteCommand::ShowHistory => {
                 if self.open_note(id, window, cx) {
@@ -1562,6 +1578,7 @@ impl Render for Workspace {
         let signed_in = cx
             .try_global::<crate::services::Services>()
             .is_some_and(|services| services.signed_in());
+        let (can_go_back, can_go_forward) = self.nav_reach();
         v_flex()
             .size_full()
             .relative()
@@ -1578,11 +1595,17 @@ impl Render for Workspace {
             .bg(colors.app)
             .text_color(cx.theme().foreground)
             // Controls mark the presses they take; start each press clean.
-            .capture_any_mouse_down(|_, _, cx| {
+            .capture_any_mouse_down(cx.listener(|this, event: &MouseDownEvent, _, cx| {
                 if cx.has_global::<GlobalState>() {
                     GlobalState::reset_text_selection_suppression(cx);
                 }
-            })
+                // The mouse's back and forward buttons, wherever they press.
+                match event.button {
+                    MouseButton::Navigate(NavigationDirection::Back) => this.go_back(cx),
+                    MouseButton::Navigate(NavigationDirection::Forward) => this.go_forward(cx),
+                    _ => {}
+                }
+            }))
             // Presses on empty parts of the top bands move the window. A
             // button prevents the default; an input claims the press for its
             // own text selection.
@@ -1874,6 +1897,20 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &PreviousNote, _, cx| {
                 this.library
                     .update(cx, |library, cx| library.select_relative(-1, cx));
+            }))
+            // Only where they would land, so the menu's items are disabled
+            // otherwise.
+            .when(can_go_back, |el| {
+                el.on_action(cx.listener(|this, _: &GoBack, _, cx| this.go_back(cx)))
+            })
+            .when(can_go_forward, |el| {
+                el.on_action(cx.listener(|this, _: &GoForward, _, cx| this.go_forward(cx)))
+            })
+            .on_action(cx.listener(|this, _: &CopyNoteLink, window, cx| {
+                this.copy_note_link(false, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &CopyKansoLink, window, cx| {
+                this.copy_note_link(true, window, cx)
             }))
             .on_action(cx.listener(|this, _: &OpenCommandPalette, window, cx| {
                 this.palette

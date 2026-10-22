@@ -276,6 +276,13 @@ pub fn completion_query(before_caret: &str) -> Option<(usize, &str)> {
     Some((start, query))
 }
 
+/// Kanso's own link to note `id` titled `title`, `[Title](<ID link>)`:
+/// what autocomplete writes, which names the note by ID. Pure.
+pub fn id_link(id: &str, title: &str) -> String {
+    let suffix = id.strip_prefix("note:").unwrap_or(id);
+    format!("[{}]({NOTE_LINK_PREFIX}{suffix})", link_text(title))
+}
+
 /// Link text for `title` in `[text](…)`: brackets escaped, and "Untitled"
 /// for a note without one.
 fn link_text(title: &str) -> String {
@@ -404,7 +411,6 @@ impl CompletionProvider for WikiCompletion {
             completion_candidates(&index, &query, COMPLETION_LIMIT)
                 .into_iter()
                 .map(|(id, title)| {
-                    let suffix = id.strip_prefix("note:").unwrap_or(id);
                     let shown = if title.trim().is_empty() {
                         "Untitled".to_owned()
                     } else {
@@ -414,10 +420,7 @@ impl CompletionProvider for WikiCompletion {
                         filter_text: Some(matched_prefix(&shown, &query).to_owned()),
                         label: shown,
                         kind: Some(CompletionItemKind::FILE),
-                        text_edit: edit(format!(
-                            "[{}]({NOTE_LINK_PREFIX}{suffix})",
-                            link_text(title)
-                        )),
+                        text_edit: edit(id_link(id, title)),
                         ..Default::default()
                     }
                 })

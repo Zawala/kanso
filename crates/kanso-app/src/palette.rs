@@ -3197,7 +3197,8 @@ mod tests {
     /// in the window.
     /// Account commands have a handler only in the state they fit, so
     /// the menu greys out Sync Now while signed out; each is checked in
-    /// that state.
+    /// that state. Go back and forward have one only where they would land
+    /// (checked in `nav_tests`).
     #[gpui_kit::test]
     fn every_command_reaches_a_handler(cx: &mut TestAppContext) {
         let f = setup(cx);
@@ -3225,6 +3226,7 @@ mod tests {
             let missing: Vec<&str> = f.update(cx, |_, window, cx| {
                 crate::commands::all()
                     .iter()
+                    .filter(|command| !matches!(command.id, "go-back" | "go-forward"))
                     .filter(|command| match command.needs {
                         crate::commands::Needs::SignedIn => signed_in,
                         crate::commands::Needs::SignedOut => !signed_in,
