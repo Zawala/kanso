@@ -3,6 +3,24 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## [0.8.0](https://github.com/iamngoni/kanso/compare/v0.7.0...v0.8.0) - 2026-10-22
+
+### New
+
+- **icons:** Icon themes restyle every icon in Kanso and switch live, in place of icon packs ([02703c9](https://github.com/iamngoni/kanso/commit/02703c926d5e60df306eb963e419929b742e602c))
+
+### Fixed
+
+- **icons:** Imported icon themes keep their attachment icons, credits and licenses, and large Zed themes import ([a27f6c3](https://github.com/iamngoni/kanso/commit/a27f6c3288b07352792026b55202e61b81e73ba4))
+- **collab:** Someone who joins a shared note sees the others' carets within seconds, not ten ([4b21503](https://github.com/iamngoni/kanso/commit/4b215030f2ea010df56f73d0a11158131676c114))
+
+### Under the hood
+
+- **icons:** The component library's own icons can follow an icon theme ([b6774a4](https://github.com/iamngoni/kanso/commit/b6774a4160c82aca64d121a6aa4df566ed730abb))
+- **icons:** The README and the icon themes guide explain how to make, import and choose an icon theme ([b4c2186](https://github.com/iamngoni/kanso/commit/b4c2186c3a0923bd49c61def048244543de6741f))
+- **cloud:** Record the 0.7.0 Worker deployment, its collaboration migration and the bookmark before it ([dba36ff](https://github.com/iamngoni/kanso/commit/dba36ff9c702d45339df1b0222b6892bd51fdd13))
+- **site:** Parse each note once for quick open's destinations ([8bbd15a](https://github.com/iamngoni/kanso/commit/8bbd15a94fd82b68c706d75b4dd801b9282e7db2))
+
 ## [0.7.0](https://github.com/iamngoni/kanso/compare/v0.6.1...v0.7.0) - 2026-10-21
 
 ### New
