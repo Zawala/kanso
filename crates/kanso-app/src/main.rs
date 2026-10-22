@@ -102,6 +102,10 @@ mod site;
 mod smart_paste;
 #[cfg(test)]
 mod snapshots;
+mod spellcheck;
+// Tests check with a word list instead.
+#[cfg(all(target_os = "macos", not(test)))]
+mod spellcheck_macos;
 mod split;
 mod sync_nudge;
 mod table_format;

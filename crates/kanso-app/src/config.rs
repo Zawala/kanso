@@ -399,6 +399,9 @@ pub struct EditorSettings {
     pub inline_tags: bool,
     /// Vim keys in the note's text: Normal, Insert and Visual modes.
     pub vim: bool,
+    /// Misspelled words in the note's text are underlined (`spellcheck`).
+    /// On unless turned off, also for files from before the setting.
+    pub spellcheck: bool,
 }
 
 impl Default for EditorSettings {
@@ -411,6 +414,7 @@ impl Default for EditorSettings {
             word_goal: None,
             inline_tags: false,
             vim: false,
+            spellcheck: true,
         }
     }
 }
@@ -705,6 +709,7 @@ mod tests {
             prop::option::of(1u32..100_000),
             any::<bool>(),
             any::<bool>(),
+            any::<bool>(),
         )
             .prop_map(
                 |(
@@ -715,6 +720,7 @@ mod tests {
                     word_goal,
                     inline_tags,
                     vim,
+                    spellcheck,
                 )| {
                     EditorSettings {
                         auto_pair,
@@ -724,6 +730,7 @@ mod tests {
                         word_goal,
                         inline_tags,
                         vim,
+                        spellcheck,
                     }
                 },
             )
@@ -1221,6 +1228,8 @@ mod tests {
         // the pane unless the readable measure is turned on.
         assert!(config.appearance.line_numbers);
         assert!(!config.appearance.readable_width);
+        // Spelling is checked, though the file predates the setting.
+        assert!(config.editor.spellcheck);
         assert!(config.ensure_credentials());
         assert!(!config.ensure_credentials());
         config.save(&path).unwrap();

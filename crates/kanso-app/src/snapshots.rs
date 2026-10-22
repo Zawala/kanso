@@ -2818,6 +2818,44 @@ fn due_chips(
     });
 }
 
+/// A note with two misspelled words underlined, red and wavy, beside code,
+/// a link, a tag and a fenced block whose words are left alone. A word list
+/// stands in for the system's dictionary.
+fn spelling(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let body = "# Spelling\n\nThe quick brown fox jumpd over the lazzy dog. Code like \
+                `recieve`, links like [Kanso](https://kanso.app/fnord) and tags like \
+                #wrok are left alone.\n\n```\nteh fnord\n```\n";
+    let known: Vec<&str> = crate::spellcheck::prose_words(body)
+        .into_iter()
+        .map(|r| &body[r])
+        .filter(|w| !matches!(*w, "jumpd" | "lazzy"))
+        .collect();
+    let words = crate::spellcheck::WordList::new(&known);
+    cx.update(|cx| crate::spellcheck::set_dictionary(Arc::new(words), cx));
+    let book = store.books().unwrap()[0].id.clone();
+    let id = store
+        .put(
+            DocType::Note,
+            json!({"title": "Spelling", "body": body, "bookId": book}),
+            Put::Upsert,
+            Origin::Ui,
+        )
+        .unwrap()
+        .id;
+    let library = cx.update(|cx| workspace.read(cx).library.clone());
+    cx.update(|cx| {
+        library.update(cx, |library, cx| {
+            library.reload(cx);
+            library.select(Some(id), cx);
+        })
+    });
+}
+
 /// Replace in all notes, finding "release" with a preview of each note's
 /// matches and one note left out.
 fn replace_sheet(
@@ -4177,6 +4215,8 @@ fn snapshots() {
         shot("light-task-board", Light, Edit, task_board),
         shot("dark-due-chips", Dark, Preview, due_chips),
         shot("light-due-chips", Light, Split, due_chips),
+        shot("light-spelling", Light, Edit, spelling),
+        shot("dark-spelling", Dark, Edit, spelling),
         Shot {
             dialog_width: crate::replace::SHEET_WIDTH,
             ..shot("dark-replace", Dark, Edit, replace_sheet)

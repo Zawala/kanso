@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc ce3807f572fe0eea2657c6675bed602de2275b3d7a4887920b7098913815ce13 # shrinks to note = Piece { text: "## [aa](https://aa.example/aa)\n", prose: [4..6], other: [7..30] }
+cc 3aba6906fe508cd445d4f2931dd8345630f4611d3064a0209b4cdb0fa01f1ff0 # shrinks to text = "---\na```\nA```\n```\n---\naaa<"
