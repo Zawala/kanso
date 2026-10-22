@@ -73,6 +73,7 @@ mod nav_history;
 #[cfg(test)]
 mod nav_tests;
 mod note_link;
+mod note_batch;
 mod note_list;
 mod note_meaning;
 mod note_menu;
@@ -94,6 +95,7 @@ mod publish_site;
 mod related;
 mod reminders;
 mod replace;
+mod selection;
 mod services;
 mod settings;
 mod settings_capture;

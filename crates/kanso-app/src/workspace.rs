@@ -27,6 +27,7 @@ use crate::layout::{
     rail_width,
 };
 use crate::library::{Filter, Library, LibraryEvent};
+use crate::note_batch::Change as BatchChange;
 use crate::note_list::{NoteList, NoteListEvent};
 use crate::note_menu::NoteCommand;
 use crate::palette::{Mode, Palette};
@@ -915,6 +916,9 @@ impl Workspace {
                 .editor
                 .update(cx, |editor, cx| editor.focus_body(window, cx)),
             NoteListEvent::Command(id, command) => self.run_note_command(id, *command, window, cx),
+            NoteListEvent::CommandSeveral(ids, command) => {
+                self.run_several_command(ids, *command, window, cx)
+            }
             NoteListEvent::Restore(id) => {
                 let Some(book) = self.library.read(cx).books.first().map(|b| b.id.clone()) else {
                     return self.notify_error(
@@ -944,6 +948,44 @@ impl Workspace {
                 );
             }
         }
+    }
+
+    /// Carries out a choice from the menu of several selected notes, for
+    /// all of `ids`; what only makes sense for one note is for the open one.
+    fn run_several_command(
+        &mut self,
+        ids: &[String],
+        command: NoteCommand,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let change = match command {
+            NoteCommand::TogglePinned => BatchChange::TogglePin,
+            NoteCommand::Trash => BatchChange::Move(TRASH_BOOK_ID.into()),
+            NoteCommand::SetStatus(status) => BatchChange::Status(status),
+            NoteCommand::Export => return self.export(Some(ids.to_vec()), window, cx),
+            NoteCommand::Duplicate
+            | NoteCommand::ShowHistory
+            | NoteCommand::Publish
+            | NoteCommand::Share => {
+                if let Some(id) = self.library.read(cx).selected.clone() {
+                    self.run_note_command(&id, command, window, cx);
+                }
+                return;
+            }
+        };
+        self.change_notes(ids, change, window, cx);
+    }
+
+    /// Makes `change` to the notes `ids` at once, with Undo.
+    pub(crate) fn change_notes(
+        &mut self,
+        ids: &[String],
+        change: BatchChange,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::note_batch::apply(ids, change, &self.library, &self.editor, window, cx);
     }
 
     /// Carries out a choice from a note's menu (see `note_menu`), for the
@@ -1142,6 +1184,9 @@ impl Workspace {
                 let mode = Mode::Pick(Picker::GoToNotebook);
                 self.palette
                     .update(cx, |palette, cx| palette.open(mode, window, cx));
+            }
+            SidebarEvent::DropNotes(ids, change) => {
+                self.change_notes(ids, change.clone(), window, cx)
             }
             SidebarEvent::GoToTag => {
                 let mode = Mode::Pick(Picker::GoToTag);
@@ -1802,6 +1847,9 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &SaveNote, _, cx| this.flush(cx)))
             .on_action(cx.listener(|this, _: &TogglePinned, window, cx| {
                 this.close_settings(window, cx);
+                if let Some(ids) = this.library.read(cx).several_selected() {
+                    return this.change_notes(&ids, BatchChange::TogglePin, window, cx);
+                }
                 this.editor
                     .update(cx, |editor, cx| editor.toggle_pinned(cx));
             }))
@@ -1821,6 +1869,10 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|this, _: &TrashNote, window, cx| {
                 this.close_settings(window, cx);
+                if let Some(ids) = this.library.read(cx).several_selected() {
+                    let trash = BatchChange::Move(TRASH_BOOK_ID.into());
+                    return this.change_notes(&ids, trash, window, cx);
+                }
                 this.editor.update(cx, |editor, cx| editor.trash(cx));
             }))
             .on_action(

@@ -1,7 +1,8 @@
 //! What can be done to one note, as a menu: the same items, in the same
 //! order, from a right click on its row in the list and from the editor's
 //! "More" button. The workspace carries each choice out
-//! (`Workspace::run_note_command`).
+//! (`Workspace::run_note_command`). A right click among several selected
+//! notes shows the items that make sense for all of them.
 
 use std::rc::Rc;
 
@@ -72,4 +73,48 @@ pub fn items(
     .item(item("Publish to the Web…", NoteCommand::Publish))
     .separator()
     .item(item("Move to Trash", NoteCommand::Trash))
+}
+
+/// Adds the items for `count` selected notes to `menu`, each calling `run`
+/// with its command, which the workspace carries out for all of them.
+/// `all_pinned` says whether pinning would unpin them instead.
+pub fn several_items(
+    menu: PopupMenu,
+    count: usize,
+    all_pinned: bool,
+    run: Run,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let item = |label: String, command: NoteCommand| {
+        let run = run.clone();
+        PopupMenuItem::new(label).on_click(move |_, window, cx| run(command, window, cx))
+    };
+    let statuses = run.clone();
+    menu.label(format!("{count} Notes Selected"))
+        .separator()
+        .item(item(
+            if all_pinned {
+                format!("Unpin {count} Notes")
+            } else {
+                format!("Pin {count} Notes")
+            },
+            NoteCommand::TogglePinned,
+        ))
+        .submenu("Status", window, cx, move |mut menu, _, _| {
+            for option in NoteStatus::ALL {
+                let run = statuses.clone();
+                menu = menu.item(PopupMenuItem::new(option.label()).on_click(
+                    move |_, window, cx| run(NoteCommand::SetStatus(option), window, cx),
+                ));
+            }
+            menu
+        })
+        .separator()
+        .item(item(format!("Export {count} Notes…"), NoteCommand::Export))
+        .separator()
+        .item(item(
+            format!("Move {count} Notes to Trash"),
+            NoteCommand::Trash,
+        ))
 }

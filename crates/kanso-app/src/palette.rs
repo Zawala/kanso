@@ -38,6 +38,7 @@ use crate::fuzzy;
 use crate::icon_themes::{self, Slot};
 use crate::keys::keycap;
 use crate::library::{Filter, Library, RECENT_DAYS, search_params};
+use crate::note_batch::Change;
 use crate::services::Services;
 use crate::text_stats::format_count;
 use crate::theme::{
@@ -260,6 +261,9 @@ pub struct Palette {
     restore_focus: Option<FocusHandle>,
     /// The note that was open when the palette opened.
     note: Option<Note>,
+    /// The notes selected in the list, when there are several: moving,
+    /// tagging, pinning, setting the status and trashing act on all of them.
+    several: Vec<NoteSummary>,
     /// Whether the open note is out of sight (behind Settings): the palette
     /// then offers nothing that acts on it.
     notes_hidden: bool,
@@ -317,6 +321,7 @@ impl Palette {
             cx.observe(&library, |this, _, cx| {
                 if this.mode.is_some() {
                     this.note = this.open_note(cx);
+                    this.several = this.several_notes(cx);
                     this.rebuild(cx);
                 }
             }),
@@ -332,6 +337,7 @@ impl Palette {
             from_commands: false,
             restore_focus: None,
             note: None,
+            several: Vec::new(),
             notes_hidden: false,
             items: Vec::new(),
             rows: Vec::new(),
@@ -366,6 +372,7 @@ impl Palette {
         if self.mode.is_none() {
             self.restore_focus = window.focused(cx);
             self.note = self.open_note(cx);
+            self.several = self.several_notes(cx);
         }
         self.from_commands = false;
         self.show(mode, window, cx);
@@ -485,6 +492,43 @@ impl Palette {
     /// The open note is out of sight, or back in view.
     pub fn set_notes_hidden(&mut self, hidden: bool) {
         self.notes_hidden = hidden;
+    }
+
+    fn several_notes(&self, cx: &App) -> Vec<NoteSummary> {
+        let library = self.library.read(cx);
+        match library.several_selected() {
+            Some(ids) if !self.notes_hidden => library
+                .notes
+                .iter()
+                .filter(|n| ids.contains(&n.id))
+                .cloned()
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Makes `change` to the several selected notes, when there are; says
+    /// whether it did.
+    fn change_several(
+        &mut self,
+        change: Change,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.several.is_empty() {
+            return false;
+        }
+        let ids: Vec<String> = self.several.iter().map(|n| n.id.clone()).collect();
+        crate::note_batch::apply(&ids, change, &self.library, &self.editor, window, cx);
+        true
+    }
+
+    /// What every one of the several selected notes has, by `of`: the
+    /// value they share, or `None` when they differ.
+    fn shared_by_several<T: PartialEq>(&self, of: impl Fn(&NoteSummary) -> T) -> Option<T> {
+        let mut values = self.several.iter().map(of);
+        let first = values.next()?;
+        values.all(|v| v == first).then_some(first)
     }
 
     fn open_note(&self, cx: &App) -> Option<Note> {
@@ -623,7 +667,12 @@ impl Palette {
             }
             Some(Mode::Pick(Picker::Notebook)) => {
                 let library = self.library.read(cx);
-                let current = self.note.as_ref().map(|n| n.book_id.as_str());
+                let shared_book = self.shared_by_several(|n| n.book_id.clone());
+                let current = if self.several.is_empty() {
+                    self.note.as_ref().map(|n| n.book_id.as_str())
+                } else {
+                    shared_book.as_deref()
+                };
                 let entries = library
                     .book_tree()
                     .into_iter()
@@ -691,7 +740,21 @@ impl Palette {
             }
             Some(Mode::Pick(Picker::Tag)) => {
                 let library = self.library.read(cx);
-                let on_note = self.note.as_ref().map_or(&[][..], |n| &n.tags[..]);
+                // With several notes, a tag is checked when they all have it.
+                let on_all: Vec<String> = match self.several.first() {
+                    Some(first) => first
+                        .tags
+                        .iter()
+                        .filter(|t| self.several.iter().all(|n| n.tags.contains(t)))
+                        .cloned()
+                        .collect(),
+                    None => Vec::new(),
+                };
+                let on_note = if self.several.is_empty() {
+                    self.note.as_ref().map_or(&[][..], |n| &n.tags[..])
+                } else {
+                    &on_all[..]
+                };
                 // Before anything is typed, the tags close notes have lead.
                 let suggested: Vec<_> = if query.is_empty() && self.note.is_some() {
                     self.editor
@@ -754,7 +817,11 @@ impl Palette {
                 sections
             }
             Some(Mode::Pick(Picker::Status)) => {
-                let current = self.note.as_ref().map(|n| n.status);
+                let current = if self.several.is_empty() {
+                    self.note.as_ref().map(|n| n.status)
+                } else {
+                    self.shared_by_several(|n| n.status)
+                };
                 let entries = NoteStatus::ALL
                     .into_iter()
                     .map(|status| {
@@ -869,11 +936,16 @@ impl Palette {
                 Needs::SharedNote => shared_note,
             })
             .map(|command| {
+                let pinned = match self.shared_by_several(|n| n.pinned) {
+                    _ if self.several.is_empty() => note.is_some_and(|n| n.pinned),
+                    all_pinned => all_pinned == Some(true),
+                };
                 let (label, icon) = match command.label_when_pinned {
-                    Some(set) if note.is_some_and(|n| n.pinned) => set,
+                    Some(set) if pinned => set,
                     _ => (command.label, command.icon),
                 };
-                let score = item_score(query, label, command.keywords);
+                let label = several_label(command.id, label, self.several.len());
+                let score = item_score(query, &label, command.keywords);
                 (Item::new(Target::Command(command), label, icon), score)
             })
             .collect()
@@ -1238,12 +1310,16 @@ impl Palette {
             }
             Target::Book(id) => {
                 self.close(window, cx);
-                self.editor.update(cx, |editor, cx| editor.set_book(id, cx));
+                if !self.change_several(Change::Move(id.clone()), window, cx) {
+                    self.editor.update(cx, |editor, cx| editor.set_book(id, cx));
+                }
             }
             Target::Tag(id) => {
                 self.close(window, cx);
-                self.editor
-                    .update(cx, |editor, cx| editor.toggle_tag(id, cx));
+                if !self.change_several(Change::ToggleTag(id.clone()), window, cx) {
+                    self.editor
+                        .update(cx, |editor, cx| editor.toggle_tag(id, cx));
+                }
             }
             Target::NewTag(name) => {
                 self.close(window, cx);
@@ -1251,9 +1327,12 @@ impl Palette {
                     .store
                     .put(DocType::Tag, json!({"name": name}), Put::Upsert, Origin::Ui)
                 {
-                    Ok(created) => self
-                        .editor
-                        .update(cx, |editor, cx| editor.toggle_tag(created.id, cx)),
+                    Ok(created) => {
+                        if !self.change_several(Change::AddTag(created.id.clone()), window, cx) {
+                            self.editor
+                                .update(cx, |editor, cx| editor.toggle_tag(created.id, cx));
+                        }
+                    }
                     Err(err) => window.push_notification(
                         Notification::error(format!("Couldn't create the tag: {err}")),
                         cx,
@@ -1262,8 +1341,10 @@ impl Palette {
             }
             Target::Status(status) => {
                 self.close(window, cx);
-                self.editor
-                    .update(cx, |editor, cx| editor.set_status(status, cx));
+                if !self.change_several(Change::Status(status), window, cx) {
+                    self.editor
+                        .update(cx, |editor, cx| editor.set_status(status, cx));
+                }
             }
             Target::WordGoal(goal) => {
                 self.close(window, cx);
@@ -2245,6 +2326,24 @@ fn note_title(title: &str) -> String {
     } else {
         title.to_owned()
     }
+}
+
+/// A command's label with `several` notes selected: the ones that act on
+/// all of them say how many.
+fn several_label(id: &str, label: &'static str, several: usize) -> SharedString {
+    if several < 2 {
+        return label.into();
+    }
+    match id {
+        "pin" if label.starts_with("Unpin") => format!("Unpin {several} notes"),
+        "pin" => format!("Pin {several} notes"),
+        "move" => format!("Move {several} notes to notebook…"),
+        "add-tag" => format!("Add tag to {several} notes…"),
+        "status" => format!("Set status of {several} notes…"),
+        "trash" => format!("Move {several} notes to trash"),
+        _ => return label.into(),
+    }
+    .into()
 }
 
 fn notes_count(count: &str) -> SharedString {

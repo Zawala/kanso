@@ -607,6 +607,30 @@ impl Store {
             )
         })
     }
+
+    /// Merges each of `bodies` (with its `_id`) into its document of
+    /// `doc_type`, in one transaction: every document changes, or none
+    /// does. The app changes several selected notes at once with it.
+    pub fn merge_many(
+        &self,
+        doc_type: DocType,
+        bodies: Vec<Value>,
+        origin: Origin,
+    ) -> Result<Vec<WriteResult>> {
+        let mut merges = Vec::with_capacity(bodies.len());
+        for body in bodies {
+            match body {
+                Value::Object(fields) => merges.push(fields),
+                _ => return Err(StoreError::Invalid("Expected a JSON object.".into())),
+            }
+        }
+        self.write(|tx, changes| {
+            merges
+                .into_iter()
+                .map(|fields| put_in(tx, changes, doc_type, fields, Put::Merge, origin, &[]))
+                .collect()
+        })
+    }
 }
 
 /// [`Store::put_keeping`] inside the writer's transaction.

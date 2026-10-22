@@ -11,6 +11,7 @@ use kanso_core::{Book, Clause, Field, NoteStatus, Query, Tag};
 use kanso_store::{Change, NoteSummary, SearchParams, Sort, StatusCounts, Store, StoreError};
 
 use crate::clock::Clock;
+use crate::selection::{Click, Selection};
 
 /// How far back Recent reaches.
 pub const RECENT_DAYS: i64 = 7;
@@ -205,6 +206,9 @@ pub struct Library {
     pub status_only: Option<NoteStatus>,
     pub pinned_only: bool,
     pub selected: Option<String>,
+    /// The notes selected in the list: `selected` alone, unless ⇧- or
+    /// ⌘-click or ⌘A selected more. Its focus is always `selected`.
+    pub selection: Selection,
     pub load_error: Option<String>,
     generation: u64,
     /// After a filter or search change, select the first note when the
@@ -266,6 +270,7 @@ impl Library {
             status_only: None,
             pinned_only: false,
             selected: None,
+            selection: Selection::default(),
             load_error: None,
             generation: 0,
             reselect: true,
@@ -355,6 +360,9 @@ impl Library {
                         if let Some(notes) = loaded.notes {
                             this.notes = notes;
                             this.notes_version += 1;
+                            let listed: Vec<&str> =
+                                this.notes.iter().map(|n| n.id.as_str()).collect();
+                            this.selection.retain(&listed);
                         }
                         this.load_error = None;
                     }
@@ -446,6 +454,15 @@ impl Library {
     /// A note picked again that is already selected still says so, so
     /// whatever hides it (Settings) gives way.
     fn select_as(&mut self, id: Option<String>, asked: bool, cx: &mut Context<Self>) {
+        if self.selection != Selection::one(id.clone()) {
+            self.selection = Selection::one(id.clone());
+            cx.notify();
+        }
+        self.show_focus(id, asked, cx);
+    }
+
+    /// Shows `id` in the editor, leaving the selection as it is.
+    fn show_focus(&mut self, id: Option<String>, asked: bool, cx: &mut Context<Self>) {
         let changed = self.selected != id;
         if changed || asked {
             self.selected = id.clone();
@@ -454,6 +471,41 @@ impl Library {
         if changed {
             cx.notify();
         }
+    }
+
+    /// A click on the listed note `id`: alone, toggled, or a run from the
+    /// last plain click.
+    pub fn click(&mut self, id: &str, how: Click, cx: &mut Context<Self>) {
+        let listed: Vec<&str> = self.notes.iter().map(|n| n.id.as_str()).collect();
+        self.selection.click(id, how, &listed);
+        let focus = self.selection.focus().map(str::to_owned);
+        cx.notify();
+        self.show_focus(focus, true, cx);
+    }
+
+    /// Selects every listed note, ⌘A.
+    pub fn select_all(&mut self, cx: &mut Context<Self>) {
+        let listed: Vec<&str> = self.notes.iter().map(|n| n.id.as_str()).collect();
+        self.selection.select_all(&listed);
+        let focus = self.selection.focus().map(str::to_owned);
+        cx.notify();
+        self.show_focus(focus, false, cx);
+    }
+
+    /// Back to the note the editor shows alone, Escape.
+    pub fn select_one(&mut self, cx: &mut Context<Self>) {
+        if self.selection.is_several() {
+            self.selection.collapse();
+            cx.notify();
+        }
+    }
+
+    /// The selected notes when there are several, for a change to all of
+    /// them; `None` when one note is selected, or none.
+    pub fn several_selected(&self) -> Option<Vec<String>> {
+        self.selection
+            .is_several()
+            .then(|| self.selection.ids().to_vec())
     }
 
     /// Selects the note `offset` rows away from the current one.
