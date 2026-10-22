@@ -3,6 +3,16 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## [0.8.4](https://github.com/iamngoni/kanso/compare/v0.8.3...v0.8.4) - 2026-10-22
+
+### New
+
+- Import Apple Notes from its default library location ([184aa3e](https://github.com/iamngoni/kanso/commit/184aa3e4bada92bcbf7bb20245a11da9645aaabb))
+
+### Fixed
+
+- Prevent overlapping link scan matches ([b43bb79](https://github.com/iamngoni/kanso/commit/b43bb790ef90259e0cce570cce2c0bc513e074c9))
+
 ## [0.8.3](https://github.com/iamngoni/kanso/compare/v0.8.2...v0.8.3) - 2026-10-22
 
 ### Fixed
