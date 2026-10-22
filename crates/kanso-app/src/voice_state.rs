@@ -146,6 +146,19 @@ fn lowercase_first(words: &str) -> String {
     out
 }
 
+/// Where the live words `shown` are in `text` now, they having gone in at
+/// `start`: the occurrence nearest it, for when the text around them
+/// changed while someone spoke. `None` for no words, or none to be found.
+pub fn find_live(text: &str, start: usize, shown: &str) -> Option<Range<usize>> {
+    if shown.is_empty() {
+        return None;
+    }
+    text.match_indices(shown)
+        .map(|(at, _)| at)
+        .min_by_key(|at| at.abs_diff(start))
+        .map(|at| at..at + shown.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,6 +307,27 @@ mod tests {
                 phase = after;
             }
             prop_assert!(endings.values().all(|&n| n == 1));
+        }
+
+        /// The live words are found where they are, the nearest copy to
+        /// where they went in when there are more, and never anything else.
+        #[test]
+        fn prop_live_words_are_found_where_they_went(
+            before in "[a-z .]{0,12}",
+            shown in "[a-z]{1,5}",
+            between in "[a-z .]{0,12}",
+            copy in any::<bool>(),
+        ) {
+            let text = format!("{before}{shown}{between}{}", if copy { shown.as_str() } else { "" });
+            let found = find_live(&text, before.len(), &shown).unwrap();
+            prop_assert_eq!(&text[found.clone()], shown.as_str());
+            let nearest = text
+                .match_indices(shown.as_str())
+                .map(|(at, _)| at.abs_diff(before.len()))
+                .min()
+                .unwrap();
+            prop_assert_eq!(found.start.abs_diff(before.len()), nearest);
+            prop_assert_eq!(find_live(&text, 0, ""), None);
         }
     }
 }

@@ -5,11 +5,12 @@
 //! 20 seconds or so, cuts the recording at a pause ([`chunk::plan_cut`]) and
 //! hands the piece to the transcriber, so most of the work is done by the
 //! time the person stops. The transcriber loads the model while the first
-//! piece records.
+//! piece records. Between pieces it transcribes what was recorded since the
+//! last cut, so the words show while they are said ([`Dictation::live`]).
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -21,13 +22,16 @@ use crate::VoiceError;
 use crate::audio::{MODEL_RATE, Resampler16k, for_each_mono, meter_level, rms};
 use crate::chunk;
 use crate::engine::Parakeet;
-use crate::text::join_pieces;
+use crate::live::{LiveText, preview_due};
 
 /// The longest dictation: 30 minutes.
 pub const MAX_RECORDING: Duration = Duration::from_secs(30 * 60);
 
 /// How often the microphone thread collects what the device recorded.
 const POLL: Duration = Duration::from_millis(20);
+
+/// How long the transcriber waits for a piece before it looks at the tail.
+const PREVIEW_WAIT: Duration = Duration::from_millis(50);
 
 /// The stretch of sound the meter shows: 50 ms at 16 kHz.
 const LEVEL_WINDOW: usize = MODEL_RATE as usize / 20;
@@ -43,6 +47,12 @@ struct Shared {
     level: AtomicU32,
     /// 16 kHz samples recorded so far.
     samples: AtomicU64,
+    /// What was recorded since the last piece was cut off, for the
+    /// transcriber to look at while it waits; `None` once taken. A piece is
+    /// sent with this held, so the tail taken after it never repeats it.
+    tail: Mutex<Option<Vec<f32>>>,
+    /// What has been said so far.
+    live: Mutex<LiveText>,
 }
 
 /// What the microphone thread hands the transcriber.
@@ -81,6 +91,8 @@ impl Dictation {
             recording: AtomicBool::new(false),
             level: AtomicU32::new(0f32.to_bits()),
             samples: AtomicU64::new(0),
+            tail: Mutex::new(None),
+            live: Mutex::new(LiveText::default()),
         });
         let (pieces_tx, pieces_rx) = mpsc::channel();
         let (result_tx, result_rx) = async_channel::bounded(1);
@@ -133,6 +145,17 @@ impl Dictation {
         Duration::from_micros(samples * 1_000_000 / u64::from(MODEL_RATE))
     }
 
+    /// What has been heard so far, and a number that changes whenever it
+    /// does. The last words may change as more is heard; the transcript
+    /// [`stop`](Self::stop) gives is the final one.
+    pub fn live(&self) -> (u64, String) {
+        self.shared
+            .live
+            .lock()
+            .map(|live| (live.version(), live.text()))
+            .unwrap_or_default()
+    }
+
     /// False once stopped, or when the device failed, the model wouldn't
     /// load, or [`MAX_RECORDING`] was reached; [`stop`](Self::stop) then
     /// gives the transcript of what was recorded.
@@ -166,8 +189,8 @@ impl Drop for Dictation {
 }
 
 /// The transcriber thread: loads the model, then transcribes each piece as
-/// it comes, and joins the texts at the end.
-// no-prop-test: runs the real model; `join_pieces` and the decoder have the properties.
+/// it comes, and the tail between pieces.
+// no-prop-test: loads the real model; `run_transcriber` has the tests.
 fn transcribe_pieces(
     dir: &Path,
     pieces: &Receiver<Piece>,
@@ -181,20 +204,51 @@ fn transcribe_pieces(
             return Err(e);
         }
     };
-    let mut texts = Vec::new();
+    run_transcriber(pieces, shared, |samples, cancel| {
+        engine.transcribe(samples, cancel)
+    })
+}
+
+/// Transcribes each piece with `transcribe` as it comes, and while none
+/// is waiting, the tail recorded since; joins the pieces' texts at the end.
+fn run_transcriber(
+    pieces: &Receiver<Piece>,
+    shared: &Shared,
+    mut transcribe: impl FnMut(&[f32], &AtomicBool) -> Result<String, VoiceError>,
+) -> Result<String, VoiceError> {
+    let live = |f: &mut dyn FnMut(&mut LiveText)| {
+        if let Ok(mut live) = shared.live.lock() {
+            f(&mut live);
+        }
+    };
     loop {
         if shared.cancel.load(Ordering::Relaxed) {
             return Err(VoiceError::Cancelled);
         }
-        let failure = match pieces.recv() {
+        let failure = match pieces.recv_timeout(PREVIEW_WAIT) {
             Ok(Piece::Audio(samples)) => {
-                texts.push(engine.transcribe(&samples, &shared.cancel)?);
+                let text = transcribe(&samples, &shared.cancel)?;
+                live(&mut |live| live.commit(text.clone()));
                 continue;
             }
             Ok(Piece::End { failure }) => failure,
-            Err(_) => Some("the microphone stopped unexpectedly".to_owned()),
+            Err(RecvTimeoutError::Timeout) => {
+                let tail = shared.tail.lock().ok().and_then(|mut tail| tail.take());
+                if let Some(samples) = tail {
+                    let text = transcribe(&samples, &shared.cancel)?;
+                    live(&mut |live| live.preview(text.clone()));
+                }
+                continue;
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                Some("the microphone stopped unexpectedly".to_owned())
+            }
         };
-        let text = join_pieces(texts.iter().map(String::as_str));
+        let text = shared
+            .live
+            .lock()
+            .map(|live| live.finished())
+            .unwrap_or_default();
         return match (text.is_empty(), failure) {
             (false, _) => Ok(text),
             (true, Some(failure)) => Err(VoiceError::Device(failure)),
@@ -246,6 +300,8 @@ fn record(shared: &Shared, pieces: &Sender<Piece>, ready: &SyncSender<Result<(),
         Vec::with_capacity(chunk::MAX_SECONDS as usize * MODEL_RATE as usize);
     let mut raw = Vec::new();
     let mut total = 0u64;
+    // How long the tail was when it was last handed on.
+    let mut handed = 0usize;
     loop {
         thread::sleep(POLL);
         raw.clear();
@@ -264,12 +320,20 @@ fn record(shared: &Shared, pieces: &Sender<Piece>, ready: &SyncSender<Result<(),
             .level
             .store(meter_level(rms(recent)).to_bits(), Ordering::Relaxed);
 
-        if let Some(cut) = chunk::plan_cut(&pending, MODEL_RATE) {
-            let rest = pending.split_off(cut);
-            let piece = std::mem::replace(&mut pending, rest);
-            if pieces.send(Piece::Audio(piece)).is_err() {
+        let cut = chunk::plan_cut(&pending, MODEL_RATE);
+        if cut.is_some() || preview_due(pending.len(), handed) {
+            let Ok(mut tail) = shared.tail.lock() else {
                 break;
+            };
+            if let Some(cut) = cut {
+                let rest = pending.split_off(cut);
+                let piece = std::mem::replace(&mut pending, rest);
+                if pieces.send(Piece::Audio(piece)).is_err() {
+                    break;
+                }
             }
+            *tail = Some(pending.clone());
+            handed = pending.len();
         }
         let failed = failure.lock().map(|f| f.is_some()).unwrap_or(true);
         if shared.stop.load(Ordering::Relaxed) || failed || total >= cap {
@@ -285,6 +349,9 @@ fn record(shared: &Shared, pieces: &Sender<Piece>, ready: &SyncSender<Result<(),
     if shared.cancel.load(Ordering::Relaxed) {
         let _ = pieces.send(Piece::End { failure: None });
         return;
+    }
+    if let Ok(mut tail) = shared.tail.lock() {
+        *tail = None;
     }
     raw.clear();
     collect(&mut consumer, &mut raw);
@@ -396,4 +463,121 @@ where
         on_error,
         None,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+    use proptest::test_runner::FileFailurePersistence;
+
+    fn shared() -> Shared {
+        Shared {
+            stop: AtomicBool::new(false),
+            cancel: AtomicBool::new(false),
+            recording: AtomicBool::new(false),
+            level: AtomicU32::new(0),
+            samples: AtomicU64::new(0),
+            tail: Mutex::new(None),
+            live: Mutex::new(LiveText::default()),
+        }
+    }
+
+    /// A stand-in for the model: each sample is a word, `w` and its value.
+    fn words(samples: &[f32], _: &AtomicBool) -> Result<String, VoiceError> {
+        Ok(samples
+            .iter()
+            .map(|s| format!("w{s}"))
+            .collect::<Vec<_>>()
+            .join(" "))
+    }
+
+    /// What was said shows before it is finished: the tail first, then the
+    /// piece that replaces it, and the transcript is the pieces alone.
+    #[test]
+    fn the_tail_shows_until_its_piece_arrives() {
+        let shared = shared();
+        let (tx, rx) = mpsc::channel();
+        *shared.tail.lock().unwrap() = Some(vec![1.0, 2.0]);
+        let mut seen = Vec::new();
+        let mut sent = false;
+        let result = run_transcriber(&rx, &shared, |samples, cancel| {
+            let text = words(samples, cancel);
+            if !sent {
+                // The tail is being heard: nothing finished yet.
+                seen.push(shared.live.lock().unwrap().text());
+                tx.send(Piece::Audio(vec![1.0, 2.0, 3.0])).unwrap();
+                tx.send(Piece::End { failure: None }).unwrap();
+                sent = true;
+            }
+            text
+        });
+        assert_eq!(seen, [""]);
+        assert_eq!(result.unwrap(), "w1 w2 w3");
+        assert_eq!(shared.live.lock().unwrap().text(), "w1 w2 w3");
+    }
+
+    #[test]
+    fn nothing_heard_and_a_failed_device() {
+        let shared = shared();
+        let (tx, rx) = mpsc::channel();
+        tx.send(Piece::End { failure: None }).unwrap();
+        assert!(matches!(
+            run_transcriber(&rx, &shared, words),
+            Err(VoiceError::NothingHeard)
+        ));
+        let (tx, rx) = mpsc::channel();
+        tx.send(Piece::End {
+            failure: Some("gone".into()),
+        })
+        .unwrap();
+        assert!(matches!(
+            run_transcriber(&rx, &shared, words),
+            Err(VoiceError::Device(_))
+        ));
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 64,
+            failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
+            ..ProptestConfig::default()
+        })]
+
+        /// However tails and pieces interleave, the transcript is the
+        /// pieces' text in order, and the text shown never loses a
+        /// finished piece.
+        #[test]
+        fn prop_transcript_is_the_pieces_whatever_the_tails(
+            steps in prop::collection::vec((any::<bool>(), prop::collection::vec(0u8..9, 1..4)), 1..12),
+        ) {
+            let shared = shared();
+            let (tx, rx) = mpsc::channel();
+            let mut expected = Vec::new();
+            for (is_piece, samples) in &steps {
+                let samples: Vec<f32> = samples.iter().map(|&s| f32::from(s)).collect();
+                if *is_piece {
+                    expected.push(words(&samples, &shared.cancel).unwrap());
+                    tx.send(Piece::Audio(samples)).unwrap();
+                } else {
+                    *shared.tail.lock().unwrap() = Some(samples);
+                }
+            }
+            tx.send(Piece::End { failure: None }).unwrap();
+            let mut finished_before = String::new();
+            let result = run_transcriber(&rx, &shared, |samples, cancel| {
+                let live = shared.live.lock().unwrap();
+                assert!(live.text().starts_with(&finished_before));
+                finished_before = live.finished();
+                drop(live);
+                words(samples, cancel)
+            });
+            let joined = crate::text::join_pieces(expected.iter().map(String::as_str));
+            if joined.is_empty() {
+                prop_assert!(matches!(result, Err(VoiceError::NothingHeard)));
+            } else {
+                prop_assert_eq!(result.unwrap(), joined);
+            }
+        }
+    }
 }
