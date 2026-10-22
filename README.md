@@ -10,7 +10,7 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
   indent with Tab; tables line up as you edit them.
 - Smart paste turns a pasted link into Markdown and keeps code as code; ⇧⌘V pastes plain text.
 - Typewriter scrolling, a word goal per note, focus mode, and optional Vim keys.
-- Voice input: press the mic, speak, and the words go in at the cursor. It runs on your device
+- Voice input: press the mic, speak, and the words go in at the cursor as you say them. It runs on your device
   with NVIDIA's Parakeet model (25 languages, downloaded once on first use), or with your
   system's own dictation.
 

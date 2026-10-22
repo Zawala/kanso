@@ -18,6 +18,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+use gpui_kit::EntityInputHandler as _;
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::base::input::{Backspace, Enter, IndentInline, OutdentInline, Paste};
 use gpui_kit::component::WindowExt as _;
@@ -279,6 +280,9 @@ pub struct NoteEditor {
     settings: EditorSettings,
     /// The pairs typed in the open note that are still open.
     pairs: Pairs,
+    /// Words voice input has heard so far, shown at the caret as text
+    /// being composed until the transcript replaces them.
+    live_voice: Option<LiveVoice>,
     /// Whether the caret's line is kept in the middle now.
     typewriter: bool,
     /// Vim keys, while the setting is on.
@@ -483,6 +487,7 @@ impl NoteEditor {
             source_lines: None,
             settings,
             pairs: Pairs::default(),
+            live_voice: None,
             typewriter: false,
             vim: None,
             due_marks: Default::default(),
@@ -1572,10 +1577,130 @@ impl NoteEditor {
         if self.view_mode == ViewMode::Preview {
             self.set_view_mode(ViewMode::Split, cx);
         }
+        if let Some(live) = self.live_voice.take() {
+            // The words shown while speaking become the transcript, in one
+            // step that undoes at once.
+            let edit =
+                crate::voice_state::voice_edit(&live.base, live.selection.clone(), transcript);
+            let committed = edit.is_some_and(|edit| {
+                self.body.update(cx, |state, cx| {
+                    let Some(marked) = state.marked_text_range(window, cx) else {
+                        return false;
+                    };
+                    let start = utf8_offset(&state.value(), marked.start);
+                    let caret = start + (edit.selection.start - edit.range.start);
+                    state.replace_text_in_range(None, &edit.text, window, cx);
+                    state.set_selected_range(caret..caret, cx);
+                    true
+                })
+            });
+            if committed {
+                self.focus_body(window, cx);
+                return true;
+            }
+            self.select_live_words(&live, cx);
+        }
         self.smart_edit(window, cx, |_, text, selection| {
             crate::voice_state::voice_edit(text, selection, transcript)
         });
         self.focus_body(window, cx);
+        true
+    }
+
+    /// Shows `words`, heard so far, at the caret as text being composed;
+    /// each call replaces the last. They stay out of the undo history
+    /// until [`insert_transcript`](Self::insert_transcript) puts the
+    /// transcript in their place. Typing or clicking ends the composing;
+    /// later words then wait for the transcript.
+    pub fn show_live_transcript(
+        &mut self,
+        words: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.note.is_none() || self.text_read_only || words.trim().is_empty() {
+            return;
+        }
+        if self.live_voice.is_none() {
+            if self.view_mode == ViewMode::Preview {
+                self.set_view_mode(ViewMode::Split, cx);
+            }
+            let state = self.body.read(cx);
+            self.live_voice = Some(LiveVoice {
+                base: state.value().to_string(),
+                selection: state.selected_range(),
+                shown: String::new(),
+                start: 0,
+                lost: false,
+            });
+        }
+        let Some(live) = self.live_voice.as_mut() else {
+            return;
+        };
+        if live.lost {
+            return;
+        }
+        let Some(edit) = crate::voice_state::voice_edit(&live.base, live.selection.clone(), words)
+        else {
+            return;
+        };
+        let first = live.shown.is_empty();
+        let range16 = live.base[..edit.range.start].encode_utf16().count()
+            ..live.base[..edit.range.end].encode_utf16().count();
+        let caret16 = edit.text[..edit.selection.start - edit.range.start]
+            .encode_utf16()
+            .count();
+        let shown = self.body.update(cx, |state, cx| {
+            if !first && state.marked_text_range(window, cx).is_none() {
+                return false;
+            }
+            state.replace_and_mark_text_in_range(
+                first.then_some(range16),
+                &edit.text,
+                Some(caret16..caret16),
+                window,
+                cx,
+            );
+            true
+        });
+        if shown {
+            live.shown = edit.text;
+            live.start = edit.range.start;
+        } else {
+            live.lost = true;
+        }
+        cx.notify();
+    }
+
+    /// Takes the words shown while speaking back out: voice input was
+    /// dropped, or heard nothing it could use.
+    pub fn drop_live_transcript(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(live) = self.live_voice.take() else {
+            return;
+        };
+        let composing = self.body.update(cx, |state, cx| {
+            state.marked_text_range(window, cx).is_some()
+        });
+        if composing {
+            self.body.update(cx, |state, cx| {
+                state.replace_and_mark_text_in_range(None, "", None, window, cx);
+                state.unmark_text(window, cx);
+            });
+        } else if self.select_live_words(&live, cx) {
+            self.body
+                .update(cx, |state, cx| state.replace("", window, cx));
+        }
+    }
+
+    /// Selects the live words where they are now, if they can be found
+    /// (the composing ended and the text around them moved).
+    fn select_live_words(&mut self, live: &LiveVoice, cx: &mut Context<Self>) -> bool {
+        let text = self.body.read(cx).value();
+        let Some(range) = crate::voice_state::find_live(&text, live.start, &live.shown) else {
+            return false;
+        };
+        self.body
+            .update(cx, |state, cx| state.set_selected_range(range, cx));
         true
     }
 
@@ -2505,6 +2630,7 @@ impl NoteEditor {
             .children(self.voice_pill(colors, cx))
             .child(
                 Button::new("dictate")
+                    .debug_selector(|| "dictate".into())
                     .ghost()
                     .small()
                     .tab_stop(tab_stop)
@@ -2519,11 +2645,13 @@ impl NoteEditor {
                     } else {
                         "Voice input"
                     })
-                    .on_click(
-                        cx.listener(|_, _, window, cx| {
-                            crate::voice::press(cx.entity(), window, cx)
-                        }),
-                    ),
+                    // Not a listener: `press` updates this editor (System
+                    // Dictation puts the keyboard in the note), which can't be
+                    // done while a listener of its own is updating it.
+                    .on_click({
+                        let editor = cx.entity();
+                        move |_, window, cx| crate::voice::press(editor.clone(), window, cx)
+                    }),
             )
             .child(
                 Button::new("history")
@@ -3327,6 +3455,19 @@ fn level_meter(level: f32, colors: &Colors) -> impl IntoElement {
 /// leaves nothing to undo.
 // no-prop-test: three calls into the editor; the window tests undo
 // through it.
+/// The words voice input has shown so far (`NoteEditor::live_voice`).
+struct LiveVoice {
+    /// The text, and its selection, when the first words came: each
+    /// update is worked out against them, as the transcript would be.
+    base: String,
+    selection: std::ops::Range<usize>,
+    /// The words being composed, and where they start.
+    shown: String,
+    start: usize,
+    /// The composing ended (a key, a click) before the transcript came.
+    lost: bool,
+}
+
 fn apply_edit(
     state: &mut EditorState,
     text: &str,
@@ -4157,6 +4298,74 @@ mod tests {
             store.note(&id).unwrap().unwrap().body,
             "Shopping\n- eggs and bread"
         );
+    }
+
+    /// Voice input's words show at the caret while someone speaks, each
+    /// update in place of the last; the transcript replaces them as one
+    /// step that undoes at once, and dropping them leaves the note as it
+    /// was, even after a key ended the composing.
+    // no-prop-test: drives the editor; `voice_edit`, `find_live` and
+    // `LiveText` have the properties.
+    #[gpui_kit::test]
+    fn live_words_show_then_become_the_transcript(cx: &mut TestAppContext) {
+        use gpui_kit::EntityInputHandler as _;
+        let open = super::writing_tests::Open::new(cx, "Groceries:");
+        open.select(cx, 10..10);
+        for heard in ["Milk", "Milk and", "Milk and egg"] {
+            open.with(cx, |editor, window, cx| {
+                editor.show_live_transcript(heard, window, cx)
+            });
+        }
+        assert_eq!(open.text(cx), ("Groceries: Milk and egg".into(), 23..23));
+        open.with(cx, |editor, window, cx| {
+            assert!(editor.insert_transcript("Milk and eggs.", window, cx));
+        });
+        assert_eq!(open.text(cx), ("Groceries: Milk and eggs.".into(), 25..25));
+        open.keys(cx, "cmd-z");
+        assert_eq!(open.text(cx).0, "Groceries:");
+
+        // Dropped: nothing stays.
+        open.select(cx, 10..10);
+        open.with(cx, |editor, window, cx| {
+            editor.show_live_transcript("Bread", window, cx)
+        });
+        open.with(cx, |editor, window, cx| {
+            editor.drop_live_transcript(window, cx)
+        });
+        assert_eq!(open.text(cx).0, "Groceries:");
+
+        // A click moved the caret mid-speech: the composing ended where the
+        // words were, and the transcript still goes in their place.
+        open.select(cx, 10..10);
+        open.with(cx, |editor, window, cx| {
+            editor.show_live_transcript("Tea", window, cx)
+        });
+        open.with(cx, |editor, window, cx| {
+            editor
+                .body
+                .update(cx, |body, cx| body.unmark_text(window, cx))
+        });
+        open.select(cx, 0..0);
+        open.with(cx, |editor, window, cx| {
+            editor.show_live_transcript("Tea and", window, cx)
+        });
+        assert_eq!(open.text(cx).0, "Groceries: Tea");
+        open.with(cx, |editor, window, cx| {
+            assert!(editor.insert_transcript("Tea and cake.", window, cx));
+        });
+        assert_eq!(open.text(cx).0, "Groceries: Tea and cake.");
+        open.with(cx, |editor, window, cx| {
+            editor.show_live_transcript("Jam", window, cx);
+        });
+        open.with(cx, |editor, window, cx| {
+            editor
+                .body
+                .update(cx, |body, cx| body.unmark_text(window, cx))
+        });
+        open.with(cx, |editor, window, cx| {
+            editor.drop_live_transcript(window, cx)
+        });
+        assert_eq!(open.text(cx).0, "Groceries: Tea and cake.");
     }
 
     #[test]

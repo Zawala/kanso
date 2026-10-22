@@ -1182,6 +1182,38 @@ fn picking_an_icon_theme_in_settings_applies_it(cx: &mut TestAppContext) {
     );
 }
 
+/// Choosing System Dictation in Settings › Editor and pressing the note's
+/// mic puts the keyboard in the note, where the system types (test windows
+/// draw no frames, so the system is never asked). The press used to update
+/// the editor from inside its own click, and crash.
+#[gpui_kit::test]
+fn system_dictation_starts_from_the_mic(cx: &mut TestAppContext) {
+    use crate::config::VoiceEngine;
+    use crate::settings::CloseSettings;
+    let f = setup(cx);
+    f.dispatch(cx, Box::new(OpenEditorSettings));
+    cx.update(|cx| {
+        f.workspace
+            .read(cx)
+            .settings
+            .clone()
+            .update(cx, |settings, _| settings.scroll_to_end_for_test())
+    });
+    f.click(cx, "voice-engine-1");
+    assert_eq!(
+        cx.read(|cx| cx.global::<AppState>().config.voice.engine),
+        VoiceEngine::System
+    );
+    f.dispatch(cx, Box::new(CloseSettings));
+    f.click(cx, "dictate");
+    let focused = cx.update(|cx| {
+        f.window
+            .update(cx, |_, window, cx| window.focused(cx))
+            .unwrap()
+    });
+    assert_eq!(focused, Some(f.body.clone()));
+}
+
 /// Settings › Editor has font pickers for writing, monospace and the
 /// preview, and the preview's text size steps on its own, apart from the
 /// editor's, and is saved.

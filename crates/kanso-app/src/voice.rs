@@ -1,6 +1,8 @@
 //! Voice input: the editor's mic. Press it, speak, press it again (or
 //! Escape to drop it), and what was said goes into the note at the caret
-//! as one step that undoes at once.
+//! as one step that undoes at once. On this device the words show at the
+//! caret while they are said, as text being composed, and the transcript
+//! takes their place.
 //!
 //! Kanso listens one of two ways, picked the first time the mic is pressed
 //! and changed in Settings › Editor:
@@ -90,6 +92,8 @@ pub struct Voice {
     /// The editor the words go to, and its window.
     target: Option<(WeakEntity<NoteEditor>, AnyWindowHandle)>,
     ticker: Option<Task<()>>,
+    /// The version of the live words last shown in the editor.
+    shown: u64,
     transcribing: Option<Task<()>>,
     download: Option<Task<()>>,
     cancel_download: Arc<AtomicBool>,
@@ -274,6 +278,7 @@ fn step(event: Event, from: Option<(Entity<NoteEditor>, &mut Window)>, cx: &mut 
             let voice = cx.global_mut::<Voice>();
             voice.sessions = session;
             voice.target = Some((editor.downgrade(), window.window_handle()));
+            voice.shown = 0;
             listen(cx);
         }
         Effect::Transcribe => transcribe(cx),
@@ -284,6 +289,7 @@ fn step(event: Event, from: Option<(Entity<NoteEditor>, &mut Window)>, cx: &mut 
             }
             voice.transcribing = None;
             voice.ticker = None;
+            drop_live(cx);
         }
         // The transcript itself goes in where it arrives (`transcribe`).
         Effect::Insert => {}
@@ -332,6 +338,7 @@ fn open_microphone(cx: &mut App) {
                     let stopped = cx.update(|cx| {
                         let voice = cx.global::<Voice>();
                         let stopped = voice.dictation.as_ref().is_some_and(|d| !d.is_recording());
+                        show_live(cx);
                         cx.refresh_windows();
                         stopped
                     });
@@ -377,12 +384,58 @@ fn transcribe(cx: &mut App) {
             step(Event::Transcribed { session, ok }, None, cx);
             match (effect, result) {
                 (Effect::Insert, Ok(text)) => insert(&text, cx),
-                (Effect::ShowError, Err(err)) => show_error(&err, cx),
-                _ => {}
+                (Effect::ShowError, Err(err)) => {
+                    drop_live(cx);
+                    show_error(&err, cx);
+                }
+                _ => drop_live(cx),
             }
         });
     });
     cx.global_mut::<Voice>().transcribing = Some(transcribing);
+}
+
+/// Shows the words heard so far in the target editor, when there are new
+/// ones.
+// no-prop-test: glue over `Dictation::live` and `NoteEditor::show_live_transcript`.
+fn show_live(cx: &mut App) {
+    let voice = cx.global::<Voice>();
+    let Some((version, words)) = voice.dictation.as_ref().map(Dictation::live) else {
+        return;
+    };
+    if version == voice.shown {
+        return;
+    }
+    cx.global_mut::<Voice>().shown = version;
+    on_target(cx, move |editor, window, cx| {
+        editor.show_live_transcript(&words, window, cx)
+    });
+}
+
+/// Takes the words heard so far back out of the target editor.
+// no-prop-test: glue over `NoteEditor::drop_live_transcript`.
+fn drop_live(cx: &mut App) {
+    on_target(cx, |editor, window, cx| {
+        editor.drop_live_transcript(window, cx)
+    });
+}
+
+/// Runs `f` on the editor the words go to, in its window, if both remain,
+/// as soon as the editor is free.
+fn on_target(
+    cx: &mut App,
+    f: impl FnOnce(&mut NoteEditor, &mut Window, &mut Context<NoteEditor>) + 'static,
+) {
+    let Some((editor, window)) = cx.global::<Voice>().target.clone() else {
+        return;
+    };
+    // Once the editor is free: Escape cancels from inside its own key
+    // handling, and an editor can't be updated inside its own update.
+    cx.defer(move |cx| {
+        let _ = window.update(cx, |_, window, cx| {
+            editor.update(cx, |editor, cx| f(editor, window, cx))
+        });
+    });
 }
 
 /// Puts `text` in the target editor at its caret; if that editor has gone,

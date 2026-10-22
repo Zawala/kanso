@@ -21,6 +21,7 @@ pub mod decode;
 mod dictation;
 pub mod engine;
 pub mod file;
+pub mod live;
 pub mod model;
 pub mod permission;
 pub mod text;
