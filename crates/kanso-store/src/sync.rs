@@ -945,7 +945,12 @@ fn keep_remote(
 ) -> Result<()> {
     tx.execute(
         "INSERT INTO revisions (doc_id, rev, json, saved_at, origin) VALUES (?1, ?2, ?3, ?4, 'sync')",
-        params![id, rev, serde_json::to_string(fields)?, kanso_core::now_ms()],
+        params![
+            id,
+            rev,
+            serde_json::to_string(fields)?,
+            crate::history::version_time(tx, id)?
+        ],
     )?;
     Ok(())
 }
