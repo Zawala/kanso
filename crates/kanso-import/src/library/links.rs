@@ -355,6 +355,8 @@ mod tests {
     #[test]
     fn skips_code() {
         assert!(scan("`[[A]]` and\n```\n[x](y.md)\n```\n").is_empty());
+        // Two backticks open a span that only two more close.
+        assert!(scan(" ``  [[Aa]]  `` ").is_empty());
     }
 
     #[test]
