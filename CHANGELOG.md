@@ -3,6 +3,21 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## [0.8.3](https://github.com/iamngoni/kanso/compare/v0.8.2...v0.8.3) - 2026-10-22
+
+### Fixed
+
+- **import:** Apple Notes builds on Linux and Windows again, and imports long first lines, links and Math Notes results intact ([f41ffb7](https://github.com/iamngoni/kanso/commit/f41ffb7f0dd22daed53ffcce904caad50d5b6a9e))
+- **import:** A TextBundle or TextPack opened on its own imports, and any text.* is its body ([a22ac25](https://github.com/iamngoni/kanso/commit/a22ac252f7d8ad4c3f3f9ac1a8a5646cae669bf6))
+- **import:** Roam pages keep their dates, block references, aliases and multi-line blocks ([90084d4](https://github.com/iamngoni/kanso/commit/90084d4d647d14caf165ae18c4cd84100311c192))
+- **import:** Tomboy's deleted notes go to the trash, templates are left out, and notebooks are notebooks ([f472aac](https://github.com/iamngoni/kanso/commit/f472aac91e535f316ed3cf17e968d79c1f433eee))
+- **import:** Deeply nested HTML no longer overflows the stack, and HTML links with spaces or parentheses resolve ([4c2c2df](https://github.com/iamngoni/kanso/commit/4c2c2df2889b93e2c8ade0176468e05b2e39b1af))
+- **import:** Apple Journal entries keep their order, media, dates and places; Keep notes without an edit time import; big HTML pages strip scripts quickly ([0f87530](https://github.com/iamngoni/kanso/commit/0f87530425fe068c477d65fd9a75a3f33da1012c))
+
+### Under the hood
+
+- **import:** The link-finding property test only builds real code spans ([dd8db50](https://github.com/iamngoni/kanso/commit/dd8db50306c7ce4ca95ecda94f5bfe86bbf3b440))
+
 ## [0.8.2](https://github.com/iamngoni/kanso/compare/v0.8.1...v0.8.2) - 2026-10-22
 
 ### New
