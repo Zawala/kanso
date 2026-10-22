@@ -484,7 +484,10 @@ impl Workspace {
                     let id = id.clone();
                     this.editor
                         .update(cx, |editor, cx| editor.open(id.as_deref(), window, cx));
-                    this.record_visit(cx);
+                    // Choosing several notes isn't going anywhere.
+                    if this.library.read(cx).several_selected().is_none() {
+                        this.record_visit(cx);
+                    }
                     AppState::update_config_soon(cx, |config| config.last_note = id);
                 }
                 LibraryEvent::Changed(change) => {
@@ -950,6 +953,15 @@ impl Workspace {
         }
     }
 
+    /// The notes chosen in the list, when there are several and the list
+    /// has the keyboard: from the note's text, Note menu items act on the
+    /// open note alone.
+    fn several_in_list(&self, window: &Window, cx: &App) -> Option<Vec<String>> {
+        let list = self.note_list.focus_handle(cx).contains_focused(window, cx);
+        list.then(|| self.library.read(cx).several_selected())
+            .flatten()
+    }
+
     /// Carries out a choice from the menu of several selected notes, for
     /// all of `ids`; what only makes sense for one note is for the open one.
     fn run_several_command(
@@ -988,7 +1000,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        crate::note_batch::apply(ids, change, &self.library, &self.editor, window, cx);
+        crate::note_batch::apply(ids, change, &self.library, window, cx);
     }
 
     /// Carries out a choice from a note's menu (see `note_menu`), for the
@@ -1850,7 +1862,7 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &SaveNote, _, cx| this.flush(cx)))
             .on_action(cx.listener(|this, _: &TogglePinned, window, cx| {
                 this.close_settings(window, cx);
-                if let Some(ids) = this.library.read(cx).several_selected() {
+                if let Some(ids) = this.several_in_list(window, cx) {
                     return this.change_notes(&ids, BatchChange::TogglePin, window, cx);
                 }
                 this.editor
@@ -1872,7 +1884,7 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|this, _: &TrashNote, window, cx| {
                 this.close_settings(window, cx);
-                if let Some(ids) = this.library.read(cx).several_selected() {
+                if let Some(ids) = this.several_in_list(window, cx) {
                     let trash = BatchChange::Move(TRASH_BOOK_ID.into());
                     return this.change_notes(&ids, trash, window, cx);
                 }

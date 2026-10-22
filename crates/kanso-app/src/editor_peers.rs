@@ -50,6 +50,19 @@ pub fn lock_keys_changed_everywhere(cx: &mut App) {
     });
 }
 
+/// Saves the typing waiting in every open editor, in whichever window,
+/// before a change to many notes at once. Not from inside an editor's own
+/// update.
+pub fn flush_everywhere(cx: &mut App) {
+    let open: Vec<_> = cx
+        .try_global::<OpenEditors>()
+        .map(|open| open.0.iter().filter_map(|(e, _)| e.upgrade()).collect())
+        .unwrap_or_default();
+    for editor in open {
+        editor.update(cx, |editor, cx| editor.flush(cx));
+    }
+}
+
 /// The other open editors on note `id`, with their windows.
 fn peers(id: &str, me: EntityId, cx: &App) -> Vec<(Entity<NoteEditor>, AnyWindowHandle)> {
     let Some(open) = cx.try_global::<OpenEditors>() else {

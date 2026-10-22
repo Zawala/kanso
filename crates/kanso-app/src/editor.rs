@@ -1269,7 +1269,11 @@ impl NoteEditor {
             let lines = gpui_kit::base::input::RopeExt::lines_len(state.text()).max(1);
             let line = place.caret_line.min(lines as u32 - 1);
             state.set_cursor_position(Position::new(line, place.caret_column), window, cx);
-            state.set_scroll_offset(point(px(place.scroll_x), px(place.scroll_y)), cx);
+            // Saved in window pixels, which already have the zoom in them.
+            state.set_scroll_offset(
+                point(gpui_kit::px(place.scroll_x), gpui_kit::px(place.scroll_y)),
+                cx,
+            );
         });
         self.preview
             .update(cx, |preview, cx| preview.scroll_to(place.preview_top, cx));

@@ -519,7 +519,7 @@ impl Palette {
             return false;
         }
         let ids: Vec<String> = self.several.iter().map(|n| n.id.clone()).collect();
-        crate::note_batch::apply(&ids, change, &self.library, &self.editor, window, cx);
+        crate::note_batch::apply(&ids, change, &self.library, window, cx);
         true
     }
 

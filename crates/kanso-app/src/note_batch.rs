@@ -12,7 +12,6 @@ use kanso_core::{DocType, NoteStatus};
 use kanso_store::{NoteSummary, Origin};
 use serde_json::{Value, json};
 
-use crate::editor::NoteEditor;
 use crate::library::Library;
 
 /// What happens to every note.
@@ -97,6 +96,24 @@ pub fn summary(change: &Change, count: usize, place: &str, on: bool) -> String {
     }
 }
 
+/// What of an undo still applies to a note that is `current` now (as
+/// JSON): the fields still holding what the batch wrote (`change`) go
+/// back to `undo`'s; a field changed again since keeps its newer value.
+/// `None` when nothing is left to put back. Pure.
+pub fn undo_now(change: &Value, undo: &Value, current: &Value) -> Option<Value> {
+    let mut back = serde_json::Map::new();
+    for (key, value) in undo.as_object()? {
+        if key != "_id" && current.get(key) == change.get(key) {
+            back.insert(key.clone(), value.clone());
+        }
+    }
+    if back.is_empty() {
+        return None;
+    }
+    back.insert("_id".into(), undo.get("_id")?.clone());
+    Some(Value::Object(back))
+}
+
 /// Whether the notes must go one at a time: unlocked notes into a locked
 /// notebook are sealed as they go, which only the editor does.
 pub fn needs_one_by_one(notes: &[NoteSummary], change: &Change, library: &Library) -> bool {
@@ -105,13 +122,12 @@ pub fn needs_one_by_one(notes: &[NoteSummary], change: &Change, library: &Librar
 }
 
 /// Makes `change` to the listed notes among `ids`, in one write, and says
-/// so with Undo. The editor's typing is saved first, so the open note
-/// takes the change like any other.
+/// so with Undo. Typing waiting in any editor is saved first, so an open
+/// note takes the change like any other.
 pub fn apply(
     ids: &[String],
     change: Change,
     library: &Entity<Library>,
-    editor: &Entity<NoteEditor>,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -157,12 +173,9 @@ pub fn apply(
             .is_some_and(|tags| tags.iter().any(|t| t == tag)),
         _ => true,
     };
-    editor.update(cx, |editor, cx| editor.flush(cx));
+    crate::editor::peers::flush_everywhere(cx);
     let store = library.read(cx).store.clone();
-    let (changes, undo): (Vec<Value>, Vec<Value>) = edits
-        .into_iter()
-        .map(|edit| (edit.change, edit.undo))
-        .unzip();
+    let changes: Vec<Value> = edits.iter().map(|edit| edit.change.clone()).collect();
     let count = changes.len();
     if let Err(err) = store.merge_many(DocType::Note, changes, Origin::Ui) {
         window.push_notification(
@@ -171,20 +184,32 @@ pub fn apply(
         );
         return;
     }
-    let editor = editor.clone();
     let notification =
         // Each batch's notice takes the place of the one before, so its
         // Undo is always for the latest change.
         Notification::info(summary(&change, count, &place, on))
             .id::<Edit>()
             .action(move |_, _, _| {
-            let (store, editor, undo) = (store.clone(), editor.clone(), undo.clone());
+            let (store, edits) = (store.clone(), edits.clone());
             Button::new("undo-notes")
                 .label("Undo")
                 .debug_selector(|| "undo-notes".into())
                 .on_click(move |_, window, cx| {
-                    editor.update(cx, |editor, cx| editor.flush(cx));
-                    if let Err(err) = store.merge_many(DocType::Note, undo.clone(), Origin::Ui) {
+                    crate::editor::peers::flush_everywhere(cx);
+                    // A note deleted since is skipped, and so is what was
+                    // changed again after the batch.
+                    let undo: Vec<Value> = edits
+                        .iter()
+                        .filter_map(|edit| {
+                            let note = store.note(&edit.id).ok().flatten()?;
+                            let current = serde_json::to_value(note).ok()?;
+                            undo_now(&edit.change, &edit.undo, &current)
+                        })
+                        .collect();
+                    if undo.is_empty() {
+                        return;
+                    }
+                    if let Err(err) = store.merge_many(DocType::Note, undo, Origin::Ui) {
                         window.push_notification(
                             Notification::error(format!("Couldn't undo: {err}")),
                             cx,
@@ -205,7 +230,7 @@ mod tests {
     use kanso_store::NoteSummary;
     use serde_json::{Value, json};
 
-    use super::{Change, plan, summary};
+    use super::{Change, plan, summary, undo_now};
 
     fn note(id: usize, book: &str, tags: &[&str], pinned: bool, status: NoteStatus) -> NoteSummary {
         NoteSummary {
@@ -300,6 +325,35 @@ mod tests {
         fn prop_a_batch_changes_all_and_undoes_exactly(before in notes(), change in change()) {
             check_batch(&before, &change)?;
         }
+
+        /// Invariant: a late Undo puts back exactly the fields that still
+        /// hold the batch's value, and never touches one changed since.
+        /// With nothing changed since, it is the whole undo.
+        #[test]
+        fn prop_a_late_undo_keeps_later_changes(
+            book_kept in any::<bool>(),
+            pinned_kept in any::<bool>(),
+        ) {
+            let change = json!({"_id": "note:1", "bookId": "b2", "pinned": true});
+            let undo = json!({"_id": "note:1", "bookId": "b1", "pinned": false});
+            let current = json!({
+                "_id": "note:1",
+                "bookId": if book_kept { "b2" } else { "b3" },
+                "pinned": pinned_kept,
+            });
+            let back = undo_now(&change, &undo, &current);
+            match back {
+                None => prop_assert!(!book_kept && !pinned_kept),
+                Some(back) => {
+                    prop_assert_eq!(&back["_id"], "note:1");
+                    prop_assert_eq!(back.get("bookId").is_some(), book_kept);
+                    prop_assert_eq!(back.get("pinned").is_some(), pinned_kept);
+                    if book_kept && pinned_kept {
+                        prop_assert_eq!(&back, &undo);
+                    }
+                }
+            }
+        }
     }
 
     /// The batch property's body, out of the macro, which can't expand
@@ -384,5 +438,15 @@ mod tests {
             summary(&Change::TogglePin, 2, "", false),
             "Unpinned 2 notes."
         );
+    }
+
+    #[test]
+    fn undo_after_a_tag_was_typed_leaves_the_tags() {
+        let change = json!({"_id": "note:1", "tags": ["a", "b"]});
+        let undo = json!({"_id": "note:1", "tags": ["a"]});
+        let current = json!({"_id": "note:1", "tags": ["a", "b", "c"]});
+        assert_eq!(undo_now(&change, &undo, &current), None);
+        let current = json!({"_id": "note:1", "tags": ["a", "b"]});
+        assert_eq!(undo_now(&change, &undo, &current), Some(undo));
     }
 }

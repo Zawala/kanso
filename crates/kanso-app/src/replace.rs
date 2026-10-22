@@ -130,7 +130,6 @@ fn new_batch() -> String {
 
 pub struct ReplaceView {
     store: Arc<Store>,
-    editor: Entity<NoteEditor>,
     pub(crate) find: Entity<InputState>,
     pub(crate) with: Entity<InputState>,
     pub(crate) options: Options,
@@ -145,7 +144,6 @@ pub struct ReplaceView {
 impl ReplaceView {
     fn new(
         store: Arc<Store>,
-        editor: Entity<NoteEditor>,
         initial: String,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -170,7 +168,6 @@ impl ReplaceView {
         ];
         let mut view = ReplaceView {
             store,
-            editor,
             find,
             with,
             options: Options {
@@ -301,7 +298,7 @@ impl ReplaceView {
         };
         // The open note's typing is saved first; it is then one of the
         // notes changed, or reported if it moved past the preview.
-        self.editor.update(cx, |editor, cx| editor.flush(cx));
+        crate::editor::peers::flush_everywhere(cx);
         let planned: Vec<Planned> = self
             .planned()
             .into_iter()
@@ -632,7 +629,7 @@ pub fn open_replace(
     } else {
         initial
     };
-    let view = cx.new(|cx| ReplaceView::new(store, editor, initial, window, cx));
+    let view = cx.new(|cx| ReplaceView::new(store, initial, window, cx));
     let dialog_view = view.clone();
     let find = view.read(cx).find.clone();
     window.open_alert_dialog(cx, move |alert, _, _| {
