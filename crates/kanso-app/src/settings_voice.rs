@@ -3,6 +3,7 @@
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::Button;
+use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{Sizable as _, WindowExt as _, h_flex};
 use gpui_kit::*;
 use kanso_voice::permission::{self, Permission};
@@ -18,6 +19,9 @@ use crate::zoom::px;
 /// Where System Settings lets apps use the microphone.
 const MICROPHONE_SETTINGS: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+
+/// What the spoken commands row says.
+const SPOKEN_COMMANDS: &str = "Say \"comma\", \"full stop\", \"new line\", \"new paragraph\", \"bullet point\" or \"new to-do\" on their own, with a short pause either side, and they're written. \"Delete that\" takes out the last thing you said, and \"undo that\" the last step.";
 
 /// The model row's title and line for `state`.
 pub fn model_words(state: &ModelState) -> (String, String) {
@@ -81,6 +85,23 @@ pub fn section(cx: &mut Context<SettingsView>) -> AnyElement {
     let on_device = engine != VoiceEngine::System || !crate::dictation::AVAILABLE;
     if on_device {
         rows.push(model_row(&model, colors));
+        let spoken = cx.global::<AppState>().config.voice.spoken_commands;
+        rows.push(
+            Row::new(Lucide::Pilcrow, "Spoken punctuation and commands")
+                .detail(SPOKEN_COMMANDS)
+                .trailing(
+                    div().debug_selector(|| "voice-commands".into()).child(
+                        Switch::new("voice-commands")
+                            .checked(spoken)
+                            .on_click(|on, _, cx| {
+                                let on = *on;
+                                AppState::update_config(cx, |config| {
+                                    config.voice.spoken_commands = on
+                                })
+                            }),
+                    ),
+                ),
+        );
         if engine == VoiceEngine::OnDevice && permission::status() == Permission::Denied {
             let mut denied = Row::new(Lucide::TriangleAlert, "Kanso can't use the microphone")
                 .detail(
