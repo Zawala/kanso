@@ -11,10 +11,13 @@ const MAX_NOTE: u64 = 8 * 1024 * 1024;
 
 pub struct TextBundleSource {
     tree: Tree,
-    notes: Vec<TreeFile>,
+    /// Each note's body and its bundle's path (empty for the opened bundle).
+    notes: Vec<(TreeFile, String)>,
     files: Vec<TreeFile>,
     skipped: Vec<Skipped>,
     name: String,
+    /// The opened file's or folder's name, standing in for an empty bundle path.
+    root: String,
 }
 
 /// Opens a `.textbundle`, `.textpack`, ZIP, or folder containing bundles.
@@ -26,44 +29,43 @@ pub fn open(path: &Path) -> anyhow::Result<TextBundleSource> {
         Tree::zip(path)?
     };
     let listed = tree.files()?;
+    // Opened as the bundle itself (a `.textbundle` folder, or a `.textpack`
+    // holding `text.md` at its root), paths are `text.md` and `assets/…`.
+    let root = is_bundle || (!path.is_dir() && listed.iter().any(|f| is_body("", &f.path)));
+    let bundle_of = |path: &str| {
+        if root {
+            Some(String::new())
+        } else {
+            bundle_prefix(path)
+        }
+    };
     let mut notes = Vec::new();
     let mut files = Vec::new();
     let mut skipped = Vec::new();
-    let bundles: BTreeSet<String> = listed
-        .iter()
-        .filter_map(|f| bundle_prefix(&f.path))
-        .collect();
-    for bundle in &bundles {
-        if !listed.iter().any(|f| {
-            f.path == format!("{bundle}/text.md") || f.path == format!("{bundle}/text.text.md")
-        }) {
-            skipped.push(Skipped::new(
-                format!("{bundle}/"),
-                "TextBundle has no Markdown body",
-            ));
-        }
-    }
+    let bundles: BTreeSet<String> = listed.iter().filter_map(|f| bundle_of(&f.path)).collect();
+    let mut bodied = BTreeSet::new();
     for file in listed {
-        if bundles
-            .iter()
-            .any(|b| file.path == format!("{b}/info.json"))
-        {
-            continue;
-        }
-        if bundles.iter().any(|b| {
-            file.path == format!("{b}/text.md") || file.path == format!("{b}/text.text.md")
-        }) {
-            if file.size > MAX_NOTE {
-                skipped.push(Skipped::new(file.path, "too large for a TextBundle note"));
-            } else {
-                notes.push(file);
+        match bundle_of(&file.path) {
+            Some(bundle) if file.path == in_bundle(&bundle, "info.json") => {}
+            // The first `text.*` is the body; any other is an attachment.
+            Some(bundle) if is_body(&bundle, &file.path) && bodied.insert(bundle.clone()) => {
+                if file.size > MAX_NOTE {
+                    skipped.push(Skipped::new(file.path, "too large for a TextBundle note"));
+                } else {
+                    notes.push((file, bundle));
+                }
             }
-        } else {
-            files.push(file);
+            _ => files.push(file),
         }
     }
-    if is_bundle && bundles.is_empty() {
+    if is_bundle && bodied.is_empty() {
         anyhow::bail!("{} is not a TextBundle", path.display());
+    }
+    for bundle in bundles.difference(&bodied) {
+        skipped.push(Skipped::new(
+            format!("{bundle}/"),
+            "TextBundle has no Markdown body",
+        ));
     }
     Ok(TextBundleSource {
         tree,
@@ -75,7 +77,26 @@ pub fn open(path: &Path) -> anyhow::Result<TextBundleSource> {
             .and_then(|s| s.to_str())
             .unwrap_or("TextBundle")
             .to_owned(),
+        root: path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("TextBundle")
+            .to_owned(),
     })
+}
+
+/// Whether `path` is the bundle's body: `text.md`, `text.markdown`,
+/// `text.txt` or any other `text.*` directly inside it.
+fn is_body(bundle: &str, path: &str) -> bool {
+    parent_of(path) == bundle && file_name(path).starts_with("text.")
+}
+
+fn in_bundle(bundle: &str, name: &str) -> String {
+    if bundle.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{bundle}/{name}")
+    }
 }
 
 fn bundle_prefix(path: &str) -> Option<String> {
@@ -102,18 +123,22 @@ impl Source for TextBundleSource {
         _full: bool,
         each: &mut dyn FnMut(SourceNote) -> anyhow::Result<()>,
     ) -> anyhow::Result<()> {
-        for file in self.notes.clone() {
+        for (file, bundle) in self.notes.clone() {
             let text = self
                 .tree
                 .read_text(&file.path, MAX_NOTE)
                 .map_err(|e| anyhow::anyhow!("cannot read {}: {e}", file.path))?;
-            let bundle = bundle_prefix(&file.path).unwrap_or_default();
             let metadata = self
                 .tree
-                .read(&format!("{bundle}/info.json"), 1024 * 1024)
+                .read(&in_bundle(&bundle, "info.json"), 1024 * 1024)
                 .ok()
                 .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
-            each(parse_note(&file, &text, metadata.as_ref()))?;
+            let bundle = if bundle.is_empty() {
+                &self.root
+            } else {
+                &bundle
+            };
+            each(parse_note(&file, bundle, &text, metadata.as_ref()))?;
         }
         Ok(())
     }
@@ -125,8 +150,8 @@ impl Source for TextBundleSource {
     }
 }
 
-fn parse_note(file: &TreeFile, text: &str, info: Option<&Value>) -> SourceNote {
-    let bundle = bundle_prefix(&file.path).unwrap_or_else(|| parent_of(&file.path).to_owned());
+/// A note from its body, its bundle's path (or name) and its `info.json`.
+fn parse_note(file: &TreeFile, bundle: &str, text: &str, info: Option<&Value>) -> SourceNote {
     let meta = info.and_then(|v| v.get("net.shinyfrog.bear")).or(info);
     let title = meta
         .and_then(|v| v.get("title"))
@@ -161,9 +186,9 @@ fn parse_note(file: &TreeFile, text: &str, info: Option<&Value>) -> SourceNote {
             .and_then(|v| v.get("uniqueIdentifier"))
             .and_then(Value::as_str)
             .map(str::to_owned)
-            .unwrap_or_else(|| bundle.clone()),
+            .unwrap_or_else(|| bundle.to_owned()),
         path: Some(file.path.clone()),
-        folder: parent_of(&bundle)
+        folder: parent_of(bundle)
             .split('/')
             .filter(|s| !s.is_empty())
             .map(str::to_owned)
@@ -189,7 +214,7 @@ mod tests {
             created: None,
         };
         let info = serde_json::json!({"net.shinyfrog.bear":{"title":"Plan","tags":["work"],"creationDate":"2024-01-01T00:00:00Z","modificationDate":"2024-01-02T00:00:00Z"}});
-        let note = parse_note(&file, "# Plan\n\nBody", Some(&info));
+        let note = parse_note(&file, "Plan.textbundle", "# Plan\n\nBody", Some(&info));
         assert_eq!(note.key, "Plan.textbundle");
         assert_eq!(note.tags, ["work"]);
         assert_eq!(note.body, "Body");
