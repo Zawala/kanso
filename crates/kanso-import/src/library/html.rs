@@ -16,7 +16,7 @@ const MAX_DEPTH: usize = 256;
 
 /// What a rewritten local path encodes, so `htmd` writes it as one Markdown
 /// link destination (it leaves spaces as they are and escapes parentheses).
-const PATH: &AsciiSet = &CONTROLS
+pub(super) const PATH: &AsciiSet = &CONTROLS
     .add(b' ')
     .add(b'"')
     .add(b'\'')
@@ -320,26 +320,32 @@ fn normalize(path: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
+/// Drops each `<tag …>…</tag>` block in one pass over `input`.
 fn remove_blocks(input: &str, tags: &[&str]) -> String {
-    let mut out = input.to_owned();
-    for tag in tags {
-        loop {
-            let lower = out.to_ascii_lowercase();
-            let Some(start) = lower.find(&format!("<{tag}")) else {
-                break;
-            };
-            let Some(end_start) = lower[start..].find(&format!("</{tag}")) else {
-                out.replace_range(start.., "");
-                break;
-            };
-            let end_start = start + end_start;
-            let Some(end) = lower[end_start..].find('>') else {
-                out.replace_range(start.., "");
-                break;
-            };
-            out.replace_range(start..end_start + end + 1, "");
-        }
+    let lower = input.to_ascii_lowercase();
+    let mut out = String::with_capacity(input.len());
+    let (mut kept, mut at) = (0, 0);
+    while let Some(rel) = lower[at..].find('<') {
+        let start = at + rel;
+        let Some(tag) = tags
+            .iter()
+            .find(|tag| lower[start + 1..].starts_with(**tag))
+        else {
+            at = start + 1;
+            continue;
+        };
+        out.push_str(&input[kept..start]);
+        let end = lower[start..].find(&format!("</{tag}")).and_then(|close| {
+            let close = start + close;
+            lower[close..].find('>').map(|gt| close + gt + 1)
+        });
+        let Some(end) = end else {
+            kept = input.len();
+            break;
+        };
+        (kept, at) = (end, end);
     }
+    out.push_str(&input[kept..]);
     out
 }
 
@@ -372,6 +378,21 @@ mod tests {
         );
         assert!(converted.contains("kanso-import:note/dir/next.html"));
         assert!(!remove_blocks(&converted, &["script"]).contains("bad()"));
+    }
+    #[test]
+    fn removes_every_block_in_one_pass() {
+        assert_eq!(
+            remove_blocks(
+                "a<SCRIPT>x</script >b<style>y</style>c<noscript>z",
+                &["script", "style", "noscript"]
+            ),
+            "abc"
+        );
+        let many = "<p>keep</p><script>drop()</script>".repeat(50_000);
+        assert_eq!(
+            remove_blocks(&many, &["script"]),
+            "<p>keep</p>".repeat(50_000)
+        );
     }
     #[test]
     fn derives_title_and_normalizes_paths() {

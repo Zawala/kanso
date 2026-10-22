@@ -122,7 +122,9 @@ fn parse_note(
         .get("createdTimestampUsec")
         .and_then(|t| keep_time(t, false))
         .ok_or(BAD_TIME)?;
-    let updated = keep_time(value.get("userEditedTimestampUsec").ok_or(BAD_TIME)?, true)
+    let updated = value
+        .get("userEditedTimestampUsec")
+        .and_then(|t| keep_time(t, true))
         .filter(|updated| *updated > 0)
         .unwrap_or(created);
     let raw_title = value

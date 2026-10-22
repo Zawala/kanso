@@ -266,16 +266,28 @@ impl ImportView {
         cx: &mut Context<Self>,
     ) {
         let (tx, rx) = async_channel::unbounded();
-        std::thread::spawn(move || {
-            let progress_tx = tx.clone();
-            let result = job(&mut |progress| {
-                progress_tx.try_send(Message::Progress(progress)).ok();
+        let failed_tx = tx.clone();
+        // Converting a deeply nested HTML page recurses; give it room.
+        let spawned = std::thread::Builder::new()
+            .name("library-import".into())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || {
+                let progress_tx = tx.clone();
+                let result = job(&mut |progress| {
+                    progress_tx.try_send(Message::Progress(progress)).ok();
+                });
+                tx.try_send(Message::Done(
+                    result.map(Box::new).map_err(|err| format!("{err:#}")),
+                ))
+                .ok();
             });
-            tx.try_send(Message::Done(
-                result.map(Box::new).map_err(|err| format!("{err:#}")),
-            ))
-            .ok();
-        });
+        if let Err(err) = spawned {
+            failed_tx
+                .try_send(Message::Done(Err(format!(
+                    "could not start the import: {err}"
+                ))))
+                .ok();
+        }
         self._task = Some(cx.spawn(async move |this, cx| {
             while let Ok(message) = rx.recv().await {
                 let alive = this.update(cx, |this, cx| {
