@@ -80,6 +80,8 @@ commit_preprocessors = [
 # The HTML comments order the groups and are stripped from the headings.
 commit_parsers = [
   { message = "^chore\\(release\\)", skip = true },
+  # Formatting and lint-only commits change nothing anyone sees.
+  { message = "^style(\\(.*\\))?: (?i)(rustfmt|format|clippy)", skip = true },
   { message = "^feat", group = "<!-- 0 -->New" },
   { message = "^perf", group = "<!-- 1 -->Improved" },
   { message = "^style", group = "<!-- 1 -->Improved" },
@@ -94,5 +96,5 @@ commit_parsers = [
   { message = "^test", group = "<!-- 3 -->Under the hood" },
   { message = "^docs", group = "<!-- 3 -->Under the hood" },
   # Any other type (e.g. `site:`) is still a change worth listing.
-  { message = "^[a-z]+(\\(.*\\))?!?:", group = "<!-- 3 -->Under the hood" },
+  { message = "^[a-z-]+(\\(.*\\))?!?:", group = "<!-- 3 -->Under the hood" },
 ]
