@@ -13,6 +13,7 @@ use crate::settings_discovery::{megabytes, meter, this_device};
 use crate::theme::Colors;
 use crate::voice::{self, MODEL, ModelState, Voice};
 use crate::workspace::AppState;
+use crate::zoom::px;
 
 /// Where System Settings lets apps use the microphone.
 const MICROPHONE_SETTINGS: &str =

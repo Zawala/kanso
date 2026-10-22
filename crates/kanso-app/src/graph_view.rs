@@ -35,8 +35,14 @@ use crate::library::{Library, LibraryEvent};
 use crate::note_list::quiet_empty;
 use crate::theme::{Colors, muted_tag_color};
 use crate::workspace::Workspace;
+use crate::zoom::px;
 
 actions!(kanso, [ShowGraph, ShowLocalGraph, ShowRelated, CloseGraph]);
+// The zoom keys zoom the graph while it has focus, not the whole app.
+actions!(kanso, [GraphZoomIn, GraphZoomOut, GraphShowAll]);
+
+/// How far one press of a zoom button or key zooms the graph.
+const GRAPH_ZOOM_STEP: f32 = 1.4;
 
 /// The seed every layout uses: the same library draws the same picture.
 const SEED: u64 = 0x6B61_6E73_6F67_7261;
@@ -48,7 +54,13 @@ const LABEL_LIMIT: usize = 90;
 const LABEL_CHARS: usize = 26;
 
 pub fn bind_keys(cx: &mut App) {
-    cx.bind_keys([KeyBinding::new("escape", CloseGraph, Some("GraphView"))]);
+    cx.bind_keys([
+        KeyBinding::new("escape", CloseGraph, Some("GraphView")),
+        KeyBinding::new("secondary-=", GraphZoomIn, Some("GraphView")),
+        KeyBinding::new("secondary-+", GraphZoomIn, Some("GraphView")),
+        KeyBinding::new("secondary--", GraphZoomOut, Some("GraphView")),
+        KeyBinding::new("secondary-0", GraphShowAll, Some("GraphView")),
+    ]);
 }
 
 /// Which graph a view shows.
@@ -579,12 +591,14 @@ impl GraphView {
                 h_flex()
                     .gap(px(2.))
                     .child(
-                        icon_button("graph-zoom-out", Lucide::ZoomOut, "Zoom out")
-                            .on_click(cx.listener(|this, _, _, cx| this.zoom_by(1. / 1.4, cx))),
+                        icon_button("graph-zoom-out", Lucide::ZoomOut, "Zoom out").on_click(
+                            cx.listener(|this, _, _, cx| this.zoom_by(1. / GRAPH_ZOOM_STEP, cx)),
+                        ),
                     )
                     .child(
-                        icon_button("graph-zoom-in", Lucide::ZoomIn, "Zoom in")
-                            .on_click(cx.listener(|this, _, _, cx| this.zoom_by(1.4, cx))),
+                        icon_button("graph-zoom-in", Lucide::ZoomIn, "Zoom in").on_click(
+                            cx.listener(|this, _, _, cx| this.zoom_by(GRAPH_ZOOM_STEP, cx)),
+                        ),
                     )
                     .child(
                         icon_button("graph-fit", Lucide::Scan, "Show all")
@@ -663,6 +677,11 @@ impl GraphView {
 
 #[cfg(test)]
 impl GraphView {
+    /// How far the graph is zoomed in.
+    pub fn zoom_for_test(&self) -> f32 {
+        self.view.get().zoom
+    }
+
     /// Points at the note titled `title`, as the pointer would.
     pub fn hover_for_test(&mut self, title: &str, cx: &mut Context<Self>) {
         self.hover = self
@@ -690,6 +709,13 @@ impl Render for GraphView {
                 .track_focus(&self.focus)
                 .size_full()
                 .bg(colors.editor)
+                .on_action(cx.listener(|this, _: &GraphZoomIn, _, cx| {
+                    this.zoom_by(GRAPH_ZOOM_STEP, cx)
+                }))
+                .on_action(cx.listener(|this, _: &GraphZoomOut, _, cx| {
+                    this.zoom_by(1. / GRAPH_ZOOM_STEP, cx)
+                }))
+                .on_action(cx.listener(|this, _: &GraphShowAll, _, cx| this.fit(cx)))
                 .on_action(cx.listener(|this, _: &CloseGraph, window, cx| {
                     this.visible = false;
                     window.dispatch_action(Box::new(CloseGraphView), cx);
@@ -760,7 +786,9 @@ pub fn book_color(book_id: &str, dark: bool) -> u32 {
     muted_tag_color(HUES[(hash % HUES.len() as u64) as usize].rgb(), dark)
 }
 
-/// Draws `shown` through `view` in `bounds`.
+/// Draws `shown` through `view` in `bounds`, in the window's own pixels
+/// (`gpui_kit::px`, not the app zoom's): the graph zooms itself, and the
+/// pointer finds nodes in those pixels.
 #[allow(clippy::too_many_arguments)]
 fn paint_graph(
     shown: &Shown,
@@ -778,7 +806,7 @@ fn paint_graph(
     let origin = bounds.origin;
     let at = |p: [f32; 2]| {
         let s = view.to_screen(p, extent);
-        point(origin.x + px(s[0]), origin.y + px(s[1]))
+        point(origin.x + gpui_kit::px(s[0]), origin.y + gpui_kit::px(s[1]))
     };
     let seen = view.visible(extent, 24.);
     let graph = &shown.graph;
@@ -793,8 +821,8 @@ fn paint_graph(
 
     // Edges: the quiet ones in one path, the lit ones over them in another.
     let line = if view.zoom < 0.35 { 0.75 } else { 1. };
-    let mut quiet = PathBuilder::stroke(px(line));
-    let mut bright = PathBuilder::stroke(px(1.4));
+    let mut quiet = PathBuilder::stroke(gpui_kit::px(line));
+    let mut bright = PathBuilder::stroke(gpui_kit::px(1.4));
     let (mut quiet_any, mut bright_any) = (false, false);
     for &(a, b) in &graph.edges {
         if a == b {
@@ -850,10 +878,13 @@ fn paint_graph(
             let halo = r + 3.;
             window.paint_quad(
                 fill(
-                    Bounds::new(point(c.x - px(halo), c.y - px(halo)), size2(halo * 2.)),
+                    Bounds::new(
+                        point(c.x - gpui_kit::px(halo), c.y - gpui_kit::px(halo)),
+                        size2(halo * 2.),
+                    ),
                     Hsla::from(colors.accent).opacity(0.25),
                 )
-                .corner_radii(px(halo)),
+                .corner_radii(gpui_kit::px(halo)),
             );
         }
         // A thin ring of the background keeps touching circles apart.
@@ -861,18 +892,24 @@ fn paint_graph(
             let outer = r + 1.;
             window.paint_quad(
                 fill(
-                    Bounds::new(point(c.x - px(outer), c.y - px(outer)), size2(outer * 2.)),
+                    Bounds::new(
+                        point(c.x - gpui_kit::px(outer), c.y - gpui_kit::px(outer)),
+                        size2(outer * 2.),
+                    ),
                     ring,
                 )
-                .corner_radii(px(outer)),
+                .corner_radii(gpui_kit::px(outer)),
             );
         }
         window.paint_quad(
             fill(
-                Bounds::new(point(c.x - px(r), c.y - px(r)), size2(r * 2.)),
+                Bounds::new(
+                    point(c.x - gpui_kit::px(r), c.y - gpui_kit::px(r)),
+                    size2(r * 2.),
+                ),
                 color,
             )
-            .corner_radii(px(r)),
+            .corner_radii(gpui_kit::px(r)),
         );
         labels.push((ix, r));
     }
@@ -899,7 +936,7 @@ fn paint_graph(
         Scope::Library => 24,
     };
     let font = window.text_style().font();
-    let font_size = px(11.);
+    let font_size = gpui_kit::px(11.);
     let mut drawn = 0;
     // Where labels went: a label that would cover another is left out,
     // unless it is the open or pointed-at note's.
@@ -950,22 +987,22 @@ fn paint_graph(
         // pointed-at note's.
         let inside = |left: Pixels, top: Pixels| {
             point(
-                left.max(bounds.left() + px(4.))
-                    .min(bounds.right() - width - px(4.)),
-                top.max(bounds.top() + px(2.))
-                    .min(bounds.bottom() - px(16.)),
+                left.max(bounds.left() + gpui_kit::px(4.))
+                    .min(bounds.right() - width - gpui_kit::px(4.)),
+                top.max(bounds.top() + gpui_kit::px(2.))
+                    .min(bounds.bottom() - gpui_kit::px(16.)),
             )
         };
         let spots = [
-            inside(c.x - width / 2., c.y + px(r + 3.)),
-            inside(c.x - width / 2., c.y - px(r + 17.)),
-            inside(c.x + px(r + 6.), c.y - px(7.)),
-            inside(c.x - px(r + 6.) - width, c.y - px(7.)),
+            inside(c.x - width / 2., c.y + gpui_kit::px(r + 3.)),
+            inside(c.x - width / 2., c.y - gpui_kit::px(r + 17.)),
+            inside(c.x + gpui_kit::px(r + 6.), c.y - gpui_kit::px(7.)),
+            inside(c.x - gpui_kit::px(r + 6.) - width, c.y - gpui_kit::px(7.)),
         ];
         let plate_at = |at: Point<Pixels>| {
             Bounds::new(
-                point(at.x - px(3.), at.y - px(1.)),
-                size(width + px(6.), px(15.)),
+                point(at.x - gpui_kit::px(3.), at.y - gpui_kit::px(1.)),
+                size(width + gpui_kit::px(6.), gpui_kit::px(15.)),
             )
         };
         let free = spots
@@ -980,14 +1017,21 @@ fn paint_graph(
         let plate = plate_at(point(left, top));
         placed.push(plate);
         // A soft plate of the background under the words.
-        window.paint_quad(fill(plate, ring.opacity(0.78)).corner_radii(px(3.)));
-        line.paint(point(left, top), px(13.), TextAlign::Left, None, window, cx)
-            .ok();
+        window.paint_quad(fill(plate, ring.opacity(0.78)).corner_radii(gpui_kit::px(3.)));
+        line.paint(
+            point(left, top),
+            gpui_kit::px(13.),
+            TextAlign::Left,
+            None,
+            window,
+            cx,
+        )
+        .ok();
     }
 }
 
 fn size2(side: f32) -> Size<Pixels> {
-    size(px(side), px(side))
+    size(gpui_kit::px(side), gpui_kit::px(side))
 }
 
 /// The workspace's part: opening and closing the library's graph.

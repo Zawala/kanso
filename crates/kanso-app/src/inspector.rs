@@ -35,6 +35,7 @@ use crate::related::{Related, Status as RelatedStatus};
 use crate::text_stats::plural;
 use crate::theme::{Colors, section_label};
 use crate::workspace::AppState;
+use crate::zoom::px;
 
 /// How far each heading level indents its row, in points.
 const LEVEL_INDENT: f32 = 12.;

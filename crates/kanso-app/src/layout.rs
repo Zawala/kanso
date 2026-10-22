@@ -75,10 +75,12 @@ pub const LIGHTS_IN_BAND: bool = cfg!(target_os = "macos");
 
 /// The room at the start of a pane's top band: the traffic lights' in the
 /// leftmost pane, and none in full screen, where they hide with the menu bar.
+/// The system draws the lights at the same size at any zoom, so zoomed out
+/// the room stays as wide as they are.
 // no-prop-test: a two-way choice; `leading_inset_examples` covers it.
 pub fn leading_inset(leftmost: bool, fullscreen: bool) -> f32 {
     if LIGHTS_IN_BAND && leftmost && !fullscreen {
-        TRAFFIC_LIGHT_INSET
+        TRAFFIC_LIGHT_INSET / crate::zoom::scale().min(1.)
     } else {
         0.
     }
@@ -209,7 +211,8 @@ impl BandDrag {
         claimed: bool,
     ) -> BandAction {
         self.pressed_at = None;
-        if claimed || f32::from(position.y) >= TOP_BAND_HEIGHT || f32::from(position.y) < 0. {
+        let y = crate::zoom::unscaled(position.y);
+        if claimed || y >= TOP_BAND_HEIGHT || y < 0. {
             return BandAction::None;
         }
         if click_count == 2 {

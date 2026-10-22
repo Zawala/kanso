@@ -1778,3 +1778,74 @@ fn the_calendar_opens_and_makes_a_days_note(cx: &mut TestAppContext) {
     assert_eq!(focused, yesterday);
     assert!(marked);
 }
+
+/// ⌘= and ⌘+ zoom the whole app in a step, ⌘− out, and ⌘0 back to actual
+/// size, kept in the settings and stopping at either end. While the graph
+/// has focus the same keys zoom the graph, and the app stays as it is.
+// no-prop-test: drives one window through keystrokes; `zoom` has the
+// properties of the steps.
+#[gpui_kit::test]
+fn zoom_keys_zoom_the_app_and_the_graph_keeps_them(cx: &mut TestAppContext) {
+    use crate::zoom;
+    let f = setup(cx);
+    cx.update(|cx| {
+        crate::workspace::bind_keys(cx);
+        crate::graph_view::bind_keys(cx);
+        zoom::register(cx);
+    });
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    f.select(cx, &f.notes[0]);
+    f.draw(cx);
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    let saved = |vcx: &mut gpui_kit::VisualTestContext| {
+        vcx.run_until_parked();
+        (
+            vcx.read(|cx| cx.global::<AppState>().config.appearance.zoom),
+            f.saved_config().appearance.zoom,
+        )
+    };
+    let width = vcx.debug_bounds("sidebar-pane").unwrap().size.width;
+
+    vcx.simulate_keystrokes("cmd-=");
+    assert_eq!(saved(&mut vcx), (110, 110));
+    assert_eq!(zoom::scale(), 1.1);
+    vcx.simulate_keystrokes("cmd-+");
+    assert_eq!(saved(&mut vcx), (120, 120));
+    f.draw(&mut vcx);
+    let zoomed = vcx.debug_bounds("sidebar-pane").unwrap().size.width;
+    assert!(
+        (f32::from(zoomed) - f32::from(width) * 1.2).abs() < 1.,
+        "the sidebar is drawn larger: {width:?} to {zoomed:?}"
+    );
+    assert_eq!(
+        vcx.read(|cx| gpui_kit::component::Theme::global(cx).font_size),
+        gpui_kit::px(16. * 1.2),
+        "the components' rems follow"
+    );
+
+    vcx.simulate_keystrokes("cmd--");
+    vcx.simulate_keystrokes("cmd--");
+    vcx.simulate_keystrokes("cmd--");
+    assert_eq!(saved(&mut vcx), (90, 90));
+    for _ in 0..5 {
+        vcx.simulate_keystrokes("cmd--");
+    }
+    assert_eq!(saved(&mut vcx), (80, 80), "stops at the smallest");
+    vcx.simulate_keystrokes("cmd-0");
+    assert_eq!(saved(&mut vcx), (100, 100));
+    assert_eq!(zoom::scale(), 1.);
+
+    // The graph, with focus, takes the keys for its own zoom.
+    let workspace = f.workspace.clone();
+    vcx.update(|window, cx| workspace.update(cx, |workspace, cx| workspace.show_graph(window, cx)));
+    f.draw(&mut vcx);
+    let graph = f.workspace(&mut vcx, |w, _| w.graph.clone()).unwrap();
+    let before = vcx.read(|cx| graph.read(cx).zoom_for_test());
+    vcx.simulate_keystrokes("cmd-=");
+    vcx.run_until_parked();
+    let after = vcx.read(|cx| graph.read(cx).zoom_for_test());
+    assert!(after > before, "the graph zoomed in: {before} to {after}");
+    assert_eq!(saved(&mut vcx), (100, 100), "the app didn't");
+}

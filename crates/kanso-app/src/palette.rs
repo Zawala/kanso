@@ -44,6 +44,7 @@ use crate::theme::{
     Colors, PALETTE_SELECTED_ALPHA, Rgb, muted_tag_color, section_label, status_glyph,
 };
 use crate::word_goal::{self, GoalSetting};
+use crate::zoom::px;
 
 actions!(
     palette,
@@ -3191,7 +3192,8 @@ mod tests {
     /// Every command the palette runs as an action finds a handler from
     /// where the palette sends it (the note being written, inside the
     /// workspace), whatever the layout. Quit is the app's own: main.rs
-    /// registers it with `cx.on_action`, and Quick capture too. Settings open
+    /// registers it with `cx.on_action`, and Quick capture and zoom too
+    /// (`zoom::register`). Settings open
     /// in the window.
     /// Account commands have a handler only in the state they fit, so
     /// the menu greys out Sync Now while signed out; each is checked in
@@ -3200,7 +3202,14 @@ mod tests {
     fn every_command_reaches_a_handler(cx: &mut TestAppContext) {
         let f = setup(cx);
         // Quick capture opens its own window, from anywhere in the app.
-        let app_wide = ["kanso::Quit", "kanso::QuickCapture"];
+        // Zoom changes every window at once.
+        let app_wide = [
+            "kanso::Quit",
+            "kanso::QuickCapture",
+            "kanso::ZoomIn",
+            "kanso::ZoomOut",
+            "kanso::ActualSize",
+        ];
         for signed_in in [false, true] {
             cx.update(|cx| {
                 cx.global_mut::<Services>().account = if signed_in {

@@ -125,6 +125,7 @@ mod voice_state;
 mod wikilinks;
 mod word_goal;
 mod workspace;
+mod zoom;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -344,6 +345,9 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         services.secrets = Some(Arc::new(flavour::CURRENT.keychain()));
         cx.set_global(services);
         cx.set_global(touch_id::TouchId(Arc::new(touch_id::SystemTouchId)));
+        // The saved zoom, before the first window is drawn.
+        zoom::set(cx.global::<AppState>().config.appearance.zoom, cx);
+        zoom::register(cx);
         workspace::bind_keys(cx);
         note_list::bind_keys(cx);
         capture::bind_keys(cx);

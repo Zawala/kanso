@@ -30,6 +30,7 @@ use crate::editor::NoteEditor;
 use crate::services::Services;
 use crate::theme::Colors;
 use crate::workspace::AppState;
+use crate::zoom::px;
 
 actions!(kanso, [PublishNote]);
 

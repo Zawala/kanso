@@ -25,6 +25,7 @@ use crate::theme::{Colors, Rgb, SYSTEM_MONO};
 use crate::theme_file::{PreviewColors, TokenStyle, fit_preview, fit_syntax};
 use crate::themes::{self, ThemeEntry, Themes, themes_dir};
 use crate::workspace::AppState;
+use crate::zoom::px;
 
 /// A card's picture, and the room between cards.
 pub const CARD_WIDTH: f32 = 160.;

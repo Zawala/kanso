@@ -19,6 +19,7 @@ use kanso_core::roles::{ROLE_FIELD, Role};
 use crate::icon_theme_file::is_valid_name;
 use crate::icon_themes::{self, IconTheme, Slot};
 use crate::theme::Colors;
+use crate::zoom::px;
 
 /// One icon a notebook can show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

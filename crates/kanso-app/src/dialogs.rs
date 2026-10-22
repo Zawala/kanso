@@ -15,6 +15,7 @@ use kanso_sync::Step;
 
 use crate::account_words::step_label;
 use crate::theme::Colors;
+use crate::zoom::px;
 
 type TextHandler = Rc<dyn Fn(String, &mut Window, &mut App) -> Result<(), String>>;
 type ConfirmHandler = Rc<dyn Fn(&mut Window, &mut App)>;

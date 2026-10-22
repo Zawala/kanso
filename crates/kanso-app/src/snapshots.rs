@@ -37,7 +37,7 @@ use crate::config::{
     AppConfig, EditorFont, InspectorTab, ThemePreference, ThemeSettings, ViewMode,
 };
 use crate::editor::EditorEvent;
-use crate::layout::{BOTTOM_BAND_HEIGHT, NOTE_LIST_WIDTH, SIDEBAR_WIDTH, rail_width};
+use crate::layout::{BOTTOM_BAND_HEIGHT, rail_width};
 use crate::library::{Filter, has_notes_inside};
 use crate::palette::{Mode, PANEL_HEIGHT, PANEL_WIDTH};
 use crate::services::{
@@ -1743,6 +1743,48 @@ fn settings_general(
     _: &Store,
 ) {
     show_settings(cx, window, workspace, SettingsPage::General);
+}
+
+/// Zooms the whole app to `percent`, as the View menu does, after the
+/// window has opened at actual size.
+fn zoom_to(cx: &mut HeadlessAppContext, percent: u32) {
+    cx.update(|cx| {
+        AppState::update_config(cx, |config| config.appearance.zoom = percent);
+        crate::zoom::set(percent, cx);
+    });
+}
+
+/// The most recent note at the largest zoom.
+fn zoom_largest(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    zoom_to(cx, crate::zoom::ZOOM_RANGE.1);
+    open_latest(cx, window, workspace, store);
+}
+
+/// The most recent note at the smallest zoom.
+fn zoom_smallest(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    zoom_to(cx, crate::zoom::ZOOM_RANGE.0);
+    open_latest(cx, window, workspace, store);
+}
+
+/// Settings › General at 120%, its Zoom stepper showing it.
+fn zoom_settings_general(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    zoom_to(cx, 120);
+    settings_general(cx, window, workspace, store);
 }
 
 fn settings_editor(
@@ -3487,21 +3529,27 @@ fn check_settings_surfaces(image: &image::RgbaImage, shot: &Shot) {
     let width = f32::from(shot.size.width);
     let height = f32::from(shot.size.height);
     let scale = image.width() as f32 / width;
-    let left = match shot.left {
-        Left::Sidebar => SIDEBAR_WIDTH,
-        Left::Rail => rail_width(false),
-        Left::Nothing => 0.,
-    };
-    let band_top = height - BOTTOM_BAND_HEIGHT;
+    // Pane sizes in window points, at the shot's zoom.
+    let zoom = crate::zoom::scale();
+    let fitted = crate::layout::PaneWidths::default().fitted(width / zoom, None);
+    let left = zoom
+        * match shot.left {
+            Left::Sidebar => fitted.sidebar,
+            Left::Rail => rail_width(false),
+            Left::Nothing => 0.,
+        };
+    let nav_width = NAV_WIDTH * zoom;
+    // Snapped to a device pixel, as the divider is drawn.
+    let band_top = ((height - BOTTOM_BAND_HEIGHT * zoom) * scale).round() / scale;
     let mut checks = vec![
         ((left + 6., height / 2.), colors.list, "page column"),
         (
-            (left + NAV_WIDTH - 6., height / 2.),
+            (left + nav_width - 6., height / 2.),
             colors.list,
             "page column's right edge",
         ),
         (
-            (left + NAV_WIDTH + 8., 4.),
+            (left + nav_width + 8., 4.),
             colors.editor,
             "page's top band",
         ),
@@ -3546,6 +3594,13 @@ fn check_surfaces(image: &image::RgbaImage, shot: &Shot, inspector: bool) {
     let width = f32::from(shot.size.width);
     let height = f32::from(shot.size.height);
     let scale = image.width() as f32 / width;
+    // Pane sizes in window points, at the shot's zoom.
+    // A zoomed window has fewer of them, so the panes may be fitted
+    // narrower, as the workspace draws them.
+    let zoom = crate::zoom::scale();
+    let rail = (shot.left == Left::Rail).then(|| rail_width(false));
+    let fitted = crate::layout::PaneWidths::default().fitted(width / zoom, rail);
+    let list_width = fitted.list * zoom;
     // The bands are part of their panes: one surface from top to bottom.
     let mut checks = vec![
         ((width - 4., 4.), right, "right pane's top band"),
@@ -3555,17 +3610,18 @@ fn check_surfaces(image: &image::RgbaImage, shot: &Shot, inspector: bool) {
             "editor, preview or inspector",
         ),
         (
-            (width - 4., height - BOTTOM_BAND_HEIGHT / 2.),
+            (width - 4., height - BOTTOM_BAND_HEIGHT * zoom / 2.),
             right,
             "right pane's bottom band",
         ),
     ];
-    let band_top = height - BOTTOM_BAND_HEIGHT;
+    // Snapped to a device pixel, as the divider is drawn.
+    let band_top = ((height - BOTTOM_BAND_HEIGHT * zoom) * scale).round() / scale;
     // The panes keep their widths whatever the window's size; the sidebar
     // and its rail are the same surface.
     let leading = match shot.left {
-        Left::Sidebar => Some(SIDEBAR_WIDTH),
-        Left::Rail => Some(rail_width(false)),
+        Left::Sidebar => Some(fitted.sidebar * zoom),
+        Left::Rail => Some(rail_width(false) * zoom),
         Left::Nothing => None,
     };
     match leading {
@@ -3575,12 +3631,12 @@ fn check_surfaces(image: &image::RgbaImage, shot: &Shot, inspector: bool) {
                 ((leading - 6., 4.), colors.sidebar, "sidebar's top band"),
                 ((leading + 6., 4.), colors.list, "note list"),
                 (
-                    (leading + NOTE_LIST_WIDTH - 6., 4.),
+                    (leading + list_width - 6., 4.),
                     colors.list,
                     "note list's right edge",
                 ),
                 (
-                    (leading + NOTE_LIST_WIDTH + 8., 4.),
+                    (leading + list_width + 8., 4.),
                     colors.editor,
                     "editor's left edge",
                 ),
@@ -4369,6 +4425,16 @@ fn snapshots() {
             discovery::settings_related_failed,
         ),
         // Settings, in the main window.
+        // Zoom: the whole app, at either end and in Settings.
+        shot("light-zoom-150-split", Light, Split, zoom_largest),
+        shot("dark-zoom-150-split", Dark, Split, zoom_largest),
+        shot("light-zoom-80-split", Light, Split, zoom_smallest),
+        shot(
+            "light-zoom-120-settings-general",
+            Light,
+            Edit,
+            zoom_settings_general,
+        ),
         shot("dark-settings-general", Dark, Edit, settings_general),
         shot("light-settings-general", Light, Edit, settings_general),
         shot("dark-settings-editor", Dark, Edit, settings_editor),
@@ -4830,6 +4896,8 @@ fn snapshots() {
         };
         let store = Arc::new(store);
         let mut cx = context(clock);
+        // Every shot starts at actual size; zoom is per thread.
+        cx.update(|cx| crate::zoom::set(crate::zoom::DEFAULT_ZOOM, cx));
         let (window, workspace) = open(&mut cx, store.clone(), dir.path().to_path_buf(), shot);
         cx.run_until_parked();
         (shot.prepare)(&mut cx, window, &workspace, &store);

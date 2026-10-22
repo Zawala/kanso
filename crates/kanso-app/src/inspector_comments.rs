@@ -20,6 +20,7 @@ use crate::clock::Clock;
 use crate::collab_text::{comment_groups, comments_summary, mention_runs};
 use crate::note_list::quiet_empty;
 use crate::theme::{Colors, section_label};
+use crate::zoom::px;
 
 impl Inspector {
     /// How many of the open note's comments are open, for the tab's count.

@@ -40,6 +40,7 @@ use crate::settings::{Row, StatusLine, section, status_row};
 use crate::sidebar::Tone;
 use crate::theme::Colors;
 use crate::workspace::AppState;
+use crate::zoom::px;
 
 actions!(kanso, [CheckForUpdates, ShowUpdate, RestartToUpdate,]);
 

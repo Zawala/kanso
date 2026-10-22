@@ -31,6 +31,7 @@ use gpui_kit::*;
 use super::{NoteEditor, apply_edit};
 use crate::markdown_edit::Edit;
 use crate::vim::{Clipboard, Effect, Key, Mode, Outcome, Vim, clamp_normal, diff};
+use crate::zoom::px;
 
 /// What marks the start of an Insert mode session in the undo history: a
 /// zero-width space, put in and taken out at once.

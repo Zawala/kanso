@@ -21,6 +21,7 @@ use crate::preview::TEXT_INSET;
 use crate::text_stats::{format_count, plural, word_count};
 use crate::theme::Colors;
 use crate::word_goal::{self, GoalSetting, PRESETS};
+use crate::zoom::px;
 
 /// How long typing pauses before the counts catch up.
 const COUNT_DELAY: Duration = Duration::from_millis(250);
@@ -320,7 +321,8 @@ fn ring(progress: f32, track: Hsla, fill: Hsla) -> impl IntoElement {
         |_, _, _| {},
         move |bounds, _, window, _| {
             let center = bounds.center();
-            let radius = (f32::from(bounds.size.width.min(bounds.size.height)) - RING_LINE) / 2.;
+            let radius =
+                (crate::zoom::unscaled(bounds.size.width.min(bounds.size.height)) - RING_LINE) / 2.;
             let arc = |share: f32| -> Option<Path<Pixels>> {
                 let steps = ((48. * share).ceil() as usize).max(2);
                 let mut path = PathBuilder::stroke(px(RING_LINE));

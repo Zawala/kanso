@@ -18,6 +18,7 @@ use crate::editor::NoteEditor;
 use crate::grouping::as_title;
 use crate::history_diff::{Hunk, LineKind, hunks};
 use crate::theme::Colors;
+use crate::zoom::px;
 
 /// Why a version was kept, from the origin of the write that replaced it.
 pub fn origin_label(origin: &str) -> &'static str {

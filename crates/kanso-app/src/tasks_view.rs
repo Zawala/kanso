@@ -35,6 +35,7 @@ use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::{Filter, Library, LibraryEvent};
 use crate::note_list::quiet_empty;
 use crate::theme::{Colors, section_label};
+use crate::zoom::px;
 
 /// A task row: padding, its words, a gap, its note and notebook, padding.
 const ROW_HEIGHT: f32 = 54.;

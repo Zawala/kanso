@@ -28,6 +28,7 @@ use crate::note_menu::NoteCommand;
 use crate::text_match::{highlight_terms, match_ranges};
 use crate::theme::{Colors, section_label, status_glyph};
 use crate::workspace::SearchAllNotes;
+use crate::zoom::px;
 
 const SEARCH_DELAY: Duration = Duration::from_millis(120);
 
@@ -84,6 +85,8 @@ struct ListLayout {
     key: Option<(u64, Sort, bool)>,
     grouped: Grouped,
     sizes: Rc<Vec<Size<Pixels>>>,
+    /// The zoom `sizes` were measured at.
+    scale: f32,
     /// Whether any note has a status, so titles leave room for its glyph.
     status_column: bool,
 }
@@ -247,6 +250,7 @@ impl NoteList {
         self.layout = ListLayout {
             key: Some(key),
             sizes: Rc::new(item_sizes(&grouped.rows)),
+            scale: crate::zoom::scale(),
             grouped,
             status_column: library.notes.iter().any(|n| n.status != NoteStatus::None),
         };
@@ -1291,6 +1295,11 @@ pub fn format_date(ms: i64) -> String {
 impl Render for NoteList {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.update_layout(cx);
+        if self.layout.scale != crate::zoom::scale() {
+            // Zoomed: the same rows at another height.
+            self.layout.sizes = Rc::new(item_sizes(&self.layout.grouped.rows));
+            self.layout.scale = crate::zoom::scale();
+        }
         self.scroll_to_pending(cx);
         // Keyboard focus shows on the selected row, so it is clear which
         // pane the arrows move.

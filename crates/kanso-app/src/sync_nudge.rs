@@ -11,6 +11,7 @@ use gpui_kit::*;
 use crate::settings::OpenAccountSettings;
 use crate::theme::Colors;
 use crate::workspace::AppState;
+use crate::zoom::px;
 
 /// Notes that show the library is in real use, whatever its age.
 pub const MANY_NOTES: u32 = 25;

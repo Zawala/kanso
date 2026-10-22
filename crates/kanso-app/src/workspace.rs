@@ -34,6 +34,7 @@ use crate::paths;
 use crate::settings::{SettingsPage, SettingsReturn, SettingsView};
 use crate::sidebar::{Sidebar, SidebarEvent};
 use crate::theme::Colors;
+use crate::zoom::px;
 
 actions!(
     kanso,
@@ -174,6 +175,7 @@ pub fn bind_keys(cx: &mut App) {
     crate::tasks_view::bind_keys(cx);
     crate::replace::bind_keys(cx);
     crate::settings::bind_keys(cx);
+    crate::zoom::bind_keys(cx);
 }
 
 pub fn set_menus(cx: &mut App) {
@@ -251,6 +253,10 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Replace in All Notes…", crate::replace::ReplaceInNotes),
             MenuItem::action("Search This List", FocusSearch),
             MenuItem::action("Go to Note List", FocusNoteList),
+            MenuItem::separator(),
+            MenuItem::action("Zoom In", crate::zoom::ZoomIn),
+            MenuItem::action("Zoom Out", crate::zoom::ZoomOut),
+            MenuItem::action("Actual Size", crate::zoom::ActualSize),
         ]),
         Menu::new("Help").items([MenuItem::action(
             "What's New in Kanso",
@@ -1394,7 +1400,7 @@ impl Workspace {
     /// The panes' widths as drawn: as set, or narrower when the window
     /// leaves the editor less than its minimum.
     fn fitted_widths(&self, window: &Window) -> PaneWidths {
-        let width = f32::from(window.viewport_size().width);
+        let width = crate::zoom::unscaled(window.viewport_size().width);
         self.pane_widths.fitted(width, self.rail(window))
     }
 
@@ -1404,7 +1410,7 @@ impl Workspace {
         if !self.inspector_open || self.focus_mode || self.settings_open() {
             return None;
         }
-        let width = f32::from(window.viewport_size().width);
+        let width = crate::zoom::unscaled(window.viewport_size().width);
         let before = self.leading_width(window) + self.fitted_widths(window).list;
         inspector_fitted(self.inspector_width, width, before)
     }
@@ -1423,10 +1429,11 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         let edge = **event.drag(cx);
-        let x = f32::from(event.event.position.x - event.bounds.left());
+        let x = crate::zoom::unscaled(event.event.position.x - event.bounds.left());
         if edge == PaneEdge::Inspector {
             let before = self.leading_width(window) + self.fitted_widths(window).list;
-            let width = inspector_dragged(x, f32::from(event.bounds.size.width), before);
+            let width =
+                inspector_dragged(x, crate::zoom::unscaled(event.bounds.size.width), before);
             if (width - self.inspector_width).abs() > 0.1 {
                 self.inspector_width = width;
                 AppState::update_config_soon(cx, |config| config.layout.inspector_width = width);
@@ -1437,7 +1444,7 @@ impl Workspace {
         let rail = self.rail(window);
         // From the widths as drawn, so the edge doesn't jump to the pointer.
         let from = self.fitted_widths(window);
-        let window = f32::from(event.bounds.size.width);
+        let window = crate::zoom::unscaled(event.bounds.size.width);
         let widths = from.dragged(edge, x, window, rail);
         if widths != self.pane_widths {
             self.pane_widths = widths;
@@ -1449,6 +1456,8 @@ impl Workspace {
     #[cfg(test)]
     fn render_placeholder_traffic_lights(&self) -> Option<impl IntoElement> {
         use crate::layout::TRAFFIC_LIGHTS;
+        // In the window's own pixels, like the system's, at any zoom.
+        use gpui_kit::px;
         self.placeholder_traffic_lights.then(|| {
             div()
                 .flex()
