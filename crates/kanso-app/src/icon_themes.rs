@@ -1,8 +1,8 @@
 //! The icon themes Kanso knows, and the one in use.
 //!
-//! Built-in icon themes are compiled in from the repository's
-//! `icon-themes/` folder: Lucide, Kanso's own look, and Phosphor. A
-//! person's own are folders in the `icon-themes` folder of Kanso's data
+//! Built-in icon themes are compiled in from `themes/icon-themes/`, in the
+//! kanso-themes repository checked out as a submodule: Lucide, Kanso's own
+//! look, Phosphor and the ones converted from Zed's. A person's own are folders in the `icon-themes` folder of Kanso's data
 //! folder (`icon_theme_file` reads one): read at launch, again whenever the
 //! folder changes, and on Reload, each time off the UI thread. A theme that
 //! can't be read is skipped with a notice that says why; it never stops the
@@ -622,15 +622,17 @@ mod tests {
             }
         }
         let ids: Vec<&str> = builtins().iter().map(|t| t.id.as_str()).collect();
-        // Every theme folder of the repository's `icon-themes/`, Lucide first
+        // Every theme folder of `themes/icon-themes/`, Lucide first
         // and the rest by name; each but Lucide draws something.
-        let mut folders: Vec<String> =
-            std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../../icon-themes"))
-                .unwrap()
-                .filter_map(Result::ok)
-                .filter(|e| e.path().is_dir() && e.file_name() != "schema")
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .collect();
+        let mut folders: Vec<String> = std::fs::read_dir(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../themes/icon-themes"
+        ))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.path().is_dir() && e.file_name() != "schema")
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
         folders.sort();
         let mut sorted = ids.clone();
         sorted.sort_unstable();

@@ -233,7 +233,7 @@ open, the Inbox, a pinned note) and add icons to a notebook's **Change Icon…**
 as a folder of SVGs and one JSON file in the `icon-themes` folder of Kanso's data folder
 (Settings › Icon Themes › Icon theme files › **Open Folder**), or import a Zed icon theme with
 **Import…** there or `kanso icon-theme import <path>`. An icon a theme leaves out stays Kanso's own.
-[icon-themes/README.md](icon-themes/README.md) has the format.
+[themes/icon-themes/README.md](https://github.com/iamngoni/kanso-themes/blob/main/icon-themes/README.md) has the format.
 
 ### Shortcuts
 
@@ -280,6 +280,17 @@ Every command takes `--data-dir <dir>`. The default is `$KANSO_DATA_DIR` when se
 `~/.local/share/kanso` (`$XDG_DATA_HOME/kanso`) on Linux.
 
 ## Development
+
+The built-in color and icon themes are the
+[kanso-themes](https://github.com/iamngoni/kanso-themes) repository, checked out
+at `themes/` as a submodule: clone with `--recursive`, or after cloning run
+
+```bash
+git submodule update --init
+```
+
+A theme change goes to kanso-themes first; moving the submodule to that commit
+puts it in the next build.
 
 ```bash
 PROPTEST_RNG_SEED=20261017 cargo test --workspace

@@ -30,6 +30,9 @@ jobs:
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The built-in themes: the kanso-themes repository.
+          submodules: true
       # Installs the toolchain pinned in rust-toolchain.toml.
       - run: scripts/ci-rust.sh
       - run: cargo fmt --all -- --check
@@ -54,6 +57,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The built-in themes: the kanso-themes repository.
+          submodules: true
       # On the self-hosted Windows runner, plain `bash` is WSL's launcher in
       # WindowsApps, which can't run the step scripts; put Git Bash first.
       # Git for Windows may be installed for every user (Program Files) or
@@ -142,6 +148,9 @@ jobs:
       WRANGLER_SEND_METRICS: "false"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The built-in themes: the kanso-themes repository.
+          submodules: true
       - run: scripts/ci-rust.sh
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:

@@ -1,4 +1,5 @@
-//! Compiles the built-in icon themes in (`icon-themes/`, see
+//! Compiles the built-in icon themes in (`themes/icon-themes/`, the
+//! kanso-themes submodule's, see
 //! `icon_themes::BUILTIN_FILES`). On Windows, also puts the app icon
 //! (assets/icon/kanso.ico) into kanso.exe so Explorer, the taskbar and the
 //! window show it, and keeps DirectML from loading with the app.
@@ -44,7 +45,7 @@ fn windows_icon() {
 }
 
 /// Writes `builtin_icon_themes.rs` into `OUT_DIR`: for each folder of
-/// `icon-themes/` holding a theme, its ID, its JSON and every SVG under it,
+/// `themes/icon-themes/` holding a theme, its ID, its JSON and every SVG under it,
 /// by path, as `include_bytes!`s. Only `.json` and `.svg` files go in.
 fn builtin_icon_themes() {
     use std::fmt::Write as _;
@@ -67,7 +68,13 @@ fn builtin_icon_themes() {
     }
 
     let manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let root = manifest_dir.join("../../icon-themes");
+    let root = manifest_dir.join("../../themes/icon-themes");
+    // The themes are the kanso-themes repository, checked out as a
+    // submodule; without it Kanso would build with no themes at all.
+    assert!(
+        root.is_dir(),
+        "themes/icon-themes is missing: run `git submodule update --init` (the themes are the kanso-themes submodule)"
+    );
     println!("cargo:rerun-if-changed={}", root.display());
     let mut code = String::from(
         "/// The built-in icon themes: (ID, theme JSON, SVGs by path).\n\

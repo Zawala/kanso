@@ -1,6 +1,6 @@
 //! Kanso's icon theme files: a folder holding one JSON document, in the
-//! format `icon-themes/schema/kanso-icon-theme-v1.json` describes (and
-//! `icon-themes/README.md` explains), and the SVGs it names.
+//! format `themes/icon-themes/schema/kanso-icon-theme-v1.json` describes (and
+//! `themes/icon-themes/README.md` explains), and the SVGs it names.
 //!
 //! A theme gives SVGs in three maps, each optional: `icons` draws the UI
 //! icons by their names (`search`, `chevron-down`), `library` draws the
@@ -693,7 +693,7 @@ pub enum SlotSource {
 
 /// The JSON Schema for icon theme files, generated from the slot table and
 /// the icons Kanso draws so it can't drift from what Kanso reads.
-/// `icon-themes/schema/kanso-icon-theme-v1.json` is this, written out.
+/// `themes/icon-themes/schema/kanso-icon-theme-v1.json` is this, written out.
 pub fn schema() -> Value {
     let svg = json!({ "$ref": "#/$defs/svg" });
     let mut library = Map::new();
@@ -1007,7 +1007,7 @@ mod tests {
     #[test]
     fn schema_file_is_current() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../icon-themes/schema/kanso-icon-theme-v1.json");
+            .join("../../themes/icon-themes/schema/kanso-icon-theme-v1.json");
         let mut expected = serde_json::to_string_pretty(&schema()).unwrap();
         expected.push('\n');
         if std::env::var_os("KANSO_THEME_FMT").is_some() {
@@ -1017,7 +1017,7 @@ mod tests {
         let written = std::fs::read_to_string(&path).unwrap_or_default();
         assert!(
             written == expected,
-            "icon-themes/schema/kanso-icon-theme-v1.json is out of date; run KANSO_THEME_FMT=1 cargo test -p kanso-app icon_theme_file"
+            "themes/icon-themes/schema/kanso-icon-theme-v1.json is out of date (commit it in the kanso-themes submodule); run KANSO_THEME_FMT=1 cargo test -p kanso-app icon_theme_file"
         );
     }
 

@@ -1,6 +1,7 @@
 //! The themes Kanso knows, and the ones in use.
 //!
-//! Built-in themes are compiled in from the repository's `themes/` folder.
+//! Built-in themes are compiled in from `themes/`, the kanso-themes
+//! repository checked out as a submodule.
 //! A person's own themes are JSON files in the `themes` folder of Kanso's
 //! data folder: read at launch, again whenever the folder changes, and on
 //! Reload. A file that can't be read is skipped with a notice that says
