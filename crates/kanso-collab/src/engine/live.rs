@@ -19,9 +19,11 @@ use crate::model::{Kind, LiveNotice, PresenceMessage};
 /// How long one wait for the room lasts: also how often the outbox and the
 /// caret are looked at.
 const TICK: Duration = Duration::from_millis(100);
-/// Presence is sent at most this often, and again after this long anyway.
+/// Presence is sent at most this often, and again after this long anyway,
+/// so someone who joins the room sees everyone's caret within it: the room
+/// doesn't say when someone joins.
 const PRESENCE_EVERY: Duration = Duration::from_millis(150);
-const PRESENCE_REFRESH: Duration = Duration::from_secs(10);
+const PRESENCE_REFRESH: Duration = Duration::from_secs(3);
 /// How long to wait before joining again, doubling up to the most.
 const RETRY_FIRST: Duration = Duration::from_secs(1);
 const RETRY_MOST: Duration = Duration::from_secs(30);

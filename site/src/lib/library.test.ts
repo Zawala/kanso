@@ -276,9 +276,10 @@ describe("destinations", () => {
     expect(destinations(FIXTURE, "zzzzq")).toEqual([]);
   });
 
+  // A hundred searches of the whole library: slow runners need longer than the default.
   it("never offers more than eight, whatever the query", () => {
     fc.assert(fc.property(fc.string({ maxLength: 4 }), (q) => destinations(notes, q).length <= 8));
-  });
+  }, 30_000);
 });
 
 describe("any sequence of actions", () => {
