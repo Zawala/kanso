@@ -1464,7 +1464,7 @@ mod tests {
         let written = std::fs::read_to_string(&path).unwrap_or_default();
         assert!(
             written == expected,
-            "themes/schema/kanso-theme-v1.json is out of date; run KANSO_THEME_FMT=1 cargo test -p kanso-app schema_file_is_current"
+            "themes/schema/kanso-theme-v1.json is out of date (commit it in the kanso-themes submodule); run KANSO_THEME_FMT=1 cargo test -p kanso-app schema_file_is_current"
         );
     }
 }

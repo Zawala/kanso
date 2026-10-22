@@ -57,6 +57,8 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+          # The built-in themes: the kanso-themes repository.
+          submodules: true
 
       # On the self-hosted Windows runner, plain `bash` is WSL's launcher in
       # WindowsApps, which can't run the step scripts; put Git Bash first.
