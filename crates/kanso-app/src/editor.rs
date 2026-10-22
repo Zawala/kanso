@@ -71,11 +71,11 @@ use crate::zoom::px;
 
 #[path = "editor_collab.rs"]
 mod collab_glue;
+#[path = "editor_peers.rs"]
+pub(crate) mod peers;
 #[cfg(test)]
 #[path = "spellcheck_tests.rs"]
 mod spellcheck_tests;
-#[path = "editor_peers.rs"]
-pub(crate) mod peers;
 #[path = "editor_vim.rs"]
 mod vim_glue;
 #[cfg(test)]
