@@ -3,6 +3,34 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## [0.8.1](https://github.com/iamngoni/kanso/compare/v0.8.0...v0.8.1) - 2026-10-22
+
+### New
+
+- **voice:** The words you dictate show in the note as you say them ([63d9d0b](https://github.com/iamngoni/kanso/commit/63d9d0bb83c95d61ca0af6394558cf68d543284a))
+- **icons:** Every icon theme from the themes repository comes with Kanso, on its own Settings page ([9b32f34](https://github.com/iamngoni/kanso/commit/9b32f34e23a3f161fa2908162ff255645ee5aaff))
+- **editor:** Pick any installed font for writing, monospace and the preview, and size the preview on its own ([b073ad0](https://github.com/iamngoni/kanso/commit/b073ad0731f748fbf192ca477863480ddab96388))
+- **app:** Zoom the whole app with ⌘= / ⌘− / ⌘0 ([c2a4eb6](https://github.com/iamngoni/kanso/commit/c2a4eb6b8a7f9bc1d15d6fb7dc623fbc0e54b083))
+- **voice:** Spoken punctuation and commands for on-device dictation ([27f7cd4](https://github.com/iamngoni/kanso/commit/27f7cd4a5aa9c97ab12589ac60b2c727b84c98ec))
+- **notes:** Go back and forward between notes, and copy a note's link ([f4b3c39](https://github.com/iamngoni/kanso/commit/f4b3c3983b64ebdc18173eee960152c3aa4a3f02))
+- **editor:** Misspelled words in a note get a red wavy underline, with suggestions on right-click ([c12c129](https://github.com/iamngoni/kanso/commit/c12c1293bae88fa9d54d8b1973bb7b5eb4172533))
+- **notes:** Open a note in its own window ([eedecab](https://github.com/iamngoni/kanso/commit/eedecabb886437a37fabc4f4c980e7c6f84e4132))
+- **notes:** Select several notes and drag them onto a notebook or tag ([a41ef94](https://github.com/iamngoni/kanso/commit/a41ef944519b4233a44d945cc2ce4d256a2113a8))
+
+### Fixed
+
+- **voice:** Pressing the mic with System Dictation chosen starts dictation instead of closing Kanso ([7533747](https://github.com/iamngoni/kanso/commit/75337476b91e1c1bb80df7dd24fb7a6d53a4a40a))
+- **history:** Versions stay newest first when the computer's clock goes back ([61a2570](https://github.com/iamngoni/kanso/commit/61a2570f2ffaa77eeb5273f9571aac33947c03be))
+- **notes:** Copy link and open in window from a note window and from several selected notes ([a16afa1](https://github.com/iamngoni/kanso/commit/a16afa143c640587c8892ce0195cc589a5f6555b))
+- **settings:** The spelling row uses an icon every built-in icon theme draws ([2cc3a54](https://github.com/iamngoni/kanso/commit/2cc3a5411f8c30dfd95e98f5474c177bf3057a71))
+- Review fixes across the merged QOL features ([0466acb](https://github.com/iamngoni/kanso/commit/0466acb456349c7b6c3fe696f62f3eaa9bffa34b))
+- **notes:** The back/forward buttons ask the store once per visit; Copy Note Link works in a note's own window ([b3da519](https://github.com/iamngoni/kanso/commit/b3da519752fd8d48b6f54f8f18bd8cf0d1e19f1b))
+
+### Under the hood
+
+- **themes:** The built-in themes come from the kanso-themes repository, as a submodule ([a05ee2a](https://github.com/iamngoni/kanso/commit/a05ee2a210ca223941966e3866f41da58221d790))
+- Compile Speller::new only on macOS and in tests, fixing Linux clippy ([920fb4c](https://github.com/iamngoni/kanso/commit/920fb4c62e1a454973fa53d69e1b4661a9ca9a45)) by @gridopsbot[bot]
+
 ## [0.8.0](https://github.com/iamngoni/kanso/compare/v0.7.0...v0.8.0) - 2026-10-22
 
 ### New
