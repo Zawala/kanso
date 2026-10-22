@@ -1312,7 +1312,7 @@ fn writing_section(cx: &mut Context<SettingsView>) -> AnyElement {
     if crate::spellcheck::AVAILABLE {
         rows.insert(
             3,
-            Row::new(Lucide::SpellCheck, "Check spelling")
+            Row::new(Lucide::ScanText, "Check spelling")
                 .detail("Underlines misspelled words as you write; right-click one for suggestions. Code, links and tags are left alone.")
                 .trailing(switch("spellcheck", writing.spellcheck, |e, on| e.spellcheck = on)),
         );
