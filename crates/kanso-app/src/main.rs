@@ -38,6 +38,7 @@ mod empty_state;
 mod export;
 mod export_html;
 mod flavour;
+mod fonts;
 mod fuzzy;
 mod graph;
 mod graph_view;

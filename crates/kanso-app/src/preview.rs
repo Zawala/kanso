@@ -26,8 +26,8 @@ use crate::preview_rich::{self, Rich};
 use crate::theme::Colors;
 use crate::theme_file::PreviewColors;
 
-/// The rendered text's size and line height.
-const TEXT_SIZE: f32 = 16.;
+/// The rendered text's line height; its size and face are a setting
+/// ([`preview_type`]).
 const LINE_HEIGHT: f32 = 1.65;
 /// The room above the first chunk and below the last.
 const TEXT_TOP: f32 = 24.;
@@ -123,6 +123,8 @@ pub struct Preview {
     readable: bool,
     /// Draws quotes in their own color (see [`quote_extensions`]).
     extensions: MarkdownExtensions,
+    /// The text size and face the chunks were last measured at.
+    shown_type: Option<PreviewType>,
     /// Measures the chunks again as math and diagrams finish drawing.
     _rich: Task<()>,
 }
@@ -164,6 +166,7 @@ impl Preview {
             links,
             readable: false,
             extensions,
+            shown_type: None,
             _rich: rich_task,
         }
     }
@@ -747,6 +750,7 @@ fn quote_extensions(
             let dark = cx.theme().is_dark();
             let style = text_style(colors, &preview, dark).with_foreground(preview.quote.into());
             let bar = Hsla::from(preview.quote).opacity(0.45);
+            let ty = preview_type(cx);
             let id = ElementId::NamedInteger(
                 QUOTE.into(),
                 node.source_range().map_or(0, |r| r.start) as u64,
@@ -763,7 +767,8 @@ fn quote_extensions(
                 .child(
                     TextView::markdown(id, body.clone())
                         .style(style)
-                        .text_size(px(TEXT_SIZE))
+                        .font_family(ty.family)
+                        .text_size(px(ty.size))
                         .line_height(relative(LINE_HEIGHT))
                         .text_color(preview.quote)
                         .selectable(true)
@@ -797,9 +802,11 @@ pub(crate) fn code_view(
     let markdown: SharedString = crate::preview_chunks::showable(&markdown)
         .into_owned()
         .into();
+    let ty = preview_type(cx);
     TextView::markdown(id, markdown)
         .style(style)
-        .text_size(px(TEXT_SIZE))
+        .font_family(ty.family)
+        .text_size(px(ty.size))
         .line_height(relative(LINE_HEIGHT))
         .text_color(preview.text)
         .selectable(true)
@@ -857,7 +864,7 @@ const PARAGRAPH_GAP: f32 = 0.9;
 /// The room above a chunk that starts like `start` (`first` for the note's
 /// first): what the text view would leave above that block in the whole
 /// note, less the gap the chunk before already leaves below itself.
-fn room_above(start: Start, first: bool, rem: Pixels) -> Pixels {
+fn room_above(start: Start, first: bool, size: f32, rem: Pixels) -> Pixels {
     if first {
         return px(TEXT_TOP);
     }
@@ -865,18 +872,18 @@ fn room_above(start: Start, first: bool, rem: Pixels) -> Pixels {
         Start::Flush => px(0.),
         Start::Heading(level) => {
             let (scale, gap) = heading_metrics(level);
-            (px(TEXT_SIZE * scale * gap) - rem * PARAGRAPH_GAP).max(px(0.))
+            (px(size * scale * gap) - rem * PARAGRAPH_GAP).max(px(0.))
         }
     }
 }
 
 /// The room below a chunk that ends like `end`: the gap the text view
 /// leaves below that block when another follows it.
-fn room_below(end: End, rem: Pixels) -> Pixels {
+fn room_below(end: End, size: f32, rem: Pixels) -> Pixels {
     match end {
         End::Last => px(TEXT_TOP),
         End::Gap => rem * PARAGRAPH_GAP,
-        End::Heading(level) => px(TEXT_SIZE * heading_metrics(level).0 * HEADING_BOTTOM_GAP),
+        End::Heading(level) => px(size * heading_metrics(level).0 * HEADING_BOTTOM_GAP),
     }
 }
 
@@ -964,12 +971,51 @@ pub(crate) fn text_style(colors: &Colors, p: &PreviewColors, dark: bool) -> Text
         })
 }
 
+/// The preview's text size and font, from Settings › Editor: the font
+/// picked there while it is installed, else the theme's.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PreviewType {
+    pub size: f32,
+    pub family: SharedString,
+}
+
+// no-prop-test: reads the settings; `fonts::family` has the properties.
+pub(crate) fn preview_type(cx: &mut App) -> PreviewType {
+    let (size, choice) = cx
+        .try_global::<crate::workspace::AppState>()
+        .map(|state| {
+            let appearance = &state.config.appearance;
+            (
+                appearance.preview_font_size,
+                appearance.preview_font_family.clone(),
+            )
+        })
+        .unwrap_or((crate::config::DEFAULT_FONT_SIZE, None));
+    let installed = crate::fonts::installed(cx);
+    PreviewType {
+        size,
+        family: crate::fonts::family(
+            choice.as_deref(),
+            &installed,
+            cx.theme().font_family.clone(),
+        ),
+    }
+}
+
 /// Room above a code block's first line, clear of its language and copy
 /// button.
 const CODE_TOP: f32 = 34.;
 
 impl Render for Preview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let ty = preview_type(cx);
+        if self.shown_type.as_ref() != Some(&ty) {
+            // Another size or face: every chunk's height changes.
+            if self.shown_type.is_some() && !self.chunks.is_empty() {
+                self.list.remeasure_items(0..self.chunks.len());
+            }
+            self.shown_type = Some(ty.clone());
+        }
         let colors = Colors::get(cx);
         let preview = crate::themes::preview_colors(cx);
         let style = text_style(colors, &preview, cx.theme().is_dark());
@@ -992,22 +1038,22 @@ impl Render for Preview {
                 let resolver = resolver.clone();
                 let links = links.clone();
                 let extensions = extensions.clone();
+                let ty = ty.clone();
                 div()
                     .w_full()
                     .pl(px(TEXT_INSET))
                     .pr_8()
-                    .pt(room_above(start, ix == 0, rem))
-                    .pb(room_below(end, rem))
+                    .pt(room_above(start, ix == 0, ty.size, rem))
+                    .pb(room_below(end, ty.size, rem))
                     .child(
                         div()
                             .w_full()
-                            .when(readable, |el| {
-                                el.max_w(px(readable_width(TEXT_SIZE, false)))
-                            })
+                            .when(readable, |el| el.max_w(px(readable_width(ty.size, false))))
                             .child(
                                 TextView::new(&state)
                                     .style(style.clone())
-                                    .text_size(px(TEXT_SIZE))
+                                    .font_family(ty.family)
+                                    .text_size(px(ty.size))
                                     .line_height(relative(LINE_HEIGHT))
                                     .text_color(text_color)
                                     .selectable(true)
