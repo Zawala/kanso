@@ -121,6 +121,7 @@ mod ui_tests;
 mod updates;
 mod vim;
 mod voice;
+mod voice_commands;
 mod voice_state;
 mod wikilinks;
 mod word_goal;

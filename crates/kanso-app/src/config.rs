@@ -489,10 +489,22 @@ pub enum VoiceEngine {
 }
 
 /// Voice input (Settings › Editor).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct VoiceSettings {
     pub engine: VoiceEngine,
+    /// Whether "comma", "new line", "delete that" and the like, said on
+    /// their own, act instead of going in as words (`voice_commands.rs`).
+    pub spoken_commands: bool,
+}
+
+impl Default for VoiceSettings {
+    fn default() -> Self {
+        VoiceSettings {
+            engine: VoiceEngine::default(),
+            spoken_commands: true,
+        }
+    }
 }
 
 /// Locked notes on this device.
@@ -661,11 +673,14 @@ mod tests {
             gen_editor(),
             (any::<bool>(), "(ctrl-|alt-|shift-|cmd-){1,3}[a-z0-9]"),
             (any::<bool>(), any::<bool>(), 1u8..=2),
-            prop::sample::select(vec![
-                VoiceEngine::Ask,
-                VoiceEngine::OnDevice,
-                VoiceEngine::System,
-            ]),
+            (
+                prop::sample::select(vec![
+                    VoiceEngine::Ask,
+                    VoiceEngine::OnDevice,
+                    VoiceEngine::System,
+                ]),
+                any::<bool>(),
+            ),
         )
             .prop_map(
                 |(
@@ -675,9 +690,12 @@ mod tests {
                     editor,
                     (enabled, shortcut),
                     (related_notes, image_text, graph_hops),
-                    engine,
+                    (engine, spoken_commands),
                 )| AppConfig {
-                    voice: VoiceSettings { engine },
+                    voice: VoiceSettings {
+                        engine,
+                        spoken_commands,
+                    },
                     layout,
                     updates: UpdateSettings { auto_install },
                     editor,
@@ -1279,6 +1297,19 @@ mod tests {
         let off: AppConfig =
             serde_json::from_str(r#"{"updates": {"autoInstall": false}}"#).unwrap();
         assert!(!off.updates.auto_install);
+    }
+
+    /// Spoken commands are on unless turned off, also for files written
+    /// before there was the setting, which keep their engine.
+    #[test]
+    fn older_files_take_spoken_commands() {
+        let old: AppConfig = serde_json::from_str(r#"{"voice": {"engine": "onDevice"}}"#).unwrap();
+        assert_eq!(old.voice.engine, VoiceEngine::OnDevice);
+        assert!(old.voice.spoken_commands);
+        let off: AppConfig =
+            serde_json::from_str(r#"{"voice": {"spokenCommands": false}}"#).unwrap();
+        assert!(!off.voice.spoken_commands);
+        assert_eq!(off.voice.engine, VoiceEngine::Ask);
     }
 
     #[test]

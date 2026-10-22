@@ -5,6 +5,7 @@
 use std::ops::Range;
 
 use crate::markdown_edit::Edit;
+use crate::voice_commands::dictated;
 
 /// Where voice input stands.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -78,33 +79,27 @@ impl Phase {
 /// The edit that puts `transcript` in place of `selection` in `text`, with
 /// the caret after it: a space either side where it would otherwise run
 /// into a word, and the first letter made small when it lands mid-sentence
-/// (unless it is "I" or a word in capitals). Nothing for an empty transcript.
-pub fn voice_edit(text: &str, selection: Range<usize>, transcript: &str) -> Option<Edit> {
-    let words = transcript.trim();
-    if words.is_empty() {
-        return None;
-    }
+/// (unless it is "I" or a word in capitals). With `commands`, spoken
+/// punctuation and commands act first (`voice_commands`). Nothing when
+/// nothing is left to put in.
+pub fn voice_edit(
+    text: &str,
+    selection: Range<usize>,
+    transcript: &str,
+    commands: bool,
+) -> Option<Edit> {
     let start = floor_boundary(text, selection.start.min(text.len()));
     let end = floor_boundary(text, selection.end.clamp(start, text.len()));
-    let before = text[..start].chars().next_back();
-    let after = text[end..].chars().next();
-    let mut out = String::new();
-    if before.is_some_and(|c| !c.is_whitespace() && !"([{\"'“‘".contains(c)) {
-        out.push(' ');
-    }
-    if mid_sentence(&text[..start]) {
-        out.push_str(&lowercase_first(words));
-    } else {
-        out.push_str(words);
-    }
-    let caret = start + out.len();
-    if after.is_some_and(|c| c.is_alphanumeric()) {
-        out.push(' ');
-    }
+    let (out, caret) = dictated(
+        &text[..start],
+        text[end..].chars().next(),
+        transcript,
+        commands,
+    )?;
     Some(Edit {
         range: start..end,
+        selection: start + caret..start + caret,
         text: out,
-        selection: caret..caret,
     })
 }
 
@@ -113,37 +108,6 @@ fn floor_boundary(text: &str, mut at: usize) -> usize {
         at -= 1;
     }
     at
-}
-
-/// Whether text that follows `before` carries on a sentence: something
-/// came before on the line, and it didn't end the sentence.
-fn mid_sentence(before: &str) -> bool {
-    let line = before.rsplit('\n').next().unwrap_or("");
-    let trimmed = line.trim_end();
-    // A list item's or heading's marker starts a sentence.
-    let content = trimmed
-        .trim_start_matches(['#', '-', '*', '+', '>', ' '])
-        .trim_end_matches(['(', '[', '{', '"', '\'', '“', '‘']);
-    match content.chars().next_back() {
-        None => false,
-        Some(c) => !".!?:".contains(c) && !content.ends_with("[ ]") && !content.ends_with("[x]"),
-    }
-}
-
-/// "Hello there" → "hello there"; "I think" and "NASA said" stay.
-fn lowercase_first(words: &str) -> String {
-    let first = words.split_whitespace().next().unwrap_or("");
-    let mut chars = first.chars();
-    let (Some(a), b) = (chars.next(), chars.next()) else {
-        return words.to_owned();
-    };
-    let keep = first == "I" || first.starts_with("I'") || b.is_some_and(char::is_uppercase);
-    if keep || !a.is_uppercase() {
-        return words.to_owned();
-    }
-    let mut out: String = a.to_lowercase().collect();
-    out.push_str(&words[a.len_utf8()..]);
-    out
 }
 
 /// Where the live words `shown` are in `text` now, they having gone in at
@@ -163,6 +127,7 @@ pub fn find_live(text: &str, start: usize, shown: &str) -> Option<Range<usize>> 
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use proptest::test_runner::FileFailurePersistence;
 
     fn apply(text: &str, edit: &Edit) -> String {
         format!(
@@ -174,7 +139,10 @@ mod tests {
     }
 
     fn put(text: &str, at: usize, transcript: &str) -> String {
-        apply(text, &voice_edit(text, at..at, transcript).unwrap())
+        let plain = apply(text, &voice_edit(text, at..at, transcript, false).unwrap());
+        let spoken = apply(text, &voice_edit(text, at..at, transcript, true).unwrap());
+        assert_eq!(plain, spoken);
+        plain
     }
 
     #[test]
@@ -194,9 +162,9 @@ mod tests {
         assert_eq!(put("(", 1, "Aside"), "(Aside");
         assert_eq!(put("I said (", 8, "Aside"), "I said (aside");
         assert_eq!(put("one two", 4, "Three"), "one three two");
-        assert_eq!(voice_edit("abc", 1..1, "  "), None);
+        assert_eq!(voice_edit("abc", 1..1, "  ", true), None);
         // The selection is what is replaced.
-        let edit = voice_edit("say this now", 4..8, "That").unwrap();
+        let edit = voice_edit("say this now", 4..8, "That", true).unwrap();
         assert_eq!(apply("say this now", &edit), "say that now");
         assert_eq!(edit.selection, 8..8);
     }
@@ -252,7 +220,11 @@ mod tests {
     }
 
     proptest! {
-        #![proptest_config(ProptestConfig { cases: 256, ..ProptestConfig::default() })]
+        #![proptest_config(ProptestConfig {
+            cases: 256,
+            failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
+            ..ProptestConfig::default()
+        })]
 
         /// The text around the selection is kept as it was, the transcript's
         /// words are all there (the first letter's case aside), and the
@@ -263,9 +235,15 @@ mod tests {
             a in 0usize..40,
             b in 0usize..40,
             transcript in "[A-Za-z][a-z]{0,6}( [a-zA-Z]{1,6}){0,4}[.?]?",
+            commands in any::<bool>(),
         ) {
             let (a, b) = (a.min(b), a.max(b));
-            let edit = voice_edit(&text, a..b, &transcript).unwrap();
+            // Spoken commands ("comma", "delete that") are another test's.
+            prop_assume!(
+                !commands
+                    || dictated("", None, &transcript, true) == dictated("", None, &transcript, false)
+            );
+            let edit = voice_edit(&text, a..b, &transcript, commands).unwrap();
             let out = apply(&text, &edit);
             prop_assert!(out.starts_with(&text[..edit.range.start]));
             prop_assert!(out.ends_with(&text[edit.range.end..]));

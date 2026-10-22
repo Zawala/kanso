@@ -1577,22 +1577,31 @@ impl NoteEditor {
         if self.view_mode == ViewMode::Preview {
             self.set_view_mode(ViewMode::Split, cx);
         }
+        let commands = spoken_commands(cx);
         if let Some(live) = self.live_voice.take() {
             // The words shown while speaking become the transcript, in one
             // step that undoes at once.
-            let edit =
-                crate::voice_state::voice_edit(&live.base, live.selection.clone(), transcript);
-            let committed = edit.is_some_and(|edit| {
-                self.body.update(cx, |state, cx| {
-                    let Some(marked) = state.marked_text_range(window, cx) else {
-                        return false;
-                    };
-                    let start = utf8_offset(&state.value(), marked.start);
-                    let caret = start + (edit.selection.start - edit.range.start);
-                    state.replace_text_in_range(None, &edit.text, window, cx);
-                    state.set_selected_range(caret..caret, cx);
-                    true
-                })
+            let Some(edit) = crate::voice_state::voice_edit(
+                &live.base,
+                live.selection.clone(),
+                transcript,
+                commands,
+            ) else {
+                // Commands took back everything said ("delete that").
+                self.live_voice = Some(live);
+                self.drop_live_transcript(window, cx);
+                self.focus_body(window, cx);
+                return true;
+            };
+            let committed = self.body.update(cx, |state, cx| {
+                let Some(marked) = state.marked_text_range(window, cx) else {
+                    return false;
+                };
+                let start = utf8_offset(&state.value(), marked.start);
+                let caret = start + (edit.selection.start - edit.range.start);
+                state.replace_text_in_range(None, &edit.text, window, cx);
+                state.set_selected_range(caret..caret, cx);
+                true
             });
             if committed {
                 self.focus_body(window, cx);
@@ -1601,7 +1610,7 @@ impl NoteEditor {
             self.select_live_words(&live, cx);
         }
         self.smart_edit(window, cx, |_, text, selection| {
-            crate::voice_state::voice_edit(text, selection, transcript)
+            crate::voice_state::voice_edit(text, selection, transcript, commands)
         });
         self.focus_body(window, cx);
         true
@@ -1640,8 +1649,35 @@ impl NoteEditor {
         if live.lost {
             return;
         }
-        let Some(edit) = crate::voice_state::voice_edit(&live.base, live.selection.clone(), words)
-        else {
+        let Some(edit) = crate::voice_state::voice_edit(
+            &live.base,
+            live.selection.clone(),
+            words,
+            spoken_commands(cx),
+        ) else {
+            // Commands took back everything said so far: nothing shows,
+            // and the next words start the composing again.
+            if !live.shown.is_empty() {
+                let cleared = self.body.update(cx, |state, cx| {
+                    if state.marked_text_range(window, cx).is_none() {
+                        return false;
+                    }
+                    state.replace_and_mark_text_in_range(None, "", None, window, cx);
+                    state.unmark_text(window, cx);
+                    true
+                });
+                live.lost = !cleared;
+                live.shown.clear();
+                // The words had taken the selection's place: the next ones
+                // go in at the caret left there.
+                let at = live.selection.start.min(live.base.len());
+                let end = live.selection.end.clamp(at, live.base.len());
+                if live.base.is_char_boundary(at) && live.base.is_char_boundary(end) {
+                    live.base.replace_range(at..end, "");
+                    live.selection = at..at;
+                }
+            }
+            cx.notify();
             return;
         };
         let first = live.shown.is_empty();
@@ -3455,6 +3491,13 @@ fn level_meter(level: f32, colors: &Colors) -> impl IntoElement {
 /// leaves nothing to undo.
 // no-prop-test: three calls into the editor; the window tests undo
 // through it.
+/// Whether spoken punctuation and commands act on what is said
+/// (Settings › Editor › Voice input).
+fn spoken_commands(cx: &App) -> bool {
+    cx.try_global::<AppState>()
+        .is_none_or(|state| state.config.voice.spoken_commands)
+}
+
 /// The words voice input has shown so far (`NoteEditor::live_voice`).
 struct LiveVoice {
     /// The text, and its selection, when the first words came: each
@@ -4366,6 +4409,62 @@ mod tests {
             editor.drop_live_transcript(window, cx)
         });
         assert_eq!(open.text(cx).0, "Groceries: Tea and cake.");
+    }
+
+    /// Spoken punctuation and commands act on the live words as on the
+    /// transcript, so what shows while speaking is what lands; "delete
+    /// that" takes back only what was said, never the note's own text.
+    // no-prop-test: drives the editor; `voice_commands` has the properties.
+    #[gpui_kit::test]
+    fn spoken_commands_act_live_and_in_the_transcript(cx: &mut TestAppContext) {
+        let open = super::writing_tests::Open::new(cx, "Groceries");
+        open.select(cx, 9..9);
+        for heard in [
+            "Bullet point.",
+            "Bullet point. milk,",
+            "Bullet point. milk, comma",
+            "Bullet point. milk, comma, eggs.",
+        ] {
+            open.with(cx, |editor, window, cx| {
+                editor.show_live_transcript(heard, window, cx)
+            });
+        }
+        assert_eq!(open.text(cx).0, "Groceries\n- Milk, eggs.");
+        open.with(cx, |editor, window, cx| {
+            assert!(editor.insert_transcript("Bullet point. milk, comma, eggs.", window, cx));
+        });
+        assert_eq!(open.text(cx), ("Groceries\n- Milk, eggs.".into(), 23..23));
+        open.keys(cx, "cmd-z");
+        assert_eq!(open.text(cx).0, "Groceries");
+
+        // Everything said taken back, live and then in the transcript: the
+        // note keeps its own words.
+        open.select(cx, 9..9);
+        open.with(cx, |editor, window, cx| {
+            editor.show_live_transcript("Bread.", window, cx)
+        });
+        assert_eq!(open.text(cx).0, "Groceries bread.");
+        open.with(cx, |editor, window, cx| {
+            editor.show_live_transcript("Bread. Delete that.", window, cx)
+        });
+        assert_eq!(open.text(cx).0, "Groceries");
+        open.with(cx, |editor, window, cx| {
+            editor.show_live_transcript("Bread. Delete that. Delete that. Jam.", window, cx)
+        });
+        assert_eq!(open.text(cx).0, "Groceries jam.");
+        open.with(cx, |editor, window, cx| {
+            assert!(editor.insert_transcript("Bread. Delete that. Delete that.", window, cx));
+        });
+        assert_eq!(open.text(cx).0, "Groceries");
+
+        // With nothing shown live, the transcript's commands act alone.
+        open.select(cx, 9..9);
+        open.with(cx, |editor, window, cx| {
+            assert!(editor.insert_transcript("Colon. Tea. New line. Cake. Undo that.", window, cx));
+        });
+        assert_eq!(open.text(cx).0, "Groceries: Tea.\n");
+        open.keys(cx, "cmd-z");
+        assert_eq!(open.text(cx).0, "Groceries");
     }
 
     #[test]
