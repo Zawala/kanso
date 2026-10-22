@@ -129,7 +129,7 @@ it links to) as a note in the Inbox and opens it; opening it again updates that 
 | Standard Notes | a decrypted backup (`.txt`/`.json`, or the `.zip`) | Notes, nested tags, pinned, archived and trashed notes. Encrypted backups can't be read; export a decrypted one. |
 | Simplenote | the `.zip` from Export Notes, or its `notes.json` | Notes (the first line is the title), tags, pinned and trashed notes. |
 | UpNote | a folder from Export › Markdown | Read as a Markdown folder. |
-| Apple Notes | `~/Library/Group Containers/group.com.apple.notes`, or its `NoteStore.sqlite` | Accounts, folders, notes, tables, scans and drawings with a downloaded preview, pictures, PDFs and other attachments, internal links, tags and pinned notes. Locked notes and content not downloaded from iCloud are skipped and listed. Read directly from the local Notes database; macOS may ask for access. |
+| Apple Notes | found on this computer | Accounts, folders, notes, tables, scans and drawings with a downloaded preview, pictures, PDFs and other attachments, internal links, tags and pinned notes. Locked notes and content not downloaded from iCloud are skipped and listed. Kanso finds the standard Notes library itself and macOS may ask once to allow read-only access. |
 | Apple Journal | an entry `.html` file, the export's folder, or a `.zip` | Each entry as a dated note, with its reflection prompt, body text and useful activity/location/media metadata. `index.html` is skipped. |
 | Google Keep | a Keep `.json` file, a Google Takeout `.zip`, or its folder | Notes, lists and checklists, labels as tags, pinned/archived/trashed state, annotations, dates and local attachments. |
 | HTML | an `.html`/`.htm` file, a folder of pages, or a `.zip` | Pages as Markdown with their folder tree, links between pages, and local pictures/files as attachments. Remote pages are not fetched. |
@@ -140,10 +140,13 @@ it links to) as a note in the Inbox and opens it; opening it again updates that 
 
 Attachments larger than 10 MB, the most a Kanso attachment can be, are skipped and listed, and
 links to them stay as they were. Apple Notes is read from its local database, so use the macOS app
-to make sure the notes you need have downloaded before importing.
+to make sure the notes you need have downloaded before importing. `kanso import apple-notes` finds
+the standard Notes library; `kanso import apple-notes <path>` can read a copy somewhere else.
 
-From a terminal, with Kanso closed, `kanso import <kind> <path>` does the same (`kanso import help`
-lists the kinds); `--dry-run` prints the summary and writes nothing.
+From a terminal, with Kanso closed, `kanso import <kind> [path]` does the same (`kanso import
+help` lists the kinds); Apple Notes finds its own path, and `--dry-run` prints the summary and
+writes nothing. A terminal can't show Kanso's Notes access panel, so the terminal itself needs
+Full Disk Access once, or give Apple Notes a readable copy instead.
 
 **Importing a PouchDB notes library.** Choosing it in **Import…** (or `kanso import pouchdb`)
 copies the library found on this computer in, keeping its IDs and revisions; its files are only
@@ -276,7 +279,8 @@ kanso                       # open the app
 kanso serve                 # only the API (REST and /mcp), no window
 kanso mcp                   # MCP over stdin/stdout, for agents that start a program (Kanso open)
 kanso import obsidian ~/Vault --dry-run   # what an import would bring in
-kanso import notion ~/Downloads/Export.zip  # markdown, obsidian, notion, evernote, apple-notes, …
+kanso import notion ~/Downloads/Export.zip  # markdown, obsidian, notion, evernote, …
+kanso import apple-notes                  # the Notes library on this Mac
 kanso import pouchdb        # the PouchDB library on this computer; --credentials copies its API settings
 kanso capture "Call Sam"    # save a note to the Inbox (--book <name> picks the notebook)
 pbpaste | kanso capture     # with no text, it reads standard input

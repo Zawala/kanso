@@ -24,6 +24,12 @@ use flate2::read::GzDecoder;
 use prost::Message;
 
 #[derive(Clone, PartialEq, Message)]
+pub(super) struct NoteStoreProto {
+    #[prost(message, optional, tag = "2")]
+    pub document: Option<Document>,
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub(super) struct Document {
     #[prost(int32, optional, tag = "2")]
     pub version: Option<i32>,
@@ -271,10 +277,11 @@ pub(super) struct ListEntryDetailsKey {
 
 /// Decode a gzip protobuf with a hard cap on the expanded message size.
 pub(super) fn decode_note(bytes: &[u8], max_output: usize) -> anyhow::Result<Note> {
-    let document: Document = decode_gzip(bytes, max_output)?;
-    document
-        .note
-        .context("protobuf document has no note payload")
+    let store: NoteStoreProto = decode_gzip(bytes, max_output)?;
+    store
+        .document
+        .and_then(|document| document.note)
+        .context("protobuf note store has no note payload")
 }
 
 pub(super) fn decode_mergeable(

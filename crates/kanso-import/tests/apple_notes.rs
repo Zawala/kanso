@@ -345,7 +345,7 @@ mod macos_tests {
         let notes = collect_notes(&mut source, false);
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].title, "Hi");
-        assert_eq!(fixture::GOLDEN_WIRE_HEX, "10011a08120248692a020802");
+        assert_eq!(fixture::GOLDEN_WIRE_HEX, "120c10011a08120248692a020802");
     }
 
     #[test]

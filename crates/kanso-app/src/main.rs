@@ -159,10 +159,9 @@ Commands:
   (none)            Open the app
   serve             Run only the local API (REST and /mcp), without a
                     window
-  import <kind> <path>
+  import <kind> [path]
                     Import a folder of Markdown or another app's export
-                    (markdown, obsidian, notion, evernote, bear, joplin,
-                    logseq, standard-notes, simplenote, upnote) [--dry-run];
+                    [--dry-run]; Apple Notes finds its library itself.
                     `kanso import help` lists what each takes
   import pouchdb    Import the PouchDB notes library found on this computer
                     [--library-dir <dir>] [--credentials]
