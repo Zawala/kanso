@@ -59,6 +59,8 @@ model2vec-rs = { version = "=0.3.0", default-features = false }
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# Deriving the JSON schema of a tool's arguments for the model.
+schemars = "0.8"
 # The history dialog's changes between versions.
 similar.workspace = true
 sha2.workspace = true
