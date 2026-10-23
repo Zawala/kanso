@@ -1,7 +1,8 @@
 //! Mermaid diagrams, drawn by the pure-Rust `mermaid-svg` in the preview
-//! theme's colors.
+//! theme's colors, or by Pele when `KANSO_MERMAID=pele` is set (a spike).
 
 use std::borrow::Cow;
+use std::sync::OnceLock;
 
 use mermaid_svg::{ParseError, RenderError, Theme};
 
@@ -200,10 +201,39 @@ fn theme(p: &Palette) -> Theme {
     }
 }
 
+/// What draws a diagram.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Engine {
+    /// `mermaid-svg`, in Rust: the default.
+    MermaidSvg,
+    /// Pele, in QuickJS: a spike, on with `KANSO_MERMAID=pele`.
+    Pele,
+}
+
+impl Engine {
+    /// The engine this run of Kanso draws with.
+    fn chosen() -> Engine {
+        static CHOSEN: OnceLock<Engine> = OnceLock::new();
+        *CHOSEN.get_or_init(|| match std::env::var("KANSO_MERMAID") {
+            Ok(name) if name.eq_ignore_ascii_case("pele") => Engine::Pele,
+            _ => Engine::MermaidSvg,
+        })
+    }
+}
+
 /// Draws a Mermaid diagram.
 pub(crate) fn render(source: &str, palette: &Palette) -> Outcome {
+    render_with(Engine::chosen(), source, palette)
+}
+
+/// Draws a Mermaid diagram with `engine`.
+pub fn render_with(engine: Engine, source: &str, palette: &Palette) -> Outcome {
     if source.len() > MAX_SOURCE {
         return Err(Failure::Invalid("The diagram is too long to draw.".into()));
+    }
+    if engine == Engine::Pele {
+        let markup = crate::pele::theme(&crate::pele::render(source)?, palette);
+        return finish(&markup);
     }
     let theme = theme(palette);
     // A third-party layout engine: a bug in it shows the source, not a crash.
@@ -216,8 +246,12 @@ pub(crate) fn render(source: &str, palette: &Palette) -> Outcome {
         #[allow(unreachable_patterns)]
         err => Failure::Invalid(err.to_string()),
     })?;
-    let markup = shrink_markers(&markup, MARKER_SCALE);
-    let flat = svg::flatten(&markup, PAD)
+    finish(&shrink_markers(&markup, MARKER_SCALE))
+}
+
+/// A drawing's SVG, flattened and cropped.
+fn finish(markup: &str) -> Outcome {
+    let flat = svg::flatten(markup, PAD)
         .ok_or_else(|| Failure::Invalid("The diagram drew nothing.".into()))?;
     Ok(Svg {
         markup: flat.markup,

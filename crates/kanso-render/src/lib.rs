@@ -16,6 +16,7 @@ pub mod html;
 pub mod markdown_safe;
 mod math;
 mod mermaid;
+mod pele;
 mod rough;
 pub mod svg;
 
@@ -23,6 +24,8 @@ use std::sync::Arc;
 
 pub use cache::{cached, render_blocking, request};
 pub use mermaid::is_supported as mermaid_is_supported;
+#[doc(hidden)]
+pub use mermaid::{Engine as MermaidEngine, render_with as render_mermaid_with};
 
 /// The text size drawings are measured for.
 pub const TEXT_SIZE: f32 = 16.;
