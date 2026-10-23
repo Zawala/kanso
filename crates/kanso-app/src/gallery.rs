@@ -349,6 +349,7 @@ mod tests {
     use super::*;
     use kanso_gallery::install::color_digest;
     use kanso_gallery::{Appearance, FileRef, Theme, sha256_hex};
+    use proptest::prelude::*;
 
     fn theme() -> (Theme, Vec<u8>) {
         let file = crate::themes::builtins()[0].file.to_json_string();
@@ -648,5 +649,20 @@ mod tests {
         let mut reserved = HashSet::new();
         reserved.insert(theme.name.to_lowercase());
         assert!(install_color(&root, &theme, &bytes, &reserved, false).is_err());
+    }
+
+    proptest! {
+        /// Whatever the edit is, the gallery never writes over the copy on
+        /// disk; the file keeps exactly the bytes the person left.
+        #[test]
+        fn prop_an_edited_copy_is_never_replaced(edit in prop::collection::vec(any::<u8>(), 1..64)) {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path().join("gallery");
+            let (theme, bytes) = theme();
+            install_color(&root, &theme, &bytes, &HashSet::new(), false).unwrap();
+            std::fs::write(root.join("themes/gallery-test.json"), &edit).unwrap();
+            prop_assert!(install_color(&root, &theme, &bytes, &HashSet::new(), false).is_err());
+            prop_assert_eq!(std::fs::read(root.join("themes/gallery-test.json")).unwrap(), edit);
+        }
     }
 }

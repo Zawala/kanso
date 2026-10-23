@@ -2156,6 +2156,35 @@ mod tests {
             prop_assert!(got.is_err());
         }
 
+        /// Clearing a revoked theme's name leaves no slot pointing at it,
+        /// whichever slots held it, and leaves the others alone.
+        #[test]
+        fn prop_clearing_a_name_clears_every_slot_that_held_it(
+            name in "[A-Za-z ]{1,12}",
+            fallback in "[A-Za-z ]{1,12}",
+            in_ui in any::<bool>(),
+            in_light in any::<bool>(),
+            in_dark in any::<bool>(),
+            in_syntax in any::<bool>(),
+            in_preview in any::<bool>(),
+        ) {
+            let mut settings = crate::config::ThemeSettings {
+                ui: if in_ui { name.clone() } else { "Other Ui".into() },
+                light: if in_light { name.clone() } else { "Other Light".into() },
+                dark: if in_dark { name.clone() } else { "Other Dark".into() },
+                syntax: Some(if in_syntax { name.clone() } else { "Other Syntax".into() }),
+                preview: Some(if in_preview { name.clone() } else { "Other Preview".into() }),
+                follow_system: true,
+            };
+            let changed = clear_theme_name(&mut settings, &name, &fallback);
+            prop_assert_eq!(changed, in_ui || in_light || in_dark || in_syntax || in_preview);
+            prop_assert_ne!(&settings.ui, &name);
+            prop_assert_ne!(&settings.light, &name);
+            prop_assert_ne!(&settings.dark, &name);
+            prop_assert_ne!(settings.syntax.as_deref(), Some(name.as_str()));
+            prop_assert_ne!(settings.preview.as_deref(), Some(name.as_str()));
+        }
+
         /// A search finds a theme by every word in its name, family, author,
         /// licence or description only when all its words are there.
         #[test]
