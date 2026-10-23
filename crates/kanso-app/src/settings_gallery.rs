@@ -430,9 +430,10 @@ fn finish_refresh(manual: bool, root: std::path::PathBuf, result: CheckResult, c
         let gallery = gallery_mut(cx);
         match result {
             Some(Ok((bytes, signature, etag, index))) => {
-                // Write the index and signature before raising the floor:
-                // a crash between them leaves the old pair, which still
-                // verifies, rather than a new index with an old signature.
+                // Each file is written atomically before the floor moves.
+                // A crash between the two leaves a pair that doesn't
+                // verify; the next start then refetches instead of trusting
+                // a mixed pair.
                 let written = kanso_gallery::state::write_atomic(&root.join("index.json"), &bytes)
                     .and_then(|()| {
                         kanso_gallery::state::write_atomic(&root.join("index.json.sig"), &signature)
