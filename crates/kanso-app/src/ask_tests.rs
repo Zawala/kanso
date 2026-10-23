@@ -121,6 +121,14 @@ fn ai_off_has_no_ask_command_and_opens_nothing(cx: &mut TestAppContext) {
     });
     assert!(!open);
     assert_ne!(tab, InspectorTab::Ask);
+    let tabs = cx.read(|cx| {
+        f.workspace
+            .read(cx)
+            .inspector
+            .read(cx)
+            .visible_tabs_for_test(cx)
+    });
+    assert!(!tabs.contains(&InspectorTab::Ask), "{tabs:?}");
 }
 
 #[gpui_kit::test]
@@ -138,4 +146,12 @@ fn ai_on_has_the_command_and_it_opens_the_panel(cx: &mut TestAppContext) {
     });
     assert!(open);
     assert_eq!(tab, InspectorTab::Ask);
+    let tabs = cx.read(|cx| {
+        f.workspace
+            .read(cx)
+            .inspector
+            .read(cx)
+            .visible_tabs_for_test(cx)
+    });
+    assert!(tabs.contains(&InspectorTab::Ask), "{tabs:?}");
 }

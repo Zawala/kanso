@@ -814,6 +814,11 @@ impl Workspace {
     }
 
     fn set_inspector_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        if !open {
+            // Closing the pane ends the Ask conversation; it is never saved.
+            self.inspector
+                .update(cx, |inspector, cx| inspector.stop_ask(cx));
+        }
         self.inspector_open = open;
         self.editor.update(cx, |editor, cx| {
             editor.inspector_open = open;

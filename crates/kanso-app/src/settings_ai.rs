@@ -86,6 +86,7 @@ fn client_settings(ai: &AiSettings, typed_key: &str, saved_key: Option<&str>) ->
         base_url: ai.base_url.clone(),
         model: ai.model.clone(),
         api_key,
+        region: ai.provider.default_region().to_owned(),
     }
 }
 
@@ -296,6 +297,8 @@ impl AiPage {
                     .debug_selector(|| "ai-base-url".into())
                     .child(Input::new(&self.base_url)),
             )
+        } else if ai.provider == Provider::Bedrock {
+            row.value(Provider::Bedrock.host(""))
         } else {
             row.value(ai.base_url.clone())
         }
@@ -317,11 +320,13 @@ impl AiPage {
             )
     }
 
-    fn key_row(&self) -> Row {
+    fn key_row(&self, provider: Provider) -> Row {
         let detail = if self.has_key {
             "Saved in the Keychain. Type a new key to replace it."
-        } else {
+        } else if provider.needs_key() {
             "Kept in the Keychain, never in the settings file."
+        } else {
+            "Optional, for a server that asks for one. Kept in the Keychain, never in the settings file."
         };
         Row::new(gpui_kit::assets::IconName::Key, "API key")
             .detail(detail)
@@ -367,13 +372,21 @@ impl AiPage {
 fn provider_detail(provider: Provider) -> &'static str {
     match provider {
         Provider::LocalModel => {
-            "Ollama on this Mac, through its OpenAI-compatible address. No key, and the notes stay on this Mac."
+            "Ollama or another OpenAI-compatible server, on this Mac or your network. No key unless the server asks for one."
         }
         Provider::OpenAi => "OpenAI's own models, with a key from your OpenAI account.",
         Provider::Anthropic => "Claude models, with a key from your Anthropic account.",
+        Provider::Gemini => "Google Gemini models, with a key from Google AI Studio.",
         Provider::OpenRouter => "Many providers through OpenRouter, with a key from your account.",
+        Provider::Groq => "Groq's fast models, with a key from your Groq account.",
+        Provider::DeepSeek => "DeepSeek's models, with a key from your DeepSeek account.",
+        Provider::Xai => "xAI's Grok models, with a key from your xAI account.",
+        Provider::Mistral => "Mistral's models, with a key from your Mistral account.",
+        Provider::Cohere => "Cohere's models, with a key from your Cohere account.",
+        Provider::Bedrock => "AWS Bedrock with a bearer token, in the region us-east-1.",
+        Provider::Kimi => "Moonshot's Kimi models, with a key from your Moonshot account.",
         Provider::Custom => {
-            "Another OpenAI-compatible server, such as LM Studio, at an address you type."
+            "Another OpenAI-compatible server, such as LM Studio, at an address you type. A key is optional."
         }
     }
 }
@@ -429,8 +442,8 @@ impl Render for AiPage {
             rows.push(self.provider_row(&ai, cx));
             rows.push(self.base_url_row(&ai));
             rows.push(self.model_row(&ai));
-            if ai.provider.needs_key() {
-                rows.push(self.key_row());
+            if ai.provider.accepts_key() {
+                rows.push(self.key_row(ai.provider));
             }
             rows.push(self.test_row(&ai, view.clone()));
         }
