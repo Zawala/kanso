@@ -8,6 +8,7 @@
 
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Mutex;
 
 use kanso_gallery::state::{Pending, Record, now_rfc3339};
 use kanso_gallery::{IconCaps, Kind, State, Theme};
@@ -16,6 +17,11 @@ use crate::icon_theme_file;
 use crate::origin::Origin;
 use crate::theme_file::ThemeFile;
 use crate::theme_import;
+
+/// Installs run on background threads, but they read and write one
+/// `state.json`; one at a time keeps two halves of a pair from losing each
+/// other's record.
+static INSTALL_LOCK: Mutex<()> = Mutex::new(());
 
 /// The digest of an installed record's bytes now: a color file's SHA-256, or
 /// an icon folder's tree digest. `None` when it is missing.
@@ -84,6 +90,9 @@ pub fn installed_name(root: &Path, id: &str) -> Option<String> {
 /// the person why through its Browse card.
 #[allow(dead_code)] // Called by the automatic check in #49 step 5.
 pub fn disable(root: &Path, id: &str) {
+    let _installing = INSTALL_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let path = root.join("state.json");
     let mut state = State::load(&path);
     if !state.disabled.iter().any(|other| other == id) {
@@ -107,6 +116,9 @@ pub fn install_color(
     if theme.kind != Kind::Color {
         return Err("that entry isn't a color theme".into());
     }
+    let _installing = INSTALL_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let text = std::str::from_utf8(bytes).map_err(|_| "the theme isn't UTF-8".to_owned())?;
     let file = ThemeFile::parse(text).map_err(|err| format!("the theme {err}"))?;
     if file.name != theme.name {
@@ -166,6 +178,9 @@ pub fn install_icons(
     if theme.kind != Kind::Icons {
         return Err("that entry isn't an icon theme".into());
     }
+    let _installing = INSTALL_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if reserved_ids.contains(&theme.id) {
         return Err(format!(
             "\"{}\" is already a built-in or your own icon theme",
@@ -242,6 +257,9 @@ pub fn install_icons(
 /// Removes an installed gallery theme and its record. The person's own
 /// themes are never touched.
 pub fn remove(root: &Path, kind: Kind, id: &str) -> Result<(), String> {
+    let _installing = INSTALL_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     kanso_gallery::remove_installed(root, kind, id).map_err(|err| err.to_string())?;
     let path = root.join("state.json");
     let mut state = State::load(&path);
