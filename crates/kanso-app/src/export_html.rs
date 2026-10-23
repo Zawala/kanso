@@ -54,6 +54,10 @@ pub fn page_without_queries(
 
 /// `body` with each query fence drawn as the table it makes.
 fn with_queries(store: &Store, body: &str, self_id: Option<&str>) -> String {
+    // Most pages have no query: don't read every note to find that out.
+    if !kanso_core::query_view::contains_query(body) {
+        return body.to_owned();
+    }
     let Ok(rows) = store.query_view_notes() else {
         return body.to_owned();
     };
