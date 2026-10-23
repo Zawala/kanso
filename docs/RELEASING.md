@@ -196,47 +196,38 @@ To check the key and the secret match, sign a test feed the same way the
 workflow does: `kanso-release sign` refuses a key whose public half isn't in
 `trusted-keys.txt`.
 
-### 2. The theme gallery signing key (required for the gallery)
+### 2. The theme gallery signing key (set up)
 
 The theme gallery has its own key, separate from the update key; never reuse
-one for the other. This build ships
-`crates/kanso-gallery/keys/themes-trusted-keys.txt` with no key, so the
-gallery says "The theme gallery isn't set up in this build" and never
-fetches until you add one. The publisher lives in
-[`iamngoni/kanso-themes`](https://github.com/iamngoni/kanso-themes); its
-README has the contributor and publishing details.
+one for the other. The key and the `gallery` environment already exist, so
+there is nothing to generate:
 
-1. Generate the key in a `kanso-themes` checkout:
+- The public half `gAD6MZmqRxzGkbeLh0ofxcVn5UlW+AaA7157L15Qd4Y=` is in
+  `crates/kanso-gallery/keys/themes-trusted-keys.txt` here and in
+  `gallery/trusted-keys.txt` in
+  [`iamngoni/kanso-themes`](https://github.com/iamngoni/kanso-themes). Keep
+  the two lists identical.
+- `kanso-themes` has a `gallery` environment that deploys only from `main`
+  and requires the owner's approval. Its only secret is
+  `KANSO_THEMES_SIGNING_KEY`.
+- That secret was made with `kanso-release keygen`, which writes the base64
+  of a 32-byte Ed25519 seed. `gallery-sign` reads that format as is; no
+  conversion and no `gallery-sign keygen` is needed. Do not generate a new
+  key unless rotating: a shipped Kanso would not trust it.
 
-   ```sh
-   cargo run --manifest-path tools/gallery-sign/Cargo.toml -- keygen
-   ```
+The signing job builds `tools/gallery-sign` with `--locked` in a step with no
+secret, then runs that binary with the key only in the signing step's
+environment. The separate publish job uses the workflow's built-in
+`GITHUB_TOKEN` with `contents: write` and holds no secret; its pushes do not
+start another workflow, which is wanted. A push cannot forge a signature, so
+a compromise can only change files whose hashes no longer match, delete
+files, or replay an older index (which the serial floor refuses).
 
-2. Add the printed **public** key, on its own line, to:
-   - `crates/kanso-gallery/keys/themes-trusted-keys.txt` here, and
-   - `gallery/trusted-keys.txt` in `kanso-themes`.
-
-   Commit both. Ship a Kanso release that trusts the key before the first
-   gallery publication (or add them together and publish after the release).
-   The signer refuses to sign with a key whose public half isn't in its
-   `gallery/trusted-keys.txt`.
-
-3. In `kanso-themes`, create the `gallery` environment (Settings ›
-   Environments), require a reviewer, restrict deployment to `main`, and add
-   the printed **secret** as `KANSO_THEMES_SIGNING_KEY` on that environment
-   only. The sign job has `contents: read` and the secret appears in exactly
-   one step; the separate publish job has `contents: write` and no secret.
-
-4. Add `GALLERY_PUBLISH_TOKEN`, a fine-grained token with `contents: write`
-   on `kanso-themes`, as a repository secret there. It cannot forge a
-   signature, so a compromise can only change files whose hashes no longer
-   match, delete files, or replay an older index (which the serial floor
-   refuses).
-
-To rotate: generate a new key, add its public half to both lists, ship a
-Kanso release trusting both, switch `KANSO_THEMES_SIGNING_KEY` to the new
-secret, then remove the old line from both lists once the oldest supported
-Kanso trusts the new key. Never reuse the update key.
+To rotate: generate a new key with `kanso-release keygen`, add its public
+half to both lists, ship a Kanso release trusting both, switch
+`KANSO_THEMES_SIGNING_KEY` to the new secret, then remove the old line from
+both lists once the oldest supported Kanso trusts the new key. Never reuse
+the update key.
 
 ### 3. Developer ID signing and notarization (optional)
 
