@@ -284,7 +284,7 @@ fn cmd_click_selects_several_notes_and_opens_no_tab(cx: &mut TestAppContext) {
     assert_eq!(f.open_note(cx), Some(b.clone()));
 
     f.secondary_click(cx, &b);
-    assert_eq!(f.selected(cx), [a.clone()], "⌘-click takes it away");
+    assert_eq!(f.selected(cx), vec![a.clone()], "⌘-click takes it away");
     assert_eq!(f.open_note(cx), Some(a.clone()));
 }
 
@@ -390,7 +390,7 @@ fn cmd_enter_in_the_list_opens_the_focused_note_in_a_tab(cx: &mut TestAppContext
         .update(cx, |_, window, cx| window.focus(&list.focus_handle(cx), cx))
         .unwrap();
     f.keys(cx, "cmd-enter");
-    assert_eq!(f.tabs(cx), [a.clone()], "already open: its tab shows");
+    assert_eq!(f.tabs(cx), vec![a.clone()], "already open: its tab shows");
     assert_eq!(f.open_note(cx), Some(a));
 }
 
@@ -423,7 +423,7 @@ fn reopen_closed_tab_brings_it_back(cx: &mut TestAppContext) {
     f.select(cx, &a);
     f.middle_click(cx, &b);
     f.keys(cx, CLOSE_TAB);
-    assert_eq!(f.tabs(cx), [a.clone()]);
+    assert_eq!(f.tabs(cx), vec![a.clone()]);
     f.keys(cx, "cmd-shift-t");
     assert_eq!(f.tabs(cx), [a, b.clone()]);
     assert_eq!(f.open_note(cx), Some(b));
