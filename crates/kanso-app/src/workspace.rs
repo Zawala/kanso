@@ -34,6 +34,8 @@ use crate::palette::{Mode, Palette};
 use crate::paths;
 use crate::settings::{SettingsPage, SettingsReturn, SettingsView};
 use crate::sidebar::{Sidebar, SidebarEvent};
+use crate::tab_bar::{TabBar, TabBarEvent};
+use crate::tabs::{TabMeta, Tabs};
 use crate::theme::Colors;
 use crate::zoom::px;
 
@@ -181,6 +183,7 @@ pub fn bind_keys(cx: &mut App) {
     crate::tasks_view::bind_keys(cx);
     crate::replace::bind_keys(cx);
     crate::settings::bind_keys(cx);
+    crate::tabs::bind_keys(cx);
     crate::zoom::bind_keys(cx);
 }
 
@@ -332,6 +335,15 @@ pub fn apply_theme(window: Option<&mut Window>, cx: &mut App) {
     crate::themes::apply(window, cx);
 }
 
+/// How the note about to be selected should open: in the tab showing, in a
+/// new tab after it, or by showing the tab already holding it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OpenIntent {
+    Current,
+    NewTab,
+    Activate(usize),
+}
+
 pub struct Workspace {
     pub(crate) store: Arc<Store>,
     pub(crate) library: Entity<Library>,
@@ -375,8 +387,13 @@ pub struct Workspace {
     pub(crate) focus: FocusHandle,
     /// A press in a top band that may become a window drag.
     band_drag: BandDrag,
-    /// The notes this window opened, to go back and forward through.
-    pub(crate) nav: crate::nav_history::NavHistory,
+    /// The notes open as tabs above the editor, which one shows, and each
+    /// one's own back-and-forward history and place (`tabs`).
+    pub(crate) tabs: Tabs,
+    /// The tab bar drawn above the editor, when two or more notes are open.
+    pub(crate) tab_bar: Entity<TabBar>,
+    /// How the note being selected should open.
+    pending_open: OpenIntent,
     /// [`Workspace::nav_reach`] until a visit or a change to the notes.
     pub(crate) nav_reach: Option<(bool, bool)>,
     /// Draws stand-ins for the traffic lights, which the system draws over
@@ -409,11 +426,40 @@ impl Workspace {
         let store = state.store.clone();
         let appearance = state.config.appearance.clone();
         let last_note = state.config.last_note.clone();
+        let saved_tabs = state.config.layout.open_tabs.clone();
+        let saved_active_tab = state.config.layout.active_tab;
         let focus_mode = state.config.layout.focus_mode;
         let inspector_open = state.config.layout.inspector_open;
         let inspector_width = state.config.layout.inspector_width;
         let inspector_tab = state.config.layout.inspector_tab;
         let graph_hops = state.config.discovery.graph_hops;
+
+        // The tabs kept in the settings, without the notes that have gone
+        // since and the ones in the trash.
+        let restored: Vec<(usize, TabMeta)> = saved_tabs
+            .iter()
+            .enumerate()
+            .filter_map(|(at, id)| {
+                let note = store.note(id).ok().flatten().filter(|n| !n.is_trashed())?;
+                let locked = note.is_locked();
+                Some((
+                    at,
+                    TabMeta {
+                        id: note.id,
+                        title: note.title,
+                        locked,
+                    },
+                ))
+            })
+            .collect();
+        let restore_note = saved_tabs
+            .get(saved_active_tab)
+            .and_then(|id| restored.iter().find(|(_, meta)| &meta.id == id))
+            .map(|(_, meta)| meta.id.clone());
+        let restore_active = restore_note
+            .as_ref()
+            .and_then(|id| restored.iter().position(|(_, meta)| &meta.id == id))
+            .unwrap_or(0);
 
         let library = cx.new(|cx| Library::new(store.clone(), cx));
         let sidebar = cx.new(|cx| Sidebar::new(library.clone(), cx));
@@ -447,6 +493,7 @@ impl Workspace {
         });
 
         let settings = cx.new(|cx| SettingsView::new(library.clone(), window, cx));
+        let tab_bar = cx.new(|_| TabBar::default());
         let inspector = cx.new(|cx| {
             Inspector::new(
                 store.clone(),
@@ -480,16 +527,8 @@ impl Workspace {
                 // (the last note at launch, the first of a new list) waits
                 // behind Settings.
                 LibraryEvent::Selected { id, asked } => {
-                    if *asked {
-                        this.leave_settings(window, cx);
-                    }
                     let id = id.clone();
-                    this.editor
-                        .update(cx, |editor, cx| editor.open(id.as_deref(), window, cx));
-                    // Choosing several notes isn't going anywhere.
-                    if this.library.read(cx).several_selected().is_none() {
-                        this.record_visit(cx);
-                    }
+                    this.accept_selection(id.clone(), *asked, window, cx);
                     AppState::update_config_soon(cx, |config| config.last_note = id);
                 }
                 LibraryEvent::Changed(change) => {
@@ -506,6 +545,7 @@ impl Workspace {
                     if note {
                         this.inspector
                             .update(cx, |inspector, cx| inspector.refresh(cx));
+                        this.sync_tabs_with_store(&change, window, cx);
                     }
                 }
             }),
@@ -538,6 +578,7 @@ impl Workspace {
                     this.show_inspector(Some(InspectorTab::Backlinks), cx);
                 }
                 EditorEvent::ToggleInspector => this.toggle_inspector(cx),
+                EditorEvent::Closed(id) => this.close_tab_of_note(id, window, cx),
                 EditorEvent::Renamed {
                     id,
                     old,
@@ -545,6 +586,9 @@ impl Workspace {
                     links,
                     notes,
                 } => this.offer_relink(id, old, new, *links, *notes, window, cx),
+            }),
+            cx.subscribe_in(&tab_bar, window, |this, _, event, window, cx| {
+                this.on_tab_bar_event(event, window, cx);
             }),
             cx.subscribe(&inspector, |_, _, event, cx| match event {
                 InspectorEvent::Tab(tab) => {
@@ -595,7 +639,9 @@ impl Workspace {
             }
         });
 
-        if let Some(id) = last_note.filter(|id| store.note(id).ok().flatten().is_some()) {
+        let opening =
+            restore_note.or_else(|| last_note.filter(|id| store.note(id).ok().flatten().is_some()));
+        if let Some(id) = opening {
             library.update(cx, |library, cx| library.select_quietly(Some(id), cx));
         }
         // Focus mode kept from last time: once the note is open, the
@@ -633,7 +679,9 @@ impl Workspace {
             pane_widths: PaneWidths::default(),
             focus,
             band_drag: BandDrag::default(),
-            nav: Default::default(),
+            tabs: Tabs::restore(restored, restore_active),
+            tab_bar,
+            pending_open: OpenIntent::Current,
             nav_reach: None,
             #[cfg(test)]
             placeholder_traffic_lights: false,
@@ -898,12 +946,16 @@ impl Workspace {
             self.editor
                 .update(cx, |editor, cx| editor.reveal_line(line, window, cx));
         } else {
+            let tab = self.tabs.index_of(note_id);
+            if let Some(index) = tab {
+                // The line asked for wins over where the reader was.
+                self.tabs.take_place(index);
+            }
             self.editor.update(cx, |editor, _| {
                 editor.reveal_after_open(note_id.to_owned(), line)
             });
-            self.library.update(cx, |library, cx| {
-                library.select(Some(note_id.to_owned()), cx)
-            });
+            let intent = tab.map_or(OpenIntent::Current, OpenIntent::Activate);
+            self.select_note(note_id, intent, cx);
         }
         if focus {
             self.editor
@@ -988,7 +1040,8 @@ impl Workspace {
             | NoteCommand::RemoveLock
             | NoteCommand::CopyLink
             | NoteCommand::CopyKansoLink
-            | NoteCommand::OpenInNewWindow => {
+            | NoteCommand::OpenInNewWindow
+            | NoteCommand::OpenInNewTab => {
                 if let Some(id) = self.library.read(cx).selected.clone() {
                     self.run_note_command(&id, command, window, cx);
                 }
@@ -1089,6 +1142,7 @@ impl Workspace {
             NoteCommand::Export => self.export(Some(vec![id.to_owned()]), window, cx),
             NoteCommand::CopyLink => self.copy_link_of(id, false, window, cx),
             NoteCommand::CopyKansoLink => self.copy_link_of(id, true, window, cx),
+            NoteCommand::OpenInNewTab => self.open_note_in_new_tab(id, window, cx),
             NoteCommand::OpenInNewWindow => self.open_in_new_window(id, window, cx),
             // These work on the open note, so the note opens first.
             NoteCommand::ShowHistory => {
@@ -1188,10 +1242,7 @@ impl Workspace {
     /// held Replace can keep the editor on its note.
     fn open_note(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
         self.close_settings(window, cx);
-        self.library
-            .update(cx, |library, cx| library.select(Some(id.to_owned()), cx));
-        self.editor
-            .update(cx, |editor, cx| editor.open(Some(id), window, cx));
+        self.select_note(id, OpenIntent::Current, cx);
         self.editor.read(cx).note_id() == Some(id)
     }
 
@@ -1680,6 +1731,278 @@ impl Workspace {
     }
 }
 
+impl Workspace {
+    /// The library picked a note: open it where `pending_open` says, and
+    /// record the visit for back and forward. A silent app selection (the
+    /// first note of a list) opens in the tab showing.
+    fn accept_selection(
+        &mut self,
+        id: Option<String>,
+        asked: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if asked {
+            self.leave_settings(window, cx);
+        }
+        let intent = std::mem::replace(&mut self.pending_open, OpenIntent::Current);
+        let several = self.library.read(cx).several_selected().is_some();
+        match id {
+            Some(id) => {
+                self.stash_place(cx);
+                self.show_selected(&id, intent, window, cx);
+            }
+            None => {
+                self.editor
+                    .update(cx, |editor, cx| editor.open(None, window, cx));
+            }
+        }
+        // Choosing several notes isn't going anywhere.
+        if !several {
+            self.record_visit(cx);
+        }
+    }
+
+    /// Opens note `id` as `intent` asks, adding it to the tabs when it isn't
+    /// open already.
+    fn show_selected(
+        &mut self,
+        id: &str,
+        intent: OpenIntent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(meta) = self.tab_meta(id) else {
+            return;
+        };
+        match intent {
+            OpenIntent::NewTab => self.tabs.open_in_new(meta),
+            OpenIntent::Activate(index)
+                if self.tabs.get(index).is_some_and(|tab| tab.meta.id == id) =>
+            {
+                self.tabs.activate(index);
+            }
+            _ => self.tabs.open(meta),
+        }
+        self.save_tabs(cx);
+        self.open_active(window, cx);
+    }
+
+    /// The note and title a tab for `id` shows, if the note exists.
+    fn tab_meta(&self, id: &str) -> Option<TabMeta> {
+        let note = self.store.note(id).ok().flatten()?;
+        let locked = note.is_locked();
+        Some(TabMeta {
+            id: note.id,
+            title: note.title,
+            locked,
+        })
+    }
+
+    /// Puts the showing tab's note in the editor, at the place kept for it.
+    fn open_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(index) = (!self.tabs.is_empty()).then(|| self.tabs.active_index()) else {
+            return;
+        };
+        let Some(id) = self.tabs.active_id().map(str::to_owned) else {
+            return;
+        };
+        if self.editor.read(cx).note_id() == Some(id.as_str()) {
+            return;
+        }
+        if let Some(place) = self.tabs.take_place(index) {
+            self.editor
+                .update(cx, |editor, _| editor.place_after_open(id.clone(), place));
+        }
+        self.editor
+            .update(cx, |editor, cx| editor.open(Some(&id), window, cx));
+    }
+
+    /// Keeps where the reader is in the note showing, for its tab.
+    fn stash_place(&mut self, cx: &mut Context<Self>) {
+        if let Some((id, place)) = self.editor.read(cx).place(cx) {
+            self.tabs.leave(&id, place);
+        }
+    }
+
+    /// Keeps the open notes in the settings, for the next launch.
+    fn save_tabs(&mut self, cx: &mut Context<Self>) {
+        let open = self.tabs.ids();
+        let active = self.tabs.active_index();
+        AppState::update_config_soon(cx, |config| {
+            config.layout.open_tabs = open;
+            config.layout.active_tab = active;
+        });
+    }
+
+    /// Selects note `id` in the list, opening it as `intent` asks.
+    fn select_note(&mut self, id: &str, intent: OpenIntent, cx: &mut Context<Self>) {
+        self.pending_open = intent;
+        self.library
+            .update(cx, |library, cx| library.select(Some(id.to_owned()), cx));
+    }
+
+    /// Shows the tab at `index` and its note.
+    pub(crate) fn show_tab(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(id) = self.tabs.get(index).map(|tab| tab.meta.id.clone()) else {
+            return;
+        };
+        self.select_note(&id, OpenIntent::Activate(index), cx);
+    }
+
+    /// Opens note `id` in a new tab after the showing one.
+    pub(crate) fn open_note_in_new_tab(
+        &mut self,
+        id: &str,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.select_note(id, OpenIntent::NewTab, cx);
+    }
+
+    pub(crate) fn close_tab(&mut self, index: usize, _window: &mut Window, cx: &mut Context<Self>) {
+        let was_active = self.tabs.active_index() == index;
+        if !self.tabs.close(index) {
+            return;
+        }
+        self.save_tabs(cx);
+        if was_active && !self.tabs.is_empty() {
+            self.show_tab(self.tabs.active_index(), cx);
+        }
+        cx.notify();
+    }
+
+    fn close_tabs_from(
+        &mut self,
+        index: usize,
+        right: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let was_active = self.tabs.active_index();
+        let closed = if right {
+            self.tabs.close_right(index)
+        } else {
+            self.tabs.close_others(index)
+        };
+        if !closed {
+            return;
+        }
+        self.save_tabs(cx);
+        if self.tabs.active_index() != was_active {
+            self.show_tab(self.tabs.active_index(), cx);
+        }
+        cx.notify();
+        let _ = window;
+    }
+
+    fn on_tab_bar_event(
+        &mut self,
+        event: &TabBarEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            TabBarEvent::Activate(index) => self.show_tab(*index, cx),
+            TabBarEvent::Close(index) => self.close_tab(*index, window, cx),
+            TabBarEvent::CloseOthers(index) => self.close_tabs_from(*index, false, window, cx),
+            TabBarEvent::CloseRight(index) => self.close_tabs_from(*index, true, window, cx),
+            TabBarEvent::OpenInNewWindow(id) => self.open_in_new_window(id, window, cx),
+            TabBarEvent::Reorder { from, to } => {
+                self.tabs.reorder(*from, *to);
+                self.save_tabs(cx);
+                cx.notify();
+            }
+        }
+    }
+
+    /// Keeps the tabs in step with a note changed elsewhere: a rename or a
+    /// new lock updates the title and mark, and a trashed or deleted note
+    /// closes its tab.
+    fn sync_tabs_with_store(
+        &mut self,
+        change: &kanso_store::Change,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !change.id.starts_with("note:") {
+            return;
+        }
+        let note = if change.deleted {
+            None
+        } else {
+            self.store.note(&change.id).ok().flatten()
+        };
+        // A note someone is looking at in the trash keeps its tab until
+        // they leave the trash.
+        let trashed = note.as_ref().is_some_and(|note| note.is_trashed())
+            && self.library.read(cx).filter != Filter::Trash;
+        if note.is_none() || trashed {
+            // A note with edits the editor is still asking about stays in
+            // its tab until the reader answers; the editor says so itself.
+            let showing = self.tabs.active_id() == Some(change.id.as_str());
+            if showing && self.editor.read(cx).has_unsaved_edits(cx) {
+                return;
+            }
+            let was_active = self.tabs.active_id() == Some(change.id.as_str());
+            if !self.tabs.remove_note(&change.id) {
+                return;
+            }
+            self.save_tabs(cx);
+            if was_active {
+                self.open_after_tab_gone(window, cx);
+            }
+        } else if let Some(note) = note {
+            let locked = note.is_locked();
+            self.tabs.update_note(&change.id, note.title, locked);
+            cx.notify();
+        }
+    }
+
+    /// Closes the tab of a note the editor has let go of.
+    fn close_tab_of_note(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let was_active = self.tabs.active_id() == Some(id);
+        if !self.tabs.remove_note(id) {
+            return;
+        }
+        self.save_tabs(cx);
+        if was_active {
+            self.open_after_tab_gone(window, cx);
+        } else {
+            cx.notify();
+        }
+    }
+
+    /// Shows the tab next to one whose note has gone, or no note when no
+    /// tab is left.
+    fn open_after_tab_gone(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(id) = self.tabs.active_id().map(str::to_owned) {
+            let index = self.tabs.active_index();
+            if let Some(place) = self.tabs.take_place(index) {
+                self.editor
+                    .update(cx, |editor, _| editor.place_after_open(id.clone(), place));
+            }
+            self.editor
+                .update(cx, |editor, cx| editor.open(Some(&id), window, cx));
+            // The list is in the middle of a change; select its neighbour
+            // once that is done.
+            cx.defer_in(window, move |this, _window, cx| {
+                this.pending_open = OpenIntent::Activate(index);
+                this.library
+                    .update(cx, |library, cx| library.select_quietly(Some(id), cx));
+            });
+        } else {
+            self.editor
+                .update(cx, |editor, cx| editor.open(None, window, cx));
+            cx.defer_in(window, |this, _window, cx| {
+                this.pending_open = OpenIntent::Current;
+                this.library
+                    .update(cx, |library, cx| library.select_quietly(None, cx));
+            });
+        }
+    }
+}
+
 /// The divider on a pane's left edge, which drags `edge`: the pane before
 /// it, the sidebar or the list.
 // no-prop-test: drawing; the widths a drag makes are tested in `layout`.
@@ -1761,6 +2084,11 @@ impl Render for Workspace {
         });
         self.palette
             .update(cx, |palette, _| palette.set_notes_hidden(settings_open));
+        let show_tabs = self.tabs.len() >= 2 && !focus_mode;
+        let tab_metas = self.tabs.metas();
+        let active_tab = self.tabs.active_index();
+        self.tab_bar
+            .update(cx, |bar, cx| bar.set(tab_metas, active_tab, cx));
         let signed_in = cx
             .try_global::<crate::services::Services>()
             .is_some_and(|services| services.signed_in());
@@ -2100,6 +2428,25 @@ impl Render for Workspace {
                 this.library
                     .update(cx, |library, cx| library.select_relative(-1, cx));
             }))
+            .on_action(cx.listener(|this, _: &crate::tabs::CloseTab, window, cx| {
+                this.close_current_tab(window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &crate::tabs::NextTab, _, cx| this.next_tab(cx)))
+            .on_action(cx.listener(|this, _: &crate::tabs::PreviousTab, _, cx| {
+                this.previous_tab(cx)
+            }))
+            .on_action(cx.listener(|this, _: &crate::tabs::ReopenClosedTab, _, cx| {
+                this.reopen_closed_tab(cx)
+            }))
+            .on_action(cx.listener(|this, _: &crate::tabs::GoToTab1, _, cx| this.go_to_tab(1, cx)))
+            .on_action(cx.listener(|this, _: &crate::tabs::GoToTab2, _, cx| this.go_to_tab(2, cx)))
+            .on_action(cx.listener(|this, _: &crate::tabs::GoToTab3, _, cx| this.go_to_tab(3, cx)))
+            .on_action(cx.listener(|this, _: &crate::tabs::GoToTab4, _, cx| this.go_to_tab(4, cx)))
+            .on_action(cx.listener(|this, _: &crate::tabs::GoToTab5, _, cx| this.go_to_tab(5, cx)))
+            .on_action(cx.listener(|this, _: &crate::tabs::GoToTab6, _, cx| this.go_to_tab(6, cx)))
+            .on_action(cx.listener(|this, _: &crate::tabs::GoToTab7, _, cx| this.go_to_tab(7, cx)))
+            .on_action(cx.listener(|this, _: &crate::tabs::GoToTab8, _, cx| this.go_to_tab(8, cx)))
+            .on_action(cx.listener(|this, _: &crate::tabs::GoToTab9, _, cx| this.go_to_tab(9, cx)))
             // Only where they would land, so the menu's items are disabled
             // otherwise.
             .when(can_go_back, |el| {
@@ -2231,7 +2578,21 @@ impl Render for Workspace {
                                 .flex_1()
                                 .min_w_0()
                                 .debug_selector(|| "editor-pane".into())
-                                .child(self.editor.clone())
+                                .child(
+                                    v_flex()
+                                        .size_full()
+                                        // Between the window's title bar and
+                                        // the editor, as in a browser.
+                                        .when(show_tabs, |el| {
+                                            el.child(self.tab_bar.clone())
+                                        })
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .min_h_0()
+                                                .child(self.editor.clone()),
+                                        ),
+                                )
                                 .when(!focus_mode, |el| el.child(pane_handle(PaneEdge::NoteList))),
                         )
                         .when_some(inspector, |el, width| {

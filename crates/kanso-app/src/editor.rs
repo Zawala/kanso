@@ -134,6 +134,9 @@ pub enum EditorEvent {
     ShowBacklinks,
     /// The inspector button: the inspector opens or closes.
     ToggleInspector,
+    /// The editor let go of a note deleted elsewhere, after the reader
+    /// chose the version from elsewhere: its tab goes with it.
+    Closed(String),
     /// The note was renamed from `old` to `new` while `links` wiki-links in
     /// `notes` other notes named it by its old title: the workspace offers
     /// to update them.
@@ -1652,7 +1655,13 @@ impl NoteEditor {
         self.stash_draft(cx);
         match incoming {
             Incoming::Changed(theirs) => self.show(Some(*theirs), true, window, cx),
-            Incoming::Deleted => self.show(None, false, window, cx),
+            Incoming::Deleted => {
+                let closed = self.note.as_ref().map(|note| note.id.clone());
+                self.show(None, false, window, cx);
+                if let Some(id) = closed {
+                    cx.emit(EditorEvent::Closed(id));
+                }
+            }
         }
     }
 

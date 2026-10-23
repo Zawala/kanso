@@ -149,10 +149,12 @@ impl Workspace {
     pub(crate) fn record_visit(&mut self, cx: &mut Context<Self>) {
         self.nav_reach = None;
         if let Some((id, place)) = self.editor.update(cx, |editor, _| editor.take_left_place()) {
-            self.nav.leave(&id, place);
+            self.tabs.leave(&id, place);
         }
-        if let Some(id) = self.editor.read(cx).note_id() {
-            self.nav.visit(id);
+        if let Some(id) = self.editor.read(cx).note_id().map(str::to_owned)
+            && let Some(nav) = self.tabs.nav_mut()
+        {
+            nav.visit(&id);
         }
     }
 
@@ -163,7 +165,9 @@ impl Workspace {
             return reach;
         }
         let live = |id: &str| live(&self.store, id);
-        let reach = (self.nav.can_go_back(live), self.nav.can_go_forward(live));
+        let reach = self.tabs.nav().map_or((false, false), |nav| {
+            (nav.can_go_back(live), nav.can_go_forward(live))
+        });
         self.nav_reach = Some(reach);
         reach
     }
@@ -181,14 +185,17 @@ impl Workspace {
     fn go(&mut self, back: bool, cx: &mut Context<Self>) {
         self.nav_reach = None;
         if let Some((id, place)) = self.editor.read(cx).place(cx) {
-            self.nav.leave(&id, place);
+            self.tabs.leave(&id, place);
         }
         let store = self.store.clone();
         let live = |id: &str| live(&store, id);
+        let Some(nav) = self.tabs.nav_mut() else {
+            return;
+        };
         let landed = if back {
-            self.nav.back(live)
+            nav.back(live)
         } else {
-            self.nav.forward(live)
+            nav.forward(live)
         };
         let Some(visit) = landed else {
             return;

@@ -662,6 +662,21 @@ impl NoteList {
                     this.pressed = Some(press_id.clone());
                 }),
             )
+            // A middle click opens the note in a new tab, as ⌘-click does.
+            .on_mouse_down(MouseButton::Middle, {
+                let view = view.clone();
+                let id = id.clone();
+                let focus = list_focus.clone();
+                move |_, window, cx| {
+                    window.focus(&focus, cx);
+                    view.update(cx, |_, cx| {
+                        cx.emit(NoteListEvent::Command(
+                            id.clone(),
+                            NoteCommand::OpenInNewTab,
+                        ))
+                    });
+                }
+            })
             // Both on the way in, before a hover button's click stops the
             // release going further: inside, the row stays hovered; outside,
             // the pointer has left it.
@@ -684,8 +699,9 @@ impl NoteList {
             .on_click({
                 let view = view.clone();
                 move |event, window, cx| {
-                    // ⌥-click: the note in a window of its own. (⌘ and ⇧
-                    // are for choosing several rows.)
+                    // ⌥-click: the note in a window of its own. ⌘-click (Ctrl
+                    // on Windows and Linux) opens it in a new tab; ⇧ selects
+                    // a run of rows.
                     if event.modifiers().alt {
                         let id = id.clone();
                         view.update(cx, |_, cx| {
@@ -694,6 +710,13 @@ impl NoteList {
                         return;
                     }
                     window.focus(&list_focus, cx);
+                    if event.modifiers().secondary() {
+                        let id = id.clone();
+                        view.update(cx, |_, cx| {
+                            cx.emit(NoteListEvent::Command(id, NoteCommand::OpenInNewTab))
+                        });
+                        return;
+                    }
                     let how = click_kind(event.modifiers());
                     library.update(cx, |library, cx| library.click(&id, how, cx));
                 }
@@ -1135,13 +1158,11 @@ fn item_sizes(rows: &[Row]) -> Vec<Size<Pixels>> {
 
 /// Whether the list can be sorted: Recent is always newest first.
 // no-prop-test: one comparison; `the_list_menus_build` covers Recent.
-/// What a click with `modifiers` does: ⇧ selects a run, ⌘ (Ctrl on Windows
-/// and Linux) adds or takes away one note.
+/// What a click with `modifiers` does: ⇧ selects a run of rows, a plain
+/// click one note. (⌘ opens a tab instead, and doesn't come here.)
 fn click_kind(modifiers: Modifiers) -> Click {
     if modifiers.shift {
         Click::Range
-    } else if modifiers.secondary() {
-        Click::Toggle
     } else {
         Click::Plain
     }
@@ -2331,7 +2352,7 @@ mod tests {
         // no-prop-test: drives the window with clicks and keys; the
         // selection's properties are in selection.rs.
         #[gpui_kit::test]
-        fn shift_and_cmd_clicks_select_several_notes(cx: &mut TestAppContext) {
+        fn shift_clicks_select_several_notes(cx: &mut TestAppContext) {
             let f = setup(cx);
             f.window
                 .update(cx, |_, window, _| window.activate_window())
@@ -2339,7 +2360,6 @@ mod tests {
             let ids = listed(&f, cx);
             let (a, b, c) = (&ids[0], &ids[1], &ids[2]);
             let shift = Modifiers::shift();
-            let cmd = Modifiers::secondary_key();
 
             click(&f, cx, a, Modifiers::none());
             click(&f, cx, c, shift);
@@ -2351,17 +2371,11 @@ mod tests {
                 Some("3 notes selected")
             );
 
-            click(&f, cx, b, cmd);
+            click(&f, cx, b, shift);
             assert_eq!(
                 selection(&f, cx),
-                (sorted(&[a, c]), Some(c.clone())),
-                "⌘ takes b away"
-            );
-            click(&f, cx, b, cmd);
-            assert_eq!(
-                selection(&f, cx),
-                (sorted(&[a, b, c]), Some(b.clone())),
-                "and puts it back"
+                (sorted(&[a, b]), Some(b.clone())),
+                "a run measures from the last plain click"
             );
 
             // Escape, with the list focused by the clicks: the shown note alone.
@@ -2413,7 +2427,7 @@ mod tests {
                 f.store.note(id).unwrap().unwrap()
             };
             click(&f, cx, &ids[0], Modifiers::none());
-            click(&f, cx, &ids[1], Modifiers::secondary_key());
+            click(&f, cx, &ids[1], Modifiers::shift());
 
             // ⌘⇧P, from the menu bar or the palette, pins both.
             cx.dispatch_action(f.window, TogglePinned);
@@ -2480,27 +2494,24 @@ mod tests {
 
             // Two selected, dragged by one of them onto Research: both go.
             click(&f, cx, a, Modifiers::none());
-            click(&f, cx, b, Modifiers::secondary_key());
+            click(&f, cx, b, Modifiers::shift());
             let research = middle_of(&f, cx, &format!("book-{}", f.research));
             assert!(drag(&f, cx, b, research), "the row drags");
             assert_eq!(note(cx, a).book_id, f.research);
             assert_eq!(note(cx, b).book_id, f.research);
             assert_eq!(note(cx, c).book_id, work, "not selected, not moved");
 
-            // Back to Work, as the real app does it: a run by ⇧-click, one
-            // ⌘-clicked out, then a drag from a row still selected takes
-            // the selected rows and not the one just clicked out.
+            // Back to Work: a drag from one row of a ⇧-run takes them all.
             let work_row = middle_of(&f, cx, &format!("book-{work}"));
             click(&f, cx, c, Modifiers::none());
             click(&f, cx, a, Modifiers::shift());
-            click(&f, cx, b, Modifiers::secondary_key());
-            assert_eq!(selection(&f, cx).0, sorted(&[a, c]));
+            assert_eq!(selection(&f, cx).0, sorted(&[a, b, c]));
             assert!(drag(&f, cx, c, work_row));
             assert_eq!(note(cx, a).book_id, work);
-            assert_eq!(note(cx, b).book_id, f.research, "clicked out: stays");
+            assert_eq!(note(cx, b).book_id, work);
             assert_eq!(note(cx, c).book_id, work);
             click(&f, cx, a, Modifiers::none());
-            click(&f, cx, b, Modifiers::secondary_key());
+            click(&f, cx, b, Modifiers::shift());
 
             // A note outside the selection drags alone, onto a tag.
             let chip = middle_of(&f, cx, &format!("tag-{tag}"));

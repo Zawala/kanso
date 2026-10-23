@@ -118,7 +118,11 @@ mod spellcheck;
 mod spellcheck_macos;
 mod split;
 mod sync_nudge;
+mod tab_bar;
+#[cfg(test)]
+mod tab_tests;
 mod table_format;
+mod tabs;
 mod tag_complete;
 mod tasks_view;
 mod text_match;
