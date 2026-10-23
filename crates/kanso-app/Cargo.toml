@@ -38,6 +38,7 @@ htmd = "0.5.6"
 image = { version = "0.25", default-features = false, features = ["png", "tiff", "webp", "bmp", "ico"] }
 # Shared notes: end-to-end encrypted collaboration over the sync server.
 kanso-collab.workspace = true
+kanso-gallery.workspace = true
 kanso-core.workspace = true
 kanso-import.workspace = true
 kanso-render.workspace = true

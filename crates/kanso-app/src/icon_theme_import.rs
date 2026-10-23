@@ -1165,6 +1165,14 @@ fn fill(theme: &mut Imported, folder: &Path, id: &str) -> Result<(), String> {
                 false
             }
             Ok(bytes) => {
+                let bytes = match kanso_gallery::sanitize_svg(&bytes) {
+                    Ok(bytes) => bytes,
+                    Err(err) => {
+                        left_out.push(format!("{from}: {err}"));
+                        copied.insert(dest.to_owned(), false);
+                        return false;
+                    }
+                };
                 spent += bytes.len() as u64;
                 // `dest` is checked: relative, no `..`, so inside `folder`.
                 let path = folder.join(dest);
