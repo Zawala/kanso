@@ -15,16 +15,56 @@ use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
-use kanso_ai::{ClientSettings, Excerpt};
+use kanso_ai::{ClientSettings, Excerpt, Provider};
 use kanso_store::Store;
 
 use crate::editor::NoteEditor;
 use crate::library::Library;
-use crate::settings_ai::{read_key, requests_line};
+use crate::services::Services;
+use crate::settings_ai::{read_from, requests_line};
 use crate::text_stats::plural;
 use crate::theme::{Colors, section_label};
 use crate::workspace::AppState;
 use crate::zoom::px;
+
+/// How many characters of earlier exchanges a follow-up may resend. The
+/// oldest turns are dropped first.
+const HISTORY_BUDGET: usize = 12_000;
+
+/// One completed exchange: what was asked, what was shown, and the notes it
+/// drew on, so a later question can drop it if one of them is no longer
+/// eligible.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AskedTurn {
+    question: String,
+    answer: String,
+    notes: Vec<String>,
+}
+
+impl AskedTurn {
+    fn chars(&self) -> usize {
+        self.question.chars().count() + self.answer.chars().count()
+    }
+}
+
+/// What a conversation was asked under. A different provider, URL or model
+/// starts a new one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ConversationKey {
+    provider: Provider,
+    base_url: String,
+    model: String,
+}
+
+impl ConversationKey {
+    fn of(ai: &crate::config::AiSettings) -> Self {
+        Self {
+            provider: ai.provider,
+            base_url: ai.base_url.clone(),
+            model: ai.model.clone(),
+        }
+    }
+}
 
 /// What the background thread says as the answer is made.
 enum Update {
@@ -51,7 +91,14 @@ pub struct AskPanel {
     asking: Option<String>,
     answer: String,
     /// Earlier exchanges, kept in memory for the panel's lifetime only.
-    turns: Vec<kanso_ai::Turn>,
+    turns: Vec<AskedTurn>,
+    /// The notes this turn's answer has drawn on, saved with it.
+    turn_notes: Vec<String>,
+    /// Completed turns as already-sanitised Markdown, so a streaming chunk
+    /// only re-parses the turn in progress.
+    finished: String,
+    /// What the conversation was asked under, if it has one.
+    conversation: Option<ConversationKey>,
     used: Vec<Excerpt>,
     cut_off: bool,
     searching: bool,
@@ -94,6 +141,9 @@ impl AskPanel {
             asking: None,
             answer: String::new(),
             turns: Vec::new(),
+            turn_notes: Vec::new(),
+            finished: String::new(),
+            conversation: None,
             used: Vec::new(),
             cut_off: false,
             searching: false,
@@ -130,26 +180,22 @@ impl AskPanel {
         if self.editor.read(cx).lock_view() != crate::locked::LockView::Plain {
             self.clear_conversation();
         }
-        let saved = read_key(cx, ai.provider);
-        let settings = ClientSettings {
-            provider: ai.provider,
-            base_url: ai.base_url.clone(),
-            model: ai.model.clone(),
-            api_key: saved,
-            region: ai.provider.default_region().to_owned(),
-        };
-        let provider = match kanso_ai::client(&settings) {
-            Ok(provider) => provider,
-            Err(err) => {
-                self.error = Some(err.to_string());
-                self.asked = true;
-                self.searching = false;
-                self.streaming = false;
-                self.cut_off = false;
-                cx.notify();
-                return;
-            }
-        };
+        // A different provider, URL or model is a different conversation: the
+        // earlier answers were asked under conditions the person has changed.
+        let conversation = ConversationKey::of(&ai);
+        if self
+            .conversation
+            .as_ref()
+            .is_some_and(|last| last != &conversation)
+        {
+            self.clear_conversation();
+        }
+        self.conversation = Some(conversation);
+        // Drop any exchange whose notes can no longer be sent, and cap what
+        // is resent by characters. `clear_conversation` above may have
+        // emptied it already.
+        self.prune_history();
+
         self.asked = true;
         self.answer.clear();
         self.empty = false;
@@ -163,7 +209,18 @@ impl AskPanel {
 
         let store = self.store.clone();
         let asked = question;
-        let history = self.turns.clone();
+        let history: Vec<kanso_ai::Turn> = self
+            .turns
+            .iter()
+            .map(|turn| kanso_ai::Turn {
+                question: turn.question.clone(),
+                answer: turn.answer.clone(),
+            })
+            .collect();
+        let secrets = cx
+            .try_global::<Services>()
+            .and_then(|services| services.secrets.clone());
+        let worker_ai = ai.clone();
         let (tx, rx) = async_channel::unbounded::<Update>();
         let spawned = std::thread::Builder::new()
             .name("kanso-ask".into())
@@ -182,6 +239,29 @@ impl AskPanel {
                 }
                 tx.try_send(Update::Used(excerpts.clone())).ok();
                 let prompt = kanso_ai::build_prompt(&asked, &excerpts, crate::ask::BUDGET);
+                // The Keychain read and the client build happen here, never
+                // on the UI thread: the macOS prompt can block, and building
+                // a reqwest client is not work for a frame.
+                let saved = secrets
+                    .as_ref()
+                    .and_then(|secrets| read_from(secrets.as_ref(), worker_ai.provider));
+                let settings = ClientSettings {
+                    provider: worker_ai.provider,
+                    base_url: worker_ai.base_url.clone(),
+                    model: worker_ai.model.clone(),
+                    api_key: saved,
+                    region: worker_ai.provider.default_region().to_owned(),
+                };
+                let provider = match kanso_ai::cached_client(&settings) {
+                    Ok(provider) => provider,
+                    Err(err) => {
+                        tx.try_send(Update::Error(err.to_string())).ok();
+                        return;
+                    }
+                };
+                let provider = provider
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
                 // Every note this question's tools search or read is kept, so
                 // the panel can list all of them.
                 let used = Arc::new(std::sync::Mutex::new(excerpts));
@@ -234,6 +314,7 @@ impl AskPanel {
                             Update::Used(used) => {
                                 for excerpt in used {
                                     if !this.used.iter().any(|seen| seen.id == excerpt.id) {
+                                        this.turn_notes.push(excerpt.id.clone());
                                         this.used.push(excerpt);
                                     }
                                 }
@@ -245,9 +326,16 @@ impl AskPanel {
                                 if let Some(question) = this.asking.take() {
                                     let answer = std::mem::take(&mut this.answer);
                                     if !answer.trim().is_empty() {
-                                        this.turns.push(kanso_ai::Turn { question, answer });
+                                        let notes = std::mem::take(&mut this.turn_notes);
+                                        this.turns.push(AskedTurn {
+                                            question,
+                                            answer,
+                                            notes,
+                                        });
                                     }
                                 }
+                                this.turn_notes.clear();
+                                this.refresh_finished();
                                 this.streaming = false;
                                 this.searching = false;
                                 this.cancel = None;
@@ -255,6 +343,7 @@ impl AskPanel {
                             Update::CutOff => {
                                 this.cut_off = true;
                                 this.asking = None;
+                                this.turn_notes.clear();
                                 this.streaming = false;
                                 this.searching = false;
                                 this.cancel = None;
@@ -264,12 +353,14 @@ impl AskPanel {
                                 this.searching = false;
                                 this.error = Some(message);
                                 this.asking = None;
+                                this.turn_notes.clear();
                                 this.cancel = None;
                             }
                             Update::Empty => {
                                 this.searching = false;
                                 this.empty = true;
                                 this.asking = None;
+                                this.turn_notes.clear();
                                 this.cancel = None;
                             }
                         }
@@ -281,7 +372,45 @@ impl AskPanel {
                     break;
                 }
             }
+            // The worker or runtime ended without Done, Error or CutOff. Keep
+            // Ask usable by settling the panel instead of leaving it running
+            // forever.
+            this.update(cx, |this, cx| {
+                if this.settle_after_closed_channel() {
+                    cx.notify();
+                }
+            })
+            .ok();
         }));
+    }
+
+    /// Settles a request whose event channel closed without Done or Error.
+    /// Returns whether it was still running (and so was settled).
+    fn settle_after_closed_channel(&mut self) -> bool {
+        if !self.searching && !self.streaming {
+            return false;
+        }
+        self.cut_off = true;
+        self.asking = None;
+        self.turn_notes.clear();
+        self.searching = false;
+        self.streaming = false;
+        self.cancel = None;
+        true
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mark_running_for_test(&mut self) {
+        self.searching = true;
+        self.streaming = true;
+        self.asking = Some("a question".to_owned());
+        self.cut_off = false;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn settle_closed_for_test(&mut self) -> (bool, bool) {
+        let settled = self.settle_after_closed_channel();
+        (settled, self.cut_off)
     }
 
     /// Stops the answer being read. What arrived stays.
@@ -306,6 +435,9 @@ impl AskPanel {
 
     fn clear_conversation(&mut self) {
         self.turns.clear();
+        self.turn_notes.clear();
+        self.finished.clear();
+        self.conversation = None;
         self.used.clear();
         self.answer.clear();
         self.asking = None;
@@ -315,8 +447,25 @@ impl AskPanel {
         self.cut_off = false;
     }
 
-    /// The earlier exchanges and the one in progress, as Markdown.
-    fn transcript(&self) -> String {
+    /// Drops exchanges whose notes may no longer be sent, caps what is left
+    /// by characters, and rebuilds the finished Markdown once.
+    fn prune_history(&mut self) {
+        let store = self.store.clone();
+        self.turns = eligible_turns(std::mem::take(&mut self.turns), &store);
+        self.turns = cap_history(std::mem::take(&mut self.turns), HISTORY_BUDGET);
+        self.used
+            .retain(|excerpt| crate::ask::note_is_eligible(&store, &excerpt.id));
+        self.refresh_finished();
+    }
+
+    /// Rebuilds the already-rendered completed turns. Called when a turn ends
+    /// or the conversation changes, never per streamed chunk.
+    fn refresh_finished(&mut self) {
+        let transcript = self.finished_transcript();
+        self.finished = crate::ask::sanitize_answer(&transcript, &self.used);
+    }
+
+    fn finished_transcript(&self) -> String {
         let mut text = String::new();
         for turn in &self.turns {
             text.push_str("**You asked:** ");
@@ -324,12 +473,6 @@ impl AskPanel {
             text.push_str("\n\n");
             text.push_str(&turn.answer);
             text.push_str("\n\n");
-        }
-        if !self.answer.is_empty() {
-            if !text.is_empty() {
-                text.push_str("---\n\n");
-            }
-            text.push_str(&self.answer);
         }
         text
     }
@@ -388,7 +531,7 @@ impl AskPanel {
                 div()
                     .text_size(px(12.5))
                     .text_color(colors.text_secondary)
-                    .child("Reading your notes…")
+                    .child("Thinking…")
                     .into_any_element(),
             );
         }
@@ -438,15 +581,50 @@ impl AskPanel {
     }
 }
 
+/// Drops every exchange that cited a note which is no longer eligible. Any
+/// error in the eligibility check drops the turn too (fail closed).
+fn eligible_turns(turns: Vec<AskedTurn>, store: &Store) -> Vec<AskedTurn> {
+    turns
+        .into_iter()
+        .filter(|turn| {
+            turn.notes
+                .iter()
+                .all(|id| crate::ask::note_is_eligible(store, id))
+        })
+        .collect()
+}
+
+/// Keeps the newest turns that fit `budget` characters, dropping the oldest.
+/// The newest turn is always kept, even if it alone is over budget, so a
+/// follow-up still has the exchange it follows.
+fn cap_history(mut turns: Vec<AskedTurn>, budget: usize) -> Vec<AskedTurn> {
+    let mut kept = Vec::new();
+    let mut used = 0;
+    while let Some(turn) = turns.pop() {
+        let size = turn.chars();
+        if !kept.is_empty() && used + size > budget {
+            break;
+        }
+        used += size;
+        kept.push(turn);
+    }
+    kept.reverse();
+    kept
+}
+
 impl Render for AskPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
         let ai = cx.global::<AppState>().config.ai.clone();
         let running = self.searching || self.streaming;
-        let answer = crate::ask::linkify(
-            &crate::ask::strip_remote_images(&self.transcript()),
-            &self.used,
-        );
+        // Only the turn in progress is sanitised again per chunk; finished
+        // turns were rendered once (`finished`, refreshed at Done).
+        let streaming = if self.answer.is_empty() {
+            String::new()
+        } else {
+            crate::ask::sanitize_answer(&self.answer, &self.used)
+        };
+        let finished = self.finished.clone();
         let used = self.render_used(cx);
         let view = cx.entity();
         v_flex()
@@ -525,29 +703,193 @@ impl Render for AskPanel {
                 )
             })
             .children(self.status(cx))
-            .when(!answer.is_empty(), |el| {
-                let open = view.clone();
+            .when(!finished.is_empty() || !streaming.is_empty(), |el| {
+                let mut answers = v_flex().gap(px(8.));
+                if !finished.is_empty() {
+                    let open = view.clone();
+                    answers = answers.child(
+                        TextView::markdown("ask-finished-text", finished)
+                            .selectable(true)
+                            .on_link_click(move |url, _, _, cx| {
+                                let Some(id) =
+                                    url.strip_prefix(kanso_core::links::NOTE_LINK_PREFIX)
+                                else {
+                                    return;
+                                };
+                                let id = format!("note:{id}");
+                                open.update(cx, |this, cx| this.open(id, cx));
+                            }),
+                    );
+                }
+                if !streaming.is_empty() {
+                    let open = view.clone();
+                    answers = answers.child(
+                        TextView::markdown("ask-answer-text", streaming)
+                            .selectable(true)
+                            .on_link_click(move |url, _, _, cx| {
+                                let Some(id) =
+                                    url.strip_prefix(kanso_core::links::NOTE_LINK_PREFIX)
+                                else {
+                                    return;
+                                };
+                                let id = format!("note:{id}");
+                                open.update(cx, |this, cx| this.open(id, cx));
+                            }),
+                    );
+                }
                 el.child(
                     div()
                         .id("ask-answer")
                         .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
-                        .child(
-                            TextView::markdown("ask-answer-text", answer)
-                                .selectable(true)
-                                .on_link_click(move |url, _, _, cx| {
-                                    let Some(id) = url
-                                        .strip_prefix(kanso_core::links::NOTE_LINK_PREFIX)
-                                    else {
-                                        return;
-                                    };
-                                    let id = format!("note:{id}");
-                                    open.update(cx, |this, cx| this.open(id, cx));
-                                }),
-                        ),
+                        .child(answers),
                 )
             })
             .when_some(used, |el, used| el.child(used))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AskedTurn, ConversationKey, HISTORY_BUDGET, cap_history, eligible_turns};
+    use crate::config::AiSettings;
+    use kanso_ai::Provider;
+    use kanso_core::DocType;
+    use kanso_store::{Origin, Put, Store};
+    use serde_json::json;
+
+    fn turn(question: &str, answer: &str, notes: Vec<String>) -> AskedTurn {
+        AskedTurn {
+            question: question.to_owned(),
+            answer: answer.to_owned(),
+            notes,
+        }
+    }
+
+    fn ai(provider: Provider, base_url: &str, model: &str) -> AiSettings {
+        AiSettings {
+            provider,
+            base_url: base_url.to_owned(),
+            model: model.to_owned(),
+            ..AiSettings::default()
+        }
+    }
+
+    #[test]
+    fn a_different_provider_url_or_model_is_a_different_conversation() {
+        let start = ConversationKey::of(&ai(
+            Provider::LocalModel,
+            "http://localhost:11434/v1",
+            "llama3.2",
+        ));
+        let same = ConversationKey::of(&ai(
+            Provider::LocalModel,
+            "http://localhost:11434/v1",
+            "llama3.2",
+        ));
+        let provider = ConversationKey::of(&ai(
+            Provider::OpenAi,
+            "http://localhost:11434/v1",
+            "llama3.2",
+        ));
+        let url = ConversationKey::of(&ai(
+            Provider::LocalModel,
+            "https://example.com/v1",
+            "llama3.2",
+        ));
+        let model = ConversationKey::of(&ai(
+            Provider::LocalModel,
+            "http://localhost:11434/v1",
+            "gemma",
+        ));
+        assert_eq!(start, same);
+        assert_ne!(start, provider);
+        assert_ne!(start, url);
+        assert_ne!(start, model);
+    }
+
+    #[test]
+    fn history_is_capped_by_dropping_the_oldest_turns() {
+        let turns = vec![
+            turn("old", &"a".repeat(60), vec![]),
+            turn("middle", &"b".repeat(60), vec![]),
+            turn("new", &"c".repeat(60), vec![]),
+        ];
+        let kept = cap_history(turns, 140);
+        let questions: Vec<&str> = kept.iter().map(|turn| turn.question.as_str()).collect();
+        assert_eq!(questions, ["middle", "new"]);
+        assert!(kept.iter().map(AskedTurn::chars).sum::<usize>() <= 140);
+        assert!(cap_history(vec![], 10).is_empty());
+    }
+
+    #[test]
+    fn a_turn_whose_note_is_locked_is_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().join("kanso.db")).unwrap();
+        let book = store
+            .put(
+                DocType::Book,
+                json!({"name": "Notes"}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let note = store
+            .put(
+                DocType::Note,
+                json!({"title": "Pricing", "body": "The plan costs 40.", "bookId": book}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let turns = vec![turn("what?", "the plan", vec![note.clone()])];
+        assert_eq!(eligible_turns(turns.clone(), &store).len(), 1);
+        store
+            .put(
+                DocType::Note,
+                json!({"_id": note, "kansoLock": {"salt": "abc"}}),
+                Put::Merge,
+                Origin::Sync,
+            )
+            .unwrap();
+        assert!(eligible_turns(turns, &store).is_empty());
+    }
+
+    #[test]
+    fn an_eligibility_error_drops_the_turn() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().join("kanso.db")).unwrap();
+        let book = store
+            .put(
+                DocType::Book,
+                json!({"name": "Notes"}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let note = store
+            .put(
+                DocType::Note,
+                json!({"title": "Pricing", "body": "The plan costs 40.", "bookId": book}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        {
+            let conn = rusqlite::Connection::open(store.path()).unwrap();
+            conn.execute("DROP VIEW locked_books", []).unwrap();
+        }
+        let turns = vec![turn("what?", "the plan", vec![note])];
+        assert!(eligible_turns(turns, &store).is_empty());
+    }
+
+    #[test]
+    fn the_history_budget_is_documented() {
+        assert_eq!(HISTORY_BUDGET, 12_000);
     }
 }

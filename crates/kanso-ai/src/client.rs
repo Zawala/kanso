@@ -10,8 +10,9 @@ use agent_runtime::{
     ChatMessage, EventSink, Llm, ProviderError, RuntimeEvent, SharedHttpClient, Timeouts,
     ToolRegistry, ToolSessionRequest,
 };
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock, mpsc};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
 
 use crate::Provider;
 use crate::prompt::Prompt;
@@ -164,7 +165,32 @@ pub fn client(settings: &ClientSettings) -> Result<Box<dyn ChatProvider>, AiErro
     Ok(Box::new(AgentProviderClient {
         llm: settings.llm()?,
         model: settings.model.clone(),
+        tools_key: tools_key(settings),
     }))
+}
+
+/// A provider shared by every question using the same settings. The client
+/// is built once (a reqwest client, its pool and TLS roots) and reused until
+/// the provider, URL or model changes.
+pub type SharedProvider = Arc<Mutex<Box<dyn ChatProvider>>>;
+
+/// The client for `settings`, reused from the last call when the settings are
+/// unchanged. Building one on the UI thread for every question is what this
+/// avoids; call it from the question's background work.
+pub fn cached_client(settings: &ClientSettings) -> Result<SharedProvider, AiError> {
+    static CACHE: OnceLock<Mutex<Option<(ClientSettings, SharedProvider)>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(None));
+    let mut cache = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some((cached, provider)) = cache.as_ref()
+        && cached == settings
+    {
+        return Ok(provider.clone());
+    }
+    let provider: SharedProvider = Arc::new(Mutex::new(client(settings)?));
+    *cache = Some((settings.clone(), provider.clone()));
+    Ok(provider)
 }
 
 /// A client over a specific `HttpClient`, for tests and advanced embedders.
@@ -191,6 +217,7 @@ pub fn client_with_timeouts(
     Ok(Box::new(AgentProviderClient {
         llm,
         model: settings.model.clone(),
+        tools_key: tools_key(settings),
     }))
 }
 
@@ -273,6 +300,9 @@ struct EventStream {
     rx: mpsc::Receiver<Event>,
     task: Option<tokio::task::JoinHandle<()>>,
     cancel: Arc<AtomicBool>,
+    /// A Done or Error has already been yielded (or the disconnect was
+    /// already reported), so the iterator is finished.
+    final_event: bool,
 }
 
 impl Iterator for EventStream {
@@ -283,8 +313,22 @@ impl Iterator for EventStream {
             // Waiting with a short timeout lets Stop abort the request even
             // while a silent server sends nothing at all.
             match self.rx.recv_timeout(std::time::Duration::from_millis(25)) {
-                Ok(event) => return Some(event),
-                Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+                Ok(event) => {
+                    if matches!(event, Event::Done | Event::Error(_)) {
+                        self.final_event = true;
+                    }
+                    return Some(event);
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    // The task ended without saying how the answer ended (it
+                    // panicked or was dropped). Report once, so a caller
+                    // waiting on this stream cannot hang forever.
+                    if !self.final_event {
+                        self.final_event = true;
+                        return Some(Event::Error(CUT_OFF.to_owned()));
+                    }
+                    return None;
+                }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if self.cancel.load(Ordering::Relaxed) {
                         if let Some(task) = self.task.take() {
@@ -306,10 +350,65 @@ impl Drop for EventStream {
     }
 }
 
+/// The identity a tool-support decision belongs to. A different provider,
+/// endpoint or model is a different session.
+fn tools_key(settings: &ClientSettings) -> String {
+    format!(
+        "{}|{}|{}",
+        settings.provider.key(),
+        settings.base_url.trim(),
+        settings.model.trim()
+    )
+}
+
+fn unsupported_tools() -> &'static Mutex<HashSet<String>> {
+    static UNSUPPORTED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    UNSUPPORTED.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn tools_are_supported(key: &str) -> bool {
+    !unsupported_tools()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains(key)
+}
+
+fn remember_tools_unsupported(key: &str) {
+    unsupported_tools()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(key.to_owned());
+}
+
+/// Whether a provider rejected the request only because it cannot use tools.
+/// Ollama says "<model> does not support tools"; OpenAI-compatible servers
+/// phrase it around tools or functions.
+fn tool_calls_unsupported(error: &anyhow::Error) -> bool {
+    let Some(ProviderError::Status { status, body, .. }) = error
+        .chain()
+        .find_map(|error| error.downcast_ref::<ProviderError>())
+    else {
+        return false;
+    };
+    if *status != 400 {
+        return false;
+    }
+    let body = body.to_ascii_lowercase();
+    let mentions = body.contains("tool") || body.contains("function");
+    let rejects = body.contains("does not support")
+        || body.contains("doesn't support")
+        || body.contains("not supported")
+        || body.contains("unsupported");
+    mentions && rejects
+}
+
 /// One provider, ready to answer a prompt without tools.
 struct AgentProviderClient {
     llm: Llm,
     model: String,
+    /// Which provider + endpoint + model this client's tool support belongs
+    /// to, so a server without tools is remembered for this session only.
+    tools_key: String,
 }
 
 impl ChatProvider for AgentProviderClient {
@@ -341,25 +440,47 @@ impl ChatProvider for AgentProviderClient {
         let llm = self.llm.clone();
         let system = prompt.system.clone();
         let messages = chat_messages(history, &prompt.user);
+        let tools_key = self.tools_key.clone();
         run_on_runtime(
             self.model.clone(),
             cancel,
             on_tool_completed,
             move |model, mut sink| async move {
-                llm.execute_tool_session(
-                    ToolSessionRequest {
-                        model: &model,
-                        decision_system_prompt: &system,
-                        followup_system_prompt: &system,
-                        history: &messages,
-                        tool_registry: &tools,
-                        tool_context: (),
-                        max_tool_calls: MAX_TOOL_CALLS,
-                    },
-                    &mut sink,
-                )
-                .await
-                .map(|_| ())
+                if !tools_are_supported(&tools_key) {
+                    return llm
+                        .stream_message(&model, &system, &messages, &mut sink)
+                        .await
+                        .map(|_| ());
+                }
+                let outcome = llm
+                    .execute_tool_session(
+                        ToolSessionRequest {
+                            model: &model,
+                            decision_system_prompt: &system,
+                            followup_system_prompt: &system,
+                            history: &messages,
+                            tool_registry: &tools,
+                            tool_context: (),
+                            max_tool_calls: MAX_TOOL_CALLS,
+                        },
+                        &mut sink,
+                    )
+                    .await;
+                match outcome {
+                    Ok(_) => Ok(()),
+                    Err(err) if tool_calls_unsupported(&err) => {
+                        // Ollama models without tool support (gemma,
+                        // deepseek-r1) and some OpenAI-compatible servers
+                        // reject the tool definitions outright. Answer from
+                        // the same excerpts without tools, and remember it
+                        // for this provider + endpoint + model.
+                        remember_tools_unsupported(&tools_key);
+                        llm.stream_message(&model, &system, &messages, &mut sink)
+                            .await
+                            .map(|_| ())
+                    }
+                    Err(err) => Err(err),
+                }
             },
         )
     }
@@ -402,6 +523,7 @@ where
         rx,
         task: Some(task),
         cancel,
+        final_event: false,
     }))
 }
 
@@ -841,5 +963,188 @@ mod tests {
             started.elapsed() < Duration::from_secs(2),
             "Stop must abort a silent request promptly"
         );
+    }
+    /// A server that rejects tool definitions and then answers without them.
+    #[derive(Clone, Default)]
+    struct ToolsRejectedThenAnswers {
+        body: Arc<std::sync::Mutex<Option<String>>>,
+        requests: Arc<std::sync::Mutex<Vec<HttpRequest>>>,
+    }
+
+    #[async_trait]
+    impl HttpClient for ToolsRejectedThenAnswers {
+        async fn send(&self, request: HttpRequest) -> anyhow::Result<HttpResponse> {
+            self.requests.lock().unwrap().push(request);
+            Ok(HttpResponse {
+                status: 400,
+                body: br#"{"error":"registry.ollama.ai/library/gemma:2b does not support tools"}"#
+                    .to_vec(),
+            })
+        }
+
+        async fn send_streaming(&self, request: HttpRequest) -> anyhow::Result<HttpStreamResponse> {
+            self.requests.lock().unwrap().push(request);
+            let body = self
+                .body
+                .lock()
+                .unwrap()
+                .take()
+                .expect("one recorded streamed body");
+            let chunks: Vec<anyhow::Result<Vec<u8>>> = body
+                .as_bytes()
+                .chunks(7)
+                .map(|chunk| Ok(chunk.to_vec()))
+                .collect();
+            Ok(HttpStreamResponse {
+                status: 200,
+                body: Box::pin(stream::iter(chunks)),
+            })
+        }
+    }
+
+    #[test]
+    fn a_model_without_tools_falls_back_to_a_plain_streamed_answer() {
+        let http = Arc::new(ToolsRejectedThenAnswers {
+            body: Arc::new(std::sync::Mutex::new(Some(OPENAI.to_owned()))),
+            requests: Arc::default(),
+        });
+        let mut settings = settings(Provider::LocalModel);
+        settings.model = "gemma-tool-fallback".to_owned();
+        let client =
+            client_with_timeouts(&settings, http.clone(), Timeouts::default()).expect("client");
+        let mut tools = ToolRegistry::new();
+        tools.register(NoopTool {
+            definition: ToolDefinition {
+                name: "search_notes".to_owned(),
+                description: "Search the notes.".to_owned(),
+                input_schema: serde_json::json!({ "type": "object" }),
+            },
+        });
+
+        let events: Vec<Event> = client
+            .ask(
+                &Prompt {
+                    system: "sys".into(),
+                    user: "hello".into(),
+                },
+                &[],
+                tools,
+                Box::new(|| {}),
+                Arc::new(AtomicBool::new(false)),
+            )
+            .expect("the request starts")
+            .take(50)
+            .collect();
+        assert_eq!(answer(&events), "Your notes say hello.");
+        assert_eq!(events.last(), Some(&Event::Done));
+
+        {
+            let requests = http.requests.lock().unwrap();
+            assert_eq!(requests.len(), 2, "{requests:?}");
+            let first = String::from_utf8_lossy(&requests[0].body);
+            assert!(first.contains("\"tools\""), "{first}");
+            let second = String::from_utf8_lossy(&requests[1].body);
+            assert!(!second.contains("\"tools\""), "{second}");
+        }
+
+        // The unsupported decision is remembered for this provider + model:
+        // the next question streams straight away with no tool definitions.
+        let second_client = client_with_timeouts(
+            &settings,
+            Arc::new(ToolsRejectedThenAnswers {
+                body: Arc::new(std::sync::Mutex::new(Some(OPENAI.to_owned()))),
+                requests: http.requests.clone(),
+            }),
+            Timeouts::default(),
+        )
+        .expect("client");
+        let _ = second_client
+            .ask(
+                &Prompt {
+                    system: "sys".into(),
+                    user: "again".into(),
+                },
+                &[],
+                ToolRegistry::new(),
+                Box::new(|| {}),
+                Arc::new(AtomicBool::new(false)),
+            )
+            .expect("the request starts")
+            .take(50)
+            .collect::<Vec<_>>();
+        let requests = http.requests.lock().unwrap();
+        assert_eq!(requests.len(), 3, "{requests:?}");
+        let last = String::from_utf8_lossy(&requests[2].body);
+        assert!(!last.contains("\"tools\""), "{last}");
+    }
+
+    #[test]
+    fn a_direct_answer_is_delivered_without_a_stream() {
+        let replay = Arc::new(Replay::new(OPENAI));
+        let client = client_with_timeouts(
+            &settings(Provider::OpenAi),
+            replay.clone(),
+            Timeouts::default(),
+        )
+        .expect("client");
+        let events: Vec<Event> = client
+            .ask(
+                &Prompt {
+                    system: "sys".into(),
+                    user: "hello".into(),
+                },
+                &[],
+                ToolRegistry::new(),
+                Box::new(|| {}),
+                Arc::new(AtomicBool::new(false)),
+            )
+            .expect("the request starts")
+            .take(20)
+            .collect();
+        assert_eq!(answer(&events), "ok");
+        assert_eq!(events.last(), Some(&Event::Done));
+        // The buffered first turn answered; the recorded streamed body was
+        // never taken.
+        assert!(replay.body.lock().unwrap().is_some());
+        assert_eq!(replay.requests.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_closed_event_channel_reports_a_cut_off_once() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        drop(tx);
+        let mut stream = super::EventStream {
+            rx,
+            task: None,
+            cancel: Arc::new(AtomicBool::new(false)),
+            final_event: false,
+        };
+        assert_eq!(stream.next(), Some(Event::Error(CUT_OFF.to_owned())));
+        assert_eq!(stream.next(), None);
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send(Event::Done).unwrap();
+        drop(tx);
+        let mut stream = super::EventStream {
+            rx,
+            task: None,
+            cancel: Arc::new(AtomicBool::new(false)),
+            final_event: false,
+        };
+        assert_eq!(stream.next(), Some(Event::Done));
+        assert_eq!(stream.next(), None);
+    }
+
+    #[test]
+    fn a_client_is_reused_until_its_settings_change() {
+        let first = settings(Provider::OpenAi);
+        let one = super::cached_client(&first).expect("client");
+        let two = super::cached_client(&first).expect("client");
+        assert!(Arc::ptr_eq(&one, &two));
+
+        let mut changed = first.clone();
+        changed.model = "another-model".to_owned();
+        let three = super::cached_client(&changed).expect("client");
+        assert!(!Arc::ptr_eq(&one, &three));
     }
 }

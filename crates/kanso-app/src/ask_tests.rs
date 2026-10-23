@@ -155,3 +155,17 @@ fn ai_on_has_the_command_and_it_opens_the_panel(cx: &mut TestAppContext) {
     });
     assert!(tabs.contains(&InspectorTab::Ask), "{tabs:?}");
 }
+
+#[gpui_kit::test]
+fn a_closed_stream_settles_the_panel(cx: &mut TestAppContext) {
+    let f = setup(cx, true);
+    let ask = cx.read(|cx| f.workspace.read(cx).inspector.read(cx).ask_panel_for_test());
+    ask.update(cx, |ask, _| {
+        ask.mark_running_for_test();
+        let (settled, cut_off) = ask.settle_closed_for_test();
+        assert!(settled);
+        assert!(cut_off);
+        // A second close (or a Done that already settled it) changes nothing.
+        assert_eq!(ask.settle_closed_for_test(), (false, true));
+    });
+}

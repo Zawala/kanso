@@ -43,7 +43,7 @@ fn secrets(cx: &App) -> Option<Arc<dyn SecretStore>> {
     cx.try_global::<Services>()?.secrets.clone()
 }
 
-fn read_from(secrets: &dyn SecretStore, provider: Provider) -> Option<String> {
+pub(crate) fn read_from(secrets: &dyn SecretStore, provider: Provider) -> Option<String> {
     secrets
         .get(&api_key_item(provider))
         .ok()

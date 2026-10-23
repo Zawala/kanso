@@ -12,8 +12,8 @@ pub mod client;
 pub mod prompt;
 
 pub use client::{
-    AiError, CUT_OFF, ChatProvider, ClientSettings, Event, Turn, answer, client, client_with,
-    client_with_timeouts, probe,
+    AiError, CUT_OFF, ChatProvider, ClientSettings, Event, SharedProvider, Turn, answer,
+    cached_client, client, client_with, client_with_timeouts, probe,
 };
 pub use prompt::{DEFAULT_BUDGET, Excerpt, Prompt, build as build_prompt};
 

@@ -174,6 +174,11 @@ impl Inspector {
     }
 
     /// Puts the keyboard in Ask Your Notes' question box.
+    #[cfg(test)]
+    pub(crate) fn ask_panel_for_test(&self) -> Entity<AskPanel> {
+        self.ask.clone()
+    }
+
     pub fn focus_ask(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.ask
             .update(cx, |ask, cx| ask.focus_question(window, cx));
