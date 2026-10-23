@@ -2820,7 +2820,8 @@ test remote leaves them `None`.
   when the account has a password; offer it, then approval, then recovery; the binding question and
   `bind` follow the unlock. A new-account answer is the sign-up flow above.
 - **Link a provider.** Settings › Account › Sign-in methods › [Link] › choose the provider. The app
-  asks for a `proof` first (a passkey assertion or the password), starts the flow with
+  asks for a `proof` first (a passkey assertion or the password; a provider-only account sets a
+  password first), starts the flow with
   `intent: "link"`, completes it, and refreshes the list. A 409 `identity_taken` says the provider
   account is already linked elsewhere; it never says where.
 - **Unlink a provider.** The row's [Unlink] asks for a `proof`. If it is the last method, the app
