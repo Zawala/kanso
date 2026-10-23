@@ -28,11 +28,14 @@ use crate::zoom::px;
 
 /// What the background thread says as the answer is made.
 enum Update {
-    /// The excerpts chosen for the question.
+    /// Notes the answer has drawn on: this turn's first excerpts, then any
+    /// the model searched or read through a tool.
     Used(Vec<Excerpt>),
     Text(String),
     Done,
     Error(String),
+    /// The stream stopped without its end marker.
+    CutOff,
     /// Nothing in the notes matched, so no model was asked.
     Empty,
 }
@@ -44,8 +47,13 @@ pub struct AskPanel {
     question: Entity<TextareaState>,
     /// The question asked last, so the panel can tell "before the first".
     asked: bool,
+    /// The exchange in progress: its question, and the words that arrived.
+    asking: Option<String>,
     answer: String,
+    /// Earlier exchanges, kept in memory for the panel's lifetime only.
+    turns: Vec<kanso_ai::Turn>,
     used: Vec<Excerpt>,
+    cut_off: bool,
     searching: bool,
     streaming: bool,
     empty: bool,
@@ -83,8 +91,11 @@ impl AskPanel {
             editor,
             question,
             asked: false,
+            asking: None,
             answer: String::new(),
+            turns: Vec::new(),
             used: Vec::new(),
+            cut_off: false,
             searching: false,
             streaming: false,
             empty: false,
@@ -101,7 +112,7 @@ impl AskPanel {
         window.focus(&focus, cx);
     }
 
-    /// Asks the question in the box.
+    /// Asks the question in the box as the next turn of this conversation.
     pub fn ask(&mut self, _: &mut Window, cx: &mut Context<Self>) {
         let question = self.question.read(cx).value().trim().to_owned();
         if question.is_empty() {
@@ -111,12 +122,21 @@ impl AskPanel {
         if !ai.enabled {
             return;
         }
+        // Whatever is answering stops first, even if the new request cannot
+        // be made: a failure to build the client must not leave an answer
+        // running.
+        self.stop(cx);
+        // A locked note shown beside the panel ends the conversation.
+        if self.editor.read(cx).lock_view() != crate::locked::LockView::Plain {
+            self.clear_conversation();
+        }
         let saved = read_key(cx, ai.provider);
         let settings = ClientSettings {
             provider: ai.provider,
             base_url: ai.base_url.clone(),
             model: ai.model.clone(),
             api_key: saved,
+            region: ai.provider.default_region().to_owned(),
         };
         let provider = match kanso_ai::client(&settings) {
             Ok(provider) => provider,
@@ -125,23 +145,25 @@ impl AskPanel {
                 self.asked = true;
                 self.searching = false;
                 self.streaming = false;
+                self.cut_off = false;
                 cx.notify();
                 return;
             }
         };
-        self.stop(cx);
         self.asked = true;
         self.answer.clear();
-        self.used.clear();
         self.empty = false;
         self.error = None;
+        self.cut_off = false;
         self.searching = true;
+        self.asking = Some(question.clone());
         let cancel = Arc::new(AtomicBool::new(false));
         self.cancel = Some(cancel.clone());
         cx.notify();
 
         let store = self.store.clone();
-        let asked = question.clone();
+        let asked = question;
+        let history = self.turns.clone();
         let (tx, rx) = async_channel::unbounded::<Update>();
         let spawned = std::thread::Builder::new()
             .name("kanso-ask".into())
@@ -160,20 +182,45 @@ impl AskPanel {
                 }
                 tx.try_send(Update::Used(excerpts.clone())).ok();
                 let prompt = kanso_ai::build_prompt(&asked, &excerpts, crate::ask::BUDGET);
-                crate::ask::stream_answer(provider.as_ref(), &prompt, &cancel, |event| {
-                    if cancel.load(Ordering::Relaxed) {
-                        return;
-                    }
-                    let update = match event {
-                        kanso_ai::Event::Text(text) => Update::Text(text),
-                        kanso_ai::Event::Done => Update::Done,
-                        kanso_ai::Event::Error(message) => Update::Error(message),
-                    };
-                    tx.try_send(update).ok();
-                });
+                // Every note this question's tools search or read is kept, so
+                // the panel can list all of them.
+                let used = Arc::new(std::sync::Mutex::new(excerpts));
+                let tools = crate::ask::tool_registry(store.clone(), used.clone());
+                let on_tool = {
+                    let tx = tx.clone();
+                    let used = used.clone();
+                    Box::new(move || {
+                        if let Ok(list) = used.lock() {
+                            tx.try_send(Update::Used(list.clone())).ok();
+                        }
+                    })
+                };
+                crate::ask::stream_answer(
+                    provider.as_ref(),
+                    &prompt,
+                    &history,
+                    tools,
+                    on_tool,
+                    &cancel,
+                    |event| {
+                        if cancel.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        let update = match event {
+                            kanso_ai::Event::Text(text) => Update::Text(text),
+                            kanso_ai::Event::Done => Update::Done,
+                            kanso_ai::Event::Error(message) if message == kanso_ai::CUT_OFF => {
+                                Update::CutOff
+                            }
+                            kanso_ai::Event::Error(message) => Update::Error(message),
+                        };
+                        tx.try_send(update).ok();
+                    },
+                );
             });
         if spawned.is_err() {
             self.cancel = None;
+            self.asking = None;
             self.searching = false;
             self.error = Some("Couldn't start the question.".to_owned());
             cx.notify();
@@ -185,12 +232,29 @@ impl AskPanel {
                     .update(cx, |this, cx| {
                         match update {
                             Update::Used(used) => {
-                                this.used = used;
+                                for excerpt in used {
+                                    if !this.used.iter().any(|seen| seen.id == excerpt.id) {
+                                        this.used.push(excerpt);
+                                    }
+                                }
                                 this.searching = false;
                                 this.streaming = true;
                             }
                             Update::Text(text) => this.answer.push_str(&text),
                             Update::Done => {
+                                if let Some(question) = this.asking.take() {
+                                    let answer = std::mem::take(&mut this.answer);
+                                    if !answer.trim().is_empty() {
+                                        this.turns.push(kanso_ai::Turn { question, answer });
+                                    }
+                                }
+                                this.streaming = false;
+                                this.searching = false;
+                                this.cancel = None;
+                            }
+                            Update::CutOff => {
+                                this.cut_off = true;
+                                this.asking = None;
                                 this.streaming = false;
                                 this.searching = false;
                                 this.cancel = None;
@@ -199,11 +263,13 @@ impl AskPanel {
                                 this.streaming = false;
                                 this.searching = false;
                                 this.error = Some(message);
+                                this.asking = None;
                                 this.cancel = None;
                             }
                             Update::Empty => {
                                 this.searching = false;
                                 this.empty = true;
+                                this.asking = None;
                                 this.cancel = None;
                             }
                         }
@@ -224,9 +290,48 @@ impl AskPanel {
             cancel.store(true, Ordering::Relaxed);
         }
         self.task = None;
+        self.asking = None;
         self.searching = false;
         self.streaming = false;
         cx.notify();
+    }
+
+    /// Ends the conversation: cancels any answer and forgets every exchange.
+    /// Called when the panel is cleared, closed, or AI is turned off.
+    pub fn end_conversation(&mut self, cx: &mut Context<Self>) {
+        self.stop(cx);
+        self.clear_conversation();
+        cx.notify();
+    }
+
+    fn clear_conversation(&mut self) {
+        self.turns.clear();
+        self.used.clear();
+        self.answer.clear();
+        self.asking = None;
+        self.asked = false;
+        self.empty = false;
+        self.error = None;
+        self.cut_off = false;
+    }
+
+    /// The earlier exchanges and the one in progress, as Markdown.
+    fn transcript(&self) -> String {
+        let mut text = String::new();
+        for turn in &self.turns {
+            text.push_str("**You asked:** ");
+            text.push_str(turn.question.trim());
+            text.push_str("\n\n");
+            text.push_str(&turn.answer);
+            text.push_str("\n\n");
+        }
+        if !self.answer.is_empty() {
+            if !text.is_empty() {
+                text.push_str("---\n\n");
+            }
+            text.push_str(&self.answer);
+        }
+        text
     }
 
     /// Opens note `id` in the editor.
@@ -239,6 +344,16 @@ impl AskPanel {
 
     fn status(&self, cx: &App) -> Option<AnyElement> {
         let colors = Colors::get(cx);
+        if self.cut_off {
+            return Some(
+                div()
+                    .text_size(px(12.5))
+                    .line_height(px(18.))
+                    .text_color(colors.text_secondary)
+                    .child(kanso_ai::CUT_OFF)
+                    .into_any_element(),
+            );
+        }
         if let Some(error) = &self.error {
             return Some(
                 div()
@@ -328,7 +443,10 @@ impl Render for AskPanel {
         let colors = Colors::get(cx);
         let ai = cx.global::<AppState>().config.ai.clone();
         let running = self.searching || self.streaming;
-        let answer = crate::ask::linkify(&self.answer, &self.used);
+        let answer = crate::ask::linkify(
+            &crate::ask::strip_remote_images(&self.transcript()),
+            &self.used,
+        );
         let used = self.render_used(cx);
         let view = cx.entity();
         v_flex()
@@ -338,7 +456,7 @@ impl Render for AskPanel {
             .pt(px(10.))
             .pb(px(10.))
             .gap(px(8.))
-            .when(!self.asked && ai.provider.needs_key(), |el| {
+            .when(!self.asked && ai.provider.is_remote(&ai.base_url), |el| {
                 el.child(
                     div()
                         .text_size(px(11.5))
@@ -379,7 +497,23 @@ impl Render for AskPanel {
                                     view.update(cx, |this, cx| this.stop(cx));
                                 }),
                         )
-                    }),
+                    })
+                    .when(
+                        !running
+                            && (self.asked || !self.turns.is_empty() || !self.used.is_empty()),
+                        |el| {
+                            let view = view.clone();
+                            el.child(
+                                Button::new("ask-clear")
+                                    .outline()
+                                    .small()
+                                    .label("Clear")
+                                    .on_click(move |_, _, cx| {
+                                        view.update(cx, |this, cx| this.end_conversation(cx));
+                                    }),
+                            )
+                        },
+                    ),
             )
             .when(!self.asked, |el| {
                 el.child(
