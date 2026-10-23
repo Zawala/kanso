@@ -1,6 +1,6 @@
-//! Spike: Mermaid diagrams drawn by Pele (Obsidian's renderer, MIT), run in
-//! QuickJS on a thread of its own, as an alternative to `mermaid-svg`. On
-//! when `KANSO_MERMAID=pele` is set; see [`crate::mermaid::render`].
+//! Mermaid diagrams drawn by Pele (Obsidian's renderer, MIT), run in
+//! QuickJS on a thread of its own: the alternative to `mermaid-svg` chosen
+//! in Settings; see [`crate::mermaid::render_with`].
 //!
 //! Pele themes a drawing with CSS variables, which resvg doesn't read, so
 //! each `var(…)` is replaced with the palette's value before it's flattened.

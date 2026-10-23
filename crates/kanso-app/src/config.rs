@@ -184,6 +184,26 @@ pub enum EditorFont {
     Mono,
 }
 
+/// What draws Mermaid diagrams in the preview and in exports.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DiagramRenderer {
+    /// `mermaid-svg`, Kanso's own.
+    Kanso,
+    /// Pele, Obsidian's renderer: the default.
+    #[default]
+    Pele,
+}
+
+impl DiagramRenderer {
+    pub fn engine(self) -> kanso_render::MermaidEngine {
+        match self {
+            DiagramRenderer::Kanso => kanso_render::MermaidEngine::MermaidSvg,
+            DiagramRenderer::Pele => kanso_render::MermaidEngine::Pele,
+        }
+    }
+}
+
 /// How the editor sets its text in one view mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EditorFace {
@@ -253,6 +273,7 @@ pub struct Appearance {
     pub legacy_icon_pack: Option<String>,
     /// How large the whole app is drawn, in percent; see [`crate::zoom`].
     pub zoom: u32,
+    pub diagram_renderer: DiagramRenderer,
 }
 
 impl Default for Appearance {
@@ -273,6 +294,7 @@ impl Default for Appearance {
             icon_theme: None,
             legacy_icon_pack: None,
             zoom: crate::zoom::DEFAULT_ZOOM,
+            diagram_renderer: DiagramRenderer::Pele,
         }
     }
 }
@@ -859,7 +881,12 @@ mod tests {
             any::<bool>(),
             prop::option::of("note:[a-zA-Z0-9]{8}"),
             0u32..=CONFIG_VERSION + 1,
-            (gen_themes(), gen_fonts(), gen_zoom()),
+            (
+                gen_themes(),
+                gen_fonts(),
+                gen_zoom(),
+                prop::sample::select(vec![DiagramRenderer::Kanso, DiagramRenderer::Pele]),
+            ),
         )
             .prop_map(
                 |(
@@ -873,7 +900,7 @@ mod tests {
                     login,
                     last,
                     version,
-                    (themes, (writing, mono, preview, preview_size), zoom),
+                    (themes, (writing, mono, preview, preview_size), zoom, diagrams),
                 )| AppConfig {
                     version,
                     server: ServerSettings {
@@ -900,6 +927,7 @@ mod tests {
                         icon_theme: None,
                         legacy_icon_pack: None,
                         zoom,
+                        diagram_renderer: diagrams,
                     },
                     launch_at_login: login,
                     last_note: last,
@@ -1312,6 +1340,7 @@ mod tests {
         // the pane unless the readable measure is turned on.
         assert!(config.appearance.line_numbers);
         assert!(!config.appearance.readable_width);
+        assert_eq!(config.appearance.diagram_renderer, DiagramRenderer::Pele);
         // Spelling is checked, though the file predates the setting.
         assert!(config.editor.spellcheck);
         assert!(config.ensure_credentials());
