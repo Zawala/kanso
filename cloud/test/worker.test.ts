@@ -26,7 +26,13 @@ describe("the default export", () => {
 	it("fetch answers with the real clock", async () => {
 		const response = await worker.fetch(new Request(`${ORIGIN}/v2/health`), testEnv());
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ ok: true, protocol: 2, signup: "open" });
+		expect(await response.json()).toEqual({
+			ok: true,
+			protocol: 2,
+			signup: "open",
+			// Nothing sign-in-related is configured in the test bindings.
+			auth: { password: true, passkeys: null, providers: [] },
+		});
 		expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
 	});
 
