@@ -2,11 +2,13 @@
 //!
 //! Only the YAML notes use is understood: `key: value` lines, quoted
 //! strings, numbers, booleans, ISO dates, inline lists (`[a, b]`) and block
-//! lists (`- a`). Anything else, such as a nested map or an anchor, is kept
-//! as the text it was written as; parsing never fails.
+//! lists (`- a`). Anything else, such as a nested map, a block scalar or an
+//! anchor, is kept as [`Value::Raw`]; parsing never fails.
 //!
 //! [`set_property`] changes one value and leaves every other byte alone,
-//! adding front matter when the note has none.
+//! adding front matter when the note has none. An entry ends at its last
+//! indented continuation line or `- item` line: comments and blank lines
+//! after it belong to no entry and are never touched.
 
 use crate::dates::Date;
 
@@ -19,6 +21,10 @@ pub enum Value {
     /// `YYYY-MM-DD`.
     Date(String),
     List(Vec<Value>),
+    /// Anything the parser doesn't understand: a nested map, a block scalar,
+    /// a flow map, an anchor, an alias or a tag. Kept as written, and never
+    /// rewritten by the inspector.
+    Raw(String),
 }
 
 impl Value {
@@ -34,6 +40,7 @@ impl Value {
                 .map(|item| item.text())
                 .collect::<Vec<_>>()
                 .join(", "),
+            Value::Raw(raw) => raw.clone(),
         }
     }
 
@@ -42,8 +49,14 @@ impl Value {
         match self {
             Value::Text(text) => text.is_empty(),
             Value::List(items) => items.is_empty(),
+            Value::Raw(raw) => raw.trim().is_empty(),
             _ => false,
         }
+    }
+
+    /// Whether the value is kept as written because it isn't understood.
+    pub fn is_raw(&self) -> bool {
+        matches!(self, Value::Raw(_))
     }
 }
 
@@ -58,25 +71,46 @@ pub struct FrontMatter<'a> {
     pub close_start: usize,
     /// Where the text after the closing line starts.
     pub body_start: usize,
+    /// The line ending the opening line uses.
+    pub eol: &'a str,
 }
 
 /// The front matter of `body`, if it opens with `---` and closes with
-/// `---` or `...`.
+/// `---` or `...`. A UTF-8 BOM before the opening line and trailing
+/// whitespace on either marker line are allowed.
 pub fn split(body: &str) -> Option<FrontMatter<'_>> {
-    let opening = body
-        .strip_prefix("---\n")
-        .map(|_| 4)
-        .or_else(|| body.strip_prefix("---\r\n").map(|_| 5))?;
+    let bom = if body.starts_with('\u{feff}') {
+        '\u{feff}'.len_utf8()
+    } else {
+        0
+    };
+    let rest = &body[bom..];
+    // The opening line needs its newline: without one there is no closing.
+    let first_end = rest.find('\n')?;
+    let first = rest[..first_end]
+        .strip_suffix('\r')
+        .unwrap_or(&rest[..first_end]);
+    if first.trim_end_matches([' ', '\t']) != "---" {
+        return None;
+    }
+    let opening = bom + first_end + 1;
+    let eol = if rest[..first_end].ends_with('\r') {
+        "\r\n"
+    } else {
+        "\n"
+    };
     let mut offset = opening;
     for line in body[opening..].split_inclusive('\n') {
         let end = offset + line.len();
         let content = line.trim_end_matches(['\n', '\r']);
-        if content == "---" || content == "..." {
+        let marker = content.trim_end_matches([' ', '\t']);
+        if marker == "---" || marker == "..." {
             return Some(FrontMatter {
                 front: &body[opening..offset],
                 front_start: opening,
                 close_start: offset,
                 body_start: end,
+                eol: &body[opening - eol.len()..opening],
             });
         }
         offset = end;
@@ -84,12 +118,22 @@ pub fn split(body: &str) -> Option<FrontMatter<'_>> {
     None
 }
 
+/// The front matter between the delimiters, if `body` has any.
+pub fn front_matter(body: &str) -> Option<&str> {
+    split(body).map(|front| front.front)
+}
+
 /// The properties in `body`'s front matter, in the order they are written.
 pub fn parse(body: &str) -> Vec<(String, Value)> {
     let Some(front) = split(body) else {
         return Vec::new();
     };
-    entries(front.front)
+    parse_front(front.front)
+}
+
+/// The properties in front-matter text (the lines between the delimiters).
+pub fn parse_front(front: &str) -> Vec<(String, Value)> {
+    entries(front)
         .into_iter()
         .map(|entry| (entry.key, entry.value))
         .collect()
@@ -106,32 +150,53 @@ pub fn get<'a>(properties: &'a [(String, Value)], key: &str) -> Option<&'a Value
 }
 
 /// `body` with property `key` set to `value`. The front matter is added if
-/// the note has none; every other byte stays as it was.
+/// the note has none; every other byte stays as it was. When `key` already
+/// has `value`, `body` is returned unchanged.
 pub fn set_property(body: &str, key: &str, value: &Value) -> String {
     let key = key.trim();
     if key.is_empty() {
         return body.to_owned();
     }
-    let line = format!("{}: {}\n", quote_key(key), render(value));
-    match split(body) {
-        None => format!("---\n{line}---\n{body}"),
-        Some(front) => {
-            let found = entries(front.front)
-                .into_iter()
-                .find(|entry| entry.key.eq_ignore_ascii_case(key));
-            match found {
-                // The rest of the entry (a block list or a comment) goes:
-                // the new value is the whole of it.
-                Some(entry) => {
-                    let start = front.front_start + entry.start;
-                    let end = front.front_start + entry.end;
-                    format!("{}{}{}", &body[..start], line, &body[end..])
+    let Some(front) = split(body) else {
+        let eol = line_ending(body);
+        let bom = if body.starts_with('\u{feff}') {
+            '\u{feff}'.len_utf8()
+        } else {
+            0
+        };
+        let line = format!("{}: {}{eol}", quote_key(key), render(value));
+        return format!("{}---{eol}{line}---{eol}{}", &body[..bom], &body[bom..]);
+    };
+    let found = entries(front.front)
+        .into_iter()
+        .rev()
+        .find(|entry| entry.key.eq_ignore_ascii_case(key));
+    match found {
+        // Nothing to do: the value is already what was asked for.
+        Some(entry) if entry.value == *value => body.to_owned(),
+        Some(entry) => {
+            let start = front.front_start + entry.start;
+            let end = front.front_start + entry.end;
+            let prefix =
+                &body[front.front_start + entry.start..front.front_start + entry.rest_start];
+            let mut line = format!("{prefix} {}", render(value));
+            // A note's own inline comment stays when the new value is a
+            // plain scalar that can carry one.
+            if plain_scalar(value)
+                && let Some(comment) = &entry.comment
+            {
+                if !comment.starts_with([' ', '\t']) {
+                    line.push(' ');
                 }
-                None => {
-                    let at = front.close_start;
-                    format!("{}{}{}", &body[..at], line, &body[at..])
-                }
+                line.push_str(comment);
             }
+            line.push_str(front.eol);
+            format!("{}{}{}", &body[..start], line, &body[end..])
+        }
+        None => {
+            let at = front.close_start;
+            let line = format!("{}: {}{}", quote_key(key), render(value), front.eol);
+            format!("{}{}{}", &body[..at], line, &body[at..])
         }
     }
 }
@@ -163,8 +228,18 @@ pub fn typed(text: &str, like: Option<&Value>) -> Value {
                 .map(|item| scalar(&item))
                 .collect(),
         ),
+        Some(Value::Raw(_)) => Value::Raw(text.to_owned()),
         Some(Value::Text(_)) => Value::Text(text.to_owned()),
         None => scalar(text),
+    }
+}
+
+/// The line ending `text` uses: `\r\n` when its first line ends that way,
+/// else `\n`.
+pub fn line_ending(text: &str) -> &'static str {
+    match text.find('\n') {
+        Some(at) if text[..at].ends_with('\r') => "\r\n",
+        _ => "\n",
     }
 }
 
@@ -174,6 +249,10 @@ struct Entry {
     /// Where the entry starts and ends in the front matter.
     start: usize,
     end: usize,
+    /// Where the value starts (just after the key's colon).
+    rest_start: usize,
+    /// The inline comment on the key line, if any, as written.
+    comment: Option<String>,
 }
 
 /// The top-level entries of front matter, with where each one is.
@@ -181,32 +260,67 @@ fn entries(front: &str) -> Vec<Entry> {
     struct Raw {
         key: String,
         start: usize,
+        rest_start: usize,
+        comment: Option<String>,
         lines: Vec<(usize, String)>,
     }
     let mut raw: Vec<Raw> = Vec::new();
     let mut offset = 0;
+    let mut open = false;
     for line in front.split_inclusive('\n') {
         let content = line.trim_end_matches(['\n', '\r']);
-        let key_line = !content.starts_with([' ', '\t', '-', '#'])
-            && !content.is_empty()
-            && split_key(content).is_some();
-        if key_line {
-            let key = split_key(content).map(|(key, _)| key).unwrap_or_default();
+        if let Some((key, rest)) = key_line(content) {
             raw.push(Raw {
                 key,
                 start: offset,
+                rest_start: offset + (content.len() - rest.len()),
+                comment: split_comment(rest).1.map(|comment| {
+                    let at = rest.len() - comment.len();
+                    let end = rest[..at].trim_end().len();
+                    rest[end..].to_owned()
+                }),
                 lines: vec![(offset, line.to_owned())],
             });
-        } else if let Some(entry) = raw.last_mut() {
-            entry.lines.push((offset, line.to_owned()));
+            open = true;
+        } else if open && continuation(content) {
+            if let Some(entry) = raw.last_mut() {
+                entry.lines.push((offset, line.to_owned()));
+            }
+        } else {
+            // A top-level line that isn't an indented continuation or a
+            // list item belongs to no entry: it stays exactly as written.
+            open = false;
         }
         offset += line.len();
     }
     raw.into_iter()
         .map(|entry| {
-            let (value, _) = value_of(&entry.lines);
-            let last = entry
+            let block_scalar = entry
                 .lines
+                .first()
+                .and_then(|(_, line)| key_line(line.trim_end_matches(['\n', '\r'])))
+                .is_some_and(|(_, rest)| rest.trim_start().starts_with(['|', '>']));
+            let mut lines = entry.lines;
+            // Trailing blank lines and comments belong to no entry.
+            while lines.len() > 1 {
+                let text = lines
+                    .last()
+                    .map(|(_, line)| line.trim_end_matches(['\n', '\r']))
+                    .unwrap_or("");
+                let blank = text.trim().is_empty();
+                let comment = if block_scalar {
+                    text.starts_with('#')
+                } else {
+                    text.trim_start().starts_with('#')
+                };
+                if blank || comment {
+                    lines.pop();
+                } else {
+                    break;
+                }
+            }
+            let (value, _) = value_of(&lines);
+            let last = lines
                 .last()
                 .map(|(at, line)| at + line.len())
                 .unwrap_or(entry.start);
@@ -215,22 +329,43 @@ fn entries(front: &str) -> Vec<Entry> {
                 value,
                 start: entry.start,
                 end: last,
+                rest_start: entry.rest_start,
+                comment: entry.comment,
             }
         })
         .collect()
 }
 
+/// `key: rest` if `line` is a top-level key line.
+fn key_line(line: &str) -> Option<(String, &str)> {
+    split_key(line)
+}
+
+/// Whether a line after a key belongs to its entry: an indented line, a
+/// blank line, a comment, or a block-list item. Anything else at the top
+/// level is not part of the value.
+fn continuation(line: &str) -> bool {
+    line.is_empty()
+        || line.starts_with([' ', '\t', '#'])
+        || line == "-"
+        || line.starts_with("- ")
+        || line.starts_with("-\t")
+}
+
 /// `key: rest` → (key, rest). The colon must be followed by a space or the
 /// end of the line; quoted keys are unquoted.
-fn split_key(line: &str) -> Option<(String, &str)> {
-    let (key, rest) = if let Some(quoted) = line.strip_prefix('"') {
-        let end = quoted.find('"')?;
-        let rest = quoted[end + 1..].strip_prefix(':')?;
-        (quoted[..end].to_owned(), rest)
-    } else if let Some(quoted) = line.strip_prefix('\'') {
-        let end = quoted.find('\'')?;
-        let rest = quoted[end + 1..].strip_prefix(':')?;
-        (quoted[..end].to_owned(), rest)
+pub fn split_key(line: &str) -> Option<(String, &str)> {
+    let first = line.chars().next()?;
+    if matches!(first, ' ' | '\t' | '#') {
+        return None;
+    }
+    // `- item` is a list item, not a key; `-k: v` is a key.
+    if first == '-' && (line.len() == 1 || line[1..].starts_with([' ', '\t'])) {
+        return None;
+    }
+    let (key, rest) = if first == '"' || first == '\'' {
+        let (key, rest) = unquote_key(line, first)?;
+        (key, rest.strip_prefix(':')?)
     } else {
         let mut at = None;
         for (ix, c) in line.char_indices() {
@@ -251,34 +386,58 @@ fn split_key(line: &str) -> Option<(String, &str)> {
     Some((key, rest))
 }
 
+/// Unquotes a key at the start of `line`, returning it and the text after
+/// its closing quote.
+fn unquote_key(line: &str, quote: char) -> Option<(String, &str)> {
+    let mut out = String::new();
+    let mut chars = line[1..].char_indices().peekable();
+    while let Some((ix, c)) = chars.next() {
+        if quote == '"' && c == '\\' {
+            match chars.next() {
+                Some((_, 'n')) => out.push('\n'),
+                Some((_, 't')) => out.push('\t'),
+                Some((_, other)) => out.push(other),
+                None => out.push('\\'),
+            }
+            continue;
+        }
+        if c == quote {
+            if quote == '\'' && chars.peek().is_some_and(|(_, next)| *next == '\'') {
+                chars.next();
+                out.push('\'');
+                continue;
+            }
+            let end = 1 + ix + c.len_utf8();
+            return Some((out, &line[end..]));
+        }
+        out.push(c);
+    }
+    None
+}
+
 /// The value of an entry, and its text as written after the key.
 fn value_of(lines: &[(usize, String)]) -> (Value, String) {
     let first = lines[0].1.trim_end_matches(['\n', '\r']);
     let Some((_, rest)) = split_key(first) else {
         return (Value::Text(String::new()), String::new());
     };
-    let trimmed = rest.trim();
     let more: Vec<&str> = lines[1..]
         .iter()
         .map(|(_, line)| line.trim_end_matches(['\n', '\r']))
         .filter(|line| !line.trim().is_empty() && !line.trim_start().starts_with('#'))
         .collect();
+    let raw = || raw_of(rest, lines);
+    let (value_part, _) = split_comment(rest);
+    let trimmed = value_part.trim();
     if trimmed.starts_with('|') || trimmed.starts_with('>') {
-        let folded = trimmed.starts_with('>');
-        let text: Vec<&str> = lines[1..]
-            .iter()
-            .map(|(_, line)| line.trim_end_matches(['\n', '\r']).trim())
-            .collect();
-        let text = if folded {
-            text.iter()
-                .filter(|line| !line.is_empty())
-                .copied()
-                .collect::<Vec<_>>()
-                .join(" ")
-        } else {
-            text.join("\n").trim_end().to_owned()
-        };
-        return (Value::Text(text), rest.to_owned());
+        // A block scalar: kept as written, never rewritten.
+        return (Value::Raw(raw()), rest.to_owned());
+    }
+    if trimmed.starts_with('{') || trimmed.starts_with(['&', '*', '!']) {
+        return (Value::Raw(raw()), rest.to_owned());
+    }
+    if trimmed.starts_with('[') && !trimmed.ends_with(']') {
+        return (Value::Raw(raw()), rest.to_owned());
     }
     if trimmed.is_empty() {
         if more.is_empty() {
@@ -296,21 +455,13 @@ fn value_of(lines: &[(usize, String)]) -> (Value, String) {
         }
         // A nested map, or anything else not understood: its lines as
         // written.
-        let mut raw = String::new();
-        for (_, line) in &lines[1..] {
-            raw.push_str(line);
-        }
-        return (Value::Text(raw), rest.to_owned());
+        return (Value::Raw(raw()), rest.to_owned());
     }
     if !more.is_empty() {
-        // A plain scalar continued on the next lines, or something we
-        // don't interpret, kept as written.
-        if trimmed.starts_with(['"', '\'', '[', '{', '&', '*']) {
-            let mut raw = rest.trim_start().to_owned();
-            for (_, line) in &lines[1..] {
-                raw.push_str(line);
-            }
-            return (Value::Text(raw), rest.to_owned());
+        // A quoted or flow value continued on the next lines, or something
+        // we don't interpret, kept as written.
+        if trimmed.starts_with(['"', '\'', '[', '{', '&', '*', '!']) {
+            return (Value::Raw(raw()), rest.to_owned());
         }
         let mut text = trimmed.to_owned();
         for line in more {
@@ -329,20 +480,26 @@ fn value_of(lines: &[(usize, String)]) -> (Value, String) {
             .collect();
         return (Value::List(items), rest.to_owned());
     }
-    if trimmed.starts_with('{') || trimmed.starts_with(['&', '*']) {
-        return (Value::Text(rest.trim_start().to_owned()), rest.to_owned());
-    }
     (scalar(trimmed), rest.to_owned())
+}
+
+/// The entry's value as written, from just after the colon on.
+fn raw_of(rest: &str, lines: &[(usize, String)]) -> String {
+    let mut raw = rest.trim_start().to_owned();
+    for (_, line) in &lines[1..] {
+        raw.push_str(line);
+    }
+    raw
 }
 
 /// A scalar as YAML reads it: a quoted or plain string, a number, a boolean
 /// or an ISO date.
 fn scalar(text: &str) -> Value {
+    let (text, _) = split_comment(text.trim());
     let text = text.trim();
     if let Some(quoted) = unquote_exact(text) {
         return Value::Text(quoted);
     }
-    let text = strip_comment(text);
     if text.is_empty() {
         return Value::Text(String::new());
     }
@@ -395,18 +552,42 @@ fn unquote_exact(text: &str) -> Option<String> {
     None
 }
 
+/// Splits `text` at a trailing ` # comment`, outside quotes: the value
+/// before it and the comment as written, `#` first.
+fn split_comment(text: &str) -> (&str, Option<&str>) {
+    let mut quote: Option<char> = None;
+    let mut chars = text.char_indices().peekable();
+    while let Some((ix, c)) = chars.next() {
+        match quote {
+            Some(q) if c == q => {
+                if q == '\'' && chars.peek().is_some_and(|(_, next)| *next == '\'') {
+                    chars.next();
+                } else {
+                    quote = None;
+                }
+            }
+            Some('"') if c == '\\' => {
+                chars.next();
+            }
+            Some(_) => {}
+            None if c == '"' || c == '\'' => quote = Some(c),
+            None if c == '#' => {
+                if ix == 0 {
+                    return ("", Some(text));
+                }
+                if text[..ix].ends_with([' ', '\t']) {
+                    return (text[..ix].trim_end(), Some(&text[ix..]));
+                }
+            }
+            None => {}
+        }
+    }
+    (text, None)
+}
+
 /// A plain scalar without a trailing ` # comment`. Quoted text keeps its `#`.
 fn strip_comment(text: &str) -> &str {
-    if text.starts_with(['"', '\'']) {
-        return text;
-    }
-    if text.starts_with('#') {
-        return "";
-    }
-    match text.find(" #").or_else(|| text.find("\t#")) {
-        Some(at) => text[..at].trim_end(),
-        None => text,
-    }
+    split_comment(text).0
 }
 
 /// Splits `a, "b, c", d` at the commas outside quotes.
@@ -462,6 +643,7 @@ fn render(value: &Value) -> String {
             "[{}]",
             items.iter().map(render).collect::<Vec<_>>().join(", ")
         ),
+        Value::Raw(raw) => raw.clone(),
     }
 }
 
@@ -473,16 +655,25 @@ fn number_text(number: f64) -> String {
     }
 }
 
+/// Whether `value` renders as a plain scalar that can carry a comment.
+fn plain_scalar(value: &Value) -> bool {
+    match value {
+        Value::Text(text) => quote(text) == *text,
+        Value::Number(_) | Value::Bool(_) | Value::Date(_) => true,
+        Value::List(_) | Value::Raw(_) => false,
+    }
+}
+
 /// `text` as a plain scalar when that reads back as itself, quoted when not.
 fn quote(text: &str) -> String {
     let plain = !text.is_empty()
         && text.trim() == text
         && !text.starts_with([
-            '"', '\'', '[', '{', '|', '>', '-', '#', '&', '*', '!', '%', '@', '`',
+            '"', '\'', '[', '{', '|', '>', '-', '#', '&', '*', '!', '%', '@', '`', '?',
         ])
         && !text.contains(": ")
         && !text.contains(" #")
-        && !text.contains('\n')
+        && !text.contains(['\n', '\r'])
         && !text.ends_with(':')
         && matches!(scalar(text), Value::Text(ref kept) if kept == text);
     if plain {
@@ -491,17 +682,23 @@ fn quote(text: &str) -> String {
         let escaped = text
             .replace('\\', "\\\\")
             .replace('"', "\\\"")
-            .replace('\n', "\\n");
+            .replace('\n', "\\n")
+            .replace('\r', "\\r");
         format!("\"{escaped}\"")
     }
 }
 
+/// `key` as a YAML key that [`split_key`] reads back as itself.
 fn quote_key(key: &str) -> String {
     let plain = !key.is_empty()
         && key.trim() == key
-        && !key.starts_with(['"', '\'', '#', '&', '*', '!', '%', '@', '`'])
-        && !key.contains(['\n', '\r', ':'])
-        && !key.contains(" #");
+        && !key.starts_with([
+            '"', '\'', '#', '&', '*', '!', '%', '@', '`', '-', '?', '[', '{', '|', '>',
+        ])
+        && !key.contains(['\n', '\r', '\t'])
+        && !key.contains(": ")
+        && !key.contains(" #")
+        && !key.ends_with(':');
     if plain {
         key.to_owned()
     } else {
@@ -509,12 +706,12 @@ fn quote_key(key: &str) -> String {
         format!("\"{escaped}\"")
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
+    use saphyr::LoadableYamlNode as _;
 
     #[test]
     fn reads_the_yaml_notes_use() {
@@ -531,6 +728,7 @@ tags:
   - '#project/acme'
 nested:
   a: 1
+  b: 2
 ---
 # Note
 ";
@@ -555,7 +753,7 @@ nested:
                         Value::Text("#project/acme".into()),
                     ])
                 ),
-                ("nested".to_owned(), Value::Text("  a: 1\n".into())),
+                ("nested".to_owned(), Value::Raw("  a: 1\n  b: 2\n".into())),
             ]
         );
     }
@@ -571,17 +769,135 @@ nested:
     }
 
     #[test]
+    fn a_bom_and_trailing_spaces_still_open_front_matter() {
+        let body = "\u{feff}--- \na: 1\n---  \nBody";
+        assert_eq!(parse(body), vec![("a".to_owned(), Value::Number(1.))]);
+        assert_eq!(
+            set_property(body, "a", &Value::Number(2.)),
+            "\u{feff}--- \na: 2\n---  \nBody"
+        );
+        let added = set_property(body, "b", &Value::Number(3.));
+        assert_eq!(added, "\u{feff}--- \na: 1\nb: 3\n---  \nBody");
+    }
+
+    #[test]
+    fn new_front_matter_uses_the_bodys_line_ending() {
+        assert_eq!(
+            set_property("# Note\r\n", "b", &Value::Number(2.)),
+            "---\r\nb: 2\r\n---\r\n# Note\r\n"
+        );
+        assert_eq!(
+            set_property("\u{feff}# Note\r\n", "b", &Value::Number(2.)),
+            "\u{feff}---\r\nb: 2\r\n---\r\n# Note\r\n"
+        );
+    }
+
+    #[test]
+    fn edits_inside_crlf_front_matter_keep_crlf() {
+        let body = "---\r\na: 1\r\nb: 2\r\n---\r\nBody\r\n";
+        assert_eq!(
+            set_property(body, "a", &Value::Number(3.)),
+            "---\r\na: 3\r\nb: 2\r\n---\r\nBody\r\n"
+        );
+        assert_eq!(
+            set_property(body, "c", &Value::Number(3.)),
+            "---\r\na: 1\r\nb: 2\r\nc: 3\r\n---\r\nBody\r\n"
+        );
+    }
+
+    #[test]
     fn set_changes_one_value_and_nothing_else() {
         let body = "---\nclient: Acme  # the one\nrating: 4\n---\n# Note\n\nBody.\n";
         let changed = set_property(body, "client", &Value::Text("Globex".into()));
         assert_eq!(
             changed,
-            "---\nclient: Globex\nrating: 4\n---\n# Note\n\nBody.\n"
+            "---\nclient: Globex  # the one\nrating: 4\n---\n# Note\n\nBody.\n"
         );
         let added = set_property(&changed, "due", &Value::Date("2026-11-01".into()));
         assert_eq!(
             added,
-            "---\nclient: Globex\nrating: 4\ndue: 2026-11-01\n---\n# Note\n\nBody.\n"
+            "---\nclient: Globex  # the one\nrating: 4\ndue: 2026-11-01\n---\n# Note\n\nBody.\n"
+        );
+    }
+
+    #[test]
+    fn comments_and_blank_lines_between_entries_are_kept() {
+        let body =
+            "---\ntitle: X\n# meta below\nrating: 4\n\nclient: Acme # keep\n\n# tail\n---\nBody";
+        assert_eq!(
+            set_property(body, "title", &Value::Text("Y".into())),
+            "---\ntitle: Y\n# meta below\nrating: 4\n\nclient: Acme # keep\n\n# tail\n---\nBody"
+        );
+        assert_eq!(
+            set_property(body, "rating", &Value::Number(5.)),
+            "---\ntitle: X\n# meta below\nrating: 5\n\nclient: Acme # keep\n\n# tail\n---\nBody"
+        );
+        assert_eq!(
+            set_property(body, "client", &Value::Text("Globex".into())),
+            "---\ntitle: X\n# meta below\nrating: 4\n\nclient: Globex # keep\n\n# tail\n---\nBody"
+        );
+    }
+
+    #[test]
+    fn a_top_level_line_that_is_not_a_key_is_not_part_of_the_entry() {
+        let body = "---\na: 1\nnot a key\n  indented after it\nb: 2\n---\n";
+        assert_eq!(
+            set_property(body, "a", &Value::Number(3.)),
+            "---\na: 3\nnot a key\n  indented after it\nb: 2\n---\n"
+        );
+    }
+
+    #[test]
+    fn an_entry_ends_at_its_last_continuation_line() {
+        let body = "---\na: one\n  two\n# between\nb: 2\n---\n";
+        assert_eq!(
+            set_property(body, "a", &Value::Text("X".into())),
+            "---\na: X\n# between\nb: 2\n---\n"
+        );
+    }
+
+    #[test]
+    fn a_leading_dash_key_is_not_a_list_item() {
+        let body = "---\ntags:\n  - x\n-k: v\n---\n";
+        assert_eq!(
+            parse(body),
+            vec![
+                (
+                    "tags".to_owned(),
+                    Value::List(vec![Value::Text("x".into())])
+                ),
+                ("-k".to_owned(), Value::Text("v".into())),
+            ]
+        );
+        assert_eq!(
+            set_property(body, "-k", &Value::Text("w".into())),
+            "---\ntags:\n  - x\n-k: w\n---\n"
+        );
+        let added = set_property(body, "-added", &Value::Text("v".into()));
+        assert_eq!(
+            parse(&added),
+            vec![
+                (
+                    "tags".to_owned(),
+                    Value::List(vec![Value::Text("x".into())])
+                ),
+                ("-k".to_owned(), Value::Text("v".into())),
+                ("-added".to_owned(), Value::Text("v".into())),
+            ]
+        );
+    }
+
+    #[test]
+    fn duplicate_keys_set_the_one_get_reads() {
+        let body = "---\na: 1\na: 2\n---\n";
+        assert_eq!(get(&parse(body), "a"), Some(&Value::Number(2.)));
+        assert_eq!(
+            set_property(body, "a", &Value::Number(3.)),
+            "---\na: 1\na: 3\n---\n"
+        );
+        assert_eq!(
+            get(&parse(&set_property(body, "a", &Value::Number(3.))), "a"),
+            Some(&Value::Number(3.))
         );
     }
 
@@ -595,6 +911,27 @@ nested:
             set_property("---\nno close", "done", &Value::Bool(true)),
             "---\ndone: true\n---\n---\nno close"
         );
+    }
+
+    #[test]
+    fn setting_a_value_to_what_it_reads_leaves_the_text_alone() {
+        for text in [
+            "nested:\n  a: 1\n  b: 2\n",
+            "block: |\n  one\n  two\n",
+            "folded: >\n  one\n  two\n",
+            "flow: {a: 1}\n",
+            "anchor: &a x\n",
+            "zip: 01234\n",
+            "version: 1.10\n",
+            "quoted: \"Plan: v2\" # c\n",
+            "list:\n  - a\n  - b\n",
+            "plain: a plain value\n",
+        ] {
+            let body = format!("---\n{text}---\nBody\n");
+            for (key, value) in parse(&body) {
+                assert_eq!(&set_property(&body, &key, &value), &body, "{key}");
+            }
+        }
     }
 
     #[test]
@@ -646,10 +983,75 @@ nested:
     /// `O`), and a body after it.
     fn document() -> impl Strategy<Value = (Vec<(String, Value)>, String)> {
         (
-            prop::collection::btree_map("[a-z][a-z0-9_ ]{0,12}", property_value(), 0..8),
+            prop::collection::btree_map(
+                "[a-z]([a-z0-9_ ]{0,10}[a-z0-9_])?",
+                property_value(),
+                0..8,
+            ),
             "[^\\u{0}]{0,60}",
         )
             .prop_map(|(entries, body)| (entries.into_iter().collect(), body))
+    }
+
+    /// Weird keys: punctuation YAML cares about, whitespace, and Unicode.
+    fn any_key() -> impl Strategy<Value = String> {
+        prop_oneof![
+            "[a-zA-Z][a-zA-Z0-9_ ]{0,10}",
+            "[-?\\[\\]{|>#&*!%@`][a-zA-Z0-9 ]{0,6}",
+            "[a-zA-Z0-9]+: [a-zA-Z0-9]+",
+            "[a-zA-Z0-9]+ # [a-zA-Z0-9]+",
+            " [a-z]{0,5}",
+            "[a-z]{0,5} ",
+            "\\PC{1,8}",
+        ]
+        .prop_map(|key| key.trim_end_matches(['\n', '\r']).to_owned())
+        .prop_filter("not empty", |key| !key.trim().is_empty())
+    }
+
+    /// Lines an Obsidian user may have in front matter, crudely.
+    fn front_line() -> impl Strategy<Value = String> {
+        prop_oneof![
+            "[a-z][a-z0-9_ ]{0,6}: [A-Za-z0-9 #:\\\\\"]{0,12}",
+            Just("# a comment".to_owned()),
+            Just(String::new()),
+            Just("nested:".to_owned()),
+            Just("  a: 1".to_owned()),
+            Just("block: |".to_owned()),
+            Just("  line".to_owned()),
+            Just("  - item".to_owned()),
+            Just("- item".to_owned()),
+            Just("dup: 1".to_owned()),
+            Just("dup: 2".to_owned()),
+            Just("\"quoted key\": value".to_owned()),
+            Just("weird \u{1f600}: \"v\\\\ \\\" #\"".to_owned()),
+            Just("version: 1.10".to_owned()),
+            Just("zip: 01234".to_owned()),
+        ]
+    }
+
+    fn arbitrary_document() -> impl Strategy<Value = String> {
+        (
+            prop::collection::vec(front_line(), 0..12),
+            any::<bool>(),
+            any::<bool>(),
+        )
+            .prop_map(|(lines, crlf, bom)| {
+                let eol = if crlf { "\r\n" } else { "\n" };
+                let mut text = String::new();
+                if bom {
+                    text.push('\u{feff}');
+                }
+                text.push_str("---");
+                text.push_str(eol);
+                for line in lines {
+                    text.push_str(&line);
+                    text.push_str(eol);
+                }
+                text.push_str("---");
+                text.push_str(eol);
+                text.push_str("# Body\n");
+                text
+            })
     }
 
     proptest! {
@@ -664,7 +1066,7 @@ nested:
         #[test]
         fn prop_set_then_parse_round_trips(
             (entries, body) in document(),
-            key in "[a-zA-Z][a-zA-Z0-9_ ]{0,12}",
+            key in "[a-zA-Z]([a-zA-Z0-9_ ]{0,10}[a-zA-Z0-9_])?",
             value in property_value(),
         ) {
             let mut text = body;
@@ -680,10 +1082,18 @@ nested:
             prop_assert_eq!(get(&after, &key), Some(&value));
             // Every other property is unchanged.
             for (name, kept) in &entries {
-                if !name.eq_ignore_ascii_case(&key) {
+                if !name.eq_ignore_ascii_case(key.trim()) {
                     prop_assert_eq!(get(&after, name), Some(kept), "{}", name);
                 }
             }
+        }
+
+        /// A key of any shape round-trips through the text.
+        #[test]
+        fn prop_any_key_round_trips(key in any_key(), value in property_value()) {
+            let body = set_property("", &key, &value);
+            let parsed = parse(&body);
+            prop_assert_eq!(get(&parsed, &key), Some(&value), "{}", key);
         }
 
         /// Setting a property never changes the text after the front matter.
@@ -701,11 +1111,179 @@ nested:
             prop_assert_eq!(before, after);
         }
 
+        /// Setting a property changes only bytes inside the entry `get`
+        /// reads; comments and blank lines around it stay put.
+        #[test]
+        fn prop_set_touches_only_the_entry_span(
+            text in arbitrary_document(),
+            value in property_value(),
+        ) {
+            let Some(front) = split(&text) else {
+                return Err(TestCaseError::fail("no front matter"));
+            };
+            let entries = entries(front.front);
+            let Some(entry) = entries.last() else {
+                return Ok(());
+            };
+            let key = entry.key.clone();
+            let start = front.front_start + entry.start;
+            let end = front.front_start + entry.end;
+            let changed = set_property(&text, &key, &value);
+            prop_assert_eq!(&changed[..start], &text[..start]);
+            prop_assert!(changed[start..].ends_with(&text[end..]));
+            let parsed = parse(&changed);
+            prop_assert_eq!(get(&parsed, &key), Some(&value));
+        }
+
+        /// Setting a key to the value it already reads leaves every byte as
+        /// it was, including number lexemes and block scalars.
+        #[test]
+        fn prop_set_own_value_is_identity(text in arbitrary_document()) {
+            let Some(front) = split(&text) else {
+                return Ok(());
+            };
+            let parsed = parse_front(front.front);
+            let mut seen = std::collections::HashSet::new();
+            for (key, _) in &parsed {
+                if !seen.insert(key.to_lowercase()) {
+                    continue;
+                }
+                let value = get(&parsed, key).expect("the key was just read");
+                prop_assert_eq!(set_property(&text, key, value), text.clone(), "{}", key);
+            }
+        }
+
         /// Any text parses without panicking, and so does setting in it.
         #[test]
         fn prop_any_text_parses(text in "[\\s\\S]{0,200}") {
             let _ = parse(&text);
             let _ = set_property(&text, "key", &Value::Text("v".into()));
+        }
+    }
+
+    #[test]
+    fn unsupported_values_are_raw() {
+        for text in [
+            "nested:\n  a: 1\n",
+            "block: |\n  one\n  two\n",
+            "folded: >\n  one\n",
+            "flow: {a: 1, b: 2}\n",
+            "anchor: &a x\n",
+            "alias: *a\n",
+            "tag: !thing x\n",
+            "open: [a, b\n",
+        ] {
+            let body = format!("---\n{text}---\n");
+            let (_, value) = parse(&body).into_iter().next().expect(text);
+            assert!(value.is_raw(), "{text}: {value:?}");
+        }
+    }
+
+    fn yaml_matches(found: &saphyr::Yaml<'_>, value: &Value) -> bool {
+        match value {
+            Value::Text(text) | Value::Date(text) => found.as_str() == Some(text),
+            Value::Number(number) => {
+                found.as_integer() == Some(*number as i64)
+                    || (number.fract() != 0.0
+                        && found.as_str().and_then(|s| s.parse::<f64>().ok()) == Some(*number))
+            }
+            Value::Bool(on) => found.as_bool() == Some(*on),
+            Value::List(items) => match found {
+                saphyr::Yaml::Sequence(sequence) => {
+                    sequence.len() == items.len()
+                        && sequence
+                            .iter()
+                            .zip(items)
+                            .all(|(found, item)| yaml_matches(found, item))
+                }
+                _ => false,
+            },
+            Value::Raw(raw) => found.as_str() == Some(raw),
+        }
+    }
+
+    fn yaml_lookup<'a>(doc: &'a saphyr::Yaml<'a>, key: &str) -> Option<&'a saphyr::Yaml<'a>> {
+        match doc {
+            saphyr::Yaml::Mapping(map) => map
+                .iter()
+                .find(|(name, _)| name.as_str() == Some(key))
+                .map(|(_, value)| value),
+            _ => None,
+        }
+    }
+
+    /// The supported subset reads the same in Kanso and in a YAML parser.
+    #[test]
+    fn the_supported_subset_reads_like_yaml() {
+        let entries = vec![
+            ("client", Value::Text("Acme".into())),
+            ("rating", Value::Number(4.)),
+            ("done", Value::Bool(true)),
+            ("due", Value::Date("2026-11-01".into())),
+            (
+                "people",
+                Value::List(vec![Value::Text("Ana".into()), Value::Text("Ben".into())]),
+            ),
+            ("quoted", Value::Text("Plan: v2".into())),
+            ("unicode", Value::Text("caf\u{e9} \u{1f600}".into())),
+        ];
+        let mut text = String::new();
+        for (key, value) in &entries {
+            text.push_str(key);
+            text.push_str(": ");
+            text.push_str(&render(value));
+            text.push('\n');
+        }
+        let docs = saphyr::Yaml::load_from_str(&text).expect("valid YAML");
+        let yaml = docs.first().expect("one document");
+        for (key, value) in &entries {
+            let found = yaml_lookup(yaml, key).unwrap_or_else(|| panic!("{key} missing"));
+            assert!(yaml_matches(found, value), "{key}: {found:?}");
+        }
+        let expected: Vec<(String, Value)> = entries
+            .into_iter()
+            .map(|(key, value)| (key.to_owned(), value))
+            .collect();
+        assert_eq!(parse_front(&text), expected);
+    }
+
+    proptest! {
+        /// On the supported subset both parsers read the same values.
+        #[test]
+        fn prop_supported_values_match_yaml(
+            entries in prop::collection::btree_map(
+                "[a-z][a-z0-9_]{0,8}",
+                prop_oneof![
+                    property_text()
+                        .prop_filter("not a YAML keyword", |text| {
+                            !matches!(
+                                text.to_ascii_lowercase().as_str(),
+                                "y" | "n" | "yes" | "no" | "on" | "off" | "null" | "~"
+                            )
+                        })
+                        .prop_map(Value::Text),
+                    (-10_000i64..10_000).prop_map(|n| Value::Number(n as f64)),
+                    any::<bool>().prop_map(Value::Bool),
+                ],
+                1..6,
+            ),
+        ) {
+            let mut text = String::new();
+            for (key, value) in &entries {
+                text.push_str(key);
+                text.push_str(": ");
+                text.push_str(&render(value));
+                text.push('\n');
+            }
+            let docs = saphyr::Yaml::load_from_str(&text)
+                .map_err(|err| TestCaseError::fail(format!("rejected {text:?}: {err}")))?;
+            let yaml = docs.first().ok_or_else(|| TestCaseError::fail("no document"))?;
+            for (key, value) in &entries {
+                let found = yaml_lookup(yaml, key)
+                    .ok_or_else(|| TestCaseError::fail(format!("{key} missing from {text:?}")))?;
+                prop_assert!(yaml_matches(found, value), "{}: {:?}", key, found);
+            }
+            prop_assert_eq!(parse_front(&text), entries.into_iter().collect::<Vec<_>>());
         }
     }
 }
