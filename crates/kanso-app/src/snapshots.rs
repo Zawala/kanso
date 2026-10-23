@@ -1854,6 +1854,77 @@ fn settings_appearance(
     show_settings(cx, window, workspace, SettingsPage::Appearance);
 }
 
+/// Settings › Themes › Browse, with a signed catalog in place and no
+/// network: the cards draw their headline-color placeholders, one installed
+/// and one with an update.
+fn settings_gallery(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| {
+        use kanso_gallery::index::{Appearance, FileRef, Index, SCHEMA, Theme};
+        let theme = |id: &str, name: &str, appearance: Appearance, version: u64| Theme {
+            id: id.into(),
+            kind: kanso_gallery::Kind::Color,
+            family: Some("nord".into()),
+            version,
+            name: name.into(),
+            appearance: Some(appearance),
+            author: "Arctic Ice Studio".into(),
+            license: "MIT".into(),
+            source: "https://www.nordtheme.com".into(),
+            description: "An arctic, north-bluish palette.".into(),
+            min_kanso: "0.8.4".into(),
+            file: Some(FileRef {
+                path: format!("{id}.json"),
+                sha256: "ab".repeat(32),
+                size: 2048,
+            }),
+            bundle: None,
+            preview: Vec::new(),
+            colors: Some(kanso_gallery::HeadlineColors {
+                editor: "#2E3440".into(),
+                text: "#D8DEE9".into(),
+                accent: "#88C0D0".into(),
+                sidebar: "#21252E".into(),
+                list: "#282E38".into(),
+            }),
+        };
+        let index = Index {
+            schema: SCHEMA,
+            serial: 42,
+            generated_at: "2026-10-23T12:00:00Z".into(),
+            source_commit: "8d96298839a6176210cd1e3b376b82ffefc70ab3".into(),
+            signing_key_id: "7f3a91c2".into(),
+            themes: vec![
+                theme("nord-light", "Nord Light", Appearance::Light, 2),
+                theme("nord", "Nord", Appearance::Dark, 3),
+            ],
+            revoked: Vec::new(),
+        };
+        let mut gallery = crate::settings_gallery::ThemeGallery {
+            index: Some(index),
+            status: crate::settings_gallery::Status::Ready,
+            color_tab: crate::settings_gallery::Tab::Browse,
+            ..Default::default()
+        };
+        gallery.installed.push(kanso_gallery::Installed {
+            id: "nord-light".into(),
+            kind: kanso_gallery::Kind::Color,
+            version: 1,
+            name: "Nord Light".into(),
+            family: Some("nord".into()),
+            digest: "aa".into(),
+            current_digest: Some("aa".into()),
+            installed_at: "2026-10-23T12:00:00Z".into(),
+        });
+        cx.set_global(gallery);
+    });
+    show_settings(cx, window, workspace, SettingsPage::Appearance);
+}
+
 /// A note with every Markdown construct a theme colors and code in a few
 /// languages, for showing syntax and preview colors side by side.
 const THEME_NOTE: &str = "# Theme sampler\n\nSome **bold**, some *italic*, `inline code` and a [link](https://kanso.app).\n\n## Code\n\n```json\n{\n  \"name\": \"Nord\",\n  \"dark\": true,\n  \"size\": 14,\n  \"accent\": null,\n  \"tags\": [\"calm\", \"cool\"],\n  \"escape\": \"tab\\\\there\"\n}\n```\n\n> Colors should help reading, never fight it.\n\n- [x] Pick a palette\n- [ ] Check contrast\n  1. Text on panes\n  2. Code on blocks\n\n---\n\n| Token | Color |\n|---|---|\n| keyword | accent |\n| string | green |\n\nPress <kbd>Cmd</kbd>+<kbd>K</kbd> for commands.\n";
@@ -4585,6 +4656,13 @@ fn snapshots() {
             voice::settings_voice_failed,
         ),
         shot("dark-settings-appearance", Dark, Edit, settings_appearance),
+        shot("dark-settings-gallery-browse", Dark, Edit, settings_gallery),
+        shot(
+            "light-settings-gallery-browse",
+            Light,
+            Edit,
+            settings_gallery,
+        ),
         // The Account page, signed in.
         Shot {
             size: size(px(1440.), px(1400.)),

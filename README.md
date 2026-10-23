@@ -241,7 +241,9 @@ An icon theme draws every icon in Kanso, the controls' own included, and switche
 Settings › **Icon Themes**, or **Change icon theme…** in the palette. Kanso's own Lucide icons,
 Phosphor and 13 themes converted from Zed's (Catppuccin, Material, JetBrains and more) are built in; a theme can also restyle the library's own icons (a notebook folded or
 open, the Inbox, a pinned note) and add icons to a notebook's **Change Icon…** picker. Add your own
-as a folder of SVGs and one JSON file in the `icon-themes` folder of Kanso's data folder
+Settings › Icon Themes › **Browse** installs and updates icon themes from the signed
+[theme gallery](docs/THEMES.md), apart from your own files. A theme can also be
+a folder of SVGs and one JSON file in the `icon-themes` folder of Kanso's data folder
 (Settings › Icon Themes › Icon theme files › **Open Folder**), or import a Zed icon theme with
 **Import…** there or `kanso icon-theme import <path>`. An icon a theme leaves out stays Kanso's own.
 [themes/icon-themes/README.md](https://github.com/iamngoni/kanso-themes/blob/main/icon-themes/README.md) has the format.

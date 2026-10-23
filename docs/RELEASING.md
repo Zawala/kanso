@@ -196,7 +196,40 @@ To check the key and the secret match, sign a test feed the same way the
 workflow does: `kanso-release sign` refuses a key whose public half isn't in
 `trusted-keys.txt`.
 
-### 2. Developer ID signing and notarization (optional)
+### 2. The theme gallery signing key (set up)
+
+The theme gallery has its own key, separate from the update key; never reuse
+one for the other. The key and the `gallery` environment already exist, so
+there is nothing to generate:
+
+- The public half `gAD6MZmqRxzGkbeLh0ofxcVn5UlW+AaA7157L15Qd4Y=` is in
+  `crates/kanso-gallery/keys/themes-trusted-keys.txt` here and in
+  `gallery/trusted-keys.txt` in
+  [`iamngoni/kanso-themes`](https://github.com/iamngoni/kanso-themes). Keep
+  the two lists identical.
+- `kanso-themes` has a `gallery` environment that deploys only from `main`
+  and requires the owner's approval. Its only secret is
+  `KANSO_THEMES_SIGNING_KEY`.
+- That secret was made with `kanso-release keygen`, which writes the base64
+  of a 32-byte Ed25519 seed. `gallery-sign` reads that format as is; no
+  conversion and no `gallery-sign keygen` is needed. Do not generate a new
+  key unless rotating: a shipped Kanso would not trust it.
+
+The signing job builds `tools/gallery-sign` with `--locked` in a step with no
+secret, then runs that binary with the key only in the signing step's
+environment. The separate publish job uses the workflow's built-in
+`GITHUB_TOKEN` with `contents: write` and holds no secret; its pushes do not
+start another workflow, which is wanted. A push cannot forge a signature, so
+a compromise can only change files whose hashes no longer match, delete
+files, or replay an older index (which the serial floor refuses).
+
+To rotate: generate a new key with `kanso-release keygen`, add its public
+half to both lists, ship a Kanso release trusting both, switch
+`KANSO_THEMES_SIGNING_KEY` to the new secret, then remove the old line from
+both lists once the oldest supported Kanso trusts the new key. Never reuse
+the update key.
+
+### 3. Developer ID signing and notarization (optional)
 
 Without these, the Mac app is signed ad hoc as before: it updates itself,
 but a first install needs right-click › Open. With them, it is signed with
@@ -231,6 +264,16 @@ gh secret set APPLE_API_ISSUER --repo iamngoni/kanso --env release --body <issue
 Keep the `.p8` in the password manager and delete the download. The
 workflow signs and notarizes only when all five Apple secrets are set.
 
+### 4. The built-in themes
+
+This release keeps every built-in color and icon theme compiled in: they are
+the offline, always-there set, and they keep every existing selection
+working without a migration. A later release may shrink to Kanso Light,
+Kanso Dark and Lucide, but only with a migration that installs gallery copies
+of any selected theme before removing the built-in one. Mark the gallery
+entries for those ids as **Built in** until then; the gallery never installs
+over a built-in id.
+
 ## Testing an update
 
 `cargo test -p kanso-update` runs the property tests and an end-to-end test
@@ -241,3 +284,9 @@ swap. Nothing outside the temporary folders is touched.
 To watch the app do it, run a debug build with `KANSO_UPDATE_FEED` pointing
 at a feed signed with a key in `trusted-keys.txt`. A debug build never
 replaces itself; it shows the update and offers the release page.
+
+The theme gallery's end-to-end test is in `crates/kanso-gallery/tests/loopback.rs`:
+it serves a signed catalog over loopback, installs and updates a theme, sees
+it revoked, and refuses a replayed index. A debug build can point Browse at a
+local catalog with `KANSO_GALLERY_INDEX=<url>` (loopback is allowed there);
+the index must still verify against a compiled-in themes key.
