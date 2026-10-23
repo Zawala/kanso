@@ -1,8 +1,9 @@
 //! Updates from GitHub releases, as the window shows them
 //! (docs/RELEASING.md › How updates work).
 //!
-//! Kanso checks a few seconds after it starts, every six hours, and when
-//! asked (the app menu, the palette, Settings › Updates). A newer release
+//! Kanso checks a few seconds after it starts, every half hour (five
+//! minutes after a check that failed, and within a minute of waking from
+//! sleep), and when asked (the app menu, the palette, Settings › Updates). A newer release
 //! downloads in the background, is checked against the signed feed and
 //! staged beside the install; the sidebar then shows "Update ready ·
 //! Restart". Restart now swaps it in and opens the new Kanso; quitting
@@ -47,9 +48,14 @@ actions!(kanso, [CheckForUpdates, ShowUpdate, RestartToUpdate,]);
 // The changes in the version running, from the Help menu and the palette.
 actions!(kanso, [ShowWhatsNew]);
 
-/// When the first check runs after Kanso starts, and how often after.
+/// When the first check runs after Kanso starts, and how often after: by
+/// the wall clock, looked at every minute, so a Mac that slept past a check
+/// makes it up within a minute of waking (timers stop while it sleeps). A
+/// check that failed, offline say, is tried again sooner.
 const FIRST_CHECK: Duration = Duration::from_secs(8);
-const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
+const CHECK_INTERVAL: Duration = Duration::from_secs(30 * 60);
+const RETRY_INTERVAL: Duration = Duration::from_secs(5 * 60);
+const TICK: Duration = Duration::from_secs(60);
 /// The sheet's width and its notes' height.
 pub const SHEET_WIDTH: f32 = 600.;
 const NOTES_HEIGHT: f32 = 320.;
@@ -367,16 +373,38 @@ pub fn after_launch(cx: &mut App) {
     }
 }
 
-/// Checks a few seconds from now, then every six hours.
+/// Checks a few seconds from now, then whenever [`check_due`] says so.
 fn schedule(cx: &mut App) {
     let task = cx.spawn(async move |cx| {
         cx.background_executor().timer(FIRST_CHECK).await;
+        cx.update(|cx| check_now(false, cx));
         loop {
-            cx.update(|cx| check_now(false, cx));
-            cx.background_executor().timer(CHECK_INTERVAL).await;
+            cx.background_executor().timer(TICK).await;
+            cx.update(|cx| {
+                let updates = cx.global::<Updates>();
+                let failed = matches!(updates.phase, Phase::Failed(_));
+                if check_due(updates.last_checked_ms, failed, Clock::now_ms(cx)) {
+                    check_now(false, cx);
+                }
+            });
         }
     });
     cx.global_mut::<Updates>()._schedule = Some(task);
+}
+
+/// Whether a background check is due at `now`: none has run, the last was
+/// [`CHECK_INTERVAL`] ago ([`RETRY_INTERVAL`] if it failed), or the clock
+/// went back past it. Pure.
+fn check_due(last_checked_ms: Option<i64>, failed: bool, now: i64) -> bool {
+    let Some(last) = last_checked_ms else {
+        return true;
+    };
+    let every = if failed {
+        RETRY_INTERVAL
+    } else {
+        CHECK_INTERVAL
+    };
+    now < last || now - last >= every.as_millis() as i64
 }
 
 /// Appends a line to the updater's log in the data folder (kept under
@@ -751,7 +779,7 @@ pub fn status(
         Phase::Idle => line(
             Tone::Quiet,
             format!("Kanso {current}"),
-            "Kanso looks for updates shortly after it opens, and every six hours.",
+            "Kanso looks for updates shortly after it opens, and every half hour.",
         ),
         Phase::Checking => line(
             Tone::Busy,
@@ -761,7 +789,7 @@ pub fn status(
         Phase::UpToDate => line(
             Tone::Good,
             format!("Kanso {current} is up to date"),
-            "Kanso looks again every six hours.",
+            "Kanso looks again every half hour.",
         ),
         Phase::Available(update) => {
             let detail = match install {
@@ -1274,8 +1302,8 @@ pub fn register_app_actions(cx: &mut App) {
 mod tests {
     use super::{
         CheckError, FeedError, FetchError, Install, NotInstallable, Pending, Phase, PillKind,
-        Platform, Problem, ReleaseNotes, StageError, Tone, Update, check_problem, flavour,
-        just_updated, off_reason, percent, pill, release_date, stage_problem, status,
+        Platform, Problem, ReleaseNotes, StageError, Tone, Update, check_due, check_problem,
+        flavour, just_updated, off_reason, percent, pill, release_date, stage_problem, status,
     };
     use kanso_update::Asset;
     use proptest::prelude::*;
@@ -1542,7 +1570,34 @@ mod tests {
 
     }
 
+    #[test]
+    fn checks_every_half_hour_and_sooner_after_a_failure() {
+        const MINUTE: i64 = 60_000;
+        let last = 1_000_000 * MINUTE;
+        assert!(check_due(None, false, last));
+        assert!(!check_due(Some(last), false, last + 29 * MINUTE));
+        assert!(check_due(Some(last), false, last + 30 * MINUTE));
+        assert!(!check_due(Some(last), true, last + 4 * MINUTE));
+        assert!(check_due(Some(last), true, last + 5 * MINUTE));
+        // Slept overnight: due on the first tick after waking.
+        assert!(check_due(Some(last), false, last + 9 * 60 * MINUTE));
+        // The clock went back (a time zone or manual change): check again.
+        assert!(check_due(Some(last), false, last - MINUTE));
+    }
+
     proptest! {
+        /// A check is due exactly when the wait since the last one is up,
+        /// and a failure never waits longer than a success.
+        #[test]
+        fn prop_check_due_follows_the_wait(last in 0i64..1 << 40, gap in -(1i64 << 30)..1 << 32, failed in any::<bool>()) {
+            let now = last + gap;
+            let every = if failed { super::RETRY_INTERVAL } else { super::CHECK_INTERVAL };
+            prop_assert_eq!(check_due(Some(last), failed, now), gap < 0 || gap >= every.as_millis() as i64);
+            if check_due(Some(last), false, now) {
+                prop_assert!(check_due(Some(last), true, now));
+            }
+        }
+
         /// Progress never goes past 100% or backwards as bytes arrive.
         #[test]
         fn prop_percent_is_monotonic(total in 1u64..1_000_000, a in 0u64..2_000_000, b in 0u64..2_000_000) {
