@@ -75,7 +75,7 @@ installed.
 
 ```
 <data>/gallery/
-  index.json, index.signature   the last verified catalog
+  index.json, index.json.sig    the last verified catalog
   meta.json                     the serial floor, ETags and last check
   state.json                    installed records and a pending swap
   themes/<id>.json              installed color themes
