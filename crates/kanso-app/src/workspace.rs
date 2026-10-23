@@ -984,6 +984,8 @@ impl Workspace {
             | NoteCommand::ShowHistory
             | NoteCommand::Publish
             | NoteCommand::Share
+            | NoteCommand::Lock
+            | NoteCommand::RemoveLock
             | NoteCommand::CopyLink
             | NoteCommand::CopyKansoLink
             | NoteCommand::OpenInNewWindow => {
@@ -1102,6 +1104,16 @@ impl Workspace {
             NoteCommand::Share => {
                 if self.open_note(id, window, cx) {
                     crate::share_sheet::open_share(self.editor.clone(), window, cx);
+                }
+            }
+            NoteCommand::Lock => {
+                if self.open_note(id, window, cx) {
+                    crate::locked::lock_open_note(self.editor.clone(), window, cx);
+                }
+            }
+            NoteCommand::RemoveLock => {
+                if self.open_note(id, window, cx) {
+                    crate::locked::remove_lock(self.editor.clone(), window, cx);
                 }
             }
         }

@@ -458,6 +458,12 @@ impl NoteWindow {
             NoteCommand::Share => {
                 crate::share_sheet::open_share(self.editor.clone(), window, cx);
             }
+            NoteCommand::Lock => {
+                crate::locked::lock_open_note(self.editor.clone(), window, cx);
+            }
+            NoteCommand::RemoveLock => {
+                crate::locked::remove_lock(self.editor.clone(), window, cx);
+            }
             NoteCommand::OpenInNewWindow => window.activate_window(),
             NoteCommand::CopyLink | NoteCommand::CopyKansoLink => {
                 self.editor.update(cx, |editor, cx| editor.flush(cx));

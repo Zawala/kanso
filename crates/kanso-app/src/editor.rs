@@ -2729,6 +2729,7 @@ impl NoteEditor {
         };
         let mode = self.view_mode;
         let pinned = note.pinned;
+        let locked = self.lock != LockView::Plain;
         let status = note.status;
 
         let segments = path.into_iter().enumerate().flat_map(|(ix, name)| {
@@ -2933,7 +2934,7 @@ impl NoteEditor {
                         let run: crate::note_menu::Run = Rc::new(move |command, _, cx| {
                             view.update(cx, |_, cx| cx.emit(EditorEvent::Command(command)));
                         });
-                        crate::note_menu::items(menu, pinned, status, run, window, cx)
+                        crate::note_menu::items(menu, pinned, locked, status, run, window, cx)
                     }),
             )
             .when(!self.standalone, |el| {

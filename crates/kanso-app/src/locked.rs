@@ -1459,6 +1459,42 @@ mod tests {
             );
         }
 
+        #[gpui_kit::test]
+        fn the_note_menu_locks_and_removes_the_lock(cx: &mut TestAppContext) {
+            let f = setup(cx);
+            let list = cx.read(|cx| f.workspace.read(cx).note_list.clone());
+            let menu = |command, cx: &mut TestAppContext| {
+                let id = f.note.clone();
+                list.update(cx, |_, cx| {
+                    cx.emit(crate::note_list::NoteListEvent::Command(id, command))
+                });
+                cx.run_until_parked();
+            };
+
+            // Nothing is locked yet, so Lock Note asks for a new password.
+            menu(crate::note_menu::NoteCommand::Lock, cx);
+            assert!(f.dialog_open(cx), "Lock Note asks for a password");
+            f.window
+                .update(cx, |_, window, cx| window.close_dialog(cx))
+                .unwrap();
+            assert_eq!(f.view(cx), LockView::Plain);
+
+            let form = f
+                .window
+                .update(cx, |_, window, cx| {
+                    lock_open_note(f.editor.clone(), window, cx)
+                })
+                .unwrap()
+                .unwrap();
+            f.submit(cx, &form, &["correct horse", "correct horse"]);
+            assert_eq!(f.view(cx), LockView::Open);
+
+            // Remove Lock asks before keeping the text as plain text.
+            menu(crate::note_menu::NoteCommand::RemoveLock, cx);
+            assert!(f.dialog_open(cx), "Remove Lock asks first");
+            assert!(f.store.note(&f.note).unwrap().unwrap().is_locked());
+        }
+
         fn touch_id_setting(cx: &mut TestAppContext) -> Option<bool> {
             cx.read(|cx| cx.global::<AppState>().config.locked.touch_id)
         }

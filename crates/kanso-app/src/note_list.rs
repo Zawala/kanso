@@ -473,6 +473,7 @@ impl NoteList {
         let view = cx.entity();
         let menu_id = note.id.clone();
         let pinned = note.pinned;
+        let locked = note.locked;
         let status = note.status;
         let at = if context.created {
             note.created_at
@@ -733,7 +734,7 @@ impl NoteList {
                             cx.emit(NoteListEvent::Command(id.clone(), command))
                         });
                     });
-                    crate::note_menu::items(menu, pinned, status, run, window, cx)
+                    crate::note_menu::items(menu, pinned, locked, status, run, window, cx)
                 }
             })
     }
