@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::origin::Origin;
+
 /// An icon in Kanso's library that a theme can draw on its own, apart from
 /// the UI icon it shows by default: a notebook, a note's states, the places
 /// in the sidebar. A slot a theme leaves out falls back, per slot, to
@@ -240,6 +242,8 @@ pub struct IconTheme {
     pub extras: Vec<ExtraIcon>,
     /// Where a person's own theme was read from; `None` for a built-in one.
     pub path: Option<PathBuf>,
+    /// Whether it is compiled in, the person's own, or from the gallery.
+    pub origin: Origin,
     /// The ID and a fingerprint of every SVG: what the asset paths of its
     /// icons carry, so a changed theme never draws an icon cached from
     /// before (`icon_themes::themed_path`).

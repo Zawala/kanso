@@ -126,6 +126,20 @@ pub fn install_icons(
     bundle: &[u8],
     caps: IconCaps,
 ) -> Result<String, InstallError> {
+    install_icons_with(root, theme, bundle, caps, &mut |_| Ok(()))
+}
+
+/// [`install_icons`], calling `before_swap` with the digest of what is about
+/// to be put in place before the two renames. The app writes its `pending`
+/// record there, so a crash between the swap and the state write is
+/// recoverable.
+pub fn install_icons_with(
+    root: &Path,
+    theme: &Theme,
+    bundle: &[u8],
+    caps: IconCaps,
+    before_swap: &mut dyn FnMut(&str) -> std::io::Result<()>,
+) -> Result<String, InstallError> {
     let pin = theme
         .bundle
         .as_ref()
@@ -163,6 +177,8 @@ pub fn install_icons(
             )));
         }
         check_folder(&folder, caps)?;
+        let digest = kanso_update::stage::payload_digest(&folder).map_err(InstallError::Io)?;
+        before_swap(&digest)?;
         let installed = root.join("icon-themes").join(&theme.id);
         if installed.is_dir() {
             let backup = root.join("icon-themes").join(format!("{}.old", theme.id));
@@ -173,7 +189,7 @@ pub fn install_icons(
         } else {
             fs::rename(&folder, &installed)?;
         }
-        kanso_update::stage::payload_digest(&installed).map_err(InstallError::Io)
+        Ok(digest)
     })();
     kanso_update::stage::remove_entry(&unpacked).ok();
     result

@@ -3806,7 +3806,15 @@ fn theme_thumbnails() {
                     let theme = ThemeFile::parse(&text)
                         .unwrap_or_else(|e| panic!("{} {e}", path.display()));
                     let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
-                    (stem, Arc::new(ThemeEntry::new(theme, Some(path))))
+                    (
+                        stem.clone(),
+                        Arc::new(ThemeEntry::new(
+                            theme,
+                            stem,
+                            Some(path),
+                            crate::origin::Origin::Own,
+                        )),
+                    )
                 })
                 .collect()
         }

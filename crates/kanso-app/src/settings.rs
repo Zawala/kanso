@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::notification::Notification;
@@ -63,6 +64,10 @@ actions!(
         ReloadThemes,
         ImportIconTheme,
         ReloadIconThemes,
+        BrowseThemes,
+        BrowseIconThemes,
+        RefreshThemeGallery,
+        StopThemePreview,
     ]
 );
 
@@ -808,6 +813,10 @@ pub struct SettingsView {
     mcp_agent: crate::mcp_setup::Agent,
     /// Settings › Editor's font pickers, made the first time it shows.
     fonts: Option<FontPickers>,
+    /// The gallery's search field, kept across pages and filters.
+    pub(crate) gallery_search: Entity<InputState>,
+    /// Keeps the search field's change subscription alive.
+    _gallery_search: Subscription,
     /// Shown instead of the data folder, whose temporary path in a snapshot
     /// changes from run to run.
     #[cfg(test)]
@@ -826,6 +835,18 @@ impl SettingsView {
             }
         });
         let account = cx.new(|cx| AccountPage::new(library, window, cx));
+        let gallery_search = cx
+            .new(|cx| InputState::new(window, cx).placeholder("Search themes, authors, licences"));
+        let _gallery_search = cx.subscribe_in(
+            &gallery_search,
+            window,
+            |this, _, event: &InputEvent, _, cx| {
+                if matches!(event, InputEvent::Change) {
+                    let text = this.gallery_search.read(cx).value().to_string();
+                    crate::settings_gallery::set_search(text, cx);
+                }
+            },
+        );
         SettingsView {
             page: SettingsPage::default(),
             account,
@@ -839,6 +860,8 @@ impl SettingsView {
             shortcut: cx.new(|_| crate::settings_capture::ShortcutRecorder::new()),
             mcp_agent: crate::mcp_setup::Agent::ClaudeCode,
             fonts: None,
+            gallery_search,
+            _gallery_search,
             #[cfg(test)]
             data_dir_label: None,
             _tick: tick,
@@ -1053,8 +1076,24 @@ impl SettingsView {
         match self.page {
             SettingsPage::General => self.general_page(cx),
             SettingsPage::Editor => editor_page(self.fonts.as_ref(), cx),
-            SettingsPage::Appearance => crate::settings_themes::page(cx),
-            SettingsPage::IconThemes => crate::settings_themes::icon_theme_page(cx),
+            SettingsPage::Appearance => {
+                let mut page = vec![crate::settings_gallery::header(
+                    kanso_gallery::Kind::Color,
+                    &self.gallery_search,
+                    cx,
+                )];
+                page.extend(crate::settings_themes::page(cx));
+                page
+            }
+            SettingsPage::IconThemes => {
+                let mut page = vec![crate::settings_gallery::header(
+                    kanso_gallery::Kind::Icons,
+                    &self.gallery_search,
+                    cx,
+                )];
+                page.extend(crate::settings_themes::icon_theme_page(cx));
+                page
+            }
             SettingsPage::Account => vec![self.account.clone().into_any_element()],
             SettingsPage::LocalApi => api_page(self.mcp_agent, cx),
             SettingsPage::Updates => crate::updates::page(cx),
@@ -1913,6 +1952,7 @@ impl Workspace {
         let Some(back) = self.settings_return.take() else {
             return;
         };
+        crate::settings_gallery::close(cx);
         self.sidebar
             .update(cx, |sidebar, cx| sidebar.set_settings_open(false, cx));
         self.palette
@@ -1988,6 +2028,20 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
     .on_action(
         cx.listener(|_, _: &ReloadThemes, window, cx| crate::settings_themes::reload(window, cx)),
     )
+    .on_action(cx.listener(|this, _: &BrowseThemes, window, cx| {
+        this.open_settings(Some(SettingsPage::Appearance), window, cx);
+        crate::settings_gallery::open(kanso_gallery::Kind::Color, cx);
+    }))
+    .on_action(cx.listener(|this, _: &BrowseIconThemes, window, cx| {
+        this.open_settings(Some(SettingsPage::IconThemes), window, cx);
+        crate::settings_gallery::open(kanso_gallery::Kind::Icons, cx);
+    }))
+    .on_action(cx.listener(|_, _: &RefreshThemeGallery, _, cx| {
+        crate::settings_gallery::refresh(true, cx);
+    }))
+    .on_action(cx.listener(|_, _: &StopThemePreview, _, cx| {
+        crate::settings_gallery::stop_preview(cx);
+    }))
 }
 
 /// Settings from the menu bar or the Dock with no main window to take the
@@ -2027,6 +2081,16 @@ pub fn register_app_actions(cx: &mut App, open_main_window: fn(&mut App)) {
     cx.on_action(move |_: &OpenUpdateSettings, cx| {
         show(Some(SettingsPage::Updates), open_main_window, cx)
     });
+    cx.on_action(move |_: &BrowseThemes, cx| {
+        crate::settings_gallery::open(kanso_gallery::Kind::Color, cx);
+        show(Some(SettingsPage::Appearance), open_main_window, cx);
+    });
+    cx.on_action(move |_: &BrowseIconThemes, cx| {
+        crate::settings_gallery::open(kanso_gallery::Kind::Icons, cx);
+        show(Some(SettingsPage::IconThemes), open_main_window, cx);
+    });
+    cx.on_action(|_: &RefreshThemeGallery, cx| crate::settings_gallery::refresh(true, cx));
+    cx.on_action(|_: &StopThemePreview, cx| crate::settings_gallery::stop_preview(cx));
 }
 
 /// Shows Settings in the first main window and brings it forward; false

@@ -14,6 +14,7 @@
 //! theme's own. Their colors are fitted to the UI theme's surfaces, so a
 //! dark syntax theme under a light UI still reads.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -24,6 +25,7 @@ use gpui_kit::component::{Theme, ThemeConfig, ThemeMode};
 use gpui_kit::{App, Global, Window};
 
 use crate::config::{KANSO_DARK, KANSO_LIGHT, ThemeSettings};
+use crate::origin::Origin;
 use crate::theme::{self, Colors};
 use crate::theme_file::{PreviewColors, ResolvedTheme, ThemeFile, fit_preview, fit_syntax};
 use crate::workspace::AppState;
@@ -113,19 +115,30 @@ const WATCH_INTERVAL: Duration = Duration::from_secs(2);
 /// One theme Kanso can show.
 #[derive(Debug)]
 pub struct ThemeEntry {
+    /// The file stem (color themes have no other id).
+    pub id: String,
     pub file: ThemeFile,
     pub resolved: ResolvedTheme,
-    /// Where a person's own theme was read from; `None` for a built-in one.
+    /// Where a theme was read from; `None` for a built-in one.
     pub path: Option<PathBuf>,
+    /// Whether it is compiled in, the person's own, or from the gallery.
+    pub origin: Origin,
 }
 
 impl ThemeEntry {
-    pub fn new(file: ThemeFile, path: Option<PathBuf>) -> ThemeEntry {
+    pub fn new(
+        file: ThemeFile,
+        id: impl Into<String>,
+        path: Option<PathBuf>,
+        origin: Origin,
+    ) -> ThemeEntry {
         let resolved = file.resolve();
         ThemeEntry {
+            id: id.into(),
             file,
             resolved,
             path,
+            origin,
         }
     }
 
@@ -161,7 +174,12 @@ pub fn builtins() -> &'static [Arc<ThemeEntry>] {
         BUILTIN
             .iter()
             .filter_map(|(file, text)| match ThemeFile::parse(text) {
-                Ok(theme) => Some(Arc::new(ThemeEntry::new(theme, None))),
+                Ok(theme) => Some(Arc::new(ThemeEntry::new(
+                    theme,
+                    file.trim_end_matches(".json"),
+                    None,
+                    Origin::Builtin,
+                ))),
                 Err(err) => {
                     // A test fails on this; a release never ships it.
                     eprintln!("kanso: the built-in theme {file} {err}");
@@ -190,6 +208,11 @@ pub fn themes_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("themes")
 }
 
+/// The gallery tree, apart from the person's own folders.
+pub fn gallery_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join("gallery")
+}
+
 /// The `.json` files in `dir` with their sizes and times, sorted by name.
 fn signature(dir: &Path) -> Vec<(String, u64, Option<SystemTime>)> {
     let Ok(read) = std::fs::read_dir(dir) else {
@@ -213,15 +236,49 @@ fn signature(dir: &Path) -> Vec<(String, u64, Option<SystemTime>)> {
     files
 }
 
+/// The signatures of several folders at once, each prefixed so an edit in
+/// one can't mask an edit in another. The gallery tree is included, so an
+/// install, a manual edit or a removal hot-reloads within two seconds.
+fn tree_signature(dirs: &[(&Path, &str)]) -> Vec<(String, u64, Option<SystemTime>)> {
+    let mut files = Vec::new();
+    for (dir, prefix) in dirs {
+        for (name, len, time) in signature(dir) {
+            files.push((format!("{prefix}{name}"), len, time));
+        }
+    }
+    files.sort();
+    files
+}
+
+/// Gallery themes that are disabled: a revoked theme whose copy was edited,
+/// kept on disk but not loaded until the owner decides that case.
+fn disabled(gallery: Option<&Path>) -> HashSet<String> {
+    gallery
+        .map(|root| kanso_gallery::State::load(&root.join("state.json")).disabled)
+        .unwrap_or_default()
+        .into_iter()
+        .collect()
+}
+
 impl Themes {
-    /// The built-in themes and the ones in `dir`, if given.
-    pub fn load(dir: Option<&Path>) -> Themes {
+    /// The built-in themes, the ones in `dir` (the person's own), and the
+    /// gallery's under `gallery`, if given.
+    pub fn load(dir: Option<&Path>, gallery: Option<&Path>) -> Themes {
         let mut entries: Vec<Arc<ThemeEntry>> = builtins().to_vec();
         let mut notices = Vec::new();
-        let signature = dir.map(signature).unwrap_or_default();
+        let gallery_themes = gallery.map(|root| root.join("themes"));
+        let files_signature = tree_signature(&[
+            (dir.unwrap_or(Path::new("")), ""),
+            (
+                gallery_themes.as_deref().unwrap_or(Path::new("")),
+                "gallery/",
+            ),
+        ]);
+        let disabled = disabled(gallery);
+        let own_signature = dir.map(signature).unwrap_or_default();
         let mut own = Vec::new();
         if let Some(dir) = dir {
-            for (name, _, _) in &signature {
+            for (name, _, _) in &own_signature {
                 let path = dir.join(name);
                 let parsed = std::fs::read_to_string(&path)
                     .map_err(|err| format!("couldn't be read: {err}"))
@@ -241,7 +298,12 @@ impl Themes {
                                 ),
                             });
                         } else {
-                            own.push(Arc::new(ThemeEntry::new(theme, Some(path))));
+                            own.push(Arc::new(ThemeEntry::new(
+                                theme,
+                                name.trim_end_matches(".json"),
+                                Some(path),
+                                Origin::Own,
+                            )));
                         }
                     }
                     Err(message) => notices.push(Notice {
@@ -253,10 +315,39 @@ impl Themes {
         }
         own.sort_by_key(|e| e.name().to_lowercase());
         entries.extend(own);
+        // The gallery's themes load after the person's own, so a file of
+        // their own with a gallery theme's name wins.
+        if let Some(dir) = &gallery_themes {
+            for (name, _, _) in signature(dir) {
+                let id = name.trim_end_matches(".json").to_owned();
+                if disabled.contains(&id) || !kanso_gallery::is_valid_name(&id) {
+                    continue;
+                }
+                let path = dir.join(&name);
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                let Ok(theme) = ThemeFile::parse(&text) else {
+                    continue;
+                };
+                let taken = entries
+                    .iter()
+                    .any(|e: &Arc<ThemeEntry>| e.name().eq_ignore_ascii_case(&theme.name));
+                if taken {
+                    continue;
+                }
+                entries.push(Arc::new(ThemeEntry::new(
+                    theme,
+                    id,
+                    Some(path),
+                    Origin::Gallery,
+                )));
+            }
+        }
         Themes {
             entries,
             notices,
-            signature,
+            signature: files_signature,
             generation: 0,
         }
     }
@@ -274,8 +365,38 @@ impl Themes {
             .cloned()
             .unwrap_or_else(|| {
                 let file = ThemeFile::parse(BUILTIN[usize::from(dark)].1).expect("Kanso's theme");
-                Arc::new(ThemeEntry::new(file, None))
+                Arc::new(ThemeEntry::new(
+                    file,
+                    BUILTIN[usize::from(dark)].0.trim_end_matches(".json"),
+                    None,
+                    Origin::Builtin,
+                ))
             })
+    }
+}
+
+/// A color theme being previewed across the whole window, before it is
+/// installed. It is view state, never saved; `None` clears it.
+#[derive(Default)]
+pub struct PreviewTheme(pub Option<Arc<ThemeEntry>>);
+
+impl Global for PreviewTheme {}
+
+/// Shows `entry` across the window without writing a file or a setting.
+/// Escape or [`stop_preview`] puts back the settings in force.
+pub fn preview_theme(entry: Arc<ThemeEntry>, cx: &mut App) {
+    cx.set_global(PreviewTheme(Some(entry)));
+    apply(None, cx);
+}
+
+/// Ends a preview and shows the saved themes again.
+pub fn stop_preview(cx: &mut App) {
+    if cx
+        .try_global::<PreviewTheme>()
+        .is_some_and(|p| p.0.is_some())
+    {
+        cx.set_global(PreviewTheme(None));
+        apply(None, cx);
     }
 }
 
@@ -316,10 +437,11 @@ fn ensure_loaded(cx: &mut App) {
     if cx.has_global::<Themes>() {
         return;
     }
-    let dir = cx
+    let (dir, gallery) = cx
         .try_global::<AppState>()
-        .map(|state| themes_dir(&state.data_dir));
-    let themes = Themes::load(dir.as_deref());
+        .map(|state| (themes_dir(&state.data_dir), gallery_dir(&state.data_dir)))
+        .unzip();
+    let themes = Themes::load(dir.as_deref(), gallery.as_deref());
     for notice in &themes.notices {
         eprintln!("kanso: theme {}", notice.sentence());
     }
@@ -341,9 +463,20 @@ pub fn apply(window: Option<&mut Window>, cx: &mut App) {
     let system_dark = ThemeMode::from(appearance).is_dark();
     let settings = settings(cx);
     let themes = cx.global::<Themes>();
-    let ui = themes.find(settings.ui_for(system_dark), system_dark);
-    let syntax = themes.find(settings.syntax_for(system_dark), ui.dark());
-    let preview_theme = themes.find(settings.preview_for(system_dark), ui.dark());
+    // A preview colors the whole window with one theme's own UI, syntax and
+    // preview colors, whatever the settings say, until it stops.
+    let previewing = cx
+        .try_global::<PreviewTheme>()
+        .and_then(|preview| preview.0.clone());
+    let (ui, syntax, preview_theme) = match previewing {
+        Some(entry) => (entry.clone(), entry.clone(), entry),
+        None => {
+            let ui = themes.find(settings.ui_for(system_dark), system_dark);
+            let syntax = themes.find(settings.syntax_for(system_dark), ui.dark());
+            let preview = themes.find(settings.preview_for(system_dark), ui.dark());
+            (ui, syntax, preview)
+        }
+    };
 
     let colors = intern(ui.resolved.colors);
     let fitted = fit_syntax(&syntax.resolved.syntax, colors.editor, colors.text);
@@ -409,13 +542,14 @@ pub fn preview_colors(cx: &App) -> PreviewColors {
 /// Reads the themes folder again and shows the result. Says whether any
 /// file couldn't be used.
 pub fn reload(cx: &mut App) -> Vec<Notice> {
-    let dir = cx
+    let (dir, gallery) = cx
         .try_global::<AppState>()
-        .map(|state| themes_dir(&state.data_dir));
+        .map(|state| (themes_dir(&state.data_dir), gallery_dir(&state.data_dir)))
+        .unzip();
     let generation = cx
         .try_global::<Themes>()
         .map_or(0, |themes| themes.generation + 1);
-    let mut themes = Themes::load(dir.as_deref());
+    let mut themes = Themes::load(dir.as_deref(), gallery.as_deref());
     themes.generation = generation;
     let notices = themes.notices.clone();
     cx.set_global(themes);
@@ -434,8 +568,10 @@ pub fn watch(cx: &mut App) {
                     return false;
                 };
                 let dir = themes_dir(&state.data_dir);
+                let gallery = gallery_dir(&state.data_dir).join("themes");
+                let now = tree_signature(&[(&dir, ""), (&gallery, "gallery/")]);
                 cx.try_global::<Themes>()
-                    .is_some_and(|themes| themes.signature != signature(&dir))
+                    .is_some_and(|themes| themes.signature != now)
             });
             if changed {
                 cx.update(|cx| {
@@ -758,7 +894,7 @@ mod tests {
             r##"{"name": "kanso dark", "appearance": "dark", "ui": {"editor": "#101010", "text": "#EEEEEE", "accent": "#88AAFF"}}"##,
         );
         write("notes.txt", "not a theme");
-        let themes = Themes::load(Some(dir.path()));
+        let themes = Themes::load(Some(dir.path()), None);
         assert_eq!(themes.entries.len(), builtins().len() + 1);
         assert_eq!(themes.entries.last().unwrap().name(), "Mine");
         assert!(themes.entries.last().unwrap().path.is_some());
@@ -771,12 +907,54 @@ mod tests {
         assert!(notices[1].contains("like another theme"), "{notices:?}");
         assert!(notices[2].contains("`ui.backgrund`"), "{notices:?}");
         // A missing folder is no themes of one's own, and no notice.
-        let none = Themes::load(Some(&dir.path().join("missing")));
+        let none = Themes::load(Some(&dir.path().join("missing")), None);
         assert_eq!(none.entries.len(), builtins().len());
         assert!(none.notices.is_empty());
         // A theme that is gone falls back to Kanso's own.
         assert_eq!(themes.find("Gone", true).name(), "Kanso Dark");
         assert_eq!(themes.find("Gone", false).name(), "Kanso Light");
         assert_eq!(themes.find("Mine", false).name(), "Mine");
+    }
+
+    /// Gallery themes load after the person's own, and a disabled one (a
+    /// revoked, edited copy) is kept on disk but never loaded.
+    #[test]
+    fn gallery_themes_load_after_own_themes_and_can_be_disabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let own = dir.path().join("themes");
+        let gallery = dir.path().join("gallery");
+        std::fs::create_dir_all(&own).unwrap();
+        std::fs::create_dir_all(gallery.join("themes")).unwrap();
+        std::fs::write(
+            own.join("mine.json"),
+            r##"{"name": "Mine", "appearance": "dark", "ui": {"editor": "#101010", "text": "#EEEEEE", "accent": "#88AAFF"}}"##,
+        )
+        .unwrap();
+        let nord = BUILTIN
+            .iter()
+            .find(|(file, _)| *file == "nord.json")
+            .unwrap()
+            .1
+            .replace("\"name\": \"Nord\"", "\"name\": \"Gallery Nord\"");
+        std::fs::write(gallery.join("themes/nord.json"), &nord).unwrap();
+
+        let themes = Themes::load(Some(&own), Some(&gallery));
+        let entry = themes.get("Gallery Nord").expect("the gallery theme loads");
+        assert_eq!(entry.origin, crate::origin::Origin::Gallery);
+        assert!(themes.get("Mine").is_some());
+        // A selection that is removed falls back to Kanso's own.
+        std::fs::remove_file(gallery.join("themes/nord.json")).unwrap();
+        let reloaded = Themes::load(Some(&own), Some(&gallery));
+        assert!(reloaded.get("Gallery Nord").is_none());
+        assert_eq!(reloaded.find("Gallery Nord", true).name(), "Kanso Dark");
+
+        std::fs::write(gallery.join("themes/nord.json"), &nord).unwrap();
+        std::fs::write(
+            gallery.join("state.json"),
+            r#"{"installed":[],"pending":[],"disabled":["nord"]}"#,
+        )
+        .unwrap();
+        let disabled = Themes::load(Some(&own), Some(&gallery));
+        assert!(disabled.get("Gallery Nord").is_none());
     }
 }

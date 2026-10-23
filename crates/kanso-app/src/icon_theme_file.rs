@@ -487,6 +487,7 @@ pub fn load(
     file: &IconThemeFile,
     files: &dyn SvgFiles,
     path: Option<PathBuf>,
+    origin: crate::origin::Origin,
     notices: &mut Vec<Notice>,
 ) -> IconTheme {
     // Built-ins are compiled from a reviewed tag; every theme read from
@@ -582,6 +583,7 @@ pub fn load(
         library,
         extras,
         path,
+        origin,
         key: String::new(),
     };
     theme.key = theme_key(&theme);
@@ -591,7 +593,11 @@ pub fn load(
 /// Reads the theme in folder `dir`, named after the folder: its one `.json`
 /// file and the SVGs it names. `None`, with a notice, when the folder's
 /// name or its JSON can't be used.
-pub fn read_folder(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconTheme> {
+pub fn read_folder(
+    dir: &Path,
+    origin: crate::origin::Origin,
+    notices: &mut Vec<Notice>,
+) -> Option<IconTheme> {
     let id = dir.file_name()?.to_string_lossy().into_owned();
     let notice = |message: String| Notice {
         file: id.clone(),
@@ -650,7 +656,14 @@ pub fn read_folder(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconTheme> {
         })
         .and_then(|text| IconThemeFile::parse(&text));
     match parsed {
-        Ok(file) => Some(load(&id, &file, &folder, Some(dir.to_path_buf()), notices)),
+        Ok(file) => Some(load(
+            &id,
+            &file,
+            &folder,
+            Some(dir.to_path_buf()),
+            origin,
+            notices,
+        )),
         Err(message) => {
             notices.push(Notice {
                 file: file_name,
@@ -663,10 +676,14 @@ pub fn read_folder(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconTheme> {
 
 /// [`read_folder`], with a theme that trips it skipped and said so, never
 /// taking the app down with it.
-pub fn read_folder_safely(dir: &Path, notices: &mut Vec<Notice>) -> Option<IconTheme> {
+pub fn read_folder_safely(
+    dir: &Path,
+    origin: crate::origin::Origin,
+    notices: &mut Vec<Notice>,
+) -> Option<IconTheme> {
     let mut theirs = Vec::new();
     let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        read_folder(dir, &mut theirs)
+        read_folder(dir, origin, &mut theirs)
     }));
     notices.append(&mut theirs);
     read.unwrap_or_else(|_| {
@@ -927,7 +944,7 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(&outside, theme.join("icons/link.svg")).unwrap();
         let mut notices = Vec::new();
-        let read = read_folder(&theme, &mut notices).unwrap();
+        let read = read_folder(&theme, crate::origin::Origin::Own, &mut notices).unwrap();
         assert_eq!(read.id, "mine");
         assert_eq!(read.name, "Mine");
         let icons: Vec<&str> = read.icons.keys().map(String::as_str).collect();
@@ -958,25 +975,60 @@ mod tests {
         // Folders that can't be themes.
         let mut notices = Vec::new();
         write(&dir.path().join("Bad Name"), "a.json", r#"{"name": "A"}"#);
-        assert!(read_folder(&dir.path().join("Bad Name"), &mut notices).is_none());
+        assert!(
+            read_folder(
+                &dir.path().join("Bad Name"),
+                crate::origin::Origin::Own,
+                &mut notices
+            )
+            .is_none()
+        );
         write(&dir.path().join("empty"), "a.svg", SVG);
-        assert!(read_folder(&dir.path().join("empty"), &mut notices).is_none());
+        assert!(
+            read_folder(
+                &dir.path().join("empty"),
+                crate::origin::Origin::Own,
+                &mut notices
+            )
+            .is_none()
+        );
         write(&dir.path().join("two"), "a.json", r#"{"name": "A"}"#);
         write(&dir.path().join("two"), "b.json", r#"{"name": "B"}"#);
-        assert!(read_folder(&dir.path().join("two"), &mut notices).is_none());
+        assert!(
+            read_folder(
+                &dir.path().join("two"),
+                crate::origin::Origin::Own,
+                &mut notices
+            )
+            .is_none()
+        );
         write(
             &dir.path().join("broken"),
             "b.json",
             r#"{"name": "B", "x": 1}"#,
         );
-        assert!(read_folder(&dir.path().join("broken"), &mut notices).is_none());
+        assert!(
+            read_folder(
+                &dir.path().join("broken"),
+                crate::origin::Origin::Own,
+                &mut notices
+            )
+            .is_none()
+        );
         std::fs::create_dir_all(dir.path().join("big")).unwrap();
         std::fs::write(
             dir.path().join("big/b.json"),
             vec![b' '; MAX_JSON_BYTES as usize + 1],
         )
         .unwrap();
-        assert!(read_folder(&dir.path().join("big"), &mut notices).is_none());
+        assert!(
+            read_folder(
+                &dir.path().join("big"),
+                crate::origin::Origin::Own,
+                &mut notices
+            )
+            .is_none()
+        );
         let said: Vec<String> = notices.iter().map(Notice::sentence).collect();
         for expected in [
             "Bad Name isn't an icon theme folder name",
@@ -1003,6 +1055,7 @@ mod tests {
             },
             &Files(&[]),
             None,
+            crate::origin::Origin::Own,
             &mut Vec::new(),
         );
         for slot in Slot::ALL {
@@ -1128,7 +1181,7 @@ mod tests {
                 ..Default::default()
             };
             let mut notices = Vec::new();
-            let theme = load("caps", &file, &Files(&table), None, &mut notices);
+            let theme = load("caps", &file, &Files(&table), None, crate::origin::Origin::Own, &mut notices);
             prop_assert!(theme.icons.values().all(|svg| svg.len() as u64 <= MAX_SVG_BYTES));
             let total: u64 = theme.icons.values().map(|svg| svg.len() as u64).sum();
             prop_assert!(total <= MAX_THEME_BYTES);

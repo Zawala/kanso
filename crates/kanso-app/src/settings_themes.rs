@@ -20,6 +20,7 @@ use gpui_kit::*;
 
 use crate::config::{ThemePreference, ThemeSettings};
 use crate::icon_themes::{self, IconTheme, IconThemes};
+use crate::origin::Origin;
 use crate::settings::{Row, SettingsView, section};
 use crate::theme::{Colors, Rgb, SYSTEM_MONO};
 use crate::theme_file::{PreviewColors, TokenStyle, fit_preview, fit_syntax};
@@ -87,6 +88,29 @@ pub fn pick(settings: &ThemeSettings, kind: Kind, name: Option<&str>, dark: bool
         Kind::Preview => next.preview = name.map(str::to_owned),
     }
     next
+}
+
+/// Selects an installed theme by name, for Browse's Use: the same change a
+/// click on an Installed card makes, without needing a window.
+pub fn select_installed(name: &str, dark: bool, cx: &mut App) {
+    let next = pick(
+        &cx.global::<AppState>().config.appearance.themes,
+        Kind::Ui,
+        Some(name),
+        dark,
+    );
+    let legacy = if next.follow_system {
+        ThemePreference::System
+    } else if dark {
+        ThemePreference::Dark
+    } else {
+        ThemePreference::Light
+    };
+    AppState::update_config(cx, |config| {
+        config.appearance.themes = next;
+        config.appearance.theme = legacy;
+    });
+    themes::apply(None, cx);
 }
 
 /// Changes the theme settings, saves them, and shows the result everywhere.
@@ -171,6 +195,11 @@ fn import(window: &mut Window, cx: &mut App) {
 /// The page.
 // no-prop-test: layout; the snapshots show it in both themes.
 pub fn page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
+    if crate::settings_gallery::tab_for(kanso_gallery::Kind::Color, cx)
+        == crate::settings_gallery::Tab::Browse
+    {
+        return crate::settings_gallery::browse(kanso_gallery::Kind::Color, cx);
+    }
     let colors = Colors::get(cx);
     let state = cx.global::<AppState>();
     let settings = state.config.appearance.themes.clone();
@@ -313,6 +342,11 @@ pub fn page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
 
 /// Settings › Icon Themes: the icon themes' cards and their files.
 pub fn icon_theme_page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
+    if crate::settings_gallery::tab_for(kanso_gallery::Kind::Icons, cx)
+        == crate::settings_gallery::Tab::Browse
+    {
+        return crate::settings_gallery::browse(kanso_gallery::Kind::Icons, cx);
+    }
     vec![icon_theme_section(cx)]
 }
 
@@ -381,9 +415,10 @@ pub fn import_icon_theme(window: &mut Window, cx: &mut App) {
 /// What a theme's card says about it, under its name. Pure.
 pub fn icon_theme_detail(theme: &IconTheme) -> String {
     let mut parts = Vec::new();
-    parts.push(match &theme.path {
-        Some(_) => "In your icon themes folder".to_owned(),
-        None => "Built in".to_owned(),
+    parts.push(match theme.origin {
+        Origin::Builtin => "Built in".to_owned(),
+        Origin::Own => "In your icon themes folder".to_owned(),
+        Origin::Gallery => "From the gallery".to_owned(),
     });
     if !theme.author.is_empty() {
         parts.push(format!("by {}", theme.author));
@@ -581,13 +616,13 @@ fn card(
     };
     let dark = entry.is_some_and(|e| e.dark());
     let origin: SharedString = match entry {
-        Some(e) => match (&e.path, e.file.author.as_str()) {
-            (Some(path), _) => format!(
+        Some(e) => match (e.origin, &e.path, e.file.author.as_str()) {
+            (Origin::Own, Some(path), _) => format!(
                 "{} in your themes folder",
                 path.file_name().unwrap_or_default().to_string_lossy()
             ),
-            (None, "") => "Built in".to_owned(),
-            (None, author) => format!("Built in, by {author}"),
+            (origin, _, "") => origin.detail().to_owned(),
+            (origin, _, author) => format!("{}, by {author}", origin.detail()),
         },
         None => "The UI theme's own".to_owned(),
     }
@@ -599,7 +634,8 @@ fn card(
             Kind::Syntax => "syntax",
             Kind::Preview => "preview",
         },
-        name.as_deref()
+        entry
+            .map(|e| e.id.as_str())
             .unwrap_or("same")
             .to_lowercase()
             .replace(' ', "-")
