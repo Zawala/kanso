@@ -4105,9 +4105,9 @@ Recommendations are on merit; the effort is the added builder time if the other 
 9. **Six digits or eight?** *Recommendation:* six, shown as two groups of three. The code is derived
    from the DH secret, so its length isn't the defence against a malicious server; six is easier to
    read aloud and compare. Eight adds no days and no real safety.
-10. **Should a passwordless account be deletable?** *Recommendation:* yes, with a `proof` (a passkey
-    assertion or a provider flow) and the typed username. Requiring a password would strand the
-    accounts this revision creates; the proof is the same bar as the password.
+10. **Should a passwordless account be deletable?** *Recommendation:* yes, with a `proof` and the
+    typed username (a provider proof also needs the recovery key). Requiring a password would
+    strand the accounts this revision creates; the proof is the same bar as the password.
 
 ### Rollback
 
