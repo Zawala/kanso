@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Entity, Modifiers, MouseButton, Pixels, Point,
-    TestAppContext, VisualTestContext,
+    AnyWindowHandle, AppContext as _, Entity, Focusable as _, Modifiers, MouseButton, Pixels,
+    Point, TestAppContext, VisualTestContext,
 };
 use kanso_core::DocType;
 use kanso_core::model::TRASH_BOOK_ID;
@@ -20,6 +20,7 @@ use crate::config::AppConfig;
 use crate::editor::NoteEditor;
 use crate::library::Filter;
 use crate::note_menu::NoteCommand;
+use crate::tab_bar::TabBarEvent;
 use crate::services::Services;
 use crate::workspace::{AppState, Workspace};
 
@@ -360,6 +361,92 @@ fn the_tab_does_not_change_when_the_editor_refuses_to_switch(cx: &mut TestAppCon
     f.select(cx, &b);
     assert_eq!(f.tabs(cx), vec![b.clone()], "the switch lands once saved");
     assert_eq!(f.open_note(cx), Some(b));
+}
+
+/// Open in New Tab from a note's menu opens a tab without disturbing the
+/// note showing.
+// no-prop-test: one command in one window.
+#[gpui_kit::test]
+fn open_in_new_tab_from_the_menu_adds_a_tab(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let a = f.note("A", "text");
+    let b = f.note("B", "text");
+    f.select(cx, &a);
+    f.run(cx, &b, NoteCommand::OpenInNewTab);
+    assert_eq!(f.tabs(cx), [a, b.clone()]);
+    assert_eq!(f.open_note(cx), Some(b));
+}
+
+/// ⌘↩ in the focused list opens its note in a new tab (which, for the note
+/// already showing, just shows that tab) and loses nothing.
+// no-prop-test: one key in one window.
+#[gpui_kit::test]
+fn cmd_enter_in_the_list_opens_the_focused_note_in_a_tab(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let a = f.note("A", "text");
+    f.select(cx, &a);
+    let list = cx.read(|cx| f.workspace.read(cx).note_list.clone());
+    f.window
+        .update(cx, |_, window, cx| window.focus(&list.focus_handle(cx), cx))
+        .unwrap();
+    f.keys(cx, "cmd-enter");
+    assert_eq!(f.tabs(cx), [a.clone()], "already open: its tab shows");
+    assert_eq!(f.open_note(cx), Some(a));
+}
+
+/// Dragging a tab to a new place keeps the same note showing.
+// no-prop-test: one drop in one window; the model's rule is a property in
+// tabs.rs.
+#[gpui_kit::test]
+fn dragging_a_tab_reorders_the_row(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let a = f.note("A", "text");
+    let b = f.note("B", "text");
+    let c = f.note("C", "text");
+    f.select(cx, &a);
+    f.middle_click(cx, &b);
+    f.middle_click(cx, &c);
+    let bar = cx.read(|cx| f.workspace.read(cx).tab_bar.clone());
+    bar.update(cx, |_, cx| cx.emit(TabBarEvent::Reorder { from: 2, to: 0 }));
+    cx.run_until_parked();
+    assert_eq!(f.tabs(cx), [c.clone(), a, b]);
+    assert_eq!(f.open_note(cx), Some(c));
+}
+
+/// ⇧⌘T brings back the last closed tab.
+// no-prop-test: one close and one key in one window.
+#[gpui_kit::test]
+fn reopen_closed_tab_brings_it_back(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let a = f.note("A", "text");
+    let b = f.note("B", "text");
+    f.select(cx, &a);
+    f.middle_click(cx, &b);
+    f.keys(cx, CLOSE_TAB);
+    assert_eq!(f.tabs(cx), [a.clone()]);
+    f.keys(cx, "cmd-shift-t");
+    assert_eq!(f.tabs(cx), [a, b.clone()]);
+    assert_eq!(f.open_note(cx), Some(b));
+}
+
+/// ⇧⌘1…⇧⌘9 show a tab by its place at the start of the row.
+// no-prop-test: two keys in one window.
+#[gpui_kit::test]
+fn go_to_tab_shows_the_numbered_tab(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let a = f.note("A", "text");
+    let b = f.note("B", "text");
+    let c = f.note("C", "text");
+    f.select(cx, &a);
+    f.middle_click(cx, &b);
+    f.middle_click(cx, &c);
+    f.keys(cx, "cmd-shift-1");
+    assert_eq!(f.active_tab(cx), Some(a.clone()));
+    f.keys(cx, "cmd-shift-2");
+    assert_eq!(f.active_tab(cx), Some(b.clone()));
+    assert_eq!(f.open_note(cx), Some(b));
+    f.keys(cx, "cmd-shift-9");
+    assert_eq!(f.active_tab(cx), Some(c));
 }
 
 /// A menu command that works on the open note (Lock, History, Publish,
