@@ -12,14 +12,14 @@ use kanso_core::model::TRASH_BOOK_ID;
 use kanso_store::Store;
 
 use crate::models::note_visit::{NotePlace, Visit};
-use crate::workspace::{GoBack, GoForward, Workspace};
+use crate::workspace::{GoBack, GoForward, OpenIntent, Workspace};
 
 /// The most visits kept behind the open note; older ones are forgotten.
 pub const MOST_VISITS: usize = 100;
 
 /// One window's history: the visits behind the open note, the open note's
 /// own visit, and the visits ahead of it, nearest last.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct NavHistory {
     back: Vec<Visit>,
     current: Option<Visit>,
@@ -149,10 +149,12 @@ impl Workspace {
     pub(crate) fn record_visit(&mut self, cx: &mut Context<Self>) {
         self.nav_reach = None;
         if let Some((id, place)) = self.editor.update(cx, |editor, _| editor.take_left_place()) {
-            self.nav.leave(&id, place);
+            self.tabs.leave(&id, place);
         }
-        if let Some(id) = self.editor.read(cx).note_id() {
-            self.nav.visit(id);
+        if let Some(id) = self.editor.read(cx).note_id().map(str::to_owned)
+            && let Some(nav) = self.tabs.nav_mut()
+        {
+            nav.visit(&id);
         }
     }
 
@@ -163,7 +165,9 @@ impl Workspace {
             return reach;
         }
         let live = |id: &str| live(&self.store, id);
-        let reach = (self.nav.can_go_back(live), self.nav.can_go_forward(live));
+        let reach = self.tabs.nav().map_or((false, false), |nav| {
+            (nav.can_go_back(live), nav.can_go_forward(live))
+        });
         self.nav_reach = Some(reach);
         reach
     }
@@ -181,16 +185,11 @@ impl Workspace {
     fn go(&mut self, back: bool, cx: &mut Context<Self>) {
         self.nav_reach = None;
         if let Some((id, place)) = self.editor.read(cx).place(cx) {
-            self.nav.leave(&id, place);
+            self.tabs.leave(&id, place);
         }
         let store = self.store.clone();
         let live = |id: &str| live(&store, id);
-        let landed = if back {
-            self.nav.back(live)
-        } else {
-            self.nav.forward(live)
-        };
-        let Some(visit) = landed else {
+        let Some(visit) = self.tabs.step_active(back, live) else {
             return;
         };
         if let Some(place) = visit.place {
@@ -198,8 +197,9 @@ impl Workspace {
             self.editor
                 .update(cx, |editor, _| editor.place_after_open(id, place));
         }
-        self.library
-            .update(cx, |library, cx| library.select(Some(visit.id), cx));
+        // In the tab it started in, as a browser goes back: another tab
+        // holding the same note is not switched to.
+        self.select_note(&visit.id, OpenIntent::InPlace, cx);
     }
 }
 
