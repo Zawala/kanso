@@ -173,7 +173,7 @@ mod tests {
         for url in [
             crate::INDEX_URL,
             crate::SIGNATURE_URL,
-            "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/themes/nord.json",
+            "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/nord.json",
             "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/gallery/icon-themes/catppuccin-icons.tar.gz",
             "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/icon-themes/lucide/chevron.svg",
         ] {

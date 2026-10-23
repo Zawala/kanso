@@ -444,7 +444,7 @@ mod tests {
 
     fn theme(bytes: &[u8], kind: Kind) -> Theme {
         let path = match kind {
-            Kind::Color => "themes/nord.json".to_owned(),
+            Kind::Color => "nord.json".to_owned(),
             Kind::Icons => "gallery/icon-themes/nord.tar.gz".to_owned(),
         };
         let pin = FileRef {

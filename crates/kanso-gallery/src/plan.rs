@@ -213,7 +213,7 @@ mod tests {
             description: "A theme.".into(),
             min_kanso: "0.1.0".into(),
             file: Some(FileRef {
-                path: format!("themes/{id}.json"),
+                path: format!("{id}.json"),
                 sha256: "ab".repeat(32),
                 size: 10,
             }),
