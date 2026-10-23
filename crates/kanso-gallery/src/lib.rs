@@ -23,11 +23,11 @@ pub mod state;
 
 pub use index::{
     Appearance, FileRef, Floor, HeadlineColors, Index, IndexError, Kind, Revoked, Theme,
-    check_index, clean_text, is_valid_name, is_valid_svg_path,
+    check_index, clean_text, is_valid_name, is_valid_svg_path, sha256_hex,
 };
 pub use install::{
-    InstallError, check_pin, color_digest, install_color, install_icons, remove_installed,
-    theme_url,
+    IconCaps, InstallError, check_pin, color_digest, install_color, install_icons,
+    install_icons_with, prepare, remove_installed, theme_url,
 };
 pub use plan::{Action, Installed, Plan, PlanState, Skipped, plan};
 pub use policy::{GalleryPolicy, PolicyError};

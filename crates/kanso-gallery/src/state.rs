@@ -75,6 +75,9 @@ pub struct Pending {
 pub struct State {
     pub installed: Vec<Record>,
     pub pending: Vec<Pending>,
+    /// Gallery ids that are kept on disk but not loaded: a revoked theme
+    /// whose copy was edited, until the owner decides that case.
+    pub disabled: Vec<String>,
 }
 
 impl State {

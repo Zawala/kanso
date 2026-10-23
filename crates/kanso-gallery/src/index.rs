@@ -160,6 +160,10 @@ impl Index {
         self.themes.iter().find(|theme| theme.id == id)
     }
 
+    pub fn theme_by_name(&self, name: &str) -> Option<&Theme> {
+        self.themes.iter().find(|theme| theme.name == name)
+    }
+
     pub fn revoked(&self, id: &str) -> Option<&Revoked> {
         self.revoked.iter().find(|entry| entry.id == id)
     }

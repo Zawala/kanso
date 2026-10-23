@@ -153,6 +153,41 @@ pub fn register(theme: &Arc<IconTheme>) {
     registry.insert(theme.key.clone(), Arc::downgrade(theme));
 }
 
+/// Paths for up to six fetched, sanitized gallery previews, kept alive so
+/// the card can draw them. No theme is installed by this.
+pub fn preview_paths(id: &str, svgs: &[Arc<[u8]>]) -> Vec<SharedString> {
+    static PREVIEWS: std::sync::Mutex<Vec<Arc<IconTheme>>> = std::sync::Mutex::new(Vec::new());
+    let icons: std::collections::BTreeMap<String, Arc<[u8]>> = svgs
+        .iter()
+        .enumerate()
+        .map(|(ix, svg)| (format!("preview{ix}"), svg.clone()))
+        .collect();
+    let mut theme = IconTheme {
+        id: format!("{id}-preview"),
+        name: String::new(),
+        author: String::new(),
+        license: String::new(),
+        source: None,
+        description: None,
+        icons,
+        library: Default::default(),
+        extras: Vec::new(),
+        path: None,
+        origin: crate::origin::Origin::Gallery,
+        key: String::new(),
+    };
+    theme.key = icon_theme_file::theme_key(&theme);
+    let theme = Arc::new(theme);
+    register(&theme);
+    let paths = (0..svgs.len())
+        .map(|ix| themed_path(&theme, &format!("preview{ix}")))
+        .collect();
+    let mut kept = PREVIEWS.lock().unwrap_or_else(|e| e.into_inner());
+    kept.push(theme);
+    kept.truncate(64);
+    paths
+}
+
 /// The SVG at `path`, a path [`themed_path`], [`themed_slot_path`] or
 /// [`extra_path`] made, while its theme is read.
 pub fn themed_svg(path: &str) -> Option<Arc<[u8]>> {
@@ -192,7 +227,14 @@ pub fn builtins() -> &'static [Arc<IconTheme>] {
                     }
                 };
                 let mut notices = Vec::new();
-                let theme = icon_theme_file::load(id, &file, &Files(files), None, &mut notices);
+                let theme = icon_theme_file::load(
+                    id,
+                    &file,
+                    &Files(files),
+                    None,
+                    crate::origin::Origin::Builtin,
+                    &mut notices,
+                );
                 for notice in notices {
                     eprintln!("kanso: built-in icon theme {}", notice.sentence());
                 }
@@ -234,6 +276,7 @@ pub fn default_theme() -> &'static Arc<IconTheme> {
                     &file,
                     &Files(&[]),
                     None,
+                    crate::origin::Origin::Builtin,
                     &mut Vec::new(),
                 ))
             })
@@ -254,7 +297,7 @@ impl Global for IconThemes {}
 
 /// A fingerprint of every file in the icon themes folder, its size and
 /// time, to tell when one changes.
-fn signature(dir: &Path) -> u64 {
+fn signature(dirs: &[(&Path, &str)]) -> u64 {
     fn walk(dir: &Path, depth: usize, files: &mut Vec<(PathBuf, u64, Option<SystemTime>)>) {
         let Ok(read) = std::fs::read_dir(dir) else {
             return;
@@ -273,7 +316,12 @@ fn signature(dir: &Path) -> u64 {
         }
     }
     let mut files = Vec::new();
-    walk(dir, 0, &mut files);
+    for (dir, prefix) in dirs {
+        if !prefix.is_empty() {
+            files.push((PathBuf::from(prefix), 0, None));
+        }
+        walk(dir, 0, &mut files);
+    }
     files.sort();
     let mut print = icon_theme_file::Fingerprint::default();
     for (path, len, time) in files {
@@ -290,10 +338,22 @@ fn signature(dir: &Path) -> u64 {
 impl IconThemes {
     /// The built-in themes, and the ones in `dir` if given. Slow for large
     /// themes: read off the UI thread (`reload_soon`).
-    pub fn load(dir: Option<&Path>) -> IconThemes {
+    pub fn load(dir: Option<&Path>, gallery: Option<&Path>) -> IconThemes {
         let mut entries: Vec<Arc<IconTheme>> = builtins().to_vec();
         let mut notices = Vec::new();
-        let signature = dir.map(signature).unwrap_or_default();
+        let gallery_themes = gallery.map(|root| root.join("icon-themes"));
+        let signature = signature(&[
+            (dir.unwrap_or(Path::new("")), ""),
+            (
+                gallery_themes.as_deref().unwrap_or(Path::new("")),
+                "gallery/",
+            ),
+        ]);
+        let disabled: std::collections::HashSet<String> = gallery
+            .map(|root| kanso_gallery::State::load(&root.join("state.json")).disabled)
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
         let mut own: Vec<Arc<IconTheme>> = Vec::new();
         if let Some(dir) = dir
             && let Ok(read) = std::fs::read_dir(dir)
@@ -317,7 +377,11 @@ impl IconThemes {
                 });
             }
             for folder in folders.into_iter().take(MAX_THEMES) {
-                let Some(theme) = icon_theme_file::read_folder_safely(&folder, &mut notices) else {
+                let Some(theme) = icon_theme_file::read_folder_safely(
+                    &folder,
+                    crate::origin::Origin::Own,
+                    &mut notices,
+                ) else {
                     continue;
                 };
                 let taken = entries.iter().chain(own.iter()).find(|other| {
@@ -347,6 +411,47 @@ impl IconThemes {
         }
         own.sort_by_key(|theme| theme.name.to_lowercase());
         entries.extend(own);
+        // The gallery's icon themes load last: a person's own folder with
+        // the same id or name wins, and a built-in id is reserved.
+        if let Some(dir) = &gallery_themes
+            && let Ok(read) = std::fs::read_dir(dir)
+        {
+            let mut folders: Vec<PathBuf> = read
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| path.is_dir())
+                .filter(|path| {
+                    !path
+                        .file_name()
+                        .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+                })
+                .collect();
+            folders.sort();
+            for folder in folders {
+                let id = folder
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                if disabled.contains(&id) {
+                    continue;
+                }
+                let Some(theme) = icon_theme_file::read_folder_safely(
+                    &folder,
+                    crate::origin::Origin::Gallery,
+                    &mut notices,
+                ) else {
+                    continue;
+                };
+                if entries.iter().any(|other| {
+                    other.id == theme.id || other.name.eq_ignore_ascii_case(&theme.name)
+                }) {
+                    continue;
+                }
+                let theme = Arc::new(theme);
+                register(&theme);
+                entries.push(theme);
+            }
+        }
         IconThemes {
             entries,
             notices,
@@ -394,6 +499,11 @@ fn folder(cx: &App) -> Option<PathBuf> {
         .map(|state| icon_themes_dir(&state.data_dir))
 }
 
+fn gallery_folder(cx: &App) -> Option<PathBuf> {
+    cx.try_global::<AppState>()
+        .map(|state| crate::themes::gallery_dir(&state.data_dir))
+}
+
 /// The theme the config chooses, by ID.
 fn chosen(cx: &App) -> Option<String> {
     cx.try_global::<AppState>()
@@ -408,7 +518,7 @@ pub fn init(cx: &mut App) {
         cx.try_global::<ActiveIconTheme>()?.resolve(path)
     });
     if !cx.has_global::<IconThemes>() {
-        cx.set_global(IconThemes::load(None));
+        cx.set_global(IconThemes::load(None, None));
     }
     apply(cx);
 }
@@ -453,9 +563,10 @@ fn show(mut themes: IconThemes, cx: &mut App) -> Vec<Notice> {
 /// the result. The task gives what couldn't be used.
 pub fn reload_soon(cx: &mut App) -> Task<Vec<Notice>> {
     let dir = folder(cx);
+    let gallery = gallery_folder(cx);
     let read = cx
         .background_executor()
-        .spawn(async move { IconThemes::load(dir.as_deref()) });
+        .spawn(async move { IconThemes::load(dir.as_deref(), gallery.as_deref()) });
     cx.spawn(async move |cx| {
         let themes = read.await;
         cx.update(|cx| show(themes, cx))
@@ -465,7 +576,7 @@ pub fn reload_soon(cx: &mut App) -> Task<Vec<Notice>> {
 /// Reads the icon themes folder again, on this thread (tests, snapshots
 /// and the import).
 pub fn reload(cx: &mut App) -> Vec<Notice> {
-    let themes = IconThemes::load(folder(cx).as_deref());
+    let themes = IconThemes::load(folder(cx).as_deref(), gallery_folder(cx).as_deref());
     show(themes, cx)
 }
 
@@ -490,7 +601,7 @@ pub fn watch(cx: &mut App) {
             };
             let now = cx
                 .background_executor()
-                .spawn(async move { signature(&dir) })
+                .spawn(async move { signature(&[(&dir, "")]) })
                 .await;
             if now != seen {
                 let before: Vec<Notice> = cx.update(|cx| {
@@ -603,7 +714,14 @@ mod tests {
         for (id, json, files) in BUILTIN_FILES {
             let file = IconThemeFile::parse(json).unwrap_or_else(|err| panic!("{id} {err}"));
             let mut notices = Vec::new();
-            let theme = load(id, &file, &Files(files), None, &mut notices);
+            let theme = load(
+                id,
+                &file,
+                &Files(files),
+                None,
+                crate::origin::Origin::Builtin,
+                &mut notices,
+            );
             assert!(notices.is_empty(), "{id}: {notices:?}");
             assert_eq!(
                 theme.count(),
@@ -757,6 +875,7 @@ mod tests {
                 .collect::<BTreeMap<_, _>>(),
             extras: Vec::new(),
             path: None,
+            origin: crate::origin::Origin::Own,
             key: String::new(),
         };
         theme.key = icon_theme_file::theme_key(&theme);
@@ -903,7 +1022,7 @@ mod tests {
             .unwrap();
             std::fs::write(path.join("s.svg"), svg).unwrap();
         }
-        let themes = IconThemes::load(Some(dir.path()));
+        let themes = IconThemes::load(Some(dir.path()), None);
         let names: Vec<&str> = themes.entries.iter().map(|t| t.name.as_str()).collect();
         let builtin_names: Vec<&str> = builtins().iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names[..builtin_names.len()], builtin_names[..]);
@@ -918,6 +1037,6 @@ mod tests {
             said.iter().any(|s| s.starts_with("zz-copy is named")),
             "{said:?}"
         );
-        assert_eq!(IconThemes::load(None).entries.len(), builtins().len());
+        assert_eq!(IconThemes::load(None, None).entries.len(), builtins().len());
     }
 }

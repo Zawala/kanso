@@ -181,6 +181,24 @@ impl Fixture {
 /// exactly: the same note, the list and the text scrolled as they were, and
 /// the keyboard in the text.
 #[gpui_kit::test]
+fn the_scheduled_check_runs_with_automatic_updates_off(cx: &mut TestAppContext) {
+    let _fixture = setup(cx);
+    cx.update(|cx| {
+        AppState::update_config(cx, |config| config.gallery.auto_update = false);
+        cx.set_global(crate::settings_gallery::ThemeGallery {
+            keys: kanso_gallery::trusted_keys(),
+            ..Default::default()
+        });
+        crate::settings_gallery::auto_check(cx);
+        assert_ne!(
+            cx.global::<crate::settings_gallery::ThemeGallery>().status,
+            crate::settings_gallery::Status::Idle,
+            "a due check must run even when automatic updates are off"
+        );
+    });
+}
+
+#[gpui_kit::test]
 fn escape_returns_to_the_notes_as_they_were(cx: &mut TestAppContext) {
     let f = setup(cx);
     let (list, editor) = cx.read(|cx| {

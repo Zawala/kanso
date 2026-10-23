@@ -406,6 +406,22 @@ impl Default for UpdateSettings {
     }
 }
 
+/// The theme gallery (Settings › Themes).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct GallerySettings {
+    /// Check the signed catalog on the app's update timer and update
+    /// installed gallery themes. Off, nothing is checked behind a person's
+    /// back; Refresh still works.
+    pub auto_update: bool,
+}
+
+impl Default for GallerySettings {
+    fn default() -> Self {
+        GallerySettings { auto_update: true }
+    }
+}
+
 /// When the caret's line stays in the middle of the editor while typing.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -623,6 +639,7 @@ pub struct AppConfig {
     pub last_note: Option<String>,
     pub layout: WindowLayout,
     pub updates: UpdateSettings,
+    pub gallery: GallerySettings,
     pub editor: EditorSettings,
     pub capture: CaptureSettings,
     pub reminders: RemindersSettings,
@@ -654,6 +671,7 @@ impl Default for AppConfig {
             last_note: None,
             layout: WindowLayout::default(),
             updates: UpdateSettings::default(),
+            gallery: GallerySettings::default(),
             editor: EditorSettings::default(),
             capture: CaptureSettings::default(),
             reminders: RemindersSettings::default(),
@@ -794,6 +812,7 @@ mod tests {
                     ai,
                     layout,
                     updates: UpdateSettings { auto_install },
+                    gallery: GallerySettings::default(),
                     editor,
                     capture: CaptureSettings { enabled, shortcut },
                     discovery: DiscoverySettings {
@@ -1006,6 +1025,7 @@ mod tests {
                     last_note: last,
                     layout: WindowLayout::default(),
                     updates: UpdateSettings::default(),
+                    gallery: GallerySettings::default(),
                     editor: EditorSettings::default(),
                     capture: CaptureSettings::default(),
                     reminders: super::RemindersSettings::default(),

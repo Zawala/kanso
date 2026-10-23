@@ -46,6 +46,7 @@ mod export_style;
 mod flavour;
 mod fonts;
 mod fuzzy;
+mod gallery;
 mod graph;
 mod graph_view;
 mod grouping;
@@ -89,6 +90,7 @@ mod note_window_tests;
 mod notebook_lock;
 mod notify_support;
 mod ocr;
+mod origin;
 mod pairing;
 mod palette;
 mod paths;
@@ -108,6 +110,7 @@ mod settings;
 mod settings_ai;
 mod settings_capture;
 mod settings_discovery;
+mod settings_gallery;
 mod settings_themes;
 mod settings_voice;
 #[cfg(test)]
@@ -396,6 +399,9 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         settings::register_app_actions(cx, open_main_window);
         updates::register_app_actions(cx);
         services::apply_server_settings(cx);
+        crate::settings_gallery::init(cx);
+        crate::settings_gallery::set_log_dir(&cx.global::<AppState>().data_dir);
+        crate::settings_gallery::schedule(cx);
         themes::watch(cx);
         // The chosen icon theme draws every icon, from the first window on.
         icon_themes::init(cx);

@@ -102,7 +102,8 @@ pub fn run_cli(data_dir: &Path, args: &[String]) -> anyhow::Result<()> {
             let mut bad = 0;
             for path in &paths {
                 let mut notices = Vec::new();
-                let theme = icon_theme_file::read_folder(path, &mut notices);
+                let theme =
+                    icon_theme_file::read_folder(path, crate::origin::Origin::Own, &mut notices);
                 match theme {
                     Some(theme) if notices.is_empty() => println!(
                         "{}: reads well ({}, {} icons)",
@@ -1276,7 +1277,7 @@ fn target_id(dir: &Path, kept: Option<&str>, name: &str) -> String {
         let path = dir.join(&id);
         let mut notices: Vec<Notice> = Vec::new();
         let mut same = || {
-            icon_theme_file::read_folder(&path, &mut notices)
+            icon_theme_file::read_folder(&path, crate::origin::Origin::Own, &mut notices)
                 .is_some_and(|t| t.name.eq_ignore_ascii_case(name))
         };
         if !path.exists() || same() {
@@ -1523,7 +1524,9 @@ mod tests {
             report.summary()
         );
         let mut notices = Vec::new();
-        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        let theme =
+            icon_theme_file::read_folder(&report.folder, crate::origin::Origin::Own, &mut notices)
+                .unwrap();
         assert!(notices.is_empty(), "{notices:?}");
         assert_eq!(
             (theme.author.as_str(), theme.license.as_str()),
@@ -1588,7 +1591,12 @@ mod tests {
         write(&named, "theme/s.svg", SVG);
         let reports = import_path(&named, &out).unwrap().reports;
         let mut notices = Vec::new();
-        let theme = icon_theme_file::read_folder(&reports[0].folder, &mut notices).unwrap();
+        let theme = icon_theme_file::read_folder(
+            &reports[0].folder,
+            crate::origin::Origin::Own,
+            &mut notices,
+        )
+        .unwrap();
         assert_eq!(
             (theme.name.as_str(), theme.license.as_str()),
             ("Named", "MIT")
@@ -1849,7 +1857,9 @@ mod tests {
         );
         let report = &import_path(&ext, &out).unwrap().reports[0];
         let mut notices = Vec::new();
-        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        let theme =
+            icon_theme_file::read_folder(&report.folder, crate::origin::Origin::Own, &mut notices)
+                .unwrap();
         assert_eq!(theme.author, "Grace Hopper, Alan");
         assert_eq!(
             theme.source.as_deref(),
@@ -1863,7 +1873,9 @@ mod tests {
         let bare = dir.path().join("bare");
         zed_extension(&bare);
         let report = &import_path(&bare, &out).unwrap().reports[0];
-        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        let theme =
+            icon_theme_file::read_folder(&report.folder, crate::origin::Origin::Own, &mut notices)
+                .unwrap();
         assert_eq!(theme.source, None);
         assert_eq!(theme.author, "Ada");
         // A package's repository, then its homepage.
@@ -1876,7 +1888,9 @@ mod tests {
             r#"{"name": "p", "author": "Pat <p@example.com>", "repository": {"type": "git", "url": "git+https://github.com/example/p.git"}}"#,
         );
         let report = &import_path(&pkg, &out).unwrap().reports[0];
-        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        let theme =
+            icon_theme_file::read_folder(&report.folder, crate::origin::Origin::Own, &mut notices)
+                .unwrap();
         assert_eq!(theme.author, "Pat");
         assert_eq!(
             theme.source.as_deref(),
@@ -1888,7 +1902,9 @@ mod tests {
             r#"{"name": "p", "repository": "example/p", "homepage": "https://example.com/p"}"#,
         );
         let report = &import_path(&pkg, &out).unwrap().reports[0];
-        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        let theme =
+            icon_theme_file::read_folder(&report.folder, crate::origin::Origin::Own, &mut notices)
+                .unwrap();
         assert_eq!(theme.source.as_deref(), Some("https://example.com/p"));
         assert!(notices.is_empty(), "{notices:?}");
     }
@@ -1949,13 +1965,17 @@ mod tests {
         copied.sort();
         assert_eq!(copied, ["COPYING.md", "LICENSE", "LICENSE-APACHE"]);
         let mut notices = Vec::new();
-        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        let theme =
+            icon_theme_file::read_folder(&report.folder, crate::origin::Origin::Own, &mut notices)
+                .unwrap();
         assert_eq!(theme.license, "MIT OR Apache-2.0");
         // Without the manifest's, the first licence text that reads as one.
         std::fs::remove_file(ext.join("extension.toml")).unwrap();
         std::fs::remove_file(ext.join("LICENSE")).unwrap();
         let report = &import_path(&ext, &out).unwrap().reports[0];
-        let theme = icon_theme_file::read_folder(&report.folder, &mut notices).unwrap();
+        let theme =
+            icon_theme_file::read_folder(&report.folder, crate::origin::Origin::Own, &mut notices)
+                .unwrap();
         assert_eq!(theme.license, "Apache-2.0");
     }
 
@@ -2334,7 +2354,7 @@ mod tests {
                 for report in imports.reports {
                     prop_assert!(report.folder.starts_with(&out));
                     let mut notices = Vec::new();
-                    let theme = icon_theme_file::read_folder(&report.folder, &mut notices);
+                    let theme = icon_theme_file::read_folder(&report.folder, crate::origin::Origin::Own, &mut notices);
                     prop_assert!(theme.is_some(), "{:?}", notices);
                     prop_assert!(notices.is_empty(), "{:?}", notices);
                 }
