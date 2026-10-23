@@ -1849,3 +1849,98 @@ fn zoom_keys_zoom_the_app_and_the_graph_keeps_them(cx: &mut TestAppContext) {
     assert!(after > before, "the graph zoomed in: {before} to {after}");
     assert_eq!(saved(&mut vcx), (100, 100), "the app didn't");
 }
+
+/// "Change Color…" opens the dialog with the keyboard in its hex field:
+/// typed hex and Enter color the notebook, kept on it so it syncs; an
+/// emptied field takes the color away; a swatch and Done color it again.
+#[gpui_kit::test]
+fn a_notebook_takes_a_color_from_the_dialog(cx: &mut TestAppContext) {
+    use gpui_kit::component::WindowExt as _;
+    use gpui_kit::{Modifiers, VisualTestContext};
+
+    use crate::sidebar::SidebarEvent;
+
+    let f = setup(cx);
+    let book = f.store.note(&f.notes[0]).unwrap().unwrap().book_id;
+    let (sidebar, library) = f.workspace(cx, |w, _| (w.sidebar.clone(), w.library.clone()));
+    let kept = |store: &Store| {
+        store
+            .get(&book)
+            .unwrap()
+            .unwrap()
+            .to_api(Default::default())
+            .get(kanso_core::model::BOOK_COLOR_FIELD)
+            .cloned()
+    };
+    let shown = |cx: &mut TestAppContext| {
+        cx.read(|cx| {
+            let library = library.read(cx);
+            let book = library.books.iter().find(|b| b.id == book).unwrap();
+            crate::book_colors::book_color(book)
+        })
+    };
+    let open = |cx: &mut TestAppContext| {
+        let id = book.clone();
+        sidebar.update(cx, |_, cx| cx.emit(SidebarEvent::ChangeBookColor(id)));
+        f.draw(cx);
+        assert!(
+            f.window
+                .update(cx, |_, window, cx| window.has_active_dialog(cx))
+                .unwrap()
+        );
+    };
+
+    open(cx);
+    cx.simulate_input(f.window, "#f8f8f8");
+    cx.simulate_keystrokes(f.window, "enter");
+    f.draw(cx);
+    assert_eq!(kept(&f.store), Some(json!("#f8f8f8")));
+    assert_eq!(shown(cx), Some(0xf8f8f8));
+
+    // The field opens holding the color; emptied, Enter takes it away.
+    open(cx);
+    cx.simulate_keystrokes(f.window, "cmd-a backspace enter");
+    f.draw(cx);
+    assert_eq!(kept(&f.store), None);
+    assert_eq!(shown(cx), None);
+
+    open(cx);
+    // Clicks land where the dialog ends up, once it has slid in.
+    std::thread::sleep(
+        *gpui_kit::component::dialog::ANIMATION_DURATION + Duration::from_millis(50),
+    );
+    for selector in ["book-color-blue", "book-color-done"] {
+        f.draw(cx);
+        let mut vcx = VisualTestContext::from_window(f.window, cx);
+        let bounds = vcx
+            .debug_bounds(selector)
+            .unwrap_or_else(|| panic!("{selector} is drawn"));
+        vcx.simulate_click(bounds.center(), Modifiers::none());
+        cx.run_until_parked();
+    }
+    f.draw(cx);
+    assert_eq!(kept(&f.store), Some(json!("#2185d0")));
+    assert_eq!(shown(cx), Some(kanso_core::TagColor::Blue.rgb()));
+
+    // Done on the color it already keeps writes nothing.
+    let rev = f
+        .store
+        .get(&book)
+        .unwrap()
+        .unwrap()
+        .to_api(Default::default())["_rev"]
+        .clone();
+    assert!(rev.is_string(), "{rev}");
+    open(cx);
+    cx.simulate_keystrokes(f.window, "enter");
+    f.draw(cx);
+    let after = f
+        .store
+        .get(&book)
+        .unwrap()
+        .unwrap()
+        .to_api(Default::default())["_rev"]
+        .clone();
+    assert_eq!(after, rev);
+    assert_eq!(kept(&f.store), Some(json!("#2185d0")));
+}
