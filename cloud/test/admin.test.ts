@@ -74,6 +74,33 @@ describe("commands", () => {
 		expect((await runAdmin(["enable", "nobody"])).message).toContain("nobody");
 	});
 
+	it("delete removes an account's sign-in rows with it, foreign keys and all", async () => {
+		const id = alice.creds.accountId;
+		const now = Date.now();
+		await env.DB.batch([
+			env.DB.prepare("INSERT INTO account_identities (account_id, provider, subject, created_at) VALUES (?1, 'github', '123', ?2)").bind(id, now),
+			env.DB.prepare(
+				"INSERT INTO account_passkeys (credential_id, account_id, public_key, alg, sign_count, created_at) VALUES (?1, ?2, ?3, -7, 0, ?4)",
+			).bind("A".repeat(22), id, "B".repeat(40), now),
+			env.DB.prepare(
+				"INSERT INTO device_approvals (id, account_id, device_id, commit_hash, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+			).bind("C".repeat(43), id, `d_${"0".repeat(32)}`, "D".repeat(43), now, now + 300_000),
+			env.DB.prepare("INSERT INTO auth_flows (id, kind, account_id, created_at, expires_at) VALUES (?1, 'passkey_signin', ?2, ?3, ?4)").bind(
+				"E".repeat(43),
+				id,
+				now,
+				now + 300_000,
+			),
+		]);
+		expect((await runAdmin(["delete", "alice", "--confirm", "alice"])).ok).toBe(true);
+		expect(await accountRow(id)).toBeNull();
+		const left = await env.DB.prepare(
+			`SELECT (SELECT count(*) FROM account_identities) + (SELECT count(*) FROM account_passkeys)
+  + (SELECT count(*) FROM device_approvals) + (SELECT count(*) FROM auth_flows) AS rows`,
+		).first<number>("rows");
+		expect(left).toBe(0);
+	});
+
 	it("delete needs the name twice, then removes the account's rows and queues its purge", async () => {
 		await client(alice.token).push([{ id: wireId(), rev: wireRev(), deleted: false, sealed: sealed(), base_rev: null }]);
 		await client(alice.token).putFile(wireId("file"), new Uint8Array(64));

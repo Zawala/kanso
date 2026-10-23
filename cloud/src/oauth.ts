@@ -1,6 +1,6 @@
 // Provider token verification (design: Kanso accounts spec, revision 3).
 
-import { sha256 } from "./crypto";
+import { sha256, sha256Hex } from "./crypto";
 import type { Env } from "./env";
 import { base64url, fromBase64url } from "./protocol";
 
@@ -20,6 +20,8 @@ export const GOOGLE_ID_TOKEN_ALGORITHMS = ["RS256"] as const;
 
 const REQUEST_TIMEOUT_MS = 10_000;
 const JWKS_TTL_MS = 60 * 60 * 1000;
+/** The shortest gap between two refetches for an unknown `kid`. */
+const JWKS_MISS_REFETCH_MS = 5 * 60 * 1000;
 const APPLE_SECRET_MAX_AGE_MS = 23 * 60 * 60 * 1000;
 const DAY_SECONDS = 24 * 60 * 60;
 const textEncoder = new TextEncoder();
@@ -33,7 +35,12 @@ export interface VerifyOptions {
 	algorithms: readonly ("RS256" | "ES256")[];
 	issuers: readonly string[];
 	audience: string;
-	nonce?: string;
+	/**
+	 * SHA-256 hex of the nonce the flow sent the provider, as `auth_flows.nonce_hash`
+	 * stores it. Required: Apple and Google tokens are bound to their flow, and a
+	 * token without the nonce, or with another one, is refused.
+	 */
+	nonce_hash: string;
 	now: number;
 }
 
@@ -51,8 +58,12 @@ type Jwk = JsonObject;
 interface JwksCacheEntry {
 	expires_at: number;
 	keys: Jwk[];
-	/** Whether this entry has already been replaced once for an unknown `kid`; a second miss is refused, not refetched. */
-	refreshed_for_miss: boolean;
+	/**
+	 * When the provider was last asked again for an unknown `kid`, or null. Another
+	 * miss within JWKS_MISS_REFETCH_MS is refused without a request; after it, a key
+	 * the provider has published since is found.
+	 */
+	forced_at: number | null;
 }
 
 const jwksCache = new Map<string, JwksCacheEntry>();
@@ -100,12 +111,14 @@ function decodeJsonSegment(encoded: string): JsonObject | null {
 }
 
 async function fetchJwks(url: string, force = false): Promise<JwksCacheEntry> {
+	const now = Date.now();
 	const cached = jwksCache.get(url);
-	if (cached && cached.expires_at > Date.now()) {
-		// A fresh entry answers normally; a forced read is only for the one
-		// unknown-`kid` refetch, and an entry that already spent it is reused
-		// rather than asking the provider again.
-		if (!force || cached.refreshed_for_miss) return cached;
+	const fresh = cached !== undefined && cached.expires_at > now;
+	if (fresh) {
+		// A fresh entry answers normally. A forced read is the unknown-`kid`
+		// refetch, rate-limited so a stream of bogus `kid`s can't hammer the provider.
+		if (!force) return cached;
+		if (cached.forced_at !== null && now - cached.forced_at < JWKS_MISS_REFETCH_MS) return cached;
 	}
 
 	let response: Response;
@@ -130,7 +143,12 @@ async function fetchJwks(url: string, force = false): Promise<JwksCacheEntry> {
 	if (!isObject(body) || !Array.isArray(body.keys)) throw new ProviderUnavailable();
 	const keys = body.keys.filter(isObject);
 	if (keys.length === 0) throw new ProviderUnavailable();
-	const entry = { expires_at: Date.now() + JWKS_TTL_MS, keys, refreshed_for_miss: force };
+	// A forced refetch keeps the window it replaced, so a miss can't stretch the cache.
+	const entry: JwksCacheEntry = {
+		expires_at: force && fresh ? cached.expires_at : now + JWKS_TTL_MS,
+		keys,
+		forced_at: force ? now : null,
+	};
 	jwksCache.set(url, entry);
 	return entry;
 }
@@ -139,11 +157,8 @@ async function keyForKid(url: string, kid: string): Promise<Jwk | null> {
 	const first = await fetchJwks(url);
 	const firstMatch = first.keys.find((key) => key.kid === kid);
 	if (firstMatch) return firstMatch;
-	// The cache has already been replaced once for this window: a second unknown
-	// `kid` is refused without another request to the provider.
-	if (first.refreshed_for_miss) return null;
-
-	// A rotated provider key gets exactly one fresh JWKS read before refusal.
+	// A rotated provider key gets a fresh JWKS read, at most one every
+	// JWKS_MISS_REFETCH_MS; within that, fetchJwks answers from the cache.
 	const refreshed = await fetchJwks(url, true);
 	return refreshed.keys.find((key) => key.kid === kid) ?? null;
 }
@@ -228,13 +243,15 @@ function validClaims(claims: JsonObject, options: VerifyOptions): boolean {
 	const audience = claims.aud;
 	if (typeof audience === "string") {
 		if (audience !== options.audience) return false;
-	} else if (!Array.isArray(audience) || !audience.includes(options.audience)) {
+	} else if (!Array.isArray(audience) || !audience.includes(options.audience) || claims.azp !== options.audience) {
+		// A token for several audiences counts only when this client is its authorized party.
 		return false;
 	}
 	if (typeof claims.exp !== "number" || !Number.isFinite(claims.exp)) return false;
 	if (typeof claims.iat !== "number" || !Number.isFinite(claims.iat)) return false;
 	const nowSeconds = options.now / 1000;
 	if (claims.exp < nowSeconds - 120 || claims.iat > nowSeconds + 120) return false;
+	if (claims.nbf !== undefined && (typeof claims.nbf !== "number" || claims.nbf > nowSeconds + 120)) return false;
 	return typeof claims.sub === "string" && /^[\x20-\x7e]{1,255}$/.test(claims.sub);
 }
 
@@ -266,10 +283,13 @@ export async function verifyIdToken(token: string, options: VerifyOptions): Prom
 	// Algorithm allowlisting precedes key fetching or any cryptographic operation.
 	if (alg !== "RS256" && alg !== "ES256") return invalidCredentials();
 	if (!options.algorithms.includes(alg)) return invalidCredentials();
+	// No extension this verifier understands may be marked critical.
+	if (header.crit !== undefined) return invalidCredentials();
 	// `typ` is optional; when supplied, require the conventional JWT value.
 	if (header.typ !== undefined && header.typ !== "JWT") return invalidCredentials();
 	if (typeof header.kid !== "string" || header.kid.length === 0) return invalidCredentials();
 	if (!Number.isFinite(options.now) || typeof options.audience !== "string" || options.audience.length === 0) return invalidCredentials();
+	if (typeof options.nonce_hash !== "string" || !/^[0-9a-f]{64}$/.test(options.nonce_hash)) return invalidCredentials();
 	if (!validClaims(claims, options)) return invalidCredentials();
 
 	let jwk: Jwk | null;
@@ -289,10 +309,10 @@ export async function verifyIdToken(token: string, options: VerifyOptions): Prom
 		return invalidCredentials();
 	}
 	if (!verified) return invalidCredentials();
-	if (options.nonce !== undefined) {
-		if (typeof claims.nonce !== "string" || !(await constantTimeTextEqual(claims.nonce, options.nonce))) {
-			return { ok: false, error: "nonce_reused" };
-		}
+	// The token must carry the flow's nonce. A missing or different one is a
+	// token from another flow: invalid, not "reused" (that is a consumed flow).
+	if (typeof claims.nonce !== "string" || !(await constantTimeTextEqual(await sha256Hex(claims.nonce), options.nonce_hash))) {
+		return invalidCredentials();
 	}
 	return { ok: true, claims };
 }
@@ -302,11 +322,20 @@ export async function pkceChallenge(verifier: string): Promise<string> {
 	return base64url(await sha256(verifier));
 }
 
-/** Compare the verifier-derived challenge in constant time. */
-export async function pkceMatches(verifier: string, challenge: string): Promise<boolean> {
+/**
+ * `auth_flows.pkce_hash` for an S256 challenge: the same 32 bytes, as lowercase hex.
+ * Null for anything that isn't a canonical base64url SHA-256.
+ */
+export function pkceHash(challenge: string): string | null {
 	const decoded = decodeCanonicalBase64url(challenge);
-	if (!decoded || decoded.length !== 32) return false;
-	return constantTimeTextEqual(await pkceChallenge(verifier), challenge);
+	if (!decoded || decoded.length !== 32) return null;
+	return Array.from(decoded, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** Whether `verifier` belongs to the stored `pkce_hash`, compared in constant time. */
+export async function pkceMatches(verifier: string, storedHash: string): Promise<boolean> {
+	if (!/^[0-9a-f]{64}$/.test(storedHash)) return false;
+	return constantTimeTextEqual(await sha256Hex(verifier), storedHash);
 }
 
 function required(value: string | undefined): value is string {
