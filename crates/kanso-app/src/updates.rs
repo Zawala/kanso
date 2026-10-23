@@ -395,7 +395,7 @@ fn schedule(cx: &mut App) {
 /// Whether a background check is due at `now`: none has run, the last was
 /// [`CHECK_INTERVAL`] ago ([`RETRY_INTERVAL`] if it failed), or the clock
 /// went back past it. Pure.
-fn check_due(last_checked_ms: Option<i64>, failed: bool, now: i64) -> bool {
+pub(crate) fn check_due(last_checked_ms: Option<i64>, failed: bool, now: i64) -> bool {
     let Some(last) = last_checked_ms else {
         return true;
     };

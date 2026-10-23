@@ -12,7 +12,10 @@
 //! never reaches the network.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
+use std::time::Duration;
 
 use gpui_kit::component::button::Button;
 use gpui_kit::component::{Icon, Sizable as _, StyledExt as _, h_flex, v_flex};
@@ -110,7 +113,11 @@ pub struct ThemeGallery {
     pub preview: Option<Arc<ThemeEntry>>,
     pub selected: Option<String>,
     pub notice: Option<String>,
+    /// The last check's failure, kept quiet until someone opens Settings.
+    pub last_error: Option<String>,
     pub last_checked_ms: Option<i64>,
+    /// Keeps the automatic check alive.
+    pub(crate) _schedule: Option<Task<()>>,
 }
 
 impl Global for ThemeGallery {}
@@ -144,7 +151,9 @@ impl Default for ThemeGallery {
             preview: None,
             selected: None,
             notice: None,
+            last_error: None,
             last_checked_ms: None,
+            _schedule: None,
         }
     }
 }
@@ -378,6 +387,7 @@ fn finish_refresh(manual: bool, root: std::path::PathBuf, result: CheckResult, c
                 gallery.index = Some(index);
                 gallery.status = Status::Ready;
                 gallery.notice = None;
+                gallery.last_error = None;
                 gallery.last_checked_ms = Some(now);
                 gallery.installed = crate::gallery::installed(&root);
                 gallery.requested.clear();
@@ -401,6 +411,7 @@ fn finish_refresh(manual: bool, root: std::path::PathBuf, result: CheckResult, c
                 meta.last_checked_ms = Some(now);
                 meta.save(&root.join("meta.json")).ok();
                 gallery.last_checked_ms = Some(now);
+                gallery.last_error = Some(err.to_string());
                 if manual {
                     gallery.notice = Some(if is_offline(&err) {
                         "Kanso couldn't reach GitHub. It tries again later.".into()
@@ -421,6 +432,19 @@ fn finish_refresh(manual: bool, root: std::path::PathBuf, result: CheckResult, c
         }
     };
     if reload {
+        let plan = cx
+            .try_global::<ThemeGallery>()
+            .and_then(|gallery| gallery.index.clone())
+            .map(|index| {
+                kanso_gallery::plan(
+                    &index,
+                    &crate::gallery::installed(&root),
+                    &crate::updates::current_version(),
+                )
+            });
+        if let Some(plan) = plan {
+            apply_plan(plan, &root, cx);
+        }
         crate::themes::reload(cx);
         crate::icon_themes::reload(cx);
     }
@@ -566,6 +590,16 @@ fn finish_request(received: Option<FileAnswer>, cx: &mut App) {
 /// Installs `theme` from the fetched, hash-checked bytes. If its card hasn't
 /// fetched it yet, fetches it first.
 pub fn install(theme: Theme, cx: &mut App) {
+    install_with(theme, false, cx);
+}
+
+/// An automatic update: no toast on success, and a failure only in the log
+/// and the quiet Settings line.
+fn install_quiet(theme: Theme, cx: &mut App) {
+    install_with(theme, true, cx);
+}
+
+fn install_with(theme: Theme, quiet: bool, cx: &mut App) {
     let cached = {
         let gallery = gallery_mut(cx);
         gallery
@@ -576,7 +610,7 @@ pub fn install(theme: Theme, cx: &mut App) {
             .map(|entry| entry.file.to_json_string().into_bytes())
     };
     if let Some(bytes) = cached {
-        install_bytes(theme, bytes, cx);
+        install_bytes(theme, bytes, quiet, cx);
         return;
     }
     let prepared = {
@@ -615,15 +649,21 @@ pub fn install(theme: Theme, cx: &mut App) {
     cx.spawn(async move |cx| {
         let result = rx.recv().await.ok();
         cx.update(|cx| match result {
-            Some(Ok(bytes)) => install_bytes(theme, bytes, cx),
-            Some(Err(err)) => notice(cx, format!("Couldn't install it: {err}")),
+            Some(Ok(bytes)) => install_bytes(theme, bytes, quiet, cx),
+            Some(Err(err)) => {
+                if quiet {
+                    log_line(&format!("installing {} failed: {err}", theme.name));
+                } else {
+                    notice(cx, format!("Couldn't install it: {err}"));
+                }
+            }
             None => {}
         });
     })
     .detach();
 }
 
-fn install_bytes(theme: Theme, bytes: Vec<u8>, cx: &mut App) {
+fn install_bytes(theme: Theme, bytes: Vec<u8>, quiet: bool, cx: &mut App) {
     let Some(data_dir) = cx
         .try_global::<crate::workspace::AppState>()
         .map(|state| state.data_dir.clone())
@@ -644,9 +684,22 @@ fn install_bytes(theme: Theme, bytes: Vec<u8>, cx: &mut App) {
     match result {
         Ok(()) => {
             refresh_installed(cx);
-            notice(cx, format!("Installed {}.", theme.name));
+            if quiet {
+                log_line(&format!(
+                    "updated {} to version {}",
+                    theme.name, theme.version
+                ));
+            } else {
+                notice(cx, format!("Installed {}.", theme.name));
+            }
         }
-        Err(err) => notice(cx, format!("Couldn't install {}: {err}", theme.name)),
+        Err(err) => {
+            if quiet {
+                log_line(&format!("updating {} failed: {err}", theme.name));
+            } else {
+                notice(cx, format!("Couldn't install {}: {err}", theme.name));
+            }
+        }
     }
 }
 
@@ -1455,6 +1508,7 @@ pub fn header(
     };
     let tab = gallery.tab(kind);
     let filter = gallery.filter;
+    let last_error = gallery.last_error.clone();
     let mut row = h_flex().gap(px(6.)).items_center().child(
         Button::new("gallery-tab-installed")
             .small()
@@ -1495,6 +1549,14 @@ pub fn header(
     v_flex()
         .gap(px(8.))
         .child(row)
+        .when_some(last_error, |el, _| {
+            el.child(
+                div()
+                    .text_size(px(11.5))
+                    .text_color(colors.text_muted)
+                    .child("Couldn't check for theme updates. Installed themes still work."),
+            )
+        })
         .when_some(gallery.preview.clone(), |el, preview| {
             el.child(
                 h_flex()
@@ -1527,13 +1589,164 @@ pub fn header(
         .into_any_element()
 }
 
+/// Starts the automatic check: 20 seconds after launch, so it doesn't
+/// compete with the app-update check at 8 seconds, then on the app's
+/// half-hour wall clock, five minutes after a failure and within a minute
+/// of waking.
+pub fn schedule(cx: &mut App) {
+    let task = cx.spawn(async move |cx| {
+        cx.background_executor()
+            .timer(Duration::from_secs(20))
+            .await;
+        cx.update(auto_check);
+        loop {
+            cx.background_executor()
+                .timer(Duration::from_secs(60))
+                .await;
+            cx.update(auto_check);
+        }
+    });
+    gallery_mut(cx)._schedule = Some(task);
+}
+
+fn auto_check(cx: &mut App) {
+    let due = {
+        let Some(state) = cx.try_global::<crate::workspace::AppState>() else {
+            return;
+        };
+        if !state.config.gallery.auto_update {
+            return;
+        }
+        let Some(gallery) = cx.try_global::<ThemeGallery>() else {
+            return;
+        };
+        let failed = gallery.last_error.is_some() || matches!(gallery.status, Status::Failed(_));
+        crate::updates::check_due(
+            gallery.last_checked_ms,
+            failed,
+            crate::clock::Clock::now_ms(cx),
+        )
+    };
+    if due {
+        refresh(false, cx);
+    }
+}
+
+/// Applies a verified plan: updates only unedited copies, removes a revoked
+/// theme and falls back when it was in use, and disables (never deletes) a
+/// revoked copy that was edited until the owner decides that case.
+fn apply_plan(plan: kanso_gallery::Plan, root: &std::path::Path, cx: &mut App) {
+    let auto = cx
+        .try_global::<crate::workspace::AppState>()
+        .is_some_and(|state| state.config.gallery.auto_update);
+    for action in plan.actions {
+        match action {
+            kanso_gallery::Action::Update(theme) => {
+                if auto {
+                    install_quiet(*theme, cx);
+                }
+            }
+            kanso_gallery::Action::Remove { id, kind, reason } => {
+                fall_back_if_selected(kind, &id, cx);
+                if let Err(err) = crate::gallery::remove(root, kind, &id) {
+                    log_line(&format!("removing revoked {id} failed: {err}"));
+                    continue;
+                }
+                log_line(&format!("removed revoked {id}: {reason}"));
+                notice(cx, format!("The gallery withdrew a theme: {reason}"));
+            }
+            kanso_gallery::Action::Disable { id, kind, reason } => {
+                fall_back_if_selected(kind, &id, cx);
+                crate::gallery::disable(root, &id);
+                log_line(&format!("disabled revoked, edited {id}: {reason}"));
+                notice(
+                    cx,
+                    format!(
+                        "The gallery withdrew a theme you had edited; it stays on disk but is no longer drawn. {reason}"
+                    ),
+                );
+            }
+        }
+    }
+    refresh_installed(cx);
+}
+
+/// Switches away from a revoked theme that is in use, before its files go.
+/// The reload afterwards also falls back for a name that is gone; this
+/// saves the choice.
+fn fall_back_if_selected(kind: Kind, id: &str, cx: &mut App) {
+    match kind {
+        Kind::Color => {
+            let dark = cx
+                .try_global::<crate::themes::ActiveTheme>()
+                .is_none_or(|active| active.ui.dark());
+            let selected = cx
+                .try_global::<crate::workspace::AppState>()
+                .is_some_and(|state| {
+                    let themes = &state.config.appearance.themes;
+                    [&themes.ui, &themes.light, &themes.dark]
+                        .iter()
+                        .any(|name| name.as_str() == id || name.as_str() == id.replace('-', " "))
+                });
+            if selected {
+                let fallback = if dark {
+                    crate::config::KANSO_DARK
+                } else {
+                    crate::config::KANSO_LIGHT
+                };
+                crate::settings_themes::select_installed(fallback, dark, cx);
+            }
+        }
+        Kind::Icons => {
+            let chosen = cx
+                .try_global::<crate::workspace::AppState>()
+                .and_then(|state| state.config.appearance.icon_theme.clone());
+            if chosen.as_deref() == Some(id) {
+                crate::icon_themes::choose(None, cx);
+            }
+        }
+    }
+}
+
+static LOG_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Where the gallery log writes: `<data folder>/logs/themes.log`.
+pub fn set_log_dir(data_dir: &std::path::Path) {
+    let dir = data_dir.join("logs");
+    if std::fs::create_dir_all(&dir).is_ok() {
+        LOG_DIR.set(dir).ok();
+    }
+}
+
+/// Appends a line to the gallery's log (kept under 256 KB, rotated like
+/// `updates.log`) and to standard error. A quiet failure shows here.
+fn log_line(line: &str) {
+    eprintln!("kanso: themes: {line}");
+    let Some(dir) = LOG_DIR.get() else {
+        return;
+    };
+    let path = dir.join("themes.log");
+    if std::fs::metadata(&path).is_ok_and(|meta| meta.len() > 256 * 1024) {
+        std::fs::rename(&path, dir.join("themes.log.1")).ok();
+    }
+    use std::io::Write as _;
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let now = kanso_core::now_ms();
+        writeln!(file, "{now} {line}").ok();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::settings_gallery::{
         Filter, Installed, Item, Kind, matches_filter, matches_words, shown,
     };
     use kanso_gallery::index::{Index, SCHEMA};
-    use kanso_gallery::{Appearance, FileRef, Theme};
+    use kanso_gallery::{Appearance, FileRef, Theme, check_index};
     use proptest::prelude::*;
 
     fn theme(id: &str, family: &str, appearance: Appearance) -> Theme {
@@ -1621,6 +1834,29 @@ mod tests {
                 matches_filter(&theme, Filter::Updates, &records),
                 installed && version > 1
             );
+        }
+
+        /// At the refresh boundary, a catalog whose signature or serial
+        /// fails is never returned, so no plan is ever built from it.
+        #[test]
+        fn prop_no_failing_catalog_is_ever_applied(
+            at in any::<prop::sample::Index>(),
+            bit in 0u8..8,
+        ) {
+            let (key, _) = kanso_update::feed::generate_signing_key();
+            let catalog = index(vec![theme("nord", "nord", Appearance::Dark)]);
+            let mut bytes = serde_json::to_vec(&catalog).unwrap();
+            let signature = kanso_update::sign_feed(&bytes, &key).into_bytes();
+            let ix = at.index(bytes.len());
+            bytes[ix] ^= 1 << bit;
+            let got = check_index(
+                &bytes,
+                &signature,
+                &[key.verifying_key()],
+                &kanso_gallery::Floor::default(),
+                &crate::updates::current_version(),
+            );
+            prop_assert!(got.is_err());
         }
 
         /// A search finds a theme by every word in its name, family, author,

@@ -204,6 +204,7 @@ pub fn page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
     let state = cx.global::<AppState>();
     let settings = state.config.appearance.themes.clone();
     let dir = themes_dir(&state.data_dir);
+    let auto_update = state.config.gallery.auto_update;
     let Some(themes) = cx.try_global::<Themes>() else {
         return Vec::new();
     };
@@ -318,6 +319,22 @@ pub fn page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                     .label("Reload")
                     .debug_selector(|| "reload-themes".into())
                     .on_click(|_, window, cx| reload(window, cx)),
+            ),
+        Row::new(Lucide::RefreshCw, "Keep gallery themes up to date")
+            .detail("Checks the signed gallery on Kanso's update timer. Off, Refresh still works.")
+            .trailing(
+                div()
+                    .debug_selector(|| "themes-gallery-auto-update".into())
+                    .child(
+                        Switch::new("themes-gallery-auto-update")
+                            .checked(auto_update)
+                            .on_click(|on, _, cx| {
+                                let on = *on;
+                                AppState::update_config(cx, |config| {
+                                    config.gallery.auto_update = on;
+                                });
+                            }),
+                    ),
             ),
         Row::new(Lucide::Download, "Import theme")
             .detail("A theme package (its folder or .tgz) or a Zed theme (.json), converted into the themes folder.")

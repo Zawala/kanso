@@ -389,6 +389,8 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         updates::register_app_actions(cx);
         services::apply_server_settings(cx);
         crate::settings_gallery::init(cx);
+        crate::settings_gallery::set_log_dir(&cx.global::<AppState>().data_dir);
+        crate::settings_gallery::schedule(cx);
         themes::watch(cx);
         // The chosen icon theme draws every icon, from the first window on.
         icon_themes::init(cx);

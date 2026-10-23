@@ -957,4 +957,30 @@ mod tests {
         let disabled = Themes::load(Some(&own), Some(&gallery));
         assert!(disabled.get("Gallery Nord").is_none());
     }
+
+    /// A gallery theme that is selected picks up new bytes when it updates:
+    /// the watcher reloads and the same name resolves to the new colors.
+    #[test]
+    fn a_selected_gallery_theme_hot_reloads_after_an_update() {
+        let dir = tempfile::tempdir().unwrap();
+        let gallery = dir.path().join("gallery");
+        std::fs::create_dir_all(gallery.join("themes")).unwrap();
+        let write = |editor: &str| {
+            std::fs::write(
+                gallery.join("themes/hot.json"),
+                format!(
+                    r##"{{"name": "Hot", "appearance": "dark", "ui": {{"editor": "{editor}", "text": "#EEEEEE", "accent": "#88AAFF"}}}}"##
+                ),
+            )
+            .unwrap();
+        };
+        write("#101010");
+        let before = Themes::load(None, Some(&gallery));
+        let old = before.get("Hot").unwrap().resolved.colors.editor;
+        write("#202020");
+        let after = Themes::load(None, Some(&gallery));
+        let new = after.get("Hot").unwrap().resolved.colors.editor;
+        assert_eq!(old, crate::theme::Rgb(0x101010));
+        assert_eq!(new, crate::theme::Rgb(0x202020));
+    }
 }

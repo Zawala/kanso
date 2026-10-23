@@ -10,6 +10,7 @@ heading compares the release with the one before.
 - **themes:** The theme gallery's signed catalog, path rules, install plan, key list and SVG sanitizer, with imported and on-disk icon themes held to it (#49 steps 1–2)
 - **themes:** Install, update and remove gallery color and icon themes under `<data>/gallery/`, with atomic swaps, crash-safe state, edited-copy detection, and the gallery-aware theme loaders (#49 step 3)
 - **themes:** Browse the gallery from Settings › Themes and Icon Themes, with search, filters, paired cards, live color preview and install/use/remove actions (#49 step 4)
+- **themes:** Check the gallery on the app's update timer, update unedited installed themes quietly, honour signed revocations (an edited revoked copy is disabled, not deleted), fall back when a selected theme is withdrawn, and add the "Keep gallery themes up to date" switch and `themes.log` (#49 step 5)
 
 ## [0.8.4](https://github.com/iamngoni/kanso/compare/v0.8.3...v0.8.4) - 2026-10-22
 
