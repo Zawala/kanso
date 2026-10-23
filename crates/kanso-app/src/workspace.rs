@@ -397,6 +397,9 @@ pub struct Workspace {
     pub(crate) tab_bar: Entity<TabBar>,
     /// How the note being selected should open.
     pending_open: OpenIntent,
+    /// Notes whose tabs are kept while the editor holds unsaved text about
+    /// a delete, to close them once that settles.
+    pending_tab_closes: std::collections::BTreeSet<String>,
     /// [`Workspace::nav_reach`] until a visit or a change to the notes.
     pub(crate) nav_reach: Option<(bool, bool)>,
     /// Draws stand-ins for the traffic lights, which the system draws over
@@ -593,6 +596,17 @@ impl Workspace {
             cx.subscribe_in(&tab_bar, window, |this, _, event, window, cx| {
                 this.on_tab_bar_event(event, window, cx);
             }),
+            // A kept tab goes once the editor's text about a deleted note
+            // is saved or the question answered; editor notifies are the
+            // signal that either may have happened.
+            cx.observe_in(&editor, window, |this, _, window, cx| {
+                if this.pending_tab_closes.is_empty() {
+                    return;
+                }
+                cx.defer_in(window, |this, window, cx| {
+                    this.recheck_pending_tab_closes(window, cx)
+                });
+            }),
             cx.subscribe(&inspector, |_, _, event, cx| match event {
                 InspectorEvent::Tab(tab) => {
                     let tab = *tab;
@@ -685,6 +699,7 @@ impl Workspace {
             tabs: Tabs::restore(restored, restore_active),
             tab_bar,
             pending_open: OpenIntent::Current,
+            pending_tab_closes: Default::default(),
             nav_reach: None,
             #[cfg(test)]
             placeholder_traffic_lights: false,
@@ -1970,12 +1985,16 @@ impl Workspace {
         let trashed = note.as_ref().is_some_and(|note| note.is_trashed())
             && self.library.read(cx).filter != Filter::Trash;
         if note.is_none() || trashed {
-            // A note with edits the editor is still asking about stays in
-            // its tab until the reader answers; the editor says so itself.
+            // A note with text the editor has not saved stays in its tab
+            // until that settles, so nothing is lost; the tab closes once
+            // the text is saved or the question about the delete answered
+            // (`recheck_pending_tab_closes`).
             let showing = self.tabs.active_id() == Some(change.id.as_str());
             if showing && self.editor.read(cx).has_unsaved_edits(cx) {
+                self.pending_tab_closes.insert(change.id.clone());
                 return;
             }
+            self.pending_tab_closes.remove(&change.id);
             let was_active = self.tabs.active_id() == Some(change.id.as_str());
             if !self.tabs.remove_note(&change.id) {
                 return;
@@ -1985,14 +2004,46 @@ impl Workspace {
                 self.open_after_tab_gone(window, cx);
             }
         } else if let Some(note) = note {
+            // The note came back (Keep Mine, or a sync): its tab stays.
+            self.pending_tab_closes.remove(&change.id);
             let locked = note.is_locked();
             self.tabs.update_note(&change.id, note.title, locked);
             cx.notify();
         }
     }
 
+    /// Tries again to close the tabs kept while the editor had unsaved
+    /// text about a note deleted elsewhere: once the text is saved, the
+    /// note is back (Keep Mine), or the question is answered, the tab can
+    /// go.
+    fn recheck_pending_tab_closes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let pending: Vec<String> = self.pending_tab_closes.iter().cloned().collect();
+        for id in pending {
+            let note = self.store.note(&id).ok().flatten();
+            let trashed = note.as_ref().is_some_and(|note| note.is_trashed())
+                && self.library.read(cx).filter != Filter::Trash;
+            if note.is_some() && !trashed {
+                self.pending_tab_closes.remove(&id);
+                continue;
+            }
+            let showing = self.tabs.active_id() == Some(id.as_str());
+            if showing && self.editor.read(cx).has_unsaved_edits(cx) {
+                continue;
+            }
+            self.pending_tab_closes.remove(&id);
+            if !self.tabs.remove_note(&id) {
+                continue;
+            }
+            self.save_tabs(cx);
+            if showing {
+                self.open_after_tab_gone(window, cx);
+            }
+        }
+    }
+
     /// Closes the tab of a note the editor has let go of.
     fn close_tab_of_note(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.pending_tab_closes.remove(id);
         let was_active = self.tabs.active_id() == Some(id);
         if !self.tabs.remove_note(id) {
             return;

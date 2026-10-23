@@ -578,6 +578,61 @@ fn trashing_a_note_closes_its_tab(cx: &mut TestAppContext) {
     assert_eq!(f.open_note(cx), Some(a));
 }
 
+/// A trashed note with unsaved text keeps its tab while the editor asks;
+/// taking the version from elsewhere closes the tab.
+// no-prop-test: one question and answer in one window.
+#[gpui_kit::test]
+fn a_trashed_notes_tab_goes_when_the_question_is_answered(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let a = f.note("A", "saved");
+    f.select(cx, &a);
+    f.type_body(cx, "typed and not saved");
+    assert!(f.with_editor(cx, |editor, _, cx| editor.has_unsaved_edits(cx)));
+    f.store
+        .put(
+            DocType::Note,
+            json!({"_id": a, "bookId": TRASH_BOOK_ID}),
+            Put::Merge,
+            Origin::Api,
+        )
+        .unwrap();
+    // No clock advance: the autosave must not save the text first.
+    cx.run_until_parked();
+    f.draw(cx);
+    assert_eq!(f.tabs(cx), vec![a.clone()], "the unsaved text keeps the tab");
+    assert!(f.with_editor(cx, |editor, _, _| editor.has_incoming()));
+
+    f.with_editor(cx, |editor, window, cx| editor.take_theirs(window, cx));
+    cx.run_until_parked();
+    f.draw(cx);
+    assert_eq!(f.tabs(cx), Vec::<String>::new(), "the tab goes");
+    assert_eq!(f.open_note(cx), None);
+}
+
+/// Keeping the text of a note deleted elsewhere brings the note back, and
+/// its tab stays: the kept tab is not closed by a later check.
+// no-prop-test: one delete and one answer in one window.
+#[gpui_kit::test]
+fn keeping_the_text_of_a_deleted_note_keeps_its_tab(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let a = f.note("A", "saved");
+    f.select(cx, &a);
+    f.type_body(cx, "typed and not saved");
+    f.store.delete(&a, Origin::Api).unwrap();
+    cx.run_until_parked();
+    f.draw(cx);
+    assert_eq!(f.tabs(cx), vec![a.clone()], "the text keeps the tab");
+
+    f.with_editor(cx, |editor, _, cx| editor.keep_mine(cx));
+    cx.run_until_parked();
+    f.draw(cx);
+    cx.run_until_parked();
+    f.draw(cx);
+    assert_eq!(f.tabs(cx), vec![a.clone()], "the note is back");
+    assert_eq!(f.store_body(&a), "typed and not saved");
+    assert_eq!(f.open_note(cx), Some(a));
+}
+
 /// The tabs and the one showing kept in the settings come back at launch.
 // no-prop-test: one launch from one config; the model's restore rules are
 // properties in tabs.rs.
