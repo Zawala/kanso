@@ -312,12 +312,7 @@ impl AskPanel {
                     .update(cx, |this, cx| {
                         match update {
                             Update::Used(used) => {
-                                for excerpt in used {
-                                    if !this.used.iter().any(|seen| seen.id == excerpt.id) {
-                                        this.turn_notes.push(excerpt.id.clone());
-                                        this.used.push(excerpt);
-                                    }
-                                }
+                                record_used(&mut this.turn_notes, &mut this.used, used);
                                 this.searching = false;
                                 this.streaming = true;
                             }
@@ -583,6 +578,20 @@ impl AskPanel {
 
 /// Drops every exchange that cited a note which is no longer eligible. Any
 /// error in the eligibility check drops the turn too (fail closed).
+/// Notes the answer being written read: every one goes on this turn's list,
+/// even a note an earlier turn read too, so the turn is dropped if any of
+/// them stops being eligible. `used` keeps one excerpt per note for links.
+fn record_used(turn_notes: &mut Vec<String>, used: &mut Vec<Excerpt>, new: Vec<Excerpt>) {
+    for excerpt in new {
+        if !turn_notes.contains(&excerpt.id) {
+            turn_notes.push(excerpt.id.clone());
+        }
+        if !used.iter().any(|seen| seen.id == excerpt.id) {
+            used.push(excerpt);
+        }
+    }
+}
+
 fn eligible_turns(turns: Vec<AskedTurn>, store: &Store) -> Vec<AskedTurn> {
     turns
         .into_iter()
@@ -752,7 +761,10 @@ impl Render for AskPanel {
 
 #[cfg(test)]
 mod tests {
-    use super::{AskedTurn, ConversationKey, HISTORY_BUDGET, cap_history, eligible_turns};
+    use super::{
+        AskedTurn, ConversationKey, Excerpt, HISTORY_BUDGET, cap_history, eligible_turns,
+        record_used,
+    };
     use crate::config::AiSettings;
     use kanso_ai::Provider;
     use kanso_core::DocType;
@@ -856,6 +868,31 @@ mod tests {
             )
             .unwrap();
         assert!(eligible_turns(turns, &store).is_empty());
+    }
+
+    #[test]
+    fn a_note_read_again_is_on_every_turn_that_read_it() {
+        let excerpt = |id: &str| Excerpt {
+            id: id.to_owned(),
+            title: String::new(),
+            text: String::new(),
+        };
+        let mut used = Vec::new();
+        let mut first = Vec::new();
+        record_used(
+            &mut first,
+            &mut used,
+            vec![excerpt("note:a"), excerpt("note:b")],
+        );
+        let mut second = Vec::new();
+        record_used(
+            &mut second,
+            &mut used,
+            vec![excerpt("note:a"), excerpt("note:a")],
+        );
+        assert_eq!(first, ["note:a", "note:b"]);
+        assert_eq!(second, ["note:a"], "the second turn read note:a too");
+        assert_eq!(used.len(), 2, "one excerpt per note for links");
     }
 
     #[test]
