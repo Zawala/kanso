@@ -7,8 +7,9 @@
 //! notes that mention the title without linking, each with Link to make the
 //! mention a link. Graph draws the notes around the open one
 //! (`graph_view.rs`), Related lists the notes about the same things
-//! (`related.rs`), and Comments a shared note's comments
-//! (`inspector_comments.rs`).
+//! (`related.rs`), Comments a shared note's comments
+//! (`inspector_comments.rs`), and Ask answers a question from the notes
+//! (`ask_panel.rs`).
 
 #[path = "inspector_comments.rs"]
 mod comments;
@@ -27,6 +28,7 @@ use kanso_core::outline::{Heading, headings};
 use kanso_store::{Backlink, Origin, Put, RelatedNote, Store};
 use serde_json::json;
 
+use crate::ask_panel::AskPanel;
 use crate::config::InspectorTab;
 use crate::editor::NoteEditor;
 use crate::graph_view::{GraphView, Scope};
@@ -85,6 +87,8 @@ pub struct Inspector {
     pub visible: bool,
     /// The notes around the open one.
     pub(crate) graph: Entity<GraphView>,
+    /// Ask Your Notes, while AI is on.
+    ask: Entity<AskPanel>,
     /// The open note's related notes (`None` while it isn't embedded), and
     /// the note and embeddings they were found for.
     related: Option<Vec<RelatedNote>>,
@@ -106,10 +110,13 @@ impl Inspector {
         editor: Entity<NoteEditor>,
         tab: InspectorTab,
         hops: u8,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let graph =
             cx.new(|cx| GraphView::new(store.clone(), library.clone(), Scope::Local, hops, cx));
+        let ask =
+            cx.new(|cx| AskPanel::new(store.clone(), library.clone(), editor.clone(), window, cx));
         // The editor notifies on every keystroke; the pane draws again only
         // when what it shows changed: the note, the heading the caret is
         // under, or the backlinks. Typing schedules the outline instead.
@@ -155,6 +162,7 @@ impl Inspector {
             mentions_task: None,
             visible: false,
             graph,
+            ask,
             related: None,
             related_for: None,
             related_task: None,
@@ -165,9 +173,28 @@ impl Inspector {
         }
     }
 
-    /// Shows `tab`.
+    /// Puts the keyboard in Ask Your Notes' question box.
+    #[cfg(test)]
+    pub(crate) fn ask_panel_for_test(&self) -> Entity<AskPanel> {
+        self.ask.clone()
+    }
+
+    pub fn focus_ask(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.ask
+            .update(cx, |ask, cx| ask.focus_question(window, cx));
+    }
+
+    /// Ends the Ask conversation, as turning AI off or closing the pane does.
+    pub fn stop_ask(&mut self, cx: &mut Context<Self>) {
+        self.ask.update(cx, |ask, cx| ask.end_conversation(cx));
+    }
+
+    /// Shows `tab`. Leaving Ask ends its conversation, which is never saved.
     pub fn set_tab(&mut self, tab: InspectorTab, cx: &mut Context<Self>) {
         if self.tab != tab {
+            if self.tab == InspectorTab::Ask {
+                self.ask.update(cx, |ask, cx| ask.end_conversation(cx));
+            }
             self.tab = tab;
             self.scroll.set_offset(point(px(0.), px(0.)));
             cx.emit(InspectorEvent::Tab(tab));
@@ -340,8 +367,9 @@ impl Inspector {
         let colors = Colors::get(cx);
         let tab = self.tab;
         let open_comments = self.open_comments(cx);
-        // Five tabs share the pane's width: each shows its icon, the open
-        // one its name too, and Backlinks and Comments their counts.
+        let options = visible_tabs(cx.global::<AppState>().config.ai.enabled);
+        // Each tab shows its icon, the open one its name too, and Backlinks
+        // and Comments their counts.
         let tabs = [
             (
                 "tab-outline",
@@ -349,6 +377,13 @@ impl Inspector {
                 "Outline",
                 None,
                 InspectorTab::Outline,
+            ),
+            (
+                "tab-ask",
+                Lucide::MessageCircle,
+                "Ask",
+                None,
+                InspectorTab::Ask,
             ),
             (
                 "tab-backlinks",
@@ -378,14 +413,10 @@ impl Inspector {
                 (open_comments > 0).then(|| open_comments.to_string()),
                 InspectorTab::Comments,
             ),
-        ];
-        let options = [
-            InspectorTab::Outline,
-            InspectorTab::Backlinks,
-            InspectorTab::Graph,
-            InspectorTab::Related,
-            InspectorTab::Comments,
-        ];
+        ]
+        .into_iter()
+        .filter(|(_, _, _, _, option)| options.contains(option))
+        .collect::<Vec<_>>();
         h_flex()
             .h(px(TOP_BAND_HEIGHT))
             .flex_none()
@@ -394,7 +425,7 @@ impl Inspector {
                 ButtonGroup::new("inspector-tabs")
                     .outline()
                     .small()
-                    .children(tabs.map(|(id, icon, label, count, option)| {
+                    .children(tabs.into_iter().map(|(id, icon, label, count, option)| {
                         let selected = tab == option;
                         let color = if selected {
                             colors.text
@@ -669,6 +700,7 @@ impl Inspector {
                 _ => String::new(),
             },
             InspectorTab::Comments => self.comments_band(cx),
+            InspectorTab::Ask => String::new(),
         };
         let graph_controls = (self.tab == InspectorTab::Graph).then(|| {
             let hops = self.graph.read(cx).hops;
@@ -1056,6 +1088,14 @@ impl Inspector {
             .unwrap_or_default()
     }
 
+    /// The tabs the pane would offer now.
+    pub fn visible_tabs_for_test(&self, cx: &App) -> Vec<InspectorTab> {
+        let enabled = cx
+            .try_global::<AppState>()
+            .is_some_and(|state| state.config.ai.enabled);
+        visible_tabs(enabled)
+    }
+
     /// The notes found mentioning the open note, by ID.
     pub fn mentions_for_test(&self) -> Vec<String> {
         self.mentions.iter().map(|m| m.id.clone()).collect()
@@ -1067,6 +1107,21 @@ impl Inspector {
             self.link_mention(&first, window, cx);
         }
     }
+}
+
+/// The inspector's tabs, with Ask only while AI is on.
+fn visible_tabs(ai_enabled: bool) -> Vec<InspectorTab> {
+    [
+        InspectorTab::Outline,
+        InspectorTab::Ask,
+        InspectorTab::Backlinks,
+        InspectorTab::Graph,
+        InspectorTab::Related,
+        InspectorTab::Comments,
+    ]
+    .into_iter()
+    .filter(|tab| ai_enabled || *tab != InspectorTab::Ask)
+    .collect()
 }
 
 /// The heading the caret on `line` is under: the last one at or above it.
@@ -1096,6 +1151,7 @@ impl Render for Inspector {
             InspectorTab::Graph => self.render_graph(cx),
             InspectorTab::Related => self.render_related(cx),
             InspectorTab::Comments => self.render_comments(cx),
+            InspectorTab::Ask => self.ask.clone().into_any_element(),
         };
         if self.tab != InspectorTab::Graph {
             self.graph.update(cx, |graph, _| graph.visible = false);

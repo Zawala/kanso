@@ -37,6 +37,7 @@ htmd = "0.5.6"
 # GPUI already builds these decoders.
 image = { version = "0.25", default-features = false, features = ["png", "tiff", "webp", "bmp", "ico"] }
 # Shared notes: end-to-end encrypted collaboration over the sync server.
+kanso-ai.workspace = true
 kanso-collab.workspace = true
 kanso-core.workspace = true
 kanso-import.workspace = true
@@ -58,6 +59,8 @@ model2vec-rs = { version = "=0.3.0", default-features = false }
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# Deriving the JSON schema of a tool's arguments for the model.
+schemars = "0.8"
 # The history dialog's changes between versions.
 similar.workspace = true
 sha2.workspace = true
