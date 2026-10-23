@@ -1,118 +1,27 @@
-//! TeX math as SVG: MathJax 3 with its liteDOM adaptor, run in QuickJS on a
-//! thread of its own. KaTeX's syntax is a subset of what MathJax's TeX
-//! input reads, so notes written for KaTeX typeset the same.
-//!
-//! The engine starts on the first formula (about 50 ms) and then sets a
-//! formula in a few milliseconds. Each formula has a time and memory limit,
-//! so a runaway macro can't hang or swell the app.
+//! TeX math as SVG: MathJax 3 with its liteDOM adaptor, run in the shared
+//! QuickJS engine ([`crate::js`]). KaTeX's syntax is a subset of what
+//! MathJax's TeX input reads, so notes written for KaTeX typeset the same.
 
-use std::io::Read as _;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
-
+use crate::js::{self, Call};
 use crate::svg::{RootTag, number};
 use crate::{Failure, Outcome, Palette, Svg, TEXT_SIZE};
 
-static BUNDLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mathjax-tex-svg.js.deflate"));
-
-/// The longest a formula may take.
-const TIME_LIMIT: Duration = Duration::from_secs(3);
-/// The most memory the engine may hold.
-const MEMORY_LIMIT: usize = 192 << 20;
 /// The longest formula typeset; a longer one is shown as its source.
 const MAX_SOURCE: usize = 16 * 1024;
 
-struct Request {
-    source: String,
-    display: bool,
-    reply: mpsc::Sender<Result<String, String>>,
-}
-
-/// The engine's thread, started on first use.
-fn engine() -> &'static Mutex<mpsc::Sender<Request>> {
-    static ENGINE: OnceLock<Mutex<mpsc::Sender<Request>>> = OnceLock::new();
-    ENGINE.get_or_init(|| {
-        let (send, receive) = mpsc::channel::<Request>();
-        std::thread::Builder::new()
-            .name("kanso-mathjax".into())
-            .spawn(move || run(receive))
-            .expect("starting the math thread");
-        Mutex::new(send)
-    })
-}
-
-/// The engine's loop: starts MathJax, then sets formulas as they come.
-fn run(requests: mpsc::Receiver<Request>) {
-    let deadline = Arc::new(AtomicU64::new(u64::MAX));
-    let started = Instant::now();
-    let engine = start(deadline.clone(), started);
-    for request in requests {
-        let answer = match &engine {
-            Ok((_, context)) => {
-                let limit = started.elapsed() + TIME_LIMIT;
-                deadline.store(limit.as_millis() as u64, Ordering::Relaxed);
-                let answer = typeset(context, &request.source, request.display);
-                deadline.store(u64::MAX, Ordering::Relaxed);
-                answer
-            }
-            Err(message) => Err(message.clone()),
-        };
-        request.reply.send(answer).ok();
-    }
-}
-
-type Engine = (rquickjs::Runtime, rquickjs::Context);
-
-fn start(deadline: Arc<AtomicU64>, started: Instant) -> Result<Engine, String> {
-    let unavailable = |err: &dyn std::fmt::Display| format!("Math is unavailable: {err}");
-    let mut js = String::new();
-    flate2::read::DeflateDecoder::new(BUNDLE)
-        .read_to_string(&mut js)
-        .map_err(|e| unavailable(&e))?;
-    let runtime = rquickjs::Runtime::new().map_err(|e| unavailable(&e))?;
-    runtime.set_memory_limit(MEMORY_LIMIT);
-    runtime.set_max_stack_size(2 << 20);
-    runtime.set_interrupt_handler(Some(Box::new(move || {
-        started.elapsed().as_millis() as u64 > deadline.load(Ordering::Relaxed)
-    })));
-    let context = rquickjs::Context::full(&runtime).map_err(|e| unavailable(&e))?;
-    context.with(|ctx| {
-        ctx.eval::<(), _>(js)
-            .map_err(|e| unavailable(&describe(&ctx, e)))
+/// MathJax's SVG for `source`, or the mistake it found. Blocks on the
+/// engine's thread.
+fn typeset(source: &str, display: bool) -> Result<String, String> {
+    let json = js::call(Call::Tex {
+        source: source.to_owned(),
+        display,
     })?;
-    Ok((runtime, context))
-}
-
-/// What went wrong in QuickJS, with the thrown value's message if any.
-fn describe(ctx: &rquickjs::Ctx<'_>, error: rquickjs::Error) -> String {
-    if matches!(error, rquickjs::Error::Exception) {
-        let thrown = ctx.catch();
-        if let Some(message) = thrown.as_exception().and_then(|e| e.message()) {
-            return message;
-        }
-        return "the formula took too long or used too much memory".into();
+    let answer: serde_json::Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    match (answer["svg"].as_str(), answer["error"].as_str()) {
+        (Some(svg), _) => Ok(svg.to_owned()),
+        (None, Some(error)) => Err(error.to_owned()),
+        (None, None) => Err("MathJax gave nothing back".into()),
     }
-    error.to_string()
-}
-
-fn typeset(context: &rquickjs::Context, source: &str, display: bool) -> Result<String, String> {
-    context.with(|ctx| {
-        let convert: rquickjs::Function = ctx
-            .globals()
-            .get("kansoTex2Svg")
-            .map_err(|e| describe(&ctx, e))?;
-        let json: String = convert
-            .call((source, display))
-            .map_err(|e| describe(&ctx, e))?;
-        let answer: serde_json::Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-        match (answer["svg"].as_str(), answer["error"].as_str()) {
-            (Some(svg), _) => Ok(svg.to_owned()),
-            (None, Some(error)) => Err(error.to_owned()),
-            (None, None) => Err("MathJax gave nothing back".into()),
-        }
-    })
 }
 
 /// Sets `source` (TeX, without its `$` delimiters) as SVG in the palette's
@@ -127,20 +36,7 @@ pub(crate) fn render(source: &str, display: bool, palette: &Palette) -> Outcome 
             "The formula is too long to typeset.".into(),
         ));
     }
-    let (reply, answer) = mpsc::channel();
-    engine()
-        .lock()
-        .map_err(|_| Failure::Invalid("Math is unavailable.".into()))?
-        .send(Request {
-            source: source.to_owned(),
-            display,
-            reply,
-        })
-        .map_err(|_| Failure::Invalid("Math is unavailable.".into()))?;
-    let svg = answer
-        .recv()
-        .map_err(|_| Failure::Invalid("Math is unavailable.".into()))?
-        .map_err(Failure::Invalid)?;
+    let svg = typeset(source, display).map_err(Failure::Invalid)?;
     finish(&svg, palette).ok_or_else(|| Failure::Invalid("MathJax's SVG was unreadable.".into()))
 }
 
@@ -208,7 +104,9 @@ fn stable_ids(svg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::js::TIME_LIMIT;
     use proptest::prelude::*;
+    use std::time::Instant;
 
     #[test]
     fn single_letters_typeset() {
