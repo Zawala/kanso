@@ -105,8 +105,16 @@ pub fn split(body: &str) -> Option<FrontMatter<'_>> {
         let content = line.trim_end_matches(['\n', '\r']);
         let marker = content.trim_end_matches([' ', '\t']);
         if marker == "---" || marker == "..." {
+            let front = &body[opening..offset];
+            // Two rules around prose are not front matter, nor is a block
+            // holding anything but properties. Without this, a note that
+            // starts with `---` and has another rule later would hide, edit
+            // and export the prose between them as if it were properties.
+            if !is_front_matter(front) {
+                return None;
+            }
             return Some(FrontMatter {
-                front: &body[opening..offset],
+                front,
                 front_start: opening,
                 close_start: offset,
                 body_start: end,
@@ -116,6 +124,20 @@ pub fn split(body: &str) -> Option<FrontMatter<'_>> {
         offset = end;
     }
     None
+}
+
+/// Whether the text between the rules is properties and not prose. Every
+/// top-level line must be blank, a comment, a key line or a continuation of
+/// the entry above; an indented line is a continuation.
+fn is_front_matter(front: &str) -> bool {
+    front.split_inclusive('\n').all(|line| {
+        let content = line.trim_end_matches(['\n', '\r']);
+        content.trim().is_empty()
+            || content.starts_with([' ', '\t'])
+            || content.trim_start().starts_with('#')
+            || key_line(content).is_some()
+            || continuation(content)
+    })
 }
 
 /// The front matter between the delimiters, if `body` has any.
@@ -174,31 +196,66 @@ pub fn set_property(body: &str, key: &str, value: &Value) -> String {
     match found {
         // Nothing to do: the value is already what was asked for.
         Some(entry) if entry.value == *value => body.to_owned(),
-        Some(entry) => {
-            let start = front.front_start + entry.start;
-            let end = front.front_start + entry.end;
-            let prefix =
-                &body[front.front_start + entry.start..front.front_start + entry.rest_start];
-            let mut line = format!("{prefix} {}", render(value));
-            // A note's own inline comment stays when the new value is a
-            // plain scalar that can carry one.
-            if plain_scalar(value)
-                && let Some(comment) = &entry.comment
-            {
-                if !comment.starts_with([' ', '\t']) {
-                    line.push(' ');
-                }
-                line.push_str(comment);
-            }
-            line.push_str(front.eol);
-            format!("{}{}{}", &body[..start], line, &body[end..])
-        }
+        Some(entry) => replace_entry(body, &front, &entry, value),
         None => {
             let at = front.close_start;
             let line = format!("{}: {}{}", quote_key(key), render(value), front.eol);
             format!("{}{}{}", &body[..at], line, &body[at..])
         }
     }
+}
+
+/// `body` with the property at `index` set to `value`, in the order
+/// [`parse`] returns. Unlike [`set_property`], which edits the last entry a
+/// key names, this edits exactly the row shown — the first of two duplicate
+/// keys included. Every other byte stays as it was, and an index out of
+/// range leaves `body` alone.
+pub fn set_property_at(body: &str, index: usize, value: &Value) -> String {
+    let Some(front) = split(body) else {
+        return body.to_owned();
+    };
+    let entries = entries(front.front);
+    let Some(entry) = entries.get(index) else {
+        return body.to_owned();
+    };
+    if entry.value == *value {
+        return body.to_owned();
+    }
+    replace_entry(body, &front, entry, value)
+}
+
+/// `body` with `entry`'s value replaced, keeping its key line's comment and
+/// any comment lines inside a block list. Comments from inside the old value
+/// sit after the new line, so the value's shape may change without losing
+/// the note's words.
+fn replace_entry(
+    body: &str,
+    front: &FrontMatter<'_>,
+    entry: &Entry,
+    value: &Value,
+) -> String {
+    let start = front.front_start + entry.start;
+    let end = front.front_start + entry.end;
+    let prefix = &body[start..front.front_start + entry.rest_start];
+    let mut line = format!("{prefix} {}", render(value));
+    // Any scalar, list or comment can follow a value; only a raw value,
+    // which is written exactly as it was, can't carry one safely.
+    if !value.is_raw()
+        && let Some(comment) = &entry.comment
+    {
+        if !comment.starts_with([' ', '\t']) {
+            line.push(' ');
+        }
+        line.push_str(comment);
+    }
+    line.push_str(front.eol);
+    for old in body[start..end].split_inclusive('\n').skip(1) {
+        let content = old.trim_end_matches(['\n', '\r']);
+        if content.trim_start().starts_with('#') {
+            line.push_str(old);
+        }
+    }
+    format!("{}{}{}", &body[..start], line, &body[end..])
 }
 
 /// The value a typed field should set, when the property it edits held
@@ -396,6 +453,7 @@ fn unquote_key(line: &str, quote: char) -> Option<(String, &str)> {
             match chars.next() {
                 Some((_, 'n')) => out.push('\n'),
                 Some((_, 't')) => out.push('\t'),
+                Some((_, 'r')) => out.push('\r'),
                 Some((_, other)) => out.push(other),
                 None => out.push('\\'),
             }
@@ -444,13 +502,16 @@ fn value_of(lines: &[(usize, String)]) -> (Value, String) {
             return (Value::Text(String::new()), rest.to_owned());
         }
         if more.iter().all(|line| line.trim_start().starts_with('-')) {
-            let items = more
+            let items: Vec<&str> = more
                 .iter()
-                .map(|line| {
-                    let item = line.trim_start().strip_prefix('-').unwrap_or("");
-                    scalar(item.trim())
-                })
+                .map(|line| line.trim_start().strip_prefix('-').unwrap_or("").trim())
                 .collect();
+            // A list of maps, anchors, aliases or nested lists isn't a list
+            // of text items: keep it as written so editing can't flatten it.
+            if items.iter().any(|item| !is_text_item(item)) {
+                return (Value::Raw(raw()), rest.to_owned());
+            }
+            let items = items.iter().map(|item| scalar(item)).collect();
             return (Value::List(items), rest.to_owned());
         }
         // A nested map, or anything else not understood: its lines as
@@ -490,6 +551,27 @@ fn raw_of(rest: &str, lines: &[(usize, String)]) -> String {
         raw.push_str(line);
     }
     raw
+}
+
+/// Whether a block-list item reads as a text item. A map, anchor, alias,
+/// tag, block scalar or nested list is not a text item: the list holding it
+/// stays [`Value::Raw`].
+fn is_text_item(item: &str) -> bool {
+    let item = item.trim();
+    if item.is_empty() {
+        return true;
+    }
+    if item.starts_with(['[', '{', '&', '*', '!', '|', '>', '?']) {
+        return false;
+    }
+    if item == "-" || item.starts_with("- ") || item.starts_with("-\t") {
+        return false;
+    }
+    // A quoted item is text whatever it says.
+    if item.starts_with(['"', '\'']) {
+        return true;
+    }
+    split_key(item).is_none()
 }
 
 /// A scalar as YAML reads it: a quoted or plain string, a number, a boolean
@@ -536,6 +618,7 @@ fn unquote_exact(text: &str) -> Option<String> {
             ('"', '\\') => match chars.next() {
                 Some('n') => out.push('\n'),
                 Some('t') => out.push('\t'),
+                Some('r') => out.push('\r'),
                 Some(other) => out.push(other),
                 None => out.push('\\'),
             },
@@ -655,13 +738,45 @@ fn number_text(number: f64) -> String {
     }
 }
 
-/// Whether `value` renders as a plain scalar that can carry a comment.
-fn plain_scalar(value: &Value) -> bool {
-    match value {
-        Value::Text(text) => quote(text) == *text,
-        Value::Number(_) | Value::Bool(_) | Value::Date(_) => true,
-        Value::List(_) | Value::Raw(_) => false,
+/// Text YAML reads as something other than a string: its 1.1/1.2 keywords
+/// and number forms Kanso's own parser leaves as text (hex, octal, binary,
+/// infinities and NaN). Such text is quoted, so it reads back as itself.
+fn yaml_reserved(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    if matches!(
+        lower.as_str(),
+        "null" | "~" | "yes" | "no" | "on" | "off" | "true" | "false" | "y" | "n"
+    ) {
+        return true;
     }
+    let unsigned = lower
+        .strip_prefix(['+', '-'])
+        .unwrap_or(lower.as_str())
+        .replace('_', "");
+    if unsigned == ".inf" || unsigned == ".nan" {
+        return true;
+    }
+    let digits = |s: &str, radix: u32| {
+        !s.is_empty() && s.chars().all(|c| c.is_digit(radix))
+    };
+    if let Some(rest) = unsigned.strip_prefix("0x") {
+        return digits(rest, 16);
+    }
+    if let Some(rest) = unsigned.strip_prefix("0o") {
+        return digits(rest, 8);
+    }
+    if let Some(rest) = unsigned.strip_prefix("0b") {
+        return digits(rest, 2);
+    }
+    // YAML 1.1 numbers may use `_` separators or sexagesimal `a:b` parts.
+    let compact = unsigned.replace('_', "");
+    if !compact.is_empty() && compact.parse::<f64>().is_ok() {
+        return true;
+    }
+    compact.contains(':')
+        && compact
+            .split(':')
+            .all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// `text` as a plain scalar when that reads back as itself, quoted when not.
@@ -673,8 +788,9 @@ fn quote(text: &str) -> String {
         ])
         && !text.contains(": ")
         && !text.contains(" #")
-        && !text.contains(['\n', '\r'])
+        && !text.contains(['\n', '\r', '\t'])
         && !text.ends_with(':')
+        && !yaml_reserved(text)
         && matches!(scalar(text), Value::Text(ref kept) if kept == text);
     if plain {
         text.to_owned()
@@ -683,7 +799,8 @@ fn quote(text: &str) -> String {
             .replace('\\', "\\\\")
             .replace('"', "\\\"")
             .replace('\n', "\\n")
-            .replace('\r', "\\r");
+            .replace('\r', "\\r")
+            .replace('\t', "\\t");
         format!("\"{escaped}\"")
     }
 }
@@ -826,7 +943,7 @@ nested:
             "---\ntitle: X\n# meta below\nrating: 4\n\nclient: Acme # keep\n\n# tail\n---\nBody";
         assert_eq!(
             set_property(body, "title", &Value::Text("Y".into())),
-            "---\ntitle: Y\n# meta below\nrating: 4\n\nclient: Acme # keep\n\n# tail\n---\nBody"
+            "---\ntitle: \"Y\"\n# meta below\nrating: 4\n\nclient: Acme # keep\n\n# tail\n---\nBody"
         );
         assert_eq!(
             set_property(body, "rating", &Value::Number(5.)),
@@ -839,12 +956,21 @@ nested:
     }
 
     #[test]
-    fn a_top_level_line_that_is_not_a_key_is_not_part_of_the_entry() {
-        let body = "---\na: 1\nnot a key\n  indented after it\nb: 2\n---\n";
+    fn prose_between_rules_is_not_front_matter() {
+        let body = "---\n# Heading\nSome prose.\n---\nMore";
+        assert_eq!(split(body), None);
+        assert!(parse(body).is_empty());
         assert_eq!(
-            set_property(body, "a", &Value::Number(3.)),
-            "---\na: 3\nnot a key\n  indented after it\nb: 2\n---\n"
+            set_property(body, "a", &Value::Number(1.)),
+            "---\na: 1\n---\n---\n# Heading\nSome prose.\n---\nMore"
         );
+    }
+
+    #[test]
+    fn a_top_level_line_that_is_not_a_key_ends_the_front_matter() {
+        let body = "---\na: 1\nnot a key\n  indented after it\nb: 2\n---\n";
+        assert_eq!(split(body), None);
+        assert!(parse(body).is_empty());
     }
 
     #[test]
@@ -885,6 +1011,84 @@ nested:
                 ("-added".to_owned(), Value::Text("v".into())),
             ]
         );
+    }
+
+    #[test]
+    fn set_property_at_edits_each_duplicate() {
+        let body = "---\na: 1\na: 2\n---\n";
+        assert_eq!(
+            set_property_at(body, 0, &Value::Number(3.)),
+            "---\na: 3\na: 2\n---\n"
+        );
+        assert_eq!(
+            set_property_at(body, 1, &Value::Number(4.)),
+            "---\na: 1\na: 4\n---\n"
+        );
+        assert_eq!(set_property_at(body, 9, &Value::Number(9.)), body);
+    }
+
+    #[test]
+    fn comments_around_a_value_survive_editing() {
+        let block = "---\ntags:\n  - a\n  # why b\n  - b\n---\nBody\n";
+        let changed = set_property(
+            block,
+            "tags",
+            &Value::List(vec![Value::Text("a".into()), Value::Text("c".into())]),
+        );
+        assert!(changed.contains("tags: [a, c]\n"), "{changed}");
+        assert!(changed.contains("  # why b\n"), "{changed}");
+
+        let key_line = "---\ntags: # mine\n  - a\n  - b\n---\n";
+        let changed = set_property(
+            key_line,
+            "tags",
+            &Value::List(vec![Value::Text("a".into()), Value::Text("d".into())]),
+        );
+        assert!(changed.contains("tags: [a, d] # mine\n"), "{changed}");
+
+        let quoted = "---\ntitle: \"A: b\" # keep me\n---\n";
+        let changed = set_property(quoted, "title", &Value::Text("C: d".into()));
+        assert_eq!(changed, "---\ntitle: \"C: d\" # keep me\n---\n");
+    }
+
+    #[test]
+    fn lists_holding_structures_are_raw() {
+        for item in [
+            "  - name: A\n",
+            "  - &x a\n",
+            "  - *x\n",
+            "  - [a, b]\n",
+            "  - - nested\n",
+            "  - !tag a\n",
+        ] {
+            let body = format!("---\nitems:\n{item}---\n");
+            let (_, value) = parse(&body).into_iter().next().expect(item);
+            assert!(value.is_raw(), "{item}: {value:?}");
+        }
+        let body = "---\nitems:\n  - a\n  - b\n---\n";
+        assert_eq!(
+            parse(body),
+            vec![(
+                "items".to_owned(),
+                Value::List(vec![Value::Text("a".into()), Value::Text("b".into())])
+            )]
+        );
+    }
+
+    #[test]
+    fn yaml_keywords_and_number_forms_are_quoted_as_text() {
+        for text in [
+            "null", "~", "yes", "No", "on", "off", "0x10", "0o7", "0b101", ".inf",
+            ".NaN", "+.Inf", "1_000", "1:20",
+        ] {
+            let body = set_property("", "key", &Value::Text(text.into()));
+            assert_eq!(
+                parse(&body),
+                vec![("key".to_owned(), Value::Text(text.into()))],
+                "{text}: {body}"
+            );
+            assert!(body.contains('"'), "{text}: {body}");
+        }
     }
 
     #[test]
@@ -1054,6 +1258,78 @@ nested:
             })
     }
 
+    /// A document of one-line entries with unique keys, and where each
+    /// entry starts and ends, computed independently of `entries()`.
+    #[allow(clippy::type_complexity)]
+    fn span_document() -> impl Strategy<Value = (String, Vec<(usize, String, usize, usize)>)> {
+        prop::collection::vec(
+            (property_text(), prop::option::of("[A-Za-z0-9 ]{0,6}")),
+            1..6,
+        )
+        .prop_map(|entries| {
+            let mut text = String::from("---\n");
+            let mut spans = Vec::new();
+            for (index, (value, comment)) in entries.into_iter().enumerate() {
+                let key = format!("k{index}");
+                let start = text.len();
+                text.push_str(&key);
+                text.push_str(": ");
+                text.push_str(&value);
+                if let Some(comment) = comment {
+                    text.push_str(" # ");
+                    text.push_str(&comment);
+                }
+                text.push('\n');
+                spans.push((index, key, start, text.len()));
+            }
+            text.push_str("---\nBody\n");
+            (text, spans)
+        })
+    }
+
+    /// Front matter that is guaranteed invalid: a top-level prose line
+    /// follows the properties.
+    fn properties_then_prose() -> impl Strategy<Value = String> {
+        (
+            prop::collection::vec(
+                prop_oneof![
+                    Just("# comment".to_owned()),
+                    Just("  - item".to_owned()),
+                    "[a-z][a-z0-9]{0,5}: [a-z0-9 ]{0,6}".prop_map(|line| line),
+                ],
+                0..8,
+            ),
+            "[A-Za-z0-9 .,]{0,40}",
+        )
+            .prop_map(|(lines, tail)| {
+                let mut text = String::from("---\n");
+                for line in lines {
+                    text.push_str(&line);
+                    text.push('\n');
+                }
+                text.push_str("Some prose here.\n---\n");
+                text.push_str(&tail);
+                text
+            })
+    }
+
+    /// Text mixing every escape `quote` writes, and characters that mean
+    /// something to YAML or Markdown.
+    fn any_text() -> impl Strategy<Value = String> {
+        prop::collection::vec(
+            prop_oneof![
+                r"[ A-Za-z0-9:/#.\[\]{}]{1,8}".prop_map(|s| s),
+                Just("\n".to_owned()),
+                Just("\r".to_owned()),
+                Just("\t".to_owned()),
+                Just("\\".to_owned()),
+                Just("\"".to_owned()),
+            ],
+            0..8,
+        )
+        .prop_map(|parts| parts.concat())
+    }
+
     proptest! {
         #![proptest_config(ProptestConfig {
             cases: 256,
@@ -1115,24 +1391,17 @@ nested:
         /// reads; comments and blank lines around it stay put.
         #[test]
         fn prop_set_touches_only_the_entry_span(
-            text in arbitrary_document(),
+            (text, spans) in span_document(),
             value in property_value(),
         ) {
-            let Some(front) = split(&text) else {
-                return Err(TestCaseError::fail("no front matter"));
-            };
-            let entries = entries(front.front);
-            let Some(entry) = entries.last() else {
-                return Ok(());
-            };
-            let key = entry.key.clone();
-            let start = front.front_start + entry.start;
-            let end = front.front_start + entry.end;
-            let changed = set_property(&text, &key, &value);
-            prop_assert_eq!(&changed[..start], &text[..start]);
-            prop_assert!(changed[start..].ends_with(&text[end..]));
-            let parsed = parse(&changed);
-            prop_assert_eq!(get(&parsed, &key), Some(&value));
+            for (index, key, start, end) in spans {
+                let changed = set_property_at(&text, index, &value);
+                prop_assert_eq!(&changed[..start], &text[..start], "{}", key);
+                prop_assert!(changed[start..].ends_with(&text[end..]), "{}", key);
+                let parsed = parse(&changed);
+                prop_assert_eq!(parsed.get(index).map(|(k, _)| k.as_str()), Some(key.as_str()));
+                prop_assert_eq!(parsed.get(index).map(|(_, v)| v), Some(&value));
+            }
         }
 
         /// Setting a key to the value it already reads leaves every byte as
@@ -1158,6 +1427,22 @@ nested:
         fn prop_any_text_parses(text in "[\\s\\S]{0,200}") {
             let _ = parse(&text);
             let _ = set_property(&text, "key", &Value::Text("v".into()));
+        }
+
+        /// A block of properties with prose after it is not front matter:
+        /// the prose is never hidden, edited or exported as properties.
+        #[test]
+        fn prop_prose_after_rules_is_not_front_matter(text in properties_then_prose()) {
+            prop_assert!(split(&text).is_none(), "{text:?}");
+            prop_assert!(parse(&text).is_empty());
+        }
+
+        /// Every escape `quote` writes reads back as the text it was given.
+        #[test]
+        fn prop_text_round_trips_through_quotes(text in any_text()) {
+            let body = set_property("", "key", &Value::Text(text.clone()));
+            let parsed = parse(&body);
+            prop_assert_eq!(get(&parsed, "key"), Some(&Value::Text(text.clone())), "{:?}", body);
         }
     }
 
@@ -1254,14 +1539,7 @@ nested:
             entries in prop::collection::btree_map(
                 "[a-z][a-z0-9_]{0,8}",
                 prop_oneof![
-                    property_text()
-                        .prop_filter("not a YAML keyword", |text| {
-                            !matches!(
-                                text.to_ascii_lowercase().as_str(),
-                                "y" | "n" | "yes" | "no" | "on" | "off" | "null" | "~"
-                            )
-                        })
-                        .prop_map(Value::Text),
+                    property_text().prop_map(Value::Text),
                     (-10_000i64..10_000).prop_map(|n| Value::Number(n as f64)),
                     any::<bool>().prop_map(Value::Bool),
                 ],
