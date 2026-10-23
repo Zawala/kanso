@@ -29,14 +29,16 @@ pub struct QueryNoteRow {
     pub updated_at: i64,
     pub locked: bool,
     pub trashed: bool,
+    /// The note's properties, read from the text that was selected.
+    pub properties: Vec<(String, kanso_core::properties::Value)>,
 }
 
 impl From<QueryNoteRow> for ViewNote {
     /// A row as a query reads it. A locked note's properties are read from
-    /// its empty body, so it has none.
+    /// its empty text, so it has none.
     fn from(row: QueryNoteRow) -> Self {
         ViewNote {
-            properties: kanso_core::properties::parse(&row.body),
+            properties: row.properties,
             id: row.id,
             title: row.title,
             body: row.body,
@@ -56,6 +58,13 @@ impl From<QueryNoteRow> for ViewNote {
 impl Store {
     /// Every live note, oldest edit first, with the facts a query needs.
     pub fn query_view_notes(&self) -> Result<Vec<QueryNoteRow>> {
+        self.query_view_notes_with_body(true)
+    }
+
+    /// Every live note with the facts a query needs. When `read_body` is
+    /// false only the front matter is read: enough for properties, but not
+    /// for a free-text search.
+    pub fn query_view_notes_with_body(&self, read_body: bool) -> Result<Vec<QueryNoteRow>> {
         let tags: HashMap<String, String> = self
             .tags()?
             .into_iter()
@@ -63,9 +72,14 @@ impl Store {
             .collect();
         self.read(|conn| {
             let body = crate::schema::readable_body!("d.");
+            let text = if read_body {
+                body.to_owned()
+            } else {
+                format!("kanso_front_matter({body})")
+            };
             let locked = crate::schema::note_locked!("d.");
             let mut stmt = conn.prepare(&format!(
-                "SELECT d.id, d.rev, d.title, {body}, d.book_id, b.name, d.status, \
+                "SELECT d.id, d.rev, d.title, {text}, d.book_id, b.name, d.status, \
                  json_extract(d.json, '$.tags'), d.created_at, d.updated_at, {locked} \
                  FROM docs d LEFT JOIN docs b ON b.id = d.book_id AND b.type = 'book' AND b.deleted = 0 \
                  WHERE d.type = 'note' AND d.deleted = 0 \
@@ -85,11 +99,23 @@ impl Store {
                     .filter_map(|id| tags.get(id).cloned())
                     .collect();
                 let status: String = row.get::<_, Option<String>>(6)?.unwrap_or_default();
+                let text: String = row.get::<_, Option<String>>(3)?.unwrap_or_default();
+                let (body, properties) = if read_body {
+                    (
+                        text.clone(),
+                        kanso_core::properties::parse(&text),
+                    )
+                } else {
+                    (
+                        String::new(),
+                        kanso_core::properties::parse_front(&text),
+                    )
+                };
                 Ok(QueryNoteRow {
                     id: row.get(0)?,
                     rev: row.get(1)?,
                     title: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                    body: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                    body,
                     trashed: book_id == kanso_core::TRASH_BOOK_ID,
                     book_id,
                     book_name: row.get::<_, Option<String>>(5)?,
@@ -102,6 +128,7 @@ impl Store {
                     created_at: row.get::<_, Option<i64>>(8)?.unwrap_or(0),
                     updated_at: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
                     locked: row.get(10)?,
+                    properties,
                 })
             })?;
             Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -159,6 +186,29 @@ mod tests {
         assert_eq!(by_id[&live.as_str()].title, "Live");
         assert!(!by_id[&live.as_str()].trashed);
         assert!(by_id[&trashed.as_str()].trashed);
+    }
+
+    #[test]
+    fn without_the_body_only_the_front_matter_is_read() {
+        let (_dir, store) = store();
+        let inbox = book(&store, "Clients");
+        let id = note(
+            &store,
+            "Ana",
+            "---\nclient: Acme\nrating: 4\n---\n# Ana\n\nSecret body text.\n",
+            &inbox,
+        );
+        let with = store.query_view_notes_with_body(true).unwrap();
+        let without = store.query_view_notes_with_body(false).unwrap();
+        let full = with.iter().find(|row| row.id == id).unwrap();
+        let front = without.iter().find(|row| row.id == id).unwrap();
+        assert_eq!(
+            full.body,
+            "---\nclient: Acme\nrating: 4\n---\n# Ana\n\nSecret body text.\n"
+        );
+        assert_eq!(front.body, "");
+        assert_eq!(front.properties, full.properties);
+        assert!(!front.body.contains("Secret"));
     }
 
     #[test]

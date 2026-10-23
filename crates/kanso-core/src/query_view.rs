@@ -339,7 +339,7 @@ pub fn evaluate(spec: &ViewSpec, notes: &[ViewNote], self_id: Option<&str>) -> V
             let sort = spec
                 .sort
                 .as_ref()
-                .map(|sort| column_value(note, &sort.column))
+                .map(|sort| sort_value(note, &sort.column))
                 .unwrap_or(None);
             (
                 ViewRow {
@@ -356,15 +356,33 @@ pub fn evaluate(spec: &ViewSpec, notes: &[ViewNote], self_id: Option<&str>) -> V
         })
         .collect();
     if let Some(sort) = &spec.sort {
-        // Missing values go last in either direction, and ties keep the
-        // order the notes came in.
-        rows.sort_by(|(_, a), (_, b)| ordered(a, b, sort.descending));
+        // Missing values go last in either direction. Built-in dates sort by
+        // their instant, not their day, and the note ID breaks ties so the
+        // order is the same whatever order the notes came in.
+        rows.sort_by(|(a, av), (b, bv)| {
+            let ordering = ordered(av, bv, sort.descending);
+            if ordering == Ordering::Equal {
+                a.id.cmp(&b.id)
+            } else {
+                ordering
+            }
+        });
     }
     let mut rows: Vec<ViewRow> = rows.into_iter().map(|(row, _)| row).collect();
     if let Some(limit) = spec.limit {
         rows.truncate(limit);
     }
     rows
+}
+
+/// The value a sort compares. Built-in dates use their millisecond instant
+/// so two edits on the same day still order by time.
+fn sort_value(note: &ViewNote, column: &Column) -> Option<Value> {
+    match column {
+        Column::Updated => Some(Value::Number(note.updated_at as f64)),
+        Column::Created => Some(Value::Number(note.created_at as f64)),
+        _ => column_value(note, column),
+    }
 }
 
 /// One cell of a row, as the note holds it.
@@ -394,28 +412,97 @@ fn date_of(ms: i64) -> String {
     crate::dates::Date::from_days(ms.div_euclid(86_400_000)).iso()
 }
 
+/// A `query` fence found in a note: where it is in the source and the text
+/// between its fences.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QueryFence {
+    pub range: std::ops::Range<usize>,
+    pub source: String,
+    /// Whitespace before the fence on its line, put before each table line.
+    pub indent: String,
+}
+
+/// Whether a fence language names a query view. The first word counts, so
+/// `query extra` is a query.
+pub fn is_query_fence(lang: Option<&str>) -> bool {
+    lang.and_then(|lang| lang.split_whitespace().next())
+        .is_some_and(|lang| lang.eq_ignore_ascii_case("query"))
+}
+
+fn parse_options() -> markdown::ParseOptions {
+    let mut options = markdown::ParseOptions::gfm();
+    options.constructs.frontmatter = false;
+    options.constructs.math_text = true;
+    options.constructs.math_flow = true;
+    options
+}
+
+/// The `query` fences in `body`, found in the Markdown syntax tree. A fence
+/// inside another code block is not one.
+pub fn query_fences(body: &str) -> Vec<QueryFence> {
+    let parsed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        markdown::to_mdast(body, &parse_options())
+    }));
+    let root = match parsed {
+        Ok(Ok(root)) => root,
+        // A panic or a parse failure leaves the note as it was written.
+        _ => return Vec::new(),
+    };
+    let mut fences = Vec::new();
+    collect_fences(&root, body, &mut fences);
+    fences
+}
+
+fn collect_fences(node: &markdown::mdast::Node, body: &str, fences: &mut Vec<QueryFence>) {
+    if let markdown::mdast::Node::Code(code) = node {
+        if !is_query_fence(code.lang.as_deref()) {
+            return;
+        }
+        let Some(position) = node.position() else {
+            return;
+        };
+        let start = position.start.offset;
+        let end = position.end.offset;
+        if start >= end || end > body.len() {
+            return;
+        }
+        let line_start = body[..start].rfind('\n').map_or(0, |at| at + 1);
+        let before = &body[line_start..start];
+        let indent: String = before
+            .chars()
+            .take_while(|c| matches!(c, ' ' | '\t'))
+            .collect();
+        let range_start = if indent.len() == before.len() {
+            line_start
+        } else {
+            start
+        };
+        fences.push(QueryFence {
+            range: range_start..end,
+            source: code.value.clone(),
+            indent,
+        });
+        return;
+    }
+    for child in node.children().into_iter().flatten() {
+        collect_fences(child, body, fences);
+    }
+}
+
+/// Whether `body` has a query fence.
+pub fn contains_query(body: &str) -> bool {
+    !query_fences(body).is_empty()
+}
+
 /// The body as Markdown for an export: each `query` fence becomes the table
 /// it draws, or its source and a badge when it can't be read. Locked and
 /// trashed notes, and `self_id`, are left out as in [`evaluate`].
 pub fn render_export(body: &str, notes: &[ViewNote], self_id: Option<&str>) -> String {
     let mut out = String::with_capacity(body.len());
-    let mut lines = body.split_inclusive('\n').peekable();
-    while let Some(line) = lines.next() {
-        let info = line.trim_end().strip_prefix("```").map(str::trim);
-        if !info.is_some_and(|info| info.eq_ignore_ascii_case("query")) {
-            out.push_str(line);
-            continue;
-        }
-        let mut fence = line.to_owned();
-        let mut source = String::new();
-        for written in lines.by_ref() {
-            fence.push_str(written);
-            if written.trim_end() == "```" {
-                break;
-            }
-            source.push_str(written);
-        }
-        match parse(&source) {
+    let mut at = 0;
+    for fence in query_fences(body) {
+        out.push_str(&body[at..fence.range.start]);
+        match parse(&fence.source) {
             Ok(spec) => {
                 // A table starts a block of its own.
                 if !out.is_empty() && !out.ends_with("\n\n") {
@@ -424,17 +511,33 @@ pub fn render_export(body: &str, notes: &[ViewNote], self_id: Option<&str>) -> S
                     }
                     out.push('\n');
                 }
-                out.push_str(&table_markdown(&spec, &evaluate(&spec, notes, self_id)));
+                let table = table_markdown(&spec, &evaluate(&spec, notes, self_id));
+                out.push_str(&indent_lines(&table, &fence.indent));
                 out.push_str("\n\n");
             }
             Err(err) => {
-                out.push_str(&fence);
-                if !fence.ends_with('\n') {
+                out.push_str(&body[fence.range.clone()]);
+                if !out.ends_with('\n') {
                     out.push('\n');
                 }
                 out.push_str(&format!("*Query: {}*\n\n", escape_inline(&err.message)));
             }
         }
+        at = fence.range.end;
+    }
+    out.push_str(&body[at..]);
+    out
+}
+
+/// `text` with `indent` before every line.
+fn indent_lines(text: &str, indent: &str) -> String {
+    if indent.is_empty() {
+        return text.to_owned();
+    }
+    let mut out = String::with_capacity(text.len() + indent.len() * 4);
+    for line in text.split_inclusive('\n') {
+        out.push_str(indent);
+        out.push_str(line);
     }
     out
 }
@@ -540,6 +643,7 @@ fn compare(a: Option<&Value>, b: Option<&Value>) -> Ordering {
         Value::Bool(_) => 2,
         Value::Text(_) => 3,
         Value::List(_) => 4,
+        Value::Raw(_) => 5,
     };
     match (a, b) {
         (Value::Number(a), Value::Number(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
@@ -752,6 +856,143 @@ mod tests {
         assert!(markdown.contains("```query"), "{markdown}");
         assert!(markdown.contains("*Query:"), "{markdown}");
         assert!(markdown.contains("isn't a query key"), "{markdown}");
+    }
+
+    #[test]
+    fn built_in_dates_sort_by_their_instant() {
+        let mut a = note("a", "A", Vec::new());
+        a.updated_at = 1_000;
+        let mut b = note("b", "B", Vec::new());
+        b.updated_at = 2_000;
+        let spec = parse("sort: updated desc\nlimit: 1").unwrap();
+        let rows = evaluate(&spec, &[a, b], None);
+        assert_eq!(rows[0].title, "B");
+    }
+
+    #[test]
+    fn ties_break_on_the_note_id() {
+        let mut a = note("a", "A", Vec::new());
+        a.updated_at = 1_000;
+        let mut b = note("b", "B", Vec::new());
+        b.updated_at = 1_000;
+        // Whatever order the notes arrive in, the order is the same.
+        let spec = parse("sort: updated desc").unwrap();
+        let rows = evaluate(&spec, &[b.clone(), a.clone()], None);
+        assert_eq!(
+            rows.iter().map(|row| row.id.as_str()).collect::<Vec<_>>(),
+            ["note:a", "note:b"]
+        );
+        let rows = evaluate(&spec, &[a, b], None);
+        assert_eq!(
+            rows.iter().map(|row| row.id.as_str()).collect::<Vec<_>>(),
+            ["note:a", "note:b"]
+        );
+    }
+
+    #[test]
+    fn fences_are_found_where_markdown_finds_them() {
+        let body = "- item\n\n  ~~~query extra\n  from: has:due\n  columns: due\n  ~~~\n";
+        let notes = vec![note(
+            "a",
+            "Ana",
+            vec![("due", Value::Date("2026-11-01".into()))],
+        )];
+        let markdown = render_export(body, &notes, None);
+        assert!(markdown.contains("  | Title | due |"), "{markdown}");
+        assert!(markdown.contains("  | Ana |"), "{markdown}");
+        assert!(!markdown.contains("~~~"), "{markdown}");
+        assert!(contains_query(body));
+    }
+
+    #[test]
+    fn a_query_fence_inside_a_code_block_is_not_one() {
+        let body = "````\n```query\nfrom: has:due\n```\n````\n";
+        assert!(!contains_query(body));
+        assert_eq!(render_export(body, &[], None), body);
+    }
+
+    proptest! {
+        /// Locked and trashed notes with any properties never change what a
+        /// query shows or what an export writes.
+        #[test]
+        fn prop_locked_and_trashed_notes_never_show(
+            live in prop::collection::vec(("[a-z]{1,6}", "[A-Za-z0-9 #:]{0,12}"), 0..5),
+            secret in prop::collection::vec(("[a-z]{1,6}", "[A-Za-z0-9 #:]{0,12}"), 0..5),
+        ) {
+            let live_props: Vec<(&str, Value)> = live
+                .iter()
+                .map(|(key, value)| (key.as_str(), Value::Text(value.clone())))
+                .collect();
+            let mut notes = vec![note("live", "Live", live_props)];
+            let base = evaluate(&parse("columns: a, b").unwrap(), &notes, None);
+            let base_markdown = render_export("```query\ncolumns: a, b\n```\n", &notes, None);
+            for (ix, locked) in [true, false].into_iter().enumerate() {
+                let props: Vec<(&str, Value)> = secret
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), Value::Text(value.clone())))
+                    .collect();
+                let mut hidden = note(&format!("h{ix}"), "SECRET", props);
+                hidden.locked = locked;
+                hidden.trashed = !locked;
+                hidden.body = "SECRET body".into();
+                notes.push(hidden);
+            }
+            prop_assert_eq!(evaluate(&parse("columns: a, b").unwrap(), &notes, None), base);
+            prop_assert_eq!(
+                render_export("```query\ncolumns: a, b\n```\n", &notes, None),
+                base_markdown
+            );
+        }
+
+        /// Sorted rows follow their values; missing values come last in
+        /// either direction.
+        #[test]
+        fn prop_sort_order_holds(
+            values in prop::collection::vec(prop::option::of(-50i64..50), 0..20),
+            descending: bool,
+        ) {
+            let notes: Vec<ViewNote> = values
+                .iter()
+                .enumerate()
+                .map(|(ix, value)| {
+                    let props = value
+                        .map(|n| vec![("rating", Value::Number(n as f64))])
+                        .unwrap_or_default();
+                    note(&format!("n{ix:02}"), &format!("N{ix}"), props)
+                })
+                .collect();
+            let source = if descending {
+                "sort: rating desc"
+            } else {
+                "sort: rating asc"
+            };
+            let spec = parse(&format!("columns: rating\n{source}")).unwrap();
+            let rows = evaluate(&spec, &notes, None);
+            let mut seen_missing = false;
+            for pair in rows.windows(2) {
+                let cell = |row: &ViewRow| match &row.cells[0] {
+                    Some(Value::Number(n)) => Some(*n),
+                    _ => None,
+                };
+                match (cell(&pair[0]), cell(&pair[1])) {
+                    (None, _) => seen_missing = true,
+                    (Some(_), None) => prop_assert!(!seen_missing),
+                    (Some(a), Some(b)) => {
+                        prop_assert!(!seen_missing, "a value after a missing one");
+                        if descending {
+                            prop_assert!(a >= b)
+                        } else {
+                            prop_assert!(a <= b)
+                        }
+                    }
+                }
+            }
+            if let Some(last) = rows.last()
+                && matches!(last.cells[0], Some(Value::Number(_)))
+            {
+                prop_assert!(!seen_missing);
+            }
+        }
     }
 
     proptest! {

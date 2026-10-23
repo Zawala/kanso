@@ -28,19 +28,13 @@ pub struct Entry {
 /// A body split at its front matter: the text between the `---` lines,
 /// and what follows the closing line. `None` without front matter.
 pub fn split(text: &str) -> Option<(&str, &str)> {
-    let rest = text
-        .strip_prefix("---\n")
-        .or_else(|| text.strip_prefix("---\r\n"))?;
-    let mut offset = 0;
-    for line in rest.split_inclusive('\n') {
-        let content = line.trim_end_matches(['\n', '\r']);
-        if content == "---" || content == "..." {
-            let body = &rest[offset + line.len()..];
-            return Some((&rest[..offset], body));
-        }
-        offset += line.len();
-    }
-    None
+    // The same detection the properties editor uses: a BOM and trailing
+    // whitespace on the marker lines are allowed.
+    let front = kanso_core::properties::split(text)?;
+    Some((
+        &text[front.front_start..front.close_start],
+        &text[front.body_start..],
+    ))
 }
 
 /// The entries of front matter (the text between the `---` lines). Lines
@@ -84,35 +78,10 @@ fn key_of(line: &str) -> Option<String> {
     split_key(line).map(|(key, _)| key)
 }
 
-/// `key: rest` → (key, rest). The colon must be followed by a space or the
-/// end of the line; quoted keys are unquoted.
+/// `key: rest` → (key, rest). The properties editor and the importer agree
+/// on what a key is.
 fn split_key(line: &str) -> Option<(String, &str)> {
-    let (key, rest) = if let Some(quoted) = line.strip_prefix('"') {
-        let end = quoted.find('"')?;
-        let rest = quoted[end + 1..].strip_prefix(':')?;
-        (quoted[..end].to_owned(), rest)
-    } else if let Some(quoted) = line.strip_prefix('\'') {
-        let end = quoted.find('\'')?;
-        let rest = quoted[end + 1..].strip_prefix(':')?;
-        (quoted[..end].to_owned(), rest)
-    } else {
-        let mut at = None;
-        for (ix, c) in line.char_indices() {
-            if c == ':' {
-                let next = line[ix + 1..].chars().next();
-                if next.is_none_or(|n| n == ' ' || n == '\t') {
-                    at = Some(ix);
-                    break;
-                }
-            }
-        }
-        let at = at?;
-        (line[..at].trim_end().to_owned(), &line[at + 1..])
-    };
-    if key.is_empty() || !(rest.is_empty() || rest.starts_with([' ', '\t'])) {
-        return None;
-    }
-    Some((key, rest))
+    kanso_core::properties::split_key(line)
 }
 
 fn value_of(lines: &[&str]) -> Value {
