@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Entity, Modifiers, Pixels, Point, TestAppContext,
-    VisualTestContext,
+    AnyWindowHandle, AppContext as _, Entity, Modifiers, MouseButton, Pixels, Point,
+    TestAppContext, VisualTestContext,
 };
 use kanso_core::DocType;
 use kanso_core::model::TRASH_BOOK_ID;
@@ -167,6 +167,19 @@ impl Fixture {
         self.draw(cx);
     }
 
+    fn middle_click(&self, cx: &mut TestAppContext, id: &str) {
+        let at = self.middle_of(cx, &format!("note-{id}"));
+        let mut vcx = VisualTestContext::from_window(self.window, cx);
+        vcx.simulate_mouse_down(at, MouseButton::Middle, Modifiers::none());
+        vcx.simulate_mouse_up(at, MouseButton::Middle, Modifiers::none());
+        self.draw(cx);
+    }
+
+    fn selected(&self, cx: &mut TestAppContext) -> Vec<String> {
+        let library = cx.read(|cx| self.workspace.read(cx).library.clone());
+        cx.read(|cx| library.read(cx).selection.ids().to_vec())
+    }
+
     fn bar_is_showing(&self, cx: &mut TestAppContext) -> bool {
         self.draw(cx);
         let mut vcx = VisualTestContext::from_window(self.window, cx);
@@ -174,12 +187,12 @@ impl Fixture {
     }
 }
 
-/// ⌘-click opens the note after the showing tab and the bar appears;
+/// A middle click opens the note after the showing tab and the bar appears;
 /// ⌘W closes the showing tab, then the other one.
 // no-prop-test: drives one window through clicks and keys; the model's
 // rules are properties in tabs.rs.
 #[gpui_kit::test]
-fn cmd_click_opens_a_tab_and_cmd_w_closes_it(cx: &mut TestAppContext) {
+fn middle_click_opens_a_tab_and_cmd_w_closes_it(cx: &mut TestAppContext) {
     let f = setup(cx);
     let a = f.note("A", "text");
     let b = f.note("B", "text");
@@ -187,7 +200,7 @@ fn cmd_click_opens_a_tab_and_cmd_w_closes_it(cx: &mut TestAppContext) {
     assert_eq!(f.tabs(cx), vec![a.clone()]);
     assert!(!f.bar_is_showing(cx), "one note has no bar");
 
-    f.secondary_click(cx, &b);
+    f.middle_click(cx, &b);
     assert_eq!(f.tabs(cx), [a.clone(), b.clone()]);
     assert_eq!(f.open_note(cx), Some(b.clone()));
     assert!(f.bar_is_showing(cx), "two notes show the bar");
@@ -196,6 +209,26 @@ fn cmd_click_opens_a_tab_and_cmd_w_closes_it(cx: &mut TestAppContext) {
     assert_eq!(f.tabs(cx), vec![a.clone()], "⌘W closes the showing tab");
     assert_eq!(f.open_note(cx), Some(a.clone()));
     assert!(!f.bar_is_showing(cx));
+}
+
+/// ⌘-click in the list still adds and takes away rows, as on master: only a
+/// middle click, the menu or ⌘↩ open a tab.
+// no-prop-test: one window, two clicks; the selection's rules are
+// properties in selection.rs.
+#[gpui_kit::test]
+fn cmd_click_selects_several_notes_and_opens_no_tab(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let a = f.note("A", "text");
+    let b = f.note("B", "text");
+    f.select(cx, &a);
+    f.secondary_click(cx, &b);
+    assert_eq!(f.selected(cx), [a.clone(), b.clone()]);
+    assert_eq!(f.tabs(cx), vec![b.clone()], "no second tab: the note shows");
+    assert_eq!(f.open_note(cx), Some(b.clone()));
+
+    f.secondary_click(cx, &b);
+    assert_eq!(f.selected(cx), [a.clone()], "⌘-click takes it away");
+    assert_eq!(f.open_note(cx), Some(a.clone()));
 }
 
 /// Ctrl+Tab and Ctrl+Shift+Tab walk the row, wrapping at both ends.
@@ -208,8 +241,8 @@ fn ctrl_tab_walks_the_row(cx: &mut TestAppContext) {
     let b = f.note("B", "text");
     let c = f.note("C", "text");
     f.select(cx, &a);
-    f.secondary_click(cx, &b);
-    f.secondary_click(cx, &c);
+    f.middle_click(cx, &b);
+    f.middle_click(cx, &c);
     assert_eq!(f.active_tab(cx), Some(c.clone()));
 
     f.keys(cx, "ctrl-tab");
@@ -248,7 +281,7 @@ fn each_tab_keeps_its_own_history_and_place(cx: &mut TestAppContext) {
         .1;
 
     // A second tab, where C and then D are opened.
-    f.secondary_click(cx, &b);
+    f.middle_click(cx, &b);
     f.select(cx, &c);
     f.keys(cx, "ctrl-tab");
     assert_eq!(f.active_tab(cx), Some(a.clone()));
@@ -286,7 +319,7 @@ fn trashing_a_note_closes_its_tab(cx: &mut TestAppContext) {
     let a = f.note("A", "text");
     let b = f.note("B", "text");
     f.select(cx, &a);
-    f.secondary_click(cx, &b);
+    f.middle_click(cx, &b);
     assert_eq!(f.tabs(cx), [a.clone(), b.clone()]);
 
     f.store

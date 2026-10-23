@@ -1,13 +1,15 @@
 //! Which notes in the list are selected. One note is the usual case; ⇧-click
-//! selects a run of rows, and ⌘A takes every listed note. (⌘-click opens a
-//! tab, so only runs and ⌘A select more than one.) The editor shows the
-//! focus, the note clicked last.
+//! selects a run of rows, ⌘-click (Ctrl elsewhere) adds or takes away one,
+//! and ⌘A takes every listed note. The editor shows the focus, the note
+//! clicked last.
 
 /// How a row was clicked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Click {
     /// A plain click: that note alone.
     Plain,
+    /// ⌘-click (Ctrl on Windows and Linux): adds the note, or takes it away.
+    Toggle,
     /// ⇧-click: every row from the anchor to this one.
     Range,
 }
@@ -42,7 +44,6 @@ impl Selection {
         self.focus.as_deref()
     }
 
-    #[cfg(test)]
     pub fn contains(&self, id: &str) -> bool {
         self.ids.iter().any(|selected| selected == id)
     }
@@ -60,6 +61,22 @@ impl Selection {
     pub fn click(&mut self, id: &str, how: Click, listed: &[&str]) {
         match how {
             Click::Plain => *self = Selection::one(Some(id.to_owned())),
+            Click::Toggle if self.contains(id) => {
+                // The last note stays: the editor always shows one.
+                if !self.is_several() {
+                    return;
+                }
+                self.ids.retain(|selected| selected != id);
+                if self.focus.as_deref() == Some(id) {
+                    self.focus = self.ids.last().cloned();
+                }
+                self.anchor = self.focus.clone();
+            }
+            Click::Toggle => {
+                self.ids.push(id.to_owned());
+                self.focus = Some(id.to_owned());
+                self.anchor = Some(id.to_owned());
+            }
             Click::Range => {
                 let from = self
                     .anchor
@@ -139,7 +156,7 @@ mod tests {
     const ROWS: usize = 8;
 
     fn op() -> impl Strategy<Value = Op> {
-        let how = prop_oneof![Just(Click::Plain), Just(Click::Range)];
+        let how = prop_oneof![Just(Click::Plain), Just(Click::Toggle), Just(Click::Range)];
         prop_oneof![
             6 => (0..ROWS, how).prop_map(|(ix, how)| Op::Click(ix, how)),
             1 => Just(Op::All),
@@ -166,12 +183,27 @@ mod tests {
             }
         }
 
-        /// Does `op` to the model. `then_focus` is the real selection's
-        /// focus, checked by the caller to be selected.
+        /// Does `op` to the model. Taking away the focus with ⌘-click moves
+        /// it to another selected note, which one the model leaves open:
+        /// `then_focus` is the real selection's choice, checked by the
+        /// caller to be selected.
         fn apply(&mut self, op: &Op, listed: &[usize], then_focus: Option<usize>) {
-            let _ = then_focus;
             match op {
                 Op::Click(ix, Click::Plain) => *self = Model::one(Some(*ix)),
+                Op::Click(ix, Click::Toggle) if self.set.contains(ix) => {
+                    if self.set.len() > 1 {
+                        self.set.remove(ix);
+                        if self.focus == Some(*ix) {
+                            self.focus = then_focus;
+                        }
+                        self.anchor = self.focus;
+                    }
+                }
+                Op::Click(ix, Click::Toggle) => {
+                    self.set.insert(*ix);
+                    self.focus = Some(*ix);
+                    self.anchor = Some(*ix);
+                }
                 Op::Click(ix, Click::Range) => {
                     let from = self
                         .anchor
@@ -280,9 +312,16 @@ mod tests {
         // A run measures from the same anchor until something else is clicked.
         s.click("a", Click::Range, &listed);
         assert_eq!(s.ids(), ["a", "b"]);
-        s.click("d", Click::Range, &listed);
-        assert_eq!(s.ids(), ["b", "c", "d"]);
+        s.click("e", Click::Toggle, &listed);
+        assert_eq!(s.ids(), ["a", "b", "e"]);
+        assert_eq!(s.focus(), Some("e"));
+        s.click("e", Click::Toggle, &listed);
+        assert_eq!(s.ids(), ["a", "b"]);
+        assert_eq!(s.focus(), Some("b"), "the last one left shows");
         s.click("c", Click::Plain, &listed);
+        assert_eq!(s.ids(), ["c"]);
+        // The only selected note can't be taken away.
+        s.click("c", Click::Toggle, &listed);
         assert_eq!(s.ids(), ["c"]);
         s.select_all(&listed);
         assert_eq!(s.count(), 5);
