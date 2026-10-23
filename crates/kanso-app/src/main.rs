@@ -11,6 +11,10 @@ mod account_flow;
 mod account_flow_tests;
 mod account_page;
 mod account_words;
+mod ask;
+mod ask_panel;
+#[cfg(test)]
+mod ask_tests;
 mod assets;
 mod board;
 mod board_view;
@@ -99,6 +103,7 @@ mod replace;
 mod selection;
 mod services;
 mod settings;
+mod settings_ai;
 mod settings_capture;
 mod settings_discovery;
 mod settings_themes;

@@ -332,6 +332,8 @@ pub enum InspectorTab {
     Related,
     /// A shared note's comments (`inspector_comments.rs`).
     Comments,
+    /// Ask Your Notes: a question answered from the notes (`ask.rs`).
+    Ask,
 }
 
 /// How the window's panes were left: focus mode, where the split divides,
@@ -552,6 +554,44 @@ impl Default for VoiceSettings {
     }
 }
 
+/// AI in Settings › AI. Off until turned on: nothing asks a model or shows a
+/// question box before then. The API key is not here; it lives in the
+/// Keychain (`settings_ai.rs`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AiSettings {
+    pub enabled: bool,
+    pub provider: kanso_ai::Provider,
+    /// The provider's address; local and custom servers can change it.
+    pub base_url: String,
+    pub model: String,
+}
+
+impl Default for AiSettings {
+    fn default() -> Self {
+        AiSettings::for_provider(kanso_ai::Provider::default())
+    }
+}
+
+impl AiSettings {
+    /// The settings a provider starts with: its own address and model.
+    pub fn for_provider(provider: kanso_ai::Provider) -> AiSettings {
+        AiSettings {
+            enabled: false,
+            provider,
+            base_url: provider.default_base_url().to_owned(),
+            model: provider.default_model().to_owned(),
+        }
+    }
+
+    /// Picks `provider`, with the address and model it starts with.
+    pub fn choose(&mut self, provider: kanso_ai::Provider) {
+        self.provider = provider;
+        self.base_url = provider.default_base_url().to_owned();
+        self.model = provider.default_model().to_owned();
+    }
+}
+
 /// Locked notes on this device.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -583,6 +623,7 @@ pub struct AppConfig {
     pub discovery: DiscoverySettings,
     pub voice: VoiceSettings,
     pub locked: LockedSettings,
+    pub ai: AiSettings,
     pub nudges: Nudges,
 }
 
@@ -613,6 +654,7 @@ impl Default for AppConfig {
             discovery: DiscoverySettings::default(),
             voice: VoiceSettings::default(),
             locked: LockedSettings::default(),
+            ai: AiSettings::default(),
             nudges: Nudges::default(),
         }
     }
@@ -726,6 +768,7 @@ mod tests {
                 ]),
                 any::<bool>(),
             ),
+            gen_ai(),
         )
             .prop_map(
                 |(
@@ -736,11 +779,13 @@ mod tests {
                     (enabled, shortcut),
                     (related_notes, image_text, graph_hops),
                     (engine, spoken_commands),
+                    ai,
                 )| AppConfig {
                     voice: VoiceSettings {
                         engine,
                         spoken_commands,
                     },
+                    ai,
                     layout,
                     updates: UpdateSettings { auto_install },
                     editor,
@@ -808,6 +853,7 @@ mod tests {
                 InspectorTab::Graph,
                 InspectorTab::Related,
                 InspectorTab::Comments,
+                InspectorTab::Ask,
             ]),
             prop::collection::vec(
                 (
@@ -851,6 +897,21 @@ mod tests {
                     }
                 },
             )
+    }
+
+    fn gen_ai() -> impl Strategy<Value = AiSettings> {
+        (
+            any::<bool>(),
+            prop::sample::select(kanso_ai::Provider::ALL.to_vec()),
+            "https?://[a-z.:0-9/-]{1,40}",
+            "[a-zA-Z0-9._/-]{0,40}",
+        )
+            .prop_map(|(enabled, provider, base_url, model)| AiSettings {
+                enabled,
+                provider,
+                base_url,
+                model,
+            })
     }
 
     fn gen_settings() -> impl Strategy<Value = AppConfig> {
@@ -939,6 +1000,7 @@ mod tests {
                     discovery: DiscoverySettings::default(),
                     voice: VoiceSettings::default(),
                     locked: LockedSettings::default(),
+                    ai: AiSettings::default(),
                     nudges: super::Nudges {
                         first_seen_ms: login.then_some(i64::from(version) * 1_000),
                         sync_offer_dismissed: version % 2 == 0,
@@ -1325,6 +1387,44 @@ mod tests {
         let back: AppConfig =
             serde_json::from_value(serde_json::to_value(&config).unwrap()).unwrap();
         assert_eq!(back, config);
+    }
+
+    /// AI is off in a new file, and a file from before AI takes the same
+    /// defaults. Changing the provider brings its own address and model.
+    #[test]
+    fn ai_defaults_off_and_follows_its_provider() {
+        let config = AppConfig::default();
+        assert!(!config.ai.enabled);
+        assert_eq!(config.ai.provider, kanso_ai::Provider::LocalModel);
+        assert_eq!(config.ai.base_url, "http://localhost:11434/v1");
+        assert_eq!(config.ai.model, "llama3.2");
+        let old: AppConfig = serde_json::from_str(r#"{"version": 4}"#).unwrap();
+        assert_eq!(old.ai, AiSettings::default());
+        let mut ai = AiSettings::default();
+        ai.choose(kanso_ai::Provider::Anthropic);
+        assert_eq!(ai.base_url, "https://api.anthropic.com");
+        assert_eq!(ai.model, "claude-haiku-5-5");
+        ai.choose(kanso_ai::Provider::OpenRouter);
+        assert_eq!(ai.model, "openai/gpt-4o-mini");
+    }
+
+    /// The config has no place for an API key: whatever the AI settings
+    /// hold, saving them writes no secret.
+    #[test]
+    fn api_keys_are_never_written_to_config() {
+        let mut config = AppConfig::default();
+        config.ai.enabled = true;
+        config.ai.provider = kanso_ai::Provider::OpenAi;
+        config.ai.model = "gpt-4o-mini".into();
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(!json.contains("apiKey"));
+        assert!(!json.contains("api_key"));
+        assert!(!json.contains("sk-"));
+        let value = serde_json::to_value(&config).unwrap();
+        assert_eq!(
+            value["ai"]["provider"], "openAi",
+            "the provider is written by name"
+        );
     }
 
     #[test]

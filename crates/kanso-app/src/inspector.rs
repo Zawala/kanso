@@ -7,8 +7,9 @@
 //! notes that mention the title without linking, each with Link to make the
 //! mention a link. Graph draws the notes around the open one
 //! (`graph_view.rs`), Related lists the notes about the same things
-//! (`related.rs`), and Comments a shared note's comments
-//! (`inspector_comments.rs`).
+//! (`related.rs`), Comments a shared note's comments
+//! (`inspector_comments.rs`), and Ask answers a question from the notes
+//! (`ask_panel.rs`).
 
 #[path = "inspector_comments.rs"]
 mod comments;
@@ -25,6 +26,7 @@ use kanso_core::outline::{Heading, headings};
 use kanso_store::{Backlink, Origin, Put, RelatedNote, Store};
 use serde_json::json;
 
+use crate::ask_panel::AskPanel;
 use crate::config::InspectorTab;
 use crate::editor::NoteEditor;
 use crate::graph_view::{GraphView, Scope};
@@ -83,6 +85,8 @@ pub struct Inspector {
     pub visible: bool,
     /// The notes around the open one.
     pub(crate) graph: Entity<GraphView>,
+    /// Ask Your Notes, while AI is on.
+    ask: Entity<AskPanel>,
     /// The open note's related notes (`None` while it isn't embedded), and
     /// the note and embeddings they were found for.
     related: Option<Vec<RelatedNote>>,
@@ -101,10 +105,13 @@ impl Inspector {
         editor: Entity<NoteEditor>,
         tab: InspectorTab,
         hops: u8,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let graph =
             cx.new(|cx| GraphView::new(store.clone(), library.clone(), Scope::Local, hops, cx));
+        let ask =
+            cx.new(|cx| AskPanel::new(store.clone(), library.clone(), editor.clone(), window, cx));
         // The editor notifies on every keystroke; the pane draws again only
         // when what it shows changed: the note, the heading the caret is
         // under, or the backlinks. Typing schedules the outline instead.
@@ -150,12 +157,24 @@ impl Inspector {
             mentions_task: None,
             visible: false,
             graph,
+            ask,
             related: None,
             related_for: None,
             related_task: None,
             scroll: ScrollHandle::new(),
             _subscriptions: subscriptions,
         }
+    }
+
+    /// Puts the keyboard in Ask Your Notes' question box.
+    pub fn focus_ask(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.ask
+            .update(cx, |ask, cx| ask.focus_question(window, cx));
+    }
+
+    /// Stops an answer being read, as turning AI off does.
+    pub fn stop_ask(&mut self, cx: &mut Context<Self>) {
+        self.ask.update(cx, |ask, cx| ask.stop(cx));
     }
 
     /// Shows `tab`.
@@ -333,7 +352,7 @@ impl Inspector {
         let colors = Colors::get(cx);
         let tab = self.tab;
         let open_comments = self.open_comments(cx);
-        // Five tabs share the pane's width: each shows its icon, the open
+        // Six tabs share the pane's width: each shows its icon, the open
         // one its name too, and Backlinks and Comments their counts.
         let tabs = [
             (
@@ -342,6 +361,13 @@ impl Inspector {
                 "Outline",
                 None,
                 InspectorTab::Outline,
+            ),
+            (
+                "tab-ask",
+                Lucide::MessageCircle,
+                "Ask",
+                None,
+                InspectorTab::Ask,
             ),
             (
                 "tab-backlinks",
@@ -374,6 +400,7 @@ impl Inspector {
         ];
         let options = [
             InspectorTab::Outline,
+            InspectorTab::Ask,
             InspectorTab::Backlinks,
             InspectorTab::Graph,
             InspectorTab::Related,
@@ -662,6 +689,7 @@ impl Inspector {
                 _ => String::new(),
             },
             InspectorTab::Comments => self.comments_band(cx),
+            InspectorTab::Ask => String::new(),
         };
         let graph_controls = (self.tab == InspectorTab::Graph).then(|| {
             let hops = self.graph.read(cx).hops;
@@ -1078,6 +1106,7 @@ impl Render for Inspector {
             InspectorTab::Graph => self.render_graph(cx),
             InspectorTab::Related => self.render_related(cx),
             InspectorTab::Comments => self.render_comments(cx),
+            InspectorTab::Ask => self.ask.clone().into_any_element(),
         };
         if self.tab != InspectorTab::Graph {
             self.graph.update(cx, |graph, _| graph.visible = false);
