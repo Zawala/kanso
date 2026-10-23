@@ -106,6 +106,9 @@ pub struct ThemeGallery {
     pub requested: HashSet<String>,
     /// Fetched, checked color themes by id.
     pub files: HashMap<String, Arc<ThemeEntry>>,
+    /// The verified raw bytes each theme was parsed from, so an install
+    /// writes exactly what was checked instead of re-serializing it.
+    pub file_bytes: HashMap<String, Arc<[u8]>>,
     /// Fetched and sanitized icon previews by id.
     pub previews: HashMap<String, Vec<Arc<[u8]>>>,
     /// Why a card couldn't show its file.
@@ -146,6 +149,7 @@ impl Default for ThemeGallery {
             keys: kanso_gallery::trusted_keys(),
             requested: HashSet::new(),
             files: HashMap::new(),
+            file_bytes: HashMap::new(),
             previews: HashMap::new(),
             failed: HashSet::new(),
             preview: None,
@@ -291,31 +295,26 @@ pub fn refresh(manual: bool, cx: &mut App) {
     };
     let meta = Meta::load(&root.join("meta.json"));
     let index_etag = meta.index_etag.clone();
+    let floor = meta.floor();
     let index_url = kanso_gallery::policy::index_url();
     let signature_url = format!("{index_url}.sig");
     cx.refresh_windows();
     let (tx, rx) = async_channel::bounded(1);
+    let check_root = root.clone();
     let spawned = std::thread::Builder::new()
         .name("kanso-gallery-check".into())
         .spawn(move || {
-            let result = fetch_index(
+            let result = fetch_and_check(
                 transport.as_ref(),
                 &policy,
                 &index_url,
+                &signature_url,
                 index_etag.as_deref(),
-            )
-            .and_then(|(bytes, etag)| {
-                let signature = kanso_update::fetch::get_bytes(
-                    transport.as_ref(),
-                    &updater_policy(&policy),
-                    &signature_url,
-                    kanso_gallery::MAX_SIGNATURE_BYTES,
-                )
-                .map_err(GalleryError::Fetch)?;
-                let index = check_index(&bytes, &signature, &keys, &meta.floor(), &current)
-                    .map_err(GalleryError::Index)?;
-                Ok((bytes, signature, etag, index))
-            });
+                &check_root,
+                &keys,
+                &floor,
+                &current,
+            );
             tx.try_send(result).ok();
         });
     if spawned.is_err() {
@@ -329,10 +328,10 @@ pub fn refresh(manual: bool, cx: &mut App) {
     .detach();
 }
 
+#[derive(Debug)]
 enum GalleryError {
     Fetch(FetchError),
     Index(kanso_gallery::IndexError),
-    NotModified,
 }
 
 impl std::fmt::Display for GalleryError {
@@ -340,35 +339,90 @@ impl std::fmt::Display for GalleryError {
         match self {
             GalleryError::Fetch(err) => write!(f, "{err}"),
             GalleryError::Index(err) => write!(f, "{err}"),
-            GalleryError::NotModified => write!(f, "not modified"),
         }
-    }
-}
-
-fn fetch_index(
-    transport: &dyn Transport,
-    policy: &GalleryPolicy,
-    index_url: &str,
-    etag: Option<&str>,
-) -> Result<(Vec<u8>, Option<String>), GalleryError> {
-    match kanso_update::fetch::get_bytes_if_none_match(
-        transport,
-        &updater_policy(policy),
-        index_url,
-        kanso_gallery::MAX_INDEX_BYTES,
-        etag,
-    ) {
-        Ok(kanso_update::fetch::Fetched::Body { bytes, etag }) => Ok((bytes, etag)),
-        // A conditional request answered 304 means the cached index is
-        // still current; it was verified when it was cached and is
-        // verified again at every start.
-        Ok(kanso_update::fetch::Fetched::NotModified) => Err(GalleryError::NotModified),
-        Err(err) => Err(GalleryError::Fetch(err)),
     }
 }
 
 type CheckedIndex = (Vec<u8>, Vec<u8>, Option<String>, Index);
 type CheckResult = Option<Result<CheckedIndex, GalleryError>>;
+
+/// Fetches the catalog and signature, verifies them, and uses the cached
+/// copy only after verifying it again when the server answers `304`. A
+/// cache that no longer verifies is not a failure: the etag is dropped and
+/// the index fetched unconditionally.
+#[allow(clippy::too_many_arguments)]
+fn fetch_and_check(
+    transport: &dyn Transport,
+    policy: &GalleryPolicy,
+    index_url: &str,
+    signature_url: &str,
+    etag: Option<&str>,
+    root: &std::path::Path,
+    keys: &[VerifyingKey],
+    floor: &kanso_gallery::Floor,
+    current: &semver::Version,
+) -> Result<CheckedIndex, GalleryError> {
+    let index = kanso_update::fetch::get_bytes_if_none_match(
+        transport,
+        policy,
+        index_url,
+        kanso_gallery::MAX_INDEX_BYTES,
+        etag,
+    )
+    .map_err(GalleryError::Fetch)?;
+    match index {
+        kanso_update::fetch::Fetched::Body { bytes, etag } => {
+            let signature = fetch_signature(transport, policy, signature_url)?;
+            let index = check_index(&bytes, &signature, keys, floor, current)
+                .map_err(GalleryError::Index)?;
+            Ok((bytes, signature, etag, index))
+        }
+        kanso_update::fetch::Fetched::NotModified => {
+            if let Some((bytes, signature, index)) = cached_index(root, keys, floor, current) {
+                return Ok((bytes, signature, etag.map(str::to_owned), index));
+            }
+            // The cache is gone or no longer verifies; fetch it fresh with
+            // no conditional header so the server cannot answer 304 again.
+            let bytes = kanso_update::fetch::get_bytes(
+                transport,
+                policy,
+                index_url,
+                kanso_gallery::MAX_INDEX_BYTES,
+            )
+            .map_err(GalleryError::Fetch)?;
+            let signature = fetch_signature(transport, policy, signature_url)?;
+            let index = check_index(&bytes, &signature, keys, floor, current)
+                .map_err(GalleryError::Index)?;
+            Ok((bytes, signature, None, index))
+        }
+    }
+}
+
+fn fetch_signature(
+    transport: &dyn Transport,
+    policy: &GalleryPolicy,
+    signature_url: &str,
+) -> Result<Vec<u8>, GalleryError> {
+    kanso_update::fetch::get_bytes(
+        transport,
+        policy,
+        signature_url,
+        kanso_gallery::MAX_SIGNATURE_BYTES,
+    )
+    .map_err(GalleryError::Fetch)
+}
+
+fn cached_index(
+    root: &std::path::Path,
+    keys: &[VerifyingKey],
+    floor: &kanso_gallery::Floor,
+    current: &semver::Version,
+) -> Option<(Vec<u8>, Vec<u8>, Index)> {
+    let bytes = std::fs::read(root.join("index.json")).ok()?;
+    let signature = std::fs::read(root.join("index.json.sig")).ok()?;
+    let index = check_index(&bytes, &signature, keys, floor, current).ok()?;
+    Some((bytes, signature, index))
+}
 
 fn finish_refresh(manual: bool, root: std::path::PathBuf, result: CheckResult, cx: &mut App) {
     let now = crate::clock::Clock::now_ms(cx);
@@ -376,22 +430,36 @@ fn finish_refresh(manual: bool, root: std::path::PathBuf, result: CheckResult, c
         let gallery = gallery_mut(cx);
         match result {
             Some(Ok((bytes, signature, etag, index))) => {
-                let path = root.join("index.json");
-                std::fs::write(&path, &bytes).ok();
-                std::fs::write(root.join("index.json.sig"), &signature).ok();
-                let mut meta = Meta::load(&root.join("meta.json"));
-                meta.accept(index.serial, kanso_gallery::sha256_hex(&bytes), etag);
-                meta.last_checked_ms = Some(now);
-                meta.last_error = None;
-                meta.save(&root.join("meta.json")).ok();
-                gallery.index = Some(index);
-                gallery.status = Status::Ready;
-                gallery.notice = None;
-                gallery.last_error = None;
-                gallery.last_checked_ms = Some(now);
-                gallery.installed = crate::gallery::installed(&root);
-                gallery.requested.clear();
-                true
+                // Write the index and signature before raising the floor:
+                // a crash between them leaves the old pair, which still
+                // verifies, rather than a new index with an old signature.
+                let written = kanso_gallery::state::write_atomic(&root.join("index.json"), &bytes)
+                    .and_then(|()| {
+                        kanso_gallery::state::write_atomic(&root.join("index.json.sig"), &signature)
+                    });
+                if let Err(err) = written {
+                    gallery.status = if gallery.index.is_some() {
+                        Status::Ready
+                    } else {
+                        Status::Failed(format!("couldn't store the catalog: {err}"))
+                    };
+                    gallery.last_error = Some(err.to_string());
+                    false
+                } else {
+                    let mut meta = Meta::load(&root.join("meta.json"));
+                    meta.accept(index.serial, kanso_gallery::sha256_hex(&bytes), etag);
+                    meta.last_checked_ms = Some(now);
+                    meta.last_error = None;
+                    meta.save(&root.join("meta.json")).ok();
+                    gallery.index = Some(index);
+                    gallery.status = Status::Ready;
+                    gallery.notice = None;
+                    gallery.last_error = None;
+                    gallery.last_checked_ms = Some(now);
+                    gallery.installed = crate::gallery::installed(&root);
+                    gallery.requested.clear();
+                    true
+                }
             }
             Some(Err(GalleryError::Index(kanso_gallery::IndexError::NewerSchema))) => {
                 gallery.status = Status::NeedsNewerKanso;
@@ -491,37 +559,45 @@ pub fn request(theme: Theme, cx: &mut App) {
     let spawned = std::thread::Builder::new()
         .name("kanso-gallery-file".into())
         .spawn(move || {
-            let cap = if kind == Kind::Color {
-                kanso_gallery::MAX_COLOR_BYTES
+            // A card only needs the color file, or an icon theme's six
+            // previews; the bundle waits for Install.
+            let result = if kind == Kind::Color {
+                kanso_update::fetch::get_bytes(
+                    transport.as_ref(),
+                    &policy,
+                    &kanso_gallery::file_url(&payload.path),
+                    kanso_gallery::MAX_COLOR_BYTES,
+                )
+                .map_err(|err| err.to_string())
             } else {
-                kanso_gallery::MAX_BUNDLE_BYTES
+                Ok(Vec::new())
             };
-            let result = kanso_update::fetch::get_bytes(
-                transport.as_ref(),
-                &updater_policy(&policy),
-                &kanso_gallery::file_url(&payload.path),
-                cap,
-            );
             let mut previews = Vec::new();
-            if result.is_ok() && kind == Kind::Icons {
+            if kind == Kind::Icons {
                 for file in &preview {
                     match kanso_update::fetch::get_bytes(
                         transport.as_ref(),
-                        &updater_policy(&policy),
+                        &policy,
                         &kanso_gallery::file_url(&file.path),
                         kanso_gallery::MAX_PREVIEW_BYTES,
                     ) {
-                        Ok(bytes) => {
+                        Ok(bytes)
+                            if kanso_gallery::check_pin(
+                                file,
+                                &bytes,
+                                kanso_gallery::MAX_PREVIEW_BYTES,
+                            )
+                            .is_ok() =>
+                        {
                             if let Ok(svg) = kanso_gallery::sanitize_svg(&bytes) {
                                 previews.push(Arc::<[u8]>::from(svg));
                             }
                         }
-                        Err(_) => break,
+                        _ => break,
                     }
                 }
             }
-            tx.try_send((id, result.map_err(|e| e.to_string()), previews))
-                .ok();
+            tx.try_send((id, result, previews)).ok();
         });
     if spawned.is_err() {
         return;
@@ -533,55 +609,56 @@ pub fn request(theme: Theme, cx: &mut App) {
     .detach();
 }
 
-fn updater_policy(policy: &GalleryPolicy) -> kanso_update::UrlPolicy {
-    kanso_update::UrlPolicy {
-        repository: "iamngoni/kanso-themes",
-        allow_loopback: policy.allow_loopback,
-    }
-}
-
 type FileAnswer = (String, Result<Vec<u8>, String>, Vec<Arc<[u8]>>);
 
 fn finish_request(received: Option<FileAnswer>, cx: &mut App) {
     let Some((id, result, previews)) = received else {
         return;
     };
+    let theme = cx
+        .try_global::<ThemeGallery>()
+        .and_then(|gallery| gallery.index.as_ref())
+        .and_then(|index| index.theme(&id))
+        .cloned();
     {
         let gallery = gallery_mut(cx);
-        match result {
-            Ok(bytes) => {
-                let kind = gallery
-                    .index
-                    .as_ref()
-                    .and_then(|index| index.theme(&id))
-                    .map(|theme| theme.kind);
-                match kind {
-                    Some(Kind::Color) => {
-                        match std::str::from_utf8(&bytes)
-                            .ok()
-                            .and_then(|text| ThemeFile::parse(text).ok())
-                        {
-                            Some(file) => {
-                                let key = id.clone();
-                                gallery.files.insert(
-                                    id,
-                                    Arc::new(ThemeEntry::new(file, key, None, Origin::Gallery)),
-                                );
-                            }
-                            None => {
-                                gallery.failed.insert(id);
-                            }
-                        }
+        match (result, theme) {
+            (Ok(bytes), Some(theme)) if theme.kind == Kind::Color => {
+                // The pin and the legibility checks run before the file is
+                // kept, so nothing unverified is ever previewed or installed.
+                let pinned = theme.file.as_ref().is_some_and(|file| {
+                    kanso_gallery::check_pin(file, &bytes, kanso_gallery::MAX_COLOR_BYTES).is_ok()
+                });
+                let parsed = pinned
+                    .then(|| std::str::from_utf8(&bytes).ok())
+                    .flatten()
+                    .and_then(|text| ThemeFile::parse(text).ok())
+                    .filter(|file| file.name == theme.name)
+                    .filter(|file| crate::theme_import::problems(file).is_empty());
+                match parsed {
+                    Some(file) => {
+                        gallery.files.insert(
+                            id.clone(),
+                            Arc::new(ThemeEntry::new(file, id.clone(), None, Origin::Gallery)),
+                        );
+                        gallery.file_bytes.insert(id, Arc::from(bytes));
                     }
-                    Some(Kind::Icons) => {
-                        gallery.previews.insert(id, previews);
+                    None => {
+                        gallery.failed.insert(id);
                     }
-                    None => {}
                 }
             }
-            Err(_) => {
+            (Ok(_), Some(theme)) if theme.kind == Kind::Icons => {
+                if previews.is_empty() && !theme.preview.is_empty() {
+                    gallery.failed.insert(id);
+                } else {
+                    gallery.previews.insert(id, previews);
+                }
+            }
+            (Err(_), _) | (Ok(_), None) => {
                 gallery.failed.insert(id);
             }
+            (Ok(_), Some(_)) => {}
         }
     }
     cx.refresh_windows();
@@ -603,11 +680,11 @@ fn install_with(theme: Theme, quiet: bool, cx: &mut App) {
     let cached = {
         let gallery = gallery_mut(cx);
         gallery
-            .files
+            .file_bytes
             .get(&theme.id)
             .cloned()
             .filter(|_| theme.kind == Kind::Color)
-            .map(|entry| entry.file.to_json_string().into_bytes())
+            .map(|bytes| bytes.to_vec())
     };
     if let Some(bytes) = cached {
         install_bytes(theme, bytes, quiet, cx);
@@ -637,7 +714,7 @@ fn install_with(theme: Theme, quiet: bool, cx: &mut App) {
         .spawn(move || {
             let result = kanso_update::fetch::get_bytes(
                 transport.as_ref(),
-                &updater_policy(&policy),
+                &policy,
                 &kanso_gallery::file_url(&payload.path),
                 cap,
             );
@@ -671,18 +748,39 @@ fn install_bytes(theme: Theme, bytes: Vec<u8>, quiet: bool, cx: &mut App) {
         return;
     };
     let root = themes::gallery_dir(&data_dir);
-    let result = match theme.kind {
-        Kind::Color => {
-            let reserved = reserved_color_names(cx);
-            gallery::install_color(&root, &theme, &bytes, &reserved)
-        }
-        Kind::Icons => {
-            let (ids, names) = reserved_icon_names(cx);
-            gallery::install_icons(&root, &theme, &bytes, &ids, &names)
-        }
-    };
+    let reserved = reserved_color_names(cx);
+    let (ids, names) = reserved_icon_names(cx);
+    let worker_theme = theme.clone();
+    let (tx, rx) = async_channel::bounded(1);
+    let spawned = std::thread::Builder::new()
+        .name("kanso-gallery-install".into())
+        .spawn(move || {
+            // Unpacking a bundle and hashing a color file are file work,
+            // not window work: keep them off the UI thread.
+            let result = match worker_theme.kind {
+                Kind::Color => {
+                    gallery::install_color(&root, &worker_theme, &bytes, &reserved, quiet)
+                }
+                Kind::Icons => {
+                    gallery::install_icons(&root, &worker_theme, &bytes, &ids, &names, quiet)
+                }
+            };
+            tx.try_send(result).ok();
+        });
+    if spawned.is_err() {
+        notice(cx, format!("Couldn't install {}.", theme.name));
+        return;
+    }
+    cx.spawn(async move |cx| {
+        let result = rx.recv().await.ok();
+        cx.update(|cx| finish_install(&theme, quiet, result, cx));
+    })
+    .detach();
+}
+
+fn finish_install(theme: &Theme, quiet: bool, result: Option<Result<(), String>>, cx: &mut App) {
     match result {
-        Ok(()) => {
+        Some(Ok(())) => {
             refresh_installed(cx);
             if quiet {
                 log_line(&format!(
@@ -693,13 +791,14 @@ fn install_bytes(theme: Theme, bytes: Vec<u8>, quiet: bool, cx: &mut App) {
                 notice(cx, format!("Installed {}.", theme.name));
             }
         }
-        Err(err) => {
+        Some(Err(err)) => {
             if quiet {
                 log_line(&format!("updating {} failed: {err}", theme.name));
             } else {
                 notice(cx, format!("Couldn't install {}: {err}", theme.name));
             }
         }
+        None => {}
     }
 }
 
@@ -1352,8 +1451,15 @@ fn pair_card(light: &Theme, dark: &Theme, colors: &Colors, cx: &mut App) -> AnyE
                     let light = light.clone();
                     let dark = dark.clone();
                     move |_, _, cx| {
-                        install(light.clone(), cx);
-                        install(dark.clone(), cx);
+                        // Only the half that is missing: an installed (and
+                        // possibly edited) copy is never overwritten by a
+                        // pair's install.
+                        if !light_installed {
+                            install(light.clone(), cx);
+                        }
+                        if !dark_installed {
+                            install(dark.clone(), cx);
+                        }
                     }
                 })
                 .into_any_element()
@@ -1609,12 +1715,11 @@ pub fn schedule(cx: &mut App) {
     gallery_mut(cx)._schedule = Some(task);
 }
 
-fn auto_check(cx: &mut App) {
+pub(crate) fn auto_check(cx: &mut App) {
     let due = {
-        let Some(state) = cx.try_global::<crate::workspace::AppState>() else {
-            return;
-        };
-        if !state.config.gallery.auto_update {
+        // The switch turns updates off, not the check: a signed revocation
+        // must still be applied when automatic updates are paused.
+        if cx.try_global::<crate::workspace::AppState>().is_none() {
             return;
         }
         let Some(gallery) = cx.try_global::<ThemeGallery>() else {
@@ -1632,6 +1737,12 @@ fn auto_check(cx: &mut App) {
     }
 }
 
+/// Whether a planned action runs with automatic updates on (`true`) or off.
+/// Only an update is gated; a revocation always applies. Pure.
+fn action_runs(action: &kanso_gallery::Action, auto_update: bool) -> bool {
+    auto_update || !matches!(action, kanso_gallery::Action::Update(_))
+}
+
 /// Applies a verified plan: updates only unedited copies, removes a revoked
 /// theme and falls back when it was in use, and disables (never deletes) a
 /// revoked copy that was edited until the owner decides that case.
@@ -1640,14 +1751,13 @@ fn apply_plan(plan: kanso_gallery::Plan, root: &std::path::Path, cx: &mut App) {
         .try_global::<crate::workspace::AppState>()
         .is_some_and(|state| state.config.gallery.auto_update);
     for action in plan.actions {
+        if !action_runs(&action, auto) {
+            continue;
+        }
         match action {
-            kanso_gallery::Action::Update(theme) => {
-                if auto {
-                    install_quiet(*theme, cx);
-                }
-            }
+            kanso_gallery::Action::Update(theme) => install_quiet(*theme, cx),
             kanso_gallery::Action::Remove { id, kind, reason } => {
-                fall_back_if_selected(kind, &id, cx);
+                fall_back_if_selected(kind, &id, root, cx);
                 if let Err(err) = crate::gallery::remove(root, kind, &id) {
                     log_line(&format!("removing revoked {id} failed: {err}"));
                     continue;
@@ -1656,7 +1766,7 @@ fn apply_plan(plan: kanso_gallery::Plan, root: &std::path::Path, cx: &mut App) {
                 notice(cx, format!("The gallery withdrew a theme: {reason}"));
             }
             kanso_gallery::Action::Disable { id, kind, reason } => {
-                fall_back_if_selected(kind, &id, cx);
+                fall_back_if_selected(kind, &id, root, cx);
                 crate::gallery::disable(root, &id);
                 log_line(&format!("disabled revoked, edited {id}: {reason}"));
                 notice(
@@ -1672,29 +1782,29 @@ fn apply_plan(plan: kanso_gallery::Plan, root: &std::path::Path, cx: &mut App) {
 }
 
 /// Switches away from a revoked theme that is in use, before its files go.
-/// The reload afterwards also falls back for a name that is gone; this
-/// saves the choice.
-fn fall_back_if_selected(kind: Kind, id: &str, cx: &mut App) {
+/// `state.json` records the theme's display name, and the theme settings
+/// store names, so every slot naming it is cleared; comparing the id alone
+/// missed an edited copy, whose record still carries the name.
+fn fall_back_if_selected(kind: Kind, id: &str, root: &std::path::Path, cx: &mut App) {
     match kind {
         Kind::Color => {
+            let Some(name) = crate::gallery::installed_name(root, id) else {
+                return;
+            };
             let dark = cx
                 .try_global::<crate::themes::ActiveTheme>()
                 .is_none_or(|active| active.ui.dark());
-            let selected = cx
-                .try_global::<crate::workspace::AppState>()
-                .is_some_and(|state| {
-                    let themes = &state.config.appearance.themes;
-                    [&themes.ui, &themes.light, &themes.dark]
-                        .iter()
-                        .any(|name| name.as_str() == id || name.as_str() == id.replace('-', " "))
-                });
-            if selected {
-                let fallback = if dark {
-                    crate::config::KANSO_DARK
-                } else {
-                    crate::config::KANSO_LIGHT
-                };
-                crate::settings_themes::select_installed(fallback, dark, cx);
+            let fallback = if dark {
+                crate::config::KANSO_DARK
+            } else {
+                crate::config::KANSO_LIGHT
+            };
+            let mut changed = false;
+            crate::workspace::AppState::update_config(cx, |config| {
+                changed = clear_theme_name(&mut config.appearance.themes, &name, fallback);
+            });
+            if changed {
+                crate::themes::apply(None, cx);
             }
         }
         Kind::Icons => {
@@ -1706,6 +1816,27 @@ fn fall_back_if_selected(kind: Kind, id: &str, cx: &mut App) {
             }
         }
     }
+}
+
+/// Clears every theme setting that names `name`, replacing the UI slots
+/// with `fallback`. Returns whether anything changed. Pure.
+fn clear_theme_name(themes: &mut crate::config::ThemeSettings, name: &str, fallback: &str) -> bool {
+    let mut changed = false;
+    for slot in [&mut themes.ui, &mut themes.light, &mut themes.dark] {
+        if *slot == name {
+            *slot = fallback.to_owned();
+            changed = true;
+        }
+    }
+    if themes.syntax.as_deref() == Some(name) {
+        themes.syntax = None;
+        changed = true;
+    }
+    if themes.preview.as_deref() == Some(name) {
+        themes.preview = None;
+        changed = true;
+    }
+    changed
 }
 
 static LOG_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -1743,10 +1874,11 @@ fn log_line(line: &str) {
 #[cfg(test)]
 mod tests {
     use crate::settings_gallery::{
-        Filter, Installed, Item, Kind, matches_filter, matches_words, shown,
+        Filter, Installed, Item, Kind, action_runs, clear_theme_name, matches_filter,
+        matches_words, shown,
     };
     use kanso_gallery::index::{Index, SCHEMA};
-    use kanso_gallery::{Appearance, FileRef, Theme, check_index};
+    use kanso_gallery::{Appearance, FileRef, GalleryPolicy, Theme, check_index};
     use proptest::prelude::*;
 
     fn theme(id: &str, family: &str, appearance: Appearance) -> Theme {
@@ -1796,6 +1928,171 @@ mod tests {
             current_digest: Some("aa".into()),
             installed_at: "2026-10-23T12:00:00Z".into(),
         }
+    }
+
+    #[test]
+    fn clearing_a_revoked_theme_uses_its_name_not_its_id() {
+        let mut settings = crate::config::ThemeSettings {
+            ui: "Nord".into(),
+            syntax: Some("Nord".into()),
+            preview: Some("Nord".into()),
+            follow_system: true,
+            light: "Nord".into(),
+            dark: "Kanso Dark".into(),
+        };
+        assert!(clear_theme_name(&mut settings, "Nord", "Kanso Light"));
+        assert_eq!(settings.ui, "Kanso Light");
+        assert_eq!(settings.light, "Kanso Light");
+        assert_eq!(settings.dark, "Kanso Dark");
+        assert_eq!(settings.syntax, None);
+        assert_eq!(settings.preview, None);
+        // The id never matches a name, and nothing else is touched.
+        let mut settings = crate::config::ThemeSettings::default();
+        assert!(!clear_theme_name(&mut settings, "nord", "Kanso Light"));
+    }
+
+    #[test]
+    fn a_revocation_always_runs_even_with_automatic_updates_off() {
+        let theme = theme("nord", "nord", Appearance::Dark);
+        let update = kanso_gallery::Action::Update(Box::new(theme));
+        let remove = kanso_gallery::Action::Remove {
+            id: "nord".into(),
+            kind: Kind::Color,
+            reason: "Withdrawn.".into(),
+        };
+        let disable = kanso_gallery::Action::Disable {
+            id: "nord".into(),
+            kind: Kind::Color,
+            reason: "Withdrawn.".into(),
+        };
+        assert!(action_runs(&update, true));
+        assert!(!action_runs(&update, false));
+        assert!(action_runs(&remove, false));
+        assert!(action_runs(&disable, false));
+    }
+
+    struct ScriptedIndex {
+        index: Vec<u8>,
+        signature: Vec<u8>,
+        calls: std::sync::atomic::AtomicUsize,
+        signature_calls: std::sync::atomic::AtomicUsize,
+        etag: Option<String>,
+        first: u16,
+    }
+
+    impl kanso_update::Transport for ScriptedIndex {
+        fn get(
+            &self,
+            url: &str,
+        ) -> Result<kanso_update::fetch::Response, kanso_update::FetchError> {
+            use std::sync::atomic::Ordering;
+            let body = if url.ends_with(".sig") {
+                self.signature_calls.fetch_add(1, Ordering::SeqCst);
+                self.signature.clone()
+            } else {
+                let call = self.calls.fetch_add(1, Ordering::SeqCst);
+                if call == 0 {
+                    return Ok(kanso_update::fetch::Response {
+                        status: self.first,
+                        location: None,
+                        rate_limit_remaining: None,
+                        etag: self.etag.clone(),
+                        body: Box::new(std::io::empty()),
+                    });
+                }
+                self.index.clone()
+            };
+            Ok(kanso_update::fetch::Response {
+                status: 200,
+                location: None,
+                rate_limit_remaining: None,
+                etag: self.etag.clone(),
+                body: Box::new(std::io::Cursor::new(body)),
+            })
+        }
+    }
+
+    fn signed_bytes(serial: u64) -> (Vec<u8>, Vec<u8>, kanso_update::VerifyingKey) {
+        let (key, _) = kanso_update::feed::generate_signing_key();
+        let mut index = index(vec![theme("nord", "nord", Appearance::Dark)]);
+        index.serial = serial;
+        let bytes = serde_json::to_vec(&index).unwrap();
+        let signature = kanso_update::sign_feed(&bytes, &key).into_bytes();
+        (bytes, signature, key.verifying_key())
+    }
+
+    #[test]
+    fn a_304_with_a_good_cache_is_success_without_refetching() {
+        let dir = tempfile::tempdir().unwrap();
+        let (bytes, signature, key) = signed_bytes(1);
+        std::fs::write(dir.path().join("index.json"), &bytes).unwrap();
+        std::fs::write(dir.path().join("index.json.sig"), &signature).unwrap();
+        let transport = ScriptedIndex {
+            index: bytes.clone(),
+            signature: signature.clone(),
+            calls: Default::default(),
+            signature_calls: Default::default(),
+            etag: Some("\"v1\"".into()),
+            first: 304,
+        };
+        let current = crate::updates::current_version();
+        let answer = super::fetch_and_check(
+            &transport,
+            &GalleryPolicy::GALLERY,
+            kanso_gallery::INDEX_URL,
+            kanso_gallery::SIGNATURE_URL,
+            Some("\"v1\""),
+            dir.path(),
+            &[key],
+            &kanso_gallery::Floor::default(),
+            &current,
+        )
+        .unwrap();
+        assert_eq!(answer.0, bytes);
+        assert_eq!(answer.2.as_deref(), Some("\"v1\""));
+        assert_eq!(transport.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            transport
+                .signature_calls
+                .load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "a 304 re-verifies the cached signature instead of fetching it"
+        );
+    }
+
+    #[test]
+    fn a_304_with_a_corrupt_cache_refetches_unconditionally() {
+        let dir = tempfile::tempdir().unwrap();
+        let (bytes, signature, key) = signed_bytes(2);
+        // The cache holds an index with no signature beside it.
+        std::fs::write(dir.path().join("index.json"), &bytes).unwrap();
+        let transport = ScriptedIndex {
+            index: bytes.clone(),
+            signature,
+            calls: Default::default(),
+            signature_calls: Default::default(),
+            etag: Some("\"v2\"".into()),
+            first: 304,
+        };
+        let current = crate::updates::current_version();
+        let answer = super::fetch_and_check(
+            &transport,
+            &GalleryPolicy::GALLERY,
+            kanso_gallery::INDEX_URL,
+            kanso_gallery::SIGNATURE_URL,
+            Some("\"v2\""),
+            dir.path(),
+            &[key],
+            &kanso_gallery::Floor::default(),
+            &current,
+        )
+        .unwrap();
+        assert_eq!(answer.0, bytes);
+        assert_eq!(
+            transport.calls.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "the second request drops If-None-Match"
+        );
     }
 
     #[test]
