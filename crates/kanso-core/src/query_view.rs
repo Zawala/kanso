@@ -431,7 +431,9 @@ pub fn is_query_fence(lang: Option<&str>) -> bool {
 
 fn parse_options() -> markdown::ParseOptions {
     let mut options = markdown::ParseOptions::gfm();
-    options.constructs.frontmatter = false;
+    // Front matter stays YAML: a fence inside a block scalar is not a query
+    // fence, and the preview hides the block as the editor does.
+    options.constructs.frontmatter = true;
     options.constructs.math_text = true;
     options.constructs.math_flow = true;
     options
@@ -491,7 +493,28 @@ fn collect_fences(node: &markdown::mdast::Node, body: &str, fences: &mut Vec<Que
 
 /// Whether `body` has a query fence.
 pub fn contains_query(body: &str) -> bool {
-    !query_fences(body).is_empty()
+    might_contain_query(body) && !query_fences(body).is_empty()
+}
+
+/// Whether `body` could have a query fence, decided without parsing it.
+/// A store change asks this on every open note; parsing the Markdown there
+/// would block the UI for a note that has no query at all.
+pub fn might_contain_query(body: &str) -> bool {
+    body.lines().any(|line| {
+        let mut rest = line.trim_start_matches([' ', '\t']);
+        // A fence may sit in a block quote.
+        while let Some(after) = rest.strip_prefix('>') {
+            rest = after.trim_start_matches([' ', '\t']);
+        }
+        let fence = rest.chars().take_while(|c| *c == '`' || *c == '~').count();
+        if fence < 3 {
+            return false;
+        }
+        rest[fence..]
+            .split_whitespace()
+            .next()
+            .is_some_and(|word| word.eq_ignore_ascii_case("query"))
+    })
 }
 
 /// The body as Markdown for an export: each `query` fence becomes the table
@@ -726,6 +749,35 @@ mod tests {
             })
         );
         assert_eq!(spec.limit, Some(50));
+    }
+
+    #[test]
+    fn a_fence_in_front_matter_is_not_a_query() {
+        let body = "---\nnote: |\n  ```query\n  from: has:x\n  ```\n---\nBody\n";
+        assert!(query_fences(body).is_empty());
+        assert!(!contains_query(body));
+    }
+
+    #[test]
+    fn a_cheap_check_finds_the_fences_that_matter() {
+        for body in [
+            "```query\nfrom: has:x\n```",
+            "~~~Query\nfrom: has:x\n~~~",
+            "> ```query extra\n> from: has:x\n> ```",
+            "  ````query\n  from: has:x\n  ````",
+        ] {
+            assert!(might_contain_query(body), "{body:?}");
+            assert!(contains_query(body), "{body:?}");
+        }
+        for body in [
+            "Prose about a query, but no fence.",
+            "```js\nconst query = 1;\n```",
+            "`query` is inline",
+            "```querying\nnot a query\n```",
+        ] {
+            assert!(!might_contain_query(body), "{body:?}");
+            assert!(!contains_query(body), "{body:?}");
+        }
     }
 
     #[test]
