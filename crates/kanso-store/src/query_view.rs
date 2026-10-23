@@ -1,0 +1,277 @@
+//! Reading every live note for a query view: its facts and its text.
+//!
+//! A locked note's text is never read here: `body` is empty for one sealed
+//! itself or in a locked notebook. The trash is read too, so the pure
+//! evaluation can leave it out with everything else it doesn't list.
+
+use std::collections::HashMap;
+
+use kanso_core::NoteStatus;
+use kanso_core::query_view::ViewNote;
+
+use crate::{Result, Store};
+
+/// A note as a query view reads it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueryNoteRow {
+    pub id: String,
+    pub rev: String,
+    pub title: String,
+    /// Empty for a locked note.
+    pub body: String,
+    pub book_id: String,
+    pub book_name: Option<String>,
+    pub status: String,
+    /// The note's live tags.
+    pub tag_ids: Vec<String>,
+    pub tag_names: Vec<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub locked: bool,
+    pub trashed: bool,
+}
+
+impl From<QueryNoteRow> for ViewNote {
+    /// A row as a query reads it. A locked note's properties are read from
+    /// its empty body, so it has none.
+    fn from(row: QueryNoteRow) -> Self {
+        ViewNote {
+            properties: kanso_core::properties::parse(&row.body),
+            id: row.id,
+            title: row.title,
+            body: row.body,
+            book_id: row.book_id,
+            book_name: row.book_name,
+            status: row.status,
+            tag_ids: row.tag_ids,
+            tag_names: row.tag_names,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            locked: row.locked,
+            trashed: row.trashed,
+        }
+    }
+}
+
+impl Store {
+    /// Every live note, oldest edit first, with the facts a query needs.
+    pub fn query_view_notes(&self) -> Result<Vec<QueryNoteRow>> {
+        let tags: HashMap<String, String> = self
+            .tags()?
+            .into_iter()
+            .map(|tag| (tag.id, tag.name))
+            .collect();
+        self.read(|conn| {
+            let body = crate::schema::readable_body!("d.");
+            let locked = crate::schema::note_locked!("d.");
+            let mut stmt = conn.prepare(&format!(
+                "SELECT d.id, d.rev, d.title, {body}, d.book_id, b.name, d.status, \
+                 json_extract(d.json, '$.tags'), d.created_at, d.updated_at, {locked} \
+                 FROM docs d LEFT JOIN docs b ON b.id = d.book_id AND b.type = 'book' AND b.deleted = 0 \
+                 WHERE d.type = 'note' AND d.deleted = 0 \
+                 ORDER BY d.updated_at, d.id"
+            ))?;
+            let rows = stmt.query_map([], |row| {
+                let book_id: String = row.get::<_, Option<String>>(4)?.unwrap_or_default();
+                let raw_tags: Option<String> = row.get(7)?;
+                let tag_ids: Vec<String> = raw_tags
+                    .and_then(|json| serde_json::from_str::<Vec<String>>(&json).ok())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|id| tags.contains_key(id))
+                    .collect();
+                let tag_names = tag_ids
+                    .iter()
+                    .filter_map(|id| tags.get(id).cloned())
+                    .collect();
+                let status: String = row.get::<_, Option<String>>(6)?.unwrap_or_default();
+                Ok(QueryNoteRow {
+                    id: row.get(0)?,
+                    rev: row.get(1)?,
+                    title: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    body: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                    trashed: book_id == kanso_core::TRASH_BOOK_ID,
+                    book_id,
+                    book_name: row.get::<_, Option<String>>(5)?,
+                    status: NoteStatus::parse(&status)
+                        .unwrap_or_default()
+                        .as_str()
+                        .to_owned(),
+                    tag_ids,
+                    tag_names,
+                    created_at: row.get::<_, Option<i64>>(8)?.unwrap_or(0),
+                    updated_at: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
+                    locked: row.get(10)?,
+                })
+            })?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kanso_core::DocType;
+    use serde_json::json;
+
+    fn store() -> (tempfile::TempDir, Store) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().join("kanso.db")).unwrap();
+        (dir, store)
+    }
+
+    fn book(store: &Store, name: &str) -> String {
+        store
+            .put(
+                DocType::Book,
+                json!({"name": name}),
+                crate::Put::Upsert,
+                crate::Origin::Ui,
+            )
+            .unwrap()
+            .id
+    }
+
+    fn note(store: &Store, title: &str, body: &str, book: &str) -> String {
+        store
+            .put(
+                DocType::Note,
+                json!({"title": title, "body": body, "bookId": book}),
+                crate::Put::Upsert,
+                crate::Origin::Ui,
+            )
+            .unwrap()
+            .id
+    }
+
+    #[test]
+    fn reads_live_notes_and_leaves_the_trash_on_its_own() {
+        let (_dir, store) = store();
+        let inbox = book(&store, "Inbox");
+        let live = note(&store, "Live", "a: 1\n", &inbox);
+        let gone = book(&store, "Gone");
+        let trashed = note(&store, "Trashed", "b: 2\n", &gone);
+        store.delete(&gone, crate::Origin::Ui).unwrap();
+        let rows = store.query_view_notes().unwrap();
+        let by_id: HashMap<&str, &QueryNoteRow> =
+            rows.iter().map(|row| (row.id.as_str(), row)).collect();
+        assert_eq!(by_id[&live.as_str()].title, "Live");
+        assert!(!by_id[&live.as_str()].trashed);
+        assert!(by_id[&trashed.as_str()].trashed);
+    }
+
+    #[test]
+    fn a_locked_note_never_has_its_text_read() {
+        let (_dir, store) = store();
+        let inbox = book(&store, "Inbox");
+        let sealed = store
+            .put(
+                DocType::Note,
+                json!({"title": "Sealed", "body": "", "bookId": inbox,
+                       "kansoLock": {"salt": "s", "nonce": "n", "data": "d"}}),
+                crate::Put::Upsert,
+                crate::Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let rows = store.query_view_notes().unwrap();
+        let by_id: HashMap<&str, &QueryNoteRow> =
+            rows.iter().map(|row| (row.id.as_str(), row)).collect();
+        assert!(by_id[&sealed.as_str()].locked);
+        assert_eq!(by_id[&sealed.as_str()].body, "");
+    }
+
+    #[test]
+    fn five_thousand_notes_answer_quickly() {
+        use kanso_core::query_view::{self, ViewNote};
+
+        let (_dir, store) = store();
+        let inbox = book(&store, "Clients");
+        for ix in 0..5_000 {
+            store
+                .put(
+                    DocType::Note,
+                    json!({
+                        "title": format!("Note {ix}"),
+                        "body": format!("---\nrating: {}\n---\n# Note\n", ix % 50),
+                        "bookId": inbox,
+                        "status": "active",
+                    }),
+                    crate::Put::Upsert,
+                    crate::Origin::Ui,
+                )
+                .unwrap();
+        }
+        let started = std::time::Instant::now();
+        let notes: Vec<ViewNote> = store
+            .query_view_notes()
+            .unwrap()
+            .into_iter()
+            .map(ViewNote::from)
+            .collect();
+        let spec = query_view::parse(
+            "from: status:active\ncolumns: rating, book\nsort: rating desc\nlimit: 50",
+        )
+        .unwrap();
+        let rows = query_view::evaluate(&spec, &notes, None);
+        let elapsed = started.elapsed();
+        assert_eq!(rows.len(), 50);
+        // Debug builds are slow; a release build is well under 100 ms.
+        assert!(
+            elapsed < std::time::Duration::from_millis(500),
+            "{elapsed:?}"
+        );
+        eprintln!("5000 notes answered in {elapsed:?}");
+    }
+
+    #[test]
+    fn evaluation_leaves_out_locked_trashed_and_self() {
+        use kanso_core::query_view::{self, ViewNote};
+
+        let (_dir, store) = store();
+        let inbox = book(&store, "Clients");
+        let open = note(
+            &store,
+            "Open",
+            "---\nclient: Acme\nrating: 4\n---\n# Open\n",
+            &inbox,
+        );
+        let sealed = store
+            .put(
+                DocType::Note,
+                json!({"title": "Sealed", "body": "", "bookId": inbox,
+                       "kansoLock": {"salt": "s", "nonce": "n", "data": "d"}}),
+                crate::Put::Upsert,
+                crate::Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let trash = book(&store, "Gone");
+        let trashed = note(
+            &store,
+            "Trashed",
+            "---\nclient: Acme\n---\n# Trashed\n",
+            &trash,
+        );
+        store.delete(&trash, crate::Origin::Ui).unwrap();
+        let self_note = note(&store, "Self", "---\nclient: Acme\n---\n# Self\n", &inbox);
+
+        let notes: Vec<ViewNote> = store
+            .query_view_notes()
+            .unwrap()
+            .into_iter()
+            .map(ViewNote::from)
+            .collect();
+        let spec = query_view::parse("from: has:client\ncolumns: rating").unwrap();
+        let rows = query_view::evaluate(&spec, &notes, Some(&self_note));
+        let ids: Vec<&str> = rows.iter().map(|row| row.id.as_str()).collect();
+        assert_eq!(ids, [open.as_str()]);
+        assert_eq!(
+            rows[0].cells,
+            vec![Some(kanso_core::properties::Value::Number(4.))]
+        );
+        assert!(!ids.contains(&sealed.as_str()));
+        assert!(!ids.contains(&trashed.as_str()));
+    }
+}
