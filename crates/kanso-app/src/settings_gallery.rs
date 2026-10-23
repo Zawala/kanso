@@ -200,7 +200,7 @@ pub fn init(cx: &mut App) {
         let meta = Meta::load(&root.join("meta.json"));
         gallery.last_checked_ms = meta.last_checked_ms;
         let bytes = std::fs::read(root.join("index.json")).ok();
-        let signature = std::fs::read(root.join("index.signature")).ok();
+        let signature = std::fs::read(root.join("index.json.sig")).ok();
         if let (Some(bytes), Some(signature)) = (bytes, signature)
             && let Ok(index) = check_index(
                 &bytes,
@@ -378,7 +378,7 @@ fn finish_refresh(manual: bool, root: std::path::PathBuf, result: CheckResult, c
             Some(Ok((bytes, signature, etag, index))) => {
                 let path = root.join("index.json");
                 std::fs::write(&path, &bytes).ok();
-                std::fs::write(root.join("index.signature"), &signature).ok();
+                std::fs::write(root.join("index.json.sig"), &signature).ok();
                 let mut meta = Meta::load(&root.join("meta.json"));
                 meta.accept(index.serial, kanso_gallery::sha256_hex(&bytes), etag);
                 meta.last_checked_ms = Some(now);
