@@ -18,6 +18,7 @@ use serde_json::json;
 
 use crate::config::AppConfig;
 use crate::editor::NoteEditor;
+use crate::library::Filter;
 use crate::note_menu::NoteCommand;
 use crate::services::Services;
 use crate::workspace::{AppState, Workspace};
@@ -84,6 +85,18 @@ fn setup_with(
 }
 
 impl Fixture {
+    fn book(&self, name: &str, parent: Option<&str>) -> String {
+        self.store
+            .put(
+                DocType::Book,
+                json!({"name": name, "parentBookId": parent}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id
+    }
+
     fn note(&self, title: &str, body: &str) -> String {
         self.store
             .put(
@@ -138,6 +151,18 @@ impl Fixture {
     fn open_note(&self, cx: &mut TestAppContext) -> Option<String> {
         let editor = self.editor(cx);
         cx.read(|cx| editor.read(cx).note_id().map(str::to_owned))
+    }
+
+    fn note_in(&self, book: &str, title: &str, body: &str) -> String {
+        self.store
+            .put(
+                DocType::Note,
+                json!({"title": title, "body": body, "bookId": book}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id
     }
 
     fn type_body(&self, cx: &mut TestAppContext, body: &str) {
@@ -277,6 +302,38 @@ fn cmd_w_at_one_tab_saves_the_note_before_closing(cx: &mut TestAppContext) {
     cx.simulate_keystrokes(f.window, CLOSE_TAB);
     cx.run_until_parked();
     assert_eq!(f.store_body(&a), "typed and not yet autosaved");
+}
+
+/// Clicking a notebook while two notes are open shows its first note in a
+/// new tab, not in the tab someone is reading.
+// no-prop-test: one automatic list pick in one window.
+#[gpui_kit::test]
+fn a_notebook_pick_does_not_replace_an_open_tab(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let a = f.note("A", "text");
+    let c = f.note("C", "text");
+    f.select(cx, &a);
+    f.middle_click(cx, &c);
+    assert_eq!(f.tabs(cx), [a.clone(), c.clone()]);
+
+    let book = f.book("Other", None);
+    let b = f.note_in(&book, "B", "text");
+    let library = cx.read(|cx| f.workspace.read(cx).library.clone());
+    library.update(cx, |library, cx| {
+        library.set_filter(Filter::Book(book.clone()), cx)
+    });
+    cx.run_until_parked();
+    f.draw(cx);
+    assert_eq!(
+        f.tabs(cx),
+        [a.clone(), c.clone(), b.clone()],
+        "the reading tab is left as it was"
+    );
+    assert_eq!(f.open_note(cx), Some(b));
+    assert!(
+        f.tabs(cx).contains(&a) && f.tabs(cx).contains(&c),
+        "both earlier notes stay open"
+    );
 }
 
 /// While a Replace holds unsaved writes the editor refuses to switch; the

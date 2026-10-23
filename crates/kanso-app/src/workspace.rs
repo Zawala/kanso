@@ -1756,10 +1756,21 @@ impl Workspace {
         if asked {
             self.leave_settings(window, cx);
         }
-        let intent = std::mem::replace(&mut self.pending_open, OpenIntent::Current);
+        let mut intent = std::mem::replace(&mut self.pending_open, OpenIntent::Current);
         let several = self.library.read(cx).several_selected().is_some();
         match id {
             Some(id) => {
+                // The app picking the first note of a new list (a notebook
+                // click, say) must not overwrite the note someone was
+                // reading in the tab showing: with two or more tabs open it
+                // opens a tab of its own instead.
+                if !asked
+                    && intent == OpenIntent::Current
+                    && self.tabs.len() >= 2
+                    && self.tabs.index_of(&id).is_none()
+                {
+                    intent = OpenIntent::NewTab;
+                }
                 self.stash_place(cx);
                 self.show_selected(&id, intent, window, cx);
             }
