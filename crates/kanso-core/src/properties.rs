@@ -228,12 +228,7 @@ pub fn set_property_at(body: &str, index: usize, value: &Value) -> String {
 /// any comment lines inside a block list. Comments from inside the old value
 /// sit after the new line, so the value's shape may change without losing
 /// the note's words.
-fn replace_entry(
-    body: &str,
-    front: &FrontMatter<'_>,
-    entry: &Entry,
-    value: &Value,
-) -> String {
+fn replace_entry(body: &str, front: &FrontMatter<'_>, entry: &Entry, value: &Value) -> String {
     let start = front.front_start + entry.start;
     let end = front.front_start + entry.end;
     let prefix = &body[start..front.front_start + entry.rest_start];
@@ -756,9 +751,7 @@ fn yaml_reserved(text: &str) -> bool {
     if unsigned == ".inf" || unsigned == ".nan" {
         return true;
     }
-    let digits = |s: &str, radix: u32| {
-        !s.is_empty() && s.chars().all(|c| c.is_digit(radix))
-    };
+    let digits = |s: &str, radix: u32| !s.is_empty() && s.chars().all(|c| c.is_digit(radix));
     if let Some(rest) = unsigned.strip_prefix("0x") {
         return digits(rest, 16);
     }
@@ -1078,8 +1071,8 @@ nested:
     #[test]
     fn yaml_keywords_and_number_forms_are_quoted_as_text() {
         for text in [
-            "null", "~", "yes", "No", "on", "off", "0x10", "0o7", "0b101", ".inf",
-            ".NaN", "+.Inf", "1_000", "1:20",
+            "null", "~", "yes", "No", "on", "off", "0x10", "0o7", "0b101", ".inf", ".NaN", "+.Inf",
+            "1_000", "1:20",
         ] {
             let body = set_property("", "key", &Value::Text(text.into()));
             assert_eq!(

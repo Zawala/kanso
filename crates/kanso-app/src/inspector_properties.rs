@@ -288,9 +288,11 @@ impl Inspector {
             move |this: &mut Inspector, input, event: &InputEvent, window, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
                     let text = input.read(cx).value().to_string();
-                    let Some((index, key, value)) = this.property_edit.as_ref().map(|edit| {
-                        (edit.index, edit.key.clone(), edit.value.clone())
-                    }) else {
+                    let Some((index, key, value)) = this
+                        .property_edit
+                        .as_ref()
+                        .map(|edit| (edit.index, edit.key.clone(), edit.value.clone()))
+                    else {
                         return;
                     };
                     this.commit_property(index, &key, &value, &text, window, cx);
@@ -401,9 +403,7 @@ impl Inspector {
             // A raw key is kept as written; writing a typed value into it
             // would replace YAML Kanso doesn't understand.
             window.push_notification(
-                Notification::info(format!(
-                    "“{key}” is kept as written. Edit it in the note."
-                )),
+                Notification::info(format!("“{key}” is kept as written. Edit it in the note.")),
                 cx,
             );
             cx.notify();

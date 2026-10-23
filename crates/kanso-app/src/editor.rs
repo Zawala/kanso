@@ -2586,7 +2586,7 @@ impl NoteEditor {
     /// A change to the notes has settled: query views in the preview read
     /// them again.
     pub fn queries_changed(&mut self, cx: &mut Context<Self>) {
-        crate::query_view_ui::notes_changed();
+        crate::query_view_ui::notes_changed(&self.store);
         self.preview
             .update(cx, |preview, cx| preview.queries_changed(cx));
     }

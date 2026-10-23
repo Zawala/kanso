@@ -489,7 +489,11 @@ mod tests {
         assert_eq!(rest, "\n# Plan\n");
     }
 
-    fn round_trip_note(title: &str, status: kanso_core::NoteStatus, pinned: bool) -> kanso_core::Note {
+    fn round_trip_note(
+        title: &str,
+        status: kanso_core::NoteStatus,
+        pinned: bool,
+    ) -> kanso_core::Note {
         let mut note = note_with(title, "");
         note.status = status;
         note.pinned = pinned;
@@ -522,7 +526,7 @@ mod tests {
             let body = format!(
                 "---\ntitle: {user_title}\ntags: [{user_tag}]\nowner: {owner}\n---\n\n{prose}\n"
             );
-            let text = export_text(&note, &[tag.clone()], &body);
+            let text = export_text(&note, std::slice::from_ref(&tag), &body);
             let (front, rest) = kanso_import::library::frontmatter::split(&text)
                 .expect("the export has front matter");
             let meta = kanso_import::library::frontmatter::meta(front);

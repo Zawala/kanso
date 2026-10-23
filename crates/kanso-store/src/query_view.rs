@@ -238,12 +238,7 @@ mod tests {
 
         let (_dir, store) = store();
         let inbox = book(&store, "Inbox");
-        let outside = note(
-            &store,
-            "Open",
-            "---\nclient: Acme\n---\n# Open\n",
-            &inbox,
-        );
+        let outside = note(&store, "Open", "---\nclient: Acme\n---\n# Open\n", &inbox);
         store
             .put(
                 DocType::Note,

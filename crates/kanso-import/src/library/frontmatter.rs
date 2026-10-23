@@ -395,9 +395,7 @@ pub fn meta(front: &str) -> Meta {
                 None => false,
             }
         } else if STATUS_KEYS.contains(&key) {
-            match scalar_text(&entry.value)
-                .and_then(|text| kanso_core::NoteStatus::parse(&text))
-            {
+            match scalar_text(&entry.value).and_then(|text| kanso_core::NoteStatus::parse(&text)) {
                 Some(status) => {
                     meta.status = Some(status);
                     true
