@@ -1240,3 +1240,30 @@ fn the_preview_has_its_own_text_size_and_font(cx: &mut TestAppContext) {
     assert_eq!(saved.appearance.preview_font_size, preview + 1.);
     assert_eq!(saved.appearance.editor_font_size, editor);
 }
+
+/// Settings › Editor › Diagrams chooses what draws Mermaid: it's saved, and
+/// diagrams drawn after it use the new engine.
+#[gpui_kit::test]
+fn the_diagram_renderer_is_chosen_and_saved(cx: &mut TestAppContext) {
+    use crate::config::DiagramRenderer;
+    use kanso_render::{Job, Kind, MermaidEngine, Palette};
+
+    let f = setup(cx);
+    f.dispatch(cx, Box::new(OpenEditorSettings));
+    let chosen = |cx: &mut TestAppContext| {
+        cx.read(|cx| cx.global::<AppState>().config.appearance.diagram_renderer)
+    };
+    let next_job = || Job::new(Kind::Mermaid, "flowchart LR\n  a --> b\n", Palette::LIGHT).mermaid;
+    assert_eq!(chosen(cx), DiagramRenderer::Pele);
+    f.click(cx, "diagram-renderer-1");
+    assert_eq!(chosen(cx), DiagramRenderer::Kanso);
+    assert_eq!(next_job(), MermaidEngine::MermaidSvg);
+    let saved = cx.read(|cx| {
+        let state = cx.global::<AppState>();
+        AppConfig::load(&crate::paths::config_path(&state.data_dir)).unwrap()
+    });
+    assert_eq!(saved.appearance.diagram_renderer, DiagramRenderer::Kanso);
+    f.click(cx, "diagram-renderer-0");
+    assert_eq!(chosen(cx), DiagramRenderer::Pele);
+    assert_eq!(next_job(), MermaidEngine::Pele);
+}

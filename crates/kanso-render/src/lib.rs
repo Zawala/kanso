@@ -16,6 +16,7 @@ pub mod html;
 pub mod markdown_safe;
 mod math;
 mod mermaid;
+mod pele;
 mod rough;
 pub mod svg;
 
@@ -23,6 +24,9 @@ use std::sync::Arc;
 
 pub use cache::{cached, render_blocking, request};
 pub use mermaid::is_supported as mermaid_is_supported;
+pub use mermaid::{
+    Engine as MermaidEngine, render_with as render_mermaid_with, set_engine as set_mermaid_engine,
+};
 
 /// The text size drawings are measured for.
 pub const TEXT_SIZE: f32 = 16.;
@@ -116,14 +120,19 @@ pub struct Job {
     pub kind: Kind,
     pub source: Arc<str>,
     pub palette: Palette,
+    /// What draws a Mermaid diagram: part of the job, so choosing another
+    /// engine draws again rather than showing what the cache has.
+    pub mermaid: MermaidEngine,
 }
 
 impl Job {
+    /// A job drawn with the Mermaid engine chosen in [`set_mermaid_engine`].
     pub fn new(kind: Kind, source: impl Into<Arc<str>>, palette: Palette) -> Self {
         Job {
             kind,
             source: source.into(),
             palette,
+            mermaid: mermaid::engine(),
         }
     }
 }
@@ -177,7 +186,7 @@ pub fn render(job: &Job) -> Outcome {
     match job.kind {
         Kind::InlineMath => math::render(&job.source, false, &job.palette),
         Kind::DisplayMath => math::render(&job.source, true, &job.palette),
-        Kind::Mermaid => mermaid::render(&job.source, &job.palette),
+        Kind::Mermaid => mermaid::render_with(job.mermaid, &job.source, &job.palette),
         Kind::Excalidraw => excalidraw::render(&job.source, &job.palette),
     }
 }

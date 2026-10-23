@@ -1,7 +1,8 @@
-//! Mermaid diagrams, drawn by the pure-Rust `mermaid-svg` in the preview
-//! theme's colors.
+//! Mermaid diagrams in the preview theme's colors, drawn by Pele, or by the
+//! pure-Rust `mermaid-svg` (Settings › Editor › Preview).
 
 use std::borrow::Cow;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use mermaid_svg::{ParseError, RenderError, Theme};
 
@@ -200,10 +201,41 @@ fn theme(p: &Palette) -> Theme {
     }
 }
 
-/// Draws a Mermaid diagram.
-pub(crate) fn render(source: &str, palette: &Palette) -> Outcome {
+/// What draws a diagram.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Engine {
+    /// `mermaid-svg`, in Rust.
+    MermaidSvg,
+    /// Pele, Obsidian's renderer, in QuickJS: the default.
+    #[default]
+    Pele,
+}
+
+/// Whether new jobs draw with Pele.
+static PELE: AtomicBool = AtomicBool::new(true);
+
+/// Chooses the engine new [`crate::Job`]s draw Mermaid with.
+pub fn set_engine(engine: Engine) {
+    PELE.store(engine == Engine::Pele, Ordering::Relaxed);
+}
+
+/// The engine new jobs draw with.
+pub(crate) fn engine() -> Engine {
+    if PELE.load(Ordering::Relaxed) {
+        Engine::Pele
+    } else {
+        Engine::MermaidSvg
+    }
+}
+
+/// Draws a Mermaid diagram with `engine`.
+pub fn render_with(engine: Engine, source: &str, palette: &Palette) -> Outcome {
     if source.len() > MAX_SOURCE {
         return Err(Failure::Invalid("The diagram is too long to draw.".into()));
+    }
+    if engine == Engine::Pele {
+        let markup = crate::pele::theme(&crate::pele::render(source)?, palette);
+        return finish(&markup);
     }
     let theme = theme(palette);
     // A third-party layout engine: a bug in it shows the source, not a crash.
@@ -216,8 +248,12 @@ pub(crate) fn render(source: &str, palette: &Palette) -> Outcome {
         #[allow(unreachable_patterns)]
         err => Failure::Invalid(err.to_string()),
     })?;
-    let markup = shrink_markers(&markup, MARKER_SCALE);
-    let flat = svg::flatten(&markup, PAD)
+    finish(&shrink_markers(&markup, MARKER_SCALE))
+}
+
+/// A drawing's SVG, flattened and cropped.
+fn finish(markup: &str) -> Outcome {
+    let flat = svg::flatten(markup, PAD)
         .ok_or_else(|| Failure::Invalid("The diagram drew nothing.".into()))?;
     Ok(Svg {
         markup: flat.markup,
@@ -232,6 +268,11 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
+    /// Drawn by `mermaid-svg`, whatever new jobs would use.
+    fn render(source: &str, palette: &Palette) -> Outcome {
+        render_with(Engine::MermaidSvg, source, palette)
+    }
+
     const SAMPLES: &[&str] = &[
         "flowchart TD\n  A[Start] --> B{Working?}\n  B -->|Yes| C[Ship]\n  B -->|No| D[Debug] --> B\n",
         "graph LR\n  subgraph Client\n    a[Editor] --> b[Preview]\n  end\n  b --> c[(Store)]\n",
@@ -244,6 +285,32 @@ mod tests {
         "mindmap\n  root((Kanso))\n    Notes\n    Sync\n",
         "---\ntitle: T\n---\n%% a comment\njourney\n  title Day\n  section Work\n    Write: 5: Me\n",
     ];
+
+    #[test]
+    fn each_engine_is_cached_on_its_own() {
+        let job = crate::Job::new(
+            crate::Kind::Mermaid,
+            "flowchart LR\n  a --> b\n",
+            Palette::LIGHT,
+        );
+        let pele = crate::Job {
+            mermaid: Engine::Pele,
+            ..job.clone()
+        };
+        let mermaid_svg = crate::Job {
+            mermaid: Engine::MermaidSvg,
+            ..job
+        };
+        assert_ne!(pele, mermaid_svg);
+        let (a, b) = (
+            crate::render_blocking(&pele),
+            crate::render_blocking(&mermaid_svg),
+        );
+        assert_ne!(
+            a.as_ref().as_ref().unwrap().markup,
+            b.as_ref().as_ref().unwrap().markup
+        );
+    }
 
     #[test]
     fn common_diagrams_draw_in_the_theme() {

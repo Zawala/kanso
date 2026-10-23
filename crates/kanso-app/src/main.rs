@@ -364,6 +364,13 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         // The saved zoom, before the first window is drawn.
         zoom::set(cx.global::<AppState>().config.appearance.zoom, cx);
         zoom::register(cx);
+        kanso_render::set_mermaid_engine(
+            cx.global::<AppState>()
+                .config
+                .appearance
+                .diagram_renderer
+                .engine(),
+        );
         workspace::bind_keys(cx);
         note_list::bind_keys(cx);
         note_window::bind_keys(cx);

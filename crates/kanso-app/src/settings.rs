@@ -33,7 +33,9 @@ use kanso_sync::{QuotaKind, SyncProblem};
 use crate::account_page::AccountPage;
 use crate::account_words::{quota_words, signed_out_sentence};
 use crate::clock::Clock;
-use crate::config::{DEFAULT_FONT_SIZE, EditorFont, EditorSettings, SyncSettings, Typewriter};
+use crate::config::{
+    DEFAULT_FONT_SIZE, DiagramRenderer, EditorFont, EditorSettings, SyncSettings, Typewriter,
+};
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT};
 use crate::library::Library;
 use crate::services::{self, AccountState, ApiState, Services, SyncState};
@@ -552,6 +554,12 @@ fn set_editor_font(font: EditorFont, cx: &mut App) {
 fn step_editor_size(step: i32, cx: &mut App) {
     let size = step_font_size(config(cx).appearance.editor_font_size, step);
     AppState::update_config(cx, |config| config.appearance.editor_font_size = size);
+    update_editors(cx);
+}
+
+fn set_diagram_renderer(renderer: DiagramRenderer, cx: &mut App) {
+    AppState::update_config(cx, |config| config.appearance.diagram_renderer = renderer);
+    kanso_render::set_mermaid_engine(renderer.engine());
     update_editors(cx);
 }
 
@@ -1217,6 +1225,15 @@ fn editor_page(fonts: Option<&FontPickers>, cx: &mut Context<SettingsView>) -> V
                 .trailing(size_stepper(("preview-smaller", "preview-larger"),
                     appearance.preview_font_size,
                     step_preview_size,
+                    colors,
+                )),
+            Row::new(Lucide::Network, "Diagrams")
+                .detail("What draws Mermaid diagrams, here and in exports. Pele, Obsidian's renderer, lays them out tidily in the theme's colors; Kanso's own also draws ZenUML.")
+                .trailing(segmented(
+                    "diagram-renderer",
+                    [("Pele", DiagramRenderer::Pele), ("Kanso", DiagramRenderer::Kanso)],
+                    appearance.diagram_renderer,
+                    |renderer, _, cx| set_diagram_renderer(renderer, cx),
                     colors,
                 )),
         ],
