@@ -45,6 +45,8 @@ pub enum SidebarEvent {
     RenameBook(String),
     /// "Change Icon…" in a notebook's menu: the workspace opens the picker.
     ChangeBookIcon(String),
+    /// "Change Color…" in a notebook's menu: the workspace opens the dialog.
+    ChangeBookColor(String),
     DeleteBook(String),
     LockBook(String),
     RemoveBookLock(String),
@@ -72,6 +74,8 @@ struct Entry {
     count: u32,
     /// How deep in the notebook tree.
     depth: usize,
+    /// The color a notebook's row is washed in (`0xRRGGBB`), if it has one.
+    color: Option<u32>,
 }
 /// Tags shown before "…" when there are many: the most used ones.
 const TAG_LIMIT: usize = 10;
@@ -260,6 +264,7 @@ impl Sidebar {
                     name: book.name.clone(),
                     count: book.count,
                     icon: crate::book_icons::book_icon(book, cx),
+                    color: crate::book_colors::book_color(book),
                     parent,
                     open: parent && open(ix),
                     // Locked by its own lock, or a notebook it is inside.
@@ -350,6 +355,7 @@ impl Sidebar {
             label,
             count,
             depth,
+            color,
         } = entry;
         let selected = !self.settings_open && self.library.read(cx).filter == filter;
         let colors = Colors::get(cx);
@@ -367,8 +373,17 @@ impl Sidebar {
             .rounded(px(6.))
             .text_size(px(13.5))
             .cursor_pointer()
-            .when(selected, |el| el.bg(colors.sidebar_active))
-            .when(!selected, |el| el.hover(|el| el.bg(colors.sidebar_hover)))
+            .map(|el| {
+                use crate::book_colors::{WASH_HOVER, WASH_REST, WASH_SELECTED, wash};
+                match (selected, color) {
+                    (true, None) => el.bg(colors.sidebar_active),
+                    (false, None) => el.hover(|el| el.bg(colors.sidebar_hover)),
+                    (true, Some(rgb)) => el.bg(wash(rgb, WASH_SELECTED)),
+                    (false, Some(rgb)) => el
+                        .bg(wash(rgb, WASH_REST))
+                        .hover(|el| el.bg(wash(rgb, WASH_HOVER))),
+                }
+            })
             .children(icon)
             .child(div().flex_1().min_w_0().truncate().child(label))
             .child(
@@ -548,9 +563,23 @@ impl Sidebar {
     }
 
     fn icon(&self, name: impl Into<Icon>, cx: &mut Context<Self>) -> AnyElement {
+        self.book_icon(name, None, cx)
+    }
+
+    /// A row's icon, tinted for a notebook's color (`0xRRGGBB`) if given.
+    fn book_icon(
+        &self,
+        name: impl Into<Icon>,
+        color: Option<u32>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let tint = match color {
+            Some(rgb) => crate::book_colors::icon_tint(rgb, cx.theme().is_dark()),
+            None => Colors::get(cx).text_secondary,
+        };
         Icon::new(name)
             .size(px(15.))
-            .text_color(Colors::get(cx).text_secondary)
+            .text_color(tint)
             .into_any_element()
     }
 
@@ -837,6 +866,7 @@ impl Sidebar {
                     label: node.label.clone().into(),
                     count: node.count,
                     depth,
+                    color: None,
                 },
                 cx,
             );
@@ -912,6 +942,7 @@ impl Sidebar {
                         label: status.label().into(),
                         count,
                         depth: 0,
+                        color: None,
                     },
                     cx,
                 )
@@ -1457,6 +1488,7 @@ impl Render for Sidebar {
                 label: "All Notes".into(),
                 count: counts.all,
                 depth: 0,
+                color: None,
             },
             cx,
         ));
@@ -1469,6 +1501,7 @@ impl Render for Sidebar {
                 label: "Pinned".into(),
                 count: counts.pinned,
                 depth: 0,
+                color: None,
             },
             cx,
         ));
@@ -1481,6 +1514,7 @@ impl Render for Sidebar {
                 label: "Recent".into(),
                 count: recent,
                 depth: 0,
+                color: None,
             },
             cx,
         ));
@@ -1500,6 +1534,7 @@ impl Render for Sidebar {
             name,
             count,
             icon,
+            color,
             parent,
             open,
             locked,
@@ -1519,9 +1554,11 @@ impl Render for Sidebar {
             let icon = h_flex()
                 .gap(px(4.))
                 .child(chevron)
-                // A locked notebook shows the lock in place of its icon.
-                .child(self.icon(
+                // A locked notebook shows the lock in place of its icon, in
+                // the notebook's color still.
+                .child(self.book_icon(
                     crate::book_icons::shown(crate::book_icons::opened(icon, open), locked),
+                    color,
                     cx,
                 ))
                 .into_any_element();
@@ -1533,6 +1570,7 @@ impl Render for Sidebar {
                     label: name.into(),
                     count,
                     depth,
+                    color,
                 },
                 cx,
             );
@@ -1544,6 +1582,7 @@ impl Render for Sidebar {
                     let (new, rename, delete) = (view.clone(), view.clone(), view.clone());
                     let (a, b, c) = (book_id.clone(), book_id.clone(), book_id.clone());
                     let (reicon, f) = (view.clone(), book_id.clone());
+                    let (recolor, g) = (view.clone(), book_id.clone());
                     let (lock, d) = (view.clone(), book_id.clone());
                     // A notebook inside a locked one is locked with it, and
                     // has no lock of its own to take off.
@@ -1589,6 +1628,13 @@ impl Render for Sidebar {
                         }),
                     )
                     .item(
+                        PopupMenuItem::new("Change Color…").on_click(move |_, _, cx| {
+                            recolor.update(cx, |_, cx| {
+                                cx.emit(SidebarEvent::ChangeBookColor(g.clone()))
+                            });
+                        }),
+                    )
+                    .item(
                         PopupMenuItem::new("Publish Notebook…").on_click(move |_, _, cx| {
                             publish
                                 .update(cx, |_, cx| cx.emit(SidebarEvent::PublishBook(e.clone())));
@@ -1620,6 +1666,7 @@ impl Render for Sidebar {
                 label: "Trash".into(),
                 count: counts.trash,
                 depth: 0,
+                color: None,
             },
             cx,
         );
@@ -1901,6 +1948,8 @@ struct BookRow {
     name: String,
     count: u32,
     icon: crate::book_icons::NotebookIcon,
+    /// The color its row is washed in (`0xRRGGBB`), if one was chosen.
+    color: Option<u32>,
     /// Has notebooks inside it, so it has an arrow.
     parent: bool,
     open: bool,

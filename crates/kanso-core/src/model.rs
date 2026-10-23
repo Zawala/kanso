@@ -26,6 +26,11 @@ pub const OCR_FIELD: &str = "kansoOcr";
 /// default icon.
 pub const BOOK_ICON_FIELD: &str = "kansoIcon";
 
+/// The notebook field (in `extra`) holding the color its sidebar row is
+/// washed in, so it's easy to find, as hex (`"#2185d0"`). It syncs with the
+/// notebook; no field, or a value that isn't hex, shows the row uncolored.
+pub const BOOK_COLOR_FIELD: &str = "kansoColor";
+
 /// The note field (in `extra`) holding a locked note's sealed text
 /// (`kanso_sync::lock::Envelope`). A locked note's `body` is always empty:
 /// its text is only in here, so search, links, tasks, embeddings and the

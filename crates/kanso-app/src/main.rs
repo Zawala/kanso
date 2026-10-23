@@ -14,6 +14,7 @@ mod account_words;
 mod assets;
 mod board;
 mod board_view;
+mod book_colors;
 mod book_icons;
 mod calendar;
 mod calendar_view;
