@@ -50,18 +50,28 @@ export interface PepperKeys {
 	fake: CryptoKey;
 	/** HMAC key for IP rate-limit keys. */
 	limit: CryptoKey;
+	/**
+	 * AES-GCM key for short-lived flow secrets. A GitHub device code can mint
+	 * an access token, so `auth_flows.device_code` holds it sealed under this
+	 * key rather than in the clear (docs/ACCOUNTS.md › Migration 0006).
+	 */
+	flow: CryptoKey;
 }
 
 const peppers = new Map<string, Promise<PepperKeys>>();
 
-async function subkey(pepper: Uint8Array, info: string): Promise<CryptoKey> {
+async function derive(pepper: Uint8Array, info: string): Promise<Uint8Array> {
 	const ikm = await crypto.subtle.importKey("raw", pepper, "HKDF", false, ["deriveBits"]);
 	const bits = await crypto.subtle.deriveBits(
 		{ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(32), info: encoder.encode(info) },
 		ikm,
 		256,
 	);
-	return crypto.subtle.importKey("raw", bits, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+	return new Uint8Array(bits);
+}
+
+async function subkey(pepper: Uint8Array, info: string): Promise<CryptoKey> {
+	return crypto.subtle.importKey("raw", await derive(pepper, info), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
 }
 
 /** The pepper's HKDF subkeys, or null when AUTH_PEPPER is missing or isn't 32 bytes of canonical base64url. */
@@ -71,7 +81,11 @@ export function pepperKeys(pepper: string | undefined): Promise<PepperKeys> | nu
 	if (!bytes) return null;
 	let keys = peppers.get(pepper);
 	if (!keys) {
-		keys = Promise.all([subkey(bytes, "kanso/v1/fake"), subkey(bytes, "kanso/v1/limit")]).then(([fake, limit]) => ({ fake, limit }));
+		keys = Promise.all([
+			subkey(bytes, "kanso/v1/fake"),
+			subkey(bytes, "kanso/v1/limit"),
+			derive(bytes, "kanso/v1/flow").then((bits) => crypto.subtle.importKey("raw", bits, { name: "AES-GCM" }, false, ["encrypt", "decrypt"])),
+		]).then(([fake, limit, flow]) => ({ fake, limit, flow }));
 		peppers.set(pepper, keys);
 	}
 	return keys;

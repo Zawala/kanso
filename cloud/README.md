@@ -49,6 +49,15 @@ One secret is required, `AUTH_PEPPER`: 32 random bytes as base64url. It keys the
 the sign-in routes answer 503 `misconfigured`; signed-in devices keep working. `SYNC_TOKEN` is no
 longer read.
 
+### Sign-in methods
+
+Passkeys use `PASSKEY_RP_ID` and `PASSKEY_ORIGINS`. Apple uses `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`,
+`APPLE_KEY_ID`, `APPLE_REDIRECT_URI` and the `APPLE_PRIVATE_KEY` secret. Google uses
+`GOOGLE_CLIENT_ID` and the `GOOGLE_CLIENT_SECRET` secret. GitHub's device flow uses
+`GITHUB_CLIENT_ID`; `GITHUB_CLIENT_SECRET` is only needed for the optional web fallback. Install
+secrets with `wrangler secret put NAME`. No email, name, profile data or provider token is stored;
+the provider's stable subject is stored, and the GitHub device code is sealed under `AUTH_PEPPER`.
+
 ## Shared notes
 
 Shared notes ([docs/ACCOUNTS.md › Collaboration](../docs/ACCOUNTS.md#collaboration)) add a

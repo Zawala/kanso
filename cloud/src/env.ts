@@ -22,4 +22,23 @@ export interface Env {
 	REROUT_DOMAIN?: string;
 	/** Where published notes are shown (a plain var, `https://share.kansoapp.app`): short links lead there. Without it, wherever the note was published. */
 	SHARE_ORIGIN?: string;
+	/**
+	 * Passkeys (design: Kanso accounts spec, revision 3 › Sign-in methods): the relying party's host,
+	 * and a JSON array of the origins accepted in `clientDataJSON.origin`.
+	 * Without both, health advertises no passkeys.
+	 */
+	PASSKEY_RP_ID?: string;
+	PASSKEY_ORIGINS?: string;
+	/** Sign in with Apple: the Services ID, team, key ID, exact callback and the `.p8` secret. */
+	APPLE_CLIENT_ID?: string;
+	APPLE_TEAM_ID?: string;
+	APPLE_KEY_ID?: string;
+	APPLE_REDIRECT_URI?: string;
+	APPLE_PRIVATE_KEY?: string;
+	/** Google's OAuth client (type Desktop app). Both values are needed to advertise it. */
+	GOOGLE_CLIENT_ID?: string;
+	GOOGLE_CLIENT_SECRET?: string;
+	/** GitHub's OAuth App. The device flow needs only the client ID; the secret is for the web fallback. */
+	GITHUB_CLIENT_ID?: string;
+	GITHUB_CLIENT_SECRET?: string;
 }

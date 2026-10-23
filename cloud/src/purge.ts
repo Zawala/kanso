@@ -15,7 +15,7 @@ import { runCollabPurges } from "./collab";
 import type { Env } from "./env";
 import { refusal } from "./http";
 import { expiredLimitsSql } from "./limits";
-import { FILE_ROW_COST, HOUR, MAX_SEALED_FILE, MIN_SEALED_FILE, REVOKED_KEEP_MS, SESSION_IDLE_MS } from "./protocol";
+import { DAY, FILE_ROW_COST, HOUR, MAX_SEALED_FILE, MIN_SEALED_FILE, REVOKED_KEEP_MS, SESSION_IDLE_MS } from "./protocol";
 import { runShortLinkPurges } from "./rerout";
 import { MAX_SEALED_SHARE, MIN_SEALED_SHARE, checksumHex, expireShares, runSharePurges, unpublishStatements } from "./shares";
 
@@ -326,6 +326,11 @@ export async function runCron(env: Env, now: number): Promise<CronReport> {
 	await env.DB.prepare(expiredLimitsSql()).bind(now).run();
 	const reconciled = await reconcile(env, now);
 	await env.DB.batch([
+		// Sign-in ceremonies and approvals are dead a day after they expire; the
+		// approval row itself is authoritative until then, so a late poll still
+		// sees `expired` rather than a missing request.
+		env.DB.prepare("DELETE FROM auth_flows WHERE expires_at < ?1 - ?2").bind(now, DAY),
+		env.DB.prepare("DELETE FROM device_approvals WHERE expires_at < ?1 - ?2").bind(now, DAY),
 		env.DB.prepare(
 			"UPDATE sessions SET revoked_at = ?1, revoked_reason = 'expired' WHERE revoked_at IS NULL AND last_seen_at < ?1 - ?2",
 		).bind(now, SESSION_IDLE_MS),

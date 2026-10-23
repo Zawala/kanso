@@ -63,6 +63,16 @@
   // with go.kansoapp.app's CNAME in the kansoapp.app zone).
   // SHARE_ORIGIN: where short links lead, so a published note is read on share.kansoapp.app
   // whichever name the app published it through.
+  // Sign-in configuration (keep commented until step 7):
+  // PASSKEY_RP_ID: "sync.kansoapp.app"
+  // PASSKEY_ORIGINS: "[\"https://sync.kansoapp.app\"]"
+  // APPLE_CLIENT_ID: "app.kanso.Kanso.web"
+  // APPLE_TEAM_ID: "4973Y692JU"
+  // APPLE_KEY_ID: "MS6Y3S5ZL7"
+  // APPLE_REDIRECT_URI: "https://sync.kansoapp.app/v2/auth/apple/callback"
+  // GOOGLE_CLIENT_ID: "<Google Desktop OAuth client ID>"
+  // GITHUB_CLIENT_ID: "<GitHub OAuth App client ID>"
+  // Secrets go through `wrangler secret put NAME`; switch these vars on at step 7.
   "vars": {
     "REROUT_PROJECT_ID": "prj_xX6I1BVjuNKzdE0o",
     "REROUT_DOMAIN": "go.kansoapp.app",
