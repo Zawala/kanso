@@ -8,7 +8,7 @@
 
 use gpui_kit::{App, KeyBinding, actions};
 
-use crate::models::note_visit::NotePlace;
+use crate::models::note_visit::{NotePlace, Visit};
 use crate::nav_history::NavHistory;
 use crate::workspace::Workspace;
 
@@ -56,7 +56,7 @@ impl TabMeta {
 }
 
 /// One open note, with its own history and the place the reader left in it.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Tab {
     pub meta: TabMeta,
     pub nav: NavHistory,
@@ -78,7 +78,7 @@ impl Tab {
 }
 
 /// A closed tab, and the place in the row it was closed from.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Closed {
     meta: TabMeta,
     at: usize,
@@ -86,7 +86,7 @@ struct Closed {
 
 /// The open tabs, the one showing, and the ones closed that can be
 /// reopened. Empty when no note is open at all; a tab is never blank.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Tabs {
     open: Vec<Tab>,
     active: usize,
@@ -177,6 +177,32 @@ impl Tabs {
         };
         self.open.insert(at, Tab::new(meta));
         self.active = at;
+    }
+
+    /// Makes the active tab show `meta` without adding a visit: the
+    /// history has already moved (going back or forward). The note may be
+    /// in another tab too; a browser allows that, and navigation never
+    /// leaves the tab it started in.
+    pub fn set_active_meta(&mut self, meta: TabMeta) {
+        if let Some(tab) = self.open.get_mut(self.active) {
+            tab.meta = meta;
+        }
+    }
+
+    /// Steps the active tab's history back (`back`) or forward, and
+    /// returns the visit landed on. Only this tab's history moves: notes
+    /// open in other tabs are not switched to.
+    pub fn step_active(
+        &mut self,
+        back: bool,
+        live: impl Fn(&str) -> bool,
+    ) -> Option<Visit> {
+        let tab = self.open.get_mut(self.active)?;
+        if back {
+            tab.nav.back(live)
+        } else {
+            tab.nav.forward(live)
+        }
     }
 
     /// Shows the tab at `index`, if there is one.
@@ -640,6 +666,27 @@ mod tests {
         Reopen,
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum NavOp {
+        Open(u8),
+        New(u8),
+        Close(usize),
+        Activate(usize),
+        Back,
+        Forward,
+    }
+
+    fn nav_op() -> impl Strategy<Value = NavOp> {
+        prop_oneof![
+            4 => (0..8u8).prop_map(NavOp::Open),
+            3 => (0..8u8).prop_map(NavOp::New),
+            2 => (0..8usize).prop_map(NavOp::Close),
+            3 => (0..8usize).prop_map(NavOp::Activate),
+            3 => Just(NavOp::Back),
+            2 => Just(NavOp::Forward),
+        ]
+    }
+
     fn op() -> impl Strategy<Value = Op> {
         prop_oneof![
             4 => (0..8u8).prop_map(Op::Open),
@@ -773,6 +820,67 @@ mod tests {
             let after = ids(&tabs).into_iter().map(str::to_owned).collect::<Vec<_>>();
             prop_assert_eq!(after, expected);
             prop_assert_eq!(tabs.active_id(), Some(showing.as_str()));
+        }
+
+        /// Every tab shows the note its history has as current, through
+        /// opens, new tabs, closings, switches and going back and forward.
+        #[test]
+        fn each_tab_shows_its_current_history_entry(
+            ops in prop::collection::vec(nav_op(), 0..120),
+        ) {
+            let mut tabs = Tabs::default();
+            for op in ops {
+                match op {
+                    NavOp::Open(n) => tabs.open(meta(&n.to_string())),
+                    NavOp::New(n) => tabs.open_in_new(meta(&n.to_string())),
+                    NavOp::Close(at) => {
+                        tabs.close(at);
+                    }
+                    NavOp::Activate(at) => {
+                        tabs.activate(at);
+                    }
+                    NavOp::Back | NavOp::Forward => {
+                        let back = matches!(op, NavOp::Back);
+                        if let Some(visit) = tabs.step_active(back, |_| true) {
+                            tabs.set_active_meta(meta(&visit.id));
+                        }
+                    }
+                }
+                for tab in &tabs.open {
+                    prop_assert_eq!(
+                        tab.nav.current(),
+                        Some(tab.meta.id.as_str()),
+                        "tab shows the note its history has as current"
+                    );
+                }
+            }
+        }
+
+        /// Going back never leaves the tab it started in, even when the
+        /// note it lands on is open in another tab.
+        #[test]
+        fn back_stays_in_its_own_tab_when_the_note_is_open_elsewhere(
+            note in 1..6u8,
+        ) {
+            let id = note.to_string();
+            let mut tabs = Tabs::default();
+            tabs.open(meta("a"));
+            tabs.open(meta(&id));
+            tabs.open_in_new(meta("a"));
+            prop_assert_eq!(tabs.len(), 2);
+            tabs.activate(0);
+            prop_assert_eq!(tabs.active_id(), Some(id.as_str()));
+            let visit = tabs.step_active(true, |_| true).expect("a visit back");
+            prop_assert_eq!(visit.id.as_str(), "a");
+            tabs.set_active_meta(meta("a"));
+            prop_assert_eq!(tabs.active_index(), 0, "the same tab");
+            prop_assert_eq!(tabs.active_id(), Some("a"));
+            prop_assert_eq!(&tabs.get(1).unwrap().meta.id, "a", "the other tab stays");
+            prop_assert_eq!(
+                tabs.get(0).unwrap().nav.current(),
+                Some("a"),
+                "this tab's history is not corrupted"
+            );
         }
 
         /// A new tab goes right after the showing one, and a note already

@@ -279,6 +279,32 @@ fn cmd_w_at_one_tab_saves_the_note_before_closing(cx: &mut TestAppContext) {
     assert_eq!(f.store_body(&a), "typed and not yet autosaved");
 }
 
+/// While a Replace holds unsaved writes the editor refuses to switch; the
+/// tab bar then keeps showing the note the editor still has.
+// no-prop-test: one hold in one window; the editor's rule is in editor.rs.
+#[gpui_kit::test]
+fn the_tab_does_not_change_when_the_editor_refuses_to_switch(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let a = f.note("A", "text");
+    let b = f.note("B", "text");
+    f.select(cx, &a);
+    f.type_body(cx, "saved");
+    cx.update(crate::services::hold_writes);
+    f.type_body(cx, "waiting while writes are held");
+
+    f.select(cx, &b);
+    assert_eq!(f.open_note(cx), Some(a.clone()), "the editor stays");
+    assert_eq!(f.tabs(cx), vec![a.clone()], "and so does its tab");
+    assert_eq!(f.active_tab(cx), Some(a.clone()));
+
+    cx.update(|cx| crate::services::release_writes(false, cx));
+    cx.run_until_parked();
+    assert_eq!(f.store_body(&a), "waiting while writes are held");
+    f.select(cx, &b);
+    assert_eq!(f.tabs(cx), vec![b.clone()], "the switch lands once saved");
+    assert_eq!(f.open_note(cx), Some(b));
+}
+
 /// A menu command that works on the open note (Lock, History, Publish,
 /// Share) opens a note that isn't showing first, as it did on master.
 // no-prop-test: two commands in one window.

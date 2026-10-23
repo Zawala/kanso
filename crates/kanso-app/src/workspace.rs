@@ -338,10 +338,13 @@ pub fn apply_theme(window: Option<&mut Window>, cx: &mut App) {
 /// How the note about to be selected should open: in the tab showing, in a
 /// new tab after it, or by showing the tab already holding it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum OpenIntent {
+pub(crate) enum OpenIntent {
     Current,
     NewTab,
     Activate(usize),
+    /// Going back or forward: this tab takes the note, even when another
+    /// tab shows it too.
+    InPlace,
 }
 
 pub struct Workspace {
@@ -1783,8 +1786,13 @@ impl Workspace {
         let Some(meta) = self.tab_meta(id) else {
             return;
         };
+        // The editor can refuse to switch while a Replace holds writes and
+        // the note has unsaved edits. Keep the tabs as they were then, so
+        // the bar and the editor never disagree about the note showing.
+        let before = self.tabs.clone();
         match intent {
             OpenIntent::NewTab => self.tabs.open_in_new(meta),
+            OpenIntent::InPlace => self.tabs.set_active_meta(meta),
             OpenIntent::Activate(index)
                 if self.tabs.get(index).is_some_and(|tab| tab.meta.id == id) =>
             {
@@ -1792,8 +1800,13 @@ impl Workspace {
             }
             _ => self.tabs.open(meta),
         }
-        self.save_tabs(cx);
         self.open_active(window, cx);
+        if self.editor.read(cx).note_id() == Some(id) {
+            self.save_tabs(cx);
+        } else {
+            self.tabs = before;
+            cx.notify();
+        }
     }
 
     /// The note and title a tab for `id` shows, if the note exists.
@@ -1844,7 +1857,7 @@ impl Workspace {
     }
 
     /// Selects note `id` in the list, opening it as `intent` asks.
-    fn select_note(&mut self, id: &str, intent: OpenIntent, cx: &mut Context<Self>) {
+    pub(crate) fn select_note(&mut self, id: &str, intent: OpenIntent, cx: &mut Context<Self>) {
         self.pending_open = intent;
         self.library
             .update(cx, |library, cx| library.select(Some(id.to_owned()), cx));
