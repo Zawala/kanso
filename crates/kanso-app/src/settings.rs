@@ -1,6 +1,7 @@
 //! Settings, inside the main window: the sidebar stays, a column lists the
-//! pages (General, Editor, Appearance, Account, Local API) where the note list
-//! was, and the page takes the editor's place, in sections of bordered rows.
+//! pages (General, Editor, Appearance, Account, AI, Local API) where the note
+//! list was, and the page takes the editor's place, in sections of bordered
+//! rows.
 //! ⌘, opens it; Escape or Back to notes returns to the notes as they were.
 //!
 //! Switches and menus apply at once. Addresses, ports and names are changed
@@ -56,6 +57,7 @@ actions!(
         OpenAppearanceSettings,
         OpenIconThemeSettings,
         OpenAccountSettings,
+        OpenAiSettings,
         OpenApiSettings,
         OpenUpdateSettings,
         CloseSettings,
@@ -98,18 +100,20 @@ pub enum SettingsPage {
     Appearance,
     IconThemes,
     Account,
+    Ai,
     LocalApi,
     Updates,
 }
 
 impl SettingsPage {
     /// In the order the column lists them.
-    pub const ALL: [SettingsPage; 7] = [
+    pub const ALL: [SettingsPage; 8] = [
         SettingsPage::General,
         SettingsPage::Editor,
         SettingsPage::Appearance,
         SettingsPage::IconThemes,
         SettingsPage::Account,
+        SettingsPage::Ai,
         SettingsPage::LocalApi,
         SettingsPage::Updates,
     ];
@@ -121,6 +125,7 @@ impl SettingsPage {
             SettingsPage::Appearance => "Themes",
             SettingsPage::IconThemes => "Icon Themes",
             SettingsPage::Account => "Account",
+            SettingsPage::Ai => "AI",
             SettingsPage::LocalApi => "Local API",
             SettingsPage::Updates => "Updates",
         }
@@ -133,6 +138,7 @@ impl SettingsPage {
             SettingsPage::Appearance => Lucide::Palette,
             SettingsPage::IconThemes => Lucide::Shapes,
             SettingsPage::Account => Lucide::CircleUser,
+            SettingsPage::Ai => Lucide::Sparkles,
             SettingsPage::LocalApi => Lucide::Plug,
             SettingsPage::Updates => Lucide::CircleArrowDown,
         }
@@ -145,6 +151,7 @@ impl SettingsPage {
             SettingsPage::Appearance => "settings-appearance",
             SettingsPage::IconThemes => "settings-icon-themes",
             SettingsPage::Account => "settings-account",
+            SettingsPage::Ai => "settings-ai",
             SettingsPage::LocalApi => "settings-api",
             SettingsPage::Updates => "settings-updates",
         }
@@ -798,6 +805,8 @@ pub struct SettingsView {
     page: SettingsPage,
     /// The Account page, with its forms.
     pub(crate) account: Entity<AccountPage>,
+    /// The AI page, with its fields and test.
+    pub(crate) ai: Entity<crate::settings_ai::AiPage>,
     /// The page column's: up and down move between pages there.
     nav_focus: FocusHandle,
     /// The whole view's, to tell whether the keyboard is somewhere in it.
@@ -847,9 +856,11 @@ impl SettingsView {
                 }
             },
         );
+        let ai = cx.new(|cx| crate::settings_ai::AiPage::new(window, cx));
         SettingsView {
             page: SettingsPage::default(),
             account,
+            ai,
             // In the Tab order, so the keyboard can come back to it from
             // a page's controls to switch pages.
             nav_focus: cx.focus_handle().tab_stop(true),
@@ -883,6 +894,9 @@ impl SettingsView {
     pub fn show(&mut self, page: SettingsPage, cx: &mut Context<Self>) {
         if page == SettingsPage::Account {
             self.account.update(cx, |account, cx| account.shown(cx));
+        }
+        if page == SettingsPage::Ai {
+            self.ai.update(cx, |ai, cx| ai.shown(cx));
         }
         if self.page != page {
             self.page = page;
@@ -1095,6 +1109,7 @@ impl SettingsView {
                 page
             }
             SettingsPage::Account => vec![self.account.clone().into_any_element()],
+            SettingsPage::Ai => vec![self.ai.clone().into_any_element()],
             SettingsPage::LocalApi => api_page(self.mcp_agent, cx),
             SettingsPage::Updates => crate::updates::page(cx),
         }
@@ -1996,6 +2011,7 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
     let appearance = page(SettingsPage::Appearance);
     let icon_themes = page(SettingsPage::IconThemes);
     let account = page(SettingsPage::Account);
+    let ai = page(SettingsPage::Ai);
     let api = page(SettingsPage::LocalApi);
     let updates = page(SettingsPage::Updates);
     el.on_action(
@@ -2020,6 +2036,7 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
     .on_action(
         cx.listener(move |this, _: &OpenAccountSettings, window, cx| account(this, window, cx)),
     )
+    .on_action(cx.listener(move |this, _: &OpenAiSettings, window, cx| ai(this, window, cx)))
     .on_action(cx.listener(move |this, _: &OpenApiSettings, window, cx| api(this, window, cx)))
     .on_action(
         cx.listener(move |this, _: &OpenUpdateSettings, window, cx| updates(this, window, cx)),
@@ -2075,6 +2092,7 @@ pub fn register_app_actions(cx: &mut App, open_main_window: fn(&mut App)) {
     cx.on_action(move |_: &OpenAccountSettings, cx| {
         show(Some(SettingsPage::Account), open_main_window, cx)
     });
+    cx.on_action(move |_: &OpenAiSettings, cx| show(Some(SettingsPage::Ai), open_main_window, cx));
     cx.on_action(move |_: &OpenApiSettings, cx| {
         show(Some(SettingsPage::LocalApi), open_main_window, cx)
     });
@@ -2659,12 +2677,12 @@ mod tests {
         /// The page column: a step stays on a page, standing still is a
         /// no-op, and a step there and back returns unless an end stopped it.
         #[test]
-        fn prop_page_steps_stop_at_the_ends(start in 0usize..6, by in -7isize..7) {
+        fn prop_page_steps_stop_at_the_ends(start in 0usize..SettingsPage::ALL.len(), by in -9isize..9) {
             let page = SettingsPage::ALL[start];
             prop_assert_eq!(page.step(0), page);
             let moved = page.step(by);
             let target = start as isize + by;
-            if (0..6).contains(&target) {
+            if (0..SettingsPage::ALL.len() as isize).contains(&target) {
                 prop_assert_eq!(moved, SettingsPage::ALL[target as usize]);
                 prop_assert_eq!(moved.step(-by), page);
             } else {

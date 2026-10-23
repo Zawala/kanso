@@ -81,6 +81,7 @@ actions!(
         ToggleInspector,
         ShowOutline,
         ShowBacklinks,
+        AskYourNotes,
     ]
 );
 
@@ -165,6 +166,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-3", ShowPreview, None),
         KeyBinding::new("secondary-s", SaveNote, None),
         KeyBinding::new("secondary-shift-p", TogglePinned, None),
+        KeyBinding::new("secondary-shift-a", AskYourNotes, None),
         KeyBinding::new("secondary-shift-m", Dictate, None),
         KeyBinding::new("secondary-alt-down", NextNote, None),
         KeyBinding::new("secondary-alt-up", PreviousNote, None),
@@ -185,6 +187,40 @@ pub fn bind_keys(cx: &mut App) {
     crate::settings::bind_keys(cx);
     crate::tabs::bind_keys(cx);
     crate::zoom::bind_keys(cx);
+}
+
+/// The View menu. Ask Your Notes is there only while AI is on: until then
+/// nothing about it shows.
+fn view_menu(cx: &App) -> Vec<MenuItem> {
+    let ai = cx
+        .try_global::<AppState>()
+        .is_some_and(|state| state.config.ai.enabled);
+    let mut items = vec![
+        MenuItem::action("Editor Only", ShowEditor),
+        MenuItem::action("Editor and Preview", ShowSplit),
+        MenuItem::action("Preview Only", ShowPreview),
+        MenuItem::separator(),
+        MenuItem::action("Toggle Sidebar", ToggleSidebar),
+        MenuItem::action("Outline and Backlinks", ToggleInspector),
+    ];
+    if ai {
+        items.push(MenuItem::action("Ask Your Notes…", AskYourNotes));
+    }
+    items.extend([
+        MenuItem::action("Graph", crate::graph_view::ShowGraph),
+        MenuItem::action("Board", crate::board_view::ShowBoard),
+        MenuItem::action("Tasks Board", crate::board_view::ShowTaskBoard),
+        MenuItem::action("Focus Mode", ToggleFocusMode),
+        MenuItem::action("Search All Notes", SearchAllNotes),
+        MenuItem::action("Replace in All Notes…", crate::replace::ReplaceInNotes),
+        MenuItem::action("Search This List", FocusSearch),
+        MenuItem::action("Go to Note List", FocusNoteList),
+        MenuItem::separator(),
+        MenuItem::action("Zoom In", crate::zoom::ZoomIn),
+        MenuItem::action("Zoom Out", crate::zoom::ZoomOut),
+        MenuItem::action("Actual Size", crate::zoom::ActualSize),
+    ]);
+    items
 }
 
 pub fn set_menus(cx: &mut App) {
@@ -253,26 +289,7 @@ pub fn set_menus(cx: &mut App) {
             MenuItem::action("Copy Note Link", CopyNoteLink),
             MenuItem::action("Copy Kanso Link", CopyKansoLink),
         ]),
-        Menu::new("View").items([
-            MenuItem::action("Editor Only", ShowEditor),
-            MenuItem::action("Editor and Preview", ShowSplit),
-            MenuItem::action("Preview Only", ShowPreview),
-            MenuItem::separator(),
-            MenuItem::action("Toggle Sidebar", ToggleSidebar),
-            MenuItem::action("Outline and Backlinks", ToggleInspector),
-            MenuItem::action("Graph", crate::graph_view::ShowGraph),
-            MenuItem::action("Board", crate::board_view::ShowBoard),
-            MenuItem::action("Tasks Board", crate::board_view::ShowTaskBoard),
-            MenuItem::action("Focus Mode", ToggleFocusMode),
-            MenuItem::action("Search All Notes", SearchAllNotes),
-            MenuItem::action("Replace in All Notes…", crate::replace::ReplaceInNotes),
-            MenuItem::action("Search This List", FocusSearch),
-            MenuItem::action("Go to Note List", FocusNoteList),
-            MenuItem::separator(),
-            MenuItem::action("Zoom In", crate::zoom::ZoomIn),
-            MenuItem::action("Zoom Out", crate::zoom::ZoomOut),
-            MenuItem::action("Actual Size", crate::zoom::ActualSize),
-        ]),
+        Menu::new("View").items(view_menu(cx)),
         Menu::new("Help").items([MenuItem::action(
             "What's New in Kanso",
             crate::updates::ShowWhatsNew,
@@ -437,7 +454,12 @@ impl Workspace {
         let focus_mode = state.config.layout.focus_mode;
         let inspector_open = state.config.layout.inspector_open;
         let inspector_width = state.config.layout.inspector_width;
-        let inspector_tab = state.config.layout.inspector_tab;
+        let inspector_tab =
+            if state.config.layout.inspector_tab == InspectorTab::Ask && !state.config.ai.enabled {
+                InspectorTab::Outline
+            } else {
+                state.config.layout.inspector_tab
+            };
         let graph_hops = state.config.discovery.graph_hops;
 
         // The tabs kept in the settings, without the notes that have gone
@@ -507,6 +529,7 @@ impl Workspace {
                 editor.clone(),
                 inspector_tab,
                 graph_hops,
+                window,
                 cx,
             )
         });
@@ -858,6 +881,11 @@ impl Workspace {
     }
 
     fn set_inspector_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        if !open {
+            // Closing the pane ends the Ask conversation; it is never saved.
+            self.inspector
+                .update(cx, |inspector, cx| inspector.stop_ask(cx));
+        }
         self.inspector_open = open;
         self.editor.update(cx, |editor, cx| {
             editor.inspector_open = open;
@@ -2304,6 +2332,16 @@ impl Render for Workspace {
                 this.close_settings(window, cx);
                 this.set_focus_mode(false, window, cx);
                 this.show_inspector(Some(InspectorTab::Backlinks), cx);
+            }))
+            .on_action(cx.listener(|this, _: &AskYourNotes, window, cx| {
+                if !cx.global::<AppState>().config.ai.enabled {
+                    return;
+                }
+                this.close_settings(window, cx);
+                this.set_focus_mode(false, window, cx);
+                this.show_inspector(Some(InspectorTab::Ask), cx);
+                this.inspector
+                    .update(cx, |inspector, cx| inspector.focus_ask(window, cx));
             }))
             // What acts on the open note brings it back from behind
             // Settings first, so the note it changes is in view.

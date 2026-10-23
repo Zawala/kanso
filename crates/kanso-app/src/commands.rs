@@ -10,21 +10,21 @@ use gpui_kit::assets::IconName;
 use crate::journal::{NewTemplate, NextDay, OpenToday, PreviousDay, QuickCapture};
 use crate::settings::{
     BrowseIconThemes, BrowseThemes, CloseSettings, ImportIconTheme, OpenAccountSettings,
-    OpenApiSettings, OpenAppearanceSettings, OpenEditorSettings, OpenGeneralSettings,
-    OpenIconThemeSettings, OpenUpdateSettings, RefreshThemeGallery, ReloadIconThemes, ReloadThemes,
-    StopThemePreview,
+    OpenAiSettings, OpenApiSettings, OpenAppearanceSettings, OpenEditorSettings,
+    OpenGeneralSettings, OpenIconThemeSettings, OpenUpdateSettings, RefreshThemeGallery,
+    ReloadIconThemes, ReloadThemes, StopThemePreview,
 };
 use crate::tabs::{
     CloseTab, GoToTab1, GoToTab2, GoToTab3, GoToTab4, GoToTab5, GoToTab6, GoToTab7, GoToTab8,
     GoToTab9, NextTab, PreviousTab, ReopenClosedTab,
 };
 use crate::workspace::{
-    ChangePassword, CopyKansoLink, CopyNoteLink, Dictate, ExportHtml, ExportLibrary, ExportNote,
-    ExportPdf, FocusNoteList, FocusSearch, FormatTable, GoBack, GoForward, ImportLibrary, NewNote,
-    NewNotebook, NewRecoveryKey, NextNote, OpenFile, OpenNotePicker, OpenSettings, PreviousNote,
-    Quit, SaveNote, SearchAllNotes, ShowBacklinks, ShowCreateAccount, ShowEditor, ShowHistory,
-    ShowOutline, ShowPreview, ShowSignIn, ShowSplit, SignOut, SyncNow, ToggleFocusMode,
-    ToggleInspector, TogglePinned, ToggleSidebar, TrashNote,
+    AskYourNotes, ChangePassword, CopyKansoLink, CopyNoteLink, Dictate, ExportHtml, ExportLibrary,
+    ExportNote, ExportPdf, FocusNoteList, FocusSearch, FormatTable, GoBack, GoForward,
+    ImportLibrary, NewNote, NewNotebook, NewRecoveryKey, NextNote, OpenFile, OpenNotePicker,
+    OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes, ShowBacklinks, ShowCreateAccount,
+    ShowEditor, ShowHistory, ShowOutline, ShowPreview, ShowSignIn, ShowSplit, SignOut, SyncNow,
+    ToggleFocusMode, ToggleInspector, TogglePinned, ToggleSidebar, TrashNote,
 };
 
 /// The palette's sections, in the order they appear with nothing typed.
@@ -101,6 +101,8 @@ pub enum Needs {
     AudioLine,
     /// A shared note this account is in is open.
     SharedNote,
+    /// AI is on in Settings › AI.
+    AiOn,
 }
 
 pub struct Command {
@@ -758,6 +760,17 @@ static COMMANDS: &[Command] = &[
         group: Group::View,
         run: action!(ShowOutline),
         needs: Needs::Note,
+    },
+    Command {
+        id: "ask-your-notes",
+        label: "Ask Your Notes…",
+        label_when_pinned: None,
+        description: "Asks a question answered from your own notes, with links to the notes the answer used. It works only while AI is on in Settings › AI.",
+        icon: IconName::MessageCircle,
+        keywords: &["ai", "question", "answer", "assistant", "search"],
+        group: Group::View,
+        run: action!(AskYourNotes),
+        needs: Needs::AiOn,
     },
     Command {
         id: "show-backlinks",
@@ -1466,6 +1479,29 @@ static COMMANDS: &[Command] = &[
         ],
         group: Group::App,
         run: action!(OpenAccountSettings),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "settings-ai",
+        label: "Settings: AI",
+        label_when_pinned: None,
+        description: "Whether AI is on, where questions go, and the key a cloud provider needs.",
+        icon: IconName::Sparkles,
+        keywords: &[
+            "preferences",
+            "ai",
+            "ask",
+            "model",
+            "provider",
+            "openai",
+            "anthropic",
+            "openrouter",
+            "ollama",
+            "lm studio",
+            "api key",
+        ],
+        group: Group::App,
+        run: action!(OpenAiSettings),
         needs: Needs::Nothing,
     },
     Command {
