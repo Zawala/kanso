@@ -23,6 +23,52 @@ use crate::{Job, Kind, Palette, Rgb, Svg, escape, render_blocking};
 /// An attachment's content type and bytes, by ID (`file:…`).
 pub type Attachments<'a> = &'a dyn Fn(&str) -> Option<(String, Vec<u8>)>;
 
+/// How a page sets its text: the faces and size the preview uses, and the
+/// highlighter that colors fenced code as it does. The defaults are the
+/// preview's system faces at 16 points, and uncolored code.
+#[derive(Clone, Copy)]
+pub struct PageOptions<'a> {
+    /// The body face, when it isn't the system's.
+    pub font: Option<&'a str>,
+    /// The monospaced face, when it isn't the system's.
+    pub mono: Option<&'a str>,
+    /// The body text size, in points.
+    pub size: f32,
+    /// Colors a fenced code block by its language; `None` leaves code as
+    /// plain text.
+    pub highlight: Option<&'a dyn Highlighter>,
+}
+
+impl Default for PageOptions<'_> {
+    fn default() -> Self {
+        PageOptions {
+            font: None,
+            mono: None,
+            size: 16.,
+            highlight: None,
+        }
+    }
+}
+
+/// A run of a code block in one style, as a byte range of the code.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CodeSpan {
+    pub start: usize,
+    pub end: usize,
+    /// `0xRRGGBB`.
+    pub color: Option<u32>,
+    pub bold: bool,
+    pub italic: bool,
+}
+
+/// Colors fenced code the way the preview does: the grammar the fence names
+/// and the syntax theme's colors.
+pub trait Highlighter: Send + Sync {
+    /// The styles for `code` in `lang` (the fence's info string), or `None`
+    /// when Kanso has no grammar for it.
+    fn highlight(&self, lang: &str, code: &str) -> Option<Vec<CodeSpan>>;
+}
+
 /// The parse options the preview uses, with math.
 fn parse_options() -> markdown::ParseOptions {
     let mut options = markdown::ParseOptions::gfm();
@@ -34,8 +80,10 @@ fn parse_options() -> markdown::ParseOptions {
 
 /// What a piece of the note becomes.
 enum Piece {
-    /// Stands alone, in place of a paragraph.
+    /// Stands alone, in place of a paragraph, in a figure.
     Block(String),
+    /// Stands alone, in place of a paragraph, without a figure.
+    Bare(String),
     /// Sits in a line.
     Inline(String),
 }
@@ -357,6 +405,7 @@ fn collect(
     palette: &Palette,
     attachments: Attachments<'_>,
     site: Option<&Site>,
+    options: &PageOptions<'_>,
     out: &mut Vec<(std::ops::Range<usize>, Piece)>,
 ) {
     let range = node.position().map(|p| p.start.offset..p.end.offset);
@@ -394,6 +443,12 @@ fn collect(
             drawn(Kind::Excalidraw, &code.value)
                 .map(|svg| Piece::Block(svg_markup(&svg, "kanso-drawing", 1.)))
         }
+        Node::Code(code) => options.highlight.and_then(|highlight| {
+            let lang = code.lang.as_deref().unwrap_or_default();
+            highlight
+                .highlight(lang, &code.value)
+                .map(|spans| Piece::Bare(code_html(code.lang.as_deref(), &code.value, &spans)))
+        }),
         Node::Paragraph(_) if display_math_paragraph(node, written).is_some() => {
             display_math_paragraph(node, written)
                 .and_then(|formula| drawn(Kind::DisplayMath, formula))
@@ -445,7 +500,7 @@ fn collect(
         }
         _ => {
             for child in node.children().into_iter().flatten() {
-                collect(child, source, palette, attachments, site, out);
+                collect(child, source, palette, attachments, site, options, out);
             }
         }
     }
@@ -464,7 +519,13 @@ fn plain_html(markdown: &str) -> String {
 
 /// The note's body as HTML, without the page around it.
 pub fn body(markdown: &str, palette: &Palette, attachments: Attachments<'_>) -> String {
-    body_in(markdown, palette, attachments, None)
+    body_with(
+        markdown,
+        palette,
+        attachments,
+        None,
+        &PageOptions::default(),
+    )
 }
 
 /// [`body`], as a page of `site` when given.
@@ -474,12 +535,37 @@ pub fn body_in(
     attachments: Attachments<'_>,
     site: Option<&Site>,
 ) -> String {
-    let options = parse_options();
-    let Ok(root) = crate::markdown_safe::to_mdast(markdown, &options) else {
+    body_with(
+        markdown,
+        palette,
+        attachments,
+        site,
+        &PageOptions::default(),
+    )
+}
+
+/// [`body_in`], set the way `options` say.
+pub fn body_with(
+    markdown: &str,
+    palette: &Palette,
+    attachments: Attachments<'_>,
+    site: Option<&Site>,
+    options: &PageOptions<'_>,
+) -> String {
+    let parse = parse_options();
+    let Ok(root) = crate::markdown_safe::to_mdast(markdown, &parse) else {
         return plain_html(markdown);
     };
     let mut pieces = Vec::new();
-    collect(&root, markdown, palette, attachments, site, &mut pieces);
+    collect(
+        &root,
+        markdown,
+        palette,
+        attachments,
+        site,
+        options,
+        &mut pieces,
+    );
     pieces.sort_by_key(|(range, _)| range.start);
     // A placeholder no note will contain: it survives Markdown as a word.
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -503,13 +589,9 @@ pub fn body_in(
         gfm_tagfilter: true,
         ..markdown::CompileOptions::default()
     };
-    let Ok(mut html) = crate::markdown_safe::to_html_with_options(
-        &text,
-        &markdown::Options {
-            parse: options,
-            compile,
-        },
-    ) else {
+    let Ok(mut html) =
+        crate::markdown_safe::to_html_with_options(&text, &markdown::Options { parse, compile })
+    else {
         return plain_html(markdown);
     };
     // Links into the app (and other schemes a browser can't follow) lose
@@ -527,39 +609,167 @@ pub fn body_in(
                     html.replacen(&token, &markup, 1)
                 }
             }
+            Piece::Bare(markup) => {
+                let paragraph = format!("<p>{token}</p>");
+                if html.contains(&paragraph) {
+                    html.replacen(&paragraph, &markup, 1)
+                } else {
+                    html.replacen(&token, &markup, 1)
+                }
+            }
             Piece::Inline(markup) => html.replacen(&token, &markup, 1),
         };
     }
     html
 }
 
-fn css(p: &Palette) -> String {
+/// Escapes a code block as spans colored like the preview's highlighting.
+fn code_html(lang: Option<&str>, code: &str, spans: &[CodeSpan]) -> String {
+    let mut out = String::with_capacity(code.len() + 96);
+    out.push_str("<pre class=\"kanso-code\">");
+    if let Some(lang) = lang.map(str::trim).filter(|lang| !lang.is_empty()) {
+        let _ = write!(out, "<span class=\"kanso-lang\">{}</span>", escape(lang));
+    }
+    out.push_str("<code>");
+    let mut at = 0;
+    for span in spans {
+        let start = boundary(code, span.start.max(at).min(code.len()));
+        let end = boundary(code, span.end.min(code.len()).max(start));
+        if end <= at {
+            continue;
+        }
+        if start > at {
+            out.push_str(&escape(&code[at..start]));
+        }
+        let mut style = String::new();
+        if let Some(color) = span.color {
+            let _ = write!(style, "color:#{:06x};", color & 0xFF_FFFF);
+        }
+        if span.italic {
+            style.push_str("font-style:italic;");
+        }
+        if span.bold {
+            style.push_str("font-weight:bold;");
+        }
+        let text = escape(&code[start..end]);
+        if style.is_empty() {
+            out.push_str(&text);
+        } else {
+            let _ = write!(out, "<span style=\"{style}\">{text}</span>");
+        }
+        at = end;
+    }
+    out.push_str(&escape(&code[at..]));
+    out.push_str("</code></pre>");
+    out
+}
+
+/// `at`, moved left to the nearest character boundary.
+fn boundary(text: &str, mut at: usize) -> usize {
+    while at > 0 && !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    at
+}
+
+/// The stack a page falls back to when it names no face.
+const SANS_FALLBACK: &str =
+    "-apple-system,BlinkMacSystemFont,\"Segoe UI\",Inter,\"Helvetica Neue\",Arial,sans-serif";
+const MONO_FALLBACK: &str =
+    "ui-monospace,\"SF Mono\",Menlo,Consolas,\"DejaVu Sans Mono\",monospace";
+
+/// A family name a stylesheet can carry, followed by `fallback`. Names
+/// with quotes, semicolons, braces or other syntax are left out, and so are
+/// Core Text's private `.Name` families, which a browser doesn't know.
+fn family(name: Option<&str>, fallback: &str) -> String {
+    let safe = |c: char| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.' | '+');
+    match name.map(str::trim) {
+        Some(name) if !name.is_empty() && !name.starts_with('.') && name.chars().all(safe) => {
+            format!("\"{name}\",{fallback}")
+        }
+        _ => fallback.to_owned(),
+    }
+}
+
+/// A size a page can set: the preview's when sane, a readable default
+/// otherwise.
+fn text_size(size: f32) -> f32 {
+    if size.is_finite() && (8.0..=72.0).contains(&size) {
+        size
+    } else {
+        16.
+    }
+}
+
+/// A page's stylesheet: the preview's typography and colors.
+pub fn stylesheet(p: &Palette, options: &PageOptions<'_>) -> String {
     let c = |rgb: Rgb| rgb.hex();
-    let quiet = c(p.border.over(p.background, 0.5));
+    let size = text_size(options.size);
+    let width = crate::typography::readable_width(size, false);
+    let quiet = c(p.border.over(p.surface, 0.6));
+    let link_under = c(p.accent.over(p.background, 0.4));
+    let quote_bar = c(p.quote.over(p.background, 0.45));
+    let code_text = p.code_text.map_or_else(|| c(p.text), c);
+    let inline_text = p
+        .inline_code_text
+        .map(|color| format!("color:{};", c(color)))
+        .unwrap_or_default();
+    let table_head = p.table_header_background.map_or_else(|| c(p.surface), c);
+    let heading = p
+        .heading
+        .map(|color| format!("h1,h2,h3,h4,h5,h6{{color:{}}}", c(color)))
+        .unwrap_or_default();
+    let h6_color = c(p.task_done);
+    let check_stroke = if p.dark { "black" } else { "white" };
+    let check = format!(
+        "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3.25 8.25 3 3 6.5-7' fill='none' stroke='{check_stroke}' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")"
+    );
+    let h1 = crate::typography::heading(1);
+    let h2 = crate::typography::heading(2);
+    let h3 = crate::typography::heading(3);
+    let h4 = crate::typography::heading(4);
+    let h5 = crate::typography::heading(5);
+    let h6 = crate::typography::heading(6);
+    let bottom = crate::typography::HEADING_BOTTOM_GAP;
+    let gap = crate::typography::PARAGRAPH_GAP;
     format!(
-        r#":root{{color-scheme:{scheme}}}
+        r#"
+:root{{color-scheme:{scheme}}}
 *{{box-sizing:border-box}}
 html{{background:{bg};-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-body{{margin:0 auto;max-width:46rem;padding:3rem 2rem 4rem;background:{bg};color:{text};font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}}
-header h1{{font-size:2rem;line-height:1.25;margin:0 0 1.5rem}}
-h1,h2,h3,h4,h5,h6{{line-height:1.3;margin:1.8em 0 .5em}}
-h1{{font-size:1.8rem}}h2{{font-size:1.35rem}}h3{{font-size:1.15rem}}h4,h5,h6{{font-size:1rem}}
-p,ul,ol,pre,table,blockquote,figure{{margin:0 0 .9em}}
-a{{color:{accent};text-decoration:underline;text-underline-offset:2px}}
+body{{margin:0 auto;max-width:calc({width}px + 4rem);padding:3rem 2rem 4rem;background:{bg};color:{text};font:{size}px/{line} {sans};-webkit-font-smoothing:antialiased}}
+header h1{{font-size:2rem;line-height:1.25;margin:0 0 1.5rem;font-weight:700}}
+h1,h2,h3,h4,h5,h6{{font-weight:600;line-height:1.35}}
+h1{{font-size:{h1s}em;line-height:1.25;margin:{h1g}em 0 {bottom}em;font-weight:700}}
+h2{{font-size:{h2s}em;margin:{h2g}em 0 {bottom}em}}
+h3{{font-size:{h3s}em;margin:{h3g}em 0 {bottom}em}}
+h4{{font-size:{h4s}em;margin:{h4g}em 0 {bottom}em}}
+h5{{font-size:{h5s}em;margin:{h5g}em 0 {bottom}em}}
+h6{{font-size:{h6s}em;margin:{h6g}em 0 {bottom}em;color:{h6color}}}
+{heading}
+:is(h1,h2,h3,h4,h5,h6)+:is(h1,h2,h3,h4,h5,h6){{margin-top:.25em}}
+p,ul,ol,pre,table,blockquote,figure{{margin:0 0 {gap}em}}
+a{{color:{accent};text-decoration:underline;text-underline-offset:2px;text-decoration-color:{linkunder}}}
 a:not([href]){{color:inherit;text-decoration-style:dotted}}
-code,pre{{font-family:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:.88em}}
-code{{background:{surface};border-radius:4px;padding:.1em .3em}}
-pre{{background:{surface};border:1px solid {quiet};border-radius:8px;padding:.9em 1em;overflow-x:auto;line-height:1.5}}
-pre code{{background:none;padding:0;font-size:inherit}}
-blockquote{{border-left:3px solid {quiet};margin-left:0;padding-left:14px;color:{muted}}}
-table{{border-collapse:collapse;display:block;overflow-x:auto}}
-th,td{{border:1px solid {border};padding:.35em .7em;text-align:left}}
-th{{background:{surface};font-weight:600}}
-hr{{border:0;border-top:1px solid {border};margin:2em 0}}
+code,pre{{font-family:{mono}}}
+code{{font-size:1em;background:{inlinebg};border-radius:4px;padding:.1em .3em;{inlinetext}}}
+pre{{position:relative;background:{surface};border:1px solid {quiet};border-radius:{radius}px;padding:{codetop}px {codepadx}px {codepadb}px;overflow-x:auto;line-height:{codeline};font-size:{codesize}px;color:{codetext}}}
+pre code{{font-size:inherit;background:none;padding:0;color:inherit}}
+.kanso-lang{{position:absolute;top:7px;right:12px;font-family:{sans};font-size:12px;line-height:16px;color:{muted}}}
+blockquote{{border-left:3px solid {quotebar};margin-left:0;padding-left:14px;color:{quote}}}
+table{{border-collapse:collapse;display:block;overflow-x:auto;font-size:.9333em}}
+th,td{{border:1px solid {border};padding:7px 12px;text-align:left}}
+thead th{{background:{tablehead};font-weight:600}}
+hr{{border:0;border-top:1px solid {border};margin:1.6em 0}}
 img{{max-width:100%;height:auto}}
-li>input[type=checkbox]{{margin:0 .5em 0 -1.4em}}
-ul.contains-task-list{{list-style:none}}
-li.task-list-item{{list-style:none}}
+ul,ol{{padding-left:1.4em}}
+li+li{{margin-top:.25em}}
+li::marker{{color:{taskdone}}}
+ul:has(>li>input[type=checkbox]){{padding-left:0;list-style:none}}
+li:has(>input[type=checkbox]){{list-style:none}}
+li:has(>input[type=checkbox])>input[type=checkbox]{{appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0 8px 0 0;vertical-align:-2px;border:1.5px solid {taskdone};border-radius:4px;background:transparent}}
+li:has(>input[type=checkbox])>input[type=checkbox]:checked{{background:{link} {check} no-repeat center/12px 12px;border-color:{link}}}
+li:has(>input[type=checkbox]:checked){{color:{taskdone}}}
 figure{{margin-left:0;margin-right:0;overflow-x:auto}}
 figure svg{{max-width:100%;height:auto}}
 .kanso-math svg{{display:inline-block}}
@@ -583,6 +793,44 @@ ul.kanso-site-index{{list-style:none;padding:0}}
         accent = c(p.accent),
         border = c(p.border),
         surface = c(p.surface),
+        quiet = quiet,
+        width = width,
+        size = size,
+        line = crate::typography::LINE_HEIGHT,
+        sans = family(options.font, SANS_FALLBACK),
+        mono = family(options.mono, MONO_FALLBACK),
+        heading = heading,
+        h6color = h6_color,
+        h1s = h1.scale,
+        h1g = h1.gap,
+        h2s = h2.scale,
+        h2g = h2.gap,
+        h3s = h3.scale,
+        h3g = h3.gap,
+        h4s = h4.scale,
+        h4g = h4.gap,
+        h5s = h5.scale,
+        h5g = h5.gap,
+        h6s = h6.scale,
+        h6g = h6.gap,
+        bottom = bottom,
+        gap = gap,
+        radius = crate::typography::CODE_RADIUS,
+        codetop = crate::typography::CODE_TOP,
+        codepadx = crate::typography::CODE_PADDING_X,
+        codepadb = crate::typography::CODE_PADDING_BOTTOM,
+        codeline = crate::typography::CODE_LINE_HEIGHT,
+        codesize = crate::typography::CODE_SIZE,
+        linkunder = link_under,
+        quotebar = quote_bar,
+        quote = c(p.quote),
+        taskdone = c(p.task_done),
+        inlinebg = c(p.inline_code_background),
+        inlinetext = inline_text,
+        tablehead = table_head,
+        codetext = code_text,
+        link = c(p.accent),
+        check = check,
     )
 }
 
@@ -593,7 +841,24 @@ pub fn page(
     palette: &Palette,
     attachments: Attachments<'_>,
 ) -> String {
-    page_in(title, markdown, palette, attachments, None)
+    page_with(
+        title,
+        markdown,
+        palette,
+        attachments,
+        &PageOptions::default(),
+    )
+}
+
+/// [`page`], set the way `options` say.
+pub fn page_with(
+    title: &str,
+    markdown: &str,
+    palette: &Palette,
+    attachments: Attachments<'_>,
+    options: &PageOptions<'_>,
+) -> String {
+    page_in_with(title, markdown, palette, attachments, None, options)
 }
 
 /// [`page`], as a page of `site` when given: links to the site's other
@@ -605,7 +870,26 @@ pub fn page_in(
     attachments: Attachments<'_>,
     site: Option<&Site>,
 ) -> String {
-    let body = body_in(markdown, palette, attachments, site);
+    page_in_with(
+        title,
+        markdown,
+        palette,
+        attachments,
+        site,
+        &PageOptions::default(),
+    )
+}
+
+/// [`page_in`], set the way `options` say.
+pub fn page_in_with(
+    title: &str,
+    markdown: &str,
+    palette: &Palette,
+    attachments: Attachments<'_>,
+    site: Option<&Site>,
+    options: &PageOptions<'_>,
+) -> String {
+    let body = body_with(markdown, palette, attachments, site, options);
     let title = title.trim();
     let shown_title = if title.is_empty() { "Untitled" } else { title };
     let nav = site.map(|site| {
@@ -614,7 +898,7 @@ pub fn page_in(
             escape(site.home.trim())
         )
     });
-    document(shown_title, nav.as_deref(), &body, palette)
+    document(shown_title, nav.as_deref(), &body, palette, options)
 }
 
 /// A note on a published notebook's index.
@@ -632,6 +916,16 @@ pub struct IndexEntry {
 /// A published notebook's first page: its name, then its notes, those of
 /// the notebooks inside it under their names, each linking to its page.
 pub fn site_index(name: &str, entries: &[IndexEntry], palette: &Palette) -> String {
+    site_index_with(name, entries, palette, &PageOptions::default())
+}
+
+/// [`site_index`], set the way `options` say.
+pub fn site_index_with(
+    name: &str,
+    entries: &[IndexEntry],
+    palette: &Palette,
+    options: &PageOptions<'_>,
+) -> String {
     let name = name.trim();
     let shown = if name.is_empty() { "Notebook" } else { name };
     let mut main = String::new();
@@ -665,11 +959,17 @@ pub fn site_index(name: &str, entries: &[IndexEntry], palette: &Palette) -> Stri
     } else {
         main.push_str("<p class=\"kanso-missing\">Nothing is published here yet.</p>\n");
     }
-    document(shown, None, &main, palette)
+    document(shown, None, &main, palette, options)
 }
 
 /// The page around a title and its HTML: styled, standalone.
-fn document(title: &str, nav: Option<&str>, main: &str, palette: &Palette) -> String {
+fn document(
+    title: &str,
+    nav: Option<&str>,
+    main: &str,
+    palette: &Palette,
+    options: &PageOptions<'_>,
+) -> String {
     let mut html = String::with_capacity(main.len() + 4096);
     let _ = write!(
         html,
@@ -692,7 +992,7 @@ fn document(title: &str, nav: Option<&str>, main: &str, palette: &Palette) -> St
 "#,
         title = escape(title),
         nav = nav.unwrap_or_default(),
-        css = css(palette),
+        css = stylesheet(palette, options),
     );
     html
 }
@@ -1015,6 +1315,204 @@ mod tests {
         fn prop_attachment_ids_round_trip(id in "[A-Za-z0-9_-]{1,20}", tail in prop::option::of("[?#][a-z=]{0,6}")) {
             let url = format!("inkdrop://file:{id}{}", tail.unwrap_or_default());
             prop_assert_eq!(attachment_id(&url), Some(format!("file:{id}")));
+        }
+    }
+    /// A highlighter for the tests: the first byte red and bold.
+    struct RedFirst;
+
+    impl Highlighter for RedFirst {
+        fn highlight(&self, _: &str, code: &str) -> Option<Vec<CodeSpan>> {
+            (!code.is_empty()).then(|| {
+                vec![CodeSpan {
+                    start: 0,
+                    end: 1,
+                    color: Some(0xFF0000),
+                    bold: true,
+                    italic: false,
+                }]
+            })
+        }
+    }
+
+    #[test]
+    fn highlighted_code_becomes_spans_with_its_language() {
+        let highlight = RedFirst;
+        let options = PageOptions {
+            highlight: Some(&highlight),
+            ..PageOptions::default()
+        };
+        let html = page_with(
+            "Code",
+            "```rust\n<fn> & main\n```\n",
+            &Palette::LIGHT,
+            &none,
+            &options,
+        );
+        assert!(html.contains(r#"<pre class="kanso-code">"#), "{html}");
+        assert!(
+            html.contains(r#"<span class="kanso-lang">rust</span>"#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"<span style="color:#ff0000;font-weight:bold;">&lt;</span>"#),
+            "{html}"
+        );
+        assert!(html.contains("fn&gt; &amp; main"), "{html}");
+        assert!(!html.contains("<figure>"), "{html}");
+        assert!(!html.contains("language-rust"), "{html}");
+    }
+
+    #[test]
+    fn a_site_and_its_index_use_the_page_style() {
+        let options = PageOptions {
+            font: Some("Alegreya"),
+            size: 18.,
+            ..PageOptions::default()
+        };
+        let site = Site {
+            resolve: &plans,
+            home: "Work",
+        };
+        let page = page_in_with(
+            "Note",
+            "See [[Plans]].\n",
+            &Palette::LIGHT,
+            &none,
+            Some(&site),
+            &options,
+        );
+        assert!(page.contains("font:18px/"), "{page}");
+        assert!(page.contains("\"Alegreya\""), "{page}");
+        assert!(page.contains("class=\"kanso-site-nav\""), "{page}");
+        let index = site_index_with(
+            "Work",
+            &[IndexEntry {
+                slug: "a".into(),
+                title: "A".into(),
+                snippet: String::new(),
+                group: None,
+            }],
+            &Palette::LIGHT,
+            &options,
+        );
+        assert!(index.contains("font:18px/"), "{index}");
+        assert!(index.contains("\"Alegreya\""), "{index}");
+        assert!(index.contains("kanso-site-index"), "{index}");
+    }
+
+    #[test]
+    fn a_family_that_could_break_the_style_falls_back() {
+        let options = PageOptions {
+            font: Some("Bad; }</style><script>x"),
+            mono: Some("Bad\"{}\""),
+            ..PageOptions::default()
+        };
+        let css = stylesheet(&Palette::LIGHT, &options);
+        assert!(!css.contains("Bad"), "{css}");
+        assert!(!css.to_ascii_lowercase().contains("</style"));
+        assert!(!css.to_ascii_lowercase().contains("<script"));
+        assert!(css.contains("-apple-system"), "{css}");
+        assert!(css.contains("ui-monospace"), "{css}");
+    }
+
+    #[test]
+    fn task_boxes_are_drawn_by_the_page() {
+        let css = stylesheet(&Palette::LIGHT, &PageOptions::default());
+        assert!(css.contains("appearance:none"), "{css}");
+        assert!(css.contains("li:has(>input[type=checkbox])"), "{css}");
+        assert!(css.contains("data:image/svg+xml"), "{css}");
+    }
+
+    #[test]
+    fn the_stylesheet_uses_the_previews_numbers() {
+        let options = PageOptions {
+            font: Some("Alegreya"),
+            mono: Some("Iosevka"),
+            size: 18.,
+            highlight: None,
+        };
+        let css = stylesheet(&Palette::LIGHT, &options);
+        let width = crate::typography::readable_width(18., false);
+        assert!(
+            css.contains(&format!("max-width:calc({width}px + 4rem)")),
+            "{css}"
+        );
+        assert!(css.contains("font:18px/1.65"), "{css}");
+        assert!(css.contains("\"Alegreya\""), "{css}");
+        assert!(css.contains("\"Iosevka\""), "{css}");
+        let h1 = crate::typography::heading(1);
+        assert!(
+            css.contains(&format!(
+                "font-size:{}em;line-height:1.25;margin:{}em 0 {}em",
+                h1.scale,
+                h1.gap,
+                crate::typography::HEADING_BOTTOM_GAP
+            )),
+            "{css}"
+        );
+        assert!(
+            css.contains(&format!(
+                "border-radius:{}px",
+                crate::typography::CODE_RADIUS
+            )),
+            "{css}"
+        );
+        assert!(css.contains("margin:0 0 0.9em"), "{css}");
+        assert!(!css.contains("46rem"), "{css}");
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(128))]
+
+        /// Invariants: any palette, size and family name make a stylesheet
+        /// with balanced braces and no way to close the style element.
+        #[test]
+        fn prop_stylesheets_are_well_formed(
+            bg in any::<u32>(),
+            text in any::<u32>(),
+            family in "[^\0]{0,32}",
+            mono in "[^\0]{0,32}",
+            size in any::<f32>(),
+        ) {
+            let palette = Palette {
+                background: Rgb(bg & 0xFF_FFFF),
+                text: Rgb(text & 0xFF_FFFF),
+                ..Palette::LIGHT
+            };
+            let options = PageOptions {
+                font: Some(&family),
+                mono: Some(&mono),
+                size,
+                highlight: None,
+            };
+            let css = stylesheet(&palette, &options);
+            prop_assert_eq!(css.matches('{').count(), css.matches('}').count());
+            prop_assert!(!css.to_ascii_lowercase().contains("</style"));
+            prop_assert!(!css.to_ascii_lowercase().contains("<script"));
+            prop_assert_eq!(css.matches('"').count() % 2, 0);
+            prop_assert!(css.contains("max-width:calc("));
+        }
+
+        /// Invariants: a highlighted page escapes its code and never emits
+        /// a span outside the code.
+        #[test]
+        fn prop_highlighted_code_is_escaped(code in "[<>&\"'a-z0-9 ]{0,60}") {
+            prop_assume!(!code.is_empty());
+            let highlight = RedFirst;
+            let options = PageOptions {
+                highlight: Some(&highlight),
+                ..PageOptions::default()
+            };
+            let html = page_with(
+                "t",
+                &format!("```rust\n{code}\n```\n"),
+                &Palette::LIGHT,
+                &none,
+                &options,
+            );
+            prop_assert!(!html.contains("<script"));
+            prop_assert!(html.contains("<pre class=\"kanso-code\">"));
+            prop_assert!(html.contains("color:#ff0000"));
         }
     }
 }
