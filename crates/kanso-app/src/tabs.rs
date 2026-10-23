@@ -192,11 +192,7 @@ impl Tabs {
     /// Steps the active tab's history back (`back`) or forward, and
     /// returns the visit landed on. Only this tab's history moves: notes
     /// open in other tabs are not switched to.
-    pub fn step_active(
-        &mut self,
-        back: bool,
-        live: impl Fn(&str) -> bool,
-    ) -> Option<Visit> {
+    pub fn step_active(&mut self, back: bool, live: impl Fn(&str) -> bool) -> Option<Visit> {
         let tab = self.open.get_mut(self.active)?;
         if back {
             tab.nav.back(live)

@@ -20,8 +20,8 @@ use crate::config::AppConfig;
 use crate::editor::NoteEditor;
 use crate::library::Filter;
 use crate::note_menu::NoteCommand;
-use crate::tab_bar::TabBarEvent;
 use crate::services::Services;
+use crate::tab_bar::TabBarEvent;
 use crate::workspace::{AppState, Workspace};
 
 #[cfg(target_os = "macos")]
@@ -599,7 +599,11 @@ fn a_trashed_notes_tab_goes_when_the_question_is_answered(cx: &mut TestAppContex
     // No clock advance: the autosave must not save the text first.
     cx.run_until_parked();
     f.draw(cx);
-    assert_eq!(f.tabs(cx), vec![a.clone()], "the unsaved text keeps the tab");
+    assert_eq!(
+        f.tabs(cx),
+        vec![a.clone()],
+        "the unsaved text keeps the tab"
+    );
     assert!(f.with_editor(cx, |editor, _, _| editor.has_incoming()));
 
     f.with_editor(cx, |editor, window, cx| editor.take_theirs(window, cx));

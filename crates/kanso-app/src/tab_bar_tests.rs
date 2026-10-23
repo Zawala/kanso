@@ -3,8 +3,7 @@
 
 use gpui_kit::{
     AnyWindowHandle, AppContext as _, Bounds, Entity, ParentElement as _, Render, Styled as _,
-    TestAppContext,
-    Window, WindowBounds, WindowOptions, div, point, px, size,
+    TestAppContext, Window, WindowBounds, WindowOptions, div, point, px, size,
 };
 
 use crate::tab_bar::{TAB_BAR_HEIGHT, TabBar};
@@ -15,7 +14,11 @@ struct Harness {
 }
 
 impl Render for Harness {
-    fn render(&mut self, _: &mut Window, _: &mut gpui_kit::Context<Self>) -> impl gpui_kit::IntoElement {
+    fn render(
+        &mut self,
+        _: &mut Window,
+        _: &mut gpui_kit::Context<Self>,
+    ) -> impl gpui_kit::IntoElement {
         div()
             .w(px(360.))
             .h(px(TAB_BAR_HEIGHT))

@@ -4,9 +4,7 @@
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{
-    ContextMenuExt as _, DropdownMenu as _, PopupMenuItem,
-};
+use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Icon, Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -317,4 +315,3 @@ impl Render for TabBar {
             .child(self.all_tabs(colors, cx))
     }
 }
-
