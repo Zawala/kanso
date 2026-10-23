@@ -1242,6 +1242,14 @@ impl Workspace {
     /// held Replace can keep the editor on its note.
     fn open_note(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
         self.close_settings(window, cx);
+        // The library's Selected event comes after this update, so the
+        // editor is opened here, as it was before there were tabs; the
+        // event then only keeps the tabs in step. Without this, a command
+        // on a note that isn't showing (Lock, History, Publish, Share)
+        // reported "not open" and did nothing.
+        self.stash_place(cx);
+        self.editor
+            .update(cx, |editor, cx| editor.open(Some(id), window, cx));
         self.select_note(id, OpenIntent::Current, cx);
         self.editor.read(cx).note_id() == Some(id)
     }

@@ -6,6 +6,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::{
     AnyWindowHandle, AppContext as _, Entity, Modifiers, MouseButton, Pixels, Point,
     TestAppContext, VisualTestContext,
@@ -17,6 +18,7 @@ use serde_json::json;
 
 use crate::config::AppConfig;
 use crate::editor::NoteEditor;
+use crate::note_menu::NoteCommand;
 use crate::services::Services;
 use crate::workspace::{AppState, Workspace};
 
@@ -190,6 +192,25 @@ impl Fixture {
         cx.read(|cx| library.read(cx).selection.ids().to_vec())
     }
 
+    fn run(&self, cx: &mut TestAppContext, id: &str, command: NoteCommand) {
+        let workspace = self.workspace.clone();
+        let id = id.to_owned();
+        self.window
+            .update(cx, |_, window, cx| {
+                workspace.update(cx, |workspace, cx| {
+                    workspace.run_note_command(&id, command, window, cx)
+                })
+            })
+            .unwrap();
+        cx.run_until_parked();
+    }
+
+    fn dialog_open(&self, cx: &mut TestAppContext) -> bool {
+        self.window
+            .update(cx, |_, window, cx| window.has_active_dialog(cx))
+            .unwrap()
+    }
+
     fn bar_is_showing(&self, cx: &mut TestAppContext) -> bool {
         self.draw(cx);
         let mut vcx = VisualTestContext::from_window(self.window, cx);
@@ -256,6 +277,30 @@ fn cmd_w_at_one_tab_saves_the_note_before_closing(cx: &mut TestAppContext) {
     cx.simulate_keystrokes(f.window, CLOSE_TAB);
     cx.run_until_parked();
     assert_eq!(f.store_body(&a), "typed and not yet autosaved");
+}
+
+/// A menu command that works on the open note (Lock, History, Publish,
+/// Share) opens a note that isn't showing first, as it did on master.
+// no-prop-test: two commands in one window.
+#[gpui_kit::test]
+fn commands_open_a_note_that_is_not_showing_first(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let a = f.note("A", "text");
+    let b = f.note("B", "text");
+    f.select(cx, &a);
+
+    f.run(cx, &b, NoteCommand::Lock);
+    assert_eq!(f.open_note(cx), Some(b.clone()));
+    assert!(f.dialog_open(cx), "locking asks for the password");
+    f.window
+        .update(cx, |_, window, cx| window.close_dialog(cx))
+        .unwrap();
+    cx.run_until_parked();
+
+    f.select(cx, &a);
+    f.run(cx, &b, NoteCommand::ShowHistory);
+    assert_eq!(f.open_note(cx), Some(b.clone()));
+    assert!(f.dialog_open(cx), "history shows its dialog");
 }
 
 /// Ctrl+Tab and Ctrl+Shift+Tab walk the row, wrapping at both ends.
