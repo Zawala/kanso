@@ -20,6 +20,7 @@ mod mermaid;
 mod pele;
 mod rough;
 pub mod svg;
+pub mod typography;
 
 use std::sync::Arc;
 
@@ -75,6 +76,19 @@ pub struct Palette {
     pub border: Rgb,
     /// Code blocks and other quiet fills.
     pub surface: Rgb,
+    /// Headings, when the theme gives them a color of their own.
+    pub heading: Option<Rgb>,
+    /// Quoted text and the bar beside it.
+    pub quote: Rgb,
+    /// Finished tasks, and list markers that step back.
+    pub task_done: Rgb,
+    /// A code block's text, when the theme gives it one.
+    pub code_text: Option<Rgb>,
+    /// Inline code's fill, and its text when the theme gives it one.
+    pub inline_code_background: Rgb,
+    pub inline_code_text: Option<Rgb>,
+    /// A table's header row, when the theme gives it a fill of its own.
+    pub table_header_background: Option<Rgb>,
 }
 
 impl Palette {
@@ -87,6 +101,13 @@ impl Palette {
         accent: Rgb(0x8A6A3D),
         border: Rgb(0xE4E0D8),
         surface: Rgb(0xF3F1EC),
+        heading: None,
+        quote: Rgb(0x6F6B64),
+        task_done: Rgb(0x6F6B64),
+        code_text: None,
+        inline_code_background: Rgb(0xF3F1EC),
+        inline_code_text: None,
+        table_header_background: None,
     };
 
     /// Kanso's graphite theme.
@@ -98,6 +119,13 @@ impl Palette {
         accent: Rgb(0xD2AE78),
         border: Rgb(0x3A3935),
         surface: Rgb(0x282826),
+        heading: None,
+        quote: Rgb(0x9C978E),
+        task_done: Rgb(0x9C978E),
+        code_text: None,
+        inline_code_background: Rgb(0x282826),
+        inline_code_text: None,
+        table_header_background: None,
     };
 }
 

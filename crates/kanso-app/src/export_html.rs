@@ -19,8 +19,8 @@ use kanso_store::Store;
 
 use crate::export::sanitize_file_name;
 
-/// The page for a note: its title and body, in `palette`, with its
-/// attachments read from `store` and its query views drawn. Blocks while
+/// The page for a note: its title and body, in `palette` and `style`, with
+/// its attachments read from `store` and its query views drawn. Blocks while
 /// math and diagrams are drawn.
 pub fn page(
     store: &Store,
@@ -28,6 +28,19 @@ pub fn page(
     body: &str,
     palette: &Palette,
     self_id: Option<&str>,
+    style: &crate::export_style::PageStyle,
+) -> String {
+    let body = with_queries(store, body, self_id);
+    page_without_queries(store, title, &body, palette, style)
+}
+
+/// The page as it was before query views: a `query` fence stays code.
+pub fn page_without_queries(
+    store: &Store,
+    title: &str,
+    body: &str,
+    palette: &Palette,
+    style: &crate::export_style::PageStyle,
 ) -> String {
     let attachments = |id: &str| {
         store
@@ -36,20 +49,7 @@ pub fn page(
             .flatten()
             .map(|(content_type, attachment)| (content_type, attachment.data))
     };
-    let body = with_queries(store, body, self_id);
-    kanso_render::html::page(title, &body, palette, &attachments)
-}
-
-/// The page as it was before query views: a `query` fence stays code.
-pub fn page_without_queries(store: &Store, title: &str, body: &str, palette: &Palette) -> String {
-    let attachments = |id: &str| {
-        store
-            .attachment(id)
-            .ok()
-            .flatten()
-            .map(|(content_type, attachment)| (content_type, attachment.data))
-    };
-    kanso_render::html::page(title, body, palette, &attachments)
+    kanso_render::html::page_with(title, body, palette, &attachments, &style.options())
 }
 
 /// `body` with each query fence drawn as the table it makes.
@@ -89,6 +89,7 @@ pub fn export_html(
     cx: &mut App,
 ) {
     let palette = crate::preview_rich::palette(cx);
+    let style = crate::export_style::PageStyle::from_cx(cx);
     let picked = cx.prompt_for_new_path(&documents(), Some(&file_name(&title, "html")));
     window
         .spawn(cx, async move |cx| {
@@ -100,10 +101,11 @@ pub fn export_html(
                 .spawn({
                     let path = path.clone();
                     let self_id = self_id.clone();
+                    let style = style.clone();
                     async move {
                         std::fs::write(
                             &path,
-                            page(&store, &title, &body, &palette, self_id.as_deref()),
+                            page(&store, &title, &body, &palette, self_id.as_deref(), &style),
                         )
                     }
                 })
@@ -136,6 +138,7 @@ pub fn export_pdf(
     cx: &mut App,
 ) {
     let palette = print_palette(crate::preview_rich::palette(cx));
+    let style = crate::export_style::PageStyle::from_cx(cx);
     #[cfg(target_os = "macos")]
     {
         let picked = cx.prompt_for_new_path(&documents(), Some(&file_name(&title, "pdf")));
@@ -144,10 +147,16 @@ pub fn export_pdf(
                 let Ok(Ok(Some(path))) = picked.await else {
                     return;
                 };
-                let html = cx
-                    .background_executor()
-                    .spawn(async move { page(&store, &title, &body, &palette, self_id.as_deref()) })
-                    .await;
+                let html =
+                    cx.background_executor()
+                        .spawn({
+                            let self_id = self_id.clone();
+                            let style = style.clone();
+                            async move {
+                                page(&store, &title, &body, &palette, self_id.as_deref(), &style)
+                            }
+                        })
+                        .await;
                 let result = mac_pdf(&html, &path, cx).await;
                 cx.update(|window, cx| match result {
                     Ok(()) => cx.reveal_path(&path),
@@ -173,7 +182,7 @@ pub fn export_pdf(
                         let path = dir.join(file_name(&title, "html"));
                         std::fs::write(
                             &path,
-                            page(&store, &title, &body, &palette, self_id.as_deref()),
+                            page(&store, &title, &body, &palette, self_id.as_deref(), &style),
                         )?;
                         Ok::<_, std::io::Error>(path)
                     })
@@ -295,7 +304,14 @@ mod tests {
         let png = b"\x89PNG\r\n\x1a\nnot really".to_vec();
         let id = crate::smart_paste::attach_image(&store, &png, "png", Some("cat.png")).unwrap();
         let body = format!("Area $\\pi r^2$.\n\n![cat](inkdrop://{id})\n");
-        let html = page(&store, "Circles", &body, &Palette::DARK, None);
+        let html = page(
+            &store,
+            "Circles",
+            &body,
+            &Palette::DARK,
+            None,
+            &crate::export_style::PageStyle::default(),
+        );
         assert!(html.contains("<title>Circles</title>"));
         assert!(html.contains("src=\"data:image/png;base64,"));
         assert!(html.contains("kanso-math"));
@@ -343,14 +359,16 @@ mod tests {
             .unwrap();
         let self_id = note("Self", "```query\nfrom: has:client\ncolumns: client\n```\n");
         let body = "```query\nfrom: has:client\ncolumns: client\n```\n";
-        let html = page(&store, "Self", body, &Palette::DARK, Some(&self_id));
+        let style = crate::export_style::PageStyle::default();
+        let html = page(&store, "Self", body, &Palette::DARK, Some(&self_id), &style);
         assert!(html.contains("<table>"), "{html}");
         assert!(html.contains("Ana"), "{html}");
         assert!(html.contains("Acme"), "{html}");
         assert!(!html.contains("Sealed"), "{html}");
         assert!(!html.contains("Self</td>"), "{html}");
         assert!(
-            page_without_queries(&store, "Self", body, &Palette::DARK).contains("language-query")
+            page_without_queries(&store, "Self", body, &Palette::DARK, &style)
+                .contains("language-query")
         );
     }
 

@@ -232,6 +232,7 @@ impl PublishView {
             }
         }
         let palette = crate::export_html::print_palette(crate::preview_rich::palette(cx));
+        let style = crate::export_style::PageStyle::from_cx(cx);
         let now = Clock::now_ms(cx);
         let expires_at = self.expiry.at(now);
         let existing = self.source.publish.clone();
@@ -251,8 +252,9 @@ impl PublishView {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    let html =
-                        crate::export_html::page_without_queries(&store, &title, &body, &palette);
+                    let html = crate::export_html::page_without_queries(
+                        &store, &title, &body, &palette, &style,
+                    );
                     let page = Page {
                         html: html.as_bytes(),
                         title: &title,
