@@ -2079,15 +2079,106 @@ fn a_duplicate_property_edits_the_value_shown(cx: &mut TestAppContext) {
             .collect::<Vec<_>>(),
         ["a", "a"]
     );
+    // The first row edits the first `a`, not the last one `get` reads.
     f.window
         .update(cx, |_, window, cx| {
             inspector.update(cx, |inspector, cx| {
-                inspector.set_property_for_test("a", "3", window, cx)
+                inspector.set_property_at_for_test(0, "3", window, cx)
             })
         })
         .unwrap();
     let body = f.editor(cx, |editor, cx| editor.body_for_test(cx));
-    assert!(body.contains("a: 1\na: 3\n"), "{body}");
+    assert!(body.contains("a: 3\na: 2\n"), "{body}");
+
+    // And the second row edits the second `a`.
+    f.window
+        .update(cx, |_, window, cx| {
+            inspector.update(cx, |inspector, cx| {
+                inspector.set_property_at_for_test(1, "4", window, cx)
+            })
+        })
+        .unwrap();
+    let body = f.editor(cx, |editor, cx| editor.body_for_test(cx));
+    assert!(body.contains("a: 3\na: 4\n"), "{body}");
+}
+
+#[gpui_kit::test]
+fn a_property_edit_is_dropped_when_the_row_changed(cx: &mut TestAppContext) {
+    use crate::config::InspectorTab;
+
+    let f = setup(cx);
+    f.select(cx, &f.notes[0]);
+    f.type_body(cx, "---\na: 1\nb: 2\n---\n# Note\n");
+    let inspector = f.workspace(cx, |workspace, _| workspace.inspector.clone());
+    f.window
+        .update(cx, |_, _, cx| {
+            f.workspace.update(cx, |workspace, cx| {
+                workspace.show_inspector(Some(InspectorTab::Outline), cx)
+            })
+        })
+        .unwrap();
+    f.draw(cx);
+
+    // A line typed above the open field moves the row: Enter must not write
+    // the value onto whichever property is now first.
+    f.window
+        .update(cx, |_, window, cx| {
+            inspector.update(cx, |inspector, cx| {
+                inspector.open_property_for_test(0, window, cx)
+            })
+        })
+        .unwrap();
+    f.type_body(cx, "---\nx: 0\na: 1\nb: 2\n---\n# Note\n");
+    let before = f.editor(cx, |editor, cx| editor.body_for_test(cx));
+    f.window
+        .update(cx, |_, window, cx| {
+            inspector.update(cx, |inspector, cx| {
+                inspector.commit_open_property_for_test("9", window, cx)
+            })
+        })
+        .unwrap();
+    let after = f.editor(cx, |editor, cx| editor.body_for_test(cx));
+    assert_eq!(after, before);
+
+    // A field opened on the row as it stands still writes it.
+    f.window
+        .update(cx, |_, window, cx| {
+            inspector.update(cx, |inspector, cx| {
+                inspector.open_property_for_test(0, window, cx);
+                inspector.commit_open_property_for_test("7", window, cx);
+            })
+        })
+        .unwrap();
+    let body = f.editor(cx, |editor, cx| editor.body_for_test(cx));
+    assert!(body.contains("x: 7\n"), "{body}");
+}
+
+#[gpui_kit::test]
+fn adding_a_raw_property_is_refused(cx: &mut TestAppContext) {
+    use crate::config::InspectorTab;
+
+    let f = setup(cx);
+    f.select(cx, &f.notes[0]);
+    f.type_body(cx, "---\nnested:\n  a: 1\n---\n# Note\n");
+    let inspector = f.workspace(cx, |workspace, _| workspace.inspector.clone());
+    f.window
+        .update(cx, |_, _, cx| {
+            f.workspace.update(cx, |workspace, cx| {
+                workspace.show_inspector(Some(InspectorTab::Outline), cx)
+            })
+        })
+        .unwrap();
+    f.draw(cx);
+    let before = f.editor(cx, |editor, cx| editor.body_for_test(cx));
+    f.window
+        .update(cx, |_, window, cx| {
+            inspector.update(cx, |inspector, cx| {
+                inspector.add_property_for_test("nested", "raw text", window, cx)
+            })
+        })
+        .unwrap();
+    let after = f.editor(cx, |editor, cx| editor.body_for_test(cx));
+    assert_eq!(after, before);
 }
 
 #[gpui_kit::test]

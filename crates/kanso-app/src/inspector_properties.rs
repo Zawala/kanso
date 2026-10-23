@@ -6,8 +6,9 @@
 //! text as one undoable edit. A locked note that isn't open shows nothing.
 
 use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::notification::Notification;
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{Icon, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Icon, Sizable as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::properties::{self, Value};
@@ -22,6 +23,10 @@ use super::PAD_X;
 /// The value being edited in place, by the row it is in.
 pub(super) struct PropertyEdit {
     index: usize,
+    /// The property the field was opened on: if the text changes under it,
+    /// the index may name another property, and the edit is dropped.
+    key: String,
+    value: Value,
     input: Entity<InputState>,
     _event: Subscription,
 }
@@ -178,7 +183,7 @@ impl Inspector {
                 .hover(|el| el.text_color(colors.link))
                 .child(shown)
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    this.edit_property(ix, &current, window, cx);
+                    this.edit_property(ix, &key, &current, window, cx);
                 }))
                 .into_any_element()
         };
@@ -266,6 +271,7 @@ impl Inspector {
     fn edit_property(
         &mut self,
         index: usize,
+        key: &str,
         like: &Value,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -282,12 +288,19 @@ impl Inspector {
             move |this: &mut Inspector, input, event: &InputEvent, window, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
                     let text = input.read(cx).value().to_string();
-                    this.commit_property(index, &text, window, cx);
+                    let Some((index, key, value)) = this.property_edit.as_ref().map(|edit| {
+                        (edit.index, edit.key.clone(), edit.value.clone())
+                    }) else {
+                        return;
+                    };
+                    this.commit_property(index, &key, &value, &text, window, cx);
                 }
             },
         );
         self.property_edit = Some(PropertyEdit {
             index,
+            key: key.to_owned(),
+            value: like.clone(),
             input,
             _event: event,
         });
@@ -326,27 +339,40 @@ impl Inspector {
     }
 
     /// Saves `text` as the value of the row at `index`, keeping its type,
-    /// and closes the field. Text that hasn't changed writes nothing.
+    /// and closes the field. Text that hasn't changed writes nothing. If the
+    /// note changed under the field so the row no longer names `key` with
+    /// `original`, the edit is dropped rather than written to another
+    /// property.
     fn commit_property(
         &mut self,
         index: usize,
+        key: &str,
+        original: &Value,
         text: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let body = self.editor.read(cx).body_text(cx).to_string();
-        let Some((key, like)) = properties::parse(&body).into_iter().nth(index) else {
+        let Some((found, like)) = properties::parse(&body).into_iter().nth(index) else {
             self.property_edit = None;
             cx.notify();
             return;
         };
         self.property_edit = None;
+        if !found.eq_ignore_ascii_case(key) || like != *original {
+            window.push_notification(
+                Notification::info("That property changed while you were editing it."),
+                cx,
+            );
+            cx.notify();
+            return;
+        }
         if text.trim() == like.text().trim() {
             cx.notify();
             return;
         }
         let value = properties::typed(text, Some(&like));
-        let next = properties::set_property(&body, &key, &value);
+        let next = properties::set_property_at(&body, index, &value);
         if next != body {
             self.editor
                 .update(cx, |editor, cx| editor.set_body(next, window, cx));
@@ -371,6 +397,18 @@ impl Inspector {
             .into_iter()
             .find(|(name, _)| name.eq_ignore_ascii_case(&key))
             .map(|(_, value)| value);
+        if like.as_ref().is_some_and(Value::is_raw) {
+            // A raw key is kept as written; writing a typed value into it
+            // would replace YAML Kanso doesn't understand.
+            window.push_notification(
+                Notification::info(format!(
+                    "“{key}” is kept as written. Edit it in the note."
+                )),
+                cx,
+            );
+            cx.notify();
+            return;
+        }
         let value = properties::typed(&text, like.as_ref());
         let next = properties::set_property(&body, &key, &value);
         if next != body {
@@ -402,8 +440,62 @@ impl Inspector {
             .iter()
             .rposition(|(name, _)| name.eq_ignore_ascii_case(key));
         if let Some(index) = index {
-            self.commit_property(index, text, window, cx);
+            let (found, like) = &parsed[index];
+            let found = found.clone();
+            let like = like.clone();
+            self.commit_property(index, &found, &like, text, window, cx);
         }
+    }
+
+    /// Edits the value at a row, as a click on that row and Enter do.
+    #[cfg(test)]
+    pub(crate) fn set_property_at_for_test(
+        &mut self,
+        index: usize,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let parsed = properties::parse(&self.editor.read(cx).body_text(cx));
+        if let Some((key, like)) = parsed.get(index) {
+            let key = key.clone();
+            let like = like.clone();
+            self.commit_property(index, &key, &like, text, window, cx);
+        }
+    }
+
+    /// Opens the field at a row, as a click on it does.
+    #[cfg(test)]
+    pub(crate) fn open_property_for_test(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let parsed = properties::parse(&self.editor.read(cx).body_text(cx));
+        if let Some((key, like)) = parsed.get(index) {
+            let key = key.clone();
+            let like = like.clone();
+            self.edit_property(index, &key, &like, window, cx);
+        }
+    }
+
+    /// Saves what was typed into the open field.
+    #[cfg(test)]
+    pub(crate) fn commit_open_property_for_test(
+        &mut self,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((index, key, value)) = self
+            .property_edit
+            .as_ref()
+            .map(|edit| (edit.index, edit.key.clone(), edit.value.clone()))
+        else {
+            return;
+        };
+        self.commit_property(index, &key, &value, text, window, cx);
     }
 
     /// Adds a property as the section does, from the keyboard.
