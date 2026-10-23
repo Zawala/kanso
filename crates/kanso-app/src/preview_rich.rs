@@ -62,6 +62,13 @@ pub fn palette(cx: &App) -> Palette {
         accent: rgb(preview.link),
         border: rgb(preview.border),
         surface: rgb(preview.code_background),
+        heading: preview.heading.map(rgb),
+        quote: rgb(preview.quote),
+        task_done: rgb(preview.task_done),
+        code_text: preview.code_text.map(rgb),
+        inline_code_background: rgb(preview.inline_code_background),
+        inline_code_text: preview.inline_code_text.map(rgb),
+        table_header_background: preview.table_header_background.map(rgb),
     }
 }
 

@@ -183,6 +183,7 @@ impl PublishSiteView {
             return;
         }
         let palette = crate::export_html::print_palette(crate::preview_rich::palette(cx));
+        let style = crate::export_style::PageStyle::from_cx(cx);
         let now = Clock::now_ms(cx);
         let expires_at = self.expiry.at(now);
         let store = self.store.clone();
@@ -199,7 +200,9 @@ impl PublishSiteView {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    crate::site::publish(&*api, &session, &plan, &store, &palette, expires_at, now)
+                    crate::site::publish(
+                        &*api, &session, &plan, &store, &palette, &style, expires_at, now,
+                    )
                 })
                 .await;
             this.update(cx, |this, cx| this.finish(result.map(Some), cx))

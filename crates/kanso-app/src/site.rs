@@ -180,6 +180,7 @@ pub fn build(
     plan: &SitePlan,
     attachments: &Attachments,
     palette: &Palette,
+    style: &crate::export_style::PageStyle,
 ) -> Result<SiteBundle, SiteError> {
     let mut by_id: HashMap<&str, &str> = HashMap::new();
     let mut by_title: HashMap<String, &str> = HashMap::new();
@@ -208,8 +209,14 @@ pub fn build(
     let mut bundle = SiteBundle::new(&plan.name);
     let mut downloads: Vec<(String, Vec<String>)> = Vec::new();
     for note in &plan.notes {
-        let html =
-            kanso_render::html::page_in(&note.title, &note.body, palette, &attached, Some(&site));
+        let html = kanso_render::html::page_in_with(
+            &note.title,
+            &note.body,
+            palette,
+            &attached,
+            Some(&site),
+            &style.options(),
+        );
         bundle.pages.insert(
             note.slug.clone(),
             kanso_sync::site::SitePage {
@@ -234,7 +241,8 @@ pub fn build(
             group: note.group.clone(),
         })
         .collect();
-    bundle.index = kanso_render::html::site_index(&plan.name, &entries, palette);
+    bundle.index =
+        kanso_render::html::site_index_with(&plan.name, &entries, palette, &style.options());
     // Images: each in the bundle once, the pages pointing at it.
     let images: Vec<SiteFile> = plan
         .files
@@ -299,12 +307,15 @@ impl From<ShareError> for PublishError {
 /// hash is of the notebook's name and `plan.fingerprint()`, so
 /// [`SitePlan::is_outdated`] tells when the notebook has changed since.
 /// Returns what the notebook should now keep. Blocks.
+// A page needs its palette, style, expiry and clock; all are callers' choices.
+#[allow(clippy::too_many_arguments)]
 pub fn publish(
     api: &dyn ShareApi,
     session: &Session,
     plan: &SitePlan,
     store: &Store,
     palette: &Palette,
+    style: &crate::export_style::PageStyle,
     expiry: Option<i64>,
     now_ms: i64,
 ) -> Result<KansoPublish, PublishError> {
@@ -315,7 +326,7 @@ pub fn publish(
             .flatten()
             .map(|(content_type, attachment)| (content_type, attachment.data))
     };
-    let bundle = build(plan, &attachments, palette)?;
+    let bundle = build(plan, &attachments, palette, style)?;
     let bytes = bundle.to_bytes();
     let fingerprint = plan.fingerprint();
     let page = Page {
@@ -475,7 +486,13 @@ mod tests {
         assert_eq!(plan.notes[1].group.as_deref(), Some("Old"));
         assert_eq!(plan.files.len(), 1);
 
-        let bundle = build(&plan, &attachments(&store), &Palette::LIGHT).unwrap();
+        let bundle = build(
+            &plan,
+            &attachments(&store),
+            &Palette::LIGHT,
+            &crate::export_style::PageStyle::default(),
+        )
+        .unwrap();
         assert_eq!(bundle.title, "Work");
         let plan_page = &bundle.pages["plan"].html;
         assert!(plan_page.contains(r#"href="kanso-page:ideas""#));
@@ -547,7 +564,13 @@ mod tests {
             (id == "file:pdf" || id == "file:zip")
                 .then(|| ("application/pdf".to_owned(), b"pdf".to_vec()))
         };
-        let bundle = build(&plan, &read, &Palette::LIGHT).unwrap();
+        let bundle = build(
+            &plan,
+            &read,
+            &Palette::LIGHT,
+            &crate::export_style::PageStyle::default(),
+        )
+        .unwrap();
         assert_eq!(
             bundle.files.len(),
             1,
@@ -650,7 +673,7 @@ mod tests {
             }
             let plan = plan(&store, "book:work").unwrap();
             prop_assert_eq!(plan.notes.len(), notes.iter().filter(|n| !n.1).count());
-            let bundle = build(&plan, &attachments(&store), &Palette::LIGHT).unwrap();
+            let bundle = build(&plan, &attachments(&store), &Palette::LIGHT, &crate::export_style::PageStyle::default()).unwrap();
             prop_assert!(bundle.check().is_ok());
             let key = ShareKey::generate();
             let id = new_share_id();

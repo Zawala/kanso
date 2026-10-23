@@ -19,9 +19,16 @@ use kanso_store::Store;
 
 use crate::export::sanitize_file_name;
 
-/// The page for a note: its title and body, in `palette`, with its
-/// attachments read from `store`. Blocks while math and diagrams are drawn.
-pub fn page(store: &Store, title: &str, body: &str, palette: &Palette) -> String {
+/// The page for a note: its title and body, in `palette` and `style`, with
+/// its attachments read from `store`. Blocks while math and diagrams are
+/// drawn.
+pub fn page(
+    store: &Store,
+    title: &str,
+    body: &str,
+    palette: &Palette,
+    style: &crate::export_style::PageStyle,
+) -> String {
     let attachments = |id: &str| {
         store
             .attachment(id)
@@ -29,7 +36,7 @@ pub fn page(store: &Store, title: &str, body: &str, palette: &Palette) -> String
             .flatten()
             .map(|(content_type, attachment)| (content_type, attachment.data))
     };
-    kanso_render::html::page(title, body, palette, &attachments)
+    kanso_render::html::page_with(title, body, palette, &attachments, &style.options())
 }
 
 /// A file name for the note's export. Pure.
@@ -56,19 +63,23 @@ pub fn export_html(
     cx: &mut App,
 ) {
     let palette = crate::preview_rich::palette(cx);
+    let style = crate::export_style::PageStyle::from_cx(cx);
     let picked = cx.prompt_for_new_path(&documents(), Some(&file_name(&title, "html")));
     window
         .spawn(cx, async move |cx| {
             let Ok(Ok(Some(path))) = picked.await else {
                 return;
             };
-            let written = cx
-                .background_executor()
-                .spawn({
-                    let path = path.clone();
-                    async move { std::fs::write(&path, page(&store, &title, &body, &palette)) }
-                })
-                .await;
+            let written =
+                cx.background_executor()
+                    .spawn({
+                        let path = path.clone();
+                        let style = style.clone();
+                        async move {
+                            std::fs::write(&path, page(&store, &title, &body, &palette, &style))
+                        }
+                    })
+                    .await;
             cx.update(|window, cx| match written {
                 Ok(()) => cx.reveal_path(&path),
                 Err(err) => tell(
@@ -96,6 +107,7 @@ pub fn export_pdf(
     cx: &mut App,
 ) {
     let palette = print_palette(crate::preview_rich::palette(cx));
+    let style = crate::export_style::PageStyle::from_cx(cx);
     #[cfg(target_os = "macos")]
     {
         let picked = cx.prompt_for_new_path(&documents(), Some(&file_name(&title, "pdf")));
@@ -106,7 +118,7 @@ pub fn export_pdf(
                 };
                 let html = cx
                     .background_executor()
-                    .spawn(async move { page(&store, &title, &body, &palette) })
+                    .spawn(async move { page(&store, &title, &body, &palette, &style) })
                     .await;
                 let result = mac_pdf(&html, &path, cx).await;
                 cx.update(|window, cx| match result {
@@ -131,7 +143,7 @@ pub fn export_pdf(
                         let dir = std::env::temp_dir().join("kanso-export");
                         std::fs::create_dir_all(&dir)?;
                         let path = dir.join(file_name(&title, "html"));
-                        std::fs::write(&path, page(&store, &title, &body, &palette))?;
+                        std::fs::write(&path, page(&store, &title, &body, &palette, &style))?;
                         Ok::<_, std::io::Error>(path)
                     })
                     .await;
@@ -252,7 +264,13 @@ mod tests {
         let png = b"\x89PNG\r\n\x1a\nnot really".to_vec();
         let id = crate::smart_paste::attach_image(&store, &png, "png", Some("cat.png")).unwrap();
         let body = format!("Area $\\pi r^2$.\n\n![cat](inkdrop://{id})\n");
-        let html = page(&store, "Circles", &body, &Palette::DARK);
+        let html = page(
+            &store,
+            "Circles",
+            &body,
+            &Palette::DARK,
+            &crate::export_style::PageStyle::default(),
+        );
         assert!(html.contains("<title>Circles</title>"));
         assert!(html.contains("src=\"data:image/png;base64,"));
         assert!(html.contains("kanso-math"));
