@@ -330,8 +330,7 @@ mod tests {
                 .unwrap()
                 .id
         };
-        let other = note("Ana", "---\nclient: Acme\n---\n# Ana\n");
-        note("Sealed", "");
+        note("Ana", "---\nclient: Acme\n---\n# Ana\n");
         // Sealed by hand: the store won't take text beside a lock.
         store
             .put(
@@ -353,7 +352,6 @@ mod tests {
         assert!(
             page_without_queries(&store, "Self", body, &Palette::DARK).contains("language-query")
         );
-        let _ = other;
     }
 
     #[test]
