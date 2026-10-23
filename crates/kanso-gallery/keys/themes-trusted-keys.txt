@@ -5,10 +5,8 @@
 # whose public half isn't here. This list is separate from the update keys in
 # `crates/kanso-update/keys/trusted-keys.txt`; never reuse the update key.
 #
-# None yet: the owner generates the themes key once, adds its public half
-# below this line, and adds the secret to the `gallery` environment
-# (docs/RELEASING.md › Theme gallery). Until then the gallery says "The
-# theme gallery isn't set up in this build" and never fetches.
-#
-# In kanso-themes, `cargo run -p gallery-sign -- keygen` prints a new key
-# pair (docs/RELEASING.md › Theme gallery).
+# The owner's key was generated once with `kanso-release keygen`, whose
+# secret is the base64 32-byte seed that `gallery-sign` reads as is; it lives
+# only in the `gallery` environment and the owner's Keychain. Rotate by
+# adding a second key here (docs/RELEASING.md › Theme gallery).
+gAD6MZmqRxzGkbeLh0ofxcVn5UlW+AaA7157L15Qd4Y=
