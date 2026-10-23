@@ -38,6 +38,8 @@ pub struct Rich {
     pub wake: async_channel::Sender<()>,
     pub store: Arc<Store>,
     pub edits: ResizeSender,
+    /// The note the preview shows, which a query view leaves out of its rows.
+    pub note: Arc<Mutex<Option<String>>>,
 }
 
 impl Rich {

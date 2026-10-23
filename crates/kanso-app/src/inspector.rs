@@ -12,6 +12,8 @@
 
 #[path = "inspector_comments.rs"]
 mod comments;
+#[path = "inspector_properties.rs"]
+mod properties_section;
 
 use std::sync::Arc;
 
@@ -88,6 +90,9 @@ pub struct Inspector {
     related: Option<Vec<RelatedNote>>,
     related_for: Option<(String, u64)>,
     related_task: Option<Task<()>>,
+    /// The property value being edited, and the property being added.
+    property_edit: Option<properties_section::PropertyEdit>,
+    property_add: Option<properties_section::PropertyAdd>,
     scroll: ScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -153,6 +158,8 @@ impl Inspector {
             related: None,
             related_for: None,
             related_task: None,
+            property_edit: None,
+            property_add: None,
             scroll: ScrollHandle::new(),
             _subscriptions: subscriptions,
         }
@@ -1073,7 +1080,18 @@ impl Render for Inspector {
         let colors = Colors::get(cx);
         let backlinks = self.editor.read(cx).backlinks().len();
         let body = match self.tab {
-            InspectorTab::Outline => self.render_outline(cx),
+            InspectorTab::Outline => {
+                let properties = self.render_properties(cx);
+                let outline = self.render_outline(cx);
+                match properties {
+                    Some(properties) => v_flex()
+                        .size_full()
+                        .child(properties)
+                        .child(div().flex_1().min_h_0().child(outline))
+                        .into_any_element(),
+                    None => outline,
+                }
+            }
             InspectorTab::Backlinks => self.render_backlinks(cx),
             InspectorTab::Graph => self.render_graph(cx),
             InspectorTab::Related => self.render_related(cx),

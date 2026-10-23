@@ -1944,3 +1944,127 @@ fn a_notebook_takes_a_color_from_the_dialog(cx: &mut TestAppContext) {
     assert_eq!(after, rev);
     assert_eq!(kept(&f.store), Some(json!("#2185d0")));
 }
+
+#[gpui_kit::test]
+fn the_inspector_lists_and_edits_properties(cx: &mut TestAppContext) {
+    use crate::config::InspectorTab;
+
+    let f = setup(cx);
+    f.select(cx, &f.notes[0]);
+    f.type_body(
+        cx,
+        "---\nclient: Acme\nrating: 4\ndone: false\n---\n# Note\n\nBody\n",
+    );
+    let inspector = f.workspace(cx, |workspace, _| workspace.inspector.clone());
+    f.window
+        .update(cx, |_, _, cx| {
+            f.workspace.update(cx, |workspace, cx| {
+                workspace.show_inspector(Some(InspectorTab::Outline), cx)
+            })
+        })
+        .unwrap();
+    f.draw(cx);
+
+    {
+        let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+        assert!(vcx.debug_bounds("inspector-properties").is_some());
+        assert!(vcx.debug_bounds("property-client").is_some());
+        assert!(vcx.debug_bounds("property-rating").is_some());
+        assert!(vcx.debug_bounds("property-done").is_some());
+        assert!(vcx.debug_bounds("add-property").is_some());
+    }
+
+    let properties = cx.read(|cx| inspector.read(cx).properties_for_test(cx));
+    assert_eq!(
+        properties
+            .iter()
+            .map(|(key, _)| key.as_str())
+            .collect::<Vec<_>>(),
+        ["client", "rating", "done"]
+    );
+
+    f.window
+        .update(cx, |_, window, cx| {
+            inspector.update(cx, |inspector, cx| {
+                inspector.set_property_for_test("client", "Globex", window, cx)
+            })
+        })
+        .unwrap();
+    let body = f.editor(cx, |editor, cx| editor.body_for_test(cx));
+    assert!(body.contains("client: Globex\n"), "{body}");
+    assert!(body.ends_with("# Note\n\nBody\n"), "{body}");
+
+    f.window
+        .update(cx, |_, window, cx| {
+            inspector.update(cx, |inspector, cx| {
+                inspector.add_property_for_test("due", "2026-11-01", window, cx)
+            })
+        })
+        .unwrap();
+    let body = f.editor(cx, |editor, cx| editor.body_for_test(cx));
+    assert!(body.contains("due: 2026-11-01\n"), "{body}");
+    assert!(body.ends_with("# Note\n\nBody\n"), "{body}");
+}
+
+#[gpui_kit::test]
+fn a_locked_note_shows_no_properties(cx: &mut TestAppContext) {
+    use crate::config::InspectorTab;
+
+    let f = setup(cx);
+    let book = f.store.books().unwrap()[0].id.clone();
+    let id = f
+        .store
+        .put(
+            DocType::Note,
+            json!({"title": "Sealed", "body": "", "bookId": book,
+                   "kansoLock": {"salt": "s", "nonce": "n", "data": "d"}}),
+            Put::Upsert,
+            Origin::Ui,
+        )
+        .unwrap()
+        .id;
+    f.select(cx, &id);
+    let inspector = f.workspace(cx, |workspace, _| workspace.inspector.clone());
+    f.window
+        .update(cx, |_, _, cx| {
+            f.workspace.update(cx, |workspace, cx| {
+                workspace.show_inspector(Some(InspectorTab::Outline), cx)
+            })
+        })
+        .unwrap();
+    f.draw(cx);
+    let properties = cx.read(|cx| inspector.read(cx).properties_for_test(cx));
+    assert!(properties.is_empty());
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    assert_eq!(vcx.debug_bounds("inspector-properties"), None);
+}
+
+#[gpui_kit::test]
+fn a_query_view_draws_a_table_in_the_preview(cx: &mut TestAppContext) {
+    use crate::config::ViewMode;
+
+    let f = setup(cx);
+    f.select(cx, &f.notes[0]);
+    f.type_body(
+        cx,
+        "---\nclient: Acme\n---\n\n```query\nfrom: has:client\ncolumns: client\nsort: client asc\n```\n",
+    );
+    let other = f.notes[1].clone();
+    f.edit_elsewhere(cx, &other, "---\nclient: Beta\n---\n# Other\n");
+    f.window
+        .update(cx, |_, _, cx| {
+            f.workspace.update(cx, |workspace, cx| {
+                workspace.set_view_mode_for_test(ViewMode::Preview, cx)
+            })
+        })
+        .unwrap();
+    // The notes are read on the background executor, then the preview draws
+    // the table.
+    for _ in 0..8 {
+        f.draw(cx);
+        cx.run_until_parked();
+    }
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    assert!(vcx.debug_bounds("kanso-query").is_some());
+    assert!(vcx.debug_bounds("kanso-query-row-0").is_some());
+}

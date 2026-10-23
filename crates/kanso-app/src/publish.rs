@@ -251,7 +251,8 @@ impl PublishView {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    let html = crate::export_html::page(&store, &title, &body, &palette);
+                    let html =
+                        crate::export_html::page_without_queries(&store, &title, &body, &palette);
                     let page = Page {
                         html: html.as_bytes(),
                         title: &title,

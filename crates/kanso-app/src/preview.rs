@@ -128,6 +128,8 @@ pub struct Preview {
     shown_type: Option<PreviewType>,
     /// Measures the chunks again as math and diagrams finish drawing.
     _rich: Task<()>,
+    /// The note shown: a query view leaves it out.
+    note: Arc<Mutex<Option<String>>>,
 }
 
 impl Preview {
@@ -140,10 +142,12 @@ impl Preview {
         let images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>> = Arc::default();
         let resolver: ImageResolver = Arc::new(image_resolver(store.clone(), images.clone()));
         let (wake, woken) = async_channel::unbounded();
+        let note = Arc::new(Mutex::new(None));
         let rich = Arc::new(Rich {
             wake,
             store: store.clone(),
             edits: resizes.clone(),
+            note: note.clone(),
         });
         let extensions = quote_extensions(Arc::new(Links(links.clone())), resolver, resizes, rich);
         let rich_task = cx.spawn(async move |this, cx| {
@@ -169,7 +173,28 @@ impl Preview {
             extensions,
             shown_type: None,
             _rich: rich_task,
+            note,
         }
+    }
+
+    /// The note the preview shows, so a query view can leave it out.
+    pub fn set_note(&mut self, id: Option<String>, cx: &mut Context<Self>) {
+        let changed = self.note.lock().map(|mut note| {
+            if *note == id {
+                false
+            } else {
+                *note = id;
+                true
+            }
+        });
+        if changed.unwrap_or(false) {
+            cx.notify();
+        }
+    }
+
+    /// Notes changed: query views show their notes as they are now.
+    pub fn queries_changed(&mut self, cx: &mut Context<Self>) {
+        self.drawings_ready(cx);
     }
 
     /// Drawings finished: the chunks showing them change height.
@@ -421,7 +446,8 @@ const QUOTE: &str = "kanso-quote";
 const PICTURE: &str = "kanso-picture";
 /// Changes when [`quote_extensions`] parses differently, so a text view
 /// re-parses its note. 3: math, diagrams and drawings. 4: due-date chips.
-const QUOTE_PARSER_REVISION: u64 = 4;
+/// 5: query views.
+const QUOTE_PARSER_REVISION: u64 = 5;
 
 /// A quote's Markdown, without its markers.
 struct Quote(SharedString);
@@ -713,6 +739,9 @@ fn quote_extensions(
         if let Some(block) = preview_rich::parse_block(node, cx) {
             return Some(block);
         }
+        if let Some(block) = crate::query_view_ui::parse_block(node, cx) {
+            return Some(block);
+        }
         let source = cx.node_source(node)?;
         if let Some(picture) = picture(node, source) {
             let alt = picture.alt.clone();
@@ -735,6 +764,7 @@ fn quote_extensions(
     let picture_images = images.clone();
     let picture_resizes = resizes.clone();
     let quote_rich = rich.clone();
+    let query_links = links.0.clone();
     let extensions = MarkdownExtensions::default()
         .parser_revision(QUOTE_PARSER_REVISION)
         // Unresolved wiki-links, drawn dashed (see `crate::wikilinks`).
@@ -788,6 +818,8 @@ fn quote_extensions(
                 )
                 .into_any_element()
         });
+    let rich_for_queries = rich.clone();
+    let extensions = crate::query_view_ui::register(extensions, rich_for_queries, query_links);
     preview_rich::register(extensions, rich)
 }
 
