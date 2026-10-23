@@ -1,0 +1,16 @@
+[package]
+name = "kanso-ai"
+description = "AI providers for Kanso: OpenAI-compatible and Anthropic chat over streaming HTTP, and the prompt built from selected notes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# Blocking HTTPS with streaming response bodies: the app has no async runtime.
+ureq = "3.4"
+
+[dev-dependencies]
+proptest.workspace = true

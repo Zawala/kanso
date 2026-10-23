@@ -4242,6 +4242,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kanso-ai"
+version = "0.8.4"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
 name = "kanso-app"
 version = "0.8.4"
 dependencies = [
@@ -4262,6 +4272,7 @@ dependencies = [
  "gpui-pre-platform",
  "htmd",
  "image",
+ "kanso-ai",
  "kanso-collab",
  "kanso-core",
  "kanso-import",
