@@ -138,6 +138,16 @@ impl Fixture {
         cx.read(|cx| editor.read(cx).note_id().map(str::to_owned))
     }
 
+    fn type_body(&self, cx: &mut TestAppContext, body: &str) {
+        self.with_editor(cx, |editor, window, cx| {
+            editor.edit_for_test(body, window, cx)
+        });
+    }
+
+    fn store_body(&self, id: &str) -> String {
+        self.store.note(id).unwrap().unwrap().body
+    }
+
     fn tabs(&self, cx: &mut TestAppContext) -> Vec<String> {
         cx.read(|cx| self.workspace.read(cx).tabs.ids())
     }
@@ -229,6 +239,23 @@ fn cmd_click_selects_several_notes_and_opens_no_tab(cx: &mut TestAppContext) {
     f.secondary_click(cx, &b);
     assert_eq!(f.selected(cx), [a.clone()], "⌘-click takes it away");
     assert_eq!(f.open_note(cx), Some(a.clone()));
+}
+
+/// ⌘W with one note open saves its last typing before the window goes:
+/// closing through `remove_window` skips the window's own save hook.
+// no-prop-test: one window and one key; the bug was a missing save.
+#[gpui_kit::test]
+fn cmd_w_at_one_tab_saves_the_note_before_closing(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    let a = f.note("A", "saved");
+    f.select(cx, &a);
+    f.type_body(cx, "typed and not yet autosaved");
+    assert_eq!(f.store_body(&a), "saved", "the autosave waits");
+
+    // No clock advance: the typing is still unsaved when ⌘W arrives.
+    cx.simulate_keystrokes(f.window, CLOSE_TAB);
+    cx.run_until_parked();
+    assert_eq!(f.store_body(&a), "typed and not yet autosaved");
 }
 
 /// Ctrl+Tab and Ctrl+Shift+Tab walk the row, wrapping at both ends.

@@ -377,8 +377,9 @@ impl Tabs {
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        // At one tab this does nothing, as ⌘W does in the main window
-        // today; a note's own window keeps its ⌘W (close the window).
+        // With one note open this closes the window, but only after its
+        // typing is saved (see `close_current_tab`); a note's own window
+        // keeps its ⌘W (close the window).
         KeyBinding::new("secondary-w", CloseTab, None),
         KeyBinding::new("ctrl-tab", NextTab, None),
         KeyBinding::new("ctrl-shift-tab", PreviousTab, None),
@@ -400,8 +401,9 @@ pub fn bind_keys(cx: &mut App) {
 // MARK: In the window
 
 impl Workspace {
-    /// Closes the showing tab. With one note open it closes the window, as
-    /// ⌘W did before there were tabs.
+    /// Closes the showing tab. With one note open it saves that note and
+    /// closes the window: `remove_window` does not run the window's close
+    /// hook, so the save has to happen here or the last typing is lost.
     pub(crate) fn close_current_tab(
         &mut self,
         window: &mut gpui_kit::Window,
@@ -409,6 +411,7 @@ impl Workspace {
     ) {
         let index = self.tabs.active_index();
         if self.tabs.len() < 2 {
+            self.editor.update(cx, |editor, cx| editor.flush(cx));
             window.defer(cx, |window, _| window.remove_window());
             return;
         }
