@@ -426,6 +426,8 @@ impl NoteWindow {
             }
             EditorEvent::ShowBacklinks => self.show_backlinks(cx),
             EditorEvent::ToggleInspector => {}
+            // This window's note is its own; nothing else shows it.
+            EditorEvent::Closed(_) => {}
             EditorEvent::Renamed {
                 id,
                 old,
@@ -465,6 +467,12 @@ impl NoteWindow {
                 crate::locked::remove_lock(self.editor.clone(), window, cx);
             }
             NoteCommand::OpenInNewWindow => window.activate_window(),
+            NoteCommand::OpenInNewTab => {
+                let id = self.note_id.clone();
+                in_main_window(cx, move |workspace, window, cx| {
+                    workspace.open_note_in_new_tab(&id, window, cx)
+                });
+            }
             NoteCommand::CopyLink | NoteCommand::CopyKansoLink => {
                 self.editor.update(cx, |editor, cx| editor.flush(cx));
                 let store = cx.global::<AppState>().store.clone();

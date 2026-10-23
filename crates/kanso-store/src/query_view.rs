@@ -233,6 +233,83 @@ mod tests {
     }
 
     #[test]
+    fn notes_in_locked_notebooks_never_appear_in_query_views() {
+        use kanso_core::query_view::{self, ViewNote};
+
+        let (_dir, store) = store();
+        let inbox = book(&store, "Inbox");
+        let outside = note(&store, "Open", "---\nclient: Acme\n---\n# Open\n", &inbox);
+        store
+            .put(
+                DocType::Note,
+                json!({"_id": outside, "status": "active"}),
+                crate::Put::Merge,
+                crate::Origin::Ui,
+            )
+            .unwrap();
+
+        let outer = book(&store, "Private");
+        let inner = store
+            .put(
+                DocType::Book,
+                json!({"name": "Deeper", "parentBookId": outer}),
+                crate::Put::Upsert,
+                crate::Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let mut hidden = Vec::new();
+        for (book_id, title) in [(&outer, "Outer"), (&inner, "Nested")] {
+            let id = note(
+                &store,
+                title,
+                &format!("---\nclient: {title}\n---\n# {title}\n"),
+                book_id,
+            );
+            store
+                .put(
+                    DocType::Note,
+                    json!({"_id": id, "status": "active"}),
+                    crate::Put::Merge,
+                    crate::Origin::Ui,
+                )
+                .unwrap();
+            hidden.push(id);
+        }
+
+        let seal = |id: &str| {
+            let mut note = store.get_api(id, None, false).unwrap();
+            note["body"] = "".into();
+            note["kansoLock"] =
+                json!({"v": 1, "salt": "c2FsdA", "m": 64, "t": 1, "p": 1, "data": "sealed"});
+            note
+        };
+        let mut locked_book = store.get_api(&outer, None, false).unwrap();
+        locked_book.as_object_mut().unwrap().remove("count");
+        locked_book["kansoLock"] =
+            json!({"v": 1, "salt": "c2FsdA", "m": 64, "t": 1, "p": 1, "data": "sealed"});
+        store
+            .lock_book(
+                locked_book,
+                hidden.iter().map(|id| seal(id)).collect::<Vec<_>>(),
+            )
+            .unwrap();
+
+        let rows = store.query_view_notes().unwrap();
+        for id in &hidden {
+            let row = rows.iter().find(|row| &row.id == id).expect(id);
+            assert!(row.locked, "{id} reads as locked");
+            assert!(row.body.is_empty(), "{id} gives no text");
+            assert!(row.properties.is_empty(), "{id} gives no properties");
+        }
+        let notes: Vec<ViewNote> = rows.into_iter().map(ViewNote::from).collect();
+        let spec = query_view::parse("from: status:active").unwrap();
+        let found = query_view::evaluate(&spec, &notes, None);
+        let ids: Vec<&str> = found.iter().map(|row| row.id.as_str()).collect();
+        assert_eq!(ids, [outside.as_str()]);
+    }
+
+    #[test]
     fn five_thousand_notes_answer_quickly() {
         use kanso_core::query_view::{self, ViewNote};
 

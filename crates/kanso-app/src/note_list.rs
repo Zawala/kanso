@@ -59,7 +59,13 @@ const GLYPH_GAP: f32 = 8.;
 
 actions!(
     note_list,
-    [SelectNext, SelectPrevious, SelectAllNotes, SelectOneNote]
+    [
+        SelectNext,
+        SelectPrevious,
+        SelectAllNotes,
+        SelectOneNote,
+        OpenFocusedInNewTab
+    ]
 );
 
 pub fn bind_keys(cx: &mut App) {
@@ -69,6 +75,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("j", SelectNext, Some("NoteList")),
         KeyBinding::new("k", SelectPrevious, Some("NoteList")),
         KeyBinding::new("secondary-a", SelectAllNotes, Some("NoteList")),
+        KeyBinding::new("secondary-enter", OpenFocusedInNewTab, Some("NoteList")),
         KeyBinding::new("escape", SelectOneNote, Some("NoteList")),
     ]);
 }
@@ -662,6 +669,22 @@ impl NoteList {
                     this.pressed = Some(press_id.clone());
                 }),
             )
+            // A middle click opens the note in a new tab, as a browser does.
+            // It is its own button: the left-click handler below doesn't run.
+            .on_mouse_down(MouseButton::Middle, {
+                let view = view.clone();
+                let id = id.clone();
+                let focus = list_focus.clone();
+                move |_: &MouseDownEvent, window, cx| {
+                    window.focus(&focus, cx);
+                    view.update(cx, |_, cx| {
+                        cx.emit(NoteListEvent::Command(
+                            id.clone(),
+                            NoteCommand::OpenInNewTab,
+                        ))
+                    });
+                }
+            })
             // Both on the way in, before a hover button's click stops the
             // release going further: inside, the row stays hovered; outside,
             // the pointer has left it.
@@ -1492,6 +1515,13 @@ impl Render for NoteList {
                     .on_action(cx.listener(|this, _: &SelectAllNotes, _, cx| {
                         this.library
                             .update(cx, |library, cx| library.select_all(cx));
+                    }))
+                    // ⌘↩ opens the focused note in a new tab, leaving the
+                    // note showing where it is.
+                    .on_action(cx.listener(|this, _: &OpenFocusedInNewTab, _, cx| {
+                        if let Some(id) = this.library.read(cx).selected.clone() {
+                            cx.emit(NoteListEvent::Command(id, NoteCommand::OpenInNewTab));
+                        }
                     }))
                     // Escape gives way (to leave focus mode, say) unless
                     // there are several notes to go back to one from.
