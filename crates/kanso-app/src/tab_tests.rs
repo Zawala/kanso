@@ -305,36 +305,41 @@ fn cmd_w_at_one_tab_saves_the_note_before_closing(cx: &mut TestAppContext) {
     assert_eq!(f.store_body(&a), "typed and not yet autosaved");
 }
 
-/// Clicking a notebook while two notes are open shows its first note in a
-/// new tab, not in the tab someone is reading.
-// no-prop-test: one automatic list pick in one window.
+/// Clicking a notebook while two notes are open leaves the tabs and the
+/// note showing as they were; browsing notebooks doesn't add tabs.
+// no-prop-test: automatic list picks in one window.
 #[gpui_kit::test]
-fn a_notebook_pick_does_not_replace_an_open_tab(cx: &mut TestAppContext) {
+fn a_notebook_pick_leaves_the_tabs_alone(cx: &mut TestAppContext) {
     let f = setup(cx);
     let a = f.note("A", "text");
     let c = f.note("C", "text");
     f.select(cx, &a);
     f.middle_click(cx, &c);
     assert_eq!(f.tabs(cx), [a.clone(), c.clone()]);
+    let showing = f.open_note(cx);
 
-    let book = f.book("Other", None);
-    let b = f.note_in(&book, "B", "text");
     let library = cx.read(|cx| f.workspace.read(cx).library.clone());
-    library.update(cx, |library, cx| {
-        library.set_filter(Filter::Book(book.clone()), cx)
-    });
-    cx.run_until_parked();
-    f.draw(cx);
-    assert_eq!(
-        f.tabs(cx),
-        [a.clone(), c.clone(), b.clone()],
-        "the reading tab is left as it was"
-    );
-    assert_eq!(f.open_note(cx), Some(b));
-    assert!(
-        f.tabs(cx).contains(&a) && f.tabs(cx).contains(&c),
-        "both earlier notes stay open"
-    );
+    for name in ["Other", "Another", "Empty"] {
+        let book = f.book(name, None);
+        if name != "Empty" {
+            f.note_in(&book, &format!("{name} note"), "text");
+        }
+        library.update(cx, |library, cx| {
+            library.set_filter(Filter::Book(book.clone()), cx)
+        });
+        cx.run_until_parked();
+        f.draw(cx);
+        assert_eq!(
+            f.tabs(cx),
+            [a.clone(), c.clone()],
+            "no tab added for {name}"
+        );
+        assert_eq!(
+            f.open_note(cx),
+            showing,
+            "the note showing stays for {name}"
+        );
+    }
 }
 
 /// While a Replace holds unsaved writes the editor refuses to switch; the

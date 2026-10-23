@@ -1762,7 +1762,8 @@ impl Workspace {
 impl Workspace {
     /// The library picked a note: open it where `pending_open` says, and
     /// record the visit for back and forward. A silent app selection (the
-    /// first note of a list) opens in the tab showing.
+    /// first note of a list) opens in the tab showing when there is one tab,
+    /// and is left alone when there are more.
     fn accept_selection(
         &mut self,
         id: Option<String>,
@@ -1773,21 +1774,23 @@ impl Workspace {
         if asked {
             self.leave_settings(window, cx);
         }
-        let mut intent = std::mem::replace(&mut self.pending_open, OpenIntent::Current);
+        let intent = std::mem::replace(&mut self.pending_open, OpenIntent::Current);
         let several = self.library.read(cx).several_selected().is_some();
+        // The app picking the first note of a new list (a notebook click,
+        // say) with two or more tabs open changes nothing: the tab showing
+        // keeps its note, and no tab is added for a note nobody chose, so
+        // browsing notebooks doesn't pile up tabs.
+        if !asked
+            && intent == OpenIntent::Current
+            && self.tabs.len() >= 2
+            && id
+                .as_deref()
+                .is_none_or(|id| self.tabs.index_of(id).is_none())
+        {
+            return;
+        }
         match id {
             Some(id) => {
-                // The app picking the first note of a new list (a notebook
-                // click, say) must not overwrite the note someone was
-                // reading in the tab showing: with two or more tabs open it
-                // opens a tab of its own instead.
-                if !asked
-                    && intent == OpenIntent::Current
-                    && self.tabs.len() >= 2
-                    && self.tabs.index_of(&id).is_none()
-                {
-                    intent = OpenIntent::NewTab;
-                }
                 self.stash_place(cx);
                 self.show_selected(&id, intent, window, cx);
             }
