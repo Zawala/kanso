@@ -280,7 +280,7 @@ mod tests {
                 description: "A test.".into(),
                 min_kanso: "0.1.0".into(),
                 file: Some(FileRef {
-                    path: "themes/gallery-test.json".into(),
+                    path: "gallery-test.json".into(),
                     sha256: sha256_hex(&bytes),
                     size: bytes.len() as u64,
                 }),

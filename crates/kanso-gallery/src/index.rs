@@ -397,7 +397,7 @@ impl Theme {
                     .file
                     .as_ref()
                     .ok_or_else(|| IndexError::BadEntry(format!("{} has no file", self.id)))?;
-                let want = format!("themes/{}.json", self.id);
+                let want = format!("{}.json", self.id);
                 check_pin(file, "the color theme", MAX_COLOR_BYTES)?;
                 if file.path != want {
                     return Err(IndexError::BadEntry(format!(
@@ -675,7 +675,7 @@ mod tests {
             source: "https://example.com/source".into(),
             description: "A theme.".into(),
             min_kanso: "0.1.0".into(),
-            file: (kind == Kind::Color).then(|| pin(&format!("themes/{id}.json"), 100)),
+            file: (kind == Kind::Color).then(|| pin(&format!("{id}.json"), 100)),
             bundle: (kind == Kind::Icons)
                 .then(|| pin(&format!("gallery/icon-themes/{id}.tar.gz"), 100)),
             preview: if kind == Kind::Icons {
@@ -801,7 +801,7 @@ mod tests {
         assert!(!is_gallery_path("themes/%2e%2e/x.json"));
         assert!(!is_gallery_path("/themes/x.json"));
         assert!(!is_gallery_path("themes\\x.json"));
-        assert!(is_gallery_path("themes/nord.json"));
+        assert!(is_gallery_path("nord.json"));
     }
 
     #[test]

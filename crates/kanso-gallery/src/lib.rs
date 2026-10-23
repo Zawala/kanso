@@ -122,8 +122,8 @@ mod tests {
         assert!(INDEX_URL.starts_with(RAW_BASE));
         assert!(SIGNATURE_URL.starts_with(RAW_BASE));
         assert_eq!(
-            file_url("themes/nord.json"),
-            "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/themes/nord.json"
+            file_url("nord.json"),
+            "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/nord.json"
         );
     }
 }
