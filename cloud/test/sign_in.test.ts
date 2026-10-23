@@ -22,6 +22,7 @@ import {
 	githubDeviceToken,
 	githubSubject,
 	pkceChallenge,
+	pkceHash,
 	pkceMatches,
 	resetProviderCache,
 	verifyIdToken,
@@ -29,7 +30,7 @@ import {
 import { env } from "cloudflare:workers";
 import { pepperKeys, randomBytes } from "../src/crypto";
 import { base64url } from "../src/protocol";
-import { consumeFlow, flowById, healthAuth, newFlow, openDeviceCode, openFlowSecret } from "../src/sign_in";
+import { type SignInRoutes, consumeFlow, flowById, flowForDevice, healthAuth, newFlow, openDeviceCode, openFlowSecret } from "../src/sign_in";
 import { callJson, resetServer, signUp, testEnv } from "./helpers";
 
 const NOW = Date.UTC(2026, 9, 24, 12);
@@ -41,6 +42,9 @@ const ec = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 const rsaJwk = { ...rsa.publicKey.export({ format: "jwk" }), kid: "rsa-key" };
 const ecJwk = { ...ec.publicKey.export({ format: "jwk" }), kid: "ec-key" };
 const ecPrivatePem = String(ec.privateKey.export({ type: "pkcs8", format: "pem" }));
+
+const nonceHash = (nonce: string): string => createHash("sha256").update(nonce).digest("hex");
+const ALL_ROUTES: SignInRoutes = { passkeys: true, apple: true, google: true, github: true };
 
 const encode = (value: string | Uint8Array): string => Buffer.from(value).toString("base64url");
 
@@ -90,6 +94,7 @@ const appleOptions = {
 	algorithms: APPLE_ID_TOKEN_ALGORITHMS,
 	issuers: [APPLE_ISSUER],
 	audience: "apple-client",
+	nonce_hash: nonceHash("nonce-value"),
 	now: NOW,
 };
 
@@ -108,15 +113,22 @@ describe("provider ID tokens", () => {
 
 	it("verifies a valid Google RS256 token", async () => {
 		stubFetch(() => jsonResponse({ keys: [rsaJwk] }));
-		const token = signedToken(rsa.privateKey, "RS256", claims({ iss: "accounts.google.com", aud: ["other", "google-client"] }));
-		const result = await verifyIdToken(token, {
+		const google = {
 			jwks_url: GOOGLE_JWKS_URL,
 			algorithms: GOOGLE_ID_TOKEN_ALGORITHMS,
 			issuers: GOOGLE_ISSUERS,
 			audience: "google-client",
+			nonce_hash: nonceHash("nonce-value"),
 			now: NOW,
-		});
-		expect(result).toMatchObject({ ok: true, claims: { sub: "000123.abc" } });
+		};
+		const token = signedToken(rsa.privateKey, "RS256", claims({ iss: "accounts.google.com", aud: "google-client" }));
+		expect(await verifyIdToken(token, google)).toMatchObject({ ok: true, claims: { sub: "000123.abc" } });
+		// Several audiences count only when this client is the authorized party.
+		const shared = (azp?: string) =>
+			signedToken(rsa.privateKey, "RS256", claims({ iss: "accounts.google.com", aud: ["other", "google-client"], ...(azp ? { azp } : {}) }));
+		expect((await verifyIdToken(shared("google-client"), google)).ok).toBe(true);
+		expect(await verifyIdToken(shared(), google)).toEqual({ ok: false, error: "invalid_credentials" });
+		expect(await verifyIdToken(shared("other"), google)).toEqual({ ok: false, error: "invalid_credentials" });
 	});
 
 	it("rejects a bad signature", async () => {
@@ -125,16 +137,30 @@ describe("provider ID tokens", () => {
 		expect(result).toEqual({ ok: false, error: "invalid_credentials" });
 	});
 
-	it("refetches an unknown kid exactly once, then refuses a second miss without asking again", async () => {
-		const fetchMock = stubFetch(() => jsonResponse({ keys: [rsaJwk] }));
+	it("refetches an unknown kid at most once per five minutes, then finds a key published since", async () => {
+		let clock = NOW;
+		vi.spyOn(Date, "now").mockImplementation(() => clock);
+		let published = [rsaJwk];
+		const fetchMock = stubFetch(() => jsonResponse({ keys: published }));
 		const token = signedToken(rsa.privateKey, "RS256", claims(), { kid: "rotated-key" });
 		expect(await verifyIdToken(token, appleOptions)).toEqual({ ok: false, error: "invalid_credentials" });
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([APPLE_JWKS_URL, APPLE_JWKS_URL]);
-		// The one refetch for this cache window is spent: another unknown kid is
-		// refused locally instead of hammering the provider.
+		// Within five minutes another unknown kid is refused locally instead of
+		// hammering the provider.
+		clock += 4 * 60 * 1000;
 		expect(await verifyIdToken(token, appleOptions)).toEqual({ ok: false, error: "invalid_credentials" });
 		expect(fetchMock).toHaveBeenCalledTimes(2);
+		// The provider rotates in the same hour: once the five minutes pass, the
+		// new key is fetched and the token verifies.
+		published = [rsaJwk, { ...rsaJwk, kid: "rotated-key" }];
+		clock += 2 * 60 * 1000;
+		expect((await verifyIdToken(token, appleOptions)).ok).toBe(true);
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+		// The forced read kept the original window: the cache still expires an hour after the first fetch.
+		clock = NOW + 60 * 60 * 1000 + 1;
+		expect((await verifyIdToken(signedToken(rsa.privateKey, "RS256"), appleOptions)).ok).toBe(true);
+		expect(fetchMock).toHaveBeenCalledTimes(4);
 	});
 
 	it.each(["none", "HS256"])("refuses algorithm %s without fetching JWKS", async (alg) => {
@@ -152,6 +178,7 @@ describe("provider ID tokens", () => {
 			claims({ iss: "https://evil.example" }),
 			claims({ exp: nowSeconds - 121 }),
 			claims({ iat: nowSeconds + 121 }),
+			claims({ nbf: nowSeconds + 121 }),
 		];
 		for (const value of invalidClaims) {
 			const result = await verifyIdToken(signedToken(rsa.privateKey, "RS256", value), appleOptions);
@@ -159,18 +186,26 @@ describe("provider ID tokens", () => {
 		}
 	});
 
-	it("reports a nonce mismatch and accepts a matching nonce", async () => {
+	it("requires the flow's nonce: a missing or different one is refused", async () => {
 		stubFetch(() => jsonResponse({ keys: [rsaJwk] }));
-		const mismatch = await verifyIdToken(signedToken(rsa.privateKey, "RS256", claims({ nonce: "other" })), {
-			...appleOptions,
-			nonce: "expected",
-		});
-		expect(mismatch).toEqual({ ok: false, error: "nonce_reused" });
-		const match = await verifyIdToken(signedToken(rsa.privateKey, "RS256", claims({ nonce: "expected" })), {
-			...appleOptions,
-			nonce: "expected",
-		});
-		expect(match.ok).toBe(true);
+		const bound = { ...appleOptions, nonce_hash: nonceHash("expected") };
+		const refused = { ok: false, error: "invalid_credentials" };
+		expect(await verifyIdToken(signedToken(rsa.privateKey, "RS256", claims({ nonce: "other" })), bound)).toEqual(refused);
+		expect(await verifyIdToken(signedToken(rsa.privateKey, "RS256", claims({ nonce: undefined })), bound)).toEqual(refused);
+		expect(await verifyIdToken(signedToken(rsa.privateKey, "RS256", claims({ nonce: 7 })), bound)).toEqual(refused);
+		expect((await verifyIdToken(signedToken(rsa.privateKey, "RS256", claims({ nonce: "expected" })), bound)).ok).toBe(true);
+		// A route that can't supply the hash gets a refusal, never a skipped check.
+		for (const nonce_hash of ["", "expected", nonceHash("expected").toUpperCase(), undefined]) {
+			const options = { ...bound, nonce_hash } as unknown as typeof bound;
+			expect(await verifyIdToken(signedToken(rsa.privateKey, "RS256", claims({ nonce: "expected" })), options)).toEqual(refused);
+		}
+	});
+
+	it("refuses a header that marks an extension critical", async () => {
+		stubFetch(() => jsonResponse({ keys: [rsaJwk] }));
+		const signingInput = `${encode(JSON.stringify({ alg: "RS256", kid: "rsa-key", crit: ["exp"] }))}.${encode(JSON.stringify(claims()))}`;
+		const signature = nodeSign("RSA-SHA256", Buffer.from(signingInput, "ascii"), rsa.privateKey);
+		expect(await verifyIdToken(`${signingInput}.${encode(signature)}`, appleOptions)).toEqual({ ok: false, error: "invalid_credentials" });
 	});
 
 	it("caches a JWKS for consecutive verifications", async () => {
@@ -227,13 +262,32 @@ describe("provider ID tokens", () => {
 });
 
 describe("PKCE", () => {
-	it("computes the S256 challenge and matches only its verifier", async () => {
+	it("stores the S256 challenge as the hex the schema accepts, and matches only its verifier", async () => {
 		const verifier = "a-long-random-pkce-verifier";
-		const expected = createHash("sha256").update(verifier).digest("base64url");
-		expect(await pkceChallenge(verifier)).toBe(expected);
-		expect(await pkceMatches(verifier, expected)).toBe(true);
-		expect(await pkceMatches("different-verifier", expected)).toBe(false);
-		expect(await pkceMatches(verifier, `${expected}=`)).toBe(false);
+		const challenge = createHash("sha256").update(verifier).digest("base64url");
+		expect(await pkceChallenge(verifier)).toBe(challenge);
+		const stored = pkceHash(challenge);
+		expect(stored).toBe(createHash("sha256").update(verifier).digest("hex"));
+		expect(await pkceMatches(verifier, stored!)).toBe(true);
+		expect(await pkceMatches("different-verifier", stored!)).toBe(false);
+		expect(await pkceMatches(verifier, challenge)).toBe(false);
+		expect(await pkceMatches(verifier, stored!.toUpperCase())).toBe(false);
+		expect(pkceHash(`${challenge}=`)).toBeNull();
+		expect(pkceHash(challenge.slice(1))).toBeNull();
+	});
+
+	it("round-trips through an auth_flows row", async () => {
+		const keys = await pepperKeys(env.AUTH_PEPPER);
+		if (!keys) throw new Error("the test pepper must be valid");
+		const verifier = "verifier-stored-through-d1";
+		const id = await newFlow(
+			env,
+			keys,
+			{ ...flowFields, kind: "google", provider: "google", pkce_hash: pkceHash(await pkceChallenge(verifier)) },
+			NOW,
+		);
+		const flow = await flowById(env, id);
+		expect(await pkceMatches(verifier, flow!.pkce_hash!)).toBe(true);
 	});
 });
 
@@ -398,12 +452,24 @@ describe("GitHub device flow", () => {
 
 describe("health sign-in advertisement", () => {
 	it("advertises password only when nothing else is configured", () => {
-		expect(healthAuth(testEnv())).toEqual({ password: true, passkeys: null, providers: [] });
+		expect(healthAuth(testEnv(), ALL_ROUTES)).toEqual({ password: true, passkeys: null, providers: [] });
+	});
+
+	it("advertises nothing whose routes this Worker doesn't have yet, however it's configured", () => {
+		const configured = testEnv({
+			PASSKEY_RP_ID: "sync.kansoapp.app",
+			PASSKEY_ORIGINS: '["https://sync.kansoapp.app"]',
+			GOOGLE_CLIENT_ID: "google-client",
+			GOOGLE_CLIENT_SECRET: "secret",
+			GITHUB_CLIENT_ID: "github-client",
+		});
+		expect(healthAuth(configured)).toEqual({ password: true, passkeys: null, providers: [] });
+		expect(healthAuth(configured, { ...ALL_ROUTES, google: false }).providers).toEqual(["github"]);
 	});
 
 	it("advertises passkeys with a valid RP ID and origin", () => {
 		expect(
-			healthAuth(testEnv({ PASSKEY_RP_ID: "sync.kansoapp.app", PASSKEY_ORIGINS: '["https://sync.kansoapp.app"]' })).passkeys,
+			healthAuth(testEnv({ PASSKEY_RP_ID: "sync.kansoapp.app", PASSKEY_ORIGINS: '["https://sync.kansoapp.app"]' }), ALL_ROUTES).passkeys,
 		).toEqual({ rp_id: "sync.kansoapp.app", origins: ["https://sync.kansoapp.app"], security_key: true });
 	});
 
@@ -413,7 +479,7 @@ describe("health sign-in advertisement", () => {
 		["an origin outside the RP ID", "sync.kansoapp.app", '["https://example.com"]'],
 		["malformed origin JSON", "sync.kansoapp.app", "{"],
 	] as const)("does not advertise passkeys for %s", (_case, rpId, origins) => {
-		expect(healthAuth(testEnv({ PASSKEY_RP_ID: rpId, PASSKEY_ORIGINS: origins })).passkeys).toBeNull();
+		expect(healthAuth(testEnv({ PASSKEY_RP_ID: rpId, PASSKEY_ORIGINS: origins }), ALL_ROUTES).passkeys).toBeNull();
 	});
 
 	it("advertises each provider only when all of its required values are present", () => {
@@ -423,12 +489,12 @@ describe("health sign-in advertisement", () => {
 			APPLE_KEY_ID: "key",
 			APPLE_REDIRECT_URI: "https://sync.kansoapp.app/v2/auth/apple/callback",
 		};
-		expect(healthAuth(testEnv(appleWithoutPrivateKey)).providers).toEqual([]);
-		expect(healthAuth(testEnv({ ...appleWithoutPrivateKey, APPLE_PRIVATE_KEY: ecPrivatePem })).providers).toEqual(["apple"]);
-		expect(healthAuth(testEnv({ GOOGLE_CLIENT_ID: "google-client" })).providers).toEqual([]);
-		expect(healthAuth(testEnv({ GOOGLE_CLIENT_ID: "google-client", GOOGLE_CLIENT_SECRET: "secret" })).providers).toEqual(["google"]);
-		expect(healthAuth(testEnv({ GITHUB_CLIENT_SECRET: "optional-only" })).providers).toEqual([]);
-		expect(healthAuth(testEnv({ GITHUB_CLIENT_ID: "github-client" })).providers).toEqual(["github"]);
+		expect(healthAuth(testEnv(appleWithoutPrivateKey), ALL_ROUTES).providers).toEqual([]);
+		expect(healthAuth(testEnv({ ...appleWithoutPrivateKey, APPLE_PRIVATE_KEY: ecPrivatePem }), ALL_ROUTES).providers).toEqual(["apple"]);
+		expect(healthAuth(testEnv({ GOOGLE_CLIENT_ID: "google-client" }), ALL_ROUTES).providers).toEqual([]);
+		expect(healthAuth(testEnv({ GOOGLE_CLIENT_ID: "google-client", GOOGLE_CLIENT_SECRET: "secret" }), ALL_ROUTES).providers).toEqual(["google"]);
+		expect(healthAuth(testEnv({ GITHUB_CLIENT_SECRET: "optional-only" }), ALL_ROUTES).providers).toEqual([]);
+		expect(healthAuth(testEnv({ GITHUB_CLIENT_ID: "github-client" }), ALL_ROUTES).providers).toEqual(["github"]);
 	});
 });
 
@@ -476,6 +542,25 @@ describe("the 0006 schema", () => {
 	});
 });
 
+const flowFields = {
+	kind: "proof",
+	intent: "signin" as const,
+	account_id: null,
+	device_id: `d_${"5".repeat(32)}`,
+	device_proof_hash: "c".repeat(64),
+	challenge: null,
+	rp_id: null,
+	nonce_hash: null,
+	state_hash: null,
+	pkce_hash: null as string | null,
+	redirect_uri: null,
+	provider: null as string | null,
+	subject: null,
+	device_code: null,
+	next_poll_at: null,
+	expires_at: NOW + 600_000,
+};
+
 describe("auth_flows", () => {
 	it("never stores GitHub's device code in the clear, and opens it only for its own flow", async () => {
 		const keys = await pepperKeys(env.AUTH_PEPPER);
@@ -514,11 +599,39 @@ describe("auth_flows", () => {
 		if (!flow) throw new Error("the flow row must exist");
 		expect(await openDeviceCode(keys, flow)).toBe("device-code-plaintext");
 
-		// The same row with another pepper, or another account's AAD, yields nothing.
+		// The same value with another pepper, or bound to another flow, yields nothing:
+		// copying it onto another row (another ID, kind or account) doesn't open it.
 		const otherKeys = await pepperKeys(base64url(randomBytes(32)));
 		if (!otherKeys) throw new Error("the second pepper must be valid");
-		expect(await openFlowSecret(otherKeys, null, stored!.device_code)).toBeNull();
-		expect(await openFlowSecret(keys, `a_${"0".repeat(32)}`, stored!.device_code)).toBeNull();
+		expect(await openFlowSecret(otherKeys, flow, stored!.device_code)).toBeNull();
+		expect(await openFlowSecret(keys, { ...flow, account_id: `a_${"0".repeat(32)}` }, stored!.device_code)).toBeNull();
+		expect(await openFlowSecret(keys, { ...flow, id: base64url(randomBytes(32)) }, stored!.device_code)).toBeNull();
+		expect(await openFlowSecret(keys, { ...flow, kind: "google" }, stored!.device_code)).toBeNull();
+	});
+
+	it("gives a flow only to its own device, and only for its own kind", async () => {
+		const keys = await pepperKeys(env.AUTH_PEPPER);
+		if (!keys) throw new Error("the test pepper must be valid");
+		const proof = "device-proof";
+		const device = { id: `d_${"3".repeat(32)}`, proof };
+		const id = await newFlow(
+			env,
+			keys,
+			{ ...flowFields, kind: "proof", device_id: device.id, device_proof_hash: createHash("sha256").update(proof).digest("hex") },
+			NOW,
+		);
+		const found = await flowForDevice(env, id, "proof", device, NOW);
+		expect(found).not.toBeInstanceOf(Response);
+		for (const refused of [
+			await flowForDevice(env, id, "google", device, NOW),
+			await flowForDevice(env, id, "proof", { ...device, proof: "another-proof" }, NOW),
+			await flowForDevice(env, id, "proof", { ...device, id: `d_${"4".repeat(32)}` }, NOW),
+		]) {
+			expect(refused).toBeInstanceOf(Response);
+			expect((refused as Response).status).toBe(400);
+		}
+		const expired = await flowForDevice(env, id, "proof", device, NOW + 600_001);
+		expect(await (expired as Response).json()).toMatchObject({ error: "flow_expired" });
 	});
 
 	it("consumes a flow once and refuses an expired one", async () => {
