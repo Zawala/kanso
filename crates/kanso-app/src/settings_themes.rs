@@ -215,7 +215,39 @@ pub fn page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
     .collect();
 
     let follow = settings.follow_system;
+    // Above the theme grids, so it stays reachable as families are added.
+    let follow_row = section(
+        "",
+        vec![
+            Row::new(
+                Lucide::SunMoon,
+                "Switch between a light and a dark theme with the system",
+            )
+            .detail(if follow {
+                "Showing the light theme in light mode and the dark one in dark mode."
+            } else {
+                "Off: the theme stays as picked whatever the system's mode."
+            })
+            .trailing(
+                div()
+                    .debug_selector(|| "themes-follow-system".into())
+                    .child(
+                        Switch::new("themes-follow-system")
+                            .checked(follow)
+                            .on_click(|on, window, cx| {
+                                let on = *on;
+                                update(window, cx, |s| ThemeSettings {
+                                    follow_system: on,
+                                    ..s.clone()
+                                })
+                            }),
+                    ),
+            ),
+        ],
+        colors,
+    );
     let mut pages = vec![
+        follow_row,
         grid_section(
             "Theme",
             if follow {
@@ -224,36 +256,6 @@ pub fn page(cx: &mut Context<SettingsView>) -> Vec<AnyElement> {
                 "Colors the sidebar, the note list, menus and every control."
             },
             ui_cards,
-            colors,
-        ),
-        section(
-            "",
-            vec![
-                Row::new(
-                    Lucide::SunMoon,
-                    "Switch between a light and a dark theme with the system",
-                )
-                .detail(if follow {
-                    "Showing the light theme in light mode and the dark one in dark mode."
-                } else {
-                    "Off: the theme stays as picked whatever the system's mode."
-                })
-                .trailing(
-                    div()
-                        .debug_selector(|| "themes-follow-system".into())
-                        .child(
-                            Switch::new("themes-follow-system")
-                                .checked(follow)
-                                .on_click(|on, window, cx| {
-                                    let on = *on;
-                                    update(window, cx, |s| ThemeSettings {
-                                        follow_system: on,
-                                        ..s.clone()
-                                    })
-                                }),
-                        ),
-                ),
-            ],
             colors,
         ),
         grid_section(
