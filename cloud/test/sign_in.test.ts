@@ -27,7 +27,9 @@ import {
 	verifyIdToken,
 } from "../src/oauth";
 import { env } from "cloudflare:workers";
-import { healthAuth } from "../src/sign_in";
+import { pepperKeys, randomBytes } from "../src/crypto";
+import { base64url } from "../src/protocol";
+import { consumeFlow, flowById, healthAuth, newFlow, openDeviceCode, openFlowSecret } from "../src/sign_in";
 import { callJson, resetServer, signUp, testEnv } from "./helpers";
 
 const NOW = Date.UTC(2026, 9, 24, 12);
@@ -471,5 +473,79 @@ describe("the 0006 schema", () => {
   (SELECT count(*) FROM auth_flows) AS flows`,
 		).first();
 		expect(counts).toEqual({ identities: 0, passkeys: 0, approvals: 0, flows: 0 });
+	});
+});
+
+describe("auth_flows", () => {
+	it("never stores GitHub's device code in the clear, and opens it only for its own flow", async () => {
+		const keys = await pepperKeys(env.AUTH_PEPPER);
+		if (!keys) throw new Error("the test pepper must be valid");
+		const id = await newFlow(
+			env,
+			keys,
+			{
+				kind: "github",
+				intent: "signin",
+				account_id: null,
+				device_id: `d_${"1".repeat(32)}`,
+				device_proof_hash: "a".repeat(64),
+				challenge: null,
+				rp_id: null,
+				nonce_hash: null,
+				state_hash: null,
+				pkce_hash: null,
+				redirect_uri: null,
+				provider: "github",
+				subject: null,
+				device_code: "device-code-plaintext",
+				next_poll_at: null,
+				expires_at: NOW + 600_000,
+			},
+			NOW,
+		);
+		const stored = await env.DB.prepare("SELECT device_code FROM auth_flows WHERE id = ?1")
+			.bind(id)
+			.first<{ device_code: string }>();
+		expect(stored?.device_code).toBeTruthy();
+		expect(stored?.device_code).not.toBe("device-code-plaintext");
+		expect(stored?.device_code).not.toContain("device-code-plaintext");
+
+		const flow = await flowById(env, id);
+		if (!flow) throw new Error("the flow row must exist");
+		expect(await openDeviceCode(keys, flow)).toBe("device-code-plaintext");
+
+		// The same row with another pepper, or another account's AAD, yields nothing.
+		const otherKeys = await pepperKeys(base64url(randomBytes(32)));
+		if (!otherKeys) throw new Error("the second pepper must be valid");
+		expect(await openFlowSecret(otherKeys, null, stored!.device_code)).toBeNull();
+		expect(await openFlowSecret(keys, `a_${"0".repeat(32)}`, stored!.device_code)).toBeNull();
+	});
+
+	it("consumes a flow once and refuses an expired one", async () => {
+		const keys = await pepperKeys(env.AUTH_PEPPER);
+		if (!keys) throw new Error("the test pepper must be valid");
+		const flow = {
+			kind: "proof",
+			intent: "proof" as const,
+			account_id: null,
+			device_id: `d_${"2".repeat(32)}`,
+			device_proof_hash: "b".repeat(64),
+			challenge: base64url(randomBytes(32)),
+			rp_id: null,
+			nonce_hash: null,
+			state_hash: null,
+			pkce_hash: null,
+			redirect_uri: null,
+			provider: null,
+			subject: null,
+			device_code: null,
+			next_poll_at: null,
+			expires_at: NOW + 60_000,
+		};
+		const live = await newFlow(env, keys, flow, NOW);
+		expect(await consumeFlow(env, live, NOW)).toBe(true);
+		expect(await consumeFlow(env, live, NOW)).toBe(false);
+		const expiring = await newFlow(env, keys, flow, NOW);
+		expect(await consumeFlow(env, expiring, NOW + 60_001)).toBe(false);
 	});
 });

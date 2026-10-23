@@ -246,6 +246,13 @@ async function constantTimeTextEqual(left: string, right: string): Promise<boole
 	return difference === 0;
 }
 
+/**
+ * Verifies a provider's ID token. This is pure and stateless: it reports the
+ * same answer for the same token twice, on purpose. One-time use belongs to
+ * the flow — the route consumes the stored flow atomically before it issues a
+ * session, so a replayed token meets a consumed flow and is refused
+ * (`nonce_reused`). Never reuse this result across requests.
+ */
 export async function verifyIdToken(token: string, options: VerifyOptions): Promise<TokenResult> {
 	const parts = token.split(".");
 	if (parts.length !== 3) return invalidCredentials();

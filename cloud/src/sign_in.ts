@@ -9,10 +9,10 @@
 // which is what an older server sends. The `events` advertisement lands with
 // `/v2/account/events`; an absent `events` means the app uses GET fallbacks.
 
-import { randomBytes, sha256Hex } from "./crypto";
+import { type PepperKeys, randomBytes, sha256Hex } from "./crypto";
 import type { Env } from "./env";
 import { badRequest, error } from "./http";
-import { base64url } from "./protocol";
+import { base64url, fromBase64url } from "./protocol";
 
 export const PROVIDERS = ["apple", "google", "github"] as const;
 export type Provider = (typeof PROVIDERS)[number];
@@ -141,9 +141,68 @@ const FLOW_COLUMNS = `id, kind, intent, account_id, device_id, device_proof_hash
   nonce_hash, state_hash, pkce_hash, redirect_uri, provider, subject, device_code, next_poll_at,
   created_at, expires_at, consumed_at`;
 
+const FLOW_LABEL = "kanso-flow\u0001";
+
+/** AAD for a sealed flow secret: the label, then the flow's account (empty for a sign-up flow). */
+function flowAad(accountId: string | null): Uint8Array {
+	const id = new TextEncoder().encode(accountId ?? "");
+	const label = new TextEncoder().encode(FLOW_LABEL);
+	const aad = new Uint8Array(label.length + 2 + id.length);
+	aad.set(label, 0);
+	aad[label.length] = id.length >> 8;
+	aad[label.length + 1] = id.length & 0xff;
+	aad.set(id, label.length + 2);
+	return aad;
+}
+
+/**
+ * Seals a short-lived flow secret (today, GitHub's device code) under the
+ * pepper's flow key: `0x01 || nonce(12) || AES-256-GCM(ciphertext + tag)`.
+ * The pepper is not in D1, so a database copy or Time Travel row alone can't
+ * mint a provider token from it.
+ */
+export async function sealFlowSecret(keys: PepperKeys, accountId: string | null, value: string): Promise<string> {
+	const nonce = randomBytes(12);
+	const ciphertext = new Uint8Array(
+		await crypto.subtle.encrypt(
+			{ name: "AES-GCM", iv: nonce, additionalData: flowAad(accountId), tagLength: 128 },
+			keys.flow,
+			new TextEncoder().encode(value),
+		),
+	);
+	const out = new Uint8Array(1 + nonce.length + ciphertext.length);
+	out[0] = 0x01;
+	out.set(nonce, 1);
+	out.set(ciphertext, 1 + nonce.length);
+	return base64url(out);
+}
+
+/** Opens a sealed flow secret, or null for a wrong key, wrong account or a malformed value. */
+export async function openFlowSecret(keys: PepperKeys, accountId: string | null, sealed: string): Promise<string | null> {
+	const bytes = fromBase64url(sealed);
+	if (!bytes || bytes.length < 1 + 12 + 16 + 1 || bytes[0] !== 0x01) return null;
+	try {
+		const plain = await crypto.subtle.decrypt(
+			{ name: "AES-GCM", iv: bytes.subarray(1, 13), additionalData: flowAad(accountId), tagLength: 128 },
+			keys.flow,
+			bytes.subarray(13),
+		);
+		return new TextDecoder().decode(plain);
+	} catch {
+		return null;
+	}
+}
+
+/** The flow's GitHub device code, opened for the one exchange that may use it. */
+export function openDeviceCode(keys: PepperKeys, flow: AuthFlowRow): Promise<string | null> {
+	return flow.device_code === null ? Promise.resolve(null) : openFlowSecret(keys, flow.account_id, flow.device_code);
+}
+
 /** Stores a ceremony; the caller owns the ID (a 32-byte flow ID) or gets a random one back. */
-export async function newFlow(env: Env, flow: FlowInput, now: number): Promise<string> {
+export async function newFlow(env: Env, keys: PepperKeys, flow: FlowInput, now: number): Promise<string> {
 	const id = flow.id ?? base64url(randomBytes(32));
+	// The column holds no plaintext device code; only the exchange route opens it.
+	const deviceCode = flow.device_code === null ? null : await sealFlowSecret(keys, flow.account_id, flow.device_code);
 	await env.DB.prepare(
 		`INSERT INTO auth_flows (${FLOW_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, NULL)`,
 	)
@@ -162,7 +221,7 @@ export async function newFlow(env: Env, flow: FlowInput, now: number): Promise<s
 			flow.redirect_uri,
 			flow.provider,
 			flow.subject,
-			flow.device_code,
+			deviceCode,
 			flow.next_poll_at,
 			now,
 			flow.expires_at,
@@ -179,7 +238,12 @@ export function flowById(env: Env, id: string): Promise<AuthFlowRow | null> {
  * The flow this device started, or the response that ends the request.
  * A flow ID captured from a callback URL grants nothing on another device:
  * the hash of its proof must match (`bad_request`, never which part failed).
- * An expired or unknown flow is `flow_expired`, whether or not it was used.
+ * An expired or unknown flow is `flow_expired`.
+ *
+ * A consumed flow is returned on purpose: a finish or poll that lost its
+ * answer must be able to replay the same result, never start a new ceremony.
+ * Callers check `consumed_at` when the two paths differ (for example, to
+ * return the account an earlier attempt created instead of creating another).
  */
 export async function flowForDevice(
 	env: Env,
@@ -197,11 +261,14 @@ export async function flowForDevice(
 }
 
 /**
- * Marks a flow used, once. `false` when another request already consumed it,
- * which a route treats as its idempotent retry path rather than a new ceremony.
+ * Marks a live flow used, once. `false` when another request already consumed
+ * it or it has expired; a route treats the first as its idempotent retry path
+ * and the second as `flow_expired`, never as a new ceremony.
  */
 export async function consumeFlow(env: Env, id: string, now: number): Promise<boolean> {
-	const row = await env.DB.prepare("UPDATE auth_flows SET consumed_at = ?2 WHERE id = ?1 AND consumed_at IS NULL RETURNING id")
+	const row = await env.DB.prepare(
+		"UPDATE auth_flows SET consumed_at = ?2 WHERE id = ?1 AND consumed_at IS NULL AND expires_at > ?2 RETURNING id",
+	)
 		.bind(id, now)
 		.first<{ id: string }>();
 	return row !== null;
