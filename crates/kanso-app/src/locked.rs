@@ -4,7 +4,8 @@
 //!
 //! Nothing is unlocked when Kanso starts. Typing the lock password once
 //! opens every note locked with it until Lock Notes Now, quitting, or
-//! [`AUTO_LOCK`] without a locked note being opened or saved. The editor
+//! [`AUTO_LOCK`] after it was typed. Opening locked notes doesn't keep them
+//! open longer; saving one does, so they don't close while you write. The editor
 //! holds an open note's text in memory as any other note's; the store only
 //! ever gets it sealed.
 
@@ -41,8 +42,8 @@ actions!(
     ]
 );
 
-/// How long the notes stay unlocked without a locked note being opened or
-/// saved.
+/// How long the notes stay unlocked after the lock password (or Touch ID)
+/// opened them, or a locked note was last saved.
 pub const AUTO_LOCK: Duration = Duration::from_secs(10 * 60);
 
 /// The lock keys typed this session. The first is the one new locks use;
@@ -50,6 +51,8 @@ pub const AUTO_LOCK: Duration = Duration::from_secs(10 * 60);
 #[derive(Default)]
 pub struct LockKeys {
     keys: Vec<Arc<LockKey>>,
+    /// When a key was added or a locked note saved: [`AUTO_LOCK`] counts
+    /// from here.
     last_used: Option<Instant>,
     /// Argon2 parameters for new keys; tests use cheap ones.
     params: Option<KdfParams>,
@@ -100,13 +103,16 @@ impl LockKeys {
         keys.last_used = Some(Instant::now());
     }
 
+    /// Keeps the notes open for another [`AUTO_LOCK`]: a locked note was
+    /// saved. Opening one doesn't, so reading them doesn't keep them open.
     fn touch(cx: &mut App) {
         if Self::is_unlocked(cx) {
             Self::get_mut(cx).last_used = Some(Instant::now());
         }
     }
 
-    /// Whether the keys have gone unused for [`AUTO_LOCK`] at `now`.
+    /// Whether [`AUTO_LOCK`] has passed at `now` since the keys were added
+    /// or a locked note was saved.
     pub fn idle(cx: &App, now: Instant) -> bool {
         Self::get(cx).is_some_and(|keys| {
             !keys.keys.is_empty()
@@ -147,6 +153,23 @@ impl LockView {
     }
 }
 
+/// The mark lists show on a locked note, and its word: the lock, drawn open
+/// with "Unlocked" while this session holds the keys, so it's plain that
+/// the note opens without the password until Lock Notes Now.
+pub fn note_mark(cx: &App) -> (gpui_kit::component::Icon, &'static str) {
+    if LockKeys::is_unlocked(cx) {
+        (
+            gpui_kit::component::Icon::new(gpui_kit::assets::IconName::LockOpen),
+            "Unlocked",
+        )
+    } else {
+        (
+            crate::icon_themes::library_icon(crate::icon_themes::Slot::NoteLocked),
+            "Locked",
+        )
+    }
+}
+
 /// Puts a locked note's text in its `body` when a key this session holds
 /// opens it, and says what the editor should show. A note already revealed
 /// is revealed again to the same text.
@@ -166,7 +189,6 @@ pub fn reveal(note: &mut Note, cx: &mut App) -> LockView {
     match key.open(&note.id, &envelope) {
         Ok(body) => {
             note.body = body.to_string();
-            LockKeys::touch(cx);
             LockView::Open
         }
         Err(err) => {
@@ -193,7 +215,6 @@ fn reveal_unsealed(note: &mut Note, cx: &mut App) -> LockView {
         Ok(result) => {
             sealing.rev = Some(result.rev);
             *note = sealing;
-            LockKeys::touch(cx);
             LockView::Open
         }
         Err(_) => {
@@ -365,7 +386,6 @@ pub(crate) fn seal_unsealed(cx: &mut App) {
             eprintln!("kanso: locked notebooks: couldn't seal a note: {err}");
         }
     }
-    LockKeys::touch(cx);
 }
 
 /// A lock error as a sentence.
@@ -1164,8 +1184,11 @@ mod tests {
         use kanso_sync::lock::{Envelope, LockKey, LockPassword};
         use serde_json::json;
 
+        use std::time::Duration;
+
         use super::super::{
-            LockKeys, LockView, lock_now, lock_open_note, remove_lock, unlock_open_note,
+            AUTO_LOCK, LockKeys, LockView, lock_now, lock_open_note, note_mark, remove_lock,
+            reveal, seal, unlock_open_note,
         };
         use crate::config::AppConfig;
         use crate::dialogs::FormView;
@@ -1457,6 +1480,82 @@ mod tests {
                 key.open(&copy.id, &envelope).unwrap().as_str(),
                 "The secret plan."
             );
+        }
+
+        #[gpui_kit::test]
+        fn opening_doesnt_keep_the_notes_unlocked_but_saving_does(cx: &mut TestAppContext) {
+            let f = setup(cx);
+            let unlocked_at = |cx: &mut TestAppContext| {
+                cx.read(|cx| cx.global::<LockKeys>().last_used)
+                    .expect("unlocked")
+            };
+            let mark = |cx: &mut TestAppContext| cx.read(|cx| note_mark(cx).1);
+            assert_eq!(mark(cx), "Locked");
+            let form = f
+                .window
+                .update(cx, |_, window, cx| {
+                    lock_open_note(f.editor.clone(), window, cx)
+                })
+                .unwrap()
+                .unwrap();
+            f.submit(cx, &form, &["correct horse", "correct horse"]);
+            assert_eq!(mark(cx), "Unlocked");
+            let at = unlocked_at(cx);
+            std::thread::sleep(Duration::from_millis(2));
+
+            // Opening the locked note again leaves the clock alone.
+            let mut note = f.store.note(&f.note).unwrap().unwrap();
+            assert_eq!(cx.update(|cx| reveal(&mut note, cx)), LockView::Open);
+            assert_eq!(unlocked_at(cx), at);
+            cx.read(|cx| {
+                assert!(LockKeys::idle(cx, at + AUTO_LOCK));
+                assert!(!LockKeys::idle(cx, at + AUTO_LOCK / 2));
+            });
+
+            // Saving it does, so the notes don't close while you write.
+            cx.update(|cx| seal(&mut note, cx)).unwrap();
+            assert!(unlocked_at(cx) > at);
+
+            f.window
+                .update(cx, |_, window, cx| lock_now(&f.editor, window, cx))
+                .unwrap();
+            assert_eq!(mark(cx), "Locked");
+        }
+
+        #[gpui_kit::test]
+        fn the_note_menu_locks_and_removes_the_lock(cx: &mut TestAppContext) {
+            let f = setup(cx);
+            let list = cx.read(|cx| f.workspace.read(cx).note_list.clone());
+            let menu = |command, cx: &mut TestAppContext| {
+                let id = f.note.clone();
+                list.update(cx, |_, cx| {
+                    cx.emit(crate::note_list::NoteListEvent::Command(id, command))
+                });
+                cx.run_until_parked();
+            };
+
+            // Nothing is locked yet, so Lock Note asks for a new password.
+            menu(crate::note_menu::NoteCommand::Lock, cx);
+            assert!(f.dialog_open(cx), "Lock Note asks for a password");
+            f.window
+                .update(cx, |_, window, cx| window.close_dialog(cx))
+                .unwrap();
+            assert_eq!(f.view(cx), LockView::Plain);
+
+            let form = f
+                .window
+                .update(cx, |_, window, cx| {
+                    lock_open_note(f.editor.clone(), window, cx)
+                })
+                .unwrap()
+                .unwrap();
+            f.submit(cx, &form, &["correct horse", "correct horse"]);
+            assert_eq!(f.view(cx), LockView::Open);
+
+            // Remove Lock asks before keeping the text as plain text.
+            menu(crate::note_menu::NoteCommand::RemoveLock, cx);
+            assert!(f.dialog_open(cx), "Remove Lock asks first");
+            assert!(f.store.note(&f.note).unwrap().unwrap().is_locked());
         }
 
         fn touch_id_setting(cx: &mut TestAppContext) -> Option<bool> {

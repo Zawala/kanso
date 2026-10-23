@@ -290,6 +290,7 @@ impl Sidebar {
                     crate::book_icons::shown(
                         crate::book_icons::opened(row.icon, row.open),
                         row.locked,
+                        crate::locked::LockKeys::is_unlocked(cx),
                     ),
                     row.open,
                 )
@@ -1557,7 +1558,11 @@ impl Render for Sidebar {
                 // A locked notebook shows the lock in place of its icon, in
                 // the notebook's color still.
                 .child(self.book_icon(
-                    crate::book_icons::shown(crate::book_icons::opened(icon, open), locked),
+                    crate::book_icons::shown(
+                        crate::book_icons::opened(icon, open),
+                        locked,
+                        crate::locked::LockKeys::is_unlocked(cx),
+                    ),
                     color,
                     cx,
                 ))

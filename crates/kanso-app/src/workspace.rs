@@ -984,6 +984,8 @@ impl Workspace {
             | NoteCommand::ShowHistory
             | NoteCommand::Publish
             | NoteCommand::Share
+            | NoteCommand::Lock
+            | NoteCommand::RemoveLock
             | NoteCommand::CopyLink
             | NoteCommand::CopyKansoLink
             | NoteCommand::OpenInNewWindow => {
@@ -1102,6 +1104,16 @@ impl Workspace {
             NoteCommand::Share => {
                 if self.open_note(id, window, cx) {
                     crate::share_sheet::open_share(self.editor.clone(), window, cx);
+                }
+            }
+            NoteCommand::Lock => {
+                if self.open_note(id, window, cx) {
+                    crate::locked::lock_open_note(self.editor.clone(), window, cx);
+                }
+            }
+            NoteCommand::RemoveLock => {
+                if self.open_note(id, window, cx) {
+                    crate::locked::remove_lock(self.editor.clone(), window, cx);
                 }
             }
         }
@@ -1370,8 +1382,11 @@ impl Workspace {
                 };
                 // The preview shows the row as the sidebar does, lock and all.
                 let locked = self.library.read(cx).is_book_locked(id);
-                let icon =
-                    crate::book_icons::shown(crate::book_icons::book_icon(&book, cx), locked);
+                let icon = crate::book_icons::shown(
+                    crate::book_icons::book_icon(&book, cx),
+                    locked,
+                    crate::locked::LockKeys::is_unlocked(cx),
+                );
                 let current = crate::book_colors::book_color(&book);
                 let store = self.store.clone();
                 let id = id.clone();

@@ -2729,6 +2729,7 @@ impl NoteEditor {
         };
         let mode = self.view_mode;
         let pinned = note.pinned;
+        let locked = self.lock != LockView::Plain;
         let status = note.status;
 
         let segments = path.into_iter().enumerate().flat_map(|(ix, name)| {
@@ -2872,6 +2873,24 @@ impl NoteEditor {
             )
             .children(backlinks)
             .child(div().flex_none().mx_1().child(mode_group))
+            // An open locked note shows its lock open, and a click locks
+            // every note again. Not a listener: `lock_now` updates this
+            // editor.
+            .when(self.lock == LockView::Open, |el| {
+                let editor = cx.entity();
+                el.child(
+                    Button::new("lock-now")
+                        .debug_selector(|| "lock-now".into())
+                        .ghost()
+                        .small()
+                        .tab_stop(tab_stop)
+                        .icon(Icon::new(Lucide::LockOpen).text_color(colors.text_secondary))
+                        .tooltip("Unlocked: click to lock notes now")
+                        .on_click(move |_, window, cx| {
+                            crate::locked::lock_now(&editor, window, cx)
+                        }),
+                )
+            })
             .child(
                 Button::new("pin")
                     .ghost()
@@ -2933,7 +2952,7 @@ impl NoteEditor {
                         let run: crate::note_menu::Run = Rc::new(move |command, _, cx| {
                             view.update(cx, |_, cx| cx.emit(EditorEvent::Command(command)));
                         });
-                        crate::note_menu::items(menu, pinned, status, run, window, cx)
+                        crate::note_menu::items(menu, pinned, locked, status, run, window, cx)
                     }),
             )
             .when(!self.standalone, |el| {

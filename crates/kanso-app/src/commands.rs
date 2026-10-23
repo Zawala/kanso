@@ -553,7 +553,7 @@ static COMMANDS: &[Command] = &[
         id: "lock-now",
         label: "Lock notes now",
         label_when_pinned: None,
-        description: "Closes every locked note until the lock password is typed again. Kanso also does this after 10 minutes without using one.",
+        description: "Closes every locked note until the lock password is typed again. Kanso also does this 10 minutes after they were unlocked, or after you last edited one.",
         icon: IconName::LockKeyhole,
         keywords: &["lock", "close", "hide", "away"],
         group: Group::Note,

@@ -459,8 +459,9 @@ impl BoardView {
                     .then(|| format!("{}/{} tasks", note.tasks_done, note.tasks_total));
                 let footer: Vec<String> = book.into_iter().chain(tasks).collect();
                 let title = untitled(&note.title);
+                let (mark, word) = crate::locked::note_mark(cx);
                 let snippet = if note.locked {
-                    "Locked".to_owned()
+                    word.to_owned()
                 } else {
                     note.snippet.trim().to_owned()
                 };
@@ -470,11 +471,7 @@ impl BoardView {
                         h_flex()
                             .gap(px(6.))
                             .when(note.locked, |el| {
-                                el.child(
-                                    library_icon(Slot::NoteLocked)
-                                        .size(px(12.))
-                                        .text_color(colors.text_muted),
-                                )
+                                el.child(mark.size(px(12.)).text_color(colors.text_muted))
                             })
                             .child(
                                 div()

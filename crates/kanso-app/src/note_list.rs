@@ -473,6 +473,7 @@ impl NoteList {
         let view = cx.entity();
         let menu_id = note.id.clone();
         let pinned = note.pinned;
+        let locked = note.locked;
         let status = note.status;
         let at = if context.created {
             note.created_at
@@ -622,16 +623,13 @@ impl NoteList {
                             .text_ellipsis()
                             // A locked note's text isn't in the list.
                             .when(note.locked, |el| {
+                                let (mark, word) = crate::locked::note_mark(cx);
                                 el.child(
                                     h_flex()
                                         .gap_1()
                                         .text_color(colors.text_muted)
-                                        .child(
-                                            library_icon(Slot::NoteLocked)
-                                                .size(px(12.))
-                                                .text_color(colors.text_muted),
-                                        )
-                                        .child("Locked"),
+                                        .child(mark.size(px(12.)).text_color(colors.text_muted))
+                                        .child(word),
                                 )
                             })
                             .when(!note.locked, |el| {
@@ -733,7 +731,7 @@ impl NoteList {
                             cx.emit(NoteListEvent::Command(id.clone(), command))
                         });
                     });
-                    crate::note_menu::items(menu, pinned, status, run, window, cx)
+                    crate::note_menu::items(menu, pinned, locked, status, run, window, cx)
                 }
             })
     }

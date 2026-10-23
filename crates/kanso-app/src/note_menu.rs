@@ -26,17 +26,22 @@ pub enum NoteCommand {
     Export,
     Publish,
     Share,
+    /// Seals the note's text with the lock password (`locked.rs`).
+    Lock,
+    /// Keeps a locked note's text as plain text again.
+    RemoveLock,
     Trash,
 }
 
 /// What a choice does: given the command, carries it out.
 pub type Run = Rc<dyn Fn(NoteCommand, &mut Window, &mut App)>;
 
-/// Adds the items for a note that is `pinned` or not and has `status` to
-/// `menu`, each calling `run` with its command.
+/// Adds the items for a note that is `pinned` or not, `locked` or not and
+/// has `status` to `menu`, each calling `run` with its command.
 pub fn items(
     menu: PopupMenu,
     pinned: bool,
+    locked: bool,
     status: NoteStatus,
     run: Run,
     window: &mut Window,
@@ -71,6 +76,12 @@ pub fn items(
     .item(item("Export Note…", NoteCommand::Export))
     .item(item("Share…", NoteCommand::Share))
     .item(item("Publish to the Web…", NoteCommand::Publish))
+    .separator()
+    .item(if locked {
+        item("Remove Lock…", NoteCommand::RemoveLock)
+    } else {
+        item("Lock Note…", NoteCommand::Lock)
+    })
     .separator()
     .item(item("Move to Trash", NoteCommand::Trash))
 }
