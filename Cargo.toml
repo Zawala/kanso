@@ -19,6 +19,10 @@ kanso-update = { path = "crates/kanso-update" }
 kanso-render = { path = "crates/kanso-render" }
 kanso-voice = { path = "crates/kanso-voice" }
 kanso-collab = { path = "crates/kanso-collab" }
+# The provider layer: OpenAI, Anthropic, Gemini, Cohere, Bedrock and every
+# OpenAI-compatible endpoint, with streaming, tools and typed timeouts. Pinned
+# to the Kanso branch commit until its PR merges.
+agent-runtime = { git = "https://github.com/iamngoni/agent-runtime", rev = "22088beb28882a707c3f3decc68f0550e9cfb4d1" }
 
 aes = "0.8"
 # Published notes (kanso-sync share.rs): AES-256-GCM, which browsers open with WebCrypto.
