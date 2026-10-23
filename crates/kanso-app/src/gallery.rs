@@ -72,6 +72,14 @@ pub fn installed(root: &Path) -> Vec<kanso_gallery::Installed> {
     state.plan_records(|record| current_digest(root, record))
 }
 
+/// The display name `state.json` recorded for an installed theme, if any.
+/// The color settings select by name, not by id.
+pub fn installed_name(root: &Path, id: &str) -> Option<String> {
+    State::load(&root.join("state.json"))
+        .record(id)
+        .map(|record| record.name.clone())
+}
+
 /// Keeps a revoked, edited theme on disk but out of the loaders, and tells
 /// the person why through its Browse card.
 #[allow(dead_code)] // Called by the automatic check in #49 step 5.
@@ -94,6 +102,7 @@ pub fn install_color(
     theme: &Theme,
     bytes: &[u8],
     reserved: &HashSet<String>,
+    automatic: bool,
 ) -> Result<(), String> {
     if theme.kind != Kind::Color {
         return Err("that entry isn't a color theme".into());
@@ -118,6 +127,8 @@ pub fn install_color(
     }
     let path = root.join("state.json");
     let mut state = State::load(&path);
+    check_replacement(root, &state, theme.kind, &theme.id, automatic)?;
+    check_install_cap(&state, theme.kind, &theme.id)?;
     let pending = Pending {
         id: theme.id.clone(),
         kind: Kind::Color,
@@ -150,6 +161,7 @@ pub fn install_icons(
     bundle: &[u8],
     reserved_ids: &HashSet<String>,
     reserved_names: &HashSet<String>,
+    automatic: bool,
 ) -> Result<(), String> {
     if theme.kind != Kind::Icons {
         return Err("that entry isn't an icon theme".into());
@@ -168,6 +180,8 @@ pub fn install_icons(
     }
     let path = root.join("state.json");
     let mut state = State::load(&path);
+    check_replacement(root, &state, theme.kind, &theme.id, automatic)?;
+    check_install_cap(&state, theme.kind, &theme.id)?;
     let mut pending: Option<Pending> = None;
     let installed_at = now_rfc3339();
     let result = kanso_gallery::install_icons_with(
@@ -180,7 +194,17 @@ pub fn install_icons(
             max_entries: icon_theme_file::MAX_ENTRIES,
             max_theme_bytes: icon_theme_file::MAX_THEME_BYTES,
         },
-        &mut |digest| {
+        &mut |folder, digest| {
+            // Hold the staged folder to exactly the reader that will load
+            // it. A failure here is before the swap, so a bad update leaves
+            // the working older copy installed.
+            let mut notices = Vec::new();
+            if icon_theme_file::read_folder(folder, Origin::Gallery, &mut notices).is_none() {
+                return Err(std::io::Error::other(notices.first().map_or_else(
+                    || "the icon theme doesn't read".to_owned(),
+                    |n| n.sentence(),
+                )));
+            }
             let record = Pending {
                 id: theme.id.clone(),
                 kind: Kind::Icons,
@@ -207,18 +231,6 @@ pub fn install_icons(
             return Err(err.to_string());
         }
     };
-    // The installed folder must read as the app reads any icon theme.
-    let folder = root.join("icon-themes").join(&theme.id);
-    let mut notices = Vec::new();
-    if icon_theme_file::read_folder(&folder, Origin::Gallery, &mut notices).is_none() {
-        kanso_gallery::remove_installed(root, Kind::Icons, &theme.id).ok();
-        state.pending.retain(|other| other.id != theme.id);
-        state.save(&path).ok();
-        return Err(notices.first().map_or_else(
-            || "the icon theme doesn't read".to_owned(),
-            |n| n.sentence(),
-        ));
-    }
     let Some(pending) = pending else {
         return Err("the icon theme wasn't staged".into());
     };
@@ -236,6 +248,64 @@ pub fn remove(root: &Path, kind: Kind, id: &str) -> Result<(), String> {
     state.remove(id);
     state.disabled.retain(|other| other != id);
     state.save(&path).map_err(|err| err.to_string())
+}
+
+/// Refuses to write over a copy the person has edited, or over an
+/// unrecorded file. A missing copy may be reinstalled by hand, never
+/// automatically. Checked here, inside the install, so a change between the
+/// plan and the write cannot slip through.
+fn check_replacement(
+    root: &Path,
+    state: &State,
+    kind: Kind,
+    id: &str,
+    automatic: bool,
+) -> Result<(), String> {
+    let target = installed_path(root, kind, id);
+    match state.record(id) {
+        Some(record) => match current_digest(root, record) {
+            Some(digest) if digest == record.digest => Ok(()),
+            None if !automatic => Ok(()),
+            None => Err(format!(
+                "\"{}\" is missing; install it again from Browse",
+                record.name
+            )),
+            Some(_) => Err(format!(
+                "\"{}\" was edited; the gallery won't overwrite your copy",
+                record.name
+            )),
+        },
+        None if target.exists() => Err(format!(
+            "a file named \"{id}\" is already installed but not by the gallery"
+        )),
+        None => Ok(()),
+    }
+}
+
+fn check_install_cap(state: &State, kind: Kind, id: &str) -> Result<(), String> {
+    let limit = match kind {
+        Kind::Color => kanso_gallery::MAX_GALLERY_COLOR_THEMES,
+        Kind::Icons => kanso_gallery::MAX_GALLERY_ICON_THEMES,
+    };
+    let count = state
+        .installed
+        .iter()
+        .filter(|record| record.kind == kind && record.id != id)
+        .count();
+    if count >= limit {
+        return Err(format!(
+            "there are already {limit} gallery {} themes installed; remove one first",
+            kind.as_str()
+        ));
+    }
+    Ok(())
+}
+
+fn installed_path(root: &Path, kind: Kind, id: &str) -> std::path::PathBuf {
+    match kind {
+        Kind::Color => root.join("themes").join(format!("{id}.json")),
+        Kind::Icons => root.join("icon-themes").join(id),
+    }
 }
 
 fn record(state: &mut State, pending: Pending) {
@@ -297,7 +367,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("gallery");
         let (theme, bytes) = theme();
-        install_color(&root, &theme, &bytes, &HashSet::new()).unwrap();
+        install_color(&root, &theme, &bytes, &HashSet::new(), false).unwrap();
         let records = installed(&root);
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].version, 3);
@@ -339,7 +409,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("gallery");
         let (theme, bytes) = theme();
-        install_color(&root, &theme, &bytes, &HashSet::new()).unwrap();
+        install_color(&root, &theme, &bytes, &HashSet::new(), false).unwrap();
         remove(&root, Kind::Color, "gallery-test").unwrap();
         assert!(!root.join("themes/gallery-test.json").exists());
         assert!(
@@ -350,7 +420,11 @@ mod tests {
     }
 
     fn icon_bundle(id: &str) -> Vec<u8> {
-        let json = br#"{"schema_version": 1, "name": "Demo"}"#.to_vec();
+        icon_bundle_with(id, br#"{"schema_version": 1, "name": "Demo"}"#)
+    }
+
+    fn icon_bundle_with(id: &str, json: &[u8]) -> Vec<u8> {
+        let json = json.to_vec();
         let svg =
             br#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h4v4z"/></svg>"#.to_vec();
         let manifest = format!(
@@ -404,7 +478,15 @@ mod tests {
             preview: Vec::new(),
             colors: None,
         };
-        install_icons(&root, &theme, &bundle, &HashSet::new(), &HashSet::new()).unwrap();
+        install_icons(
+            &root,
+            &theme,
+            &bundle,
+            &HashSet::new(),
+            &HashSet::new(),
+            false,
+        )
+        .unwrap();
         let records = installed(&root);
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].kind, Kind::Icons);
@@ -415,12 +497,138 @@ mod tests {
     }
 
     #[test]
+    fn an_edited_copy_is_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("gallery");
+        let (theme, bytes) = theme();
+        install_color(&root, &theme, &bytes, &HashSet::new(), false).unwrap();
+        std::fs::write(root.join("themes/gallery-test.json"), b"{\"edited\":true}").unwrap();
+        let mut newer = bytes.clone();
+        newer.extend_from_slice(b" ");
+        let err = install_color(&root, &theme, &newer, &HashSet::new(), false).unwrap_err();
+        assert!(err.contains("edited"), "{err}");
+        assert_eq!(
+            std::fs::read(root.join("themes/gallery-test.json")).unwrap(),
+            b"{\"edited\":true}"
+        );
+    }
+
+    #[test]
+    fn a_file_the_gallery_did_not_write_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("gallery");
+        std::fs::create_dir_all(root.join("themes")).unwrap();
+        std::fs::write(root.join("themes/gallery-test.json"), b"{}").unwrap();
+        let (theme, bytes) = theme();
+        let err = install_color(&root, &theme, &bytes, &HashSet::new(), false).unwrap_err();
+        assert!(err.contains("not by the gallery"), "{err}");
+        assert_eq!(
+            std::fs::read(root.join("themes/gallery-test.json")).unwrap(),
+            b"{}"
+        );
+    }
+
+    #[test]
+    fn a_missing_copy_is_reinstalled_only_by_hand() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("gallery");
+        let (theme, bytes) = theme();
+        install_color(&root, &theme, &bytes, &HashSet::new(), false).unwrap();
+        std::fs::remove_file(root.join("themes/gallery-test.json")).unwrap();
+        assert!(install_color(&root, &theme, &bytes, &HashSet::new(), true).is_err());
+        install_color(&root, &theme, &bytes, &HashSet::new(), false).unwrap();
+        assert!(root.join("themes/gallery-test.json").is_file());
+    }
+
+    #[test]
+    fn the_installed_theme_cap_is_enforced() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("gallery");
+        std::fs::create_dir_all(&root).unwrap();
+        let mut state = State::default();
+        for at in 0..kanso_gallery::MAX_GALLERY_COLOR_THEMES {
+            state.installed.push(Record {
+                id: format!("fill-{at}"),
+                kind: Kind::Color,
+                version: 1,
+                name: format!("Fill {at}"),
+                family: None,
+                appearance: None,
+                digest: "aa".into(),
+                installed_at: now_rfc3339(),
+            });
+        }
+        state.save(&root.join("state.json")).unwrap();
+        let (theme, bytes) = theme();
+        let err = install_color(&root, &theme, &bytes, &HashSet::new(), false).unwrap_err();
+        assert!(err.contains("remove one first"), "{err}");
+    }
+
+    #[test]
+    fn a_bad_update_leaves_the_working_version_installed() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("gallery");
+        let first = icon_bundle("demo");
+        let mut theme = icon_theme(&first);
+        install_icons(
+            &root,
+            &theme,
+            &first,
+            &HashSet::new(),
+            &HashSet::new(),
+            false,
+        )
+        .unwrap();
+        let good = std::fs::read(root.join("icon-themes/demo/demo.json")).unwrap();
+
+        // It installs and clears its pins, but Kanso's own reader refuses it.
+        let bad = icon_bundle_with("demo", br#"{"schema_version": 99}"#);
+        theme.version = 2;
+        theme.bundle = Some(FileRef {
+            path: "gallery/icon-themes/demo.tar.gz".into(),
+            sha256: sha256_hex(&bad),
+            size: bad.len() as u64,
+        });
+        assert!(
+            install_icons(&root, &theme, &bad, &HashSet::new(), &HashSet::new(), false).is_err()
+        );
+        assert_eq!(
+            std::fs::read(root.join("icon-themes/demo/demo.json")).unwrap(),
+            good
+        );
+    }
+
+    fn icon_theme(bundle: &[u8]) -> Theme {
+        Theme {
+            id: "demo".into(),
+            kind: Kind::Icons,
+            family: None,
+            version: 1,
+            name: "Demo".into(),
+            appearance: None,
+            author: "Author".into(),
+            license: "MIT".into(),
+            source: "https://example.com".into(),
+            description: "A test.".into(),
+            min_kanso: "0.1.0".into(),
+            file: None,
+            bundle: Some(FileRef {
+                path: "gallery/icon-themes/demo.tar.gz".into(),
+                sha256: sha256_hex(bundle),
+                size: bundle.len() as u64,
+            }),
+            preview: Vec::new(),
+            colors: None,
+        }
+    }
+
+    #[test]
     fn a_name_taken_by_a_builtin_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("gallery");
         let (theme, bytes) = theme();
         let mut reserved = HashSet::new();
         reserved.insert(theme.name.to_lowercase());
-        assert!(install_color(&root, &theme, &bytes, &reserved).is_err());
+        assert!(install_color(&root, &theme, &bytes, &reserved, false).is_err());
     }
 }

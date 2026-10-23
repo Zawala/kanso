@@ -126,19 +126,20 @@ pub fn install_icons(
     bundle: &[u8],
     caps: IconCaps,
 ) -> Result<String, InstallError> {
-    install_icons_with(root, theme, bundle, caps, &mut |_| Ok(()))
+    install_icons_with(root, theme, bundle, caps, &mut |_, _| Ok(()))
 }
 
-/// [`install_icons`], calling `before_swap` with the digest of what is about
-/// to be put in place before the two renames. The app writes its `pending`
-/// record there, so a crash between the swap and the state write is
-/// recoverable.
+/// [`install_icons`], calling `before_swap` with the staged folder and the
+/// digest of what is about to be put in place, before the two renames. The
+/// app validates the staged folder and writes its `pending` record there, so
+/// a bad update leaves the old copy installed and a crash between the swap
+/// and the state write is recoverable.
 pub fn install_icons_with(
     root: &Path,
     theme: &Theme,
     bundle: &[u8],
     caps: IconCaps,
-    before_swap: &mut dyn FnMut(&str) -> std::io::Result<()>,
+    before_swap: &mut dyn FnMut(&Path, &str) -> std::io::Result<()>,
 ) -> Result<String, InstallError> {
     let pin = theme
         .bundle
@@ -184,7 +185,7 @@ pub fn install_icons_with(
         }
         check_folder(&folder, caps)?;
         let digest = kanso_update::stage::payload_digest(&folder).map_err(InstallError::Io)?;
-        before_swap(&digest)?;
+        before_swap(&folder, &digest)?;
         let installed = root.join("icon-themes").join(&theme.id);
         if installed.is_dir() {
             let backup = root.join("icon-themes").join(format!("{}.old", theme.id));
