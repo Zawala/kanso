@@ -1,0 +1,2136 @@
+{
+  "schema": 1,
+  "serial": 2,
+  "generated_at": "2026-10-23T17:29:54Z",
+  "source_commit": "9885af741f7d5eab99d3a8c5d6c111b815dbe2fb",
+  "signing_key_id": "unset",
+  "themes": [
+    {
+      "id": "andromeda",
+      "kind": "color",
+      "family": "andromeda",
+      "version": 1,
+      "name": "Andromeda",
+      "appearance": "dark",
+      "author": "Eliver Lara",
+      "license": "MIT",
+      "source": "https://github.com/EliverLara/Andromeda",
+      "description": "Andromeda: deep space blue-black, with cool pastel stars.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "andromeda.json",
+        "sha256": "6bde7763bacc5d85ba3bbc29166c7ba02e4a6d1ab194ffac696fd5b21ae6ede5",
+        "size": 1854
+      },
+      "colors": {
+        "editor": "#23262E",
+        "text": "#E1DDE4",
+        "accent": "#74C7EC",
+        "sidebar": "#2B303B",
+        "list": "#23262E"
+      }
+    },
+    {
+      "id": "ayu-dark",
+      "kind": "color",
+      "family": "ayu",
+      "version": 1,
+      "name": "Ayu Dark",
+      "appearance": "dark",
+      "author": "Ike Kurghinyan",
+      "license": "MIT",
+      "source": "https://github.com/ayu-theme/ayu-vscode",
+      "description": "Ayu's dark: a warm graphite page lit by amber and blue.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "ayu-dark.json",
+        "sha256": "13065e8135bef58d31a3257c189087bfcfc05dcf1ec0a0b4a81b00b9018e39fd",
+        "size": 2746
+      },
+      "colors": {
+        "editor": "#0F1419",
+        "text": "#BFBDB6",
+        "accent": "#D8B56F",
+        "sidebar": "#0B0E14",
+        "list": "#10161E"
+      }
+    },
+    {
+      "id": "ayu-light",
+      "kind": "color",
+      "family": "ayu",
+      "version": 1,
+      "name": "Ayu Light",
+      "appearance": "light",
+      "author": "Ike Kurghinyan",
+      "license": "MIT",
+      "source": "https://github.com/ayu-theme/ayu-vscode",
+      "description": "Ayu for daylight: a warm off-white page in amber and blue.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "ayu-light.json",
+        "sha256": "79ad6ce56d690dfc676403970b4ae3620494bcb78f2ccfb07b822fd80f1653d2",
+        "size": 2572
+      },
+      "colors": {
+        "editor": "#FBF9F4",
+        "text": "#555144",
+        "accent": "#E2BE74",
+        "sidebar": "#F6F4EF",
+        "list": "#FFFEFB"
+      }
+    },
+    {
+      "id": "ayu-mirage",
+      "kind": "color",
+      "family": "ayu-mirage",
+      "version": 1,
+      "name": "Ayu Mirage",
+      "appearance": "dark",
+      "author": "Ike Kurghinyan",
+      "license": "MIT",
+      "source": "https://github.com/ayu-theme/ayu-vscode",
+      "description": "Ayu's softer middle: a blue-grey page, dimmer than the dark and warmer than night.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "ayu-mirage.json",
+        "sha256": "4308e3a3daed254ab6c89dc625777f1c1cf56f1bbc2d095ce1b1e24ce21c9223",
+        "size": 2526
+      },
+      "colors": {
+        "editor": "#232936",
+        "text": "#DDD7CB",
+        "accent": "#ECD496",
+        "sidebar": "#232936",
+        "list": "#2B3242"
+      }
+    },
+    {
+      "id": "catppuccin-frappe",
+      "kind": "color",
+      "family": "catppuccin-frappe",
+      "version": 1,
+      "name": "Catppuccin Frappé",
+      "appearance": "dark",
+      "author": "Catppuccin",
+      "license": "MIT",
+      "source": "https://github.com/catppuccin/catppuccin",
+      "description": "Catppuccin Frappé: the middle of Catppuccin's four, a muted blue-grey.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "catppuccin-frappe.json",
+        "sha256": "02459cfcfbf5a4785779e7f1a20e36ea1716874e5bcdc08b025ec8e045fd06f8",
+        "size": 2324
+      },
+      "colors": {
+        "editor": "#303446",
+        "text": "#C6D0F5",
+        "accent": "#CA9EE6",
+        "sidebar": "#292C3C",
+        "list": "#292C3C"
+      }
+    },
+    {
+      "id": "catppuccin-icons",
+      "kind": "icons",
+      "version": 1,
+      "name": "Catppuccin Icons",
+      "author": "Catppuccin",
+      "license": "MIT",
+      "source": "https://github.com/catppuccin/zed-icons",
+      "description": "Catppuccin's file and folder icons, from the Zed extension.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/catppuccin-icons.tar.gz",
+        "sha256": "8049a7534dd7b6b52b0c55d77ddc237c19113762f45a61f6a5a6d76a9a6d1abb",
+        "size": 2685
+      },
+      "preview": [
+        {
+          "path": "icon-themes/catppuccin-icons/icons/latte/_folder.svg",
+          "sha256": "d0459a45e9ae29d54d06b4a64642a7f2f8c7678b5481e39b4187ca3354fc3f84",
+          "size": 290
+        },
+        {
+          "path": "icon-themes/catppuccin-icons/icons/latte/_folder_open.svg",
+          "sha256": "bc4f70036b562b283774a0c76da3ebd260b42d4b4bfea8f7534f907690d39393",
+          "size": 312
+        },
+        {
+          "path": "icon-themes/catppuccin-icons/icons/latte/audio.svg",
+          "sha256": "f2992ba00eb6d2c82998626a8d42a1ae8e876722602b628f681c16c3c993740e",
+          "size": 402
+        },
+        {
+          "path": "icon-themes/catppuccin-icons/icons/latte/folder_templates.svg",
+          "sha256": "367badd904f3bde10ada0b3ddf129814df63c30aecdd19cf245d1a43bc7e5496",
+          "size": 863
+        },
+        {
+          "path": "icon-themes/catppuccin-icons/icons/latte/image.svg",
+          "sha256": "baeb360aeaf893a6e9f16e22e191aac6a43af49d1232f56927ebca04085ebeb2",
+          "size": 545
+        },
+        {
+          "path": "icon-themes/catppuccin-icons/icons/latte/pdf.svg",
+          "sha256": "25098a0ccd35092c3ef4ff84854c792fbfc245db8fcdd25172ae321ad37728c3",
+          "size": 444
+        }
+      ]
+    },
+    {
+      "id": "catppuccin-latte",
+      "kind": "color",
+      "family": "catppuccin-latte",
+      "version": 1,
+      "name": "Catppuccin Latte",
+      "appearance": "light",
+      "author": "Catppuccin",
+      "license": "MIT",
+      "source": "https://github.com/catppuccin/catppuccin",
+      "description": "Catppuccin Latte: the light, milky flavor of the soothing pastel theme.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "catppuccin-latte.json",
+        "sha256": "d88ab3cf329728f9605fd6ae14a34b662c66b5788355a6878b4739a66b1cd526",
+        "size": 2592
+      },
+      "colors": {
+        "editor": "#EFF1F5",
+        "text": "#4C4F69",
+        "accent": "#8839EF",
+        "sidebar": "#DCE0E8",
+        "list": "#EAEDF2"
+      }
+    },
+    {
+      "id": "catppuccin-macchiato",
+      "kind": "color",
+      "family": "catppuccin-macchiato",
+      "version": 1,
+      "name": "Catppuccin Macchiato",
+      "appearance": "dark",
+      "author": "Catppuccin",
+      "license": "MIT",
+      "source": "https://github.com/catppuccin/catppuccin",
+      "description": "Catppuccin Macchiato: a deeper, darker Frappé, still soft.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "catppuccin-macchiato.json",
+        "sha256": "ff0f698c90fd88c496244548dd0da9e3d9fb55074772b520ac0f4c704a122bb3",
+        "size": 2314
+      },
+      "colors": {
+        "editor": "#24273A",
+        "text": "#CAD3F5",
+        "accent": "#C6A0F6",
+        "sidebar": "#1E2030",
+        "list": "#1E2030"
+      }
+    },
+    {
+      "id": "catppuccin-mocha",
+      "kind": "color",
+      "family": "catppuccin-mocha",
+      "version": 1,
+      "name": "Catppuccin Mocha",
+      "appearance": "dark",
+      "author": "Catppuccin",
+      "license": "MIT",
+      "source": "https://github.com/catppuccin/catppuccin",
+      "description": "Catppuccin Mocha: the darkest, coziest of the soothing pastel flavors.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "catppuccin-mocha.json",
+        "sha256": "5b9db16bfc832b0a47cb44cfabf01557f04436d3cb4910aa943897b02ebcaf6f",
+        "size": 2625
+      },
+      "colors": {
+        "editor": "#1E1E2E",
+        "text": "#CDD6F4",
+        "accent": "#CBA6F7",
+        "sidebar": "#181825",
+        "list": "#1B1B2A"
+      }
+    },
+    {
+      "id": "charmed-icons",
+      "kind": "icons",
+      "version": 1,
+      "name": "Charmed Icons",
+      "author": "littensy, jmesrje",
+      "license": "MIT",
+      "source": "https://github.com/jmesrje/zed-charmed-icons",
+      "description": "littensy's Charmed Icons, from jmesrje's Zed extension.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/charmed-icons.tar.gz",
+        "sha256": "6e11bf6484bba722263ad2392fc29cfaf6649a9b5d07b18ebe30dab1bd758e42",
+        "size": 5257
+      },
+      "preview": [
+        {
+          "path": "icon-themes/charmed-icons/icons/base/_file.svg",
+          "sha256": "2549bda742498170afcde33110ee15c1de81f3bc7e56a465b3b545548ceb3ea2",
+          "size": 774
+        },
+        {
+          "path": "icon-themes/charmed-icons/icons/base/_folder.svg",
+          "sha256": "53b57bd6596d448e30b58b961ade2228d42badcaeb1ddbd48d048c8f8e3411d0",
+          "size": 607
+        },
+        {
+          "path": "icon-themes/charmed-icons/icons/base/_folder_open.svg",
+          "sha256": "739b9528f970b340ba217d21187c69e31dcee40859d2bfac1cf256fc3ce92b19",
+          "size": 1243
+        },
+        {
+          "path": "icon-themes/charmed-icons/icons/base/audio.svg",
+          "sha256": "1e1df5bf2cf2ec99eb1a0418c55fa9b267db81ccfb716e7678a2f9f27d557fb4",
+          "size": 939
+        },
+        {
+          "path": "icon-themes/charmed-icons/icons/base/image.svg",
+          "sha256": "722824af9921f55ad050d9b65074ce916c06c309d4cd23dc72b7e31bfe6e4c0d",
+          "size": 1048
+        },
+        {
+          "path": "icon-themes/charmed-icons/icons/base/pdf.svg",
+          "sha256": "7b90613897812552df43c6b6804cb400d1bb31a44fa3fe5a34f8e4a02b81b411",
+          "size": 3852
+        }
+      ]
+    },
+    {
+      "id": "cobalt2",
+      "kind": "color",
+      "family": "cobalt2",
+      "version": 1,
+      "name": "Cobalt2",
+      "appearance": "dark",
+      "author": "Wes Bos",
+      "license": "MIT",
+      "source": "https://github.com/wesbos/cobalt2-vscode",
+      "description": "Wes Bos's Cobalt2: deep blue with bright yellow and cyan.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "cobalt2.json",
+        "sha256": "ded577d00c943fb8b6408631b63814e81c8bbd824d0484ca8055c5fe3eab3c07",
+        "size": 2056
+      },
+      "colors": {
+        "editor": "#193549",
+        "text": "#FFFFFF",
+        "accent": "#FFC600",
+        "sidebar": "#122738",
+        "list": "#122738"
+      }
+    },
+    {
+      "id": "default-dark",
+      "kind": "color",
+      "family": "default",
+      "version": 1,
+      "name": "Default Dark",
+      "appearance": "dark",
+      "author": "Takuya Matsuyama",
+      "license": "MIT",
+      "source": "https://github.com/inkdropapp/default-dark",
+      "description": "A near-black default dark theme with a blue accent, imported from its palette.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "default-dark.json",
+        "sha256": "7a8f70bad0ef24fcc0b893ccd840417dd982989148c451522e54c6fbd9c87f6b",
+        "size": 2560
+      },
+      "colors": {
+        "editor": "#0A0A0A",
+        "text": "#DBDBDB",
+        "accent": "#61A6FA",
+        "sidebar": "#171717",
+        "list": "#111111"
+      }
+    },
+    {
+      "id": "default-light",
+      "kind": "color",
+      "family": "default",
+      "version": 1,
+      "name": "Default Light",
+      "appearance": "light",
+      "author": "Takuya Matsuyama",
+      "license": "MIT",
+      "source": "https://github.com/inkdropapp/default-light",
+      "description": "A near-white default light theme with a blue accent, imported from its palette.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "default-light.json",
+        "sha256": "28b22044e87d53aecd6455e5c93d7ec9a77837b0d2fda94c6c4fbc71eda5215c",
+        "size": 2556
+      },
+      "colors": {
+        "editor": "#FFFFFF",
+        "text": "#212121",
+        "accent": "#3C83F6",
+        "sidebar": "#F3F4F6",
+        "list": "#FAFAF9"
+      }
+    },
+    {
+      "id": "dracula",
+      "kind": "color",
+      "family": "dracula",
+      "version": 1,
+      "name": "Dracula",
+      "appearance": "dark",
+      "author": "Zeno Rocha",
+      "license": "MIT",
+      "source": "https://github.com/dracula/dracula-theme",
+      "description": "Zeno Rocha's Dracula: pink keywords, yellow strings and purple constants after dark.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "dracula.json",
+        "sha256": "b494f58c3005f222f7eb293804755612c7f8e437f23fbaad003f6722aa429afc",
+        "size": 2865
+      },
+      "colors": {
+        "editor": "#282A36",
+        "text": "#F8F8F2",
+        "accent": "#BD93F9",
+        "sidebar": "#21222C",
+        "list": "#242631"
+      }
+    },
+    {
+      "id": "duskfox",
+      "kind": "color",
+      "family": "duskfox",
+      "version": 1,
+      "name": "Duskfox",
+      "appearance": "dark",
+      "author": "EdenEast",
+      "license": "MIT",
+      "source": "https://github.com/EdenEast/nightfox.nvim",
+      "description": "Duskfox: Nightfox at dusk, in muted lavender and rose.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "duskfox.json",
+        "sha256": "3450c508588f190d907b86d8cc9bd25dfe7eac4ed22b478f046535a812652dae",
+        "size": 1629
+      },
+      "colors": {
+        "editor": "#232136",
+        "text": "#E0DEF4",
+        "accent": "#7AD4D6",
+        "sidebar": "#232136",
+        "list": "#232136"
+      }
+    },
+    {
+      "id": "everforest-dark",
+      "kind": "color",
+      "family": "everforest",
+      "version": 1,
+      "name": "Everforest Dark",
+      "appearance": "dark",
+      "author": "sainnhe",
+      "license": "MIT",
+      "source": "https://github.com/sainnhe/everforest",
+      "description": "Sainnhe's Everforest: a forest at dusk, in mossy greens and warm cream.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "everforest-dark.json",
+        "sha256": "9f2c3218303f341a6d017eb488f97eeb93b6f8bd5c1f4910f7a7803fb9e793e1",
+        "size": 2108
+      },
+      "colors": {
+        "editor": "#2D353B",
+        "text": "#D3C6AA",
+        "accent": "#A7C080",
+        "sidebar": "#343F44",
+        "list": "#343F44"
+      }
+    },
+    {
+      "id": "everforest-light",
+      "kind": "color",
+      "family": "everforest",
+      "version": 1,
+      "name": "Everforest Light",
+      "appearance": "light",
+      "author": "sainnhe",
+      "license": "MIT",
+      "source": "https://github.com/sainnhe/everforest",
+      "description": "Everforest in daylight: paper the color of old leaves, with forest greens.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "everforest-light.json",
+        "sha256": "92601ea9e6dbc3cbd3982a477bb0540c5c4ad5c093b1d818277ca682874e8b67",
+        "size": 2115
+      },
+      "colors": {
+        "editor": "#FDF6E3",
+        "text": "#5A676F",
+        "accent": "#8DA101",
+        "sidebar": "#F4F0D9",
+        "list": "#F4F0D9"
+      }
+    },
+    {
+      "id": "fantasticons",
+      "kind": "icons",
+      "version": 1,
+      "name": "FantastIcons",
+      "author": "Caio Landgraf",
+      "license": "MIT",
+      "source": "https://github.com/caiolandgraf/fantasticons-zed",
+      "description": "FantastIcons, from the Zed extension.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/fantasticons.tar.gz",
+        "sha256": "9ec03bc897709e8489a76302d049022a183848c0712e2cf9bfedddd2826ba686",
+        "size": 4945
+      },
+      "preview": [
+        {
+          "path": "icon-themes/fantasticons/icons/_file.svg",
+          "sha256": "2549bda742498170afcde33110ee15c1de81f3bc7e56a465b3b545548ceb3ea2",
+          "size": 774
+        },
+        {
+          "path": "icon-themes/fantasticons/icons/audio.svg",
+          "sha256": "c6bc21488d5d5fa9cd988bac410c741d519f8778c1e48a64ae3e4ce003dbce57",
+          "size": 275
+        },
+        {
+          "path": "icon-themes/fantasticons/icons/folder.svg",
+          "sha256": "40ac722f6ba776d69aeb007d7221028ace2bf248bd0a947bf7f432aad273077e",
+          "size": 180
+        },
+        {
+          "path": "icon-themes/fantasticons/icons/folder_open.svg",
+          "sha256": "9ee9e1ec64d446c6dd34388f13448acf799a57586b8d3f8f68a7fa334e729a3a",
+          "size": 491
+        },
+        {
+          "path": "icon-themes/fantasticons/icons/folder_template.svg",
+          "sha256": "9553367a5355ab5e20f7ea583154989ace6ef4092347a5dc0ce8ca70e31d7ea4",
+          "size": 493
+        },
+        {
+          "path": "icon-themes/fantasticons/icons/image.svg",
+          "sha256": "722824af9921f55ad050d9b65074ce916c06c309d4cd23dc72b7e31bfe6e4c0d",
+          "size": 1048
+        },
+        {
+          "path": "icon-themes/fantasticons/icons/pdf.svg",
+          "sha256": "7b90613897812552df43c6b6804cb400d1bb31a44fa3fe5a34f8e4a02b81b411",
+          "size": 3852
+        }
+      ]
+    },
+    {
+      "id": "flexoki-dark",
+      "kind": "color",
+      "family": "flexoki",
+      "version": 1,
+      "name": "Flexoki Dark",
+      "appearance": "dark",
+      "author": "Steph Ango",
+      "license": "MIT",
+      "source": "https://github.com/kepano/flexoki",
+      "description": "Flexoki's ink-dark page, built for reading in warm paper-like tones.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "flexoki-dark.json",
+        "sha256": "de312983e2015df4be2c65bd0cce6a36c76ed3b5039b2d1760490c65c5f7abca",
+        "size": 2020
+      },
+      "colors": {
+        "editor": "#100F0F",
+        "text": "#CECDC3",
+        "accent": "#3AA99F",
+        "sidebar": "#1C1B1A",
+        "list": "#1C1B1A"
+      }
+    },
+    {
+      "id": "flexoki-light",
+      "kind": "color",
+      "family": "flexoki",
+      "version": 1,
+      "name": "Flexoki Light",
+      "appearance": "light",
+      "author": "Steph Ango",
+      "license": "MIT",
+      "source": "https://github.com/kepano/flexoki",
+      "description": "Flexoki on warm paper: ink-dark text and measured, earthy accents.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "flexoki-light.json",
+        "sha256": "c76e9418ac79bde7750e2c980060d6c0356d29373c81c18a937210556ff734c9",
+        "size": 2020
+      },
+      "colors": {
+        "editor": "#FFFCF0",
+        "text": "#100F0F",
+        "accent": "#24837B",
+        "sidebar": "#F2F0E5",
+        "list": "#F2F0E5"
+      }
+    },
+    {
+      "id": "github-dark",
+      "kind": "color",
+      "family": "github",
+      "version": 1,
+      "name": "GitHub Dark",
+      "appearance": "dark",
+      "author": "GitHub",
+      "license": "MIT",
+      "source": "https://github.com/primer/github-vscode-theme",
+      "description": "GitHub Dark: Primer's colors from GitHub's own VS Code theme.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "github-dark.json",
+        "sha256": "e221fc02f45a46ae473c6bf6e78d074d7a0802c18cc0b7dd7a7d5093955252de",
+        "size": 2579
+      },
+      "colors": {
+        "editor": "#0D1117",
+        "text": "#E6EDF3",
+        "accent": "#2F81F7",
+        "sidebar": "#010409",
+        "list": "#0D1117"
+      }
+    },
+    {
+      "id": "github-dark-dimmed",
+      "kind": "color",
+      "family": "github-dark-dimmed",
+      "version": 1,
+      "name": "GitHub Dark Dimmed",
+      "appearance": "dark",
+      "author": "GitHub",
+      "license": "MIT",
+      "source": "https://github.com/primer/github-vscode-theme",
+      "description": "GitHub's dimmed dark: a softer, lower-contrast sheet of GitHub.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "github-dark-dimmed.json",
+        "sha256": "ab37ad3cb8496f15a0f4599d9e6af4da3132b8baed23e2a368c067a9aff3d50f",
+        "size": 2106
+      },
+      "colors": {
+        "editor": "#212830",
+        "text": "#D1D7E0",
+        "accent": "#478BE6",
+        "sidebar": "#151B23",
+        "list": "#151B23"
+      }
+    },
+    {
+      "id": "github-dark-high-contrast",
+      "kind": "color",
+      "family": "github",
+      "version": 1,
+      "name": "GitHub Dark High Contrast",
+      "appearance": "dark",
+      "author": "GitHub",
+      "license": "MIT",
+      "source": "https://github.com/primer/github-vscode-theme",
+      "description": "GitHub Dark at its sharpest: true black and bright, readable text.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "github-dark-high-contrast.json",
+        "sha256": "15a8193264753c4362ceb10ce86a6288e32dfd14a410dda2d5478581357e47ec",
+        "size": 2116
+      },
+      "colors": {
+        "editor": "#010409",
+        "text": "#FFFFFF",
+        "accent": "#74B9FF",
+        "sidebar": "#010409",
+        "list": "#010409"
+      }
+    },
+    {
+      "id": "github-light",
+      "kind": "color",
+      "family": "github",
+      "version": 1,
+      "name": "GitHub Light",
+      "appearance": "light",
+      "author": "GitHub",
+      "license": "MIT",
+      "source": "https://github.com/primer/github-vscode-theme",
+      "description": "GitHub Light: Primer's colors from GitHub's own VS Code theme.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "github-light.json",
+        "sha256": "56f4f97365bac5b86d3c99ef205ad564a7e5acdf7ebda8a79717f7dffa1f0dd3",
+        "size": 2582
+      },
+      "colors": {
+        "editor": "#FFFFFF",
+        "text": "#1F2328",
+        "accent": "#0969DA",
+        "sidebar": "#F6F8FA",
+        "list": "#FFFFFF"
+      }
+    },
+    {
+      "id": "github-light-high-contrast",
+      "kind": "color",
+      "family": "github",
+      "version": 1,
+      "name": "GitHub Light High Contrast",
+      "appearance": "light",
+      "author": "GitHub",
+      "license": "MIT",
+      "source": "https://github.com/primer/github-vscode-theme",
+      "description": "GitHub Light at its sharpest: white paper and near-black ink.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "github-light-high-contrast.json",
+        "sha256": "05aa401ed86040aaadada012d7af2ce68cebcf87112fc7c7413f3d7e2850c2bc",
+        "size": 2113
+      },
+      "colors": {
+        "editor": "#FFFFFF",
+        "text": "#010409",
+        "accent": "#023B95",
+        "sidebar": "#EFF2F5",
+        "list": "#EFF2F5"
+      }
+    },
+    {
+      "id": "gruvbox-dark",
+      "kind": "color",
+      "family": "gruvbox",
+      "version": 1,
+      "name": "Gruvbox Dark",
+      "appearance": "dark",
+      "author": "Pavel Pertsev (morhetz)",
+      "license": "MIT",
+      "source": "https://github.com/morhetz/gruvbox",
+      "description": "Morhetz's Gruvbox, dark: the retro groove palette, warm and high in character.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "gruvbox-dark.json",
+        "sha256": "18975078b23bd697333379899f13687fe9c76dc3b52a3049b27e09fd663720ba",
+        "size": 2707
+      },
+      "colors": {
+        "editor": "#282828",
+        "text": "#EBDBB2",
+        "accent": "#FE8019",
+        "sidebar": "#1D2021",
+        "list": "#222424"
+      }
+    },
+    {
+      "id": "gruvbox-light",
+      "kind": "color",
+      "family": "gruvbox",
+      "version": 1,
+      "name": "Gruvbox Light",
+      "appearance": "light",
+      "author": "Pavel Pertsev (morhetz)",
+      "license": "MIT",
+      "source": "https://github.com/morhetz/gruvbox",
+      "description": "Morhetz's Gruvbox, light: the retro groove palette in faded ink on cream.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "gruvbox-light.json",
+        "sha256": "9cc943f1a44c57bf5ccf0cc203ae8add9a974134440b81266567d0627413fae5",
+        "size": 2704
+      },
+      "colors": {
+        "editor": "#FBF1C7",
+        "text": "#3C3836",
+        "accent": "#AF3A03",
+        "sidebar": "#EBDBB2",
+        "list": "#F2E5BC"
+      }
+    },
+    {
+      "id": "gruvbox-material-dark",
+      "kind": "color",
+      "family": "gruvbox-material",
+      "version": 1,
+      "name": "Gruvbox Material Dark",
+      "appearance": "dark",
+      "author": "sainnhe",
+      "license": "MIT",
+      "source": "https://github.com/sainnhe/gruvbox-material",
+      "description": "Gruvbox Material's dark: warm, weathered paper and soft, earthy accents.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "gruvbox-material-dark.json",
+        "sha256": "67b4741fe6f519d2054061e76540b625b6c3a246ab88226ab6d6bff593743d0a",
+        "size": 2301
+      },
+      "colors": {
+        "editor": "#292828",
+        "text": "#D4BE98",
+        "accent": "#89B482",
+        "sidebar": "#292828",
+        "list": "#292828"
+      }
+    },
+    {
+      "id": "gruvbox-material-light",
+      "kind": "color",
+      "family": "gruvbox-material",
+      "version": 1,
+      "name": "Gruvbox Material Light",
+      "appearance": "light",
+      "author": "sainnhe",
+      "license": "MIT",
+      "source": "https://github.com/sainnhe/gruvbox-material",
+      "description": "Gruvbox Material in daylight: a creamy page with earthy greens and blues.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "gruvbox-material-light.json",
+        "sha256": "8633661f74733224084e47a70e013d545250e2b0db180ccce440ff4b59bc7fe3",
+        "size": 2304
+      },
+      "colors": {
+        "editor": "#FBF1C7",
+        "text": "#654735",
+        "accent": "#45707A",
+        "sidebar": "#FBF1C7",
+        "list": "#FBF1C7"
+      }
+    },
+    {
+      "id": "horizon",
+      "kind": "color",
+      "family": "horizon",
+      "version": 1,
+      "name": "Horizon",
+      "appearance": "dark",
+      "author": "Jonathan Olaleye",
+      "license": "MIT",
+      "source": "https://github.com/jolaleye/horizon-theme-vscode",
+      "description": "Horizon: a warm charcoal dusk with coral and peach.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "horizon.json",
+        "sha256": "73fa2cfefed01747c9e4c90173d2bc86a4f0c463eeeed61b8ddb0289f93bb34b",
+        "size": 2118
+      },
+      "colors": {
+        "editor": "#1C1E26",
+        "text": "#D5D8DA",
+        "accent": "#E95378",
+        "sidebar": "#1C1E26",
+        "list": "#1C1E26"
+      }
+    },
+    {
+      "id": "horizon-bright",
+      "kind": "color",
+      "family": "horizon-bright",
+      "version": 1,
+      "name": "Horizon Bright",
+      "appearance": "light",
+      "author": "Jonathan Olaleye",
+      "license": "MIT",
+      "source": "https://github.com/jolaleye/horizon-theme-vscode",
+      "description": "Horizon Bright: the same dusk in daylight, on warm cream paper.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "horizon-bright.json",
+        "sha256": "a645cb89920bf20b93e371eb2e14f64773fcb52c40c5e29751178f9d89bb2dd1",
+        "size": 2112
+      },
+      "colors": {
+        "editor": "#FDF0ED",
+        "text": "#06060C",
+        "accent": "#E84A72",
+        "sidebar": "#FDF0ED",
+        "list": "#FDF0ED"
+      }
+    },
+    {
+      "id": "iceberg",
+      "kind": "color",
+      "family": "iceberg",
+      "version": 1,
+      "name": "Iceberg",
+      "appearance": "dark",
+      "author": "cocopon",
+      "license": "MIT",
+      "source": "https://github.com/cocopon/iceberg.vim",
+      "description": "Iceberg: a cold, dark blue sea with pale, calm text.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "iceberg.json",
+        "sha256": "855f6cc68a06decafb151f5f5c60d8250b4916d486d1d911015eb28b3973c1ff",
+        "size": 2802
+      },
+      "colors": {
+        "editor": "#161821",
+        "text": "#C6C8D1",
+        "accent": "#84A0C6",
+        "sidebar": "#161821",
+        "list": "#161821"
+      }
+    },
+    {
+      "id": "jetbrains-icons",
+      "kind": "icons",
+      "version": 1,
+      "name": "JetBrains Icons",
+      "author": "Zeeshan Ahmad",
+      "license": "Apache-2.0",
+      "source": "https://github.com/ziishaned/zed-jetbrains-icons",
+      "description": "JetBrains IntelliJ's product icons, from Zeeshan Ahmad's Zed extension.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/jetbrains-icons.tar.gz",
+        "sha256": "b4f89590f917857529c0262aa21e3d2bf0f4f6a385552e84490d565bdcd0f333",
+        "size": 5627
+      },
+      "preview": [
+        {
+          "path": "icon-themes/jetbrains-icons/icons/dark/chevron_down.svg",
+          "sha256": "2002c988353dc8d3e4044ddc34ec062366c4c1b4307a5e135478ac44694ea30b",
+          "size": 309
+        },
+        {
+          "path": "icon-themes/jetbrains-icons/icons/dark/chevron_right.svg",
+          "sha256": "bae1f68b729b1eab1ab2e6ce35033b71cdb52b3677fb90ac8aef286c7be68595",
+          "size": 302
+        },
+        {
+          "path": "icon-themes/jetbrains-icons/icons/dark/folder.svg",
+          "sha256": "4f08a99236e4b08632cafb159f31df27f238106d584ecf725be42b9702a0a02e",
+          "size": 549
+        },
+        {
+          "path": "icon-themes/jetbrains-icons/icons/dark/image.svg",
+          "sha256": "b7c8a22b2b1022a23f1a2a6b923ca52f59d5f9abaa4dcf1718fa9d50f2f710ef",
+          "size": 486
+        },
+        {
+          "path": "icon-themes/jetbrains-icons/icons/dark/text.svg",
+          "sha256": "3391cc35837a4420fa9517f2297d8f6b07428db63f57f07dd5c2c29ef00cb489",
+          "size": 493
+        }
+      ]
+    },
+    {
+      "id": "jetbrains-new-ui-icons",
+      "kind": "icons",
+      "version": 1,
+      "name": "JetBrains New UI Icons",
+      "author": "ankddev",
+      "license": "Apache-2.0",
+      "source": "https://github.com/ankddev/zed-jetbrains-newui-icons",
+      "description": "The JetBrains IDEs' New UI icons, from ankddev's Zed extension.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/jetbrains-new-ui-icons.tar.gz",
+        "sha256": "742b28c789d06f345b7a807391cb6aaf823bdde1e2af59d42c11dc0a4bd2b949",
+        "size": 5757
+      },
+      "preview": [
+        {
+          "path": "icon-themes/jetbrains-new-ui-icons/icons/anyType_dark.svg",
+          "sha256": "8d337aa48dc75f4c9ba0cd1795c09f35aded0e480ff19222ba44d1760f1e543a",
+          "size": 1001
+        },
+        {
+          "path": "icon-themes/jetbrains-new-ui-icons/icons/folder_dark.svg",
+          "sha256": "4f08a99236e4b08632cafb159f31df27f238106d584ecf725be42b9702a0a02e",
+          "size": 549
+        },
+        {
+          "path": "icon-themes/jetbrains-new-ui-icons/icons/image_dark.svg",
+          "sha256": "b7c8a22b2b1022a23f1a2a6b923ca52f59d5f9abaa4dcf1718fa9d50f2f710ef",
+          "size": 486
+        },
+        {
+          "path": "icon-themes/jetbrains-new-ui-icons/icons/text.svg",
+          "sha256": "d71666166da544ad42b13bb5af976eb6f0afb60cbaa636676d238c98383ee296",
+          "size": 493
+        }
+      ]
+    },
+    {
+      "id": "kanagawa-dragon",
+      "kind": "color",
+      "family": "kanagawa-dragon",
+      "version": 1,
+      "name": "Kanagawa Dragon",
+      "appearance": "dark",
+      "author": "rebelot",
+      "license": "MIT",
+      "source": "https://github.com/rebelot/kanagawa.nvim",
+      "description": "Rebelot's Kanagawa, Dragon: the darker, earthier ink-wash variant.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "kanagawa-dragon.json",
+        "sha256": "073e5323a06e63d4f7c8bc8a9e3ad97b8ff1a4dca73f00712901f8ea48ca63d3",
+        "size": 2613
+      },
+      "colors": {
+        "editor": "#181616",
+        "text": "#C5C9C5",
+        "accent": "#8BA4B0",
+        "sidebar": "#12120F",
+        "list": "#151412"
+      }
+    },
+    {
+      "id": "kanagawa-lotus",
+      "kind": "color",
+      "family": "kanagawa-lotus",
+      "version": 1,
+      "name": "Kanagawa Lotus",
+      "appearance": "light",
+      "author": "rebelot",
+      "license": "MIT",
+      "source": "https://github.com/rebelot/kanagawa.nvim",
+      "description": "Rebelot's Kanagawa, Lotus: the light variant on warm rice paper.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "kanagawa-lotus.json",
+        "sha256": "bcf861f0744535101f77003b0c6bfcc4466c7993b90bc49255455ea3a4eef510",
+        "size": 2576
+      },
+      "colors": {
+        "editor": "#F2ECBC",
+        "text": "#545464",
+        "accent": "#4D699B",
+        "sidebar": "#D5CEA3",
+        "list": "#E5DDB0"
+      }
+    },
+    {
+      "id": "kanagawa-wave",
+      "kind": "color",
+      "family": "kanagawa-wave",
+      "version": 1,
+      "name": "Kanagawa Wave",
+      "appearance": "dark",
+      "author": "rebelot",
+      "license": "MIT",
+      "source": "https://github.com/rebelot/kanagawa.nvim",
+      "description": "Rebelot's Kanagawa, Wave: the dark theme inspired by Hokusai's Great Wave.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "kanagawa-wave.json",
+        "sha256": "cc2d34b085678350805f8e59766e7854ceb397cbe8b30eee4cf232978253a1b4",
+        "size": 2619
+      },
+      "colors": {
+        "editor": "#1F1F28",
+        "text": "#DCD7BA",
+        "accent": "#7E9CD8",
+        "sidebar": "#181820",
+        "list": "#1A1A22"
+      }
+    },
+    {
+      "id": "kanso-dark",
+      "kind": "color",
+      "family": "kanso",
+      "version": 1,
+      "name": "Kanso Dark",
+      "appearance": "dark",
+      "author": "Kanso",
+      "license": "MIT",
+      "source": "https://github.com/iamngoni/kanso",
+      "description": "Warm graphite: Kanso's own dark theme.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "kanso-dark.json",
+        "sha256": "1af65ada9880c3ac62f9389ffd7128359a93cb4ba323669b7bc1359dc93493e7",
+        "size": 2186
+      },
+      "colors": {
+        "editor": "#282824",
+        "text": "#F1EFE7",
+        "accent": "#7E96B3",
+        "sidebar": "#1D1D1A",
+        "list": "#232320"
+      }
+    },
+    {
+      "id": "kanso-light",
+      "kind": "color",
+      "family": "kanso",
+      "version": 1,
+      "name": "Kanso Light",
+      "appearance": "light",
+      "author": "Kanso",
+      "license": "MIT",
+      "source": "https://github.com/iamngoni/kanso",
+      "description": "Soft paper: Kanso's own light theme.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "kanso-light.json",
+        "sha256": "f89c27623e1eda4bdc512e468f646e729bde0656945d492c8cac6127254d7a8e",
+        "size": 2186
+      },
+      "colors": {
+        "editor": "#FCFAF4",
+        "text": "#26241F",
+        "accent": "#5E7895",
+        "sidebar": "#EBE7DD",
+        "list": "#F8F5EF"
+      }
+    },
+    {
+      "id": "kokedera-icons",
+      "kind": "icons",
+      "version": 1,
+      "name": "Kokedera Icons",
+      "author": "Florian Mühlhans",
+      "license": "MIT",
+      "source": "https://github.com/cappuccinotogo/kokedera-icons-extension-zed",
+      "description": "Moss temple icons, from the Kokedera Zed extension.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/kokedera-icons.tar.gz",
+        "sha256": "e74d75b477d5b2c0d00b7e8573ed7485dce2e476b874776dfe28ebd442b561a1",
+        "size": 2814
+      },
+      "preview": [
+        {
+          "path": "icon-themes/kokedera-icons/icons/morning/audio.svg",
+          "sha256": "a579e34e0bf28285da572c58d6b71d2513c8f955c68349aedf9ffc2ae4f5b945",
+          "size": 478
+        },
+        {
+          "path": "icon-themes/kokedera-icons/icons/morning/chevron-closed.svg",
+          "sha256": "6ba460acee0149d57e1f343b81911909785f3774767fc370fac8c5558a37f604",
+          "size": 232
+        },
+        {
+          "path": "icon-themes/kokedera-icons/icons/morning/chevron-open.svg",
+          "sha256": "5256516d1c78e11b8a49509dcbc6db7cc69166c3bf09cb094e0766a4c313a6b6",
+          "size": 232
+        },
+        {
+          "path": "icon-themes/kokedera-icons/icons/morning/default.svg",
+          "sha256": "e3dd2d254a4fa8e406fe470a8e596cc6cd7ccc49851372ab21e8f1f0c55de12c",
+          "size": 218
+        },
+        {
+          "path": "icon-themes/kokedera-icons/icons/morning/folder-closed.svg",
+          "sha256": "5c2675f493a159f49d32197d3f0a8a2229fca0464c67303c97c1573e5f6c30de",
+          "size": 345
+        },
+        {
+          "path": "icon-themes/kokedera-icons/icons/morning/folder-open.svg",
+          "sha256": "d5780f0c3290e1c187c128a0e1e1358b0ed7206f5e7448d023f8e8d88ad39581",
+          "size": 454
+        },
+        {
+          "path": "icon-themes/kokedera-icons/icons/morning/folder-pages-closed.svg",
+          "sha256": "ee87491e8cf1fe3c5a04e7c9e408e46d02f3b195c9094bd525d270c685ccd673",
+          "size": 356
+        },
+        {
+          "path": "icon-themes/kokedera-icons/icons/morning/image.svg",
+          "sha256": "09ba1ea38cb38c894cc011a2fc282d8d7a66ba0dcff4bf149ce4e19d20313809",
+          "size": 711
+        }
+      ]
+    },
+    {
+      "id": "lucide",
+      "kind": "icons",
+      "version": 1,
+      "name": "Lucide",
+      "author": "Lucide Contributors",
+      "license": "ISC",
+      "source": "https://lucide.dev",
+      "description": "Kanso's own icons, from Lucide: the look Kanso has without an icon theme.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/lucide.tar.gz",
+        "sha256": "f9550eb4671704f81f615d41bdf1b64e1779a5a4e1e915c3be67da8a09d46125",
+        "size": 2010
+      },
+      "preview": []
+    },
+    {
+      "id": "material-dark",
+      "kind": "color",
+      "family": "material",
+      "version": 1,
+      "name": "Material Theme",
+      "appearance": "dark",
+      "author": "Mattia Astorino",
+      "license": "Apache-2.0",
+      "source": "https://github.com/material-theme/vsc-material-theme",
+      "description": "Material Theme's dark: a slate page in Material's blues and greens.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "material-dark.json",
+        "sha256": "8cfb2c218172f6a3470c556e02c380de2d169726b29c3cd0b08019c5036a0a9a",
+        "size": 1839
+      },
+      "colors": {
+        "editor": "#263238",
+        "text": "#EEFFFF",
+        "accent": "#82AAFF",
+        "sidebar": "#263238",
+        "list": "#263238"
+      }
+    },
+    {
+      "id": "material-icon-theme",
+      "kind": "icons",
+      "version": 1,
+      "name": "Material Icon Theme",
+      "author": "Zed Industries",
+      "license": "MIT",
+      "source": "https://github.com/zed-extensions/material-icon-theme",
+      "description": "The Material Icon Theme project's icons, from Zed's extension.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/material-icon-theme.tar.gz",
+        "sha256": "e452926164c569b4823ac80a2358821adf9e039a44d64c1a32ff7394f367fe19",
+        "size": 6736
+      },
+      "preview": [
+        {
+          "path": "icon-themes/material-icon-theme/icons/audio.svg",
+          "sha256": "d4dc1adb8cb99055cb8ad0c2428d6d73ebd94435b575084af1b2e0d1f82f6cf2",
+          "size": 185
+        },
+        {
+          "path": "icon-themes/material-icon-theme/icons/folder-docs.svg",
+          "sha256": "71bec357e64761462d18b66fa9c6095fe390ab29e1d5977c1f89e3dbd3e6fca3",
+          "size": 388
+        },
+        {
+          "path": "icon-themes/material-icon-theme/icons/folder-open.svg",
+          "sha256": "532456ac9460902d6f7f9ffdb015c09a3b8d87c2493504948f9d16a2f66e22b7",
+          "size": 272
+        },
+        {
+          "path": "icon-themes/material-icon-theme/icons/folder.svg",
+          "sha256": "5b8e272caf788ff0e9b6afee97601a9f9c7ad9d381e8d7b1e63ee78368ea1332",
+          "size": 224
+        },
+        {
+          "path": "icon-themes/material-icon-theme/icons/image.svg",
+          "sha256": "838e1953a3a2ebf5c6a06b662892ba17e1c605c4379a77c61737639e51fb4f0a",
+          "size": 346
+        },
+        {
+          "path": "icon-themes/material-icon-theme/icons/pdf.svg",
+          "sha256": "c14c66a3914b894da40778a6dcd00f0daa134426521aaddbd8ccea86ba4f5ffc",
+          "size": 976
+        }
+      ]
+    },
+    {
+      "id": "material-lighter",
+      "kind": "color",
+      "family": "material-lighter",
+      "version": 1,
+      "name": "Material Theme Lighter",
+      "appearance": "light",
+      "author": "Mattia Astorino",
+      "license": "Apache-2.0",
+      "source": "https://github.com/material-theme/vsc-material-theme",
+      "description": "Material Theme's light side: a bright page with cool, muted accents.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "material-lighter.json",
+        "sha256": "df310e5446ad36002b13b3961ed2288be5a3244942b8c0d9f2fa3521a83cd1b7",
+        "size": 2033
+      },
+      "colors": {
+        "editor": "#FAFAFA",
+        "text": "#5B686E",
+        "accent": "#6182B8",
+        "sidebar": "#FDFDFD",
+        "list": "#FDFDFD"
+      }
+    },
+    {
+      "id": "material-palenight",
+      "kind": "color",
+      "family": "material-palenight",
+      "version": 1,
+      "name": "Material Theme Palenight",
+      "appearance": "dark",
+      "author": "Mattia Astorino",
+      "license": "Apache-2.0",
+      "source": "https://github.com/material-theme/vsc-material-theme",
+      "description": "Material Theme's Palenight: a purple-blue dusk in soft pastels.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "material-palenight.json",
+        "sha256": "e3b99851beffe90e650b71f467f578b18303f592859c44fe4409cd53e0adb3c3",
+        "size": 1905
+      },
+      "colors": {
+        "editor": "#292D3E",
+        "text": "#BABED8",
+        "accent": "#82AAFF",
+        "sidebar": "#292D3E",
+        "list": "#292D3E"
+      }
+    },
+    {
+      "id": "min-dark",
+      "kind": "color",
+      "family": "min",
+      "version": 1,
+      "name": "Min Dark",
+      "appearance": "dark",
+      "author": "phibr0",
+      "license": "MIT",
+      "source": "https://github.com/phibr0/zed-min-theme",
+      "description": "Min Dark: almost nothing but text, on a quiet near-black page.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "min-dark.json",
+        "sha256": "99027434ebf1333bf784fe0b217580efe67f9eac99eaed9e6559c586c8b4f5e1",
+        "size": 1975
+      },
+      "colors": {
+        "editor": "#1A1A1A",
+        "text": "#999999",
+        "accent": "#79B8FF",
+        "sidebar": "#141414",
+        "list": "#141414"
+      }
+    },
+    {
+      "id": "min-icons",
+      "kind": "icons",
+      "version": 1,
+      "name": "Min Icons",
+      "author": "Phillip Bronzel",
+      "license": "MIT",
+      "source": "https://github.com/phibr0/zed-min-theme",
+      "description": "Artem Laman's Chalice icons, from Phillip Bronzel's Min theme for Zed.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/min-icons.tar.gz",
+        "sha256": "64409ca90243729d09ace5a55512a9474117dcb5e7edc27217a67cd07f8a0fab",
+        "size": 2276
+      },
+      "preview": [
+        {
+          "path": "icon-themes/min-icons/icons/file-image.svg",
+          "sha256": "df38af9d4cd215633231751601e3962b48655230285d4e9badb9f5b2db53ef25",
+          "size": 362
+        },
+        {
+          "path": "icon-themes/min-icons/icons/file.svg",
+          "sha256": "b0360b3fd34cf31a8cb8390c921c9efe2b9688b14707514c96b003505e8c42c4",
+          "size": 302
+        },
+        {
+          "path": "icon-themes/min-icons/icons/folder-closed.svg",
+          "sha256": "4563668bd19ad75abb8429e51cff650c92d03548a8dbf038357490066048994f",
+          "size": 414
+        },
+        {
+          "path": "icon-themes/min-icons/icons/folder-open.svg",
+          "sha256": "963136836a2e2f25de7cd016eaa6be6b8ce3c04f3a97770b1ae9063b509e0492",
+          "size": 447
+        }
+      ]
+    },
+    {
+      "id": "min-light",
+      "kind": "color",
+      "family": "min",
+      "version": 1,
+      "name": "Min Light",
+      "appearance": "light",
+      "author": "phibr0",
+      "license": "MIT",
+      "source": "https://github.com/phibr0/zed-min-theme",
+      "description": "Min Light: almost nothing but text, on a soft white page.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "min-light.json",
+        "sha256": "76766eb10fa9d74477986fbe4bd1ab6689f694efe82bd7d44ccf26ae3d8df760",
+        "size": 1948
+      },
+      "colors": {
+        "editor": "#FFFFFF",
+        "text": "#606060",
+        "accent": "#1976D2",
+        "sidebar": "#FBFBFB",
+        "list": "#FBFBFB"
+      }
+    },
+    {
+      "id": "monospace-icons",
+      "kind": "icons",
+      "version": 1,
+      "name": "Monospace Icons",
+      "author": "Isheunopa Ralph Mhonde",
+      "license": "Apache-2.0",
+      "source": "https://github.com/irmhonde/monospace-icon-theme",
+      "description": "Firebase Studio's Monospace icons, from Isheunopa Ralph Mhonde's Zed extension.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/monospace-icons.tar.gz",
+        "sha256": "21ad1f8a080888ca9ffddb55d1010b934ff3bb0941c9d87a8f673ce5eaad86ca",
+        "size": 8421
+      },
+      "preview": [
+        {
+          "path": "icon-themes/monospace-icons/icons/audio.svg",
+          "sha256": "c6bc21488d5d5fa9cd988bac410c741d519f8778c1e48a64ae3e4ce003dbce57",
+          "size": 275
+        },
+        {
+          "path": "icon-themes/monospace-icons/icons/folder_light.svg",
+          "sha256": "e75db4998a66522d45a201416eea100d51641d4caa4894f050479693a36843c5",
+          "size": 721
+        },
+        {
+          "path": "icon-themes/monospace-icons/icons/folder_light_expanded.svg",
+          "sha256": "8dd9b132aab291fb0422e03e881805dc8ccc6647e56965ea315effd36530703d",
+          "size": 1218
+        },
+        {
+          "path": "icon-themes/monospace-icons/icons/image_light.svg",
+          "sha256": "fc0e4c68aac23365db4d7492fded81d18d26e3a2c6500dd707c1402e9ea62c64",
+          "size": 1604
+        },
+        {
+          "path": "icon-themes/monospace-icons/icons/pdf_light.svg",
+          "sha256": "742950bab6b94a255f285dc439bc748647724d07d0e92f62ad972e5d4b586848",
+          "size": 4693
+        }
+      ]
+    },
+    {
+      "id": "moonlight",
+      "kind": "color",
+      "family": "moonlight",
+      "version": 1,
+      "name": "Moonlight",
+      "appearance": "dark",
+      "author": "Rick van Assen",
+      "license": "MIT",
+      "source": "https://github.com/atomiks/moonlight-vscode-theme",
+      "description": "Moonlight: a quiet blue night with cool, luminous accents.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "moonlight.json",
+        "sha256": "d9abea1521c0eb3d6d12c9793e1918ee7dd81dac98324b401c027101655551ca",
+        "size": 2051
+      },
+      "colors": {
+        "editor": "#212337",
+        "text": "#C8D3F5",
+        "accent": "#82AAFF",
+        "sidebar": "#1E2030",
+        "list": "#1E2030"
+      }
+    },
+    {
+      "id": "night-owl-dark",
+      "kind": "color",
+      "family": "night-owl",
+      "version": 1,
+      "name": "Night Owl Dark",
+      "appearance": "dark",
+      "author": "Sarah Drasner",
+      "license": "MIT",
+      "source": "https://github.com/sdras/night-owl-vscode-theme",
+      "description": "Sarah Drasner's Night Owl: a deep blue night for late reading, with soft, high-contrast text.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "night-owl-dark.json",
+        "sha256": "b689d65cc51ac7029cbeca0fa90f17f7045ab2b59e0aef5e2e56d63c28cc560d",
+        "size": 2776
+      },
+      "colors": {
+        "editor": "#011627",
+        "text": "#D6DEEB",
+        "accent": "#82AAFF",
+        "sidebar": "#011627",
+        "list": "#011627"
+      }
+    },
+    {
+      "id": "night-owl-light",
+      "kind": "color",
+      "family": "night-owl",
+      "version": 1,
+      "name": "Night Owl Light",
+      "appearance": "light",
+      "author": "Sarah Drasner",
+      "license": "MIT",
+      "source": "https://github.com/sdras/night-owl-vscode-theme",
+      "description": "The light half of Night Owl: a near-white page in cool blue and teal.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "night-owl-light.json",
+        "sha256": "230b3587e1a96a5b5aee21971ccf5cca3e8dd08fcdc328eb961795a6e5167d8f",
+        "size": 2790
+      },
+      "colors": {
+        "editor": "#FBFBFB",
+        "text": "#403F53",
+        "accent": "#2AA298",
+        "sidebar": "#F0F0F0",
+        "list": "#F0F0F0"
+      }
+    },
+    {
+      "id": "nightfox",
+      "kind": "color",
+      "family": "nightfox",
+      "version": 1,
+      "name": "Nightfox",
+      "appearance": "dark",
+      "author": "EdenEast",
+      "license": "MIT",
+      "source": "https://github.com/EdenEast/nightfox.nvim",
+      "description": "Nightfox: a dusky blue page, calm and low in saturation.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "nightfox.json",
+        "sha256": "a44a02c06e7f15f9f93765d699c4e55f7238149ff7e0a1582cf8f1ea17a5c2a0",
+        "size": 1632
+      },
+      "colors": {
+        "editor": "#192330",
+        "text": "#CDCECF",
+        "accent": "#7AD4D6",
+        "sidebar": "#192330",
+        "list": "#192330"
+      }
+    },
+    {
+      "id": "nord",
+      "kind": "color",
+      "family": "nord",
+      "version": 1,
+      "name": "Nord",
+      "appearance": "dark",
+      "author": "Arctic Ice Studio & Sven Greb",
+      "license": "MIT",
+      "source": "https://github.com/nordtheme/nord",
+      "description": "Arctic Ice Studio's Nord: Polar Night panes with Frost blues and Aurora accents.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "nord.json",
+        "sha256": "a42adb5dbd6ef42ec331cba65fc28f816cc988c97750a2e250d50e444c798e03",
+        "size": 2635
+      },
+      "colors": {
+        "editor": "#2E3440",
+        "text": "#D8DEE9",
+        "accent": "#88C0D0",
+        "sidebar": "#21252E",
+        "list": "#282E38"
+      }
+    },
+    {
+      "id": "nordfox",
+      "kind": "color",
+      "family": "nordfox",
+      "version": 1,
+      "name": "Nordfox",
+      "appearance": "dark",
+      "author": "EdenEast",
+      "license": "MIT",
+      "source": "https://github.com/EdenEast/nightfox.nvim",
+      "description": "Nordfox: the cool blue-grey of Nord, through Nightfox's eyes.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "nordfox.json",
+        "sha256": "34ad397f845127bec69c74493f990bf586c987bf1676e92236ea650cf623bd1c",
+        "size": 1696
+      },
+      "colors": {
+        "editor": "#2E3440",
+        "text": "#CDCECF",
+        "accent": "#7AD4D6",
+        "sidebar": "#2E3440",
+        "list": "#2E3440"
+      }
+    },
+    {
+      "id": "one-dark-vibrant",
+      "kind": "color",
+      "family": "one-dark-vibrant",
+      "version": 1,
+      "name": "One Dark Vibrant",
+      "appearance": "dark",
+      "author": "Julian Graf",
+      "license": "MIT",
+      "source": "https://github.com/julian-graf/zed-one-dark-vibrant",
+      "description": "A brighter One Dark: near-black, with vivid cyan and warm accents.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "one-dark-vibrant.json",
+        "sha256": "d6491632dadf3bde955da591d224742e6bab09dbc6775c5299dfc73bbf89bc75",
+        "size": 2214
+      },
+      "colors": {
+        "editor": "#121212",
+        "text": "#E0E0E0",
+        "accent": "#52E5FF",
+        "sidebar": "#18181D",
+        "list": "#121212"
+      }
+    },
+    {
+      "id": "oxocarbon-dark",
+      "kind": "color",
+      "family": "oxocarbon",
+      "version": 1,
+      "name": "Oxocarbon Dark",
+      "appearance": "dark",
+      "author": "nyoom-engineering",
+      "license": "CC0-1.0",
+      "source": "https://github.com/nyoom-engineering/oxocarbon.nvim",
+      "description": "Oxocarbon's dark: IBM Carbon's graphite and electric blue, pared back.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "oxocarbon-dark.json",
+        "sha256": "4181d1e0b17eae540cf72cd38c58918f7b5ea4e007cb4e2586ca2d498b099227",
+        "size": 2176
+      },
+      "colors": {
+        "editor": "#161616",
+        "text": "#F2F4F8",
+        "accent": "#78A9FF",
+        "sidebar": "#161616",
+        "list": "#161616"
+      }
+    },
+    {
+      "id": "oxocarbon-light",
+      "kind": "color",
+      "family": "oxocarbon",
+      "version": 1,
+      "name": "Oxocarbon Light",
+      "appearance": "light",
+      "author": "nyoom-engineering",
+      "license": "CC0-1.0",
+      "source": "https://github.com/nyoom-engineering/oxocarbon.nvim",
+      "description": "Oxocarbon in daylight: white paper and Carbon's sharp violet.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "oxocarbon-light.json",
+        "sha256": "1b7fd741422d7df31fe50ae30ad52a8676449621945806c39262564714640dc0",
+        "size": 2196
+      },
+      "colors": {
+        "editor": "#FFFFFF",
+        "text": "#161616",
+        "accent": "#8A3FFC",
+        "sidebar": "#FFFFFF",
+        "list": "#F4F4F4"
+      }
+    },
+    {
+      "id": "phosphor",
+      "kind": "icons",
+      "version": 2,
+      "name": "Phosphor",
+      "author": "Phosphor Icons (Helena Zhang and Tobias Fried)",
+      "license": "MIT",
+      "source": "https://phosphoricons.com",
+      "description": "Phosphor's regular icons: rounder and a little heavier than Kanso's own, for every icon Kanso draws.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/phosphor.tar.gz",
+        "sha256": "b025104cf43525480be2a7947479b9348d420148958302abbac1f49dd5fe2c5d",
+        "size": 77212
+      },
+      "preview": [
+        {
+          "path": "icon-themes/phosphor/icons/address-book.svg",
+          "sha256": "1cbd1381d1b51b27a1fe90de40b1ba16c21dec53b8dbfa9cbe59c66231c6f59a",
+          "size": 501
+        },
+        {
+          "path": "icon-themes/phosphor/icons/airplane.svg",
+          "sha256": "ccabf03a368441185fe987d392e6a7138710ddccd82383e918544ecf676dc6d3",
+          "size": 688
+        },
+        {
+          "path": "icon-themes/phosphor/icons/alarm.svg",
+          "sha256": "ce7c66246549a31edbb0657e04dea58b7806361ba183613417d490ba3491bbea",
+          "size": 420
+        },
+        {
+          "path": "icon-themes/phosphor/icons/alien.svg",
+          "sha256": "27cd0f35a5d65b77c07723e68578a80f5cefaa11c2bc69299c4cf0a0fb5b758b",
+          "size": 734
+        },
+        {
+          "path": "icon-themes/phosphor/icons/anchor.svg",
+          "sha256": "13966a7ee12ef1564cf4efd6809cd3c2fea63fa67999739379e10460a6e82fed",
+          "size": 547
+        },
+        {
+          "path": "icon-themes/phosphor/icons/apple-logo.svg",
+          "sha256": "e4e556f87cc8241ea68b339fc81b496f0721849234f9b19d0c6e5d4279a43eec",
+          "size": 920
+        },
+        {
+          "path": "icon-themes/phosphor/icons/archive.svg",
+          "sha256": "01e009c66bb1392110a7406517ff5459d9e21b3dcf0ecfbff88dbdf3a6de84b2",
+          "size": 340
+        },
+        {
+          "path": "icon-themes/phosphor/icons/arrow-circle-down.svg",
+          "sha256": "0fff8411da601fafa5bf741269196191afddeb27e17b21434a6200cea373082c",
+          "size": 363
+        }
+      ]
+    },
+    {
+      "id": "phosphor-icons-theme",
+      "kind": "icons",
+      "version": 1,
+      "name": "Phosphor Icons Theme",
+      "author": "Theo Luciano",
+      "license": "MIT",
+      "source": "https://github.com/theoluciano/phosphor-icons-theme",
+      "description": "Phosphor's icons as Theo Luciano's Zed extension picks them.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/phosphor-icons-theme.tar.gz",
+        "sha256": "10fa17217de280d82f776f06028a3d9d52a12a972e2ceaf89c69b102f2dc5a4c",
+        "size": 3135
+      },
+      "preview": [
+        {
+          "path": "icon-themes/phosphor-icons-theme/icons/audio.svg",
+          "sha256": "b110ce7b267ff2d4c727054dfcf81994477dbc052c78fd1541f51b65483acbcc",
+          "size": 673
+        },
+        {
+          "path": "icon-themes/phosphor-icons-theme/icons/caret-down.svg",
+          "sha256": "201f312337b4f0b9958e5101a7ae11812f688ce12fa6f9c37ab179ec1e3b64e5",
+          "size": 233
+        },
+        {
+          "path": "icon-themes/phosphor-icons-theme/icons/caret-right.svg",
+          "sha256": "33de411d04fde24412a6efdb65695b0a659e49d1748eb20f5f6629712ac661b8",
+          "size": 238
+        },
+        {
+          "path": "icon-themes/phosphor-icons-theme/icons/document.svg",
+          "sha256": "d83acc56ec54af20a1e432844017627d973b8e2454226d103de7649f0fb04cca",
+          "size": 317
+        },
+        {
+          "path": "icon-themes/phosphor-icons-theme/icons/folder-closed.svg",
+          "sha256": "40e0c899f5a97a24e8af872847d2cf715d0c9f5d613853bc8e8256d70a9ef4e0",
+          "size": 330
+        },
+        {
+          "path": "icon-themes/phosphor-icons-theme/icons/folder-open.svg",
+          "sha256": "7b70e04670378fb2d99cf9e7e3b75d2d0a36e6d7fc49dc5da10bb746f1af94c8",
+          "size": 448
+        },
+        {
+          "path": "icon-themes/phosphor-icons-theme/icons/image.svg",
+          "sha256": "4876148136debf8f8c5fe682e61ab22e01b62f1e76533371faecc72d49cf70c0",
+          "size": 511
+        },
+        {
+          "path": "icon-themes/phosphor-icons-theme/icons/pdf.svg",
+          "sha256": "7f76200ea297d6b856aa5500a2857cfb78cce6d6d3b75ead73a27a77274d1aef",
+          "size": 664
+        }
+      ]
+    },
+    {
+      "id": "rose-pine",
+      "kind": "color",
+      "family": "rose-pine",
+      "version": 1,
+      "name": "Rosé Pine",
+      "appearance": "dark",
+      "author": "Rosé Pine",
+      "license": "MIT",
+      "source": "https://github.com/rose-pine/rose-pine-theme",
+      "description": "Rosé Pine: all natural pine, faux fur and a bit of soho vibes.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "rose-pine.json",
+        "sha256": "eadb1caacabd28df2d4a5c3d666e2668cbd315ace0b2c1427d690c46dc79f209",
+        "size": 2612
+      },
+      "colors": {
+        "editor": "#191724",
+        "text": "#E0DEF4",
+        "accent": "#EBBCBA",
+        "sidebar": "#16141F",
+        "list": "#181622"
+      }
+    },
+    {
+      "id": "rose-pine-dawn",
+      "kind": "color",
+      "family": "rose-pine-dawn",
+      "version": 1,
+      "name": "Rosé Pine Dawn",
+      "appearance": "light",
+      "author": "Rosé Pine",
+      "license": "MIT",
+      "source": "https://github.com/rose-pine/rose-pine-theme",
+      "description": "Rosé Pine Dawn: the light variant, a soft morning of rose and pine.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "rose-pine-dawn.json",
+        "sha256": "a0730f44458e4a3d34d31bce58e1069563357555783c7694694a597890d02595",
+        "size": 2588
+      },
+      "colors": {
+        "editor": "#FAF4ED",
+        "text": "#464261",
+        "accent": "#D7827E",
+        "sidebar": "#F2E9E1",
+        "list": "#F8F0E7"
+      }
+    },
+    {
+      "id": "rose-pine-moon",
+      "kind": "color",
+      "family": "rose-pine-moon",
+      "version": 1,
+      "name": "Rosé Pine Moon",
+      "appearance": "dark",
+      "author": "Rosé Pine",
+      "license": "MIT",
+      "source": "https://github.com/rose-pine/rose-pine-theme",
+      "description": "Rosé Pine Moon: the palette's night, a violet page in soft rose and foam.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "rose-pine-moon.json",
+        "sha256": "8c57830eaee39e239fb4ffa3a4824fcf0943ac2ef71c98f1d392862c57888d00",
+        "size": 2218
+      },
+      "colors": {
+        "editor": "#232136",
+        "text": "#E0DEF4",
+        "accent": "#9CCFD8",
+        "sidebar": "#232136",
+        "list": "#2A273F"
+      }
+    },
+    {
+      "id": "serendipity-icons",
+      "kind": "icons",
+      "version": 1,
+      "name": "Serendipity Icons",
+      "author": "Nguyen Dang Vinh",
+      "license": "MIT",
+      "source": "https://github.com/meocoder31099/Serendipity-Icon-Theme-Zed",
+      "description": "A tiny set of file and folder icons, from the Zed extension.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/serendipity-icons.tar.gz",
+        "sha256": "445526b654f3d2f66d7ca6a598fa0a99d8e47e7396239e52f8c8539862c58619",
+        "size": 1894
+      },
+      "preview": [
+        {
+          "path": "icon-themes/serendipity-icons/icons/file.svg",
+          "sha256": "56482fdcee6c74d1c9384f0c0edb2a15107c62740b1d6462c0493951b00955dc",
+          "size": 220
+        },
+        {
+          "path": "icon-themes/serendipity-icons/icons/folder-open.svg",
+          "sha256": "c0e1515b66d7a82dbd0043a2f3cd4856e512986c4400d175be06d906caed2ccc",
+          "size": 425
+        },
+        {
+          "path": "icon-themes/serendipity-icons/icons/folder.svg",
+          "sha256": "9b2bdff8ca10639e93d270360286921502922475f68e28d7a257730cab0fc58b",
+          "size": 413
+        }
+      ]
+    },
+    {
+      "id": "solarized-dark",
+      "kind": "color",
+      "family": "solarized",
+      "version": 1,
+      "name": "Solarized Dark",
+      "appearance": "dark",
+      "author": "Ethan Schoonover",
+      "license": "MIT",
+      "source": "https://github.com/altercation/solarized",
+      "description": "Ethan Schoonover's Solarized, dark: base03 paper with the sixteen precise accents.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "solarized-dark.json",
+        "sha256": "9e7349fa4505e0846bb6a10afae554cc1f92326a8ce3c8fd9d9693dac7d2830e",
+        "size": 2637
+      },
+      "colors": {
+        "editor": "#002B36",
+        "text": "#93A1A1",
+        "accent": "#268BD2",
+        "sidebar": "#00212B",
+        "list": "#002630"
+      }
+    },
+    {
+      "id": "solarized-light",
+      "kind": "color",
+      "family": "solarized",
+      "version": 1,
+      "name": "Solarized Light",
+      "appearance": "light",
+      "author": "Ethan Schoonover",
+      "license": "MIT",
+      "source": "https://github.com/altercation/solarized",
+      "description": "Ethan Schoonover's Solarized, light: base3 paper with the sixteen precise accents.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "solarized-light.json",
+        "sha256": "1750214ef8c7cb4b1dee3064fd8b654e0639a1506fa8dfeaeb7c2b640048ae71",
+        "size": 2604
+      },
+      "colors": {
+        "editor": "#FDF6E3",
+        "text": "#4E676F",
+        "accent": "#268BD2",
+        "sidebar": "#EEE8D5",
+        "list": "#F6EFDC"
+      }
+    },
+    {
+      "id": "symbols",
+      "kind": "icons",
+      "version": 1,
+      "name": "Symbols",
+      "author": "Joan Garcia",
+      "license": "MIT",
+      "source": "https://github.com/joangarciaa-dev/zed-symbols",
+      "description": "Miguel Solorio's Symbols, from Joan Garcia's Zed extension.",
+      "min_kanso": "0.8.4",
+      "bundle": {
+        "path": "gallery/icon-themes/symbols.tar.gz",
+        "sha256": "05918f30f8962aba4634e8a450c9471407e7af59025ad937e37436157613bb3d",
+        "size": 5439
+      },
+      "preview": [
+        {
+          "path": "icon-themes/symbols/icons/files/audio.svg",
+          "sha256": "d70e3b6ead381f409e48558e94942e5d7e3a927d69761482a1c13ee839ec7d1f",
+          "size": 424
+        },
+        {
+          "path": "icon-themes/symbols/icons/files/image.svg",
+          "sha256": "716ccc1552a29a30a8c8a8ebc36da0b86d4d8a2afe402d1a78302387db2baf21",
+          "size": 403
+        },
+        {
+          "path": "icon-themes/symbols/icons/files/pdf.svg",
+          "sha256": "a9b51ad7c0e02b0079745066555ab037b7488361806c5702c3ada3bcc882dddc",
+          "size": 7623
+        },
+        {
+          "path": "icon-themes/symbols/icons/folders/folder-open.svg",
+          "sha256": "1cde421cff71cb409698de3fe6e0ebd9102db88d4f54033e30aab50dbd59fc4b",
+          "size": 407
+        },
+        {
+          "path": "icon-themes/symbols/icons/folders/folder.svg",
+          "sha256": "cbac3e926822cebd097ee63dd6be9cde9ef3ab4d66dc2823532f4b078c74c161",
+          "size": 392
+        }
+      ]
+    },
+    {
+      "id": "synthwave-84",
+      "kind": "color",
+      "family": "synthwave-84",
+      "version": 1,
+      "name": "Synthwave '84",
+      "appearance": "dark",
+      "author": "Robb Owen",
+      "license": "MIT",
+      "source": "https://github.com/robb0wen/synthwave-vscode",
+      "description": "Synthwave '84: neon magenta and cyan over a violet night.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "synthwave-84.json",
+        "sha256": "9a95812bb1186e27d73f3fb731941dba72af403c9be6c221f1d95b19c4da661a",
+        "size": 2255
+      },
+      "colors": {
+        "editor": "#262335",
+        "text": "#FFFFFF",
+        "accent": "#FF7EDB",
+        "sidebar": "#241B2F",
+        "list": "#262335"
+      }
+    },
+    {
+      "id": "tokyo-night",
+      "kind": "color",
+      "family": "tokyo-night",
+      "version": 1,
+      "name": "Tokyo Night",
+      "appearance": "dark",
+      "author": "enkia",
+      "license": "MIT",
+      "source": "https://github.com/enkia/tokyo-night-vscode-theme",
+      "description": "Enkia's Tokyo Night: the lights of downtown Tokyo at night, in blues and purples.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "tokyo-night.json",
+        "sha256": "b6647bf3566753dcfbf0b8b2517cab5f56a15057d9864500f20b679c4c57b186",
+        "size": 2687
+      },
+      "colors": {
+        "editor": "#1A1B26",
+        "text": "#A9B1D6",
+        "accent": "#7AA2F7",
+        "sidebar": "#16161E",
+        "list": "#181822"
+      }
+    },
+    {
+      "id": "tokyo-night-light",
+      "kind": "color",
+      "family": "tokyo-night",
+      "version": 1,
+      "name": "Tokyo Night Light",
+      "appearance": "light",
+      "author": "enkia",
+      "license": "MIT",
+      "source": "https://github.com/enkia/tokyo-night-vscode-theme",
+      "description": "Tokyo Night by day: cool grey paper and the city's blues.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "tokyo-night-light.json",
+        "sha256": "27a23e6e2850d0a50dde3e84389d0cddd2727acf12053dd4f6966393316eab80",
+        "size": 1880
+      },
+      "colors": {
+        "editor": "#D5D6DB",
+        "text": "#343B58",
+        "accent": "#0F4B6E",
+        "sidebar": "#CBCCD1",
+        "list": "#CBCCD1"
+      }
+    },
+    {
+      "id": "tokyo-night-storm",
+      "kind": "color",
+      "family": "tokyo-night-storm",
+      "version": 1,
+      "name": "Tokyo Night Storm",
+      "appearance": "dark",
+      "author": "enkia",
+      "license": "MIT",
+      "source": "https://github.com/enkia/tokyo-night-vscode-theme",
+      "description": "Tokyo Night Storm: the stormy blue-grey of Tokyo Night, between night and moon.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "tokyo-night-storm.json",
+        "sha256": "50667a3c3385ce1ef7e34c7bbe86d05e53a86b7b0b925b62f97bf041b3c7babd",
+        "size": 1957
+      },
+      "colors": {
+        "editor": "#24283B",
+        "text": "#A9B1D6",
+        "accent": "#7DCFFF",
+        "sidebar": "#1F2335",
+        "list": "#1F2335"
+      }
+    },
+    {
+      "id": "tomorrow",
+      "kind": "color",
+      "family": "tomorrow",
+      "version": 1,
+      "name": "Tomorrow",
+      "appearance": "light",
+      "author": "Chris Kempson",
+      "license": "MIT",
+      "source": "https://github.com/chriskempson/tomorrow-theme",
+      "description": "Tomorrow in daylight: a clean white page with soft, classic accents.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "tomorrow.json",
+        "sha256": "ff18c1f45f63b226fd31c0bab2eae5a6588ac2d6e15c9cf164b401cb19d96480",
+        "size": 1966
+      },
+      "colors": {
+        "editor": "#FFFFFF",
+        "text": "#60605F",
+        "accent": "#5286BC",
+        "sidebar": "#F2F2F2",
+        "list": "#F2F2F2"
+      }
+    },
+    {
+      "id": "tomorrow-night",
+      "kind": "color",
+      "family": "tomorrow-night",
+      "version": 1,
+      "name": "Tomorrow Night",
+      "appearance": "dark",
+      "author": "Chris Kempson",
+      "license": "MIT",
+      "source": "https://github.com/chriskempson/tomorrow-theme",
+      "description": "Tomorrow Night: a soft charcoal page and muted, familiar accents.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "tomorrow-night.json",
+        "sha256": "fdfc929fee8817f38043d8a4c274e030e9d0fe8dc1e9ad7a2ce0ef0c08611b3a",
+        "size": 1497
+      },
+      "colors": {
+        "editor": "#1E1F21",
+        "text": "#C5C8C6",
+        "accent": "#F0C674",
+        "sidebar": "#17181A",
+        "list": "#17181A"
+      }
+    },
+    {
+      "id": "tomorrow-night-burns",
+      "kind": "color",
+      "family": "tomorrow-night-burns",
+      "version": 1,
+      "name": "Tomorrow Night Burns",
+      "appearance": "dark",
+      "author": "Alistair Smith",
+      "license": "MIT",
+      "source": "https://github.com/alii/zed-tomorrow-night-burns",
+      "description": "Tomorrow Night Burns: near-black and ember-warm, a darker turn on Tomorrow.",
+      "min_kanso": "0.8.4",
+      "file": {
+        "path": "tomorrow-night-burns.json",
+        "sha256": "52785faf5deb54ca886fafc2aa40291cf9ee12db69621040b1dcc29c9caad96a",
+        "size": 1206
+      },
+      "colors": {
+        "editor": "#151515",
+        "text": "#A1B0B8",
+        "accent": "#D3494E",
+        "sidebar": "#0F0F0F",
+        "list": "#121212"
+      }
+    }
+  ],
+  "revoked": []
+}

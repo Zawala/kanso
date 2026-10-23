@@ -42,6 +42,8 @@ pub enum SanitizeError {
     DisallowedAttribute,
     #[error("it is nested too deeply")]
     TooDeep,
+    #[error("a <use> target contains another <use>")]
+    NestedUse,
     #[error("it has too many elements")]
     TooManyElements,
     #[error("it has a value Kanso won't draw")]
@@ -135,8 +137,15 @@ pub fn sanitize_svg(input: &[u8]) -> Result<Vec<u8>, SanitizeError> {
     reader.config_mut().check_end_names = true;
     reader.config_mut().expand_empty_elements = false;
 
+    // A `<use>` may point at a shape or a group, never at something that
+    // itself expands a `<use>`: that is how a tiny file becomes an
+    // unbounded expansion. The referenced ids are collected first so a
+    // target declared after the `use` is caught too.
+    let referenced = use_targets(text)?;
     let mut out = String::with_capacity(text.len());
     let mut stack: Vec<String> = Vec::new();
+    // Whether the element at the same index is a referenced `<use>` target.
+    let mut targets: Vec<bool> = Vec::new();
     let mut elements = 0usize;
     let mut saw_root = false;
     let mut root_closed = false;
@@ -166,6 +175,13 @@ pub fn sanitize_svg(input: &[u8]) -> Result<Vec<u8>, SanitizeError> {
                 elements += 1;
                 check_caps(elements, stack.len() + 1)?;
                 let name = element_name(&start)?;
+                let id = id_of(&start);
+                if name == "use"
+                    && (targets.iter().any(|target| *target)
+                        || is_referenced(&referenced, id.as_deref()))
+                {
+                    return Err(SanitizeError::NestedUse);
+                }
                 if stack.is_empty() {
                     if name != "svg" {
                         return Err(SanitizeError::Malformed);
@@ -177,6 +193,7 @@ pub fn sanitize_svg(input: &[u8]) -> Result<Vec<u8>, SanitizeError> {
                 out.push_str(&name);
                 out.push_str(&attributes);
                 out.push('>');
+                targets.push(is_referenced(&referenced, id.as_deref()));
                 stack.push(name);
             }
             Event::Empty(start) => {
@@ -186,6 +203,13 @@ pub fn sanitize_svg(input: &[u8]) -> Result<Vec<u8>, SanitizeError> {
                 elements += 1;
                 check_caps(elements, stack.len() + 1)?;
                 let name = element_name(&start)?;
+                let id = id_of(&start);
+                if name == "use"
+                    && (targets.iter().any(|target| *target)
+                        || is_referenced(&referenced, id.as_deref()))
+                {
+                    return Err(SanitizeError::NestedUse);
+                }
                 if stack.is_empty() {
                     if name != "svg" {
                         return Err(SanitizeError::Malformed);
@@ -207,6 +231,7 @@ pub fn sanitize_svg(input: &[u8]) -> Result<Vec<u8>, SanitizeError> {
                 if open != name {
                     return Err(SanitizeError::Malformed);
                 }
+                targets.pop();
                 out.push_str("</");
                 out.push_str(&name);
                 out.push('>');
@@ -238,6 +263,54 @@ pub fn sanitize_svg(input: &[u8]) -> Result<Vec<u8>, SanitizeError> {
         return Err(SanitizeError::Grew);
     }
     Ok(out.into_bytes())
+}
+
+/// The fragment ids a `<use>` element names, collected before the main pass.
+fn use_targets(text: &str) -> Result<BTreeSet<String>, SanitizeError> {
+    let mut reader = Reader::from_str(text);
+    reader.config_mut().check_end_names = true;
+    reader.config_mut().expand_empty_elements = false;
+    let mut targets = BTreeSet::new();
+    loop {
+        match reader.read_event().map_err(|_| SanitizeError::Malformed)? {
+            Event::Eof => break,
+            Event::Start(start) | Event::Empty(start) => {
+                if start.name().as_ref() == b"use"
+                    && let Some(href) = href_of(&start)
+                    && let Some(id) = href.strip_prefix('#')
+                    && !id.is_empty()
+                {
+                    targets.insert(id.to_owned());
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(targets)
+}
+
+fn is_referenced(referenced: &BTreeSet<String>, id: Option<&str>) -> bool {
+    id.is_some_and(|id| referenced.contains(id))
+}
+
+fn id_of(start: &BytesStart<'_>) -> Option<String> {
+    attribute_value(start, "id")
+}
+
+fn href_of(start: &BytesStart<'_>) -> Option<String> {
+    attribute_value(start, "href").or_else(|| attribute_value(start, "xlink:href"))
+}
+
+fn attribute_value(start: &BytesStart<'_>, wanted: &str) -> Option<String> {
+    for attribute in start.attributes().flatten() {
+        if attribute.key.as_ref() == wanted.as_bytes() {
+            return attribute
+                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                .ok()
+                .map(std::borrow::Cow::into_owned);
+        }
+    }
+    None
 }
 
 fn check_caps(elements: usize, depth: usize) -> Result<(), SanitizeError> {
@@ -779,6 +852,21 @@ mod tests {
             Err(SanitizeError::TooLarge)
         );
         assert_eq!(sanitize_svg(&[0xff, 0xfe]), Err(SanitizeError::NotUtf8));
+    }
+
+    #[test]
+    fn a_use_target_may_not_contain_another_use() {
+        // A target declared after the use is caught too.
+        let nested = r##"<svg><use href="#a"/><defs><g id="a"><use href="#b"/></g></defs></svg>"##;
+        assert_eq!(
+            sanitize_svg(nested.as_bytes()),
+            Err(SanitizeError::NestedUse)
+        );
+        let direct = r##"<svg><defs><path id="a" d="M0 0h4v4z"/></defs><use href="#a"/></svg>"##;
+        assert!(sanitize_svg(direct.as_bytes()).is_ok());
+        let group =
+            r##"<svg><defs><g id="a"><path d="M0 0h4v4z"/></g></defs><use href="#a"/></svg>"##;
+        assert!(sanitize_svg(group.as_bytes()).is_ok());
     }
 
     #[test]

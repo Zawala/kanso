@@ -19,6 +19,8 @@ pub enum NoteCommand {
     CopyLink,
     /// Copies Kanso's own link to the note, by ID.
     CopyKansoLink,
+    /// The note in a tab of the main window (`tabs`).
+    OpenInNewTab,
     /// The note in a window of its own (`note_window.rs`).
     OpenInNewWindow,
     SetStatus(NoteStatus),
@@ -59,6 +61,7 @@ pub fn items(
     .item(item("Duplicate", NoteCommand::Duplicate))
     .item(item("Copy Note Link", NoteCommand::CopyLink))
     .item(item("Copy Kanso Link", NoteCommand::CopyKansoLink))
+    .item(item("Open in New Tab", NoteCommand::OpenInNewTab))
     .item(item("Open in New Window", NoteCommand::OpenInNewWindow))
     .submenu("Status", window, cx, move |mut menu, _, _| {
         for option in NoteStatus::ALL {

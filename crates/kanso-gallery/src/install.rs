@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::index::{FileRef, Theme, sha256_hex};
 use crate::sanitize::sanitize_svg;
-use crate::{MAX_BUNDLE_BYTES, MAX_COLOR_BYTES, file_url};
+use crate::{MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRIES, MAX_COLOR_BYTES, file_url};
 
 #[derive(Debug, thiserror::Error)]
 pub enum InstallError {
@@ -155,9 +155,15 @@ pub fn install_icons_with(
     ));
     write_file(&archive, bundle)?;
     let unpacked = staging.join("unpacked");
-    if let Err(err) =
-        kanso_update::stage::extract(&archive, kanso_update::ArchiveKind::TarGz, &unpacked)
-    {
+    if let Err(err) = kanso_update::stage::extract_limited(
+        &archive,
+        kanso_update::ArchiveKind::TarGz,
+        &unpacked,
+        kanso_update::stage::ExtractLimits {
+            max_bytes: MAX_BUNDLE_BYTES,
+            max_entries: MAX_BUNDLE_ENTRIES,
+        },
+    ) {
         fs::remove_file(&archive).ok();
         kanso_update::stage::remove_entry(&unpacked).ok();
         return Err(match err {
@@ -205,7 +211,10 @@ pub fn remove_installed(root: &Path, kind: crate::index::Kind, id: &str) -> io::
     kanso_update::stage::remove_entry(&path)
 }
 
-fn check_pin(pin: &FileRef, bytes: &[u8], cap: u64) -> Result<(), InstallError> {
+/// Checks `bytes` against a signed pin and the cap for its kind. Public so
+/// the app can check a card's file before it is previewed or kept, rather
+/// than only when it is installed.
+pub fn check_pin(pin: &FileRef, bytes: &[u8], cap: u64) -> Result<(), InstallError> {
     if bytes.len() as u64 != pin.size || bytes.len() as u64 > cap {
         return Err(InstallError::SizeMismatch);
     }
@@ -510,6 +519,47 @@ mod tests {
             Err(InstallError::ChecksumMismatch)
         ));
         assert!(!root.join("themes/nord.json").exists());
+    }
+
+    fn bundle(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut tar = tar::Builder::new(flate2::write::GzEncoder::new(
+            Vec::new(),
+            flate2::Compression::default(),
+        ));
+        for (path, bytes) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            tar.append_data(&mut header, path, *bytes).unwrap();
+        }
+        tar.into_inner().unwrap().finish().unwrap()
+    }
+
+    #[test]
+    fn a_bundle_that_unpacks_too_large_is_refused_before_the_swap() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("gallery");
+        // A small gzip that unpacks past the gallery's 16 MiB total.
+        let huge = vec![0u8; (crate::MAX_BUNDLE_BYTES as usize) + 1];
+        let bytes = bundle(&[("nord/nord.json", &huge)]);
+        let theme = theme(&bytes, Kind::Icons);
+        let err = install_icons(&root, &theme, &bytes, IconCaps::default()).unwrap_err();
+        assert!(matches!(err, InstallError::BadBundle(_)), "{err}");
+        assert!(!root.join("icon-themes/nord").exists());
+    }
+
+    #[test]
+    fn a_bundle_with_too_many_entries_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("gallery");
+        let many: Vec<(&str, &[u8])> = (0..crate::MAX_BUNDLE_ENTRIES + 1)
+            .map(|_| ("nord/icons/a.svg", b"<svg/>".as_slice()))
+            .collect();
+        let bytes = bundle(&many);
+        let theme = theme(&bytes, Kind::Icons);
+        assert!(install_icons(&root, &theme, &bytes, IconCaps::default()).is_err());
+        assert!(!root.join("icon-themes/nord").exists());
     }
 
     #[test]

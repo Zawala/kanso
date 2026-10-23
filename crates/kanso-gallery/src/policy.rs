@@ -4,8 +4,8 @@
 //! over HTTPS, with no credentials and no explicit port. The app builds each
 //! URL itself from a validated relative path, so a signed index can never
 //! point it at another server. Redirects are followed by
-//! [`kanso_update::fetch::open`], which checks every hop against
-//! [`kanso_update::UrlPolicy`]; the gallery's checks run before that.
+//! [`kanso_update::fetch::open`], which checks every hop with this policy
+//! through [`kanso_update::fetch::FetchPolicy`].
 //!
 //! A debug build may point the index at `KANSO_GALLERY_INDEX=<url>` with
 //! loopback allowed, so the end-to-end test can serve a signed catalog. The
@@ -16,6 +16,15 @@ use url::{Host, Url};
 pub use kanso_update::PolicyError;
 
 use crate::{INDEX_URL, REPOSITORY};
+
+/// The gallery's rules are the updater's fetch-policy shape, so every
+/// redirect hop is checked with [`GalleryPolicy`] rather than the updater's
+/// narrower release-host list.
+impl kanso_update::fetch::FetchPolicy for GalleryPolicy {
+    fn check_fetch(&self, url: &str) -> Result<Url, PolicyError> {
+        GalleryPolicy::check_fetch(self, url)
+    }
+}
 
 /// The rules for one run of the gallery.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -215,6 +224,94 @@ mod tests {
         }
         assert!(P.check_source("http://example.com").is_err());
         assert!(P.check_source("https://example.com/a").is_ok());
+    }
+
+    #[test]
+    fn a_release_build_uses_the_gallery_policy_on_every_hop() {
+        // The updater's policy is deliberately not widened: it refuses the
+        // gallery's host, which is exactly why the gallery cannot borrow it.
+        let raw = crate::INDEX_URL;
+        assert!(P.check_fetch(raw).is_ok());
+        assert_eq!(
+            kanso_update::UrlPolicy::RELEASE.check_fetch(raw).err(),
+            Some(PolicyError::WrongHost)
+        );
+
+        // A second allowed hop is followed, and the third, off-repository
+        // address is refused after the transport is never asked for it.
+        let next = "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/gallery/next.json";
+        let evil = "https://evil.example/iamngoni/kanso-themes/main/next.json";
+        let transport = HopTransport::new(vec![
+            (raw, 302, Some(next)),
+            (next, 302, Some(evil)),
+            (evil, 200, None),
+        ]);
+        let err = kanso_update::fetch::get_bytes(&transport, &P, raw, crate::MAX_INDEX_BYTES)
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            kanso_update::FetchError::Policy(PolicyError::WrongHost)
+        ));
+        assert_eq!(transport.asked(), vec![raw.to_owned(), next.to_owned()]);
+    }
+
+    #[test]
+    fn a_third_hop_still_works_and_a_bad_path_is_refused() {
+        let a = crate::INDEX_URL;
+        let b = "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/gallery/a.json";
+        let c = "https://raw.githubusercontent.com/iamngoni/kanso-themes/main/gallery/b.json";
+        let t = HopTransport::new(vec![(a, 302, Some(b)), (b, 302, Some(c)), (c, 200, None)]);
+        let mut body = Vec::new();
+        use std::io::Read as _;
+        kanso_update::fetch::open(&t, &P, a)
+            .unwrap()
+            .read_to_end(&mut body)
+            .unwrap();
+        assert_eq!(t.asked().len(), 3);
+        assert_eq!(
+            P.check_fetch("https://raw.githubusercontent.com/other/kanso-themes/main/x")
+                .err(),
+            Some(PolicyError::WrongPath)
+        );
+    }
+
+    struct HopTransport {
+        answers: Vec<(&'static str, u16, Option<&'static str>)>,
+        asked: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl HopTransport {
+        fn new(answers: Vec<(&'static str, u16, Option<&'static str>)>) -> HopTransport {
+            HopTransport {
+                answers,
+                asked: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn asked(&self) -> Vec<String> {
+            self.asked.lock().unwrap().clone()
+        }
+    }
+
+    impl kanso_update::Transport for HopTransport {
+        fn get(
+            &self,
+            url: &str,
+        ) -> Result<kanso_update::fetch::Response, kanso_update::FetchError> {
+            self.asked.lock().unwrap().push(url.to_owned());
+            let (_, status, location) = self
+                .answers
+                .iter()
+                .find(|(known, _, _)| *known == url)
+                .ok_or(kanso_update::FetchError::NotFound)?;
+            Ok(kanso_update::fetch::Response {
+                status: *status,
+                location: location.map(str::to_owned),
+                rate_limit_remaining: None,
+                etag: None,
+                body: Box::new(std::io::empty()),
+            })
+        }
     }
 
     #[test]

@@ -43,6 +43,20 @@ pub struct Response {
     pub body: Box<dyn Read + Send>,
 }
 
+/// The address rules a fetch is held to. The updater checks release URLs with
+/// [`UrlPolicy`]; the gallery checks its own repository with
+/// [`kanso_gallery::GalleryPolicy`](https://docs.rs/kanso-gallery), and every
+/// redirect hop is checked with the same rule as the first address.
+pub trait FetchPolicy {
+    fn check_fetch(&self, url: &str) -> Result<url::Url, PolicyError>;
+}
+
+impl FetchPolicy for UrlPolicy {
+    fn check_fetch(&self, url: &str) -> Result<url::Url, PolicyError> {
+        UrlPolicy::check_fetch(self, url)
+    }
+}
+
 /// One HTTP GET without following redirects: [`HttpTransport`] in the app,
 /// fakes in tests.
 pub trait Transport: Send + Sync {
@@ -158,9 +172,9 @@ fn is_offline(err: &std::io::Error) -> bool {
 
 /// GETs `url`, following up to [`MAX_REDIRECTS`] redirects, each checked
 /// against `policy`, and returns the final answer's body.
-pub fn open(
+pub fn open<P: FetchPolicy + ?Sized>(
     transport: &dyn Transport,
-    policy: &UrlPolicy,
+    policy: &P,
     url: &str,
 ) -> Result<Box<dyn Read + Send>, FetchError> {
     let mut current = policy.check_fetch(url).map_err(FetchError::Policy)?;
@@ -191,9 +205,9 @@ pub fn open(
 
 /// GETs `url` (as [`open`]) and reads the whole body, refusing more than
 /// `cap` bytes.
-pub fn get_bytes(
+pub fn get_bytes<P: FetchPolicy + ?Sized>(
     transport: &dyn Transport,
-    policy: &UrlPolicy,
+    policy: &P,
     url: &str,
     cap: u64,
 ) -> Result<Vec<u8>, FetchError> {
@@ -220,9 +234,9 @@ pub enum Fetched {
 /// [`get_bytes`] with `If-None-Match`. A `304` (or `200` with the same body)
 /// leaves the cached copy in place; a redirect is followed as [`open`] does,
 /// but the header is only sent on the first request.
-pub fn get_bytes_if_none_match(
+pub fn get_bytes_if_none_match<P: FetchPolicy + ?Sized>(
     transport: &dyn Transport,
-    policy: &UrlPolicy,
+    policy: &P,
     url: &str,
     cap: u64,
     etag: Option<&str>,

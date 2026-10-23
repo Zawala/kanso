@@ -265,6 +265,8 @@ pub struct SourceNote {
     pub created: Option<i64>,
     pub updated: Option<i64>,
     pub pinned: bool,
+    /// The note's status, when the source names one Kanso knows.
+    pub status: Option<kanso_core::NoteStatus>,
     pub trashed: bool,
     /// Attachments carried in the note itself (Evernote's resources).
     pub embedded: Vec<Embedded>,
@@ -652,6 +654,9 @@ pub fn run(
             fields.insert("bookId".into(), book.into());
             fields.insert("tags".into(), tag_ids.into());
             fields.insert("pinned".into(), note.pinned.into());
+            if let Some(status) = note.status {
+                fields.insert("status".into(), status.as_str().into());
+            }
             if let Some(created) = note.created.or(note.updated) {
                 fields.insert("createdAt".into(), created.into());
             }

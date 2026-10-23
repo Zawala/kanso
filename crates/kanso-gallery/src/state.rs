@@ -189,10 +189,14 @@ impl Meta {
         }
     }
 
-    /// Records an index that passed every check. Pure.
+    /// Records an index that passed every check, keeping the highest serial
+    /// ever accepted. A lower serial can only arrive from a cache race, and
+    /// must never lower the floor. Pure.
     pub fn accept(&mut self, serial: u64, digest: String, etag: Option<String>) {
-        self.serial = serial;
-        self.index_sha256 = digest;
+        if serial >= self.serial {
+            self.serial = serial;
+            self.index_sha256 = digest;
+        }
         self.index_etag = etag;
     }
 }
@@ -317,6 +321,12 @@ mod tests {
         let path = dir.path().join("meta.json");
         meta.save(&path).unwrap();
         assert_eq!(Meta::load(&path), meta);
+
+        // A lower serial from a stale cache race never lowers the floor.
+        meta.accept(3, "bb".into(), Some("\"older\"".into()));
+        assert_eq!(meta.floor().serial, 7);
+        assert_eq!(meta.floor().digest, "aa");
+        assert_eq!(meta.index_etag.as_deref(), Some("\"older\""));
     }
 
     #[test]

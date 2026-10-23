@@ -11,6 +11,7 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::Context as _;
 use kanso_core::links::{FILE_LINK_PREFIX, LINK_SCHEME, NOTE_LINK_PREFIX};
 use kanso_core::model::TRASH_BOOK_ID;
+use kanso_core::properties::{self, Value};
 use kanso_core::{Book, Note, NoteStatus};
 use kanso_store::{SearchParams, Store};
 
@@ -135,7 +136,9 @@ pub fn rewrite_links(
 
 /// The note's text for an export: one YAML front-matter block, the user's
 /// own entries byte-for-byte, and Kanso's keys added only where the user
-/// hasn't written them.
+/// hasn't written them. When the user's front matter already has one of
+/// Kanso's keys, Kanso's value goes beside it as `kanso-<key>` so an import
+/// reads both; tags, which can hold both sets, are written once as a union.
 pub fn export_text(note: &Note, tag_names: &[String], body: &str) -> String {
     let quote = |s: &str| serde_json::to_string(s).unwrap_or_default();
     let mut kanso: Vec<(&str, String)> = vec![("title", quote(&note.title))];
@@ -151,39 +154,76 @@ pub fn export_text(note: &Note, tag_names: &[String], body: &str) -> String {
     }
     kanso.push(("created", iso_time(note.created_at)));
     kanso.push(("updated", iso_time(note.updated_at)));
-    match kanso_core::properties::split(body) {
-        None => {
-            let eol = kanso_core::properties::line_ending(body);
-            let mut out = format!("---{eol}");
-            for (key, value) in kanso {
-                out.push_str(&format!("{key}: {value}{eol}"));
-            }
-            out.push_str(&format!("---{eol}{eol}"));
-            out.push_str(body);
-            out
+    let Some(front) = properties::split(body) else {
+        let eol = properties::line_ending(body);
+        let mut out = format!("---{eol}");
+        for (key, value) in kanso {
+            out.push_str(&format!("{key}: {value}{eol}"));
         }
-        Some(front) => {
-            let eol = front.eol;
-            let written: HashSet<String> = kanso_core::properties::parse(body)
-                .into_iter()
-                .map(|(key, _)| key.to_lowercase())
-                .collect();
-            let mut out = String::with_capacity(body.len());
-            out.push_str(&body[..front.front_start]);
-            out.push_str(front.front);
-            for (key, value) in kanso {
-                if !written.contains(key) {
-                    out.push_str(&format!("{key}: {value}{eol}"));
+        out.push_str(&format!("---{eol}{eol}"));
+        out.push_str(body);
+        return out;
+    };
+    let eol = front.eol.to_owned();
+    let mut out = body.to_owned();
+    // Tags can be merged without losing either set, so a user's `tags` and
+    // Kanso's become one entry the importer splits back into both.
+    let mut tags_merged = false;
+    if !tag_names.is_empty() {
+        let parsed = properties::parse(&out);
+        if let Some(user) = properties::get(&parsed, "tags") {
+            let mut union = tags_from(Some(user));
+            for tag in tag_names {
+                if !union.iter().any(|kept| kept.eq_ignore_ascii_case(tag)) {
+                    union.push(tag.clone());
                 }
             }
-            out.push_str(&body[front.close_start..front.body_start]);
-            let rest = &body[front.body_start..];
-            if !rest.starts_with(['\n', '\r']) {
-                out.push_str(eol);
+            if !union.is_empty() {
+                let list = Value::List(union.into_iter().map(Value::Text).collect());
+                out = properties::set_property(&out, "tags", &list);
+                tags_merged = true;
             }
-            out.push_str(rest);
-            out
         }
+    }
+    let written: HashSet<String> = properties::parse(&out)
+        .into_iter()
+        .map(|(key, _)| key.to_lowercase())
+        .collect();
+    for (key, value) in kanso {
+        if key == "tags" && tags_merged {
+            continue;
+        }
+        let name = if written.contains(key) {
+            format!("kanso-{key}")
+        } else {
+            key.to_owned()
+        };
+        insert_before_close(&mut out, &format!("{name}: {value}{eol}"));
+    }
+    out
+}
+
+/// The tags a user's value names, as the importer reads them.
+fn tags_from(value: Option<&Value>) -> Vec<String> {
+    let split = |text: &str| -> Vec<String> {
+        text.split(|c: char| c == ',' || c.is_whitespace())
+            .map(|tag| tag.trim().trim_start_matches('#').trim_end_matches('/'))
+            .filter(|tag| !tag.is_empty())
+            .map(str::to_owned)
+            .collect()
+    };
+    match value {
+        Some(Value::Text(text)) => split(text),
+        Some(Value::List(items)) => items.iter().flat_map(|item| split(&item.text())).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Writes one line at the end of the note's front matter.
+fn insert_before_close(out: &mut String, line: &str) {
+    if let Some(front) = properties::split(out) {
+        let at = front.close_start;
+        out.insert_str(at, line);
     }
 }
 
@@ -409,13 +449,104 @@ mod tests {
         let body = "---\ntitle: My title\nowner: Ana  # keep\n---\n\n# Plan\n";
         let text = export_text(&note, &["work".to_owned()], body);
         assert_eq!(text.matches("---").count(), 2, "{text}");
-        assert!(text.contains("title: My title\nown"), "{text}");
+        assert!(text.contains("title: My title\n"), "{text}");
         assert!(text.contains("owner: Ana  # keep"), "{text}");
         assert!(text.contains("tags: [\"work\"]"), "{text}");
         assert!(text.contains("created:"), "{text}");
         assert!(text.ends_with("\n\n# Plan\n"), "{text}");
-        // The user's title wins; Kanso doesn't add another.
-        assert_eq!(text.matches("title:").count(), 1, "{text}");
+        // Both titles survive: the user's line untouched, Kanso's beside it
+        // under a key the importer reads.
+        assert!(text.contains("kanso-title: \"Plan\""), "{text}");
+    }
+
+    #[test]
+    fn colliding_user_keys_keep_both_values() {
+        let mut note = note_with("Plan", "");
+        note.status = kanso_core::NoteStatus::Active;
+        note.pinned = true;
+        let body = "---\ntitle: My title\ntags: [project]\nstatus: dropped\npinned: false\nowner: Ana\n---\n\n# Plan\n";
+        let text = export_text(&note, &["work".to_owned()], body);
+        // The user's entries stay, and Kanso's values go beside them.
+        assert!(text.contains("title: My title\n"), "{text}");
+        assert!(text.contains("owner: Ana\n"), "{text}");
+        assert!(text.contains("status: dropped\n"), "{text}");
+        assert!(text.contains("pinned: false\n"), "{text}");
+        assert!(text.contains("kanso-title: \"Plan\""), "{text}");
+        assert!(text.contains("kanso-status: active\n"), "{text}");
+        assert!(text.contains("kanso-pinned: true\n"), "{text}");
+        // Tags are one union entry.
+        assert_eq!(text.matches("tags:").count(), 1, "{text}");
+        assert!(text.contains("project"), "{text}");
+        assert!(text.contains("work"), "{text}");
+
+        let (front, rest) = kanso_import::library::frontmatter::split(&text).unwrap();
+        let meta = kanso_import::library::frontmatter::meta(front);
+        assert_eq!(meta.title.as_deref(), Some("Plan"));
+        assert_eq!(meta.tags, ["project", "work"]);
+        assert_eq!(meta.status, Some(kanso_core::NoteStatus::Active));
+        assert!(meta.pinned);
+        // The user's own entries come back as written.
+        assert_eq!(
+            meta.rest,
+            "title: My title\nstatus: dropped\npinned: false\nowner: Ana\n"
+        );
+        assert_eq!(rest, "\n# Plan\n");
+    }
+
+    fn round_trip_note(
+        title: &str,
+        status: kanso_core::NoteStatus,
+        pinned: bool,
+    ) -> kanso_core::Note {
+        let mut note = note_with(title, "");
+        note.status = status;
+        note.pinned = pinned;
+        note
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 128,
+            failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
+            ..ProptestConfig::default()
+        })]
+
+        /// Exporting and importing again loses nothing when the user's own
+        /// front matter uses Kanso's keys: the body, tags, title, status and
+        /// pinned state all come back.
+        #[test]
+        fn prop_export_import_round_trip_with_collisions(
+            title in "[A-Za-z0-9]+( [A-Za-z0-9]+)*",
+            tag in "[A-Za-z0-9_-]{1,12}",
+            user_title in "[A-Za-z0-9]+( [A-Za-z0-9]+)*",
+            user_tag in "[A-Za-z0-9_-]{1,12}",
+            owner in "[A-Za-z0-9]{1,12}",
+            status_ix in 0usize..5,
+            pinned in any::<bool>(),
+            prose in "[A-Za-z0-9 .,]{0,40}",
+        ) {
+            let status = kanso_core::NoteStatus::ALL[status_ix];
+            let note = round_trip_note(&title, status, pinned);
+            let body = format!(
+                "---\ntitle: {user_title}\ntags: [{user_tag}]\nowner: {owner}\n---\n\n{prose}\n"
+            );
+            let text = export_text(&note, std::slice::from_ref(&tag), &body);
+            let (front, rest) = kanso_import::library::frontmatter::split(&text)
+                .expect("the export has front matter");
+            let meta = kanso_import::library::frontmatter::meta(front);
+            prop_assert_eq!(meta.title.as_deref(), Some(title.as_str()));
+            prop_assert!(meta.tags.iter().any(|t| t == &tag), "{:?}", meta.tags);
+            prop_assert!(meta.tags.iter().any(|t| t == &user_tag), "{:?}", meta.tags);
+            let expected_status = (status != kanso_core::NoteStatus::None).then_some(status);
+            prop_assert_eq!(meta.status, expected_status);
+            prop_assert_eq!(meta.pinned, pinned);
+            let expected_rest = format!("\n{prose}\n");
+            prop_assert_eq!(rest, expected_rest.as_str());
+            // The user's own title and properties stay in the note.
+            let expected_rest = format!("title: {user_title}\nowner: {owner}");
+            prop_assert_eq!(meta.rest.trim(), expected_rest.as_str());
+            prop_assert!(text.contains(&format!("title: {user_title}\n")), "{}", text);
+        }
     }
 
     #[test]
