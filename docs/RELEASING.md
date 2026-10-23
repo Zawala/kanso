@@ -23,7 +23,8 @@ Every release carries, beside the downloads:
 The app (`crates/kanso-app/src/updates.rs`, with the logic in
 `crates/kanso-update`) does this:
 
-1. A few seconds after it opens, every six hours, and on **Check for
+1. A few seconds after it opens, every half hour (five minutes after a
+   failed check, and within a minute of waking from sleep), and on **Check for
    Updates…** (the app menu, the palette, Settings › Updates), it fetches
    `https://github.com/iamngoni/kanso/releases/latest/download/latest.json`
    and its `.sig`. GitHub answers `releases/latest` with the newest

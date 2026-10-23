@@ -905,7 +905,9 @@ impl NoteEditor {
         self.text_version += 1;
         let text = self.preview_source(body.into());
         self.preview_stale = false;
+        let shown = self.note_id().map(str::to_owned);
         self.preview.update(cx, |preview, cx| {
+            preview.set_note(shown, cx);
             preview.set_text(text, cx);
             // Another note starts at its top, beside a source that does.
             if !keep_place {
@@ -2570,6 +2572,25 @@ impl NoteEditor {
         });
     }
 
+    /// Replaces the open note's whole text as one undoable edit, keeping the
+    /// caret where it was when it isn't in the part replaced.
+    pub fn set_body(&mut self, body: String, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.note.is_none() || self.text_read_only || self.collab_read_only() {
+            return false;
+        }
+        self.smart_edit(window, cx, |_, text, selection| {
+            body_edit(text, &body, selection)
+        })
+    }
+
+    /// A change to the notes has settled: query views in the preview read
+    /// them again.
+    pub fn queries_changed(&mut self, cx: &mut Context<Self>) {
+        crate::query_view_ui::notes_changed();
+        self.preview
+            .update(cx, |preview, cx| preview.queries_changed(cx));
+    }
+
     /// Finds the notes that link to the open one, in the background.
     pub fn refresh_backlinks(&mut self, cx: &mut Context<Self>) {
         let Some(id) = self.note_id().map(str::to_owned) else {
@@ -3755,6 +3776,55 @@ struct LiveVoice {
     lost: bool,
 }
 
+/// The one edit that turns `text` into `body`, keeping the caret where it
+/// was when it isn't in the part replaced. `None` when they are the same.
+fn body_edit(text: &str, body: &str, selection: std::ops::Range<usize>) -> Option<Edit> {
+    if text == body {
+        return None;
+    }
+    let mut start = common_prefix(text, body);
+    while start > 0 && (!text.is_char_boundary(start) || !body.is_char_boundary(start)) {
+        start -= 1;
+    }
+    let mut suffix = common_suffix(&text[start..], &body[start..]);
+    while suffix > 0
+        && (!text.is_char_boundary(text.len() - suffix)
+            || !body.is_char_boundary(body.len() - suffix))
+    {
+        suffix -= 1;
+    }
+    let end = text.len() - suffix;
+    let after = body.len() - suffix;
+    let selection = if selection.end <= start {
+        selection
+    } else if selection.start >= end {
+        let shift = body.len() as isize - text.len() as isize;
+        let shift = |at: usize| (at as isize + shift).max(0) as usize;
+        shift(selection.start)..shift(selection.end)
+    } else {
+        after..after
+    };
+    Some(Edit {
+        range: start..end,
+        text: body[start..body.len() - suffix].to_owned(),
+        selection,
+    })
+}
+
+/// The length of the bytes `a` and `b` start with in common.
+fn common_prefix(a: &str, b: &str) -> usize {
+    a.bytes().zip(b.bytes()).take_while(|(a, b)| a == b).count()
+}
+
+/// The length of the bytes `a` and `b` end with in common.
+fn common_suffix(a: &str, b: &str) -> usize {
+    a.bytes()
+        .rev()
+        .zip(b.bytes().rev())
+        .take_while(|(a, b)| a == b)
+        .count()
+}
+
 fn apply_edit(
     state: &mut EditorState,
     text: &str,
@@ -4272,7 +4342,7 @@ pub fn backlinks(store: &Store, id: &str) -> Vec<Backlink> {
 
 #[cfg(test)]
 mod tests {
-    use super::{NoteEditor, SaveState, backlinks, same_content, save_state};
+    use super::{NoteEditor, SaveState, backlinks, body_edit, same_content, save_state};
     use crate::config::Appearance;
     use crate::library::Library;
     use crate::markdown_edit::Format;
@@ -4327,6 +4397,41 @@ mod tests {
             .unwrap()
         });
         (window, editor, store, id)
+    }
+
+    #[test]
+    fn a_body_edit_replaces_only_what_changed() {
+        let edit = body_edit("one\ntwo\nthree", "one\nTWO\nthree", 0..0).unwrap();
+        assert_eq!(edit.apply("one\ntwo\nthree"), "one\nTWO\nthree");
+        assert_eq!(edit.range, 4..7);
+        assert!(body_edit("same", "same", 0..0).is_none());
+    }
+
+    proptest! {
+        /// Making `body` from `text` is one replacement that leaves the text
+        /// as `body`, and its caret sits in it.
+        #[test]
+        fn prop_body_edit_makes_the_body(
+            text in "\\PC{0,80}",
+            body in "\\PC{0,80}",
+            end in any::<bool>(),
+        ) {
+            let selection = if end {
+                text.len()..text.len()
+            } else {
+                0..text.len()
+            };
+            match body_edit(&text, &body, selection.clone()) {
+                None => prop_assert_eq!(text, body),
+                Some(edit) => {
+                    prop_assert_eq!(edit.apply(&text), body.clone());
+                    prop_assert!(edit.selection.start <= edit.selection.end);
+                    prop_assert!(edit.selection.end <= body.len());
+                    prop_assert!(body.is_char_boundary(edit.selection.start));
+                    prop_assert!(body.is_char_boundary(edit.selection.end));
+                }
+            }
+        }
     }
 
     /// The toolbar edits the body the way typing does: at the selection,

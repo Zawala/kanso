@@ -20,16 +20,11 @@ pub fn headings(body: &str) -> Vec<Heading> {
     let mut found = Vec::new();
     let mut fence: Option<(u8, usize)> = None;
     let lines: Vec<&str> = body.split('\n').collect();
-    let mut start = 0;
-    // Front matter: a `---` block at the very top.
-    if lines.first().is_some_and(|l| l.trim_end() == "---")
-        && let Some(end) = lines.iter().skip(1).position(|l| {
-            let l = l.trim_end();
-            l == "---" || l == "..."
-        })
-    {
-        start = end + 2;
-    }
+    // Front matter: a `---` block at the very top, detected as the
+    // properties parser detects it (BOM and trailing spaces included).
+    let start = crate::properties::split(body)
+        .map(|front| body[..front.body_start].matches('\n').count())
+        .unwrap_or(0);
     let mut previous_paragraph: Option<(usize, &str)> = None;
     for (ix, raw) in lines.iter().enumerate().skip(start) {
         let line = raw.trim_end_matches('\r');
@@ -174,6 +169,17 @@ mod tests {
                 h(3, "Four", 15)
             ]
         );
+    }
+
+    #[test]
+    fn front_matter_with_a_bom_or_trailing_spaces_is_skipped() {
+        for body in [
+            "\u{feff}---\ntitle: x\n---\n# One\n",
+            "--- \ntitle: x\n--- \n# One\n",
+            "---\r\ntitle: x\r\n...\r\n# One\r\n",
+        ] {
+            assert_eq!(headings(body), vec![h(1, "One", 3)], "{body:?}");
+        }
     }
 
     #[test]

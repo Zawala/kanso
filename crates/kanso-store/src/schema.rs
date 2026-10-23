@@ -241,6 +241,19 @@ pub fn connect(path: &Path) -> Result<Connection> {
             Ok(kanso_core::excerpt::match_window(&body, &term).map(str::to_owned))
         },
     )?;
+    // The front matter of a note body, without its `---` lines: what a
+    // query view reads when it doesn't need the whole body.
+    conn.create_scalar_function(
+        "kanso_front_matter",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            let body = ctx.get::<Option<String>>(0)?.unwrap_or_default();
+            Ok(kanso_core::properties::front_matter(&body)
+                .unwrap_or_default()
+                .to_owned())
+        },
+    )?;
     // A title as wiki-links match it.
     conn.create_scalar_function(
         "kanso_norm_title",
