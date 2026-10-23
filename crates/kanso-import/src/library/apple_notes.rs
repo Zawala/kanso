@@ -1036,6 +1036,7 @@ impl Source for AppleNotesSource {
                 ),
                 updated: core_time(note.modification),
                 pinned: note.pinned,
+                status: None,
                 trashed,
                 embedded: converted.embedded,
             })?;

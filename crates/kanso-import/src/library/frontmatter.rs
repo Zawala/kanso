@@ -45,7 +45,9 @@ pub fn parse(front: &str) -> Vec<Entry> {
     let mut leading: Vec<&str> = Vec::new();
     for line in front.split_inclusive('\n') {
         let content = line.trim_end_matches(['\n', '\r']);
-        let starts_key = !content.starts_with([' ', '\t', '-', '#'])
+        // Core's entry parsing decides what a key is, so `-k: v` is a key
+        // and `- item` is not.
+        let starts_key = !content.starts_with([' ', '\t', '#'])
             && !content.is_empty()
             && key_of(content).is_some();
         if starts_key {
@@ -268,6 +270,8 @@ pub struct Meta {
     pub aliases: Vec<String>,
     pub created: Option<String>,
     pub updated: Option<String>,
+    pub status: Option<kanso_core::NoteStatus>,
+    pub pinned: bool,
     /// The front matter that remains: every entry Kanso has no field for,
     /// as written. Empty when nothing remains.
     pub rest: String,
@@ -285,6 +289,8 @@ const CREATED_KEYS: &[&str] = &[
     "date created",
     "creation_date",
 ];
+const STATUS_KEYS: &[&str] = &["status"];
+const PINNED_KEYS: &[&str] = &["pinned"];
 const UPDATED_KEYS: &[&str] = &[
     "updated",
     "modified",
@@ -301,10 +307,46 @@ const UPDATED_KEYS: &[&str] = &[
 pub fn meta(front: &str) -> Meta {
     let mut meta = Meta::default();
     let mut rest = Vec::new();
+    // `kanso-*` keys carry the values the user's own keys would hide, and
+    // win over them however the front matter is ordered.
+    let mut kanso_title: Option<String> = None;
+    let mut kanso_tags: Vec<String> = Vec::new();
+    let mut kanso_created: Option<String> = None;
+    let mut kanso_updated: Option<String> = None;
+    let mut kanso_status: Option<kanso_core::NoteStatus> = None;
+    let mut kanso_pinned: Option<bool> = None;
     for entry in parse(front) {
         let key = entry.key.to_lowercase();
         let key = key.as_str();
-        let used = if TITLE_KEYS.contains(&key) {
+        let used = if key == "kanso-title" {
+            match scalar_text(&entry.value) {
+                Some(title) => {
+                    kanso_title = Some(title);
+                    true
+                }
+                None => false,
+            }
+        } else if key == "kanso-tags" {
+            kanso_tags.extend(tags_of(&entry.value));
+            true
+        } else if key == "kanso-status" {
+            scalar_text(&entry.value)
+                .and_then(|text| kanso_core::NoteStatus::parse(&text))
+                .map(|status| kanso_status = Some(status))
+                .is_some()
+        } else if key == "kanso-pinned" {
+            bool_of(&entry.value)
+                .map(|pinned| kanso_pinned = Some(pinned))
+                .is_some()
+        } else if key == "kanso-created" {
+            date_of(&entry.value)
+                .map(|date| kanso_created = Some(date))
+                .is_some()
+        } else if key == "kanso-updated" {
+            date_of(&entry.value)
+                .map(|date| kanso_updated = Some(date))
+                .is_some()
+        } else if TITLE_KEYS.contains(&key) {
             match &entry.value {
                 Value::Scalar(title) if !title.trim().is_empty() => {
                     meta.title = Some(title.trim().to_owned());
@@ -313,20 +355,13 @@ pub fn meta(front: &str) -> Meta {
                 _ => false,
             }
         } else if TAG_KEYS.contains(&key) {
-            match &entry.value {
-                Value::Scalar(text) => {
-                    meta.tags.extend(split_tags(text));
-                    true
-                }
-                Value::List(items) => {
-                    meta.tags.extend(items.iter().flat_map(|i| split_tags(i)));
-                    true
-                }
-                Value::Other => false,
-            }
+            let tags = tags_of(&entry.value);
+            let used = !tags.is_empty() || !matches!(entry.value, Value::Other);
+            meta.tags.extend(tags);
+            used
         } else if ALIAS_KEYS.contains(&key) {
             match &entry.value {
-                Value::Scalar(text) if !text.trim().is_empty() => {
+                Value::Scalar(text) => {
                     meta.aliases.extend(
                         text.split(',')
                             .map(str::trim)
@@ -350,16 +385,32 @@ pub fn meta(front: &str) -> Meta {
             } else {
                 &mut meta.updated
             };
-            match &entry.value {
-                Value::Scalar(text)
-                    if !text.trim().is_empty() && crate::library::dates::parse(text).is_some() =>
-                {
+            match date_of(&entry.value) {
+                Some(date) => {
                     if slot.is_none() {
-                        *slot = Some(text.trim().to_owned());
+                        *slot = Some(date);
                     }
                     true
                 }
-                _ => false,
+                None => false,
+            }
+        } else if STATUS_KEYS.contains(&key) {
+            match scalar_text(&entry.value)
+                .and_then(|text| kanso_core::NoteStatus::parse(&text))
+            {
+                Some(status) => {
+                    meta.status = Some(status);
+                    true
+                }
+                None => false,
+            }
+        } else if PINNED_KEYS.contains(&key) {
+            match bool_of(&entry.value) {
+                Some(pinned) => {
+                    meta.pinned = pinned;
+                    true
+                }
+                None => false,
             }
         } else {
             false
@@ -368,8 +419,55 @@ pub fn meta(front: &str) -> Meta {
             rest.push(entry);
         }
     }
+    if let Some(title) = kanso_title {
+        meta.title = Some(title);
+    }
+    meta.tags.extend(kanso_tags);
+    if let Some(date) = kanso_created {
+        meta.created = Some(date);
+    }
+    if let Some(date) = kanso_updated {
+        meta.updated = Some(date);
+    }
+    if let Some(status) = kanso_status {
+        meta.status = Some(status);
+    }
+    if let Some(pinned) = kanso_pinned {
+        meta.pinned = pinned;
+    }
     meta.rest = render(&rest);
     meta
+}
+
+/// The text of a scalar value, if it has any.
+fn scalar_text(value: &Value) -> Option<String> {
+    match value {
+        Value::Scalar(text) if !text.trim().is_empty() => Some(text.trim().to_owned()),
+        _ => None,
+    }
+}
+
+/// The tags a value names: a comma- or whitespace-separated scalar, or a
+/// list of them.
+fn tags_of(value: &Value) -> Vec<String> {
+    match value {
+        Value::Scalar(text) => split_tags(text),
+        Value::List(items) => items.iter().flat_map(|item| split_tags(item)).collect(),
+        Value::Other => Vec::new(),
+    }
+}
+
+fn bool_of(value: &Value) -> Option<bool> {
+    match scalar_text(value)?.to_ascii_lowercase().as_str() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
+fn date_of(value: &Value) -> Option<String> {
+    let text = scalar_text(value)?;
+    crate::library::dates::parse(&text).map(|_| text)
 }
 
 /// Tag names in a scalar: separated by commas or whitespace, without a
@@ -435,6 +533,35 @@ mod tests {
             parse("url: http://x.com/a#b\n")[0].value,
             Value::Scalar("http://x.com/a#b".into())
         );
+    }
+
+    #[test]
+    fn a_dash_key_is_a_key_and_not_a_list_item() {
+        let meta = meta("title: A\ntags:\n  - x\n-k: v\nstatus: active\n");
+        assert_eq!(meta.title.as_deref(), Some("A"));
+        assert_eq!(meta.tags, ["x"]);
+        assert_eq!(meta.status, Some(kanso_core::NoteStatus::Active));
+        assert_eq!(meta.rest, "-k: v\n");
+    }
+
+    #[test]
+    fn status_and_pinned_leave_the_body() {
+        let found = meta("status: onHold\npinned: true\ncssclass: wide\n");
+        assert_eq!(found.status, Some(kanso_core::NoteStatus::OnHold));
+        assert!(found.pinned);
+        assert_eq!(found.rest, "cssclass: wide\n");
+        // Values that aren't Kanso's stay where the user wrote them.
+        assert_eq!(meta("status: someday\n").status, None);
+        assert_eq!(meta("status: someday\n").rest, "status: someday\n");
+        assert_eq!(meta("pinned: maybe\n").rest, "pinned: maybe\n");
+    }
+
+    #[test]
+    fn kanso_keys_win_over_a_users_same_key() {
+        let found = meta("title: Mine\ntags: [project]\nkanso-title: Kanso\nkanso-tags: [work]\n");
+        assert_eq!(found.title.as_deref(), Some("Kanso"));
+        assert_eq!(found.tags, ["project", "work"]);
+        assert_eq!(found.rest, "");
     }
 
     #[test]
