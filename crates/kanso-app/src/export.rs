@@ -485,7 +485,11 @@ mod tests {
         assert_eq!(meta.tags, ["project", "work"]);
         assert_eq!(meta.status, Some(kanso_core::NoteStatus::Active));
         assert!(meta.pinned);
-        assert_eq!(meta.rest, "owner: Ana\n");
+        // The user's own entries come back as written.
+        assert_eq!(
+            meta.rest,
+            "title: My title\nstatus: dropped\npinned: false\nowner: Ana\n"
+        );
         assert_eq!(rest, "\n# Plan\n");
     }
 
@@ -538,8 +542,9 @@ mod tests {
             prop_assert_eq!(meta.pinned, pinned);
             let expected_rest = format!("\n{prose}\n");
             prop_assert_eq!(rest, expected_rest.as_str());
-            let expected_owner = format!("owner: {owner}");
-            prop_assert_eq!(meta.rest.trim(), expected_owner.as_str());
+            // The user's own title and properties stay in the note.
+            let expected_rest = format!("title: {user_title}\nowner: {owner}");
+            prop_assert_eq!(meta.rest.trim(), expected_rest.as_str());
             prop_assert!(text.contains(&format!("title: {user_title}\n")), "{}", text);
         }
     }

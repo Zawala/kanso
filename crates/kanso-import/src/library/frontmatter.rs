@@ -315,10 +315,26 @@ pub fn meta(front: &str) -> Meta {
     let mut kanso_updated: Option<String> = None;
     let mut kanso_status: Option<kanso_core::NoteStatus> = None;
     let mut kanso_pinned: Option<bool> = None;
-    for entry in parse(front) {
+    let entries = parse(front);
+    // When Kanso wrote `kanso-<key>`, the plain `<key>` beside it is the
+    // user's own property: it stays in the front matter as written.
+    let shadowed: std::collections::HashSet<String> = entries
+        .iter()
+        .filter_map(|entry| {
+            entry
+                .key
+                .to_lowercase()
+                .strip_prefix("kanso-")
+                .map(str::to_owned)
+        })
+        .collect();
+    for entry in entries {
         let key = entry.key.to_lowercase();
         let key = key.as_str();
-        let used = if key == "kanso-title" {
+        // Tags are written once, as a union, so a plain `tags` is still read.
+        let used = if shadowed.contains(key) && !TAG_KEYS.contains(&key) {
+            false
+        } else if key == "kanso-title" {
             match scalar_text(&entry.value) {
                 Some(title) => {
                     kanso_title = Some(title);
@@ -559,7 +575,8 @@ mod tests {
         let found = meta("title: Mine\ntags: [project]\nkanso-title: Kanso\nkanso-tags: [work]\n");
         assert_eq!(found.title.as_deref(), Some("Kanso"));
         assert_eq!(found.tags, ["project", "work"]);
-        assert_eq!(found.rest, "");
+        // The user's own title stays a property of the note.
+        assert_eq!(found.rest, "title: Mine\n");
     }
 
     #[test]
