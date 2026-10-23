@@ -181,6 +181,24 @@ impl Fixture {
 /// exactly: the same note, the list and the text scrolled as they were, and
 /// the keyboard in the text.
 #[gpui_kit::test]
+fn the_scheduled_check_runs_with_automatic_updates_off(cx: &mut TestAppContext) {
+    let _fixture = setup(cx);
+    cx.update(|cx| {
+        AppState::update_config(cx, |config| config.gallery.auto_update = false);
+        cx.set_global(crate::settings_gallery::ThemeGallery {
+            keys: kanso_gallery::trusted_keys(),
+            ..Default::default()
+        });
+        crate::settings_gallery::auto_check(cx);
+        assert_ne!(
+            cx.global::<crate::settings_gallery::ThemeGallery>().status,
+            crate::settings_gallery::Status::Idle,
+            "a due check must run even when automatic updates are off"
+        );
+    });
+}
+
+#[gpui_kit::test]
 fn escape_returns_to_the_notes_as_they_were(cx: &mut TestAppContext) {
     let f = setup(cx);
     let (list, editor) = cx.read(|cx| {
@@ -510,11 +528,13 @@ fn note_actions_leave_settings_first(cx: &mut TestAppContext) {
     let store = cx.read(|cx| cx.global::<AppState>().store.clone());
     let note = store.note(&f.note).unwrap().unwrap();
     assert!(note.is_trashed());
+    // Trashing the showing note closes its tab, so what is in view is the
+    // next note, or nothing.
     let open = cx.read(|cx| {
         let editor = f.workspace.read(cx).editor.clone();
         editor.read(cx).note_id().map(str::to_owned)
     });
-    assert_eq!(open.as_deref(), Some(f.note.as_str()), "in view");
+    assert_ne!(open.as_deref(), Some(f.note.as_str()), "its tab closed");
 
     for action in [
         Box::new(crate::workspace::TogglePinned) as Box<dyn gpui_kit::Action>,
@@ -551,7 +571,19 @@ fn note_actions_leave_settings_first(cx: &mut TestAppContext) {
     f.keys(cx, "escape");
     f.keys(cx, "escape");
     assert!(!f.open(cx));
-    // Back with the notes, the palette offers them again.
+    // Back with the notes, the palette offers them again. Choose another,
+    // since the one trashed above closed its tab.
+    let store = cx.read(|cx| cx.global::<AppState>().store.clone());
+    let other = store
+        .search_summaries(&Default::default())
+        .unwrap()
+        .into_iter()
+        .find(|note| note.id != f.note)
+        .unwrap()
+        .id;
+    let library = cx.read(|cx| f.workspace.read(cx).library.clone());
+    library.update(cx, |library, cx| library.select(Some(other), cx));
+    f.draw(cx);
     f.keys(cx, "cmd-k");
     let labels = cx.read(|cx| palette.read(cx).item_labels());
     assert!(labels.iter().any(|l| l == "Show history…"), "{labels:?}");

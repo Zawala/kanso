@@ -26,8 +26,8 @@ pub use index::{
     check_index, clean_text, is_valid_name, is_valid_svg_path, sha256_hex,
 };
 pub use install::{
-    IconCaps, InstallError, color_digest, install_color, install_icons, install_icons_with,
-    prepare, remove_installed, theme_url,
+    IconCaps, InstallError, check_pin, color_digest, install_color, install_icons,
+    install_icons_with, prepare, remove_installed, theme_url,
 };
 pub use plan::{Action, Installed, Plan, PlanState, Skipped, plan};
 pub use policy::{GalleryPolicy, PolicyError};
@@ -59,6 +59,8 @@ pub const MAX_INDEX_BYTES: u64 = 1024 * 1024;
 pub const MAX_SIGNATURE_BYTES: u64 = 1024;
 pub const MAX_COLOR_BYTES: u64 = 256 * 1024;
 pub const MAX_BUNDLE_BYTES: u64 = 16 * 1024 * 1024;
+/// Most entries an icon bundle may unpack to.
+pub const MAX_BUNDLE_ENTRIES: usize = 4_096;
 pub const MAX_PREVIEW_BYTES: u64 = 128 * 1024;
 /// Most themes one catalog may list, and most previews one icon theme may
 /// name.
@@ -67,8 +69,6 @@ pub const MAX_PREVIEWS: usize = 8;
 /// Most gallery color and icon themes that may be installed at once.
 pub const MAX_GALLERY_COLOR_THEMES: usize = 256;
 pub const MAX_GALLERY_ICON_THEMES: usize = 64;
-/// The content-addressed download cache's budget.
-pub const MAX_CACHE_BYTES: u64 = 64 * 1024 * 1024;
 
 /// The URL of a file the index names, built from the fixed repository and a
 /// path the index validator has already checked. Pure.
@@ -106,10 +106,16 @@ mod tests {
                 "themes-trusted-keys.txt has a line that isn't a key"
             );
         }
-        // The gallery never accepts the update key, and the updater never
-        // accepts a themes key.
+        // A shipped key makes the disjointness rule real rather than
+        // vacuous: there is a themes key, and the update list has none of it.
+        let themes = trusted_keys();
+        assert!(
+            !themes.is_empty(),
+            "a Kanso release ships at least one themes key"
+        );
         let updates = kanso_update::trusted_keys();
-        for key in trusted_keys() {
+        assert!(!updates.is_empty(), "the update key list is non-empty too");
+        for key in themes {
             assert!(
                 !updates.contains(&key),
                 "the themes key list must not reuse an update key"

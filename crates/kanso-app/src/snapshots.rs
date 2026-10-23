@@ -298,6 +298,31 @@ struct Shot {
 /// The most recently edited note, as after a restart.
 fn open_latest(_: &mut HeadlessAppContext, _: AnyWindowHandle, _: &Entity<Workspace>, _: &Store) {}
 
+/// Three notes open as tabs, the newest showing, as after opening them from
+/// the list.
+fn open_tabs(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let ids: Vec<String> = store
+        .search_summaries(&Default::default())
+        .unwrap()
+        .into_iter()
+        .take(3)
+        .map(|note| note.id)
+        .collect();
+    for id in ids.iter().skip(1) {
+        cx.update_window(window, |_, window, cx| {
+            workspace.update(cx, |workspace, cx| {
+                workspace.open_note_in_new_tab(id, window, cx)
+            })
+        })
+        .unwrap();
+    }
+}
+
 /// Engineering opened in the sidebar, showing Platform inside it.
 fn notebook_open(
     cx: &mut HeadlessAppContext,
@@ -4063,6 +4088,8 @@ fn snapshots() {
         shot("light-split", Light, Split, open_latest),
         shot("dark-edit", Dark, Edit, open_latest),
         shot("light-edit", Light, Edit, open_latest),
+        shot("dark-tabs", Dark, Edit, open_tabs),
+        shot("light-tabs", Light, Edit, open_tabs),
         shot("dark-notebook-open", Dark, Edit, notebook_open),
         Shot {
             dialog_width: crate::book_icons::PICKER_WIDTH,

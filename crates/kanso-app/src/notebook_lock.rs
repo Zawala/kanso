@@ -527,6 +527,30 @@ mod tests {
                 .unwrap()
         }
 
+        /// Opens `id` in a new tab beside the one showing, as a middle click
+        /// in the list does.
+        fn open_in_new_tab(&self, cx: &mut TestAppContext, id: &str) {
+            let (id, workspace) = (id.to_owned(), self.workspace.clone());
+            self.window
+                .update(cx, |_, window, cx| {
+                    workspace.update(cx, |workspace, cx| {
+                        workspace.open_note_in_new_tab(&id, window, cx)
+                    })
+                })
+                .unwrap();
+            cx.run_until_parked();
+        }
+
+        fn show_tab(&self, cx: &mut TestAppContext, index: usize) {
+            let workspace = self.workspace.clone();
+            self.window
+                .update(cx, |_, _, cx| {
+                    workspace.update(cx, |workspace, cx| workspace.show_tab(index, cx))
+                })
+                .unwrap();
+            cx.run_until_parked();
+        }
+
         fn lock_now(&self, cx: &mut TestAppContext) {
             self.window
                 .update(cx, |_, window, cx| lock_now(&self.editor, window, cx))
@@ -645,6 +669,37 @@ mod tests {
         take_lock_off(&f.store, &f.private).unwrap();
         assert!(f.store.locked_books().unwrap().is_empty());
         assert_eq!(f.sealed_text(&f.plan).as_deref(), Some("The secret plan."));
+    }
+
+    #[gpui_kit::test]
+    fn locking_a_notebook_never_reveals_a_background_tabs_text(cx: &mut TestAppContext) {
+        let f = setup(cx, None);
+        // The secret note stays open in the first tab, in the background;
+        // the plain note shows beside it.
+        let outside = f.outside.clone();
+        f.open_in_new_tab(cx, &outside);
+        let ids = cx.read(|cx| f.workspace.read(cx).tabs.ids());
+        assert_eq!(ids, [f.plan.clone(), outside.clone()]);
+
+        // Lock the notebook while the secret note is only a background tab.
+        let form = f.lock(cx).expect("the first lock sets a password");
+        f.submit(cx, &form, &[PASSWORD, PASSWORD]);
+        // And forget the keys, as Lock Notes Now or ten minutes does.
+        f.lock_now(cx);
+
+        f.show_tab(cx, 0);
+        assert_eq!(f.view(cx), LockView::Closed(None), "it opens closed");
+        assert_eq!(f.text(cx), "", "no text is revealed");
+        assert_eq!(
+            f.store.note(&f.plan).unwrap().unwrap().body,
+            "",
+            "the store never has the text"
+        );
+        assert_eq!(
+            f.sealed_text(&f.plan).as_deref(),
+            Some("The secret plan."),
+            "the text is sealed, not lost"
+        );
     }
 
     #[gpui_kit::test]

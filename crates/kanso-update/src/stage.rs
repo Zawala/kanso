@@ -29,6 +29,23 @@ use crate::policy::UrlPolicy;
 /// a disk.
 const MAX_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
+/// What an unpack may produce: total bytes and entries. An app update takes
+/// the generous defaults; the theme gallery passes its own, much smaller,
+/// limits so a bundle cannot fill the disk or the inode table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExtractLimits {
+    pub max_bytes: u64,
+    pub max_entries: usize,
+}
+
+impl ExtractLimits {
+    /// The limits a Kanso app update is held to.
+    pub const UPDATER: ExtractLimits = ExtractLimits {
+        max_bytes: MAX_UNPACKED_BYTES,
+        max_entries: usize::MAX,
+    };
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum StageError {
     #[error(transparent)]
@@ -317,11 +334,21 @@ pub fn download(
 /// paths that climb out are refused, and so is an archive that unpacks to
 /// more than [`MAX_UNPACKED_BYTES`].
 pub fn extract(archive: &Path, kind: ArchiveKind, dest: &Path) -> Result<(), StageError> {
+    extract_limited(archive, kind, dest, ExtractLimits::UPDATER)
+}
+
+/// [`extract`] with the caller's limits, enforced while unpacking.
+pub fn extract_limited(
+    archive: &Path,
+    kind: ArchiveKind,
+    dest: &Path,
+    limits: ExtractLimits,
+) -> Result<(), StageError> {
     remove_entry(dest)?;
     fs::create_dir_all(dest)?;
     match kind {
-        ArchiveKind::TarGz => extract_tar_gz(archive, dest),
-        ArchiveKind::Zip => extract_zip(archive, dest),
+        ArchiveKind::TarGz => extract_tar_gz(archive, dest, limits),
+        ArchiveKind::Zip => extract_zip(archive, dest, limits),
     }
 }
 
@@ -339,14 +366,19 @@ fn safe_relative(name: &Path) -> Option<PathBuf> {
     (!out.as_os_str().is_empty()).then_some(out)
 }
 
-fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(), StageError> {
+fn extract_tar_gz(archive: &Path, dest: &Path, limits: ExtractLimits) -> Result<(), StageError> {
     let file = File::open(archive)?;
     let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(file));
     let mut total = 0u64;
+    let mut count = 0usize;
     let entries = tar
         .entries()
         .map_err(|e| StageError::BadArchive(e.to_string()))?;
     for entry in entries {
+        count += 1;
+        if count > limits.max_entries {
+            return Err(StageError::BadArchive("it holds too many entries".into()));
+        }
         let mut entry = entry.map_err(|e| StageError::BadArchive(e.to_string()))?;
         let path = entry
             .path()
@@ -374,7 +406,7 @@ fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(), StageError> {
             )));
         }
         total += entry.size();
-        if total > MAX_UNPACKED_BYTES {
+        if total > limits.max_bytes {
             return Err(StageError::BadArchive("it unpacks too large".into()));
         }
         if let Some(parent) = out.parent() {
@@ -393,9 +425,12 @@ fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(), StageError> {
     Ok(())
 }
 
-fn extract_zip(archive: &Path, dest: &Path) -> Result<(), StageError> {
+fn extract_zip(archive: &Path, dest: &Path, limits: ExtractLimits) -> Result<(), StageError> {
     let file = File::open(archive)?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| StageError::BadArchive(e.to_string()))?;
+    if zip.len() > limits.max_entries {
+        return Err(StageError::BadArchive("it holds too many entries".into()));
+    }
     let mut total = 0u64;
     for ix in 0..zip.len() {
         let mut entry = zip
@@ -419,7 +454,7 @@ fn extract_zip(archive: &Path, dest: &Path) -> Result<(), StageError> {
             )));
         }
         total += entry.size();
-        if total > MAX_UNPACKED_BYTES {
+        if total > limits.max_bytes {
             return Err(StageError::BadArchive("it unpacks too large".into()));
         }
         if let Some(parent) = out.parent() {
