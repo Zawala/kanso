@@ -20,9 +20,22 @@ use kanso_store::Store;
 use crate::export::sanitize_file_name;
 
 /// The page for a note: its title and body, in `palette` and `style`, with
-/// its attachments read from `store`. Blocks while math and diagrams are
-/// drawn.
+/// its attachments read from `store` and its query views drawn. Blocks while
+/// math and diagrams are drawn.
 pub fn page(
+    store: &Store,
+    title: &str,
+    body: &str,
+    palette: &Palette,
+    self_id: Option<&str>,
+    style: &crate::export_style::PageStyle,
+) -> String {
+    let body = with_queries(store, body, self_id);
+    page_without_queries(store, title, &body, palette, style)
+}
+
+/// The page as it was before query views: a `query` fence stays code.
+pub fn page_without_queries(
     store: &Store,
     title: &str,
     body: &str,
@@ -37,6 +50,18 @@ pub fn page(
             .map(|(content_type, attachment)| (content_type, attachment.data))
     };
     kanso_render::html::page_with(title, body, palette, &attachments, &style.options())
+}
+
+/// `body` with each query fence drawn as the table it makes.
+fn with_queries(store: &Store, body: &str, self_id: Option<&str>) -> String {
+    let Ok(rows) = store.query_view_notes() else {
+        return body.to_owned();
+    };
+    let notes: Vec<kanso_core::query_view::ViewNote> = rows
+        .into_iter()
+        .map(kanso_core::query_view::ViewNote::from)
+        .collect();
+    kanso_core::query_view::render_export(body, &notes, self_id)
 }
 
 /// A file name for the note's export. Pure.
@@ -59,6 +84,7 @@ pub fn export_html(
     store: Arc<Store>,
     title: String,
     body: String,
+    self_id: Option<String>,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -70,16 +96,20 @@ pub fn export_html(
             let Ok(Ok(Some(path))) = picked.await else {
                 return;
             };
-            let written =
-                cx.background_executor()
-                    .spawn({
-                        let path = path.clone();
-                        let style = style.clone();
-                        async move {
-                            std::fs::write(&path, page(&store, &title, &body, &palette, &style))
-                        }
-                    })
-                    .await;
+            let written = cx
+                .background_executor()
+                .spawn({
+                    let path = path.clone();
+                    let self_id = self_id.clone();
+                    let style = style.clone();
+                    async move {
+                        std::fs::write(
+                            &path,
+                            page(&store, &title, &body, &palette, self_id.as_deref(), &style),
+                        )
+                    }
+                })
+                .await;
             cx.update(|window, cx| match written {
                 Ok(()) => cx.reveal_path(&path),
                 Err(err) => tell(
@@ -103,6 +133,7 @@ pub fn export_pdf(
     store: Arc<Store>,
     title: String,
     body: String,
+    self_id: Option<String>,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -116,10 +147,16 @@ pub fn export_pdf(
                 let Ok(Ok(Some(path))) = picked.await else {
                     return;
                 };
-                let html = cx
-                    .background_executor()
-                    .spawn(async move { page(&store, &title, &body, &palette, &style) })
-                    .await;
+                let html =
+                    cx.background_executor()
+                        .spawn({
+                            let self_id = self_id.clone();
+                            let style = style.clone();
+                            async move {
+                                page(&store, &title, &body, &palette, self_id.as_deref(), &style)
+                            }
+                        })
+                        .await;
                 let result = mac_pdf(&html, &path, cx).await;
                 cx.update(|window, cx| match result {
                     Ok(()) => cx.reveal_path(&path),
@@ -143,7 +180,10 @@ pub fn export_pdf(
                         let dir = std::env::temp_dir().join("kanso-export");
                         std::fs::create_dir_all(&dir)?;
                         let path = dir.join(file_name(&title, "html"));
-                        std::fs::write(&path, page(&store, &title, &body, &palette, &style))?;
+                        std::fs::write(
+                            &path,
+                            page(&store, &title, &body, &palette, self_id.as_deref(), &style),
+                        )?;
                         Ok::<_, std::io::Error>(path)
                     })
                     .await;
@@ -254,7 +294,7 @@ mod mac;
 
 #[cfg(test)]
 mod tests {
-    use super::{Palette, Store, file_name, page, print_palette};
+    use super::{Palette, Store, file_name, page, page_without_queries, print_palette};
     use proptest::prelude::*;
 
     #[test]
@@ -269,12 +309,67 @@ mod tests {
             "Circles",
             &body,
             &Palette::DARK,
+            None,
             &crate::export_style::PageStyle::default(),
         );
         assert!(html.contains("<title>Circles</title>"));
         assert!(html.contains("src=\"data:image/png;base64,"));
         assert!(html.contains("kanso-math"));
         assert!(!html.contains("<script"));
+    }
+
+    #[test]
+    fn a_page_draws_query_views() {
+        use kanso_core::DocType;
+        use kanso_store::{Origin, Put};
+        use serde_json::json;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().join("q.db")).unwrap();
+        let book = store
+            .put(
+                DocType::Book,
+                json!({"name": "Clients"}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let note = |title: &str, body: &str| {
+            store
+                .put(
+                    DocType::Note,
+                    json!({"title": title, "body": body, "bookId": book}),
+                    Put::Upsert,
+                    Origin::Ui,
+                )
+                .unwrap()
+                .id
+        };
+        note("Ana", "---\nclient: Acme\n---\n# Ana\n");
+        // Sealed by hand: the store won't take text beside a lock.
+        store
+            .put(
+                DocType::Note,
+                json!({"_id": "note:sealed", "title": "Sealed", "body": "",
+                       "bookId": book, "kansoLock": {"salt": "s", "nonce": "n", "data": "d"}}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap();
+        let self_id = note("Self", "```query\nfrom: has:client\ncolumns: client\n```\n");
+        let body = "```query\nfrom: has:client\ncolumns: client\n```\n";
+        let style = crate::export_style::PageStyle::default();
+        let html = page(&store, "Self", body, &Palette::DARK, Some(&self_id), &style);
+        assert!(html.contains("<table>"), "{html}");
+        assert!(html.contains("Ana"), "{html}");
+        assert!(html.contains("Acme"), "{html}");
+        assert!(!html.contains("Sealed"), "{html}");
+        assert!(!html.contains("Self</td>"), "{html}");
+        assert!(
+            page_without_queries(&store, "Self", body, &Palette::DARK, &style)
+                .contains("language-query")
+        );
     }
 
     #[test]

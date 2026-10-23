@@ -14,6 +14,7 @@ mod graph;
 mod history;
 mod meaning;
 mod ocr;
+mod query_view;
 mod read;
 mod replace;
 mod roles;
@@ -46,6 +47,7 @@ pub use meaning::rank::{
     merged_tags, suggest_tags,
 };
 pub use ocr::{OCR_TYPES, UnreadImage};
+pub use query_view::QueryNoteRow;
 pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
 pub use replace::{
     NoteMatches, PREVIEW_MATCHES_PER_NOTE, Planned, ReplaceReport, Skipped, UndoReport,

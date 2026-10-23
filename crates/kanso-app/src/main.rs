@@ -94,6 +94,7 @@ mod preview_chunks;
 mod preview_rich;
 mod publish;
 mod publish_site;
+mod query_view_ui;
 mod related;
 mod reminders;
 mod replace;

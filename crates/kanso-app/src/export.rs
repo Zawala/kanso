@@ -133,25 +133,58 @@ pub fn rewrite_links(
     out
 }
 
-/// YAML front matter with the note's metadata.
-pub fn front_matter(note: &Note, tag_names: &[String]) -> String {
+/// The note's text for an export: one YAML front-matter block, the user's
+/// own entries byte-for-byte, and Kanso's keys added only where the user
+/// hasn't written them.
+pub fn export_text(note: &Note, tag_names: &[String], body: &str) -> String {
     let quote = |s: &str| serde_json::to_string(s).unwrap_or_default();
-    let mut out = String::from("---\n");
-    out.push_str(&format!("title: {}\n", quote(&note.title)));
+    let mut kanso: Vec<(&str, String)> = vec![("title", quote(&note.title))];
     if !tag_names.is_empty() {
         let tags: Vec<String> = tag_names.iter().map(|t| quote(t)).collect();
-        out.push_str(&format!("tags: [{}]\n", tags.join(", ")));
+        kanso.push(("tags", format!("[{}]", tags.join(", "))));
     }
     if note.status != NoteStatus::None {
-        out.push_str(&format!("status: {}\n", note.status.as_str()));
+        kanso.push(("status", note.status.as_str().to_owned()));
     }
     if note.pinned {
-        out.push_str("pinned: true\n");
+        kanso.push(("pinned", "true".to_owned()));
     }
-    out.push_str(&format!("created: {}\n", iso_time(note.created_at)));
-    out.push_str(&format!("updated: {}\n", iso_time(note.updated_at)));
-    out.push_str("---\n\n");
-    out
+    kanso.push(("created", iso_time(note.created_at)));
+    kanso.push(("updated", iso_time(note.updated_at)));
+    match kanso_core::properties::split(body) {
+        None => {
+            let eol = kanso_core::properties::line_ending(body);
+            let mut out = format!("---{eol}");
+            for (key, value) in kanso {
+                out.push_str(&format!("{key}: {value}{eol}"));
+            }
+            out.push_str(&format!("---{eol}{eol}"));
+            out.push_str(body);
+            out
+        }
+        Some(front) => {
+            let eol = front.eol;
+            let written: HashSet<String> = kanso_core::properties::parse(body)
+                .into_iter()
+                .map(|(key, _)| key.to_lowercase())
+                .collect();
+            let mut out = String::with_capacity(body.len());
+            out.push_str(&body[..front.front_start]);
+            out.push_str(front.front);
+            for (key, value) in kanso {
+                if !written.contains(key) {
+                    out.push_str(&format!("{key}: {value}{eol}"));
+                }
+            }
+            out.push_str(&body[front.close_start..front.body_start]);
+            let rest = &body[front.body_start..];
+            if !rest.starts_with(['\n', '\r']) {
+                out.push_str(eol);
+            }
+            out.push_str(rest);
+            out
+        }
+    }
 }
 
 fn iso_time(ms: i64) -> String {
@@ -293,7 +326,7 @@ pub fn export(store: &Store, root: &Path, only: Option<&[String]>) -> anyhow::Re
             .iter()
             .filter_map(|t| tags.get(t).cloned())
             .collect();
-        let text = format!("{}{}", front_matter(note, &tag_names), body);
+        let text = export_text(note, &tag_names, &body);
         write_new(&root.join(path), text.as_bytes())?;
         report.notes += 1;
     }
@@ -338,7 +371,8 @@ fn write_new(path: &Path, data: &[u8]) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_link, export, relative_path, rewrite_links, sanitize_file_name, unique_name,
+        encode_link, export, export_text, relative_path, rewrite_links, sanitize_file_name,
+        unique_name,
     };
     use kanso_core::DocType;
     use kanso_store::{Origin, Put, Store};
@@ -347,6 +381,51 @@ mod tests {
     use serde_json::json;
     use std::collections::{BTreeMap, HashSet};
     use std::path::{Path, PathBuf};
+
+    fn note_with(title: &str, body: &str) -> kanso_core::Note {
+        kanso_core::Note {
+            id: "note:test".into(),
+            rev: None,
+            title: title.into(),
+            body: body.into(),
+            book_id: "book:test".into(),
+            tags: Vec::new(),
+            status: kanso_core::NoteStatus::None,
+            share: kanso_core::NoteShare::default(),
+            pinned: false,
+            doctype: "markdown".into(),
+            created_at: 0,
+            updated_at: 0,
+            timestamp: 0,
+            num_of_tasks: 0,
+            num_of_checked_tasks: 0,
+            extra: Default::default(),
+        }
+    }
+
+    #[test]
+    fn user_front_matter_is_kept_in_one_block() {
+        let note = note_with("Plan", "");
+        let body = "---\ntitle: My title\nowner: Ana  # keep\n---\n\n# Plan\n";
+        let text = export_text(&note, &["work".to_owned()], body);
+        assert_eq!(text.matches("---").count(), 2, "{text}");
+        assert!(text.contains("title: My title\nown"), "{text}");
+        assert!(text.contains("owner: Ana  # keep"), "{text}");
+        assert!(text.contains("tags: [\"work\"]"), "{text}");
+        assert!(text.contains("created:"), "{text}");
+        assert!(text.ends_with("\n\n# Plan\n"), "{text}");
+        // The user's title wins; Kanso doesn't add another.
+        assert_eq!(text.matches("title:").count(), 1, "{text}");
+    }
+
+    #[test]
+    fn exports_make_one_block_when_there_was_none() {
+        let note = note_with("Plan", "");
+        let text = export_text(&note, &[], "# Plan\n");
+        assert!(text.starts_with("---\ntitle: \"Plan\"\n"), "{text}");
+        assert!(text.contains("\n---\n\n# Plan\n"), "{text}");
+        assert_eq!(text.matches("---").count(), 2, "{text}");
+    }
 
     /// Every file under `root`, relative path to contents.
     fn read_tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {

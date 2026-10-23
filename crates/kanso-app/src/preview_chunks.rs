@@ -54,7 +54,9 @@ pub struct Chunk {
 /// where it finds them.
 fn parse_options() -> ParseOptions {
     let mut options = ParseOptions::gfm();
-    options.constructs.frontmatter = false;
+    // Front matter is a block, so the preview can hide it instead of
+    // drawing its `---` lines as a rule and a heading.
+    options.constructs.frontmatter = true;
     options.constructs.math_text = true;
     options.constructs.math_flow = true;
     options
