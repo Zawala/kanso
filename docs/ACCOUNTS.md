@@ -3,8 +3,9 @@
 Status: implementation spec, revision 3 (2026-10-23). Revision 2 (2026-10-18) followed one plan
 review and one security review. It froze when step 1 of the build order merged. From then on,
 changing a frozen file needs approval from every builder that consumes it (see "Build order").
-Revision 3 adds passkeys and third-party sign-in ([issue #32](https://github.com/iamngoni/kanso/issues/32));
-it does not change the frozen v2 contract, it adds to it. The doc replaces the single shared-token
+Revision 3 adds platform passkeys, Linux external security keys, live approval events and
+third-party sign-in ([issue #32](https://github.com/iamngoni/kanso/issues/32)); it does not change
+the frozen v2 contract, it adds to it. The doc replaces the single shared-token
 sync in [PLAN.md](PLAN.md) › Sync. Step 1 applied a security re-check while freezing the contract;
 its decisions are listed under "Build order" › "Contract notes".
 
@@ -47,7 +48,7 @@ Plan review (all applied):
 9. **WrongKey has one trigger.** It comes from a failed unwrap or a key-id mismatch, never from document failures. An unknown format byte means "Update Kanso". Merged with M3.
 10. **Merging is explained.** The question says notes deleted elsewhere may come back. Sign-up into an empty account doesn't push tombstones. The rollout syncs every Mac first and adds a step per other Mac.
 11. **Device identity.** A random library secret makes a device ID per account. A hash of the hardware UUID notices a cloned data folder. There is one device-name rule.
-12. **Open questions are resolved.** Only explicit deferrals remain, under "Deferred".
+12. **The v2 review questions are resolved.** Revision 3's remaining choices are under "Open questions"; only explicit deferrals are under "Deferred".
 13. **Tests.** New tests are added, the existing tests that must change are listed, and a decrypted test view replaces raw server access.
 14. **Minor points.** Second 413 → stop; storage counts all item kinds; MiB flag names; eviction text; `enabled`; where `Session.server` comes from; how the CLI is run; exact purge checks; the Keychain recovery-key item; the CPU bench.
 
@@ -132,15 +133,16 @@ Two places go beyond the reviews:
 
 Owner's decisions, final:
 
-- **Methods.** Passkeys, Sign in with Apple, Google and GitHub. X is dropped. Username and password
-  accounts stay, and can link any of these. The provider is a string row, so Microsoft and others
-  need no schema change.
-- **Passkeys sign in and unlock.** Where the WebAuthn PRF extension is available, the passkey
-  produces a key-encryption key that wraps the data key, beside the password KEK and the recovery
-  key. Without PRF a passkey only signs in; the device then unlocks by device approval.
-- **New-device unlock.** After Apple, Google or GitHub sign-in, or a passkey without PRF, an
-  already signed-in device approves the new one and sends it the data key end-to-end encrypted. The
-  recovery key is the fallback.
+- **Methods.** Platform passkeys on macOS and Windows, external FIDO2 security keys on Linux, Sign
+  in with Apple, Google and GitHub. X is dropped. Username and password accounts stay, and can link
+  any of these. The provider is a string row, so Microsoft and others need no schema change.
+- **Passkeys and security keys sign in and unlock.** Where the WebAuthn PRF extension (or CTAP2
+  `hmac-secret` on Linux) is available, the credential produces a key-encryption key that wraps the
+  data key, beside the password KEK and the recovery key. Without that output it only signs in; the
+  device then unlocks by device approval.
+- **New-device unlock.** After Apple, Google or GitHub sign-in, or a passkey or security key without
+  a usable PRF, an already signed-in device approves the new one and sends it the data key
+  end-to-end encrypted. The recovery key is the fallback.
 - **No readable content.** The server still can't read the library. The new keys and the approval
   protocol are designed so that it can't.
 
@@ -152,21 +154,23 @@ they are.
 
 | Topic | Decision |
 |---|---|
-| Sign-up | Open to anyone with the app, once the owner opens it; the migration seeds it closed. A `signup` setting (`open`, `closed`, or `only:<username>`), `max_accounts` and `signups_per_day` are enforced by D1 triggers. No CAPTCHA. Every method — username, passkey, Apple, Google, GitHub — creates an account through the same insert, so every gate applies to all of them. |
-| Sign-in methods | Username and password, passkeys, Sign in with Apple, Google and GitHub. A deployment advertises the ones it has configured; the app shows only those. X is not supported. Providers are rows, so another provider needs a module and secrets, not a schema change. |
+| Sign-up | Open to anyone with the app, once the owner opens it; the migration seeds it closed. A `signup` setting (`open`, `closed`, or `only:<username>`), `max_accounts` and `signups_per_day` are enforced by D1 triggers. No CAPTCHA. Every method — username, platform passkey, Linux security key, Apple, Google, GitHub — creates an account through the same insert, so every gate applies to all of them. |
+| Sign-in methods | Username and password; platform passkeys on macOS and Windows; external security keys on Linux; Sign in with Apple, Google and GitHub. A deployment advertises the ones it has configured, and the app shows only those it can actually run. X is not supported. Providers are rows, so another provider needs a module and secrets, not a schema change. |
 | Identity | Every account has a username. A social or passkey sign-up suggests one and lets the user change it before creating the account; no account is username-less, so invites, `GET /v2/users/<username>`, recovery and the account row keep working. Provider identities are `(provider, subject)` rows; emails, names and profile data are never stored. |
 | Abuse controls | A write-free Workers rate-limit binding in front, then fixed-window counters in D1 (sign-up per IP; sign-ins per account and per IP; recovery per IP; password checks per account; writes per account per day). Per-account quotas on live documents, document bytes, files and file bytes, plus global caps and server-wide daily caps on sign-ups, document writes and upload bytes, all enforced by triggers that fail closed. The daily write and upload caps are shared fairly: an account within its fair share (the cap ÷ `max_accounts`) is never refused by them. |
 | Identifier | A username: ASCII, case-folded, 3–32 characters. There is no email anywhere. |
 | Keys | Argon2id(password, salt bound to the server's origin and the username) → HKDF splits it into an auth key (sent) and a key-encryption key (never leaves). A random data key encrypts everything. It is wrapped by the password KEK, by a recovery key that rotates on use, and by each passkey's PRF-derived KEK (where the passkey has PRF). A passwordless account stores a random auth hash and an unopenable password wrap, so its row looks like any other. |
 | Server secrets | The server keeps SHA-256(auth key) and compares in constant time. It hands out a wrapped data key only after the matching proof. It holds the provider client IDs and secrets needed to complete a sign-in, never a provider access or refresh token. |
 | Unlocking a new device | A signed-in device approves it: a six-digit code derived from both devices' ephemeral X25519 keys is shown on both, the approver sends the data key sealed to the requester's ephemeral key, and the server sees only ciphertext. The recovery key is the fallback when no other device is available. |
-| Passkeys | The Worker is the relying party (`PASSKEY_RP_ID`). A credential's PRF output, HKDF'd with the credential and the account, wraps the data key under a new wrap purpose. A credential without PRF signs in only. Several passkeys per account. |
+| Passkeys | The Worker is the relying party (`PASSKEY_RP_ID`). A platform credential's PRF output, HKDF'd with the credential and the account, wraps the data key under a new wrap purpose. A credential without PRF signs in only. Several passkeys per account. |
+| Linux security keys | The app is the CTAP2 client, over USB HID and NFC through libfido2; no Worker page and no platform passkey. The CTAP2 `hmac-secret` output is mapped to the same `prf_out` and `passkey_kek`. A key without `hmac-secret` signs in only. |
 | Content | Documents, files and device names are sealed with XChaCha20-Poly1305. The associated data binds the account, document, revision and deleted flag. Wire IDs and revisions are keyed hashes, and revision generations only grow. |
 | Sessions | One per device; device IDs are per account. Tokens are stored hashed and expire after 180 days unseen. At most 10 active devices; signing in on an 11th signs out the least recently seen. Revoked sessions are kept 90 days to explain 401s and to keep a returning device's name. Only a signed-in device, proving itself with a per-account device proof, is exempt from the per-account sign-in limit. Every sign-in method issues the same kind of session and counts against the same limits. |
+| Approval notifications | An unlocked app holds one authenticated WebSocket per account to `/v2/account/events`. Request creation, a sealed name and cancellation publish an event ID; the app fetches the approval row over HTTPS. Notifications are best-effort hints; launch, Settings and every reconnect do one `GET`. There is no approval timer. |
 | Changing how you sign in | A session alone can sync, never add, remove or replace a way in. Linking or unlinking a provider, adding or removing a passkey, setting a password, replacing the recovery key and deleting the account each take a fresh proof: the current password, a passkey assertion, or a fresh provider sign-in. A provider sign-in can't add a method, and it needs the recovery key to set a password, replace the recovery key or delete. |
-| Mac storage | The Keychain holds the session token, the data key, any pending logouts, and the recovery key until the user confirms they saved it. A device that has signed in but not yet unlocked holds a separate pending item with the token and no data key. The Mac never stores the password, master key, KEKs or PRF output. |
+| Device storage | The platform secret store (Keychain on macOS, Credential Manager on Windows, Secret Service on Linux) holds the session token, the data key, any pending logouts, and the recovery key until the user confirms they saved it. A device that has signed in but not yet unlocked holds a separate pending item with the token and no data key. The app never stores the password, master key, KEKs or PRF output. |
 | Server choice | The owner's Worker is compiled in as the default. "Use a different server…" points at another deployment. Accounts are bound to their server's origin. |
-| Signing out | Keychain items go (a logout is retried until the server accepts it). Local notes and the library's link to the account stay. |
+| Signing out | Secret-store items go (a logout is retried until the server accepts it). Local notes and the library's link to the account stay. |
 | Deleting the account | Removes the account's D1 rows, R2 objects and sessions. Local notes stay. Cloudflare D1 Time Travel still holds what the deleted rows held: ciphertext, your username and your password-protected key, for up to 30 days. |
 | Protocol | `/v2/`. The new Worker drops `/v1/` and the shared token; the client has one mode. |
 | Legacy data | The migration only adds tables. Legacy plaintext is removed only by an explicit admin command, which requires a verified manifest. |
@@ -213,14 +217,17 @@ The server sees:
   times, the latter to the hour. How many devices there are, and why each was signed out. Not their
   names: those are sealed.
 - **Sign-in methods:** which providers are linked to an account, the provider's stable subject ID
-  for each, and when it was linked; each passkey's credential ID, public key, COSE algorithm, sign
-  count, transports, whether it carries a PRF wrap, and when it was added and last used (to the
-  hour). Not who the provider says the person is: emails, names and profile data are discarded.
-  The provider's access and refresh tokens are discarded too.
+  for each, and when it was linked; each passkey's or security key's credential ID, public key,
+  COSE algorithm, sign count, transports, whether it carries a PRF wrap, and when it was added and
+  last used (to the hour). Not who the provider says the person is: emails, names and profile data
+  are discarded. The provider's access and refresh tokens are discarded too.
 - **Device approvals:** for each request, the account, the two device IDs, the ephemeral X25519
   public keys, the sealed device name, the sealed data key, and the times it was created, answered
   or expired. Not the six-digit code, which is derived from the X25519 shared secret, and not the
   data key.
+- **Account event sockets:** while one is open, the account ID, device ID, connect and disconnect
+  times, and the transient event type and approval ID. Not note content, ciphertext, names, keys or
+  codes, and no event log: the Durable Object has no storage.
 - **Network:** IP addresses, times and the `kanso-sync/<version>` user agent, in Cloudflare's own
   request handling. Workers invocation logs and traces are pinned off
   (`observability.logs.invocation_logs: false`, `observability.traces.enabled: false`), and the
@@ -627,10 +634,11 @@ primitives.
 
 ## Sign-in methods
 
-A sync account can be reached with a username and password, a passkey, Sign in with Apple, Google
-or GitHub. All of them create the same kind of session. The difference is only how the person proves
-who they are, and how the new device gets the data key: a password derives it, a passkey with PRF
-derives it, and everything else asks an already signed-in device or the recovery key.
+A sync account can be reached with a username and password, a platform passkey, an external security
+key on Linux, Sign in with Apple, Google or GitHub. All of them create the same kind of session. The
+difference is only how the person proves who they are, and how the new device gets the data key: a
+password derives it, a passkey with PRF or a security key with `hmac-secret` derives it, and
+everything else asks an already signed-in device or the recovery key.
 
 The server still never holds a key that opens the library. An OAuth token proves identity to the
 Worker; it is not and can never be an encryption key, because the provider and the Worker can both
@@ -638,8 +646,16 @@ obtain one. So the data key keeps its own wraps, and the new paths below add wra
 over end-to-end encrypted.
 
 A deployment advertises which methods it has. The app shows only those, and a passkey button only
-where the app can run the ceremony itself. It always shows the username form. Old clients ignore
-the advertisement and the new routes.
+where the app can run the ceremony itself: the native platform sheet on macOS and Windows, or a
+direct CTAP2 ceremony on Linux. Health cannot see a USB key, so the Linux button also requires the
+app to have enumerated a compatible authenticator. It always shows the username form. Old clients
+ignore the advertisement and the new routes.
+
+A **platform passkey** is a credential the operating system or a credential manager creates and
+syncs. A **security key** is an external FIDO2 authenticator. They share the server's passkey
+routes, public-key checks and wrap construction. They differ in who runs the ceremony: the platform
+on macOS and Windows, or the app's libfido2 client on Linux. "Passkey" below means either
+credential unless the text names the platform.
 
 ### Account identity
 
@@ -716,7 +732,7 @@ Passwords are not required. An account created with a passkey or a provider has 
 and rotates the recovery key; `POST /v2/account/password` still changes an existing one. Setting or
 changing a password revokes every other session (`password_changed`), as today.
 
-### Keys for passkeys
+### Keys for passkeys and security keys
 
 The WebAuthn PRF extension gives a credential a deterministic 32-byte output for an input the
 relying party chooses. The input is not secret; the output is, and only that credential can produce
@@ -733,6 +749,13 @@ it.
 - **The output.** The ceremony returns `prf.enabled` and, when it is true, `prf.results.first`, a
   32-byte `ArrayBuffer`, read in the app. No other output is used, and no web page ever handles it
   (see "Where the ceremony runs").
+- **The CTAP2 mapping on Linux.** CTAP2's `hmac-secret` extension returns the same
+  credential-scoped secret. The app computes
+  `ctap_salt = SHA-256("WebAuthn PRF" || 0x00 || prf_input)`—the same salt WebAuthn computes—and
+  passes it as `salt1` in `authenticatorGetAssertion`, requiring user verification. The
+  authenticator returns `HMAC-SHA256(credential_secret, ctap_salt)`, which is `prf_out` exactly;
+  it is not hashed again. `passkey_kek` below is unchanged. libfido2 sets and reads the salt and
+  result (`fido_assert_set_hmac_salt`, `fido_assert_hmac_secret_ptr`).
 - **The passkey KEK.**
 
       prf_out     = PRF(credential, prf_input)                       (32 bytes)
@@ -817,6 +840,11 @@ user-verification flags, the credential's signature, and the credential's accoun
   and whether the account has a password, so the app can offer every unlock path. It does not
   return the password wrap (see "Unlocking a new device"). The client requests the PRF output in the same `get()` with `eval.first = prf_input`; it
   needs no server input to do so, which is why username-less sign-in can unlock.
+
+Linux submits the same two WebAuthn-shaped messages, but libfido2 produces the CTAP2 half. The
+Worker therefore needs no Linux-specific route, attestation format or credential column. The only
+new passkey advertisement bit is `security_key` in health.
+
 - **Sign count.** A stored count of 0 means the authenticator doesn't count; it is never enforced.
   When both counts are above 0, a new count at or below the stored one is refused as a possible
   clone (`invalid_credentials`), and the row's count is updated on every higher one.
@@ -852,20 +880,44 @@ user-verification flags, the credential's signature, and the credential's accoun
   OS or the authenticator gives no PRF output, the credential registers without a wrap. If the API
   call fails, the method isn't available and the app says so; it never falls back to a page. Step 2
   records the `clientDataJSON.origin` each native API produces and pins `PASSKEY_ORIGINS` to it.
-- **Linux and any other case without a native API:** no passkeys in v1. The tempting alternative, a
-  page the Worker serves and opens in the system browser, is rejected: the page is code from the
-  server, and it can ask the authenticator for the PRF output and send it back. A compromised
-  Worker would then hold the output and the passkey wrap and could unwrap the data key. That breaks
-  the one promise this design keeps. A passkey ceremony therefore only ever runs in code the app
-  itself calls. Linux keeps username and password, Apple, Google, GitHub, approval and the recovery
-  key.
+- **Linux:** the app is the CTAP2 client. It uses a safe Rust wrapper around libfido2 1.17, which
+  drives USB HID and NFC security keys. USB HID is the required transport; NFC works where libfido2
+  and the Linux host expose a reader, and PC/SC-only readers are not promised because distro builds
+  vary. No Worker page is involved. `fido_dev_info_manifest` enumerates the authenticators; a udev
+  monitor updates the button while the sign-in page is open, with enumeration when the form opens as
+  the fallback.
+
+  Registration calls `authenticatorMakeCredential` with `rk=true`, user verification required and
+  the same RP ID, user handle and COSE algorithms as the WebAuthn routes. The app builds the standard
+  `clientDataJSON` and `attestationObject` and sends them to
+  `/v2/account/sign-in/passkeys/finish`. Sign-in is username-first so the app can pass the account's
+  credential IDs as `allowList`; it calls `authenticatorGetAssertion` with `hmac-secret`, maps the
+  result as above, and sends the standard assertion to `/v2/auth/passkey/finish`. If the key has no
+  `hmac-secret`, the credential registers without a wrap and the app says it can sign in but not
+  unlock a new device.
+
+  The chosen Rust libfido2 bindings expose `hmac-secret` on assertions but not the make-credential
+  `hmac-secret-mc` output. For a key that advertises `hmac-secret`, registration therefore follows
+  with one immediate local assertion over a challenge derived from the registration challenge,
+  requires UV and verifies the assertion against the new public key before sending the wrap; the user
+  touches the key twice. If that second ceremony fails, no wrap is saved and the app says so. The
+  Worker receives the same WebAuthn-shaped registration attestation and sign-in assertion as from
+  macOS and Windows; the local assertion never leaves the app.
+
+  The app never loads a page from the Worker and never asks a browser to run the ceremony. The
+  rejected page design is still rejected: server code could take the PRF output and the wrap. The
+  PIN, when the key needs one, is held in zeroizing memory and passed to libfido2; it never leaves
+  the process.
 - **Self-hosted servers.** Native macOS passkeys need the RP ID in the app's associated-domains
   entitlement, which is fixed at build time; the official app's is `sync.kansoapp.app`, so it hides
-  passkeys for another server's domain, even if that server advertises them. Windows native
+  platform passkeys for another server's domain even if that server advertises them. Windows native
   passkeys may work for any RP ID (to be confirmed on Windows 11 in step 2); if they don't, the app
-  hides them there too. A self-hosted owner who wants passkeys builds their own app with their
-  domain in the entitlement. A server on an IP address or plain http (except `localhost`)
-  advertises no passkeys, because WebAuthn has no valid RP ID there.
+  hides them there too. Linux security keys do not use the associated-domains entitlement, so they
+  work with a self-hosted server whose health advertises a valid RP ID; the app checks that the RP
+  ID is the server host or a parent before it starts the ceremony. A self-hosted owner who wants
+  platform passkeys builds their own app with their domain in the entitlement. A server on an IP
+  address or plain http (except `localhost`) advertises no passkeys, because WebAuthn has no valid
+  RP ID there.
 
 Passkeys are phishing-resistant because the credential is scoped to the RP ID and the system
 checks the origin. The server never sees the private key and never sees the PRF output; it
@@ -913,11 +965,29 @@ secret. The Worker stores the provider's stable subject and discards everything 
   (with the known-device exemption), whichever method it used.
 
 **Sign in with Apple (web flow).** Apple's capability table lists Sign in with Apple under the
-Apple Developer Program but not under Developer ID, and its web setup says the primary app must be
-on the App Store. A Developer ID build therefore cannot use the native
-`ASAuthorizationAppleIDProvider`; the design uses the web flow on every platform, and a future App
-Store build can add the native flow without changing the server. This is the one owner prerequisite
-to confirm before building (see "Open questions").
+Apple Developer Program but not under Developer ID. A Developer ID build therefore cannot use the
+native `ASAuthorizationAppleIDProvider`; the design uses the web flow on every platform, and a future
+App Store build can add the native flow without changing the server.
+
+The owner's Apple resources are configured as of **2026-10-23**:
+
+- Team ID: `4973Y692JU`.
+- The release App ID `app.kanso.Kanso` has Associated Domains.
+- Primary App ID `app.kanso.signin` (`4973Y692JU.app.kanso.signin`) has Sign in with Apple.
+- Services ID `app.kanso.Kanso.web` is grouped under that primary App ID, with domain
+  `sync.kansoapp.app` and return URL `https://sync.kansoapp.app/v2/auth/apple/callback`.
+- The Sign in with Apple key is named "Kanso Sign in with Apple", Key ID **`MS6Y3S5ZL7`**. Its `.p8`
+  was uploaded to the `kanso-sync` Worker secret `APPLE_PRIVATE_KEY`, and the downloaded file was
+  deleted; no key material is in this document. The Worker vars are `APPLE_CLIENT_ID=app.kanso.Kanso.web`,
+  `APPLE_TEAM_ID=4973Y692JU`, `APPLE_KEY_ID=MS6Y3S5ZL7` and
+  `APPLE_REDIRECT_URI=https://sync.kansoapp.app/v2/auth/apple/callback`.
+
+Re-opening the Services ID in the live portal showed both website values persisted. Apple's current
+web setup accepts the domain and return URL in the Services ID and needs no file on the server.
+Apple also allowed this Services ID to be created without an App Store app, even though its help
+page says the primary app must be on the App Store; that observed result is specific to this account
+and date. None of this proves a real Apple sign-in: the routes are not implemented or deployed, and
+the Worker vars are still to be set.
 
 - `POST /v2/auth/apple/start` returns `{flow_id, auth_url}`. `auth_url` is
   `https://appleid.apple.com/auth/authorize` with the Services ID as `client_id`, the registered
@@ -1039,10 +1109,12 @@ once. All binary values are base64url; `lp` is as in "Encodings".
    It must commit toward A before A posts `epk_A`. So a substituted key matches the codes with
    probability one in a million per attempt, and every attempt is a visible request the user
    can cancel. This is the commit-then-reveal shape of Bluetooth numeric comparison and ZRTP.
-2. **A sees it.** While unlocked and frontmost, A polls
-   `GET /v2/account/sign-in/approvals` (on launch, when Settings › Account opens, and every 30 s
-   while frontmost) and sees `{id, device_id, commit, created_at, expires_at}`. It shows "A device
-   wants to join *ngoni*". It generates `(esk_A, epk_A)` and calls
+2. **A sees it.** While unlocked and running, A holds the account event socket. The Worker
+   publishes `approval.created` after the row commits, so A fetches
+   `GET /v2/account/sign-in/approvals` once (the same GET runs at launch, when Settings › Account
+   opens, and after every socket reconnect) and sees
+   `{id, device_id, commit, created_at, expires_at}`. It shows "A device wants to join *ngoni*". It
+   generates `(esk_A, epk_A)` and calls
    `POST /v2/account/sign-in/approvals/<id>/challenge` with `{epk: epk_A}`. A can't compute a code
    yet: it has only N's commitment.
 3. **The code, once both keys are known.** N computes it after step 4's challenge arrives; A
@@ -1078,7 +1150,8 @@ once. All binary values are base64url; `lp` is as in "Encodings".
 
    The name is the device-name rule already in "Sealed device names"; it is 55–400 characters.
    Posting it after the challenge is what keeps it sealed from the Worker.
-5. **A checks and approves.** A polls the list again and receives `epk_N`. It checks
+5. **A checks and approves.** A receives `approval.named`, fetches
+   `GET /v2/account/sign-in/approvals` once and gets `epk_N`. It checks
    `SHA-256("kanso/v1/approve-commit" || 0x01 || epk_N) == c_N` and stops with "This request
    changed after it was made. Don't approve." if not. Then it derives `approval_key` and the code,
    opens `sealed_name`, and shows the device name, the approximate time and the code:
@@ -1102,7 +1175,13 @@ once. All binary values are base64url; `lp` is as in "Encodings".
 If the codes differ, N shows "That code doesn't match. Don't approve. Cancel and try again." and
 offers [Cancel]; the user must not approve on A. If A never answers, N offers the recovery key after
 two minutes, and immediately if `other_devices` was 0. Either device can cancel with
-`DELETE /v2/account/sign-in/approvals/<id>`; the other side sees `status: "cancelled"` and stops.
+`DELETE /v2/account/sign-in/approvals/<id>`; the Worker publishes `approval.cancelled`, N's poll sees
+`status: "cancelled"`, and both stop.
+
+**Events are hints, never state.** A frame carries only the event type and the approval ID. It never
+carries the device name, the six-digit code, an ephemeral key, the wrapped key or note content. If a
+frame is late, lost, or the socket is down, the next launch, Settings open, foreground or reconnect
+`GET` catches up. The Durable Object keeps no event log; the D1 approval row is authoritative.
 
 **Expiry, single use and retries.** A request lives five minutes from creation. A may answer it
 once; a second `/approve` on an answered request is 409 `approval_used`. N may read the approved
@@ -1145,7 +1224,16 @@ from both keys does not.
 Verified against the linked page unless marked secondary:
 
 - WebAuthn Level 3, the PRF extension (salt hashing, `enabled`, `results`, 32-byte output):
-  <https://www.w3.org/TR/webauthn-3/#prf-extension>.
+  <https://www.w3.org/TR/webauthn-3/#prf-extension>. The CTAP salt is
+  `SHA-256(UTF8("WebAuthn PRF") || 0x00 || eval.first)`.
+- Sign in with Apple for the web (domains and return URLs on the Services ID; no server file):
+  <https://developer.apple.com/help/account/capabilities/configure-sign-in-with-apple-for-the-web/>.
+- libfido2 (USB and NFC security keys on Linux; `hmac-secret` salt/secret API):
+  <https://developers.yubico.com/libfido2/> and
+  <https://developers.yubico.com/libfido2/Manuals/fido_assert_set_authdata.3/>.
+- Durable Objects WebSocket Hibernation (accept, handlers, auto-response, hibernated sockets):
+  <https://developers.cloudflare.com/durable-objects/best-practices/websockets/>; duration billing
+  pauses while hibernated: <https://developers.cloudflare.com/durable-objects/platform/pricing/>.
 - Apple passkeys and the associated-domain requirement:
   <https://developer.apple.com/documentation/authenticationservices/supporting-passkeys>.
 - Apple's PRF inputs and outputs, macOS 15 / iOS 18:
@@ -1244,7 +1332,8 @@ Bitwarden's phrase derivation are not public; only their user-facing behaviour i
 - **JSON bodies.** Required fields must be present with the right type. Unknown keys are ignored in
   requests and responses. Auth and account request bodies are limited to 8 KiB.
 - **Sessions.** Session routes take `Authorization: Bearer kanso_<43 base64url>`. A header of any
-  other shape gets 401 without touching D1.
+  other shape gets 401 without touching D1. The one WebSocket route also takes
+  `X-Kanso-Device` and `X-Kanso-Device-Proof`; its upgrade is authenticated exactly once.
 - **Errors** are `{"error": "<code>", "message": "<English, for logs>", ...extras}`. The client maps
   codes to its own words and never shows `message`.
 - **Unknown paths.** `/v1/*` and every other unknown path answer 404 `not_found`.
@@ -1343,7 +1432,7 @@ Bitwarden's phrase derivation are not public; only their user-facing behaviour i
 | `passkey-challenge` | IP group (/48) | 15 min | 30 | Every passkey start and sign-up start |
 | `passkey-manage` | account ID | 1 h | 20 | Every passkey registration and removal |
 | `approval-create` | account ID | 1 h | 10 | Every new device-approval request |
-| `approval-poll` | account ID | 1 h | 1,200 | Every requester poll and approver list; enough for three requests at a 2 s poll plus the 30 s list |
+| `approval-poll` | account ID | 1 h | 900 | Only the requester's `GET /v2/account/sign-in/approvals/<id>` is counted; at most three requests, each polled every 2 s for its five-minute life, plus retry headroom. The approver's list GETs are not counted; it uses the event socket plus launch, Settings and reconnect GETs |
 | `approval-respond` | account ID | 1 h | 30 | Every challenge, name and approval answer |
 | `provider-poll` | flow ID | 15 min | 300 | Every GitHub device-flow poll and Apple callback poll; 20 a minute, enough for GitHub's 5 s interval; the Worker also enforces that interval |
 | `writes-account` | account ID | 1 day | the account's `quota_writes_per_day`, else `settings.writes_per_day` | Documents in each push, plus 1 per file upload, plus 1 per push refused as malformed or too large (so failed pushes aren't free) |
@@ -1402,8 +1491,9 @@ server's origin (M5), so the owner must choose the final URL before the first ac
 | POST | `/v2/account/sign-in/passkeys/<credential_id>/remove` | yes | Remove a passkey |
 | POST | `/v2/account/sign-in/identities/<provider>/start` | yes | Link a provider (or get a proof flow) |
 | POST | `/v2/account/sign-in/identities/<provider>/unlink` | yes | Unlink a provider |
+| GET | `/v2/account/events` | yes | WebSocket: live approval event hints for this account (session token + device proof) |
 | POST | `/v2/account/sign-in/approvals` | yes | Ask another device to approve this one |
-| GET | `/v2/account/sign-in/approvals` | yes | The pending approvals for this account (the approver's list) |
+| GET | `/v2/account/sign-in/approvals` | yes | Pending approvals for launch, Settings and reconnect; not a timer |
 | GET | `/v2/account/sign-in/approvals/<id>` | yes | The requester's poll |
 | POST | `/v2/account/sign-in/approvals/<id>/challenge` | yes | The approver's ephemeral key |
 | POST | `/v2/account/sign-in/approvals/<id>/name` | yes | The requester's sealed device name |
@@ -1432,24 +1522,28 @@ Shared shapes:
 
 #### GET /v2/health
 
-200 `{"ok": true, "protocol": 2, "signup": "open" | "closed" | "full", "auth": {…}}`. A setting of
-`only:<name>` reports `closed`; `full` means the switch is open and `max_accounts` is reached. The
-daily cap isn't reported. 503 `misconfigured` without a pepper.
+200 `{"ok": true, "protocol": 2, "signup": "open" | "closed" | "full", "auth": {…},
+"events": {…}}`. A setting of `only:<name>` reports `closed`; `full` means the switch is open and
+`max_accounts` is reached. The daily cap isn't reported. 503 `misconfigured` without a pepper.
 
 `auth` is the deployment's advertisement, and its absence means "username and password only":
 
 ```json
 "auth": {"password": true,
          "passkeys": {"rp_id": "sync.kansoapp.app",
-                      "origins": ["https://sync.kansoapp.app"]} | null,
-         "providers": ["apple", "google", "github"]}
+                      "origins": ["https://sync.kansoapp.app"],
+                      "security_key": true} | null,
+         "providers": ["apple", "google", "github"]},
+"events": {"account": "/v2/account/events"}
 ```
 
 `passkeys` is null when `PASSKEY_RP_ID` is unset, an IP address, or plain http other than
-`localhost`. `providers` lists only
-the ones whose client IDs and secrets are configured. An old server omits `auth`; an old client
-ignores it. The app asks health each time the signed-out form opens, and shows a method only when it
-is advertised there.
+`localhost`. `passkeys.security_key` is true when the passkey routes are configured and the
+deployment accepts security-key ceremonies; it says nothing about whether the client can run CTAP2
+or whether a key is attached, so the Linux app checks its own client and enumerates. `events.account`
+advertises the live approval socket; when it is absent the app uses the GET fallbacks only. `providers` lists only the ones whose client IDs and secrets are configured. An
+old server omits `auth` or `events`; an old client ignores them. The app asks health each time the
+signed-out form opens, and shows a method only when it is advertised there.
 
 #### POST /v2/auth/prelogin
 
@@ -1695,7 +1789,7 @@ device can't approve itself.
   "other_devices"}`. `commit` is SHA-256 of the requester's ephemeral X25519 public key with its
   label (see "The protocol"); it can't be changed.
   At most three pending requests per account; a fourth cancels the oldest. Counts
-  `approval-create`.
+  `approval-create`; publishes `approval.created` after the insert commits.
 - **GET /v2/account/sign-in/approvals** — 200 `{"approvals": [{"id", "device_id", "commit",
   "epk": "<43>" | null, "created_at", "expires_at", "approver_epk": "<43>" | null,
   "sealed_name": "<...>" | null, "status"}]}`, oldest first, only pending requests for the
@@ -1710,15 +1804,52 @@ device can't approve itself.
   200; another device's or another key is 409 `approval_used`. The first approver can still answer,
   or the request can be cancelled and made again.
 - **POST /v2/account/sign-in/approvals/<id>/name** — `{"epk": "<43>", "sealed_name": "<55–400>"}`.
-  200 `{"ok": true}`. Only the requesting device, only after a challenge; stores both once. The
-  Worker checks `epk` against the stored commitment and answers 400 `bad_request` on a mismatch (a
-  well-behaved server's check; the approver checks again, because it doesn't trust the server).
+  200 `{"ok": true}`. Only the requesting device, only after a challenge; stores both once, then
+  publishes `approval.named`. The Worker checks `epk` against the stored commitment and answers 400
+  `bad_request` on a mismatch (a well-behaved server's check; the approver checks again, because it
+  doesn't trust the server).
 - **POST /v2/account/sign-in/approvals/<id>/approve** — `{"wrapped_key": "<98>"}`. 200
   `{"ok": true}`. Only the device that challenged, after its challenge; the same `wrapped_key`
   again is 200 (a retry); a different one, or a second device, is 409 `approval_used`; 409
   `approval_expired` past the time. Counts `approval-respond`.
 - **DELETE /v2/account/sign-in/approvals/<id>** — 204, by the requester or the approver.
-  Cancels it; the other side's poll says `cancelled`.
+  Cancels it and publishes `approval.cancelled`; the other side's poll says `cancelled`.
+
+#### GET /v2/account/events
+
+Upgrade to a WebSocket with `Authorization: Bearer kanso_<43>`,
+`X-Kanso-Device: d_<32 hex>` and `X-Kanso-Device-Proof: <43>`. This is a session route: it rejects an
+`Origin`, checks the token, the device ID and SHA-256 of the proof against the active session's
+`proof_hash` in constant time, then forwards `{account_id, device_id}` to `ACCOUNT_ROOM` and returns
+101. A missing or wrong proof is 401 `invalid_credentials`; no socket is accepted.
+
+`ACCOUNT_ROOM` is one Durable Object per account, keyed by `idFromName(account_id)`, and has no
+SQLite or storage. It accepts with `ctx.acceptWebSocket(server, [device_id])`, replaces an older
+socket for the same device (close code
+4000, "replaced"), and attaches only the account and device to the socket. It does not keep a log.
+`setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"))` and Cloudflare's
+protocol ping handling keep idle heartbeats from waking it. After an event handler returns the
+object can hibernate; accepted sockets stay connected and duration billing pauses. When an event
+wakes it, `getWebSockets()` returns the hibernated sockets.
+
+Server-to-app frames are text:
+
+```json
+{"type":"hello"}
+{"type":"approval.created","id":"<id>"}
+{"type":"approval.named","id":"<id>"}
+{"type":"approval.cancelled","id":"<id>"}
+```
+
+No frame carries note content, ciphertext, the device name, ephemeral keys, the code or a wrapped
+key; the app fetches the row over HTTPS after an event. The app sends only pings. Unknown event types
+are ignored and a malformed client frame closes the socket with code 1008. The Worker publishes after
+the D1 commit and never fails the HTTP route if the room cannot be reached.
+
+The DO's socket count is bounded by the account's active devices: one socket per device replaces the
+old one. The upgrade consumes one `SESSION_LIMITER` token; frames do not touch D1 or a Worker rate
+limit. The app reconnects with bounded exponential backoff and does one approvals `GET` after every
+connect, launch, Settings open and foreground. There is no 30-second approval timer.
 
 **Changed existing routes.** `POST /v2/account/recovery-key` and `POST /v2/account/delete` accept a
 `proof` in place of `current_auth_key` / `auth_key`, so an account without a password can rotate its
@@ -2390,8 +2521,8 @@ BEGIN SELECT RAISE(ABORT, 'approval_immutable'); END;
 Every session route authenticates with one read:
 
 ```sql
-SELECT s.device_id, s.last_seen_at, s.revoked_reason, a.id, a.username, a.disabled_at,
-       a.has_password
+SELECT s.device_id, s.last_seen_at, s.revoked_reason, s.proof_hash, a.id, a.username,
+       a.disabled_at, a.has_password
 FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ?1
 ```
 
@@ -2399,6 +2530,9 @@ FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ?1
 - A revoked row: 401 with its reason.
 - `last_seen_at` more than 180 days ago: revoke it (`expired`), then 401.
 - Otherwise `last_seen_at` is updated when it is more than an hour old.
+
+The query also selects `s.proof_hash`. Session routes do not need it, but the account-event upgrade
+compares the supplied device proof with it before forwarding the socket to `ACCOUNT_ROOM`.
 
 Auth and rate-limit reads always go to the primary. The Worker never uses D1's Sessions API or read
 replicas (L8).
@@ -2506,17 +2640,32 @@ Changes to `cloud/wrangler.jsonc`:
 "ratelimits": [
   { "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
   { "name": "SESSION_LIMITER", "namespace_id": "1002", "simple": { "limit": 120, "period": 60 } }
+],
+"durable_objects": {
+  "bindings": [
+    { "name": "NOTE_ROOM", "class_name": "NoteRoom" },
+    { "name": "ACCOUNT_ROOM", "class_name": "AccountRoom" }
+  ]
+},
+"migrations": [
+  { "tag": "v1", "new_sqlite_classes": ["NoteRoom"] },
+  { "tag": "v2", "new_classes": ["AccountRoom"] }
 ]
 // AUTH_PEPPER (required): wrangler secret put AUTH_PEPPER. SYNC_TOKEN is no longer read.
 ```
 
-The Worker's environment type is `Env { DB: D1Database; FILES: R2Bucket; AUTH_PEPPER?: string;
-AUTH_LIMITER?: RateLimit; SESSION_LIMITER?: RateLimit; PUBLIC_LIMITER?: RateLimit;
-REROUT_API_KEY?: string; REROUT_PROJECT_ID?: string; PASSKEY_RP_ID?: string;
-PASSKEY_ORIGINS?: string; APP_ASSOC_APPS?: string; APPLE_DOMAIN_ASSOC?: string;
+Merge the new `ACCOUNT_ROOM` binding and v2 migration with the existing `NOTE_ROOM` and v1
+migration. Do not replace or renumber the deployed v1 migration; append v2.
+
+The Worker's environment type is `Env { DB: D1Database; FILES: R2Bucket;
+NOTE_ROOM: DurableObjectNamespace<NoteRoom>; ACCOUNT_ROOM: DurableObjectNamespace<AccountRoom>;
+AUTH_PEPPER?: string; AUTH_LIMITER?: RateLimit; SESSION_LIMITER?: RateLimit;
+PUBLIC_LIMITER?: RateLimit; REROUT_API_KEY?: string; REROUT_PROJECT_ID?: string;
+PASSKEY_RP_ID?: string; PASSKEY_ORIGINS?: string; APP_ASSOC_APPS?: string;
 APPLE_CLIENT_ID?: string; APPLE_TEAM_ID?: string; APPLE_KEY_ID?: string;
 APPLE_PRIVATE_KEY?: string; APPLE_REDIRECT_URI?: string; GOOGLE_CLIENT_ID?: string;
 GOOGLE_CLIENT_SECRET?: string; GITHUB_CLIENT_ID?: string; GITHUB_CLIENT_SECRET?: string }`.
+`ACCOUNT_ROOM` uses `new_classes` rather than SQLite storage: the event room keeps no rows.
 `REROUT_API_KEY` (optional, a secret) turns on published notes' short links:
 `npx wrangler secret put REROUT_API_KEY` in `cloud/`, pasting a key of the Kanso project on Rerout;
 without it there are none.
@@ -2528,7 +2677,6 @@ Sign-in methods are optional per deployment and are advertised only when configu
 | `PASSKEY_RP_ID` | var | The exact public host passkeys are scoped to (`sync.kansoapp.app`). Unset, or an IP, means no passkeys. |
 | `PASSKEY_ORIGINS` | var, JSON | `["https://sync.kansoapp.app", …]`; each must be the RP ID or a subdomain of it. |
 | `APP_ASSOC_APPS` | var, JSON | `["<TEAMID>.app.kanso.Kanso"]`, served in the AASA file. |
-| `APPLE_DOMAIN_ASSOC` | var | The body of Apple's domain-association file, served at `/.well-known/apple-developer-domain-association.txt`. |
 | `APPLE_CLIENT_ID` | var | The Sign in with Apple Services ID. |
 | `APPLE_TEAM_ID` | var | The 10-character Team ID; also the client secret's `iss`. |
 | `APPLE_KEY_ID` | var | The 10-character Key ID of the Sign in with Apple `.p8` key. |
@@ -2542,10 +2690,10 @@ Sign-in methods are optional per deployment and are advertised only when configu
 A provider is advertised only when its client ID and (where it has one) its secret are present.
 `AUTH_PEPPER` also seals GitHub's short-lived device code and the flow results in D1; rotating it
 cancels flows in flight, which expire in minutes anyway. The Worker serves
-`/.well-known/apple-app-site-association` and
-`/.well-known/apple-developer-domain-association.txt` itself, not from `public/`, with
-`application/json` and `text/plain`, no redirects, and a short `Cache-Control`; they hold no
-secret. Commands run in `cloud/`, and the deploy token is only referenced by name:
+`/.well-known/apple-app-site-association` itself, not from `public/`, with `application/json`, no
+redirects and a short `Cache-Control`; it holds no secret. Apple's current web Sign in with Apple
+setup stores the domain and return URL on the Services ID and needs no file on the server. Commands
+run in `cloud/`, and the deploy token is only referenced by name:
 
 ```bash
 export CLOUDFLARE_API_TOKEN="$IMNGONII_CLOUDFLARE_API_TOKEN"
@@ -2567,8 +2715,10 @@ Provider tests mock `fetch` and use a local JWKS; they never call Apple, Google 
 | Module | Contents |
 |---|---|
 | `crypto.rs` | `KdfParams` (`FLOOR`, `DEFAULT`, `TEST`, `CEILING`); derivation; HKDF; wrap and unwrap (`WrapPurpose::Password`, `Recovery` and the new `Passkey`); `seal_doc`/`open_doc` (→ opened, undecryptable or too new); `seal_file`/`open_file`; `seal_name`/`open_name`; `wire_id`, `wire_rev`, `key_id`; `PRF_INPUT`, `passkey_kek`; `RecoveryKey`, `Password`, zeroizing key types (`AuthKey`, `Kek`, `DataKey`, `DeviceProof`). Pure. |
-| `passkey.rs` | `PasskeyRegistration`, `PasskeyAssertion`, `PasskeyInfo`, the WebAuthn wire shapes, base64url helpers and `passkey_wrapped_key`. Pure. |
+| `passkey.rs` | `PasskeyRegistration`, `PasskeyAssertion`, `PasskeyInfo`, the WebAuthn wire shapes, base64url helpers and `passkey_wrapped_key`. The same shapes carry libfido2's Linux CTAP2 result. Pure. |
+| `security_key.rs` | Linux only: pure helpers for the CTAP2 path — the CTAP salt mapping, `SecurityKeyRegistration` and `SecurityKeyAssertion`, and their conversion to `PasskeyRegistration`/`PasskeyAssertion`. Device enumeration and every libfido2 call stay in the app. |
 | `approval.rs` | `ApprovalKeys`, `Approval`, `ApprovalRequest`, `Approved`: the X25519 exchange, the six-digit code, the sealed name and the data-key wrap. Pure. |
+| `events.rs` | `AccountEvent` and `EventStream`: the authenticated account WebSocket over `tungstenite`/`rustls`, one blocking connection, typed `approval.created`/`named`/`cancelled` events and bounded reconnect. It never opens UI. |
 | `provider.rs` | `Provider`, the flow and ticket shapes, `ProviderSignIn`, `NewAccount`, `AccountMethods`. Pure. |
 | `username.rs` | `normalize_username`, reserved list. Pure. |
 | `wire.rs` | `WireDoc`, `WirePushResult` (`Ok`, `Conflict`, `Lost`, `Behind`), `WirePage` (with `more`, `head_seq`, `epoch`, `key_id`), patterns, limits, the `WireRemote` trait, `ApiError` and its codes. |
@@ -2622,9 +2772,12 @@ pub struct PasswordChanged { pub signed_out_devices: usize, pub recovery_key: Re
 pub struct RotationError { pub error: AccountError, pub recovery_key: Option<Box<PendingRecoveryKey>> }
 
 pub fn server_info(b: &dyn Backend, server: &str) -> Result<SignupState, AccountError>;
-/// The methods a server advertises: the passkey RP ID, when it has one, and the configured
-/// providers. An old server answers with none, which means username and password only.
-pub struct ServerAuth { pub passkeys: Option<String>, pub providers: Vec<Provider> }
+/// The methods a server advertises: passkeys (with whether Linux security keys are accepted), the
+/// configured providers and the account-event path. An old server answers with none, which means
+/// username and password only and no live approval channel.
+pub struct PasskeyMethods { pub rp_id: String, pub security_key: bool }
+pub struct ServerAuth { pub passkeys: Option<PasskeyMethods>, pub providers: Vec<Provider>,
+                        pub account_events: Option<String> }
 pub fn server_auth(b: &dyn Backend, server: &str) -> Result<ServerAuth, AccountError>;
 pub fn sign_up(b: &dyn Backend, secrets: &dyn SecretStore, server: &str, username: &str, password: &Password, device: &DeviceIdentity, progress: &dyn Fn(Step)) -> Result<SignedUp, RotationError>;
 pub fn sign_in(b: &dyn Backend, server: &str, username: &str, password: &Password, device: &DeviceIdentity, progress: &dyn Fn(Step)) -> Result<SignedIn, AccountError>;
@@ -2877,10 +3030,11 @@ test remote leaves them `None`.
   alone must not be enough to add a password. It leads to the recovery key screen and signs other
   devices out. The row then reads "Change password…" and uses the existing route.
 - **Approve a device** (an existing device).
-  1. While unlocked and frontmost, the app polls the approval list on launch, when Settings ›
-     Account opens, and every 30 s.
-  2. A request shows "A device wants to join *ngoni*". The sheet generates `ApprovalKeys`, posts the
-     challenge, then reads the sealed name once it arrives and opens it.
+  1. While unlocked, the app holds the account event socket and does one approvals `GET` on launch,
+     when Settings › Account opens, on foreground and after every reconnect. There is no timer.
+  2. `approval.created` fetches the list once and shows "A device wants to join *ngoni*". The sheet
+     generates `ApprovalKeys`, posts the challenge, then opens the sealed name when
+     `approval.named` fetches it.
   3. It shows the name, the time and the code: "Does it show 123 456? Only approve if it does."
      [Approve] calls `finish_approval`; [Cancel] deletes the request.
   4. The sheet never appears on a locked device (it can't wrap the key).
@@ -3182,7 +3336,9 @@ functions of `SyncProblem`, which removes substring matching.
 
 ### Keychain items
 
-The service is `Kanso`. Item names use the library ID, so data directories never share secrets.
+The service is `Kanso`. On macOS this is the Keychain, on Windows Credential Manager and on Linux
+Secret Service through the existing `keyring` crate. Item names use the library ID, so data
+directories never share secrets.
 
 | Account (item name) | Value (JSON) | Lifetime |
 |---|---|---|
@@ -3438,9 +3594,13 @@ account] [Sign in].
 
 - **Sign in.** The methods the server advertises, in this order, then the username form:
   - [Continue with a passkey] — only when health advertises `passkeys` and the app can run the
-    ceremony itself: the native sheet on macOS (for its associated domain) and the Win32 WebAuthn
-    sheet on Windows. Linux has no passkey button, and a device with no passkey says so and the
-    page stays.
+    platform ceremony itself: the native sheet on macOS (for its associated domain) or the Win32
+    WebAuthn sheet on Windows. A device with no passkey says so and the page stays.
+  - [Continue with a security key] — Linux only, when health advertises
+    `passkeys.security_key` and the app has enumerated a compatible CTAP2 authenticator. It asks
+    for the username first, then runs the libfido2 ceremony. Linux never shows a platform-passkey
+    button. With no key attached, the page says "Connect a FIDO2 security key to use one"; a key
+    without `hmac-secret` can sign in but not unlock a new device, and the app says so.
   - [Continue with Apple], [Continue with Google], [Continue with GitHub] — only the advertised
     ones, with the provider's own button rules.
   - A divider, then Username and Password (and Server, below).
@@ -3452,6 +3612,8 @@ account] [Sign in].
 - **Create account.** The same method list above a username form:
   - [Create with a passkey] — asks for a username (suggested), registers the passkey, and shows
     whether it can unlock.
+  - [Create with a security key] — Linux's equivalent, with the same username-first form and
+    libfido2 ceremony.
   - [Create with Apple] / [Google] / [GitHub] — completes the provider flow, then asks for a
     username (suggested, with "You can change this before creating the account").
   - [Create with a username] — Username, Password, Confirm password, with the hints as today.
@@ -3580,8 +3742,9 @@ button if it isn't.
 - If the codes differ: "That code doesn't match. Don't approve on the other device. Cancel and try
   again." with [Cancel] only.
 
-**On an already signed-in device** the request is a sheet, raised from the approval poll (launch,
-Settings › Account, and every 30 s while the app is frontmost):
+**On an already signed-in device** the request is a sheet, raised by `approval.created` on the
+account event socket; launch, every Settings › Account open, foreground and every reconnect also do
+one approvals `GET`:
 
 - Title "A device wants to join *ngoni*".
 - The device name from the sealed name ("Alex's MacBook Air", or "A Mac" until it arrives), the
@@ -3594,8 +3757,12 @@ Settings › Account, and every 30 s while the app is frontmost):
 - The code is announced as "one two three, four five six", never put in a notification, a log or a
   crash report, and cleared from the screen when the sheet closes.
 
-The approval poll is a light `GET` under `SESSION_LIMITER`; while the app is in the background it
-stops, and the request waits (five minutes) or expires. Nothing about approval uses a push service.
+The account event socket is opened when an unlocked account is signed in and reconnects with
+bounded backoff. It carries only event types and approval IDs; the app does a light `GET` after each
+event and after every connect. The fallbacks are launch, every Settings › Account open and
+foreground. There is no 30-second timer, and nothing about approval uses a push service. An event
+that arrives while the app is in the background queues the sheet; the code is still shown only in
+the sheet.
 
 ### Elsewhere in the app
 
@@ -3724,12 +3891,13 @@ documents and files under the test session and can push plaintext as another cli
 | Auth (Worker) | Every route and status; `prop_only_the_registered_auth_key_signs_in`; `prop_sessions_follow_the_model`; idempotent retries; nothing in D1 equals a submitted proof or token; prelogin is deterministic and shaped like a real answer; `Origin` → 403; wrong content type → 415; non-canonical base64url → 400 | `cloud/test/auth.test.ts` |
 | Provider tokens | For Apple, Google and GitHub (mocked `fetch` and a local JWKS): a bad signature, an unknown `kid`, `alg: none` and HS256 are refused; wrong `aud`, wrong `iss`, an expired token, a token issued in the future and a replayed `nonce` are refused; the JWKS is cached and refetched once on an unknown `kid`; no token, code, email, name or subject reaches a log or D1; GitHub's numeric `id` is the only field read | `cloud/test/sign_in.test.ts` |
 | Provider flows | `state` mismatch, an expired code, a cancelled consent, a loopback `redirect_uri` that isn't `127.0.0.1`, a PKCE verifier that doesn't match, a device-flow `slow_down`, `expired_token` and `access_denied`; a new identity returns a ticket, an existing one returns a session, a link to an account that already owns it is 409 `identity_taken`, and every finish/poll is idempotent | `cloud/test/sign_in.test.ts` |
-| Passkey crypto | `PRF_INPUT` is the pinned constant; `passkey_kek` round-trips; another credential ID, account, origin or purpose fails; a wrap moved between credentials fails; a credential without PRF has no wrap; the golden vector pins the derivation | `kanso-sync/tests/crypto.rs` |
+| Passkey crypto | `PRF_INPUT` is the pinned constant; `passkey_kek` round-trips; another credential ID, account, origin or purpose fails; a wrap moved between credentials fails; a credential without PRF has no wrap; the CTAP salt equals `SHA-256("WebAuthn PRF" || 0x00 || PRF_INPUT)` and the authenticator output is used without another hash; the golden vector pins the derivation | `kanso-sync/tests/crypto.rs` |
 | Passkey assertions | A valid assertion signs in; a bad signature, wrong challenge, wrong origin, wrong RP ID hash, missing UV, unknown credential and a non-growing sign count are refused; a stored count of 0 is exempt; a disabled account is 403 after the signature; the session and the wraps come back | `cloud/test/sign_in.test.ts` |
 | Approval protocol | `prop_no_transcript_without_the_keys_yields_the_data_key`: for random keys and transcripts, an attacker who sees only the Worker's rows (both public keys, the sealed name, the wrapped key) never obtains the data key or the code; `prop_a_substituted_key_changes_the_code`: substituting either ephemeral key on either side changes the six-digit code; replay, expiry, single use, self-approval, cancellation, a cross-account request and the zero-device path | `kanso-sync/tests/approvals.rs`, `cloud/test/sign_in.test.ts` |
+| Account events | The upgrade refuses a missing/wrong device proof and an `Origin`; one socket per device replaces the old one; hibernation wakes on an event and delivers `approval.created`/`named`/`cancelled`; frames carry no name, code, key or note content; reconnect performs one GET; no 30-second timer exists | `cloud/test/account_events.test.ts`, `kanso-sync/tests/sign_in.rs`, `kanso-app` `account_flow_tests.rs` |
 | Linking and method changes | Two accounts linking one identity race to one 409; two sign-ups with one username or account ID race to one 201; unlinking or removing the last method is 409 `last_method` without a recovery proof and 204 with one; a `proof` is single use, expires in 5 minutes and is checked for the session's account; changing a way in with a session alone is 401 `reauth_required` | `cloud/test/sign_in.test.ts`, `kanso-sync/tests/accounts.rs` |
-| Sign-in conformance | `cloud/test/fixtures/sign_in.json` (owner: Worker builder): the health advertisement (none, passkeys, each provider), passkey start/finish, sign-up, provider tickets, approvals, method lists, every new error and rate-limit row. Run by the Worker and by `MemoryServer`; `tests/fixtures.rs` checks the shapes against `api.rs` | `cloud/test`, `kanso-sync/tests/conformance.rs` |
-| App sign-in | The method list follows health (and hides a method the server doesn't advertise, and passkeys on a platform without a native ceremony); the passkey sheet, provider, approval and waiting states; a locked session can't sync; the code mismatch path; the proof sheet; the pending Keychain item survives a launch; `MemoryServer` + `TestAuthenticator` headless flows for passkey sign-up/sign-in, provider sign-up/sign-in with approval, linking, unlinking, adding and removing a passkey, setting a password, and recovery removing passkeys | `kanso-app` `account_flow_tests.rs` |
+| Sign-in conformance | `cloud/test/fixtures/sign_in.json` (owner: Worker builder): the health advertisement (none; passkeys with and without `security_key`; each provider; events present/absent), passkey start/finish, security-key-shaped messages, sign-up, provider tickets, approvals, method lists, every new error and rate-limit row. Run by the Worker and by `MemoryServer`; `tests/fixtures.rs` checks the shapes against `api.rs` | `cloud/test`, `kanso-sync/tests/conformance.rs` |
+| App sign-in | The method list follows health (and hides a method the server doesn't advertise, platform passkeys where there is no native ceremony, and Linux security keys when none is attached); the passkey sheet, Linux security-key form, provider, live approval and waiting states; a locked session can't sync; the code mismatch path; the proof sheet; the pending secret-store item survives a launch; `MemoryServer` + `TestAuthenticator` headless flows for passkey and Linux security-key sign-up/sign-in, provider sign-up/sign-in with approval, linking, unlinking, adding and removing a passkey, setting a password, and recovery removing passkeys | `kanso-app` `account_flow_tests.rs` |
 | Rate limits | `prop_limiter_matches_the_model` (fixed windows, counting first); known-device exemption; keys hold no raw IP or username; IPv6 grouping | `cloud/test/limits.test.ts` |
 | Quotas | `prop_counters_equal_recomputed_sums`; `prop_growth_past_quota_is_refused_and_shrinking_always_passes`; the reported quota order; global caps; the row-cost measurement; the overcommit refusal | `cloud/test/quota.test.ts` |
 | Migration | `prop_0002_leaves_legacy_rows_untouched`; settings seeded closed; the file applies through `applyD1Migrations`; e2e applies it through `wrangler d1 migrations apply --local` | `cloud/test/migration.test.ts`, e2e |
@@ -4031,17 +4199,17 @@ Worker and the Rust/app sides can overlap where noted.
 | Step | Work | Days | Done when |
 |---|---|---|---|
 | 1. Schema and providers | `0006_sign_in.sql`; `account_identities`, `account_passkeys`, `auth_flows`, `device_approvals`; the health advertisement; Apple/Google/GitHub token verification with a cached JWKS and mocked `fetch`; `cloud/test/sign_in.test.ts` and `fixtures/sign_in.json` | 4 | The migration applies through `wrangler d1 migrations apply --local`; health advertises nothing, then passkeys, then each provider as its secrets appear; every token case (bad signature, wrong `aud`/`iss`, expired, replayed nonce, `alg: none`) is refused; no token, email or name reaches D1 or a log. Tests: the provider and provider-flow rows above. |
-| 2. Passkeys and the PRF wrap | Registration and assertion on the Worker; `crypto.rs`'s `PRF_INPUT`, `passkey_kek`, `WrapPurpose::Passkey`; the native macOS and Windows ceremonies (no web page) | 6 | A passkey creates an account, signs in, and unlocks a new device with PRF on macOS 15; on macOS 13/14 it signs in and falls back to approval; a security key works; a cloned counter is refused; the wrap round-trips and a moved wrap fails. Tests: passkey crypto and assertions, plus the golden vector. |
-| 3. Device approval | The X25519 request/challenge/name/approve protocol; the Worker routes and limits; `approval.rs`; the approver sheet and the waiting page | 4 | Two devices complete the flow; both show the same code; a substituted key shows different codes; a revealed key that doesn't match the commitment is refused by the Worker and by the approver; the request expires, is single use, can be cancelled and refuses self-approval; zero devices offers recovery. Tests: the approval property tests, and the app flow. |
+| 2. Passkeys and the PRF wrap | Registration and assertion on the Worker; `crypto.rs`'s `PRF_INPUT`, `passkey_kek`, `WrapPurpose::Passkey`; the native macOS and Windows ceremonies (no web page); the Linux libfido2 CTAP2 client, its CTAP salt mapping and the same WebAuthn shapes | 8 | A platform passkey creates an account, signs in, and unlocks a new device with PRF on macOS 15; on macOS 13/14 it signs in and falls back to approval; a Linux USB HID security key registers, signs in, and unlocks with `hmac-secret`; a key without it signs in and falls back to approval; a cloned counter is refused; the wrap round-trips and a moved wrap fails. No Worker page is loaded. Tests: passkey crypto, CTAP salt vectors, libfido2 fakes and assertions, plus the golden vector. |
+| 3. Device approval and events | The X25519 request/challenge/name/approve protocol; the Worker routes and limits; `ACCOUNT_ROOM` with hibernating WebSockets; `events.rs`; the approver sheet, live refresh and the waiting page | 6 | Two devices complete the flow; both show the same code; a substituted key shows different codes; a revealed key that doesn't match the commitment is refused by the Worker and by the approver; the request expires, is single use, can be cancelled and refuses self-approval; zero devices offers recovery. An unlocked approver receives `approval.created` and `approval.named` over the socket; the socket survives idle hibernation, replaces a duplicate device socket, rejects a missing or wrong device proof, and recovers through one GET after reconnect. No frame contains note content; no 30-second timer remains. Tests: approval property tests, account-event auth/hibernation, reconnect and app flow. |
 | 4. Provider flows and linking | Apple's web flow (Services ID, client secret, `form_post`, callback exception); Google's loopback + PKCE; GitHub's device flow; new-account tickets; link/unlink; `provider.rs`; the app's browser sessions | 6 | Each provider creates an account and signs in; linking and unlinking work; a second account linking the same identity gets 409; no provider secret is in the app; the callback works with an `Origin` header, the other routes still refuse one. Tests: provider flows, linking races, app flows. |
 | 5. App UI and Keychain | The signed-out method list, the create-account variants, Settings › Sign-in methods, the pending item, the locked state, the proof sheet, snapshots | 4 | Every state has a snapshot; a locked session can't sync; the pending item survives a relaunch; the method list follows health; the code and the name are accessible. Tests: the app sign-in row and the snapshots. |
 | 6. Sensitive changes and rotations | `Proof`; set password; adding/removing passkeys; unlinking the last method; recovery removing passkeys; recovery-key and delete with a proof | 3 | A session alone can't change a way in; a proof is single use and expires; the last method needs the recovery key; recovery leaves the account with a password and no passkeys; a passwordless account can still delete. Tests: linking and method changes, rotations. |
-| 7. End to end, docs and deploy | `e2e-local.sh` gains a two-device approval; passkey ceremonies are checked by hand on macOS and Windows; `cloud/README.md`, `cloud/DEPLOYED.md`; owner setup; security review fixes | 3 | The e2e passes locally; the canary scan still finds no plaintext; the two docs name every secret and route; a real Apple/Google/GitHub account completes each flow on macOS; the Windows native passkey flow works, and Linux hides passkeys. |
+| 7. End to end, docs and deploy | `e2e-local.sh` gains a two-device approval and a dropped-socket reconnect; passkey ceremonies are checked by hand on macOS, Windows and Linux; `cloud/README.md`, `cloud/DEPLOYED.md`; owner setup; security review fixes | 3 | The e2e passes locally; the canary scan still finds no plaintext; the two docs name every secret and route; a real Apple/Google/GitHub account completes each flow on macOS; the Windows platform passkey flow works; Linux offers only a security-key ceremony and completes it with a real USB key; the live approval sheet needs no 30-second wait. |
 
-**Total: about 30 builder-days.** With a Worker builder and a Rust/app builder in parallel, about
-four to five calendar weeks after the accounts v2 rollout, not counting the owner's Apple setup
-wait. Dropping Apple (if its prerequisite can't be met) saves about six days; leaving Windows
-without passkeys saves about two.
+**Total: about 34 builder-days.** With a Worker builder and a Rust/app builder in parallel, about
+four to five calendar weeks after the accounts v2 rollout. Linux security keys add about two days
+and the live approval channel adds about two; Apple's developer resources are already configured.
+Leaving Windows without platform passkeys saves about two days.
 
 ### Deploying sign-in methods
 
@@ -4052,24 +4220,26 @@ rollback is `wrangler rollback` to the previous version; the new tables stay and
    before the migration. Old app builds keep signing in to password accounts; they can't sign in
    to an account created without a password, so update the app before making one.
 2. **Migration.** `npm run migrate:remote` applies `0006_sign_in` (additive).
-3. **Secrets and vars.** In `cloud/`, the owner sets the ones from the table under "Worker
-   configuration": `wrangler secret put APPLE_PRIVATE_KEY`, `GOOGLE_CLIENT_SECRET`, and optionally
-   `GITHUB_CLIENT_SECRET`; the rest are `vars` in `wrangler.jsonc`. A provider appears in health
-   only when its values are present, so they can be added one at a time.
+3. **Secrets and vars.** `APPLE_PRIVATE_KEY` is already uploaded to the `kanso-sync` Worker. In
+   `cloud/`, set the four Apple vars from the owner table in `wrangler.jsonc`; add
+   `GOOGLE_CLIENT_SECRET` and, if used, `GITHUB_CLIENT_SECRET` with `wrangler secret put`. A
+   provider appears in health only when its values are present, so they can be added one at a time.
 4. **Deploy.** `npm run deploy`.
-5. **Check the two public files.** `curl -sI https://sync.kansoapp.app/.well-known/
-   apple-app-site-association` and `.../apple-developer-domain-association.txt` must be 200, with
-   no redirect and the right content type. Apple's CDN may take hours to pick up a change.
+5. **Check the AASA file.** `curl -sI
+   https://sync.kansoapp.app/.well-known/apple-app-site-association` must be 200, with no redirect
+   and `application/json`. Apple's CDN may take hours to pick up a change. Sign in with Apple needs
+   no domain-association file.
 6. **Test with real accounts.** One Apple, one Google and one GitHub account, each on a new
-   account and on a linked existing one; a passkey on macOS 15 and on a security key; a second
-   device approved by the first; a recovery that removes a passkey. Nothing is written to a shared
-   document; the test accounts are the owner's.
+   account and on a linked existing one; a platform passkey on macOS 15; a Linux USB security key;
+   a second device approved by the first over the live event socket, then again after dropping and
+   reconnecting it; a recovery that removes a passkey. Nothing is written to a shared document; the
+   test accounts are the owner's.
 7. **Docs.** `cloud/README.md` gains:
    - a row for every new route in its route table, and the Apple callback's `Origin` rule;
    - the secrets and vars table (what each is, and that the secrets go through
      `wrangler secret put`, never a file);
-   - the `auth` shape of `GET /v2/health` and what a deployment without it means;
-   - the two `.well-known` paths and why Apple's CDN may lag;
+   - the `auth` and `events` shapes of `GET /v2/health` and what a deployment without them means;
+   - the AASA path and why Apple's CDN may lag;
    - migration `0006_sign_in`, and the sentence that no email, name, profile or provider token is
      stored, that the GitHub device code is sealed under `AUTH_PEPPER`, and that the PRF output
      never leaves the app.
@@ -4087,68 +4257,64 @@ rollback is `wrangler rollback` to the previous version; the new tables stay and
 #### What the owner must provide
 
 The owner does all of this in their own accounts and pastes secrets only into `wrangler secret put`
-or `.dev.vars` (never into a file that is committed, a chat, or a document). The agent never asks
-for, handles or repeats a secret.
+or `.dev.vars` (never into a file that is committed, a chat, or a document). Secret values are never
+repeated in this document.
 
 | # | Thing | Where it goes |
 |---|---|---|
-| 1 | Apple Developer Program membership (paid) | — |
+| 1 | Apple Developer Program membership (paid), team `4973Y692JU`. | — |
 | 2 | The release App ID `app.kanso.Kanso` with **Associated Domains** enabled, and a **Developer ID provisioning profile** that authorizes it. Embed it at `Kanso.app/Contents/embedded.provisionprofile` and sign with it. This is what makes native macOS passkeys work. Do **not** add Sign in with Apple to this App ID: Apple's table doesn't offer it to Developer ID. | The app build, not the Worker. |
-| 3 | For Sign in with Apple (only if the prerequisite below is met): a separate App ID with Sign in with Apple, a **Services ID** (for example `app.kanso.Kanso.web`) with the domain `sync.kansoapp.app` and return URL `https://sync.kansoapp.app/v2/auth/apple/callback`, and a **Sign in with Apple private key** (`.p8`, downloaded once) with its Key ID. | `APPLE_CLIENT_ID` (Services ID, var), `APPLE_TEAM_ID` (var), `APPLE_KEY_ID` (var), `APPLE_REDIRECT_URI` (var), `APPLE_PRIVATE_KEY` (`wrangler secret put`). |
-| 4 | Apple's domain-association file body for `sync.kansoapp.app` (Apple shows it after you register the domain for Sign in with Apple). | `APPLE_DOMAIN_ASSOC` (var); served at `/.well-known/apple-developer-domain-association.txt`. |
-| 5 | The Associated Domains entitlement `webcredentials:sync.kansoapp.app` and the AASA app list `["<TEAMID>.app.kanso.Kanso"]`. | The app's entitlements and `APP_ASSOC_APPS` (var); the Worker serves the AASA. |
-| 6 | A Google Cloud project with an OAuth consent screen (External; only `openid`, no email or profile scopes) and an OAuth client of type **Desktop app**. | `GOOGLE_CLIENT_ID` (var), `GOOGLE_CLIENT_SECRET` (`wrangler secret put`). |
-| 7 | A GitHub **OAuth App** (not a GitHub App) with Device flow enabled; homepage and callback `https://sync.kansoapp.app`. | `GITHUB_CLIENT_ID` (var); `GITHUB_CLIENT_SECRET` only for the web+PKCE fallback. |
-| 8 | The passkey host. `sync.kansoapp.app` already resolves to the Worker; no new DNS is needed. `PASSKEY_RP_ID=sync.kansoapp.app`, `PASSKEY_ORIGINS=["https://sync.kansoapp.app"]`. | `wrangler.jsonc` vars. |
-| 9 | Apple's CDN fetch and a test device. Nothing to configure on Cloudflare beyond not blocking `/.well-known/*`; the Worker's `assets` config must let those paths reach the Worker (they are routes, not files). | — |
-| 10 | Test accounts: one Apple ID, one Google account, one GitHub account, and two devices for the approval test. | — |
+| 3 | Sign in with Apple: primary App ID `app.kanso.signin` (`4973Y692JU.app.kanso.signin`) with the capability; Services ID `app.kanso.Kanso.web` grouped under it, with domain `sync.kansoapp.app` and return URL `https://sync.kansoapp.app/v2/auth/apple/callback`; key "Kanso Sign in with Apple", Key ID `MS6Y3S5ZL7`. | The `.p8` is already uploaded as `APPLE_PRIVATE_KEY` on the `kanso-sync` Worker; `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID` and `APPLE_REDIRECT_URI` are not set. |
+| 4 | The Associated Domains entitlement `webcredentials:sync.kansoapp.app` and the AASA app list `["<TEAMID>.app.kanso.Kanso"]`. | The app's entitlements and `APP_ASSOC_APPS` (var); the Worker serves the AASA. |
+| 5 | A Google Cloud project with an OAuth consent screen (External; only `openid`, no email or profile scopes) and an OAuth client of type **Desktop app**. | `GOOGLE_CLIENT_ID` (var), `GOOGLE_CLIENT_SECRET` (`wrangler secret put`). |
+| 6 | A GitHub **OAuth App** (not a GitHub App) with Device flow enabled; homepage and callback `https://sync.kansoapp.app`. | `GITHUB_CLIENT_ID` (var); `GITHUB_CLIENT_SECRET` only for the web+PKCE fallback. |
+| 7 | The passkey host. `sync.kansoapp.app` already resolves to the Worker; no new DNS is needed. `PASSKEY_RP_ID=sync.kansoapp.app`, `PASSKEY_ORIGINS=["https://sync.kansoapp.app"]`. Linux security keys use the same RP ID. | `wrangler.jsonc` vars. |
+| 8 | Apple's CDN fetch and a test device. Nothing to configure on Cloudflare beyond not blocking `/.well-known/*`; the Worker's `assets` config must let those paths reach the Worker (they are routes, not files). | — |
+| 9 | Test accounts: one Apple ID, one Google account, one GitHub account, two devices for approval, and one Linux-compatible USB or NFC security key. | — |
 
-**The Apple prerequisite.** Apple's capability table lists Sign in with Apple only under the Apple
-Developer Program, not Developer ID, and its web setup says the primary app must be on the App
-Store. Before building step 4, the owner should confirm in the developer account whether a Services
-ID can be created for an app that is not on the App Store. If it can't, ship passkeys, Google and
-GitHub in v1 and add Apple with a future App Store build; the server routes are ready.
+**Apple resources: confirmed in the live developer account on 2026-10-23.** Re-opening the
+Services ID showed the domain and return URL still present. The `.p8` was downloaded once, uploaded
+to `APPLE_PRIVATE_KEY` on the `kanso-sync` Worker, and the downloaded file was deleted; no key
+material is in the repository, this document or a chat.
+The Worker vars are still to be set and no sign-in has been implemented or deployed, so a real Apple
+login remains unverified.
 
 #### Open questions
 
 Recommendations are on merit; the effort is the added builder time if the other option is chosen.
 
-1. **Is Sign in with Apple available without an App Store app?** *Recommendation:* answer this
-   before step 4. If it isn't, ship v1 without Apple (saves ~6 days) and keep the routes; an App
-   Store build would add native Apple and native passkeys without server changes.
-2. **Which host is the RP ID?** *Recommendation:* `sync.kansoapp.app`, the public default. It keeps
+1. **Which host is the RP ID?** *Recommendation:* `sync.kansoapp.app`, the public default. It keeps
    `share.kansoapp.app` and every other subdomain out of the passkey scope, and native macOS uses
-   the same host even when the account's canonical origin is `kanso.antonlabs.cc`. Using `kansoapp.app` would let any subdomain ask for the credential; it
-   saves nothing.
-3. **Do social accounts get a username?** *Recommendation:* yes, suggested and editable at sign-up.
+   the same host even when the account's canonical origin is `kanso.antonlabs.cc`. Using
+   `kansoapp.app` would let any subdomain ask for the credential; it saves nothing.
+2. **Do social accounts get a username?** *Recommendation:* yes, suggested and editable at sign-up.
    A nullable username would touch `accounts`, invites, `kanso-identity-bind`, recovery and
    `AccountRef`, and a table rebuild: ~3 days, and a worse product (no invites, no
    `GET /v2/users/<username>`). The suggested form adds no days.
-4. **Does recovery remove passkeys?** *Recommendation:* yes. A passkey added while someone knew the
-   password must not survive the break-glass path; re-adding one is one ceremony from the recovered
-   device. Keeping them would save no time and leave a takeover path. The screen says how many go.
-5. **Does every change need a fresh proof?** *Recommendation:* yes. A stolen session could otherwise
-   add an attacker's provider or passkey and persist after a password change. The proof is the
-   passkey sheet, the password, or a provider flow; it adds about 3 days (step 6). Session-only
-   changes would save that and leave a real escalation.
-6. **GitHub device flow or web + PKCE?** *Recommendation:* device flow. It needs no loopback
+3. **Does recovery remove passkeys and security keys?** *Recommendation:* yes. A credential added
+   while someone knew the password must not survive the break-glass path; re-adding one is one
+   ceremony from the recovered device. Keeping them would save no time and leave a takeover path.
+   The screen says how many go.
+4. **Does every change need a fresh proof?** *Recommendation:* yes. A stolen session could otherwise
+   add an attacker's provider, passkey or security key and persist after a password change. The
+   proof is the passkey sheet, the password, or a provider flow; it adds about 3 days (step 6).
+   Session-only changes would save that and leave a real escalation.
+5. **GitHub device flow or web + PKCE?** *Recommendation:* device flow. It needs no loopback
    listener, no client secret and no redirect; the user reads a code. GitHub supports PKCE now, so
    the web fallback remains (~1 day) for a deployment that can't enable Device flow.
-7. **Native passkeys on Windows?** *Recommendation:* the Win32 `webauthn.h` call, on macOS and
-   Windows only. It is the only way to reach Windows Hello directly, and a page served by the
-   Worker is rejected for passkeys on E2E grounds (see "Where the ceremony runs"). Doing nothing on
-   Windows would save about 2 days and leave the platform with the most desktop users without
-   passkeys.
-8. **How does an existing device learn of a request?** *Recommendation:* a 30 s poll while the app is
-   frontmost, plus launch and Settings. It needs no push service and no new infrastructure; a push
-   service would add ~5 days and an Apple/Google dependency for a five-minute event.
-9. **Six digits or eight?** *Recommendation:* six, shown as two groups of three. With the
+6. **Native platform passkeys on Windows?** *Recommendation:* the Win32 `webauthn.h` call, for
+   platform passkeys on macOS and Windows. It is the only way to reach Windows Hello directly, and
+   a page served by the Worker is rejected on E2E grounds (see "Where the ceremony runs"). Doing
+   nothing on Windows would save about 2 days and leave the platform with the most desktop users
+   without platform passkeys. Linux does not depend on this: its external security-key path is
+   decided above.
+7. **Six digits or eight?** *Recommendation:* six, shown as two groups of three. With the
    commitment, a key-substituting server wins with probability 10⁻⁶ per request, and each attempt
    is a visible request the user can cancel; six is easier to read aloud and compare. Eight would
    take that to 10⁻⁸ at no extra build cost, for a harder comparison.
-10. **Should a passwordless account be deletable?** *Recommendation:* yes, with a `proof` and the
-    typed username (a provider proof also needs the recovery key). Requiring a password would
-    strand the accounts this revision creates; the proof is the same bar as the password.
+8. **Should a passwordless account be deletable?** *Recommendation:* yes, with a `proof` and the
+   typed username (a provider proof also needs the recovery key). Requiring a password would
+   strand the accounts this revision creates; the proof is the same bar as the password.
 
 ### Rollback
 
@@ -4619,7 +4785,7 @@ because no scope is requested; Google and GitHub data are discarded.
 | A compromised identity provider (Apple, Google or GitHub) | Can authenticate as any of its users, including issuing `sub` or a token for a person it shouldn't. That is account takeover of the *authentication*, not decryption. It can then request approval from a device, which shows the request, the device name and the code; or use the recovery path if it has the key. | The data key stays wrapped; approval needs the user's other device and its confirmation; a provider that is compromised for one account is visible in the sign-in methods list. There is no way to make a compromised IdP harmless; don't use a provider you don't trust. |
 | A stolen provider access token | Nothing: the Worker exchanges codes server-side, never stores a provider token, and the app never holds one. | Tokens are discarded immediately; no refresh tokens. |
 | A network attacker (on-path or on the local network) | Can see that a TLS connection goes to the provider or the Worker, and can block it. Can't read or alter the OAuth exchange, the passkey ceremony or the approval transcript: TLS, PKCE, `state`, the nonce and WebAuthn's origin binding protect them. Can't replay a flow. | TLS everywhere; exact redirect URIs; single-use flows; the approval code is compared on screen, not sent. |
-| A stolen session token | Can sync ciphertext, list devices and request an approval, but not decrypt. Can't link, unlink, add or remove a passkey, set a password or delete without a `proof`. | The data key is in the Keychain, not the token; sensitive routes need a fresh proof; sessions expire and can be revoked. |
+| A stolen session token | Can sync ciphertext, list devices and request an approval, but not decrypt. Can't open the account event socket without the device proof, and can't link, unlink, add or remove a passkey, set a password or delete without a `proof`. | The data key is in the device secret store, not the token; the socket needs the per-device proof; sensitive routes need a fresh proof; sessions expire and can be revoked. |
 | A stolen unlocked device | Can read the library and approve another device (it holds the data key). | Sign out or revoke the device from another one; change the password (signs sessions out); recover (removes every passkey) if the device is lost. A passkey on it is protected by the platform's user verification. |
 | A stolen device with a passkey but no unlocked session | The passkey needs the platform's biometric or PIN; the session is gone. | Platform user verification; the session's 180-day life; device revocation. |
 | A provider account takeover | Can sign in (a session) and request approval. Can't read a library without the user's approval or recovery key. Can unlink the provider it controls (and nothing else) and try to set a password, replace the recovery key or delete the server copy with a provider proof, though all three also need the recovery key it doesn't have. It can't add a passkey or link another provider without a password or passkey proof. | The approval prompt shows a device and code the person didn't initiate; recovery removes passkeys and replaces the password; the method list shows unexpected links; local copies survive a deletion. |
@@ -4634,6 +4800,10 @@ The following are **not** protected against, and the app or the docs say so wher
 - A platform passkey provider that syncs the credential to an account the user loses (for example a
   compromised iCloud or Google account). The passkey is then usable wherever it syncs, subject to
   that platform's own protections; the recovery key and the method list are the response.
+- A lost or stolen external security key. It needs its PIN or on-device UV, and it can sign in even
+  when it has no `hmac-secret` wrap. Without the wrap it still needs another unlocked device or the
+  recovery key to open a new library. Remove it from Settings and recover if the key was
+  compromised; recovery removes every passkey and security key.
 
 Residual risks:
 
@@ -4658,11 +4828,12 @@ Residual risks:
   should recover, or at least read that list.
 - **Metadata.** Sizes, counts per kind, timing and IPs are visible, as listed above. Sign-in adds
   which providers an account uses, each provider's stable subject, when it was linked, how many
-  passkeys exist and when each was added and last used (to the hour), and which devices are asking
-  to be approved. It does not add an email, a name or a profile.
+  passkeys or security keys exist and when each was added and last used (to the hour), which devices
+  are asking to be approved, and which devices hold an account event socket. It does not add an
+  email, a name or a profile.
 - **A compromised provider.** Apple, Google or GitHub can authenticate as the person, which is
   account takeover at the front door; it still can't decrypt. This is inherent to using a provider
-  and is why passkeys exist; see "Sign-in methods and providers".
+  and is why passkeys and security keys exist; see "Sign-in methods and providers".
 - **A person who approves the wrong request.** The device name and the six-digit code are the
   defence, and the app never auto-approves. A user who taps Approve without comparing the code has
   handed the library to the requester.
@@ -4711,12 +4882,13 @@ Residual risks:
 
   The calling Mac then unbinds, rebinds fresh and re-uploads. The schema, the `rekeyed` reason and
   the epoch logic already support it; it needs no format change.
-- **Passkeys outside macOS and Windows.** Linux has no native WebAuthn API, and a page served by
-  the Worker is rejected: it is server code, and it could take the PRF output. A later version
-  could ship a WebView whose page the app controls, or a platform API; until then, those platforms
-  use username and password, a provider, approval and the recovery key. A self-hosted server's own
-  domain needs its own app build with that domain in the associated-domains entitlement; the
-  official app hides passkeys there.
+- **Platform passkeys outside macOS and Windows.** Linux uses external security keys (above), but
+  Linux's platform passkey UI and WebView/browser ceremonies remain deferred. A page served by the
+  Worker is still rejected: it is server code, and it could take the PRF output. Until a platform
+  API exists, Linux does not offer platform passkeys; it does offer external USB/NFC security keys,
+  username and password, providers, approval and the recovery key. A self-hosted server's own
+  domain needs its own app build with that domain in the associated-domains entitlement for platform
+  passkeys; external security keys do not.
 - **Moving a server's URL.** v1 binds accounts to their server's origin (M5) and has no flow for a
   changed URL; owners must keep the URL. Later, a move would work like a password change:
   connected through the new URL, derive the current key with the old origin from the Keychain item,
@@ -4791,25 +4963,33 @@ Residual risks:
 
 - Worker:
   - Create: `cloud/migrations/0006_sign_in.sql`, `cloud/src/sign_in.ts` (health methods, passkey
-    ceremonies, approvals, method list), `cloud/src/oauth.ts` (Apple, Google, GitHub: start, token
-    exchange, JWKS, verification), `cloud/src/wellknown.ts` (AASA and Apple's domain file).
-  - Change: `cloud/src/index.ts` (routes, the Apple callback's `Origin`/content-type exception),
-    `cloud/src/auth.ts` (`has_password`, provider and passkey sessions, proofs), `cloud/src/env.ts`,
-    `cloud/src/protocol.ts`, `cloud/src/accounts.ts` (delete and admin), `cloud/src/purge.ts`
-    (expired flows and approvals), `cloud/wrangler.jsonc`, `cloud/vitest.config.ts`.
-  - Tests: `cloud/test/sign_in.test.ts`, `cloud/test/fixtures/sign_in.json`, and the provider rows
-    added to `auth.test.ts`.
+    ceremonies, approvals, method list and event publication), `cloud/src/account_room.ts`
+    (`ACCOUNT_ROOM`: authenticated hibernating sockets, no storage), `cloud/src/oauth.ts` (Apple,
+    Google, GitHub: start, token exchange, JWKS, verification), `cloud/src/wellknown.ts` (AASA).
+  - Change: `cloud/src/index.ts` (routes, the Apple callback's `Origin`/content-type exception,
+    `/v2/account/events`), `cloud/src/auth.ts` (`has_password`, provider and passkey sessions,
+    proofs, proof hash for the socket), `cloud/src/env.ts`, `cloud/src/protocol.ts`,
+    `cloud/src/accounts.ts` (delete and admin), `cloud/src/purge.ts` (expired flows and approvals),
+    `cloud/wrangler.jsonc`, `cloud/vitest.config.ts`.
+  - Tests: `cloud/test/sign_in.test.ts`, `cloud/test/account_events.test.ts`,
+    `cloud/test/fixtures/sign_in.json`, and the provider rows added to `auth.test.ts`.
 - Rust:
-  - Create: `crates/kanso-sync/src/{passkey.rs, approval.rs, provider.rs}`,
-    `crates/kanso-sync/tests/{approvals.rs, sign_in.rs}`,
+  - Create: `crates/kanso-sync/src/{passkey.rs, security_key.rs, approval.rs, events.rs,
+    provider.rs}`, `crates/kanso-sync/tests/{approvals.rs, sign_in.rs}`,
     `crates/kanso-sync/tests/fixtures/sign_in.json`.
-  - Change: `crates/kanso-sync/src/{crypto.rs, account.rs, api.rs, http.rs, memory.rs, keychain.rs}`.
+  - Change: `crates/kanso-sync/src/{crypto.rs, account.rs, api.rs, http.rs, memory.rs, keychain.rs}`;
+    `crates/kanso-sync/Cargo.toml` gains `tungstenite` and `rustls` for the account-event socket;
+    both are already workspace dependencies in `Cargo.lock`. It does not gain the Linux libfido2
+    binding.
 - App:
-  - Create: `crates/kanso-app/src/{approval.rs, provider_flow.rs}` (or the same in
-    `account_page.rs` and `account_flow.rs`), `crates/kanso-app/src/webauthn_macos.rs` and
-    `crates/kanso-app/src/webauthn_windows.rs` (the native platform calls).
+  - Create: `crates/kanso-app/src/{approval.rs, provider_flow.rs, security_key_linux.rs,
+    account_events.rs}` (or the same in `account_page.rs` and `account_flow.rs`), plus
+    `crates/kanso-app/src/webauthn_macos.rs` and `crates/kanso-app/src/webauthn_windows.rs` (the
+    native platform calls).
   - Change: `crates/kanso-app/src/{account_page.rs, account_flow.rs, account_words.rs, services.rs,
     config.rs, snapshots.rs, account_flow_tests.rs, workspace.rs, palette.rs}`.
+  - Dependencies: `crates/kanso-app/Cargo.toml` and `Cargo.lock` gain the Linux-only libfido2
+    binding.
   - Build: `scripts/bundle-macos.sh` (embed `Contents/embedded.provisionprofile`, the
     associated-domains entitlement, and the `kanso` URL scheme for the Apple callback),
     `packaging/macos/entitlements.plist` (new).
