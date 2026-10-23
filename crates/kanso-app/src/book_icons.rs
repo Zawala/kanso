@@ -470,12 +470,13 @@ pub fn book_icon(book: &Book, cx: &App) -> NotebookIcon {
 
 /// What a notebook shows for `icon`: the lock in its place while it is
 /// `locked`, by its own lock or a notebook it is inside, so its own icon
-/// says nothing about it then. Pure.
-pub fn shown(icon: NotebookIcon, locked: bool) -> NotebookIcon {
-    if locked {
-        NotebookIcon::Slot(Slot::NotebookLocked)
-    } else {
-        icon
+/// says nothing about it then; the lock drawn open while the notes are
+/// `unlocked` this session (`locked::LockKeys::is_unlocked`). Pure.
+pub fn shown(icon: NotebookIcon, locked: bool, unlocked: bool) -> NotebookIcon {
+    match (locked, unlocked) {
+        (true, false) => NotebookIcon::Slot(Slot::NotebookLocked),
+        (true, true) => NotebookIcon::Choice(Lucide::LockOpen),
+        (false, _) => icon,
     }
 }
 
@@ -946,13 +947,19 @@ mod tests {
         )
         .unwrap();
         assert_eq!(shows(&journal), NotebookIcon::Slot(Slot::Journal));
-        // Locked, any notebook shows the lock instead; open, the plain one
-        // shows open and one with its own icon keeps it.
+        // Locked, any notebook shows the lock instead, drawn open while the
+        // notes are unlocked; open, the plain one shows open and one with
+        // its own icon keeps it.
         let rocket = choice(gpui_kit::assets::IconName::Rocket);
-        assert_eq!(shown(rocket.clone(), false), rocket);
+        assert_eq!(shown(rocket.clone(), false, false), rocket);
+        assert_eq!(shown(rocket.clone(), false, true), rocket);
         assert_eq!(
-            shown(rocket.clone(), true),
+            shown(rocket.clone(), true, false),
             NotebookIcon::Slot(Slot::NotebookLocked)
+        );
+        assert_eq!(
+            shown(rocket.clone(), true, true),
+            choice(gpui_kit::assets::IconName::LockOpen)
         );
         assert_eq!(
             opened(notebook.clone(), true),

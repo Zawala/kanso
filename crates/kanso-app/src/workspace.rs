@@ -1382,8 +1382,11 @@ impl Workspace {
                 };
                 // The preview shows the row as the sidebar does, lock and all.
                 let locked = self.library.read(cx).is_book_locked(id);
-                let icon =
-                    crate::book_icons::shown(crate::book_icons::book_icon(&book, cx), locked);
+                let icon = crate::book_icons::shown(
+                    crate::book_icons::book_icon(&book, cx),
+                    locked,
+                    crate::locked::LockKeys::is_unlocked(cx),
+                );
                 let current = crate::book_colors::book_color(&book);
                 let store = self.store.clone();
                 let id = id.clone();

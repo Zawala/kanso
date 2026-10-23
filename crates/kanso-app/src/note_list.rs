@@ -623,16 +623,13 @@ impl NoteList {
                             .text_ellipsis()
                             // A locked note's text isn't in the list.
                             .when(note.locked, |el| {
+                                let (mark, word) = crate::locked::note_mark(cx);
                                 el.child(
                                     h_flex()
                                         .gap_1()
                                         .text_color(colors.text_muted)
-                                        .child(
-                                            library_icon(Slot::NoteLocked)
-                                                .size(px(12.))
-                                                .text_color(colors.text_muted),
-                                        )
-                                        .child("Locked"),
+                                        .child(mark.size(px(12.)).text_color(colors.text_muted))
+                                        .child(word),
                                 )
                             })
                             .when(!note.locked, |el| {

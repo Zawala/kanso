@@ -2873,6 +2873,24 @@ impl NoteEditor {
             )
             .children(backlinks)
             .child(div().flex_none().mx_1().child(mode_group))
+            // An open locked note shows its lock open, and a click locks
+            // every note again. Not a listener: `lock_now` updates this
+            // editor.
+            .when(self.lock == LockView::Open, |el| {
+                let editor = cx.entity();
+                el.child(
+                    Button::new("lock-now")
+                        .debug_selector(|| "lock-now".into())
+                        .ghost()
+                        .small()
+                        .tab_stop(tab_stop)
+                        .icon(Icon::new(Lucide::LockOpen).text_color(colors.text_secondary))
+                        .tooltip("Unlocked: click to lock notes now")
+                        .on_click(move |_, window, cx| {
+                            crate::locked::lock_now(&editor, window, cx)
+                        }),
+                )
+            })
             .child(
                 Button::new("pin")
                     .ghost()

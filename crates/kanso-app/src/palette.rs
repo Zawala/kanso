@@ -683,6 +683,7 @@ impl Palette {
                             crate::book_icons::shown(
                                 crate::book_icons::book_icon(book, cx),
                                 library.is_book_locked(&book.id),
+                                crate::locked::LockKeys::is_unlocked(cx),
                             ),
                         )
                         // Typing flattens the tree into a ranked list.
@@ -708,6 +709,7 @@ impl Palette {
                             crate::book_icons::shown(
                                 crate::book_icons::book_icon(book, cx),
                                 library.is_book_locked(&book.id),
+                                crate::locked::LockKeys::is_unlocked(cx),
                             ),
                         )
                         .depth(if query.is_empty() { depth } else { 0 })
@@ -1002,6 +1004,7 @@ impl Palette {
                 crate::book_icons::shown(
                     crate::book_icons::book_icon(book, cx),
                     library.is_book_locked(&book.id),
+                    crate::locked::LockKeys::is_unlocked(cx),
                 ),
                 book.count,
                 &[],

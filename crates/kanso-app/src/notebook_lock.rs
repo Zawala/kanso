@@ -15,7 +15,7 @@
 //! - Removing a notebook's lock leaves its notes locked; notes put there
 //!   afterwards aren't.
 //! - Locking a notebook again (Lock Notes Now, quitting, or ten minutes
-//!   unused) forgets the keys, so its notes close.
+//!   after unlocking) forgets the keys, so its notes close.
 
 use std::rc::Rc;
 use std::sync::Arc;
