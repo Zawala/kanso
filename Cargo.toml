@@ -19,9 +19,10 @@ kanso-update = { path = "crates/kanso-update" }
 kanso-render = { path = "crates/kanso-render" }
 kanso-voice = { path = "crates/kanso-voice" }
 kanso-collab = { path = "crates/kanso-collab" }
+kanso-gallery = { path = "crates/kanso-gallery" }
 # The provider layer: OpenAI, Anthropic, Gemini, Cohere, Bedrock and every
 # OpenAI-compatible endpoint, with streaming, tools and typed timeouts. Pinned
-# to the Kanso branch commit until its PR merges.
+# to a commit on its master.
 agent-runtime = { git = "https://github.com/iamngoni/agent-runtime", rev = "091fd80a6282b6d08db2f40dcb3876f592fae9e3" }
 
 aes = "0.8"

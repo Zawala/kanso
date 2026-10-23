@@ -1,0 +1,12 @@
+# Kanso's theme gallery signing keys: one base64 Ed25519 public key a line.
+#
+# The gallery takes a catalog only when `gallery/index.json.sig` verifies
+# against one of these, and the signing job in `kanso-themes` refuses a key
+# whose public half isn't here. This list is separate from the update keys in
+# `crates/kanso-update/keys/trusted-keys.txt`; never reuse the update key.
+#
+# The owner's key was generated once with `kanso-release keygen`, whose
+# secret is the base64 32-byte seed that `gallery-sign` reads as is; it lives
+# only in the `gallery` environment and the owner's Keychain. Rotate by
+# adding a second key here (docs/RELEASING.md › Theme gallery).
+gAD6MZmqRxzGkbeLh0ofxcVn5UlW+AaA7157L15Qd4Y=

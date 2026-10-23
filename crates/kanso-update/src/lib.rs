@@ -23,7 +23,7 @@ pub mod stage;
 pub use ed25519_dalek::VerifyingKey;
 pub use feed::{
     Asset, Check, Feed, FeedError, SCHEMA, Update, check_feed, parse_public_key, sign_feed,
-    trusted_keys, verify_signature,
+    trusted_keys, verify_signature, verify_signature_with_cap,
 };
 pub use fetch::{FetchError, HttpTransport, Transport};
 pub use install::{Install, LocateOptions, NotInstallable};

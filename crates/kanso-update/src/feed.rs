@@ -151,10 +151,23 @@ pub fn verify_signature(
     signature: &[u8],
     keys: &[VerifyingKey],
 ) -> Result<(), FeedError> {
+    verify_signature_with_cap(feed, signature, keys, MAX_FEED_BYTES, MAX_SIGNATURE_BYTES)
+}
+
+/// [`verify_signature`] with the caller's caps: the theme gallery's index is
+/// larger than a release feed, so it passes its own limit here rather than
+/// growing a second verifier.
+pub fn verify_signature_with_cap(
+    feed: &[u8],
+    signature: &[u8],
+    keys: &[VerifyingKey],
+    max_feed: u64,
+    max_signature: u64,
+) -> Result<(), FeedError> {
     if keys.is_empty() {
         return Err(FeedError::NoTrustedKeys);
     }
-    if feed.len() as u64 > MAX_FEED_BYTES || signature.len() as u64 > MAX_SIGNATURE_BYTES {
+    if feed.len() as u64 > max_feed || signature.len() as u64 > max_signature {
         return Err(FeedError::TooLarge);
     }
     let text = std::str::from_utf8(signature).map_err(|_| FeedError::BadSignature)?;

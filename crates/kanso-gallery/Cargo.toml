@@ -1,0 +1,27 @@
+[package]
+name = "kanso-gallery"
+description = "Kanso's theme gallery: the signed catalog in kanso-themes, the files it names, and installing them apart from a person's own themes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+base64.workspace = true
+ed25519-dalek = { version = "3", default-features = false, features = ["fast", "zeroize"] }
+flate2 = "1.1"
+kanso-update.workspace = true
+# The sanitizer is a parse-and-rebuild pass over the XML, not a substring
+# search. Already built for kanso-import.
+quick-xml = "0.41"
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tar = "0.4.45"
+thiserror.workspace = true
+url = "2.5"
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true

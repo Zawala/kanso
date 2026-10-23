@@ -3,6 +3,12 @@
 Every release of Kanso, newest first. Each entry links its commit, and each
 heading compares the release with the one before.
 
+## Unreleased
+
+### New
+
+- **themes:** The theme gallery's signed catalog, path rules, install plan, key list and SVG sanitizer, with imported and on-disk icon themes held to it (#49 steps 1–2)
+
 ## [0.8.4](https://github.com/iamngoni/kanso/compare/v0.8.3...v0.8.4) - 2026-10-22
 
 ### New

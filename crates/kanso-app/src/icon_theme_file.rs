@@ -489,6 +489,9 @@ pub fn load(
     path: Option<PathBuf>,
     notices: &mut Vec<Notice>,
 ) -> IconTheme {
+    // Built-ins are compiled from a reviewed tag; every theme read from
+    // disk, a person's or the gallery's, is sanitized before it is drawn.
+    let path_is_theirs = path.is_some();
     let mut read: HashMap<String, Option<Arc<[u8]>>> = HashMap::new();
     let mut spent = 0u64;
     let mut over = false;
@@ -507,6 +510,13 @@ pub fn load(
                     });
                     None
                 }
+                Ok(bytes) if path_is_theirs && kanso_gallery::sanitize_svg(&bytes).is_err() => {
+                    notices.push(Notice {
+                        file: format!("{id}/{path}"),
+                        message: "has something Kanso won't draw in an icon".into(),
+                    });
+                    None
+                }
                 Ok(bytes) if spent + bytes.len() as u64 > MAX_THEME_BYTES => {
                     over = true;
                     notices.push(Notice {
@@ -519,6 +529,11 @@ pub fn load(
                     None
                 }
                 Ok(bytes) => {
+                    let bytes = if path_is_theirs {
+                        kanso_gallery::sanitize_svg(&bytes).unwrap_or(bytes)
+                    } else {
+                        bytes
+                    };
                     spent += bytes.len() as u64;
                     Some(Arc::from(bytes))
                 }
