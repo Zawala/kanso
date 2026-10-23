@@ -134,16 +134,20 @@ fn pending_for() -> Option<Duration> {
 
 /// Wake the preview when the pending change settles, so the tables read
 /// the notes then.
-fn wake_after(rich: &Rich, delay: Duration) {
+fn wake_after(rich: &Rich, delay: Duration, cx: &mut App) {
     if WAKE_SCHEDULED.swap(true, Ordering::SeqCst) {
         return;
     }
     let wake = rich.wake.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(delay);
-        wake.try_send(()).ok();
-        WAKE_SCHEDULED.store(false, Ordering::SeqCst);
-    });
+    let executor = cx.background_executor().clone();
+    let timer = executor.clone();
+    executor
+        .spawn(async move {
+            timer.timer(delay).await;
+            wake.try_send(()).ok();
+            WAKE_SCHEDULED.store(false, Ordering::SeqCst);
+        })
+        .detach();
 }
 
 /// Every note as a query reads it, read at most once per change and kind.
@@ -193,20 +197,29 @@ fn rows_for(
     settle_if_due();
     let key = hash(source, self_id.as_deref());
     let epoch = SETTLED.load(Ordering::SeqCst);
+    let pending = pending_for();
     let mut stale = None;
     if let Some(ready) = lock(&RESULTS).get(&key) {
-        if ready.epoch == epoch {
+        // A pending change makes rows stale even while `SETTLED` still
+        // names them: the change has not been read yet.
+        if ready.epoch == epoch && pending.is_none() {
             return Some(ready.rows.clone());
         }
         stale = Some(ready.rows.clone());
     }
-    let pending = pending_for();
-    if stale.is_none() {
-        start(spec, rich, self_id, key, epoch, cx);
-    }
     if let Some(delay) = pending {
-        wake_after(rich, delay);
+        // Nothing to keep on screen yet: read now rather than show a blank.
+        // With rows already drawn, wait for the burst of saves to settle,
+        // then redraw and read.
+        if stale.is_none() {
+            start(spec, rich, self_id, key, epoch, cx);
+        }
+        wake_after(rich, delay, cx);
+        return stale;
     }
+    // Settled and out of date: read the notes again. The last rows stay on
+    // screen meanwhile, and `WORKING` keeps one evaluation per change.
+    start(spec, rich, self_id, key, epoch, cx);
     stale
 }
 

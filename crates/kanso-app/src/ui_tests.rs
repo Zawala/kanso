@@ -2242,4 +2242,30 @@ fn a_query_view_draws_a_table_in_the_preview(cx: &mut TestAppContext) {
     let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
     assert!(vcx.debug_bounds("kanso-query").is_some());
     assert!(vcx.debug_bounds("kanso-query-row-0").is_some());
+    assert!(vcx.debug_bounds("kanso-query-row-1").is_none());
+
+    // A note added elsewhere makes the table out of date. After the burst of
+    // saves settles, the table shows it without being reopened.
+    let book = f.store.note(&f.notes[0]).unwrap().unwrap().book_id;
+    f.store
+        .put(
+            DocType::Note,
+            json!({"title": "Gamma", "body": "---\nclient: Gamma\n---\n# Gamma\n",
+                   "bookId": book}),
+            Put::Upsert,
+            Origin::Api,
+        )
+        .unwrap();
+    cx.run_until_parked();
+    f.draw(cx);
+    // The debounce is wall-clock; let it pass, then fire its wake timer.
+    std::thread::sleep(Duration::from_millis(350));
+    cx.executor().advance_clock(Duration::from_secs(1));
+    cx.run_until_parked();
+    for _ in 0..8 {
+        f.draw(cx);
+        cx.run_until_parked();
+    }
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    assert!(vcx.debug_bounds("kanso-query-row-1").is_some());
 }
