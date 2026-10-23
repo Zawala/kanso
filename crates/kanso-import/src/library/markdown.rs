@@ -322,6 +322,7 @@ pub fn parse_note(file: &TreeFile, text: &str, flavor: Flavor) -> SourceNote {
             .as_deref()
             .and_then(dates::parse)
             .or(file.modified),
+        status: meta.status,
         ..SourceNote::default()
     }
 }

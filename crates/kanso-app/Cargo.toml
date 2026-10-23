@@ -141,6 +141,10 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_Input_KeyboardAndMouse",
 ] }
 
+[build-dependencies]
+# Reads themes/index.json, which lists the built-in color themes.
+serde_json.workspace = true
+
 [target.'cfg(target_os = "windows")'.build-dependencies]
 # The app icon in kanso.exe.
 embed-resource = "3"

@@ -510,11 +510,13 @@ fn note_actions_leave_settings_first(cx: &mut TestAppContext) {
     let store = cx.read(|cx| cx.global::<AppState>().store.clone());
     let note = store.note(&f.note).unwrap().unwrap();
     assert!(note.is_trashed());
+    // Trashing the showing note closes its tab, so what is in view is the
+    // next note, or nothing.
     let open = cx.read(|cx| {
         let editor = f.workspace.read(cx).editor.clone();
         editor.read(cx).note_id().map(str::to_owned)
     });
-    assert_eq!(open.as_deref(), Some(f.note.as_str()), "in view");
+    assert_ne!(open.as_deref(), Some(f.note.as_str()), "its tab closed");
 
     for action in [
         Box::new(crate::workspace::TogglePinned) as Box<dyn gpui_kit::Action>,
@@ -551,7 +553,19 @@ fn note_actions_leave_settings_first(cx: &mut TestAppContext) {
     f.keys(cx, "escape");
     f.keys(cx, "escape");
     assert!(!f.open(cx));
-    // Back with the notes, the palette offers them again.
+    // Back with the notes, the palette offers them again. Choose another,
+    // since the one trashed above closed its tab.
+    let store = cx.read(|cx| cx.global::<AppState>().store.clone());
+    let other = store
+        .search_summaries(&Default::default())
+        .unwrap()
+        .into_iter()
+        .find(|note| note.id != f.note)
+        .unwrap()
+        .id;
+    let library = cx.read(|cx| f.workspace.read(cx).library.clone());
+    library.update(cx, |library, cx| library.select(Some(other), cx));
+    f.draw(cx);
     f.keys(cx, "cmd-k");
     let labels = cx.read(|cx| palette.read(cx).item_labels());
     assert!(labels.iter().any(|l| l == "Show history…"), "{labels:?}");

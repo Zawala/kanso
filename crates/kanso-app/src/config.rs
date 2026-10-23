@@ -356,6 +356,10 @@ pub struct WindowLayout {
     /// The notes open in windows of their own (`note_window.rs`), to open
     /// again at the next launch where they were.
     pub note_windows: Vec<NoteWindowFrame>,
+    /// The notes open as tabs in the main window (`tabs`), in the order
+    /// they show, and the one showing.
+    pub open_tabs: Vec<String>,
+    pub active_tab: usize,
 }
 
 /// A note's own window: which note, and where the window was on screen, in
@@ -381,6 +385,8 @@ impl Default for WindowLayout {
             inspector_tab: InspectorTab::Outline,
             open_books: Vec::new(),
             note_windows: Vec::new(),
+            open_tabs: Vec::new(),
+            active_tab: 0,
         }
     }
 }
@@ -865,6 +871,8 @@ mod tests {
                 ),
                 0..3,
             ),
+            prop::collection::vec("note:[a-z0-9]{1,8}", 0..4),
+            0..6usize,
         )
             .prop_map(
                 |(
@@ -875,6 +883,8 @@ mod tests {
                     inspector_width,
                     inspector_tab,
                     note_windows,
+                    open_tabs,
+                    active_tab,
                 )| {
                     WindowLayout {
                         focus_mode,
@@ -894,6 +904,8 @@ mod tests {
                                 height,
                             })
                             .collect(),
+                        open_tabs,
+                        active_tab,
                     }
                 },
             )
