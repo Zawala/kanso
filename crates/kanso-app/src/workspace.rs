@@ -2120,7 +2120,7 @@ impl Render for Workspace {
         let tab_metas = self.tabs.metas();
         let active_tab = self.tabs.active_index();
         self.tab_bar
-            .update(cx, |bar, cx| bar.set(tab_metas, active_tab, cx));
+            .update(cx, |bar, cx| bar.set(tab_metas, active_tab, window, cx));
         let signed_in = cx
             .try_global::<crate::services::Services>()
             .is_some_and(|services| services.signed_in());

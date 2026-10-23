@@ -120,6 +120,8 @@ mod split;
 mod sync_nudge;
 mod tab_bar;
 #[cfg(test)]
+mod tab_bar_tests;
+#[cfg(test)]
 mod tab_tests;
 mod table_format;
 mod tabs;

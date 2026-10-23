@@ -4,7 +4,9 @@
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenuItem};
+use gpui_kit::component::menu::{
+    ContextMenuExt as _, DropdownMenu as _, PopupMenuItem,
+};
 use gpui_kit::component::{Icon, Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -68,15 +70,89 @@ impl Render for DraggedTab {
 pub struct TabBar {
     tabs: Vec<TabMeta>,
     active: usize,
+    /// How far the row is scrolled when the tabs run past the window; the
+    /// tab showing is kept in view.
+    scroll: ScrollHandle,
 }
 
 impl TabBar {
-    pub fn set(&mut self, tabs: Vec<TabMeta>, active: usize, cx: &mut Context<Self>) {
+    pub fn set(
+        &mut self,
+        tabs: Vec<TabMeta>,
+        active: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.tabs != tabs || self.active != active {
+            let active_changed = self.active != active;
             self.tabs = tabs;
             self.active = active;
+            if active_changed {
+                // The row can run past the window, and a tab out of sight
+                // with it. Asking on the next frame lets the row lay out
+                // first, which it has not on the frame the bar first shows.
+                let scroll = self.scroll.clone();
+                window.on_next_frame(move |_, _| scroll.scroll_to_item(active));
+            }
             cx.notify();
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn scroll_offset(&self) -> gpui_kit::Point<Pixels> {
+        self.scroll.offset()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn scroll_bounds(&self) -> Bounds<Pixels> {
+        self.scroll.bounds()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn scroll_bounds_for_item(&self, index: usize) -> Option<Bounds<Pixels>> {
+        self.scroll.bounds_for_item(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn activate_for_test(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set(self.tabs.clone(), index, window, cx);
+    }
+
+    /// The "⋯" at the end of the row: every open tab, the showing one
+    /// marked, for when the row runs past the window.
+    fn all_tabs(&self, colors: &Colors, cx: &mut Context<Self>) -> AnyElement {
+        let view = cx.entity();
+        let tabs = self.tabs.clone();
+        let active = self.active;
+        Button::new("all-tabs")
+            .ghost()
+            .xsmall()
+            .flex_none()
+            .icon(
+                Icon::new(Lucide::Ellipsis)
+                    .size(px(14.))
+                    .text_color(colors.text_secondary),
+            )
+            .tooltip("All tabs")
+            .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
+                for (index, tab) in tabs.iter().enumerate() {
+                    let view = view.clone();
+                    menu = menu.item(
+                        PopupMenuItem::new(tab.label().to_owned())
+                            .checked(index == active)
+                            .on_click(move |_, _, cx| {
+                                view.update(cx, |_, cx| cx.emit(Activate(index)));
+                            }),
+                    );
+                }
+                menu
+            })
+            .into_any_element()
     }
 
     fn tab(&self, index: usize, colors: &Colors, cx: &mut Context<Self>) -> AnyElement {
@@ -222,11 +298,23 @@ impl Render for TabBar {
             .px(px(8.))
             .gap(px(2.))
             .items_center()
-            .overflow_hidden()
             .bg(colors.editor)
             .border_b_1()
             .border_color(colors.divider)
             .debug_selector(|| "tab-bar".into())
-            .children((0..self.tabs.len()).map(|index| self.tab(index, colors, cx)))
+            .child(
+                h_flex()
+                    .id("tab-row")
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .items_center()
+                    .gap(px(2.))
+                    .overflow_x_scroll()
+                    .track_scroll(&self.scroll)
+                    .children((0..self.tabs.len()).map(|index| self.tab(index, colors, cx))),
+            )
+            .child(self.all_tabs(colors, cx))
     }
 }
+
