@@ -1768,7 +1768,9 @@ fn apply_plan(plan: kanso_gallery::Plan, root: &std::path::Path, cx: &mut App) {
             }
             kanso_gallery::Action::Disable { id, kind, reason } => {
                 fall_back_if_selected(kind, &id, root, cx);
-                crate::gallery::disable(root, &id);
+                if !crate::gallery::disable(root, &id) {
+                    continue;
+                }
                 log_line(&format!("disabled revoked, edited {id}: {reason}"));
                 notice(
                     cx,

@@ -192,7 +192,10 @@ pub fn install_icons_with(
             kanso_update::stage::remove_entry(&backup)?;
             kanso_update::install::swap_in(&folder, &installed, &backup)
                 .map_err(InstallError::Io)?;
-            kanso_update::stage::remove_entry(&backup)?;
+            // The new version is in place: a leftover backup is cleared before
+            // the next install, and failing here would record the theme as
+            // edited (the update's digest never saved).
+            kanso_update::stage::remove_entry(&backup).ok();
         } else {
             fs::rename(&folder, &installed)?;
         }

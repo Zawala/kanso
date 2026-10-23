@@ -1,0 +1,21 @@
+[package]
+name = "kanso-ai"
+description = "AI providers for Kanso: OpenAI-compatible and Anthropic chat over streaming HTTP, and the prompt built from selected notes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+agent-runtime.workspace = true
+anyhow.workspace = true
+async-trait = "0.1"
+serde.workspace = true
+serde_json.workspace = true
+# agent-runtime is async. kanso-ai owns one small runtime on a named
+# background thread; the app keeps its synchronous Event iterator.
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+
+[dev-dependencies]
+futures-util = "0.3"
+proptest.workspace = true

@@ -87,9 +87,9 @@ pub fn installed_name(root: &Path, id: &str) -> Option<String> {
 }
 
 /// Keeps a revoked, edited theme on disk but out of the loaders, and tells
-/// the person why through its Browse card.
-#[allow(dead_code)] // Called by the automatic check in #49 step 5.
-pub fn disable(root: &Path, id: &str) {
+/// the person why through its Browse card. Returns whether it was newly
+/// disabled, so a check that finds it again doesn't announce it again.
+pub fn disable(root: &Path, id: &str) -> bool {
     let _installing = INSTALL_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -99,7 +99,9 @@ pub fn disable(root: &Path, id: &str) {
         state.disabled.push(id.to_owned());
         state.disabled.sort();
         state.save(&path).ok();
+        return true;
     }
+    false
 }
 
 /// Installs a color theme the catalog pinned, after holding it to the same
@@ -379,6 +381,15 @@ mod tests {
             },
             bytes,
         )
+    }
+
+    #[test]
+    fn disabling_twice_reports_only_the_first_time() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(disable(dir.path(), "nord"));
+        assert!(!disable(dir.path(), "nord"));
+        let state = State::load(&dir.path().join("state.json"));
+        assert_eq!(state.disabled, vec!["nord".to_owned()]);
     }
 
     #[test]

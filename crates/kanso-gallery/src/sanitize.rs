@@ -345,7 +345,15 @@ fn clean_attributes(name: &str, start: &BytesStart<'_>) -> Result<String, Saniti
             .normalized_value(quick_xml::XmlVersion::Implicit1_0)
             .map_err(|_| SanitizeError::Entity)?
             .into_owned();
-        if !seen.insert(key.clone()) {
+        // Duplicates are judged by the name the output uses: `href` and
+        // `xlink:href` together would let the reference check see one target
+        // and the output keep the other.
+        let canonical = if key == "xlink:href" {
+            "href"
+        } else {
+            key.as_str()
+        };
+        if !seen.insert(canonical.to_owned()) {
             return Err(SanitizeError::Malformed);
         }
         if key == "style" {
@@ -870,6 +878,14 @@ mod tests {
     }
 
     #[test]
+    fn href_and_xlink_href_together_are_refused() {
+        // The use check read `href` (#z, a path) while the output kept
+        // `xlink:href` (#a, a group holding a use): a chain the check missed.
+        let both = r##"<svg><defs><path id="z" d="M0 0"/><g id="a"><use href="#z"/></g></defs><use href="#z" xlink:href="#a"/></svg>"##;
+        assert_eq!(sanitize_svg(both.as_bytes()), Err(SanitizeError::Malformed));
+    }
+
+    #[test]
     fn gradient_and_clip_references_are_kept() {
         let svg = r##"<svg><defs><linearGradient id="g"><stop offset="0" stop-color="#fff"/></linearGradient><clipPath id="c"><rect width="4" height="4"/></clipPath></defs><path d="M0 0h4v4z" fill="url(#g)" clip-path="url(#c)"/></svg>"##;
         let out = ok(svg);
@@ -911,6 +927,30 @@ mod tests {
                     let rest = &text[at + 6..];
                     prop_assert!(rest.starts_with('#'), "external href in {text}");
                 }
+            }
+        }
+
+        /// However `use` elements, groups and the two spellings of `href` are
+        /// combined, no `use` in the output points at anything holding a `use`,
+        /// and the output passes again unchanged.
+        #[test]
+        fn prop_no_use_chain_survives(
+            parts in prop::collection::vec((0u8..4, 0u8..4, 0u8..4), 1..8),
+        ) {
+            let mut defs = String::from(r#"<path id="p" d="M0 0"/>"#);
+            for (i, (a, b, how)) in parts.iter().enumerate() {
+                let target = |n: u8| if usize::from(n) < i { format!("#g{n}") } else { "#p".into() };
+                let inner = match how {
+                    0 => format!(r#"<use href="{}"/>"#, target(*a)),
+                    1 => format!(r#"<use xlink:href="{}"/>"#, target(*a)),
+                    2 => format!(r#"<use href="{}" xlink:href="{}"/>"#, target(*a), target(*b)),
+                    _ => r#"<path d="M0 0"/>"#.into(),
+                };
+                defs.push_str(&format!(r#"<g id="g{i}">{inner}</g>"#));
+            }
+            let svg = format!("<svg><defs>{defs}</defs></svg>");
+            if let Ok(once) = sanitize_svg(svg.as_bytes()) {
+                prop_assert_eq!(sanitize_svg(&once), Ok(once));
             }
         }
 

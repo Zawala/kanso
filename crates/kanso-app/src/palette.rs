@@ -45,6 +45,7 @@ use crate::theme::{
     Colors, PALETTE_SELECTED_ALPHA, Rgb, muted_tag_color, section_label, status_glyph,
 };
 use crate::word_goal::{self, GoalSetting};
+use crate::workspace::AppState;
 use crate::zoom::px;
 
 actions!(
@@ -921,6 +922,9 @@ impl Palette {
         let image_line = !in_trash && self.editor.read(cx).image_on_caret_line(cx).is_some();
         let audio_line = !in_trash && self.editor.read(cx).audio_on_caret_line(cx).is_some();
         let shared_note = self.editor.read(cx).shared_role().is_some();
+        let ai_on = cx
+            .try_global::<AppState>()
+            .is_some_and(|state| state.config.ai.enabled);
         commands::all()
             .iter()
             .filter(|command| command.group == group)
@@ -936,6 +940,7 @@ impl Palette {
                 Needs::ImageLine => image_line,
                 Needs::AudioLine => audio_line,
                 Needs::SharedNote => shared_note,
+                Needs::AiOn => ai_on,
             })
             .map(|command| {
                 let pinned = match self.shared_by_several(|n| n.pinned) {
