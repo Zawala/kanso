@@ -704,8 +704,9 @@ replacing the recovery key and deleting the account each carry a `proof`:
   provider. A locked device (no data key) can't make a proof for another device's action: the
   action is started by the device that holds the session, and the proof is made on that device. An
   approval request is not a proof.
-- A provider proof can remove a method, but it can't add one: linking a provider or adding a
-  passkey needs a password or passkey proof. Setting a password, replacing the recovery key or
+- A provider proof can only unlink that same provider. It can't add a method, remove a passkey or
+  unlink another provider: those need a password or passkey proof. Otherwise someone who took over
+  the person's Google account could strip their passkeys and other providers. Setting a password, replacing the recovery key or
   deleting the account with a provider proof also needs the recovery key
   (`current_recovery_auth_key`). A compromised provider therefore can't add a second way in, take
   the break-glass path or destroy the server copy without a secret it doesn't have.
@@ -813,8 +814,8 @@ user-verification flags, the credential's signature, and the credential's accoun
   picker; the assertion's credential ID names the account. If the user typed a username first, the
   start may include that account's credential IDs, which helps security keys without discoverable
   storage. The finish returns a session, `key_id`, `epoch`, the credential's wrap if it has one,
-  and the account's password wrap if it has a password, so the app can offer all applicable unlock
-  paths. The client requests the PRF output in the same `get()` with `eval.first = prf_input`; it
+  and whether the account has a password, so the app can offer every unlock path. It does not
+  return the password wrap (see "Unlocking a new device"). The client requests the PRF output in the same `get()` with `eval.first = prf_input`; it
   needs no server input to do so, which is why username-less sign-in can unlock.
 - **Sign count.** A stored count of 0 means the authenticator doesn't count; it is never enforced.
   When both counts are above 0, a new count at or below the stored one is refused as a possible
@@ -1004,9 +1005,12 @@ A device that signed in with Apple, Google, GitHub, or a passkey without PRF has
 the data key. It cannot sync and the server can't help beyond ciphertext. Three paths unlock it, in
 the order the app offers them:
 
-1. **The password**, if the account has one. The sign-in response includes the password wrap; the
-   app asks for the password, derives the KEK and unwraps. This is today's path and needs nothing
-   new.
+1. **The password**, if the account has one. The app asks for the password and signs in again
+   with it (`POST /v2/auth/login`, same device), which returns the password wrap only after the
+   Worker has checked the auth key, under the per-account sign-in limit. A passkey or provider
+   sign-in never returns the password wrap: anyone who controls a person's Google or GitHub
+   account, or a synced passkey without PRF, could otherwise take the wrap away and guess the
+   password offline at their own speed.
 2. **An already signed-in device** (below).
 3. **The recovery key**, through `recover/start`, which also sets a new password.
 
@@ -1020,17 +1024,31 @@ to.
 `N` is the new device, `A` an already signed-in, unlocked device. X25519 keys are ephemeral and used
 once. All binary values are base64url; `lp` is as in "Encodings".
 
-1. **N asks.** It generates `(esk_N, epk_N)` and calls `POST /v2/account/sign-in/approvals` with
-   `{epk: epk_N}`. The Worker creates a request with a random 32-byte `request_id`, `expires_at` =
+1. **N asks, committing to its key.** It generates `(esk_N, epk_N)` and calls
+   `POST /v2/account/sign-in/approvals` with `{commit: c_N}`, where
+   `c_N = SHA-256("kanso/v1/approve-commit" || 0x01 || epk_N)`. It does not send `epk_N` yet. The Worker creates a request with a random 32-byte `request_id`, `expires_at` =
    now + 5 minutes, and answers `{id, expires_at, other_devices}` where `other_devices` counts the
    account's active sessions other than N's. At most three pending requests exist per account; a
    fourth cancels the oldest. The route counts `approval-create` (10 an hour).
+
+   **Why N commits first.** The code is short, so whoever picks the last public key must not be
+   able to try keys until the codes match. Without the commitment a malicious server could give A
+   a key of its own, read `epk_A`, then try about a million keys toward N until N's code equals
+   A's: seconds of work. With it, each side's key is fixed before the other's is known. N commits
+   before it sees `epk_A`. The server must hand N its stand-in for `epk_A` before N reveals `epk_N`.
+   It must commit toward A before A posts `epk_A`. So a substituted key matches the codes with
+   probability one in a million per attempt, and every attempt is a visible request the user
+   can cancel. This is the commit-then-reveal shape of Bluetooth numeric comparison and ZRTP.
 2. **A sees it.** While unlocked and frontmost, A polls
    `GET /v2/account/sign-in/approvals` (on launch, when Settings › Account opens, and every 30 s
-   while frontmost) and sees `{id, device_id, epk, created_at, expires_at}`. It shows "A device
+   while frontmost) and sees `{id, device_id, commit, created_at, expires_at}`. It shows "A device
    wants to join *ngoni*". It generates `(esk_A, epk_A)` and calls
-   `POST /v2/account/sign-in/approvals/<id>/challenge` with `{epk: epk_A}`.
-3. **Both compute the code.** With `dh = X25519(esk_A, epk_N)` (refusing an all-zero result):
+   `POST /v2/account/sign-in/approvals/<id>/challenge` with `{epk: epk_A}`. A can't compute a code
+   yet: it has only N's commitment.
+3. **The code, once both keys are known.** N computes it after step 4's challenge arrives; A
+   computes it in step 5, after N has revealed `epk_N` and A has checked it against `c_N`. With
+   `dh = X25519(esk_A, epk_N)` (N computes `X25519(esk_N, epk_A)`; both refuse an all-zero
+   result):
 
        approval_key = HKDF(ikm  = dh,
                            salt = "kanso/v1/approve" || 0x01 || lp(account_id),
@@ -1042,14 +1060,16 @@ once. All binary values are base64url; `lp` is as in "Encodings".
                                   || lp(epk_N) || lp(epk_A), 4 bytes)
        code         = (code_bytes as a big-endian u32) mod 1_000_000, six digits, shown "123 456"
 
-   The Worker can compute neither: it has no private key. The code is derived from the shared
-   secret, so a server that substitutes either public key produces two different codes and cannot
-   grind a collision; a code derived from the public keys alone could be ground offline.
+   The Worker can compute neither: it has no private key. A server that substitutes either public
+   key ends up with two different shared secrets, and because of the commitment in step 1 it can't
+   choose its stand-in keys to make the two codes agree; it matches with probability 10⁻⁶ per
+   request.
 4. **N names itself.** N polls
    `GET /v2/account/sign-in/approvals/<id>` and receives `{status: "challenged", epk: epk_A,
    approver_device_id}`.
    It derives `approval_key` and the code, shows the code, and posts
-   `POST /v2/account/sign-in/approvals/<id>/name` with its device name sealed:
+   `POST /v2/account/sign-in/approvals/<id>/name` with `{epk: epk_N, sealed_name}`, revealing its
+   key for the first time, with its device name sealed:
 
        sealed_name = 0x01 || nonce(24) ||
                      XChaCha20-Poly1305(approval_key, nonce, aad, name)
@@ -1058,8 +1078,10 @@ once. All binary values are base64url; `lp` is as in "Encodings".
 
    The name is the device-name rule already in "Sealed device names"; it is 55–400 characters.
    Posting it after the challenge is what keeps it sealed from the Worker.
-5. **A checks and approves.** A polls the list again, opens `sealed_name` with the same
-   `approval_key`, and shows the device name, the approximate time and the code:
+5. **A checks and approves.** A polls the list again and receives `epk_N`. It checks
+   `SHA-256("kanso/v1/approve-commit" || 0x01 || epk_N) == c_N` and stops with "This request
+   changed after it was made. Don't approve." if not. Then it derives `approval_key` and the code,
+   opens `sealed_name`, and shows the device name, the approximate time and the code:
    "A device wants to join *ngoni*: *Alex's MacBook Air*, asked at 14:02. Does it show 123 456?
    Only approve if it does." On approval it computes
 
@@ -1086,8 +1108,8 @@ two minutes, and immediately if `other_devices` was 0. Either device can cancel 
 once; a second `/approve` on an answered request is 409 `approval_used`. N may read the approved
 result until it deletes the request or it expires, so a lost response is retried by polling again.
 The Worker deletes expired and completed-and-deleted rows in the cron, and marks `expires_at` in
-every answer. A request is bound to the account, both device IDs and both ephemeral keys; none of
-those can be changed after creation. The server can't replay an old approval into a new request
+every answer. A request is bound to the account, both device IDs, N's commitment and both ephemeral keys; none of
+those can be changed once set. The server can't replay an old approval into a new request
 (the AAD's `request_id` and both keys differ), can't read the data key, can't read the name and
 can't compute the code.
 
@@ -1532,12 +1554,13 @@ Every route that creates a session answers with the same shape:
 
 ```json
 {"kind": "session", "account_id", "username", "token", "key_id", "epoch", "has_password",
- "wrapped_key": "<98>" | null, "passkey_wrapped_key": "<98>" | null,
+ "passkey_wrapped_key": "<98>" | null,
  "evicted_device": null | {"id", "sealed_name"}}
 ```
 
-`wrapped_key` is the password wrap, null when the account has no password; `passkey_wrapped_key`
-is the credential's wrap, sent only by a passkey sign-in. A provider flow for an identity that isn't
+There is no password wrap here: it comes only from `POST /v2/auth/login`, after the auth key is
+checked, so a passkey or provider sign-in can't be used to collect it for offline guessing.
+`passkey_wrapped_key` is the credential's wrap, sent only by a passkey sign-in. A provider flow for an identity that isn't
 linked answers instead:
 
 ```json
@@ -1668,14 +1691,16 @@ rule applies and no recovery proof is present. Counts `passkey-manage`.
 **Approvals.** The requester and approver are both sessions of the account, and the requesting
 device can't approve itself.
 
-- **POST /v2/account/sign-in/approvals** — `{"epk": "<43>"}`. 200 `{"id", "expires_at",
-  "other_devices"}`. `epk` is the requester's ephemeral X25519 public key; it can't be changed.
+- **POST /v2/account/sign-in/approvals** — `{"commit": "<43>"}`. 200 `{"id", "expires_at",
+  "other_devices"}`. `commit` is SHA-256 of the requester's ephemeral X25519 public key with its
+  label (see "The protocol"); it can't be changed.
   At most three pending requests per account; a fourth cancels the oldest. Counts
   `approval-create`.
-- **GET /v2/account/sign-in/approvals** — 200 `{"approvals": [{"id", "device_id", "epk",
-  "created_at", "expires_at", "approver_epk": "<43>" | null, "sealed_name": "<...>" | null,
-  "status"}]}`, oldest first, only pending requests for the session's account and never the
-  caller's own. `sealed_name` appears after the requester posts it.
+- **GET /v2/account/sign-in/approvals** — 200 `{"approvals": [{"id", "device_id", "commit",
+  "epk": "<43>" | null, "created_at", "expires_at", "approver_epk": "<43>" | null,
+  "sealed_name": "<...>" | null, "status"}]}`, oldest first, only pending requests for the
+  session's account and never the caller's own. `epk` and `sealed_name` appear after the requester
+  posts them.
 - **GET /v2/account/sign-in/approvals/<id>** — the requester's poll: 200 `{"status":
   "waiting" | "challenged" | "approved" | "cancelled" | "expired", "approver_epk"?: "<43>",
   "approver_device_id"?: "d_<32 hex>", "sealed_name"?: "<...>", "wrapped_key"?: "<98>"}`. Counts
@@ -1684,8 +1709,10 @@ device can't approve itself.
   Only a different device; stores the approver's ephemeral public key once. The same key again is
   200; another device's or another key is 409 `approval_used`. The first approver can still answer,
   or the request can be cancelled and made again.
-- **POST /v2/account/sign-in/approvals/<id>/name** — `{"sealed_name": "<55–400>"}`. 200
-  `{"ok": true}`. Only the requesting device; stores the name once.
+- **POST /v2/account/sign-in/approvals/<id>/name** — `{"epk": "<43>", "sealed_name": "<55–400>"}`.
+  200 `{"ok": true}`. Only the requesting device, only after a challenge; stores both once. The
+  Worker checks `epk` against the stored commitment and answers 400 `bad_request` on a mismatch (a
+  well-behaved server's check; the approver checks again, because it doesn't trust the server).
 - **POST /v2/account/sign-in/approvals/<id>/approve** — `{"wrapped_key": "<98>"}`. 200
   `{"ok": true}`. Only the device that challenged, after its challenge; the same `wrapped_key`
   again is 200 (a retry); a different one, or a second device, is 409 `approval_used`; 409
@@ -2306,7 +2333,11 @@ CREATE TABLE device_approvals (
     account_id TEXT NOT NULL REFERENCES accounts (id),
     device_id TEXT NOT NULL CHECK (length(device_id) = 34 AND substr(device_id, 1, 2) = 'd_'
         AND substr(device_id, 3) NOT GLOB '*[^0-9a-f]*'),
-    epk TEXT NOT NULL CHECK (length(epk) = 43 AND epk NOT GLOB '*[^A-Za-z0-9_-]*'),
+    commit_hash TEXT NOT NULL
+        CHECK (length(commit_hash) = 43 AND commit_hash NOT GLOB '*[^A-Za-z0-9_-]*'),
+    -- Revealed with the sealed name, after the challenge; checked against commit_hash.
+    epk TEXT CHECK (epk IS NULL OR (length(epk) = 43 AND epk NOT GLOB '*[^A-Za-z0-9_-]*')),
+    CHECK (epk IS NULL OR approver_epk IS NOT NULL),
     approver_device_id TEXT,
     approver_epk TEXT CHECK (approver_epk IS NULL
         OR (length(approver_epk) = 43 AND approver_epk NOT GLOB '*[^A-Za-z0-9_-]*')),
@@ -2324,7 +2355,15 @@ CREATE TABLE device_approvals (
 CREATE INDEX device_approvals_by_account ON device_approvals (account_id, expires_at);
 
 CREATE TRIGGER device_approvals_immutable
-BEFORE UPDATE OF account_id, device_id, epk, created_at, expires_at ON device_approvals
+BEFORE UPDATE OF account_id, device_id, commit_hash, created_at, expires_at ON device_approvals
+BEGIN SELECT RAISE(ABORT, 'approval_immutable'); END;
+
+-- epk, approver_epk and sealed_name are each set once.
+CREATE TRIGGER device_approvals_set_once
+BEFORE UPDATE OF epk, approver_epk, sealed_name ON device_approvals
+WHEN (OLD.epk IS NOT NULL AND NEW.epk IS NOT OLD.epk)
+  OR (OLD.approver_epk IS NOT NULL AND NEW.approver_epk IS NOT OLD.approver_epk)
+  OR (OLD.sealed_name IS NOT NULL AND NEW.sealed_name IS NOT OLD.sealed_name)
 BEGIN SELECT RAISE(ABORT, 'approval_immutable'); END;
 ```
 
@@ -3993,7 +4032,7 @@ Worker and the Rust/app sides can overlap where noted.
 |---|---|---|---|
 | 1. Schema and providers | `0006_sign_in.sql`; `account_identities`, `account_passkeys`, `auth_flows`, `device_approvals`; the health advertisement; Apple/Google/GitHub token verification with a cached JWKS and mocked `fetch`; `cloud/test/sign_in.test.ts` and `fixtures/sign_in.json` | 4 | The migration applies through `wrangler d1 migrations apply --local`; health advertises nothing, then passkeys, then each provider as its secrets appear; every token case (bad signature, wrong `aud`/`iss`, expired, replayed nonce, `alg: none`) is refused; no token, email or name reaches D1 or a log. Tests: the provider and provider-flow rows above. |
 | 2. Passkeys and the PRF wrap | Registration and assertion on the Worker; `crypto.rs`'s `PRF_INPUT`, `passkey_kek`, `WrapPurpose::Passkey`; the native macOS and Windows ceremonies (no web page) | 6 | A passkey creates an account, signs in, and unlocks a new device with PRF on macOS 15; on macOS 13/14 it signs in and falls back to approval; a security key works; a cloned counter is refused; the wrap round-trips and a moved wrap fails. Tests: passkey crypto and assertions, plus the golden vector. |
-| 3. Device approval | The X25519 request/challenge/name/approve protocol; the Worker routes and limits; `approval.rs`; the approver sheet and the waiting page | 4 | Two devices complete the flow; both show the same code; a substituted key shows different codes; the request expires, is single use, can be cancelled and refuses self-approval; zero devices offers recovery. Tests: the approval property tests, and the app flow. |
+| 3. Device approval | The X25519 request/challenge/name/approve protocol; the Worker routes and limits; `approval.rs`; the approver sheet and the waiting page | 4 | Two devices complete the flow; both show the same code; a substituted key shows different codes; a revealed key that doesn't match the commitment is refused by the Worker and by the approver; the request expires, is single use, can be cancelled and refuses self-approval; zero devices offers recovery. Tests: the approval property tests, and the app flow. |
 | 4. Provider flows and linking | Apple's web flow (Services ID, client secret, `form_post`, callback exception); Google's loopback + PKCE; GitHub's device flow; new-account tickets; link/unlink; `provider.rs`; the app's browser sessions | 6 | Each provider creates an account and signs in; linking and unlinking work; a second account linking the same identity gets 409; no provider secret is in the app; the callback works with an `Origin` header, the other routes still refuse one. Tests: provider flows, linking races, app flows. |
 | 5. App UI and Keychain | The signed-out method list, the create-account variants, Settings › Sign-in methods, the pending item, the locked state, the proof sheet, snapshots | 4 | Every state has a snapshot; a locked session can't sync; the pending item survives a relaunch; the method list follows health; the code and the name are accessible. Tests: the app sign-in row and the snapshots. |
 | 6. Sensitive changes and rotations | `Proof`; set password; adding/removing passkeys; unlinking the last method; recovery removing passkeys; recovery-key and delete with a proof | 3 | A session alone can't change a way in; a proof is single use and expires; the last method needs the recovery key; recovery leaves the account with a password and no passkeys; a passwordless account can still delete. Tests: linking and method changes, rotations. |
@@ -4103,9 +4142,10 @@ Recommendations are on merit; the effort is the added builder time if the other 
 8. **How does an existing device learn of a request?** *Recommendation:* a 30 s poll while the app is
    frontmost, plus launch and Settings. It needs no push service and no new infrastructure; a push
    service would add ~5 days and an Apple/Google dependency for a five-minute event.
-9. **Six digits or eight?** *Recommendation:* six, shown as two groups of three. The code is derived
-   from the DH secret, so its length isn't the defence against a malicious server; six is easier to
-   read aloud and compare. Eight adds no days and no real safety.
+9. **Six digits or eight?** *Recommendation:* six, shown as two groups of three. With the
+   commitment, a key-substituting server wins with probability 10⁻⁶ per request, and each attempt
+   is a visible request the user can cancel; six is easier to read aloud and compare. Eight would
+   take that to 10⁻⁸ at no extra build cost, for a harder comparison.
 10. **Should a passwordless account be deletable?** *Recommendation:* yes, with a `proof` and the
     typed username (a provider proof also needs the recovery key). Requiring a password would
     strand the accounts this revision creates; the proof is the same bar as the password.
@@ -4574,7 +4614,7 @@ because no scope is requested; Google and GitHub data are discarded.
 | Threat | What it can and can't do | Mitigation |
 |---|---|---|
 | A curious or compromised Worker owner | Can deny, delay, roll back, drop a flow, show different metadata to two devices, or insert rows directly. Sees the provider's ID token claims and, for GitHub, a token with no scopes beyond public identity; none of that opens the library. Can't read the data key, the PRF output, the approval code, the sealed name or the wrapped key. Can't forge a passkey signature, an Apple or Google ID token, or a GitHub user. | Every key path is end-to-end; sessions are not enough to change a way in; the approval code comes from a DH secret the server doesn't have; the client is trusted (below). |
-| A malicious server substituting ephemeral keys in an approval | Can replace `epk_N` or `epk_A` in its rows. Can't compute the DH secret or make both codes match, because the code is derived from that secret. | Both devices show the code; a mismatch cancels and saves nothing. |
+| A malicious server substituting ephemeral keys in an approval | Can replace `epk_N` or `epk_A` in its rows. Can't compute the DH secret, and can't choose its stand-in keys so the two codes agree: the requester commits to its key before seeing the approver's, so each substitution matches with probability 10⁻⁶. | Commit-then-reveal; both devices show the code; a mismatch cancels and saves nothing. |
 | A leaked D1 database or Time Travel copy | Gets subjects, credential public keys, PRF-less session hashes, flow metadata, sealed names, wrapped keys, and GitHub's short-lived device code (sealed under the pepper). Can't sign in without a passkey, a password, a provider token or a live session; can't read a library. | Auth hashes and session tokens are hashed; device codes are sealed and short-lived; passkeys are public-key checked; the data key is never in D1. |
 | A compromised identity provider (Apple, Google or GitHub) | Can authenticate as any of its users, including issuing `sub` or a token for a person it shouldn't. That is account takeover of the *authentication*, not decryption. It can then request approval from a device, which shows the request, the device name and the code; or use the recovery path if it has the key. | The data key stays wrapped; approval needs the user's other device and its confirmation; a provider that is compromised for one account is visible in the sign-in methods list. There is no way to make a compromised IdP harmless; don't use a provider you don't trust. |
 | A stolen provider access token | Nothing: the Worker exchanges codes server-side, never stores a provider token, and the app never holds one. | Tokens are discarded immediately; no refresh tokens. |
@@ -4582,7 +4622,7 @@ because no scope is requested; Google and GitHub data are discarded.
 | A stolen session token | Can sync ciphertext, list devices and request an approval, but not decrypt. Can't link, unlink, add or remove a passkey, set a password or delete without a `proof`. | The data key is in the Keychain, not the token; sensitive routes need a fresh proof; sessions expire and can be revoked. |
 | A stolen unlocked device | Can read the library and approve another device (it holds the data key). | Sign out or revoke the device from another one; change the password (signs sessions out); recover (removes every passkey) if the device is lost. A passkey on it is protected by the platform's user verification. |
 | A stolen device with a passkey but no unlocked session | The passkey needs the platform's biometric or PIN; the session is gone. | Platform user verification; the session's 180-day life; device revocation. |
-| A provider account takeover | Can sign in (a session) and request approval. Can't read a library without the user's approval or recovery key. Can unlink the provider it controls and try to set a password, replace the recovery key or delete the server copy with a provider proof, though all three also need the recovery key it doesn't have. It can't add a passkey or link another provider without a password or passkey proof. | The approval prompt shows a device and code the person didn't initiate; recovery removes passkeys and replaces the password; the method list shows unexpected links; local copies survive a deletion. |
+| A provider account takeover | Can sign in (a session) and request approval. Can't read a library without the user's approval or recovery key. Can unlink the provider it controls (and nothing else) and try to set a password, replace the recovery key or delete the server copy with a provider proof, though all three also need the recovery key it doesn't have. It can't add a passkey or link another provider without a password or passkey proof. | The approval prompt shows a device and code the person didn't initiate; recovery removes passkeys and replaces the password; the method list shows unexpected links; local copies survive a deletion. |
 | An attacker who knows the username | Can enumerate usernames at sign-up, as before; can start a passkey challenge; can't complete one. | Existing rate limits; the passkey start says no more than sign-up does. |
 | A malicious app build or a compromised operating system | Can read the screen, the Keychain and the data key. | Out of scope, as for the password path: build from source or trust the builder. |
 
