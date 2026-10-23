@@ -2007,6 +2007,90 @@ fn the_inspector_lists_and_edits_properties(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_property_is_only_written_when_it_changes(cx: &mut TestAppContext) {
+    use crate::config::InspectorTab;
+
+    let f = setup(cx);
+    f.select(cx, &f.notes[0]);
+    let body = "---\nnested:\n  a: 1\n  b: 2\nzip: 01234\nversion: 1.10\nclient: Acme # keep\n---\n# Note\n";
+    f.type_body(cx, body);
+    let inspector = f.workspace(cx, |workspace, _| workspace.inspector.clone());
+    f.window
+        .update(cx, |_, _, cx| {
+            f.workspace.update(cx, |workspace, cx| {
+                workspace.show_inspector(Some(InspectorTab::Outline), cx)
+            })
+        })
+        .unwrap();
+    f.draw(cx);
+
+    {
+        let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+        assert!(vcx.debug_bounds("property-nested").is_some());
+    }
+    for (key, text) in [
+        ("nested", "  a: 1\n  b: 2\n"),
+        ("zip", "1234"),
+        ("version", "1.1"),
+    ] {
+        f.window
+            .update(cx, |_, window, cx| {
+                inspector.update(cx, |inspector, cx| {
+                    inspector.set_property_for_test(key, text, window, cx)
+                })
+            })
+            .unwrap();
+        let after = f.editor(cx, |editor, cx| editor.body_for_test(cx));
+        assert_eq!(after, body, "{key}");
+    }
+
+    f.window
+        .update(cx, |_, window, cx| {
+            inspector.update(cx, |inspector, cx| {
+                inspector.set_property_for_test("client", "Globex", window, cx)
+            })
+        })
+        .unwrap();
+    let after = f.editor(cx, |editor, cx| editor.body_for_test(cx));
+    assert!(after.contains("client: Globex # keep\n"), "{after}");
+}
+
+#[gpui_kit::test]
+fn a_duplicate_property_edits_the_value_shown(cx: &mut TestAppContext) {
+    use crate::config::InspectorTab;
+
+    let f = setup(cx);
+    f.select(cx, &f.notes[0]);
+    f.type_body(cx, "---\na: 1\na: 2\n---\n# Note\n");
+    let inspector = f.workspace(cx, |workspace, _| workspace.inspector.clone());
+    f.window
+        .update(cx, |_, _, cx| {
+            f.workspace.update(cx, |workspace, cx| {
+                workspace.show_inspector(Some(InspectorTab::Outline), cx)
+            })
+        })
+        .unwrap();
+    f.draw(cx);
+    let properties = cx.read(|cx| inspector.read(cx).properties_for_test(cx));
+    assert_eq!(
+        properties
+            .iter()
+            .map(|(key, _)| key.as_str())
+            .collect::<Vec<_>>(),
+        ["a", "a"]
+    );
+    f.window
+        .update(cx, |_, window, cx| {
+            inspector.update(cx, |inspector, cx| {
+                inspector.set_property_for_test("a", "3", window, cx)
+            })
+        })
+        .unwrap();
+    let body = f.editor(cx, |editor, cx| editor.body_for_test(cx));
+    assert!(body.contains("a: 1\na: 3\n"), "{body}");
+}
+
+#[gpui_kit::test]
 fn a_locked_note_shows_no_properties(cx: &mut TestAppContext) {
     use crate::config::InspectorTab;
 

@@ -19,9 +19,9 @@ use crate::zoom::px;
 
 use super::PAD_X;
 
-/// The value being edited in place.
+/// The value being edited in place, by the row it is in.
 pub(super) struct PropertyEdit {
-    key: String,
+    index: usize,
     input: Entity<InputState>,
     _event: Subscription,
 }
@@ -66,8 +66,16 @@ impl Inspector {
             .border_b_1()
             .border_color(colors.divider)
             .child(section);
+        let mut seen = std::collections::HashSet::new();
+        let mut duplicates = std::collections::HashSet::new();
+        for (key, _) in &properties {
+            if !seen.insert(key.to_lowercase()) {
+                duplicates.insert(key.to_lowercase());
+            }
+        }
         for (ix, (key, value)) in properties.iter().enumerate() {
-            list = list.child(self.property_row(ix, key, value, colors, cx));
+            let duplicate = duplicates.contains(&key.to_lowercase());
+            list = list.child(self.property_row(ix, key, value, duplicate, colors, cx));
         }
         list = list.child(self.add_property_row(properties.len(), colors, cx));
         Some(list.into_any_element())
@@ -78,13 +86,14 @@ impl Inspector {
         ix: usize,
         key: &str,
         value: &Value,
+        duplicate: bool,
         colors: &Colors,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let editing = self
             .property_edit
             .as_ref()
-            .is_some_and(|edit| edit.key.eq_ignore_ascii_case(key));
+            .is_some_and(|edit| edit.index == ix);
         let key_view = div()
             .flex_none()
             .w(relative(0.42))
@@ -103,6 +112,26 @@ impl Inspector {
                 .flex_1()
                 .min_w_0()
                 .child(Input::new(&input).small())
+                .into_any_element()
+        } else if value.is_raw() {
+            // A value Kanso doesn't understand stays as written, and is
+            // edited in the note itself.
+            div()
+                .id(ElementId::NamedInteger("property-raw".into(), ix as u64))
+                .debug_selector({
+                    let key = key.to_owned();
+                    move || format!("property-{key}")
+                })
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_size(px(12.5))
+                .text_color(colors.text_muted)
+                .child(crate::query_view_ui::cell_text(value))
+                .tooltip(|window, cx| {
+                    gpui_kit::component::tooltip::Tooltip::new("Edit this value in the note.")
+                        .build(window, cx)
+                })
                 .into_any_element()
         } else if let Value::Bool(on) = value {
             let key = key.to_owned();
@@ -149,7 +178,7 @@ impl Inspector {
                 .hover(|el| el.text_color(colors.link))
                 .child(shown)
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    this.edit_property(&key, &current, window, cx);
+                    this.edit_property(ix, &current, window, cx);
                 }))
                 .into_any_element()
         };
@@ -162,6 +191,27 @@ impl Inspector {
             .rounded(px(5.))
             .hover(|el| el.bg(colors.row_hover))
             .child(key_view)
+            .when(duplicate, |el| {
+                el.child(
+                    div()
+                        .id(ElementId::NamedInteger(
+                            "property-duplicate".into(),
+                            ix as u64,
+                        ))
+                        .flex_none()
+                        .child(
+                            Icon::new(gpui_kit::assets::IconName::TriangleAlert)
+                                .size(px(11.))
+                                .text_color(colors.warning),
+                        )
+                        .tooltip(|window, cx| {
+                            gpui_kit::component::tooltip::Tooltip::new(
+                                "This key is written more than once. The last one is used.",
+                            )
+                            .build(window, cx)
+                        }),
+                )
+            })
             .child(value_view)
             .into_any_element()
     }
@@ -215,7 +265,7 @@ impl Inspector {
     /// Starts editing `key`'s value, with `like` keeping its type.
     fn edit_property(
         &mut self,
-        key: &str,
+        index: usize,
         like: &Value,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -226,21 +276,18 @@ impl Inspector {
             state
         });
         input.update(cx, |state, cx| state.focus(window, cx));
-        let key = key.to_owned();
-        let watched = key.clone();
-        let like = like.clone();
         let event = cx.subscribe_in(
             &input,
             window,
             move |this: &mut Inspector, input, event: &InputEvent, window, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
                     let text = input.read(cx).value().to_string();
-                    this.commit_property(&watched, &text, Some(&like), window, cx);
+                    this.commit_property(index, &text, window, cx);
                 }
             },
         );
         self.property_edit = Some(PropertyEdit {
-            key,
+            index,
             input,
             _event: event,
         });
@@ -278,20 +325,28 @@ impl Inspector {
         cx.notify();
     }
 
-    /// Saves `text` as `key`'s value, keeping the type of `like`, and closes
-    /// the field.
+    /// Saves `text` as the value of the row at `index`, keeping its type,
+    /// and closes the field. Text that hasn't changed writes nothing.
     fn commit_property(
         &mut self,
-        key: &str,
+        index: usize,
         text: &str,
-        like: Option<&Value>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let body = self.editor.read(cx).body_text(cx).to_string();
-        let value = properties::typed(text, like);
-        let next = properties::set_property(&body, key, &value);
+        let Some((key, like)) = properties::parse(&body).into_iter().nth(index) else {
+            self.property_edit = None;
+            cx.notify();
+            return;
+        };
         self.property_edit = None;
+        if text.trim() == like.text().trim() {
+            cx.notify();
+            return;
+        }
+        let value = properties::typed(text, Some(&like));
+        let next = properties::set_property(&body, &key, &value);
         if next != body {
             self.editor
                 .update(cx, |editor, cx| editor.set_body(next, window, cx));
@@ -342,11 +397,13 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let like = properties::parse(&self.editor.read(cx).body_text(cx))
-            .into_iter()
-            .find(|(name, _)| name.eq_ignore_ascii_case(key))
-            .map(|(_, value)| value);
-        self.commit_property(key, text, like.as_ref(), window, cx);
+        let parsed = properties::parse(&self.editor.read(cx).body_text(cx));
+        let index = parsed
+            .iter()
+            .rposition(|(name, _)| name.eq_ignore_ascii_case(key));
+        if let Some(index) = index {
+            self.commit_property(index, text, window, cx);
+        }
     }
 
     /// Adds a property as the section does, from the keyboard.

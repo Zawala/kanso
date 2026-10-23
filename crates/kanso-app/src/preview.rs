@@ -181,8 +181,12 @@ impl Preview {
         }
     }
 
-    /// Notes changed: query views show their notes as they are now.
+    /// Notes changed: query views show their notes as they are now. A note
+    /// without a query has nothing to redraw.
     pub fn queries_changed(&mut self, cx: &mut Context<Self>) {
+        if !kanso_core::query_view::contains_query(&self.shown) {
+            return;
+        }
         self.drawings_ready(cx);
     }
 
@@ -433,10 +437,21 @@ pub(crate) fn unquote(source: &str) -> String {
 const QUOTE: &str = "kanso-quote";
 /// The custom node an attached image on a line of its own becomes.
 const PICTURE: &str = "kanso-picture";
+/// The custom node front matter becomes: nothing. The inspector's
+/// Properties section shows it instead.
+const FRONT_MATTER: &str = "kanso-front-matter";
 /// Changes when [`quote_extensions`] parses differently, so a text view
 /// re-parses its note. 3: math, diagrams and drawings. 4: due-date chips.
-/// 5: query views.
-const QUOTE_PARSER_REVISION: u64 = 5;
+/// 5: query views. 6: front matter hidden.
+const QUOTE_PARSER_REVISION: u64 = 6;
+
+/// Front matter, drawn as nothing: the Properties section shows it.
+fn front_matter_node(node: &markdown_ast::Node) -> Option<MarkdownNode> {
+    let markdown_ast::Node::Yaml(_) = node else {
+        return None;
+    };
+    Some(MarkdownNode::new(FRONT_MATTER, ()).text("").markdown(""))
+}
 
 /// A quote's Markdown, without its markers.
 struct Quote(SharedString);
@@ -725,6 +740,9 @@ fn quote_extensions(
     rich: Arc<Rich>,
 ) -> MarkdownExtensions {
     let parse = |node: &markdown_ast::Node, cx: &MarkdownParseContext<'_>| {
+        if let Some(block) = front_matter_node(node) {
+            return Some(block);
+        }
         if let Some(block) = preview_rich::parse_block(node, cx) {
             return Some(block);
         }
@@ -756,6 +774,7 @@ fn quote_extensions(
     let query_links = links.0.clone();
     let extensions = MarkdownExtensions::default()
         .parser_revision(QUOTE_PARSER_REVISION)
+        .frontmatter()
         // Unresolved wiki-links, drawn dashed (see `crate::wikilinks`).
         .plugin(crate::wikilinks::UnresolvedLink::new(links.0.clone()))
         // Tasks' due dates, as chips (see `crate::due`).
@@ -764,6 +783,7 @@ fn quote_extensions(
         .block_renderer(PICTURE, move |node, window, cx| {
             render_picture(node, &picture_images, &picture_resizes, window, cx)
         })
+        .block_renderer(FRONT_MATTER, |_, _, _| div().into_any_element())
         .block_renderer(QUOTE, move |node, _window, cx| {
             let Some(Quote(body)) = node.data::<Quote>() else {
                 return div().into_any_element();
@@ -1368,6 +1388,18 @@ mod tests {
         );
         assert_eq!(linked_note("inkdrop://note/"), None);
         assert_eq!(linked_note("https://example.com"), None);
+    }
+
+    #[test]
+    fn front_matter_is_drawn_as_nothing() {
+        let mut options = markdown::ParseOptions::gfm();
+        options.constructs.frontmatter = true;
+        let root = markdown::to_mdast("---\ntitle: x\n---\n# Heading\n", &options).unwrap();
+        let first = root.children().unwrap().first().unwrap();
+        let block = super::front_matter_node(first).expect("front matter is a block");
+        assert_eq!(block.name(), super::FRONT_MATTER);
+        assert_eq!(block.as_text(), "");
+        assert!(super::front_matter_node(&root.children().unwrap()[1]).is_none());
     }
 
     #[test]

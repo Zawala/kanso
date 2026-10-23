@@ -7,8 +7,9 @@
 
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash as _, Hasher as _};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use gpui_kit::base::text::{MarkdownExtensions, MarkdownNode, MarkdownParseContext, markdown_ast};
 use gpui_kit::component::{h_flex, v_flex};
@@ -42,8 +43,7 @@ pub fn parse_block(
     let markdown_ast::Node::Code(code) = node else {
         return None;
     };
-    let language = code.lang.as_deref()?.split_whitespace().next()?;
-    if !language.eq_ignore_ascii_case("query") {
+    if !query_view::is_query_fence(code.lang.as_deref()) {
         return None;
     }
     let source: Arc<str> = code.value.clone().into();
@@ -72,57 +72,117 @@ pub fn register(
     })
 }
 
-/// Counts changes to the notes, so the next draw reads them again.
+/// Counts changes to the notes.
 static EPOCH: AtomicU64 = AtomicU64::new(0);
-type Notes = Option<(u64, Arc<Vec<ViewNote>>)>;
-static SNAPSHOT: LazyLock<Mutex<Notes>> = LazyLock::new(Default::default);
+/// When the notes last changed, until that change settles.
+static PENDING: LazyLock<Mutex<Option<Instant>>> = LazyLock::new(Default::default);
+/// The last change whose notes have been read.
+static SETTLED: AtomicU64 = AtomicU64::new(0);
+/// How long a burst of saves is allowed to settle before the tables read
+/// the notes again.
+const SETTLE: Duration = Duration::from_millis(300);
+static WAKE_SCHEDULED: AtomicBool = AtomicBool::new(false);
+
+type Snapshots = HashMap<bool, (u64, Arc<Vec<ViewNote>>)>;
+static SNAPSHOT: LazyLock<Mutex<Snapshots>> = LazyLock::new(Default::default);
 /// One read at a time: a note's queries share it.
 static READING: LazyLock<Mutex<()>> = LazyLock::new(Default::default);
-type CacheKey = (u64, u64, Option<String>);
-type Rows = HashMap<CacheKey, Arc<Vec<ViewRow>>>;
-static RESULTS: LazyLock<Mutex<Rows>> = LazyLock::new(Default::default);
-static WORKING: LazyLock<Mutex<HashSet<CacheKey>>> = LazyLock::new(Default::default);
 
-/// Notes changed: query views read them again on their next draw.
+struct Ready {
+    epoch: u64,
+    rows: Arc<Vec<ViewRow>>,
+}
+
+type CacheKey = u64;
+type Results = HashMap<CacheKey, Ready>;
+/// The last rows per (source, self), kept while a refresh runs.
+static RESULTS: LazyLock<Mutex<Results>> = LazyLock::new(Default::default);
+/// (cache key, epoch) evaluations in flight.
+static WORKING: LazyLock<Mutex<HashSet<(CacheKey, u64)>>> = LazyLock::new(Default::default);
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Notes changed: query views read them again once the saves settle.
 pub fn notes_changed() {
     EPOCH.fetch_add(1, Ordering::SeqCst);
-    if let Ok(mut results) = RESULTS.lock() {
-        results.clear();
+    *lock(&PENDING) = Some(Instant::now());
+}
+
+/// Settle the pending change if a quiet spell has passed.
+fn settle_if_due() {
+    let mut pending = lock(&PENDING);
+    if let Some(at) = *pending
+        && at.elapsed() >= SETTLE
+    {
+        SETTLED.store(EPOCH.load(Ordering::SeqCst), Ordering::SeqCst);
+        *pending = None;
     }
 }
 
-/// Every note as a query reads it, read at most once per change. Runs on a
-/// background thread.
-fn notes(epoch: u64, store: &Store) -> Arc<Vec<ViewNote>> {
-    if let Ok(cache) = SNAPSHOT.lock()
-        && let Some((at, notes)) = cache.as_ref()
-        && *at == epoch
+/// How long until the current change settles, if it hasn't yet.
+fn pending_for() -> Option<Duration> {
+    let pending = lock(&PENDING);
+    pending
+        .as_ref()
+        .map(|at| SETTLE.saturating_sub(at.elapsed()))
+        .filter(|left| !left.is_zero())
+}
+
+/// Wake the preview when the pending change settles, so the tables read
+/// the notes then.
+fn wake_after(rich: &Rich, delay: Duration) {
+    if WAKE_SCHEDULED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let wake = rich.wake.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(delay);
+        wake.try_send(()).ok();
+        WAKE_SCHEDULED.store(false, Ordering::SeqCst);
+    });
+}
+
+/// Every note as a query reads it, read at most once per change and kind.
+/// When `need_body` is false only front matter is read.
+fn notes(epoch: u64, store: &Store, need_body: bool) -> Arc<Vec<ViewNote>> {
+    if let Some((at, notes)) = lock(&SNAPSHOT).get(&need_body).cloned()
+        && at == epoch
     {
-        return notes.clone();
+        return notes;
     }
-    let _one_at_a_time = READING.lock().ok();
-    if let Ok(cache) = SNAPSHOT.lock()
-        && let Some((at, notes)) = cache.as_ref()
-        && *at == epoch
+    let _one_at_a_time = lock(&READING);
+    if let Some((at, notes)) = lock(&SNAPSHOT).get(&need_body).cloned()
+        && at == epoch
     {
-        return notes.clone();
+        return notes;
     }
-    let notes = Arc::new(read(store).unwrap_or_default());
-    if let Ok(mut cache) = SNAPSHOT.lock() {
-        *cache = Some((epoch, notes.clone()));
-    }
+    let notes = Arc::new(read(store, need_body).unwrap_or_default());
+    lock(&SNAPSHOT).insert(need_body, (epoch, notes.clone()));
     notes
 }
 
-fn read(store: &Store) -> Option<Vec<ViewNote>> {
+fn read(store: &Store, need_body: bool) -> Option<Vec<ViewNote>> {
     store
-        .query_view_notes()
+        .query_view_notes_with_body(need_body)
         .ok()
         .map(|rows| rows.into_iter().map(ViewNote::from).collect())
 }
 
-/// The rows for `spec`, once they are ready. The first call for a query
-/// reads the notes and evaluates on the background executor.
+/// Whether evaluating `spec` needs the note bodies: only free text and
+/// `body:` clauses match against them.
+fn needs_body(spec: &ViewSpec) -> bool {
+    spec.from
+        .clauses
+        .iter()
+        .any(|clause| clause.field.is_none() || clause.field == Some(kanso_core::Field::Body))
+}
+
+/// The rows for `spec`, once they are ready. The last rows stay on screen
+/// while the notes are read again in the background.
 fn rows_for(
     spec: &ViewSpec,
     source: &str,
@@ -130,41 +190,66 @@ fn rows_for(
     self_id: Option<String>,
     cx: &mut App,
 ) -> Option<Arc<Vec<ViewRow>>> {
-    let epoch = EPOCH.load(Ordering::SeqCst);
-    let cache_key = (hash(source, self_id.as_deref()), epoch, self_id);
-    if let Ok(results) = RESULTS.lock()
-        && let Some(rows) = results.get(&cache_key)
-    {
-        return Some(rows.clone());
+    settle_if_due();
+    let key = hash(source, self_id.as_deref());
+    let epoch = SETTLED.load(Ordering::SeqCst);
+    let mut stale = None;
+    if let Some(ready) = lock(&RESULTS).get(&key) {
+        if ready.epoch == epoch {
+            return Some(ready.rows.clone());
+        }
+        stale = Some(ready.rows.clone());
     }
-    let Ok(mut working) = WORKING.lock() else {
-        return None;
-    };
-    if !working.insert(cache_key.clone()) {
-        return None;
+    let pending = pending_for();
+    if stale.is_none() {
+        start(spec, rich, self_id, key, epoch, cx);
     }
-    drop(working);
+    if let Some(delay) = pending {
+        wake_after(rich, delay);
+    }
+    stale
+}
+
+/// Reads the notes and evaluates `spec` in the background, at `epoch`.
+fn start(
+    spec: &ViewSpec,
+    rich: &Rich,
+    self_id: Option<String>,
+    key: CacheKey,
+    epoch: u64,
+    cx: &mut App,
+) {
+    let work = (key, epoch);
+    if !lock(&WORKING).insert(work) {
+        return;
+    }
     let store = rich.store.clone();
     let wake = rich.wake.clone();
     let spec = spec.clone();
-    let self_id = cache_key.2.clone();
+    let need_body = needs_body(&spec);
     cx.background_executor()
         .spawn(async move {
-            let notes = notes(epoch, &store);
-            let rows = Arc::new(query_view::evaluate(&spec, &notes, self_id.as_deref()));
-            if let Ok(mut results) = RESULTS.lock() {
+            let evaluated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let notes = notes(epoch, &store, need_body);
+                Arc::new(query_view::evaluate(&spec, &notes, self_id.as_deref()))
+            }));
+            if let Ok(rows) = evaluated {
+                let mut results = lock(&RESULTS);
                 if results.len() >= 256 {
                     results.clear();
                 }
-                results.insert(cache_key.clone(), rows);
+                // A slower, older evaluation never replaces newer rows.
+                let newer = results.get(&key).is_some_and(|ready| ready.epoch > epoch);
+                if !newer {
+                    results.insert(key, Ready { epoch, rows });
+                }
             }
-            if let Ok(mut working) = WORKING.lock() {
-                working.remove(&cache_key);
-            }
+            // Remove the key even when evaluation panicked, so it can try
+            // again rather than waiting forever.
+            lock(&WORKING).remove(&work);
             wake.try_send(()).ok();
         })
         .detach();
-    None
 }
 
 fn hash(source: &str, self_id: Option<&str>) -> u64 {
@@ -358,6 +443,24 @@ pub fn cell_text(value: &Value) -> String {
 mod tests {
     use super::cell_text;
     use kanso_core::properties::Value;
+
+    #[test]
+    fn only_free_text_queries_need_the_body() {
+        use kanso_core::query_view;
+        for (source, expected) in [
+            ("from: status:active", false),
+            ("from: has:due", false),
+            ("columns: client", false),
+            ("from: book:Clients", false),
+            ("from: Acme", true),
+            ("from: body:Acme", true),
+            ("from: -Acme", true),
+            ("from: -body:Acme", true),
+        ] {
+            let spec = query_view::parse(source).unwrap();
+            assert_eq!(super::needs_body(&spec), expected, "{source}");
+        }
+    }
 
     #[test]
     fn cells_read_as_the_app_writes_them() {
