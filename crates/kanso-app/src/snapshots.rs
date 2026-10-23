@@ -1188,6 +1188,27 @@ fn sized_images(
 /// and the badges for a diagram and a formula that can't be drawn.
 const RICH_NOTE: &str = "A circle of radius $r$ has area $\\pi r^2$, and an ellipse $\\pi a b$; it costs $5 and $10 to print.\n\n$$\n\\int_0^{2\\pi} \\frac{d\\theta}{1 + e\\cos\\theta} = \\frac{2\\pi}{\\sqrt{1-e^2}}\n$$\n\n```mermaid\nflowchart LR\n  Draft --> Review{Ready?}\n  Review -->|Yes| Publish\n  Review -->|No| Draft\n```\n\n```mermaid\nsequenceDiagram\n  Kanso->>Worker: Sealed note\n  Worker-->>Kanso: Stored\n```\n\n```mermaid\nsparkleDiagram\n  a --> b\n```\n\nAnd a slip: $\\frac{1}{$ stays as typed.\n";
 
+/// Every element the export has to match the preview on. `{{PICTURE}}`
+/// stands for an attached image sized with `|300`.
+const PAGE_NOTE: &str = "# Page parity\n\nA paragraph with *emphasis*, **strong text**, `inline code`, a $x^2$ formula, and a [[Wiki link]].\n\n## Second heading\n\n### Third heading\n\n#### Fourth heading\n\n##### Fifth heading\n\n###### Sixth heading\n\n- First item\n- Second item\n  - Nested item\n  - Another nested item\n\n1. Ordered one\n2. Ordered two\n\n- [x] Done task\n- [ ] Open task\n\n> A quote that carries a thought across a line.\n>\n> And a second paragraph in it.\n\n| Name | Count | Note |\n|:-----|------:|:-----|\n| Alpha | 3 | First |\n| Beta | 12 | Second |\n\n```rust\nfn main() {\n    let greeting = \"hello\";\n    println!(\"{greeting}\");\n}\n```\n\n```python\ndef greet(name):\n    return f\"hello {name}\"\n```\n\n```javascript\nconst greet = (name) => `hello ${name}`;\n```\n\n```mermaid\nflowchart LR\n  Draft --> Review{Ready?}\n  Review -->|Yes| Publish\n  Review -->|No| Draft\n```\n\n$$\n\\int_0^1 x\\,dx = \\frac{1}{2}\n$$\n\n{{PICTURE}}\n\n---\n\nBack to [[Page parity#Second heading|the second heading]].\n";
+
+fn page_preview(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let picture =
+        crate::smart_paste::attach_image(store, &sample_picture(600, 300), "png", Some("Page.png"))
+            .unwrap();
+    let body = PAGE_NOTE.replace(
+        "{{PICTURE}}",
+        &format!("![A picture|300](inkdrop://{picture})"),
+    );
+    open_new_note(cx, workspace, store, "Page parity", &body);
+    settle_drawings(cx, window);
+}
+
 /// An Excalidraw drawing in a note.
 const DRAWING_NOTE: &str = "How a note travels.\n\n```excalidraw\n{\"type\":\"excalidraw\",\"version\":2,\"elements\":[{\"type\":\"rectangle\",\"x\":0,\"y\":0,\"width\":160,\"height\":80,\"strokeColor\":\"#1e1e1e\",\"backgroundColor\":\"#a5d8ff\",\"fillStyle\":\"hachure\",\"strokeWidth\":2,\"roughness\":1,\"seed\":7,\"roundness\":{\"type\":3}},{\"type\":\"text\",\"x\":20,\"y\":27,\"width\":120,\"height\":25,\"text\":\"Kanso\",\"fontSize\":20,\"fontFamily\":1,\"textAlign\":\"center\",\"strokeColor\":\"#1e1e1e\",\"seed\":8},{\"type\":\"arrow\",\"x\":170,\"y\":40,\"width\":110,\"height\":0,\"points\":[[0,0],[110,0]],\"strokeColor\":\"#1e1e1e\",\"endArrowhead\":\"arrow\",\"strokeWidth\":2,\"roughness\":1,\"seed\":9},{\"type\":\"ellipse\",\"x\":290,\"y\":0,\"width\":140,\"height\":80,\"strokeColor\":\"#e03131\",\"backgroundColor\":\"#ffc9c9\",\"fillStyle\":\"solid\",\"strokeWidth\":2,\"roughness\":1,\"seed\":10},{\"type\":\"text\",\"x\":310,\"y\":27,\"width\":100,\"height\":25,\"text\":\"Worker\",\"fontSize\":20,\"fontFamily\":1,\"textAlign\":\"center\",\"strokeColor\":\"#1e1e1e\",\"seed\":11},{\"type\":\"freedraw\",\"x\":40,\"y\":110,\"width\":300,\"height\":30,\"points\":[[0,10],[40,0],[80,20],[120,5],[160,25],[200,8],[240,22],[300,12]],\"strokeColor\":\"#2f9e44\",\"strokeWidth\":2,\"seed\":12}]}\n```\n\nSealed on the way.\n";
 
@@ -4207,6 +4228,7 @@ fn snapshots() {
         // Math, diagrams and drawings in the preview.
         shot("dark-rich-preview", Dark, Preview, rich_note),
         shot("light-rich-preview", Light, Preview, rich_note),
+        shot("light-page-preview", Light, Preview, page_preview),
         shot("light-rich-split", Light, Split, rich_note),
         shot("dark-drawing", Dark, Preview, drawing_note),
         shot("light-drawing", Light, Preview, drawing_note),

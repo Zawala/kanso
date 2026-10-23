@@ -543,6 +543,7 @@ impl Workspace {
                     let note = change.id.starts_with("note:");
                     this.editor.update(cx, |editor, cx| {
                         editor.on_store_change(&change, window, cx);
+                        editor.queries_changed(cx);
                         if note {
                             editor.refresh_backlinks(cx);
                             editor.refresh_wiki(cx);
@@ -1610,11 +1611,12 @@ impl Workspace {
         let Some((title, body)) = self.editor.read(cx).export_text(cx) else {
             return;
         };
+        let note = self.editor.read(cx).note_id().map(str::to_owned);
         let store = self.store.clone();
         if pdf {
-            crate::export_html::export_pdf(store, title, body, window, cx);
+            crate::export_html::export_pdf(store, title, body, note, window, cx);
         } else {
-            crate::export_html::export_html(store, title, body, window, cx);
+            crate::export_html::export_html(store, title, body, note, window, cx);
         }
     }
 

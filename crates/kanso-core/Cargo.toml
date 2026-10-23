@@ -9,6 +9,8 @@ rust-version.workspace = true
 [dependencies]
 fastrand.workspace = true
 md-5.workspace = true
+# Query fences are found in the Markdown syntax tree, as the preview finds them.
+markdown.workspace = true
 # Find and replace across notes (`replace.rs`). The app already builds it.
 regex.workspace = true
 serde.workspace = true
@@ -17,3 +19,5 @@ thiserror.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+# A real YAML parser to check the subset Kanso reads.
+saphyr = "0.2.2"

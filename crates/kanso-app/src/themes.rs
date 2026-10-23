@@ -19,6 +19,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
+use gpui_kit::component::highlighter::HighlightTheme;
 use gpui_kit::component::{Theme, ThemeConfig, ThemeMode};
 use gpui_kit::{App, Global, Window};
 
@@ -284,6 +285,8 @@ pub struct ActiveTheme {
     pub colors: &'static Colors,
     /// The preview theme's colors, fitted to the UI's editor surface.
     pub preview: PreviewColors,
+    /// The colors a preview's code blocks are drawn in, for exports too.
+    pub code: Option<Arc<HighlightTheme>>,
 }
 
 impl Global for ActiveTheme {}
@@ -369,18 +372,25 @@ pub fn apply(window: Option<&mut Window>, cx: &mut App) {
     crate::zoom::apply_to_theme(cx);
 
     let preview = fit_preview(&preview_theme.resolved.preview, colors);
-    if preview_theme.name() != syntax.name() {
+    let code = if preview_theme.name() != syntax.name() {
         let code = fit_syntax(
             &preview_theme.resolved.syntax,
             preview.code_background,
             colors.text,
         );
-        preview_code::install(&preview_theme.resolved, &code, cx);
-    }
+        let highlight = preview_code::build(&preview_theme.resolved, &code);
+        if let Some(highlight) = &highlight {
+            preview_code::install(highlight.clone(), cx);
+        }
+        highlight
+    } else {
+        preview_code::build(&syntax.resolved, &fitted)
+    };
     cx.set_global(ActiveTheme {
         ui,
         colors,
         preview,
+        code,
     });
     cx.refresh_windows();
 }
@@ -464,18 +474,23 @@ mod preview_code {
 
     use crate::theme_file::{ResolvedTheme, TokenStyle};
 
-    // no-prop-test: hands the library a highlighter; the preview snapshots
-    // show its colors.
-    pub fn install(theme: &ResolvedTheme, code: &BTreeMap<&'static str, TokenStyle>, cx: &mut App) {
+    /// The highlight theme for `theme`'s syntax in `code`, or `None` when
+    /// the colors can't be written out.
+    // no-prop-test: maps theme colors onto the library's style; the
+    // snapshots and `code_colors` show it.
+    pub fn build(
+        theme: &ResolvedTheme,
+        code: &BTreeMap<&'static str, TokenStyle>,
+    ) -> Option<Arc<HighlightTheme>> {
         let style: HighlightThemeStyle =
             match serde_json::from_value(crate::theme::highlight_style(&theme.colors, code)) {
                 Ok(style) => style,
                 Err(err) => {
                     eprintln!("kanso: couldn't build the preview's code colors: {err}");
-                    return;
+                    return None;
                 }
             };
-        let highlight = Arc::new(HighlightTheme {
+        Some(Arc::new(HighlightTheme {
             name: theme.name.clone(),
             appearance: if theme.dark {
                 ThemeMode::Dark
@@ -483,7 +498,13 @@ mod preview_code {
                 ThemeMode::Light
             },
             style,
-        });
+        }))
+    }
+
+    /// Hands `highlight` to the text views, for code blocks in the preview.
+    // no-prop-test: hands the library a highlighter; the preview snapshots
+    // show its colors.
+    pub fn install(highlight: Arc<HighlightTheme>, cx: &mut App) {
         TextViewDefaults::global(cx)
             .with_code_block_highlighter(move |block| {
                 thread_local! {

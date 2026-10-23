@@ -19,6 +19,7 @@ use gpui_kit::component::{ActiveTheme as _, Icon, Selectable as _, Sizable as _,
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::links::{FILE_LINK_PREFIX, LINK_SCHEME, NOTE_LINK_PREFIX};
+use kanso_render::typography;
 use kanso_store::Store;
 
 use crate::preview_chunks::{self, End, Prepared, SPLIT_SYNC_BYTES, Splice, Start};
@@ -27,19 +28,11 @@ use crate::theme::Colors;
 use crate::theme_file::PreviewColors;
 use crate::zoom::px;
 
-/// The rendered text's line height; its size and face are a setting
-/// ([`preview_type`]).
-const LINE_HEIGHT: f32 = 1.65;
 /// The room above the first chunk and below the last.
 const TEXT_TOP: f32 = 24.;
 /// How far past the pane the list lays chunks out, so a scroll shows them
 /// laid out already.
 const OVERDRAW: f32 = 800.;
-/// The widest text runs, in ems of its size: about 75 characters a line,
-/// however wide the window. SF Pro averages about 0.44 em a character in
-/// prose, SF Mono 0.62.
-const READABLE_EMS: f32 = 35.;
-const MONO_READABLE_EMS: f32 = 47.;
 /// How far text sits from the pane's left edge: under the note's title, like
 /// the source in Edit mode.
 pub const TEXT_INSET: f32 = 28.;
@@ -48,11 +41,7 @@ pub const TEXT_INSET: f32 = 28.;
 /// the proportional one. The preview keeps to it, and so does the source in
 /// Edit mode, at its own size.
 pub fn readable_width(size: f32, mono: bool) -> f32 {
-    size * if mono {
-        MONO_READABLE_EMS
-    } else {
-        READABLE_EMS
-    }
+    typography::readable_width(size, mono)
 }
 
 /// Where clicks on note links ([`NOTE_LINK_PREFIX`]`<id>`) go.
@@ -128,6 +117,8 @@ pub struct Preview {
     shown_type: Option<PreviewType>,
     /// Measures the chunks again as math and diagrams finish drawing.
     _rich: Task<()>,
+    /// The note shown: a query view leaves it out.
+    note: Arc<Mutex<Option<String>>>,
 }
 
 impl Preview {
@@ -140,10 +131,12 @@ impl Preview {
         let images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>> = Arc::default();
         let resolver: ImageResolver = Arc::new(image_resolver(store.clone(), images.clone()));
         let (wake, woken) = async_channel::unbounded();
+        let note = Arc::new(Mutex::new(None));
         let rich = Arc::new(Rich {
             wake,
             store: store.clone(),
             edits: resizes.clone(),
+            note: note.clone(),
         });
         let extensions = quote_extensions(Arc::new(Links(links.clone())), resolver, resizes, rich);
         let rich_task = cx.spawn(async move |this, cx| {
@@ -169,7 +162,32 @@ impl Preview {
             extensions,
             shown_type: None,
             _rich: rich_task,
+            note,
         }
+    }
+
+    /// The note the preview shows, so a query view can leave it out.
+    pub fn set_note(&mut self, id: Option<String>, cx: &mut Context<Self>) {
+        let changed = self.note.lock().map(|mut note| {
+            if *note == id {
+                false
+            } else {
+                *note = id;
+                true
+            }
+        });
+        if changed.unwrap_or(false) {
+            cx.notify();
+        }
+    }
+
+    /// Notes changed: query views show their notes as they are now. A note
+    /// without a query has nothing to redraw.
+    pub fn queries_changed(&mut self, cx: &mut Context<Self>) {
+        if !kanso_core::query_view::contains_query(&self.shown) {
+            return;
+        }
+        self.drawings_ready(cx);
     }
 
     /// Drawings finished: the chunks showing them change height.
@@ -419,9 +437,21 @@ pub(crate) fn unquote(source: &str) -> String {
 const QUOTE: &str = "kanso-quote";
 /// The custom node an attached image on a line of its own becomes.
 const PICTURE: &str = "kanso-picture";
+/// The custom node front matter becomes: nothing. The inspector's
+/// Properties section shows it instead.
+const FRONT_MATTER: &str = "kanso-front-matter";
 /// Changes when [`quote_extensions`] parses differently, so a text view
 /// re-parses its note. 3: math, diagrams and drawings. 4: due-date chips.
-const QUOTE_PARSER_REVISION: u64 = 4;
+/// 5: query views. 6: front matter hidden.
+const QUOTE_PARSER_REVISION: u64 = 6;
+
+/// Front matter, drawn as nothing: the Properties section shows it.
+fn front_matter_node(node: &markdown_ast::Node) -> Option<MarkdownNode> {
+    let markdown_ast::Node::Yaml(_) = node else {
+        return None;
+    };
+    Some(MarkdownNode::new(FRONT_MATTER, ()).text("").markdown(""))
+}
 
 /// A quote's Markdown, without its markers.
 struct Quote(SharedString);
@@ -710,7 +740,13 @@ fn quote_extensions(
     rich: Arc<Rich>,
 ) -> MarkdownExtensions {
     let parse = |node: &markdown_ast::Node, cx: &MarkdownParseContext<'_>| {
+        if let Some(block) = front_matter_node(node) {
+            return Some(block);
+        }
         if let Some(block) = preview_rich::parse_block(node, cx) {
+            return Some(block);
+        }
+        if let Some(block) = crate::query_view_ui::parse_block(node, cx) {
             return Some(block);
         }
         let source = cx.node_source(node)?;
@@ -735,8 +771,10 @@ fn quote_extensions(
     let picture_images = images.clone();
     let picture_resizes = resizes.clone();
     let quote_rich = rich.clone();
+    let query_links = links.0.clone();
     let extensions = MarkdownExtensions::default()
         .parser_revision(QUOTE_PARSER_REVISION)
+        .frontmatter()
         // Unresolved wiki-links, drawn dashed (see `crate::wikilinks`).
         .plugin(crate::wikilinks::UnresolvedLink::new(links.0.clone()))
         // Tasks' due dates, as chips (see `crate::due`).
@@ -745,6 +783,7 @@ fn quote_extensions(
         .block_renderer(PICTURE, move |node, window, cx| {
             render_picture(node, &picture_images, &picture_resizes, window, cx)
         })
+        .block_renderer(FRONT_MATTER, |_, _, _| div().into_any_element())
         .block_renderer(QUOTE, move |node, _window, cx| {
             let Some(Quote(body)) = node.data::<Quote>() else {
                 return div().into_any_element();
@@ -773,7 +812,7 @@ fn quote_extensions(
                         .style(style)
                         .font_family(ty.family)
                         .text_size(px(ty.size))
-                        .line_height(relative(LINE_HEIGHT))
+                        .line_height(relative(typography::LINE_HEIGHT))
                         .text_color(preview.quote)
                         .selectable(true)
                         .markdown_extensions(quote_extensions(
@@ -788,6 +827,8 @@ fn quote_extensions(
                 )
                 .into_any_element()
         });
+    let rich_for_queries = rich.clone();
+    let extensions = crate::query_view_ui::register(extensions, rich_for_queries, query_links);
     preview_rich::register(extensions, rich)
 }
 
@@ -811,7 +852,7 @@ pub(crate) fn code_view(
         .style(style)
         .font_family(ty.family)
         .text_size(px(ty.size))
-        .line_height(relative(LINE_HEIGHT))
+        .line_height(relative(typography::LINE_HEIGHT))
         .text_color(preview.text)
         .selectable(true)
         .code_block_actions(code_block_actions)
@@ -850,20 +891,14 @@ fn code_block_actions(block: &CodeBlock, _: &mut Window, cx: &mut App) -> AnyEle
 /// A heading's size relative to the body, and the gap above it relative to
 /// its size, as the text view sets them.
 fn heading_metrics(level: u8) -> (f32, f32) {
-    match level {
-        1 => (1.8, 1.1),
-        2 => (4. / 3., 1.6),
-        3 => (17. / 15., 1.4),
-        4 => (1., 1.4),
-        5 => (14. / 15., 1.4),
-        _ => (13. / 15., 1.4),
-    }
+    let heading = typography::heading(level);
+    (heading.scale, heading.gap)
 }
 
 /// The gap below a heading, relative to its size, as the text view sets it.
-const HEADING_BOTTOM_GAP: f32 = 0.35;
+const HEADING_BOTTOM_GAP: f32 = typography::HEADING_BOTTOM_GAP;
 /// The gap below ordinary blocks, as [`text_style`] sets it.
-const PARAGRAPH_GAP: f32 = 0.9;
+const PARAGRAPH_GAP: f32 = typography::PARAGRAPH_GAP;
 
 /// The room above a chunk that starts like `start` (`first` for the note's
 /// first): what the text view would leave above that block in the whole
@@ -935,7 +970,7 @@ pub(crate) fn text_style(colors: &Colors, p: &PreviewColors, dark: bool) -> Text
         None => Hsla::from(colors.accent).opacity(0.3),
     };
     let mut code_block = StyleRefinement::default()
-        .rounded(px(8.))
+        .rounded(px(typography::CODE_RADIUS))
         .pt(px(CODE_TOP))
         .border_color(Hsla::from(p.border).opacity(0.6));
     if let Some(code) = p.code_text {
@@ -1011,7 +1046,7 @@ pub(crate) fn preview_type(cx: &mut App) -> PreviewType {
 
 /// Room above a code block's first line, clear of its language and copy
 /// button.
-const CODE_TOP: f32 = 34.;
+const CODE_TOP: f32 = typography::CODE_TOP;
 
 impl Render for Preview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1061,7 +1096,7 @@ impl Render for Preview {
                                     .style(style.clone())
                                     .font_family(ty.family)
                                     .text_size(px(ty.size))
-                                    .line_height(relative(LINE_HEIGHT))
+                                    .line_height(relative(typography::LINE_HEIGHT))
                                     .text_color(text_color)
                                     .selectable(true)
                                     .markdown_extensions(extensions)
@@ -1353,6 +1388,18 @@ mod tests {
         );
         assert_eq!(linked_note("inkdrop://note/"), None);
         assert_eq!(linked_note("https://example.com"), None);
+    }
+
+    #[test]
+    fn front_matter_is_drawn_as_nothing() {
+        let mut options = markdown::ParseOptions::gfm();
+        options.constructs.frontmatter = true;
+        let root = markdown::to_mdast("---\ntitle: x\n---\n# Heading\n", &options).unwrap();
+        let first = root.children().unwrap().first().unwrap();
+        let block = super::front_matter_node(first).expect("front matter is a block");
+        assert_eq!(block.name(), super::FRONT_MATTER);
+        assert_eq!(block.as_text(), "");
+        assert!(super::front_matter_node(&root.children().unwrap()[1]).is_none());
     }
 
     #[test]
