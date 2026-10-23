@@ -1,99 +1,27 @@
-//! Mermaid diagrams drawn by Pele (Obsidian's renderer, MIT), run in
-//! QuickJS on a thread of its own: the alternative to `mermaid-svg` chosen
-//! in Settings; see [`crate::mermaid::render_with`].
+//! Mermaid diagrams drawn by Pele (Obsidian's renderer, MIT), run in the
+//! shared QuickJS engine ([`crate::js`]), with `$$…$$` in labels typeset by
+//! MathJax; see [`crate::mermaid::render_with`].
 //!
 //! Pele themes a drawing with CSS variables, which resvg doesn't read, so
 //! each `var(…)` is replaced with the palette's value before it's flattened.
 
 use std::collections::HashMap;
-use std::io::Read as _;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
 
+use crate::js::{self, Call};
 use crate::{Failure, Palette, Rgb};
 
-static BUNDLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/pele.js.deflate"));
-
-/// The longest a diagram may take.
-const TIME_LIMIT: Duration = Duration::from_secs(3);
-/// The most memory the engine may hold.
-const MEMORY_LIMIT: usize = 128 << 20;
 /// The fonts labels are drawn in: the same as `mermaid-svg`'s.
 const FONT: &str =
     "'Helvetica Neue', 'Segoe UI', Inter, 'Noto Sans', 'DejaVu Sans', Arial, sans-serif";
 
-/// What Pele answered: its SVG, or why it didn't draw.
-type Answer = Result<String, Failure>;
-
-struct Request {
-    source: String,
-    reply: mpsc::Sender<Answer>,
-}
-
-/// The engine's thread, started on first use.
-fn engine() -> &'static Mutex<mpsc::Sender<Request>> {
-    static ENGINE: OnceLock<Mutex<mpsc::Sender<Request>>> = OnceLock::new();
-    ENGINE.get_or_init(|| {
-        let (send, receive) = mpsc::channel::<Request>();
-        std::thread::Builder::new()
-            .name("kanso-pele".into())
-            .spawn(move || run(receive))
-            .expect("starting the Pele thread");
-        Mutex::new(send)
+/// Pele's raw SVG for `source`, before it's themed, or why it didn't draw.
+/// Blocks on the engine's thread.
+pub(crate) fn render(source: &str) -> Result<String, Failure> {
+    let json = js::call(Call::Pele {
+        source: source.to_owned(),
+        font: FONT,
     })
-}
-
-fn run(requests: mpsc::Receiver<Request>) {
-    let deadline = Arc::new(AtomicU64::new(u64::MAX));
-    let started = Instant::now();
-    let engine = start(deadline.clone(), started);
-    for request in requests {
-        let answer = match &engine {
-            Ok((_, context)) => {
-                let limit = started.elapsed() + TIME_LIMIT;
-                deadline.store(limit.as_millis() as u64, Ordering::Relaxed);
-                let answer = draw(context, &request.source);
-                deadline.store(u64::MAX, Ordering::Relaxed);
-                answer
-            }
-            Err(message) => Err(Failure::Invalid(message.clone())),
-        };
-        request.reply.send(answer).ok();
-    }
-}
-
-type Engine = (rquickjs::Runtime, rquickjs::Context);
-
-fn start(deadline: Arc<AtomicU64>, started: Instant) -> Result<Engine, String> {
-    let unavailable = |err: &dyn std::fmt::Display| format!("Diagrams are unavailable: {err}");
-    let mut js = String::new();
-    flate2::read::DeflateDecoder::new(BUNDLE)
-        .read_to_string(&mut js)
-        .map_err(|e| unavailable(&e))?;
-    let runtime = rquickjs::Runtime::new().map_err(|e| unavailable(&e))?;
-    runtime.set_memory_limit(MEMORY_LIMIT);
-    runtime.set_max_stack_size(2 << 20);
-    runtime.set_interrupt_handler(Some(Box::new(move || {
-        started.elapsed().as_millis() as u64 > deadline.load(Ordering::Relaxed)
-    })));
-    let context = rquickjs::Context::full(&runtime).map_err(|e| unavailable(&e))?;
-    context.with(|ctx| {
-        ctx.eval::<(), _>(js).map_err(|e| {
-            let _ = e;
-            unavailable(&"Pele didn't start")
-        })
-    })?;
-    Ok((runtime, context))
-}
-
-fn draw(context: &rquickjs::Context, source: &str) -> Answer {
-    let failed = |_| Failure::Invalid("The diagram took too long or used too much memory.".into());
-    let json: String = context.with(|ctx| {
-        let draw: rquickjs::Function = ctx.globals().get("kansoPele").map_err(failed)?;
-        draw.call((source, FONT)).map_err(failed)
-    })?;
+    .map_err(|_| Failure::Invalid("The diagram took too long or used too much memory.".into()))?;
     let answer: serde_json::Value =
         serde_json::from_str(&json).map_err(|e| Failure::Invalid(e.to_string()))?;
     if let Some(svg) = answer["svg"].as_str() {
@@ -106,21 +34,6 @@ fn draw(context: &rquickjs::Context, source: &str) -> Answer {
         }
         _ => Failure::Invalid(message.to_owned()),
     })
-}
-
-/// Pele's raw SVG for `source`, before it's themed. Blocks on its thread.
-pub(crate) fn render(source: &str) -> Answer {
-    let unavailable = || Failure::Invalid("Diagrams are unavailable.".into());
-    let (reply, answer) = mpsc::channel();
-    engine()
-        .lock()
-        .map_err(|_| unavailable())?
-        .send(Request {
-            source: source.to_owned(),
-            reply,
-        })
-        .map_err(|_| unavailable())?;
-    answer.recv().map_err(|_| unavailable())?
 }
 
 /// Pele's theme tokens in the palette's colors, chosen to match how
@@ -373,6 +286,24 @@ mod tests {
         assert!(!svg.contains("var("), "{svg}");
         assert!(svg.contains(&Palette::LIGHT.text.hex()));
         assert!(crate::svg::flatten(&svg, 8.).is_some());
+    }
+
+    #[test]
+    fn math_in_labels_is_typeset() {
+        let raw = render("flowchart LR\n  A[\"$$x^2 + \\frac{a}{b}$$\"] --> B[Plain]\n").unwrap();
+        assert!(raw.contains("pele-math"), "{raw}");
+        assert!(!raw.contains("$$"), "the TeX source is shown: {raw}");
+        let svg = theme(&raw, &Palette::DARK);
+        let flat = crate::svg::flatten(&svg, 8.).unwrap();
+        assert!(!flat.markup.contains("currentColor"));
+        // The formula is drawn in the text color, as glyph outlines.
+        assert!(flat.markup.contains(&Palette::DARK.text.hex()));
+    }
+
+    #[test]
+    fn a_mistake_in_label_math_shows_its_source() {
+        let raw = render("flowchart LR\n  A[\"$$\\frac{1}{$$\"]\n").unwrap();
+        assert!(!raw.contains("pele-math"));
     }
 
     #[test]

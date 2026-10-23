@@ -94,6 +94,10 @@ const SAMPLES: &[(&str, &str)] = &[
         "treemap",
         "treemap-beta\n\"Notes\"\n  \"Work\": 10\n  \"Home\": 5\n",
     ),
+    (
+        "math in labels",
+        "flowchart LR\n  A[\"$$x^2 + \\frac{a}{b}$$\"] --> B[\"Sum $$\\sum_{i=1}^{n} i$$ done\"]\n  B --> C[\"$$\\int_0^1 f(x)\\,dx$$\"]\n",
+    ),
     ("unsupported", "zenuml\n  Alice->Bob: hi\n"),
 ];
 
