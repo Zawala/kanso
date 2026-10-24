@@ -11,8 +11,10 @@
 //! it sees `A`'s and reveals it only after, so the server can't search for a
 //! key whose code matches.
 //!
-//! `lp(x)` of a public key is its 32 raw bytes with their length, as for a
-//! string (docs/ACCOUNTS.md › Encodings).
+//! The public keys in the transcript are binary JSON values, so `lp(epk)` is
+//! over their 43-character base64url text, not the 32 raw bytes
+//! (docs/ACCOUNTS.md › Encodings). The commitment is the exception the spec
+//! states separately: it hashes the raw key bytes.
 
 use std::fmt;
 
@@ -34,13 +36,6 @@ const KEY_INFO: &[u8] = b"kanso/v1/approve-key";
 const CODE_LABEL: &[u8] = b"kanso/v1/approve-code";
 const NAME_AAD: &[u8] = b"kanso-approve-name";
 const WRAP_AAD: &[u8] = b"kanso-approve";
-
-/// `lp` of raw bytes: a 2-byte big-endian length, then the bytes.
-fn lp_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
-    let len = u16::try_from(bytes.len()).unwrap_or(u16::MAX);
-    out.extend_from_slice(&len.to_be_bytes());
-    out.extend_from_slice(bytes);
-}
 
 /// `label || 0x01 || lp(account_id)`.
 fn salt(label: &[u8], account_id: &str) -> Vec<u8> {
@@ -64,8 +59,8 @@ fn transcript(
     for id in before {
         lp(&mut out, id);
     }
-    lp_bytes(&mut out, epk_new);
-    lp_bytes(&mut out, epk_approver);
+    lp(&mut out, &b64(epk_new));
+    lp(&mut out, &b64(epk_approver));
     for id in after {
         lp(&mut out, id);
     }
@@ -357,6 +352,10 @@ mod tests {
             .complete(Side::Approver, &n.epk(), ACCOUNT, REQUEST)
             .unwrap();
         assert_eq!(on_n.code(), on_a.code());
+        // Pinned by an independent implementation of RFC 7748 and
+        // HKDF-SHA256 over the revision-3 transcript. This catches a change
+        // from `lp(base64url(epk))` back to raw key bytes.
+        assert_eq!(on_n.code(), "130 420");
         let code = on_n.code();
         assert_eq!(code.len(), 7);
         assert_eq!(code.as_bytes()[3], b' ');
