@@ -31,7 +31,7 @@ import {
 import { type PepperKeys, proofMatches, randomBytes, sha256, sha256Hex } from "./crypto";
 import type { Env } from "./env";
 import { accountDisabled, badRequest, constraint, error, invalidCredentials, json, notFound, readBody, refusal } from "./http";
-import { accountKey, clientIp, count, ipGroup, ipKey, sessionFilter } from "./limits";
+import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, ipGroup, ipKey, sessionFilter } from "./limits";
 import {
 	APPLE_ID_TOKEN_ALGORITHMS,
 	APPLE_ISSUER,
@@ -209,6 +209,7 @@ async function startFlow(env: Env, keys: PepperKeys, now: number, c: StartContex
 		rp_id: null,
 		subject: null,
 		device_code: null,
+		poll_interval_seconds: null,
 		next_poll_at: null,
 		pkce_hash: null,
 		nonce_hash: null,
@@ -286,7 +287,12 @@ async function startFlow(env: Env, keys: PepperKeys, now: number, c: StartContex
 			const { device_code, user_code, verification_uri, expires_in, interval } = started.value;
 			const expires = Math.min(expiresAt, now + expires_in * 1000);
 			if (expires <= now) return providerUnavailable("github");
-			await newFlow(env, keys, { ...base, device_code, next_poll_at: now + interval * 1000, expires_at: expires }, now);
+			await newFlow(
+				env,
+				keys,
+				{ ...base, device_code, poll_interval_seconds: interval, next_poll_at: now + interval * 1000, expires_at: expires },
+				now,
+			);
 			return json({
 				flow_id: flowId,
 				user_code,
@@ -363,6 +369,37 @@ async function complete(request: Request, env: Env, keys: PepperKeys, now: numbe
 	}
 }
 
+type CompletionKind = "signin" | "link" | "social_signup";
+
+/** A globally unique marker makes each batch's writes depend on its own flow claim. */
+function completionAttemptId(): string {
+	return base64url(randomBytes(32));
+}
+
+function claimCompletion(env: Env, flowId: string, attemptId: string, kind: CompletionKind, accountId: string, now: number) {
+	return env.DB.prepare(
+		`UPDATE auth_flows SET consumed_at = ?2, completion_attempt_id = ?3, completion_kind = ?4,
+  completion_account_id = ?5, completion_succeeded = 0
+  WHERE id = ?1 AND consumed_at IS NULL AND expires_at > ?2 RETURNING id`,
+	).bind(flowId, now, attemptId, kind, accountId);
+}
+
+function markCompletionSucceeded(
+	env: Env,
+	flowId: string,
+	attemptId: string,
+	kind: CompletionKind,
+	accountId: string,
+	condition: string,
+	conditionParams: unknown[],
+) {
+	return env.DB.prepare(
+		`UPDATE auth_flows SET completion_succeeded = 1
+  WHERE id = ?1 AND completion_attempt_id = ?2 AND completion_kind = ?3 AND completion_account_id = ?4
+    AND completion_succeeded = 0 AND ${condition} RETURNING id`,
+	).bind(flowId, attemptId, kind, accountId, ...conditionParams);
+}
+
 async function signIn(
 	request: Request,
 	env: Env,
@@ -383,7 +420,12 @@ async function signIn(
 		.bind(provider, subject, device.id)
 		.first<IdentityAccount>();
 	if (!account) {
-		// Never a lookup by email: an unlinked identity is offered a new account.
+		if (flow.consumed_at !== null) return flowExpired();
+		// Never a lookup by email: an unlinked identity is offered a new account. Every
+		// unknown identity shares the same login-user row, like a password sign-in for a
+		// name with no account, so a pile of tickets cannot bypass the sign-in limit.
+		limited = await count(env.DB, "login-user", UNKNOWN_LOGIN_KEY, now);
+		if (limited) return limited;
 		return json({ kind: "new_account", ticket: flow.id, suggested_username: await suggestUsername(env, flow.id) });
 	}
 	const known = account.device_proof_hash !== null && (await proofMatches(device.proof, account.device_proof_hash));
@@ -392,36 +434,115 @@ async function signIn(
 		if (limited) return limited;
 	}
 	if (account.disabled_at !== null) return accountDisabled();
-	// Used once; a retry of this finish or poll (a lost answer) finds it consumed
-	// and gets a fresh token for the same device row.
-	await consumeFlow(env, flow.id, now);
+	if (flow.consumed_at !== null) {
+		// Only a successful sign-in completion for this same account can be replayed.
+		// flowForDevice has already checked the unexpired flow and this device proof.
+		if (
+			flow.completion_succeeded !== 1 ||
+			flow.completion_kind !== "signin" ||
+			flow.completion_account_id !== account.id ||
+			flow.completion_attempt_id === null
+		) {
+			return flowExpired();
+		}
+		const replayNow = Math.max(now, Date.now());
+		if (flow.expires_at <= replayNow) return flowExpired();
+		const session = await newSession(device);
+		const results = await env.DB.batch(
+			sessionStatements(
+				env.DB,
+				{ accountId: account.id, deviceId: device.id, ...session, sealedName: null, now: replayNow },
+				[["auth_hash", account.auth_hash]],
+				{ flowId: flow.id, attemptId: flow.completion_attempt_id },
+			),
+		);
+		const outcome = sessionOutcome(results, 0);
+		if (!outcome.ok) return invalidCredentials();
+		return sessionAnswer(account, session.token, outcome.evicted);
+	}
+
+	const completionNow = Math.max(now, Date.now());
+	const attemptId = completionAttemptId();
 	const session = await newSession(device);
-	const results = await env.DB.batch(
-		sessionStatements(env.DB, { accountId: account.id, deviceId: device.id, ...session, sealedName: null, now }, [
-			["auth_hash", account.auth_hash],
-		]),
-	);
-	const outcome = sessionOutcome(results, 0);
-	if (!outcome.ok) return invalidCredentials();
+	const results = await env.DB.batch([
+		claimCompletion(env, flow.id, attemptId, "signin", account.id, completionNow),
+		...sessionStatements(
+			env.DB,
+			{ accountId: account.id, deviceId: device.id, ...session, sealedName: null, now: completionNow },
+			[["auth_hash", account.auth_hash]],
+			{ flowId: flow.id, attemptId },
+		),
+		markCompletionSucceeded(
+			env,
+			flow.id,
+			attemptId,
+			"signin",
+			account.id,
+			"EXISTS (SELECT 1 FROM sessions WHERE account_id = ?4 AND device_id = ?5 AND token_hash = ?6 AND revoked_at IS NULL)",
+			[device.id, session.tokenHash],
+		),
+	]);
+	if (results[0].results.length !== 1) return flowExpired();
+	const outcome = sessionOutcome(results, 1);
+	if (!outcome.ok || results[4].results.length !== 1) return invalidCredentials();
 	return sessionAnswer(account, session.token, outcome.evicted);
 }
 
 async function link(env: Env, now: number, flow: AuthFlowRow, provider: string, subject: string): Promise<Response> {
 	const accountId = flow.account_id as string;
+	if (flow.consumed_at !== null) {
+		if (
+			flow.completion_succeeded !== 1 ||
+			flow.completion_kind !== "link" ||
+			flow.completion_account_id !== accountId ||
+			flow.completion_attempt_id === null
+		) {
+			return flowExpired();
+		}
+		const replayNow = Math.max(now, Date.now());
+		if (flow.expires_at <= replayNow) return flowExpired();
+		const owner = await env.DB.prepare(
+			"SELECT account_id, created_at FROM account_identities WHERE provider = ?1 AND subject = ?2",
+		)
+			.bind(provider, subject)
+			.first<{ account_id: string; created_at: number }>();
+		return owner?.account_id === accountId
+			? json({ kind: "linked", provider, created_at: owner.created_at })
+			: flowExpired();
+	}
+
+	const completionNow = Math.max(now, Date.now());
+	const attemptId = completionAttemptId();
 	// One identity per provider per account, and one account per identity: the
 	// primary key settles a race between two accounts, the NOT EXISTS a second
 	// identity of the same provider on this one.
-	const inserted = await env.DB.prepare(
-		`INSERT INTO account_identities (account_id, provider, subject, created_at)
-  SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM accounts WHERE id = ?1)
+	const results = await env.DB.batch([
+		claimCompletion(env, flow.id, attemptId, "link", accountId, completionNow),
+		env.DB.prepare(
+			`INSERT INTO account_identities (account_id, provider, subject, created_at)
+  SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM auth_flows WHERE id = ?5 AND completion_attempt_id = ?6)
+    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1)
     AND NOT EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?1 AND provider = ?2)
-  ON CONFLICT (provider, subject) DO NOTHING RETURNING created_at`,
-	)
-		.bind(accountId, provider, subject, now)
-		.first<{ created_at: number }>();
-	if (inserted) {
-		await consumeFlow(env, flow.id, now);
-		return json({ kind: "linked", provider, created_at: inserted.created_at });
+	  ON CONFLICT (provider, subject) DO NOTHING RETURNING created_at`,
+		).bind(accountId, provider, subject, completionNow, flow.id, attemptId),
+		markCompletionSucceeded(
+			env,
+			flow.id,
+			attemptId,
+			"link",
+			accountId,
+			"EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?4 AND provider = ?5 AND subject = ?6)",
+			[provider, subject],
+		),
+	]);
+	if (results[0].results.length !== 1) return flowExpired();
+	if (results[2].results.length === 1) {
+		const linked = await env.DB.prepare(
+			"SELECT created_at FROM account_identities WHERE account_id = ?1 AND provider = ?2 AND subject = ?3",
+		)
+			.bind(accountId, provider, subject)
+			.first<{ created_at: number }>();
+		if (linked) return json({ kind: "linked", provider, created_at: linked.created_at });
 	}
 	const owner = await env.DB.prepare("SELECT account_id, created_at FROM account_identities WHERE provider = ?1 AND subject = ?2")
 		.bind(provider, subject)
@@ -529,12 +650,16 @@ export const githubPoll: PepperHandler = async (request, env, now, keys) => {
 
 	// Claim this poll slot: of two parallel polls one calls GitHub, the other is told to wait.
 	const next = flow.next_poll_at ?? 0;
+	const intervalSeconds = flow.poll_interval_seconds ?? GITHUB_MIN_INTERVAL;
+	const nextPollAt = now + intervalSeconds * 1000;
 	const claimed =
 		now >= next &&
 		(await env.DB.prepare(
-			"UPDATE auth_flows SET next_poll_at = ?3 WHERE id = ?1 AND next_poll_at IS ?2 AND consumed_at IS NULL RETURNING id",
+			`UPDATE auth_flows SET next_poll_at = ?3, poll_interval_seconds = coalesce(poll_interval_seconds, ?6)
+  WHERE id = ?1 AND next_poll_at IS ?2 AND consumed_at IS NULL AND expires_at > ?4
+    AND poll_interval_seconds IS ?5 RETURNING id`,
 		)
-			.bind(flow.id, flow.next_poll_at, now + GITHUB_MIN_INTERVAL * 1000)
+			.bind(flow.id, flow.next_poll_at, nextPollAt, now, flow.poll_interval_seconds, intervalSeconds)
 			.first()) !== null;
 	if (!claimed) {
 		const latest = await flowById(env, flow.id);
@@ -553,10 +678,19 @@ export const githubPoll: PepperHandler = async (request, env, now, keys) => {
 			case "pending":
 				return json({ status: "pending" });
 			case "slow_down": {
-				// GitHub raised its interval by five seconds; so does the Worker, and the app.
-				await env.DB.prepare("UPDATE auth_flows SET next_poll_at = ?2 WHERE id = ?1")
-					.bind(flow.id, now + 2 * GITHUB_MIN_INTERVAL * 1000)
-					.run();
+				// GitHub raised its interval by five seconds. Keep that increase for later polls;
+				// another slow_down adds five more rather than resetting to a fixed ten seconds.
+				const scheduleNow = Math.max(now, Date.now());
+				const updated = await env.DB.prepare(
+					`UPDATE auth_flows
+  SET poll_interval_seconds = coalesce(poll_interval_seconds, ?3) + ?4,
+      next_poll_at = max(next_poll_at, ?2 + (coalesce(poll_interval_seconds, ?3) + ?4) * 1000)
+  WHERE id = ?1 AND consumed_at IS NULL AND expires_at > ?2
+  RETURNING id`,
+				)
+					.bind(flow.id, scheduleNow, GITHUB_MIN_INTERVAL, GITHUB_MIN_INTERVAL)
+					.first();
+				if (!updated) return flowGone();
 				return json({ status: "pending", slow_down: true });
 			}
 			case "flow_expired":
@@ -647,7 +781,8 @@ export const appleCallback: PepperHandler = async (request, env, now, keys) => {
 		return callbackPage(400, null, "Signing in with Apple was cancelled. Return to Kanso to try again.");
 	}
 	if (!providerConfigured(env, "apple")) return callbackPage(503, null, FAILED);
-	const exchanged = await exchangeAppleCode(env, code, now);
+	if (flow.redirect_uri === null) return callbackPage(400, null, FAILED);
+	const exchanged = await exchangeAppleCode(env, code, now, flow.redirect_uri);
 	if (!exchanged.ok) {
 		if (exchanged.error !== "provider_unavailable") await consumeFlow(env, flow.id, now);
 		return callbackPage(exchanged.error === "provider_unavailable" ? 503 : 400, null, FAILED);
@@ -746,15 +881,34 @@ export const socialSignup: PepperHandler = async (request, env, now, keys) => {
 		const results = await env.DB.batch(
 			sessionStatements(
 				env.DB,
-				{ accountId: existing.id, deviceId: device.value.id, ...session, sealedName: device.value.sealedName, now },
+				{
+					accountId: existing.id,
+					deviceId: device.value.id,
+					...session,
+					sealedName: device.value.sealedName,
+					now: Math.max(now, Date.now()),
+				},
 				[["recovery_hash", existing.recovery_hash]],
+				{ flowId: flow.id, attemptId: flow.completion_attempt_id as string },
 			),
 		);
 		const outcome = sessionOutcome(results, 0);
 		if (!outcome.ok) return null;
 		return sessionAnswer(existing, session.token, outcome.evicted, 201);
 	};
-	if (flow.consumed_at !== null) return (await retried()) ?? flowExpired();
+	if (flow.consumed_at !== null) {
+		if (
+			flow.completion_succeeded !== 1 ||
+			flow.completion_kind !== "social_signup" ||
+			flow.completion_account_id !== accountId ||
+			flow.completion_attempt_id === null
+		) {
+			return flowExpired();
+		}
+		return (await retried()) ?? flowExpired();
+	}
+	const completionNow = Math.max(now, Date.now());
+	const attemptId = completionAttemptId();
 
 	// A passwordless account: random KDF salt, auth hash and password wrap that
 	// satisfy every CHECK and that no client holds. The KEK of that wrap never
@@ -762,11 +916,16 @@ export const socialSignup: PepperHandler = async (request, env, now, keys) => {
 	const epoch = [...randomBytes(8)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 	const account = { id: accountId, username: name.value, key_id: keyId, epoch, has_password: 0 };
 	try {
-		await env.DB.batch([
-			env.DB.prepare("DELETE FROM purges WHERE prefix = ?1").bind(accountPrefix(accountId)),
+		const results = await env.DB.batch([
+			claimCompletion(env, flow.id, attemptId, "social_signup", accountId, completionNow),
+			env.DB.prepare(
+				"DELETE FROM purges WHERE prefix = ?1 AND EXISTS (SELECT 1 FROM auth_flows WHERE id = ?2 AND completion_attempt_id = ?3)",
+			).bind(accountPrefix(accountId), flow.id, attemptId),
 			env.DB.prepare(
 				`INSERT INTO accounts (id, username, kdf_m_kib, kdf_t, kdf_p, salt, auth_hash, wrapped_key, recovery_hash,
-  recovery_wrapped_key, key_id, epoch, created_at, has_password) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 0)`,
+	  recovery_wrapped_key, key_id, epoch, created_at, has_password)
+  SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 0
+  WHERE EXISTS (SELECT 1 FROM auth_flows WHERE id = ?14 AND completion_attempt_id = ?15)`,
 			).bind(
 				accountId,
 				name.value,
@@ -780,27 +939,45 @@ export const socialSignup: PepperHandler = async (request, env, now, keys) => {
 				recoveryWrappedKey,
 				keyId,
 				epoch,
-				now,
-			),
-			env.DB.prepare("INSERT INTO account_identities (account_id, provider, subject, created_at) VALUES (?1, ?2, ?3, ?4)").bind(
-				accountId,
-				provider,
-				subject,
-				now,
+				completionNow,
+				flow.id,
+				attemptId,
 			),
 			env.DB.prepare(
-				`INSERT INTO sessions (account_id, device_id, token_hash, proof_hash, sealed_name, created_at, last_seen_at)
-  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)`,
-			).bind(accountId, device.value.id, session.tokenHash, session.proofHash, device.value.sealedName, now),
-			env.DB.prepare("UPDATE auth_flows SET consumed_at = ?2 WHERE id = ?1 AND consumed_at IS NULL").bind(flow.id, now),
+				`INSERT INTO account_identities (account_id, provider, subject, created_at)
+  SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM auth_flows WHERE id = ?5 AND completion_attempt_id = ?6)
+    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1)`,
+			).bind(accountId, provider, subject, completionNow, flow.id, attemptId),
+			...sessionStatements(
+				env.DB,
+				{
+					accountId,
+					deviceId: device.value.id,
+					...session,
+					sealedName: device.value.sealedName,
+					now: completionNow,
+				},
+				[["recovery_hash", recoveryHash]],
+				{ flowId: flow.id, attemptId },
+			),
+			markCompletionSucceeded(
+				env,
+				flow.id,
+				attemptId,
+				"social_signup",
+				accountId,
+				`EXISTS (SELECT 1 FROM accounts WHERE id = ?4)
+  AND EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?4 AND provider = ?5 AND subject = ?6)
+  AND EXISTS (SELECT 1 FROM sessions WHERE account_id = ?4 AND device_id = ?7 AND token_hash = ?8 AND revoked_at IS NULL)`,
+				[provider, subject, device.value.id, session.tokenHash],
+			),
 		]);
+		if (results[0].results.length !== 1) return flowExpired();
+		const outcome = sessionOutcome(results, 4);
+		if (!outcome.ok || results[7].results.length !== 1) return flowExpired();
 	} catch (err) {
 		const refused = refusal(err);
 		const unique = constraint(err, "UNIQUE");
-		if (refused?.kind === "signup_closed" || unique) {
-			const retry = await retried();
-			if (retry) return retry;
-		}
 		if (refused?.kind === "signup_closed") return error(403, "signup_closed", "Sign-ups are closed.", { reason: refused.detail });
 		if (unique) {
 			const taken = await env.DB.batch([

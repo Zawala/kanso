@@ -140,12 +140,19 @@ export function withSession(handler: (request: Request, env: Env, now: number, s
 
 export type GuardColumn = "auth_hash" | "recovery_hash";
 
+/** A provider completion's claim, which keeps its dependent session writes in the same attempt. */
+export interface SessionCompletionGuard {
+	flowId: string;
+	attemptId: string;
+}
+
 /**
  * The statements that make `device` this account's active session, in one
  * batch with the caller's own: revoke the least recently seen other session
  * when ten are active (`evicted`), upsert this one, and keep at most 90
  * revoked rows. Every statement holds only while the account is enabled and
- * each guard column still has the hash the caller checked.
+ * each guard column still has the hash the caller checked. Provider completion
+ * callers can also bind all three statements to one live flow attempt.
  * Parameters: ?1 account, ?2 device, ?3 token hash, ?4 proof hash, ?5 now,
  * ?6 sealed name (null keeps the old one), ?7… guard values.
  */
@@ -153,12 +160,42 @@ export function sessionStatements(
 	db: D1Database,
 	s: { accountId: string; deviceId: string; tokenHash: string; proofHash: string; sealedName: string | null; now: number },
 	guards: [GuardColumn, string][],
+	completion?: SessionCompletionGuard,
 ): D1PreparedStatement[] {
+	const completionParam = 7 + guards.length;
+	const completionGuard = completion
+		? ` AND EXISTS (SELECT 1 FROM auth_flows WHERE id = ?${completionParam} AND completion_attempt_id = ?${completionParam + 1} AND expires_at > ?${completionParam + 2})`
+		: "";
 	const guard = `EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND disabled_at IS NULL${guards
 		.map(([column], i) => ` AND ${column} = ?${7 + i}`)
-		.join("")})`;
-	const params = [s.accountId, s.deviceId, s.tokenHash, s.proofHash, s.now, s.sealedName, ...guards.map(([, value]) => value)];
+		.join("")}${completionGuard})`;
+	const params = [
+		s.accountId,
+		s.deviceId,
+		s.tokenHash,
+		s.proofHash,
+		s.now,
+		s.sealedName,
+		...guards.map(([, value]) => value),
+		...(completion ? [completion.flowId, completion.attemptId, s.now] : []),
+	];
 	const others = "account_id = ?1 AND revoked_at IS NULL AND device_id != ?2";
+	const cleanup = completion
+		? db
+			.prepare(
+				`DELETE FROM sessions WHERE account_id = ?1 AND revoked_at IS NOT NULL AND device_id NOT IN (
+  SELECT device_id FROM sessions WHERE account_id = ?1 AND revoked_at IS NOT NULL
+  ORDER BY revoked_at DESC, device_id LIMIT ${MAX_REVOKED_ROWS})
+				AND EXISTS (SELECT 1 FROM auth_flows WHERE id = ?2 AND completion_attempt_id = ?3 AND expires_at > ?4)`,
+			)
+			.bind(s.accountId, completion.flowId, completion.attemptId, s.now)
+		: db
+			.prepare(
+				`DELETE FROM sessions WHERE account_id = ?1 AND revoked_at IS NOT NULL AND device_id NOT IN (
+  SELECT device_id FROM sessions WHERE account_id = ?1 AND revoked_at IS NOT NULL
+  ORDER BY revoked_at DESC, device_id LIMIT ${MAX_REVOKED_ROWS})`,
+			)
+			.bind(s.accountId);
 	return [
 		db
 			.prepare(
@@ -180,13 +217,7 @@ export function sessionStatements(
   RETURNING device_id`,
 			)
 			.bind(...params),
-		db
-			.prepare(
-				`DELETE FROM sessions WHERE account_id = ?1 AND revoked_at IS NOT NULL AND device_id NOT IN (
-  SELECT device_id FROM sessions WHERE account_id = ?1 AND revoked_at IS NOT NULL
-  ORDER BY revoked_at DESC, device_id LIMIT ${MAX_REVOKED_ROWS})`,
-			)
-			.bind(s.accountId),
+		cleanup,
 	];
 }
 

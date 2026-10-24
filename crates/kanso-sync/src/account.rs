@@ -688,6 +688,22 @@ fn new_device(
     }
 }
 
+/// A provider sign-up keeps the identity bound to the provider flow. Its ID
+/// and proof must exactly match the values sent when that flow was started;
+/// only the device name is sealed with this account attempt's content keys.
+fn provider_signup_device(
+    identity: &DeviceIdentity,
+    login_device: &LoginDevice,
+    keys: &ContentKeys,
+    account_id: &str,
+) -> NewDevice {
+    NewDevice {
+        id: login_device.id.clone(),
+        sealed_name: Some(keys.seal_name(account_id, &login_device.id, &identity.name)),
+        proof: login_device.proof.clone(),
+    }
+}
+
 /// Checks a session answer (sign-up, recovery): its account and username,
 /// and the token's shape.
 fn check_answer(
@@ -888,6 +904,7 @@ pub fn sign_up_with_provider(
     flow: &str,
     username: &str,
     device: &DeviceIdentity,
+    login_device: &LoginDevice,
     progress: &dyn Fn(Step),
 ) -> Result<SignedUp, RotationError> {
     let username = check_new_username(username).map_err(AccountError::from)?;
@@ -908,7 +925,7 @@ pub fn sign_up_with_provider(
             .into());
         }
     }
-    let data_key = DataKey::generate();
+    let mut data_key = DataKey::generate();
     let mut account_id = new_account_id();
     let mut rotation = Rotation::choose(
         secrets,
@@ -921,7 +938,7 @@ pub fn sign_up_with_provider(
     )?;
     progress(Step::DerivingKeys);
     let recovery = recovery_keys(rotation.key(), &origin, &username);
-    let content = ContentKeys::derive(&data_key);
+    let mut content = ContentKeys::derive(&data_key);
     let api = b.api(&server);
     let mut fresh_ids = 0;
     let mut reached = false;
@@ -938,7 +955,7 @@ pub fn sign_up_with_provider(
                 &data_key,
             ),
             key_id: key_id(&data_key),
-            device: new_device(device, &content, &origin, &account_id),
+            device: provider_signup_device(device, login_device, &content, &account_id),
         };
         progress(Step::Contacting);
         if let Err(err) = rotation.keep(&account_id) {
@@ -977,6 +994,8 @@ pub fn sign_up_with_provider(
             Err(ApiError::AccountIdTaken) if fresh_ids < 3 => {
                 fresh_ids += 1;
                 account_id = new_account_id();
+                data_key = DataKey::generate();
+                content = ContentKeys::derive(&data_key);
             }
             Err(err) => return Err(rotation.failed_api(err, reached)),
         }

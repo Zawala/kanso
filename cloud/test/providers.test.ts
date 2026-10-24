@@ -85,7 +85,7 @@ function idToken(claims: Record<string, unknown>): string {
 interface Providers {
 	apple: { sub: string; nonce: string | null; tokenStatus: number };
 	google: { sub: string; nonce: string | null; tokenStatus: number };
-	github: { id: number; answers: Record<string, unknown>[]; deviceStatus: number };
+	github: { id: number; answers: Record<string, unknown>[]; deviceStatus: number; interval: number };
 	calls: string[];
 }
 
@@ -97,7 +97,7 @@ function installProviders(): void {
 	providers = {
 		apple: { sub: "001234.apple-subject.0001", nonce: null, tokenStatus: 200 },
 		google: { sub: "109876543210987654321", nonce: null, tokenStatus: 200 },
-		github: { id: 583231, answers: [], deviceStatus: 200 },
+		github: { id: 583231, answers: [], deviceStatus: 200, interval: 5 },
 		calls: [],
 	};
 	const now = () => Math.floor(T0 / 1000);
@@ -159,7 +159,7 @@ function installProviders(): void {
 					user_code: "WDJB-MJHT",
 					verification_uri: "https://github.com/login/device",
 					expires_in: 900,
-					interval: 5,
+					interval: providers.github.interval,
 				});
 			}
 			if (url === GITHUB_TOKEN_URL) {
@@ -202,8 +202,8 @@ afterEach(() => {
 
 const wireDevice = (d: Device) => ({ id: d.id, proof: d.proof });
 const namedDevice = (d: Device) => ({ id: d.id, proof: d.proof, sealed_name: d.sealedName });
-const as = (path: string, json: unknown, more: { now?: number; token?: string; headers?: Record<string, string> } = {}) =>
-	callJson(path, { env: penv(), now: more.now ?? T0, json, token: more.token, headers: more.headers });
+const as = (path: string, json: unknown, more: { now?: number; token?: string; headers?: Record<string, string>; ip?: string } = {}) =>
+	callJson(path, { env: penv(), now: more.now ?? T0, json, token: more.token, headers: more.headers, ip: more.ip });
 
 type Answer = { status: number; body: any };
 
@@ -427,6 +427,27 @@ describe("Apple's web flow", () => {
 		expect(JSON.stringify(flow)).not.toContain(url.searchParams.get("state")!.slice(44));
 	});
 
+	it("exchanges the code with the redirect URI stored on the flow", async () => {
+		const d = newDevice();
+		const started = await callJson("/v2/auth/apple/start", {
+			env: testEnv(CONFIG),
+			now: T0,
+			json: { device: wireDevice(d) },
+		});
+		const url = new URL(started.body.auth_url);
+		providers.apple.nonce = url.searchParams.get("nonce");
+		const changedEnv = testEnv({ ...CONFIG, APPLE_REDIRECT_URI: "https://changed.example/auth/apple/callback" });
+		const response = await call("/v2/auth/apple/callback", {
+			env: changedEnv,
+			now: T0,
+			method: "POST",
+			body: new URLSearchParams({ state: url.searchParams.get("state")!, code: PII.appleCode }).toString(),
+			headers: { origin: "https://appleid.apple.com", "content-type": "application/x-www-form-urlencoded" },
+		});
+		expect(response.status).toBe(200);
+		expect(providers.calls.filter((endpoint) => endpoint === APPLE_TOKEN_URL)).toHaveLength(1);
+	});
+
 	it("the callback takes Apple's origin, or none, and refuses any other", async () => {
 		for (const headers of [{ origin: "https://appleid.apple.com" }, {}]) {
 			const d = newDevice();
@@ -594,6 +615,72 @@ describe("Google's loopback and PKCE", () => {
 		expect(providers.calls.filter((u) => u === GOOGLE_TOKEN_URL)).toHaveLength(1);
 	});
 
+	it("an exchange that crosses flow expiry cannot create a session", async () => {
+		const existing = await socialAccount("google", 61, "google-owner");
+		const device = newDevice();
+		const { verifier, challenge } = pkce();
+		const startNow = T0 + 60_000;
+		const started = await as(
+			"/v2/auth/google/start",
+			{ device: wireDevice(device), redirect_uri: "http://127.0.0.1:53682", code_challenge: challenge },
+			{ now: startNow },
+		);
+		providers.google.nonce = started.body.nonce;
+		let wallNow = startNow + 1000;
+		vi.spyOn(Date, "now").mockImplementation(() => wallNow);
+		const originalFetch = vi.mocked(fetch).getMockImplementation();
+		if (!originalFetch) throw new Error("the provider fetch mock must be installed");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const response = await originalFetch(input, init);
+				const url = String(input instanceof Request ? input.url : input);
+				if (url === GOOGLE_TOKEN_URL) wallNow = started.body.expires_at + 1;
+				return response;
+			}),
+		);
+		const result = await as(
+			"/v2/auth/google/finish",
+			{ flow_id: started.body.flow_id, code: PII.googleCode, code_verifier: verifier, device: wireDevice(device) },
+			{ now: startNow + 1000 },
+		);
+		expect(result).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM sessions WHERE account_id = ?1").bind(existing.body.account_id).first()).toEqual({
+			n: 1,
+		});
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_identities WHERE account_id = ?1").bind(existing.body.account_id).first()).toEqual({
+			n: 1,
+		});
+		const flow = await env.DB.prepare("SELECT consumed_at FROM auth_flows WHERE id = ?1").bind(started.body.flow_id).first();
+		expect(flow).toEqual({ consumed_at: null });
+	});
+
+	it("parallel finishes create one session for the device and no extra identity", async () => {
+		const existing = await socialAccount("google", 62, "google-owner");
+		const device = newDevice();
+		const { verifier, challenge } = pkce();
+		const startNow = T0 + 60_000;
+		const started = await as(
+			"/v2/auth/google/start",
+			{ device: wireDevice(device), redirect_uri: "http://127.0.0.1:53682", code_challenge: challenge },
+			{ now: startNow },
+		);
+		providers.google.nonce = started.body.nonce;
+		const body = { flow_id: started.body.flow_id, code: PII.googleCode, code_verifier: verifier, device: wireDevice(device) };
+		const answers = await Promise.all([
+			as("/v2/auth/google/finish", body, { now: startNow + 1000 }),
+			as("/v2/auth/google/finish", body, { now: startNow + 1000 }),
+		]);
+		expect(answers.filter((answer) => answer.body.kind === "session")).toHaveLength(1);
+		expect(answers.filter((answer) => answer.body.error === "flow_expired")).toHaveLength(1);
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM sessions WHERE account_id = ?1").bind(existing.body.account_id).first()).toEqual({
+			n: 2,
+		});
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_identities WHERE account_id = ?1").bind(existing.body.account_id).first()).toEqual({
+			n: 1,
+		});
+	});
+
 	it("an expired code is invalid_credentials and Google down is provider_unavailable", async () => {
 		const d = newDevice();
 		const { verifier, challenge } = pkce();
@@ -624,29 +711,45 @@ describe("GitHub's device flow", () => {
 			flow_id: expect.any(String),
 			user_code: "WDJB-MJHT",
 			verification_uri: "https://github.com/login/device",
-			interval: 5,
+			interval: providers.github.interval,
 			expires_in: 600,
 		});
 		return r.body.flow_id as string;
 	}
-	const poll = (flowId: string, d: Device, now: number) => as("/v2/auth/github/poll", { flow_id: flowId, device: wireDevice(d) }, { now });
+	const poll = (flowId: string, d: Device, now: number, ip?: string) =>
+		as("/v2/auth/github/poll", { flow_id: flowId, device: wireDevice(d) }, { now, ...(ip ? { ip } : {}) });
 
-	it("the Worker enforces the interval, and slow_down adds five seconds", async () => {
+	it("stores GitHub's interval in seconds and cumulatively adds five for each slow_down", async () => {
+		providers.github.interval = 11;
 		const d = newDevice();
 		const flowId = await started(d);
-		const early = await poll(flowId, d, T0 + 1000);
-		expect(early).toMatchObject({ status: 429, body: { error: "rate_limited", limit: "provider-poll", retry_after: 4 } });
+		const stored = await env.DB.prepare("SELECT poll_interval_seconds, next_poll_at FROM auth_flows WHERE id = ?1")
+			.bind(flowId)
+			.first();
+		expect(stored).toEqual({ poll_interval_seconds: 11, next_poll_at: T0 + 11_000 });
+		const early = await poll(flowId, d, T0 + 10_000);
+		expect(early).toMatchObject({ status: 429, body: { error: "rate_limited", limit: "provider-poll", retry_after: 1 } });
 		expect(providers.calls).not.toContain(GITHUB_TOKEN_URL);
-		expect((await poll(flowId, d, T0 + 5000)).body).toEqual({ status: "pending" });
-		providers.github.answers.push({ error: "slow_down", interval: 10 });
-		expect((await poll(flowId, d, T0 + 10_000)).body).toEqual({ status: "pending", slow_down: true });
-		expect((await poll(flowId, d, T0 + 15_000)).status).toBe(429);
+		providers.github.answers.push({ error: "slow_down" });
+		expect((await poll(flowId, d, T0 + 11_000)).body).toEqual({ status: "pending", slow_down: true });
+		let schedule = await env.DB.prepare("SELECT poll_interval_seconds, next_poll_at FROM auth_flows WHERE id = ?1")
+			.bind(flowId)
+			.first();
+		expect(schedule).toEqual({ poll_interval_seconds: 16, next_poll_at: T0 + 27_000 });
+		expect((await poll(flowId, d, T0 + 26_000)).status).toBe(429);
+		providers.github.answers.push({ error: "slow_down" });
+		expect((await poll(flowId, d, T0 + 27_000)).body).toEqual({ status: "pending", slow_down: true });
+		schedule = await env.DB.prepare("SELECT poll_interval_seconds, next_poll_at FROM auth_flows WHERE id = ?1")
+			.bind(flowId)
+			.first();
+		expect(schedule).toEqual({ poll_interval_seconds: 21, next_poll_at: T0 + 48_000 });
+		expect((await poll(flowId, d, T0 + 47_000)).status).toBe(429);
 		providers.github.answers.push({ access_token: PII.accessToken });
-		const done = await poll(flowId, d, T0 + 20_000);
+		const done = await poll(flowId, d, T0 + 48_000);
 		expect(done.body.kind).toBe("new_account");
 		// Repeated: the same answer, and GitHub isn't asked again.
 		const before = providers.calls.length;
-		expect((await poll(flowId, d, T0 + 21_000)).body).toEqual(done.body);
+		expect((await poll(flowId, d, T0 + 49_000)).body).toEqual(done.body);
 		expect(providers.calls.length).toBe(before);
 	});
 
@@ -656,6 +759,20 @@ describe("GitHub's device flow", () => {
 		const answers = await Promise.all([poll(flowId, d, T0 + 5000), poll(flowId, d, T0 + 5000), poll(flowId, d, T0 + 5000)]);
 		expect(answers.map((a) => a.status).sort()).toEqual([200, 429, 429]);
 		expect(providers.calls.filter((u) => u === GITHUB_TOKEN_URL)).toHaveLength(1);
+	});
+
+	it("limits the eleventh unlinked identity across IP groups", async () => {
+		for (let index = 0; index < 11; index++) {
+			const d = newDevice();
+			const flowId = await started(d);
+			providers.github.answers.push({ access_token: PII.accessToken });
+			const answer = await poll(flowId, d, T0 + 5000, `198.51.${index + 1}.1`);
+			if (index < 10) {
+				expect(answer).toMatchObject({ status: 200, body: { kind: "new_account" } });
+			} else {
+				expect(answer).toMatchObject({ status: 429, body: { error: "rate_limited", limit: "login-user" } });
+			}
+		}
 	});
 
 	it("expired_token is flow_expired and access_denied is provider_denied", async () => {
@@ -723,6 +840,8 @@ describe("flows belong to one device", () => {
 		expect(answers.filter((a) => a.status === 201)).toHaveLength(1);
 		expect(answers.filter((a) => a.status !== 201).every((a) => ["identity_taken", "flow_expired"].includes(a.body.error))).toBe(true);
 		expect(await env.DB.prepare("SELECT count(*) AS n FROM accounts").first()).toEqual({ n: 1 });
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_identities").first()).toEqual({ n: 1 });
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM sessions").first()).toEqual({ n: 1 });
 	});
 
 	it("sign-up follows the usual gates: names and closed sign-ups", async () => {

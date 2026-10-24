@@ -348,6 +348,7 @@ describe("provider code exchanges", () => {
 			}),
 			"authorization-code",
 			NOW,
+			"https://sync.kansoapp.app/v2/auth/apple/callback",
 		);
 		expect(result).toEqual({ ok: true, id_token: "apple-id-token" });
 		expect(fetchMock).toHaveBeenCalledTimes(1);

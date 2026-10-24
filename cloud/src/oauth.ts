@@ -453,8 +453,9 @@ export async function exchangeAppleCode(
 	env: Env,
 	code: string,
 	now: number,
+	redirect_uri: string,
 ): Promise<{ ok: true; id_token: string } | { ok: false; error: TokenFailure }> {
-	if (!required(env.APPLE_CLIENT_ID) || !required(env.APPLE_REDIRECT_URI)) return unavailable();
+	if (!required(env.APPLE_CLIENT_ID) || !required(redirect_uri)) return unavailable();
 	let clientSecret: string;
 	try {
 		clientSecret = await appleClientSecret(env, now);
@@ -466,7 +467,7 @@ export async function exchangeAppleCode(
 		client_secret: clientSecret,
 		code,
 		grant_type: "authorization_code",
-		redirect_uri: env.APPLE_REDIRECT_URI,
+		redirect_uri,
 	});
 	return exchangeToken(APPLE_TOKEN_URL, form);
 }

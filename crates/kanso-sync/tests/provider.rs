@@ -28,9 +28,10 @@ const SERVER: &str = "http://127.0.0.1:8787";
 #[derive(Default)]
 struct Seen {
     starts: Vec<String>,
+    start_devices: Vec<LoginDevice>,
     polls: Vec<(String, String)>,
     finishes: Vec<(String, String, String)>,
-    social: Vec<String>,
+    social: Vec<SocialSignupRequest>,
     unlinks: Vec<(String, String)>,
     identity_starts: Vec<(String, String)>,
 }
@@ -39,6 +40,7 @@ struct Stub {
     seen: Mutex<Seen>,
     step: Mutex<ProviderStep>,
     link: Mutex<LinkOutcome>,
+    reject_social_once: Mutex<bool>,
     auth: Option<HealthAuth>,
 }
 
@@ -51,6 +53,7 @@ impl Stub {
                 provider: Provider::Github,
                 created_at: 1_800_000_000_000,
             }),
+            reject_social_once: Mutex::new(false),
             auth: Some(HealthAuth {
                 password: true,
                 passkeys: Some(HealthPasskeys {
@@ -103,6 +106,12 @@ impl Api for StubApi {
             .unwrap()
             .starts
             .push(provider.to_string());
+        self.stub
+            .seen
+            .lock()
+            .unwrap()
+            .start_devices
+            .push(request.device.clone());
         Ok(ProviderStart::Apple(kanso_sync::AppleStart {
             flow_id: "A".repeat(43),
             auth_url: format!(
@@ -148,12 +157,11 @@ impl Api for StubApi {
     }
 
     fn social_signup(&self, request: &SocialSignupRequest) -> Result<ProviderSession, ApiError> {
-        self.stub
-            .seen
-            .lock()
-            .unwrap()
-            .social
-            .push(request.account_id.clone());
+        self.stub.seen.lock().unwrap().social.push(request.clone());
+        let reject = std::mem::take(&mut *self.stub.reject_social_once.lock().unwrap());
+        if reject {
+            return Err(ApiError::AccountIdTaken);
+        }
         Ok(ProviderSession {
             account_id: request.account_id.clone(),
             username: request.username.clone(),
@@ -520,6 +528,7 @@ fn a_social_sign_up_saves_the_key_before_the_request_and_verifies_the_answer() {
         &"T".repeat(43),
         "quiet-otter-4821",
         &identity,
+        &device(),
         &|step| steps.lock().unwrap().push(step),
     )
     .unwrap();
@@ -539,6 +548,64 @@ fn a_social_sign_up_saves_the_key_before_the_request_and_verifies_the_answer() {
 }
 
 #[test]
+fn provider_sign_up_keeps_the_exact_device_from_provider_start() {
+    let stub = Stub::new();
+    let backend = StubBackend(stub.clone());
+    let secrets = MemorySecrets::new();
+    let identity = identity();
+    let started =
+        kanso_sync::start_provider(&backend, SERVER, &Provider::Apple, &device(), None, None)
+            .unwrap();
+    let flow = match started {
+        ProviderStart::Apple(started) => started,
+        _ => panic!("stub returns an Apple flow"),
+    };
+    let login_device = stub.seen.lock().unwrap().start_devices[0].clone();
+    *stub.reject_social_once.lock().unwrap() = true;
+
+    kanso_sync::sign_up_with_provider(
+        &backend,
+        &secrets,
+        SERVER,
+        &Provider::Apple,
+        &flow.flow_id,
+        "quiet-otter-4821",
+        &identity,
+        &login_device,
+        &|_| {},
+    )
+    .unwrap();
+
+    let seen = stub.seen.lock().unwrap();
+    assert!(
+        seen.social.len() == 2,
+        "account id collision must retry once"
+    );
+    for request in &seen.social {
+        assert!(
+            request.ticket.as_str() == flow.flow_id.as_str(),
+            "signup must keep the provider ticket"
+        );
+        assert!(
+            request.device.id.as_str() == login_device.id.as_str(),
+            "signup device id must match provider start"
+        );
+        assert!(
+            request.device.proof.as_str() == login_device.proof.as_str(),
+            "signup device proof must match provider start"
+        );
+    }
+    assert!(
+        seen.social[0].account_id != seen.social[1].account_id,
+        "account id collision must choose a new account id"
+    );
+    assert!(
+        seen.social[0].device.sealed_name != seen.social[1].device.sealed_name,
+        "retry must reseal the device name for its new account keys"
+    );
+}
+
+#[test]
 fn a_reserved_or_invalid_name_never_reaches_the_server() {
     let stub = Stub::new();
     let backend = StubBackend(stub.clone());
@@ -552,6 +619,7 @@ fn a_reserved_or_invalid_name_never_reaches_the_server() {
             &"T".repeat(43),
             name,
             &identity(),
+            &device(),
             &|_| {},
         );
         assert!(matches!(
