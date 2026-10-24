@@ -8,6 +8,7 @@
 // carries the hash the Worker just checked, so of two concurrent changes one
 // wins and the other finds nothing to change.
 
+import { signOutSockets } from "./account_room";
 import { accountCollabStatements, afterAccountDeleted, memberships } from "./collab";
 import { type PepperKeys, hashToken, hex, hmac16, newToken, proofMatches, randomHex, sha256Hex } from "./crypto";
 import type { Env } from "./env";
@@ -609,6 +610,7 @@ export const recoverFinish: PepperHandler = async (request, env, now, keys) => {
 			),
 		]);
 		if (results[5].results.length === 1) {
+			await signOutSockets(env, account.id, null);
 			return json({ account_id: account.id, username: account.username, token: session.token, epoch: account.epoch });
 		}
 		account = await env.DB.prepare(ACCOUNT_BY_NAME).bind(name.value).first<AccountRow>();
@@ -636,6 +638,7 @@ export const logout: Handler = async (request, env, now) => {
 	const session = await authenticate(request, env, now, true);
 	if (session instanceof Response) return session;
 	await revokeSelf(env, session, now);
+	await signOutSockets(env, session.accountId, [session.deviceId]);
 	return new Response(null, { status: 204 });
 };
 
@@ -756,7 +759,11 @@ export const password = withSession(async (request, env, now, session) => {
 				recovery.wrap,
 			),
 		]);
-		if (results[1].results.length === 1) return json({ signed_out_devices: results[0].results.length });
+		if (results[1].results.length === 1) {
+			// Every socket closes; the device that changed the password reconnects.
+			await signOutSockets(env, account.id, null);
+			return json({ signed_out_devices: results[0].results.length });
+		}
 		account = (await env.DB.prepare(ACCOUNT_BY_ID).bind(session.accountId).first<AccountRow>()) ?? account;
 	}
 	// A retry after a lost answer: the new password material and recovery key are already stored.
@@ -882,6 +889,7 @@ export function revokeDevice(deviceId: string): Handler {
 		if (!isDeviceId(deviceId)) return badRequest("Not a device ID.");
 		if (deviceId === session.deviceId) {
 			await revokeSelf(env, session, now);
+			await signOutSockets(env, session.accountId, [deviceId]);
 			return new Response(null, { status: 204 });
 		}
 		const revoked = await env.DB.prepare(
@@ -890,6 +898,8 @@ export function revokeDevice(deviceId: string): Handler {
 		)
 			.bind(session.accountId, deviceId, now)
 			.first();
-		return revoked ? new Response(null, { status: 204 }) : notFound();
+		if (!revoked) return notFound();
+		await signOutSockets(env, session.accountId, [deviceId]);
+		return new Response(null, { status: 204 });
 	});
 }

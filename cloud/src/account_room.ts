@@ -38,6 +38,8 @@ interface Attachment {
 
 /** Close code for a socket another of the same device's replaced. */
 export const REPLACED = 4000;
+/** Close code for a socket whose session was signed out, revoked or replaced by a recovery. */
+export const SIGNED_OUT = 4001;
 
 export class AccountRoom extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -74,6 +76,23 @@ export class AccountRoom extends DurableObject<Env> {
 				ws.send(frame);
 			} catch {
 				// Closing or gone: its close event cleans up.
+			}
+		}
+	}
+
+	/**
+	 * Closes the sockets of `devices`, or every socket of the account when it
+	 * is null (a password change or a recovery), with 4001. A socket is
+	 * authenticated only at its upgrade, so this is what ends one whose session
+	 * has since been revoked. A device whose session is still live reconnects.
+	 */
+	async signOut(devices: string[] | null): Promise<void> {
+		const sockets = devices === null ? this.ctx.getWebSockets() : devices.flatMap((device) => this.ctx.getWebSockets(device));
+		for (const ws of sockets) {
+			try {
+				ws.close(SIGNED_OUT, "signed_out");
+			} catch {
+				// Already closing.
 			}
 		}
 	}
@@ -119,5 +138,18 @@ export async function publish(env: Env, accountId: string, type: AccountEvent, i
 		await accountRoom(env, accountId).publish(type, id);
 	} catch (err) {
 		console.error(JSON.stringify({ route: "account_events", error: "publish_failed", kind: (err as Error)?.name ?? typeof err }));
+	}
+}
+
+/**
+ * Closes the account-event sockets of `devices` (all of the account's when
+ * null) after the D1 revocation has committed. Like `publish`, a room that
+ * can't be reached never fails the route.
+ */
+export async function signOutSockets(env: Env, accountId: string, devices: string[] | null): Promise<void> {
+	try {
+		await accountRoom(env, accountId).signOut(devices);
+	} catch (err) {
+		console.error(JSON.stringify({ route: "account_events", error: "sign_out_failed", kind: (err as Error)?.name ?? typeof err }));
 	}
 }

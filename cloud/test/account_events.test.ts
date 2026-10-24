@@ -11,7 +11,7 @@ import fc from "fast-check";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AccountRoom } from "../src/account_room";
 import { type Signed, another, approvalsAs, ephemeral, first, listening, openEvents, sealedName, wrappedKey } from "./approval-helpers";
-import { type Account, base64url, call, resetServer, signUp } from "./helpers";
+import { type Account, KDF, base64url, call, callJson, newCreds, newDevice, passwordBody, resetServer, signUp } from "./helpers";
 
 const runs = (n: number) => ({ numRuns: Math.min(n, Number(env.FAST_CHECK_RUNS)) });
 
@@ -135,6 +135,66 @@ describe("one socket per device", () => {
 		expect(text(await fresh.next())).toEqual({ type: "approval.created", id });
 		expect(await runInDurableObject(room(), (instance: AccountRoom) => instance.sockets())).toEqual([a.device.id]);
 		fresh.ws.close();
+	});
+});
+
+describe("revoked sessions lose their sockets", () => {
+	const SIGNED_OUT = { code: 4001, reason: "signed_out" };
+
+	it("revoking a device closes its socket, and only its socket", async () => {
+		const aSocket = await listening(a);
+		const nSocket = await listening(n);
+		expect((await call(`/v2/account/devices/${n.device.id}`, { method: "DELETE", token: a.token })).status).toBe(204);
+		expect(await nSocket.closed).toEqual(SIGNED_OUT);
+		expect(await runInDurableObject(room(), (instance: AccountRoom) => instance.sockets())).toEqual([a.device.id]);
+		// It can't come back with the revoked token; the other device still hears events.
+		expect(await openEvents(n)).toBeInstanceOf(Response);
+		const third = await another(alice);
+		const id = (await approvalsAs(third).create(ephemeral().commit)).body.id;
+		expect(text(await aSocket.next())).toEqual({ type: "approval.created", id });
+		aSocket.ws.close();
+	});
+
+	it("signing out closes the device's own socket", async () => {
+		const nSocket = await listening(n);
+		expect((await call("/v2/auth/logout", { method: "POST", token: n.token })).status).toBe(204);
+		expect(await nSocket.closed).toEqual(SIGNED_OUT);
+	});
+
+	it("a password change closes every socket of the account", async () => {
+		const aSocket = await listening(a);
+		const nSocket = await listening(n);
+		const changed = await callJson("/v2/account/password", { token: a.token, json: passwordBody(alice.creds.authKey, newCreds("alice")) });
+		expect(changed.status).toBe(200);
+		expect(await nSocket.closed).toEqual(SIGNED_OUT);
+		expect(await aSocket.closed).toEqual(SIGNED_OUT);
+		// The device that changed it is still signed in and reconnects.
+		(await listening(a)).ws.close();
+		expect(await openEvents(n)).toBeInstanceOf(Response);
+	});
+
+	it("a recovery closes every socket of the account", async () => {
+		const aSocket = await listening(a);
+		const nSocket = await listening(n);
+		const next = newCreds("alice");
+		const d = newDevice();
+		const recovered = await callJson("/v2/auth/recover/finish", {
+			json: {
+				username: "alice",
+				recovery_auth_key: alice.creds.recoveryAuthKey,
+				kdf: KDF,
+				salt: next.salt,
+				auth_key: next.authKey,
+				wrapped_key: next.wrappedKey,
+				recovery_auth_key_new: next.recoveryAuthKey,
+				recovery_wrapped_key_new: next.recoveryWrappedKey,
+				device: { id: d.id, sealed_name: d.sealedName, proof: d.proof },
+			},
+		});
+		expect(recovered.status).toBe(200);
+		expect(await aSocket.closed).toEqual(SIGNED_OUT);
+		expect(await nSocket.closed).toEqual(SIGNED_OUT);
+		expect(await runInDurableObject(room(), (instance: AccountRoom) => instance.sockets())).toEqual([]);
 	});
 });
 
