@@ -1,6 +1,8 @@
 //! Secrets in the macOS Keychain (docs/ACCOUNTS.md › Keychain items).
 //! The old app's `sync-token` item is never read, written or deleted here;
-//! the owner removes it after the legacy purge.
+//! the owner removes it after the legacy purge. A `sync-pending` item holds
+//! only the server session metadata for a session whose data key is not yet
+//! available; it never contains a data key.
 //!
 //! The service is `Kanso`; item names carry the library ID, so data
 //! directories never share secrets. [`SecretStore`] is the seam: [`Keychain`]
@@ -10,11 +12,16 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::account::Session;
+use crate::api::{LoginDevice, WireDevice};
+use crate::approvals::{ApprovalResume, LockedSession};
 use crate::crypto::{DataKey, RecoveryKey, b64, unb64};
-use crate::wire::{SessionToken, is_account_id, is_device_id, is_token};
+use crate::wire::{
+    SessionToken, is_account_id, is_approval_id, is_base64url, is_device_id, is_hex16,
+    is_sealed_name, is_token,
+};
 
 /// The Keychain service of every Kanso item.
 pub const SERVICE: &str = "Kanso";
@@ -24,6 +31,12 @@ pub const SERVICE: &str = "Kanso";
 /// recovery until sign-out, deletion, a 401 or unbind.
 pub fn account_item(library_id: &str) -> String {
     format!("sync-account:{library_id}")
+}
+
+/// `sync-pending:<library_id>`: a versioned server session awaiting
+/// local-key, password or device-approval unlock. It never contains a data key.
+pub fn pending_item(library_id: &str) -> String {
+    format!("sync-pending:{library_id}")
 }
 
 /// `sync-recovery-key:<library_id>`: `{"v":1,"origin","account_id","username",
@@ -253,6 +266,358 @@ struct AccountItem {
     #[serde(with = "zeroizing_string")]
     data_key: Zeroizing<String>,
 }
+
+/// The v2 `sync-pending` item. It contains the original device proof and raw
+/// sealed eviction/approval data, but never a data key or derived approval key.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PendingSessionItem {
+    v: u32,
+    server: String,
+    origin: String,
+    account_id: String,
+    username: String,
+    device_id: String,
+    #[serde(with = "zeroizing_string")]
+    device_proof: Zeroizing<String>,
+    token: SessionToken,
+    key_id: String,
+    epoch: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    evicted_device: Option<PendingEvictedDevice>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    approval: Option<PendingApprovalResume>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PendingEvictedDevice {
+    id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sealed_name: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PendingApprovalResume {
+    request_id: String,
+    #[serde(with = "zeroizing_string")]
+    requester_secret: Zeroizing<String>,
+    expires_at: i64,
+    other_devices: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    approver_epk: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    approver_device_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sealed_name: Option<String>,
+}
+
+impl PendingSessionItem {
+    fn from_locked(locked: &LockedSession) -> Result<PendingSessionItem, SecretError> {
+        let Some(login_device) = locked.login_device() else {
+            return Err(invalid_pending());
+        };
+        if login_device.id != locked.device_id {
+            return Err(invalid_pending());
+        }
+        let evicted = locked
+            .evicted_wire_device()
+            .map(|device| PendingEvictedDevice {
+                id: device.id.clone(),
+                sealed_name: device.sealed_name.clone(),
+            })
+            .or_else(|| {
+                locked.evicted.as_ref().map(|device| PendingEvictedDevice {
+                    id: device.id.clone(),
+                    sealed_name: locked.evicted_sealed_name().map(str::to_owned),
+                })
+            });
+        let approval = locked
+            .approval_resume()
+            .map(|resume| PendingApprovalResume {
+                request_id: resume.request_id.clone(),
+                requester_secret: Zeroizing::new(b64(resume.requester_secret())),
+                expires_at: resume.expires_at,
+                other_devices: resume.other_devices,
+                approver_epk: resume.approver_epk.map(|epk| b64(&epk)),
+                approver_device_id: resume.approver_device_id.clone(),
+                sealed_name: resume.sealed_name.clone(),
+            });
+        Ok(PendingSessionItem {
+            v: 2,
+            server: locked.server.clone(),
+            origin: locked.origin.clone(),
+            account_id: locked.account_id.clone(),
+            username: locked.username.clone(),
+            device_id: locked.device_id.clone(),
+            device_proof: Zeroizing::new(login_device.proof.clone()),
+            token: locked.token().clone(),
+            key_id: locked.key_id.clone(),
+            epoch: locked.epoch.clone(),
+            evicted_device: evicted,
+            approval,
+        })
+    }
+
+    fn into_locked(self, library_id: &str) -> Option<LockedSession> {
+        if !valid_pending(&self, library_id) {
+            return None;
+        }
+        let login_device = LoginDevice {
+            id: self.device_id.clone(),
+            proof: self.device_proof.to_string(),
+        };
+        let raw_evicted = self.evicted_device.map(|device| WireDevice {
+            id: device.id,
+            sealed_name: device.sealed_name,
+        });
+        let approval = self.approval.and_then(|resume| {
+            let requester_secret = decode_secret32(&resume.requester_secret)?;
+            Some(ApprovalResume::from_parts(
+                resume.request_id,
+                requester_secret,
+                resume.expires_at,
+                resume.other_devices,
+                resume
+                    .approver_epk
+                    .as_deref()
+                    .and_then(crate::approval::parse_epk),
+                resume.approver_device_id,
+                resume.sealed_name,
+            ))
+        });
+        let mut locked = LockedSession::new(
+            self.server,
+            self.origin,
+            self.account_id,
+            self.username,
+            self.device_id,
+            self.token,
+            self.key_id,
+            self.epoch,
+            None,
+            None,
+        )
+        .with_login_device(login_device)
+        .with_evicted_wire_device(raw_evicted);
+        if let Some(approval) = approval {
+            locked = locked.with_approval_resume(approval);
+        }
+        locked.set_library_id(library_id);
+        Some(locked)
+    }
+}
+
+fn invalid_pending() -> SecretError {
+    SecretError("the locked-session item is invalid".into())
+}
+
+fn decode_secret32(value: &str) -> Option<[u8; 32]> {
+    if !is_base64url(value) {
+        return None;
+    }
+    let mut decoded = unb64(value)?;
+    let canonical = b64(&decoded) == value;
+    let secret = canonical
+        .then(|| <[u8; 32]>::try_from(decoded.as_slice()).ok())
+        .flatten();
+    decoded.zeroize();
+    secret
+}
+
+fn is_secret32(value: &str) -> bool {
+    decode_secret32(value).is_some()
+}
+
+fn is_canonical_base64url(value: &str) -> bool {
+    is_base64url(value) && unb64(value).is_some_and(|decoded| b64(&decoded) == value)
+}
+
+fn is_canonical_approval_id(value: &str) -> bool {
+    is_approval_id(value) && is_secret32(value)
+}
+
+fn is_canonical_epk(value: &str) -> bool {
+    crate::approval::parse_epk(value).is_some_and(|epk| b64(&epk) == value)
+}
+
+fn is_canonical_sealed_name(value: &str) -> bool {
+    is_sealed_name(value) && is_canonical_base64url(value)
+}
+
+fn valid_pending(item: &PendingSessionItem, library_id: &str) -> bool {
+    let valid_library_id = library_id.strip_prefix("l_").is_some_and(|hex| {
+        hex.len() == 32
+            && hex
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    });
+    let device_proof = item.device_proof.as_str();
+    let base = item.v == 2
+        && valid_library_id
+        && crate::check_endpoint(&item.server).is_ok()
+        && crate::origin(&item.server).as_deref() == Ok(item.origin.as_str())
+        && crate::origin(&item.origin).as_deref() == Ok(item.origin.as_str())
+        && is_account_id(&item.account_id)
+        && is_device_id(&item.device_id)
+        && is_token(item.token.expose())
+        && item
+            .token
+            .expose()
+            .strip_prefix("kanso_")
+            .is_some_and(is_secret32)
+        && crate::normalize_username(&item.username).is_ok_and(|name| name == item.username)
+        && is_secret32(device_proof)
+        && is_hex16(&item.key_id)
+        && is_hex16(&item.epoch);
+    if !base {
+        return false;
+    }
+    if let Some(device) = &item.evicted_device
+        && (!is_device_id(&device.id)
+            || device
+                .sealed_name
+                .as_deref()
+                .is_some_and(|sealed| !is_canonical_sealed_name(sealed)))
+    {
+        return false;
+    }
+    if let Some(approval) = &item.approval
+        && (!is_canonical_approval_id(&approval.request_id)
+            || approval.expires_at < 0
+            || approval.other_devices > crate::wire::MAX_ACTIVE_DEVICES
+            || !is_secret32(&approval.requester_secret)
+            || approval
+                .approver_epk
+                .as_deref()
+                .is_some_and(|epk| !is_canonical_epk(epk))
+            || approval
+                .approver_device_id
+                .as_deref()
+                .is_some_and(|id| !is_device_id(id))
+            || approval
+                .sealed_name
+                .as_deref()
+                .is_some_and(|sealed| !is_canonical_sealed_name(sealed))
+            || approval.approver_epk.is_some() != approval.approver_device_id.is_some()
+            || (approval.sealed_name.is_some() && approval.approver_epk.is_none()))
+    {
+        return false;
+    }
+    true
+}
+
+/// Saves a locked session as `sync-pending:<library_id>`, without a data key.
+pub fn save_locked_pending(
+    secrets: &dyn SecretStore,
+    library_id: &str,
+    locked: &LockedSession,
+) -> Result<(), SecretError> {
+    if locked.library_id().is_some_and(|saved| saved != library_id) {
+        return Err(invalid_pending());
+    }
+    let item = PendingSessionItem::from_locked(locked)?;
+    if !valid_pending(&item, library_id) {
+        return Err(invalid_pending());
+    }
+    let json = Zeroizing::new(serde_json::to_string(&item).map_err(|_| invalid_pending())?);
+    secrets.set(&pending_item(library_id), &json)
+}
+
+/// Updates an existing pending record for the same locked identity.
+///
+/// The token may change when password unlock or recovery issues a fresh
+/// token; server, origin, account, username, device, key ID, epoch, and login
+/// device remain fixed so this operation cannot replace the pending identity.
+pub fn update_locked_pending(
+    secrets: &dyn SecretStore,
+    library_id: &str,
+    locked: &LockedSession,
+) -> Result<(), SecretError> {
+    let Some(current) = load_locked_pending(secrets, library_id)? else {
+        return Err(invalid_pending());
+    };
+    if current.library_id() != locked.library_id()
+        || locked.library_id() != Some(library_id)
+        || current.server != locked.server
+        || current.origin != locked.origin
+        || current.account_id != locked.account_id
+        || current.username != locked.username
+        || current.device_id != locked.device_id
+        || current.key_id != locked.key_id
+        || current.epoch != locked.epoch
+        || current.login_device() != locked.login_device()
+    {
+        return Err(invalid_pending());
+    }
+    save_locked_pending(secrets, library_id, locked)
+}
+
+/// Loads and self-validates `sync-pending:<library_id>` without relying on
+/// the library's config binding, which may not exist before unlock.
+pub fn load_locked_pending(
+    secrets: &dyn SecretStore,
+    library_id: &str,
+) -> Result<Option<LockedSession>, SecretError> {
+    let Some(json) = secrets.get(&pending_item(library_id))? else {
+        return Ok(None);
+    };
+    let json = Zeroizing::new(json);
+    let Ok(item) = serde_json::from_str::<PendingSessionItem>(&json) else {
+        return Ok(None);
+    };
+    Ok(item.into_locked(library_id))
+}
+
+/// The library's locked session, if its item is valid and names this
+/// `(origin, account_id)`. Malformed or foreign items count as none.
+pub fn load_pending(
+    secrets: &dyn SecretStore,
+    library_id: &str,
+    origin: &str,
+    account_id: &str,
+) -> Result<Option<LockedSession>, SecretError> {
+    Ok(load_locked_pending(secrets, library_id)?
+        .filter(|locked| locked.origin == origin && locked.account_id == account_id))
+}
+
+/// Clears only the approval resume object, retaining the locked token/session.
+pub fn clear_pending_approval(
+    secrets: &dyn SecretStore,
+    library_id: &str,
+) -> Result<(), SecretError> {
+    let Some(json) = secrets.get(&pending_item(library_id))? else {
+        return Ok(());
+    };
+    let json = Zeroizing::new(json);
+    let Ok(mut item) = serde_json::from_str::<PendingSessionItem>(&json) else {
+        return Ok(());
+    };
+    if !valid_pending(&item, library_id) || item.approval.is_none() {
+        return Ok(());
+    }
+    item.approval = None;
+    let json = Zeroizing::new(serde_json::to_string(&item).map_err(|_| invalid_pending())?);
+    secrets.set(&pending_item(library_id), &json)
+}
+
+/// Removes `sync-pending:<library_id>`.
+pub fn delete_locked_pending(
+    secrets: &dyn SecretStore,
+    library_id: &str,
+) -> Result<(), SecretError> {
+    secrets.delete(&pending_item(library_id))
+}
+
+/// Compatibility names used by the in-progress app integration.
+pub use delete_locked_pending as delete_pending;
+pub use delete_locked_pending as delete_pending_session;
+pub use load_locked_pending as load_pending_record;
+pub use save_locked_pending as save_pending;
+
+pub use load_pending as load_pending_session;
+pub use save_locked_pending as save_pending_session;
 
 /// Serde for a `Zeroizing<String>` (zeroize's `serde` feature is off).
 mod zeroizing_string {
@@ -514,8 +879,279 @@ mod tests {
     #[test]
     fn item_names() {
         assert_eq!(account_item("l_00ff"), "sync-account:l_00ff");
+        assert_eq!(pending_item("l_00ff"), "sync-pending:l_00ff");
         assert_eq!(recovery_item("l_00ff"), "sync-recovery-key:l_00ff");
         assert_eq!(logout_item("l_00ff"), "sync-logout:l_00ff");
+    }
+
+    fn locked() -> LockedSession {
+        LockedSession::new(
+            "https://a.example".into(),
+            "https://a.example".into(),
+            "a_0123456789abcdef0123456789abcdef".into(),
+            "alice".into(),
+            "d_0123456789abcdef0123456789abcdef".into(),
+            SessionToken::new(format!("kanso_{}", b64(&[6; 32]))),
+            "0123456789abcdef".into(),
+            "fedcba9876543210".into(),
+            None,
+            None,
+        )
+        .with_has_password(true)
+        .with_login_device(LoginDevice {
+            id: "d_0123456789abcdef0123456789abcdef".into(),
+            proof: b64(&[7; 32]),
+        })
+    }
+
+    #[test]
+    fn locked_pending_v2_round_trips_raw_eviction_and_approval_without_unwrapping_secrets() {
+        let secrets = MemorySecrets::new();
+        let library_id = "l_00000000000000000000000000000001";
+        let requester_keys = crate::approval::ApprovalKeys::from_secret([8; 32]);
+        let request_id = b64(&[9; 32]);
+        let requester_secret = b64(&[8; 32]);
+        let sealed_name = "A".repeat(55);
+        let mut resume = ApprovalResume::new(request_id, &requester_keys, 123_456, 2);
+        resume.approver_epk = Some([10; 32]);
+        resume.approver_device_id = Some("d_11111111111111111111111111111111".into());
+        resume.sealed_name = Some(sealed_name.clone());
+        let locked = locked()
+            .with_evicted_wire_device(Some(WireDevice {
+                id: "d_22222222222222222222222222222222".into(),
+                sealed_name: Some(sealed_name.clone()),
+            }))
+            .with_approval_resume(resume);
+        let mut locked = locked;
+        locked.set_library_id(library_id);
+        save_locked_pending(&secrets, library_id, &locked).unwrap();
+
+        let raw = secrets.get(&pending_item(library_id)).unwrap().unwrap();
+        assert!(raw.contains("\"v\":2"));
+        assert!(raw.contains("\"device_proof\""));
+        assert!(raw.contains("\"evicted_device\""));
+        assert!(raw.contains("\"approval\""));
+        assert!(!raw.contains("data_key"));
+        assert!(!raw.contains("wrapped_key"));
+        assert!(!raw.contains("has_password"));
+        let loaded = load_locked_pending(&secrets, library_id).unwrap().unwrap();
+        assert_eq!(loaded.server, locked.server);
+        assert_eq!(loaded.origin, locked.origin);
+        assert_eq!(loaded.account_id, locked.account_id);
+        assert_eq!(loaded.username, locked.username);
+        assert_eq!(loaded.device_id, locked.device_id);
+        assert_eq!(loaded.key_id, locked.key_id);
+        assert_eq!(loaded.epoch, locked.epoch);
+        assert!(
+            !loaded.has_password,
+            "password availability is refreshed from the server"
+        );
+        assert_eq!(loaded.library_id(), Some(library_id));
+        assert_eq!(
+            loaded.login_device().map(|device| device.proof.as_str()),
+            Some(b64(&[7; 32]).as_str())
+        );
+        assert_eq!(
+            loaded
+                .evicted_wire_device()
+                .and_then(|device| device.sealed_name.as_deref()),
+            Some(sealed_name.as_str())
+        );
+        let loaded_resume = loaded.approval_resume().unwrap();
+        assert_eq!(loaded_resume.requester_epk(), requester_keys.epk());
+        assert_eq!(loaded_resume.expires_at(), 123_456);
+        assert_eq!(loaded_resume.other_devices(), 2);
+        assert_eq!(loaded_resume.sealed_name(), Some(sealed_name.as_str()));
+
+        let debug = format!("{loaded:?} {:?}", loaded.login_device().unwrap());
+        assert!(!debug.contains(&b64(&[7; 32])));
+        assert!(!debug.contains(&requester_secret));
+        assert!(!debug.contains(&sealed_name));
+        assert!(!debug.contains("kanso_aaa"));
+    }
+
+    #[test]
+    fn malformed_v2_and_legacy_v1_pending_records_are_ignored() {
+        let secrets = MemorySecrets::new();
+        let library_id = "l_00000000000000000000000000000001";
+        let keys = crate::approval::ApprovalKeys::from_secret([13; 32]);
+        let valid_locked = locked()
+            .with_evicted_wire_device(Some(WireDevice {
+                id: "d_33333333333333333333333333333333".into(),
+                sealed_name: Some("A".repeat(55)),
+            }))
+            .with_approval_resume(ApprovalResume::new(b64(&[14; 32]), &keys, 123, 1));
+        let mut valid_locked = valid_locked;
+        valid_locked.set_library_id(library_id);
+        save_locked_pending(&secrets, library_id, &valid_locked).unwrap();
+        let valid: serde_json::Value =
+            serde_json::from_str(&secrets.get(&pending_item(library_id)).unwrap().unwrap())
+                .unwrap();
+        let legacy = serde_json::json!({
+            "v": 1,
+            "server": "https://a.example",
+            "origin": "https://a.example",
+            "account_id": "a_0123456789abcdef0123456789abcdef",
+            "username": "alice",
+            "device_id": "d_0123456789abcdef0123456789abcdef",
+            "token": format!("kanso_{}", "a".repeat(43)),
+            "key_id": "0123456789abcdef",
+            "epoch": "fedcba9876543210",
+            "has_password": true
+        });
+        secrets
+            .set(&pending_item(library_id), &legacy.to_string())
+            .unwrap();
+        assert!(
+            load_locked_pending(&secrets, library_id).unwrap().is_none(),
+            "v1 has no provider proof and cannot be upgraded with invented state"
+        );
+        save_locked_pending(&secrets, library_id, &valid_locked).unwrap();
+        assert!(
+            load_pending(
+                &secrets,
+                library_id,
+                "https://a.example",
+                "a_ffffffffffffffffffffffffffffffff",
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            load_pending(
+                &secrets,
+                library_id,
+                "https://foreign.example",
+                "a_0123456789abcdef0123456789abcdef",
+            )
+            .unwrap()
+            .is_none()
+        );
+
+        for (field, value) in [
+            ("v", serde_json::json!(1)),
+            ("server", serde_json::json!("https://foreign.example")),
+            ("account_id", serde_json::json!("bad")),
+            ("device_id", serde_json::json!("bad")),
+            ("device_proof", serde_json::json!("bad")),
+            ("token", serde_json::json!("bad")),
+            ("key_id", serde_json::json!("0123456789ABCDEF")),
+            ("epoch", serde_json::json!("short")),
+            ("data_key", serde_json::json!("must-never-be-present")),
+        ] {
+            let mut malformed = valid.clone();
+            malformed[field] = value;
+            secrets
+                .set(&pending_item(library_id), &malformed.to_string())
+                .unwrap();
+            assert!(
+                load_locked_pending(&secrets, library_id).unwrap().is_none(),
+                "accepted malformed {field}"
+            );
+        }
+
+        for (path, value) in [
+            (
+                "evicted_device",
+                serde_json::json!({ "id": "bad", "sealed_name": "A".repeat(55) }),
+            ),
+            ("approval", serde_json::json!({ "request_id": "bad" })),
+        ] {
+            let mut malformed = valid.clone();
+            malformed[path] = value;
+            secrets
+                .set(&pending_item(library_id), &malformed.to_string())
+                .unwrap();
+            assert!(
+                load_locked_pending(&secrets, library_id).unwrap().is_none(),
+                "accepted malformed {path}"
+            );
+        }
+
+        let mut malformed = valid.clone();
+        malformed["evicted_device"]["sealed_name"] = serde_json::json!("short");
+        secrets
+            .set(&pending_item(library_id), &malformed.to_string())
+            .unwrap();
+        assert!(load_locked_pending(&secrets, library_id).unwrap().is_none());
+
+        let mut malformed = valid.clone();
+        malformed["approval"]["requester_secret"] = serde_json::json!("bad");
+        secrets
+            .set(&pending_item(library_id), &malformed.to_string())
+            .unwrap();
+        assert!(load_locked_pending(&secrets, library_id).unwrap().is_none());
+    }
+
+    #[test]
+    fn clearing_approval_resume_keeps_the_locked_session() {
+        let secrets = MemorySecrets::new();
+        let library_id = "l_00000000000000000000000000000001";
+        let keys = crate::approval::ApprovalKeys::from_secret([11; 32]);
+        let resume = ApprovalResume::new(b64(&[12; 32]), &keys, 123, 1);
+        let mut locked = locked().with_approval_resume(resume);
+        locked.set_library_id(library_id);
+        save_locked_pending(&secrets, library_id, &locked).unwrap();
+
+        clear_pending_approval(&secrets, library_id).unwrap();
+
+        let loaded = load_locked_pending(&secrets, library_id).unwrap().unwrap();
+        assert_eq!(loaded.token(), locked.token());
+        assert_eq!(loaded.account_id, locked.account_id);
+        assert!(loaded.approval_resume().is_none());
+    }
+
+    #[test]
+    fn updating_locked_pending_allows_token_refresh_but_rejects_identity_change() {
+        let secrets = MemorySecrets::new();
+        let library_id = "l_00000000000000000000000000000001";
+        let original = locked();
+        let refreshed = LockedSession::new(
+            original.server.clone(),
+            original.origin.clone(),
+            original.account_id.clone(),
+            original.username.clone(),
+            original.device_id.clone(),
+            SessionToken::new(format!("kanso_{}", b64(&[15; 32]))),
+            original.key_id.clone(),
+            original.epoch.clone(),
+            None,
+            None,
+        )
+        .with_login_device(original.login_device().unwrap().clone());
+        let mut original = original;
+        original.set_library_id(library_id);
+        let mut refreshed = refreshed;
+        refreshed.set_library_id(library_id);
+        save_locked_pending(&secrets, library_id, &original).unwrap();
+
+        update_locked_pending(&secrets, library_id, &refreshed).unwrap();
+        let loaded = load_locked_pending(&secrets, library_id).unwrap().unwrap();
+        assert_eq!(loaded.token(), refreshed.token());
+        assert_ne!(loaded.token(), original.token());
+
+        let mut changed_account = LockedSession::new(
+            refreshed.server.clone(),
+            refreshed.origin.clone(),
+            "a_ffffffffffffffffffffffffffffffff".into(),
+            refreshed.username.clone(),
+            refreshed.device_id.clone(),
+            refreshed.token().clone(),
+            refreshed.key_id.clone(),
+            refreshed.epoch.clone(),
+            None,
+            None,
+        )
+        .with_login_device(refreshed.login_device().unwrap().clone());
+        changed_account.set_library_id(library_id);
+        assert!(update_locked_pending(&secrets, library_id, &changed_account).is_err());
+        assert_eq!(
+            load_locked_pending(&secrets, library_id)
+                .unwrap()
+                .unwrap()
+                .token(),
+            refreshed.token()
+        );
     }
 
     /// An item saved before the key's server and state were kept still

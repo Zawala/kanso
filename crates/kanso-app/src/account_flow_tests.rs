@@ -10,6 +10,7 @@
 //! server and the other Macs, and that account tasks stop a running sync
 //! first.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
@@ -18,9 +19,11 @@ use gpui_kit::component::WindowExt as _;
 use gpui_kit::{AnyWindowHandle, AppContext as _, Modifiers, TestAppContext, VisualTestContext};
 use kanso_core::DocType;
 use kanso_store::{Origin, Put, Store};
+use kanso_sync::api::LoginDevice;
 use kanso_sync::{
     AccountError, Api, Backend, DeviceIdentity, KdfParams, Machine, MemorySecrets, MemoryServer,
-    Password, RecoveryKey, Route, SecretError, SecretStore, Session, SignOutReason, meta_keys,
+    Password, Provider, ProviderStep, RecoveryKey, Route, SecretError, SecretStore, Session,
+    SignOutReason, meta_keys,
 };
 use serde_json::json;
 
@@ -28,9 +31,828 @@ use crate::account_flow;
 use crate::account_words as words;
 use crate::config::AppConfig;
 use crate::dialogs::Progress;
-use crate::services::{self, AccountState, Services, SyncState};
+use crate::services::{self, AccountState, ProviderWait, Services, SyncState};
 use crate::settings::SettingsPage;
 use crate::workspace::{AppState, Workspace};
+
+#[test]
+fn stale_health_from_a_is_rejected_after_a_to_b_to_a() {
+    let old_request = (SERVER.to_owned(), 10);
+    let attempted_again = (SERVER.to_owned(), 12);
+    assert!(!account_flow::auth_answer_is_current(
+        SERVER,
+        old_request.1,
+        SERVER,
+        12,
+        Some(&attempted_again),
+        &old_request,
+    ));
+    assert!(account_flow::auth_answer_is_current(
+        SERVER,
+        attempted_again.1,
+        SERVER,
+        12,
+        Some(&attempted_again),
+        &attempted_again,
+    ));
+}
+
+#[test]
+fn displayed_locked_state_holds_editor_writes_without_a_sync_session() {
+    let mut services = Services::default();
+    services.account = AccountState::SignedInLocked {
+        username: "alice".into(),
+    };
+
+    assert!(services.has_locked_session());
+    assert!(!services.signed_in());
+    assert!(services.session().is_none());
+}
+
+#[gpui_kit::test]
+fn cancel_provider_wait_requests_cancellation_without_hiding_the_active_wait(
+    cx: &mut TestAppContext,
+) {
+    let cancel = Arc::new(AtomicBool::new(false));
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        cx.set_global(Services::default());
+        cx.global_mut::<Services>().provider_wait = Some(ProviderWait {
+            provider: "GitHub",
+            user_code: Some("CODE".into()),
+            verification_uri: Some("https://github.com/login/device".into()),
+            cancel: cancel.clone(),
+        });
+        account_flow::cancel_provider_wait(cx);
+    });
+
+    assert!(cancel.load(Ordering::Acquire));
+    assert!(
+        cx.read(|cx| cx.global::<Services>().provider_wait.is_some()),
+        "the callback clears the wait after the worker observes cancellation"
+    );
+}
+
+#[gpui_kit::test]
+fn account_methods_refresh_fetches_for_unlocked_session_and_skips_locked_session(
+    cx: &mut TestAppContext,
+) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+
+    key_saved(cx);
+    let page = cx.read(|cx| a.workspace.read(cx).settings.read(cx).account.clone());
+    cx.update_window(a.window, |_, window, cx| {
+        page.update(cx, |page, cx| page.shown(cx));
+        window.refresh();
+    })
+    .unwrap();
+    wait_until(cx, "account sign-in methods", |cx| {
+        cx.read(|cx| {
+            let methods = &cx.global::<Services>().account_methods;
+            !methods.loading && methods.last_successful.is_some()
+        })
+    });
+    cx.read(|cx| {
+        let state = &cx.global::<Services>().account_methods;
+        assert!(state.last_successful.as_ref().unwrap().has_password);
+        assert_eq!(state.failed, None);
+    });
+
+    cx.update(|cx| {
+        let services = cx.global_mut::<Services>();
+        services.clear_session(AccountState::SignedInLocked {
+            username: "alice".into(),
+        });
+        services.account_methods = Default::default();
+        account_flow::refresh_account_methods(cx);
+    });
+    cx.read(|cx| {
+        assert_eq!(
+            cx.global::<Services>().account_methods,
+            Default::default(),
+            "a locked session has no full Session and does not start a methods fetch"
+        );
+    });
+}
+
+/// Enters the same durable locked state as the provider success callback:
+/// pending Keychain state is written before the UI exposes it.
+fn enter_locked(
+    cx: &mut TestAppContext,
+    locked: kanso_sync::LockedSession,
+    device: DeviceIdentity,
+    window: AnyWindowHandle,
+) {
+    let (backend, secrets) = cx.read(|cx| {
+        let services = cx.global::<Services>();
+        (
+            services.backend.clone().unwrap(),
+            services.secrets.clone().unwrap(),
+        )
+    });
+    account_flow::save_provider_pending(backend.as_ref(), secrets.as_ref(), &locked).unwrap();
+    cx.update(|cx| account_flow::enter_locked(locked, device, Some(window), cx));
+}
+
+#[gpui_kit::test]
+fn provider_signin_persists_a_locked_session_without_sync_or_account_events(
+    cx: &mut TestAppContext,
+) {
+    let server = Arc::new(MemoryServer::new());
+    let source = password_account(&server, "alice");
+    let a = mac(cx, &server, "Studio", 1);
+    let (login_device, provider_session) = provider_signin(&server, &source.account_id);
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    let locked = account_flow::locked_provider_session(
+        SERVER.to_owned(),
+        login_device.clone(),
+        provider_session,
+        &device.library_id,
+    )
+    .unwrap();
+
+    enter_locked(cx, locked, device, a.window);
+    // Read using the app's library ID: the pending item is independent of
+    // config.sync.account and the local library has not been bound yet.
+    let library_id = cx.read(|cx| cx.global::<Services>().library_id.clone().unwrap());
+    let pending = kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+        .unwrap()
+        .expect("provider success writes the locked item first");
+    assert_eq!(pending.device_id, login_device.id);
+    assert_eq!(pending.library_id(), Some(library_id.as_str()));
+    assert!(cx.read(|cx| cx.global::<Services>().locked_has_password == Some(true)));
+    assert_eq!(
+        pending.wrapped_key, None,
+        "providers never return a password wrap"
+    );
+    assert!(matches!(account(cx), AccountState::SignedInLocked { .. }));
+    assert!(cx.read(|cx| cx.global::<Services>().session().is_none()));
+    assert!(cx.read(|cx| !cx.global::<Services>().signed_in()));
+    assert!(cx.read(|cx| cx.global::<Services>().sync == SyncState::Off));
+    assert!(cx.read(|cx| cx.global::<Services>().approval.event_stop.is_none()));
+    assert!(cx.update(|cx| cx.global_mut::<Services>().take_sync_handle().is_none()));
+    assert!(cx.read(|cx| cx.global::<AppState>().config.sync.account.is_none()));
+    assert_eq!(a.bound_to(), None);
+}
+
+#[gpui_kit::test]
+fn pending_provider_session_restores_without_a_config_account(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let source = password_account(&server, "alice");
+    let a = mac(cx, &server, "Studio", 1);
+    let (login_device, provider_session) = provider_signin(&server, &source.account_id);
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    let locked = account_flow::locked_provider_session(
+        SERVER.to_owned(),
+        login_device.clone(),
+        provider_session,
+        &device.library_id,
+    )
+    .unwrap();
+    enter_locked(cx, locked, device, a.window);
+    assert!(matches!(account(cx), AccountState::SignedInLocked { .. }));
+
+    relaunched(cx, &server, &a);
+    cx.update(account_flow::restore);
+    restored(cx);
+
+    assert!(matches!(account(cx), AccountState::SignedInLocked { .. }));
+    assert!(cx.read(|cx| cx.global::<Services>().session().is_none()));
+    assert!(cx.read(|cx| cx.global::<AppState>().config.sync.account.is_none()));
+    assert!(cx.read(|cx| cx.global::<Services>().locked_has_password == Some(true)));
+    let library_id = cx.read(|cx| cx.global::<Services>().library_id.clone().unwrap());
+    let pending = kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+        .unwrap()
+        .expect("restore retains the provider token");
+    assert_eq!(pending.device_id, login_device.id);
+    assert!(cx.read(|cx| cx.global::<Services>().approval.event_stop.is_none()));
+    assert!(cx.update(|cx| cx.global_mut::<Services>().take_sync_handle().is_none()));
+}
+
+#[gpui_kit::test]
+fn expired_and_cancelled_approval_can_restart_without_losing_the_locked_token(
+    cx: &mut TestAppContext,
+) {
+    let server = Arc::new(MemoryServer::new());
+    let source = password_account(&server, "alice");
+    let a = mac(cx, &server, "Studio", 0);
+    let (login_device, provider_session) = provider_signin(&server, &source.account_id);
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    let library_id = device.library_id.clone();
+    let locked = account_flow::locked_provider_session(
+        SERVER.to_owned(),
+        login_device,
+        provider_session,
+        &library_id,
+    )
+    .unwrap();
+    enter_locked(cx, locked, device, a.window);
+
+    let locked = cx.read(|cx| cx.global::<Services>().locked_session.clone().unwrap());
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    cx.update(|cx| {
+        account_flow::wait_for_device_approval((*locked).clone(), device, Some(a.window), cx);
+    });
+    wait_until(cx, "the saved approval request", |_| {
+        kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+            .unwrap()
+            .is_some_and(|pending| pending.approval_resume().is_some())
+    });
+
+    let pending_item = kanso_sync::keychain::pending_item(&library_id);
+    let original_raw = a.secrets.get(&pending_item).unwrap().unwrap();
+    let request = kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+        .unwrap()
+        .unwrap();
+    let expired_at = request.approval_resume().unwrap().expires_at();
+    server.set_now(expired_at.saturating_add(1));
+    wait_until(cx, "the approval request to expire", |cx| {
+        cx.read(|cx| {
+            cx.global::<Services>()
+                .approval
+                .waiting
+                .as_ref()
+                .is_some_and(|waiting| waiting.phase == crate::device_approval::WaitPhase::Expired)
+        })
+    });
+
+    let after_expiry = kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+        .unwrap()
+        .expect("expiry keeps the provider session");
+    assert!(after_expiry.approval_resume().is_none());
+    assert!(matches!(account(cx), AccountState::SignedInLocked { .. }));
+    assert!(cx.read(|cx| cx.global::<Services>().session().is_none()));
+    let after_expiry_raw = a.secrets.get(&pending_item).unwrap().unwrap();
+    let original_json: serde_json::Value = serde_json::from_str(&original_raw).unwrap();
+    let expiry_json: serde_json::Value = serde_json::from_str(&after_expiry_raw).unwrap();
+    assert_eq!(original_json["token"], expiry_json["token"]);
+
+    cx.update(|cx| account_flow::restart_device_approval(Some(a.window), cx));
+    wait_until(cx, "the replacement approval request", |_| {
+        kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+            .unwrap()
+            .is_some_and(|pending| {
+                pending
+                    .approval_resume()
+                    .is_some_and(|resume| resume.expires_at() > expired_at)
+            })
+    });
+    let resumed = kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+        .unwrap()
+        .unwrap();
+    let request_id = resumed.approval_resume().unwrap().request_id().to_owned();
+    let listing = kanso_sync::pending_approvals(server.as_ref(), &source).unwrap();
+    let listed = listing
+        .iter()
+        .find(|approval| approval.id == request_id)
+        .expect("the replacement request is visible to the existing device");
+    // Only the device that challenged may decline, so the existing device
+    // answers first, as its sheet does on seeing the request.
+    kanso_sync::challenge_request(
+        server.as_ref(),
+        &source,
+        listed,
+        &kanso_sync::ApprovalKeys::generate(),
+    )
+    .unwrap();
+    kanso_sync::decline_request(server.as_ref(), &source, &listed.id).unwrap();
+    wait_until(cx, "the replacement request to be cancelled", |cx| {
+        cx.read(|cx| {
+            cx.global::<Services>()
+                .approval
+                .waiting
+                .as_ref()
+                .is_some_and(|waiting| {
+                    waiting.phase == crate::device_approval::WaitPhase::Cancelled
+                })
+        })
+    });
+    let after_cancel = kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+        .unwrap()
+        .expect("remote cancellation keeps the provider session");
+    assert!(after_cancel.approval_resume().is_none());
+    let after_cancel_raw = a.secrets.get(&pending_item).unwrap().unwrap();
+    let cancel_json: serde_json::Value = serde_json::from_str(&after_cancel_raw).unwrap();
+    assert_eq!(original_json["token"], cancel_json["token"]);
+    assert_eq!(a.bound_to(), None);
+    assert!(cx.read(|cx| cx.global::<AppState>().config.sync.account.is_none()));
+    assert!(cx.read(|cx| cx.global::<Services>().sync == SyncState::Off));
+
+    cx.update(account_flow::cancel_locked_session);
+    wait_until(cx, "locked sign-out after approval cancellation", |cx| {
+        cx.read(|cx| {
+            cx.global::<Services>().task.is_none()
+                && cx.global::<Services>().account == AccountState::SignedOut
+        })
+    });
+    assert!(
+        kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[gpui_kit::test]
+fn approval_with_no_other_devices_cancels_request_and_keeps_pending_token(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let source = password_account(&server, "alice");
+    kanso_sync::sign_out(server.as_ref(), &MemorySecrets::new(), &source).unwrap();
+    let a = mac(cx, &server, "Studio", 0);
+    let (login_device, provider_session) = provider_signin(&server, &source.account_id);
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    let library_id = device.library_id.clone();
+    let locked = account_flow::locked_provider_session(
+        SERVER.to_owned(),
+        login_device,
+        provider_session,
+        &library_id,
+    )
+    .unwrap();
+    enter_locked(cx, locked, device, a.window);
+    let pending_item = kanso_sync::keychain::pending_item(&library_id);
+    let before: serde_json::Value =
+        serde_json::from_str(&a.secrets.get(&pending_item).unwrap().unwrap()).unwrap();
+    let token = before["token"].as_str().unwrap().to_owned();
+    let locked = cx.read(|cx| cx.global::<Services>().locked_session.clone().unwrap());
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    let started = Instant::now();
+
+    cx.update(|cx| {
+        account_flow::wait_for_device_approval((*locked).clone(), device, Some(a.window), cx)
+    });
+    wait_until(cx, "the no-devices approval result", |cx| {
+        cx.read(|cx| {
+            cx.global::<Services>()
+                .approval
+                .waiting
+                .as_ref()
+                .is_some_and(|waiting| {
+                    waiting.phase == crate::device_approval::WaitPhase::NoDevices
+                })
+        })
+    });
+
+    assert!(started.elapsed() < Duration::from_secs(10));
+    assert!(matches!(account(cx), AccountState::SignedInLocked { .. }));
+    let pending = kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+        .unwrap()
+        .expect("no-devices result preserves the locked session");
+    assert!(pending.approval_resume().is_none());
+    let after: serde_json::Value =
+        serde_json::from_str(&a.secrets.get(&pending_item).unwrap().unwrap()).unwrap();
+    assert_eq!(after["token"].as_str(), Some(token.as_str()));
+}
+
+#[gpui_kit::test]
+fn cancelling_locked_binding_consent_preserves_the_previous_account_and_notes(
+    cx: &mut TestAppContext,
+) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 2);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert!(ok(&synced(cx)));
+    let library_id = library_id(cx);
+    let account_item = kanso_sync::keychain::account_item(&library_id);
+    let recovery_item = kanso_sync::keychain::recovery_item(&library_id);
+    let previous_account_item = a.secrets.get(&account_item).unwrap().unwrap();
+    let previous_recovery_item = a.secrets.get(&recovery_item).unwrap().unwrap();
+    let previous_config = cx.read(|cx| cx.global::<AppState>().config.sync.account.clone());
+    let previous_binding = a.bound_to();
+    let previous_notes = a.notes();
+
+    reset_runtime_without_signing_out(cx, &server, &a);
+    let other = password_account(&server, "bob");
+    let (login_device, provider_session) = provider_signin(&server, &other.account_id);
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    let locked = account_flow::locked_provider_session(
+        SERVER.to_owned(),
+        login_device,
+        provider_session,
+        &device.library_id,
+    )
+    .unwrap();
+    enter_locked(cx, locked, device, a.window);
+    let pending_item = kanso_sync::keychain::pending_item(&library_id);
+    let provider_pending: serde_json::Value =
+        serde_json::from_str(&a.secrets.get(&pending_item).unwrap().unwrap()).unwrap();
+    let provider_token = provider_pending["token"].as_str().unwrap().to_owned();
+    let unlock = cx.update(|cx| {
+        account_flow::unlock_locked_password(password(PASSWORD, "bob"), Some(a.window), cx)
+    });
+    wait_until(cx, "the binding consent", |cx| a.asking(cx));
+    let refreshed_pending: serde_json::Value =
+        serde_json::from_str(&a.secrets.get(&pending_item).unwrap().unwrap()).unwrap();
+    let refreshed_token = refreshed_pending["token"].as_str().unwrap();
+    assert_ne!(refreshed_token, provider_token);
+    assert!(matches!(account(cx), AccountState::SignedInLocked { .. }));
+    assert!(cx.read(|cx| cx.global::<Services>().session().is_none()));
+    assert!(cx.read(|cx| cx.global::<AppState>().config.sync.account == previous_config));
+
+    a.answer(cx, "choice-cancel");
+    assert_eq!(finish(cx, unlock), Err("Sign-in was cancelled.".to_owned()));
+    assert_eq!(account(cx), AccountState::SignedOut);
+    assert_eq!(a.bound_to(), previous_binding);
+    assert_eq!(a.notes(), previous_notes);
+    assert_eq!(
+        a.secrets.get(&account_item).unwrap(),
+        Some(previous_account_item)
+    );
+    assert_eq!(
+        a.secrets.get(&recovery_item).unwrap(),
+        Some(previous_recovery_item)
+    );
+    assert_eq!(
+        cx.read(|cx| cx.global::<AppState>().config.sync.account.clone()),
+        previous_config
+    );
+    assert!(
+        kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+            .unwrap()
+            .is_none(),
+        "Cancel removes the refreshed pending session"
+    );
+    assert!(matches!(
+        server
+            .api(SERVER)
+            .devices(&kanso_sync::SessionToken::new(refreshed_token.to_owned())),
+        Err(kanso_sync::ApiError::Unauthorized { .. })
+    ));
+    assert_eq!(
+        kanso_sync::devices(server.as_ref(), &other).unwrap().len(),
+        1,
+        "Cancel logs out the fresh password token, so it cannot be used"
+    );
+}
+
+#[gpui_kit::test]
+fn locked_bind_failure_rolls_back_the_previous_session_and_binding(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 2);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert!(ok(&synced(cx)));
+    let library_id = library_id(cx);
+    let account_item = kanso_sync::keychain::account_item(&library_id);
+    let recovery_item = kanso_sync::keychain::recovery_item(&library_id);
+    let previous_account_item = a.secrets.get(&account_item).unwrap().unwrap();
+    let previous_recovery_item = a.secrets.get(&recovery_item).unwrap().unwrap();
+    let previous_config = cx.read(|cx| cx.global::<AppState>().config.sync.account.clone());
+    let previous_binding = a.bound_to();
+    let previous_notes = a.notes();
+
+    reset_runtime_without_signing_out(cx, &server, &a);
+    let other = password_account(&server, "bob");
+    let (login_device, provider_session) = provider_signin(&server, &other.account_id);
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    let locked = account_flow::locked_provider_session(
+        SERVER.to_owned(),
+        login_device,
+        provider_session,
+        &device.library_id,
+    )
+    .unwrap();
+    enter_locked(cx, locked, device, a.window);
+    let conn = refuse(
+        &a,
+        &format!(
+            "CREATE TRIGGER refuse_locked_bind BEFORE INSERT ON meta WHEN NEW.key = '{}' \
+             BEGIN SELECT RAISE(ABORT, 'refused'); END;",
+            meta_keys::ACCOUNT_ID
+        ),
+    );
+    let unlock = cx.update(|cx| {
+        account_flow::unlock_locked_password(password(PASSWORD, "bob"), Some(a.window), cx)
+    });
+    wait_until(cx, "the binding consent", |cx| a.asking(cx));
+    a.answer(cx, "choice-0");
+    let result = finish(cx, unlock);
+    conn.execute_batch("DROP TRIGGER refuse_locked_bind")
+        .unwrap();
+
+    assert!(result.is_err());
+    assert_eq!(account(cx), AccountState::SignedOut);
+    assert_eq!(a.bound_to(), previous_binding);
+    assert_eq!(a.notes(), previous_notes);
+    assert_eq!(
+        a.secrets.get(&account_item).unwrap(),
+        Some(previous_account_item)
+    );
+    assert_eq!(
+        a.secrets.get(&recovery_item).unwrap(),
+        Some(previous_recovery_item)
+    );
+    assert_eq!(
+        cx.read(|cx| cx.global::<AppState>().config.sync.account.clone()),
+        previous_config
+    );
+    assert!(
+        kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+            .unwrap()
+            .is_none(),
+        "failed binding clears only the new pending sign-in"
+    );
+    assert_eq!(
+        kanso_sync::devices(server.as_ref(), &other).unwrap().len(),
+        1,
+        "failed binding logs out both candidate tokens"
+    );
+}
+
+#[gpui_kit::test]
+fn pending_delete_failure_restores_the_previous_item_and_keeps_the_unlocked_candidate_retryable(
+    cx: &mut TestAppContext,
+) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 2);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert!(ok(&synced(cx)));
+    let library_id = library_id(cx);
+    let account_item = kanso_sync::keychain::account_item(&library_id);
+    let previous_account_item = a.secrets.get(&account_item).unwrap().unwrap();
+    let previous_config = cx.read(|cx| cx.global::<AppState>().config.sync.account.clone());
+    let previous_binding = a.bound_to();
+    let previous_notes = a.notes();
+
+    reset_runtime_without_signing_out(cx, &server, &a);
+    let other = password_account(&server, "bob");
+    let (login_device, provider_session) = provider_signin(&server, &other.account_id);
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    let locked = account_flow::locked_provider_session(
+        SERVER.to_owned(),
+        login_device,
+        provider_session,
+        &device.library_id,
+    )
+    .unwrap();
+    enter_locked(cx, locked, device, a.window);
+
+    let unlock = cx.update(|cx| {
+        account_flow::unlock_locked_password(password(PASSWORD, "bob"), Some(a.window), cx)
+    });
+    wait_until(cx, "the binding consent", |cx| a.asking(cx));
+    let pending_item = kanso_sync::keychain::pending_item(&library_id);
+    let pending: serde_json::Value =
+        serde_json::from_str(&a.secrets.get(&pending_item).unwrap().unwrap()).unwrap();
+    let refreshed_token = pending["token"].as_str().unwrap().to_owned();
+
+    // The fresh token is durable before consent. Make only the later pending
+    // delete fail, so promotion must restore the previous full item instead of
+    // leaving a half-promoted account.
+    a.secrets.fail_writes_to(Some("sync-pending:"));
+    a.answer(cx, "choice-0");
+    let result = finish(cx, unlock);
+    a.secrets.fail_writes_to(None);
+
+    assert!(result.is_err(), "{result:?}");
+    assert!(matches!(account(cx), AccountState::SignedInLocked { .. }));
+    assert_eq!(a.bound_to(), previous_binding);
+    assert_eq!(a.notes(), previous_notes);
+    assert_eq!(
+        a.secrets.get(&account_item).unwrap(),
+        Some(previous_account_item),
+        "the previous full session item is restored"
+    );
+    assert_eq!(
+        cx.read(|cx| cx.global::<AppState>().config.sync.account.clone()),
+        previous_config
+    );
+    assert!(cx.read(|cx| cx.global::<Services>().session().is_none()));
+    kanso_sync::keychain::load_locked_pending(a.secrets.as_ref(), &library_id)
+        .unwrap()
+        .expect("the refreshed unlocked candidate remains retryable");
+    let kept: serde_json::Value =
+        serde_json::from_str(&a.secrets.get(&pending_item).unwrap().unwrap()).unwrap();
+    assert_eq!(kept["token"].as_str(), Some(refreshed_token.as_str()));
+    assert!(
+        server
+            .api(SERVER)
+            .devices(&kanso_sync::SessionToken::new(refreshed_token.clone()))
+            .is_ok(),
+        "the token kept in the pending item was not revoked"
+    );
+}
+
+#[gpui_kit::test]
+fn recovery_pending_write_failure_revokes_the_fresh_token_and_clears_the_dead_locked_session(
+    cx: &mut TestAppContext,
+) {
+    let server = Arc::new(MemoryServer::new());
+    let elsewhere = DeviceIdentity::from_parts(&format!("l_{:032x}", 8), "Elsewhere", [8; 32]);
+    let bob = kanso_sync::sign_up(
+        server.as_ref(),
+        &MemorySecrets::new(),
+        SERVER,
+        "bob",
+        &password(PASSWORD, "bob"),
+        &elsewhere,
+        &|_| {},
+    )
+    .unwrap();
+    let a = mac(cx, &server, "Studio", 0);
+    let (login_device, provider_session) = provider_signin(&server, &bob.session.account_id);
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    let locked = account_flow::locked_provider_session(
+        SERVER.to_owned(),
+        login_device,
+        provider_session,
+        &device.library_id,
+    )
+    .unwrap();
+    enter_locked(cx, locked, device, a.window);
+    let library_id = library_id(cx);
+    let pending_item = kanso_sync::keychain::pending_item(&library_id);
+    let failing = Arc::new(FailPendingSetOnce {
+        inner: a.secrets.clone(),
+        armed: AtomicBool::new(true),
+    });
+    let secrets: Arc<dyn SecretStore> = failing;
+    cx.update(|cx| cx.global_mut::<Services>().secrets = Some(secrets));
+    let recover = cx.update(|cx| {
+        account_flow::recover_locked(
+            bob.recovery_key.clone(),
+            password(NEW_PASSWORD, "bob"),
+            Some(a.window),
+            cx,
+        )
+    });
+    let result = finish(cx, recover);
+
+    assert!(result.is_err(), "{result:?}");
+    assert_eq!(account(cx), AccountState::SignedOut);
+    assert!(cx.read(|cx| cx.global::<Services>().session().is_none()));
+    assert!(cx.read(|cx| cx.global::<Services>().locked_session.is_none()));
+    assert!(
+        a.secrets.get(&pending_item).unwrap().is_none(),
+        "the dead provider token is not left for a relaunch to restore"
+    );
+    let shown = pending_key(cx).expect("the rotated recovery key is shown");
+    assert!(shown != bob.recovery_key);
+    assert!(holds(&server, "bob", &shown));
+}
+
+#[gpui_kit::test]
+fn an_agreeing_full_session_wins_over_a_pending_provider_session(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    let rx = a.sign_up(cx, "alice");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+    let existing = session(cx);
+    let library_id = library_id(cx);
+
+    let (login_device, provider_session) = provider_signin(&server, &existing.account_id);
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    let locked = account_flow::locked_provider_session(
+        SERVER.to_owned(),
+        login_device,
+        provider_session,
+        &device.library_id,
+    )
+    .unwrap();
+    kanso_sync::keychain::save_locked_pending(a.secrets.as_ref(), &library_id, &locked).unwrap();
+
+    relaunched(cx, &server, &a);
+    cx.update(account_flow::restore);
+    restored(cx);
+
+    assert_eq!(account(cx), signed_in_as("alice"));
+    assert!(cx.read(|cx| cx.global::<Services>().session().is_some()));
+    assert!(cx.read(|cx| cx.global::<Services>().locked_session.is_none()));
+}
+
+#[gpui_kit::test]
+fn failed_pending_keychain_save_revokes_provider_token_and_stays_signed_out(
+    cx: &mut TestAppContext,
+) {
+    let server = Arc::new(MemoryServer::new());
+    let source = password_account(&server, "alice");
+    let a = mac(cx, &server, "Studio", 0);
+    let (login_device, provider_session) = provider_signin(&server, &source.account_id);
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    let locked = account_flow::locked_provider_session(
+        SERVER.to_owned(),
+        login_device,
+        provider_session,
+        &device.library_id,
+    )
+    .unwrap();
+    a.secrets.fail_writes_to(Some("sync-pending:"));
+
+    assert!(
+        account_flow::save_provider_pending(server.as_ref(), a.secrets.as_ref(), &locked,).is_err()
+    );
+    a.secrets.heal();
+
+    assert_eq!(account(cx), AccountState::SignedOut);
+    assert!(cx.read(|cx| cx.global::<Services>().session().is_none()));
+    assert!(cx.read(|cx| cx.global::<Services>().locked_session.is_none()));
+    assert!(cx.read(|cx| cx.global::<AppState>().config.sync.account.is_none()));
+    assert_eq!(
+        kanso_sync::devices(server.as_ref(), &source).unwrap().len(),
+        1,
+        "the token that could not be saved was revoked"
+    );
+}
+
+#[gpui_kit::test]
+fn password_unlock_uses_provider_proof_and_waits_for_binding_consent(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let source = password_account(&server, "alice");
+    let a = mac(cx, &server, "Studio", 1);
+    let (login_device, provider_session) = provider_signin(&server, &source.account_id);
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    let library_device_id = device.device_id(&source.account_id);
+    assert_ne!(login_device.id, library_device_id);
+    let locked = account_flow::locked_provider_session(
+        SERVER.to_owned(),
+        login_device.clone(),
+        provider_session,
+        &device.library_id,
+    )
+    .unwrap();
+    enter_locked(cx, locked, device, a.window);
+    assert!(matches!(account(cx), AccountState::SignedInLocked { .. }));
+
+    let wrong = cx.update(|cx| {
+        account_flow::unlock_locked_password(
+            password("not the password", "alice"),
+            Some(a.window),
+            cx,
+        )
+    });
+    assert!(finish(cx, wrong).is_err());
+    assert!(matches!(account(cx), AccountState::SignedInLocked { .. }));
+    assert!(cx.read(|cx| cx.global::<Services>().session().is_none()));
+
+    let right = cx.update(|cx| {
+        account_flow::unlock_locked_password(password(PASSWORD, "alice"), Some(a.window), cx)
+    });
+    wait_until(cx, "the binding consent", |cx| a.asking(cx));
+    assert!(matches!(account(cx), AccountState::SignedInLocked { .. }));
+    assert!(cx.read(|cx| cx.global::<Services>().session().is_none()));
+    assert!(cx.read(|cx| cx.global::<AppState>().config.sync.account.is_none()));
+
+    // Add is the first choice. No full session, binding or sync is promoted
+    // until this actual UI answer is selected.
+    a.answer(cx, "choice-0");
+    assert_eq!(finish(cx, right), Ok(()));
+    assert_eq!(account(cx), signed_in_as("alice"));
+    assert_eq!(session(cx).device_id, login_device.id);
+    assert_ne!(session(cx).device_id, library_device_id);
+}
+
+#[gpui_kit::test]
+fn local_key_reuse_reaches_consent_without_promoting_or_syncing(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let source = password_account(&server, "alice");
+    let a = mac(cx, &server, "Studio", 1);
+    let (login_device, provider_session) = provider_signin(&server, &source.account_id);
+    let machine = cx.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let device = kanso_sync::device_identity(&a.store, &machine).unwrap();
+    kanso_sync::keychain::save_session(a.secrets.as_ref(), &device.library_id, &source).unwrap();
+    let devices_before = kanso_sync::devices(server.as_ref(), &source).unwrap();
+    let locked = account_flow::locked_provider_session(
+        SERVER.to_owned(),
+        login_device,
+        provider_session,
+        &device.library_id,
+    )
+    .unwrap();
+
+    enter_locked(cx, locked, device, a.window);
+
+    assert!(
+        a.asking(cx),
+        "a local-key unlock reaches the binding question"
+    );
+    assert!(matches!(account(cx), AccountState::SignedInLocked { .. }));
+    assert!(cx.read(|cx| cx.global::<Services>().session().is_none()));
+    assert!(cx.read(|cx| cx.global::<Services>().sync == SyncState::Off));
+    assert!(cx.read(|cx| cx.global::<AppState>().config.sync.account.is_none()));
+    assert_eq!(
+        kanso_sync::devices(server.as_ref(), &source).unwrap(),
+        devices_before,
+        "offline key reuse does not touch or add a server device"
+    );
+}
 
 /// The forms' server; `MemoryServer` answers for any.
 const SERVER: &str = kanso_sync::DEFAULT_SERVER;
@@ -139,6 +961,47 @@ fn services(
 
 fn password(text: &str, username: &str) -> Password {
     Password::new(text, username).unwrap()
+}
+
+fn password_account(server: &MemoryServer, username: &str) -> Session {
+    let secrets = MemorySecrets::new();
+    let device =
+        DeviceIdentity::from_parts("l_00000000000000000000000000000001", "Other Mac", [1; 32]);
+    kanso_sync::sign_up(
+        server,
+        &secrets,
+        SERVER,
+        username,
+        &password(PASSWORD, username),
+        &device,
+        &|_| {},
+    )
+    .unwrap()
+    .session
+}
+
+fn provider_signin(
+    server: &MemoryServer,
+    account_id: &str,
+) -> (LoginDevice, kanso_sync::ProviderSession) {
+    let login_device = LoginDevice::ephemeral();
+    server.set_providers(vec![Provider::Apple]);
+    server.set_provider_outcomes(Provider::Apple, [format!("session:{account_id}")]);
+    let started =
+        kanso_sync::start_provider(server, SERVER, &Provider::Apple, &login_device, None, None)
+            .unwrap();
+    let ProviderStep::Session(session) = kanso_sync::poll_provider(
+        server,
+        SERVER,
+        &Provider::Apple,
+        started.flow_id(),
+        None,
+        &login_device,
+    )
+    .unwrap() else {
+        panic!("the scripted provider sign-in returns a session")
+    };
+    (login_device, session)
 }
 
 /// Runs the app until `rx` says the task is done.
@@ -700,6 +1563,30 @@ fn a_key_replaced_on_another_mac_is_dropped(cx: &mut TestAppContext, cx_b: &mut 
 struct Gated {
     inner: Arc<MemorySecrets>,
     gate: std::sync::Mutex<Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>>,
+}
+
+/// Fails one `sync-pending` set but lets cleanup deletes through, as a
+/// transient Keychain write failure would.
+struct FailPendingSetOnce {
+    inner: Arc<MemorySecrets>,
+    armed: AtomicBool,
+}
+
+impl SecretStore for FailPendingSetOnce {
+    fn get(&self, item: &str) -> Result<Option<zeroize::Zeroizing<String>>, SecretError> {
+        self.inner.get(item)
+    }
+
+    fn set(&self, item: &str, value: &str) -> Result<(), SecretError> {
+        if item.starts_with("sync-pending:") && self.armed.swap(false, Ordering::AcqRel) {
+            return Err(SecretError("the Keychain refused once (simulated)".into()));
+        }
+        self.inner.set(item, value)
+    }
+
+    fn delete(&self, item: &str) -> Result<(), SecretError> {
+        self.inner.delete(item)
+    }
 }
 
 impl SecretStore for Gated {
@@ -1615,6 +2502,19 @@ fn relaunched(cx: &mut TestAppContext, server: &Arc<MemoryServer>, a: &Mac) {
     });
 }
 
+/// Drops the in-memory signed-in runtime without touching the persisted
+/// account, recovery key, config or binding, as when testing a later sign-in
+/// against this library's previous account.
+fn reset_runtime_without_signing_out(cx: &mut TestAppContext, server: &Arc<MemoryServer>, a: &Mac) {
+    cx.update(|cx| {
+        crate::device_approval::stop_events(cx);
+        if let Some(sync) = cx.global_mut::<Services>().take_sync_handle() {
+            sync.cancel_and_join();
+        }
+    });
+    relaunched(cx, server, a);
+}
+
 fn restored(cx: &mut TestAppContext) {
     wait_until(cx, "the launch check", |cx| {
         cx.read(|cx| !cx.global::<Services>().restoring)
@@ -1794,6 +2694,41 @@ fn the_sign_up_answer_is_asked_again_each_time(cx: &mut TestAppContext) {
         Some((SERVER.to_owned(), kanso_sync::SignupState::Closed)),
         "an answer about a server no longer shown is dropped"
     );
+}
+
+#[gpui_kit::test]
+fn server_round_trip_clears_provider_ticket_and_refreshes_health_generation(
+    cx: &mut TestAppContext,
+) {
+    let server = Arc::new(MemoryServer::new());
+    let _mac = mac(cx, &server, "Studio", 0);
+    cx.update(|cx| {
+        cx.global_mut::<Services>().provider_signup = Some(services::ProviderSignup {
+            server: SERVER.to_owned(),
+            provider: kanso_sync::Provider::Google,
+            ticket: "ticket-a".into(),
+            suggested_username: "alice".into(),
+            login_device: kanso_sync::api::LoginDevice::ephemeral(),
+        });
+        account_flow::check_auth(cx);
+    });
+    let generation_a = cx.read(|cx| cx.global::<Services>().auth_generation);
+    cx.update(|cx| account_flow::set_server(Some("https://server-b.example".into()), cx));
+    let generation_b = cx.read(|cx| cx.global::<Services>().auth_generation);
+    cx.update(|cx| account_flow::set_server(None, cx));
+    cx.read(|cx| {
+        let services = cx.global::<Services>();
+        assert!(generation_b > generation_a);
+        assert!(services.auth_generation > generation_b);
+        assert!(services.provider_signup.is_none());
+        assert_eq!(account_flow::form_server(cx), SERVER);
+        assert!(
+            services
+                .auth
+                .as_ref()
+                .is_none_or(|(server, _)| server == SERVER)
+        );
+    });
 }
 
 // MARK: Sync around account tasks

@@ -1792,6 +1792,9 @@ pub fn problem_label(problem: &SyncProblem) -> &'static str {
 
 /// The sync line while signed out: quiet, and a click away from signing in.
 pub const SIGN_IN_TO_SYNC: &str = "Set up sync";
+/// A provider session has no data key yet; it cannot sync until the user
+/// unlocks it and chooses how this library should be bound.
+pub const WAITING_FOR_APPROVAL: &str = "Waiting for approval";
 
 /// The sidebar's sync line: "Set up sync" while signed out, the step of
 /// a running account task, "Synced just now", "Synced yesterday",
@@ -1805,6 +1808,7 @@ pub fn sync_line(
 ) -> (Tone, String) {
     match account {
         AccountState::SignedOut => (Tone::Quiet, SIGN_IN_TO_SYNC.into()),
+        AccountState::SignedInLocked { .. } => (Tone::Quiet, WAITING_FOR_APPROVAL.into()),
         AccountState::SessionEnded { reason, .. } => (
             Tone::Warning,
             problem_label(&SyncProblem::SignedOut(*reason)).into(),
@@ -1832,9 +1836,9 @@ pub fn sync_line(
 /// again), else this Mac's user.
 pub fn footer_name<'a>(account: &'a AccountState, user: &'a str) -> &'a str {
     match account {
-        AccountState::SignedIn { username } | AccountState::SessionEnded { username, .. } => {
-            username
-        }
+        AccountState::SignedIn { username }
+        | AccountState::SignedInLocked { username }
+        | AccountState::SessionEnded { username, .. } => username,
         AccountState::SignedOut | AccountState::Busy(_) => user,
     }
 }
@@ -2061,8 +2065,8 @@ pub(crate) fn mention_badge(unread: usize) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        SIGN_IN_TO_SYNC, SyncState, Tone, api_icon, footer_name, initials, problem_label,
-        status_choice_after, status_group_open, sync_line, tone_icon, visible_tags,
+        SIGN_IN_TO_SYNC, SyncState, Tone, WAITING_FOR_APPROVAL, api_icon, footer_name, initials,
+        problem_label, status_choice_after, status_group_open, sync_line, tone_icon, visible_tags,
     };
     use std::collections::HashSet;
 
@@ -2371,6 +2375,14 @@ mod tests {
             ),
             (Tone::Busy, "Securing your keys…".into())
         );
+        let locked = AccountState::SignedInLocked {
+            username: "ngoni".into(),
+        };
+        assert_eq!(
+            sync_line(&SyncState::Off, &locked, utc_label(0)),
+            (Tone::Quiet, WAITING_FOR_APPROVAL.into())
+        );
+        assert_eq!(footer_name(&locked, "modestnerd"), "ngoni");
     }
 
     /// No two sync states share an icon in the rail, where the icon is all

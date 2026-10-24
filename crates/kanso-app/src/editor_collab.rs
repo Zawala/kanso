@@ -47,7 +47,7 @@ impl NoteEditor {
     /// Whether the open note was shared with this account to view or
     /// comment on only.
     pub(super) fn collab_read_only(&self) -> bool {
-        self.text_read_only
+        self.collab_read_only
     }
 
     /// After a note is shown: attaches to the shared note it is, and leaves
@@ -167,15 +167,11 @@ impl NoteEditor {
 
     /// Makes the title and text read only, or not.
     fn set_text_read_only(&mut self, read_only: bool, cx: &mut Context<Self>) {
-        if self.text_read_only == read_only {
+        if self.collab_read_only == read_only {
             return;
         }
-        self.text_read_only = read_only;
-        self.body
-            .update(cx, |state, cx| state.set_readonly(read_only, cx));
-        self.title
-            .update(cx, |state, cx| state.set_readonly(read_only, cx));
-        cx.notify();
+        self.collab_read_only = read_only;
+        self.refresh_text_read_only(cx);
     }
 
     /// What the footer says about the open note's sharing.

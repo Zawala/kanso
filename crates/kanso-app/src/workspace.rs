@@ -651,6 +651,13 @@ impl Workspace {
             // The preview alone hides the text that had the keyboard, say:
             // the keyboard comes back here rather than going nowhere.
             cx.on_focus_lost(window, |this, window, cx| window.focus(&this.focus, cx)),
+            // Approval notifications are best-effort hints. Coming back to the
+            // app is one of the GET fallbacks; it never runs on a timer.
+            cx.observe_window_activation(window, |_, window, cx| {
+                if window.is_window_active() {
+                    crate::device_approval::refresh(cx);
+                }
+            }),
         ];
         window.focus(&focus, cx);
 
@@ -2208,6 +2215,9 @@ impl Render for Workspace {
         let signed_in = cx
             .try_global::<crate::services::Services>()
             .is_some_and(|services| services.signed_in());
+        let signed_in_locked = cx
+            .try_global::<crate::services::Services>()
+            .is_some_and(crate::services::Services::has_locked_session);
         let (can_go_back, can_go_forward) = self.nav_reach();
         v_flex()
             .size_full()
@@ -2611,7 +2621,7 @@ impl Render for Workspace {
                         crate::account_page::sign_out_dialog(window, cx);
                     }))
             })
-            .when(!signed_in, |el| {
+            .when(!signed_in && !signed_in_locked, |el| {
                 el.on_action(cx.listener(|this, _: &ShowSignIn, window, cx| {
                     this.show_account_form(SignedOutForm::SignIn, window, cx)
                 }))

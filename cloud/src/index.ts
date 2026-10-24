@@ -47,21 +47,46 @@
 //   GET    /v2/collab/notifications     your notifications                            (session)
 //   DELETE /v2/collab/notifications/<id> dismiss one                                  (session)
 //   GET    /j/<link_id>                 the page an invite link opens                 (public)
+//   POST   /v2/auth/apple/start         Sign in with Apple: the web flow's URL
+//   POST /v2/auth/apple/callback        Apple's form_post (the one Origin exception)
+//   POST   /v2/auth/apple/poll          the app's completion of an Apple flow
+//   POST   /v2/auth/google/start        Sign in with Google: loopback and PKCE
+//   POST   /v2/auth/google/finish       the loopback's code and the PKCE verifier
+//   POST   /v2/auth/github/start        Sign in with GitHub: the device flow's code
+//   POST   /v2/auth/github/poll         one device-flow poll
+//   POST   /v2/auth/social/signup       the account a provider flow's ticket names
+//   GET    /v2/account/sign-in          the account's ways in                         (session)
+//   POST   /v2/account/sign-in/identities/<provider>/start   link, or a proof flow   (session)
+//   POST   /v2/account/sign-in/identities/<provider>/unlink  unlink a provider       (session)
+//   POST   /v2/account/sign-in/approvals              ask another device to approve this one (session)
+//   GET    /v2/account/sign-in/approvals              other devices' pending requests       (session)
+//   GET    /v2/account/sign-in/approvals/<id>         the requester's poll                  (session)
+//   POST   /v2/account/sign-in/approvals/<id>/challenge  the approver's ephemeral key       (session)
+//   POST   /v2/account/sign-in/approvals/<id>/name    the requester's key and sealed name   (session)
+//   POST   /v2/account/sign-in/approvals/<id>/approve the approver's sealed data key       (session)
+//   DELETE /v2/account/sign-in/approvals/<id>         cancel or decline                     (session)
+//   GET    /v2/account/events           live approval hints, a WebSocket (session + device proof)
 //
 // /v1 and every other path answer 404. Any request with an Origin header gets
 // 403 before anything else, except on the three public routes, which hold no
-// credentials and only ever read; a body with the wrong Content-Type gets 415.
+// credentials and only ever read, and Apple's callback, which takes Apple's
+// origin (or none) and relies on its state; a body with the wrong Content-Type
+// gets 415.
 //
 // Each shared note's log lives in its own Durable Object, NoteRoom (room.ts),
-// exported here so the runtime can find the class.
+// and each account's live event sockets in AccountRoom (account_room.ts),
+// both exported here so the runtime can find the classes.
 
+import * as approvals from "./approvals";
 import * as auth from "./auth";
 import * as collab from "./collab";
 import { pepperKeys } from "./crypto";
 import type { Env } from "./env";
 import { error, isContentType, methodNotAllowed, notFound } from "./http";
 import * as identity from "./identity";
+import * as providers from "./providers";
 import { bindingFilter } from "./limits";
+import * as passkeys from "./passkeys";
 import { runCron } from "./purge";
 import * as shares from "./shares";
 import * as sync from "./sync";
@@ -69,6 +94,7 @@ import * as sync from "./sync";
 export type { Env } from "./env";
 export { runCron } from "./purge";
 export { NoteRoom } from "./room";
+export { AccountRoom } from "./account_room";
 
 type Handler = (request: Request, env: Env, now: number) => Promise<Response>;
 type PepperHandler = (request: Request, env: Env, now: number, keys: import("./crypto").PepperKeys) => Promise<Response>;
@@ -89,6 +115,8 @@ interface Route {
 	binding?: boolean;
 	/** Readable by anyone, from a browser too: the Origin rule doesn't apply. */
 	public?: boolean;
+	/** The only Origin values this route accepts besides none (Apple's form post). */
+	origins?: readonly string[];
 }
 
 const json = (handler: Handler | PepperHandler, pepper = false): Method => ({ handler, body: "json", pepper });
@@ -100,6 +128,10 @@ const ROUTES: Record<string, Route> = {
 	"/v2/auth/login": { name: "login", binding: true, methods: { POST: json(auth.login, true) } },
 	"/v2/auth/recover/start": { name: "recover_start", binding: true, methods: { POST: json(auth.recoverStart, true) } },
 	"/v2/auth/recover/finish": { name: "recover_finish", binding: true, methods: { POST: json(auth.recoverFinish, true) } },
+	"/v2/auth/passkey/start": { name: "passkey_start", binding: true, methods: { POST: json(passkeys.passkeyStart, true) } },
+	"/v2/auth/passkey/finish": { name: "passkey_finish", binding: true, methods: { POST: json(passkeys.passkeyFinish, true) } },
+	"/v2/auth/passkey/signup/start": { name: "passkey_signup_start", binding: true, methods: { POST: json(passkeys.passkeySignupStart, true) } },
+	"/v2/auth/passkey/signup/finish": { name: "passkey_signup_finish", binding: true, methods: { POST: json(passkeys.passkeySignupFinish, true) } },
 	"/v2/auth/logout": { name: "logout", binding: true, methods: { POST: { handler: auth.logout } } },
 	"/v2/account": { name: "account", methods: { GET: { handler: auth.account } } },
 	"/v2/account/password": { name: "password", methods: { POST: json(auth.password) } },
@@ -112,7 +144,34 @@ const ROUTES: Record<string, Route> = {
 	"/v2/account/identity": { name: "identity", methods: { PUT: json(identity.putIdentity), GET: { handler: identity.getIdentity } } },
 	"/v2/collab/shares": { name: "collab_shares", methods: { POST: json(collab.createShare), GET: { handler: collab.listShares } } },
 	"/v2/collab/notifications": { name: "collab_notifications", methods: { POST: json(collab.notify), GET: { handler: collab.listNotifications } } },
+	"/v2/auth/apple/start": { name: "apple_start", binding: true, methods: { POST: json(providers.start("apple"), true) } },
+	"/v2/auth/apple/poll": { name: "apple_poll", binding: true, methods: { POST: json(providers.applePoll, true) } },
+	// Apple posts application/x-www-form-urlencoded from its own page (form_post, even for a
+	// cancel), so there is no GET; the handler checks the type.
+	"/v2/auth/apple/callback": {
+		name: "apple_callback",
+		binding: true,
+		origins: [providers.APPLE_FORM_ORIGIN],
+		methods: { POST: { handler: providers.appleCallback, pepper: true } },
+	},
+	"/v2/auth/google/start": { name: "google_start", binding: true, methods: { POST: json(providers.start("google"), true) } },
+	"/v2/auth/google/finish": { name: "google_finish", binding: true, methods: { POST: json(providers.googleFinish, true) } },
+	"/v2/auth/github/start": { name: "github_start", binding: true, methods: { POST: json(providers.start("github"), true) } },
+	"/v2/auth/github/poll": { name: "github_poll", binding: true, methods: { POST: json(providers.githubPoll, true) } },
+	"/v2/auth/social/signup": { name: "social_signup", binding: true, methods: { POST: json(providers.socialSignup, true) } },
+	"/v2/account/sign-in": { name: "sign_in_methods", methods: { GET: { handler: providers.methods } } },
+	"/v2/account/sign-in/approvals": { name: "approvals", methods: { POST: json(approvals.create), GET: { handler: approvals.list } } },
+	"/v2/account/events": { name: "account_events", methods: { GET: { handler: approvals.events } } },
 };
+
+/** The routes under /v2/account/sign-in/approvals/<id>, by what follows the ID. */
+function approvalRoute(id: string, rest: string): Route | null {
+	if (rest === "") return { name: "approval", methods: { GET: { handler: approvals.poll(id) }, DELETE: { handler: approvals.cancel(id) } } };
+	if (rest === "/challenge") return { name: "approval_challenge", methods: { POST: json(approvals.challenge(id)) } };
+	if (rest === "/name") return { name: "approval_name", methods: { POST: json(approvals.name(id)) } };
+	if (rest === "/approve") return { name: "approval_approve", methods: { POST: json(approvals.approve(id)) } };
+	return null;
+}
 
 /** The routes under /v2/collab/shares/<id>/, by what follows the ID. */
 function collabShareRoute(id: string, rest: string): Route | null {
@@ -165,8 +224,17 @@ function match(path: string): Route | null {
 	if (collabShare) return collabShareRoute(segment(collabShare[1]), collabShare[2]);
 	const joinLink = /^\/v2\/collab\/join\/([^/]+)$/.exec(path);
 	if (joinLink) return { name: "collab_join", methods: { POST: json(collab.join(segment(joinLink[1]))) } };
+	const identityRoute = /^\/v2\/account\/sign-in\/identities\/([^/]+)\/(start|unlink)$/.exec(path);
+	if (identityRoute) {
+		const provider = segment(identityRoute[1]);
+		return identityRoute[2] === "start"
+			? { name: "identity_start", methods: { POST: json(providers.identityStart(provider), true) } }
+			: { name: "identity_unlink", methods: { POST: json(providers.unlink(provider), true) } };
+	}
 	const notification = /^\/v2\/collab\/notifications\/([^/]+)$/.exec(path);
 	if (notification) return { name: "collab_notification", methods: { DELETE: { handler: collab.deleteNotification(segment(notification[1])) } } };
+	const approval = /^\/v2\/account\/sign-in\/approvals\/([^/]+)(\/[^/]+)?$/.exec(path);
+	if (approval) return approvalRoute(segment(approval[1]), approval[2] ?? "");
 	const invite = /^\/j\/([^/]+)$/.exec(path);
 	if (invite) return { name: "invite", public: true, methods: { GET: { handler: collab.invitePage(segment(invite[1])) } } };
 	const viewer = /^\/p\/([^/]+)$/.exec(path);
@@ -180,7 +248,10 @@ export async function handle(request: Request, env: Env, now: number): Promise<R
 	try {
 		const route = match(new URL(request.url).pathname);
 		// Browsers always send Origin on the requests that matter; the native client never does (M7).
-		if (request.headers.has("origin") && !route?.public) return error(403, "forbidden_origin", "Browser requests are refused.");
+		const origin = request.headers.get("origin");
+		if (origin !== null && !route?.public && !route?.origins?.includes(origin)) {
+			return error(403, "forbidden_origin", "Browser requests are refused.");
+		}
 		if (!route) return notFound();
 		name = route.name;
 		const method = route.methods[request.method];

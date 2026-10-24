@@ -8,6 +8,7 @@
 // carries the hash the Worker just checked, so of two concurrent changes one
 // wins and the other finds nothing to change.
 
+import { signOutSockets } from "./account_room";
 import { accountCollabStatements, afterAccountDeleted, memberships } from "./collab";
 import { type PepperKeys, hashToken, hex, hmac16, newToken, proofMatches, randomHex, sha256Hex } from "./crypto";
 import type { Env } from "./env";
@@ -52,7 +53,7 @@ import {
 } from "./protocol";
 import { DELETE_PURGE_ROUNDS, accountPrefix, purgePrefix } from "./purge";
 import { accountShareStatements, runSharePurges } from "./shares";
-import { healthAuth } from "./sign_in";
+import { healthAuth, healthEvents } from "./sign_in";
 import { isReserved, normalizeUsername } from "./usernames";
 
 type Handler = (request: Request, env: Env, now: number) => Promise<Response>;
@@ -66,10 +67,10 @@ export interface Session {
 	username: string;
 }
 
-const respond = (checked: Checked<unknown> & { ok: false }): Response => error(checked.status, checked.code, checked.message);
+export const respond = (checked: Checked<unknown> & { ok: false }): Response => error(checked.status, checked.code, checked.message);
 
 /** Reads an auth or account body (8 KiB) that must be a JSON object. */
-async function readObject(request: Request): Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; response: Response }> {
+export async function readObject(request: Request): Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; response: Response }> {
 	const body = await readJson(request, MAX_AUTH_BODY);
 	if (!body.ok) return body;
 	if (!isObject(body.value)) return { ok: false, response: badRequest("The body must be a JSON object.") };
@@ -77,7 +78,7 @@ async function readObject(request: Request): Promise<{ ok: true; value: Record<s
 }
 
 /** The `username` field, normalized; a 400 when it isn't a string or isn't valid. */
-function username(body: Record<string, unknown>): Checked<string> {
+export function username(body: Record<string, unknown>): Checked<string> {
 	if (typeof body.username !== "string") return { ok: false, status: 400, code: "bad_request", message: "username must be a string." };
 	const normalized = normalizeUsername(body.username);
 	if (normalized === null) return { ok: false, status: 400, code: "invalid_username", message: "Not a valid username." };
@@ -138,27 +139,80 @@ export function withSession(handler: (request: Request, env: Env, now: number, s
 	};
 }
 
-type GuardColumn = "auth_hash" | "recovery_hash";
+export type GuardColumn = "auth_hash" | "recovery_hash";
+
+/** A provider completion's claim, which keeps its dependent session writes in the same attempt. */
+export interface SessionCompletionGuard {
+	flowId: string;
+	attemptId: string;
+}
+
+/**
+ * Options for `sessionStatements`. `replay` marks the retry of a sign-in or
+ * sign-up that already succeeded, after a lost answer, with no fresh proof. It
+ * only refreshes the token of the session that first answer made, so every
+ * statement holds only while that device's session is still live: a device
+ * signed out, revoked, signed out by a password change or replaced by a
+ * recovery since then is not brought back by sending the same request again.
+ */
+export interface SessionOptions {
+	completion?: SessionCompletionGuard;
+	replay?: boolean;
+}
 
 /**
  * The statements that make `device` this account's active session, in one
  * batch with the caller's own: revoke the least recently seen other session
  * when ten are active (`evicted`), upsert this one, and keep at most 90
  * revoked rows. Every statement holds only while the account is enabled and
- * each guard column still has the hash the caller checked.
+ * each guard column still has the hash the caller checked. Provider completion
+ * callers can also bind all three statements to one live flow attempt, and
+ * any replay of a completed sign-in to the device's still-live session.
  * Parameters: ?1 account, ?2 device, ?3 token hash, ?4 proof hash, ?5 now,
  * ?6 sealed name (null keeps the old one), ?7… guard values.
  */
-function sessionStatements(
+export function sessionStatements(
 	db: D1Database,
 	s: { accountId: string; deviceId: string; tokenHash: string; proofHash: string; sealedName: string | null; now: number },
 	guards: [GuardColumn, string][],
+	options: SessionOptions = {},
 ): D1PreparedStatement[] {
+	const { completion, replay } = options;
+	const completionParam = 7 + guards.length;
+	const completionGuard = completion
+		? ` AND EXISTS (SELECT 1 FROM auth_flows WHERE id = ?${completionParam} AND completion_attempt_id = ?${completionParam + 1} AND expires_at > ?${completionParam + 2})`
+		: "";
+	const replayGuard = replay ? " AND EXISTS (SELECT 1 FROM sessions WHERE account_id = ?1 AND device_id = ?2 AND revoked_at IS NULL)" : "";
 	const guard = `EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND disabled_at IS NULL${guards
 		.map(([column], i) => ` AND ${column} = ?${7 + i}`)
-		.join("")})`;
-	const params = [s.accountId, s.deviceId, s.tokenHash, s.proofHash, s.now, s.sealedName, ...guards.map(([, value]) => value)];
+		.join("")}${completionGuard}${replayGuard})`;
+	const params = [
+		s.accountId,
+		s.deviceId,
+		s.tokenHash,
+		s.proofHash,
+		s.now,
+		s.sealedName,
+		...guards.map(([, value]) => value),
+		...(completion ? [completion.flowId, completion.attemptId, s.now] : []),
+	];
 	const others = "account_id = ?1 AND revoked_at IS NULL AND device_id != ?2";
+	const cleanup = completion
+		? db
+			.prepare(
+				`DELETE FROM sessions WHERE account_id = ?1 AND revoked_at IS NOT NULL AND device_id NOT IN (
+  SELECT device_id FROM sessions WHERE account_id = ?1 AND revoked_at IS NOT NULL
+  ORDER BY revoked_at DESC, device_id LIMIT ${MAX_REVOKED_ROWS})
+				AND EXISTS (SELECT 1 FROM auth_flows WHERE id = ?2 AND completion_attempt_id = ?3 AND expires_at > ?4)`,
+			)
+			.bind(s.accountId, completion.flowId, completion.attemptId, s.now)
+		: db
+			.prepare(
+				`DELETE FROM sessions WHERE account_id = ?1 AND revoked_at IS NOT NULL AND device_id NOT IN (
+  SELECT device_id FROM sessions WHERE account_id = ?1 AND revoked_at IS NOT NULL
+  ORDER BY revoked_at DESC, device_id LIMIT ${MAX_REVOKED_ROWS})`,
+			)
+			.bind(s.accountId);
 	return [
 		db
 			.prepare(
@@ -180,23 +234,17 @@ function sessionStatements(
   RETURNING device_id`,
 			)
 			.bind(...params),
-		db
-			.prepare(
-				`DELETE FROM sessions WHERE account_id = ?1 AND revoked_at IS NOT NULL AND device_id NOT IN (
-  SELECT device_id FROM sessions WHERE account_id = ?1 AND revoked_at IS NOT NULL
-  ORDER BY revoked_at DESC, device_id LIMIT ${MAX_REVOKED_ROWS})`,
-			)
-			.bind(s.accountId),
+		cleanup,
 	];
 }
 
-interface SessionOutcome {
+export interface SessionOutcome {
 	ok: boolean;
 	evicted: { id: string; sealed_name: string | null } | null;
 }
 
 /** Reads `sessionStatements`' results, starting at `offset` in the batch. */
-function sessionOutcome(results: D1Result[], offset: number): SessionOutcome {
+export function sessionOutcome(results: D1Result[], offset: number): SessionOutcome {
 	const evicted = (results[offset].results as { device_id: string; sealed_name: string | null }[])[0];
 	return {
 		ok: results[offset + 1].results.length === 1,
@@ -204,13 +252,13 @@ function sessionOutcome(results: D1Result[], offset: number): SessionOutcome {
 	};
 }
 
-interface NewSession {
+export interface NewSession {
 	token: string;
 	tokenHash: string;
 	proofHash: string;
 }
 
-async function newSession(device: NewDevice): Promise<NewSession> {
+export async function newSession(device: NewDevice): Promise<NewSession> {
 	const token = newToken();
 	return { token, tokenHash: await hashToken(token), proofHash: await sha256Hex(device.proof) };
 }
@@ -224,7 +272,7 @@ export const health: Handler = async (_request, env) => {
 	).first<{ signup: string | null; max_accounts: number | null; accounts: number }>();
 	let signup = "closed";
 	if (row?.signup === "open") signup = row.accounts >= (row.max_accounts ?? 0) ? "full" : "open";
-	return json({ ok: true, protocol: PROTOCOL_VERSION, signup, auth: healthAuth(env) });
+	return json({ ok: true, protocol: PROTOCOL_VERSION, signup, auth: healthAuth(env), events: healthEvents() });
 };
 
 // ------------------------------------------------------------------ prelogin
@@ -541,6 +589,10 @@ export const recoverFinish: PepperHandler = async (request, env, now, keys) => {
 			).bind(account.id, now, old),
 			...sessionStatements(env.DB, { accountId: account.id, ...s }, [["recovery_hash", old]]),
 			env.DB.prepare(
+				`DELETE FROM account_passkeys WHERE account_id = ?1
+  AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND recovery_hash = ?2 AND disabled_at IS NULL)`,
+			).bind(account.id, old),
+			env.DB.prepare(
 				`UPDATE accounts SET kdf_m_kib = ?3, kdf_t = ?4, kdf_p = ?5, salt = ?6, auth_hash = ?7, wrapped_key = ?8,
   recovery_hash = ?9, recovery_wrapped_key = ?10
   WHERE id = ?1 AND recovery_hash = ?2 AND disabled_at IS NULL RETURNING id`,
@@ -557,7 +609,8 @@ export const recoverFinish: PepperHandler = async (request, env, now, keys) => {
 				b.recovery_wrapped_key_new,
 			),
 		]);
-		if (results[4].results.length === 1) {
+		if (results[5].results.length === 1) {
+			await signOutSockets(env, account.id, null);
 			return json({ account_id: account.id, username: account.username, token: session.token, epoch: account.epoch });
 		}
 		account = await env.DB.prepare(ACCOUNT_BY_NAME).bind(name.value).first<AccountRow>();
@@ -585,6 +638,7 @@ export const logout: Handler = async (request, env, now) => {
 	const session = await authenticate(request, env, now, true);
 	if (session instanceof Response) return session;
 	await revokeSelf(env, session, now);
+	await signOutSockets(env, session.accountId, [session.deviceId]);
 	return new Response(null, { status: 204 });
 };
 
@@ -705,7 +759,11 @@ export const password = withSession(async (request, env, now, session) => {
 				recovery.wrap,
 			),
 		]);
-		if (results[1].results.length === 1) return json({ signed_out_devices: results[0].results.length });
+		if (results[1].results.length === 1) {
+			// Every socket closes; the device that changed the password reconnects.
+			await signOutSockets(env, account.id, null);
+			return json({ signed_out_devices: results[0].results.length });
+		}
 		account = (await env.DB.prepare(ACCOUNT_BY_ID).bind(session.accountId).first<AccountRow>()) ?? account;
 	}
 	// A retry after a lost answer: the new password material and recovery key are already stored.
@@ -759,7 +817,8 @@ export function deletionStatements(db: D1Database, accountId: string, now: numbe
 		bind(`DELETE FROM sessions WHERE account_id = ?1 AND ${guard}`),
 		bind(
 			`DELETE FROM limits WHERE key IN ('login-user:' || ?1, 'password-account:' || ?1, 'writes-account:' || ?1, 'uploads-account:' || ?1,
-  'lookup-account:' || ?1, 'join-account:' || ?1, 'notify-account:' || ?1)
+  'lookup-account:' || ?1, 'join-account:' || ?1, 'notify-account:' || ?1, 'proof-account:' || ?1,
+  'approval-create:' || ?1, 'approval-poll:' || ?1, 'approval-respond:' || ?1)
   AND ${guard}`,
 		),
 		db
@@ -830,6 +889,7 @@ export function revokeDevice(deviceId: string): Handler {
 		if (!isDeviceId(deviceId)) return badRequest("Not a device ID.");
 		if (deviceId === session.deviceId) {
 			await revokeSelf(env, session, now);
+			await signOutSockets(env, session.accountId, [deviceId]);
 			return new Response(null, { status: 204 });
 		}
 		const revoked = await env.DB.prepare(
@@ -838,6 +898,8 @@ export function revokeDevice(deviceId: string): Handler {
 		)
 			.bind(session.accountId, deviceId, now)
 			.first();
-		return revoked ? new Response(null, { status: 204 }) : notFound();
+		if (!revoked) return notFound();
+		await signOutSockets(env, session.accountId, [deviceId]);
+		return new Response(null, { status: 204 });
 	});
 }

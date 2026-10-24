@@ -253,6 +253,10 @@ pub fn sync_status_line(
     let every = sync_every((settings.interval_secs / 60).max(1));
     let (label, detail) = match account {
         AccountState::SignedOut => (NOT_SIGNED_IN.to_owned(), SIGNED_OUT_DETAIL.to_owned()),
+        AccountState::SignedInLocked { .. } => (
+            label,
+            "Open Kanso on a device that's already signed in and approve this one.".to_owned(),
+        ),
         AccountState::SessionEnded { reason, .. } => (
             label,
             problem_help(&SyncProblem::SignedOut(*reason), resume),
@@ -2335,6 +2339,21 @@ mod tests {
         assert_eq!(
             (busy.tone, busy.label.as_str()),
             (Tone::Busy, "Contacting the server…")
+        );
+        let locked = sync_status_line(
+            &SyncState::Off,
+            &AccountState::SignedInLocked {
+                username: "ngoni".into(),
+            },
+            &on,
+            utc_label(0),
+            resume,
+            None,
+        );
+        assert_eq!(locked.label, "Waiting for approval");
+        assert_eq!(
+            locked.detail,
+            "Open Kanso on a device that's already signed in and approve this one."
         );
     }
 

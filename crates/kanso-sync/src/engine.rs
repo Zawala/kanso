@@ -1100,7 +1100,10 @@ impl Run<'_> {
                 }
                 let size = wire_size(&doc, fields);
                 let class = Class::of(&doc);
-                let count = u64::from(class == Class::New && !doc.deleted);
+                // Every live document is charged one potential slot: an edit
+                // based on a revision the server has since tombstoned
+                // revives it, so it can grow `docs` just like a new one.
+                let count = u64::from(class != Class::Tombstone);
                 let bytes = size as u64 + DOC_ROW_COST;
                 if self.quota_holds(Family::Docs, &doc, class, count, bytes)? {
                     continue;
@@ -1292,11 +1295,12 @@ impl Run<'_> {
                 Class::Edit
             };
             let bytes = blob.data.len() as u64 + FILE_ROW_COST;
+            // As in `push`: a live file edit can revive a server tombstone.
             if self.quota_holds(
                 Family::Files,
                 &doc,
                 class,
-                u64::from(class == Class::New),
+                u64::from(class != Class::Tombstone),
                 bytes,
             )? || !self.still_goes(Family::Files, &doc)
             {

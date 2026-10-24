@@ -123,6 +123,12 @@ pub fn is_sealed_name(sealed: &str) -> bool {
     is_sealed(sealed, MIN_SEALED_LEN, 400)
 }
 
+/// An approval request's ID, or a value of the same shape (a commitment, an
+/// ephemeral key): 32 bytes as 43 base64url characters.
+pub fn is_approval_id(id: &str) -> bool {
+    id.len() == 43 && is_base64url(id)
+}
+
 // ---------------------------------------------------------------------------
 // Documents, push results and pages
 // ---------------------------------------------------------------------------
@@ -428,18 +434,41 @@ pub enum ApiError {
     UsernameMismatch,
     #[error("400 checksum_mismatch")]
     ChecksumMismatch,
+    /// 400: a sign-in method this deployment doesn't offer.
+    #[error("400 unsupported_method")]
+    UnsupportedMethod,
     /// 401: session missing, malformed, unknown, revoked or expired.
     #[error("401 unauthorized ({})", reason.as_str())]
     Unauthorized { reason: SignOutReason },
     /// 401: wrong proof, or an unknown username.
     #[error("401 invalid_credentials")]
     InvalidCredentials,
+    /// 401 `reauth_required`: a sensitive change needs a fresh password or
+    /// passkey proof.
+    #[error("401 reauth_required")]
+    ReauthRequired,
+    /// 400 `flow_expired`, or 410 when the provider itself expired the flow
+    /// (GitHub's `expired_token`).
+    #[error("flow_expired")]
+    FlowExpired { gone: bool },
+    /// 400 `nonce_reused`: a token or a flow was already used.
+    #[error("400 nonce_reused")]
+    NonceReused,
     #[error("403 forbidden_origin")]
     ForbiddenOrigin,
     #[error("403 account_disabled")]
     AccountDisabled,
     #[error("403 signup_closed ({})", reason.as_str())]
     SignupClosed { reason: SignupClosedReason },
+    /// 403 `provider_disabled`: this server has no such provider configured.
+    #[error("403 provider_disabled")]
+    ProviderDisabled,
+    /// 403 `provider_denied`: the person declined at the provider.
+    #[error("403 provider_denied")]
+    ProviderDenied,
+    /// 403: a device trying to approve its own request.
+    #[error("403 self_approval")]
+    SelfApproval,
     /// 404: unknown route, file, or well-formed but unknown device.
     #[error("404 not_found")]
     NotFound,
@@ -450,6 +479,29 @@ pub enum ApiError {
     UsernameTaken,
     #[error("409 account_id_taken")]
     AccountIdTaken,
+    /// 409 `identity_taken`: another account owns that provider identity.
+    #[error("409 identity_taken")]
+    IdentityTaken,
+    /// 409 `last_method`: removing this would leave no way to sign in.
+    #[error("409 last_method")]
+    LastMethod,
+    /// 409 `already_has_password`.
+    #[error("409 already_has_password")]
+    AlreadyHasPassword,
+    /// 409 `credential_exists`.
+    #[error("409 credential_exists")]
+    CredentialExists,
+    /// 409: an approval request another device (or another key) already
+    /// answered.
+    #[error("409 approval_used")]
+    ApprovalUsed,
+    /// 409: an approval request ID was reused for a different account,
+    /// device or public-key commitment.
+    #[error("409 approval_request_id_conflict")]
+    ApprovalRequestIdConflict,
+    /// 409: an approval request past its five minutes.
+    #[error("409 approval_expired")]
+    ApprovalExpired,
     #[error("413 too_large")]
     TooLarge,
     /// `used` is the usage before this request; for `server` it is the
@@ -475,6 +527,10 @@ pub enum ApiError {
     /// 503: `AUTH_PEPPER` missing or malformed.
     #[error("503 misconfigured")]
     Misconfigured,
+    /// 503 `provider_unavailable`: the provider's own endpoint failed or
+    /// timed out.
+    #[error("503 provider_unavailable")]
+    ProviderUnavailable,
     /// A status or code this client doesn't know.
     #[error("{status} {code}")]
     Unrecognized { status: u16, code: String },
@@ -527,19 +583,35 @@ impl ApiError {
             | ApiError::UnsupportedKdf
             | ApiError::WeakKdf
             | ApiError::UsernameMismatch
-            | ApiError::ChecksumMismatch => 400,
-            ApiError::Unauthorized { .. } | ApiError::InvalidCredentials => 401,
+            | ApiError::ChecksumMismatch
+            | ApiError::UnsupportedMethod => 400,
+            ApiError::Unauthorized { .. }
+            | ApiError::InvalidCredentials
+            | ApiError::ReauthRequired => 401,
+            ApiError::FlowExpired { gone: true } => 410,
+            ApiError::FlowExpired { gone: false } | ApiError::NonceReused => 400,
             ApiError::ForbiddenOrigin
             | ApiError::AccountDisabled
-            | ApiError::SignupClosed { .. } => 403,
+            | ApiError::SignupClosed { .. }
+            | ApiError::ProviderDisabled
+            | ApiError::ProviderDenied
+            | ApiError::SelfApproval => 403,
             ApiError::NotFound => 404,
             ApiError::MethodNotAllowed => 405,
-            ApiError::UsernameTaken | ApiError::AccountIdTaken => 409,
+            ApiError::UsernameTaken
+            | ApiError::AccountIdTaken
+            | ApiError::IdentityTaken
+            | ApiError::LastMethod
+            | ApiError::AlreadyHasPassword
+            | ApiError::CredentialExists
+            | ApiError::ApprovalUsed
+            | ApiError::ApprovalRequestIdConflict
+            | ApiError::ApprovalExpired => 409,
             ApiError::TooLarge | ApiError::QuotaExceeded { .. } => 413,
             ApiError::UnsupportedMediaType => 415,
             ApiError::RateLimited { .. } => 429,
             ApiError::Internal => 500,
-            ApiError::Misconfigured => 503,
+            ApiError::Misconfigured | ApiError::ProviderUnavailable => 503,
             ApiError::Unrecognized { status, .. } => *status,
             ApiError::Transport(_) | ApiError::Protocol(_) => return None,
         })
@@ -555,21 +627,36 @@ impl ApiError {
             ApiError::WeakKdf => "weak_kdf",
             ApiError::UsernameMismatch => "username_mismatch",
             ApiError::ChecksumMismatch => "checksum_mismatch",
+            ApiError::UnsupportedMethod => "unsupported_method",
+            ApiError::FlowExpired { .. } => "flow_expired",
             ApiError::Unauthorized { .. } => "unauthorized",
             ApiError::InvalidCredentials => "invalid_credentials",
+            ApiError::ReauthRequired => "reauth_required",
+            ApiError::NonceReused => "nonce_reused",
+            ApiError::ProviderDisabled => "provider_disabled",
+            ApiError::ProviderDenied => "provider_denied",
+            ApiError::IdentityTaken => "identity_taken",
+            ApiError::AlreadyHasPassword => "already_has_password",
             ApiError::ForbiddenOrigin => "forbidden_origin",
             ApiError::AccountDisabled => "account_disabled",
             ApiError::SignupClosed { .. } => "signup_closed",
+            ApiError::SelfApproval => "self_approval",
             ApiError::NotFound => "not_found",
             ApiError::MethodNotAllowed => "method_not_allowed",
             ApiError::UsernameTaken => "username_taken",
             ApiError::AccountIdTaken => "account_id_taken",
+            ApiError::LastMethod => "last_method",
+            ApiError::CredentialExists => "credential_exists",
+            ApiError::ApprovalUsed => "approval_used",
+            ApiError::ApprovalRequestIdConflict => "approval_request_id_conflict",
+            ApiError::ApprovalExpired => "approval_expired",
             ApiError::TooLarge => "too_large",
             ApiError::QuotaExceeded { .. } => "quota_exceeded",
             ApiError::UnsupportedMediaType => "unsupported_media_type",
             ApiError::RateLimited { .. } => "rate_limited",
             ApiError::Internal => "internal",
             ApiError::Misconfigured => "misconfigured",
+            ApiError::ProviderUnavailable => "provider_unavailable",
             ApiError::Unrecognized { code, .. } => code,
             ApiError::Transport(_) | ApiError::Protocol(_) => return None,
         })
@@ -582,6 +669,7 @@ impl ApiError {
         let mut body = json!({ "error": code });
         let extras = match self {
             ApiError::Unauthorized { reason } => json!({"reason": reason.as_str()}),
+            ApiError::ReauthRequired => json!({"reason": "reauth"}),
             ApiError::SignupClosed { reason } => json!({"reason": reason.as_str()}),
             ApiError::QuotaExceeded { quota, used, limit } => {
                 json!({"quota": quota.as_str(), "used": used, "limit": limit})
@@ -616,10 +704,20 @@ impl ApiError {
             "weak_kdf" => ApiError::WeakKdf,
             "username_mismatch" => ApiError::UsernameMismatch,
             "checksum_mismatch" => ApiError::ChecksumMismatch,
+            "unsupported_method" => ApiError::UnsupportedMethod,
+            "flow_expired" => ApiError::FlowExpired {
+                gone: status == 410,
+            },
             "unauthorized" => ApiError::Unauthorized {
                 reason: SignOutReason::parse(text("reason")),
             },
             "invalid_credentials" => ApiError::InvalidCredentials,
+            "reauth_required" => ApiError::ReauthRequired,
+            "nonce_reused" => ApiError::NonceReused,
+            "provider_disabled" => ApiError::ProviderDisabled,
+            "provider_denied" => ApiError::ProviderDenied,
+            "identity_taken" => ApiError::IdentityTaken,
+            "already_has_password" => ApiError::AlreadyHasPassword,
             "forbidden_origin" => ApiError::ForbiddenOrigin,
             "account_disabled" => ApiError::AccountDisabled,
             "signup_closed" => ApiError::SignupClosed {
@@ -633,6 +731,12 @@ impl ApiError {
             "method_not_allowed" => ApiError::MethodNotAllowed,
             "username_taken" => ApiError::UsernameTaken,
             "account_id_taken" => ApiError::AccountIdTaken,
+            "last_method" => ApiError::LastMethod,
+            "credential_exists" => ApiError::CredentialExists,
+            "self_approval" => ApiError::SelfApproval,
+            "approval_used" => ApiError::ApprovalUsed,
+            "approval_request_id_conflict" => ApiError::ApprovalRequestIdConflict,
+            "approval_expired" => ApiError::ApprovalExpired,
             "too_large" => ApiError::TooLarge,
             "quota_exceeded" => ApiError::QuotaExceeded {
                 quota: QuotaKind::ALL
@@ -649,6 +753,7 @@ impl ApiError {
             },
             "internal" => ApiError::Internal,
             "misconfigured" => ApiError::Misconfigured,
+            "provider_unavailable" => ApiError::ProviderUnavailable,
             _ => {
                 return ApiError::Unrecognized {
                     status,
@@ -715,13 +820,29 @@ mod tests {
             ApiError::WeakKdf,
             ApiError::UsernameMismatch,
             ApiError::ChecksumMismatch,
+            ApiError::UnsupportedMethod,
+            ApiError::FlowExpired { gone: false },
+            ApiError::FlowExpired { gone: true },
             ApiError::InvalidCredentials,
+            ApiError::ReauthRequired,
+            ApiError::NonceReused,
+            ApiError::ProviderDisabled,
+            ApiError::ProviderDenied,
+            ApiError::IdentityTaken,
+            ApiError::AlreadyHasPassword,
+            ApiError::ProviderUnavailable,
             ApiError::ForbiddenOrigin,
             ApiError::AccountDisabled,
             ApiError::NotFound,
             ApiError::MethodNotAllowed,
             ApiError::UsernameTaken,
             ApiError::AccountIdTaken,
+            ApiError::LastMethod,
+            ApiError::CredentialExists,
+            ApiError::SelfApproval,
+            ApiError::ApprovalUsed,
+            ApiError::ApprovalRequestIdConflict,
+            ApiError::ApprovalExpired,
             ApiError::TooLarge,
             ApiError::UnsupportedMediaType,
             ApiError::RateLimited {

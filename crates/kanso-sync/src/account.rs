@@ -15,12 +15,19 @@ use crate::api::{
     PasswordRequest, PreloginRequest, RecoverFinishRequest, RecoverStartRequest,
     RecoveryKeyRequest, SignupRequest,
 };
+use crate::approvals::LockedSession;
 use crate::crypto::{
     ContentKeys, CryptoError, DataKey, KdfParams, Opened, Password, PasswordError, RecoveryKey,
     RecoveryKeyError, WrapPurpose, b64, hex, key_id, password_keys, random, recovery_keys, unb64,
     unwrap, wrap,
 };
 use crate::keychain::{self, PendingLogout, PendingRecoveryKey, SecretError, SecretStore};
+use crate::provider::{
+    AccountMethods, GoogleFinishRequest, GoogleStartRequest, IdentityIntent, IdentityStartRequest,
+    LinkOutcome, Loopback, MethodsReply, Provider, ProviderPollRequest, ProviderSignIn,
+    ProviderStart, ProviderStartRequest, ProviderStep, ServerAuth, SocialSignupRequest,
+    UnlinkRequest,
+};
 use crate::username::{UsernameError, check_new_username, normalize_username};
 use crate::wire::{
     ApiError, PROTOCOL_VERSION, QuotaKind, SessionToken, SignOutReason, SignupClosedReason,
@@ -103,6 +110,12 @@ impl Session {
 
     pub(crate) fn set_library_id(&mut self, library_id: &str) {
         self.library_id = Some(library_id.to_owned());
+    }
+
+    /// The data key's ID, as the server holds it (docs/ACCOUNTS.md › Keys).
+    /// Not secret: used to check a wrap and by the approval flow's tests.
+    pub fn key_id(&self) -> String {
+        crate::crypto::key_id(&self.data_key)
     }
 
     /// The keys shared notes start from, derived from this session's data
@@ -229,18 +242,38 @@ pub enum AccountError {
     UsernameMismatch,
     #[error("a file didn't match its checksum")]
     ChecksumMismatch,
+    #[error("this server doesn't offer that sign-in method")]
+    UnsupportedMethod,
+    #[error("the sign-in flow expired; try again")]
+    FlowExpired,
     /// 401 `unauthorized`: this Mac's session ended, for `reason`.
     #[error("signed out ({})", reason.as_str())]
     Unauthorized { reason: SignOutReason },
     /// 401: wrong password or recovery key, or an unknown username.
     #[error("invalid credentials")]
     InvalidCredentials,
+    /// 401 `reauth_required`: the change needs a fresh password or passkey
+    /// proof, not just this session.
+    #[error("this change needs your password or a passkey")]
+    ReauthRequired,
+    /// 400 `nonce_reused`: the token or flow was already used.
+    #[error("this sign-in was already used")]
+    NonceReused,
     #[error("the server refused a browser request")]
     ForbiddenOrigin,
     #[error("the account is turned off")]
     AccountDisabled,
     #[error("sign-ups are closed ({})", reason.as_str())]
     SignupClosed { reason: SignupClosedReason },
+    /// 403 `provider_disabled`: the server doesn't offer this provider.
+    #[error("that provider isn't available on this server")]
+    ProviderDisabled,
+    /// 403 `provider_denied`: the sign-in was declined at the provider.
+    #[error("the sign-in was declined")]
+    ProviderDenied,
+    /// 503 `provider_unavailable`: the provider's endpoint failed.
+    #[error("the provider is unavailable; try again")]
+    ProviderUnavailable,
     #[error("not found")]
     NotFound,
     #[error("method not allowed")]
@@ -250,6 +283,36 @@ pub enum AccountError {
     /// The client generates a new account ID and retries; it never surfaces.
     #[error("account ID taken")]
     AccountIdTaken,
+    /// 409 `identity_taken`: another account already owns that provider
+    /// identity. It never says which account.
+    #[error("that provider account is already linked to another Kanso account")]
+    IdentityTaken,
+    /// 409 `last_method`: removing this would leave no way to sign in.
+    #[error("this is the last way to sign in; use your recovery key")]
+    LastMethod,
+    /// 409 `already_has_password`.
+    #[error("this account already has a password")]
+    AlreadyHasPassword,
+    #[error("that passkey is already registered")]
+    CredentialExists,
+    /// 403 `self_approval`: "A device can't approve itself."
+    #[error("a device can't approve itself")]
+    SelfApproval,
+    /// 409 `approval_used`: "That request was already answered. Ask again."
+    #[error("that approval request was already answered")]
+    ApprovalUsed,
+    /// 409 `approval_request_id_conflict`: an ID was reused with different
+    /// account, device or commitment data.
+    #[error("that approval request ID is already in use")]
+    ApprovalRequestIdConflict,
+    /// 409 `approval_expired`: "That approval request expired. Ask again."
+    #[error("that approval request expired")]
+    ApprovalExpired,
+    /// The requester's key doesn't match its commitment, or its sealed name
+    /// doesn't open: "This request changed after it was made. Don't
+    /// approve." Nothing was sent.
+    #[error("the approval request changed after it was made")]
+    ApprovalChanged,
     #[error("too large")]
     TooLarge,
     #[error("quota exceeded ({})", quota.as_str())]
@@ -337,15 +400,30 @@ impl From<ApiError> for AccountError {
             ApiError::WeakKdf => AccountError::WeakKdf,
             ApiError::UsernameMismatch => AccountError::UsernameMismatch,
             ApiError::ChecksumMismatch => AccountError::ChecksumMismatch,
+            ApiError::UnsupportedMethod => AccountError::UnsupportedMethod,
+            ApiError::FlowExpired { .. } => AccountError::FlowExpired,
             ApiError::Unauthorized { reason } => AccountError::Unauthorized { reason },
             ApiError::InvalidCredentials => AccountError::InvalidCredentials,
+            ApiError::ReauthRequired => AccountError::ReauthRequired,
+            ApiError::NonceReused => AccountError::NonceReused,
             ApiError::ForbiddenOrigin => AccountError::ForbiddenOrigin,
             ApiError::AccountDisabled => AccountError::AccountDisabled,
             ApiError::SignupClosed { reason } => AccountError::SignupClosed { reason },
+            ApiError::ProviderDisabled => AccountError::ProviderDisabled,
+            ApiError::ProviderDenied => AccountError::ProviderDenied,
+            ApiError::ProviderUnavailable => AccountError::ProviderUnavailable,
             ApiError::NotFound => AccountError::NotFound,
             ApiError::MethodNotAllowed => AccountError::MethodNotAllowed,
             ApiError::UsernameTaken => AccountError::UsernameTaken,
             ApiError::AccountIdTaken => AccountError::AccountIdTaken,
+            ApiError::IdentityTaken => AccountError::IdentityTaken,
+            ApiError::LastMethod => AccountError::LastMethod,
+            ApiError::AlreadyHasPassword => AccountError::AlreadyHasPassword,
+            ApiError::CredentialExists => AccountError::CredentialExists,
+            ApiError::SelfApproval => AccountError::SelfApproval,
+            ApiError::ApprovalUsed => AccountError::ApprovalUsed,
+            ApiError::ApprovalRequestIdConflict => AccountError::ApprovalRequestIdConflict,
+            ApiError::ApprovalExpired => AccountError::ApprovalExpired,
             ApiError::TooLarge => AccountError::TooLarge,
             ApiError::QuotaExceeded { quota, used, limit } => {
                 AccountError::QuotaExceeded { quota, used, limit }
@@ -381,7 +459,10 @@ const ATTEMPTS: usize = 3;
 
 /// Sends the identical request again after a transport error, pausing as
 /// the backend says first (about 1 s, then 4 s).
-fn retrying<T>(b: &dyn Backend, send: impl FnMut() -> Result<T, ApiError>) -> Result<T, ApiError> {
+pub(crate) fn retrying<T>(
+    b: &dyn Backend,
+    send: impl FnMut() -> Result<T, ApiError>,
+) -> Result<T, ApiError> {
     retrying_noted(b, send).result
 }
 
@@ -543,7 +624,7 @@ impl<'a> Rotation<'a> {
 }
 
 /// The checked server URL and the origin the derivations bind.
-fn checked_server(server: &str) -> Result<(String, String), AccountError> {
+pub(crate) fn checked_server(server: &str) -> Result<(String, String), AccountError> {
     let server = crate::check_endpoint(server)?;
     let origin = crate::origin(&server)?;
     Ok((server, origin))
@@ -640,6 +721,22 @@ fn new_device(
     }
 }
 
+/// A provider sign-up keeps the identity bound to the provider flow. Its ID
+/// and proof must exactly match the values sent when that flow was started;
+/// only the device name is sealed with this account attempt's content keys.
+fn provider_signup_device(
+    identity: &DeviceIdentity,
+    login_device: &LoginDevice,
+    keys: &ContentKeys,
+    account_id: &str,
+) -> NewDevice {
+    NewDevice {
+        id: login_device.id.clone(),
+        sealed_name: Some(keys.seal_name(account_id, &login_device.id, &identity.name)),
+        proof: login_device.proof.clone(),
+    }
+}
+
 /// Checks a session answer (sign-up, recovery): its account and username,
 /// and the token's shape.
 fn check_answer(
@@ -668,6 +765,412 @@ pub fn server_info(b: &dyn Backend, server: &str) -> Result<SignupState, Account
         }
         Err(err) => Err(err.into()),
     }
+}
+
+/// `GET /v2/health`'s advertised sign-in methods. An older server omits
+/// `auth`, which means username and password only and no live approvals.
+pub fn server_auth(b: &dyn Backend, server: &str) -> Result<ServerAuth, AccountError> {
+    let (server, _) = checked_server(server)?;
+    let health = match b.api(&server).health() {
+        Ok(health) if health.ok && health.protocol == PROTOCOL_VERSION => health,
+        Ok(_) | Err(ApiError::NotFound | ApiError::Protocol(_) | ApiError::Unrecognized { .. }) => {
+            return Err(AccountError::ServerOutdated);
+        }
+        Err(err) => return Err(err.into()),
+    };
+    let Some(auth) = health.auth else {
+        return Ok(ServerAuth::default());
+    };
+    Ok(ServerAuth {
+        password: auth.password,
+        passkeys: auth
+            .passkeys
+            .map(|passkeys| crate::provider::PasskeyMethods {
+                rp_id: passkeys.rp_id,
+                security_key: passkeys.security_key,
+            }),
+        providers: auth.providers,
+        account_events: None,
+    })
+}
+
+/// `GET /v2/account/sign-in`, with the server's advertisement: the account's
+/// ways in, and which of the advertised providers it hasn't linked.
+pub fn methods(b: &dyn Backend, session: &Session) -> Result<AccountMethods, AccountError> {
+    let api = b.api(&session.server);
+    let auth = server_auth(b, &session.server)?;
+    let reply: MethodsReply =
+        retrying(b, || api.sign_in_methods(session.token())).map_err(AccountError::from)?;
+    Ok(reply.methods(auth.providers, auth.passkeys.map(|passkeys| passkeys.rp_id)))
+}
+
+/// Refreshes the password-availability hint using only a locked session's
+/// bearer token. This is display guidance; password unlock still authenticates
+/// and checks the account and data-key ID independently.
+pub fn methods_locked(b: &dyn Backend, locked: &LockedSession) -> Result<bool, AccountError> {
+    let (server, origin) = checked_server(&locked.server)?;
+    if origin != locked.origin || normalize_username(&locked.username)? != locked.username {
+        return Err(AccountError::KeyMismatch);
+    }
+    let api = b.api(&server);
+    let reply: MethodsReply =
+        retrying(b, || api.sign_in_methods(locked.token())).map_err(AccountError::from)?;
+    if !normalize_username(&reply.username).is_ok_and(|username| username == locked.username) {
+        return Err(AccountError::KeyMismatch);
+    }
+    Ok(reply.has_password)
+}
+
+/// Refreshes and stores the locked-session password hint.
+pub fn refresh_locked_methods(
+    b: &dyn Backend,
+    locked: &mut LockedSession,
+) -> Result<(), AccountError> {
+    locked.has_password = methods_locked(b, locked)?;
+    Ok(())
+}
+
+/// A provider flow's device: its ID and proof. For a link it is the
+/// session's; for a sign-in this Mac builds one and keeps it for the whole
+/// flow (the Worker binds the flow to it).
+fn provider_device(device: &LoginDevice) -> LoginDevice {
+    device.clone()
+}
+
+/// Starts a provider sign-in or sign-up flow (docs/ACCOUNTS.md › Sign-in
+/// routes). Google needs the loopback and the S256 challenge the app made;
+/// the verifier stays in the app until [`finish_google`].
+pub fn start_provider(
+    b: &dyn Backend,
+    server: &str,
+    provider: &Provider,
+    device: &LoginDevice,
+    loopback: Option<&Loopback>,
+    code_challenge: Option<&str>,
+) -> Result<ProviderStart, AccountError> {
+    let (server, _) = checked_server(server)?;
+    let api = b.api(&server);
+    let device = provider_device(device);
+    match provider {
+        Provider::Google => {
+            let loopback = loopback.ok_or(AccountError::BadRequest)?;
+            let challenge = code_challenge.ok_or(AccountError::BadRequest)?;
+            retrying(b, || {
+                api.google_start(&GoogleStartRequest {
+                    device: device.clone(),
+                    redirect_uri: loopback.uri(),
+                    code_challenge: challenge.to_owned(),
+                })
+            })
+            .map_err(AccountError::from)
+        }
+        _ => retrying(b, || {
+            api.provider_start(
+                provider,
+                &ProviderStartRequest {
+                    device: device.clone(),
+                },
+            )
+        })
+        .map_err(AccountError::from),
+    }
+}
+
+/// One Apple or GitHub poll of a started flow. `secret` is Apple's, from the
+/// callback URL ([`crate::provider::apple_callback_flow`]); GitHub has none.
+pub fn poll_provider(
+    b: &dyn Backend,
+    server: &str,
+    provider: &Provider,
+    flow: &str,
+    secret: Option<&str>,
+    device: &LoginDevice,
+) -> Result<ProviderStep, AccountError> {
+    let (server, _) = checked_server(server)?;
+    let api = b.api(&server);
+    retrying(b, || {
+        api.provider_poll(
+            provider,
+            &ProviderPollRequest {
+                flow_id: flow.to_owned(),
+                s: secret.map(str::to_owned),
+                device: provider_device(device),
+            },
+        )
+    })
+    .map_err(AccountError::from)
+}
+
+/// Google's finish: the loopback's code and the verifier whose challenge the
+/// start carried. The Worker exchanges and verifies; this crate never sees a
+/// token.
+pub fn finish_google(
+    b: &dyn Backend,
+    server: &str,
+    flow: &str,
+    code: &str,
+    code_verifier: &str,
+    device: &LoginDevice,
+) -> Result<ProviderStep, AccountError> {
+    let (server, _) = checked_server(server)?;
+    let api = b.api(&server);
+    retrying(b, || {
+        api.google_finish(&GoogleFinishRequest {
+            flow_id: flow.to_owned(),
+            code: code.to_owned(),
+            code_verifier: code_verifier.to_owned(),
+            device: provider_device(device),
+        })
+    })
+    .map_err(AccountError::from)
+}
+
+/// The provider sign-in's answer for Apple or GitHub, once the browser flow
+/// has been completed. Google's answer comes from [`finish_google`]. A
+/// pending flow is [`AccountError::Protocol`]: the app keeps polling with
+/// [`poll_provider`].
+pub fn sign_in_with_provider(
+    b: &dyn Backend,
+    server: &str,
+    provider: &Provider,
+    flow: &str,
+    secret: Option<&str>,
+    device: &LoginDevice,
+    progress: &dyn Fn(Step),
+) -> Result<ProviderSignIn, AccountError> {
+    if matches!(provider, Provider::Google) {
+        return Err(AccountError::Protocol(
+            "Google's flow is answered by finish_google".into(),
+        ));
+    }
+    progress(Step::Contacting);
+    match poll_provider(b, server, provider, flow, secret, device)? {
+        ProviderStep::Session(session) => Ok(ProviderSignIn::Session(session)),
+        ProviderStep::NewAccount(account) => Ok(ProviderSignIn::NewAccount(account)),
+        ProviderStep::Pending { .. } => Err(AccountError::Protocol(
+            "the provider sign-in is still pending".into(),
+        )),
+    }
+}
+
+/// Creates the passwordless account a provider ticket names
+/// (docs/ACCOUNTS.md › Sign in with Apple, Google and GitHub › Common
+/// rules): a random KDF salt, auth hash and password wrap that no client
+/// holds, the identity, the session and the recovery material in one insert.
+/// The new recovery key is saved in `sync-recovery-key:<library>` before the
+/// request is sent.
+#[allow(clippy::too_many_arguments, reason = "the flow's inputs")]
+pub fn sign_up_with_provider(
+    b: &dyn Backend,
+    secrets: &dyn SecretStore,
+    server: &str,
+    _provider: &Provider,
+    flow: &str,
+    username: &str,
+    device: &DeviceIdentity,
+    login_device: &LoginDevice,
+    progress: &dyn Fn(Step),
+) -> Result<SignedUp, RotationError> {
+    let username = check_new_username(username).map_err(AccountError::from)?;
+    let (server, origin) = checked_server(server)?;
+    progress(Step::Contacting);
+    match server_info(b, &server)? {
+        SignupState::Open => {}
+        SignupState::Closed => {
+            return Err(AccountError::SignupClosed {
+                reason: SignupClosedReason::Closed,
+            }
+            .into());
+        }
+        SignupState::Full => {
+            return Err(AccountError::SignupClosed {
+                reason: SignupClosedReason::Full,
+            }
+            .into());
+        }
+    }
+    let mut data_key = DataKey::generate();
+    let mut account_id = new_account_id();
+    let mut rotation = Rotation::choose(
+        secrets,
+        &device.library_id,
+        &server,
+        &origin,
+        &account_id,
+        &username,
+        None,
+    )?;
+    progress(Step::DerivingKeys);
+    let recovery = recovery_keys(rotation.key(), &origin, &username);
+    let mut content = ContentKeys::derive(&data_key);
+    let api = b.api(&server);
+    let mut fresh_ids = 0;
+    let mut reached = false;
+    loop {
+        let request = SocialSignupRequest {
+            ticket: flow.to_owned(),
+            username: username.clone(),
+            account_id: account_id.clone(),
+            recovery_auth_key: recovery.auth_key.to_base64url(),
+            recovery_wrapped_key: wrap(
+                &recovery.kek,
+                WrapPurpose::Recovery,
+                &account_id,
+                &data_key,
+            ),
+            key_id: key_id(&data_key),
+            device: provider_signup_device(device, login_device, &content, &account_id),
+        };
+        progress(Step::Contacting);
+        if let Err(err) = rotation.keep(&account_id) {
+            return Err(rotation.failed(err.into(), false));
+        }
+        let sent = retrying_noted(b, || api.social_signup(&request));
+        reached |= sent.reached;
+        match sent.result {
+            Ok(answer) => {
+                if answer.account_id != account_id
+                    || answer.username != username
+                    || !is_token(answer.token.expose())
+                    || answer.key_id != key_id(&data_key)
+                {
+                    return Err(rotation.failed(
+                        AccountError::Protocol("the server answered for another account".into()),
+                        true,
+                    ));
+                }
+                let recovery_key = rotation.accepted();
+                let mut session = Session::new(
+                    server,
+                    origin,
+                    account_id,
+                    username,
+                    request.device.id.clone(),
+                    answer.token,
+                    data_key,
+                );
+                session.set_library_id(&device.library_id);
+                return Ok(SignedUp {
+                    session,
+                    recovery_key,
+                });
+            }
+            Err(ApiError::AccountIdTaken) if fresh_ids < 3 => {
+                fresh_ids += 1;
+                account_id = new_account_id();
+                data_key = DataKey::generate();
+                content = ContentKeys::derive(&data_key);
+            }
+            Err(err) => return Err(rotation.failed_api(err, reached)),
+        }
+    }
+}
+
+/// `POST /v2/account/sign-in/identities/<provider>/start`: a link (with a
+/// password or passkey proof) or a provider proof (the session is enough).
+#[allow(clippy::too_many_arguments, reason = "the flow's inputs")]
+pub fn start_identity(
+    b: &dyn Backend,
+    session: &Session,
+    provider: &Provider,
+    intent: IdentityIntent,
+    proof: Option<crate::provider::ProofWire>,
+    loopback: Option<&Loopback>,
+    code_challenge: Option<&str>,
+    device: &LoginDevice,
+) -> Result<ProviderStart, AccountError> {
+    let api = b.api(&session.server);
+    retrying(b, || {
+        api.identity_start(
+            session.token(),
+            provider,
+            &IdentityStartRequest {
+                intent,
+                proof: proof.clone(),
+                redirect_uri: loopback.map(Loopback::uri),
+                code_challenge: code_challenge.map(str::to_owned),
+                device: provider_device(device),
+            },
+        )
+    })
+    .map_err(AccountError::from)
+}
+
+/// The completion of a link or proof flow on Apple or GitHub; `secret` as
+/// for [`poll_provider`].
+pub fn finish_identity(
+    b: &dyn Backend,
+    session: &Session,
+    provider: &Provider,
+    flow: &str,
+    secret: Option<&str>,
+    device: &LoginDevice,
+) -> Result<LinkOutcome, AccountError> {
+    let api = b.api(&session.server);
+    retrying(b, || {
+        api.identity_poll(
+            session.token(),
+            provider,
+            &ProviderPollRequest {
+                flow_id: flow.to_owned(),
+                s: secret.map(str::to_owned),
+                device: provider_device(device),
+            },
+        )
+    })
+    .map_err(AccountError::from)
+}
+
+/// The completion of a link or proof flow on Google.
+pub fn finish_identity_google(
+    b: &dyn Backend,
+    session: &Session,
+    provider: &Provider,
+    flow: &str,
+    code: &str,
+    code_verifier: &str,
+    device: &LoginDevice,
+) -> Result<LinkOutcome, AccountError> {
+    let api = b.api(&session.server);
+    retrying(b, || {
+        api.identity_finish_google(
+            session.token(),
+            provider,
+            &GoogleFinishRequest {
+                flow_id: flow.to_owned(),
+                code: code.to_owned(),
+                code_verifier: code_verifier.to_owned(),
+                device: provider_device(device),
+            },
+        )
+    })
+    .map_err(AccountError::from)
+}
+
+/// Unlinks `provider`. A provider proof can only unlink its own provider;
+/// the Worker refuses `last_method` unless `recovery_auth_key` proves the
+/// recovery key.
+pub fn unlink_identity(
+    b: &dyn Backend,
+    session: &Session,
+    provider: &Provider,
+    proof: crate::provider::ProofWire,
+    recovery: Option<&RecoveryKey>,
+) -> Result<(), AccountError> {
+    let request = UnlinkRequest {
+        proof,
+        recovery_auth_key: recovery.map(|key| {
+            // The Worker checks SHA-256 of the recovery auth key.
+            recovery_keys(key, &session.origin, &session.username)
+                .auth_key
+                .to_base64url()
+        }),
+    };
+    let api = b.api(&session.server);
+    retrying(b, || {
+        api.unlink_identity(session.token(), provider, &request)
+    })
+    .map_err(AccountError::from)
 }
 
 /// Creates an account and this device's session (docs/ACCOUNTS.md › Account
@@ -872,6 +1375,122 @@ pub fn sign_in(
     Ok(SignedIn { session, evicted })
 }
 
+/// Unlocks a provider/passkey session by signing in with the account's
+/// password on the same server and device. The returned account, device,
+/// origin and key ID must match the pending session; a mismatched login is
+/// logged out (or queued) before the error is returned.
+pub fn unlock_with_password(
+    b: &dyn Backend,
+    locked: &LockedSession,
+    password: &Password,
+    device: &DeviceIdentity,
+    progress: &dyn Fn(Step),
+) -> Result<SignedIn, AccountError> {
+    if locked
+        .library_id()
+        .is_some_and(|library_id| library_id != device.library_id)
+    {
+        return Err(AccountError::KeyMismatch);
+    }
+    let username = normalize_username(&locked.username)?;
+    let (server, origin) = checked_server(&locked.server)?;
+    if origin != locked.origin || username != locked.username {
+        return Err(AccountError::KeyMismatch);
+    }
+    let api = b.api(&server);
+    progress(Step::Contacting);
+    let pre = prelogin(b, &*api, &username)?;
+    if pre.account_id != locked.account_id {
+        return Err(AccountError::KeyMismatch);
+    }
+    let params = pre.params(b)?;
+    progress(Step::DerivingKeys);
+    let keys = password_keys(password, &origin, &username, &pre.salt, params)?;
+    let login_device = locked
+        .login_device()
+        .cloned()
+        .unwrap_or_else(|| LoginDevice {
+            id: locked.device_id.clone(),
+            proof: device
+                .device_proof(&locked.origin, &locked.account_id)
+                .to_base64url(),
+        });
+    if login_device.id != locked.device_id
+        || unb64(&login_device.proof).is_none_or(|proof| proof.len() != 32)
+    {
+        return Err(AccountError::KeyMismatch);
+    }
+    let request = LoginRequest {
+        username: username.clone(),
+        auth_key: keys.auth_key.to_base64url(),
+        device: login_device,
+    };
+    debug_assert_eq!(request.device.id, locked.device_id);
+    progress(Step::Contacting);
+    let answer = retrying(b, || api.login(&request))?;
+    let fail = |error: AccountError| {
+        let _ = api.logout(&answer.token);
+        Err(error)
+    };
+    if let Err(error) = check_answer(
+        &locked.account_id,
+        &locked.username,
+        (&answer.account_id, &answer.username, &answer.token),
+    ) {
+        return fail(error);
+    }
+    let data_key = match unwrap(
+        &keys.kek,
+        WrapPurpose::Password,
+        &locked.account_id,
+        &answer.wrapped_key,
+    ) {
+        Ok(data_key) if key_id(&data_key) == answer.key_id && answer.key_id == locked.key_id => {
+            data_key
+        }
+        _ => return fail(AccountError::KeyMismatch),
+    };
+    if !is_token(answer.token.expose()) {
+        return fail(AccountError::Protocol(
+            "login returned a malformed token".into(),
+        ));
+    }
+    let content = ContentKeys::derive(&data_key);
+    let _ = api.set_device_name(
+        &answer.token,
+        &DeviceNameRequest {
+            sealed_name: content.seal_name(&locked.account_id, &locked.device_id, &device.name),
+        },
+    );
+    let evicted = answer
+        .evicted_device
+        .as_ref()
+        .map(|evicted| DeviceInfo {
+            id: evicted.id.clone(),
+            name: opened_name(
+                &content,
+                &locked.account_id,
+                &evicted.id,
+                evicted.sealed_name.as_deref(),
+            ),
+            created_at: 0,
+            last_seen_at: 0,
+            current: false,
+        })
+        .or_else(|| crate::approvals::opened_evicted(locked, &content));
+    let mut session = Session::new(
+        server,
+        origin,
+        locked.account_id.clone(),
+        username,
+        locked.device_id.clone(),
+        answer.token,
+        data_key,
+    );
+    session.set_library_id(&device.library_id);
+    Ok(SignedIn { session, evicted })
+}
+
 /// Recovers the account with its recovery key and sets `new_password`. The
 /// used key stops working; the new one is saved in
 /// `sync-recovery-key:<library>` before `recover/finish` is sent
@@ -1016,9 +1635,43 @@ pub fn sign_out(
     if let Some(library_id) = session.library_id() {
         let account = keychain::delete_session(secrets, library_id);
         let key = keychain::delete_recovery_key(secrets, library_id);
-        deleted = account.and(key);
+        let pending = keychain::delete_pending(secrets, library_id);
+        deleted = account.and(key).and(pending);
     }
     let logged_out = logout_or_queue(b, secrets, session);
+    deleted?;
+    logged_out
+}
+
+/// Cancels a locked sign-in: removes its pending Keychain item, then logs out
+/// or queues its token without needing or constructing a data-key-bearing
+/// `Session`.
+pub fn discard_locked_session(
+    b: &dyn Backend,
+    secrets: &dyn SecretStore,
+    locked: &LockedSession,
+) -> Result<(), AccountError> {
+    sign_out_locked(b, secrets, locked)
+}
+
+/// Signs out a locked session and removes its pending Keychain item. The
+/// library's account and recovery items are left intact.
+pub fn sign_out_locked(
+    b: &dyn Backend,
+    secrets: &dyn SecretStore,
+    locked: &LockedSession,
+) -> Result<(), AccountError> {
+    let deleted = match locked.library_id() {
+        Some(library_id) => keychain::delete_locked_pending(secrets, library_id),
+        None => Ok(()),
+    };
+    let logged_out = logout_token_or_queue(
+        b,
+        secrets,
+        &locked.server,
+        locked.token(),
+        locked.library_id(),
+    );
     deleted?;
     logged_out
 }
@@ -1052,16 +1705,32 @@ fn logout_or_queue(
     secrets: &dyn SecretStore,
     session: &Session,
 ) -> Result<(), AccountError> {
-    match b.api(&session.server).logout(session.token()) {
+    logout_token_or_queue(
+        b,
+        secrets,
+        &session.server,
+        session.token(),
+        session.library_id(),
+    )
+}
+
+fn logout_token_or_queue(
+    b: &dyn Backend,
+    secrets: &dyn SecretStore,
+    server: &str,
+    token: &SessionToken,
+    library_id: Option<&str>,
+) -> Result<(), AccountError> {
+    match b.api(server).logout(token) {
         Ok(()) => Ok(()),
         Err(err) if err.status() == Some(401) => Ok(()),
         Err(_) => {
-            if let Some(library_id) = session.library_id() {
+            if let Some(library_id) = library_id {
                 let _queue = logout_queue();
                 let mut pending = keychain::pending_logouts(secrets, library_id)?;
                 let logout = PendingLogout {
-                    server: session.server.clone(),
-                    token: session.token().clone(),
+                    server: server.to_owned(),
+                    token: token.clone(),
                 };
                 if !pending.contains(&logout) {
                     pending.push(logout);
@@ -1334,6 +2003,12 @@ pub fn usage(b: &dyn Backend, session: &Session) -> Result<Usage, AccountError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::Route;
+    use crate::memory::MemoryServer;
+
+    fn account_device() -> DeviceIdentity {
+        DeviceIdentity::from_parts("l_0123456789abcdef0123456789abcdef", "Test Mac", [9; 32])
+    }
 
     /// Every coded `ApiError` keeps its meaning as an `AccountError`.
     #[test]
@@ -1363,5 +2038,420 @@ mod tests {
             AccountError::from(ApiError::Transport("reset".into())),
             AccountError::Transport(_)
         ));
+        assert!(matches!(
+            AccountError::from(ApiError::UnsupportedMethod),
+            AccountError::UnsupportedMethod
+        ));
+        assert!(matches!(
+            AccountError::from(ApiError::FlowExpired { gone: false }),
+            AccountError::FlowExpired
+        ));
+        assert!(matches!(
+            AccountError::from(ApiError::ReauthRequired),
+            AccountError::ReauthRequired
+        ));
+        assert!(matches!(
+            AccountError::from(ApiError::LastMethod),
+            AccountError::LastMethod
+        ));
+        assert!(matches!(
+            AccountError::from(ApiError::CredentialExists),
+            AccountError::CredentialExists
+        ));
+    }
+
+    #[test]
+    fn password_unlock_checks_locked_identity_and_uses_login_session() {
+        let server = MemoryServer::new();
+        let secrets = crate::keychain::MemorySecrets::new();
+        let device = account_device();
+        let password = Password::new("a sufficiently long password", "alice").unwrap();
+        let signed_up = sign_up(
+            &server,
+            &secrets,
+            "https://a.example",
+            "alice",
+            &password,
+            &device,
+            &|_| {},
+        )
+        .unwrap();
+        let original_token = signed_up.session.token().clone();
+        let locked = LockedSession::new(
+            signed_up.session.server.clone(),
+            signed_up.session.origin.clone(),
+            signed_up.session.account_id.clone(),
+            signed_up.session.username.clone(),
+            signed_up.session.device_id.clone(),
+            original_token.clone(),
+            signed_up.session.key_id(),
+            "0123456789abcdef".into(),
+            None,
+            None,
+        );
+
+        let wrong_password = Password::new("a wrong password entirely", "alice").unwrap();
+        assert!(unlock_with_password(&server, &locked, &wrong_password, &device, &|_| {}).is_err());
+
+        let unlocked = unlock_with_password(&server, &locked, &password, &device, &|_| {}).unwrap();
+        assert_eq!(unlocked.session.account_id, locked.account_id);
+        assert_eq!(unlocked.session.device_id, locked.device_id);
+        assert_eq!(unlocked.session.origin, locked.origin);
+        assert_eq!(unlocked.session.key_id(), locked.key_id);
+        assert_ne!(unlocked.session.token(), &original_token);
+        assert!(matches!(
+            server.api(&locked.server).account(&original_token),
+            Err(ApiError::Unauthorized { .. })
+        ));
+
+        let mut wrong_key = locked.clone();
+        wrong_key.key_id = "0000000000000000".into();
+        assert!(matches!(
+            unlock_with_password(&server, &wrong_key, &password, &device, &|_| {}),
+            Err(AccountError::KeyMismatch)
+        ));
+    }
+
+    #[test]
+    fn password_unlock_uses_the_persisted_provider_device_proof() {
+        use crate::crypto::b64;
+
+        let server = MemoryServer::new();
+        let secrets = crate::keychain::MemorySecrets::new();
+        let library_device = account_device();
+        let password = Password::new("a sufficiently long password", "alice").unwrap();
+        let signed_up = sign_up(
+            &server,
+            &secrets,
+            "https://a.example",
+            "alice",
+            &password,
+            &library_device,
+            &|_| {},
+        )
+        .unwrap();
+        let api = server.api("https://a.example");
+        let pre = prelogin(&server, &*api, "alice").unwrap();
+        let params = pre.params(&server).unwrap();
+        let keys = password_keys(
+            &password,
+            &signed_up.session.origin,
+            "alice",
+            &pre.salt,
+            params,
+        )
+        .unwrap();
+        let provider_device = LoginDevice {
+            id: "d_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+            proof: b64(&[91; 32]),
+        };
+        let initial = api
+            .login(&LoginRequest {
+                username: "alice".into(),
+                auth_key: keys.auth_key.to_base64url(),
+                device: provider_device.clone(),
+            })
+            .unwrap();
+        let mut locked = LockedSession::new(
+            signed_up.session.server.clone(),
+            signed_up.session.origin.clone(),
+            initial.account_id.clone(),
+            initial.username.clone(),
+            provider_device.id.clone(),
+            initial.token,
+            initial.key_id.clone(),
+            initial.epoch.clone(),
+            None,
+            None,
+        )
+        .with_login_device(provider_device.clone());
+        locked.set_library_id(&library_device.library_id);
+        assert_ne!(
+            locked.device_id,
+            library_device.device_id(&locked.account_id)
+        );
+
+        // Fill login-user without changing this provider device. A proof
+        // regenerated from the library identity would no longer be treated as
+        // the same device and would be rate limited; the persisted proof works.
+        for index in 0..9u8 {
+            let failed = api.login(&LoginRequest {
+                username: "alice".into(),
+                auth_key: b64(&[0; 32]),
+                device: LoginDevice {
+                    id: format!("d_{:032x}", u128::from(index) + 1),
+                    proof: b64(&[index.wrapping_add(1); 32]),
+                },
+            });
+            assert!(matches!(failed, Err(ApiError::InvalidCredentials)));
+        }
+
+        let unlocked = unlock_with_password(&server, &locked, &password, &library_device, &|_| {})
+            .expect("the stored provider device proof bypasses the new-device throttle");
+        assert_eq!(unlocked.session.device_id, provider_device.id);
+        assert_eq!(unlocked.session.account_id, signed_up.session.account_id);
+        assert_eq!(unlocked.session.origin, signed_up.session.origin);
+        assert_eq!(unlocked.session.key_id(), signed_up.session.key_id());
+
+        let wrong_proof = LoginDevice {
+            id: provider_device.id.clone(),
+            proof: b64(&[92; 32]),
+        };
+        let mut wrong_device = LockedSession::new(
+            locked.server.clone(),
+            locked.origin.clone(),
+            locked.account_id.clone(),
+            locked.username.clone(),
+            locked.device_id.clone(),
+            locked.token().clone(),
+            locked.key_id.clone(),
+            locked.epoch.clone(),
+            None,
+            None,
+        )
+        .with_login_device(wrong_proof);
+        wrong_device.set_library_id(&library_device.library_id);
+        assert!(matches!(
+            unlock_with_password(&server, &wrong_device, &password, &library_device, &|_| {}),
+            Err(AccountError::RateLimited { .. })
+        ));
+
+        let mut wrong_account = locked.clone();
+        wrong_account.account_id = "a_ffffffffffffffffffffffffffffffff".into();
+        assert!(matches!(
+            unlock_with_password(&server, &wrong_account, &password, &library_device, &|_| {}),
+            Err(AccountError::KeyMismatch)
+        ));
+        let mut wrong_origin = locked.clone();
+        wrong_origin.origin = "https://foreign.example".into();
+        assert!(matches!(
+            unlock_with_password(&server, &wrong_origin, &password, &library_device, &|_| {}),
+            Err(AccountError::KeyMismatch)
+        ));
+        let mut wrong_key = locked;
+        wrong_key.key_id = "0000000000000000".into();
+        assert!(matches!(
+            unlock_with_password(&server, &wrong_key, &password, &library_device, &|_| {}),
+            Err(AccountError::KeyMismatch)
+        ));
+    }
+
+    #[test]
+    fn locked_methods_refresh_password_hint_with_only_the_token() {
+        let server = MemoryServer::new();
+        let secrets = crate::keychain::MemorySecrets::new();
+        let device = account_device();
+        let password = Password::new("a sufficiently long password", "alice").unwrap();
+        let signed_up = sign_up(
+            &server,
+            &secrets,
+            "https://a.example",
+            "alice",
+            &password,
+            &device,
+            &|_| {},
+        )
+        .unwrap();
+        let mut locked = LockedSession::new(
+            signed_up.session.server.clone(),
+            signed_up.session.origin.clone(),
+            signed_up.session.account_id.clone(),
+            signed_up.session.username.clone(),
+            signed_up.session.device_id.clone(),
+            signed_up.session.token().clone(),
+            signed_up.session.key_id(),
+            "0123456789abcdef".into(),
+            None,
+            None,
+        )
+        .with_login_device(LoginDevice::for_identity(
+            &device,
+            &signed_up.session.origin,
+            &signed_up.session.account_id,
+        ));
+        locked.set_library_id(&device.library_id);
+        crate::keychain::save_locked_pending(&secrets, &device.library_id, &locked).unwrap();
+        let mut restored = crate::keychain::load_locked_pending(&secrets, &device.library_id)
+            .unwrap()
+            .unwrap();
+        assert!(!restored.has_password);
+        assert!(methods_locked(&server, &restored).unwrap());
+        refresh_locked_methods(&server, &mut restored).unwrap();
+        assert!(restored.has_password);
+    }
+
+    #[test]
+    fn sign_out_locked_never_deletes_another_accounts_session_or_recovery_item() {
+        let server = MemoryServer::new();
+        let secrets = crate::keychain::MemorySecrets::new();
+        let alice_device = account_device();
+        let alice_password = Password::new("a sufficiently long password", "alice").unwrap();
+        let alice = sign_up(
+            &server,
+            &secrets,
+            "https://a.example",
+            "alice",
+            &alice_password,
+            &alice_device,
+            &|_| {},
+        )
+        .unwrap();
+        crate::keychain::save_session(&secrets, &alice_device.library_id, &alice.session).unwrap();
+
+        let bob_device =
+            DeviceIdentity::from_parts("l_22222222222222222222222222222222", "Bob's Mac", [22; 32]);
+        let bob_password = Password::new("another sufficiently long password", "bob").unwrap();
+        let bob = sign_up(
+            &server,
+            &crate::keychain::MemorySecrets::new(),
+            "https://a.example",
+            "bob",
+            &bob_password,
+            &bob_device,
+            &|_| {},
+        )
+        .unwrap();
+        let mut locked_bob = LockedSession::new(
+            bob.session.server.clone(),
+            bob.session.origin.clone(),
+            bob.session.account_id.clone(),
+            bob.session.username.clone(),
+            bob.session.device_id.clone(),
+            bob.session.token().clone(),
+            bob.session.key_id(),
+            "0123456789abcdef".into(),
+            None,
+            None,
+        )
+        .with_login_device(LoginDevice::for_identity(
+            &bob_device,
+            &bob.session.origin,
+            &bob.session.account_id,
+        ));
+        locked_bob.set_library_id(&alice_device.library_id);
+        crate::keychain::save_locked_pending(&secrets, &alice_device.library_id, &locked_bob)
+            .unwrap();
+
+        sign_out_locked(&server, &secrets, &locked_bob).unwrap();
+
+        assert!(
+            crate::keychain::load_locked_pending(&secrets, &alice_device.library_id)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            crate::keychain::load_session(
+                &secrets,
+                &alice_device.library_id,
+                &alice.session.origin,
+                &alice.session.account_id,
+            )
+            .unwrap()
+            .is_some()
+        );
+        assert!(
+            crate::keychain::load_any_recovery_key(&secrets, &alice_device.library_id)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn cancelling_a_locked_session_deletes_it_and_queues_failed_logout() {
+        let server = MemoryServer::new();
+        let secrets = crate::keychain::MemorySecrets::new();
+        let device = account_device();
+        let password = Password::new("a sufficiently long password", "alice").unwrap();
+        let signed_up = sign_up(
+            &server,
+            &secrets,
+            "https://a.example",
+            "alice",
+            &password,
+            &device,
+            &|_| {},
+        )
+        .unwrap();
+        let mut locked = LockedSession::new(
+            signed_up.session.server.clone(),
+            signed_up.session.origin.clone(),
+            signed_up.session.account_id.clone(),
+            signed_up.session.username.clone(),
+            signed_up.session.device_id.clone(),
+            signed_up.session.token().clone(),
+            signed_up.session.key_id(),
+            "0123456789abcdef".into(),
+            None,
+            None,
+        );
+        let login_device = LoginDevice::for_identity(&device, &locked.origin, &locked.account_id);
+        locked = locked.with_login_device(login_device);
+        locked.set_library_id(&device.library_id);
+        crate::keychain::save_pending_session(&secrets, &device.library_id, &locked).unwrap();
+        server.lose_next_requests(Route::Logout, 1);
+
+        discard_locked_session(&server, &secrets, &locked).unwrap();
+
+        assert!(
+            crate::keychain::load_pending_session(
+                &secrets,
+                &device.library_id,
+                &locked.origin,
+                &locked.account_id,
+            )
+            .unwrap()
+            .is_none()
+        );
+        let pending = crate::keychain::pending_logouts(&secrets, &device.library_id).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].server, locked.server);
+        assert_eq!(pending[0].token, *locked.token());
+    }
+
+    #[test]
+    fn sign_out_also_deletes_a_pending_session() {
+        let server = MemoryServer::new();
+        let secrets = crate::keychain::MemorySecrets::new();
+        let device = account_device();
+        let password = Password::new("a sufficiently long password", "alice").unwrap();
+        let signed_up = sign_up(
+            &server,
+            &secrets,
+            "https://a.example",
+            "alice",
+            &password,
+            &device,
+            &|_| {},
+        )
+        .unwrap();
+        let mut locked = LockedSession::new(
+            signed_up.session.server.clone(),
+            signed_up.session.origin.clone(),
+            signed_up.session.account_id.clone(),
+            signed_up.session.username.clone(),
+            signed_up.session.device_id.clone(),
+            signed_up.session.token().clone(),
+            signed_up.session.key_id(),
+            "0123456789abcdef".into(),
+            None,
+            None,
+        );
+        let login_device = LoginDevice::for_identity(&device, &locked.origin, &locked.account_id);
+        locked = locked.with_login_device(login_device);
+        locked.set_library_id(&device.library_id);
+        crate::keychain::save_pending_session(&secrets, &device.library_id, &locked).unwrap();
+
+        sign_out(&server, &secrets, &signed_up.session).unwrap();
+
+        assert!(
+            crate::keychain::load_pending_session(
+                &secrets,
+                &device.library_id,
+                &locked.origin,
+                &locked.account_id,
+            )
+            .unwrap()
+            .is_none()
+        );
     }
 }

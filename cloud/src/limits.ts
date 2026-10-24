@@ -22,12 +22,20 @@ export type Rule =
 	| "login-user"
 	| "login-ip"
 	| "recover-ip"
+	| "passkey-challenge"
+	| "passkey-manage"
+	| "proof-account"
 	| "password-account"
 	| "writes-account"
 	| "uploads-account"
 	| "lookup-account"
 	| "join-account"
-	| "notify-account";
+	| "notify-account"
+	| "proof-account"
+	| "provider-poll"
+	| "approval-create"
+	| "approval-poll"
+	| "approval-respond";
 
 /**
  * Window and maximum of each rule. The two per-account daily rules read their
@@ -43,18 +51,38 @@ export type Rule =
  * `lookup-account` every public-key lookup by username, `join-account` every
  * request to join through a link (each one is a guess at a link's proof), and
  * `notify-account` every notification sent.
+ *
+ * Sign-in methods (docs/ACCOUNTS.md › Rate limits): `proof-account` counts every
+ * provider flow started for a link or a proof, per account; `provider-poll` every
+ * GitHub poll and Apple callback or poll, per flow (its key is a keyed hash of the
+ * flow ID, like an IP), 20 a minute.
+ *
+ * Device approval (design: Kanso accounts spec, revision 3 › Unlocking a new
+ * device) counts per account: `approval-create` every new request,
+ * `approval-poll` only the requester's poll of its own request (three
+ * requests polled every 2 s for five minutes, plus headroom), and
+ * `approval-respond` every challenge, name and approval answer. The
+ * approver's list GET isn't counted: it runs on an event or a launch, never
+ * on a timer.
  */
 export const RULES: Record<Rule, { window: number; max: number | null }> = {
 	"signup-ip": { window: HOUR, max: 10 },
 	"login-user": { window: 15 * 60_000, max: 10 },
 	"login-ip": { window: 15 * 60_000, max: 30 },
 	"recover-ip": { window: HOUR, max: 10 },
+	"passkey-challenge": { window: 15 * 60_000, max: 30 },
+	"passkey-manage": { window: HOUR, max: 20 },
+	"proof-account": { window: HOUR, max: 20 },
 	"password-account": { window: 15 * 60_000, max: 5 },
 	"writes-account": { window: DAY, max: null },
 	"uploads-account": { window: DAY, max: null },
 	"lookup-account": { window: HOUR, max: 120 },
 	"join-account": { window: HOUR, max: 20 },
 	"notify-account": { window: DAY, max: 500 },
+	"provider-poll": { window: 15 * 60_000, max: 300 },
+	"approval-create": { window: HOUR, max: 10 },
+	"approval-poll": { window: HOUR, max: 900 },
+	"approval-respond": { window: HOUR, max: 30 },
 };
 
 /**

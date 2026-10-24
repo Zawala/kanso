@@ -315,9 +315,12 @@ pub struct NoteEditor {
     spell_marks: SpellMarks,
     /// The shared note open, attached to the engine (`editor_collab.rs`).
     shared: Option<crate::collab_model::OpenShare>,
-    /// The title and text can't be changed: a note shared to view or
-    /// comment on.
+    /// Effective read-only state for the title and text inputs.
     text_read_only: bool,
+    /// Read-only because account unlock and binding consent are incomplete.
+    account_read_only: bool,
+    /// The shared-note role's read-only state, independent of the account gate.
+    collab_read_only: bool,
     /// What related notes say about the open note: suggested tags, and a
     /// note that says nearly the same.
     meaning: Entity<NoteMeaning>,
@@ -541,6 +544,8 @@ impl NoteEditor {
             spell_marks: Default::default(),
             shared: None,
             text_read_only: false,
+            account_read_only: false,
+            collab_read_only: false,
             meaning,
             peer_echo: None,
             from_peer: false,
@@ -1328,6 +1333,9 @@ impl NoteEditor {
     /// the note or quitting never loses it; the other version stays in
     /// history.
     pub fn flush(&mut self, cx: &mut Context<Self>) {
+        if writes_held(cx) {
+            return;
+        }
         self.autosave = None;
         // Another writer can win the race between reading and writing; try
         // again on top of its version.
@@ -1344,8 +1352,34 @@ impl NoteEditor {
         self.stash_draft(cx);
     }
 
+    /// Combines the account's locked-session gate with the current shared
+    /// note role, and updates both text inputs when either changes.
+    pub(super) fn refresh_text_read_only(&mut self, cx: &mut Context<Self>) {
+        let read_only = self.account_read_only || self.collab_read_only;
+        if self.text_read_only == read_only {
+            return;
+        }
+        self.text_read_only = read_only;
+        self.body
+            .update(cx, |state, cx| state.set_readonly(read_only, cx));
+        self.title
+            .update(cx, |state, cx| state.set_readonly(read_only, cx));
+        cx.notify();
+    }
+
+    fn set_account_read_only(&mut self, read_only: bool, cx: &mut Context<Self>) {
+        if self.account_read_only == read_only {
+            return;
+        }
+        self.account_read_only = read_only;
+        self.refresh_text_read_only(cx);
+    }
+
     /// Keeps the editor's text in the open note's history.
     fn stash_draft(&mut self, cx: &mut Context<Self>) {
+        if writes_held(cx) {
+            return;
+        }
         let Some(note) = &self.note else {
             return;
         };
@@ -1466,6 +1500,9 @@ impl NoteEditor {
         origin: Origin,
         cx: &mut Context<Self>,
     ) -> bool {
+        if writes_held(cx) {
+            return false;
+        }
         let mut note = base.clone();
         if !self.collab_attached() {
             let (title, body) = self.current_text(cx);
@@ -3609,10 +3646,13 @@ pub(crate) enum SaveState {
     Saved,
 }
 
-/// Whether a Replace holds the editors' saves (A10).
+/// Whether a Replace or a locked account holds editor writes.
 fn writes_held(cx: &App) -> bool {
     cx.try_global::<crate::services::Services>()
-        .is_some_and(|services| services.writes_held)
+        .is_some_and(|services| {
+            services.writes_held
+                || (services.has_locked_session() && !services.locked_replace_write_consent())
+        })
 }
 
 /// What the header says, from whether a change made elsewhere is waiting,
@@ -3854,6 +3894,10 @@ fn apply_edit(
 
 impl Render for NoteEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let account_locked = cx
+            .try_global::<crate::services::Services>()
+            .is_some_and(crate::services::Services::has_locked_session);
+        self.set_account_read_only(account_locked, cx);
         // The face follows the view mode and the font setting, however they
         // changed.
         let face = self
@@ -4862,6 +4906,56 @@ mod tests {
         }
         assert_eq!(save_state(false, false, || true), SaveState::NotSaved);
         assert_eq!(save_state(false, false, || false), SaveState::Saved);
+    }
+
+    #[gpui_kit::test]
+    fn a_locked_account_holds_editor_writes(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let (window, editor, store, id) = editor_on(cx, dir.path(), "before");
+        window
+            .update(cx, |_, window, cx| {
+                editor.update(cx, |editor, cx| editor.open(Some(&id), window, cx))
+            })
+            .unwrap();
+        cx.update(|cx| {
+            let mut services = crate::services::Services::default();
+            services.account = crate::services::AccountState::SignedInLocked {
+                username: "ngoni".into(),
+            };
+            cx.set_global(services);
+            cx.refresh_windows();
+        });
+        cx.run_until_parked();
+        assert!(cx.read(|cx| editor.read(cx).text_read_only));
+
+        window
+            .update(cx, |_, window, cx| {
+                editor.update(cx, |editor, cx| {
+                    editor.edit_for_test("after", window, cx);
+                    editor.flush(cx);
+                    editor.toggle_pinned(cx);
+                })
+            })
+            .unwrap();
+
+        let saved = store.note(&id).unwrap().unwrap();
+        assert_eq!(saved.body, "before");
+        assert!(!saved.pinned);
+
+        cx.update(|cx| {
+            cx.global_mut::<crate::services::Services>()
+                .begin_locked_replace_write_consent();
+        });
+        window
+            .update(cx, |_, _, cx| {
+                editor.update(cx, |editor, cx| editor.flush(cx))
+            })
+            .unwrap();
+        cx.update(|cx| {
+            cx.global_mut::<crate::services::Services>()
+                .end_locked_replace_write_consent();
+        });
+        assert_eq!(store.note(&id).unwrap().unwrap().body, "after");
     }
 
     /// While a change made elsewhere waits for an answer the header says

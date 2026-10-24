@@ -15,43 +15,74 @@
 
 pub mod account;
 pub mod api;
+pub mod approval;
+pub mod approvals;
 pub mod binding;
 pub mod crypto;
 mod engine;
+pub mod events;
 mod http;
 pub mod keychain;
 pub mod lock;
 mod memory;
+pub mod passkey;
+pub mod provider;
 mod remote;
 mod sealed;
+pub mod security_key;
 pub mod share;
 pub mod site;
 pub mod username;
 mod verify;
 pub mod wire;
+pub mod ws;
 
 pub use account::{
     AccountError, DEFAULT_SERVER, DeviceInfo, PasswordChanged, Quota, Recovered, RotationError,
     Session, SignedIn, SignedUp, SignupState, Step, Usage, change_password, delete_account,
-    devices, discard_session, flush_pending_logouts, new_recovery_key, recover, recovery_key_held,
-    revoke_device, server_info, sign_in, sign_out, sign_up, usage,
+    devices, discard_locked_session, discard_session, finish_google, finish_identity,
+    finish_identity_google, flush_pending_logouts, methods, methods_locked, new_recovery_key,
+    poll_provider, recover, recovery_key_held, refresh_locked_methods, revoke_device, server_auth,
+    server_info, sign_in, sign_in_with_provider, sign_out, sign_out_locked, sign_up,
+    sign_up_with_provider, start_identity, start_provider, unlink_identity, unlock_with_password,
+    usage,
 };
 pub use api::{Api, Backend, Route};
+pub use approval::{Approval, ApprovalKeys};
+pub use approvals::{
+    ApprovalRequest, ApprovalResume, Approved, LockedSession, OpenedRequest, PendingApproval,
+    PinnedRequest, RequestState, account_events_path, cancel_request, cancel_saved_approval,
+    challenge_request, complete_request, complete_saved_request, decline_request, finish_approval,
+    finish_unlock, name_device, name_device_resumable, new_approval_request_id, open_request,
+    pending_approvals, poll_approval, poll_saved_approval, request_approval,
+    request_approval_resumable, resume_approval, unlock_with_local_key,
+};
 pub use binding::{
     BindError, Choice, DeviceIdentity, Flow, LocalLibrary, Machine, Plan, bind, device_identity,
     device_name, local_library, meta_keys, plan, unbind,
 };
-pub use crypto::{CollabRoots, KdfParams, Password, PasswordError, RecoveryKey, RecoveryKeyError};
+pub use crypto::{
+    CollabRoots, KdfParams, PRF_INPUT, Password, PasswordError, RecoveryKey, RecoveryKeyError,
+    WrapPurpose, passkey_kek,
+};
 pub use engine::{
     Schedule, SyncError, SyncOptions, SyncProblem, SyncReport, batches, problem, report_problem,
     sync,
 };
+pub use events::{AccountEvent, EventError, EventSource, Signal};
 pub use http::HttpBackend;
 pub use kanso_store::SyncDoc;
 pub use keychain::{Keychain, MemorySecrets, SecretError, SecretStore};
 pub use memory::{
     AccountSnapshot, DEFAULT_SETTINGS, Limits, MemoryServer, QuotaOverride, ServerDevice,
     ServerStats, Signup, is_valid_setting,
+};
+pub use passkey::{PasskeyAssertion, PasskeyRegistration};
+pub use provider::{
+    AccountMethods, AppleCallback, AppleStart, GithubStart, GoogleStart, IdentityIntent,
+    LinkOutcome, LinkedProvider, Loopback, NewAccount, PasskeyInfo, PasskeyMethods, ProofWire,
+    Provider, ProviderSession, ProviderSignIn, ProviderStart, ProviderStep, ServerAuth,
+    apple_callback_flow,
 };
 pub use remote::{
     PushResult, RemoteDoc, RemoteError, is_doc_id, is_file_id, is_md5_hex, is_rev, md5_hex,
@@ -68,6 +99,9 @@ pub use wire::{ApiError, QuotaKind, SessionToken, SignOutReason, SignupClosedRea
 const _: fn() = || {
     fn send_sync<T: Send + Sync + ?Sized>() {}
     send_sync::<Session>();
+    send_sync::<LockedSession>();
+    send_sync::<ApprovalKeys>();
+    send_sync::<Approval>();
     send_sync::<dyn Backend>();
     send_sync::<HttpBackend>();
     send_sync::<MemoryServer>();

@@ -34,6 +34,7 @@ mod collab_tests;
 mod collab_text;
 mod commands;
 mod config;
+mod device_approval;
 mod dialogs;
 mod dictation;
 mod due;
@@ -98,6 +99,8 @@ mod pouch_import;
 mod preview;
 mod preview_chunks;
 mod preview_rich;
+#[allow(dead_code)]
+mod provider_browser;
 mod publish;
 mod publish_site;
 mod query_view_ui;

@@ -915,7 +915,10 @@ proptest! {
 
                     // Whatever the attacks, the replay floor never drops, and
                     // a document's content only changes to a version above
-                    // the floor it had: a replay never reverts.
+                    // the floor it had: a replay never reverts. The one
+                    // documented exception is a live version this Mac never
+                    // held over its own deletion (an edit beats a deletion);
+                    // that is `RemoteWon`, flagged as a conflict.
                     let floors_after = floors(&a.store);
                     for (id, (rev, deleted, floor)) in &floors_before {
                         let Some((after_rev, after_deleted, after_floor)) = floors_after.get(id) else {
@@ -924,8 +927,11 @@ proptest! {
                         };
                         prop_assert!(after_floor >= floor, "{}'s floor fell from {} to {}", id, floor, after_floor);
                         if hash(after_rev) != hash(rev) || after_deleted != deleted {
+                            let resurrected = *deleted
+                                && !after_deleted
+                                && matches!(&result, Ok(report) if report.conflicted.iter().any(|c| c == id));
                             prop_assert!(
-                                generation(after_rev) > *floor,
+                                resurrected || generation(after_rev) > *floor,
                                 "{} went from {} to {}, not above its floor {}", id, rev, after_rev, floor
                             );
                         }

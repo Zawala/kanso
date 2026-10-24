@@ -46,6 +46,9 @@ pub const KEYS_WRONG: &str =
     "Something's wrong with the server's copy of your keys. Nothing was changed on this device.";
 pub const PASSWORDS_DIFFER: &str = "The passwords don't match.";
 const SERVER_TROUBLE: &str = "The server couldn't do that. Try again in a moment.";
+/// The approver found the request's key or name doesn't match what it
+/// committed to (docs/ACCOUNTS.md › The protocol, step 5).
+pub const APPROVAL_CHANGED: &str = "This request changed after it was made. Don't approve.";
 
 /// The words for a failed account task. Every variant has words, and none
 /// repeats text that came from the server or the network.
@@ -88,12 +91,37 @@ pub fn error_words(err: &AccountError, context: ErrorContext) -> String {
         AccountError::QuotaExceeded { .. } => {
             "Your account is full. Delete something or ask the server's owner for more space."
         }
+        AccountError::UnsupportedMethod => "That sign-in method isn't available on this server.",
+        AccountError::FlowExpired | AccountError::NonceReused => "That sign-in expired. Try again.",
+        AccountError::ReauthRequired => {
+            "Confirm it's you with your password or a passkey, then try again."
+        }
+        AccountError::ProviderDisabled => "That sign-in method isn't available on this server.",
+        AccountError::ProviderDenied => "The sign-in was cancelled at the provider.",
+        AccountError::ProviderUnavailable => {
+            "The provider couldn't be reached. Try again in a moment."
+        }
+        AccountError::IdentityTaken => "That account is already linked to another Kanso account.",
+        AccountError::LastMethod => {
+            "This is the last way to sign in. Save your recovery key first."
+        }
+        AccountError::AlreadyHasPassword => {
+            "This account already has a password. Change it instead."
+        }
+        AccountError::CredentialExists => "That passkey is already added.",
         AccountError::Keychain(_) => SECRET_STORE_TROUBLE,
         AccountError::UnsavedRecoveryKey { username } => {
             return format!(
                 "Save the new recovery key for {username} first. Kanso shows it on the Account page."
             );
         }
+        AccountError::SelfApproval => "A device can't approve itself.",
+        AccountError::ApprovalUsed => "That request was already answered. Ask again.",
+        AccountError::ApprovalExpired => "That approval request expired. Ask again.",
+        AccountError::ApprovalRequestIdConflict => {
+            "That approval request couldn't be resumed. Start again."
+        }
+        AccountError::ApprovalChanged => APPROVAL_CHANGED,
         AccountError::BadRequest
         | AccountError::ChecksumMismatch
         | AccountError::MethodNotAllowed
@@ -648,10 +676,25 @@ mod tests {
             AccountError::InvalidCredentials,
             AccountError::ForbiddenOrigin,
             AccountError::AccountDisabled,
+            AccountError::UnsupportedMethod,
+            AccountError::FlowExpired,
+            AccountError::ReauthRequired,
+            AccountError::ProviderDisabled,
+            AccountError::ProviderDenied,
+            AccountError::ProviderUnavailable,
+            AccountError::IdentityTaken,
+            AccountError::LastMethod,
+            AccountError::AlreadyHasPassword,
+            AccountError::CredentialExists,
+            AccountError::NonceReused,
             AccountError::NotFound,
             AccountError::MethodNotAllowed,
             AccountError::UsernameTaken,
             AccountError::AccountIdTaken,
+            AccountError::SelfApproval,
+            AccountError::ApprovalUsed,
+            AccountError::ApprovalExpired,
+            AccountError::ApprovalChanged,
             AccountError::TooLarge,
             AccountError::QuotaExceeded {
                 quota: QuotaKind::Docs,

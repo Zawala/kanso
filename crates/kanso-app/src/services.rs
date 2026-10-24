@@ -17,8 +17,8 @@ use kanso_server::{ServerConfig, ServerHandle};
 use kanso_store::{Change, Origin};
 use kanso_sync::keychain::PendingRecoveryKey;
 use kanso_sync::{
-    Backend, DeviceInfo, Machine, RecoveryKey, Schedule, SecretStore, Session, SignOutReason,
-    SignupState, Step, SyncError, SyncOptions, SyncProblem, SyncReport, Usage,
+    Backend, DeviceInfo, Machine, PendingApproval, RecoveryKey, Schedule, SecretStore, Session,
+    SignOutReason, SignupState, Step, SyncError, SyncOptions, SyncProblem, SyncReport, Usage,
 };
 
 use crate::config::ServerSettings;
@@ -66,6 +66,11 @@ pub enum AccountState {
     SignedIn {
         username: String,
     },
+    /// Provider identity is verified, but this device has not obtained the
+    /// library key. `Services.session` deliberately remains empty here.
+    SignedInLocked {
+        username: String,
+    },
     /// The server ended this Mac's session (a 401): the Sign in form shows
     /// under the reason.
     SessionEnded {
@@ -98,6 +103,27 @@ pub enum TaskKind {
 pub struct RunningTask {
     pub kind: TaskKind,
     pub step: Step,
+}
+
+/// A provider ticket waiting for the user to choose a username. Kept only in
+/// process until signup or cancellation; it is never persisted.
+#[derive(Clone)]
+pub struct ProviderSignup {
+    pub server: String,
+    pub provider: kanso_sync::Provider,
+    pub ticket: String,
+    pub suggested_username: String,
+    pub login_device: kanso_sync::api::LoginDevice,
+}
+
+/// A provider flow the account worker is waiting on. Cancellation is logical:
+/// Apple may leave its native system sheet open until the user dismisses it.
+#[derive(Clone)]
+pub struct ProviderWait {
+    pub provider: &'static str,
+    pub user_code: Option<String>,
+    pub verification_uri: Option<String>,
+    pub cancel: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// A recovery key the user hasn't confirmed saving: the Account page shows
@@ -136,6 +162,63 @@ pub struct AccountDetails {
     pub stale: bool,
     /// Why the last fetch failed, in plain words.
     pub failed: Option<String>,
+}
+
+/// The signed-in account's ways in, as last fetched. A newer refresh hides
+/// the retained success from the page until it has answered.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AccountMethodsState {
+    pub last_successful: Option<kanso_sync::AccountMethods>,
+    pub loading: bool,
+    pub failed: Option<String>,
+    /// Rejects answers from an earlier Account page visit.
+    pub generation: u64,
+}
+
+impl AccountMethodsState {
+    /// Starts a refresh and makes every earlier answer stale.
+    pub fn begin_refresh(&mut self) -> u64 {
+        self.generation = self.generation.wrapping_add(1);
+        self.loading = true;
+        self.failed = None;
+        self.generation
+    }
+
+    /// Keeps the previous success available internally if the latest fetch
+    /// fails; the page uses `failed` to avoid presenting it as current.
+    pub fn finish_failure(&mut self, generation: u64, reason: String) -> bool {
+        if self.generation != generation {
+            return false;
+        }
+        self.loading = false;
+        self.failed = Some(reason);
+        true
+    }
+
+    pub fn finish_success(&mut self, generation: u64, methods: kanso_sync::AccountMethods) -> bool {
+        if self.generation != generation {
+            return false;
+        }
+        self.last_successful = Some(methods);
+        self.loading = false;
+        self.failed = None;
+        true
+    }
+}
+
+/// The live account approval UI: what the approver's sheet shows, and the
+/// new device's waiting page. The socket's stop flag lives here so a
+/// sign-out or a new session can end it.
+#[derive(Default)]
+pub struct ApprovalUi {
+    /// The open approver sheet, if any.
+    pub sheet: Option<Entity<crate::device_approval::ApprovalSheet>>,
+    /// The account's pending requests from other devices, as last read.
+    pub pending: Vec<PendingApproval>,
+    /// The new device's waiting page, once it asks to be approved.
+    pub waiting: Option<crate::device_approval::WaitingState>,
+    /// Stops the account event socket when set.
+    pub event_stop: Option<Arc<AtomicBool>>,
 }
 
 /// What keeps automatic syncs from running after a problem (the problems
@@ -199,11 +282,37 @@ pub struct Services {
     /// task runs (`recover/start` counts against a per-address limit).
     pub key_check_due: bool,
     pub details: AccountDetails,
+    pub account_methods: AccountMethodsState,
+    /// Device approval's live UI and event socket.
+    pub approval: ApprovalUi,
     /// What a server last said about new accounts, for the Create account
     /// form: the server's URL and its answer.
     pub signup: Option<(String, SignupState)>,
     /// The server being asked about new accounts right now.
     pub signup_asking: Option<String>,
+    /// The provider methods advertised by the current form server. An old
+    /// server (or a failed health request) leaves this empty, preserving the
+    /// username/password form.
+    pub auth: Option<(String, kanso_sync::ServerAuth)>,
+    /// Health request in flight, tagged with a generation to reject A→B→A
+    /// stale answers.
+    pub auth_asking: Option<(String, u64)>,
+    /// The server/generation already attempted for the currently open form.
+    pub auth_attempted: Option<(String, u64)>,
+    pub auth_generation: u64,
+    pub provider_signup: Option<ProviderSignup>,
+    pub provider_wait: Option<ProviderWait>,
+    /// A provider-authenticated token awaiting a local key, approval, or
+    /// recovery. It stays outside `AccountState` and is never a sync session.
+    pub locked_session: Option<Arc<kanso_sync::LockedSession>>,
+    /// A completed unlock awaiting the Account page's binding-consent dialog
+    /// when launch restore completed before any window was available.
+    pub(crate) pending_unlocked_candidate: Option<crate::account_flow::UnlockedCandidate>,
+    /// Password availability for a locked account; refreshed opportunistically.
+    pub locked_has_password: Option<bool>,
+    /// Briefly true only while an explicitly confirmed Replace flushes open
+    /// editors into the backup before a locked account is promoted.
+    locked_replace_write_consent: bool,
     /// The servers' seam: `HttpBackend` in the app, `MemoryServer` in tests.
     /// Without one, nothing reaches a server.
     pub backend: Option<Arc<dyn Backend>>,
@@ -272,6 +381,25 @@ impl Services {
         matches!(self.account, AccountState::SignedIn { .. })
     }
 
+    /// Whether this library is in the app-side locked lifecycle, including
+    /// while an account task temporarily displays `Busy`.
+    pub fn has_locked_session(&self) -> bool {
+        self.locked_session.is_some() || matches!(self.account, AccountState::SignedInLocked { .. })
+    }
+
+    /// Whether the UI is inside the synchronous, consented Replace flush.
+    pub fn locked_replace_write_consent(&self) -> bool {
+        self.locked_replace_write_consent
+    }
+
+    pub(crate) fn begin_locked_replace_write_consent(&mut self) {
+        self.locked_replace_write_consent = true;
+    }
+
+    pub(crate) fn end_locked_replace_write_consent(&mut self) {
+        self.locked_replace_write_consent = false;
+    }
+
     pub fn session(&self) -> Option<Arc<Session>> {
         self.session.clone()
     }
@@ -325,22 +453,34 @@ impl Services {
     /// Signs the window in with `session` (after the binding, the Keychain
     /// item and the config are written).
     pub fn set_signed_in(&mut self, session: Arc<Session>) {
+        self.locked_session = None;
+        self.pending_unlocked_candidate = None;
+        self.locked_has_password = None;
+        self.approval.waiting = None;
+        self.locked_replace_write_consent = false;
         self.account = AccountState::SignedIn {
             username: session.username.clone(),
         };
         self.session = Some(session);
         self.hold = None;
         self.details = AccountDetails::default();
+        self.account_methods = AccountMethodsState::default();
     }
 
     /// Forgets the session (its keys are zeroized once the sync thread lets
     /// go of it too) and stops automatic syncs.
     pub fn clear_session(&mut self, account: AccountState) {
         self.session = None;
+        self.locked_session = None;
+        self.pending_unlocked_candidate = None;
+        self.locked_has_password = None;
+        self.approval.waiting = None;
+        self.locked_replace_write_consent = false;
         self.account = account;
         self.hold = None;
         self.sync = SyncState::Off;
         self.details = AccountDetails::default();
+        self.account_methods = AccountMethodsState::default();
         self.sync_tasks.clear();
         self.sync_after_edit = None;
     }
@@ -730,6 +870,7 @@ pub fn notify_windows(
 /// while it still holds the ended session, never the one the recovery
 /// saved meanwhile.
 pub fn end_session(reason: SignOutReason, cx: &mut App) {
+    crate::device_approval::stop_events(cx);
     let services = cx.global_mut::<Services>();
     let own_recovery = services
         .task
@@ -905,8 +1046,9 @@ pub(crate) mod strategies {
 #[cfg(test)]
 mod tests {
     use super::{
-        AccountState, ApiState, Hold, SyncState, api_state, hold_after, holds_at, is_local_edit,
-        queued_again, server_config, stale_key, state_problem, sync_outcome,
+        AccountMethodsState, AccountState, ApiState, Hold, Services, SyncState, api_state,
+        hold_after, holds_at, is_local_edit, queued_again, server_config, stale_key, state_problem,
+        sync_outcome,
     };
     use crate::config::ServerSettings;
     use kanso_sync::RecoveryKey;
@@ -914,6 +1056,41 @@ mod tests {
     use kanso_sync::{ApiError, SignOutReason, SyncError, SyncProblem, SyncReport};
     use proptest::prelude::*;
     use std::net::IpAddr;
+
+    fn account_methods(has_password: bool) -> kanso_sync::AccountMethods {
+        kanso_sync::AccountMethods {
+            has_password,
+            rp_id: None,
+            available: Vec::new(),
+            linked: Vec::new(),
+            passkeys: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn methods_refresh_rejects_stale_answers_and_marks_retained_success_failed() {
+        let mut state = AccountMethodsState::default();
+        let first = state.begin_refresh();
+        assert!(state.finish_success(first, account_methods(true)));
+
+        let second = state.begin_refresh();
+        assert!(!state.finish_success(first, account_methods(false)));
+        assert!(state.finish_failure(second, "offline".into()));
+        assert_eq!(state.last_successful, Some(account_methods(true)));
+        assert!(!state.loading);
+        assert_eq!(state.failed.as_deref(), Some("offline"));
+    }
+
+    #[test]
+    fn signing_out_clears_account_methods() {
+        let mut services = Services::default();
+        let generation = services.account_methods.begin_refresh();
+        services
+            .account_methods
+            .finish_success(generation, account_methods(true));
+        services.clear_session(AccountState::SignedOut);
+        assert_eq!(services.account_methods, AccountMethodsState::default());
+    }
 
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(256))]

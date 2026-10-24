@@ -34,7 +34,8 @@ use crate::clock::Clock;
 use crate::dialogs::{self, Field, FormSpec, FormView, Progress, Submit};
 use crate::library::Library;
 use crate::services::{
-    self, AccountDetails, AccountState, PendingKey, Services, SyncState, TaskKind,
+    self, AccountDetails, AccountMethodsState, AccountState, PendingKey, Services, SyncState,
+    TaskKind,
 };
 use crate::settings::{Row, SYNC_INTERVALS, interval_label, section, status_row, sync_status_line};
 use crate::theme::Colors;
@@ -56,6 +57,33 @@ pub enum SignedOutForm {
     Recover,
 }
 
+fn runnable_methods(auth: Option<&kanso_sync::ServerAuth>) -> (bool, Vec<kanso_sync::Provider>) {
+    match auth {
+        None => (true, Vec::new()),
+        Some(auth) => (
+            auth.password,
+            auth.providers
+                .iter()
+                .filter(|provider| {
+                    matches!(
+                        provider,
+                        kanso_sync::Provider::Google | kanso_sync::Provider::Github
+                    ) || (cfg!(target_os = "macos") && **provider == kanso_sync::Provider::Apple)
+                })
+                .cloned()
+                .collect(),
+        ),
+    }
+}
+
+fn completed_form(current: SignedOutForm, has_provider_ticket: bool) -> SignedOutForm {
+    if has_provider_ticket {
+        SignedOutForm::CreateAccount
+    } else {
+        current
+    }
+}
+
 impl SignedOutForm {
     /// The task each form starts, so its button is the one that spins.
     fn task(self) -> Option<TaskKind> {
@@ -72,7 +100,7 @@ impl SignedOutForm {
 /// (or the recovery form, when asked for) until signed in again.
 pub fn form_for(account: &AccountState, chosen: SignedOutForm) -> SignedOutForm {
     match account {
-        AccountState::SignedIn { .. } => SignedOutForm::None,
+        AccountState::SignedIn { .. } | AccountState::SignedInLocked { .. } => SignedOutForm::None,
         AccountState::SessionEnded { .. } if chosen != SignedOutForm::Recover => {
             SignedOutForm::SignIn
         }
@@ -148,11 +176,21 @@ impl AccountPage {
     /// The page came into view: storage and devices are fetched again, and
     /// the Create account form asks its server about new accounts.
     pub fn shown(&mut self, cx: &mut Context<Self>) {
+        if cx.try_global::<Services>().is_some_and(Services::signed_in) {
+            crate::device_approval::refresh(cx);
+        }
         if cx.global::<Services>().signed_in() {
             account_flow::refresh_details(cx);
+            account_flow::refresh_account_methods(cx);
         }
         if self.form == SignedOutForm::CreateAccount {
             account_flow::check_signup(cx);
+        }
+        if self.form != SignedOutForm::None
+            && !cx.global::<Services>().signed_in()
+            && !cx.global::<Services>().has_locked_session()
+        {
+            account_flow::check_auth(cx);
         }
     }
 
@@ -163,10 +201,13 @@ impl AccountPage {
 
     /// Shows `form` from empty, the keyboard in its first field.
     pub fn open_form(&mut self, form: SignedOutForm, window: &mut Window, cx: &mut Context<Self>) {
-        if self.waiting {
+        if self.waiting || cx.global::<Services>().has_locked_session() {
             return;
         }
         self.form = form;
+        if form != SignedOutForm::CreateAccount {
+            cx.global_mut::<Services>().provider_signup = None;
+        }
         self.error = None;
         self.clear_secrets(window, cx);
         if form == SignedOutForm::CreateAccount {
@@ -178,6 +219,9 @@ impl AccountPage {
                 .and_then(|counts| counts.get(&DocType::Note).copied())
                 .unwrap_or(0);
             account_flow::check_signup(cx);
+        }
+        if matches!(form, SignedOutForm::CreateAccount | SignedOutForm::SignIn) {
+            account_flow::refresh_auth(cx);
         }
         if form != SignedOutForm::None {
             self.username
@@ -199,7 +243,7 @@ impl AccountPage {
     /// Presses the form's button.
     pub fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let services = cx.global::<Services>();
-        if self.waiting || services.task.is_some() {
+        if self.waiting || services.task.is_some() || services.has_locked_session() {
             return;
         }
         let form = form_for(&services.account, self.form);
@@ -211,8 +255,30 @@ impl AccountPage {
         let handle = window.window_handle();
         let started = match form {
             SignedOutForm::None => return,
-            SignedOutForm::CreateAccount => check_sign_up(&username, &password, &confirm)
-                .map(|(name, password)| account_flow::sign_up(server, name, password, handle, cx)),
+            SignedOutForm::CreateAccount => {
+                if let Some(provider_signup) = cx.global::<Services>().provider_signup.clone() {
+                    if provider_signup.server != server {
+                        cx.global_mut::<Services>().provider_signup = None;
+                        self.error =
+                            Some("The server changed. Start provider sign up again.".into());
+                        cx.notify();
+                        return;
+                    }
+                    match kanso_sync::check_new_username(&username) {
+                        Ok(name) => Ok(account_flow::provider_sign_up(
+                            provider_signup,
+                            name,
+                            handle,
+                            cx,
+                        )),
+                        Err(err) => Err(words::username_words(err).to_owned()),
+                    }
+                } else {
+                    check_sign_up(&username, &password, &confirm).map(|(name, password)| {
+                        account_flow::sign_up(server, name, password, handle, cx)
+                    })
+                }
+            }
             SignedOutForm::SignIn => check_sign_in(&username, &password)
                 .map(|(name, password)| account_flow::sign_in(server, name, password, handle, cx)),
             SignedOutForm::Recover => {
@@ -266,8 +332,16 @@ impl AccountPage {
                     Ok(()) => {
                         this.error = None;
                         this.clear_secrets(window, cx);
+                        let ticket = cx.global::<Services>().provider_signup.clone();
+                        this.form = completed_form(this.form, ticket.is_some());
+                        if let Some(ticket) = ticket {
+                            this.username.update(cx, |input, cx| {
+                                input.set_value(ticket.suggested_username, window, cx);
+                            });
+                        }
                         if cx.global::<Services>().signed_in() {
                             this.form = SignedOutForm::None;
+                            cx.global_mut::<Services>().provider_signup = None;
                         }
                     }
                     Err(words) => this.error = Some(words.into()),
@@ -322,9 +396,27 @@ impl AccountPage {
 
 impl Render for AccountPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let candidate = {
+            let services = cx.global_mut::<Services>();
+            if services.task.is_none()
+                && services.pending_key.is_none()
+                && services.approval.waiting.is_none()
+            {
+                services.pending_unlocked_candidate.take()
+            } else {
+                None
+            }
+        };
+        if let Some(candidate) = candidate {
+            let handle = window.window_handle();
+            cx.defer(move |cx| {
+                account_flow::finish_unlocked_candidate(candidate, Some(handle), None, cx)
+            });
+        }
         let services = cx.global::<Services>();
         let account = services.account.clone();
         let pending = services.pending_key.clone();
+        let waiting = services.approval.waiting.clone();
         // An ended session fills in its name once, for Sign in.
         if let AccountState::SessionEnded { username, .. } = &account
             && self.prefilled.as_ref() != Some(username)
@@ -334,16 +426,112 @@ impl Render for AccountPage {
             self.username
                 .update(cx, |input, cx| input.set_value(name, window, cx));
         }
-        let body = match (&pending, &account) {
-            (Some(key), _) => self.key_screen(key, cx),
-            (None, AccountState::SignedIn { username }) => self.signed_in_page(username, cx),
-            (None, _) => self.signed_out_page(&account, cx),
+        let body = match (&pending, &waiting, &account) {
+            (Some(key), _, _) => self.key_screen(key, cx),
+            (None, Some(waiting), _) => {
+                vec![crate::device_approval::waiting_page(waiting, window, cx)]
+            }
+            (None, None, AccountState::SignedIn { username }) => self.signed_in_page(username, cx),
+            (None, None, AccountState::SignedInLocked { username }) => {
+                self.locked_page(username, window, cx)
+            }
+            (None, None, _) => self.signed_out_page(&account, window, cx),
         };
         v_flex().w_full().children(body)
     }
 }
 
 impl AccountPage {
+    fn locked_page(
+        &mut self,
+        _username: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let colors = Colors::get(cx);
+        let has_password = cx.global::<Services>().locked_has_password.unwrap_or(false);
+        let start_again = cx
+            .global::<Services>()
+            .approval
+            .waiting
+            .as_ref()
+            .is_some_and(|waiting| {
+                matches!(
+                    waiting.phase,
+                    crate::device_approval::WaitPhase::Expired
+                        | crate::device_approval::WaitPhase::Cancelled
+                )
+            });
+        let busy = self.waiting || cx.global::<Services>().task.is_some();
+        let approval_window = window.window_handle();
+        let mut page = vec![
+            div()
+                .text_size(px(17.))
+                .line_height(px(24.))
+                .font_semibold()
+                .text_color(colors.text)
+                .child("Approve this device")
+                .into_any_element(),
+            div()
+                .text_size(px(13.5))
+                .line_height(px(20.))
+                .text_color(colors.text_secondary)
+                .child("Open Kanso on a device that's already signed in and approve this one.")
+                .into_any_element(),
+        ];
+        page.push(
+            h_flex()
+                .mt(px(10.))
+                .gap_2()
+                .child(
+                    Button::new("locked-start-approval")
+                        .primary()
+                        .label(if start_again {
+                            "Start again"
+                        } else {
+                            "Ask another device"
+                        })
+                        .disabled(busy)
+                        .on_click(move |_, _, cx| {
+                            account_flow::restart_device_approval(Some(approval_window), cx)
+                        }),
+                )
+                .child(
+                    Button::new("locked-cancel")
+                        .outline()
+                        .label("Cancel")
+                        .disabled(busy)
+                        .on_click(|_, _, cx| account_flow::cancel_locked_session(cx)),
+                )
+                .into_any_element(),
+        );
+        if has_password {
+            page.push(
+                Button::new("locked-password")
+                    .ghost()
+                    .small()
+                    .label("Unlock with password")
+                    .disabled(busy)
+                    .on_click(|_, window, cx| {
+                        unlock_password_dialog(window, cx);
+                    })
+                    .into_any_element(),
+            );
+        }
+        page.push(
+            Button::new("locked-recovery")
+                .ghost()
+                .small()
+                .label("Use your recovery key")
+                .disabled(busy)
+                .on_click(|_, window, cx| {
+                    recover_dialog(window, cx);
+                })
+                .into_any_element(),
+        );
+        page
+    }
+
     fn tooltip(cx: &App) -> String {
         cx.try_global::<Services>()
             .map(|services| services.sync_status(cx))
@@ -419,12 +607,24 @@ impl AccountPage {
     fn signed_out_page(
         &mut self,
         account: &AccountState,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let colors = Colors::get(cx);
         let services = cx.global::<Services>();
         let task = services.task;
         let signup = services.signup.clone();
+        let server = account_flow::form_server(cx);
+        let provider_signup = services
+            .provider_signup
+            .clone()
+            .filter(|ticket| ticket.server == server);
+        let current_auth = services
+            .auth
+            .as_ref()
+            .filter(|(asked, _)| *asked == account_flow::form_server(cx))
+            .map(|(_, auth)| auth);
+        let (password_available, advertised) = runnable_methods(current_auth);
         let form = form_for(account, self.form);
         let busy = self.waiting || task.is_some();
         let status = sync_status_line(
@@ -436,6 +636,69 @@ impl AccountPage {
             None,
         );
         let mut page = vec![status_row(&status, Self::tooltip(cx), None, colors)];
+        if let Some(wait) = services.provider_wait.as_ref() {
+            let mut waiting = h_flex().mt(px(14.)).gap(px(8.));
+            waiting = if let (Some(uri), Some(code)) =
+                (wait.verification_uri.as_ref(), wait.user_code.as_ref())
+            {
+                waiting.child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(colors.text_secondary)
+                        .child(format!("Enter this code at {uri}: {code}")),
+                )
+            } else {
+                waiting.child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(colors.text_secondary)
+                        .child(format!("Waiting for {0} sign-in…", wait.provider)),
+                )
+            };
+            waiting = waiting.child(
+                Button::new("cancel-provider-wait")
+                    .ghost()
+                    .small()
+                    .label("Cancel")
+                    .debug_selector(|| "cancel-provider-wait".into())
+                    .on_click(|_, _, cx| account_flow::cancel_provider_wait(cx))
+                    .into_any_element(),
+            );
+            page.push(
+                v_flex()
+                    .mt(px(14.))
+                    .gap(px(6.))
+                    .child(waiting)
+                    .children(wait.user_code.as_ref().map(|code| {
+                        div()
+                            .px(px(12.))
+                            .py(px(8.))
+                            .rounded(px(6.))
+                            .bg(colors.list)
+                            .font_family(cx.theme().mono_font_family.clone())
+                            .text_size(px(20.))
+                            .text_color(colors.text)
+                            .child(code.clone())
+                    }))
+                    .when(wait.user_code.is_some(), |view| {
+                        view.child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(colors.text_secondary)
+                                .child("This code stays here while Kanso checks for approval."),
+                        )
+                    })
+                    .when(wait.provider == "Apple", |view| {
+                        view.child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(colors.text_secondary)
+                                .child("Cancel stops waiting. Dismiss the Apple sign-in sheet separately."),
+                        )
+                    })
+                    .into_any_element(),
+            );
+        }
         if form == SignedOutForm::None {
             // What an account gives, before what it asks.
             let benefit = |icon: Lucide, text: &'static str| {
@@ -498,7 +761,6 @@ impl AccountPage {
             );
             return page;
         }
-        let server = account_flow::form_server(cx);
         let signup = signup
             .filter(|(asked, _)| *asked == server)
             .map(|(_, signup)| signup);
@@ -597,7 +859,116 @@ impl AccountPage {
                 "Set new password",
             ),
         };
-        page.push(section(title, rows, colors));
+        if matches!(form, SignedOutForm::SignIn | SignedOutForm::CreateAccount)
+            && !(form == SignedOutForm::CreateAccount && provider_signup.is_some())
+        {
+            for provider in &advertised {
+                let (sign_in_label, create_label, selector, icon) = match provider {
+                    kanso_sync::Provider::Apple if cfg!(target_os = "macos") => (
+                        "Continue with Apple",
+                        "Create with Apple",
+                        "account-provider-apple",
+                        Lucide::Apple,
+                    ),
+                    kanso_sync::Provider::Google => (
+                        "Continue with Google",
+                        "Create with Google",
+                        "account-provider-google",
+                        Lucide::Globe,
+                    ),
+                    kanso_sync::Provider::Github => (
+                        "Continue with GitHub",
+                        "Create with GitHub",
+                        "account-provider-github",
+                        Lucide::Github,
+                    ),
+                    _ => continue,
+                };
+                let label = if form == SignedOutForm::SignIn {
+                    sign_in_label
+                } else {
+                    create_label
+                };
+                let provider = provider.clone();
+                page.push(
+                    Button::new(SharedString::from(selector))
+                        .outline()
+                        .icon(icon)
+                        .label(label)
+                        .disabled(
+                            busy || (form == SignedOutForm::CreateAccount
+                                && !matches!(signup.as_ref(), Some(SignupState::Open))),
+                        )
+                        .debug_selector(move || selector.into())
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            let progress = account_flow::start_provider(
+                                provider.clone(),
+                                form == SignedOutForm::CreateAccount,
+                                window.window_handle(),
+                                cx,
+                            );
+                            this.listen(progress, window, cx);
+                        }))
+                        .into_any_element(),
+                );
+            }
+            if advertised.iter().any(|provider| {
+                *provider == kanso_sync::Provider::Google
+                    || *provider == kanso_sync::Provider::Github
+                    || (cfg!(target_os = "macos") && *provider == kanso_sync::Provider::Apple)
+            }) {
+                page.push(
+                    div()
+                        .mt(px(10.))
+                        .mb(px(10.))
+                        .h(px(1.))
+                        .w_full()
+                        .bg(colors.divider)
+                        .into_any_element(),
+                );
+            }
+        }
+
+        if form == SignedOutForm::CreateAccount
+            && let Some(provider_signup) = &provider_signup
+        {
+            self.username.update(cx, |input, cx| {
+                if input.value().is_empty() {
+                    input.set_value(provider_signup.suggested_username.clone(), window, cx);
+                }
+            });
+            page.push(
+                div()
+                    .mb(px(8.))
+                    .text_size(px(13.))
+                    .line_height(px(18.))
+                    .text_color(colors.text_secondary)
+                    .child("You can change this before creating the account.")
+                    .into_any_element(),
+            );
+            page.push(section(
+                title,
+                vec![
+                    self.field_row(
+                        Lucide::User,
+                        "Username",
+                        Some("3–32 lowercase letters, digits, - or _"),
+                        &self.username,
+                        "account-username",
+                        busy,
+                    ),
+                    self.server_row(busy, cx),
+                ],
+                colors,
+            ));
+        } else {
+            let rows = if password_available || form == SignedOutForm::Recover {
+                rows
+            } else {
+                rows.into_iter().last().into_iter().collect()
+            };
+            page.push(section(title, rows, colors));
+        }
 
         // Under the form: what will happen, the error, and the buttons.
         // Only a full server blocks the form: "closed" may hide a reservation.
@@ -625,10 +996,9 @@ impl AccountPage {
             .items_center()
             .child(
                 // A row, so the link keeps its own width at the left.
-                h_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .when(form == SignedOutForm::SignIn, |el| {
+                h_flex().flex_1().min_w_0().when(
+                    form == SignedOutForm::SignIn && password_available,
+                    |el| {
                         el.child(
                             Button::new("account-forgot")
                                 .ghost()
@@ -640,7 +1010,8 @@ impl AccountPage {
                                     this.open_form(SignedOutForm::Recover, window, cx)
                                 })),
                         )
-                    }),
+                    },
+                ),
             )
             .when(!(ended && form == SignedOutForm::SignIn), |el| {
                 el.child(
@@ -653,17 +1024,22 @@ impl AccountPage {
                         })),
                 )
             })
-            .child(
-                Button::new("account-submit")
-                    .primary()
-                    .label(label)
-                    // The spinner takes the icon's place; a loading button
-                    // ignores clicks, and keeps its colors so the step reads.
-                    .when(spinning, |button| button.icon(Lucide::RefreshCcw))
-                    .loading(spinning)
-                    .disabled(!ready && !spinning)
-                    .debug_selector(|| "account-submit".into())
-                    .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))),
+            .when(
+                password_available || form == SignedOutForm::Recover || provider_signup.is_some(),
+                |el| {
+                    el.child(
+                        Button::new("account-submit")
+                            .primary()
+                            .label(label)
+                            // The spinner takes the icon's place; a loading button
+                            // ignores clicks, and keeps its colors so the step reads.
+                            .when(spinning, |button| button.icon(Lucide::RefreshCcw))
+                            .loading(spinning)
+                            .disabled(!ready && !spinning)
+                            .debug_selector(|| "account-submit".into())
+                            .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))),
+                    )
+                },
             );
         page.push(
             v_flex()
@@ -825,6 +1201,7 @@ impl AccountPage {
         let state = services.sync.clone();
         let account = services.account_state();
         let details = services.details.clone();
+        let account_methods = services.account_methods.clone();
         let busy = services.task.is_some();
         let server = services
             .session()
@@ -912,6 +1289,8 @@ impl AccountPage {
 
         let storage = storage_detail(&details);
         let devices = device_rows(&details, busy, cx);
+        let sign_in_methods =
+            sign_in_methods_rows(&account_methods, |at| Clock::edited_label(cx, at));
 
         vec![
             status_row(&status, Self::tooltip(cx), Some(actions.into_any_element()), colors),
@@ -942,6 +1321,10 @@ impl AccountPage {
                 ],
                 colors,
             ),
+            div()
+                .debug_selector(|| "account-sign-in-methods".into())
+                .child(section("Sign-in methods", sign_in_methods, colors))
+                .into_any_element(),
             section("Devices", devices, colors),
             section(
                 "Security",
@@ -1032,6 +1415,122 @@ pub fn storage_detail(details: &AccountDetails) -> String {
         (Some(usage), _) => words::storage_line(usage),
         (None, Some(failed)) => failed.clone(),
         (None, None) => "Checking…".to_owned(),
+    }
+}
+
+/// Sign-in method rows, in display order. While a refresh is pending or has
+/// failed, retained methods are deliberately hidden so old data is not shown
+/// as current.
+fn sign_in_methods_rows(state: &AccountMethodsState, when: impl Fn(i64) -> String) -> Vec<Row> {
+    sign_in_method_lines(state, when)
+        .into_iter()
+        .map(|(icon, title, detail)| Row::new(icon, title).detail(detail))
+        .collect()
+}
+
+fn sign_in_method_lines(
+    state: &AccountMethodsState,
+    when: impl Fn(i64) -> String,
+) -> Vec<(Lucide, String, String)> {
+    if state.loading {
+        return vec![(
+            Lucide::KeyRound,
+            "Sign-in methods".into(),
+            if state.last_successful.is_some() {
+                "Refreshing…"
+            } else {
+                "Checking…"
+            }
+            .into(),
+        )];
+    }
+    if let Some(failed) = &state.failed {
+        return vec![(
+            Lucide::KeyRound,
+            "Sign-in methods".into(),
+            format!("Couldn't refresh. {failed}"),
+        )];
+    }
+    let Some(methods) = &state.last_successful else {
+        return vec![(
+            Lucide::KeyRound,
+            "Sign-in methods".into(),
+            "Checking…".into(),
+        )];
+    };
+
+    let mut rows = vec![(
+        Lucide::KeyRound,
+        "Password".into(),
+        if methods.has_password {
+            "Password set"
+        } else {
+            "No password"
+        }
+        .into(),
+    )];
+    rows.extend(methods.linked.iter().map(|linked| {
+        (
+            provider_icon(&linked.provider),
+            provider_name(&linked.provider),
+            format!("linked {}", when(linked.created_at)),
+        )
+    }));
+    rows.extend(methods.passkeys.iter().map(|passkey| {
+        let mut detail = format!("added {}", when(passkey.created_at));
+        if let Some(last_used_at) = passkey.last_used_at {
+            detail.push_str(&format!(" · last used {}", when(last_used_at)));
+        }
+        detail.push_str(if passkey.prf {
+            " · can unlock"
+        } else {
+            " · signs in only"
+        });
+        (Lucide::FingerprintPattern, "Passkey".into(), detail)
+    }));
+    let unlinked = methods.unlinked();
+    if !unlinked.is_empty() {
+        let names = unlinked.iter().map(provider_name).collect::<Vec<_>>();
+        let available = match names.as_slice() {
+            [only] => format!("{only} is available to link."),
+            [first, second] => format!("{first} and {second} are available to link."),
+            _ => format!("{} are available to link.", names.join(", ")),
+        };
+        rows.push((Lucide::Globe, "Available providers".into(), available));
+    }
+    rows.push((
+        Lucide::FileKey,
+        "Recovery key".into(),
+        "Your recovery key still works if you lose these.".into(),
+    ));
+    if sign_in_method_count(methods) == 1 {
+        rows.push((
+            Lucide::Info,
+            "Sign-in".into(),
+            "This is your last way to sign in.".into(),
+        ));
+    }
+    rows
+}
+
+fn sign_in_method_count(methods: &kanso_sync::AccountMethods) -> usize {
+    usize::from(methods.has_password) + methods.linked.len() + methods.passkeys.len()
+}
+
+fn provider_name(provider: &kanso_sync::Provider) -> String {
+    match provider {
+        kanso_sync::Provider::Apple => "Apple".to_owned(),
+        kanso_sync::Provider::Google => "Google".to_owned(),
+        kanso_sync::Provider::Github => "GitHub".to_owned(),
+        kanso_sync::Provider::Other(name) => name.clone(),
+    }
+}
+
+fn provider_icon(provider: &kanso_sync::Provider) -> Lucide {
+    match provider {
+        kanso_sync::Provider::Apple => Lucide::Apple,
+        kanso_sync::Provider::Github => Lucide::Github,
+        kanso_sync::Provider::Google | kanso_sync::Provider::Other(_) => Lucide::Globe,
     }
 }
 
@@ -1129,6 +1628,7 @@ pub fn fingerprint_lines(fingerprint: &str) -> Vec<String> {
 fn account_name(cx: &App) -> Option<String> {
     match &cx.try_global::<Services>()?.account {
         AccountState::SignedIn { username } => Some(username.clone()),
+        AccountState::SignedInLocked { username } => Some(username.clone()),
         _ => None,
     }
 }
@@ -1217,11 +1717,42 @@ pub fn recover_dialog(window: &mut Window, cx: &mut App) -> Option<Entity<FormVi
             .field(Field::secret("Confirm new password")),
         window,
         cx,
-        move |values, _, cx| match recovery_values(&values, &username) {
+        move |values, window, cx| match recovery_values(&values, &username) {
             Ok((key, password)) => {
-                Submit::Running(account_flow::recover_signed_in(key, password, cx))
+                let progress = if cx.global::<Services>().has_locked_session() {
+                    account_flow::recover_locked(key, password, Some(window.window_handle()), cx)
+                } else {
+                    account_flow::recover_signed_in(key, password, cx)
+                };
+                Submit::Running(progress)
             }
             Err(words) => Submit::Invalid(words),
+        },
+    ))
+}
+
+/// Password unlock for a provider session; the data key is returned only
+/// after the server authenticates the saved provider LoginDevice.
+pub fn unlock_password_dialog(window: &mut Window, cx: &mut App) -> Option<Entity<FormView>> {
+    let username = account_name(cx)?;
+    Some(dialogs::form(
+        FormSpec::new("Unlock this device", "Unlock")
+            .description("Your password unlocks this device's local copy of your notes.")
+            .field(Field::secret("Password")),
+        window,
+        cx,
+        move |values, window, cx| {
+            let [password] = values.as_slice() else {
+                return Submit::Invalid("Enter your password.".into());
+            };
+            match check_sign_in(&username, password) {
+                Ok((_, password)) => Submit::Running(account_flow::unlock_locked_password(
+                    password,
+                    Some(window.window_handle()),
+                    cx,
+                )),
+                Err(error) => Submit::Invalid(error),
+            }
         },
     ))
 }
@@ -1377,9 +1908,10 @@ fn write_and_tell(path: &Path, text: &str, window: &mut Window, cx: &mut App) {
 mod tests {
     use super::{
         FINGERPRINT_SENTENCE, SignedOutForm, device_detail, fingerprint_lines, form_for,
-        storage_detail, write_key_file,
+        runnable_methods, sign_in_method_count, sign_in_method_lines, storage_detail,
+        write_key_file,
     };
-    use crate::services::{AccountDetails, AccountState, strategies};
+    use crate::services::{AccountDetails, AccountMethodsState, AccountState, strategies};
     use kanso_sync::{DeviceInfo, Quota, Usage};
     use proptest::prelude::*;
 
@@ -1440,6 +1972,131 @@ mod tests {
         );
     }
 
+    #[test]
+    fn signed_in_methods_show_current_text_and_last_way_only_for_one_method() {
+        let mut methods = kanso_sync::AccountMethods {
+            has_password: false,
+            rp_id: None,
+            available: vec![kanso_sync::Provider::Apple, kanso_sync::Provider::Google],
+            linked: vec![kanso_sync::provider::LinkedProvider {
+                provider: kanso_sync::Provider::Apple,
+                created_at: 1,
+            }],
+            passkeys: vec![kanso_sync::provider::PasskeyInfo {
+                credential_id: vec![1],
+                created_at: 2,
+                last_used_at: Some(3),
+                prf: true,
+                transports: vec![],
+            }],
+        };
+        let state = AccountMethodsState {
+            last_successful: Some(methods.clone()),
+            ..AccountMethodsState::default()
+        };
+        let lines = sign_in_method_lines(&state, |at| format!("date-{at}"));
+        let text = lines
+            .iter()
+            .map(|(_, title, detail)| format!("{title} · {detail}"))
+            .collect::<Vec<_>>();
+        assert_eq!(text[0], "Password · No password");
+        assert_eq!(text[1], "Apple · linked date-1");
+        assert_eq!(
+            text[2],
+            "Passkey · added date-2 · last used date-3 · can unlock"
+        );
+        assert!(text.contains(&"Available providers · Google is available to link.".to_owned()));
+        assert!(text.contains(
+            &"Recovery key · Your recovery key still works if you lose these.".to_owned()
+        ));
+        assert!(!text.iter().any(|line| line.contains("last way")));
+        assert_eq!(sign_in_method_count(&methods), 2);
+
+        methods.has_password = true;
+        methods.linked.clear();
+        methods.passkeys.clear();
+        assert_eq!(sign_in_method_count(&methods), 1);
+        let state = AccountMethodsState {
+            last_successful: Some(methods),
+            ..AccountMethodsState::default()
+        };
+        let text = sign_in_method_lines(&state, |_| "unused".into());
+        assert!(text.iter().any(|(_, _, detail)| detail == "Password set"));
+        assert!(
+            text.iter()
+                .any(|(_, _, detail)| detail == "This is your last way to sign in.")
+        );
+    }
+
+    #[test]
+    fn methods_refresh_states_do_not_present_retained_data_as_current() {
+        let last_successful = kanso_sync::AccountMethods {
+            has_password: true,
+            rp_id: None,
+            available: vec![],
+            linked: vec![],
+            passkeys: vec![],
+        };
+        let loading = AccountMethodsState {
+            last_successful: Some(last_successful.clone()),
+            loading: true,
+            ..AccountMethodsState::default()
+        };
+        let failed = AccountMethodsState {
+            last_successful: Some(last_successful),
+            failed: Some("Offline".into()),
+            ..AccountMethodsState::default()
+        };
+        for (state, status) in [
+            (loading, "Refreshing…"),
+            (failed, "Couldn't refresh. Offline"),
+        ] {
+            let lines = sign_in_method_lines(&state, |_| "unused".into());
+            assert_eq!(lines.len(), 1);
+            assert_eq!(lines[0].2, status);
+            assert!(!lines.iter().any(|(_, title, _)| title == "Password"));
+            assert!(
+                !lines
+                    .iter()
+                    .any(|(_, _, detail)| detail.contains("last way"))
+            );
+        }
+    }
+
+    #[test]
+    fn signed_out_methods_match_runnable_health_and_old_server_fallback() {
+        let (password, providers) = runnable_methods(None);
+        assert!(password, "old servers retain password sign in");
+        assert!(providers.is_empty());
+
+        let mut auth = kanso_sync::ServerAuth {
+            password: false,
+            ..Default::default()
+        };
+        assert!(!runnable_methods(Some(&auth)).0, "passwordless server");
+        auth.providers = vec![
+            kanso_sync::Provider::Github,
+            kanso_sync::Provider::Apple,
+            kanso_sync::Provider::Google,
+        ];
+        let methods = runnable_methods(Some(&auth)).1;
+        #[cfg(target_os = "macos")]
+        assert_eq!(methods, auth.providers, "preserve server method ordering");
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(
+            methods,
+            vec![kanso_sync::Provider::Github, kanso_sync::Provider::Google]
+        );
+    }
+
+    #[test]
+    fn provider_ticket_completion_selects_create_form_from_signin_or_signup() {
+        for entry in [SignedOutForm::SignIn, SignedOutForm::CreateAccount] {
+            let resulting = super::completed_form(entry, true);
+            assert_eq!(resulting, SignedOutForm::CreateAccount);
+        }
+    }
+
     /// The key's file is written whole and readable only by its owner,
     /// even where a file with looser permissions was.
     #[test]
@@ -1466,7 +2123,9 @@ mod tests {
         ])) {
             let form = form_for(&account, chosen);
             match account {
-                AccountState::SignedIn { .. } => prop_assert_eq!(form, SignedOutForm::None),
+                AccountState::SignedIn { .. } | AccountState::SignedInLocked { .. } => {
+                    prop_assert_eq!(form, SignedOutForm::None)
+                },
                 AccountState::SessionEnded { .. } => {
                     prop_assert!(matches!(form, SignedOutForm::SignIn | SignedOutForm::Recover));
                     prop_assert_eq!(form == SignedOutForm::Recover, chosen == SignedOutForm::Recover);
