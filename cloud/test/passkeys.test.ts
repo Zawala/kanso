@@ -306,6 +306,39 @@ describe("sign-up with a passkey", () => {
 		expect(live?.n).toBe(0);
 	});
 
+	it("keeps the known transport hints, smart-card included, and drops unknown ones", async () => {
+		const device = newDevice();
+		const credential = newCredential();
+		const start = await startSignup(device, "card-user");
+		const finish = await callJson("/v2/auth/passkey/signup/finish", {
+			json: {
+				flow_id: start.body.flow_id,
+				...registration(credential, start.body.challenge),
+				transports: ["smart-card", "usb", "cable2", "x-vendor", "usb", "nfc"],
+				username: "card-user",
+				account_id: start.body.account_id,
+				recovery_auth_key: recoveryAuthKey(),
+				recovery_wrapped_key: recoveryWrappedKey(),
+				key_id: keyId(),
+				device: { id: device.id, sealed_name: device.sealedName, proof: device.proof },
+			},
+			env: passportEnv(),
+			now: NOW,
+		});
+		expect(finish.status).toBe(201);
+		const row = await env.DB.prepare("SELECT transports FROM account_passkeys WHERE credential_id = ?1")
+			.bind(base64url(credential.credentialId))
+			.first<{ transports: string }>();
+		expect(row?.transports).toBe("smartcard usb nfc");
+		// A typed-username start lists them back under their WebAuthn names.
+		const signIn = await callJson("/v2/auth/passkey/start", {
+			json: { username: "card-user", device: { id: device.id, proof: device.proof } },
+			env: passportEnv(),
+			now: NOW + 1000,
+		});
+		expect(signIn.body.allow_credentials).toEqual([{ id: base64url(credential.credentialId), transports: ["smart-card", "usb", "nfc"] }]);
+	});
+
 	it("refuses a wrong RP ID hash, a missing UV flag, a wrong origin and a bad attestation", async () => {
 		const device = newDevice();
 		const credential = newCredential();

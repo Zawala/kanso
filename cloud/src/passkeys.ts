@@ -89,12 +89,33 @@ function expected(env: Env, challenge: string): Expected | Response {
 	return { rpId: advertisement.rp_id, origins: advertisement.origins, challenge };
 }
 
+/**
+ * The WebAuthn transport hints the column keeps, by the name it stores. The
+ * column's CHECK (0006) allows only lowercase letters and spaces, so
+ * `smart-card` is stored as `smartcard` and read back as `smart-card`.
+ */
+const KNOWN_TRANSPORTS: Record<string, string> = {
+	usb: "usb",
+	nfc: "nfc",
+	ble: "ble",
+	hybrid: "hybrid",
+	internal: "internal",
+	"smart-card": "smartcard",
+};
+const STORED_TRANSPORTS = new Map(Object.entries(KNOWN_TRANSPORTS).map(([hint, stored]) => [stored, hint]));
+
 /** The transports a start lists, from the space-separated hints the server stored. */
-const transports = (value: string): string[] => value.split(" ").filter((t) => t !== "");
+const transports = (value: string): string[] =>
+	value
+		.split(" ")
+		.map((t) => STORED_TRANSPORTS.get(t))
+		.filter((t): t is string => t !== undefined);
 
 /**
  * Reads a `transports` array from a registration body: at most 32 lowercase
- * hints, de-duplicated, as the space-separated string the column holds.
+ * hints, de-duplicated, as the space-separated string the column holds. A
+ * well-formed hint the column doesn't know is dropped (hints only help
+ * `allowCredentials`); a malformed one is 400.
  */
 function transportsField(value: unknown): string | null {
 	if (value === undefined || value === null) return "";
@@ -102,10 +123,10 @@ function transportsField(value: unknown): string | null {
 	const seen: string[] = [];
 	for (const item of value) {
 		if (typeof item !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(item)) return null;
-		if (!seen.includes(item)) seen.push(item);
+		const stored = Object.hasOwn(KNOWN_TRANSPORTS, item) ? KNOWN_TRANSPORTS[item] : undefined;
+		if (stored !== undefined && !seen.includes(stored)) seen.push(stored);
 	}
-	const joined = seen.join(" ");
-	return joined.length <= 64 ? joined : null;
+	return seen.join(" ");
 }
 
 function optionalWrap(value: unknown): string | null | undefined {
