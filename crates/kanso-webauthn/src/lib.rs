@@ -664,8 +664,9 @@ mod platform {
 
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Networking::WindowsWebServices::{
-        WEBAUTHN_ASSERTION, WEBAUTHN_ATTESTATION_CONVEYANCE_PREFERENCE_NONE,
-        WEBAUTHN_AUTHENTICATOR_ATTACHMENT_ANY, WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS,
+        WEBAUTHN_ASSERTION, WEBAUTHN_ASSERTION_VERSION_3,
+        WEBAUTHN_ATTESTATION_CONVEYANCE_PREFERENCE_NONE, WEBAUTHN_AUTHENTICATOR_ATTACHMENT_ANY,
+        WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS,
         WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS_CURRENT_VERSION,
         WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS,
         WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS_CURRENT_VERSION, WEBAUTHN_CLIENT_DATA,
@@ -719,25 +720,6 @@ mod platform {
                 >()
         );
     };
-
-    #[cfg(test)]
-    mod layout_tests {
-        use super::*;
-
-        #[test]
-        fn abi_extensions_start_after_the_binding_structs() {
-            assert_eq!(
-                std::mem::offset_of!(MakeCredentialOptionsV8, pPRFGlobalEval),
-                std::mem::size_of::<WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS>()
-            );
-            assert_eq!(
-                std::mem::offset_of!(CredentialAttestationV7, pHmacSecret),
-                std::mem::size_of::<
-                    windows::Win32::Networking::WindowsWebServices::WEBAUTHN_CREDENTIAL_ATTESTATION,
-                >()
-            );
-        }
-    }
 
     fn wide(text: &str) -> Vec<u16> {
         text.encode_utf16().chain(std::iter::once(0)).collect()
@@ -899,7 +881,7 @@ mod platform {
             return Err(CeremonyError::Incomplete);
         }
         // SAFETY: the platform owns the attestation until the free call.
-        let result = unsafe {
+        unsafe {
             let attestation = &*attestation;
             let credential_id = bytes(attestation.pbCredentialId, attestation.cbCredentialId);
             let object = bytes(
@@ -929,8 +911,7 @@ mod platform {
                 transports,
                 prf,
             })
-        };
-        result
+        }
     }
 
     pub(super) fn assert(request: &AssertionRequest) -> Result<PasskeyAssertion, CeremonyError> {
@@ -959,9 +940,12 @@ mod platform {
             cCredentials: pointers.len() as u32,
             ppCredentials: pointers.as_mut_ptr(),
         };
-        let mut salt = request.prf_input.map(|input| WEBAUTHN_HMAC_SECRET_SALT {
+        // The salt's bytes live in this `Box` until the function returns, on
+        // every path, as `register` keeps its PRF input; the API only reads them.
+        let mut prf_input: Option<Box<[u8; 32]>> = request.prf_input.map(Box::new);
+        let mut salt = prf_input.as_mut().map(|input| WEBAUTHN_HMAC_SECRET_SALT {
             cbFirst: 32,
-            pbFirst: Box::into_raw(Box::new(input)) as *mut u8,
+            pbFirst: input.as_mut_ptr(),
             cbSecond: 0,
             pbSecond: std::ptr::null_mut(),
         });
@@ -1011,7 +995,11 @@ mod platform {
             } else {
                 Some(bytes(assertion.pbUserId, assertion.cbUserId))
             };
-            let prf = if assertion.pHmacSecret.is_null() {
+            // `pHmacSecret` exists only from version 3 of the structure; an
+            // older one ends before it.
+            let prf = if assertion.dwVersion < WEBAUTHN_ASSERTION_VERSION_3
+                || assertion.pHmacSecret.is_null()
+            {
                 None
             } else {
                 let secret = &*assertion.pHmacSecret;
@@ -1031,12 +1019,9 @@ mod platform {
                 prf,
             })
         };
-        // The salt's `Box` is released with the request.
-        if let Some(salt) = salt {
-            if !salt.pbFirst.is_null() {
-                unsafe { drop(Box::from_raw(salt.pbFirst)) };
-            }
-        }
+        // The salt pointed into `prf_input`, which is freed only now, after
+        // the call; an early return frees it the same way.
+        drop(prf_input);
         result
     }
 
@@ -1046,6 +1031,25 @@ mod platform {
         let _ = std::mem::size_of::<c_void>();
         let _ = w!("");
     };
+
+    #[cfg(test)]
+    mod layout_tests {
+        use super::*;
+
+        #[test]
+        fn abi_extensions_start_after_the_binding_structs() {
+            assert_eq!(
+                std::mem::offset_of!(MakeCredentialOptionsV8, pPRFGlobalEval),
+                std::mem::size_of::<WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS>()
+            );
+            assert_eq!(
+                std::mem::offset_of!(CredentialAttestationV7, pHmacSecret),
+                std::mem::size_of::<
+                    windows::Win32::Networking::WindowsWebServices::WEBAUTHN_CREDENTIAL_ATTESTATION,
+                >()
+            );
+        }
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
