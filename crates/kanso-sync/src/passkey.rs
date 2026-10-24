@@ -6,11 +6,64 @@
 //! ceremony happens in the app, and nothing here talks to the network.
 
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::crypto::{
     CryptoError, DataKey, PRF_INPUT, WrapPurpose, b64, passkey_kek, unb64, unwrap, wrap,
 };
+
+/// The server-issued options a platform registration ceremony consumes.
+/// `origin` is the advertised WebAuthn client-data origin; key wrapping uses
+/// the account's canonical server origin separately.
+#[derive(Clone, PartialEq, Eq)]
+pub struct PasskeyRegistrationChallenge {
+    pub rp_id: String,
+    pub origin: String,
+    pub challenge: Vec<u8>,
+    pub user_handle: Vec<u8>,
+    pub username: String,
+    pub display_name: String,
+    pub exclude_credentials: Vec<Vec<u8>>,
+    pub request_prf: bool,
+}
+
+/// The server-issued options a platform assertion ceremony consumes.
+#[derive(Clone, PartialEq, Eq)]
+pub struct PasskeyAssertionChallenge {
+    pub rp_id: String,
+    pub origin: String,
+    pub challenge: Vec<u8>,
+    pub allow_credentials: Vec<Vec<u8>>,
+    pub request_prf: bool,
+}
+
+/// A platform passkey ceremony did not produce a credential result. This is
+/// deliberately non-diagnostic: native errors can contain authenticator or
+/// credential details that must not enter app logs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum PasskeyCeremonyError {
+    #[error("passkeys aren't available on this device")]
+    Unavailable,
+    #[error("the passkey ceremony was cancelled")]
+    Cancelled,
+    #[error("the passkey ceremony failed")]
+    Failed,
+}
+
+/// Platform boundary for the account flows. Native app code implements this
+/// with AuthenticationServices/Win32 WebAuthn or Linux libfido2; tests can
+/// inject a deterministic ceremony without claiming hardware was exercised.
+pub trait PasskeyCeremony {
+    fn register(
+        &self,
+        challenge: &PasskeyRegistrationChallenge,
+    ) -> Result<PasskeyRegistration, PasskeyCeremonyError>;
+
+    fn assert(
+        &self,
+        challenge: &PasskeyAssertionChallenge,
+    ) -> Result<PasskeyAssertion, PasskeyCeremonyError>;
+}
 
 /// The user handle a Kanso account uses:
 /// `SHA-256("kanso/v1/webauthn-user" || lp(account_id))[0..16]`. Opaque to the
@@ -78,6 +131,22 @@ impl PasskeyAssertion {
     }
 }
 
+impl Drop for PasskeyRegistration {
+    fn drop(&mut self) {
+        if let Some(prf_out) = self.prf.as_mut() {
+            prf_out.zeroize();
+        }
+    }
+}
+
+impl Drop for PasskeyAssertion {
+    fn drop(&mut self) {
+        if let Some(prf_out) = self.prf.as_mut() {
+            prf_out.zeroize();
+        }
+    }
+}
+
 impl std::fmt::Debug for PasskeyRegistration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PasskeyRegistration")
@@ -123,6 +192,76 @@ pub fn open_passkey_wrapped_key(
 ) -> Result<DataKey, CryptoError> {
     let kek = passkey_kek(prf_out, origin, account_id, &b64(credential_id));
     unwrap(&kek, WrapPurpose::Passkey, account_id, wrapped)
+}
+
+/// Opens a returned passkey wrap only when it authenticates and names the
+/// account's current data key. A passkey wrap is never interpreted as a
+/// password wrap.
+pub fn open_passkey_session_key(
+    prf_out: &[u8; 32],
+    origin: &str,
+    account_id: &str,
+    credential_id: &[u8],
+    wrapped: Option<&str>,
+    expected_key_id: &str,
+) -> Result<DataKey, CryptoError> {
+    let wrapped = wrapped.ok_or(CryptoError::KeyMismatch)?;
+    let key = open_passkey_wrapped_key(prf_out, origin, account_id, credential_id, wrapped)?;
+    if crate::crypto::key_id(&key) != expected_key_id {
+        return Err(CryptoError::KeyMismatch);
+    }
+    Ok(key)
+}
+
+#[cfg(test)]
+mod wrap_tests {
+    use super::*;
+    use crate::crypto::{DataKey, key_id};
+
+    #[test]
+    fn prf_wrap_round_trips_and_cannot_move_between_credentials() {
+        let prf = [7; 32];
+        let key = DataKey::generate();
+        let wrapped = passkey_wrapped_key(
+            &prf,
+            "https://sync.example",
+            "a_account",
+            b"credential-a",
+            &key,
+        );
+        let opened = open_passkey_session_key(
+            &prf,
+            "https://sync.example",
+            "a_account",
+            b"credential-a",
+            Some(&wrapped),
+            &key_id(&key),
+        )
+        .unwrap();
+        assert_eq!(key_id(&opened), key_id(&key));
+        assert_eq!(
+            open_passkey_session_key(
+                &prf,
+                "https://sync.example",
+                "a_account",
+                b"credential-b",
+                Some(&wrapped),
+                &key_id(&key)
+            ),
+            Err(CryptoError::KeyMismatch)
+        );
+        assert_eq!(
+            open_passkey_session_key(
+                &prf,
+                "https://sync.example",
+                "a_account",
+                b"credential-a",
+                None,
+                &key_id(&key)
+            ),
+            Err(CryptoError::KeyMismatch)
+        );
+    }
 }
 
 // -------------------------------------------------------------- client data
