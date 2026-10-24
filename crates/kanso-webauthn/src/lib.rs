@@ -212,6 +212,11 @@ mod platform {
         DefinedClass as _, MainThreadMarker, MainThreadOnly, available, class, define_class,
         msg_send, sel,
     };
+    // The classes are looked up by name at run time, so nothing else makes
+    // the linker load the framework: link it here, not only from the app.
+    #[link(name = "AuthenticationServices", kind = "framework")]
+    unsafe extern "C" {}
+
     use objc2_app_kit::NSApplication;
     use objc2_foundation::{
         NSArray, NSData, NSDate, NSDefaultRunLoopMode, NSError, NSRunLoop, NSString,
@@ -337,11 +342,17 @@ mod platform {
 
     /// The PRF output, when the platform exposed one. Only macOS 15 has the
     /// `prf` property; on 13 and 14 the credential registers without a wrap.
+    /// A registration's `prf` is an
+    /// `ASAuthorizationPublicKeyCredentialPRFRegistrationOutput` (`isSupported`,
+    /// `first`, `second`); an assertion's is an
+    /// `ASAuthorizationPublicKeyCredentialPRFAssertionOutput` (`first`,
+    /// `second`). Only `first` is used: Kanso sends one salt.
     unsafe fn prf_from(credential: *mut AnyObject) -> Result<Option<[u8; 32]>, String> {
         if !available!(macos = 15.0) {
             return Ok(None);
         }
-        // SAFETY: the caller holds a credential object; on macOS 15 it answers `prf`.
+        // SAFETY: the caller holds a credential object; every selector is
+        // checked before it is sent.
         unsafe {
             if !msg_send![credential, respondsToSelector: sel!(prf)] {
                 return Ok(None);
@@ -350,96 +361,109 @@ mod platform {
             if prf.is_null() {
                 return Ok(None);
             }
-            let enabled: Bool = msg_send![prf, isEnabled];
-            if !enabled.as_bool() {
+            let responds_supported: bool = msg_send![prf, respondsToSelector: sel!(isSupported)];
+            if responds_supported {
+                let supported: Bool = msg_send![prf, isSupported];
+                if !supported.as_bool() {
+                    return Ok(None);
+                }
+            }
+            if !msg_send![prf, respondsToSelector: sel!(first)] {
                 return Ok(None);
             }
-            let results: *mut AnyObject = msg_send![prf, results];
-            if results.is_null() {
-                return Ok(None);
-            }
-            let first: *mut NSData = msg_send![results, first];
+            let first: *mut NSData = msg_send![prf, first];
             if first.is_null() {
                 return Ok(None);
             }
             let bytes = (*first).to_vec();
-            let mut out = [0u8; 32];
-            if bytes.len() != 32 {
-                return Err("a PRF output wasn't 32 bytes".to_owned());
-            }
-            out.copy_from_slice(&bytes);
+            let out: [u8; 32] = bytes
+                .try_into()
+                .map_err(|_| "a PRF output wasn't 32 bytes".to_owned())?;
             Ok(Some(out))
         }
     }
 
-    /// Builds an `ASAuthorizationPublicKeyCredentialPRFInputValues` and the
-    /// registration input, when the macOS 15 classes exist. Any missing
-    /// selector leaves PRF unrequested, never crashes: the credential then
-    /// registers without a wrap.
-    unsafe fn set_registration_prf(request: *mut AnyObject, input: &[u8; 32]) {
-        // SAFETY: guarded by the class and selector checks.
+    /// `ASAuthorizationPublicKeyCredentialPRFAssertionInputValues` with `input`
+    /// as `saltInput1` and no second salt, or `None` when the macOS 15 class
+    /// or its initializer is missing. Registration and assertion inputs both
+    /// take this class.
+    unsafe fn prf_values(input: &[u8; 32]) -> Option<Retained<AnyObject>> {
+        let cls = AnyClass::get(c"ASAuthorizationPublicKeyCredentialPRFAssertionInputValues")?;
+        cls.instance_method(sel!(initWithSaltInput1:saltInput2:))?;
+        let salt = NSData::with_bytes(input);
+        // SAFETY: alloc then the class's own initializer, checked above; init
+        // returns an owned (+1) object, which `from_raw` takes over.
         unsafe {
-            let Some(values_cls) =
-                AnyClass::get(c"ASAuthorizationPublicKeyCredentialPRFInputValues")
-            else {
-                return;
-            };
-            let Some(input_cls) =
-                AnyClass::get(c"ASAuthorizationPublicKeyCredentialPRFRegistrationInput")
-            else {
-                return;
-            };
-            if values_cls.instance_method(sel!(initWithFirst:)).is_none()
-                || input_cls
-                    .instance_method(sel!(initWithInputValues:))
-                    .is_none()
-            {
+            let values: *mut AnyObject = msg_send![cls, alloc];
+            let values: *mut AnyObject = msg_send![
+                values,
+                initWithSaltInput1: &*salt,
+                saltInput2: std::ptr::null_mut::<NSData>()
+            ];
+            Retained::from_raw(values)
+        }
+    }
+
+    /// Requests PRF on a registration through
+    /// `ASAuthorizationPublicKeyCredentialPRFRegistrationInput
+    /// initWithInputValues:`. Any missing class or selector leaves PRF
+    /// unrequested, never crashes: the credential then registers without a wrap.
+    unsafe fn set_registration_prf(request: *mut AnyObject, input: &[u8; 32]) {
+        let Some(cls) = AnyClass::get(c"ASAuthorizationPublicKeyCredentialPRFRegistrationInput")
+        else {
+            return;
+        };
+        if cls.instance_method(sel!(initWithInputValues:)).is_none() {
+            return;
+        }
+        // SAFETY: guarded by the class and selector checks; `setPrf:` retains
+        // what it keeps, and the owned objects here are released on return.
+        unsafe {
+            if !msg_send![request, respondsToSelector: sel!(setPrf:)] {
                 return;
             }
-            let first = NSData::with_bytes(input);
-            let values: *mut AnyObject = msg_send![values_cls, alloc];
-            let values: *mut AnyObject = msg_send![values, initWithFirst: &*first];
-            if values.is_null() {
+            let Some(values) = prf_values(input) else {
                 return;
-            }
-            let prf: *mut AnyObject = msg_send![input_cls, alloc];
-            let prf: *mut AnyObject = msg_send![prf, initWithInputValues: values];
-            if !prf.is_null() {
-                let _: () = msg_send![request, setPrf: prf];
+            };
+            let prf: *mut AnyObject = msg_send![cls, alloc];
+            let prf: *mut AnyObject = msg_send![prf, initWithInputValues: &*values];
+            if let Some(prf) = Retained::from_raw(prf) {
+                let _: () = msg_send![request, setPrf: &*prf];
             }
         }
     }
 
+    /// Requests PRF on an assertion through
+    /// `ASAuthorizationPublicKeyCredentialPRFAssertionInput
+    /// initWithInputValues:perCredentialInputValues:`, with one salt for every
+    /// credential.
     unsafe fn set_assertion_prf(request: *mut AnyObject, input: &[u8; 32]) {
-        // SAFETY: guarded by the class and selector checks.
+        let Some(cls) = AnyClass::get(c"ASAuthorizationPublicKeyCredentialPRFAssertionInput")
+        else {
+            return;
+        };
+        if cls
+            .instance_method(sel!(initWithInputValues:perCredentialInputValues:))
+            .is_none()
+        {
+            return;
+        }
+        // SAFETY: as for `set_registration_prf`.
         unsafe {
-            let Some(values_cls) =
-                AnyClass::get(c"ASAuthorizationPublicKeyCredentialPRFInputValues")
-            else {
-                return;
-            };
-            let Some(input_cls) =
-                AnyClass::get(c"ASAuthorizationPublicKeyCredentialPRFAssertionInput")
-            else {
-                return;
-            };
-            if values_cls.instance_method(sel!(initWithFirst:)).is_none()
-                || input_cls
-                    .instance_method(sel!(initWithInputValues:))
-                    .is_none()
-            {
+            if !msg_send![request, respondsToSelector: sel!(setPrf:)] {
                 return;
             }
-            let first = NSData::with_bytes(input);
-            let values: *mut AnyObject = msg_send![values_cls, alloc];
-            let values: *mut AnyObject = msg_send![values, initWithFirst: &*first];
-            if values.is_null() {
+            let Some(values) = prf_values(input) else {
                 return;
-            }
-            let prf: *mut AnyObject = msg_send![input_cls, alloc];
-            let prf: *mut AnyObject = msg_send![prf, initWithInputValues: values];
-            if !prf.is_null() {
-                let _: () = msg_send![request, setPrf: prf];
+            };
+            let prf: *mut AnyObject = msg_send![cls, alloc];
+            let prf: *mut AnyObject = msg_send![
+                prf,
+                initWithInputValues: &*values,
+                perCredentialInputValues: std::ptr::null_mut::<AnyObject>()
+            ];
+            if let Some(prf) = Retained::from_raw(prf) {
+                let _: () = msg_send![request, setPrf: &*prf];
             }
         }
     }
@@ -458,7 +482,7 @@ mod platform {
     /// Runs `controller` and pumps the main run loop until the delegate
     /// answers or the timeout passes.
     fn perform(
-        controller: *mut AnyObject,
+        controller: &AnyObject,
         slot: &Arc<Mutex<Option<Result<Raw, String>>>>,
     ) -> Result<Raw, CeremonyError> {
         // SAFETY: the controller and delegate are live for the whole call.
@@ -501,18 +525,17 @@ mod platform {
 
         // SAFETY: the platform classes exist on macOS 13; every object is
         // retained for the call.
-        let controller: *mut AnyObject = unsafe {
+        let controller: Retained<AnyObject> = unsafe {
             let provider: *mut AnyObject = msg_send![
                 class!(ASAuthorizationPlatformPublicKeyCredentialProvider),
                 alloc
             ];
             let provider: *mut AnyObject =
                 msg_send![provider, initWithRelyingPartyIdentifier: &*rp_id];
-            if provider.is_null() {
-                return Err(CeremonyError::Unsupported);
-            }
+            // init returns an owned object; it is released when this block ends.
+            let provider = Retained::from_raw(provider).ok_or(CeremonyError::Unsupported)?;
             let request_object: *mut AnyObject = msg_send![
-                provider,
+                &*provider,
                 createCredentialRegistrationRequestWithChallenge: &*challenge,
                 name: &*name,
                 userID: &*handle
@@ -536,9 +559,9 @@ mod platform {
                     ];
                     let descriptor: *mut AnyObject =
                         msg_send![descriptor, initWithCredentialID: &*id];
-                    if !descriptor.is_null() {
-                        descriptors
-                            .push(Retained::retain(descriptor).ok_or(CeremonyError::Incomplete)?);
+                    // Owned by init: take it over, don't retain it again.
+                    if let Some(descriptor) = Retained::from_raw(descriptor) {
+                        descriptors.push(descriptor);
                     }
                 }
                 let refs: Vec<&AnyObject> = descriptors.iter().map(|d| &**d).collect();
@@ -552,11 +575,12 @@ mod platform {
             let controller: *mut AnyObject = msg_send![class!(ASAuthorizationController), alloc];
             let controller: *mut AnyObject =
                 msg_send![controller, initWithAuthorizationRequests: &*requests];
-            let _: () = msg_send![controller, setDelegate: &*delegate];
-            let _: () = msg_send![controller, setPresentationContextProvider: &*delegate];
+            let controller = Retained::from_raw(controller).ok_or(CeremonyError::Incomplete)?;
+            let _: () = msg_send![&*controller, setDelegate: &*delegate];
+            let _: () = msg_send![&*controller, setPresentationContextProvider: &*delegate];
             controller
         };
-        match perform(controller, &slot)? {
+        match perform(&controller, &slot)? {
             Raw::Registration {
                 credential_id,
                 attestation_object,
@@ -587,18 +611,17 @@ mod platform {
 
         // SAFETY: the platform classes exist on macOS 13; every object is
         // retained for the call.
-        let controller: *mut AnyObject = unsafe {
+        let controller: Retained<AnyObject> = unsafe {
             let provider: *mut AnyObject = msg_send![
                 class!(ASAuthorizationPlatformPublicKeyCredentialProvider),
                 alloc
             ];
             let provider: *mut AnyObject =
                 msg_send![provider, initWithRelyingPartyIdentifier: &*rp_id];
-            if provider.is_null() {
-                return Err(CeremonyError::Unsupported);
-            }
+            // init returns an owned object; it is released when this block ends.
+            let provider = Retained::from_raw(provider).ok_or(CeremonyError::Unsupported)?;
             let request_object: *mut AnyObject =
-                msg_send![provider, createCredentialAssertionRequestWithChallenge: &*challenge];
+                msg_send![&*provider, createCredentialAssertionRequestWithChallenge: &*challenge];
             if request_object.is_null() {
                 return Err(CeremonyError::Failed(
                     "the platform made no assertion request".to_owned(),
@@ -616,9 +639,9 @@ mod platform {
                     ];
                     let descriptor: *mut AnyObject =
                         msg_send![descriptor, initWithCredentialID: &*id];
-                    if !descriptor.is_null() {
-                        descriptors
-                            .push(Retained::retain(descriptor).ok_or(CeremonyError::Incomplete)?);
+                    // Owned by init: take it over, don't retain it again.
+                    if let Some(descriptor) = Retained::from_raw(descriptor) {
+                        descriptors.push(descriptor);
                     }
                 }
                 let refs: Vec<&AnyObject> = descriptors.iter().map(|d| &**d).collect();
@@ -632,11 +655,12 @@ mod platform {
             let controller: *mut AnyObject = msg_send![class!(ASAuthorizationController), alloc];
             let controller: *mut AnyObject =
                 msg_send![controller, initWithAuthorizationRequests: &*requests];
-            let _: () = msg_send![controller, setDelegate: &*delegate];
-            let _: () = msg_send![controller, setPresentationContextProvider: &*delegate];
+            let controller = Retained::from_raw(controller).ok_or(CeremonyError::Incomplete)?;
+            let _: () = msg_send![&*controller, setDelegate: &*delegate];
+            let _: () = msg_send![&*controller, setPresentationContextProvider: &*delegate];
             controller
         };
-        match perform(controller, &slot)? {
+        match perform(&controller, &slot)? {
             Raw::Assertion {
                 credential_id,
                 authenticator_data,
@@ -653,6 +677,69 @@ mod platform {
                 prf,
             }),
             Raw::Registration { .. } => Err(CeremonyError::Incomplete),
+        }
+    }
+
+    #[cfg(test)]
+    mod prf_tests {
+        use super::*;
+
+        fn has(class: &std::ffi::CStr, selector: objc2::runtime::Sel) -> bool {
+            AnyClass::get(class).is_some_and(|cls| cls.instance_method(selector).is_some())
+        }
+
+        /// Every PRF class and selector this module sends exists in the
+        /// running AuthenticationServices, so PRF is really requested and read
+        /// on macOS 15 rather than silently skipped.
+        #[test]
+        fn the_prf_classes_and_selectors_exist_on_macos_15() {
+            if !available!(macos = 15.0) {
+                return;
+            }
+            let values = c"ASAuthorizationPublicKeyCredentialPRFAssertionInputValues";
+            assert!(has(values, sel!(initWithSaltInput1:saltInput2:)));
+            assert!(has(values, sel!(saltInput1)));
+            assert!(has(
+                c"ASAuthorizationPublicKeyCredentialPRFRegistrationInput",
+                sel!(initWithInputValues:)
+            ));
+            assert!(has(
+                c"ASAuthorizationPublicKeyCredentialPRFAssertionInput",
+                sel!(initWithInputValues:perCredentialInputValues:)
+            ));
+            let registration = c"ASAuthorizationPublicKeyCredentialPRFRegistrationOutput";
+            assert!(has(registration, sel!(isSupported)));
+            assert!(has(registration, sel!(first)));
+            assert!(has(
+                c"ASAuthorizationPublicKeyCredentialPRFAssertionOutput",
+                sel!(first)
+            ));
+            for request in [
+                c"ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest",
+                c"ASAuthorizationPlatformPublicKeyCredentialAssertionRequest",
+            ] {
+                assert!(has(request, sel!(setPrf:)), "{request:?}");
+            }
+        }
+
+        /// The salt goes in as `saltInput1`, unchanged, with no second salt.
+        #[test]
+        fn prf_values_carry_the_salt() {
+            if !available!(macos = 15.0) {
+                return;
+            }
+            let input = [7u8; 32];
+            // SAFETY: the class exists on macOS 15 (checked above).
+            let values = unsafe { prf_values(&input) }.expect("the values object");
+            let (first, second): (*mut NSData, *mut NSData) = unsafe {
+                (
+                    msg_send![&*values, saltInput1],
+                    msg_send![&*values, saltInput2],
+                )
+            };
+            assert!(!first.is_null());
+            assert_eq!(unsafe { (*first).to_vec() }, input.to_vec());
+            assert!(second.is_null());
         }
     }
 }
