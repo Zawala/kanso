@@ -787,9 +787,14 @@ impl ServerState {
         if flow.kind != PasskeyFlowKind::Signin
             || flow.device_id != device.id
             || flow.device_proof_hash != device.proof_hash
-            || flow.rp_id != MEMORY_PASSKEY_RP_ID
         {
-            return Err(ApiError::FlowExpired { gone: false });
+            return Err(ApiError::BadRequest);
+        }
+        if flow.rp_id != MEMORY_PASSKEY_RP_ID {
+            // The Worker would reject the assertion when it verifies against the
+            // configured RP; this fake has no signature check, so keep the same
+            // externally visible result.
+            return Err(ApiError::InvalidCredentials);
         }
         let credential_id = b64(&credential_id);
         let index = self
@@ -959,9 +964,13 @@ impl ServerState {
         if flow.kind != PasskeyFlowKind::Signup
             || flow.device_id != device.id
             || flow.device_proof_hash != device.proof_hash
-            || flow.rp_id != MEMORY_PASSKEY_RP_ID
         {
-            return Err(ApiError::FlowExpired { gone: false });
+            return Err(ApiError::BadRequest);
+        }
+        if flow.rp_id != MEMORY_PASSKEY_RP_ID {
+            // The Worker would reject the attestation when it verifies against
+            // the configured RP; this fake has no attestation check.
+            return Err(ApiError::InvalidCredentials);
         }
         let username = match check_new_username(&r.username) {
             Ok(n) => n,
@@ -1111,7 +1120,9 @@ impl ServerState {
             key_id: r.key_id.clone(),
             epoch,
             has_password: false,
-            passkey_wrapped_key: r.passkey_wrapped_key.clone(),
+            // Fresh sign-up already holds the data key locally; the Worker does
+            // not echo the wrap on this answer.
+            passkey_wrapped_key: None,
             evicted_device,
         })
     }
@@ -2733,7 +2744,7 @@ mod server_tests {
             b64(format!(r#"{{"challenge":"{}"}}"#, flow.challenge).as_bytes());
         let session = api.passkey_signup_finish(&finish).unwrap();
         assert!(!session.has_password);
-        assert_eq!(session.passkey_wrapped_key, finish.passkey_wrapped_key);
+        assert_eq!(session.passkey_wrapped_key, None);
         assert_eq!(api.account(&session.token).unwrap().username, "alice");
         // A lost answer is retried with the same request: the Worker answers a
         // session again rather than `flow_expired`, and sends no passkey wrap.
@@ -2741,6 +2752,22 @@ mod server_tests {
         assert_eq!(retried.account_id, session.account_id);
         assert_eq!(retried.passkey_wrapped_key, None);
         assert!(api.account(&retried.token).is_ok());
+    }
+
+    #[test]
+    fn passkey_signup_rejects_a_flow_from_another_device() {
+        let server = MemoryServer::new();
+        server.set_now(1_700_000_000_000);
+        let api = server.api("");
+        let first = device("d_00000000000000000000000000000001");
+        let second = device("d_00000000000000000000000000000002");
+        let id = "a_00000000000000000000000000000001";
+        let flow = signup_flow(api.as_ref(), "alice", id, &first);
+        let finish = signup_finish(&flow, "alice", id, second, &b64(&[5; 16]));
+        assert_eq!(
+            api.passkey_signup_finish(&finish),
+            Err(ApiError::BadRequest)
+        );
     }
 
     #[test]
@@ -2846,10 +2873,7 @@ mod server_tests {
         };
         let mut mismatch = mismatch;
         mismatch.device.proof = b64(&[8; 32]);
-        assert_eq!(
-            api.passkey_finish(&mismatch),
-            Err(ApiError::FlowExpired { gone: false })
-        );
+        assert_eq!(api.passkey_finish(&mismatch), Err(ApiError::BadRequest));
         let mut malformed = mismatch;
         malformed.credential_id = "not canonical!".into();
         assert_eq!(
