@@ -42,13 +42,23 @@ install_libfido2_without_root() {
 	local cache="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/kanso-libfido2"
 	local debs="$cache/debs"
 	local prefix="$cache/root"
+	local apt="$cache/apt"
 	local deb dependency fido_lib libdir pkgconfig
+	local apt_options=(
+		-o "Dir::State::lists=$apt/lists"
+		-o "Dir::Cache::archives=$apt/archives"
+		-o "APT::Get::List-Cleanup=0"
+		-o "Debug::NoLocking=1"
+	)
 
 	rm -rf "$cache"
-	mkdir -p "$debs" "$prefix"
+	mkdir -p "$debs" "$prefix" "$apt/lists/partial" "$apt/archives/partial"
 	(
 		cd "$debs"
-		apt-get download libfido2-dev libfido2-1
+		# The runner user cannot refresh /var/lib/apt/lists. Give apt its own
+		# indexes and archive directory so downloads still work without root.
+		apt-get "${apt_options[@]}" update
+		apt-get "${apt_options[@]}" download libfido2-dev libfido2-1
 		# libfido2-1 depends on libcbor, whose package name differs between
 		# Debian releases (libcbor0.8 on bookworm, libcbor0.10 on noble).
 		for deb in libfido2-1_*.deb; do
@@ -56,7 +66,7 @@ install_libfido2_without_root() {
 				tr ',' '\n' |
 				sed -n 's/^[[:space:]]*\(libcbor[^[:space:](]*\).*/\1/p')
 			if [ -n "$dependency" ]; then
-				apt-get download "$dependency"
+				apt-get "${apt_options[@]}" download "$dependency"
 			fi
 		done
 		for deb in ./*.deb; do
