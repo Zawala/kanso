@@ -278,6 +278,34 @@ describe("sign-up with a passkey", () => {
 		expect(count?.n).toBe(1);
 	});
 
+	it("a replay after signing out doesn't bring the session back", async () => {
+		const device = newDevice();
+		const credential = newCredential();
+		const start = await startSignup(device, "gone-user");
+		const body = {
+			flow_id: start.body.flow_id,
+			...registration(credential, start.body.challenge),
+			transports: ["internal"],
+			username: "gone-user",
+			account_id: start.body.account_id,
+			recovery_auth_key: recoveryAuthKey(),
+			recovery_wrapped_key: recoveryWrappedKey(),
+			key_id: keyId(),
+			device: { id: device.id, sealed_name: device.sealedName, proof: device.proof },
+		};
+		const first = await callJson("/v2/auth/passkey/signup/finish", { json: body, env: passportEnv(), now: NOW });
+		expect(first.status).toBe(201);
+		const out = await callJson("/v2/auth/logout", { method: "POST", token: first.body.token, env: passportEnv(), now: NOW + 500 });
+		expect(out.status).toBe(204);
+		const again = await callJson("/v2/auth/passkey/signup/finish", { json: body, env: passportEnv(), now: NOW + 1000 });
+		expect(again.status).toBeGreaterThanOrEqual(400);
+		expect(again.body).not.toHaveProperty("token");
+		const live = await env.DB.prepare("SELECT count(*) AS n FROM sessions WHERE device_id = ?1 AND revoked_at IS NULL")
+			.bind(device.id)
+			.first<{ n: number }>();
+		expect(live?.n).toBe(0);
+	});
+
 	it("refuses a wrong RP ID hash, a missing UV flag, a wrong origin and a bad attestation", async () => {
 		const device = newDevice();
 		const credential = newCredential();

@@ -531,6 +531,9 @@ export const passkeySignupFinish = async (request: Request, env: Env, now: numbe
 					now,
 				},
 				[["auth_hash", existing.auth_hash]],
+				// No new WebAuthn check: only a lost answer, while the session the
+				// sign-up made is still live, can be replayed.
+				{ replay: true },
 			),
 		);
 		const outcome = sessionOutcome(results, 0);
