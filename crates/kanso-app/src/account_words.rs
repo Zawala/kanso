@@ -89,10 +89,10 @@ pub fn error_words(err: &AccountError, context: ErrorContext) -> String {
             "Your account is full. Delete something or ask the server's owner for more space."
         }
         AccountError::UnsupportedMethod => "That sign-in method isn't available on this server.",
+        AccountError::FlowExpired | AccountError::NonceReused => "That sign-in expired. Try again.",
         AccountError::ReauthRequired => {
             "Confirm it's you with your password or a passkey, then try again."
         }
-        AccountError::FlowExpired | AccountError::NonceReused => "That sign-in expired. Try again.",
         AccountError::ProviderDisabled => "That sign-in method isn't available on this server.",
         AccountError::ProviderDenied => "The sign-in was cancelled at the provider.",
         AccountError::ProviderUnavailable => {
