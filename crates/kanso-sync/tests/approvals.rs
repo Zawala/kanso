@@ -7,11 +7,12 @@ use kanso_sync::api::LoginDevice;
 use kanso_sync::api::{ApprovalCreateRequest, ApprovalNameRequest};
 use kanso_sync::{
     AccountError, ApprovalKeys, Backend, DeviceIdentity, LockedSession, MemorySecrets,
-    MemoryServer, Password, RequestState, SessionToken, SignOutReason, SignedIn, cancel_request,
-    cancel_saved_approval, challenge_request, complete_request, complete_saved_request,
-    decline_request, devices, finish_approval, finish_unlock, name_device, name_device_resumable,
-    new_approval_request_id, open_request, pending_approvals, poll_approval, poll_saved_approval,
-    request_approval, request_approval_resumable, resume_approval, sign_in, sign_up,
+    MemoryServer, Password, PinnedRequest, RequestState, SessionToken, SignOutReason, SignedIn,
+    cancel_request, cancel_saved_approval, challenge_request, complete_request,
+    complete_saved_request, decline_request, devices, finish_approval, finish_unlock, name_device,
+    name_device_resumable, new_approval_request_id, open_request, pending_approvals, poll_approval,
+    poll_saved_approval, request_approval, request_approval_resumable, resume_approval, sign_in,
+    sign_up,
 };
 
 const SERVER: &str = "https://sync.kansoapp.app";
@@ -262,6 +263,7 @@ fn two_devices_agree_on_the_code_and_the_name_and_the_new_device_unlocks() {
     assert_eq!(pending.device_id, f.locked.device_id);
 
     let keys_alice = ApprovalKeys::generate();
+    let pin = PinnedRequest::of(pending);
     challenge_request(&f.server, &f.alice.session, pending, &keys_alice).expect("challenge");
 
     let state = poll_approval(&f.server, &f.locked, &request).expect("poll");
@@ -278,7 +280,7 @@ fn two_devices_agree_on_the_code_and_the_name_and_the_new_device_unlocks() {
     name_device(&f.server, &f.locked, &request, &approval_new, &f.new_device).expect("name");
 
     let pending = pending_approvals(&f.server, &f.alice.session).expect("list");
-    let opened = open_request(&f.alice.session, &pending[0], &keys_alice)
+    let opened = open_request(&f.alice.session, &pending[0], &pin, &keys_alice)
         .expect("open")
         .expect("named");
     assert_eq!(opened.approval.code(), approval_new.code());
@@ -311,6 +313,7 @@ fn the_approver_refuses_a_revealed_key_that_does_not_match_the_commitment() {
     let request = request_approval(&f.server, &f.locked, &keys_new).expect("ask");
     let keys_alice = ApprovalKeys::generate();
     let pending = pending_approvals(&f.server, &f.alice.session).expect("list");
+    let pin = PinnedRequest::of(&pending[0]);
     challenge_request(&f.server, &f.alice.session, &pending[0], &keys_alice).expect("challenge");
     let state = poll_approval(&f.server, &f.locked, &request).expect("poll");
     let RequestState::Challenged { approver_epk, .. } = state else {
@@ -323,7 +326,7 @@ fn the_approver_refuses_a_revealed_key_that_does_not_match_the_commitment() {
     // A malicious server swaps in a key it chose: the approver checks the
     // commitment itself and refuses before opening the name.
     pending[0].epk = Some([9; 32]);
-    let err = open_request(&f.alice.session, &pending[0], &keys_alice).expect_err("refused");
+    let err = open_request(&f.alice.session, &pending[0], &pin, &keys_alice).expect_err("refused");
     assert!(matches!(err, AccountError::ApprovalChanged), "{err:?}");
 }
 
@@ -369,6 +372,7 @@ fn a_request_expires_after_five_minutes_and_a_second_approval_is_refused() {
     let request = request_approval(&f.server, &f.locked, &keys_new).expect("ask");
     let keys_alice = ApprovalKeys::generate();
     let pending = pending_approvals(&f.server, &f.alice.session).expect("list");
+    let pin = PinnedRequest::of(&pending[0]);
     challenge_request(&f.server, &f.alice.session, &pending[0], &keys_alice).expect("challenge");
     let state = poll_approval(&f.server, &f.locked, &request).expect("poll");
     let RequestState::Challenged { approver_epk, .. } = state else {
@@ -377,7 +381,7 @@ fn a_request_expires_after_five_minutes_and_a_second_approval_is_refused() {
     let approval = complete_request(&f.locked, &request, &keys_new, &approver_epk).expect("code");
     name_device(&f.server, &f.locked, &request, &approval, &f.new_device).expect("name");
     let pending = pending_approvals(&f.server, &f.alice.session).expect("list");
-    let opened = open_request(&f.alice.session, &pending[0], &keys_alice)
+    let opened = open_request(&f.alice.session, &pending[0], &pin, &keys_alice)
         .expect("open")
         .expect("named");
     finish_approval(&f.server, &f.alice.session, &pending[0], &opened.approval).expect("approve");
@@ -442,4 +446,55 @@ fn a_lost_session_is_refused_with_its_reason() {
         panic!("expected unauthorized, got {err:?}");
     };
     assert_eq!(reason, SignOutReason::SignedOut);
+}
+
+#[test]
+fn the_approver_refuses_a_commitment_that_changed_after_its_challenge() {
+    // A server that read the approver's key could grind a key of its own
+    // whose code matches the requester's, then present that key with a
+    // fresh commitment to it. The approver pinned the commitment it saw
+    // before posting its key, so the swap is refused even though the new
+    // key matches the new commitment and the name opens.
+    let f = fixture();
+    let keys_new = ApprovalKeys::generate();
+    request_approval(&f.server, &f.locked, &keys_new).expect("ask");
+    let pending = pending_approvals(&f.server, &f.alice.session).expect("list");
+    let keys_alice = ApprovalKeys::generate();
+    let pin = PinnedRequest::of(&pending[0]);
+    challenge_request(&f.server, &f.alice.session, &pending[0], &keys_alice).expect("challenge");
+
+    let forged = ApprovalKeys::generate();
+    let forged_approval = forged
+        .complete(
+            kanso_sync::approval::Side::New,
+            &keys_alice.epk(),
+            &f.alice.session.account_id,
+            &pending[0].id,
+        )
+        .expect("the server's side");
+    let mut swapped = pending[0].clone();
+    swapped.commit = forged.commitment();
+    swapped.epk = Some(forged.epk());
+    swapped.sealed_name = Some(forged_approval.seal_name("Alex's Mac mini"));
+    swapped.approver_device_id = Some(f.alice.session.device_id.clone());
+    swapped.approver_epk = Some(keys_alice.epk());
+
+    // Without the pin the forgery would open: the key matches the commitment.
+    let fresh = PinnedRequest::of(&swapped);
+    assert!(
+        open_request(&f.alice.session, &swapped, &fresh, &keys_alice)
+            .expect("a self-consistent row opens")
+            .is_some()
+    );
+    let err = open_request(&f.alice.session, &swapped, &pin, &keys_alice)
+        .expect_err("the commitment changed after the challenge");
+    assert!(matches!(err, AccountError::ApprovalChanged), "{err:?}");
+
+    // The requesting device can't be swapped either.
+    let mut moved = swapped.clone();
+    moved.commit = pin.commit.clone();
+    moved.device_id = f.alice.session.device_id.clone();
+    let err = open_request(&f.alice.session, &moved, &pin, &keys_alice)
+        .expect_err("the requesting device changed");
+    assert!(matches!(err, AccountError::ApprovalChanged), "{err:?}");
 }

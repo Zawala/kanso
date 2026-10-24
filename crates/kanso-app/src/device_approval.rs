@@ -31,7 +31,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_sync::{
-    AccountError, ApprovalKeys, Machine, OpenedRequest, PendingApproval, Session,
+    AccountError, ApprovalKeys, Machine, OpenedRequest, PendingApproval, PinnedRequest, Session,
     account_events_path, challenge_request, decline_request,
     events::{self, EventError, EventSource, Signal},
     finish_approval, open_request, pending_approvals,
@@ -160,13 +160,75 @@ pub fn request_title(_pending: &PendingApproval, opened_name: Option<&str>) -> S
 // The approver's sheet
 // ---------------------------------------------------------------------------
 
+/// This device's ephemeral key for one request, with the request as it read
+/// when the key was made. The pin is what the revealed key is checked
+/// against later, never the row a later GET returns.
+pub(crate) struct ApproverKey {
+    pub(crate) keys: ApprovalKeys,
+    pub(crate) pin: PinnedRequest,
+}
+
+impl ApproverKey {
+    pub(crate) fn new(pending: &PendingApproval) -> ApproverKey {
+        ApproverKey {
+            keys: ApprovalKeys::generate(),
+            pin: PinnedRequest::of(pending),
+        }
+    }
+}
+
+/// What the sheet does next with its front request.
+#[derive(Debug)]
+pub(crate) enum FrontStep {
+    /// Post this device's key.
+    Challenge,
+    /// Nothing to show yet: the requester hasn't revealed its key and name.
+    Wait,
+    /// The request checks out: show its name and code.
+    Open(OpenedRequest),
+    /// Don't approve.
+    Refuse(AccountError),
+}
+
+/// Decides the front request's next step from the latest row and this
+/// device's pinned key. `challenged` is whether this device already posted
+/// its key for the request.
+pub(crate) fn front_step(
+    session: &Session,
+    pending: &PendingApproval,
+    key: &ApproverKey,
+    challenged: bool,
+) -> FrontStep {
+    if !key.pin.matches(pending) {
+        return FrontStep::Refuse(AccountError::ApprovalChanged);
+    }
+    if pending.epk.is_none() || pending.sealed_name.is_none() {
+        return if pending.approver_epk.is_none() && !challenged {
+            FrontStep::Challenge
+        } else {
+            FrontStep::Wait
+        };
+    }
+    if pending
+        .approver_epk
+        .is_some_and(|stored| stored != key.keys.epk())
+    {
+        return FrontStep::Refuse(AccountError::ApprovalChanged);
+    }
+    match open_request(session, pending, &key.pin, &key.keys) {
+        Ok(Some(opened)) => FrontStep::Open(opened),
+        Ok(None) => FrontStep::Wait,
+        Err(err) => FrontStep::Refuse(err),
+    }
+}
+
 /// One open approver sheet: the account's pending requests, this device's
 /// ephemeral key per request, and the opened code and name once the
 /// requester has revealed its key.
 pub struct ApprovalSheet {
     session: Arc<Session>,
     pub(crate) pending: Vec<PendingApproval>,
-    keys: BTreeMap<String, ApprovalKeys>,
+    keys: BTreeMap<String, ApproverKey>,
     opened: BTreeMap<String, OpenedRequest>,
     /// Requests this sheet has already challenged, so a reload doesn't ask
     /// again.
@@ -234,50 +296,25 @@ impl ApprovalSheet {
                 self.challenged.retain(|id| ids.contains(id));
                 let mut opened_now = Vec::new();
                 let mut error = None;
+                let mut to_challenge = None;
                 // Only the oldest request is on screen. A second one queues
-                // behind it; its key is generated when it reaches the front.
-                if let Some(pending) = self.pending.first().cloned() {
-                    let keys = self
+                // behind it; its key is generated, and the request pinned,
+                // when it reaches the front.
+                if let Some(pending) = self.pending.first().cloned()
+                    && !self.opened.contains_key(&pending.id)
+                {
+                    let key = self
                         .keys
                         .entry(pending.id.clone())
-                        .or_insert_with(ApprovalKeys::generate);
-                    // If this device already challenged, its key is the one
-                    // stored; otherwise the name hasn't arrived yet.
-                    let (Some(_epk), Some(sealed)) = (pending.epk, pending.sealed_name.as_deref())
-                    else {
-                        if pending.approver_epk.is_none() && !self.challenged.contains(&pending.id)
-                        {
-                            self.challenged.insert(pending.id.clone());
-                            self.challenge(pending.id.clone(), cx);
-                        }
-                        cx.notify();
-                        return;
-                    };
-                    if !self.opened.contains_key(&pending.id) {
-                        if pending
-                            .approver_epk
-                            .is_some_and(|stored| stored != keys.epk())
-                        {
-                            error = Some(words::APPROVAL_CHANGED.into());
-                        } else {
-                            match open_request(&self.session, &pending, keys) {
-                                Ok(Some(opened)) => {
-                                    if opened.name != sealed
-                                        || pending.epk != Some(opened.approval.epk_new())
-                                    {
-                                        error = Some(words::APPROVAL_CHANGED.into());
-                                    } else {
-                                        opened_now.push((pending.id.clone(), opened));
-                                    }
-                                }
-                                Ok(None) => {}
-                                Err(err) => {
-                                    error = Some(
-                                        words::error_words(&err, words::ErrorContext::Account)
-                                            .into(),
-                                    )
-                                }
-                            }
+                        .or_insert_with(|| ApproverKey::new(&pending));
+                    let challenged = self.challenged.contains(&pending.id);
+                    match front_step(&self.session, &pending, key, challenged) {
+                        FrontStep::Challenge => to_challenge = Some(pending.id.clone()),
+                        FrontStep::Wait => {}
+                        FrontStep::Open(opened) => opened_now.push((pending.id.clone(), opened)),
+                        FrontStep::Refuse(err) => {
+                            error =
+                                Some(words::error_words(&err, words::ErrorContext::Account).into())
                         }
                     }
                 }
@@ -289,14 +326,7 @@ impl ApprovalSheet {
                 }
                 // Seeing a request is the approver's step 2: post this
                 // device's key once, then wait for the requester's name.
-                let to_challenge: Vec<String> = self
-                    .pending
-                    .first()
-                    .filter(|p| p.approver_epk.is_none() && !self.challenged.contains(&p.id))
-                    .map(|p| p.id.clone())
-                    .into_iter()
-                    .collect();
-                for id in to_challenge {
+                if let Some(id) = to_challenge {
                     self.challenged.insert(id.clone());
                     self.challenge(id, cx);
                 }
@@ -314,7 +344,10 @@ impl ApprovalSheet {
         let Some(pending) = self.pending.iter().find(|p| p.id == id).cloned() else {
             return;
         };
-        let keys = self.keys.remove(&id).unwrap_or_else(ApprovalKeys::generate);
+        let key = self
+            .keys
+            .remove(&id)
+            .unwrap_or_else(|| ApproverKey::new(&pending));
         let Some(backend) = cx
             .try_global::<Services>()
             .and_then(|services| services.backend.clone())
@@ -324,14 +357,14 @@ impl ApprovalSheet {
         let session = self.session.clone();
         self.busy = true;
         let task = cx.background_executor().spawn(async move {
-            let answer = challenge_request(backend.as_ref(), &session, &pending, &keys);
-            (answer, id, keys)
+            let answer = challenge_request(backend.as_ref(), &session, &pending, &key.keys);
+            (answer, id, key)
         });
         cx.spawn(async move |this, cx| {
-            let (answer, id, keys) = task.await;
+            let (answer, id, key) = task.await;
             this.update(cx, |this, cx| {
                 this.busy = false;
-                this.keys.insert(id, keys);
+                this.keys.insert(id, key);
                 if let Err(err) = answer {
                     this.error =
                         Some(words::error_words(&err, words::ErrorContext::Account).into());
@@ -848,8 +881,131 @@ pub fn stop_events(cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-    use super::{RECOVERY_AFTER_MS, WaitPhase, WaitingState, waiting_line};
+    use super::{
+        ApproverKey, FrontStep, RECOVERY_AFTER_MS, WaitPhase, WaitingState, front_step,
+        waiting_line,
+    };
     use crate::account_words as words;
+    use kanso_sync::api::LoginDevice;
+    use kanso_sync::{
+        AccountError, ApprovalKeys, DeviceIdentity, LockedSession, MemorySecrets, MemoryServer,
+        Password, RequestState, Session, SessionToken, challenge_request, complete_request,
+        finish_approval, finish_unlock, name_device, pending_approvals, poll_approval,
+        request_approval, sign_in, sign_up,
+    };
+
+    const SERVER: &str = "https://sync.kansoapp.app";
+
+    fn device(name: &str, secret: u8) -> DeviceIdentity {
+        DeviceIdentity::from_parts(&format!("l_{:032x}", u64::from(secret)), name, [secret; 32])
+    }
+
+    /// Alice's unlocked Mac and a second Mac signed in but locked, which
+    /// asks her to approve it.
+    fn two_devices() -> (MemoryServer, Session, DeviceIdentity, LockedSession) {
+        let server = MemoryServer::new();
+        let password = Password::new("correct horse battery staple", "alice").unwrap();
+        let alice = sign_up(
+            &server,
+            &MemorySecrets::default(),
+            SERVER,
+            "alice",
+            &password,
+            &device("Alex's MacBook Air", 1),
+            &|_| {},
+        )
+        .unwrap()
+        .session;
+        let new_device = device("Alex's Mac mini", 2);
+        let signed_in = sign_in(&server, SERVER, "alice", &password, &new_device, &|_| {})
+            .unwrap()
+            .session;
+        let token = SessionToken::new(
+            signed_in
+                .authorization()
+                .trim_start_matches("Bearer ")
+                .to_owned(),
+        );
+        let locked = LockedSession::new(
+            signed_in.server.clone(),
+            signed_in.origin.clone(),
+            signed_in.account_id.clone(),
+            signed_in.username.clone(),
+            signed_in.device_id.clone(),
+            token,
+            signed_in.key_id(),
+            "0000000000000000".to_owned(),
+            None,
+            None,
+        )
+        .with_login_device(LoginDevice::for_identity(
+            &new_device,
+            &signed_in.origin,
+            &signed_in.account_id,
+        ));
+        (server, alice, new_device, locked)
+    }
+
+    #[test]
+    fn the_sheet_opens_an_honest_request_and_its_approval_unlocks_the_new_device() {
+        let (server, alice, new_device, locked) = two_devices();
+        let keys_new = ApprovalKeys::generate();
+        let request = request_approval(&server, &locked, &keys_new).unwrap();
+
+        // The sheet sees the request, makes and pins its key, and challenges.
+        let pending = pending_approvals(&server, &alice).unwrap();
+        let key = ApproverKey::new(&pending[0]);
+        assert!(matches!(
+            front_step(&alice, &pending[0], &key, false),
+            FrontStep::Challenge
+        ));
+        challenge_request(&server, &alice, &pending[0], &key.keys).unwrap();
+        let pending = pending_approvals(&server, &alice).unwrap();
+        assert!(matches!(
+            front_step(&alice, &pending[0], &key, true),
+            FrontStep::Wait
+        ));
+
+        // The new device reveals its key and names itself.
+        let RequestState::Challenged { approver_epk, .. } =
+            poll_approval(&server, &locked, &request).unwrap()
+        else {
+            panic!("challenged");
+        };
+        let approval_new = complete_request(&locked, &request, &keys_new, &approver_epk).unwrap();
+        name_device(&server, &locked, &request, &approval_new, &new_device).unwrap();
+
+        // The sheet opens it: same code, the device's name, and approving
+        // unlocks the new device.
+        let pending = pending_approvals(&server, &alice).unwrap();
+        let FrontStep::Open(opened) = front_step(&alice, &pending[0], &key, true) else {
+            panic!("an honest request opens");
+        };
+        assert_eq!(opened.name, "Alex's Mac mini");
+        assert_eq!(opened.approval.code(), approval_new.code());
+        finish_approval(&server, &alice, &pending[0], &opened.approval).unwrap();
+        let RequestState::Approved(approved) = poll_approval(&server, &locked, &request).unwrap()
+        else {
+            panic!("approved");
+        };
+        let unlocked =
+            finish_unlock(&server, &locked, &approval_new, &approved, &new_device).unwrap();
+        assert_eq!(unlocked.session.key_id(), alice.key_id());
+    }
+
+    #[test]
+    fn the_sheet_refuses_a_request_whose_commitment_changed_after_it_was_pinned() {
+        let (server, alice, _new_device, locked) = two_devices();
+        request_approval(&server, &locked, &ApprovalKeys::generate()).unwrap();
+        let pending = pending_approvals(&server, &alice).unwrap();
+        let key = ApproverKey::new(&pending[0]);
+        let mut swapped = pending[0].clone();
+        swapped.commit = ApprovalKeys::generate().commitment();
+        assert!(matches!(
+            front_step(&alice, &swapped, &key, false),
+            FrontStep::Refuse(AccountError::ApprovalChanged)
+        ));
+    }
 
     #[test]
     fn recovery_is_offered_at_once_with_no_device_and_after_two_minutes() {

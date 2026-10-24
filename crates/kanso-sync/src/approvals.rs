@@ -1037,6 +1037,36 @@ pub fn challenge_request(
     Ok(())
 }
 
+/// What the approver saw of a request when it made its ephemeral key for it:
+/// the request, the device asking and the requester's commitment. It is
+/// taken before this device's key is posted and kept next to that key, so a
+/// later read can't swap in a commitment chosen after the key was seen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PinnedRequest {
+    pub id: String,
+    pub device_id: String,
+    pub commit: String,
+}
+
+impl PinnedRequest {
+    /// Pins `pending` as it reads now. Call it when the key for the request
+    /// is generated, never after the key has been posted.
+    pub fn of(pending: &PendingApproval) -> PinnedRequest {
+        PinnedRequest {
+            id: pending.id.clone(),
+            device_id: pending.device_id.clone(),
+            commit: pending.commit.clone(),
+        }
+    }
+
+    /// Whether `pending` is still the request that was pinned.
+    pub fn matches(&self, pending: &PendingApproval) -> bool {
+        self.id == pending.id
+            && self.device_id == pending.device_id
+            && self.commit == pending.commit
+    }
+}
+
 /// What the approver shows: the device's name and, through the approval,
 /// the code.
 #[derive(Debug)]
@@ -1049,13 +1079,20 @@ pub struct OpenedRequest {
 /// hasn't revealed its key yet. The revealed key must match the commitment
 /// made before this device's key existed, and the name must open under the
 /// key both sides derive; otherwise [`AccountError::ApprovalChanged`]
-/// ("Don't approve"). A request another device answered is
+/// ("Don't approve"). The commitment and the requesting device must be the
+/// ones `pinned` saw before this device's key was posted: a server that
+/// learned that key could otherwise grind a key of its own whose code
+/// matches, and swap in its commitment. A request another device answered is
 /// [`AccountError::ApprovalUsed`].
 pub fn open_request(
     session: &Session,
     pending: &PendingApproval,
+    pinned: &PinnedRequest,
     keys: &ApprovalKeys,
 ) -> Result<Option<OpenedRequest>, AccountError> {
+    if !pinned.matches(pending) {
+        return Err(AccountError::ApprovalChanged);
+    }
     if pending
         .approver_device_id
         .as_deref()
@@ -1267,5 +1304,41 @@ mod tests {
         let opened = opened_evicted(&locked, &content).unwrap();
         assert_eq!(opened.name.as_deref(), Some("Alex’s MacBook Air"));
         assert!(!format!("{locked:?}").contains("Alex’s MacBook Air"));
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(64))]
+
+        /// A pin matches the row it was taken from whatever else changes, and
+        /// any change to the request, the device or the commitment breaks it.
+        #[test]
+        fn prop_a_pin_only_matches_its_own_request(
+            epk in proptest::option::of(proptest::array::uniform32(0u8..)),
+            which in 0usize..3,
+            other in "[a-z0-9]{1,8}",
+        ) {
+            let row = PendingApproval {
+                id: "r_1".into(),
+                device_id: "d_1".into(),
+                commit: "c_1".into(),
+                epk: None,
+                sealed_name: None,
+                approver_device_id: None,
+                approver_epk: None,
+                created_at: 1,
+                expires_at: 2,
+            };
+            let pin = PinnedRequest::of(&row);
+            let mut later = row.clone();
+            later.epk = epk;
+            later.sealed_name = Some("x".into());
+            proptest::prop_assert!(pin.matches(&later));
+            match which {
+                0 => later.id = format!("r_{other}x"),
+                1 => later.device_id = format!("d_{other}x"),
+                _ => later.commit = format!("c_{other}x"),
+            }
+            proptest::prop_assert!(!pin.matches(&later));
+        }
     }
 }

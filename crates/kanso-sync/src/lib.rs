@@ -51,11 +51,11 @@ pub use api::{Api, Backend, Route};
 pub use approval::{Approval, ApprovalKeys};
 pub use approvals::{
     ApprovalRequest, ApprovalResume, Approved, LockedSession, OpenedRequest, PendingApproval,
-    RequestState, account_events_path, cancel_request, cancel_saved_approval, challenge_request,
-    complete_request, complete_saved_request, decline_request, finish_approval, finish_unlock,
-    name_device, name_device_resumable, new_approval_request_id, open_request, pending_approvals,
-    poll_approval, poll_saved_approval, request_approval, request_approval_resumable,
-    resume_approval, unlock_with_local_key,
+    PinnedRequest, RequestState, account_events_path, cancel_request, cancel_saved_approval,
+    challenge_request, complete_request, complete_saved_request, decline_request, finish_approval,
+    finish_unlock, name_device, name_device_resumable, new_approval_request_id, open_request,
+    pending_approvals, poll_approval, poll_saved_approval, request_approval,
+    request_approval_resumable, resume_approval, unlock_with_local_key,
 };
 pub use binding::{
     BindError, Choice, DeviceIdentity, Flow, LocalLibrary, Machine, Plan, bind, device_identity,
