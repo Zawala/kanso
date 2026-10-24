@@ -42,7 +42,7 @@ export interface SignInRoutes {
 	github: boolean;
 }
 
-export const SIGN_IN_ROUTES: SignInRoutes = { passkeys: false, apple: false, google: false, github: false };
+export const SIGN_IN_ROUTES: SignInRoutes = { passkeys: false, apple: true, google: true, github: true };
 
 export const isProvider = (value: string): value is Provider => (PROVIDERS as readonly string[]).includes(value);
 
