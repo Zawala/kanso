@@ -2,7 +2,7 @@
 //! ceremony runs › Linux).
 //!
 //! Linux has no platform passkey UI. The app is the CTAP2 client through
-//! [libfido2](https://developers.yubico.com/libfido2/) 1.17 for USB HID and
+//! [libfido2](https://developers.yubico.com/libfido2/) 1.12 or newer for USB HID and
 //! NFC security keys. This crate keeps the pure half here — the CTAP2
 //! `hmac-secret` to WebAuthn PRF mapping, the standard `clientDataJSON` and
 //! `attestationObject` the Worker checks, and the returned shapes — and puts
@@ -284,6 +284,7 @@ mod platform {
     type FidoDev = c_void;
     type FidoCred = c_void;
     type FidoAssert = c_void;
+    type FidoCborInfo = c_void;
 
     #[link(name = "fido2")]
     unsafe extern "C" {
@@ -318,8 +319,14 @@ mod platform {
         fn fido_cred_set_uv(cred: *mut FidoCred, value: c_int) -> c_int;
         fn fido_cred_set_extensions(cred: *mut FidoCred, flags: c_int) -> c_int;
         fn fido_cred_set_fmt(cred: *mut FidoCred, fmt: *const c_char) -> c_int;
+        #[cfg(test)]
         fn fido_cred_authdata_ptr(cred: *const FidoCred) -> *const u8;
+        #[cfg(test)]
         fn fido_cred_authdata_len(cred: *const FidoCred) -> usize;
+        fn fido_cred_authdata_raw_ptr(cred: *const FidoCred) -> *const u8;
+        fn fido_cred_authdata_raw_len(cred: *const FidoCred) -> usize;
+        #[cfg(test)]
+        fn fido_cred_set_authdata_raw(cred: *mut FidoCred, ptr: *const u8, len: usize) -> c_int;
         fn fido_cred_id_ptr(cred: *const FidoCred) -> *const u8;
         fn fido_cred_id_len(cred: *const FidoCred) -> usize;
         fn fido_dev_make_cred(dev: *mut FidoDev, cred: *mut FidoCred, pin: *const c_char) -> c_int;
@@ -333,6 +340,7 @@ mod platform {
             len: usize,
         ) -> c_int;
         fn fido_assert_allow_cred(assert: *mut FidoAssert, id: *const u8, len: usize) -> c_int;
+        fn fido_assert_set_extensions(assert: *mut FidoAssert, flags: c_int) -> c_int;
         fn fido_assert_set_hmac_salt(assert: *mut FidoAssert, salt: *const u8, len: usize)
         -> c_int;
         fn fido_assert_set_uv(assert: *mut FidoAssert, value: c_int) -> c_int;
@@ -340,6 +348,15 @@ mod platform {
         fn fido_assert_count(assert: *const FidoAssert) -> usize;
         fn fido_assert_authdata_ptr(assert: *const FidoAssert, i: usize) -> *const u8;
         fn fido_assert_authdata_len(assert: *const FidoAssert, i: usize) -> usize;
+        #[cfg(test)]
+        fn fido_assert_set_count(assert: *mut FidoAssert, n: usize) -> c_int;
+        #[cfg(test)]
+        fn fido_assert_set_authdata_raw(
+            assert: *mut FidoAssert,
+            i: usize,
+            ptr: *const u8,
+            len: usize,
+        ) -> c_int;
         fn fido_assert_sig_ptr(assert: *const FidoAssert, i: usize) -> *const u8;
         fn fido_assert_sig_len(assert: *const FidoAssert, i: usize) -> usize;
         fn fido_assert_id_ptr(assert: *const FidoAssert, i: usize) -> *const u8;
@@ -354,12 +371,20 @@ mod platform {
             pin: *const c_char,
         ) -> c_int;
 
+        fn fido_cbor_info_new() -> *mut FidoCborInfo;
+        fn fido_cbor_info_free(info: *mut *mut FidoCborInfo);
+        fn fido_dev_get_cbor_info(dev: *mut FidoDev, info: *mut FidoCborInfo) -> c_int;
+        fn fido_cbor_info_extensions_ptr(info: *const FidoCborInfo) -> *mut *mut c_char;
+        fn fido_cbor_info_extensions_len(info: *const FidoCborInfo) -> usize;
+
         fn fido_strerr(code: c_int) -> *const c_char;
     }
 
     const FIDO_OPT_TRUE: c_int = 1;
     // libfido2 <fido/param.h>: FIDO_EXT_HMAC_SECRET.
     const FIDO_EXT_HMAC_SECRET: c_int = 0x01;
+    // libfido2 <fido/err.h>: FIDO_ERR_UNSUPPORTED_EXTENSION.
+    const FIDO_ERR_UNSUPPORTED_EXTENSION: c_int = 0x16;
     const COSE_ES256: c_int = -7;
     const MAX_DEVICES: usize = 8;
 
@@ -417,6 +442,43 @@ mod platform {
         }
     }
 
+    struct CborInfo(*mut FidoCborInfo);
+    impl Drop for CborInfo {
+        fn drop(&mut self) {
+            unsafe {
+                let mut pointer = self.0;
+                fido_cbor_info_free(&mut pointer);
+            }
+        }
+    }
+
+    /// Whether the opened key advertises the CTAP2 `hmac-secret` extension.
+    /// The extension list is authoritative for this key; a key that omits it
+    /// can still register and sign in, just without a PRF wrap.
+    fn supports_hmac_secret(device: &Device) -> bool {
+        // SAFETY: the CBOR-info object is owned by `CborInfo`; the returned
+        // string array remains valid until that object is freed.
+        unsafe {
+            let raw = fido_cbor_info_new();
+            if raw.is_null() {
+                return false;
+            }
+            let info = CborInfo(raw);
+            if fido_dev_get_cbor_info(device.0, info.0) != 0 {
+                return false;
+            }
+            let extensions = fido_cbor_info_extensions_ptr(info.0);
+            if extensions.is_null() {
+                return false;
+            }
+            let count = fido_cbor_info_extensions_len(info.0);
+            (0..count).any(|index| {
+                let extension = *extensions.add(index);
+                !extension.is_null() && CStr::from_ptr(extension).to_bytes() == b"hmac-secret"
+            })
+        }
+    }
+
     pub(super) fn enumerate() -> Vec<SecurityKeyDevice> {
         let mut out = Vec::new();
         // SAFETY: libfido2 allocates and frees its own device-info list.
@@ -436,13 +498,14 @@ mod platform {
                     if path.is_empty() {
                         continue;
                     }
+                    let hmac_secret = open_path(&path)
+                        .map(|device| supports_hmac_secret(&device))
+                        .unwrap_or(false);
                     out.push(SecurityKeyDevice {
                         path,
                         vendor: format!("{:04x}", fido_dev_info_vendor(info)),
                         product: text(fido_dev_info_product_string(info)),
-                        // libfido2 reports capabilities at open time; the
-                        // ceremony's hmac-secret answer is authoritative.
-                        hmac_secret: true,
+                        hmac_secret,
                     });
                 }
             }
@@ -452,8 +515,8 @@ mod platform {
         out
     }
 
-    fn open(device: &SecurityKeyDevice) -> Result<Device, FidoError> {
-        let path = CString::new(device.path.clone()).map_err(|_| FidoError::Invalid)?;
+    fn open_path(path: &str) -> Result<Device, FidoError> {
+        let path = CString::new(path).map_err(|_| FidoError::Invalid)?;
         // SAFETY: libfido2 owns the device until `Device` drops it.
         unsafe {
             let raw = fido_dev_new();
@@ -469,6 +532,10 @@ mod platform {
         }
     }
 
+    fn open(device: &SecurityKeyDevice) -> Result<Device, FidoError> {
+        open_path(&device.path)
+    }
+
     pub(super) fn register(
         device: &SecurityKeyDevice,
         request: &RegistrationRequest,
@@ -482,8 +549,10 @@ mod platform {
         let hash = Sha256::digest(&client_data);
         let pin = request
             .pin
-            .as_ref()
-            .and_then(|pin| CString::new(pin.as_bytes()).ok());
+            .as_deref()
+            .map(|pin| CString::new(pin.as_bytes()).map_err(|_| FidoError::Invalid))
+            .transpose()?;
+        let use_hmac_secret = request.hmac_secret && supports_hmac_secret(&dev);
         // SAFETY: every pointer is valid for the call; libfido2 owns the credential.
         unsafe {
             let raw = fido_cred_new();
@@ -516,7 +585,7 @@ mod platform {
             if code == 0 {
                 code = fido_cred_set_uv(cred.0, FIDO_OPT_TRUE);
             }
-            if code == 0 && request.hmac_secret {
+            if code == 0 && use_hmac_secret {
                 code = fido_cred_set_extensions(cred.0, FIDO_EXT_HMAC_SECRET);
             }
             if code == 0 {
@@ -532,10 +601,10 @@ mod platform {
             if code != 0 {
                 return Err(error(code));
             }
-            let auth_data = slice(
-                fido_cred_authdata_ptr(cred.0),
-                fido_cred_authdata_len(cred.0),
-            );
+            // WebAuthn uses the raw authenticator data. `*_authdata_ptr`
+            // returns the CBOR byte string that wraps these bytes in the
+            // CTAP2 response, so it must not be put in `attestationObject`.
+            let auth_data = registration_auth_data(cred.0);
             let credential_id = slice(fido_cred_id_ptr(cred.0), fido_cred_id_len(cred.0));
             if auth_data.is_empty() || credential_id.is_empty() {
                 return Err(FidoError::Incomplete);
@@ -561,8 +630,10 @@ mod platform {
         let salt = super::ctap_salt();
         let pin = request
             .pin
-            .as_ref()
-            .and_then(|pin| CString::new(pin.as_bytes()).ok());
+            .as_deref()
+            .map(|pin| CString::new(pin.as_bytes()).map_err(|_| FidoError::Invalid))
+            .transpose()?;
+        let use_hmac_secret = request.hmac_secret && supports_hmac_secret(&dev);
         // SAFETY: every pointer is valid for the call; libfido2 owns the assertion.
         unsafe {
             let raw = fido_assert_new();
@@ -588,7 +659,10 @@ mod platform {
             if code == 0 {
                 code = fido_assert_set_up(assertion.0, FIDO_OPT_TRUE);
             }
-            if code == 0 && request.hmac_secret {
+            if code == 0 && use_hmac_secret {
+                code = fido_assert_set_extensions(assertion.0, FIDO_EXT_HMAC_SECRET);
+            }
+            if code == 0 && use_hmac_secret {
                 code = fido_assert_set_hmac_salt(assertion.0, salt.as_ptr(), salt.len());
             }
             if code == 0 {
@@ -598,16 +672,29 @@ mod platform {
                     pin.as_ref().map_or(std::ptr::null(), |p| p.as_ptr()),
                 );
             }
+            // A key can advertise hmac-secret but still hold an older
+            // credential that was created before the extension was enabled.
+            // That credential must remain usable for sign-in, so retry once
+            // without the extension and accept a session without a PRF.
+            if code == FIDO_ERR_UNSUPPORTED_EXTENSION && use_hmac_secret {
+                code = fido_assert_set_extensions(assertion.0, 0);
+                if code == 0 {
+                    code = fido_dev_get_assert(
+                        dev.0,
+                        assertion.0,
+                        pin.as_ref().map_or(std::ptr::null(), |p| p.as_ptr()),
+                    );
+                }
+            }
             if code != 0 {
                 return Err(error(code));
             }
             if fido_assert_count(assertion.0) == 0 {
                 return Err(FidoError::NoDevice);
             }
-            let authenticator_data = slice(
-                fido_assert_authdata_ptr(assertion.0, 0),
-                fido_assert_authdata_len(assertion.0, 0),
-            );
+            // The signature covers the raw authenticator data, not the CBOR
+            // byte-string wrapper around it in the CTAP2 response.
+            let authenticator_data = assertion_auth_data(assertion.0);
             let signature = slice(
                 fido_assert_sig_ptr(assertion.0, 0),
                 fido_assert_sig_len(assertion.0, 0),
@@ -650,12 +737,155 @@ mod platform {
         unsafe { slice_opt(ptr, len) }.unwrap_or_default()
     }
 
+    pub(super) unsafe fn registration_auth_data(cred: *const FidoCred) -> Vec<u8> {
+        unsafe {
+            slice(
+                fido_cred_authdata_raw_ptr(cred),
+                fido_cred_authdata_raw_len(cred),
+            )
+        }
+    }
+
+    pub(super) unsafe fn assertion_auth_data(assert: *const FidoAssert) -> Vec<u8> {
+        unsafe {
+            // libfido2 1.12 has no `fido_assert_authdata_raw_*` getter. Its
+            // getter returns the CBOR byte string that wraps the raw bytes.
+            let encoded = slice(
+                fido_assert_authdata_ptr(assert, 0),
+                fido_assert_authdata_len(assert, 0),
+            );
+            cbor_byte_string(&encoded)
+                .map(ToOwned::to_owned)
+                .unwrap_or_default()
+        }
+    }
+
+    /// Decodes one definite-length CBOR byte string. libfido2 wraps assertion
+    /// authenticator data with `cbor_encode_blob`, so the encoded value has no
+    /// trailing bytes and is never indefinite-length.
+    pub(super) fn cbor_byte_string(encoded: &[u8]) -> Option<&[u8]> {
+        let (length, header): (usize, usize) = match *encoded.first()? {
+            major if major & 0xe0 != 0x40 => return None,
+            major @ 0x40..=0x57 => (usize::from(major & 0x1f), 1),
+            0x58 => (usize::from(*encoded.get(1)?), 2),
+            0x59 => (
+                usize::from(u16::from_be_bytes([*encoded.get(1)?, *encoded.get(2)?])),
+                3,
+            ),
+            0x5a => (
+                u32::from_be_bytes([
+                    *encoded.get(1)?,
+                    *encoded.get(2)?,
+                    *encoded.get(3)?,
+                    *encoded.get(4)?,
+                ]) as usize,
+                5,
+            ),
+            // libfido2's encoder never emits 64-bit lengths, and an
+            // indefinite-length string would have no single payload to read.
+            _ => return None,
+        };
+        let end = header.checked_add(length)?;
+        (end == encoded.len()).then(|| &encoded[header..end])
+    }
+
     unsafe fn slice_opt(ptr: *const u8, len: usize) -> Option<Vec<u8>> {
         if ptr.is_null() || len == 0 {
             None
         } else {
             Some(unsafe { std::slice::from_raw_parts(ptr, len).to_vec() })
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn raw_authdata_regression() {
+        let registration = test_registration_auth_data();
+        // SAFETY: the test owns both objects and frees them via their RAII
+        // wrappers. The bytes stay alive for the duration of the calls.
+        unsafe {
+            let cred = Cred(fido_cred_new());
+            assert!(!cred.0.is_null());
+            assert_eq!(fido_cred_set_type(cred.0, COSE_ES256), 0);
+            assert_eq!(
+                fido_cred_set_authdata_raw(cred.0, registration.as_ptr(), registration.len()),
+                0
+            );
+            assert_eq!(registration_auth_data(cred.0), registration);
+            let wrapped = slice(
+                fido_cred_authdata_ptr(cred.0),
+                fido_cred_authdata_len(cred.0),
+            );
+            assert_ne!(
+                wrapped, registration,
+                "registration authData was CBOR-wrapped"
+            );
+
+            let raw_assertion = test_assertion_auth_data();
+            let assertion = Assert(fido_assert_new());
+            assert!(!assertion.0.is_null());
+            assert_eq!(fido_assert_set_count(assertion.0, 1), 0);
+            assert_eq!(
+                fido_assert_set_authdata_raw(
+                    assertion.0,
+                    0,
+                    raw_assertion.as_ptr(),
+                    raw_assertion.len(),
+                ),
+                0
+            );
+            assert_eq!(assertion_auth_data(assertion.0), raw_assertion);
+            let wrapped = slice(
+                fido_assert_authdata_ptr(assertion.0, 0),
+                fido_assert_authdata_len(assertion.0, 0),
+            );
+            assert_ne!(
+                wrapped, raw_assertion,
+                "assertion authData was CBOR-wrapped"
+            );
+            assert_eq!(cbor_byte_string(&wrapped), Some(raw_assertion.as_slice()));
+        }
+    }
+
+    #[cfg(test)]
+    fn test_registration_auth_data() -> Vec<u8> {
+        let mut out = vec![0u8; 32];
+        out.push(0x41); // UP | AT
+        out.extend_from_slice(&0u32.to_be_bytes());
+        out.extend_from_slice(&[0u8; 16]); // AAGUID
+        out.extend_from_slice(&4u16.to_be_bytes());
+        out.extend_from_slice(&[0x11, 0x22, 0x33, 0x44]); // credential ID
+        // COSE_Key for ES256: {1: 2, 3: -7, -1: 1, -2: x, -3: y}.
+        out.extend_from_slice(&[0xa5, 0x01, 0x02, 0x03, 0x26, 0x20, 0x01]);
+        for (key, coordinate) in [(0x21, [0x55u8; 32]), (0x22, [0x66u8; 32])] {
+            out.push(key);
+            out.extend_from_slice(&[0x58, 0x20]);
+            out.extend_from_slice(&coordinate);
+        }
+        out
+    }
+
+    #[cfg(test)]
+    fn test_assertion_auth_data() -> Vec<u8> {
+        let mut out = vec![0u8; 32];
+        out.push(0x01); // UP
+        out.extend_from_slice(&0u32.to_be_bytes());
+        out
+    }
+
+    #[cfg(test)]
+    pub(super) fn cbor_byte_string_regression() {
+        for length in [0usize, 23, 24, 255, 256, 65_536] {
+            let payload = vec![0xa5; length];
+            let mut encoded = Vec::new();
+            cbor_bytes(&mut encoded, &payload);
+            assert_eq!(cbor_byte_string(&encoded), Some(payload.as_slice()));
+        }
+        assert_eq!(cbor_byte_string(&[]), None);
+        assert_eq!(cbor_byte_string(&[0x40]), Some([].as_slice()));
+        assert_eq!(cbor_byte_string(&[0x58, 0x02, 0xaa]), None);
+        assert_eq!(cbor_byte_string(&[0x58, 0x01, 0xaa, 0xbb]), None);
+        assert_eq!(cbor_byte_string(&[0x5f, 0x40, 0xff]), None);
+        assert_eq!(cbor_byte_string(&[0x81, 0x00]), None);
     }
 }
 
@@ -868,5 +1098,12 @@ mod tests {
         );
         auth_data[32] = 0x01;
         assert_eq!(attested_credential_id(&auth_data), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn libfido2_authdata_is_read_raw() {
+        platform::raw_authdata_regression();
+        platform::cbor_byte_string_regression();
     }
 }

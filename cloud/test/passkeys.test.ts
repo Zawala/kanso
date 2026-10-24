@@ -376,25 +376,28 @@ describe("sign-in with a passkey", () => {
 		const first = newCredential();
 		const second = newCredential();
 		const start = await startSignup(device, "listed-user");
-		for (const credential of [first, second]) {
-			await callJson("/v2/auth/passkey/signup/finish", {
-				json: {
-					flow_id: start.body.flow_id,
-					...registration(credential, start.body.challenge),
-					transports: ["internal"],
-					username: "listed-user",
-					account_id: start.body.account_id,
-					recovery_auth_key: recoveryAuthKey(),
-					recovery_wrapped_key: recoveryWrappedKey(),
-					key_id: keyId(),
-					device: { id: device.id, sealed_name: device.sealedName, proof: device.proof },
-				},
-				env: passportEnv(),
-				now: NOW,
-			});
-			// A second registration is a new ceremony.
-			break;
-		}
+		const signup = await callJson("/v2/auth/passkey/signup/finish", {
+			json: {
+				flow_id: start.body.flow_id,
+				...registration(first, start.body.challenge),
+				transports: ["internal"],
+				username: "listed-user",
+				account_id: start.body.account_id,
+				recovery_auth_key: recoveryAuthKey(),
+				recovery_wrapped_key: recoveryWrappedKey(),
+				key_id: keyId(),
+				device: { id: device.id, sealed_name: device.sealedName, proof: device.proof },
+			},
+			env: passportEnv(),
+			now: NOW,
+		});
+		expect(signup.status).toBe(201);
+		await env.DB.prepare(
+			`INSERT INTO account_passkeys (credential_id, account_id, public_key, alg, sign_count, transports, created_at)
+  VALUES (?1, ?2, ?3, -7, 0, 'internal', ?4)`,
+		)
+			.bind(base64url(second.credentialId), start.body.account_id, base64url(new Uint8Array(randomBytes(32))), NOW + 1)
+			.run();
 		const other = newDevice();
 		const signIn = await callJson("/v2/auth/passkey/start", {
 			json: { username: "listed-user", device: { id: other.id, proof: other.proof } },
@@ -402,7 +405,10 @@ describe("sign-in with a passkey", () => {
 			now: NOW,
 		});
 		expect(signIn.status).toBe(200);
-		expect(signIn.body.allow_credentials).toEqual([{ id: base64url(first.credentialId), transports: ["internal"] }]);
+		expect(signIn.body.allow_credentials).toEqual([
+			{ id: base64url(first.credentialId), transports: ["internal"] },
+			{ id: base64url(second.credentialId), transports: ["internal"] },
+		]);
 		// An unknown name lists nothing.
 		const unknown = await callJson("/v2/auth/passkey/start", {
 			json: { username: "no-such-user", device: { id: other.id, proof: other.proof } },
@@ -410,6 +416,70 @@ describe("sign-in with a passkey", () => {
 			now: NOW,
 		});
 		expect(unknown.body.allow_credentials).toEqual([]);
+	});
+
+	it("recovery removes registered passkeys and prevents their sign-in", async () => {
+		const device = newDevice();
+		const credential = newCredential();
+		const oldRecoveryKey = recoveryAuthKey();
+		const start = await startSignup(device, "recovered-passkey-user");
+		const signup = await callJson("/v2/auth/passkey/signup/finish", {
+			json: {
+				flow_id: start.body.flow_id,
+				...registration(credential, start.body.challenge),
+				transports: ["internal"],
+				username: "recovered-passkey-user",
+				account_id: start.body.account_id,
+				recovery_auth_key: oldRecoveryKey,
+				recovery_wrapped_key: recoveryWrappedKey(),
+				key_id: keyId(),
+				device: { id: device.id, sealed_name: device.sealedName, proof: device.proof },
+			},
+			env: passportEnv(),
+			now: NOW,
+		});
+		expect(signup.status).toBe(201);
+
+		const replacement = newDevice();
+		const recovery = await callJson("/v2/auth/recover/finish", {
+			json: {
+				username: "recovered-passkey-user",
+				recovery_auth_key: oldRecoveryKey,
+				kdf: { alg: "argon2id", version: 19, m_kib: 1048576, t: 3, p: 4 },
+				salt: base64url(new Uint8Array(randomBytes(16))),
+				auth_key: base64url(new Uint8Array(randomBytes(32))),
+				wrapped_key: recoveryWrappedKey(),
+				recovery_auth_key_new: recoveryAuthKey(),
+				recovery_wrapped_key_new: recoveryWrappedKey(),
+				device: { id: replacement.id, sealed_name: replacement.sealedName, proof: replacement.proof },
+			},
+			env: passportEnv(),
+			now: NOW,
+		});
+		expect(recovery.status).toBe(200);
+		expect(
+			await env.DB.prepare("SELECT count(*) AS n FROM account_passkeys WHERE account_id = ?1")
+				.bind(start.body.account_id)
+				.first<number>("n"),
+		).toBe(0);
+
+		const signInDevice = newDevice();
+		const signIn = await callJson("/v2/auth/passkey/start", {
+			json: { username: "recovered-passkey-user", device: { id: signInDevice.id, proof: signInDevice.proof } },
+			env: passportEnv(),
+			now: NOW,
+		});
+		expect(signIn.body.allow_credentials).toEqual([]);
+		const finish = await callJson("/v2/auth/passkey/finish", {
+			json: {
+				flow_id: signIn.body.flow_id,
+				...assertion(credential, signIn.body.challenge),
+				device: { id: signInDevice.id, proof: signInDevice.proof },
+			},
+			env: passportEnv(),
+			now: NOW,
+		});
+		expect(finish.status).toBe(401);
 	});
 
 	it("refuses a bad signature, wrong challenge, wrong origin, wrong RP ID, missing UV and an unknown credential", async () => {

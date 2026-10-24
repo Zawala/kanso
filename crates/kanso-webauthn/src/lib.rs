@@ -9,9 +9,10 @@
 //! [`kanso_sync::PasskeyAssertion`] a Linux security key produces.
 //!
 //! PRF is requested only where the platform has it: macOS 15 (checked at
-//! runtime), and on Windows through the assertion's `hmac-secret` salt. A
-//! credential registered without an output signs in but cannot unlock a new
-//! device; the account flow says so.
+//! runtime), and on Windows when the WebAuthn API is V8 or newer, through
+//! registration's `pPRFGlobalEval` and `pHmacSecret`; assertions use
+//! `pHmacSecretSaltValues`. A credential registered without an output signs in
+//! but cannot unlock a new device; the account flow says so.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -70,6 +71,11 @@ pub const PRF_INPUT: [u8; 32] = [
     0x98, 0x43, 0x20, 0xbf, 0xab, 0xbd, 0x34, 0x26, 0x97, 0xaf, 0x83, 0x64, 0x7d, 0xc7, 0x74, 0xe3,
     0x07, 0xf9, 0x8e, 0x62, 0xec, 0xf2, 0x7d, 0xd5, 0xd8, 0x4f, 0x8f, 0x00, 0x6d, 0x86, 0xfd, 0x59,
 ];
+
+#[cfg(any(target_os = "windows", test))]
+fn prf_output(bytes: &[u8]) -> Option<[u8; 32]> {
+    bytes.try_into().ok()
+}
 
 /// The client data the Windows ceremony sends. Apple's platform builds its
 /// own; the Worker checks the same fields in both.
@@ -674,9 +680,64 @@ mod platform {
         WEBAUTHN_USER_ENTITY_INFORMATION, WEBAUTHN_USER_ENTITY_INFORMATION_CURRENT_VERSION,
         WEBAUTHN_USER_VERIFICATION_REQUIRED, WebAuthNAuthenticatorGetAssertion,
         WebAuthNAuthenticatorMakeCredential, WebAuthNFreeAssertion,
-        WebAuthNFreeCredentialAttestation,
+        WebAuthNFreeCredentialAttestation, WebAuthNGetApiVersionNumber,
     };
-    use windows::core::{PCWSTR, w};
+    use windows::core::{BOOL, PCWSTR, w};
+
+    /// Windows SDK WebAuthn V8 appends PRF registration input to V7 options.
+    /// Keep the binding type as the first field so the API receives its exact
+    /// existing layout with the extension immediately following it.
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    struct MakeCredentialOptionsV8 {
+        base: WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS,
+        pPRFGlobalEval: *mut WEBAUTHN_HMAC_SECRET_SALT,
+        cCredentialHints: u32,
+        ppwszCredentialHints: *mut PCWSTR,
+        bThirdPartyPayment: BOOL,
+    }
+
+    /// Windows SDK WebAuthn V7 appends the registration PRF output to V6
+    /// attestation. The pointer is read only when the returned version allows it.
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    struct CredentialAttestationV7 {
+        base: windows::Win32::Networking::WindowsWebServices::WEBAUTHN_CREDENTIAL_ATTESTATION,
+        pHmacSecret: *mut WEBAUTHN_HMAC_SECRET_SALT,
+        bThirdPartyPayment: BOOL,
+    }
+
+    const _: () = {
+        assert!(
+            std::mem::offset_of!(MakeCredentialOptionsV8, pPRFGlobalEval)
+                == std::mem::size_of::<WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS>()
+        );
+        assert!(
+            std::mem::offset_of!(CredentialAttestationV7, pHmacSecret)
+                == std::mem::size_of::<
+                    windows::Win32::Networking::WindowsWebServices::WEBAUTHN_CREDENTIAL_ATTESTATION,
+                >()
+        );
+    };
+
+    #[cfg(test)]
+    mod layout_tests {
+        use super::*;
+
+        #[test]
+        fn abi_extensions_start_after_the_binding_structs() {
+            assert_eq!(
+                std::mem::offset_of!(MakeCredentialOptionsV8, pPRFGlobalEval),
+                std::mem::size_of::<WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS>()
+            );
+            assert_eq!(
+                std::mem::offset_of!(CredentialAttestationV7, pHmacSecret),
+                std::mem::size_of::<
+                    windows::Win32::Networking::WindowsWebServices::WEBAUTHN_CREDENTIAL_ATTESTATION,
+                >()
+            );
+        }
+    }
 
     fn wide(text: &str) -> Vec<u16> {
         text.encode_utf16().chain(std::iter::once(0)).collect()
@@ -785,8 +846,14 @@ mod platform {
             cCredentials: exclude_pointers.len() as u32,
             ppCredentials: exclude_pointers.as_mut_ptr(),
         };
+        let api_version = unsafe { WebAuthNGetApiVersionNumber() };
+        let use_prf = request.prf_input.is_some() && api_version >= 8;
         let mut options = WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS {
-            dwVersion: WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS_CURRENT_VERSION,
+            dwVersion: if use_prf {
+                8
+            } else {
+                WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS_CURRENT_VERSION
+            },
             dwTimeoutMilliseconds: 120_000,
             bRequireResidentKey: true.into(),
             dwUserVerificationRequirement: WEBAUTHN_USER_VERIFICATION_REQUIRED,
@@ -798,19 +865,36 @@ mod platform {
         if !exclude_pointers.is_empty() {
             options.pExcludeCredentialList = &mut exclude_list;
         }
+        let mut prf_input = request.prf_input.filter(|_| use_prf).map(Box::new);
+        let mut prf_salt = prf_input.as_mut().map(|input| WEBAUTHN_HMAC_SECRET_SALT {
+            cbFirst: 32,
+            pbFirst: input.as_mut_ptr(),
+            cbSecond: 0,
+            pbSecond: std::ptr::null_mut(),
+        });
+        let options_v8 = MakeCredentialOptionsV8 {
+            base: options,
+            pPRFGlobalEval: prf_salt
+                .as_mut()
+                .map_or(std::ptr::null_mut(), |salt| salt as *mut _),
+            cCredentialHints: 0,
+            ppwszCredentialHints: std::ptr::null_mut(),
+            bThirdPartyPayment: false.into(),
+        };
         // SAFETY: every pointer stays alive for the call; the platform returns
         // an allocation freed below.
-        let attestation = unsafe {
+        let call_result = unsafe {
             WebAuthNAuthenticatorMakeCredential(
                 HWND(std::ptr::null_mut()),
                 &rp,
                 &user,
                 &params,
                 &client,
-                Some(&options),
+                Some(&options_v8.base),
             )
-        }
-        .map_err(|error| CeremonyError::Failed(error.to_string()))?;
+        };
+        drop(prf_input);
+        let attestation = call_result.map_err(|error| CeremonyError::Failed(error.to_string()))?;
         if attestation.is_null() {
             return Err(CeremonyError::Incomplete);
         }
@@ -823,7 +907,17 @@ mod platform {
                 attestation.cbAttestationObject,
             );
             let transports = transports(attestation.dwUsedTransport);
-            let prf = None;
+            let prf = if use_prf && attestation.dwVersion >= 7 {
+                let extended = &*(attestation as *const _ as *const CredentialAttestationV7);
+                if extended.pHmacSecret.is_null() {
+                    None
+                } else {
+                    let secret = &*extended.pHmacSecret;
+                    prf_output(&bytes(secret.pbFirst, secret.cbFirst))
+                }
+            } else {
+                None
+            };
             WebAuthNFreeCredentialAttestation(Some(attestation as *const _));
             if object.is_empty() || credential_id.is_empty() {
                 return Err(CeremonyError::Incomplete);
@@ -1026,5 +1120,12 @@ mod tests {
         assert_eq!(UserVerification::Required.as_str(), "required");
         assert_eq!(UserVerification::Preferred.as_str(), "preferred");
         assert_eq!(UserVerification::Discouraged.as_str(), "discouraged");
+    }
+
+    #[test]
+    fn windows_prf_output_requires_exactly_32_bytes() {
+        assert_eq!(prf_output(&[0x5a; 32]), Some([0x5a; 32]));
+        assert_eq!(prf_output(&[0x5a; 31]), None);
+        assert_eq!(prf_output(&[0x5a; 33]), None);
     }
 }

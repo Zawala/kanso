@@ -610,7 +610,12 @@ export const passkeySignupFinish = async (request: Request, env: Env, now: numbe
   RETURNING device_id`,
 			).bind(b.account_id, device.value.id, tokenHash, proofHash, device.value.sealedName, now),
 		]);
-		if (results[0].results.length !== 1 || results[1].results.length !== 1 || results[2].results.length !== 1) {
+		if (
+			results[0].results.length !== 1 ||
+			results[1].results.length !== 1 ||
+			results[2].results.length !== 1 ||
+			results[3].results.length !== 1
+		) {
 			return flowExpired();
 		}
 	} catch (err) {
