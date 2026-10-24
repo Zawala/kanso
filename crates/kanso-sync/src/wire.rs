@@ -428,6 +428,9 @@ pub enum ApiError {
     UsernameMismatch,
     #[error("400 checksum_mismatch")]
     ChecksumMismatch,
+    /// 400: a sign-in method this deployment doesn't offer.
+    #[error("400 unsupported_method")]
+    UnsupportedMethod,
     /// 401: session missing, malformed, unknown, revoked or expired.
     #[error("401 unauthorized ({})", reason.as_str())]
     Unauthorized { reason: SignOutReason },
@@ -560,7 +563,8 @@ impl ApiError {
             | ApiError::UnsupportedKdf
             | ApiError::WeakKdf
             | ApiError::UsernameMismatch
-            | ApiError::ChecksumMismatch => 400,
+            | ApiError::ChecksumMismatch
+            | ApiError::UnsupportedMethod => 400,
             ApiError::Unauthorized { .. }
             | ApiError::InvalidCredentials
             | ApiError::ReauthRequired => 401,
@@ -599,17 +603,16 @@ impl ApiError {
             ApiError::WeakKdf => "weak_kdf",
             ApiError::UsernameMismatch => "username_mismatch",
             ApiError::ChecksumMismatch => "checksum_mismatch",
+            ApiError::UnsupportedMethod => "unsupported_method",
+            ApiError::FlowExpired { .. } => "flow_expired",
             ApiError::Unauthorized { .. } => "unauthorized",
             ApiError::InvalidCredentials => "invalid_credentials",
             ApiError::ReauthRequired => "reauth_required",
-            ApiError::FlowExpired { .. } => "flow_expired",
             ApiError::NonceReused => "nonce_reused",
             ApiError::ProviderDisabled => "provider_disabled",
             ApiError::ProviderDenied => "provider_denied",
             ApiError::IdentityTaken => "identity_taken",
-            ApiError::LastMethod => "last_method",
             ApiError::AlreadyHasPassword => "already_has_password",
-            ApiError::CredentialExists => "credential_exists",
             ApiError::ForbiddenOrigin => "forbidden_origin",
             ApiError::AccountDisabled => "account_disabled",
             ApiError::SignupClosed { .. } => "signup_closed",
@@ -617,6 +620,8 @@ impl ApiError {
             ApiError::MethodNotAllowed => "method_not_allowed",
             ApiError::UsernameTaken => "username_taken",
             ApiError::AccountIdTaken => "account_id_taken",
+            ApiError::LastMethod => "last_method",
+            ApiError::CredentialExists => "credential_exists",
             ApiError::TooLarge => "too_large",
             ApiError::QuotaExceeded { .. } => "quota_exceeded",
             ApiError::UnsupportedMediaType => "unsupported_media_type",
@@ -671,21 +676,20 @@ impl ApiError {
             "weak_kdf" => ApiError::WeakKdf,
             "username_mismatch" => ApiError::UsernameMismatch,
             "checksum_mismatch" => ApiError::ChecksumMismatch,
+            "unsupported_method" => ApiError::UnsupportedMethod,
+            "flow_expired" => ApiError::FlowExpired {
+                gone: status == 410,
+            },
             "unauthorized" => ApiError::Unauthorized {
                 reason: SignOutReason::parse(text("reason")),
             },
             "invalid_credentials" => ApiError::InvalidCredentials,
             "reauth_required" => ApiError::ReauthRequired,
-            "flow_expired" => ApiError::FlowExpired {
-                gone: status == 410,
-            },
             "nonce_reused" => ApiError::NonceReused,
             "provider_disabled" => ApiError::ProviderDisabled,
             "provider_denied" => ApiError::ProviderDenied,
             "identity_taken" => ApiError::IdentityTaken,
-            "last_method" => ApiError::LastMethod,
             "already_has_password" => ApiError::AlreadyHasPassword,
-            "credential_exists" => ApiError::CredentialExists,
             "forbidden_origin" => ApiError::ForbiddenOrigin,
             "account_disabled" => ApiError::AccountDisabled,
             "signup_closed" => ApiError::SignupClosed {
@@ -699,6 +703,8 @@ impl ApiError {
             "method_not_allowed" => ApiError::MethodNotAllowed,
             "username_taken" => ApiError::UsernameTaken,
             "account_id_taken" => ApiError::AccountIdTaken,
+            "last_method" => ApiError::LastMethod,
+            "credential_exists" => ApiError::CredentialExists,
             "too_large" => ApiError::TooLarge,
             "quota_exceeded" => ApiError::QuotaExceeded {
                 quota: QuotaKind::ALL
@@ -782,17 +788,16 @@ mod tests {
             ApiError::WeakKdf,
             ApiError::UsernameMismatch,
             ApiError::ChecksumMismatch,
-            ApiError::InvalidCredentials,
-            ApiError::ReauthRequired,
+            ApiError::UnsupportedMethod,
             ApiError::FlowExpired { gone: false },
             ApiError::FlowExpired { gone: true },
+            ApiError::InvalidCredentials,
+            ApiError::ReauthRequired,
             ApiError::NonceReused,
             ApiError::ProviderDisabled,
             ApiError::ProviderDenied,
             ApiError::IdentityTaken,
-            ApiError::LastMethod,
             ApiError::AlreadyHasPassword,
-            ApiError::CredentialExists,
             ApiError::ProviderUnavailable,
             ApiError::ForbiddenOrigin,
             ApiError::AccountDisabled,
@@ -800,6 +805,8 @@ mod tests {
             ApiError::MethodNotAllowed,
             ApiError::UsernameTaken,
             ApiError::AccountIdTaken,
+            ApiError::LastMethod,
+            ApiError::CredentialExists,
             ApiError::TooLarge,
             ApiError::UnsupportedMediaType,
             ApiError::RateLimited {

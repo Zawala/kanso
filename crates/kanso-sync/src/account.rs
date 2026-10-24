@@ -235,6 +235,10 @@ pub enum AccountError {
     UsernameMismatch,
     #[error("a file didn't match its checksum")]
     ChecksumMismatch,
+    #[error("this server doesn't offer that sign-in method")]
+    UnsupportedMethod,
+    #[error("the sign-in flow expired; try again")]
+    FlowExpired,
     /// 401 `unauthorized`: this Mac's session ended, for `reason`.
     #[error("signed out ({})", reason.as_str())]
     Unauthorized { reason: SignOutReason },
@@ -245,9 +249,6 @@ pub enum AccountError {
     /// proof, not just this session.
     #[error("this change needs your password or a passkey")]
     ReauthRequired,
-    /// 400/410 `flow_expired`: the sign-in or proof flow is over.
-    #[error("this sign-in expired; try again")]
-    FlowExpired,
     /// 400 `nonce_reused`: the token or flow was already used.
     #[error("this sign-in was already used")]
     NonceReused,
@@ -285,7 +286,6 @@ pub enum AccountError {
     /// 409 `already_has_password`.
     #[error("this account already has a password")]
     AlreadyHasPassword,
-    /// 409 `credential_exists`.
     #[error("that passkey is already registered")]
     CredentialExists,
     #[error("too large")]
@@ -375,10 +375,11 @@ impl From<ApiError> for AccountError {
             ApiError::WeakKdf => AccountError::WeakKdf,
             ApiError::UsernameMismatch => AccountError::UsernameMismatch,
             ApiError::ChecksumMismatch => AccountError::ChecksumMismatch,
+            ApiError::UnsupportedMethod => AccountError::UnsupportedMethod,
+            ApiError::FlowExpired { .. } => AccountError::FlowExpired,
             ApiError::Unauthorized { reason } => AccountError::Unauthorized { reason },
             ApiError::InvalidCredentials => AccountError::InvalidCredentials,
             ApiError::ReauthRequired => AccountError::ReauthRequired,
-            ApiError::FlowExpired { .. } => AccountError::FlowExpired,
             ApiError::NonceReused => AccountError::NonceReused,
             ApiError::ForbiddenOrigin => AccountError::ForbiddenOrigin,
             ApiError::AccountDisabled => AccountError::AccountDisabled,
@@ -1798,6 +1799,26 @@ mod tests {
         assert!(matches!(
             AccountError::from(ApiError::Transport("reset".into())),
             AccountError::Transport(_)
+        ));
+        assert!(matches!(
+            AccountError::from(ApiError::UnsupportedMethod),
+            AccountError::UnsupportedMethod
+        ));
+        assert!(matches!(
+            AccountError::from(ApiError::FlowExpired { gone: false }),
+            AccountError::FlowExpired
+        ));
+        assert!(matches!(
+            AccountError::from(ApiError::ReauthRequired),
+            AccountError::ReauthRequired
+        ));
+        assert!(matches!(
+            AccountError::from(ApiError::LastMethod),
+            AccountError::LastMethod
+        ));
+        assert!(matches!(
+            AccountError::from(ApiError::CredentialExists),
+            AccountError::CredentialExists
         ));
     }
 }

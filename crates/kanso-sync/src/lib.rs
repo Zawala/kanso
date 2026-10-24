@@ -22,9 +22,11 @@ mod http;
 pub mod keychain;
 pub mod lock;
 mod memory;
+pub mod passkey;
 pub mod provider;
 mod remote;
 mod sealed;
+pub mod security_key;
 pub mod share;
 pub mod site;
 pub mod username;
@@ -44,7 +46,10 @@ pub use binding::{
     BindError, Choice, DeviceIdentity, Flow, LocalLibrary, Machine, Plan, bind, device_identity,
     device_name, local_library, meta_keys, plan, unbind,
 };
-pub use crypto::{CollabRoots, KdfParams, Password, PasswordError, RecoveryKey, RecoveryKeyError};
+pub use crypto::{
+    CollabRoots, KdfParams, PRF_INPUT, Password, PasswordError, RecoveryKey, RecoveryKeyError,
+    WrapPurpose, passkey_kek,
+};
 pub use engine::{
     Schedule, SyncError, SyncOptions, SyncProblem, SyncReport, batches, problem, report_problem,
     sync,
@@ -56,6 +61,7 @@ pub use memory::{
     AccountSnapshot, DEFAULT_SETTINGS, Limits, MemoryServer, QuotaOverride, ServerDevice,
     ServerStats, Signup, is_valid_setting,
 };
+pub use passkey::{PasskeyAssertion, PasskeyRegistration};
 pub use provider::{
     AccountMethods, AppleStart, GithubStart, GoogleStart, IdentityIntent, LinkOutcome,
     LinkedProvider, Loopback, NewAccount, PasskeyInfo, PasskeyMethods, ProofWire, Provider,

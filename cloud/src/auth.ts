@@ -572,6 +572,10 @@ export const recoverFinish: PepperHandler = async (request, env, now, keys) => {
 			).bind(account.id, now, old),
 			...sessionStatements(env.DB, { accountId: account.id, ...s }, [["recovery_hash", old]]),
 			env.DB.prepare(
+				`DELETE FROM account_passkeys WHERE account_id = ?1
+  AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND recovery_hash = ?2 AND disabled_at IS NULL)`,
+			).bind(account.id, old),
+			env.DB.prepare(
 				`UPDATE accounts SET kdf_m_kib = ?3, kdf_t = ?4, kdf_p = ?5, salt = ?6, auth_hash = ?7, wrapped_key = ?8,
   recovery_hash = ?9, recovery_wrapped_key = ?10
   WHERE id = ?1 AND recovery_hash = ?2 AND disabled_at IS NULL RETURNING id`,
@@ -588,7 +592,7 @@ export const recoverFinish: PepperHandler = async (request, env, now, keys) => {
 				b.recovery_wrapped_key_new,
 			),
 		]);
-		if (results[4].results.length === 1) {
+		if (results[5].results.length === 1) {
 			return json({ account_id: account.id, username: account.username, token: session.token, epoch: account.epoch });
 		}
 		account = await env.DB.prepare(ACCOUNT_BY_NAME).bind(name.value).first<AccountRow>();
