@@ -44,7 +44,9 @@ pub fn ctap_salt() -> [u8; 32] {
 pub struct SecurityKeyDevice {
     /// The libfido2 path (`/dev/hidrawN` on Linux).
     pub path: String,
+    /// The USB vendor ID as four lowercase hex digits.
     pub vendor: String,
+    /// The authenticator's product string, when libfido2 reports one.
     pub product: String,
     /// Whether this key advertises `hmac-secret` capabilities. libfido2
     /// reports capability flags; the app still checks the ceremony's answer.
@@ -60,8 +62,9 @@ pub struct RegistrationRequest {
     pub user_handle: Vec<u8>,
     pub username: String,
     pub display_name: String,
-    /// Ask the key for `hmac-secret` on a following assertion. The
-    /// make-credential binding exposes no `hmac-secret-mc` output.
+    /// Enable `hmac-secret` on the credential so a following assertion can
+    /// return the PRF output. The make-credential binding exposes no
+    /// `hmac-secret-mc` output.
     pub hmac_secret: bool,
     pub pin: Option<zeroize::Zeroizing<String>>,
 }
@@ -289,8 +292,8 @@ mod platform {
         fn fido_dev_info_free(list: *mut *mut FidoDevInfo, n: usize);
         fn fido_dev_info_ptr(list: *const FidoDevInfo, i: usize) -> *const FidoDevInfo;
         fn fido_dev_info_path(info: *const FidoDevInfo) -> *const c_char;
-        fn fido_dev_info_vendor(info: *const FidoDevInfo) -> *const c_char;
-        fn fido_dev_info_product(info: *const FidoDevInfo) -> *const c_char;
+        fn fido_dev_info_vendor(info: *const FidoDevInfo) -> i16;
+        fn fido_dev_info_product_string(info: *const FidoDevInfo) -> *const c_char;
 
         fn fido_dev_new() -> *mut FidoDev;
         fn fido_dev_free(dev: *mut *mut FidoDev);
@@ -313,6 +316,7 @@ mod platform {
         -> c_int;
         fn fido_cred_set_rk(cred: *mut FidoCred, value: c_int) -> c_int;
         fn fido_cred_set_uv(cred: *mut FidoCred, value: c_int) -> c_int;
+        fn fido_cred_set_extensions(cred: *mut FidoCred, flags: c_int) -> c_int;
         fn fido_cred_set_fmt(cred: *mut FidoCred, fmt: *const c_char) -> c_int;
         fn fido_cred_authdata_ptr(cred: *const FidoCred) -> *const u8;
         fn fido_cred_authdata_len(cred: *const FidoCred) -> usize;
@@ -354,6 +358,8 @@ mod platform {
     }
 
     const FIDO_OPT_TRUE: c_int = 1;
+    // libfido2 <fido/param.h>: FIDO_EXT_HMAC_SECRET.
+    const FIDO_EXT_HMAC_SECRET: c_int = 0x01;
     const COSE_ES256: c_int = -7;
     const MAX_DEVICES: usize = 8;
 
@@ -432,8 +438,8 @@ mod platform {
                     }
                     out.push(SecurityKeyDevice {
                         path,
-                        vendor: text(fido_dev_info_vendor(info)),
-                        product: text(fido_dev_info_product(info)),
+                        vendor: format!("{:04x}", fido_dev_info_vendor(info)),
+                        product: text(fido_dev_info_product_string(info)),
                         // libfido2 reports capabilities at open time; the
                         // ceremony's hmac-secret answer is authoritative.
                         hmac_secret: true,
@@ -509,6 +515,9 @@ mod platform {
             }
             if code == 0 {
                 code = fido_cred_set_uv(cred.0, FIDO_OPT_TRUE);
+            }
+            if code == 0 && request.hmac_secret {
+                code = fido_cred_set_extensions(cred.0, FIDO_EXT_HMAC_SECRET);
             }
             if code == 0 {
                 code = fido_cred_set_fmt(cred.0, c"none".as_ptr());
