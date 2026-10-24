@@ -477,8 +477,7 @@ mod platform {
         let pin = request
             .pin
             .as_ref()
-            .map(|pin| CString::new(pin.as_bytes()).ok())
-            .flatten();
+            .and_then(|pin| CString::new(pin.as_bytes()).ok());
         // SAFETY: every pointer is valid for the call; libfido2 owns the credential.
         unsafe {
             let raw = fido_cred_new();
@@ -554,8 +553,7 @@ mod platform {
         let pin = request
             .pin
             .as_ref()
-            .map(|pin| CString::new(pin.as_bytes()).ok())
-            .flatten();
+            .and_then(|pin| CString::new(pin.as_bytes()).ok());
         // SAFETY: every pointer is valid for the call; libfido2 owns the assertion.
         unsafe {
             let raw = fido_assert_new();
