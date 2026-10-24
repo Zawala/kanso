@@ -40,18 +40,22 @@ pub mod ws;
 pub use account::{
     AccountError, DEFAULT_SERVER, DeviceInfo, PasswordChanged, Quota, Recovered, RotationError,
     Session, SignedIn, SignedUp, SignupState, Step, Usage, change_password, delete_account,
-    devices, discard_session, finish_google, finish_identity, finish_identity_google,
-    flush_pending_logouts, methods, new_recovery_key, poll_provider, recover, recovery_key_held,
-    revoke_device, server_auth, server_info, sign_in, sign_in_with_provider, sign_out, sign_up,
-    sign_up_with_provider, start_identity, start_provider, unlink_identity, usage,
+    devices, discard_locked_session, discard_session, finish_google, finish_identity,
+    finish_identity_google, flush_pending_logouts, methods, methods_locked, new_recovery_key,
+    poll_provider, recover, recovery_key_held, refresh_locked_methods, revoke_device, server_auth,
+    server_info, sign_in, sign_in_with_provider, sign_out, sign_out_locked, sign_up,
+    sign_up_with_provider, start_identity, start_provider, unlink_identity, unlock_with_password,
+    usage,
 };
 pub use api::{Api, Backend, Route};
 pub use approval::{Approval, ApprovalKeys};
 pub use approvals::{
-    ApprovalRequest, Approved, LockedSession, OpenedRequest, PendingApproval, RequestState,
-    account_events_path, cancel_request, challenge_request, complete_request, decline_request,
-    finish_approval, finish_unlock, name_device, open_request, pending_approvals, poll_approval,
-    request_approval,
+    ApprovalRequest, ApprovalResume, Approved, LockedSession, OpenedRequest, PendingApproval,
+    RequestState, account_events_path, cancel_request, cancel_saved_approval, challenge_request,
+    complete_request, complete_saved_request, decline_request, finish_approval, finish_unlock,
+    name_device, name_device_resumable, new_approval_request_id, open_request, pending_approvals,
+    poll_approval, poll_saved_approval, request_approval, request_approval_resumable,
+    resume_approval, unlock_with_local_key,
 };
 pub use binding::{
     BindError, Choice, DeviceIdentity, Flow, LocalLibrary, Machine, Plan, bind, device_identity,

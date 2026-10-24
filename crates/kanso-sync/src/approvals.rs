@@ -15,14 +15,16 @@ use std::fmt;
 use crate::account::{AccountError, DeviceInfo, Session, SignedIn, checked_server, retrying};
 use crate::api::{
     ApprovalApproveRequest, ApprovalChallengeRequest, ApprovalCreateRequest, ApprovalNameRequest,
-    ApprovalPoll, ApprovalRow, Backend, DeviceNameRequest,
+    ApprovalPoll, ApprovalRow, Backend, DeviceNameRequest, LoginDevice, WireDevice,
 };
 use crate::approval::{Approval, ApprovalKeys, Side, epk_text, matches_commitment, parse_epk};
 use crate::binding::DeviceIdentity;
-use crate::crypto::{ContentKeys, key_id};
+use crate::crypto::{ContentKeys, DataKey, b64, key_id, random};
+use crate::keychain::{self, SecretStore};
 use crate::wire::{
     ApiError, PROTOCOL_VERSION, SessionToken, is_approval_id, is_device_id, is_sealed_name,
 };
+use zeroize::Zeroizing;
 
 /// How long the new device waits for an answer before it puts the recovery
 /// key first.
@@ -32,9 +34,127 @@ pub const NO_ANSWER_AFTER_MS: i64 = 120_000;
 /// minutes, at most three requests, fit `approval-poll`'s 900 an hour).
 pub const POLL_EVERY_MS: u64 = 2_000;
 
+/// Approval state needed to continue one request after relaunch. The
+/// requester secret is retained only in zeroizing private storage; it is
+/// never formatted or returned by an accessor.
+#[derive(Clone, PartialEq, Eq)]
+pub struct ApprovalResume {
+    pub(crate) request_id: String,
+    requester_secret: Zeroizing<[u8; 32]>,
+    pub(crate) expires_at: i64,
+    pub(crate) other_devices: usize,
+    pub(crate) approver_epk: Option<[u8; 32]>,
+    pub(crate) approver_device_id: Option<String>,
+    pub(crate) sealed_name: Option<String>,
+}
+
+impl ApprovalResume {
+    pub(crate) fn new(
+        request_id: String,
+        keys: &ApprovalKeys,
+        expires_at: i64,
+        other_devices: usize,
+    ) -> ApprovalResume {
+        ApprovalResume {
+            request_id,
+            requester_secret: Zeroizing::new(keys.secret_bytes()),
+            expires_at,
+            other_devices,
+            approver_epk: None,
+            approver_device_id: None,
+            sealed_name: None,
+        }
+    }
+
+    pub(crate) fn from_parts(
+        request_id: String,
+        requester_secret: [u8; 32],
+        expires_at: i64,
+        other_devices: usize,
+        approver_epk: Option<[u8; 32]>,
+        approver_device_id: Option<String>,
+        sealed_name: Option<String>,
+    ) -> ApprovalResume {
+        ApprovalResume {
+            request_id,
+            requester_secret: Zeroizing::new(requester_secret),
+            expires_at,
+            other_devices,
+            approver_epk,
+            approver_device_id,
+            sealed_name,
+        }
+    }
+
+    /// The stable request ID, reused after a lost response or relaunch.
+    pub fn request_id(&self) -> &str {
+        &self.request_id
+    }
+
+    /// The server expiry, or zero while the first create answer is pending.
+    pub fn expires_at(&self) -> i64 {
+        self.expires_at
+    }
+
+    /// The server's count of other active devices when this request was made.
+    pub fn other_devices(&self) -> usize {
+        self.other_devices
+    }
+
+    /// The requester's public key, recomputed from the private key.
+    pub fn requester_epk(&self) -> [u8; 32] {
+        self.keys().epk()
+    }
+
+    /// The approver's public key once a challenge has been observed.
+    pub fn approver_epk(&self) -> Option<[u8; 32]> {
+        self.approver_epk
+    }
+
+    /// The approver's device ID once a challenge has been observed.
+    pub fn approver_device_id(&self) -> Option<&str> {
+        self.approver_device_id.as_deref()
+    }
+
+    /// The exact ciphertext already sent to `/name`, if any.
+    pub fn sealed_name(&self) -> Option<&str> {
+        self.sealed_name.as_deref()
+    }
+
+    pub(crate) fn keys(&self) -> ApprovalKeys {
+        ApprovalKeys::from_secret(*self.requester_secret)
+    }
+
+    pub(crate) fn requester_secret(&self) -> &[u8; 32] {
+        &self.requester_secret
+    }
+
+    pub(crate) fn matches_keys(&self, keys: &ApprovalKeys) -> bool {
+        self.requester_secret.as_ref() == keys.secret_bytes()
+    }
+}
+
+impl fmt::Debug for ApprovalResume {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ApprovalResume")
+            .field("request_id", &self.request_id)
+            .field("expires_at", &self.expires_at)
+            .field("other_devices", &self.other_devices)
+            .field("approver_epk", &self.approver_epk.map(|_| "[present]"))
+            .field("approver_device_id", &self.approver_device_id)
+            .field(
+                "sealed_name",
+                &self.sealed_name.as_ref().map(|_| "[redacted]"),
+            )
+            .field("requester_secret", &"[redacted]")
+            .finish()
+    }
+}
+
 /// A device that has a session but not the data key (a passkey without PRF
 /// or a provider sign-in). It can request approval and sign out; it can't
 /// sync. The token is private and zeroized on drop; `Debug` doesn't show it.
+#[derive(Clone)]
 pub struct LockedSession {
     pub server: String,
     pub origin: String,
@@ -44,11 +164,21 @@ pub struct LockedSession {
     /// The data key's ID the server holds, checked after unwrapping.
     pub key_id: String,
     pub epoch: String,
+    /// Whether the account has a password wrap available for password unlock.
+    pub has_password: bool,
     /// The password wrap returned by a sign-in, when the account has a password.
     /// It is ciphertext; the pending item may use it to offer password unlock.
     pub wrapped_key: Option<String>,
     /// A device the sign-in signed out to make room, for the notice after unlock.
     pub evicted: Option<DeviceInfo>,
+    // Kept separately so the ciphertext never appears in Debug and can be
+    // opened once the data key is available.
+    evicted_sealed_name: Option<String>,
+    // The sign-in proof must survive until password unlock, including when a
+    // provider used an ephemeral device ID unrelated to this library.
+    login_device: Option<LoginDevice>,
+    evicted_wire_device: Option<WireDevice>,
+    approval_resume: Option<ApprovalResume>,
     token: SessionToken,
     library_id: Option<String>,
 }
@@ -77,8 +207,13 @@ impl LockedSession {
             device_id,
             key_id,
             epoch,
+            has_password: false,
             wrapped_key,
             evicted,
+            evicted_sealed_name: None,
+            login_device: None,
+            evicted_wire_device: None,
+            approval_resume: None,
             token,
             library_id: None,
         }
@@ -96,6 +231,89 @@ impl LockedSession {
     pub fn library_id(&self) -> Option<&str> {
         self.library_id.as_deref()
     }
+
+    /// Replaces this locked session's token with an unlocked session token
+    /// after confirming that the unlocked session belongs to the same
+    /// library, server origin, account, username, device, and data key.
+    pub fn adopt_unlocked_session(&mut self, unlocked: &Session) -> Result<(), AccountError> {
+        if self.library_id() != unlocked.library_id()
+            || self.server != unlocked.server
+            || self.origin != unlocked.origin
+            || self.account_id != unlocked.account_id
+            || self.username != unlocked.username
+            || self.device_id != unlocked.device_id
+            || self.key_id != unlocked.key_id()
+        {
+            return Err(AccountError::KeyMismatch);
+        }
+        self.token = unlocked.token().clone();
+        Ok(())
+    }
+
+    /// Records whether this account can be unlocked with its password.
+    pub fn with_has_password(mut self, has_password: bool) -> LockedSession {
+        self.has_password = has_password;
+        self
+    }
+
+    /// Carries the original server ciphertext through a locked-session
+    /// round trip without exposing it in Debug.
+    pub fn with_evicted_sealed_name(mut self, sealed_name: Option<String>) -> LockedSession {
+        self.evicted_sealed_name = sealed_name;
+        self
+    }
+
+    /// Retains the proof used by the provider or passkey sign-in. The proof
+    /// stays private, is redacted in `Debug`, and is zeroized when dropped.
+    pub fn with_login_device(mut self, login_device: LoginDevice) -> LockedSession {
+        self.login_device = Some(login_device);
+        self
+    }
+
+    /// Retains the server's raw evicted-device response until a data key is
+    /// available to open its sealed name.
+    pub fn with_evicted_wire_device(mut self, device: Option<WireDevice>) -> LockedSession {
+        self.evicted = device.as_ref().map(|device| DeviceInfo {
+            id: device.id.clone(),
+            name: None,
+            created_at: 0,
+            last_seen_at: 0,
+            current: false,
+        });
+        self.evicted_sealed_name = device
+            .as_ref()
+            .and_then(|device| device.sealed_name.clone());
+        self.evicted_wire_device = device;
+        self
+    }
+
+    /// Retains an approval request for an idempotent create/poll after relaunch.
+    pub fn with_approval_resume(mut self, resume: ApprovalResume) -> LockedSession {
+        self.approval_resume = Some(resume);
+        self
+    }
+
+    /// The pending approval metadata, if this locked session has a resumable request.
+    pub fn approval_resume(&self) -> Option<&ApprovalResume> {
+        self.approval_resume.as_ref()
+    }
+
+    /// The original raw eviction answer, including its sealed name.
+    pub fn evicted_wire_device(&self) -> Option<&WireDevice> {
+        self.evicted_wire_device.as_ref()
+    }
+
+    pub(crate) fn login_device(&self) -> Option<&LoginDevice> {
+        self.login_device.as_ref()
+    }
+
+    pub(crate) fn evicted_sealed_name(&self) -> Option<&str> {
+        self.evicted_sealed_name.as_deref()
+    }
+
+    pub(crate) fn approval_resume_mut(&mut self) -> Option<&mut ApprovalResume> {
+        self.approval_resume.as_mut()
+    }
 }
 
 impl fmt::Debug for LockedSession {
@@ -107,14 +325,61 @@ impl fmt::Debug for LockedSession {
             .field("username", &self.username)
             .field("device_id", &self.device_id)
             .field("key_id", &self.key_id)
+            .field("epoch", &self.epoch)
+            .field("has_password", &self.has_password)
             .field(
                 "wrapped_key",
                 &self.wrapped_key.as_ref().map(|_| "[redacted]"),
             )
             .field("evicted", &self.evicted.as_ref().map(|device| &device.id))
+            .field(
+                "device_proof",
+                &self.login_device.as_ref().map(|_| "[redacted]"),
+            )
+            .field(
+                "evicted_sealed_name",
+                &self.evicted_sealed_name.as_ref().map(|_| "[redacted]"),
+            )
+            .field("approval_resume", &self.approval_resume)
             .field("library_id", &self.library_id)
             .finish_non_exhaustive()
     }
+}
+
+/// Opens a locked server session with this library's already available key.
+/// No network request is made; the origin, account and data-key ID must all
+/// match before the locked server session is resumed.
+pub fn unlock_with_local_key(
+    locked: &LockedSession,
+    local: &Session,
+) -> Result<SignedIn, AccountError> {
+    if locked.origin != local.origin
+        || locked.account_id != local.account_id
+        || !is_device_id(&locked.device_id)
+        || key_id(local.data_key()) != locked.key_id
+        || locked
+            .library_id()
+            .is_some_and(|id| local.library_id() != Some(id))
+    {
+        return Err(AccountError::KeyMismatch);
+    }
+    let mut session = Session::new(
+        locked.server.clone(),
+        locked.origin.clone(),
+        locked.account_id.clone(),
+        locked.username.clone(),
+        locked.device_id.clone(),
+        locked.token().clone(),
+        DataKey::from_bytes(*local.data_key().bytes()),
+    );
+    if let Some(library_id) = locked.library_id() {
+        session.set_library_id(library_id);
+    } else if let Some(library_id) = local.library_id() {
+        session.set_library_id(library_id);
+    }
+    let content = ContentKeys::derive(local.data_key());
+    let evicted = opened_evicted(locked, &content);
+    Ok(SignedIn { session, evicted })
 }
 
 /// The path of `server`'s account event socket, from its health check, or
@@ -157,6 +422,12 @@ pub struct ApprovalRequest {
     pub other_devices: usize,
 }
 
+/// Generates the canonical 32-byte request ID that the caller passes to
+/// [`request_approval_resumable`] and reuses until that request ends.
+pub fn new_approval_request_id() -> String {
+    b64(&random::<32>())
+}
+
 /// The approver's answer, as the new device's poll returns it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Approved {
@@ -192,14 +463,15 @@ pub fn request_approval(
 ) -> Result<ApprovalRequest, AccountError> {
     let api = b.api(&locked.server);
     let request = ApprovalCreateRequest {
+        request_id: new_approval_request_id(),
         commit: keys.commitment(),
     };
-    // Not retried: a lost answer would make a second request, and the
-    // first is cancelled when a fourth is made, or expires.
-    let created = api.create_approval(locked.token(), &request)?;
-    if !is_approval_id(&created.id) {
+    // The stable caller ID makes an in-process resend safe even when the
+    // Worker's answer was lost. Relaunch safety requires the persisted API below.
+    let created = retrying(b, || api.create_approval(locked.token(), &request))?;
+    if !is_approval_id(&created.id) || created.id != request.request_id {
         return Err(AccountError::Protocol(
-            "an approval ID of the wrong shape".into(),
+            "the approval create answer changed its request ID".into(),
         ));
     }
     Ok(ApprovalRequest {
@@ -208,6 +480,143 @@ pub fn request_approval(
         expires_at: created.expires_at,
         other_devices: usize::try_from(created.other_devices).unwrap_or(usize::MAX),
     })
+}
+
+/// Persists the caller's stable request ID and X25519 secret before sending
+/// create. If the answer is lost, call this again with the same ID and keys,
+/// or [`resume_approval`] with the loaded locked session.
+pub fn request_approval_resumable(
+    b: &dyn Backend,
+    secrets: &dyn SecretStore,
+    locked: &LockedSession,
+    request_id: &str,
+    keys: &ApprovalKeys,
+) -> Result<ApprovalRequest, AccountError> {
+    if !is_approval_id(request_id) {
+        return Err(AccountError::BadRequest);
+    }
+    let library_id = locked.library_id().ok_or_else(|| {
+        AccountError::Protocol("the locked session has no library ID for Keychain storage".into())
+    })?;
+    let persisted = keychain::load_locked_pending(secrets, library_id)?;
+    let mut pending = match persisted {
+        Some(saved) if same_locked_session(&saved, locked) => saved,
+        Some(_) => return Err(AccountError::KeyMismatch),
+        None => locked.clone(),
+    };
+    if pending.approval_resume.is_none()
+        && let Some(resume) = locked.approval_resume()
+    {
+        pending.approval_resume = Some(resume.clone());
+    }
+    match pending.approval_resume.as_ref() {
+        Some(saved) if saved.request_id == request_id && saved.matches_keys(keys) => {}
+        Some(_) => return Err(AccountError::ApprovalChanged),
+        None => {
+            pending.approval_resume = Some(ApprovalResume::new(request_id.to_owned(), keys, 0, 0));
+        }
+    }
+    persist_locked_pending(secrets, &pending)?;
+    create_saved_request(b, secrets, &pending)
+}
+
+/// Recreates the same key pair and request ID from persisted state, then
+/// replays create idempotently. It never generates replacement state.
+pub fn resume_approval(
+    b: &dyn Backend,
+    secrets: &dyn SecretStore,
+    locked: &LockedSession,
+) -> Result<ApprovalRequest, AccountError> {
+    if locked.approval_resume.is_none() {
+        return Err(AccountError::Protocol(
+            "there is no saved approval request to resume".into(),
+        ));
+    }
+    create_saved_request(b, secrets, locked)
+}
+
+fn create_saved_request(
+    b: &dyn Backend,
+    secrets: &dyn SecretStore,
+    locked: &LockedSession,
+) -> Result<ApprovalRequest, AccountError> {
+    let locked = saved_locked_pending(secrets, locked)?;
+    let resume = locked
+        .approval_resume()
+        .ok_or_else(|| AccountError::Protocol("there is no saved approval request".into()))?;
+    let keys = resume.keys();
+    let request = ApprovalCreateRequest {
+        request_id: resume.request_id.clone(),
+        commit: keys.commitment(),
+    };
+    let api = b.api(&locked.server);
+    let created = retrying(b, || api.create_approval(locked.token(), &request))?;
+    if !is_approval_id(&created.id) || created.id != request.request_id || created.expires_at <= 0 {
+        return Err(AccountError::Protocol(
+            "the approval create answer doesn't match its saved request".into(),
+        ));
+    }
+    let mut updated = locked;
+    let saved = updated
+        .approval_resume_mut()
+        .ok_or_else(|| AccountError::Protocol("there is no saved approval request".into()))?;
+    saved.expires_at = created.expires_at;
+    saved.other_devices = usize::try_from(created.other_devices).unwrap_or(usize::MAX);
+    let request = approval_request(saved);
+    persist_locked_pending(secrets, &updated)?;
+    Ok(request)
+}
+
+fn approval_request(resume: &ApprovalResume) -> ApprovalRequest {
+    ApprovalRequest {
+        id: resume.request_id.clone(),
+        epk: resume.requester_epk(),
+        expires_at: resume.expires_at,
+        other_devices: resume.other_devices,
+    }
+}
+
+fn persist_locked_pending(
+    secrets: &dyn SecretStore,
+    locked: &LockedSession,
+) -> Result<(), AccountError> {
+    let library_id = locked.library_id().ok_or_else(|| {
+        AccountError::Protocol("the locked session has no library ID for Keychain storage".into())
+    })?;
+    if keychain::load_locked_pending(secrets, library_id)?.is_some() {
+        keychain::update_locked_pending(secrets, library_id, locked)?;
+    } else {
+        keychain::save_locked_pending(secrets, library_id, locked)?;
+    }
+    Ok(())
+}
+
+fn same_locked_session(left: &LockedSession, right: &LockedSession) -> bool {
+    left.server == right.server
+        && left.origin == right.origin
+        && left.account_id == right.account_id
+        && left.username == right.username
+        && left.device_id == right.device_id
+        && left.key_id == right.key_id
+        && left.epoch == right.epoch
+        && left.token() == right.token()
+        && left.library_id() == right.library_id()
+        && left.login_device() == right.login_device()
+}
+
+fn saved_locked_pending(
+    secrets: &dyn SecretStore,
+    locked: &LockedSession,
+) -> Result<LockedSession, AccountError> {
+    let library_id = locked.library_id().ok_or_else(|| {
+        AccountError::Protocol("the locked session has no library ID for Keychain storage".into())
+    })?;
+    let saved = keychain::load_locked_pending(secrets, library_id)?
+        .ok_or_else(|| AccountError::Protocol("there is no saved locked session".into()))?;
+    if !same_locked_session(&saved, locked) {
+        return Err(AccountError::KeyMismatch);
+    }
+    Ok(saved)
 }
 
 /// The request's state, from the requester's poll.
@@ -220,6 +629,55 @@ pub fn poll_approval(
         b.api(&locked.server).approval(locked.token(), &request.id)
     })?;
     request_state(&poll)
+}
+
+/// Polls the saved request after relaunch, stores a newly observed challenge,
+/// and clears only approval state when the server says cancelled or expired.
+pub fn poll_saved_approval(
+    b: &dyn Backend,
+    secrets: &dyn SecretStore,
+    locked: &LockedSession,
+) -> Result<RequestState, AccountError> {
+    let saved = saved_locked_pending(secrets, locked)?;
+    let resume = saved
+        .approval_resume()
+        .ok_or_else(|| AccountError::Protocol("there is no saved approval request".into()))?;
+    let request = approval_request(resume);
+    let state = poll_approval(b, &saved, &request)?;
+    match &state {
+        RequestState::Challenged {
+            approver_epk,
+            approver_device_id,
+        } => {
+            let mut updated = saved.clone();
+            let saved = updated.approval_resume_mut().ok_or_else(|| {
+                AccountError::Protocol("there is no saved approval request".into())
+            })?;
+            if saved
+                .approver_epk
+                .is_some_and(|existing| existing != *approver_epk)
+                || saved
+                    .approver_device_id
+                    .as_deref()
+                    .is_some_and(|existing| existing != approver_device_id)
+            {
+                return Err(AccountError::ApprovalChanged);
+            }
+            saved.approver_epk = Some(*approver_epk);
+            saved.approver_device_id = Some(approver_device_id.clone());
+            persist_locked_pending(secrets, &updated)?;
+        }
+        RequestState::Cancelled | RequestState::Expired => {
+            let library_id = saved.library_id().ok_or_else(|| {
+                AccountError::Protocol(
+                    "the locked session has no library ID for Keychain storage".into(),
+                )
+            })?;
+            keychain::clear_pending_approval(secrets, library_id)?;
+        }
+        _ => {}
+    }
+    Ok(state)
 }
 
 fn request_state(poll: &ApprovalPoll) -> Result<RequestState, AccountError> {
@@ -277,6 +735,19 @@ pub fn complete_request(
     Ok(keys.complete(Side::New, approver_epk, &locked.account_id, &request.id)?)
 }
 
+/// Completes the request from its saved key pair without requiring the
+/// caller to retain or reconstruct requester secret material.
+pub fn complete_saved_request(
+    locked: &LockedSession,
+    approver_epk: &[u8; 32],
+) -> Result<Approval, AccountError> {
+    let resume = locked
+        .approval_resume()
+        .ok_or_else(|| AccountError::Protocol("there is no saved approval request".into()))?;
+    let keys = resume.keys();
+    complete_request(locked, &approval_request(resume), &keys, approver_epk)
+}
+
 /// Reveals this device's key and posts its name sealed for the approver
 /// (`device.name`). A repeat of the identical body is answered 200, so a lost
 /// answer is sent again.
@@ -296,6 +767,74 @@ pub fn name_device(
             .name_approval(locked.token(), &request.id, &body)
     })?;
     Ok(())
+}
+
+/// Seals the new device name once, persists that exact ciphertext before
+/// `/name`, then reuses it on every retry or relaunch.
+pub fn name_device_resumable(
+    b: &dyn Backend,
+    secrets: &dyn SecretStore,
+    locked: &LockedSession,
+    device: &DeviceIdentity,
+) -> Result<(), AccountError> {
+    let mut updated = saved_locked_pending(secrets, locked)?;
+    let (request_id, body) = {
+        let resume = updated
+            .approval_resume_mut()
+            .ok_or_else(|| AccountError::Protocol("there is no saved approval request".into()))?;
+        let approver_epk = resume.approver_epk.ok_or_else(|| {
+            AccountError::Protocol("the approval request has no challenge".into())
+        })?;
+        if resume
+            .approver_device_id
+            .as_deref()
+            .is_none_or(|id| !is_device_id(id))
+        {
+            return Err(AccountError::Protocol(
+                "the approval request has no approver device".into(),
+            ));
+        }
+        let keys = resume.keys();
+        let approval = keys.complete(
+            Side::New,
+            &approver_epk,
+            &locked.account_id,
+            &resume.request_id,
+        )?;
+        let sealed_name = resume
+            .sealed_name
+            .clone()
+            .unwrap_or_else(|| approval.seal_name(&device.name));
+        if resume.sealed_name.is_none() {
+            resume.sealed_name = Some(sealed_name.clone());
+        }
+        (
+            resume.request_id.clone(),
+            ApprovalNameRequest {
+                epk: epk_text(&keys.epk()),
+                sealed_name,
+            },
+        )
+    };
+    persist_locked_pending(secrets, &updated)?;
+    let result = retrying(b, || {
+        b.api(&locked.server)
+            .name_approval(locked.token(), &request_id, &body)
+    })
+    .map_err(AccountError::from);
+    match result {
+        Ok(()) => Ok(()),
+        Err(error @ (AccountError::ApprovalExpired | AccountError::NotFound)) => {
+            let library_id = locked.library_id().ok_or_else(|| {
+                AccountError::Protocol(
+                    "the locked session has no library ID for Keychain storage".into(),
+                )
+            })?;
+            keychain::clear_pending_approval(secrets, library_id)?;
+            Err(error)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// Opens the data key the approver sealed to this device and checks it:
@@ -342,9 +881,33 @@ pub fn finish_unlock(
     if let Some(library_id) = locked.library_id() {
         session.set_library_id(library_id);
     }
-    Ok(SignedIn {
-        session,
-        evicted: None,
+    let evicted = opened_evicted(locked, &content);
+    Ok(SignedIn { session, evicted })
+}
+
+pub(crate) fn opened_evicted(locked: &LockedSession, content: &ContentKeys) -> Option<DeviceInfo> {
+    let raw = locked.evicted_wire_device.as_ref();
+    let existing = locked.evicted.as_ref();
+    let (device_id, base) = match (raw, existing) {
+        (Some(raw), _) => (raw.id.as_str(), existing),
+        (None, Some(existing)) => (existing.id.as_str(), Some(existing)),
+        (None, None) => return None,
+    };
+    let sealed_name = raw
+        .and_then(|device| device.sealed_name.as_deref())
+        .or(locked.evicted_sealed_name.as_deref());
+    let name = sealed_name.and_then(|sealed| {
+        match content.open_name(&locked.account_id, device_id, sealed) {
+            crate::crypto::Opened::Opened(name) => Some(name),
+            crate::crypto::Opened::Undecryptable | crate::crypto::Opened::TooNew => None,
+        }
+    });
+    Some(DeviceInfo {
+        id: device_id.to_owned(),
+        name,
+        created_at: base.map_or(0, |device| device.created_at),
+        last_seen_at: base.map_or(0, |device| device.last_seen_at),
+        current: false,
     })
 }
 
@@ -362,6 +925,25 @@ pub fn cancel_request(
         Ok(()) | Err(ApiError::NotFound) => Ok(()),
         Err(err) => Err(err.into()),
     }
+}
+
+/// Cancels the saved request and removes only its approval resume data. The
+/// locked session and token remain available for password or recovery unlock.
+pub fn cancel_saved_approval(
+    b: &dyn Backend,
+    secrets: &dyn SecretStore,
+    locked: &LockedSession,
+) -> Result<(), AccountError> {
+    let saved = saved_locked_pending(secrets, locked)?;
+    let resume = saved
+        .approval_resume()
+        .ok_or_else(|| AccountError::Protocol("there is no saved approval request".into()))?;
+    cancel_request(b, &saved, &resume.request_id)?;
+    let library_id = saved.library_id().ok_or_else(|| {
+        AccountError::Protocol("the locked session has no library ID for Keychain storage".into())
+    })?;
+    keychain::clear_pending_approval(secrets, library_id)?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -584,5 +1166,106 @@ mod tests {
         let mut bad = poll("challenged");
         bad.approver_epk = Some("nope".into());
         assert!(request_state(&bad).is_err());
+    }
+
+    #[test]
+    fn local_key_unlock_requires_the_locked_key_id() {
+        let data_key = DataKey::from_bytes([7; 32]);
+        let mut local = Session::new(
+            "https://a.example".into(),
+            "https://a.example".into(),
+            "a_0123456789abcdef0123456789abcdef".into(),
+            "alice".into(),
+            "d_0123456789abcdef0123456789abcdef".into(),
+            SessionToken::new(format!("kanso_{}", "b".repeat(43))),
+            data_key,
+        );
+        local.set_library_id("l_1");
+        let locked = LockedSession::new(
+            "https://a.example".into(),
+            "https://a.example".into(),
+            local.account_id.clone(),
+            "alice".into(),
+            "d_ffffffffffffffffffffffffffffffff".into(),
+            SessionToken::new(format!("kanso_{}", "a".repeat(43))),
+            local.key_id(),
+            "0123456789abcdef".into(),
+            None,
+            None,
+        )
+        .with_has_password(true);
+
+        let unlocked = unlock_with_local_key(&locked, &local).unwrap();
+        assert_eq!(unlocked.session.account_id, locked.account_id);
+        assert_eq!(unlocked.session.device_id, locked.device_id);
+        assert_eq!(unlocked.session.key_id(), locked.key_id);
+        assert_eq!(unlocked.session.token(), locked.token());
+        assert_eq!(unlocked.session.library_id(), Some("l_1"));
+
+        let wrong_key = LockedSession::new(
+            locked.server.clone(),
+            locked.origin.clone(),
+            locked.account_id.clone(),
+            locked.username.clone(),
+            locked.device_id.clone(),
+            locked.token().clone(),
+            "0000000000000000".into(),
+            locked.epoch.clone(),
+            None,
+            None,
+        );
+        assert!(matches!(
+            unlock_with_local_key(&wrong_key, &local),
+            Err(AccountError::KeyMismatch)
+        ));
+
+        let wrong_account = LockedSession::new(
+            locked.server.clone(),
+            locked.origin.clone(),
+            "a_ffffffffffffffffffffffffffffffff".into(),
+            locked.username.clone(),
+            locked.device_id.clone(),
+            locked.token().clone(),
+            locked.key_id.clone(),
+            locked.epoch.clone(),
+            None,
+            None,
+        );
+        assert!(matches!(
+            unlock_with_local_key(&wrong_account, &local),
+            Err(AccountError::KeyMismatch)
+        ));
+    }
+
+    #[test]
+    fn locked_evicted_name_is_opened_after_the_key_is_available() {
+        let data_key = DataKey::from_bytes([9; 32]);
+        let content = ContentKeys::derive(&data_key);
+        let account_id = "a_0123456789abcdef0123456789abcdef";
+        let evicted_id = "d_11111111111111111111111111111111";
+        let sealed = content.seal_name(account_id, evicted_id, "Alex’s MacBook Air");
+        let locked = LockedSession::new(
+            "https://a.example".into(),
+            "https://a.example".into(),
+            account_id.into(),
+            "alice".into(),
+            "d_0123456789abcdef0123456789abcdef".into(),
+            SessionToken::new(format!("kanso_{}", "a".repeat(43))),
+            key_id(&data_key),
+            "0123456789abcdef".into(),
+            None,
+            Some(DeviceInfo {
+                id: evicted_id.into(),
+                name: None,
+                created_at: 0,
+                last_seen_at: 0,
+                current: false,
+            }),
+        )
+        .with_evicted_sealed_name(Some(sealed));
+
+        let opened = opened_evicted(&locked, &content).unwrap();
+        assert_eq!(opened.name.as_deref(), Some("Alex’s MacBook Air"));
+        assert!(!format!("{locked:?}").contains("Alex’s MacBook Air"));
     }
 }

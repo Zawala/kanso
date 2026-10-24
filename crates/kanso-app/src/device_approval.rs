@@ -136,18 +136,14 @@ impl WaitingState {
 /// What the waiting page says above the code.
 pub fn waiting_line(state: &WaitingState) -> &'static str {
     match &state.phase {
-        WaitPhase::Requesting => "Asking your other devices…",
-        WaitPhase::Waiting => "Waiting for a device you're signed in on to approve this one.",
-        WaitPhase::Compare { .. } => {
-            "Does the other device show this code? Only approve there if it does."
-        }
+        WaitPhase::Requesting => "Asking another device…",
+        WaitPhase::Waiting => "Waiting for another device…",
+        WaitPhase::Compare { .. } => "Waiting for another device…",
         WaitPhase::Unlocking => "Approved. Unlocking this Mac…",
         WaitPhase::Approved => "This Mac is unlocked.",
-        WaitPhase::NoDevices => {
-            "No other device is signed in. Use your recovery key to unlock this Mac."
-        }
-        WaitPhase::Cancelled => "That request was cancelled. Ask again, or use your recovery key.",
-        WaitPhase::Expired => "That request expired. Ask again, or use your recovery key.",
+        WaitPhase::NoDevices => "No other device answered. Use your recovery key to open this Mac.",
+        WaitPhase::Cancelled => "That request was cancelled.",
+        WaitPhase::Expired => "That request expired.",
         WaitPhase::Failed(_) => words::CANT_REACH,
     }
 }
@@ -615,15 +611,21 @@ pub fn open_sheet(cx: &mut App) -> Option<Entity<ApprovalSheet>> {
 
 /// The new device's waiting page: the six-digit code, and the recovery key
 /// once it is offered. Rendered in place of the Account page's usual body.
-pub fn waiting_page(state: &WaitingState, _window: &mut Window, cx: &mut App) -> AnyElement {
+pub fn waiting_page(state: &WaitingState, window: &mut Window, cx: &mut App) -> AnyElement {
     let colors = Colors::get(cx);
     let mono = cx.theme().mono_font_family.clone();
     let code = state.code.clone();
     let recovery = state.recovery_offered;
+    let has_password = cx
+        .try_global::<Services>()
+        .and_then(|services| services.locked_has_password)
+        .unwrap_or(false);
+    let password_window = window.window_handle();
     let failed = matches!(state.phase, WaitPhase::Failed(_));
-    let ended = matches!(
+    let restartable = matches!(state.phase, WaitPhase::Cancelled | WaitPhase::Expired);
+    let waiting = matches!(
         state.phase,
-        WaitPhase::Cancelled | WaitPhase::Expired | WaitPhase::NoDevices | WaitPhase::Failed(_)
+        WaitPhase::Requesting | WaitPhase::Waiting | WaitPhase::Compare { .. }
     );
     let mut page = v_flex()
         .w_full()
@@ -633,14 +635,32 @@ pub fn waiting_page(state: &WaitingState, _window: &mut Window, cx: &mut App) ->
                 .text_size(px(16.))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(colors.text)
-                .child("Approve this Mac"),
+                .child("Approve this device"),
         )
         .child(
             div()
                 .text_size(px(13.5))
                 .line_height(px(20.))
                 .text_color(colors.text_secondary)
-                .child(waiting_line(state)),
+                .child("Open Kanso on a device that's already signed in and approve this one."),
+        )
+        .child(
+            h_flex()
+                .gap(px(6.))
+                .when(waiting, |el| {
+                    el.child(
+                        Icon::new(Lucide::LoaderCircle)
+                            .size(px(14.))
+                            .text_color(colors.text_muted),
+                    )
+                })
+                .child(
+                    div()
+                        .text_size(px(13.5))
+                        .line_height(px(20.))
+                        .text_color(colors.text_secondary)
+                        .child(waiting_line(state)),
+                ),
         );
     if let Some(code) = code {
         page = page
@@ -651,15 +671,13 @@ pub fn waiting_page(state: &WaitingState, _window: &mut Window, cx: &mut App) ->
                     .font_family(mono)
                     .text_color(colors.text)
                     .debug_selector(|| "approval-code".into())
-                    .child(code),
+                    .child(code.clone()),
             )
             .child(
                 div()
                     .text_size(px(12.5))
                     .text_color(colors.text_secondary)
-                    .child(
-                        "On the other device, open Settings › Account and approve this request.",
-                    ),
+                    .child(format!("It should show {code}.")),
             );
     }
     page = page.child(
@@ -670,30 +688,45 @@ pub fn waiting_page(state: &WaitingState, _window: &mut Window, cx: &mut App) ->
                 el.child(
                     Button::new("approval-recover")
                         .primary()
-                        .label("Use recovery key")
+                        .label("Use your recovery key")
                         .debug_selector(|| "approval-recover".into())
                         .on_click(move |_, window, cx| {
                             crate::account_page::recover_dialog(window, cx);
                         }),
                 )
             })
-            .when(ended, |el| {
+            .when(has_password, |el| {
                 el.child(
-                    Button::new("approval-close")
+                    Button::new("approval-password")
                         .outline()
-                        .label("Close")
-                        .on_click(|_, _, cx| crate::account_flow::dismiss_device_approval(cx)),
+                        .label("Unlock with password")
+                        .on_click(move |_, _, cx| {
+                            let _ = password_window.update(cx, |_, window, cx| {
+                                crate::account_page::unlock_password_dialog(window, cx);
+                            });
+                        }),
                 )
             })
-            .when(!ended, |el| {
+            .when(restartable, |el| {
                 el.child(
-                    Button::new("approval-cancel-wait")
-                        .outline()
-                        .label("Cancel")
-                        .debug_selector(|| "approval-cancel".into())
-                        .on_click(|_, _, cx| crate::account_flow::cancel_device_approval(cx)),
+                    Button::new("approval-start-again")
+                        .primary()
+                        .label("Start again")
+                        .on_click(|_, window, cx| {
+                            crate::account_flow::restart_device_approval(
+                                Some(window.window_handle()),
+                                cx,
+                            )
+                        }),
                 )
-            }),
+            })
+            .child(
+                Button::new("approval-cancel-wait")
+                    .outline()
+                    .label("Cancel")
+                    .debug_selector(|| "approval-cancel".into())
+                    .on_click(|_, _, cx| crate::account_flow::cancel_locked_session(cx)),
+            ),
     );
     if failed {
         page = page.child(
@@ -853,11 +886,13 @@ mod tests {
     #[test]
     fn the_waiting_page_says_what_is_happening() {
         let mut state = WaitingState::new(1, 0);
-        assert_eq!(waiting_line(&state), "Asking your other devices…");
+        assert_eq!(waiting_line(&state), "Asking another device…");
+        state.phase = WaitPhase::Waiting;
+        assert_eq!(waiting_line(&state), "Waiting for another device…");
         state.phase = WaitPhase::Compare {
             code: "123 456".into(),
         };
-        assert!(waiting_line(&state).starts_with("Does the other device"));
+        assert_eq!(waiting_line(&state), "Waiting for another device…");
         state.phase = WaitPhase::NoDevices;
         assert!(waiting_line(&state).contains("recovery key"));
         state.phase = WaitPhase::Failed("x".into());

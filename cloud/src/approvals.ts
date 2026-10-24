@@ -33,8 +33,8 @@ import { type AccountEvent, ACCOUNT_ROOM_HEADERS, accountRoom, publish } from ".
 import { type Session, authenticate, withSession } from "./auth";
 import { proofMatches, sha256 } from "./crypto";
 import type { Env } from "./env";
-import { badRequest, error, invalidCredentials, json, notFound, readJson } from "./http";
-import { accountKey, count, sessionFilter } from "./limits";
+import { badRequest, error, invalidCredentials, json, notFound, rateLimited, readJson } from "./http";
+import { RULES, accountKey, count, sessionFilter, windowStart } from "./limits";
 import { MAX_AUTH_BODY, base64url, fromBase64url, isObject, isSealedName, isWrappedKey, proof32 } from "./protocol";
 import { isFlowId } from "./sign_in";
 
@@ -86,6 +86,8 @@ export function approvalStatus(row: ApprovalRow, now: number): ApprovalStatus {
 
 const approvalExpired = (): Response => error(409, "approval_expired", "This approval request has expired.");
 const approvalUsed = (): Response => error(409, "approval_used", "This approval request was already answered.");
+const approvalRequestIdConflict = (): Response =>
+	error(409, "approval_request_id_conflict", "request_id has already been used for a different approval request.");
 const selfApproval = (): Response => error(403, "self_approval", "A device can't approve its own request.");
 
 /** A 32-byte value as exactly 43 canonical base64url characters (a commitment or an ephemeral key). */
@@ -114,31 +116,72 @@ const counted = (env: Env, rule: "approval-create" | "approval-poll" | "approval
 // ------------------------------------------------------------------- create
 
 /**
- * `POST /v2/account/sign-in/approvals` `{commit}`: 200 `{id, expires_at,
- * other_devices}`. `other_devices` counts the account's active sessions other
- * than the caller's (0 means the app offers the recovery key at once). A
- * fourth pending request cancels the oldest. Counts `approval-create`.
+ * `POST /v2/account/sign-in/approvals` `{request_id?, commit}`: 200
+ * `{id, expires_at, other_devices}`. New clients send `request_id`, a
+ * caller-generated 32-byte canonical base64url row ID; older clients may omit
+ * it and receive a server-generated ID. Repeating a supplied ID for the same
+ * account, device and commitment returns the existing request without another
+ * create count, cap update or event. Reuse for another tuple is 409
+ * `approval_request_id_conflict`. `other_devices` counts the account's active
+ * sessions other than the caller's. A fourth new pending request cancels the
+ * oldest. Counts `approval-create` only for a new request.
  */
 export const create = withSession(async (request, env, now, session) => {
-	const limited = await counted(env, "approval-create", session, now);
-	if (limited) return limited;
 	const body = await readObject(request);
 	if (!body.ok) return body.response;
+	// Older clients didn't send an ID. Keep them working with the historical
+	// server-generated behavior; clients that need crash-safe retries supply
+	// their stable ID and take the idempotent path below.
+	const id = body.value.request_id === undefined
+		? base64url(crypto.getRandomValues(new Uint8Array(32)))
+		: body.value.request_id;
+	if (!key32(id)) return badRequest("request_id must be 32 bytes of canonical base64url.");
 	const commit = body.value.commit;
 	if (!key32(commit)) return badRequest("commit must be 32 bytes of canonical base64url.");
-	const id = base64url(crypto.getRandomValues(new Uint8Array(32)));
+	const existing = await env.DB.prepare(`SELECT ${ROW_COLUMNS} FROM device_approvals WHERE id = ?1`).bind(id).first<ApprovalRow>();
+	if (existing) {
+		if (
+			existing.account_id !== session.accountId ||
+			existing.device_id !== session.deviceId ||
+			existing.commit_hash !== commit
+		) {
+			return approvalRequestIdConflict();
+		}
+		const others = await env.DB.prepare(
+			"SELECT count(*) AS n FROM sessions WHERE account_id = ?1 AND revoked_at IS NULL AND device_id != ?2",
+		)
+			.bind(session.accountId, session.deviceId)
+			.first<{ n: number }>();
+		return json({ id, expires_at: existing.expires_at, other_devices: others?.n ?? 0 });
+	}
 	const expiresAt = now + APPROVAL_TTL_MS;
+	const limitKey = accountKey("approval-create", session.accountId);
+	const limitStart = windowStart(now, RULES["approval-create"].window);
 	// Insert, then cancel every active request outside the newest two others. The
 	// insert and the cancellation run in one D1 batch, so two concurrent creates
-	// cannot both observe the same count and leave four rows pending. The new row
-	// is excluded from cancellation; ties on created_at are settled by ID.
+	// cannot both observe the same count and leave four rows pending. The limit
+	// increment and conditional insert share that transaction: concurrent retries
+	// of one request ID neither increment the counter nor run cap cancellation.
+	// The new row is excluded from cancellation; ties on created_at use the ID.
 	const results = await env.DB.batch([
 		env.DB.prepare(
-			`INSERT INTO device_approvals (id, account_id, device_id, commit_hash, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
-		).bind(id, session.accountId, session.deviceId, commit, now, expiresAt),
+			`INSERT INTO limits (key, window_start, count)
+  SELECT ?1, ?2, ?3 WHERE NOT EXISTS (SELECT 1 FROM device_approvals WHERE id = ?4)
+  ON CONFLICT (key) DO UPDATE SET
+    count = CASE WHEN window_start >= excluded.window_start THEN count + excluded.count ELSE excluded.count END,
+    window_start = max(window_start, excluded.window_start)
+  RETURNING count`,
+		).bind(limitKey, limitStart, 1, id),
+		env.DB.prepare(
+			`INSERT INTO device_approvals (id, account_id, device_id, commit_hash, created_at, expires_at)
+  SELECT ?1, ?2, ?3, ?4, ?5, ?6
+  WHERE NOT EXISTS (SELECT 1 FROM device_approvals WHERE id = ?1)
+    AND coalesce((SELECT count FROM limits WHERE key = ?7), 0) <= ?8
+  ON CONFLICT (id) DO NOTHING RETURNING id`,
+		).bind(id, session.accountId, session.deviceId, commit, now, expiresAt, limitKey, RULES["approval-create"].max ?? 0),
 		env.DB.prepare(
 			`UPDATE device_approvals SET cancelled_at = ?2
-  WHERE account_id = ?1 AND cancelled_at IS NULL AND completed_at IS NULL AND expires_at > ?2 AND id != ?3
+  WHERE changes() > 0 AND account_id = ?1 AND cancelled_at IS NULL AND completed_at IS NULL AND expires_at > ?2 AND id != ?3
     AND id NOT IN (
       SELECT id FROM device_approvals
       WHERE account_id = ?1 AND cancelled_at IS NULL AND completed_at IS NULL AND expires_at > ?2 AND id != ?3
@@ -151,8 +194,27 @@ export const create = withSession(async (request, env, now, session) => {
 			session.deviceId,
 		),
 	]);
-	const others = (results[2].results[0] as { n: number } | undefined)?.n ?? 0;
-	for (const row of results[1].results as { id: string }[]) {
+	const inserted = results[1].results[0] as { id: string } | undefined;
+	if (!inserted) {
+		// A concurrent request with the same ID may have won the insert after our
+		// initial lookup. Resolve it like any other retry; otherwise the count
+		// returned no row because this new request exceeded its limit.
+		const raced = await env.DB.prepare(`SELECT ${ROW_COLUMNS} FROM device_approvals WHERE id = ?1`).bind(id).first<ApprovalRow>();
+		if (raced) {
+			if (raced.account_id !== session.accountId || raced.device_id !== session.deviceId || raced.commit_hash !== commit) {
+				return approvalRequestIdConflict();
+			}
+			const others = await env.DB.prepare(
+				"SELECT count(*) AS n FROM sessions WHERE account_id = ?1 AND revoked_at IS NULL AND device_id != ?2",
+			)
+				.bind(session.accountId, session.deviceId)
+				.first<{ n: number }>();
+			return json({ id, expires_at: raced.expires_at, other_devices: others?.n ?? 0 });
+		}
+		return rateLimited("approval-create", limitStart + RULES["approval-create"].window - now);
+	}
+	const others = (results[3].results[0] as { n: number } | undefined)?.n ?? 0;
+	for (const row of results[2].results as { id: string }[]) {
 		await publish(env, session.accountId, "approval.cancelled", row.id);
 	}
 	await publish(env, session.accountId, "approval.created", id);

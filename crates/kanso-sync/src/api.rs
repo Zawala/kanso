@@ -601,7 +601,8 @@ pub struct NewDevice {
 
 /// The device of a sign-in: no name yet (the client doesn't hold the data
 /// key), but its proof, which alone exempts a returning device from
-/// `login-user`.
+/// `login-user`. The proof is zeroized when this value is dropped and never
+/// printed.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoginDevice {
     pub id: String,
@@ -609,10 +610,22 @@ pub struct LoginDevice {
 }
 
 /// `{"id", "sealed_name"}`: the device a sign-in evicted.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WireDevice {
     pub id: String,
     pub sealed_name: Option<String>,
+}
+
+impl fmt::Debug for WireDevice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WireDevice")
+            .field("id", &self.id)
+            .field(
+                "sealed_name",
+                &self.sealed_name.as_ref().map(|_| "[redacted]"),
+            )
+            .finish()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1071,6 +1084,8 @@ pub struct DeviceRow {
 /// ephemeral key, which it reveals only after the challenge.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApprovalCreateRequest {
+    /// Caller-generated, stable ID used to make a lost response safe to retry.
+    pub request_id: String,
     pub commit: String,
 }
 

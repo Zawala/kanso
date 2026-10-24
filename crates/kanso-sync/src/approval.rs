@@ -134,6 +134,12 @@ impl ApprovalKeys {
         self.epk
     }
 
+    /// Copies the private scalar for the locked-session resume record. The
+    /// caller must retain it only in zeroizing storage and never expose it.
+    pub(crate) fn secret_bytes(&self) -> [u8; 32] {
+        *self.secret
+    }
+
     /// The commitment to this key ([`commitment`]); `N` sends it first.
     pub fn commitment(&self) -> String {
         commitment(&self.epk)

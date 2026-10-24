@@ -247,7 +247,7 @@ fn check_values(name: &str, values: &BTreeMap<String, Value>) {
             "s" => wire::is_sealed(text, wire::MIN_SEALED_LEN, wire::MAX_SEALED_LEN),
             "name" => wire::is_sealed_name(text),
             "salt" => text.len() == 22 && wire::is_base64url(text),
-            "auth" | "rauth" | "proof" | "commit" | "epk" => {
+            "auth" | "rauth" | "proof" | "commit" | "epk" | "request" => {
                 text.len() == 43 && wire::is_base64url(text)
             }
             "wrap" | "rwrap" => text.len() == 98 && wire::is_base64url(text),

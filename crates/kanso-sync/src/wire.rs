@@ -495,6 +495,10 @@ pub enum ApiError {
     /// answered.
     #[error("409 approval_used")]
     ApprovalUsed,
+    /// 409: an approval request ID was reused for a different account,
+    /// device or public-key commitment.
+    #[error("409 approval_request_id_conflict")]
+    ApprovalRequestIdConflict,
     /// 409: an approval request past its five minutes.
     #[error("409 approval_expired")]
     ApprovalExpired,
@@ -601,6 +605,7 @@ impl ApiError {
             | ApiError::AlreadyHasPassword
             | ApiError::CredentialExists
             | ApiError::ApprovalUsed
+            | ApiError::ApprovalRequestIdConflict
             | ApiError::ApprovalExpired => 409,
             ApiError::TooLarge | ApiError::QuotaExceeded { .. } => 413,
             ApiError::UnsupportedMediaType => 415,
@@ -643,6 +648,7 @@ impl ApiError {
             ApiError::LastMethod => "last_method",
             ApiError::CredentialExists => "credential_exists",
             ApiError::ApprovalUsed => "approval_used",
+            ApiError::ApprovalRequestIdConflict => "approval_request_id_conflict",
             ApiError::ApprovalExpired => "approval_expired",
             ApiError::TooLarge => "too_large",
             ApiError::QuotaExceeded { .. } => "quota_exceeded",
@@ -729,6 +735,7 @@ impl ApiError {
             "credential_exists" => ApiError::CredentialExists,
             "self_approval" => ApiError::SelfApproval,
             "approval_used" => ApiError::ApprovalUsed,
+            "approval_request_id_conflict" => ApiError::ApprovalRequestIdConflict,
             "approval_expired" => ApiError::ApprovalExpired,
             "too_large" => ApiError::TooLarge,
             "quota_exceeded" => ApiError::QuotaExceeded {
@@ -834,6 +841,7 @@ mod tests {
             ApiError::CredentialExists,
             ApiError::SelfApproval,
             ApiError::ApprovalUsed,
+            ApiError::ApprovalRequestIdConflict,
             ApiError::ApprovalExpired,
             ApiError::TooLarge,
             ApiError::UnsupportedMediaType,

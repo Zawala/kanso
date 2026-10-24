@@ -12,19 +12,27 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use async_channel::{Receiver, Sender};
+use base64::Engine as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::*;
 use kanso_store::Store;
+use kanso_sync::api::LoginDevice;
 use kanso_sync::keychain;
+use kanso_sync::provider::{Provider, ProviderSession, ProviderSignIn, ProviderStart};
 use kanso_sync::{
-    AccountError, ApprovalKeys, Backend, BindError, Choice, DeviceIdentity, DeviceInfo, Flow,
-    LocalLibrary, LockedSession, Machine, Password, Plan, RecoveryKey, RequestState, RotationError,
-    SecretError, SecretStore, Session, SignOutReason, SignedUp, Step, cancel_request,
-    complete_request, finish_unlock, meta_keys, name_device, poll_approval, request_approval,
+    AccountError, Approval, ApprovalKeys, Backend, BindError, Choice, DeviceIdentity, DeviceInfo,
+    Flow, LocalLibrary, LockedSession, Machine, Password, Plan, RecoveryKey, RequestState,
+    RotationError, SecretError, SecretStore, Session, SignOutReason, SignedUp, Step,
+    cancel_saved_approval, complete_saved_request, finish_unlock, meta_keys, name_device_resumable,
+    new_approval_request_id, poll_saved_approval, request_approval_resumable, resume_approval,
+    unlock_with_local_key,
 };
+use sha2::Digest as _;
 
 use crate::account_words::{self as words, Answer, ErrorContext, Question};
 use crate::clock::Clock;
@@ -55,6 +63,11 @@ struct Failure {
     recovery: Option<Box<PendingKey>>,
     /// The backup a Replace made before it failed: said all the same.
     backup: Option<PathBuf>,
+    /// A locked candidate was successfully discarded and its pending item
+    /// cleared after a bind failure.
+    locked_cleanup: bool,
+    /// Keychain cleanup or rollback failed; show the established warning.
+    keychain_warning: bool,
 }
 
 impl Failure {
@@ -65,11 +78,14 @@ impl Failure {
             AccountError::Unauthorized { reason } => Some(*reason),
             _ => None,
         };
+        let keychain_warning = matches!(&err, AccountError::Keychain(_));
         Failure {
             words: words::error_words(&err, context),
             signed_out,
             recovery: None,
             backup: None,
+            locked_cleanup: false,
+            keychain_warning,
         }
     }
 
@@ -101,7 +117,9 @@ impl Failure {
     }
 
     fn keychain(err: SecretError) -> Failure {
-        Failure::account(AccountError::Keychain(err), ErrorContext::Account)
+        let mut failure = Failure::account(AccountError::Keychain(err), ErrorContext::Account);
+        failure.keychain_warning = true;
+        failure
     }
 
     fn library(err: impl std::fmt::Display) -> Failure {
@@ -111,6 +129,8 @@ impl Failure {
             signed_out: None,
             recovery: None,
             backup: None,
+            locked_cleanup: false,
+            keychain_warning: false,
         }
     }
 
@@ -287,6 +307,13 @@ fn failed(tx: &Sender<Progress>, failure: Option<Failure>, cx: &mut App) {
         && cx.global::<Services>().signed_in()
     {
         services::end_session(reason, cx);
+    }
+    if failure.locked_cleanup {
+        cx.global_mut::<Services>()
+            .clear_session(AccountState::SignedOut);
+    }
+    if failure.keychain_warning {
+        notify_windows(|| Notification::warning(words::SIGNED_OUT_KEYCHAIN), cx);
     }
     if let Some(key) = failure.recovery {
         show_pending(*key, cx);
@@ -612,6 +639,16 @@ fn forget_account(cx: &mut App) {
     cx.refresh_windows();
 }
 
+/// Leaves a cancelled locked sign-in without changing the prior account's
+/// config, recovery-key screen, Keychain item, or library binding.
+fn clear_locked_account(cx: &mut App) {
+    crate::device_approval::stop_events(cx);
+    cx.global_mut::<Services>()
+        .clear_session(AccountState::SignedOut);
+    crate::collab::signed_out(cx);
+    cx.refresh_windows();
+}
+
 /// Creates an account on `server` and signs this Mac in with it (Settings
 /// › Account › Create account). Notes that came from another account are
 /// asked about in `window` first.
@@ -744,6 +781,19 @@ struct Authenticated {
     recovery_key: Option<RecoveryKey>,
 }
 
+/// An unlocked candidate returned to the UI thread before any library bind,
+/// config write, Keychain promotion, or sync start is allowed.
+pub(crate) struct UnlockedCandidate {
+    session: Session,
+    locked_session: LockedSession,
+    evicted: Option<DeviceInfo>,
+    library_id: String,
+    /// Local-key and approval unlocks reuse the provider token in the
+    /// pending item. Password unlock and recovery create a new token that
+    /// must be revoked if promotion cannot persist it.
+    same_token_as_locked: bool,
+}
+
 type Authenticate = Box<
     dyn FnOnce(
             &Seams,
@@ -786,6 +836,727 @@ pub fn sign_in(
         }),
     );
     rx
+}
+
+/// Starts a provider flow on the account worker. Browser callbacks and
+/// polling run off the UI thread; only the final, typed result returns to GPUI.
+pub fn start_provider(
+    provider: Provider,
+    creating: bool,
+    window: AnyWindowHandle,
+    cx: &mut App,
+) -> Receiver<Progress> {
+    let (tx, rx) = async_channel::unbounded();
+    let Some(seams) = begin(&tx, cx) else {
+        return rx;
+    };
+    let login_device = LoginDevice::ephemeral();
+    let server = form_server(cx);
+    let server_generation = cx.global::<Services>().auth_generation;
+    let task_kind = if creating {
+        TaskKind::SignUp
+    } else {
+        TaskKind::SignIn
+    };
+    let thread = seams.clone();
+    let start_provider = provider.clone();
+    let start_device = login_device.clone();
+    let start_server = server.clone();
+    run(
+        task_kind,
+        Step::Contacting,
+        true,
+        Some(tx.clone()),
+        cx,
+        move |step| {
+            provider_begin(
+                thread.backend.as_ref(),
+                &start_server,
+                &start_provider,
+                &start_device,
+                step,
+            )
+            .map_err(|err| Failure::account(err, ErrorContext::SignIn))
+        },
+        move |result, cx| match result {
+            Some(Ok(started)) => {
+                if !provider_request_is_current(cx, &server, server_generation) {
+                    // The server changed while start began. Never present an
+                    // Apple sheet or begin polling a flow for the old server.
+                    done(&tx, Ok(()));
+                    return;
+                }
+                let apple_callback = match (&started.start, &provider) {
+                    (ProviderStart::Apple(apple), Provider::Apple) => {
+                        match crate::provider_browser::apple_sign_in(apple) {
+                            Ok(callback) => Some(callback),
+                            Err(_) => {
+                                failed(
+                                    &tx,
+                                    Some(Failure::account(
+                                        AccountError::ProviderUnavailable,
+                                        ErrorContext::SignIn,
+                                    )),
+                                    cx,
+                                );
+                                return;
+                            }
+                        }
+                    }
+                    _ => None,
+                };
+                let cancel = Arc::new(AtomicBool::new(false));
+                let (provider_label, user_code, verification_uri) = match &started.start {
+                    ProviderStart::Apple(_) => ("Apple", None, None),
+                    ProviderStart::Google(_) => ("Google", None, None),
+                    ProviderStart::Github(start) => (
+                        "GitHub",
+                        Some(start.user_code.clone()),
+                        Some(start.verification_uri.clone()),
+                    ),
+                };
+                cx.global_mut::<Services>().provider_wait = Some(crate::services::ProviderWait {
+                    provider: provider_label,
+                    user_code,
+                    verification_uri,
+                    cancel: cancel.clone(),
+                });
+                continue_provider(
+                    seams,
+                    server,
+                    provider,
+                    login_device,
+                    started,
+                    apple_callback,
+                    cancel,
+                    server_generation,
+                    task_kind,
+                    window,
+                    tx,
+                    cx,
+                );
+            }
+            Some(Err(failure)) => failed(&tx, Some(failure), cx),
+            None => failed(&tx, None, cx),
+        },
+    );
+    rx
+}
+
+enum ProviderTaskResult {
+    Cancelled,
+    NewAccount(kanso_sync::NewAccount),
+    Locked(Box<LockedSession>, DeviceIdentity),
+}
+
+struct StartedProviderFlow {
+    start: ProviderStart,
+    loopback: Option<crate::provider_browser::Loopback>,
+    verifier: Option<String>,
+    deadline: Instant,
+}
+
+/// Preserves the provider flow's exact device proof and raw eviction answer
+/// in the durable locked item before the UI exposes the locked state.
+pub(crate) fn locked_provider_session(
+    server: String,
+    login_device: LoginDevice,
+    session: ProviderSession,
+    library_id: &str,
+) -> Result<LockedSession, AccountError> {
+    let origin = kanso_sync::origin(&server).map_err(AccountError::Endpoint)?;
+    let mut locked = LockedSession::new(
+        server,
+        origin,
+        session.account_id,
+        session.username,
+        login_device.id.clone(),
+        session.token,
+        session.key_id,
+        session.epoch,
+        session.passkey_wrapped_key,
+        None,
+    )
+    .with_has_password(session.has_password)
+    .with_login_device(login_device)
+    .with_evicted_wire_device(session.evicted_device);
+    locked.set_library_id(library_id);
+    Ok(locked)
+}
+
+/// Makes the provider token durable before it can enter the app's locked
+/// state. A failed save revokes or queues that token instead of exposing an
+/// unusable pending account.
+pub(crate) fn save_provider_pending(
+    backend: &dyn Backend,
+    secrets: &dyn SecretStore,
+    locked: &LockedSession,
+) -> Result<(), SecretError> {
+    let Some(library_id) = locked.library_id() else {
+        return Err(SecretError("the locked session has no library ID".into()));
+    };
+    match keychain::save_locked_pending(secrets, library_id, locked) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            if let Err(cleanup) = kanso_sync::discard_locked_session(backend, secrets, locked) {
+                eprintln!("kanso: discarding provider session after Keychain failure: {cleanup}");
+            }
+            Err(error)
+        }
+    }
+}
+
+/// Starts the server side of a provider flow. This runs on the worker; any
+/// native authentication sheet is opened later by the main-thread callback.
+fn provider_begin(
+    backend: &dyn Backend,
+    server: &str,
+    provider: &Provider,
+    device: &LoginDevice,
+    progress: &dyn Fn(Step),
+) -> Result<StartedProviderFlow, AccountError> {
+    let (loopback, verifier, challenge) = if matches!(provider, Provider::Google) {
+        let loopback = crate::provider_browser::Loopback::bind()
+            .map_err(|_| AccountError::ProviderUnavailable)?;
+        let verifier: String = (0..64).map(|_| fastrand::alphanumeric()).collect();
+        let digest = sha2::Sha256::digest(verifier.as_bytes());
+        let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest);
+        (Some(loopback), Some(verifier), Some(challenge))
+    } else {
+        (None, None, None)
+    };
+    let wire_loopback = loopback.as_ref().map(|loopback| {
+        kanso_sync::Loopback::parse(&loopback.uri()).expect("bound loopback has canonical URI")
+    });
+    let start = kanso_sync::start_provider(
+        backend,
+        server,
+        provider,
+        device,
+        wire_loopback.as_ref(),
+        challenge.as_deref(),
+    )?;
+    let deadline = provider_deadline(&start);
+    progress(Step::Contacting);
+    progress(Step::Contacting);
+    Ok(StartedProviderFlow {
+        start,
+        loopback,
+        verifier,
+        deadline,
+    })
+}
+
+/// Finishes a started flow off the UI thread. The optional Apple callback
+/// receiver was obtained by presenting ASWebAuthenticationSession on the
+/// main thread.
+#[allow(clippy::too_many_arguments)] // The arguments are the explicit ceremony context.
+fn provider_finish(
+    backend: &dyn Backend,
+    server: &str,
+    provider: &Provider,
+    device: &LoginDevice,
+    started: StartedProviderFlow,
+    apple_callback: Option<
+        async_channel::Receiver<Result<String, crate::provider_browser::BrowserError>>,
+    >,
+    cancel: Arc<AtomicBool>,
+    _progress: &dyn Fn(Step),
+) -> Result<Option<ProviderSignIn>, AccountError> {
+    use kanso_sync::ProviderStep;
+    let StartedProviderFlow {
+        start,
+        loopback,
+        verifier,
+        deadline,
+    } = started;
+    let outcome = match (&start, provider) {
+        (ProviderStart::Apple(start), Provider::Apple) => {
+            let callback = apple_callback.ok_or(AccountError::ProviderUnavailable)?;
+            let callback = loop {
+                if wait_cancelled_or_expired(&cancel, deadline)? {
+                    return Ok(None);
+                }
+                match callback.try_recv() {
+                    Ok(result) => {
+                        break result.map_err(|err| match err {
+                            crate::provider_browser::BrowserError::Cancelled
+                            | crate::provider_browser::BrowserError::ProviderDenied => {
+                                AccountError::ProviderDenied
+                            }
+                            _ => AccountError::ProviderUnavailable,
+                        })?;
+                    }
+                    Err(async_channel::TryRecvError::Closed) => {
+                        return Err(AccountError::ProviderUnavailable);
+                    }
+                    Err(async_channel::TryRecvError::Empty) => {
+                        if wait_provider(&cancel, deadline, Duration::from_millis(50))? {
+                            return Ok(None);
+                        }
+                    }
+                }
+            };
+            let flow = crate::provider_browser::apple_flow(&callback)
+                .filter(|flow| flow == &start.flow_id)
+                .ok_or(AccountError::ProviderDenied)?;
+            loop {
+                if wait_cancelled_or_expired(&cancel, deadline)? {
+                    return Ok(None);
+                }
+                let answer = kanso_sync::poll_provider(backend, server, provider, &flow, device)?;
+                if wait_cancelled_or_expired(&cancel, deadline)? {
+                    return Ok(None);
+                }
+                match answer {
+                    ProviderStep::Session(session) => break ProviderSignIn::Session(session),
+                    ProviderStep::NewAccount(account) => break ProviderSignIn::NewAccount(account),
+                    ProviderStep::Pending { .. } => {
+                        if wait_provider(&cancel, deadline, Duration::from_secs(4))? {
+                            return Ok(None);
+                        }
+                    }
+                }
+            }
+        }
+        (ProviderStart::Google(start), Provider::Google) => {
+            crate::provider_browser::google_device_page(start)
+                .map_err(|_| AccountError::ProviderUnavailable)?;
+            let code = match loopback
+                .as_ref()
+                .ok_or(AccountError::ProviderUnavailable)?
+                .wait_until(&start.state, deadline, &cancel)
+            {
+                Ok(code) => code,
+                Err(crate::provider_browser::BrowserError::Cancelled)
+                    if cancel.load(Ordering::Acquire) =>
+                {
+                    return Ok(None);
+                }
+                Err(crate::provider_browser::BrowserError::Expired) => {
+                    return Err(AccountError::FlowExpired);
+                }
+                Err(_) => return Err(AccountError::ProviderUnavailable),
+            };
+            if wait_cancelled_or_expired(&cancel, deadline)? {
+                return Ok(None);
+            }
+            let answer = kanso_sync::finish_google(
+                backend,
+                server,
+                &start.flow_id,
+                &code,
+                verifier.as_deref().ok_or(AccountError::BadRequest)?,
+                device,
+            )?;
+            if wait_cancelled_or_expired(&cancel, deadline)? {
+                return Ok(None);
+            }
+            match answer {
+                ProviderStep::Session(session) => ProviderSignIn::Session(session),
+                ProviderStep::NewAccount(account) => ProviderSignIn::NewAccount(account),
+                ProviderStep::Pending { .. } => return Err(AccountError::ProviderUnavailable),
+            }
+        }
+        (ProviderStart::Github(start), Provider::Github) => {
+            crate::provider_browser::github_device_page(start)
+                .map_err(|_| AccountError::ProviderUnavailable)?;
+            let mut interval = github_poll_interval(start.interval);
+            // The Worker rejects a poll before next_poll_at.
+            if wait_provider(&cancel, deadline, Duration::from_secs(interval))? {
+                return Ok(None);
+            }
+            loop {
+                if wait_cancelled_or_expired(&cancel, deadline)? {
+                    return Ok(None);
+                }
+                let answer =
+                    kanso_sync::poll_provider(backend, server, provider, &start.flow_id, device)?;
+                if wait_cancelled_or_expired(&cancel, deadline)? {
+                    return Ok(None);
+                }
+                match answer {
+                    ProviderStep::Session(session) => break ProviderSignIn::Session(session),
+                    ProviderStep::NewAccount(account) => break ProviderSignIn::NewAccount(account),
+                    ProviderStep::Pending { slow_down } => {
+                        if slow_down {
+                            interval = github_next_poll_interval(interval, slow_down);
+                        }
+                        if wait_provider(&cancel, deadline, Duration::from_secs(interval))? {
+                            return Ok(None);
+                        }
+                    }
+                }
+            }
+        }
+        _ => return Err(AccountError::ProviderUnavailable),
+    };
+    Ok(Some(outcome))
+}
+
+fn provider_deadline(start: &ProviderStart) -> Instant {
+    let remaining = match start {
+        ProviderStart::Github(start) => Duration::from_secs(start.expires_in),
+        ProviderStart::Apple(start) => remaining_until_epoch_ms(start.expires_at),
+        ProviderStart::Google(start) => remaining_until_epoch_ms(start.expires_at),
+    };
+    Instant::now() + remaining
+}
+
+fn remaining_until_epoch_ms(expires_at: i64) -> Duration {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    Duration::from_millis(expires_at.saturating_sub(now_ms).max(0) as u64)
+}
+
+/// Returns true only for local cancellation; expiry remains a user-visible flow error.
+fn wait_cancelled_or_expired(cancel: &AtomicBool, deadline: Instant) -> Result<bool, AccountError> {
+    if cancel.load(Ordering::Acquire) {
+        return Ok(true);
+    }
+    if Instant::now() >= deadline {
+        return Err(AccountError::FlowExpired);
+    }
+    Ok(false)
+}
+
+/// Waits in short slices so cancellation and expiry are observed promptly.
+fn wait_provider(
+    cancel: &AtomicBool,
+    deadline: Instant,
+    duration: Duration,
+) -> Result<bool, AccountError> {
+    let end = Instant::now() + duration;
+    loop {
+        if wait_cancelled_or_expired(cancel, deadline)? {
+            return Ok(true);
+        }
+        let remaining = end.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Ok(false);
+        }
+        std::thread::sleep(remaining.min(Duration::from_millis(50)));
+    }
+}
+
+fn github_poll_interval(start_interval: u64) -> u64 {
+    start_interval.max(1)
+}
+
+fn github_next_poll_interval(interval: u64, slow_down: bool) -> u64 {
+    if slow_down {
+        interval.saturating_add(5)
+    } else {
+        interval
+    }
+}
+
+#[allow(clippy::too_many_arguments)] // Keeps the whole durable continuation in one place.
+fn continue_provider(
+    seams: Seams,
+    server: String,
+    provider: Provider,
+    login_device: LoginDevice,
+    started: StartedProviderFlow,
+    apple_callback: Option<
+        async_channel::Receiver<Result<String, crate::provider_browser::BrowserError>>,
+    >,
+    cancel: Arc<AtomicBool>,
+    server_generation: u64,
+    task_kind: TaskKind,
+    window: AnyWindowHandle,
+    tx: Sender<Progress>,
+    cx: &mut App,
+) {
+    let thread = seams.clone();
+    let wait_cancel = cancel.clone();
+    let work_server = server.clone();
+    let work_provider = provider.clone();
+    let work_login_device = login_device.clone();
+    let result_server = server.clone();
+    run(
+        task_kind,
+        Step::Contacting,
+        false,
+        Some(tx.clone()),
+        cx,
+        move |step| {
+            let answer = provider_finish(
+                thread.backend.as_ref(),
+                &work_server,
+                &work_provider,
+                &work_login_device,
+                started,
+                apple_callback,
+                cancel,
+                step,
+            )
+            .map_err(|err| Failure::account(err, ErrorContext::SignIn))?;
+            match answer {
+                None => Ok(ProviderTaskResult::Cancelled),
+                Some(ProviderSignIn::NewAccount(account)) => {
+                    Ok(ProviderTaskResult::NewAccount(account))
+                }
+                Some(ProviderSignIn::Session(session)) => {
+                    let device = thread.device()?;
+                    let locked = locked_provider_session(
+                        work_server,
+                        work_login_device.clone(),
+                        session,
+                        &device.library_id,
+                    )
+                    .map_err(|error| Failure::account(error, ErrorContext::SignIn))?;
+                    if let Err(error) = save_provider_pending(
+                        thread.backend.as_ref(),
+                        thread.secrets.as_ref(),
+                        &locked,
+                    ) {
+                        return Err(Failure::keychain(error));
+                    }
+                    Ok(ProviderTaskResult::Locked(Box::new(locked), device))
+                }
+            }
+        },
+        move |result, cx| {
+            // A later flow may have replaced this one while it was finishing.
+            // Clear only the wait this task owns.
+            clear_provider_wait_if_owned(
+                &mut cx.global_mut::<Services>().provider_wait,
+                &wait_cancel,
+            );
+            match result {
+                Some(Ok(ProviderTaskResult::Cancelled)) => {
+                    done(&tx, Ok(()));
+                }
+                Some(Ok(ProviderTaskResult::NewAccount(account))) => {
+                    if wait_cancel.load(Ordering::Acquire)
+                        || !provider_request_is_current(cx, &result_server, server_generation)
+                    {
+                        done(&tx, Ok(()));
+                        return;
+                    }
+                    cx.global_mut::<Services>().provider_signup =
+                        Some(crate::services::ProviderSignup {
+                            server: result_server,
+                            provider,
+                            ticket: account.ticket,
+                            suggested_username: account.suggested_username,
+                            login_device,
+                        });
+                    done(&tx, Ok(()));
+                }
+                Some(Ok(ProviderTaskResult::Locked(locked, device))) => {
+                    if wait_cancel.load(Ordering::Acquire)
+                        || !provider_request_is_current(cx, &result_server, server_generation)
+                    {
+                        // The pending item was already made durable on the worker
+                        // so a crash could not lose the token. Remove it and sign
+                        // the token out now that this result belongs to a server
+                        // the UI no longer shows.
+                        discard_stale_locked_provider_session(seams, locked, tx, cx);
+                        return;
+                    }
+                    enter_locked(*locked, device, Some(window), cx);
+                    done(&tx, Ok(()));
+                }
+                Some(Err(failure)) => failed(&tx, Some(failure), cx),
+                None => failed(&tx, None, cx),
+            }
+        },
+    );
+}
+
+/// A provider answer belongs to the exact server form that started it, and
+/// to the same server generation. Generation makes A -> B -> A safe: the
+/// server string can return to A while the old flow's answer is still stale.
+fn provider_request_matches(
+    current_server: &str,
+    current_generation: u64,
+    asked_server: &str,
+    asked_generation: u64,
+) -> bool {
+    current_server == asked_server && current_generation == asked_generation
+}
+
+fn provider_request_is_current(cx: &App, server: &str, generation: u64) -> bool {
+    provider_request_matches(
+        &form_server(cx),
+        cx.global::<Services>().auth_generation,
+        server,
+        generation,
+    )
+}
+
+/// Provider callbacks finish after the visible wait is gone. A delayed old
+/// callback must not clear a newer flow's wait, so ownership is the same
+/// cancellation token the wait was created with.
+fn clear_provider_wait_if_owned(
+    wait: &mut Option<crate::services::ProviderWait>,
+    cancel: &Arc<AtomicBool>,
+) {
+    if wait
+        .as_ref()
+        .is_some_and(|wait| Arc::ptr_eq(&wait.cancel, cancel))
+    {
+        *wait = None;
+    }
+}
+
+/// Cleans up a locked result that became stale during its final callback.
+/// The pending Keychain item and server token are removed off the UI thread;
+/// the current server's form and any newer provider flow are left alone.
+fn discard_stale_locked_provider_session(
+    seams: Seams,
+    locked: Box<LockedSession>,
+    tx: Sender<Progress>,
+    cx: &mut App,
+) {
+    run(
+        TaskKind::SignOut,
+        Step::Contacting,
+        false,
+        None,
+        cx,
+        move |_| {
+            if let Err(error) = kanso_sync::discard_locked_session(
+                seams.backend.as_ref(),
+                seams.secrets.as_ref(),
+                locked.as_ref(),
+            ) {
+                eprintln!("kanso: discarding a stale provider session: {error}");
+            }
+        },
+        move |_, _cx| done(&tx, Ok(())),
+    );
+}
+
+/// Creates a provider-backed passwordless account after the user confirms an
+/// editable username, then follows the same Keychain, binding and recovery
+/// key path as username/password signup.
+pub fn provider_sign_up(
+    pending: crate::services::ProviderSignup,
+    username: String,
+    window: AnyWindowHandle,
+    cx: &mut App,
+) -> Receiver<Progress> {
+    let (tx, rx) = async_channel::unbounded();
+    let Some(seams) = begin(&tx, cx) else {
+        return rx;
+    };
+    let thread = seams.clone();
+    let server = pending.server.clone();
+    let asked_server = server.clone();
+    run(
+        TaskKind::SignUp,
+        Step::Contacting,
+        false,
+        Some(tx.clone()),
+        cx,
+        move |_| {
+            let origin = kanso_sync::origin(&asked_server).map_err(|err| {
+                Failure::account(AccountError::Endpoint(err), ErrorContext::SignUp)
+            })?;
+            kanso_sync::local_library(&thread.store, &origin, "").map_err(Failure::library)
+        },
+        move |result, cx| match result {
+            Some(Ok(library)) => match kanso_sync::plan(Flow::SignUp, &library) {
+                Plan::AskBeforeSignUp { from, .. } => {
+                    let (title, body, upload) = words::upload_question(&from);
+                    ask(
+                        window,
+                        Question {
+                            title,
+                            body,
+                            answers: vec![Answer {
+                                choice: Choice::Add,
+                                label: upload.to_owned(),
+                                description: "They're encrypted and uploaded to the new account. Nothing changes in the other one.".to_owned(),
+                            }],
+                        },
+                        cx,
+                        move |choice, cx| match choice {
+                            Choice::Cancel => {
+                                cx.global_mut::<Services>().provider_signup = None;
+                                done(&tx, Ok(()));
+                            }
+                            Choice::Add | Choice::Replace => create_provider_signup(
+                                seams, server, pending, username, library, tx, cx,
+                            ),
+                        },
+                    );
+                }
+                _ => create_provider_signup(seams, server, pending, username, library, tx, cx),
+            },
+            Some(Err(failure)) => failed(&tx, Some(failure), cx),
+            None => failed(&tx, None, cx),
+        },
+    );
+    rx
+}
+
+fn create_provider_signup(
+    seams: Seams,
+    server: String,
+    pending: crate::services::ProviderSignup,
+    username: String,
+    library: kanso_sync::LocalLibrary,
+    tx: Sender<Progress>,
+    cx: &mut App,
+) {
+    let thread = seams.clone();
+    run(
+        TaskKind::SignUp,
+        Step::DerivingKeys,
+        false,
+        Some(tx.clone()),
+        cx,
+        move |step| {
+            let device = thread.device()?;
+            let signed = kanso_sync::sign_up_with_provider(
+                thread.backend.as_ref(),
+                thread.secrets.as_ref(),
+                &server,
+                &pending.provider,
+                &pending.ticket,
+                &username,
+                &device,
+                &pending.login_device,
+                step,
+            )
+            .map_err(|err| {
+                Failure::rotation(err, ErrorContext::SignUp, words::KEY_UNCONFIRMED_SIGN_UP)
+            })?;
+            Ok(Authenticated {
+                session: signed.session,
+                evicted: None,
+                library,
+                library_id: device.library_id,
+                recovery_key: Some(signed.recovery_key),
+            })
+        },
+        move |result, cx| match result {
+            Some(Ok(auth)) => {
+                cx.global_mut::<Services>().provider_signup = None;
+                if let Some(key) = &auth.recovery_key {
+                    show_key(&auth.session, key.clone(), cx);
+                }
+                bind_and_save(
+                    TaskKind::SignUp,
+                    seams,
+                    auth,
+                    Some(Choice::Add),
+                    false,
+                    tx,
+                    cx,
+                );
+            }
+            Some(Err(failure)) => failed(&tx, Some(failure), cx),
+            None => failed(&tx, None, cx),
+        },
+    );
 }
 
 /// Sets a new password with the recovery key, and signs this Mac in
@@ -1070,6 +1841,386 @@ fn abandon(seams: Seams, session: Session, tx: Sender<Progress>, cx: &mut App) {
     );
 }
 
+/// Leaves the provider-authenticated UI locked and tries only a saved local
+/// full session for an offline key reuse. Approval never starts until the
+/// locked item has been written.
+pub(crate) fn enter_locked(
+    mut locked: LockedSession,
+    device: DeviceIdentity,
+    window: Option<AnyWindowHandle>,
+    cx: &mut App,
+) {
+    locked.set_library_id(&device.library_id);
+    let Some(seams) = Seams::get(cx) else {
+        return;
+    };
+    crate::device_approval::stop_events(cx);
+    cx.global_mut::<Services>()
+        .clear_session(AccountState::SignedOut);
+    {
+        let services = cx.global_mut::<Services>();
+        services.library_id = Some(device.library_id.clone());
+        services.locked_has_password = Some(locked.has_password);
+        services.locked_session = Some(Arc::new(locked.clone()));
+        services.account = AccountState::SignedInLocked {
+            username: locked.username.clone(),
+        };
+    }
+
+    // A matching full item is an offline key source. Its origin, account and
+    // key ID are checked by the loader and unlock function before consent.
+    match keychain::load_session(
+        seams.secrets.as_ref(),
+        &device.library_id,
+        &locked.origin,
+        &locked.account_id,
+    ) {
+        Ok(Some(local)) => match unlock_with_local_key(&locked, &local) {
+            Ok(unlocked) => {
+                finish_unlocked_candidate(
+                    UnlockedCandidate {
+                        session: unlocked.session,
+                        locked_session: locked.clone(),
+                        evicted: unlocked.evicted,
+                        library_id: device.library_id,
+                        same_token_as_locked: true,
+                    },
+                    window,
+                    None,
+                    cx,
+                );
+                return;
+            }
+            Err(error) => {
+                eprintln!("kanso: local key did not unlock provider session: {error}")
+            }
+        },
+        Ok(None) => {}
+        Err(error) => eprintln!("kanso: reading the saved local session: {error}"),
+    }
+    if locked.approval_resume().is_some() {
+        wait_for_device_approval(locked, device, window, cx);
+    }
+    cx.refresh_windows();
+}
+
+/// Runs on the UI thread after every unlock path. The local-library plan is
+/// computed here so no worker can bind, choose a disposition, or start sync.
+pub(crate) fn finish_unlocked_candidate(
+    candidate: UnlockedCandidate,
+    window: Option<AnyWindowHandle>,
+    completion: Option<Sender<Progress>>,
+    cx: &mut App,
+) {
+    {
+        let locked = candidate.locked_session.clone();
+        let services = cx.global_mut::<Services>();
+        services.library_id = locked.library_id().map(str::to_owned);
+        services.locked_has_password = Some(locked.has_password);
+        services.locked_session = Some(Arc::new(locked.clone()));
+        services.account = AccountState::SignedInLocked {
+            username: locked.username.clone(),
+        };
+    }
+    let window = window.or_else(|| cx.active_window());
+    let Some(seams) = Seams::get(cx) else {
+        return;
+    };
+    let library = match kanso_sync::local_library(
+        &seams.store,
+        &candidate.session.origin,
+        &candidate.session.account_id,
+    ) {
+        Ok(library) => library,
+        Err(error) => {
+            eprintln!("kanso: reading the library before unlock promotion: {error}");
+            cleanup_candidate(
+                seams,
+                candidate,
+                completion,
+                Err(LIBRARY_TROUBLE.to_owned()),
+                cx,
+            );
+            cx.refresh_windows();
+            return;
+        }
+    };
+    let plan = kanso_sync::plan(Flow::SignIn, &library);
+    let question = words::binding_question(&plan, &candidate.session.username);
+    match (plan, question, window) {
+        (Plan::Ask { .. }, Some(question), Some(window)) => {
+            ask(window, question, cx, move |choice, cx| {
+                if choice == Choice::Cancel {
+                    let Some(seams) = Seams::get(cx) else {
+                        clear_locked_account(cx);
+                        if let Some(tx) = completion {
+                            done(&tx, Err("Sign-in was cancelled.".to_owned()));
+                        }
+                        return;
+                    };
+                    cleanup_candidate(
+                        seams,
+                        candidate,
+                        completion,
+                        Err("Sign-in was cancelled.".to_owned()),
+                        cx,
+                    );
+                    return;
+                }
+                promote_unlocked_candidate(candidate, Some(choice), seams, completion, cx);
+            });
+        }
+        (Plan::Ask { .. }, _, _) => {
+            // The launch restore has no window handle. Keep the durable
+            // pending session and its candidate available for the Account
+            // page rather than silently choosing or cancelling.
+            cx.global_mut::<Services>().pending_unlocked_candidate = Some(candidate);
+            if let Some(tx) = completion {
+                done(&tx, Err(SOMETHING_WRONG.to_owned()));
+            }
+            cx.refresh_windows();
+        }
+        (Plan::Resume, _, _) => promote_unlocked_candidate(candidate, None, seams, completion, cx),
+        (Plan::Fresh, _, _) => {
+            promote_unlocked_candidate(candidate, Some(Choice::Add), seams, completion, cx)
+        }
+        (Plan::AskBeforeSignUp { .. }, _, _) => {
+            cleanup_candidate(
+                seams,
+                candidate,
+                completion,
+                Err(SOMETHING_WRONG.to_owned()),
+                cx,
+            );
+        }
+    }
+}
+
+/// Cancels or rejects a candidate without touching the previous full item,
+/// binding, recovery item, or library contents. Logout and Keychain cleanup
+/// run on the account worker, never on the UI thread.
+fn cleanup_candidate(
+    seams: Seams,
+    candidate: UnlockedCandidate,
+    completion: Option<Sender<Progress>>,
+    outcome: Result<(), String>,
+    cx: &mut App,
+) {
+    let locked = cx.global::<Services>().locked_session.clone();
+    let thread = seams.clone();
+    let library_id = candidate.library_id.clone();
+    let (internal_tx, _) = async_channel::unbounded();
+    let tx = completion.unwrap_or(internal_tx);
+    run(
+        TaskKind::SignOut,
+        Step::Contacting,
+        false,
+        Some(tx.clone()),
+        cx,
+        move |_| {
+            let mut keychain_failed = false;
+            let locked_cleanup = match locked {
+                Some(locked) => kanso_sync::sign_out_locked(
+                    thread.backend.as_ref(),
+                    thread.secrets.as_ref(),
+                    &locked,
+                ),
+                None => keychain::delete_locked_pending(thread.secrets.as_ref(), &library_id)
+                    .map_err(AccountError::Keychain),
+            };
+            if let Err(error) = locked_cleanup {
+                eprintln!("kanso: clearing locked pending session: {error}");
+                keychain_failed |= matches!(&error, AccountError::Keychain(_));
+            }
+            if let Err(error) = kanso_sync::discard_session(
+                thread.backend.as_ref(),
+                thread.secrets.as_ref(),
+                &candidate.session,
+            ) {
+                eprintln!("kanso: discarding unlocked candidate: {error}");
+                keychain_failed |= matches!(&error, AccountError::Keychain(_));
+            }
+            keychain_failed
+        },
+        move |keychain_failed, cx| {
+            clear_locked_account(cx);
+            if keychain_failed == Some(true) {
+                notify_windows(|| Notification::warning(words::SIGNED_OUT_KEYCHAIN), cx);
+            }
+            done(&tx, outcome);
+        },
+    );
+}
+
+/// A password unlock or recovery yields a fresh token; local-key and
+/// approval unlocks reuse the locked token and must leave it usable if
+/// promotion fails.
+fn discard_fresh_candidate(
+    backend: &dyn Backend,
+    secrets: &dyn SecretStore,
+    session: &Session,
+    same_token_as_locked: bool,
+) -> bool {
+    if same_token_as_locked {
+        return false;
+    }
+    match kanso_sync::discard_session(backend, secrets, session) {
+        Ok(()) => false,
+        Err(error) => {
+            eprintln!("kanso: discarding unpromoted session: {error}");
+            matches!(&error, AccountError::Keychain(_))
+        }
+    }
+}
+
+fn promote_unlocked_candidate(
+    candidate: UnlockedCandidate,
+    choice: Option<Choice>,
+    seams: Seams,
+    completion: Option<Sender<Progress>>,
+    cx: &mut App,
+) {
+    let replacing = choice == Some(Choice::Replace);
+    let (api, restart_api) = if replacing {
+        cx.global_mut::<Services>()
+            .begin_locked_replace_write_consent();
+        let held = services::hold_writes(cx);
+        cx.global_mut::<Services>()
+            .end_locked_replace_write_consent();
+        held
+    } else {
+        (None, false)
+    };
+    let session = candidate.session;
+    let library_id = candidate.library_id;
+    let evicted = candidate.evicted;
+    let same_token_as_locked = candidate.same_token_as_locked;
+    let locked = cx.global::<Services>().locked_session.clone();
+    let thread = seams.clone();
+    let (internal_tx, _) = async_channel::unbounded();
+    let tx = completion.unwrap_or(internal_tx);
+    run(
+        TaskKind::SignIn,
+        Step::Saving,
+        false,
+        Some(tx.clone()),
+        cx,
+        move |_| {
+            if let Some(api) = api
+                && let Err(error) = api.stop()
+            {
+                eprintln!("kanso: the API server stopped with an error: {error:#}");
+            }
+            let item = keychain::account_item(&library_id);
+            let before = thread.secrets.get(&item).map_err(Failure::keychain)?;
+            let rollback = |secrets: &dyn SecretStore| match &before {
+                Some(raw) => secrets.set(&item, raw),
+                None => secrets.delete(&item),
+            };
+            if let Err(error) =
+                keychain::save_session(thread.secrets.as_ref(), &library_id, &session)
+            {
+                let mut failure = Failure::keychain(error);
+                if let Err(cleanup) = rollback(thread.secrets.as_ref()) {
+                    eprintln!(
+                        "kanso: restoring the previous account item after save failure: {cleanup}"
+                    );
+                    failure.keychain_warning = true;
+                }
+                failure.keychain_warning |= discard_fresh_candidate(
+                    thread.backend.as_ref(),
+                    thread.secrets.as_ref(),
+                    &session,
+                    same_token_as_locked,
+                );
+                return Err(failure);
+            }
+            if let Err(error) =
+                keychain::delete_locked_pending(thread.secrets.as_ref(), &library_id)
+            {
+                let mut failure = Failure::keychain(error);
+                if let Err(cleanup) = rollback(thread.secrets.as_ref()) {
+                    eprintln!(
+                        "kanso: restoring the previous account item after pending-delete failure: {cleanup}"
+                    );
+                    failure.keychain_warning = true;
+                }
+                failure.keychain_warning |= discard_fresh_candidate(
+                    thread.backend.as_ref(),
+                    thread.secrets.as_ref(),
+                    &session,
+                    same_token_as_locked,
+                );
+                return Err(failure);
+            }
+            if let Some(choice) = choice
+                && let Err(error) =
+                    kanso_sync::bind(&thread.store, &session, choice, &thread.backups, thread.now)
+            {
+                let rollback_error = rollback(thread.secrets.as_ref()).err();
+                let mut cleanup_failed = false;
+                if let Some(locked) = &locked
+                    && let Err(cleanup) = kanso_sync::sign_out_locked(
+                        thread.backend.as_ref(),
+                        thread.secrets.as_ref(),
+                        locked,
+                    )
+                {
+                    eprintln!("kanso: discarding failed binding's locked session: {cleanup}");
+                    cleanup_failed |= matches!(&cleanup, AccountError::Keychain(_));
+                } else if let Err(cleanup) =
+                    keychain::delete_locked_pending(thread.secrets.as_ref(), &library_id)
+                {
+                    eprintln!("kanso: clearing failed binding's locked session: {cleanup}");
+                    cleanup_failed = true;
+                }
+                if let Err(cleanup) = kanso_sync::discard_session(
+                    thread.backend.as_ref(),
+                    thread.secrets.as_ref(),
+                    &session,
+                ) {
+                    eprintln!("kanso: discarding failed binding candidate: {cleanup}");
+                    cleanup_failed |= matches!(&cleanup, AccountError::Keychain(_));
+                }
+                let mut failure = Failure::bind(error);
+                failure.locked_cleanup = true;
+                failure.keychain_warning |= cleanup_failed;
+                if let Some(error) = rollback_error {
+                    eprintln!(
+                        "kanso: restoring the previous account item after bind failure: {error}"
+                    );
+                    let keychain_failure = Failure::keychain(error);
+                    failure.words = keychain_failure.words;
+                    failure.keychain_warning = true;
+                }
+                return Err(failure);
+            }
+            Ok((session, library_id))
+        },
+        move |result, cx| {
+            if replacing {
+                services::release_writes(restart_api, cx);
+            }
+            match result {
+                Some(Ok((session, library_id))) => {
+                    signed_in(session, library_id, true, cx);
+                    if let Some(device) = evicted {
+                        let notice = words::evicted_notice(&device);
+                        notify_windows(move || Notification::info(notice.clone()), cx);
+                    }
+                    done(&tx, Ok(()));
+                }
+                Some(Err(failure)) => {
+                    failed(&tx, Some(failure), cx);
+                }
+                None => {
+                    failed(&tx, None, cx);
+                }
+            }
+        },
+    );
+}
+
 /// "Saved a backup of this Mac's library first", with Show in Finder.
 fn notify_backup(path: PathBuf, cx: &mut App) {
     let shown = crate::settings::display_path(&path, &crate::paths::home());
@@ -1341,8 +2492,29 @@ pub fn key_saved(cx: &mut App) {
 pub fn set_server(server: Option<String>, cx: &mut App) {
     let server = server.filter(|server| !is_default_server(server));
     AppState::update_config(cx, |config| config.sync.server = server);
+    {
+        let services = cx.global_mut::<Services>();
+        if let Some(wait) = services.provider_wait.take() {
+            wait.cancel.store(true, Ordering::Release);
+        }
+        services.auth_generation = services.auth_generation.wrapping_add(1);
+        services.auth = None;
+        services.auth_asking = None;
+        services.auth_attempted = None;
+        services.signup = None;
+        services.provider_signup = None;
+    }
     check_signup(cx);
+    check_auth(cx);
     cx.refresh_windows();
+}
+
+/// Requests cancellation of the active provider flow. Its completion callback
+/// owns clearing the visible wait state.
+pub fn cancel_provider_wait(cx: &mut App) {
+    if let Some(wait) = cx.global::<Services>().provider_wait.as_ref() {
+        wait.cancel.store(true, Ordering::Release);
+    }
 }
 
 /// "Use a different server…": the address must be a Kanso server, which
@@ -1359,6 +2531,7 @@ pub fn use_server(input: String, cx: &mut App) -> Receiver<Progress> {
     let Some(seams) = begin(&tx, cx) else {
         return rx;
     };
+    let generation = cx.global::<Services>().auth_generation;
     run(
         TaskKind::CheckServer,
         Step::Contacting,
@@ -1372,10 +2545,19 @@ pub fn use_server(input: String, cx: &mut App) -> Receiver<Progress> {
         },
         move |result, cx| match result {
             Some(Ok((endpoint, signup))) => {
-                cx.global_mut::<Services>().signup = Some((endpoint.clone(), signup));
-                AppState::update_config(cx, |config| {
-                    config.sync.server = (!is_default_server(&endpoint)).then_some(endpoint)
-                });
+                if cx.global::<Services>().auth_generation != generation {
+                    done(
+                        &tx,
+                        Err("The server changed while it was being checked. Try again.".into()),
+                    );
+                    return;
+                }
+                set_server(Some(endpoint.clone()), cx);
+                {
+                    let services = cx.global_mut::<Services>();
+                    services.provider_signup = None;
+                    services.signup = Some((endpoint.clone(), signup));
+                }
                 done(&tx, Ok(()));
             }
             Some(Err(failure)) => failed(&tx, Some(failure), cx),
@@ -1438,6 +2620,101 @@ pub fn check_signup(cx: &mut App) {
         });
     })
     .detach();
+}
+
+/// Fetches the current server's provider advertisement while a signed-out
+/// form is open. Answers are tagged with their server so an older request
+/// cannot replace the methods for a newer server. An omitted `auth` is the
+/// old-server password-only behavior; a health error likewise leaves the
+/// password form available.
+pub fn check_auth(cx: &mut App) {
+    let server = form_server(cx);
+    let services = cx.global_mut::<Services>();
+    let generation = services.auth_generation;
+    let request = (server.clone(), generation);
+    if services.auth_asking.as_ref() == Some(&request)
+        || services.auth_attempted.as_ref() == Some(&request)
+    {
+        return;
+    }
+    let Some(backend) = services.backend.clone() else {
+        services.auth = Some((server, kanso_sync::ServerAuth::default()));
+        services.auth_attempted = Some(request);
+        return;
+    };
+    services.auth_asking = Some(request.clone());
+    services.auth_attempted = Some(request.clone());
+    let (tx, rx) = async_channel::bounded(1);
+    let asked = server.clone();
+    let spawned = std::thread::Builder::new()
+        .name("kanso-account".into())
+        .spawn(move || {
+            tx.try_send(kanso_sync::server_auth(backend.as_ref(), &asked))
+                .ok();
+        });
+    if spawned.is_err() {
+        let services = cx.global_mut::<Services>();
+        if services.auth_asking.as_ref() == Some(&request) {
+            services.auth_asking = None;
+        }
+        return;
+    }
+    cx.spawn(async move |cx| {
+        let answer = rx.recv().await.ok();
+        cx.update(|cx| {
+            let shown = form_server(cx);
+            let visible = account_page_showing(cx) && !cx.global::<Services>().signed_in();
+            let services = cx.global_mut::<Services>();
+            if services.auth_asking.as_ref() == Some(&request) {
+                services.auth_asking = None;
+            }
+            if shown == server
+                && visible
+                && auth_answer_is_current(
+                    &server,
+                    generation,
+                    &shown,
+                    services.auth_generation,
+                    services.auth_attempted.as_ref(),
+                    &request,
+                )
+            {
+                let auth = match answer {
+                    Some(Ok(auth)) => auth,
+                    _ => kanso_sync::ServerAuth::default(),
+                };
+                services.auth = Some((server, auth));
+            }
+            cx.refresh_windows();
+        });
+    })
+    .detach();
+}
+
+pub(crate) fn auth_answer_is_current(
+    server: &str,
+    generation: u64,
+    shown: &str,
+    current_generation: u64,
+    attempted: Option<&(String, u64)>,
+    request: &(String, u64),
+) -> bool {
+    shown == server
+        && current_generation == generation
+        && attempted == Some(request)
+        && request == &(server.to_owned(), generation)
+}
+
+/// Starts a fresh health request for a newly opened signed-out form.
+pub fn refresh_auth(cx: &mut App) {
+    let services = cx.global_mut::<Services>();
+    services.auth_generation = services.auth_generation.wrapping_add(1);
+    services.auth = None;
+    services.auth_asking = None;
+    services.auth_attempted = None;
+    services.signup = None;
+    services.provider_signup = None;
+    check_auth(cx);
 }
 
 // MARK: Storage and devices
@@ -1531,6 +2808,78 @@ pub fn refresh_details(cx: &mut App) {
     .detach();
 }
 
+/// Fetches the current account's ways in for Settings › Account. Every page
+/// opening starts a new generation, so an older answer cannot replace it.
+/// Only an unlocked `SignedIn` session is eligible; provider-only locked
+/// sessions never reach this endpoint through the app.
+pub fn refresh_account_methods(cx: &mut App) {
+    let services = cx.global_mut::<Services>();
+    if !services.signed_in() || services.has_locked_session() {
+        return;
+    }
+    let (Some(session), Some(backend)) = (services.session(), services.backend.clone()) else {
+        return;
+    };
+    let generation = services.account_methods.begin_refresh();
+
+    let (tx, rx) = async_channel::bounded(1);
+    let asked = session.clone();
+    let spawned = std::thread::Builder::new()
+        .name("kanso-account".into())
+        .spawn(move || {
+            tx.try_send(kanso_sync::account::methods(backend.as_ref(), &asked))
+                .ok();
+        });
+    if spawned.is_err() {
+        cx.global_mut::<Services>()
+            .account_methods
+            .finish_failure(generation, SOMETHING_WRONG.to_owned());
+        cx.refresh_windows();
+        return;
+    }
+    cx.spawn(async move |cx| {
+        let answer = rx.recv().await.ok();
+        cx.update(|cx| {
+            let services = cx.global_mut::<Services>();
+            let current_session = services
+                .session()
+                .is_some_and(|now| Arc::ptr_eq(&now, &session));
+            if !current_session {
+                return;
+            }
+            let Some(answer) = answer else {
+                services
+                    .account_methods
+                    .finish_failure(generation, SOMETHING_WRONG.to_owned());
+                cx.refresh_windows();
+                return;
+            };
+            match answer {
+                Ok(methods) => {
+                    if !services.account_methods.finish_success(generation, methods) {
+                        return;
+                    }
+                    cx.refresh_windows();
+                }
+                Err(AccountError::Unauthorized { reason }) => {
+                    if services.account_methods.generation != generation {
+                        return;
+                    }
+                    services::end_session(reason, cx);
+                }
+                Err(err) => {
+                    services.account_methods.finish_failure(
+                        generation,
+                        words::error_words(&err, ErrorContext::Account),
+                    );
+                    cx.refresh_windows();
+                }
+            }
+        });
+    })
+    .detach();
+}
+
 // MARK: Launch
 
 /// At launch: signed in only when the config's account, the library's
@@ -1583,8 +2932,41 @@ pub fn restore(cx: &mut App) {
                 }
                 None => Ok(None),
             };
-            tx.try_send(Some((device.library_id.clone(), loaded, kept)))
-                .ok();
+            // The locked provider flow is keyed only by this library ID;
+            // it deliberately does not depend on config's account or the
+            // current library binding.
+            let mut pending =
+                keychain::load_locked_pending(seams.secrets.as_ref(), &device.library_id);
+            let local = match &mut pending {
+                Ok(Some(locked)) => {
+                    let previous = locked.clone();
+                    if kanso_sync::refresh_locked_methods(seams.backend.as_ref(), locked).is_ok()
+                        && let Err(error) = keychain::update_locked_pending(
+                            seams.secrets.as_ref(),
+                            &device.library_id,
+                            locked,
+                        )
+                    {
+                        eprintln!("kanso: saving refreshed locked sign-in methods: {error}");
+                        *locked = previous;
+                    }
+                    keychain::load_session(
+                        seams.secrets.as_ref(),
+                        &device.library_id,
+                        &locked.origin,
+                        &locked.account_id,
+                    )
+                }
+                _ => Ok(None),
+            };
+            tx.try_send(Some((
+                device.library_id.clone(),
+                loaded,
+                kept,
+                pending,
+                local,
+            )))
+            .ok();
             // The session is in; old tokens can take their time.
             kanso_sync::flush_pending_logouts(
                 seams.backend.as_ref(),
@@ -1600,12 +2982,12 @@ pub fn restore(cx: &mut App) {
         let answer = rx.recv().await.ok().flatten();
         cx.update(|cx| {
             cx.global_mut::<Services>().restoring = false;
-            let Some((library_id, loaded, kept)) = answer else {
+            let Some((library_id, loaded, kept, pending, local)) = answer else {
                 cx.refresh_windows();
                 return;
             };
             let services = cx.global_mut::<Services>();
-            services.library_id = Some(library_id);
+            services.library_id = Some(library_id.clone());
             if let Some(item) = kept
                 && services.pending_key.is_none()
             {
@@ -1631,13 +3013,64 @@ pub fn restore(cx: &mut App) {
                 }
                 // The three don't agree: signed out, and the config says so.
                 Ok(None) => {
-                    if cx.global::<AppState>().config.sync.account.is_some() {
+                    if !matches!(&pending, Ok(Some(_)))
+                        && cx.global::<AppState>().config.sync.account.is_some()
+                    {
                         AppState::update_config(cx, |config| config.sync.account = None);
                     }
                 }
                 // The Keychain wouldn't say (locked): signed out for now,
                 // with the account kept for the next launch.
                 Err(err) => eprintln!("kanso: reading the account from the Keychain: {err}"),
+            }
+            // A valid full session above wins. Otherwise resume the exact
+            // provider token/approval persisted for this library, whether
+            // or not the account config currently names it.
+            if !cx.global::<Services>().signed_in() {
+                match pending {
+                    Ok(Some(locked)) => {
+                        let services = cx.global_mut::<Services>();
+                        services.locked_has_password = Some(locked.has_password);
+                        services.locked_session = Some(Arc::new(locked.clone()));
+                        services.account = AccountState::SignedInLocked {
+                            username: locked.username.clone(),
+                        };
+                        let unlocked = match local {
+                            Ok(Some(local)) => match unlock_with_local_key(&locked, &local) {
+                                Ok(unlocked) => Some(UnlockedCandidate {
+                                    session: unlocked.session,
+                                    locked_session: locked.clone(),
+                                    evicted: unlocked.evicted,
+                                    library_id: library_id.clone(),
+                    same_token_as_locked: true,
+                                }),
+                                Err(error) => {
+                                    eprintln!("kanso: saved local key doesn't unlock pending sign-in: {error}");
+                                    None
+                                }
+                            },
+                            Ok(None) => None,
+                            Err(error) => {
+                                eprintln!("kanso: reading the saved local session: {error}");
+                                None
+                            }
+                        };
+                        if let Some(candidate) = unlocked {
+                            finish_unlocked_candidate(candidate, None, None, cx);
+                        } else if locked.approval_resume().is_some()
+                            && let Some(seams) = Seams::get(cx)
+                            && let Ok(device) = seams.device()
+                        {
+                            let window = cx.active_window();
+                            wait_for_device_approval(locked, device, window, cx);
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        eprintln!("kanso: reading locked pending session: {err}");
+                        notify_windows(|| Notification::warning(words::SIGNED_OUT_KEYCHAIN), cx);
+                    }
+                }
             }
             cx.refresh_windows();
         });
@@ -1647,31 +3080,27 @@ pub fn restore(cx: &mut App) {
 
 // MARK: Device approval
 
-/// What the waiting flow tells the page.
-#[allow(dead_code)] // step 2's locked sign-in calls the flow below
 enum WaitUpdate {
     OtherDevices(usize),
     Request(String),
     Code(String),
     Tick,
-    Done(Result<(Session, String), WaitEnd>),
+    Done(Box<Result<UnlockedCandidate, WaitEnd>>),
 }
 
-/// How the waiting flow ended without an unlocked session.
-#[allow(dead_code)] // step 2's locked sign-in calls the flow below
 enum WaitEnd {
-    NoDevices,
     Cancelled,
     Expired,
+    NoDevices,
     Failed(Failure),
 }
 
 impl WaitEnd {
     fn phase(&self) -> crate::device_approval::WaitPhase {
         match self {
-            WaitEnd::NoDevices => crate::device_approval::WaitPhase::NoDevices,
             WaitEnd::Cancelled => crate::device_approval::WaitPhase::Cancelled,
             WaitEnd::Expired => crate::device_approval::WaitPhase::Expired,
+            WaitEnd::NoDevices => crate::device_approval::WaitPhase::NoDevices,
             WaitEnd::Failed(failure) => {
                 crate::device_approval::WaitPhase::Failed(failure.words.clone())
             }
@@ -1679,145 +3108,244 @@ impl WaitEnd {
     }
 }
 
-/// Asks the account's other devices to approve `locked`, polls the request,
-/// posts the sealed name and unlocks. Runs at most one wait at a time; the
-/// Account page shows its code and offers the recovery key after two
-/// minutes (or at once with no other device).
-#[allow(dead_code)] // step 2's locked sign-in calls this
-pub fn wait_for_device_approval(locked: LockedSession, device: DeviceIdentity, cx: &mut App) {
+fn approval_failure(error: AccountError) -> WaitEnd {
+    let must_sign_out = matches!(
+        &error,
+        AccountError::Unauthorized { .. }
+            | AccountError::KeyMismatch
+            | AccountError::ApprovalChanged
+            | AccountError::ApprovalRequestIdConflict
+            | AccountError::Protocol(_)
+    );
+    let mut failure = Failure::account(error, ErrorContext::Account);
+    failure.locked_cleanup = must_sign_out;
+    WaitEnd::Failed(failure)
+}
+
+fn clear_approval_resume(
+    secrets: &dyn SecretStore,
+    locked: &LockedSession,
+) -> Result<(), AccountError> {
+    let library_id = locked.library_id().ok_or_else(|| {
+        AccountError::Protocol("the locked session has no library ID for Keychain storage".into())
+    })?;
+    keychain::clear_pending_approval(secrets, library_id).map_err(AccountError::Keychain)
+}
+
+/// Invalid or ended locked credentials cannot remain available to a later
+/// action. Clear the app state even if the Keychain refuses deletion; the
+/// sync API still tries logout and queues it when possible.
+fn end_invalid_locked_session(locked: LockedSession, failure: Failure, cx: &mut App) {
     let Some(seams) = Seams::get(cx) else {
+        clear_locked_account(cx);
         return;
     };
+    let thread = seams.clone();
+    run(
+        TaskKind::SignOut,
+        Step::Contacting,
+        false,
+        None,
+        cx,
+        move |_| {
+            kanso_sync::sign_out_locked(thread.backend.as_ref(), thread.secrets.as_ref(), &locked)
+                .map_err(|error| Failure::account(error, ErrorContext::Account))
+        },
+        move |result, cx| {
+            let keychain_failed = failure.keychain_warning
+                || matches!(
+                    &result,
+                    Some(Err(Failure {
+                        keychain_warning: true,
+                        ..
+                    }))
+                );
+            if let Some(Err(error)) = result {
+                eprintln!("kanso: ending invalid locked sign-in: {}", error.words);
+            }
+            clear_locked_account(cx);
+            if keychain_failed {
+                notify_windows(|| Notification::warning(words::SIGNED_OUT_KEYCHAIN), cx);
+            }
+        },
+    );
+}
+
+/// Requests or resumes approval. The worker only creates, polls, names and
+/// unlocks; binding decisions and promotion return to the UI thread.
+pub fn wait_for_device_approval(
+    locked: LockedSession,
+    device: DeviceIdentity,
+    window: Option<AnyWindowHandle>,
+    cx: &mut App,
+) {
     if cx
         .try_global::<Services>()
-        .is_some_and(|services| services.task.is_some() || services.approval.waiting.is_some())
+        .is_some_and(|s| s.approval.waiting.is_some())
     {
         return;
     }
     let started = Clock::now_ms(cx);
-    let mut state = crate::device_approval::WaitingState::requesting(started);
-    state.phase = crate::device_approval::WaitPhase::Requesting;
-    let cancel = state.cancel.clone();
-    cx.global_mut::<Services>().approval.waiting = Some(state);
-    let (tx, rx) = async_channel::unbounded::<WaitUpdate>();
-    let thread_backend = seams.backend.clone();
-    let thread_secrets = seams.secrets.clone();
-    let thread_store = seams.store.clone();
-    let thread_backups = seams.backups.clone();
+    cx.global_mut::<Services>().approval.waiting =
+        Some(crate::device_approval::WaitingState::requesting(started));
+    let Some(seams) = Seams::get(cx) else {
+        cx.global_mut::<Services>().approval.waiting = None;
+        return;
+    };
+    let (tx, rx) = async_channel::unbounded();
+    let backend = seams.backend.clone();
+    let secrets = seams.secrets.clone();
+    let locked_for_cleanup = locked.clone();
+    let cancel = cx
+        .global::<Services>()
+        .approval
+        .waiting
+        .as_ref()
+        .map(|w| w.cancel.clone());
     let thread = std::thread::Builder::new()
         .name("kanso-account".into())
         .spawn(move || {
-            let now = || {
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
-            };
-            let result = (|| -> Result<(Session, String), WaitEnd> {
-                let keys = ApprovalKeys::generate();
-                let request = request_approval(thread_backend.as_ref(), &locked, &keys)
-                    .map_err(|err| WaitEnd::Failed(Failure::account(err, ErrorContext::Account)))?;
+            let result = (|| {
+                let request = if let Some(resume) = locked.approval_resume() {
+                    let request = match resume_approval(backend.as_ref(), secrets.as_ref(), &locked)
+                    {
+                        Ok(request) => request,
+                        Err(
+                            AccountError::ApprovalExpired
+                            | AccountError::ApprovalUsed
+                            | AccountError::NotFound,
+                        ) => {
+                            clear_approval_resume(secrets.as_ref(), &locked)
+                                .map_err(approval_failure)?;
+                            return Err(WaitEnd::Expired);
+                        }
+                        Err(error) => return Err(approval_failure(error)),
+                    };
+                    if request.id != resume.request_id() {
+                        return Err(approval_failure(AccountError::ApprovalChanged));
+                    }
+                    request
+                } else {
+                    let keys = ApprovalKeys::generate();
+                    request_approval_resumable(
+                        backend.as_ref(),
+                        secrets.as_ref(),
+                        &locked,
+                        &new_approval_request_id(),
+                        &keys,
+                    )
+                    .map_err(approval_failure)?
+                };
+                if request.other_devices == 0 {
+                    cancel_saved_approval(backend.as_ref(), secrets.as_ref(), &locked)
+                        .map_err(approval_failure)?;
+                    return Err(WaitEnd::NoDevices);
+                }
                 tx.try_send(WaitUpdate::OtherDevices(request.other_devices))
                     .ok();
                 tx.try_send(WaitUpdate::Request(request.id.clone())).ok();
-                if request.other_devices == 0 {
-                    // Nobody could answer: don't leave a request behind.
-                    cancel_request(thread_backend.as_ref(), &locked, &request.id).ok();
-                    return Err(WaitEnd::NoDevices);
-                }
-                let mut approval = None;
+                let mut approval: Option<Approval> = None;
                 loop {
-                    if cancel.load(std::sync::atomic::Ordering::SeqCst) {
-                        cancel_request(thread_backend.as_ref(), &locked, &request.id).ok();
+                    if cancel
+                        .as_ref()
+                        .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::SeqCst))
+                    {
+                        cancel_saved_approval(backend.as_ref(), secrets.as_ref(), &locked)
+                            .map_err(approval_failure)?;
                         return Err(WaitEnd::Cancelled);
                     }
-                    if now() >= request.expires_at {
-                        return Err(WaitEnd::Expired);
-                    }
-                    match poll_approval(thread_backend.as_ref(), &locked, &request) {
+                    match poll_saved_approval(backend.as_ref(), secrets.as_ref(), &locked) {
                         Ok(RequestState::Waiting) => {}
                         Ok(RequestState::Challenged { approver_epk, .. }) => {
-                            if approval.is_none() {
-                                let code =
-                                    complete_request(&locked, &request, &keys, &approver_epk)
-                                        .map_err(|err| {
-                                            WaitEnd::Failed(Failure::account(
-                                                err,
-                                                ErrorContext::Account,
-                                            ))
-                                        })?;
-                                tx.try_send(WaitUpdate::Code(code.code())).ok();
-                                name_device(
-                                    thread_backend.as_ref(),
-                                    &locked,
-                                    &request,
-                                    &code,
-                                    &device,
-                                )
-                                .map_err(|err| {
-                                    WaitEnd::Failed(Failure::account(err, ErrorContext::Account))
+                            let completed = complete_saved_request(&locked, &approver_epk)
+                                .map_err(|e| {
+                                    WaitEnd::Failed(Failure::account(e, ErrorContext::Account))
                                 })?;
-                                approval = Some(code);
+                            let code = completed.code();
+                            if let Err(error) = name_device_resumable(
+                                backend.as_ref(),
+                                secrets.as_ref(),
+                                &locked,
+                                &device,
+                            ) {
+                                match error {
+                                    AccountError::ApprovalExpired
+                                    | AccountError::ApprovalUsed
+                                    | AccountError::NotFound => {
+                                        clear_approval_resume(secrets.as_ref(), &locked)
+                                            .map_err(approval_failure)?;
+                                        return Err(WaitEnd::Expired);
+                                    }
+                                    other => return Err(approval_failure(other)),
+                                }
                             }
+                            tx.try_send(WaitUpdate::Code(code)).ok();
+                            approval = Some(completed);
                         }
                         Ok(RequestState::Approved(approved)) => {
-                            let approval = approval.ok_or_else(|| {
-                                WaitEnd::Failed(Failure::account(
-                                    AccountError::Protocol("approved without a code".into()),
-                                    ErrorContext::Account,
-                                ))
-                            })?;
+                            let epk = locked
+                                .approval_resume()
+                                .and_then(|r| r.approver_epk())
+                                .ok_or_else(|| {
+                                    WaitEnd::Failed(Failure::account(
+                                        AccountError::ApprovalChanged,
+                                        ErrorContext::Account,
+                                    ))
+                                })?;
+                            let approval = match approval.take() {
+                                Some(approval) => approval,
+                                None => complete_saved_request(&locked, &epk)
+                                    .map_err(approval_failure)?,
+                            };
                             let unlocked = finish_unlock(
-                                thread_backend.as_ref(),
+                                backend.as_ref(),
                                 &locked,
                                 &approval,
                                 &approved,
                                 &device,
                             )
-                            .map_err(|err| {
-                                WaitEnd::Failed(Failure::account(err, ErrorContext::Account))
-                            })?;
-                            let library = match kanso_sync::local_library(
-                                &thread_store,
-                                &unlocked.session.origin,
-                                &unlocked.session.account_id,
-                            ) {
-                                Ok(library) => library,
-                                Err(err) => return Err(WaitEnd::Failed(Failure::library(err))),
-                            };
-                            let choice = match kanso_sync::plan(Flow::SignIn, &library) {
-                                Plan::Resume => None,
-                                _ => Some(Choice::Add),
-                            };
-                            let seams = Seams {
-                                backend: thread_backend.clone(),
-                                secrets: thread_secrets.clone(),
-                                store: thread_store.clone(),
-                                machine: None,
-                                backups: thread_backups.clone(),
-                                now: now(),
-                            };
-                            save_and_bind(&seams, &device.library_id, &unlocked.session, choice)
-                                .map_err(WaitEnd::Failed)?;
-                            return Ok((unlocked.session, device.library_id));
+                            .map_err(approval_failure)?;
+                            return Ok(UnlockedCandidate {
+                                session: unlocked.session,
+                                locked_session: locked.clone(),
+                                evicted: unlocked.evicted,
+                                library_id: device.library_id.clone(),
+                                same_token_as_locked: true,
+                            });
                         }
-                        Ok(RequestState::Cancelled) => return Err(WaitEnd::Cancelled),
-                        Ok(RequestState::Expired) => return Err(WaitEnd::Expired),
-                        Err(err) => {
-                            // A transient failure leaves the request open; the
-                            // next poll tries again. A final one ends the wait.
-                            if matches!(err, AccountError::Unauthorized { .. }) {
-                                return Err(WaitEnd::Failed(Failure::account(
-                                    err,
-                                    ErrorContext::Account,
-                                )));
-                            }
+                        Ok(RequestState::Cancelled) => {
+                            clear_approval_resume(secrets.as_ref(), &locked)
+                                .map_err(approval_failure)?;
+                            return Err(WaitEnd::Cancelled);
                         }
+                        Ok(RequestState::Expired) => {
+                            clear_approval_resume(secrets.as_ref(), &locked)
+                                .map_err(approval_failure)?;
+                            return Err(WaitEnd::Expired);
+                        }
+                        Err(
+                            AccountError::ApprovalExpired
+                            | AccountError::ApprovalUsed
+                            | AccountError::NotFound,
+                        ) => {
+                            clear_approval_resume(secrets.as_ref(), &locked)
+                                .map_err(approval_failure)?;
+                            return Err(WaitEnd::Expired);
+                        }
+                        Err(
+                            error @ (AccountError::Unauthorized { .. }
+                            | AccountError::KeyMismatch
+                            | AccountError::ApprovalChanged
+                            | AccountError::ApprovalRequestIdConflict
+                            | AccountError::Protocol(_)),
+                        ) => return Err(approval_failure(error)),
+                        Err(_) => {}
                     }
                     tx.try_send(WaitUpdate::Tick).ok();
                     std::thread::sleep(crate::device_approval::POLL_EVERY);
                 }
             })();
-            tx.try_send(WaitUpdate::Done(result)).ok();
+            tx.try_send(WaitUpdate::Done(Box::new(result))).ok();
         });
     if thread.is_err() {
         cx.global_mut::<Services>().approval.waiting = None;
@@ -1825,7 +3353,7 @@ pub fn wait_for_device_approval(locked: LockedSession, device: DeviceIdentity, c
     }
     cx.spawn(async move |cx| {
         while let Ok(update) = rx.recv().await {
-            let mut finish = None;
+            let mut completed = None;
             cx.update(|cx| {
                 let now = Clock::now_ms(cx);
                 let services = cx.global_mut::<Services>();
@@ -1835,9 +3363,11 @@ pub fn wait_for_device_approval(locked: LockedSession, device: DeviceIdentity, c
                 match update {
                     WaitUpdate::OtherDevices(count) => {
                         waiting.know_devices(count, now);
-                        if count == 0 {
-                            waiting.phase = crate::device_approval::WaitPhase::NoDevices;
-                        }
+                        waiting.phase = if count == 0 {
+                            crate::device_approval::WaitPhase::NoDevices
+                        } else {
+                            crate::device_approval::WaitPhase::Waiting
+                        };
                     }
                     WaitUpdate::Request(id) => waiting.request_id = Some(id),
                     WaitUpdate::Code(code) => {
@@ -1845,34 +3375,44 @@ pub fn wait_for_device_approval(locked: LockedSession, device: DeviceIdentity, c
                         waiting.phase = crate::device_approval::WaitPhase::Compare { code };
                     }
                     WaitUpdate::Tick => waiting.offer_recovery(now),
-                    WaitUpdate::Done(result) => {
-                        finish = Some(result);
-                    }
+                    WaitUpdate::Done(result) => completed = Some(*result),
                 }
                 cx.refresh_windows();
             });
-            if let Some(result) = finish {
+            if let Some(result) = completed {
                 match result {
-                    Ok((session, library_id)) => {
-                        cx.update(|cx| {
-                            cx.global_mut::<Services>().approval.waiting = None;
-                            crate::account_flow::signed_in(session, library_id, true, cx);
-                            crate::device_approval::start_events(cx);
-                        });
-                    }
-                    Err(end) => {
-                        cx.update(|cx| {
-                            let services = cx.global_mut::<Services>();
-                            if let Some(waiting) = services.approval.waiting.as_mut() {
-                                waiting.phase = end.phase();
-                                waiting.recovery_offered = true;
-                                if let WaitEnd::Failed(failure) = &end {
-                                    eprintln!("kanso: device approval: {}", failure.words);
-                                }
+                    Ok(candidate) => cx.update(|cx| {
+                        cx.global_mut::<Services>().approval.waiting = None;
+                        finish_unlocked_candidate(candidate, window, None, cx);
+                    }),
+                    Err(
+                        end @ WaitEnd::Failed(Failure {
+                            locked_cleanup: true,
+                            ..
+                        }),
+                    ) => cx.update(|cx| {
+                        if let WaitEnd::Failed(failure) = end {
+                            end_invalid_locked_session(locked_for_cleanup, failure, cx);
+                        }
+                    }),
+                    Err(end) => cx.update(|cx| {
+                        if let Some(waiting) = cx.global_mut::<Services>().approval.waiting.as_mut()
+                        {
+                            if matches!(
+                                &end,
+                                WaitEnd::Cancelled | WaitEnd::Expired | WaitEnd::NoDevices
+                            ) {
+                                waiting.code = None;
                             }
-                            cx.refresh_windows();
-                        });
-                    }
+                            waiting.phase = end.phase();
+                            waiting.recovery_offered = true;
+                            if let WaitEnd::Failed(failure) = end {
+                                waiting.phase =
+                                    crate::device_approval::WaitPhase::Failed(failure.words);
+                            }
+                        }
+                        cx.refresh_windows();
+                    }),
                 }
                 break;
             }
@@ -1882,22 +3422,330 @@ pub fn wait_for_device_approval(locked: LockedSession, device: DeviceIdentity, c
     cx.refresh_windows();
 }
 
-/// Closes the waiting page after a cancellation or an expiry.
-pub fn dismiss_device_approval(cx: &mut App) {
-    cx.global_mut::<Services>().approval.waiting = None;
-    cx.refresh_windows();
-}
-
-/// The waiting page's Cancel: stops the poll and asks the server to cancel
-/// the request. A request that is gone counts as cancelled.
-pub fn cancel_device_approval(cx: &mut App) {
-    let services = cx.global_mut::<Services>();
-    let Some(waiting) = services.approval.waiting.as_mut() else {
+pub fn restart_device_approval(window: Option<AnyWindowHandle>, cx: &mut App) {
+    let Some(seams) = Seams::get(cx) else {
         return;
     };
-    waiting
-        .cancel
-        .store(true, std::sync::atomic::Ordering::SeqCst);
-    waiting.phase = crate::device_approval::WaitPhase::Cancelled;
-    cx.refresh_windows();
+    let Ok(device) = seams.device() else {
+        return;
+    };
+    let locked = match keychain::load_locked_pending(seams.secrets.as_ref(), &device.library_id) {
+        Ok(Some(locked)) => locked,
+        Ok(None) => {
+            notify_windows(|| Notification::warning(words::SIGNED_OUT_KEYCHAIN), cx);
+            return;
+        }
+        Err(error) => {
+            notify_windows(|| Notification::warning(words::SIGNED_OUT_KEYCHAIN), cx);
+            eprintln!("kanso: reloading locked pending session: {error}");
+            return;
+        }
+    };
+    {
+        let services = cx.global_mut::<Services>();
+        services.locked_has_password = Some(locked.has_password);
+        services.locked_session = Some(Arc::new(locked.clone()));
+        services.account = AccountState::SignedInLocked {
+            username: locked.username.clone(),
+        };
+    }
+    cx.global_mut::<Services>().approval.waiting = None;
+    wait_for_device_approval(locked, device, window, cx);
+}
+
+/// Cancels a locked sign-in. `discard_locked_session` attempts both pending
+/// deletion and logout even when deletion fails; the app state is cleared
+/// either way so a Keychain error cannot leave the editor pretending to be
+/// an active approval session.
+pub fn cancel_locked_session(cx: &mut App) {
+    let Some(locked) = cx.global::<Services>().locked_session.clone() else {
+        return;
+    };
+    if let Some(waiting) = cx.global::<Services>().approval.waiting.as_ref() {
+        waiting
+            .cancel
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    let (tx, _rx) = async_channel::unbounded();
+    let Some(seams) = begin(&tx, cx) else {
+        return;
+    };
+    let thread = seams.clone();
+    run(
+        TaskKind::SignOut,
+        Step::Contacting,
+        false,
+        Some(tx.clone()),
+        cx,
+        move |_| {
+            let approval = locked
+                .approval_resume()
+                .map(|_| {
+                    cancel_saved_approval(thread.backend.as_ref(), thread.secrets.as_ref(), &locked)
+                })
+                .unwrap_or(Ok(()));
+            let sign_out = kanso_sync::discard_locked_session(
+                thread.backend.as_ref(),
+                thread.secrets.as_ref(),
+                &locked,
+            );
+            sign_out.and(approval)
+        },
+        move |result, cx| {
+            let keychain_failed = matches!(&result, Some(Err(AccountError::Keychain(_))));
+            if let Some(Err(error)) = result.as_ref() {
+                eprintln!("kanso: cancelling locked sign-in: {error}");
+            }
+            clear_locked_account(cx);
+            if keychain_failed {
+                notify_windows(|| Notification::warning(words::SIGNED_OUT_KEYCHAIN), cx);
+            }
+            done(&tx, Ok(()));
+        },
+    );
+}
+
+/// Uses the persisted provider LoginDevice to replace the locked token with a
+/// password-authenticated session, then returns it to UI-thread consent.
+pub fn unlock_locked_password(
+    password: Password,
+    window: Option<AnyWindowHandle>,
+    cx: &mut App,
+) -> Receiver<Progress> {
+    let (tx, rx) = async_channel::unbounded();
+    let Some(locked) = cx.global::<Services>().locked_session.clone() else {
+        done(&tx, Err(SOMETHING_WRONG.into()));
+        return rx;
+    };
+    let Some(seams) = begin(&tx, cx) else {
+        return rx;
+    };
+    let thread = seams.clone();
+    run(
+        TaskKind::SignIn,
+        Step::Contacting,
+        false,
+        Some(tx.clone()),
+        cx,
+        move |step| {
+            let device = thread.device()?;
+            let unlocked = kanso_sync::unlock_with_password(
+                thread.backend.as_ref(),
+                &locked,
+                &password,
+                &device,
+                step,
+            )
+            .map_err(|error| Failure::account(error, ErrorContext::SignIn))?;
+            let mut locked_session = (*locked).clone();
+            if let Err(error) = locked_session
+                .adopt_unlocked_session(&unlocked.session)
+                .and_then(|()| {
+                    keychain::update_locked_pending(
+                        thread.secrets.as_ref(),
+                        &device.library_id,
+                        &locked_session,
+                    )
+                    .map_err(AccountError::Keychain)
+                })
+            {
+                let mut failure = Failure::account(error, ErrorContext::SignIn);
+                failure.keychain_warning |= discard_fresh_candidate(
+                    thread.backend.as_ref(),
+                    thread.secrets.as_ref(),
+                    &unlocked.session,
+                    false,
+                );
+                return Err(failure);
+            }
+            Ok(UnlockedCandidate {
+                session: unlocked.session,
+                locked_session,
+                evicted: unlocked.evicted,
+                library_id: device.library_id,
+                same_token_as_locked: true,
+            })
+        },
+        move |result, cx| match result {
+            Some(Ok(candidate)) => finish_unlocked_candidate(candidate, window, Some(tx), cx),
+            Some(Err(failure)) => failed(&tx, Some(failure), cx),
+            None => failed(&tx, None, cx),
+        },
+    );
+    rx
+}
+
+/// Recovers a locked provider session using its own server and username.
+/// Rotation uses the existing recovery transaction and exposes the new key
+/// before binding consent is requested.
+pub fn recover_locked(
+    key: RecoveryKey,
+    password: Password,
+    window: Option<AnyWindowHandle>,
+    cx: &mut App,
+) -> Receiver<Progress> {
+    let (tx, rx) = async_channel::unbounded();
+    let Some(locked) = cx.global::<Services>().locked_session.clone() else {
+        done(&tx, Err(SOMETHING_WRONG.into()));
+        return rx;
+    };
+    let Some(seams) = begin(&tx, cx) else {
+        return rx;
+    };
+    let thread = seams.clone();
+    run(
+        TaskKind::Recover,
+        Step::Contacting,
+        false,
+        Some(tx.clone()),
+        cx,
+        move |step| {
+            let device = thread.device()?;
+            let recovered = kanso_sync::recover(
+                thread.backend.as_ref(),
+                thread.secrets.as_ref(),
+                &locked.server,
+                &locked.username,
+                &key,
+                &password,
+                &device,
+                step,
+            )
+            .map_err(|error| {
+                Failure::rotation(
+                    error,
+                    ErrorContext::Recovery,
+                    words::KEY_UNCONFIRMED_PASSWORD,
+                )
+            })?;
+            let mut locked_session = (*locked).clone();
+            if let Err(error) = locked_session
+                .adopt_unlocked_session(&recovered.session)
+                .and_then(|()| {
+                    keychain::update_locked_pending(
+                        thread.secrets.as_ref(),
+                        &device.library_id,
+                        &locked_session,
+                    )
+                    .map_err(AccountError::Keychain)
+                })
+            {
+                let mut failure = Failure::account(error, ErrorContext::Recovery);
+                failure.keychain_warning |= discard_fresh_candidate(
+                    thread.backend.as_ref(),
+                    thread.secrets.as_ref(),
+                    &recovered.session,
+                    false,
+                );
+                // Recovery rotated the server's keys and ended every session
+                // that came before it, including this locked provider token.
+                // The updated pending item could not be written, so remove the
+                // old one and do not leave the app presenting a dead token.
+                if let Err(cleanup) = kanso_sync::sign_out_locked(
+                    thread.backend.as_ref(),
+                    thread.secrets.as_ref(),
+                    &locked,
+                ) {
+                    eprintln!("kanso: clearing a recovery's stale locked session: {cleanup}");
+                    failure.keychain_warning |= matches!(&cleanup, AccountError::Keychain(_));
+                }
+                failure.locked_cleanup = true;
+                return Err(failure.after_key(
+                    words::CHANGED_NOT_SIGNED_IN,
+                    &recovered.session,
+                    recovered.recovery_key,
+                ));
+            }
+            Ok((
+                UnlockedCandidate {
+                    session: recovered.session,
+                    locked_session,
+                    evicted: locked.evicted.clone(),
+                    library_id: device.library_id,
+                    same_token_as_locked: true,
+                },
+                recovered.recovery_key,
+            ))
+        },
+        move |result, cx| match result {
+            Some(Ok((candidate, recovery_key))) => {
+                show_key(&candidate.session, recovery_key, cx);
+                finish_unlocked_candidate(candidate, window, Some(tx), cx);
+            }
+            Some(Err(failure)) => failed(&tx, Some(failure), cx),
+            None => failed(&tx, None, cx),
+        },
+    );
+    rx
+}
+
+#[cfg(test)]
+mod provider_wait_tests {
+    use super::{
+        clear_provider_wait_if_owned, github_next_poll_interval, github_poll_interval,
+        provider_request_matches, wait_cancelled_or_expired,
+    };
+    use kanso_sync::AccountError;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn provider_wait_observes_cancellation_and_deadline_without_sleeping() {
+        let cancel = AtomicBool::new(false);
+        let deadline = Instant::now() + Duration::from_secs(60);
+        assert!(matches!(
+            wait_cancelled_or_expired(&cancel, deadline),
+            Ok(false)
+        ));
+
+        cancel.store(true, Ordering::Release);
+        assert!(matches!(
+            wait_cancelled_or_expired(&cancel, deadline),
+            Ok(true)
+        ));
+
+        cancel.store(false, Ordering::Release);
+        assert!(matches!(
+            wait_cancelled_or_expired(&cancel, Instant::now() - Duration::from_millis(1)),
+            Err(AccountError::FlowExpired)
+        ));
+    }
+
+    #[test]
+    fn github_poll_schedule_starts_at_server_interval_and_slow_down_is_cumulative() {
+        let mut interval = github_poll_interval(6);
+        assert_eq!(interval, 6);
+        interval = github_next_poll_interval(interval, true);
+        assert_eq!(interval, 11);
+        interval = github_next_poll_interval(interval, true);
+        assert_eq!(interval, 16);
+        assert_eq!(github_next_poll_interval(interval, false), 16);
+        assert_eq!(github_poll_interval(0), 1);
+    }
+
+    #[test]
+    fn provider_answer_rejects_a_new_server_generation_even_after_a_to_b_to_a() {
+        assert!(provider_request_matches("a", 7, "a", 7));
+        assert!(!provider_request_matches("b", 7, "a", 7));
+        assert!(!provider_request_matches("a", 8, "a", 7));
+    }
+
+    #[test]
+    fn stale_provider_callback_does_not_clear_a_newer_wait() {
+        let old = Arc::new(AtomicBool::new(false));
+        let new = Arc::new(AtomicBool::new(false));
+        let mut wait = Some(crate::services::ProviderWait {
+            provider: "GitHub",
+            user_code: Some("CODE".into()),
+            verification_uri: Some("https://github.com/login/device".into()),
+            cancel: new.clone(),
+        });
+
+        clear_provider_wait_if_owned(&mut wait, &old);
+        assert!(wait.is_some(), "the new flow's wait stays visible");
+
+        clear_provider_wait_if_owned(&mut wait, &new);
+        assert!(wait.is_none(), "the owning callback clears its wait");
+    }
 }

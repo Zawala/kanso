@@ -3,12 +3,15 @@
 //! pieces the app's screens depend on: the same code on both devices, the
 //! approver's own commitment check, single use, cancellation and expiry.
 
+use kanso_sync::api::LoginDevice;
+use kanso_sync::api::{ApprovalCreateRequest, ApprovalNameRequest};
 use kanso_sync::{
     AccountError, ApprovalKeys, Backend, DeviceIdentity, LockedSession, MemorySecrets,
     MemoryServer, Password, RequestState, SessionToken, SignOutReason, SignedIn, cancel_request,
-    challenge_request, complete_request, decline_request, devices, finish_approval, finish_unlock,
-    name_device, open_request, pending_approvals, poll_approval, request_approval, sign_in,
-    sign_up,
+    cancel_saved_approval, challenge_request, complete_request, complete_saved_request,
+    decline_request, devices, finish_approval, finish_unlock, name_device, name_device_resumable,
+    new_approval_request_id, open_request, pending_approvals, poll_approval, poll_saved_approval,
+    request_approval, request_approval_resumable, resume_approval, sign_in, sign_up,
 };
 
 const SERVER: &str = "https://sync.kansoapp.app";
@@ -40,7 +43,7 @@ fn locked_from(session: &kanso_sync::Session) -> LockedSession {
         session.device_id.clone(),
         token_of(session),
         session.key_id(),
-        "0".to_owned(),
+        "0000000000000000".to_owned(),
         None,
         None,
     )
@@ -82,7 +85,13 @@ fn fixture() -> Fixture {
         session: signed_up.session,
         evicted: None,
     };
-    let locked = locked_from(&signed_in.session);
+    let mut locked = locked_from(&signed_in.session);
+    locked = locked.with_login_device(LoginDevice::for_identity(
+        &new_device,
+        &signed_in.session.origin,
+        &signed_in.session.account_id,
+    ));
+    locked.set_library_id(&new_device.library_id);
     Fixture {
         server,
         alice,
@@ -90,6 +99,152 @@ fn fixture() -> Fixture {
         new_session: signed_in,
         locked,
     }
+}
+
+#[test]
+fn saved_request_retries_and_relaunch_reuse_the_same_id_without_spending_create_limit() {
+    let f = fixture();
+    let secrets = MemorySecrets::new();
+    let keys = ApprovalKeys::from_secret([27; 32]);
+    let request_id = new_approval_request_id();
+    f.server.set_now(1_800_000_000_000);
+    f.server
+        .lose_next_requests(kanso_sync::Route::ApprovalCreate, 1);
+
+    let created = request_approval_resumable(&f.server, &secrets, &f.locked, &request_id, &keys)
+        .expect("the lost response retries with its persisted ID");
+    let loaded = kanso_sync::keychain::load_locked_pending(&secrets, &f.new_device.library_id)
+        .unwrap()
+        .unwrap();
+    let resumed = resume_approval(&f.server, &secrets, &loaded).expect("resume after relaunch");
+    assert_eq!(created.id, request_id);
+    assert_eq!(resumed.id, request_id);
+    assert_eq!(resumed.epk, keys.epk());
+
+    // Replaying an existing ID is not an approval-create limiter event.
+    for _ in 0..9 {
+        let again = request_approval_resumable(&f.server, &secrets, &f.locked, &request_id, &keys)
+            .expect("same ID is idempotent");
+        assert_eq!(again.id, request_id);
+    }
+    assert_eq!(
+        pending_approvals(&f.server, &f.alice.session)
+            .unwrap()
+            .iter()
+            .filter(|row| row.id == request_id)
+            .count(),
+        1
+    );
+
+    let conflict = f.server.api(SERVER).create_approval(
+        &token_of(&f.new_session.session),
+        &ApprovalCreateRequest {
+            request_id,
+            commit: ApprovalKeys::from_secret([28; 32]).commitment(),
+        },
+    );
+    assert_eq!(
+        conflict.unwrap_err(),
+        kanso_sync::ApiError::ApprovalRequestIdConflict
+    );
+}
+
+#[test]
+fn saved_name_replay_uses_identical_ciphertext_and_rejects_a_changed_body() {
+    let f = fixture();
+    let secrets = MemorySecrets::new();
+    let keys = ApprovalKeys::from_secret([29; 32]);
+    let request_id = new_approval_request_id();
+    let request =
+        request_approval_resumable(&f.server, &secrets, &f.locked, &request_id, &keys).unwrap();
+    let pending = pending_approvals(&f.server, &f.alice.session).unwrap();
+    let approver_keys = ApprovalKeys::from_secret([30; 32]);
+    challenge_request(&f.server, &f.alice.session, &pending[0], &approver_keys).unwrap();
+    let restored = kanso_sync::keychain::load_locked_pending(&secrets, &f.new_device.library_id)
+        .unwrap()
+        .unwrap();
+    let RequestState::Challenged { approver_epk, .. } =
+        poll_saved_approval(&f.server, &secrets, &restored).unwrap()
+    else {
+        panic!("the request should be challenged");
+    };
+    let approval = complete_saved_request(&restored, &approver_epk).unwrap();
+
+    let before_post = kanso_sync::keychain::load_locked_pending(&secrets, &f.new_device.library_id)
+        .unwrap()
+        .unwrap();
+    name_device_resumable(&f.server, &secrets, &before_post, &f.new_device).unwrap();
+    let after_post = kanso_sync::keychain::load_locked_pending(&secrets, &f.new_device.library_id)
+        .unwrap()
+        .unwrap();
+    let saved_sealed_name = after_post
+        .approval_resume()
+        .and_then(|resume| resume.sealed_name())
+        .unwrap()
+        .to_owned();
+    name_device_resumable(&f.server, &secrets, &after_post, &f.new_device)
+        .expect("the exact saved ciphertext is a valid replay");
+    let replay = f.server.api(SERVER).name_approval(
+        &token_of(&f.new_session.session),
+        &request.id,
+        &ApprovalNameRequest {
+            epk: kanso_sync::approval::epk_text(&request.epk),
+            sealed_name: approval.seal_name("a different device name"),
+        },
+    );
+    assert_eq!(replay.unwrap_err(), kanso_sync::ApiError::ApprovalUsed);
+    assert_eq!(
+        kanso_sync::keychain::load_locked_pending(&secrets, &f.new_device.library_id)
+            .unwrap()
+            .unwrap()
+            .approval_resume()
+            .and_then(|resume| resume.sealed_name()),
+        Some(saved_sealed_name.as_str())
+    );
+}
+
+#[test]
+fn saved_cancel_and_expiry_clear_only_approval_resume_state() {
+    let f = fixture();
+    let secrets = MemorySecrets::new();
+    let keys = ApprovalKeys::from_secret([31; 32]);
+    f.server.set_now(1_800_000_000_000);
+    request_approval_resumable(
+        &f.server,
+        &secrets,
+        &f.locked,
+        &new_approval_request_id(),
+        &keys,
+    )
+    .unwrap();
+    cancel_saved_approval(&f.server, &secrets, &f.locked).unwrap();
+    let cancelled = kanso_sync::keychain::load_locked_pending(&secrets, &f.new_device.library_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(cancelled.account_id, f.locked.account_id);
+    assert!(cancelled.approval_resume().is_none());
+
+    let expired_secrets = MemorySecrets::new();
+    let expired_keys = ApprovalKeys::from_secret([32; 32]);
+    request_approval_resumable(
+        &f.server,
+        &expired_secrets,
+        &f.locked,
+        &new_approval_request_id(),
+        &expired_keys,
+    )
+    .unwrap();
+    f.server.set_now(1_800_000_300_001);
+    assert_eq!(
+        poll_saved_approval(&f.server, &expired_secrets, &f.locked).unwrap(),
+        RequestState::Expired
+    );
+    let expired =
+        kanso_sync::keychain::load_locked_pending(&expired_secrets, &f.new_device.library_id)
+            .unwrap()
+            .unwrap();
+    assert_eq!(expired.account_id, f.locked.account_id);
+    assert!(expired.approval_resume().is_none());
 }
 
 #[test]

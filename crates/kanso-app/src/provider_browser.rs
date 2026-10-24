@@ -19,6 +19,7 @@
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use kanso_sync::{AppleStart, GithubStart, GoogleStart};
@@ -32,6 +33,10 @@ pub enum BrowserError {
     Io(String),
     /// The person dismissed the browser.
     Cancelled,
+    /// The provider's absolute flow deadline elapsed.
+    Expired,
+    /// The provider returned an explicit denial or cancellation.
+    ProviderDenied,
     /// The callback wasn't for this flow (`state` didn't match, or a foreign
     /// path).
     WrongCallback,
@@ -45,6 +50,8 @@ impl std::fmt::Display for BrowserError {
             BrowserError::Bind(err) => write!(f, "couldn't listen on this Mac: {err}"),
             BrowserError::Io(message) => f.write_str(message),
             BrowserError::Cancelled => f.write_str("the sign-in was closed"),
+            BrowserError::Expired => f.write_str("the sign-in expired"),
+            BrowserError::ProviderDenied => f.write_str("sign-in was cancelled"),
             BrowserError::WrongCallback => f.write_str("the browser returned another sign-in"),
             BrowserError::Unsupported(what) => write!(f, "{what}"),
         }
@@ -270,33 +277,52 @@ impl Loopback {
     /// Accepts one request, checks `state`, answers "Return to Kanso" and
     /// returns the `code`. The listener is done either way.
     pub fn wait(&self, expected_state: &str, timeout: Duration) -> Result<String, BrowserError> {
+        let cancel = AtomicBool::new(false);
+        self.wait_until(expected_state, Instant::now() + timeout, &cancel)
+    }
+
+    /// Waits for one valid callback without blocking cancellation or the
+    /// server-provided absolute expiry deadline.
+    pub fn wait_until(
+        &self,
+        expected_state: &str,
+        deadline: Instant,
+        cancel: &AtomicBool,
+    ) -> Result<String, BrowserError> {
         self.listener
             .set_nonblocking(true)
             .map_err(BrowserError::Bind)?;
-        let started = Instant::now();
         let mut stream = loop {
+            if cancel.load(Ordering::Acquire) {
+                return Err(BrowserError::Cancelled);
+            }
+            if Instant::now() >= deadline {
+                return Err(BrowserError::Expired);
+            }
             match self.listener.accept() {
                 Ok((stream, _)) => break stream,
                 Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                    if started.elapsed() > timeout {
-                        return Err(BrowserError::Io("the browser didn't return in time".into()));
-                    }
-                    std::thread::sleep(Duration::from_millis(25));
+                    std::thread::sleep(
+                        Duration::from_millis(25)
+                            .min(deadline.saturating_duration_since(Instant::now())),
+                    );
                 }
                 Err(err) => return Err(BrowserError::Bind(err)),
             }
         };
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .map_err(BrowserError::Bind)?;
-        let request = read_request(&mut stream)?;
-        let answer = parse_loopback_request(&request, expected_state);
+        stream.set_nonblocking(true).map_err(BrowserError::Bind)?;
+        let request = read_request_until(&mut stream, deadline, cancel)?;
+        let answer = parse_loopback_callback(&request, expected_state);
         match answer {
-            Some(code) => {
+            Ok(code) => {
                 let _ = respond(&mut stream, 200, "Signed in. Return to Kanso.");
                 Ok(code)
             }
-            None => {
+            Err(BrowserError::ProviderDenied) => {
+                let _ = respond(&mut stream, 200, "Sign-in was cancelled. Return to Kanso.");
+                Err(BrowserError::ProviderDenied)
+            }
+            Err(_) => {
                 let _ = respond(
                     &mut stream,
                     400,
@@ -308,23 +334,40 @@ impl Loopback {
     }
 }
 
-fn read_request(stream: &mut TcpStream) -> Result<String, BrowserError> {
+fn read_request_until(
+    stream: &mut TcpStream,
+    deadline: Instant,
+    cancel: &AtomicBool,
+) -> Result<String, BrowserError> {
     let mut bytes = Vec::with_capacity(1024);
     let mut buffer = [0u8; 512];
     loop {
-        let read = stream
-            .read(&mut buffer)
-            .map_err(|err| BrowserError::Io(format!("the browser didn't answer: {err}")))?;
-        if read == 0 {
-            break;
+        if cancel.load(Ordering::Acquire) {
+            return Err(BrowserError::Cancelled);
         }
-        bytes.extend_from_slice(&buffer[..read]);
-        if bytes.windows(4).any(|w| w == b"\r\n\r\n") || bytes.len() > 16 * 1024 {
-            break;
+        if Instant::now() >= deadline {
+            return Err(BrowserError::Expired);
+        }
+        match stream.read(&mut buffer) {
+            Ok(0) => return Err(BrowserError::WrongCallback),
+            Ok(read) => {
+                bytes.extend_from_slice(&buffer[..read]);
+                if bytes.windows(4).any(|window| window == b"\r\n\r\n") {
+                    return String::from_utf8(bytes).map_err(|_| BrowserError::WrongCallback);
+                }
+                if bytes.len() > 16 * 1024 {
+                    return Err(BrowserError::WrongCallback);
+                }
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(
+                    Duration::from_millis(25)
+                        .min(deadline.saturating_duration_since(Instant::now())),
+                );
+            }
+            Err(err) => return Err(BrowserError::Bind(err)),
         }
     }
-    String::from_utf8(bytes)
-        .map_err(|_| BrowserError::Io("the browser sent bytes that aren't a URL".into()))
 }
 
 fn respond(stream: &mut TcpStream, status: u16, sentence: &str) -> std::io::Result<()> {
@@ -344,31 +387,46 @@ fn respond(stream: &mut TcpStream, status: u16, sentence: &str) -> std::io::Resu
 /// request line is well formed and `state` is the one the start returned.
 /// Google's codes are percent-encoded; `+` is a space in a query.
 pub fn parse_loopback_request(request: &str, expected_state: &str) -> Option<String> {
-    let line = request.lines().next()?;
+    parse_loopback_callback(request, expected_state).ok()
+}
+
+pub fn parse_loopback_callback(
+    request: &str,
+    expected_state: &str,
+) -> Result<String, BrowserError> {
+    let line = request.lines().next().ok_or(BrowserError::WrongCallback)?;
     let mut parts = line.split_whitespace();
-    let method = parts.next()?;
-    let target = parts.next()?;
-    let version = parts.next()?;
+    let method = parts.next().ok_or(BrowserError::WrongCallback)?;
+    let target = parts.next().ok_or(BrowserError::WrongCallback)?;
+    let version = parts.next().ok_or(BrowserError::WrongCallback)?;
     if method != "GET" || !version.starts_with("HTTP/") {
-        return None;
+        return Err(BrowserError::WrongCallback);
     }
-    let (path, query) = target.split_once('?')?;
+    let (path, query) = target.split_once('?').ok_or(BrowserError::WrongCallback)?;
     if path != "/" {
-        return None;
+        return Err(BrowserError::WrongCallback);
     }
     let mut code = None;
     let mut state = None;
+    let mut error = None;
     for pair in query.split('&') {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
         let value = percent_decode(value);
         match key {
             "code" => code = Some(value),
             "state" => state = Some(value),
+            "error" => error = Some(value),
             _ => {}
         }
     }
-    let code = code.filter(|code| !code.is_empty())?;
-    (state.as_deref() == Some(expected_state)).then_some(code)
+    if state.as_deref() != Some(expected_state) {
+        return Err(BrowserError::WrongCallback);
+    }
+    if error.is_some() {
+        return Err(BrowserError::ProviderDenied);
+    }
+    code.filter(|code| !code.is_empty())
+        .ok_or(BrowserError::WrongCallback)
 }
 
 /// `%XX` and `+` as a query decoder; a malformed escape is left as it is.
@@ -452,6 +510,45 @@ mod tests {
         ] {
             assert_eq!(parse_loopback_request(bad, "s1"), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn loopback_oauth_errors_require_the_matching_state_and_are_denials() {
+        assert!(matches!(
+            parse_loopback_callback("GET /?error=access_denied&state=s1 HTTP/1.1\r\n\r\n", "s1"),
+            Err(BrowserError::ProviderDenied)
+        ));
+        assert!(matches!(
+            parse_loopback_callback("GET /?error=server_error&state=s1 HTTP/1.1\r\n\r\n", "s1"),
+            Err(BrowserError::ProviderDenied)
+        ));
+        for wrong in [
+            "GET /?error=access_denied&state=wrong HTTP/1.1\r\n\r\n",
+            "GET /?error=access_denied HTTP/1.1\r\n\r\n",
+        ] {
+            assert!(matches!(
+                parse_loopback_callback(wrong, "s1"),
+                Err(BrowserError::WrongCallback)
+            ));
+        }
+    }
+
+    #[test]
+    fn loopback_wait_honors_cancellation_and_expiry_before_accepting() {
+        use std::sync::atomic::AtomicBool;
+
+        let loopback = Loopback::bind().unwrap();
+        let cancelled = AtomicBool::new(true);
+        assert!(matches!(
+            loopback.wait_until("state", Instant::now() + Duration::from_secs(1), &cancelled),
+            Err(BrowserError::Cancelled)
+        ));
+
+        let active = AtomicBool::new(false);
+        assert!(matches!(
+            loopback.wait_until("state", Instant::now(), &active),
+            Err(BrowserError::Expired)
+        ));
     }
 
     #[test]

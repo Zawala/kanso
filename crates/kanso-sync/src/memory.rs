@@ -1,7 +1,7 @@
 //! [`MemoryServer`], the in-memory test server: the Worker's v2 rules for
 //! accounts, sessions, sealed sync, quotas and limits (frozen by step 1).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -19,6 +19,12 @@ use crate::api::{
     SessionResponse, SignupRequest, WireDevice, WireKdf, WireQuota, WireUsage,
 };
 use crate::crypto::{KdfParams, b64, hex, hkdf32, hmac, random, sha256_hex, unb64};
+use crate::provider::{
+    AppleStart, GithubStart, GoogleFinishRequest, GoogleStart, GoogleStartRequest, IdentityIntent,
+    IdentityRow, IdentityStartRequest, LinkOutcome, MethodsReply, Provider, ProviderPollRequest,
+    ProviderSession, ProviderStart, ProviderStartRequest, ProviderStep, SocialSignupRequest,
+    UnlinkRequest,
+};
 use crate::sealed::PlainView;
 use crate::username::{UsernameError, check_new_username, normalize_username};
 use crate::wire::{
@@ -238,6 +244,34 @@ struct PasskeyFlow {
     consumed_at: Option<i64>,
 }
 
+/// Scripted provider behavior for deterministic client tests.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ProviderTestOutcome {
+    Session { account_id: String },
+    NewAccount { suggested_username: String },
+    Pending,
+    SlowDown,
+    ProviderDenied,
+    ProviderUnavailable,
+    FlowExpired,
+    IdentityTaken,
+}
+
+#[derive(Clone, Debug)]
+struct ProviderFlow {
+    provider: Provider,
+    device_id: String,
+    proof_hash: String,
+    expires_at: i64,
+    transitions: VecDeque<ProviderTestOutcome>,
+    current: ProviderTestOutcome,
+    subject: String,
+    account_id: Option<String>,
+    intent: Option<IdentityIntent>,
+    code_challenge: Option<String>,
+    consumed: bool,
+}
+
 /// A `sessions` row.
 #[derive(Clone, Debug)]
 struct SessionRow {
@@ -338,6 +372,10 @@ struct ServerState {
     accounts: BTreeMap<String, Account>,
     passkeys: Vec<PasskeyRow>,
     passkey_flows: BTreeMap<String, PasskeyFlow>,
+    providers: Vec<Provider>,
+    provider_outcomes: BTreeMap<String, VecDeque<ProviderTestOutcome>>,
+    provider_flows: BTreeMap<String, ProviderFlow>,
+    identities: Vec<(String, Provider, String, i64)>,
     sessions: Vec<SessionRow>,
     approvals: Vec<ApprovalRowState>,
     docs: BTreeMap<DocKey, DocRow>,
@@ -434,6 +472,10 @@ impl ServerState {
             accounts: BTreeMap::new(),
             passkeys: Vec::new(),
             passkey_flows: BTreeMap::new(),
+            providers: Vec::new(),
+            provider_outcomes: BTreeMap::new(),
+            provider_flows: BTreeMap::new(),
+            identities: Vec::new(),
             sessions: Vec::new(),
             approvals: Vec::new(),
             docs: BTreeMap::new(),
@@ -698,6 +740,387 @@ impl ServerState {
 
     // -- routes ------------------------------------------------------------
 
+    fn provider_start(
+        &mut self,
+        provider: &Provider,
+        device: &crate::api::LoginDevice,
+        now: i64,
+        intent: Option<IdentityIntent>,
+        account_id: Option<String>,
+        code_challenge: Option<String>,
+    ) -> Result<ProviderStart, ApiError> {
+        if !matches!(
+            provider,
+            Provider::Apple | Provider::Google | Provider::Github
+        ) {
+            return Err(ApiError::UnsupportedMethod);
+        }
+        if !self.providers.contains(provider) {
+            return Err(ApiError::ProviderDisabled);
+        }
+        if !is_device_id(&device.id) || key32(&device.proof).is_none() {
+            return Err(ApiError::BadRequest);
+        }
+        let flow_id = b64(&random::<32>());
+        let mut outcomes = self
+            .provider_outcomes
+            .remove(provider.as_str())
+            .unwrap_or_default();
+        let current = outcomes.pop_front().unwrap_or(ProviderTestOutcome::Pending);
+        self.provider_flows.insert(
+            flow_id.clone(),
+            ProviderFlow {
+                provider: provider.clone(),
+                device_id: device.id.clone(),
+                proof_hash: sha256_hex(&unb64(&device.proof).ok_or(ApiError::BadRequest)?),
+                expires_at: now + 600_000,
+                transitions: outcomes,
+                current,
+                subject: format!("memory:{flow_id}"),
+                account_id,
+                intent,
+                code_challenge,
+                consumed: false,
+            },
+        );
+        Ok(match provider {
+            Provider::Apple => ProviderStart::Apple(AppleStart {
+                flow_id,
+                auth_url: "https://memory.kanso.test/apple".into(),
+                expires_at: now + 600_000,
+            }),
+            Provider::Google => ProviderStart::Google(GoogleStart {
+                flow_id,
+                auth_url: "https://memory.kanso.test/google".into(),
+                nonce: b64(&random::<32>()),
+                state: b64(&random::<32>()),
+                expires_at: now + 600_000,
+            }),
+            Provider::Github => ProviderStart::Github(GithubStart {
+                flow_id,
+                user_code: "MEMORY-CODE".into(),
+                verification_uri: "https://memory.kanso.test/device".into(),
+                interval: 5,
+                expires_in: 600,
+            }),
+            Provider::Other(_) => unreachable!(),
+        })
+    }
+
+    fn provider_result(
+        &mut self,
+        flow_id: &str,
+        provider: &Provider,
+        device: &crate::api::LoginDevice,
+        now: i64,
+    ) -> Result<ProviderStep, ApiError> {
+        let flow = self
+            .provider_flows
+            .get_mut(flow_id)
+            .ok_or(ApiError::FlowExpired { gone: false })?;
+        if flow.consumed || flow.expires_at <= now {
+            return Err(ApiError::FlowExpired { gone: false });
+        }
+        if &flow.provider != provider
+            || flow.device_id != device.id
+            || flow.proof_hash != sha256_hex(&unb64(&device.proof).ok_or(ApiError::BadRequest)?)
+        {
+            return Err(ApiError::BadRequest);
+        }
+        if matches!(
+            flow.current,
+            ProviderTestOutcome::Pending | ProviderTestOutcome::SlowDown
+        ) && let Some(next) = flow.transitions.pop_front()
+        {
+            flow.current = next;
+        }
+        let outcome = flow.current.clone();
+        let subject = flow.subject.clone();
+        match outcome {
+            ProviderTestOutcome::Pending => Ok(ProviderStep::Pending { slow_down: false }),
+            ProviderTestOutcome::SlowDown => Ok(ProviderStep::Pending { slow_down: true }),
+            ProviderTestOutcome::ProviderDenied => {
+                self.provider_flows.get_mut(flow_id).unwrap().consumed = true;
+                Err(ApiError::ProviderDenied)
+            }
+            ProviderTestOutcome::ProviderUnavailable => {
+                self.provider_flows.get_mut(flow_id).unwrap().consumed = true;
+                Err(ApiError::ProviderUnavailable)
+            }
+            ProviderTestOutcome::FlowExpired => {
+                self.provider_flows.remove(flow_id);
+                Err(ApiError::FlowExpired { gone: true })
+            }
+            ProviderTestOutcome::IdentityTaken => {
+                self.provider_flows.get_mut(flow_id).unwrap().consumed = true;
+                Err(ApiError::IdentityTaken)
+            }
+            ProviderTestOutcome::NewAccount { suggested_username } => {
+                if self.provider_flows[flow_id].account_id.is_some() {
+                    return Err(ApiError::BadRequest);
+                }
+                Ok(ProviderStep::NewAccount(crate::provider::NewAccount {
+                    ticket: flow_id.into(),
+                    suggested_username,
+                }))
+            }
+            ProviderTestOutcome::Session { account_id } => {
+                let account = self
+                    .accounts
+                    .get(&account_id)
+                    .cloned()
+                    .ok_or(ApiError::NotFound)?;
+                if account.disabled_at.is_some() {
+                    return Err(ApiError::AccountDisabled);
+                }
+                let checked = Self::check_device(&NewDevice {
+                    id: device.id.clone(),
+                    sealed_name: None,
+                    proof: device.proof.clone(),
+                })?;
+                self.count(Rule::LoginIp, &format!("login-ip:{CLIENT_IP}"), now, 1, 30)?;
+                if !self.sessions.iter().any(|r| {
+                    r.account_id == account_id
+                        && r.device_id == checked.id
+                        && r.revoked.is_none()
+                        && r.proof_hash == checked.proof_hash
+                }) {
+                    self.count(
+                        Rule::LoginUser,
+                        &format!("login-user:{account_id}"),
+                        now,
+                        1,
+                        10,
+                    )?;
+                }
+                let (token, evicted_device) = self.start_session(&account_id, &checked, now);
+                if !self
+                    .identities
+                    .iter()
+                    .any(|(id, p, s, _)| id == &account_id && p == provider && s == &subject)
+                {
+                    self.identities
+                        .push((account_id.clone(), provider.clone(), subject, now));
+                }
+                self.provider_flows.get_mut(flow_id).unwrap().consumed = true;
+                Ok(ProviderStep::Session(ProviderSession {
+                    account_id,
+                    username: account.username,
+                    token,
+                    key_id: account.key_id,
+                    epoch: account.epoch,
+                    has_password: account.has_password,
+                    passkey_wrapped_key: None,
+                    evicted_device,
+                }))
+            }
+        }
+    }
+
+    fn identity_result(
+        &mut self,
+        flow_id: &str,
+        provider: &Provider,
+        device: &crate::api::LoginDevice,
+        now: i64,
+    ) -> Result<LinkOutcome, ApiError> {
+        let f = self
+            .provider_flows
+            .get_mut(flow_id)
+            .ok_or(ApiError::FlowExpired { gone: false })?;
+        if f.consumed || f.expires_at <= now {
+            return Err(ApiError::FlowExpired { gone: false });
+        }
+        if &f.provider != provider
+            || f.device_id != device.id
+            || f.proof_hash != sha256_hex(&unb64(&device.proof).ok_or(ApiError::BadRequest)?)
+        {
+            return Err(ApiError::BadRequest);
+        }
+        if matches!(
+            f.current,
+            ProviderTestOutcome::Pending | ProviderTestOutcome::SlowDown
+        ) && let Some(next) = f.transitions.pop_front()
+        {
+            f.current = next
+        }
+        let result = f.current.clone();
+        let account = f.account_id.clone().ok_or(ApiError::BadRequest)?;
+        let subject = f.subject.clone();
+        let intent = f.intent.ok_or(ApiError::BadRequest)?;
+        match result {
+            ProviderTestOutcome::Pending | ProviderTestOutcome::SlowDown => {
+                Err(ApiError::RateLimited {
+                    retry_after: 1,
+                    limit: "provider-poll".into(),
+                })
+            }
+            ProviderTestOutcome::ProviderDenied => {
+                self.provider_flows.get_mut(flow_id).unwrap().consumed = true;
+                Err(ApiError::ProviderDenied)
+            }
+            ProviderTestOutcome::ProviderUnavailable => {
+                self.provider_flows.get_mut(flow_id).unwrap().consumed = true;
+                Err(ApiError::ProviderUnavailable)
+            }
+            ProviderTestOutcome::FlowExpired => {
+                self.provider_flows.remove(flow_id);
+                Err(ApiError::FlowExpired { gone: true })
+            }
+            ProviderTestOutcome::IdentityTaken => {
+                self.provider_flows.get_mut(flow_id).unwrap().consumed = true;
+                Err(ApiError::IdentityTaken)
+            }
+            ProviderTestOutcome::NewAccount { .. } => Err(ApiError::BadRequest),
+            ProviderTestOutcome::Session { account_id } => {
+                if account_id != account {
+                    return Err(ApiError::BadRequest);
+                }
+                if self
+                    .identities
+                    .iter()
+                    .any(|(id, p, s, _)| p == provider && s == &subject && id != &account)
+                {
+                    return Err(ApiError::IdentityTaken);
+                }
+                self.provider_flows.get_mut(flow_id).unwrap().consumed = true;
+                match intent {
+                    IdentityIntent::Proof => Ok(LinkOutcome::Proof {
+                        provider: provider.clone(),
+                    }),
+                    IdentityIntent::Link => {
+                        if self
+                            .identities
+                            .iter()
+                            .any(|(id, p, s, _)| id == &account && p == provider && s == &subject)
+                        {
+                            return Err(ApiError::IdentityTaken);
+                        }
+                        self.identities
+                            .push((account, provider.clone(), subject, now));
+                        Ok(LinkOutcome::Linked {
+                            provider: provider.clone(),
+                            created_at: now,
+                        })
+                    }
+                }
+            }
+        }
+    }
+
+    fn social_signup(
+        &mut self,
+        r: &SocialSignupRequest,
+        now: i64,
+    ) -> Result<ProviderSession, ApiError> {
+        self.count(
+            Rule::SignupIp,
+            &format!("signup-ip:{CLIENT_IP}"),
+            now,
+            1,
+            10,
+        )?;
+        let username = match check_new_username(&r.username) {
+            Ok(name) => name,
+            Err(UsernameError::Reserved) => return Err(ApiError::ReservedUsername),
+            Err(_) => return Err(ApiError::InvalidUsername),
+        };
+        if !is_account_id(&r.account_id)
+            || !is_hex16(&r.key_id)
+            || key32(&r.recovery_auth_key).is_none()
+            || !is_wrap(&r.recovery_wrapped_key)
+        {
+            return Err(ApiError::BadRequest);
+        }
+        let device = Self::check_device(&r.device)?;
+        let flow = self
+            .provider_flows
+            .get(&r.ticket)
+            .cloned()
+            .ok_or(ApiError::FlowExpired { gone: false })?;
+        if flow.consumed || flow.expires_at <= now {
+            return Err(ApiError::FlowExpired { gone: false });
+        }
+        if !matches!(flow.current, ProviderTestOutcome::NewAccount { .. })
+            || flow.device_id != device.id
+            || flow.proof_hash != device.proof_hash
+        {
+            return Err(ApiError::BadRequest);
+        }
+        let switch = self
+            .settings
+            .get("signup")
+            .map(String::as_str)
+            .unwrap_or("closed");
+        if switch != "open" && switch != format!("only:{username}") {
+            return Err(ApiError::SignupClosed {
+                reason: SignupClosedReason::Closed,
+            });
+        }
+        if self.accounts.len() as u64 >= self.setting("max_accounts") {
+            return Err(ApiError::SignupClosed {
+                reason: SignupClosedReason::Full,
+            });
+        }
+        if self.signups.today(now) >= self.setting("signups_per_day") {
+            return Err(ApiError::SignupClosed {
+                reason: SignupClosedReason::Busy,
+            });
+        }
+        if self.accounts.contains_key(&r.account_id) {
+            return Err(ApiError::AccountIdTaken);
+        }
+        if self.account_by_name(&username).is_some() {
+            return Err(ApiError::UsernameTaken);
+        }
+        if self
+            .identities
+            .iter()
+            .any(|(_, p, s, _)| p == &flow.provider && s == &flow.subject)
+        {
+            return Err(ApiError::IdentityTaken);
+        }
+        let account_id = r.account_id.clone();
+        let epoch = hex(&random::<8>());
+        let account = Account {
+            id: account_id.clone(),
+            username: username.clone(),
+            kdf: self.default,
+            salt: b64(&random::<16>()),
+            auth_hash: sha256_hex(&random::<32>()),
+            wrapped_key: b64(&random::<73>()),
+            recovery_hash: sha256_hex(&unb64(&r.recovery_auth_key).ok_or(ApiError::BadRequest)?),
+            recovery_wrapped_key: r.recovery_wrapped_key.clone(),
+            key_id: r.key_id.clone(),
+            epoch: epoch.clone(),
+            last_seq: 0,
+            docs: 0,
+            doc_bytes: 0,
+            files: 0,
+            file_bytes: 0,
+            quota: QuotaOverride::default(),
+            created_at: now,
+            disabled_at: None,
+            has_password: false,
+        };
+        self.accounts.insert(account_id.clone(), account);
+        self.identities
+            .push((account_id.clone(), flow.provider, flow.subject, now));
+        self.signups.add(now, 1);
+        let (token, evicted_device) = self.start_session(&account_id, &device, now);
+        self.provider_flows.get_mut(&r.ticket).unwrap().consumed = true;
+        Ok(ProviderSession {
+            account_id,
+            username,
+            token,
+            key_id: r.key_id.clone(),
+            epoch,
+            has_password: false,
+            passkey_wrapped_key: None,
+            evicted_device,
+        })
+    }
+
     fn health(&self) -> Health {
         let signup = if self.settings.get("signup").map(String::as_str) == Some("open") {
             if self.accounts.len() as u64 >= self.setting("max_accounts") {
@@ -719,7 +1142,7 @@ impl ServerState {
                     origins: vec!["https://memory.kanso.test".into()],
                     security_key: true,
                 }),
-                providers: vec![],
+                providers: self.providers.clone(),
             }),
             events: Some(HealthEvents {
                 account: Some(crate::events::ACCOUNT_EVENTS_PATH.to_owned()),
@@ -1666,6 +2089,31 @@ impl ServerState {
         now: i64,
     ) -> Result<ApprovalCreated, ApiError> {
         let caller = self.authenticate(token, now, false)?;
+        if !is_approval_id(&r.request_id) || key32(&r.commit).is_none() {
+            return Err(ApiError::BadRequest);
+        }
+        if let Some(existing) = self.approvals.iter().find(|row| row.id == r.request_id) {
+            if existing.account_id != caller.account_id
+                || existing.device_id != caller.device_id
+                || existing.commit_hash != r.commit
+            {
+                return Err(ApiError::ApprovalRequestIdConflict);
+            }
+            let other_devices = self
+                .sessions
+                .iter()
+                .filter(|session| {
+                    session.account_id == caller.account_id
+                        && session.revoked_at.is_none()
+                        && session.device_id != caller.device_id
+                })
+                .count();
+            return Ok(ApprovalCreated {
+                id: existing.id.clone(),
+                expires_at: existing.expires_at,
+                other_devices: other_devices as u64,
+            });
+        }
         self.count(
             Rule::ApprovalCreate,
             &format!("approval-create:{}", caller.account_id),
@@ -1673,7 +2121,6 @@ impl ServerState {
             1,
             10,
         )?;
-        key32(&r.commit).ok_or(ApiError::BadRequest)?;
         let account = caller.account_id.clone();
         let mut pending: Vec<usize> = self
             .approvals
@@ -1697,7 +2144,7 @@ impl ServerState {
         for &ix in pending.iter().take(pending.len().saturating_sub(2)) {
             self.approvals[ix].cancelled_at = Some(now);
         }
-        let id = b64(&random::<32>());
+        let id = r.request_id.clone();
         let expires_at = now + APPROVAL_TTL_MS;
         self.approvals.push(ApprovalRowState {
             id: id.clone(),
@@ -2516,6 +2963,46 @@ impl MemoryServer {
         self.server().now = Some(now_ms);
     }
 
+    /// Configures provider routes and the health advertisement.
+    pub fn set_providers(&self, providers: Vec<Provider>) {
+        self.server().providers = providers;
+    }
+
+    /// Scripts the first result and subsequent polling transitions for the next flow.
+    /// Scripts `pending`, `slow_down`, `provider_denied`,
+    /// `provider_unavailable`, `flow_expired`, `identity_taken`,
+    /// `session:<account_id>` or `new_account:<username>` results.
+    pub fn set_provider_outcomes<I, S>(&self, provider: Provider, outcomes: I)
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.server().provider_outcomes.insert(
+            provider.as_str().into(),
+            outcomes
+                .into_iter()
+                .map(|value| {
+                    let value = value.as_ref();
+                    match value {
+                        "pending" => ProviderTestOutcome::Pending,
+                        "slow_down" => ProviderTestOutcome::SlowDown,
+                        "provider_denied" => ProviderTestOutcome::ProviderDenied,
+                        "provider_unavailable" => ProviderTestOutcome::ProviderUnavailable,
+                        "flow_expired" => ProviderTestOutcome::FlowExpired,
+                        "identity_taken" => ProviderTestOutcome::IdentityTaken,
+                        _ if value.starts_with("session:") => ProviderTestOutcome::Session {
+                            account_id: value[8..].to_owned(),
+                        },
+                        _ if value.starts_with("new_account:") => ProviderTestOutcome::NewAccount {
+                            suggested_username: value[12..].to_owned(),
+                        },
+                        _ => panic!("unknown provider test outcome: {value}"),
+                    }
+                })
+                .collect(),
+        );
+    }
+
     /// Writes one `settings` row, as `UPDATE settings SET value = ? WHERE
     /// name = ?` would. Panics when D1's `CHECK` would refuse it.
     pub fn set_setting(&self, name: &str, value: &str) {
@@ -3082,6 +3569,251 @@ impl Api for MemoryApi<'_> {
         self.server
             .call(Route::GetFile, |s, now| s.get_file(token, wire_id, now))
     }
+
+    fn provider_start(
+        &self,
+        p: &Provider,
+        r: &ProviderStartRequest,
+    ) -> Result<ProviderStart, ApiError> {
+        self.server.call(Route::ProviderStart, |s, n| {
+            s.provider_start(p, &r.device, n, None, None, None)
+        })
+    }
+    fn google_start(&self, r: &GoogleStartRequest) -> Result<ProviderStart, ApiError> {
+        self.server.call(Route::GoogleStart, |s, n| {
+            if crate::provider::Loopback::parse(&r.redirect_uri).is_none()
+                || r.code_challenge.len() != 43
+                || !is_base64url(&r.code_challenge)
+            {
+                return Err(ApiError::BadRequest);
+            }
+            s.provider_start(
+                &Provider::Google,
+                &r.device,
+                n,
+                None,
+                None,
+                Some(r.code_challenge.clone()),
+            )
+        })
+    }
+    fn provider_poll(
+        &self,
+        p: &Provider,
+        r: &ProviderPollRequest,
+    ) -> Result<ProviderStep, ApiError> {
+        self.server.call(Route::ProviderPoll, |s, n| {
+            s.provider_result(&r.flow_id, p, &r.device, n)
+        })
+    }
+    fn google_finish(&self, r: &GoogleFinishRequest) -> Result<ProviderStep, ApiError> {
+        self.server.call(Route::GoogleFinish, |s, n| {
+            if r.code.is_empty()
+                || !(43..=128).contains(&r.code_verifier.len())
+                || !is_base64url(&r.code_verifier)
+            {
+                return Err(ApiError::BadRequest);
+            }
+            let f = s
+                .provider_flows
+                .get(&r.flow_id)
+                .ok_or(ApiError::FlowExpired { gone: false })?;
+            if f.code_challenge.as_deref()
+                != Some(b64(&Sha256::digest(r.code_verifier.as_bytes())).as_str())
+            {
+                return Err(ApiError::BadRequest);
+            }
+            s.provider_result(&r.flow_id, &Provider::Google, &r.device, n)
+        })
+    }
+    fn social_signup(&self, r: &SocialSignupRequest) -> Result<ProviderSession, ApiError> {
+        self.server
+            .call(Route::SocialSignup, |s, n| s.social_signup(r, n))
+    }
+
+    fn sign_in_methods(&self, t: &SessionToken) -> Result<MethodsReply, ApiError> {
+        self.server.call(Route::SignInMethods, |s, n| {
+            let c = s.authenticate(t, n, false)?;
+            let a = s.accounts.get(&c.account_id).ok_or(ApiError::NotFound)?;
+            Ok(MethodsReply {
+                username: a.username.clone(),
+                has_password: a.has_password,
+                identities: s
+                    .identities
+                    .iter()
+                    .filter(|(id, _, _, _)| id == &c.account_id)
+                    .map(|(_, provider, _, created_at)| IdentityRow {
+                        provider: provider.clone(),
+                        created_at: *created_at,
+                    })
+                    .collect(),
+                passkeys: Vec::new(),
+                recovery: true,
+            })
+        })
+    }
+    fn identity_start(
+        &self,
+        t: &SessionToken,
+        p: &Provider,
+        r: &IdentityStartRequest,
+    ) -> Result<ProviderStart, ApiError> {
+        self.server.call(Route::IdentityStart, |s, n| {
+            let c = s.authenticate(t, n, false)?;
+            let row = s
+                .sessions
+                .iter()
+                .find(|x| x.token_hash == c.token_hash)
+                .ok_or(ApiError::NotFound)?;
+            if row.device_id != r.device.id
+                || row.proof_hash
+                    != sha256_hex(&unb64(&r.device.proof).ok_or(ApiError::BadRequest)?)
+            {
+                return Err(ApiError::BadRequest);
+            }
+            match r.intent {
+                IdentityIntent::Link => {
+                    let Some(crate::provider::ProofWire::Password { auth_key }) = &r.proof else {
+                        return Err(ApiError::ReauthRequired);
+                    };
+                    let k = key32(auth_key).ok_or(ApiError::BadRequest)?;
+                    if s.accounts
+                        .get(&c.account_id)
+                        .is_none_or(|a| a.auth_hash != sha256_hex(&k))
+                    {
+                        return Err(ApiError::ReauthRequired);
+                    }
+                }
+                IdentityIntent::Proof if r.proof.is_some() => return Err(ApiError::BadRequest),
+                _ => (),
+            }
+            let challenge = if *p == Provider::Google {
+                let uri = r
+                    .redirect_uri
+                    .as_deref()
+                    .and_then(crate::provider::Loopback::parse)
+                    .ok_or(ApiError::BadRequest)?;
+                let _ = uri;
+                if r.code_challenge
+                    .as_deref()
+                    .is_none_or(|x| x.len() != 43 || !is_base64url(x))
+                {
+                    return Err(ApiError::BadRequest);
+                }
+                r.code_challenge.clone()
+            } else {
+                None
+            };
+            s.provider_start(
+                p,
+                &r.device,
+                n,
+                Some(r.intent),
+                Some(c.account_id),
+                challenge,
+            )
+        })
+    }
+    fn identity_poll(
+        &self,
+        t: &SessionToken,
+        p: &Provider,
+        r: &ProviderPollRequest,
+    ) -> Result<LinkOutcome, ApiError> {
+        self.server.call(Route::ProviderPoll, |s, n| {
+            let c = s.authenticate(t, n, false)?;
+            let f = s
+                .provider_flows
+                .get(&r.flow_id)
+                .ok_or(ApiError::FlowExpired { gone: false })?;
+            if f.account_id.as_deref() != Some(&c.account_id) {
+                return Err(ApiError::NotFound);
+            }
+            s.identity_result(&r.flow_id, p, &r.device, n)
+        })
+    }
+    fn identity_finish_google(
+        &self,
+        t: &SessionToken,
+        p: &Provider,
+        r: &GoogleFinishRequest,
+    ) -> Result<LinkOutcome, ApiError> {
+        self.server.call(Route::GoogleFinish, |s, n| {
+            if p != &Provider::Google
+                || r.code.is_empty()
+                || !(43..=128).contains(&r.code_verifier.len())
+                || !is_base64url(&r.code_verifier)
+            {
+                return Err(ApiError::BadRequest);
+            }
+            let c = s.authenticate(t, n, false)?;
+            let f = s
+                .provider_flows
+                .get(&r.flow_id)
+                .ok_or(ApiError::FlowExpired { gone: false })?;
+            if f.code_challenge.as_deref()
+                != Some(b64(&Sha256::digest(r.code_verifier.as_bytes())).as_str())
+            {
+                return Err(ApiError::BadRequest);
+            }
+            if f.account_id.as_deref() != Some(&c.account_id) {
+                return Err(ApiError::NotFound);
+            }
+            s.identity_result(&r.flow_id, p, &r.device, n)
+        })
+    }
+    fn unlink_identity(
+        &self,
+        t: &SessionToken,
+        p: &Provider,
+        r: &UnlinkRequest,
+    ) -> Result<(), ApiError> {
+        self.server.call(Route::IdentityUnlink, |s, n| {
+            let c = s.authenticate(t, n, false)?;
+            let account = s.accounts.get(&c.account_id).ok_or(ApiError::NotFound)?;
+            let ok = match &r.proof {
+                crate::provider::ProofWire::Password { auth_key } => {
+                    let k = key32(auth_key).ok_or(ApiError::BadRequest)?;
+                    account.auth_hash == sha256_hex(&k)
+                }
+                crate::provider::ProofWire::Provider { flow } => {
+                    s.provider_flows.get(flow).is_some_and(|f| {
+                        f.consumed
+                            && f.provider == *p
+                            && f.intent == Some(IdentityIntent::Proof)
+                            && f.account_id.as_deref() == Some(&c.account_id)
+                    })
+                }
+            };
+            if !ok {
+                return Err(ApiError::ReauthRequired);
+            }
+            let i = s
+                .identities
+                .iter()
+                .position(|(id, provider, _, _)| id == &c.account_id && provider == p)
+                .ok_or(ApiError::NotFound)?;
+            if !account.has_password
+                && s.passkeys.iter().all(|k| k.account_id != c.account_id)
+                && s.identities
+                    .iter()
+                    .filter(|(id, _, _, _)| id == &c.account_id)
+                    .count()
+                    == 1
+            {
+                let recovery = r
+                    .recovery_auth_key
+                    .as_deref()
+                    .and_then(key32)
+                    .ok_or(ApiError::LastMethod)?;
+                if account.recovery_hash != sha256_hex(&recovery) {
+                    return Err(ApiError::ReauthRequired);
+                }
+            }
+            s.identities.remove(i);
+            Ok(())
+        })
+    }
 }
 
 impl Backend for MemoryServer {
@@ -3215,6 +3947,215 @@ mod server_tests {
         assert_eq!(retried.account_id, session.account_id);
         assert_eq!(retried.passkey_wrapped_key, None);
         assert!(api.account(&retried.token).is_ok());
+    }
+
+    fn pdevice(n: u8) -> LoginDevice {
+        LoginDevice {
+            id: format!("d_{:032x}", n),
+            proof: b64(&[n; 32]),
+        }
+    }
+    fn pnew(ticket: String, name: &str, id: &str, d: &LoginDevice) -> SocialSignupRequest {
+        SocialSignupRequest {
+            ticket,
+            username: name.into(),
+            account_id: id.into(),
+            recovery_auth_key: b64(&[8; 32]),
+            recovery_wrapped_key: b64(&[9; 73]),
+            key_id: "0011223344556677".into(),
+            device: NewDevice {
+                id: d.id.clone(),
+                sealed_name: None,
+                proof: d.proof.clone(),
+            },
+        }
+    }
+
+    #[test]
+    fn provider_health_and_new_account_session() {
+        let s = MemoryServer::new();
+        s.set_now(1_700_000_000_000);
+        let a = s.api("");
+        assert!(a.health().unwrap().auth.unwrap().providers.is_empty());
+        s.set_providers(vec![Provider::Apple]);
+        s.set_provider_outcomes(Provider::Apple, ["new_account:apple-user"]);
+        let d = pdevice(41);
+        let start = a
+            .provider_start(
+                &Provider::Apple,
+                &ProviderStartRequest { device: d.clone() },
+            )
+            .unwrap();
+        let ProviderStep::NewAccount(ticket) = a
+            .provider_poll(
+                &Provider::Apple,
+                &ProviderPollRequest {
+                    flow_id: start.flow_id().into(),
+                    device: d.clone(),
+                },
+            )
+            .unwrap()
+        else {
+            panic!("expected new account")
+        };
+        let session = a
+            .social_signup(&pnew(
+                ticket.ticket,
+                "apple-user",
+                "a_00000000000000000000000000000041",
+                &d,
+            ))
+            .unwrap();
+        assert!(!session.has_password);
+        assert_eq!(session.passkey_wrapped_key, None);
+        assert!(a.account(&session.token).is_ok());
+        assert_eq!(s.devices("apple-user").len(), 1);
+        let methods = a.sign_in_methods(&session.token).unwrap();
+        assert!(!methods.has_password);
+        assert_eq!(methods.identities.len(), 1);
+    }
+
+    #[test]
+    fn provider_poll_slow_down_then_ticket() {
+        let s = MemoryServer::new();
+        let a = s.api("");
+        s.set_providers(vec![Provider::Github]);
+        s.set_provider_outcomes(
+            Provider::Github,
+            ["pending", "slow_down", "new_account:gh-user"],
+        );
+        let d = pdevice(42);
+        let start = a
+            .provider_start(
+                &Provider::Github,
+                &ProviderStartRequest { device: d.clone() },
+            )
+            .unwrap();
+        let poll = || {
+            a.provider_poll(
+                &Provider::Github,
+                &ProviderPollRequest {
+                    flow_id: start.flow_id().into(),
+                    device: d.clone(),
+                },
+            )
+            .unwrap()
+        };
+        assert_eq!(poll(), ProviderStep::Pending { slow_down: true });
+        assert!(matches!(poll(), ProviderStep::NewAccount(_)));
+    }
+
+    #[test]
+    fn provider_poll_rejects_wrong_device_and_expired_flow() {
+        let s = MemoryServer::new();
+        s.set_now(1_700_000_000_000);
+        let a = s.api("");
+        s.set_providers(vec![Provider::Apple]);
+        let d = pdevice(43);
+        let start = a
+            .provider_start(
+                &Provider::Apple,
+                &ProviderStartRequest { device: d.clone() },
+            )
+            .unwrap();
+        assert_eq!(
+            a.provider_poll(
+                &Provider::Apple,
+                &ProviderPollRequest {
+                    flow_id: start.flow_id().into(),
+                    device: pdevice(44)
+                }
+            )
+            .unwrap_err(),
+            ApiError::BadRequest
+        );
+        s.set_now(1_700_000_600_001);
+        assert_eq!(
+            a.provider_poll(
+                &Provider::Apple,
+                &ProviderPollRequest {
+                    flow_id: start.flow_id().into(),
+                    device: d
+                }
+            )
+            .unwrap_err(),
+            ApiError::FlowExpired { gone: false }
+        );
+    }
+
+    #[test]
+    fn provider_existing_account_signin_creates_a_session_and_evicts_oldest() {
+        let s = MemoryServer::new();
+        s.set_now(1_700_000_000_000);
+        let a = s.api("");
+        s.set_providers(vec![Provider::Apple]);
+        let initial = pdevice(45);
+        s.set_provider_outcomes(Provider::Apple, ["new_account:provider-user"]);
+        let st = a
+            .provider_start(
+                &Provider::Apple,
+                &ProviderStartRequest {
+                    device: initial.clone(),
+                },
+            )
+            .unwrap();
+        let ProviderStep::NewAccount(ticket) = a
+            .provider_poll(
+                &Provider::Apple,
+                &ProviderPollRequest {
+                    flow_id: st.flow_id().into(),
+                    device: initial.clone(),
+                },
+            )
+            .unwrap()
+        else {
+            panic!()
+        };
+        let created = a
+            .social_signup(&pnew(
+                ticket.ticket,
+                "provider-user",
+                "a_00000000000000000000000000000045",
+                &initial,
+            ))
+            .unwrap();
+        let mut last = None;
+        for n in 46..=55 {
+            s.set_provider_outcomes(Provider::Apple, [format!("session:{}", created.account_id)]);
+            let d = pdevice(n);
+            let st = a
+                .provider_start(
+                    &Provider::Apple,
+                    &ProviderStartRequest { device: d.clone() },
+                )
+                .unwrap();
+            let ProviderStep::Session(ss) = a
+                .provider_poll(
+                    &Provider::Apple,
+                    &ProviderPollRequest {
+                        flow_id: st.flow_id().into(),
+                        device: d,
+                    },
+                )
+                .unwrap()
+            else {
+                panic!()
+            };
+            assert!(!ss.has_password);
+            assert_eq!(ss.passkey_wrapped_key, None);
+            last = Some(ss)
+        }
+        assert_eq!(
+            last.unwrap().evicted_device.unwrap().id,
+            "d_0000000000000000000000000000002d"
+        );
+        assert_eq!(
+            s.devices("provider-user")
+                .iter()
+                .filter(|d| d.revoked.is_none())
+                .count(),
+            10
+        );
     }
 
     #[test]

@@ -14,7 +14,7 @@ import { HOUR } from "../src/protocol";
 import {
 	type Signed,
 	another,
-	approvalsAs,
+	approvalsAs as rawApprovalsAs,
 	commitOf,
 	ephemeral,
 	first,
@@ -23,7 +23,7 @@ import {
 	sealedName,
 	wrappedKey,
 } from "./approval-helpers";
-import { type Account, base64url, clock, resetServer, signUp } from "./helpers";
+import { type Account, base64url, callJson, clock, resetServer, signUp } from "./helpers";
 
 const runs = (n: number) => ({ numRuns: Math.min(n, Number(env.FAST_CHECK_RUNS)) });
 const FIVE_MINUTES = 5 * 60_000;
@@ -38,6 +38,19 @@ beforeEach(async () => {
 	a = first(alice);
 	n = await another(alice);
 });
+
+/** Create with the caller-owned id introduced by approval-create idempotency. */
+const createWithId = (s: Signed, requestId: string, commit: string, now = clock.now) =>
+	callJson("/v2/account/sign-in/approvals", { token: s.token, now, json: { request_id: requestId, commit } });
+
+/** Keep the existing tests concise while sending the new required request_id. */
+const approvalsAs = (s: Signed, init: { now?: number } = {}) => {
+	const api = rawApprovalsAs(s, init);
+	return {
+		...api,
+		create: (commit: string) => createWithId(s, base64url(random32()), commit, init.now ?? clock.now),
+	};
+};
 
 /** N asks, A challenges, N names itself: the request ready to approve. */
 async function named(): Promise<{ id: string; nKey: ReturnType<typeof ephemeral>; aKey: ReturnType<typeof ephemeral>; name: string }> {
@@ -133,10 +146,84 @@ describe("the sequence", () => {
 		const api = approvalsAs(n);
 		expect((await api.create("short")).body.error).toBe("bad_request");
 		expect((await api.create(`${ephemeral().commit.slice(0, 42)}B`)).status).toBe(400);
+		expect((await createWithId(n, "short", ephemeral().commit)).body.error).toBe("bad_request");
+		expect((await createWithId(n, `${base64url(random32()).slice(0, 42)}B`, ephemeral().commit)).status).toBe(400);
 		expect((await api.poll("nope")).body.error).toBe("bad_request");
 		const id = (await api.create(ephemeral().commit)).body.id;
 		expect((await approvalsAs(a).challenge(id, "x".repeat(43))).status).toBe(400);
 		expect((await approvalsAs(a).approve(id, "x".repeat(97))).status).toBe(400);
+	});
+});
+
+describe("create idempotency", () => {
+	it("a lost create response can be retried with the same id without another row or create count", async () => {
+		const requestId = base64url(random32());
+		const commit = ephemeral().commit;
+		// The first response is deliberately ignored to model a response lost in transit.
+		await createWithId(n, requestId, commit);
+		const retry = await createWithId(n, requestId, commit);
+		expect(retry.status).toBe(200);
+		expect(retry.body.id).toBe(requestId);
+		expect(retry.body.expires_at).toBe(clock.now + FIVE_MINUTES);
+		expect((await env.DB.prepare("SELECT count(*) AS n FROM device_approvals WHERE id = ?1").bind(requestId).first<{ n: number }>())?.n).toBe(1);
+		expect((await env.DB.prepare("SELECT count FROM limits WHERE key = ?1").bind(`approval-create:${alice.creds.accountId}`).first<{ count: number }>())?.count).toBe(1);
+	});
+
+	it("concurrent retries with one id create and count only once", async () => {
+		const requestId = base64url(random32());
+		const commit = ephemeral().commit;
+		const responses = await Promise.all(Array.from({ length: 5 }, () => createWithId(n, requestId, commit)));
+		expect(responses.map((response) => response.status)).toEqual([200, 200, 200, 200, 200]);
+		expect(responses.map((response) => response.body.id)).toEqual(Array(5).fill(requestId));
+		expect((await env.DB.prepare("SELECT count(*) AS n FROM device_approvals WHERE id = ?1").bind(requestId).first<{ n: number }>())?.n).toBe(1);
+		expect((await env.DB.prepare("SELECT count FROM limits WHERE key = ?1").bind(`approval-create:${alice.creds.accountId}`).first<{ count: number }>())?.count).toBe(1);
+	});
+
+	it("a matching retry at the pending cap neither cancels a request nor emits create events", async () => {
+		const socket = await listening(a);
+		const requests = Array.from({ length: 3 }, () => ({ id: base64url(random32()), commit: ephemeral().commit }));
+		for (const request of requests) expect((await createWithId(n, request.id, request.commit)).status).toBe(200);
+		const before = await approvalsAs(a).list();
+		expect(before.body.approvals).toHaveLength(3);
+		expect((await createWithId(n, requests[0].id, requests[0].commit)).status).toBe(200);
+		expect((await approvalsAs(a).list()).body.approvals.map((row: { id: string }) => row.id).sort()).toEqual(requests.map(({ id }) => id).sort());
+		expect((await env.DB.prepare("SELECT count FROM limits WHERE key = ?1").bind(`approval-create:${alice.creds.accountId}`).first<{ count: number }>())?.count).toBe(3);
+		const frames = (await socket.drain(300)).map((f) => ("text" in f ? f.text : f));
+		expect(frames).toEqual(requests.map(({ id }) => ({ type: "approval.created", id })));
+		socket.ws.close();
+	});
+
+	it("reusing an id for a different commit, device or account returns the documented conflict", async () => {
+		const requestId = base64url(random32());
+		const commit = ephemeral().commit;
+		expect((await createWithId(n, requestId, commit)).status).toBe(200);
+		const attempts = [
+			await createWithId(n, requestId, ephemeral().commit),
+			await createWithId(a, requestId, commit),
+		];
+		const bob = first(await signUp("bob"));
+		attempts.push(await createWithId(bob, requestId, commit));
+		for (const response of attempts) {
+			expect(response.status).toBe(409);
+			expect(response.body).toEqual({
+				error: "approval_request_id_conflict",
+				message: "request_id has already been used for a different approval request.",
+			});
+		}
+	});
+
+	it("an identical sealed name and key can be retried after a lost response, but changed ciphertext is refused", async () => {
+		const nKey = ephemeral();
+		const aKey = ephemeral();
+		const id = (await approvalsAs(n).create(nKey.commit)).body.id;
+		await approvalsAs(a).challenge(id, aKey.text);
+		const ciphertext = sealedName();
+		// Ignore the first result to model a crash after the server stored the name.
+		await approvalsAs(n).name(id, nKey.text, ciphertext);
+		expect((await approvalsAs(n).name(id, nKey.text, ciphertext)).status).toBe(200);
+		const changed = await approvalsAs(n).name(id, nKey.text, sealedName());
+		expect(changed.status).toBe(409);
+		expect(changed.body.error).toBe("approval_used");
 	});
 });
 
@@ -381,8 +468,11 @@ describe("other devices", () => {
 
 describe("limits", () => {
 	it("approval-create allows 10 an hour per account", async () => {
-		for (let i = 0; i < 10; i++) expect((await approvalsAs(n).create(ephemeral().commit)).status).toBe(200);
-		const r = await approvalsAs(n).create(ephemeral().commit);
+		const firstRequest = { id: base64url(random32()), commit: ephemeral().commit };
+		expect((await createWithId(n, firstRequest.id, firstRequest.commit)).status).toBe(200);
+		for (let i = 1; i < 10; i++) expect((await createWithId(n, base64url(random32()), ephemeral().commit)).status).toBe(200);
+		expect((await createWithId(n, firstRequest.id, firstRequest.commit)).status).toBe(200);
+		const r = await createWithId(n, base64url(random32()), ephemeral().commit);
 		expect(r.status).toBe(429);
 		expect(r.body.limit).toBe("approval-create");
 		expect((await approvalsAs(n, { now: clock.now + HOUR }).create(ephemeral().commit)).status).toBe(200);

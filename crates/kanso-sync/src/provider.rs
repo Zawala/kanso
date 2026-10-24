@@ -552,11 +552,24 @@ pub struct PasskeyMethods {
 /// What a server advertises (docs/ACCOUNTS.md › GET /v2/health). An old
 /// server advertises nothing: username and password only, no live approval
 /// channel.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ServerAuth {
+    pub password: bool,
     pub passkeys: Option<PasskeyMethods>,
     pub providers: Vec<Provider>,
     pub account_events: Option<String>,
+}
+
+impl Default for ServerAuth {
+    fn default() -> Self {
+        ServerAuth {
+            // The pre-advertisement protocol supported username/password.
+            password: true,
+            passkeys: None,
+            providers: Vec::new(),
+            account_events: None,
+        }
+    }
 }
 
 /// `GET /v2/account/sign-in`: the account's ways in. `available` is what the

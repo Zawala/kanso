@@ -1096,12 +1096,16 @@ to.
 `N` is the new device, `A` an already signed-in, unlocked device. X25519 keys are ephemeral and used
 once. All binary values are base64url; `lp` is as in "Encodings".
 
-1. **N asks, committing to its key.** It generates `(esk_N, epk_N)` and calls
-   `POST /v2/account/sign-in/approvals` with `{commit: c_N}`, where
-   `c_N = SHA-256("kanso/v1/approve-commit" || 0x01 || epk_N)`. It does not send `epk_N` yet. The Worker creates a request with a random 32-byte `request_id`, `expires_at` =
-   now + 5 minutes, and answers `{id, expires_at, other_devices}` where `other_devices` counts the
-   account's active sessions other than N's. At most three pending requests exist per account; a
-   fourth cancels the oldest. The route counts `approval-create` (10 an hour).
+1. **N asks, committing to its key.** It generates `(esk_N, epk_N)` and a stable, canonical
+   32-byte base64url `request_id`, then calls `POST /v2/account/sign-in/approvals` with
+   `{request_id, commit: c_N}`, where `c_N = SHA-256("kanso/v1/approve-commit" || 0x01 || epk_N)`.
+   It does not send `epk_N` yet. The Worker records `request_id` as the request's ID, sets
+   `expires_at = now + 5 minutes`, and answers `{id, expires_at, other_devices}` where
+   `other_devices` counts the account's active sessions other than N's. Repeating the same
+   `(request_id, account, device, commit)` returns that request without creating another row or
+   counting `approval-create`; reusing the ID for a different tuple is 409
+   `approval_request_id_conflict`. At most three pending requests exist per account; a fourth
+   cancels the oldest. A new request counts `approval-create` (10 an hour).
 
    **Why N commits first.** The code is short, so whoever picks the last public key must not be
    able to try keys until the codes match. Without the commitment a malicious server could give A
@@ -1787,10 +1791,13 @@ rule applies and no recovery proof is present. Counts `passkey-manage`.
 **Approvals.** The requester and approver are both sessions of the account, and the requesting
 device can't approve itself.
 
-- **POST /v2/account/sign-in/approvals** — `{"commit": "<43>"}`. 200 `{"id", "expires_at",
-  "other_devices"}`. `commit` is SHA-256 of the requester's ephemeral X25519 public key with its
-  label (see "The protocol"); it can't be changed.
-  At most three pending requests per account; a fourth cancels the oldest. Counts
+- **POST /v2/account/sign-in/approvals** — `{"request_id": "<43>", "commit": "<43>"}`. 200
+  `{"id", "expires_at", "other_devices"}`. `request_id` is the caller's stable canonical 32-byte
+  ID; `commit` is SHA-256 of the requester's ephemeral X25519 public key with its label (see "The
+  protocol"). Neither can be changed. Repeating the same `(request_id, account, device, commit)`
+  returns the original answer without another insert, cap update, event or `approval-create`
+  count; reusing an ID for a different tuple is 409 `approval_request_id_conflict`.
+  At most three pending requests per account; a fourth cancels the oldest. A new request counts
   `approval-create`; publishes `approval.created` after the insert commits.
 - **GET /v2/account/sign-in/approvals** — 200 `{"approvals": [{"id", "device_id", "commit",
   "epk": "<43>" | null, "created_at", "expires_at", "approver_epk": "<43>" | null,
@@ -2806,8 +2813,8 @@ pub fn server_info(b: &dyn Backend, server: &str) -> Result<SignupState, Account
 /// configured providers and the account-event path. An old server answers with none, which means
 /// username and password only and no live approval channel.
 pub struct PasskeyMethods { pub rp_id: String, pub security_key: bool }
-pub struct ServerAuth { pub passkeys: Option<PasskeyMethods>, pub providers: Vec<Provider>,
-                        pub account_events: Option<String> }
+pub struct ServerAuth { pub password: bool, pub passkeys: Option<PasskeyMethods>,
+                        pub providers: Vec<Provider>, pub account_events: Option<String> }
 pub fn server_auth(b: &dyn Backend, server: &str) -> Result<ServerAuth, AccountError>;
 pub fn sign_up(b: &dyn Backend, secrets: &dyn SecretStore, server: &str, username: &str, password: &Password, device: &DeviceIdentity, progress: &dyn Fn(Step)) -> Result<SignedUp, RotationError>;
 pub fn sign_in(b: &dyn Backend, server: &str, username: &str, password: &Password, device: &DeviceIdentity, progress: &dyn Fn(Step)) -> Result<SignedIn, AccountError>;
@@ -2910,9 +2917,15 @@ pub fn sign_up_with_provider(b: &dyn Backend, secrets: &dyn SecretStore, server:
 pub fn sign_in_with_provider(b: &dyn Backend, server: &str, provider: Provider, flow: &str,
                              device: &DeviceIdentity, progress: &dyn Fn(Step))
                              -> Result<ProviderSignIn, AccountError>;
-/// Unlock a locked session with its password: prelogin, derive, unwrap, compare the key ID.
+/// Open a locked session with the library's saved data key, without a network request.
+pub fn unlock_with_local_key(locked: &LockedSession, local: &Session) -> Result<SignedIn, AccountError>;
+/// Unlock a locked session with its password: prelogin, derive, unwrap, compare the key ID,
+/// and prove the persisted provider/passkey device on the same device ID.
 pub fn unlock_with_password(b: &dyn Backend, locked: &LockedSession, password: &Password,
-                            progress: &dyn Fn(Step)) -> Result<SignedIn, AccountError>;
+                            device: &DeviceIdentity, progress: &dyn Fn(Step))
+                            -> Result<SignedIn, AccountError>;
+/// Refresh `has_password` using only the locked session's token.
+pub fn methods_locked(b: &dyn Backend, locked: &LockedSession) -> Result<bool, AccountError>;
 pub fn link_identity(b: &dyn Backend, session: &Session, provider: Provider, flow: &str)
                      -> Result<(), AccountError>;
 pub fn unlink_identity(b: &dyn Backend, session: &Session, provider: Provider, proof: &Proof,
@@ -2926,6 +2939,13 @@ pub fn set_password(b: &dyn Backend, secrets: &dyn SecretStore, session: &Sessio
                     -> Result<PasswordChanged, RotationError>;
 pub fn request_approval(b: &dyn Backend, session: &LockedSession, keys: &ApprovalKeys)
                          -> Result<ApprovalRequest, AccountError>;
+/// Persist the stable request ID and requester secret before create, making a lost answer and
+/// relaunch retry safe; reuse the same ID and keys until the request ends.
+pub fn request_approval_resumable(b: &dyn Backend, secrets: &dyn SecretStore,
+                                  locked: &LockedSession, request_id: &str,
+                                  keys: &ApprovalKeys) -> Result<ApprovalRequest, AccountError>;
+pub fn resume_approval(b: &dyn Backend, secrets: &dyn SecretStore, locked: &LockedSession)
+                       -> Result<ApprovalRequest, AccountError>;
 /// The approver: posts its challenge, reads the sealed name when it has arrived, and returns the
 /// code and name for the prompt.
 pub fn approve_request(b: &dyn Backend, session: &Session, request: &ApprovalRequest,
@@ -3039,9 +3059,11 @@ test remote leaves them `None`.
   4. If the platform's authenticator has no PRF, the app doesn't offer that path and goes straight
      to the locked-session screen.
 - **Sign in with a provider.** Complete the flow. If this library already holds the data key for
-  the account, compare `key_id` and use it; no unlock. Otherwise a session answer has `wrapped_key`
-  when the account has a password; offer it, then approval, then recovery; the binding question and
-  `bind` follow the unlock. A new-account answer is the sign-up flow above.
+  the account, compare `key_id` and use it; no unlock. Otherwise the session is locked: offer the
+  password when `has_password`, then approval, then recovery. Password unlock is a separate
+  `/v2/auth/login` with the persisted provider device proof; the provider flow itself never carries
+  a password wrap. Nothing is bound or synced until the user accepts Resume, Add or Replace after
+  the unlock. A new-account answer is the sign-up flow above.
 - **Link a provider.** Settings › Account › Sign-in methods › [Link] › choose the provider. The app
   asks for a `proof` first (a passkey assertion or the password; a provider-only account sets a
   password first), starts the flow with
@@ -3075,8 +3097,11 @@ test remote leaves them `None`.
      every 2 s.
   3. On the challenge it shows the code and "It should match the code on your other device"; when
      the name arrives it posts its own sealed name.
-  4. On approval it computes the code, compares it with what it shows, unwraps, checks `key_id`,
-     saves `sync-account`, deletes the pending item, sets the device name, binds and syncs.
+  4. On approval it computes the code, compares it with what it shows, unwraps and checks
+     `key_id`, and returns an unlocked candidate to the app's main flow. Only after Resume, Add or
+     Replace consent does it save `sync-account`, delete the pending item, bind and sync; Cancel
+     logs the new token out and leaves the library's existing notes, binding and Keychain items
+     alone.
   5. If `other_devices` is 0, or two minutes pass, it offers [Use your recovery key] and [Cancel].
   6. The code never matches: it says so, offers Cancel, and never saves anything.
 - **Sign out.** First cancel and join the running sync (fix 2). Then delete
@@ -3296,10 +3321,12 @@ sync pulls first:
   reported, or its quota rose above `limit`. A `server` entry can't be measured there, so it retries
   after an hour. When usage dropped, held documents go out again, within the headroom, each charged
   once a sync:
-  - new live documents up to `quota.docs − usage.docs`;
+  - live documents up to `quota.docs − usage.docs`: every live document is charged one potential
+    slot, because an edit based on a revision the server has since tombstoned revives it and grows
+    `docs` just like a new one (a tombstone of a document the server has costs nothing);
   - documents the level holds, at their estimated sealed size (an upper bound) plus 512 each, up to
-    the `doc_bytes` headroom (a tombstone of a document the server has costs nothing);
-  - uploads the level holds, at their size plus 1,088 each, up to the file-bytes headroom, and new
+    the `doc_bytes` headroom;
+  - uploads the level holds, at their size plus 1,088 each, up to the file-bytes headroom, and live
     ones up to the file-count headroom.
 
   If the request fails, the entry stays. A 413 later in the same sync takes no more from the room.
@@ -3374,7 +3401,7 @@ directories never share secrets.
 | Account (item name) | Value (JSON) | Lifetime |
 |---|---|---|
 | `sync-account:<library_id>` | `{"v":1,"server","origin","account_id","username","device_id","token","data_key"}` | Sign-up, sign-in, recovery or a completed approval until sign-out, deletion, a 401 or unbind |
-| `sync-pending:<library_id>` | `{"v":1,"server","origin","account_id","username","device_id","token","key_id","epoch"}` | From a passkey or provider sign-in that returned no usable wrap until the device is unlocked (then it becomes `sync-account` and this item goes), the request is cancelled, or the session ends. It never holds the data key. |
+| `sync-pending:<library_id>` | `{"v":2,"server","origin","account_id","username","device_id","device_proof","token","key_id","epoch","evicted_device"?:{"id","sealed_name"?},"approval"?:{"request_id","requester_secret","expires_at","other_devices","approver_epk"?,"approver_device_id"?,"sealed_name"?}}` | From a passkey or provider sign-in that returned no usable wrap until the device is unlocked (then it becomes `sync-account` and this item goes), the request is cancelled, or the session ends. It never holds the data key, password, KEK or PRF output. The provider or passkey device proof and an in-flight approval's requester secret are zeroized and never printed. It is loaded by library ID and self-validated even when no config account/binding exists; a v1 record cannot resume password or approval and is ignored. |
 | `sync-recovery-key:<library_id>` | `{"v":1,"origin","account_id","username","server","recovery_key","unconfirmed"}` (`server` and `unconfirmed` left out when empty or false) | From just before the request that sets the key leaves (sign-up, recovery, a password change, "New recovery key") until "I've saved it" or sign-out. A refused request puts back what was there. A confirmed key also goes when this Mac's session ends with `password_changed` or `recovered`: another device replaced it. While it exists, the Account page shows the key screen again. |
 | `sync-logout:<library_id>` | `{"v":1,"pending":[{"server","token"}]}` | Until each logout succeeds |
 | `sync-token` (legacy) | The old shared token | Never read or deleted by the new app; the owner removes it after the purge |

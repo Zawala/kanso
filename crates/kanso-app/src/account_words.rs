@@ -118,6 +118,9 @@ pub fn error_words(err: &AccountError, context: ErrorContext) -> String {
         AccountError::SelfApproval => "A device can't approve itself.",
         AccountError::ApprovalUsed => "That request was already answered. Ask again.",
         AccountError::ApprovalExpired => "That approval request expired. Ask again.",
+        AccountError::ApprovalRequestIdConflict => {
+            "That approval request couldn't be resumed. Start again."
+        }
         AccountError::ApprovalChanged => APPROVAL_CHANGED,
         AccountError::BadRequest
         | AccountError::ChecksumMismatch

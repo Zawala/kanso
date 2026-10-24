@@ -41,7 +41,8 @@ use crate::layout::{BOTTOM_BAND_HEIGHT, rail_width};
 use crate::library::{Filter, has_notes_inside};
 use crate::palette::{Mode, PANEL_HEIGHT, PANEL_WIDTH};
 use crate::services::{
-    AccountDetails, AccountState, ApiState, PendingKey, RunningTask, Services, SyncState, TaskKind,
+    AccountDetails, AccountMethodsState, AccountState, ApiState, PendingKey, ProviderWait,
+    RunningTask, Services, SyncState, TaskKind,
 };
 use crate::settings::{NAV_WIDTH, SettingsPage};
 use crate::theme::{Colors, DARK, LIGHT, Rgb};
@@ -293,6 +294,9 @@ struct Shot {
     left: Left,
     /// How wide a dialog in the shot is, for its surface check.
     dialog_width: f32,
+    /// Where the dialog's top-padding surface is sampled, when it doesn't
+    /// use the usual one-tenth-height placement.
+    dialog_sample_y: Option<f32>,
 }
 
 /// The most recently edited note, as after a restart.
@@ -2047,6 +2051,126 @@ fn settings_account(
     demo_details(cx);
 }
 
+/// The provider-authenticated account while this device is still locked.
+fn settings_account_locked(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    show_settings(cx, window, workspace, SettingsPage::Account);
+    cx.update(|cx| {
+        let services = cx.global_mut::<Services>();
+        services.account = AccountState::SignedInLocked {
+            username: DEMO_USER.into(),
+        };
+        services.locked_has_password = Some(true);
+    });
+}
+
+fn settings_account_locked_waiting(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account_locked(cx, window, workspace, store);
+    cx.update(|cx| {
+        cx.global_mut::<Services>().approval.waiting =
+            Some(crate::device_approval::WaitingState::new(1, DEMO_NOW_MS));
+    });
+}
+
+fn settings_account_locked_code(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account_locked(cx, window, workspace, store);
+    cx.update(|cx| {
+        let mut waiting = crate::device_approval::WaitingState::new(1, DEMO_NOW_MS);
+        waiting.code = Some("123 456".into());
+        waiting.phase = crate::device_approval::WaitPhase::Compare {
+            code: "123 456".into(),
+        };
+        cx.global_mut::<Services>().approval.waiting = Some(waiting);
+    });
+}
+
+fn settings_account_locked_no_devices(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account_locked(cx, window, workspace, store);
+    cx.update(|cx| {
+        let mut waiting = crate::device_approval::WaitingState::new(0, DEMO_NOW_MS);
+        waiting.phase = crate::device_approval::WaitPhase::NoDevices;
+        waiting.recovery_offered = true;
+        cx.global_mut::<Services>().approval.waiting = Some(waiting);
+    });
+}
+
+fn settings_account_locked_cancelled(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account_locked(cx, window, workspace, store);
+    cx.update(|cx| {
+        let mut waiting = crate::device_approval::WaitingState::new(1, DEMO_NOW_MS);
+        waiting.phase = crate::device_approval::WaitPhase::Cancelled;
+        waiting.recovery_offered = true;
+        cx.global_mut::<Services>().approval.waiting = Some(waiting);
+    });
+}
+
+fn settings_account_locked_expired(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account_locked(cx, window, workspace, store);
+    cx.update(|cx| {
+        let mut waiting = crate::device_approval::WaitingState::new(1, DEMO_NOW_MS);
+        waiting.phase = crate::device_approval::WaitPhase::Expired;
+        waiting.recovery_offered = true;
+        cx.global_mut::<Services>().approval.waiting = Some(waiting);
+    });
+}
+
+fn settings_account_locked_password(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account_locked(cx, window, workspace, store);
+    window
+        .update(cx, |_, window, cx| {
+            crate::account_page::unlock_password_dialog(window, cx);
+        })
+        .unwrap();
+}
+
+fn settings_account_locked_recovery(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account_locked(cx, window, workspace, store);
+    window
+        .update(cx, |_, window, cx| {
+            crate::account_page::recover_dialog(window, cx);
+        })
+        .unwrap();
+}
+
 fn settings_account_syncing(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
@@ -2055,6 +2179,39 @@ fn settings_account_syncing(
 ) {
     settings_account(cx, window, workspace, store);
     set_sync(cx, SyncState::Syncing);
+}
+
+/// The signed-in methods list, with a linked provider, an unlinked provider,
+/// and a passkey that can unlock.
+fn settings_account_methods(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
+    let now = cx.update(|cx| Clock::now_ms(cx));
+    cx.update(|cx| {
+        cx.global_mut::<Services>().account_methods = AccountMethodsState {
+            last_successful: Some(kanso_sync::AccountMethods {
+                has_password: false,
+                rp_id: Some("sync.kansoapp.app".into()),
+                available: vec![kanso_sync::Provider::Apple, kanso_sync::Provider::Google],
+                linked: vec![kanso_sync::provider::LinkedProvider {
+                    provider: kanso_sync::Provider::Apple,
+                    created_at: now - 14 * DAY,
+                }],
+                passkeys: vec![kanso_sync::provider::PasskeyInfo {
+                    credential_id: vec![1, 2, 3],
+                    created_at: now - 30 * DAY,
+                    last_used_at: Some(now - 2 * 60 * MINUTE),
+                    prf: true,
+                    transports: vec!["internal".into()],
+                }],
+            }),
+            ..AccountMethodsState::default()
+        };
+    });
 }
 
 fn settings_account_offline(
@@ -2204,6 +2361,24 @@ fn settings_create_account(
         SignedOutForm::CreateAccount,
         [DEMO_USER, "correct horse battery staple", "", ""],
     );
+}
+
+/// GitHub device flow: the displayed code and its in-flow cancel control.
+fn settings_github_wait(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_create_account(cx, window, workspace, store);
+    cx.update(|cx| {
+        cx.global_mut::<Services>().provider_wait = Some(ProviderWait {
+            provider: "GitHub",
+            user_code: Some("ABCD-1234".into()),
+            verification_uri: Some("https://github.com/login/device".into()),
+            cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        });
+    });
 }
 
 /// The server takes no new accounts: the line says so and the button waits.
@@ -3670,10 +3845,11 @@ fn check_dialog(image: &image::RgbaImage, shot: &Shot, dialog_width: f32) {
     let height = f32::from(shot.size.height);
     let scale = image.width() as f32 / width;
     let corner = ((width - dialog_width) / 2., height / 10.);
+    let sample_y = shot.dialog_sample_y.unwrap_or(corner.1 + 6.);
     assert_surface(
         image,
         scale,
-        (corner.0 + 24., corner.1 + 6.),
+        (corner.0 + 24., sample_y),
         colors.editor,
         2,
         &format!("{}: dialog", shot.name),
@@ -4077,6 +4253,7 @@ fn snapshots() {
         prepare,
         left: Left::Sidebar,
         dialog_width: crate::history::DIALOG_WIDTH,
+        dialog_sample_y: None,
     };
     // A shot with one of the account's dialogs open.
     let form = |name, theme, prepare: Prepare| Shot {
@@ -4672,12 +4849,97 @@ fn snapshots() {
             size: size(px(1440.), px(1400.)),
             ..shot("light-settings-account", Light, Edit, settings_account)
         },
+        Shot {
+            size: size(px(1440.), px(1400.)),
+            ..shot(
+                "dark-settings-account-locked",
+                Dark,
+                Edit,
+                settings_account_locked,
+            )
+        },
+        Shot {
+            size: size(px(1440.), px(1400.)),
+            ..shot(
+                "dark-settings-account-locked-waiting",
+                Dark,
+                Edit,
+                settings_account_locked_waiting,
+            )
+        },
+        Shot {
+            size: size(px(1440.), px(1400.)),
+            ..shot(
+                "dark-settings-account-locked-code",
+                Dark,
+                Edit,
+                settings_account_locked_code,
+            )
+        },
+        Shot {
+            size: size(px(1440.), px(1400.)),
+            ..shot(
+                "dark-settings-account-locked-no-devices",
+                Dark,
+                Edit,
+                settings_account_locked_no_devices,
+            )
+        },
+        Shot {
+            size: size(px(1440.), px(1400.)),
+            ..shot(
+                "dark-settings-account-locked-cancelled",
+                Dark,
+                Edit,
+                settings_account_locked_cancelled,
+            )
+        },
+        Shot {
+            size: size(px(1440.), px(1400.)),
+            ..shot(
+                "dark-settings-account-locked-start-again",
+                Dark,
+                Edit,
+                settings_account_locked_expired,
+            )
+        },
+        Shot {
+            dialog_width: crate::dialogs::FORM_WIDTH,
+            dialog_sample_y: Some(30.),
+            size: size(px(1440.), px(1400.)),
+            ..shot(
+                "dark-settings-account-locked-password",
+                Dark,
+                Edit,
+                settings_account_locked_password,
+            )
+        },
+        Shot {
+            dialog_width: crate::dialogs::FORM_WIDTH,
+            dialog_sample_y: Some(30.),
+            size: size(px(1440.), px(1400.)),
+            ..shot(
+                "dark-settings-account-locked-recovery",
+                Dark,
+                Edit,
+                settings_account_locked_recovery,
+            )
+        },
         shot(
             "dark-settings-account-syncing",
             Dark,
             Edit,
             settings_account_syncing,
         ),
+        Shot {
+            size: size(px(1440.), px(1400.)),
+            ..shot(
+                "dark-settings-account-methods",
+                Dark,
+                Edit,
+                settings_account_methods,
+            )
+        },
         shot(
             "dark-settings-account-offline",
             Dark,
@@ -4727,6 +4989,12 @@ fn snapshots() {
             Light,
             Edit,
             settings_create_account,
+        ),
+        shot(
+            "dark-settings-github-wait",
+            Dark,
+            Edit,
+            settings_github_wait,
         ),
         shot(
             "dark-settings-create-account-closed",

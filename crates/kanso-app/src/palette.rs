@@ -918,6 +918,9 @@ impl Palette {
         let signed_in = cx
             .try_global::<Services>()
             .is_some_and(|services| services.signed_in());
+        let signed_in_locked = cx
+            .try_global::<Services>()
+            .is_some_and(Services::has_locked_session);
         let in_trash = note.is_some_and(|n| n.book_id == TRASH_BOOK_ID);
         let image_line = !in_trash && self.editor.read(cx).image_on_caret_line(cx).is_some();
         let audio_line = !in_trash && self.editor.read(cx).audio_on_caret_line(cx).is_some();
@@ -936,7 +939,7 @@ impl Palette {
                 Needs::LockedNote => note.is_some_and(|n| n.is_locked()),
                 Needs::Settings => self.notes_hidden,
                 Needs::SignedIn => signed_in,
-                Needs::SignedOut => !signed_in,
+                Needs::SignedOut => !signed_in && !signed_in_locked,
                 Needs::ImageLine => image_line,
                 Needs::AudioLine => audio_line,
                 Needs::SharedNote => shared_note,
@@ -3318,10 +3321,14 @@ mod tests {
             "kanso::ZoomOut",
             "kanso::ActualSize",
         ];
-        for signed_in in [false, true] {
+        for (signed_in, locked) in [(false, false), (true, false), (false, true)] {
             cx.update(|cx| {
                 cx.global_mut::<Services>().account = if signed_in {
                     crate::services::AccountState::SignedIn {
+                        username: "ngoni".into(),
+                    }
+                } else if locked {
+                    crate::services::AccountState::SignedInLocked {
                         username: "ngoni".into(),
                     }
                 } else {
@@ -3336,7 +3343,7 @@ mod tests {
                     .filter(|command| !matches!(command.id, "go-back" | "go-forward"))
                     .filter(|command| match command.needs {
                         crate::commands::Needs::SignedIn => signed_in,
-                        crate::commands::Needs::SignedOut => !signed_in,
+                        crate::commands::Needs::SignedOut => !signed_in && !locked,
                         _ => true,
                     })
                     .filter(|command| {
