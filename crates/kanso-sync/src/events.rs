@@ -379,6 +379,132 @@ mod tests {
         assert_eq!(backoff.next_wait(), BACKOFF_FIRST);
     }
 
+    struct Fake {
+        frames: Vec<Option<Result<Option<Frame>, EventError>>>,
+        pings: usize,
+    }
+
+    impl Fake {
+        fn new(frames: Vec<Option<Result<Option<Frame>, EventError>>>) -> Fake {
+            Fake { frames, pings: 0 }
+        }
+    }
+
+    impl EventSource for Fake {
+        fn next(&mut self, _wait: Duration) -> Result<Option<Frame>, EventError> {
+            match self.frames.first_mut().map(Option::take) {
+                Some(Some(result)) => {
+                    self.frames.remove(0);
+                    result
+                }
+                Some(None) => {
+                    self.frames.remove(0);
+                    Ok(None)
+                }
+                None => Ok(None),
+            }
+        }
+
+        fn ping(&mut self) -> Result<(), EventError> {
+            self.pings += 1;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_drop_reconnects_with_backoff_and_each_connection_catches_up() {
+        let stop = AtomicBool::new(false);
+        let mut connects = 0;
+        let mut signals = Vec::new();
+        let waits = std::cell::RefCell::new(Vec::new());
+        let mut connect = || {
+            connects += 1;
+            Ok(Box::new(Fake::new(match connects {
+                1 => vec![Some(Err(EventError::Dropped("cut".into())))],
+                2 => vec![
+                    Some(Ok(Some(Frame::Hello))),
+                    Some(Err(EventError::Dropped("cut again".into()))),
+                ],
+                _ => vec![Some(Ok(Some(Frame::Event(AccountEvent::ApprovalCreated(
+                    ID.into(),
+                )))))],
+            })) as Box<dyn EventSource>)
+        };
+        let mut on = |signal: Signal| {
+            if let Signal::Event(_) = &signal {
+                stop.store(true, Ordering::SeqCst);
+            }
+            signals.push(signal);
+        };
+        let sleep = |wait: Duration| waits.borrow_mut().push(wait);
+        run(&mut connect, &stop, &mut on, &sleep);
+
+        assert_eq!(connects, 3, "two drops or backs off, then the event");
+        assert!(
+            matches!(signals.first(), Some(Signal::Connected)),
+            "the first thing is a connect"
+        );
+        assert_eq!(
+            signals
+                .iter()
+                .filter(|s| matches!(s, Signal::Connected))
+                .count(),
+            3,
+            "every connect asks for one approvals GET"
+        );
+        assert!(signals.iter().any(|s| matches!(
+            s,
+            Signal::Event(AccountEvent::ApprovalCreated(id)) if id == ID
+        )));
+        assert_eq!(*waits.borrow(), [BACKOFF_FIRST, BACKOFF_FIRST]);
+    }
+
+    #[test]
+    fn a_replaced_socket_stops_for_good() {
+        let stop = AtomicBool::new(false);
+        let mut connects = 0;
+        let mut signals = Vec::new();
+        let mut connect = || {
+            connects += 1;
+            Ok(Box::new(Fake::new(vec![Some(Err(EventError::Replaced))])) as Box<dyn EventSource>)
+        };
+        let mut on = |signal: Signal| signals.push(signal);
+        run(&mut connect, &stop, &mut on, &|_| {});
+        assert_eq!(connects, 1);
+        assert!(matches!(
+            signals.last(),
+            Some(Signal::Ended(EventError::Replaced))
+        ));
+    }
+
+    #[test]
+    fn a_429_waits_at_least_its_retry_after() {
+        let stop = AtomicBool::new(false);
+        let mut connects = 0;
+        let waits = std::cell::RefCell::new(Vec::new());
+        let mut signals = Vec::new();
+        let mut connect = || {
+            connects += 1;
+            if connects == 1 {
+                Err(EventError::Refused(ApiError::RateLimited {
+                    retry_after: 45,
+                    limit: "session-account".into(),
+                }))
+            } else {
+                Ok(Box::new(Fake::new(vec![])) as Box<dyn EventSource>)
+            }
+        };
+        let mut on = |signal: Signal| {
+            if matches!(signal, Signal::Connected) {
+                stop.store(true, Ordering::SeqCst);
+            }
+            signals.push(signal);
+        };
+        let sleep = |wait: Duration| waits.borrow_mut().push(wait);
+        run(&mut connect, &stop, &mut on, &sleep);
+        assert_eq!(*waits.borrow(), [Duration::from_secs(45)]);
+    }
+
     #[test]
     fn final_errors() {
         assert!(EventError::Replaced.is_final());

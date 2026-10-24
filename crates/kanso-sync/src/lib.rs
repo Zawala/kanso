@@ -48,7 +48,6 @@ pub use approvals::{
     finish_approval, finish_unlock, name_device, open_request, pending_approvals, poll_approval,
     request_approval,
 };
-pub use events::{AccountEvent, EventError, EventSource, Signal};
 pub use binding::{
     BindError, Choice, DeviceIdentity, Flow, LocalLibrary, Machine, Plan, bind, device_identity,
     device_name, local_library, meta_keys, plan, unbind,
@@ -58,6 +57,7 @@ pub use engine::{
     Schedule, SyncError, SyncOptions, SyncProblem, SyncReport, batches, problem, report_problem,
     sync,
 };
+pub use events::{AccountEvent, EventError, EventSource, Signal};
 pub use http::HttpBackend;
 pub use kanso_store::SyncDoc;
 pub use keychain::{Keychain, MemorySecrets, SecretError, SecretStore};

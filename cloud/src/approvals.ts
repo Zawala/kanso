@@ -353,6 +353,12 @@ export function cancel(id: string): Handler {
 		if (!isFlowId(id)) return badRequest("Not an approval ID.");
 		const row = await rowOf(env, session.accountId, id);
 		if (!row) return notFound();
+		// The requester, a device that could still challenge, or the one that
+		// challenged may cancel or decline; once answered, only its requester
+		// may delete it (below).
+		if (row.device_id !== session.deviceId && row.approver_device_id !== null && row.approver_device_id !== session.deviceId) {
+			return notFound();
+		}
 		if (row.cancelled_at !== null) return new Response(null, { status: 204 });
 		if (row.completed_at !== null) {
 			if (row.device_id !== session.deviceId) return approvalUsed();

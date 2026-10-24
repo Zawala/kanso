@@ -9,6 +9,7 @@ use serde::de::DeserializeOwned;
 use ureq::Agent;
 use zeroize::Zeroizing;
 
+use crate::account::Session;
 use crate::api::{
     AccountResponse, Api, Backend, DeleteRequest, DeleteResponse, DeviceNameRequest,
     DevicesResponse, Health, LoginRequest, LoginResponse, PasswordRequest, PasswordResponse,
@@ -16,7 +17,6 @@ use crate::api::{
     RecoverStartResponse, RecoveryKeyRequest, RecoveryKeyResponse, Route, SessionResponse,
     SignupRequest,
 };
-use crate::account::Session;
 use crate::api::{
     ApprovalApproveRequest, ApprovalChallengeRequest, ApprovalCreateRequest, ApprovalCreated,
     ApprovalList, ApprovalNameRequest, ApprovalPoll,
@@ -595,10 +595,7 @@ impl Api for HttpApi {
 
 /// `/v2/account/sign-in/approvals/<id><rest>`, the ID percent-encoded.
 fn approval_path(id: &str, rest: &str) -> String {
-    format!(
-        "/v2/account/sign-in/approvals/{}{rest}",
-        encode_segment(id)
-    )
+    format!("/v2/account/sign-in/approvals/{}{rest}", encode_segment(id))
 }
 
 #[cfg(test)]

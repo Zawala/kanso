@@ -105,6 +105,12 @@ impl Session {
         self.library_id = Some(library_id.to_owned());
     }
 
+    /// The data key's ID, as the server holds it (docs/ACCOUNTS.md › Keys).
+    /// Not secret: used to check a wrap and by the approval flow's tests.
+    pub fn key_id(&self) -> String {
+        crate::crypto::key_id(&self.data_key)
+    }
+
     /// The keys shared notes start from, derived from this session's data
     /// key (docs/ACCOUNTS.md › Collaboration).
     pub fn collab_roots(&self) -> crate::crypto::CollabRoots {

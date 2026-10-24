@@ -5,9 +5,9 @@
 use std::io;
 use std::time::Duration;
 
+use kanso_sync::ws::{Stream, WsError};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use kanso_sync::ws::{Stream, WsError};
 use tungstenite::Message;
 use tungstenite::protocol::WebSocket;
 use ureq::Agent;

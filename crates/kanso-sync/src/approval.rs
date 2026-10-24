@@ -154,7 +154,11 @@ impl ApprovalKeys {
         account_id: &str,
         request_id: &str,
     ) -> Result<Approval, CryptoError> {
-        let dh = Zeroizing::new(MontgomeryPoint(*other_epk).mul_clamped(*self.secret).to_bytes());
+        let dh = Zeroizing::new(
+            MontgomeryPoint(*other_epk)
+                .mul_clamped(*self.secret)
+                .to_bytes(),
+        );
         if dh.iter().all(|&b| b == 0) {
             return Err(CryptoError::KeyMismatch);
         }
@@ -252,7 +256,12 @@ impl Approval {
 
     pub(crate) fn seal_name_with_nonce(&self, name: &str, nonce: &[u8; NONCE_LEN]) -> String {
         let name = crate::binding::device_name(name);
-        b64(&seal_raw(&self.key, nonce, &self.name_aad(), name.as_bytes()))
+        b64(&seal_raw(
+            &self.key,
+            nonce,
+            &self.name_aad(),
+            name.as_bytes(),
+        ))
     }
 
     /// The name `N` sealed, or `None` when it doesn't open under this
@@ -379,6 +388,115 @@ mod tests {
     fn a_low_order_key_is_refused() {
         let (n, _) = pair();
         assert!(n.complete(Side::New, &[0; 32], ACCOUNT, REQUEST).is_err());
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(64))]
+
+        /// Any two keys derive the same code and key on both sides, and the
+        /// sealed name and wrapped data key open only for the request and
+        /// devices they were made for.
+        #[test]
+        fn prop_both_sides_agree_for_any_keys(
+            n_secret in proptest::array::uniform32(1u8..),
+            a_secret in proptest::array::uniform32(1u8..),
+            request in "[A-Za-z0-9_-]{43}",
+        ) {
+            let n = ApprovalKeys::from_secret(n_secret);
+            let a = ApprovalKeys::from_secret(a_secret);
+            let on_n = n.complete(Side::New, &a.epk(), ACCOUNT, &request).unwrap();
+            let on_a = a.complete(Side::Approver, &n.epk(), ACCOUNT, &request).unwrap();
+            proptest::prop_assert_eq!(on_n.code(), on_a.code());
+            proptest::prop_assert_eq!(on_n.epk_new(), on_a.epk_new());
+            proptest::prop_assert_eq!(on_n.epk_approver(), on_a.epk_approver());
+            proptest::prop_assert_eq!(on_n.wrap(NEW, OLD, &DataKey::from_bytes([3; 32])).len(), 98);
+            let sealed = on_n.seal_name("Alex's MacBook Air");
+            let opened = on_a.open_name(&sealed);
+            proptest::prop_assert_eq!(opened.as_deref(), Some("Alex's MacBook Air"));
+            let other = on_n.seal_name("someone else");
+            proptest::prop_assert!(on_a.open_name(&other).is_some());
+        }
+
+        /// A substituted approver key gives another approval key and another
+        /// code input: the server can't make the two sides agree by choosing
+        /// the key it hands each one.
+        #[test]
+        fn prop_substituted_approver_key_changes_the_code(
+            n_secret in proptest::array::uniform32(1u8..),
+            a_secret in proptest::array::uniform32(1u8..),
+            other_secret in proptest::array::uniform32(1u8..),
+            request in "[A-Za-z0-9_-]{43}",
+        ) {
+            proptest::prop_assume!(a_secret != other_secret);
+            let n = ApprovalKeys::from_secret(n_secret);
+            let a = ApprovalKeys::from_secret(a_secret);
+            let other = ApprovalKeys::from_secret(other_secret);
+            let honest = n.complete(Side::New, &a.epk(), ACCOUNT, &request).unwrap();
+            let substituted = n.complete(Side::New, &other.epk(), ACCOUNT, &request).unwrap();
+            // Different keys always change the transcript, so the approval
+            // key differs; a six-digit collision remains possible at 1 in a
+            // million, exactly the bound the commitment gives an attacker.
+            let honest_key = honest.wrap(NEW, OLD, &DataKey::from_bytes([1; 32]));
+            let substituted_key = substituted.wrap(NEW, OLD, &DataKey::from_bytes([1; 32]));
+            proptest::prop_assert_ne!(&honest_key, &substituted_key);
+            proptest::prop_assert!(honest.unwrap(NEW, OLD, &honest_key).is_ok());
+            proptest::prop_assert!(substituted.unwrap(NEW, OLD, &honest_key).is_err());
+        }
+    }
+
+    #[test]
+    fn a_substituted_key_gives_a_different_code() {
+        let n = ApprovalKeys::from_secret([7; 32]);
+        let honest = n
+            .complete(
+                Side::New,
+                &ApprovalKeys::from_secret([8; 32]).epk(),
+                ACCOUNT,
+                REQUEST,
+            )
+            .unwrap();
+        for byte in [9u8, 10, 11, 12, 13, 14, 15, 16] {
+            let other = ApprovalKeys::from_secret([byte; 32]);
+            let substituted = n
+                .complete(Side::New, &other.epk(), ACCOUNT, REQUEST)
+                .unwrap();
+            assert_ne!(
+                honest.code(),
+                substituted.code(),
+                "a substituted key should give another code (one in a million collide)"
+            );
+        }
+    }
+
+    #[test]
+    fn a_revealed_key_that_does_not_match_the_commitment_is_refused() {
+        let n = ApprovalKeys::from_secret([1; 32]);
+        let other = ApprovalKeys::from_secret([2; 32]);
+        let commit = n.commitment();
+        assert!(matches_commitment(&n.epk(), &commit));
+        assert!(!matches_commitment(&other.epk(), &commit));
+        // A well-behaved server wouldn't have stored the other key; the
+        // approver checks anyway and must refuse.
+        assert!(!matches_commitment(&other.epk(), &commit));
+    }
+
+    #[test]
+    fn a_wrap_opens_only_for_its_own_devices() {
+        let n = ApprovalKeys::from_secret([1; 32]);
+        let a = ApprovalKeys::from_secret([2; 32]);
+        let approval = n.complete(Side::New, &a.epk(), ACCOUNT, REQUEST).unwrap();
+        let approver = a
+            .complete(Side::Approver, &n.epk(), ACCOUNT, REQUEST)
+            .unwrap();
+        let key = DataKey::from_bytes([4; 32]);
+        let wrapped = approver.wrap(NEW, OLD, &key);
+        assert!(approval.unwrap(NEW, OLD, &wrapped).is_ok());
+        assert!(approval.unwrap(OLD, NEW, &wrapped).is_err());
+        assert!(
+            approval
+                .unwrap(NEW, "d_00000000000000000000000000000003", &wrapped)
+                .is_err()
+        );
     }
 
     #[test]

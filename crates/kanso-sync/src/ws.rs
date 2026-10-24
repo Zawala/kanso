@@ -152,7 +152,8 @@ pub fn connect(
         .map_err(|err| WsError::Request(err.to_string()))?;
     let request_headers = request.headers_mut();
     for (name, value) in headers {
-        let value = HeaderValue::from_str(value).map_err(|err| WsError::Request(err.to_string()))?;
+        let value =
+            HeaderValue::from_str(value).map_err(|err| WsError::Request(err.to_string()))?;
         request_headers.insert(
             tungstenite::http::HeaderName::from_bytes(name.as_bytes())
                 .map_err(|err| WsError::Request(err.to_string()))?,

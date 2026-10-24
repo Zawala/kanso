@@ -184,7 +184,9 @@ pub fn request_approval(
     // first is cancelled when a fourth is made, or expires.
     let created = api.create_approval(locked.token(), &request)?;
     if !is_approval_id(&created.id) {
-        return Err(AccountError::Protocol("an approval ID of the wrong shape".into()));
+        return Err(AccountError::Protocol(
+            "an approval ID of the wrong shape".into(),
+        ));
     }
     Ok(ApprovalRequest {
         id: created.id,
@@ -200,7 +202,9 @@ pub fn poll_approval(
     locked: &LockedSession,
     request: &ApprovalRequest,
 ) -> Result<RequestState, AccountError> {
-    let poll = retrying(b, || b.api(&locked.server).approval(locked.token(), &request.id))?;
+    let poll = retrying(b, || {
+        b.api(&locked.server).approval(locked.token(), &request.id)
+    })?;
     request_state(&poll)
 }
 
@@ -378,7 +382,11 @@ impl PendingApproval {
         {
             return None;
         }
-        if row.sealed_name.as_deref().is_some_and(|s| !is_sealed_name(s)) {
+        if row
+            .sealed_name
+            .as_deref()
+            .is_some_and(|s| !is_sealed_name(s))
+        {
             return None;
         }
         Some(PendingApproval {
@@ -480,17 +488,13 @@ pub fn finish_approval(
     b: &dyn Backend,
     session: &Session,
     pending: &PendingApproval,
-    opened: &OpenedRequest,
+    approval: &Approval,
 ) -> Result<(), AccountError> {
     if pending.device_id == session.device_id {
         return Err(AccountError::SelfApproval);
     }
     let body = ApprovalApproveRequest {
-        wrapped_key: opened.approval.wrap(
-            &pending.device_id,
-            &session.device_id,
-            session.data_key(),
-        ),
+        wrapped_key: approval.wrap(&pending.device_id, &session.device_id, session.data_key()),
     };
     retrying(b, || {
         b.api(&session.server)
@@ -546,7 +550,10 @@ mod tests {
             sealed_name: None,
             wrapped_key: Some("w".into()),
         };
-        assert_eq!(request_state(&poll("waiting")).unwrap(), RequestState::Waiting);
+        assert_eq!(
+            request_state(&poll("waiting")).unwrap(),
+            RequestState::Waiting
+        );
         assert!(matches!(
             request_state(&poll("challenged")).unwrap(),
             RequestState::Challenged { .. }
@@ -555,7 +562,10 @@ mod tests {
             request_state(&poll("approved")).unwrap(),
             RequestState::Approved(_)
         ));
-        assert_eq!(request_state(&poll("expired")).unwrap(), RequestState::Expired);
+        assert_eq!(
+            request_state(&poll("expired")).unwrap(),
+            RequestState::Expired
+        );
         assert!(request_state(&poll("odd")).is_err());
         let mut bad = poll("challenged");
         bad.approver_epk = Some("nope".into());
