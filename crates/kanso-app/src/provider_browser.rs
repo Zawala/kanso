@@ -5,7 +5,8 @@
 //!
 //! - **Apple** uses `ASWebAuthenticationSession` on macOS with the `kanso`
 //!   callback scheme; the Worker's page redirects to
-//!   `kanso://auth/apple?flow=<flow id>` and the app polls with its device.
+//!   `kanso://auth/apple?flow=<flow id>&s=<secret>` and the app polls with
+//!   its device and that secret.
 //! - **Google** is a desktop client with a loopback redirect: the app binds
 //!   `127.0.0.1:0`, gives the Worker that exact URI and its PKCE challenge,
 //!   opens the URL in the system browser, and answers the one request to
@@ -101,7 +102,9 @@ pub fn open_external(url: &str) -> Result<(), BrowserError> {
 
 /// Opens `start.auth_url` in `ASWebAuthenticationSession` (macOS) with the
 /// `kanso` scheme and waits for the callback URL. The flow ID alone grants
-/// nothing: the caller polls the Worker with its device and proof.
+/// nothing: the caller polls the Worker with its device and proof, and the
+/// secret the callback URL carries, which the system delivers only to this
+/// process.
 pub fn apple_sign_in(
     start: &AppleStart,
 ) -> Result<async_channel::Receiver<Result<String, BrowserError>>, BrowserError> {
@@ -118,9 +121,9 @@ pub fn apple_sign_in(
     }
 }
 
-/// The flow ID in Apple's callback URL, when it is the callback the Worker's
-/// page makes.
-pub fn apple_flow(callback: &str) -> Option<String> {
+/// The flow ID and secret in Apple's callback URL, when it is the callback
+/// the Worker's page makes.
+pub fn apple_flow(callback: &str) -> Option<kanso_sync::AppleCallback> {
     kanso_sync::apple_callback_flow(callback)
 }
 
@@ -603,10 +606,11 @@ mod tests {
     #[test]
     fn apple_callbacks_name_the_flow() {
         let flow = "A".repeat(43);
-        assert_eq!(
-            apple_flow(&format!("kanso://auth/apple?flow={flow}")).as_deref(),
-            Some(flow.as_str())
-        );
+        let secret = "b".repeat(43);
+        let callback = apple_flow(&format!("kanso://auth/apple?flow={flow}&s={secret}")).unwrap();
+        assert_eq!(callback.flow, flow);
+        assert_eq!(callback.secret, secret);
+        assert_eq!(apple_flow(&format!("kanso://auth/apple?flow={flow}")), None);
         assert_eq!(apple_flow("kanso://auth/apple?flow=short"), None);
     }
 }

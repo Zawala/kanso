@@ -3991,6 +3991,7 @@ mod server_tests {
                 &Provider::Apple,
                 &ProviderPollRequest {
                     flow_id: start.flow_id().into(),
+                    s: None,
                     device: d.clone(),
                 },
             )
@@ -4036,6 +4037,7 @@ mod server_tests {
                 &Provider::Github,
                 &ProviderPollRequest {
                     flow_id: start.flow_id().into(),
+                    s: None,
                     device: d.clone(),
                 },
             )
@@ -4063,6 +4065,7 @@ mod server_tests {
                 &Provider::Apple,
                 &ProviderPollRequest {
                     flow_id: start.flow_id().into(),
+                    s: None,
                     device: pdevice(44)
                 }
             )
@@ -4075,6 +4078,7 @@ mod server_tests {
                 &Provider::Apple,
                 &ProviderPollRequest {
                     flow_id: start.flow_id().into(),
+                    s: None,
                     device: d
                 }
             )
@@ -4104,6 +4108,7 @@ mod server_tests {
                 &Provider::Apple,
                 &ProviderPollRequest {
                     flow_id: st.flow_id().into(),
+                    s: None,
                     device: initial.clone(),
                 },
             )
@@ -4134,6 +4139,7 @@ mod server_tests {
                     &Provider::Apple,
                     &ProviderPollRequest {
                         flow_id: st.flow_id().into(),
+                        s: None,
                         device: d,
                     },
                 )

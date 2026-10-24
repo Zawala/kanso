@@ -164,6 +164,10 @@ export interface AuthFlowRow {
 	completion_kind: "signin" | "link" | "social_signup" | null;
 	completion_account_id: string | null;
 	completion_succeeded: number;
+	/** Apple only: SHA-256 of the secret the callback handed the app. */
+	app_secret_hash?: string | null;
+	/** Apple only: when a poll first sent that secret back. */
+	app_claimed_at?: number | null;
 }
 
 export type FlowInput = Omit<
@@ -175,11 +179,14 @@ export type FlowInput = Omit<
 	| "completion_kind"
 	| "completion_account_id"
 	| "completion_succeeded"
+	| "app_secret_hash"
+	| "app_claimed_at"
 > & { id?: string };
 
 const FLOW_COLUMNS = `id, kind, intent, account_id, device_id, device_proof_hash, challenge, rp_id,
   nonce_hash, state_hash, pkce_hash, redirect_uri, provider, subject, device_code, poll_interval_seconds, next_poll_at,
-  created_at, expires_at, consumed_at, completion_attempt_id, completion_kind, completion_account_id, completion_succeeded`;
+  created_at, expires_at, consumed_at, completion_attempt_id, completion_kind, completion_account_id, completion_succeeded,
+  app_secret_hash, app_claimed_at`;
 
 const FLOW_LABEL = "kanso-flow\u0001";
 
@@ -261,7 +268,7 @@ export async function newFlow(env: Env, keys: PepperKeys, flow: FlowInput, now: 
 	const deviceCode =
 		flow.device_code === null ? null : await sealFlowSecret(keys, { id, kind: flow.kind, account_id: flow.account_id }, flow.device_code);
 	await env.DB.prepare(
-		`INSERT INTO auth_flows (${FLOW_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, NULL, NULL, NULL, NULL, 0)`,
+		`INSERT INTO auth_flows (${FLOW_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, NULL, NULL, NULL, NULL, 0, NULL, NULL)`,
 	)
 		.bind(
 			id,

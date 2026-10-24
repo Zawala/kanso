@@ -146,12 +146,13 @@ const ROUTES: Record<string, Route> = {
 	"/v2/collab/notifications": { name: "collab_notifications", methods: { POST: json(collab.notify), GET: { handler: collab.listNotifications } } },
 	"/v2/auth/apple/start": { name: "apple_start", binding: true, methods: { POST: json(providers.start("apple"), true) } },
 	"/v2/auth/apple/poll": { name: "apple_poll", binding: true, methods: { POST: json(providers.applePoll, true) } },
-	// Apple posts application/x-www-form-urlencoded from its own page; the handler checks the type.
+	// Apple posts application/x-www-form-urlencoded from its own page (form_post, even for a
+	// cancel), so there is no GET; the handler checks the type.
 	"/v2/auth/apple/callback": {
 		name: "apple_callback",
 		binding: true,
 		origins: [providers.APPLE_FORM_ORIGIN],
-		methods: { GET: { handler: providers.appleCallback, pepper: true }, POST: { handler: providers.appleCallback, pepper: true } },
+		methods: { POST: { handler: providers.appleCallback, pepper: true } },
 	},
 	"/v2/auth/google/start": { name: "google_start", binding: true, methods: { POST: json(providers.start("google"), true) } },
 	"/v2/auth/google/finish": { name: "google_finish", binding: true, methods: { POST: json(providers.googleFinish, true) } },

@@ -876,12 +876,14 @@ pub fn start_provider(
     }
 }
 
-/// One Apple or GitHub poll of a started flow.
+/// One Apple or GitHub poll of a started flow. `secret` is Apple's, from the
+/// callback URL ([`crate::provider::apple_callback_flow`]); GitHub has none.
 pub fn poll_provider(
     b: &dyn Backend,
     server: &str,
     provider: &Provider,
     flow: &str,
+    secret: Option<&str>,
     device: &LoginDevice,
 ) -> Result<ProviderStep, AccountError> {
     let (server, _) = checked_server(server)?;
@@ -891,6 +893,7 @@ pub fn poll_provider(
             provider,
             &ProviderPollRequest {
                 flow_id: flow.to_owned(),
+                s: secret.map(str::to_owned),
                 device: provider_device(device),
             },
         )
@@ -931,6 +934,7 @@ pub fn sign_in_with_provider(
     server: &str,
     provider: &Provider,
     flow: &str,
+    secret: Option<&str>,
     device: &LoginDevice,
     progress: &dyn Fn(Step),
 ) -> Result<ProviderSignIn, AccountError> {
@@ -940,7 +944,7 @@ pub fn sign_in_with_provider(
         ));
     }
     progress(Step::Contacting);
-    match poll_provider(b, server, provider, flow, device)? {
+    match poll_provider(b, server, provider, flow, secret, device)? {
         ProviderStep::Session(session) => Ok(ProviderSignIn::Session(session)),
         ProviderStep::NewAccount(account) => Ok(ProviderSignIn::NewAccount(account)),
         ProviderStep::Pending { .. } => Err(AccountError::Protocol(
@@ -1092,12 +1096,14 @@ pub fn start_identity(
     .map_err(AccountError::from)
 }
 
-/// The completion of a link or proof flow on Apple or GitHub.
+/// The completion of a link or proof flow on Apple or GitHub; `secret` as
+/// for [`poll_provider`].
 pub fn finish_identity(
     b: &dyn Backend,
     session: &Session,
     provider: &Provider,
     flow: &str,
+    secret: Option<&str>,
     device: &LoginDevice,
 ) -> Result<LinkOutcome, AccountError> {
     let api = b.api(&session.server);
@@ -1107,6 +1113,7 @@ pub fn finish_identity(
             provider,
             &ProviderPollRequest {
                 flow_id: flow.to_owned(),
+                s: secret.map(str::to_owned),
                 device: provider_device(device),
             },
         )

@@ -29,7 +29,7 @@ const SERVER: &str = "http://127.0.0.1:8787";
 struct Seen {
     starts: Vec<String>,
     start_devices: Vec<LoginDevice>,
-    polls: Vec<(String, String)>,
+    polls: Vec<(String, String, Option<String>)>,
     finishes: Vec<(String, String, String)>,
     social: Vec<SocialSignupRequest>,
     unlinks: Vec<(String, String)>,
@@ -139,12 +139,11 @@ impl Api for StubApi {
         provider: &Provider,
         request: &ProviderPollRequest,
     ) -> Result<ProviderStep, ApiError> {
-        self.stub
-            .seen
-            .lock()
-            .unwrap()
-            .polls
-            .push((provider.to_string(), request.flow_id.clone()));
+        self.stub.seen.lock().unwrap().polls.push((
+            provider.to_string(),
+            request.flow_id.clone(),
+            request.s.clone(),
+        ));
         Ok(self.stub.step.lock().unwrap().clone())
     }
 
@@ -450,11 +449,17 @@ fn a_poll_returns_a_session_or_a_ticket_and_google_finishes_with_the_verifier() 
         SERVER,
         &Provider::Apple,
         &"A".repeat(43),
+        Some(&"S".repeat(43)),
         &device(),
         &|_| {},
     )
     .unwrap();
     assert!(matches!(session, ProviderSignIn::Session(_)));
+    // Apple's poll carries the callback's secret, and its JSON names it `s`.
+    assert_eq!(
+        stub.seen.lock().unwrap().polls.last().unwrap().2.as_deref(),
+        Some("S".repeat(43).as_str())
+    );
 
     *stub.step.lock().unwrap() = ProviderStep::NewAccount(NewAccount {
         ticket: "T".into(),
@@ -466,6 +471,7 @@ fn a_poll_returns_a_session_or_a_ticket_and_google_finishes_with_the_verifier() 
             SERVER,
             &Provider::Apple,
             &"A".repeat(43),
+            Some(&"S".repeat(43)),
             &device(),
             &|_| {}
         )
@@ -478,7 +484,8 @@ fn a_poll_returns_a_session_or_a_ticket_and_google_finishes_with_the_verifier() 
 
     *stub.step.lock().unwrap() = ProviderStep::Pending { slow_down: false };
     assert!(matches!(
-        kanso_sync::poll_provider(&backend, SERVER, &Provider::Github, "F", &device()).unwrap(),
+        kanso_sync::poll_provider(&backend, SERVER, &Provider::Github, "F", None, &device())
+            .unwrap(),
         ProviderStep::Pending { .. }
     ));
     assert!(matches!(
@@ -487,6 +494,7 @@ fn a_poll_returns_a_session_or_a_ticket_and_google_finishes_with_the_verifier() 
             SERVER,
             &Provider::Github,
             "F",
+            None,
             &device(),
             &|_| {}
         ),
@@ -498,6 +506,7 @@ fn a_poll_returns_a_session_or_a_ticket_and_google_finishes_with_the_verifier() 
             SERVER,
             &Provider::Google,
             "G",
+            None,
             &device(),
             &|_| {}
         ),
@@ -655,7 +664,8 @@ fn a_link_and_unlink_use_the_proofs_the_server_expects() {
     let backend = StubBackend(stub.clone());
     let session = a_session();
     assert!(matches!(
-        kanso_sync::finish_identity(&backend, &session, &Provider::Github, "F", &device()).unwrap(),
+        kanso_sync::finish_identity(&backend, &session, &Provider::Github, "F", None, &device())
+            .unwrap(),
         LinkOutcome::Linked { .. }
     ));
     assert!(matches!(

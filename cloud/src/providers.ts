@@ -594,18 +594,35 @@ async function deviceFlow(
 const pollCounter = (env: Env, keys: PepperKeys, now: number) => async (flowId: string) =>
 	count(env.DB, "provider-poll", await ipKey(keys, "provider-poll", flowId), now);
 
-/** `POST /v2/auth/apple/poll`: pending until Apple's callback has stored the subject. */
+/**
+ * `POST /v2/auth/apple/poll`: pending until Apple's callback has stored the
+ * subject. After that the poll must carry `s`, the secret the callback handed
+ * only to the app process that opened ASWebAuthenticationSession: the device
+ * proof binds the flow to whoever started it, and `s` binds it to whoever
+ * finished it at Apple, so a phished `auth_url` signs nobody in.
+ */
 export const applePoll: PepperHandler = async (request, env, now, keys) => {
 	const found = await deviceFlow(request, env, now, "apple", pollCounter(env, keys, now));
 	if (!found.ok) return found.response;
-	const { flow, device } = found;
+	const { flow, device, body } = found;
 	if (flow.subject === null) {
 		// The callback consumes a flow it refused (a cancel, a bad code, a failed
 		// verification), so the poll can stop instead of waiting out the flow.
 		return flow.consumed_at === null ? json({ status: "pending" }) : providerDenied();
 	}
-	return complete(request, env, keys, now, flow, device);
+	const secret = body.s === undefined ? null : proof32(body.s);
+	if (body.s !== undefined && secret === null) return badRequest("s must be 32 bytes of canonical base64url.");
+	// Constant time, and the same cost with no secret or no stored hash.
+	const matches = await proofMatches(secret ?? new Uint8Array(32), flow.app_secret_hash);
+	if (secret === null || !matches) return invalidCredentials();
+	if (flow.app_claimed_at == null) {
+		await env.DB.prepare("UPDATE auth_flows SET app_claimed_at = ?2 WHERE id = ?1 AND app_claimed_at IS NULL").bind(flow.id, now).run();
+	}
+	return complete(request, env, keys, now, { ...flow, app_claimed_at: flow.app_claimed_at ?? now }, device);
 };
+
+/** Whether a flow's subject may be used: always, except an Apple flow the app hasn't claimed with its secret. */
+const appClaimed = (flow: AuthFlowRow): boolean => flow.kind !== "apple" || flow.app_claimed_at != null;
 
 /** `POST /v2/auth/google/finish`: the loopback's code, exchanged with the app's PKCE verifier. */
 export const googleFinish: PepperHandler = async (request, env, now, keys) => {
@@ -716,8 +733,8 @@ const CALLBACK_STYLE =
 	"body{font:16px -apple-system,BlinkMacSystemFont,sans-serif;max-width:28em;margin:20vh auto;padding:0 1em;color:#222}a{color:#0a58ca}";
 
 /** The page Apple's form post lands on: a redirect back to the app, or a short error sentence and no flow. */
-function callbackPage(status: number, flowId: string | null, sentence: string): Response {
-	const target = flowId === null ? null : `${APP_CALLBACK}?flow=${flowId}`;
+function callbackPage(status: number, back: { flowId: string; secret: string } | null, sentence: string): Response {
+	const target = back === null ? null : `${APP_CALLBACK}?flow=${back.flowId}&s=${back.secret}`;
 	const refresh = target === null ? "" : `<meta http-equiv="refresh" content="0;url=${target}">`;
 	const link = target === null ? "" : `<p><a href="${target}">Return to Kanso.</a></p>`;
 	const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">${refresh}<title>Kanso</title><style>${CALLBACK_STYLE}</style></head><body><p>${sentence}</p>${link}</body></html>`;
@@ -735,9 +752,8 @@ function callbackPage(status: number, flowId: string | null, sentence: string): 
 
 const FAILED = "Kanso couldn't finish signing in with Apple. Return to Kanso and try again.";
 
-/** Reads the callback's fields: the form body of a POST, or the query of a GET. */
+/** Reads the callback's fields from the form body. Apple uses form_post for every answer, a cancel included. */
 async function callbackFields(request: Request): Promise<URLSearchParams | Response> {
-	if (request.method === "GET") return new URL(request.url).searchParams;
 	const type = (request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
 	if (type !== "application/x-www-form-urlencoded") return callbackPage(415, null, FAILED);
 	const bytes = await readBody(request, MAX_AUTH_BODY);
@@ -750,10 +766,13 @@ async function callbackFields(request: Request): Promise<URLSearchParams | Respo
 }
 
 /**
- * `GET` and `POST /v2/auth/apple/callback`: Apple's `form_post`. The one public
- * route that accepts an `Origin` (Apple's). It never answers JSON and never
- * creates a session: it stores the verified subject on the flow, and the app's
- * poll, which carries the device proof, is the only thing that signs in.
+ * `POST /v2/auth/apple/callback`: Apple's `form_post`, the only way Apple
+ * answers (a cancel too). The one public route that accepts an `Origin`
+ * (Apple's). It never answers JSON and never creates a session: it stores the
+ * verified subject on the flow with the hash of a fresh secret, and redirects
+ * to the app with the secret. The app's poll, which carries the device proof
+ * and that secret, is the only thing that signs in. The secret is made here,
+ * not at the start, so whoever started the flow never learns it.
  */
 export const appleCallback: PepperHandler = async (request, env, now, keys) => {
 	const fields = await callbackFields(request);
@@ -800,13 +819,14 @@ export const appleCallback: PepperHandler = async (request, env, now, keys) => {
 		return callbackPage(verified.error === "provider_unavailable" ? 503 : 400, null, FAILED);
 	}
 	// `email`, `email_verified` and `is_private_email`, if Apple ever sends them, are ignored.
+	const secret = randomBytes(32);
 	const stored = await env.DB.prepare(
-		"UPDATE auth_flows SET subject = ?2 WHERE id = ?1 AND subject IS NULL AND consumed_at IS NULL RETURNING id",
+		"UPDATE auth_flows SET subject = ?2, app_secret_hash = ?3 WHERE id = ?1 AND subject IS NULL AND consumed_at IS NULL RETURNING id",
 	)
-		.bind(flow.id, verified.claims.sub as string)
+		.bind(flow.id, verified.claims.sub as string, await sha256Hex(secret))
 		.first();
 	if (!stored) return callbackPage(400, null, FAILED);
-	return callbackPage(200, flow.id, "Signed in with Apple. Return to Kanso.");
+	return callbackPage(200, { flowId: flow.id, secret: base64url(secret) }, "Signed in with Apple. Return to Kanso.");
 };
 
 // ------------------------------------------------------------ social sign-up
@@ -851,7 +871,7 @@ export const socialSignup: PepperHandler = async (request, env, now, keys) => {
 	if (!ticket || ticket.expires_at <= now || ticket.provider === null || !isProvider(ticket.kind)) return flowExpired();
 	const flow = await flowForDevice(env, b.ticket, ticket.kind, flowDevice(device.value), now);
 	if (flow instanceof Response) return flow;
-	if (flow.intent !== "signin" || flow.subject === null) return flowExpired();
+	if (flow.intent !== "signin" || flow.subject === null || !appClaimed(flow)) return flowExpired();
 	const provider = flow.provider as string;
 	const subject = flow.subject;
 	const recoveryHash = await sha256Hex(recoveryAuthKey);
@@ -1048,6 +1068,7 @@ async function checkProof(env: Env, now: number, session: Session, account: Proo
 			flow.intent === "proof" &&
 			flow.account_id === session.accountId &&
 			flow.subject !== null &&
+			appClaimed(flow) &&
 			flow.consumed_at === null &&
 			flow.expires_at > now;
 		if (!usable) return { ok: false, response: reauthRequired() };

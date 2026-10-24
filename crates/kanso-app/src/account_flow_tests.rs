@@ -986,6 +986,7 @@ fn provider_signin(
         SERVER,
         &Provider::Apple,
         started.flow_id(),
+        None,
         &login_device,
     )
     .unwrap() else {

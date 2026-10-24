@@ -213,11 +213,25 @@ pub struct GoogleStartRequest {
     pub code_challenge: String,
 }
 
-/// `POST /v2/auth/apple/poll` and `/v2/auth/github/poll`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// `POST /v2/auth/apple/poll` and `/v2/auth/github/poll`. Apple's poll also
+/// carries `s`, the secret from the callback URL that only the app process
+/// which opened the sign-in sheet receives; GitHub's has none.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderPollRequest {
     pub flow_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub s: Option<String>,
     pub device: LoginDevice,
+}
+
+impl fmt::Debug for ProviderPollRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProviderPollRequest")
+            .field("flow_id", &self.flow_id)
+            .field("s", &self.s.as_ref().map(|_| "…"))
+            .field("device", &self.device)
+            .finish()
+    }
 }
 
 /// `POST /v2/auth/google/finish`: the loopback's code and the verifier whose
@@ -700,9 +714,32 @@ impl Loopback {
 
 // -------------------------------------------------------- Apple's callback
 
-/// The flow ID in `kanso://auth/apple?flow=<flow id>`, when the URL is
-/// exactly the callback the Worker's page makes.
-pub fn apple_callback_flow(url: &str) -> Option<String> {
+/// What Apple's callback URL hands the app: the flow, and the secret the
+/// Worker made at the callback for the app's poll.
+#[derive(Clone, PartialEq, Eq)]
+pub struct AppleCallback {
+    pub flow: String,
+    pub secret: String,
+}
+
+impl fmt::Debug for AppleCallback {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AppleCallback")
+            .field("flow", &self.flow)
+            .finish_non_exhaustive()
+    }
+}
+
+fn is_b64_32(value: &str) -> bool {
+    value.len() == 43
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+/// The flow ID and secret in `kanso://auth/apple?flow=<flow id>&s=<secret>`,
+/// when the URL is exactly the callback the Worker's page makes.
+pub fn apple_callback_flow(url: &str) -> Option<AppleCallback> {
     let url = Url::parse(url).ok()?;
     if url.scheme() != APPLE_CALLBACK_SCHEME
         || url.host_str() != Some(APPLE_CALLBACK_HOST)
@@ -715,17 +752,16 @@ pub fn apple_callback_flow(url: &str) -> Option<String> {
         return None;
     }
     let mut pairs = url.query_pairs();
-    let (key, value) = pairs.next()?;
-    if key != "flow" || pairs.next().is_some() {
+    let (flow_key, flow) = pairs.next()?;
+    let (secret_key, secret) = pairs.next()?;
+    if flow_key != "flow" || secret_key != "s" || pairs.next().is_some() {
         return None;
     }
-    let flow = value.into_owned();
-    Some(flow).filter(|flow| {
-        flow.len() == 43
-            && flow
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-    })
+    let callback = AppleCallback {
+        flow: flow.into_owned(),
+        secret: secret.into_owned(),
+    };
+    (is_b64_32(&callback.flow) && is_b64_32(&callback.secret)).then_some(callback)
 }
 
 #[cfg(test)]
@@ -780,20 +816,39 @@ mod tests {
     #[test]
     fn only_the_exact_callback_names_a_flow() {
         let flow = "A".repeat(43);
+        let secret = "s".repeat(43);
         assert_eq!(
-            apple_callback_flow(&format!("kanso://auth/apple?flow={flow}")),
-            Some(flow.clone())
+            apple_callback_flow(&format!("kanso://auth/apple?flow={flow}&s={secret}")),
+            Some(AppleCallback {
+                flow: flow.clone(),
+                secret: secret.clone()
+            })
         );
         for bad in [
-            format!("kanso://auth/apple?flow={flow}&x=1"),
+            format!("kanso://auth/apple?flow={flow}"),
+            format!("kanso://auth/apple?flow={flow}&s={secret}&x=1"),
+            format!("kanso://auth/apple?s={secret}&flow={flow}"),
             format!("kanso://auth/apple?flow={flow}&flow={flow}"),
-            format!("kanso://auth/apple?flow={}", "short".repeat(8)),
-            format!("https://auth/apple?flow={flow}"),
-            format!("kanso://auth/apple/extra?flow={flow}"),
-            format!("kanso://auth/apple#flow={flow}"),
+            format!("kanso://auth/apple?flow={flow}&s=short"),
+            format!("kanso://auth/apple?flow={}&s={secret}", "short".repeat(8)),
+            format!("https://auth/apple?flow={flow}&s={secret}"),
+            format!("kanso://auth/apple/extra?flow={flow}&s={secret}"),
+            format!("kanso://auth/apple?flow={flow}&s={secret}#x"),
             "kanso://auth/apple".to_owned(),
         ] {
             assert_eq!(apple_callback_flow(&bad), None, "{bad}");
+        }
+    }
+
+    proptest! {
+        /// Any well-formed flow and secret round-trip through the callback URL.
+        #[test]
+        fn prop_apple_callback_round_trips(
+            flow in "[A-Za-z0-9_-]{43}",
+            secret in "[A-Za-z0-9_-]{43}",
+        ) {
+            let parsed = apple_callback_flow(&format!("kanso://auth/apple?flow={flow}&s={secret}"));
+            prop_assert_eq!(parsed, Some(AppleCallback { flow, secret }));
         }
     }
 

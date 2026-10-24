@@ -79,9 +79,10 @@ pub use memory::{
 };
 pub use passkey::{PasskeyAssertion, PasskeyRegistration};
 pub use provider::{
-    AccountMethods, AppleStart, GithubStart, GoogleStart, IdentityIntent, LinkOutcome,
-    LinkedProvider, Loopback, NewAccount, PasskeyInfo, PasskeyMethods, ProofWire, Provider,
-    ProviderSession, ProviderSignIn, ProviderStart, ProviderStep, ServerAuth, apple_callback_flow,
+    AccountMethods, AppleCallback, AppleStart, GithubStart, GoogleStart, IdentityIntent,
+    LinkOutcome, LinkedProvider, Loopback, NewAccount, PasskeyInfo, PasskeyMethods, ProofWire,
+    Provider, ProviderSession, ProviderSignIn, ProviderStart, ProviderStep, ServerAuth,
+    apple_callback_flow,
 };
 pub use remote::{
     PushResult, RemoteDoc, RemoteError, is_doc_id, is_file_id, is_md5_hex, is_rev, md5_hex,

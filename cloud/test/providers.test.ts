@@ -210,24 +210,25 @@ const as = (path: string, json: unknown, more: { now?: number; token?: string; h
 type Answer = { status: number; body: any };
 
 /** Apple: start, Apple's form post to the callback (from Apple's origin), then the app's poll. */
-async function apple(d: Device, sub: string, now = T0): Promise<Answer & { flowId: string }> {
+async function apple(d: Device, sub: string, now = T0): Promise<Answer & { flowId: string; s: string }> {
 	const started = await as("/v2/auth/apple/start", { device: wireDevice(d) }, { now });
 	expect(started.status).toBe(200);
-	const flowId = await appleCallback(started.body.auth_url, sub, now);
-	const polled = await as("/v2/auth/apple/poll", { flow_id: flowId, device: wireDevice(d) }, { now: now + 4000 });
-	return { ...polled, flowId };
+	const { flowId, s } = await appleCallback(started.body.auth_url, sub, now);
+	const polled = await as("/v2/auth/apple/poll", { flow_id: flowId, s, device: wireDevice(d) }, { now: now + 4000 });
+	return { ...polled, flowId, s };
 }
 
-async function appleCallback(authUrl: string, sub: string, now = T0): Promise<string> {
+/** Apple's form post; the flow ID and the secret the page hands the app. */
+async function appleCallback(authUrl: string, sub: string, now = T0): Promise<{ flowId: string; s: string }> {
 	const url = new URL(authUrl);
 	providers.apple.sub = sub;
 	providers.apple.nonce = url.searchParams.get("nonce");
 	const response = await postCallback({ state: url.searchParams.get("state") ?? "", code: PII.appleCode }, now);
 	expect(response.status).toBe(200);
 	const page = await response.text();
-	const match = /kanso:\/\/auth\/apple\?flow=([A-Za-z0-9_-]{43})/.exec(page);
+	const match = /kanso:\/\/auth\/apple\?flow=([A-Za-z0-9_-]{43})&s=([A-Za-z0-9_-]{43})"/.exec(page);
 	expect(match).not.toBeNull();
-	return match![1];
+	return { flowId: match![1], s: match![2] };
 }
 
 function postCallback(fields: Record<string, string>, now = T0, headers: Record<string, string> = { origin: "https://appleid.apple.com" }) {
@@ -317,8 +318,8 @@ async function linkStart(a: Account, provider: ProviderName, proof: unknown, int
 async function linkFinish(a: Account, provider: ProviderName, started: Answer, n: number): Promise<Answer> {
 	const device = wireDevice(a.device);
 	if (provider === "apple") {
-		const flowId = await appleCallback(started.body.auth_url, `00${n}.apple.subject`);
-		return as("/v2/auth/apple/poll", { flow_id: flowId, device });
+		const { flowId, s } = await appleCallback(started.body.auth_url, `00${n}.apple.subject`);
+		return as("/v2/auth/apple/poll", { flow_id: flowId, s, device });
 	}
 	if (provider === "google") throw new Error("use googleLink");
 	providers.github.id = 1000 + n;
@@ -348,7 +349,7 @@ describe("each provider creates an account and signs in", () => {
 			// The same finish or poll again: the same ticket, never an account.
 			const again =
 				provider === "apple"
-					? await as("/v2/auth/apple/poll", { flow_id: flow.flowId, device: wireDevice(first) })
+					? await as("/v2/auth/apple/poll", { flow_id: flow.flowId, s: (flow as { s?: string }).s, device: wireDevice(first) })
 					: provider === "github"
 						? await as("/v2/auth/github/poll", { flow_id: flow.flowId, device: wireDevice(first) }, { now: T0 + 20_000 })
 						: null;
@@ -578,11 +579,12 @@ describe("Apple's web flow", () => {
 
 		const ok = await postCallback({ state, code: PII.appleCode });
 		expect(ok.status).toBe(200);
+		const s = /&s=([A-Za-z0-9_-]{43})"/.exec(await ok.text())![1];
 		// A replayed post (the same state and code): refused, and the flow keeps its subject.
 		const replay = await postCallback({ state, code: PII.appleCode });
 		expect(replay.status).toBe(400);
 		expect(await replay.text()).not.toContain("kanso://");
-		expect((await as("/v2/auth/apple/poll", { flow_id: started.body.flow_id, device: wireDevice(d) })).body.kind).toBe("new_account");
+		expect((await as("/v2/auth/apple/poll", { flow_id: started.body.flow_id, s, device: wireDevice(d) })).body.kind).toBe("new_account");
 	});
 
 	it("a cancel at Apple ends the poll with provider_denied", async () => {
@@ -604,14 +606,16 @@ describe("Apple's web flow", () => {
 		expect((await as("/v2/auth/apple/poll", { flow_id: started.body.flow_id, device: wireDevice(d) })).body.error).toBe("provider_denied");
 	});
 
-	it("a GET callback reads the query", async () => {
+	it("the callback is POST only: Apple uses form_post even for a cancel", async () => {
 		const d = newDevice();
 		const started = await as("/v2/auth/apple/start", { device: wireDevice(d) });
 		const url = new URL(started.body.auth_url);
 		providers.apple.nonce = url.searchParams.get("nonce");
 		const query = new URLSearchParams({ state: url.searchParams.get("state")!, code: PII.appleCode });
 		const response = await call(`/v2/auth/apple/callback?${query}`, { env: penv(), now: T0 });
-		expect(response.status).toBe(200);
+		expect(response.status).toBe(405);
+		expect(providers.calls.filter((endpoint) => endpoint === APPLE_TOKEN_URL)).toHaveLength(0);
+		expect((await as("/v2/auth/apple/poll", { flow_id: started.body.flow_id, device: wireDevice(d) })).body).toEqual({ status: "pending" });
 	});
 
 	it("Apple down: the callback says so and the poll stays pending", async () => {
@@ -621,6 +625,75 @@ describe("Apple's web flow", () => {
 		providers.apple.tokenStatus = 502;
 		expect((await postCallback({ state: url.searchParams.get("state")!, code: PII.appleCode })).status).toBe(503);
 		expect((await as("/v2/auth/apple/poll", { flow_id: started.body.flow_id, device: wireDevice(d) })).body).toEqual({ status: "pending" });
+	});
+});
+
+describe("Apple's flow is bound to the app that finished it", () => {
+	it("a phished sign-in: the attacker who started the flow can't poll it without the callback's secret", async () => {
+		// The victim's account, with Apple linked.
+		const victim = await socialAccount("apple", 21, "victim");
+		const attacker = newDevice();
+		const started = await as("/v2/auth/apple/start", { device: wireDevice(attacker) });
+		// The victim approves the phished auth_url; the secret lands in the victim's browser only.
+		const { flowId, s } = await appleCallback(started.body.auth_url, "0021.apple.subject");
+		expect(JSON.stringify(started.body)).not.toContain(s);
+
+		for (const body of [{}, { s: b64(new Uint8Array(32)) }, { s: b64(crypto.getRandomValues(new Uint8Array(32))) }]) {
+			const polled = await as("/v2/auth/apple/poll", { flow_id: flowId, device: wireDevice(attacker), ...body });
+			expect(polled.status).toBe(401);
+			expect(polled.body.error).toBe("invalid_credentials");
+			expect(polled.body).not.toHaveProperty("token");
+		}
+		expect((await as("/v2/auth/apple/poll", { flow_id: flowId, device: wireDevice(attacker), s: "short" })).status).toBe(400);
+		const sessions = await env.DB.prepare("SELECT count(*) AS n FROM sessions WHERE account_id = ?1").bind(victim.body.account_id).first();
+		expect(sessions).toEqual({ n: 1 });
+	});
+
+	it("a phished sign-up: an unclaimed Apple ticket can't make an account", async () => {
+		const attacker = newDevice();
+		const started = await as("/v2/auth/apple/start", { device: wireDevice(attacker) });
+		const { flowId } = await appleCallback(started.body.auth_url, "0022.apple.subject");
+		expect((await as("/v2/auth/apple/poll", { flow_id: flowId, device: wireDevice(attacker) })).status).toBe(401);
+		const made = await as("/v2/auth/social/signup", socialSignupBody(flowId, "squatter", attacker));
+		expect(made.body.error).toBe("flow_expired");
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_identities").first()).toEqual({ n: 0 });
+	});
+
+	it("a phished link: the victim's Apple ID never links to the attacker's account", async () => {
+		const attacker = await signUp("mallory", { env: penv(), now: T0 });
+		const started = await linkStart(attacker, "apple", passwordProof(attacker));
+		expect(started.status).toBe(200);
+		const { flowId } = await appleCallback(started.body.auth_url, "0023.apple.subject");
+		const polled = await as("/v2/auth/apple/poll", { flow_id: flowId, device: wireDevice(attacker.device) });
+		expect(polled.status).toBe(401);
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_identities").first()).toEqual({ n: 0 });
+	});
+
+	it("an Apple proof counts only once the app has claimed it with the secret", async () => {
+		const made = await socialAccount("apple", 24, "river");
+		const token = made.session.token as string;
+		const github = await as(`/v2/account/sign-in/identities/github/start`, { intent: "proof", device: wireDevice(made.device) }, { token });
+		expect(github.status).toBe(200);
+		const started = await as(`/v2/account/sign-in/identities/apple/start`, { intent: "proof", device: wireDevice(made.device) }, { token });
+		const { flowId, s } = await appleCallback(started.body.auth_url, "0024.apple.subject");
+		// Not polled with the secret: no proof.
+		const unclaimed = await as("/v2/account/sign-in/identities/apple/unlink", { proof: { kind: "provider", flow: flowId } }, { token });
+		expect(unclaimed.body.error).toBe("reauth_required");
+		const polled = await as("/v2/auth/apple/poll", { flow_id: flowId, s, device: wireDevice(made.device) });
+		expect(polled.body).toEqual({ kind: "proof", provider: "apple" });
+		const row = await env.DB.prepare("SELECT app_claimed_at, app_secret_hash FROM auth_flows WHERE id = ?1").bind(flowId).first<{ app_claimed_at: number; app_secret_hash: string }>();
+		expect(row?.app_claimed_at).toBe(T0);
+		expect(row?.app_secret_hash).toBe(createHash("sha256").update(Buffer.from(s, "base64url")).digest("hex"));
+	});
+
+	it("the app that holds the secret signs in, and can replay its poll with it", async () => {
+		const made = await socialAccount("apple", 25, "river");
+		const d = newDevice();
+		const signedIn = await apple(d, "0025.apple.subject", T0 + 60_000);
+		expect(signedIn.body).toMatchObject({ kind: "session", account_id: made.body.account_id });
+		const again = await as("/v2/auth/apple/poll", { flow_id: signedIn.flowId, s: signedIn.s, device: wireDevice(d) }, { now: T0 + 65_000 });
+		expect(again.status).toBe(200);
+		expect(again.body.token).toMatch(/^kanso_/);
 	});
 });
 
@@ -1143,8 +1216,8 @@ describe("unlinking", () => {
 				providers.github.answers.push({ access_token: PII.accessToken });
 				await as("/v2/auth/github/poll", { flow_id: started.body.flow_id, device: wireDevice(made.device) }, { now: T0 + 5000 });
 			} else {
-				await appleCallback(started.body.auth_url, "0013.apple.subject");
-				await as("/v2/auth/apple/poll", { flow_id: started.body.flow_id, device: wireDevice(made.device) });
+				const { s } = await appleCallback(started.body.auth_url, "0013.apple.subject");
+				await as("/v2/auth/apple/poll", { flow_id: started.body.flow_id, s, device: wireDevice(made.device) });
 			}
 			return started.body.flow_id as string;
 		};

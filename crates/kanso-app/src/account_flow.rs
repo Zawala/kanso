@@ -1097,14 +1097,23 @@ fn provider_finish(
                     }
                 }
             };
-            let flow = crate::provider_browser::apple_flow(&callback)
-                .filter(|flow| flow == &start.flow_id)
+            // Only the callback for the flow this app started counts; its secret
+            // proves to the Worker that this process finished it at Apple.
+            let callback = crate::provider_browser::apple_flow(&callback)
+                .filter(|callback| callback.flow == start.flow_id)
                 .ok_or(AccountError::ProviderDenied)?;
             loop {
                 if wait_cancelled_or_expired(&cancel, deadline)? {
                     return Ok(None);
                 }
-                let answer = kanso_sync::poll_provider(backend, server, provider, &flow, device)?;
+                let answer = kanso_sync::poll_provider(
+                    backend,
+                    server,
+                    provider,
+                    &callback.flow,
+                    Some(&callback.secret),
+                    device,
+                )?;
                 if wait_cancelled_or_expired(&cancel, deadline)? {
                     return Ok(None);
                 }
@@ -1170,8 +1179,14 @@ fn provider_finish(
                 if wait_cancelled_or_expired(&cancel, deadline)? {
                     return Ok(None);
                 }
-                let answer =
-                    kanso_sync::poll_provider(backend, server, provider, &start.flow_id, device)?;
+                let answer = kanso_sync::poll_provider(
+                    backend,
+                    server,
+                    provider,
+                    &start.flow_id,
+                    None,
+                    device,
+                )?;
                 if wait_cancelled_or_expired(&cancel, deadline)? {
                     return Ok(None);
                 }
