@@ -636,6 +636,7 @@ impl ApiError {
         let mut body = json!({ "error": code });
         let extras = match self {
             ApiError::Unauthorized { reason } => json!({"reason": reason.as_str()}),
+            ApiError::ReauthRequired => json!({"reason": "reauth"}),
             ApiError::SignupClosed { reason } => json!({"reason": reason.as_str()}),
             ApiError::QuotaExceeded { quota, used, limit } => {
                 json!({"quota": quota.as_str(), "used": used, "limit": limit})
