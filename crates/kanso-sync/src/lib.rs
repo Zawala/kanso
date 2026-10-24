@@ -15,9 +15,12 @@
 
 pub mod account;
 pub mod api;
+pub mod approval;
+pub mod approvals;
 pub mod binding;
 pub mod crypto;
 mod engine;
+pub mod events;
 mod http;
 pub mod keychain;
 pub mod lock;
@@ -29,6 +32,7 @@ pub mod site;
 pub mod username;
 mod verify;
 pub mod wire;
+pub mod ws;
 
 pub use account::{
     AccountError, DEFAULT_SERVER, DeviceInfo, PasswordChanged, Quota, Recovered, RotationError,
@@ -37,6 +41,14 @@ pub use account::{
     revoke_device, server_info, sign_in, sign_out, sign_up, usage,
 };
 pub use api::{Api, Backend, Route};
+pub use approval::{Approval, ApprovalKeys};
+pub use approvals::{
+    ApprovalRequest, Approved, LockedSession, OpenedRequest, PendingApproval, RequestState,
+    account_events_path, cancel_request, challenge_request, complete_request, decline_request,
+    finish_approval, finish_unlock, name_device, open_request, pending_approvals, poll_approval,
+    request_approval,
+};
+pub use events::{AccountEvent, EventError, EventSource, Signal};
 pub use binding::{
     BindError, Choice, DeviceIdentity, Flow, LocalLibrary, Machine, Plan, bind, device_identity,
     device_name, local_library, meta_keys, plan, unbind,
@@ -68,6 +80,9 @@ pub use wire::{ApiError, QuotaKind, SessionToken, SignOutReason, SignupClosedRea
 const _: fn() = || {
     fn send_sync<T: Send + Sync + ?Sized>() {}
     send_sync::<Session>();
+    send_sync::<LockedSession>();
+    send_sync::<ApprovalKeys>();
+    send_sync::<Approval>();
     send_sync::<dyn Backend>();
     send_sync::<HttpBackend>();
     send_sync::<MemoryServer>();
