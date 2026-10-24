@@ -330,6 +330,8 @@ export async function verifyRegistration(
 	// Attestation is "none" (the start asks for it); the statement is never
 	// read, so no certificate chain is validated.
 	if (!(object instanceof Map) || object.get("fmt") !== "none") return null;
+	const attStmt = object.get("attStmt");
+	if (!(attStmt instanceof Map) || attStmt.size !== 0) return null;
 	const authData = object.get("authData");
 	if (!(authData instanceof Uint8Array)) return null;
 	const data = parseAuthenticatorData(authData);

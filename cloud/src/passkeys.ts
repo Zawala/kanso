@@ -232,7 +232,13 @@ async function knownDevice(env: Env, accountId: string, device: NewDevice): Prom
 	return row !== null && (await proofMatches(device.proof, row.proof_hash));
 }
 
-function sessionAnswer(account: PasskeyAccount, token: string, evicted: SessionAnswer["evicted_device"], wrapped: string | null): Response {
+function sessionAnswer(
+	account: PasskeyAccount,
+	token: string,
+	evicted: SessionAnswer["evicted_device"],
+	wrapped: string | null,
+	status = 201,
+): Response {
 	return json(
 		{
 			kind: "session",
@@ -245,7 +251,7 @@ function sessionAnswer(account: PasskeyAccount, token: string, evicted: SessionA
 			passkey_wrapped_key: wrapped,
 			evicted_device: evicted,
 		} satisfies SessionAnswer,
-		201,
+		status,
 	);
 }
 
@@ -339,7 +345,7 @@ export const passkeyFinish = async (request: Request, env: Env, now: number, key
 	);
 	const outcome = sessionOutcome(results, 0);
 	if (!outcome.ok) return INVALID();
-	return sessionAnswer(found.account, token, outcome.evicted, found.wrapped_key);
+	return sessionAnswer(found.account, token, outcome.evicted, found.wrapped_key, 200);
 };
 
 // ---------------------------------------------------------- sign-up: start

@@ -107,21 +107,20 @@ function clientData(type: string, challenge: string, origin = ORIGIN, crossOrigi
 	return encoder.encode(JSON.stringify({ type, challenge, origin, ...(crossOrigin === undefined ? {} : { crossOrigin }) }));
 }
 
-function registration(credential: Credential, challenge: string, options: { origin?: string; flags?: number; signCount?: number } = {}) {
+function registration(
+	credential: Credential,
+	challenge: string,
+	options: { origin?: string; flags?: number; signCount?: number; attStmt?: Cbor | null } = {},
+) {
 	const data = authData({
 		flags: options.flags ?? 0x45,
 		signCount: options.signCount ?? 0,
 		credential,
 	});
-	const attestationObject = new Uint8Array(
-		cbor(
-			new Map<number | string, Cbor>([
-				["fmt", "none"],
-				["attStmt", new Map()],
-				["authData", data],
-			]),
-		),
-	);
+	const attStmt = options.attStmt === undefined ? new Map() : options.attStmt;
+	const object = new Map<number | string, Cbor>([["fmt", "none"], ["authData", data]]);
+	if (attStmt !== null) object.set("attStmt", attStmt);
+	const attestationObject = new Uint8Array(cbor(object));
 	return {
 		credential_id: base64url(credential.credentialId),
 		attestation_object: base64url(attestationObject),
@@ -295,6 +294,8 @@ describe("sign-up with a passkey", () => {
 		};
 		const cases = [
 			{ ...registration(credential, start.body.challenge), attestation_object: base64url(new Uint8Array([0xa0])) },
+			registration(credential, start.body.challenge, { attStmt: null }),
+			registration(credential, start.body.challenge, { attStmt: new Map([["unexpected", 1]]) }),
 			{ ...registration(credential, start.body.challenge), client_data_json: base64url(clientData("webauthn.get", start.body.challenge)) },
 			{ ...registration(credential, start.body.challenge, { origin: "https://evil.example" }) },
 			{ ...registration(credential, "another-challenge") },
@@ -362,7 +363,7 @@ describe("sign-in with a passkey", () => {
 			env: passportEnv(),
 			now: NOW,
 		});
-		expect(finish.status).toBe(201);
+		expect(finish.status).toBe(200);
 		expect(finish.body).toMatchObject({ kind: "session", username: "signin-user", passkey_wrapped_key: wrap });
 		expect(finish.body.wrapped_key).toBeUndefined();
 		const row = await env.DB.prepare("SELECT sign_count, last_used_at FROM account_passkeys WHERE credential_id = ?1")
@@ -563,7 +564,7 @@ describe("sign-in with a passkey", () => {
 		};
 		expect((await attempt(9)).status).toBe(401);
 		expect((await attempt(8)).status).toBe(401);
-		expect((await attempt(10)).status).toBe(201);
+		expect((await attempt(10)).status).toBe(200);
 	});
 
 	it("accepts a stored sign count of 0 without enforcing it", async () => {
@@ -593,7 +594,7 @@ describe("sign-in with a passkey", () => {
 				env: passportEnv(),
 				now: NOW,
 			});
-			expect(finish.status).toBe(201);
+			expect(finish.status).toBe(200);
 		}
 	});
 
@@ -624,7 +625,7 @@ describe("sign-in with a passkey", () => {
 			device: { id: other.id, proof: other.proof },
 		};
 		const first = await callJson("/v2/auth/passkey/finish", { json: body, env: passportEnv(), now: NOW });
-		expect(first.status).toBe(201);
+		expect(first.status).toBe(200);
 		const replay = await callJson("/v2/auth/passkey/finish", { json: body, env: passportEnv(), now: NOW });
 		expect(replay.status).toBe(400);
 		expect(replay.body.error).toBe("flow_expired");
