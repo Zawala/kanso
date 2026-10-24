@@ -17,6 +17,8 @@ packages=(
 	libxcb-randr0-dev libxcb-shape0-dev libxcb-shm0-dev libxcb-xfixes0-dev
 	libfontconfig-dev libfreetype-dev
 	libssl-dev libasound2-dev libdbus-1-dev libzstd-dev
+	# kanso-fido links libfido2 for Linux security keys.
+	libfido2-dev
 )
 
 missing=()
