@@ -48,7 +48,7 @@
 //   DELETE /v2/collab/notifications/<id> dismiss one                                  (session)
 //   GET    /j/<link_id>                 the page an invite link opens                 (public)
 //   POST   /v2/auth/apple/start         Sign in with Apple: the web flow's URL
-//   GET|POST /v2/auth/apple/callback    Apple's form_post (the one Origin exception)
+//   POST /v2/auth/apple/callback        Apple's form_post (the one Origin exception)
 //   POST   /v2/auth/apple/poll          the app's completion of an Apple flow
 //   POST   /v2/auth/google/start        Sign in with Google: loopback and PKCE
 //   POST   /v2/auth/google/finish       the loopback's code and the PKCE verifier
