@@ -4404,6 +4404,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kanso-fido"
+version = "0.8.4"
+dependencies = [
+ "aes 0.8.4",
+ "cbc",
+ "getrandom 0.4.3",
+ "hkdf 0.13.0",
+ "hmac 0.13.0",
+ "proptest",
+ "ring",
+ "sha2 0.11.1",
+ "thiserror 2.0.21",
+ "zeroize",
+]
+
+[[package]]
 name = "kanso-gallery"
 version = "0.8.4"
 dependencies = [
@@ -4576,6 +4592,19 @@ dependencies = [
  "rubato",
  "symphonia",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "kanso-webauthn"
+version = "0.8.4"
+dependencies = [
+ "block2 0.6.2",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "thiserror 2.0.21",
+ "windows 0.62.2",
+ "zeroize",
 ]
 
 [[package]]
