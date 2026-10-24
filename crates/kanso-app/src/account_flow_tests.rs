@@ -313,6 +313,15 @@ fn expired_and_cancelled_approval_can_restart_without_losing_the_locked_token(
         .iter()
         .find(|approval| approval.id == request_id)
         .expect("the replacement request is visible to the existing device");
+    // Only the device that challenged may decline, so the existing device
+    // answers first, as its sheet does on seeing the request.
+    kanso_sync::challenge_request(
+        server.as_ref(),
+        &source,
+        listed,
+        &kanso_sync::ApprovalKeys::generate(),
+    )
+    .unwrap();
     kanso_sync::decline_request(server.as_ref(), &source, &listed.id).unwrap();
     wait_until(cx, "the replacement request to be cancelled", |cx| {
         cx.read(|cx| {

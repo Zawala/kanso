@@ -411,6 +411,22 @@ describe("cancelling", () => {
 		}
 	});
 
+	it("only the requester or the device that challenged can cancel", async () => {
+		const third = await another(alice);
+		const nKey = ephemeral();
+		const id = (await approvalsAs(n).create(nKey.commit)).body.id;
+		// Before a challenge, no other device can cancel it: only the requester.
+		expect((await approvalsAs(a).cancel(id)).status).toBe(404);
+		expect((await approvalsAs(third).cancel(id)).status).toBe(404);
+		expect((await approvalsAs(n).poll(id)).body.status).toBe("waiting");
+		// After A challenges, a third device still can't; A can decline.
+		expect((await approvalsAs(a).challenge(id, ephemeral().text)).status).toBe(200);
+		expect((await approvalsAs(third).cancel(id)).status).toBe(404);
+		expect((await approvalsAs(n).poll(id)).body.status).toBe("challenged");
+		expect((await approvalsAs(a).cancel(id)).status).toBe(204);
+		expect((await approvalsAs(n).poll(id)).body.status).toBe("cancelled");
+	});
+
 	it("an approved request is deleted by its requester only", async () => {
 		const { id } = await named();
 		await approvalsAs(a).approve(id, wrappedKey());
@@ -461,7 +477,7 @@ describe("other devices", () => {
 		expect((await approvalsAs(first(solo)).create(ephemeral().commit)).body.other_devices).toBe(0);
 		const third = await another(alice);
 		expect((await approvalsAs(n).create(ephemeral().commit)).body.other_devices).toBe(2);
-		await approvalsAs(a).cancel((await approvalsAs(a).list()).body.approvals[0].id);
+		await approvalsAs(n).cancel((await approvalsAs(a).list()).body.approvals[0].id);
 		expect((await approvalsAs(third).create(ephemeral().commit)).body.other_devices).toBe(2);
 	});
 });
@@ -493,6 +509,24 @@ describe("limits", () => {
 			{ key: `approval-poll:${alice.creds.accountId}`, count: 1 },
 			{ key: `approval-respond:${alice.creds.accountId}`, count: 31 },
 		]);
+	});
+
+	it("approval-respond counts only answers to a request the account has", async () => {
+		const missing = base64url(random32());
+		for (let i = 0; i < 40; i++) {
+			expect((await approvalsAs(a).challenge(missing, ephemeral().text)).status).toBe(404);
+			expect((await approvalsAs(a).approve(missing, wrappedKey())).status).toBe(404);
+		}
+		// Another account's request is 404 and spends nothing either.
+		const bob = await signUp("bob");
+		const bobN = await another(bob);
+		const bobs = (await approvalsAs(bobN).create(ephemeral().commit)).body.id;
+		expect((await approvalsAs(a).challenge(bobs, ephemeral().text)).status).toBe(404);
+		const rows = await env.DB.prepare("SELECT key FROM limits WHERE key GLOB 'approval-respond:*'").all<{ key: string }>();
+		expect(rows.results).toEqual([]);
+		// A real request is still answerable.
+		const id = (await approvalsAs(n).create(ephemeral().commit)).body.id;
+		expect((await approvalsAs(a).challenge(id, ephemeral().text)).status).toBe(200);
 	});
 
 	it("account deletion takes the approval rows and counters with it", async () => {

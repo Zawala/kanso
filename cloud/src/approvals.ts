@@ -282,7 +282,13 @@ export function poll(id: string): Handler {
 
 // ------------------------------------------------------------------ answers
 
-/** The common start of the three answers: the ID, the count, the body and the row, or the response that ends the request. */
+/**
+ * The common start of the three answers: the ID, the body, the row, then the
+ * count, or the response that ends the request. `approval-respond` is counted
+ * only once the row is found for the session's account, so requests at IDs
+ * that don't exist (or belong to another account) don't spend the account's
+ * answers.
+ */
 async function answerStart(
 	id: string,
 	request: Request,
@@ -291,12 +297,12 @@ async function answerStart(
 	session: Session,
 ): Promise<{ row: ApprovalRow; body: Record<string, unknown> } | Response> {
 	if (!isFlowId(id)) return badRequest("Not an approval ID.");
-	const limited = await counted(env, "approval-respond", session, now);
-	if (limited) return limited;
 	const body = await readObject(request);
 	if (!body.ok) return body.response;
 	const row = await rowOf(env, session.accountId, id);
 	if (!row || row.cancelled_at !== null) return notFound();
+	const limited = await counted(env, "approval-respond", session, now);
+	if (limited) return limited;
 	return { row, body: body.value };
 }
 
@@ -406,8 +412,9 @@ async function settled(env: Env, session: Session, id: string, now: number, same
 // ------------------------------------------------------------------- cancel
 
 /**
- * `DELETE /v2/account/sign-in/approvals/<id>`: 204, by any device of the
- * account (the requester cancels, an approver declines). It publishes
+ * `DELETE /v2/account/sign-in/approvals/<id>`: 204, by the requester (it
+ * cancels) or the device that challenged (it declines); 404 for any other
+ * device of the account, which can't end a request it isn't part of. It publishes
  * `approval.cancelled`, and the requester's poll says `cancelled`. A
  * request already cancelled is 204 again. An approved one is deleted by
  * its requester once it holds the key; anyone else gets 409 `approval_used`.
@@ -417,12 +424,9 @@ export function cancel(id: string): Handler {
 		if (!isFlowId(id)) return badRequest("Not an approval ID.");
 		const row = await rowOf(env, session.accountId, id);
 		if (!row) return notFound();
-		// The requester, a device that could still challenge, or the one that
-		// challenged may cancel or decline; once answered, only its requester
-		// may delete it (below).
-		if (row.device_id !== session.deviceId && row.approver_device_id !== null && row.approver_device_id !== session.deviceId) {
-			return notFound();
-		}
+		// Only the requester or the device that challenged may cancel or
+		// decline; once answered, only its requester may delete it (below).
+		if (row.device_id !== session.deviceId && row.approver_device_id !== session.deviceId) return notFound();
 		if (row.cancelled_at !== null) return new Response(null, { status: 204 });
 		if (row.completed_at !== null) {
 			if (row.device_id !== session.deviceId) return approvalUsed();

@@ -336,8 +336,16 @@ fn the_request_is_single_use_and_either_side_can_cancel() {
     let keys_new = ApprovalKeys::generate();
     let request = request_approval(&f.server, &f.locked, &keys_new).expect("ask");
 
-    // The approver declines: the requester's poll says cancelled.
+    // The approver, which challenged on seeing the request, declines: the
+    // requester's poll says cancelled.
     let pending = pending_approvals(&f.server, &f.alice.session).expect("list");
+    challenge_request(
+        &f.server,
+        &f.alice.session,
+        &pending[0],
+        &ApprovalKeys::generate(),
+    )
+    .expect("challenge");
     decline_request(&f.server, &f.alice.session, &pending[0].id).expect("decline");
     assert_eq!(
         poll_approval(&f.server, &f.locked, &request).expect("poll"),

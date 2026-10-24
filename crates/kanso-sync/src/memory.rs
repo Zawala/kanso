@@ -2261,24 +2261,14 @@ impl ServerState {
         now: i64,
     ) -> Result<(), ApiError> {
         let caller = self.authenticate(token, now, false)?;
-        self.count(
-            Rule::ApprovalRespond,
-            &format!("approval-respond:{}", caller.account_id),
-            now,
-            1,
-            30,
-        )?;
-        if !is_approval_id(id) || key32(&r.epk).is_none() {
+        if !is_approval_id(id) {
             return Err(ApiError::BadRequest);
         }
-        let row = self
-            .approvals
-            .iter_mut()
-            .find(|a| a.id == id && a.account_id == caller.account_id)
-            .ok_or(ApiError::NotFound)?;
-        if row.cancelled_at.is_some() {
-            return Err(ApiError::NotFound);
+        let ix = self.respond_row(&caller.account_id, id, now)?;
+        if key32(&r.epk).is_none() {
+            return Err(ApiError::BadRequest);
         }
+        let row = &mut self.approvals[ix];
         if row.device_id == caller.device_id {
             return Err(ApiError::SelfApproval);
         }
@@ -2309,25 +2299,15 @@ impl ServerState {
         now: i64,
     ) -> Result<(), ApiError> {
         let caller = self.authenticate(token, now, false)?;
-        self.count(
-            Rule::ApprovalRespond,
-            &format!("approval-respond:{}", caller.account_id),
-            now,
-            1,
-            30,
-        )?;
         if !is_approval_id(id) {
             return Err(ApiError::BadRequest);
         }
+        let ix = self.respond_row(&caller.account_id, id, now)?;
         let epk = key32(&r.epk).ok_or(ApiError::BadRequest)?;
         if !is_sealed_name(&r.sealed_name) {
             return Err(ApiError::BadRequest);
         }
-        let row = self
-            .approvals
-            .iter_mut()
-            .find(|a| a.id == id && a.account_id == caller.account_id)
-            .ok_or(ApiError::NotFound)?;
+        let row = &mut self.approvals[ix];
         if row.cancelled_at.is_some() {
             return Err(ApiError::NotFound);
         }
@@ -2366,21 +2346,14 @@ impl ServerState {
         now: i64,
     ) -> Result<(), ApiError> {
         let caller = self.authenticate(token, now, false)?;
-        self.count(
-            Rule::ApprovalRespond,
-            &format!("approval-respond:{}", caller.account_id),
-            now,
-            1,
-            30,
-        )?;
-        if !is_approval_id(id) || !is_wrap(&r.wrapped_key) {
+        if !is_approval_id(id) {
             return Err(ApiError::BadRequest);
         }
-        let row = self
-            .approvals
-            .iter_mut()
-            .find(|a| a.id == id && a.account_id == caller.account_id)
-            .ok_or(ApiError::NotFound)?;
+        let ix = self.respond_row(&caller.account_id, id, now)?;
+        if !is_wrap(&r.wrapped_key) {
+            return Err(ApiError::BadRequest);
+        }
+        let row = &mut self.approvals[ix];
         if row.cancelled_at.is_some() {
             return Err(ApiError::NotFound);
         }
@@ -2407,6 +2380,25 @@ impl ServerState {
         }
     }
 
+    /// The account's live (not cancelled) request `id` for an answer, then
+    /// the `approval-respond` count, as the Worker: an answer to a request
+    /// the account doesn't have spends nothing.
+    fn respond_row(&mut self, account_id: &str, id: &str, now: i64) -> Result<usize, ApiError> {
+        let ix = self
+            .approvals
+            .iter()
+            .position(|a| a.id == id && a.account_id == account_id && a.cancelled_at.is_none())
+            .ok_or(ApiError::NotFound)?;
+        self.count(
+            Rule::ApprovalRespond,
+            &format!("approval-respond:{account_id}"),
+            now,
+            1,
+            30,
+        )?;
+        Ok(ix)
+    }
+
     fn cancel_approval(
         &mut self,
         token: &SessionToken,
@@ -2425,6 +2417,12 @@ impl ServerState {
             return Err(ApiError::NotFound);
         };
         let row = &mut self.approvals[ix];
+        // Only the requester or the device that challenged, as the Worker.
+        let participant = row.device_id == caller.device_id
+            || row.approver_device_id.as_deref() == Some(caller.device_id.as_str());
+        if !participant {
+            return Err(ApiError::NotFound);
+        }
         if row.cancelled_at.is_some() {
             return Ok(());
         }
@@ -2434,12 +2432,6 @@ impl ServerState {
             }
             self.approvals.remove(ix);
             return Ok(());
-        }
-        let participant = row.device_id == caller.device_id
-            || row.approver_device_id.is_none()
-            || row.approver_device_id.as_deref() == Some(caller.device_id.as_str());
-        if !participant {
-            return Err(ApiError::NotFound);
         }
         row.cancelled_at = Some(now);
         Ok(())
