@@ -79,6 +79,8 @@ pub struct WaitingState {
     pub code: Option<String>,
     pub started_ms: i64,
     pub other_devices: usize,
+    /// False until the create answer says how many other devices could answer.
+    pub count_known: bool,
     pub recovery_offered: bool,
     /// The server's request ID, once it exists.
     pub request_id: Option<String>,
@@ -94,15 +96,38 @@ impl WaitingState {
             code: None,
             started_ms,
             other_devices,
+            count_known: true,
             recovery_offered: other_devices == 0,
             request_id: None,
             cancel: Arc::new(AtomicBool::new(false)),
         }
     }
 
+    /// The state while the create request is in flight. The count is not
+    /// known yet, so recovery is never offered early; `know_devices` settles
+    /// it when the create answer arrives.
+    pub fn requesting(started_ms: i64) -> WaitingState {
+        let mut state = WaitingState::new(0, started_ms);
+        state.count_known = false;
+        state.recovery_offered = false;
+        state
+    }
+
+    /// The create answer's count. With no other device the recovery key is
+    /// offered at once; otherwise only after two minutes.
+    pub fn know_devices(&mut self, other_devices: usize, now_ms: i64) {
+        self.other_devices = other_devices;
+        self.count_known = true;
+        let elapsed = now_ms.saturating_sub(self.started_ms);
+        self.recovery_offered = other_devices == 0 || elapsed >= RECOVERY_AFTER_MS;
+    }
+
     /// The recovery key is offered at once with no other device, otherwise
-    /// after two minutes.
+    /// after two minutes. Before the count is known, nothing is offered.
     pub fn offer_recovery(&mut self, now_ms: i64) {
+        if !self.count_known {
+            return;
+        }
         let elapsed = now_ms.saturating_sub(self.started_ms);
         self.recovery_offered |= self.other_devices == 0 || elapsed >= RECOVERY_AFTER_MS;
     }
@@ -213,7 +238,9 @@ impl ApprovalSheet {
                 self.challenged.retain(|id| ids.contains(id));
                 let mut opened_now = Vec::new();
                 let mut error = None;
-                for pending in &self.pending {
+                // Only the oldest request is on screen. A second one queues
+                // behind it; its key is generated when it reaches the front.
+                if let Some(pending) = self.pending.first().cloned() {
                     let keys = self
                         .keys
                         .entry(pending.id.clone())
@@ -222,32 +249,39 @@ impl ApprovalSheet {
                     // stored; otherwise the name hasn't arrived yet.
                     let (Some(_epk), Some(sealed)) = (pending.epk, pending.sealed_name.as_deref())
                     else {
-                        continue;
-                    };
-                    if self.opened.contains_key(&pending.id) {
-                        continue;
-                    }
-                    if pending
-                        .approver_epk
-                        .is_some_and(|stored| stored != keys.epk())
-                    {
-                        error = Some(words::APPROVAL_CHANGED.into());
-                        continue;
-                    }
-                    match open_request(&self.session, pending, keys) {
-                        Ok(Some(opened)) => {
-                            if opened.name != sealed
-                                || pending.epk != Some(opened.approval.epk_new())
-                            {
-                                error = Some(words::APPROVAL_CHANGED.into());
-                            } else {
-                                opened_now.push((pending.id.clone(), opened));
-                            }
+                        if pending.approver_epk.is_none() && !self.challenged.contains(&pending.id)
+                        {
+                            self.challenged.insert(pending.id.clone());
+                            self.challenge(pending.id.clone(), cx);
                         }
-                        Ok(None) => {}
-                        Err(err) => {
-                            error =
-                                Some(words::error_words(&err, words::ErrorContext::Account).into())
+                        cx.notify();
+                        return;
+                    };
+                    if !self.opened.contains_key(&pending.id) {
+                        if pending
+                            .approver_epk
+                            .is_some_and(|stored| stored != keys.epk())
+                        {
+                            error = Some(words::APPROVAL_CHANGED.into());
+                        } else {
+                            match open_request(&self.session, &pending, keys) {
+                                Ok(Some(opened)) => {
+                                    if opened.name != sealed
+                                        || pending.epk != Some(opened.approval.epk_new())
+                                    {
+                                        error = Some(words::APPROVAL_CHANGED.into());
+                                    } else {
+                                        opened_now.push((pending.id.clone(), opened));
+                                    }
+                                }
+                                Ok(None) => {}
+                                Err(err) => {
+                                    error = Some(
+                                        words::error_words(&err, words::ErrorContext::Account)
+                                            .into(),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -261,9 +295,10 @@ impl ApprovalSheet {
                 // device's key once, then wait for the requester's name.
                 let to_challenge: Vec<String> = self
                     .pending
-                    .iter()
+                    .first()
                     .filter(|p| p.approver_epk.is_none() && !self.challenged.contains(&p.id))
                     .map(|p| p.id.clone())
+                    .into_iter()
                     .collect();
                 for id in to_challenge {
                     self.challenged.insert(id.clone());
@@ -343,6 +378,8 @@ impl ApprovalSheet {
                         this.pending.retain(|p| p.id != id);
                         this.keys.remove(&id);
                         this.challenged.remove(&id);
+                        // The next queued request becomes the sheet's front.
+                        this.reload(cx);
                     }
                     Err(err) => {
                         this.opened.insert(id, opened);
@@ -382,6 +419,8 @@ impl ApprovalSheet {
                         this.opened.remove(&id);
                         this.keys.remove(&id);
                         this.challenged.remove(&id);
+                        // The next queued request becomes the sheet's front.
+                        this.reload(cx);
                     }
                     Err(err) => {
                         this.error =
@@ -490,15 +529,30 @@ impl ApprovalSheet {
 impl Render for ApprovalSheet {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
+        // One request is open at a time. The rest queue behind it, and the
+        // sheet advances only after the front is approved or declined.
         let rows: Vec<AnyElement> = self
             .pending
-            .iter()
-            .enumerate()
-            .map(|(ix, pending)| self.render_request(ix, pending, cx))
+            .first()
+            .map(|pending| self.render_request(0, pending, cx))
+            .into_iter()
             .collect();
+        let queued = self.pending.len().saturating_sub(1);
         v_flex()
             .w_full()
             .gap(px(8.))
+            .when(queued > 0, |el| {
+                el.child(
+                    div()
+                        .text_size(px(12.5))
+                        .text_color(colors.text_secondary)
+                        .child(if queued == 1 {
+                            "1 more request is waiting.".to_owned()
+                        } else {
+                            format!("{queued} more requests are waiting.")
+                        }),
+                )
+            })
             .when(rows.is_empty(), |el| {
                 el.child(
                     div()
@@ -775,6 +829,24 @@ mod tests {
         state.offer_recovery(1_000 + RECOVERY_AFTER_MS - 1);
         assert!(!state.recovery_offered);
         state.offer_recovery(1_000 + RECOVERY_AFTER_MS);
+        assert!(state.recovery_offered);
+    }
+
+    #[test]
+    fn recovery_waits_for_the_create_answer_before_it_can_be_offered() {
+        let mut state = WaitingState::requesting(1_000);
+        assert!(!state.count_known);
+        assert!(!state.recovery_offered);
+        state.offer_recovery(1_000 + RECOVERY_AFTER_MS);
+        assert!(!state.recovery_offered);
+        state.know_devices(1, 1_000);
+        assert!(state.count_known);
+        assert!(!state.recovery_offered);
+        state.offer_recovery(1_000 + RECOVERY_AFTER_MS);
+        assert!(state.recovery_offered);
+
+        let mut state = WaitingState::requesting(1_000);
+        state.know_devices(0, 1_000);
         assert!(state.recovery_offered);
     }
 

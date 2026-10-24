@@ -12,7 +12,7 @@
 
 use std::fmt;
 
-use crate::account::{AccountError, Session, SignedIn, checked_server, retrying};
+use crate::account::{AccountError, DeviceInfo, Session, SignedIn, checked_server, retrying};
 use crate::api::{
     ApprovalApproveRequest, ApprovalChallengeRequest, ApprovalCreateRequest, ApprovalNameRequest,
     ApprovalPoll, ApprovalRow, Backend, DeviceNameRequest,
@@ -44,6 +44,11 @@ pub struct LockedSession {
     /// The data key's ID the server holds, checked after unwrapping.
     pub key_id: String,
     pub epoch: String,
+    /// The password wrap returned by a sign-in, when the account has a password.
+    /// It is ciphertext; the pending item may use it to offer password unlock.
+    pub wrapped_key: Option<String>,
+    /// A device the sign-in signed out to make room, for the notice after unlock.
+    pub evicted: Option<DeviceInfo>,
     token: SessionToken,
     library_id: Option<String>,
 }
@@ -61,6 +66,8 @@ impl LockedSession {
         token: SessionToken,
         key_id: String,
         epoch: String,
+        wrapped_key: Option<String>,
+        evicted: Option<DeviceInfo>,
     ) -> LockedSession {
         LockedSession {
             server,
@@ -70,6 +77,8 @@ impl LockedSession {
             device_id,
             key_id,
             epoch,
+            wrapped_key,
+            evicted,
             token,
             library_id: None,
         }
@@ -98,6 +107,11 @@ impl fmt::Debug for LockedSession {
             .field("username", &self.username)
             .field("device_id", &self.device_id)
             .field("key_id", &self.key_id)
+            .field(
+                "wrapped_key",
+                &self.wrapped_key.as_ref().map(|_| "[redacted]"),
+            )
+            .field("evicted", &self.evicted.as_ref().map(|device| &device.id))
             .field("library_id", &self.library_id)
             .finish_non_exhaustive()
     }

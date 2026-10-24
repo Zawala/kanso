@@ -41,6 +41,8 @@ fn locked_from(session: &kanso_sync::Session) -> LockedSession {
         token_of(session),
         session.key_id(),
         "0".to_owned(),
+        None,
+        None,
     )
 }
 

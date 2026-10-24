@@ -351,6 +351,21 @@ describe("cancelling", () => {
 		]);
 		socket.ws.close();
 	});
+
+	it("concurrent creates still leave at most three pending", async () => {
+		await Promise.all(
+			Array.from({ length: 6 }, () => approvalsAs(n, { now: clock.now }).create(ephemeral().commit)),
+		);
+		const counted = await env.DB.prepare(
+			`SELECT count(*) AS n FROM device_approvals d JOIN accounts a ON a.id = d.account_id
+  WHERE a.username = ?1 AND d.cancelled_at IS NULL AND d.completed_at IS NULL AND d.expires_at > ?2`,
+		)
+			.bind("alice", clock.now)
+			.first<{ n: number }>();
+		expect(counted?.n).toBeLessThanOrEqual(3);
+		const pending = (await approvalsAs(a, { now: clock.now }).list()).body.approvals;
+		expect(pending.length).toBeLessThanOrEqual(3);
+	});
 });
 
 describe("other devices", () => {

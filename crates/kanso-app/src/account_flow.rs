@@ -1695,7 +1695,7 @@ pub fn wait_for_device_approval(locked: LockedSession, device: DeviceIdentity, c
         return;
     }
     let started = Clock::now_ms(cx);
-    let mut state = crate::device_approval::WaitingState::new(0, started);
+    let mut state = crate::device_approval::WaitingState::requesting(started);
     state.phase = crate::device_approval::WaitPhase::Requesting;
     let cancel = state.cancel.clone();
     cx.global_mut::<Services>().approval.waiting = Some(state);
@@ -1834,8 +1834,7 @@ pub fn wait_for_device_approval(locked: LockedSession, device: DeviceIdentity, c
                 };
                 match update {
                     WaitUpdate::OtherDevices(count) => {
-                        waiting.other_devices = count;
-                        waiting.recovery_offered |= count == 0;
+                        waiting.know_devices(count, now);
                         if count == 0 {
                             waiting.phase = crate::device_approval::WaitPhase::NoDevices;
                         }

@@ -126,32 +126,34 @@ export const create = withSession(async (request, env, now, session) => {
 	if (!body.ok) return body.response;
 	const commit = body.value.commit;
 	if (!key32(commit)) return badRequest("commit must be 32 bytes of canonical base64url.");
-	const { results: pending } = await env.DB.prepare(
-		`SELECT id FROM device_approvals WHERE account_id = ?1 AND cancelled_at IS NULL AND completed_at IS NULL AND expires_at > ?2
-  ORDER BY created_at, id`,
-	)
-		.bind(session.accountId, now)
-		.all<{ id: string }>();
-	const oldest = pending.slice(0, Math.max(0, pending.length - (MAX_PENDING_APPROVALS - 1))).map((row) => row.id);
 	const id = base64url(crypto.getRandomValues(new Uint8Array(32)));
 	const expiresAt = now + APPROVAL_TTL_MS;
+	// Insert, then cancel every active request outside the newest two others. The
+	// insert and the cancellation run in one D1 batch, so two concurrent creates
+	// cannot both observe the same count and leave four rows pending. The new row
+	// is excluded from cancellation; ties on created_at are settled by ID.
 	const results = await env.DB.batch([
-		...oldest.map((old) =>
-			env.DB.prepare(
-				"UPDATE device_approvals SET cancelled_at = ?3 WHERE id = ?1 AND account_id = ?2 AND cancelled_at IS NULL AND completed_at IS NULL RETURNING id",
-			).bind(old, session.accountId, now),
-		),
 		env.DB.prepare(
 			`INSERT INTO device_approvals (id, account_id, device_id, commit_hash, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
 		).bind(id, session.accountId, session.deviceId, commit, now, expiresAt),
+		env.DB.prepare(
+			`UPDATE device_approvals SET cancelled_at = ?2
+  WHERE account_id = ?1 AND cancelled_at IS NULL AND completed_at IS NULL AND expires_at > ?2 AND id != ?3
+    AND id NOT IN (
+      SELECT id FROM device_approvals
+      WHERE account_id = ?1 AND cancelled_at IS NULL AND completed_at IS NULL AND expires_at > ?2 AND id != ?3
+      ORDER BY created_at DESC, id DESC LIMIT ?4
+    )
+  RETURNING id`,
+		).bind(session.accountId, now, id, MAX_PENDING_APPROVALS - 1),
 		env.DB.prepare("SELECT count(*) AS n FROM sessions WHERE account_id = ?1 AND revoked_at IS NULL AND device_id != ?2").bind(
 			session.accountId,
 			session.deviceId,
 		),
 	]);
-	const others = (results[results.length - 1].results[0] as { n: number } | undefined)?.n ?? 0;
-	for (const [i, old] of oldest.entries()) {
-		if (results[i].results.length === 1) await publish(env, session.accountId, "approval.cancelled", old);
+	const others = (results[2].results[0] as { n: number } | undefined)?.n ?? 0;
+	for (const row of results[1].results as { id: string }[]) {
+		await publish(env, session.accountId, "approval.cancelled", row.id);
 	}
 	await publish(env, session.accountId, "approval.created", id);
 	return json({ id, expires_at: expiresAt, other_devices: others });
