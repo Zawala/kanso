@@ -4407,10 +4407,7 @@ dependencies = [
 name = "kanso-fido"
 version = "0.8.4"
 dependencies = [
- "aes 0.8.4",
- "cbc",
- "getrandom 0.4.3",
- "hkdf 0.13.0",
+ "base64 0.22.1",
  "hmac 0.13.0",
  "proptest",
  "ring",
@@ -4598,6 +4595,7 @@ dependencies = [
 name = "kanso-webauthn"
 version = "0.8.4"
 dependencies = [
+ "base64 0.22.1",
  "block2 0.6.2",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",

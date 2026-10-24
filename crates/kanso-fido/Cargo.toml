@@ -1,24 +1,18 @@
 [package]
 name = "kanso-fido"
-description = "A small pure-Rust CTAP2 client for FIDO2 security keys over USB HID (Linux hidraw), with hmac-secret and PIN/UV auth protocols 1 and 2, and a software authenticator for tests."
+description = "The Linux CTAP2 client for FIDO2 security keys over USB HID and NFC: libfido2 bindings, the hmac-secret to PRF mapping, and WebAuthn-shaped results. No platform passkeys."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-# AES-256-CBC for the PIN/UV auth protocols' shared secret.
-aes.workspace = true
-cbc.workspace = true
-getrandom.workspace = true
-hkdf.workspace = true
-hmac.workspace = true
-# P-256 key agreement (ECDH) with the authenticator, and the software
-# authenticator's ES256 signatures. Already built for rustls.
-ring = "0.17"
+base64.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+hmac.workspace = true
 proptest.workspace = true
+ring = "0.17"

@@ -84,7 +84,7 @@ export function decodeCbor(bytes: Uint8Array, at = 0, depth = 0): { value: Cbor;
 			return { value: bytes.slice(offset, offset + argument), end: offset + argument };
 		case 3: {
 			need(argument);
-			const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(offset, offset + argument));
+			const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes.subarray(offset, offset + argument));
 			return { value: text, end: offset + argument };
 		}
 		case 4: {
@@ -279,7 +279,7 @@ export interface Expected {
 function checkClientData(clientDataJson: Uint8Array, type: "webauthn.create" | "webauthn.get", expected: Expected): boolean {
 	let data: unknown;
 	try {
-		data = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(clientDataJson));
+		data = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(clientDataJson));
 	} catch {
 		return false;
 	}
@@ -327,7 +327,9 @@ export async function verifyRegistration(
 ): Promise<Registration | null> {
 	if (!checkClientData(input.clientDataJson, "webauthn.create", expected)) return null;
 	const object = decodeCborExactly(input.attestationObject);
-	if (!(object instanceof Map) || typeof object.get("fmt") !== "string") return null;
+	// Attestation is "none" (the start asks for it); the statement is never
+	// read, so no certificate chain is validated.
+	if (!(object instanceof Map) || object.get("fmt") !== "none") return null;
 	const authData = object.get("authData");
 	if (!(authData instanceof Uint8Array)) return null;
 	const data = parseAuthenticatorData(authData);
