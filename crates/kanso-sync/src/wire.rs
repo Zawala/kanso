@@ -123,6 +123,12 @@ pub fn is_sealed_name(sealed: &str) -> bool {
     is_sealed(sealed, MIN_SEALED_LEN, 400)
 }
 
+/// An approval request's ID, or a value of the same shape (a commitment, an
+/// ephemeral key): 32 bytes as 43 base64url characters.
+pub fn is_approval_id(id: &str) -> bool {
+    id.len() == 43 && is_base64url(id)
+}
+
 // ---------------------------------------------------------------------------
 // Documents, push results and pages
 // ---------------------------------------------------------------------------
@@ -460,6 +466,9 @@ pub enum ApiError {
     /// 403 `provider_denied`: the person declined at the provider.
     #[error("403 provider_denied")]
     ProviderDenied,
+    /// 403: a device trying to approve its own request.
+    #[error("403 self_approval")]
+    SelfApproval,
     /// 404: unknown route, file, or well-formed but unknown device.
     #[error("404 not_found")]
     NotFound,
@@ -482,6 +491,13 @@ pub enum ApiError {
     /// 409 `credential_exists`.
     #[error("409 credential_exists")]
     CredentialExists,
+    /// 409: an approval request another device (or another key) already
+    /// answered.
+    #[error("409 approval_used")]
+    ApprovalUsed,
+    /// 409: an approval request past its five minutes.
+    #[error("409 approval_expired")]
+    ApprovalExpired,
     #[error("413 too_large")]
     TooLarge,
     /// `used` is the usage before this request; for `server` it is the
@@ -574,7 +590,8 @@ impl ApiError {
             | ApiError::AccountDisabled
             | ApiError::SignupClosed { .. }
             | ApiError::ProviderDisabled
-            | ApiError::ProviderDenied => 403,
+            | ApiError::ProviderDenied
+            | ApiError::SelfApproval => 403,
             ApiError::NotFound => 404,
             ApiError::MethodNotAllowed => 405,
             ApiError::UsernameTaken
@@ -582,7 +599,9 @@ impl ApiError {
             | ApiError::IdentityTaken
             | ApiError::LastMethod
             | ApiError::AlreadyHasPassword
-            | ApiError::CredentialExists => 409,
+            | ApiError::CredentialExists
+            | ApiError::ApprovalUsed
+            | ApiError::ApprovalExpired => 409,
             ApiError::TooLarge | ApiError::QuotaExceeded { .. } => 413,
             ApiError::UnsupportedMediaType => 415,
             ApiError::RateLimited { .. } => 429,
@@ -616,12 +635,15 @@ impl ApiError {
             ApiError::ForbiddenOrigin => "forbidden_origin",
             ApiError::AccountDisabled => "account_disabled",
             ApiError::SignupClosed { .. } => "signup_closed",
+            ApiError::SelfApproval => "self_approval",
             ApiError::NotFound => "not_found",
             ApiError::MethodNotAllowed => "method_not_allowed",
             ApiError::UsernameTaken => "username_taken",
             ApiError::AccountIdTaken => "account_id_taken",
             ApiError::LastMethod => "last_method",
             ApiError::CredentialExists => "credential_exists",
+            ApiError::ApprovalUsed => "approval_used",
+            ApiError::ApprovalExpired => "approval_expired",
             ApiError::TooLarge => "too_large",
             ApiError::QuotaExceeded { .. } => "quota_exceeded",
             ApiError::UnsupportedMediaType => "unsupported_media_type",
@@ -705,6 +727,9 @@ impl ApiError {
             "account_id_taken" => ApiError::AccountIdTaken,
             "last_method" => ApiError::LastMethod,
             "credential_exists" => ApiError::CredentialExists,
+            "self_approval" => ApiError::SelfApproval,
+            "approval_used" => ApiError::ApprovalUsed,
+            "approval_expired" => ApiError::ApprovalExpired,
             "too_large" => ApiError::TooLarge,
             "quota_exceeded" => ApiError::QuotaExceeded {
                 quota: QuotaKind::ALL
@@ -807,6 +832,9 @@ mod tests {
             ApiError::AccountIdTaken,
             ApiError::LastMethod,
             ApiError::CredentialExists,
+            ApiError::SelfApproval,
+            ApiError::ApprovalUsed,
+            ApiError::ApprovalExpired,
             ApiError::TooLarge,
             ApiError::UnsupportedMediaType,
             ApiError::RateLimited {

@@ -32,7 +32,10 @@ export type Rule =
 	| "join-account"
 	| "notify-account"
 	| "proof-account"
-	| "provider-poll";
+	| "provider-poll"
+	| "approval-create"
+	| "approval-poll"
+	| "approval-respond";
 
 /**
  * Window and maximum of each rule. The two per-account daily rules read their
@@ -53,6 +56,14 @@ export type Rule =
  * provider flow started for a link or a proof, per account; `provider-poll` every
  * GitHub poll and Apple callback or poll, per flow (its key is a keyed hash of the
  * flow ID, like an IP), 20 a minute.
+ *
+ * Device approval (design: Kanso accounts spec, revision 3 › Unlocking a new
+ * device) counts per account: `approval-create` every new request,
+ * `approval-poll` only the requester's poll of its own request (three
+ * requests polled every 2 s for five minutes, plus headroom), and
+ * `approval-respond` every challenge, name and approval answer. The
+ * approver's list GET isn't counted: it runs on an event or a launch, never
+ * on a timer.
  */
 export const RULES: Record<Rule, { window: number; max: number | null }> = {
 	"signup-ip": { window: HOUR, max: 10 },
@@ -69,6 +80,9 @@ export const RULES: Record<Rule, { window: number; max: number | null }> = {
 	"join-account": { window: HOUR, max: 20 },
 	"notify-account": { window: DAY, max: 500 },
 	"provider-poll": { window: 15 * 60_000, max: 300 },
+	"approval-create": { window: HOUR, max: 10 },
+	"approval-poll": { window: HOUR, max: 900 },
+	"approval-respond": { window: HOUR, max: 30 },
 };
 
 /**

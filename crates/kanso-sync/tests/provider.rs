@@ -92,6 +92,7 @@ impl Api for StubApi {
             protocol: 2,
             signup: SignupState::Open,
             auth: self.auth.clone(),
+            events: None,
         })
     }
 

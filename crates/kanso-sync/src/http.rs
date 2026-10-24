@@ -9,6 +9,7 @@ use serde::de::DeserializeOwned;
 use ureq::Agent;
 use zeroize::Zeroizing;
 
+use crate::account::Session;
 use crate::api::{
     AccountPasskeysFinishRequest, AccountPasskeysFinishResponse, AccountPasskeysStartRequest,
     AccountPasskeysStartResponse, AccountResponse, AccountSignInMethodsResponse, Api, Backend,
@@ -20,7 +21,13 @@ use crate::api::{
     RecoverFinishRequest, RecoverStartRequest, RecoverStartResponse, RecoveryKeyRequest,
     RecoveryKeyResponse, Route, SessionResponse, SignupRequest,
 };
+use crate::api::{
+    ApprovalApproveRequest, ApprovalChallengeRequest, ApprovalCreateRequest, ApprovalCreated,
+    ApprovalList, ApprovalNameRequest, ApprovalPoll,
+};
+use crate::binding::DeviceIdentity;
 use crate::crypto::{KdfParams, sha256_hex};
+use crate::events::{EventError, EventSource, EventStream};
 use crate::provider::{
     GoogleFinishRequest, GoogleStartRequest, IdentityStartRequest, LinkOutcome, MethodsReply,
     Provider, ProviderPollRequest, ProviderSession, ProviderStart, ProviderStartRequest,
@@ -56,6 +63,25 @@ impl Backend for HttpBackend {
 
     fn kdf_default(&self) -> KdfParams {
         KdfParams::DEFAULT
+    }
+
+    fn events(
+        &self,
+        session: &Session,
+        device: &DeviceIdentity,
+        path: &str,
+    ) -> Result<Box<dyn EventSource>, EventError> {
+        let proof = device
+            .device_proof(&session.origin, &session.account_id)
+            .to_base64url();
+        let stream = EventStream::connect(
+            &session.server,
+            path,
+            &session.authorization(),
+            &session.device_id,
+            &proof,
+        )?;
+        Ok(Box::new(stream))
     }
 }
 
@@ -96,7 +122,14 @@ fn timeout(route: Route) -> Duration {
         | Route::SocialSignup
         | Route::SignInMethods
         | Route::IdentityStart
-        | Route::IdentityUnlink => Duration::from_secs(30),
+        | Route::IdentityUnlink
+        | Route::ApprovalCreate
+        | Route::ApprovalList
+        | Route::ApprovalPoll
+        | Route::ApprovalChallenge
+        | Route::ApprovalName
+        | Route::ApprovalApprove
+        | Route::ApprovalCancel => Duration::from_secs(30),
     }
 }
 
@@ -708,6 +741,93 @@ impl Api for HttpApi {
         )
     }
 
+    fn create_approval(
+        &self,
+        token: &SessionToken,
+        request: &ApprovalCreateRequest,
+    ) -> Result<ApprovalCreated, ApiError> {
+        self.json(
+            Route::ApprovalCreate,
+            "/v2/account/sign-in/approvals",
+            Some(token),
+            Some(request),
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn approvals(&self, token: &SessionToken) -> Result<ApprovalList, ApiError> {
+        self.json(
+            Route::ApprovalList,
+            "/v2/account/sign-in/approvals",
+            Some(token),
+            NO_BODY,
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn approval(&self, token: &SessionToken, id: &str) -> Result<ApprovalPoll, ApiError> {
+        self.json(
+            Route::ApprovalPoll,
+            &approval_path(id, ""),
+            Some(token),
+            NO_BODY,
+            MAX_AUTH_RESPONSE,
+        )
+    }
+
+    fn challenge_approval(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        request: &ApprovalChallengeRequest,
+    ) -> Result<(), ApiError> {
+        self.empty(
+            Route::ApprovalChallenge,
+            &approval_path(id, "/challenge"),
+            token,
+            Some(request),
+        )
+    }
+
+    fn name_approval(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        request: &ApprovalNameRequest,
+    ) -> Result<(), ApiError> {
+        self.empty(
+            Route::ApprovalName,
+            &approval_path(id, "/name"),
+            token,
+            Some(request),
+        )
+    }
+
+    fn approve_approval(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        request: &ApprovalApproveRequest,
+    ) -> Result<(), ApiError> {
+        self.empty(
+            Route::ApprovalApprove,
+            &approval_path(id, "/approve"),
+            token,
+            Some(request),
+        )
+    }
+
+    fn cancel_approval(&self, token: &SessionToken, id: &str) -> Result<(), ApiError> {
+        self.send(
+            Route::ApprovalCancel,
+            &approval_path(id, ""),
+            Some(token),
+            Payload::None,
+            MAX_AUTH_RESPONSE,
+        )
+        .map(|_| ())
+    }
+
     fn identity_start(
         &self,
         token: &SessionToken,
@@ -789,6 +909,11 @@ fn json_payload(body: &impl Serialize) -> Result<Payload<'static>, ApiError> {
     )))
 }
 
+/// `/v2/account/sign-in/approvals/<id><rest>`, the ID percent-encoded.
+fn approval_path(id: &str, rest: &str) -> String {
+    format!("/v2/account/sign-in/approvals/{}{rest}", encode_segment(id))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -797,7 +922,11 @@ mod tests {
     /// notes and files, 30 s for the rest.
     #[test]
     fn each_route_has_its_timeout() {
-        for route in Route::ALL.into_iter().chain(Route::PASSKEYS) {
+        for route in Route::ALL
+            .into_iter()
+            .chain(Route::PASSKEYS)
+            .chain(Route::PROVIDERS)
+        {
             let secs = timeout(route).as_secs();
             let expected = match route {
                 Route::Logout => 5,
