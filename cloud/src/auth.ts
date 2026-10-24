@@ -147,12 +147,26 @@ export interface SessionCompletionGuard {
 }
 
 /**
+ * Options for `sessionStatements`. `replay` marks the retry of a sign-in or
+ * sign-up that already succeeded, after a lost answer, with no fresh proof. It
+ * only refreshes the token of the session that first answer made, so every
+ * statement holds only while that device's session is still live: a device
+ * signed out, revoked, signed out by a password change or replaced by a
+ * recovery since then is not brought back by sending the same request again.
+ */
+export interface SessionOptions {
+	completion?: SessionCompletionGuard;
+	replay?: boolean;
+}
+
+/**
  * The statements that make `device` this account's active session, in one
  * batch with the caller's own: revoke the least recently seen other session
  * when ten are active (`evicted`), upsert this one, and keep at most 90
  * revoked rows. Every statement holds only while the account is enabled and
  * each guard column still has the hash the caller checked. Provider completion
- * callers can also bind all three statements to one live flow attempt.
+ * callers can also bind all three statements to one live flow attempt, and
+ * any replay of a completed sign-in to the device's still-live session.
  * Parameters: ?1 account, ?2 device, ?3 token hash, ?4 proof hash, ?5 now,
  * ?6 sealed name (null keeps the old one), ?7… guard values.
  */
@@ -160,15 +174,17 @@ export function sessionStatements(
 	db: D1Database,
 	s: { accountId: string; deviceId: string; tokenHash: string; proofHash: string; sealedName: string | null; now: number },
 	guards: [GuardColumn, string][],
-	completion?: SessionCompletionGuard,
+	options: SessionOptions = {},
 ): D1PreparedStatement[] {
+	const { completion, replay } = options;
 	const completionParam = 7 + guards.length;
 	const completionGuard = completion
 		? ` AND EXISTS (SELECT 1 FROM auth_flows WHERE id = ?${completionParam} AND completion_attempt_id = ?${completionParam + 1} AND expires_at > ?${completionParam + 2})`
 		: "";
+	const replayGuard = replay ? " AND EXISTS (SELECT 1 FROM sessions WHERE account_id = ?1 AND device_id = ?2 AND revoked_at IS NULL)" : "";
 	const guard = `EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND disabled_at IS NULL${guards
 		.map(([column], i) => ` AND ${column} = ?${7 + i}`)
-		.join("")}${completionGuard})`;
+		.join("")}${completionGuard}${replayGuard})`;
 	const params = [
 		s.accountId,
 		s.deviceId,

@@ -26,11 +26,13 @@ import { isReserved, normalizeUsername } from "../src/usernames";
 import {
 	type Account,
 	type Device,
+	KDF,
 	START,
 	call,
 	callJson,
 	newCreds,
 	newDevice,
+	passwordBody,
 	resetServer,
 	setSetting,
 	signUp,
@@ -404,6 +406,94 @@ describe("each provider creates an account and signs in", () => {
 		const signedIn = await github(other, 1007, T0 + 60_000);
 		expect(signedIn.body).toMatchObject({ kind: "session", account_id: alice.creds.accountId, has_password: true });
 		expect(JSON.stringify(signedIn.body)).not.toContain(alice.creds.wrappedKey);
+	});
+});
+
+describe("a completed sign-in can't outlive the session it made", () => {
+	/** Alice links GitHub, then signs in on a second Mac with it. */
+	async function secondMac() {
+		const alice = await signUp("alice", { env: penv(), now: T0 });
+		const started = await linkStart(alice, "github", passwordProof(alice));
+		expect((await linkFinish(alice, "github", started, 7)).body.kind).toBe("linked");
+		const mac = newDevice();
+		const signedIn = await github(mac, 1007, T0 + 60_000);
+		expect(signedIn.body).toMatchObject({ kind: "session", account_id: alice.creds.accountId });
+		const repoll = (now: number) => as("/v2/auth/github/poll", { flow_id: signedIn.flowId, device: wireDevice(mac) }, { now });
+		return { alice, mac, token: signedIn.body.token as string, repoll };
+	}
+
+	const refused = (answer: Answer) => {
+		expect(answer.status).toBeGreaterThanOrEqual(400);
+		expect(answer.body).not.toHaveProperty("token");
+	};
+
+	it("a lost answer can still be replayed while the session is live", async () => {
+		const { repoll } = await secondMac();
+		const again = await repoll(T0 + 70_000);
+		expect(again.status).toBe(200);
+		expect(again.body.token).toMatch(/^kanso_/);
+	});
+
+	it("revoking the device ends it: polling the flow again doesn't bring it back", async () => {
+		const { alice, mac, token, repoll } = await secondMac();
+		const revoked = await call(`/v2/account/devices/${mac.id}`, { env: penv(), now: T0 + 70_000, method: "DELETE", token: alice.token });
+		expect(revoked.status).toBeLessThan(300);
+		expect((await callJson("/v2/account", { env: penv(), now: T0 + 71_000, token })).status).toBe(401);
+		refused(await repoll(T0 + 80_000));
+		const live = await env.DB.prepare("SELECT revoked_at FROM sessions WHERE device_id = ?1").bind(mac.id).first();
+		expect(live?.revoked_at).not.toBeNull();
+	});
+
+	it("a password change ends it too", async () => {
+		const { alice, token, repoll } = await secondMac();
+		const changed = await callJson("/v2/account/password", {
+			env: penv(),
+			now: T0 + 70_000,
+			token: alice.token,
+			json: passwordBody(alice.creds.authKey, newCreds("alice")),
+		});
+		expect(changed.status).toBe(200);
+		expect((await callJson("/v2/account", { env: penv(), now: T0 + 71_000, token })).status).toBe(401);
+		refused(await repoll(T0 + 80_000));
+	});
+
+	it("and so does a recovery", async () => {
+		const { alice, token, repoll } = await secondMac();
+		const next = newCreds("alice");
+		const d3 = newDevice();
+		const recovered = await callJson("/v2/auth/recover/finish", {
+			env: penv(),
+			now: T0 + 70_000,
+			json: {
+				username: "alice",
+				recovery_auth_key: alice.creds.recoveryAuthKey,
+				kdf: KDF,
+				salt: next.salt,
+				auth_key: next.authKey,
+				wrapped_key: next.wrappedKey,
+				recovery_auth_key_new: next.recoveryAuthKey,
+				recovery_wrapped_key_new: next.recoveryWrappedKey,
+				device: { id: d3.id, sealed_name: d3.sealedName, proof: d3.proof },
+			},
+		});
+		expect(recovered.status).toBe(200);
+		expect((await callJson("/v2/account", { env: penv(), now: T0 + 71_000, token })).status).toBe(401);
+		refused(await repoll(T0 + 80_000));
+	});
+
+	it("a social sign-up retried after its device was revoked is refused", async () => {
+		const made = await socialAccount("github", 3, "river");
+		const other = newDevice();
+		const signedIn = await github(other, 1003, T0 + 60_000);
+		expect(signedIn.body.kind).toBe("session");
+		const revoked = await call(`/v2/account/devices/${made.device.id}`, {
+			env: penv(),
+			now: T0 + 70_000,
+			method: "DELETE",
+			token: signedIn.body.token,
+		});
+		expect(revoked.status).toBeLessThan(300);
+		refused(await as("/v2/auth/social/signup", made.body, { now: T0 + 80_000 }));
 	});
 });
 

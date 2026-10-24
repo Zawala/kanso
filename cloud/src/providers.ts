@@ -453,7 +453,7 @@ async function signIn(
 				env.DB,
 				{ accountId: account.id, deviceId: device.id, ...session, sealedName: null, now: replayNow },
 				[["auth_hash", account.auth_hash]],
-				{ flowId: flow.id, attemptId: flow.completion_attempt_id },
+				{ completion: { flowId: flow.id, attemptId: flow.completion_attempt_id }, replay: true },
 			),
 		);
 		const outcome = sessionOutcome(results, 0);
@@ -470,7 +470,7 @@ async function signIn(
 			env.DB,
 			{ accountId: account.id, deviceId: device.id, ...session, sealedName: null, now: completionNow },
 			[["auth_hash", account.auth_hash]],
-			{ flowId: flow.id, attemptId },
+			{ completion: { flowId: flow.id, attemptId } },
 		),
 		markCompletionSucceeded(
 			env,
@@ -889,7 +889,7 @@ export const socialSignup: PepperHandler = async (request, env, now, keys) => {
 					now: Math.max(now, Date.now()),
 				},
 				[["recovery_hash", existing.recovery_hash]],
-				{ flowId: flow.id, attemptId: flow.completion_attempt_id as string },
+				{ completion: { flowId: flow.id, attemptId: flow.completion_attempt_id as string }, replay: true },
 			),
 		);
 		const outcome = sessionOutcome(results, 0);
@@ -958,7 +958,7 @@ export const socialSignup: PepperHandler = async (request, env, now, keys) => {
 					now: completionNow,
 				},
 				[["recovery_hash", recoveryHash]],
-				{ flowId: flow.id, attemptId },
+				{ completion: { flowId: flow.id, attemptId } },
 			),
 			markCompletionSucceeded(
 				env,
