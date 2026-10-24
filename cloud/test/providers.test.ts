@@ -433,7 +433,7 @@ describe("Apple's web flow", () => {
 			const started = await as("/v2/auth/apple/start", { device: wireDevice(d) });
 			const url = new URL(started.body.auth_url);
 			providers.apple.nonce = url.searchParams.get("nonce");
-			const response = await postCallback({ state: url.searchParams.get("state")!, code: PII.appleCode }, T0, headers);
+			const response = await postCallback({ state: url.searchParams.get("state")!, code: PII.appleCode }, T0, headers as Record<string, string>);
 			expect(response.status).toBe(200);
 			expect(response.headers.get("content-type")).toMatch(/^text\/html/);
 		}
@@ -662,7 +662,7 @@ describe("GitHub's device flow", () => {
 		const d = newDevice();
 		const a = await started(d);
 		providers.github.answers.push({ error: "expired_token" });
-		expect((await poll(a, d, T0 + 5000)).body.error).toBe("flow_expired");
+		expect(await poll(a, d, T0 + 5000)).toMatchObject({ status: 410, body: { error: "flow_expired" } });
 		const b = await started(d);
 		providers.github.answers.push({ error: "access_denied" });
 		expect((await poll(b, d, T0 + 5000))).toMatchObject({ status: 403, body: { error: "provider_denied" } });
@@ -709,7 +709,7 @@ describe("flows belong to one device", () => {
 		expect(stolen.body.error).toBe("bad_request");
 		const late = await as("/v2/auth/social/signup", socialSignupBody(flow.body.ticket, "late", d), { now: T0 + 600_000 });
 		expect(late.body.error).toBe("flow_expired");
-		expect((await as("/v2/auth/social/signup", socialSignupBody(flow.body.ticket, "owner", d))).status).toBe(201);
+		expect((await as("/v2/auth/social/signup", socialSignupBody(flow.body.ticket, "keeper", d))).status).toBe(201);
 		// Used: another sign-up with it (a different account) is refused.
 		expect((await as("/v2/auth/social/signup", socialSignupBody(flow.body.ticket, "second", d))).body.error).toBe("flow_expired");
 	});
@@ -751,9 +751,9 @@ describe("linking", () => {
 		const started = await linkStart(alice, "github", passwordProof(alice));
 		expect(started.status).toBe(200);
 		const linked = await linkFinish(alice, "github", started, 5);
-		expect(linked.body).toEqual({ kind: "linked", provider: "github", created_at: T0 });
+		expect(linked.body).toEqual({ kind: "linked", provider: "github", created_at: T0 + 5000 });
 		const methods = await callJson("/v2/account/sign-in", { env: penv(), now: T0, token: alice.token });
-		expect(methods.body.identities).toEqual([{ provider: "github", created_at: T0 }]);
+		expect(methods.body.identities).toEqual([{ provider: "github", created_at: T0 + 5000 }]);
 		expect(methods.body.has_password).toBe(true);
 	});
 

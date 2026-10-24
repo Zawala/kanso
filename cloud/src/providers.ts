@@ -106,6 +106,8 @@ const flowDevice = (device: NewDevice) => ({ id: device.id, proof: base64url(dev
 const providerUnavailable = (provider: string): Response =>
 	error(503, "provider_unavailable", "The provider could not be reached.", { provider });
 const providerDenied = (): Response => error(403, "provider_denied", "The sign-in was declined at the provider.");
+/** 410: the provider itself expired the flow (GitHub's `expired_token`), not our ten-minute clock. */
+const flowGone = (): Response => error(410, "flow_expired", "This sign-in flow has expired.");
 const providerDisabled = (): Response => error(403, "provider_disabled", "That provider isn't configured on this server.");
 const identityTaken = (provider: string): Response =>
 	error(409, "identity_taken", "That identity belongs to another account.", { provider });
@@ -342,6 +344,7 @@ interface IdentityAccount {
 	has_password: number;
 	disabled_at: number | null;
 	device_proof_hash: string | null;
+	auth_hash: string;
 }
 
 /** What a verified subject does, by the flow's intent. */
@@ -373,7 +376,7 @@ async function signIn(
 	let limited = await count(env.DB, "login-ip", await ipKey(keys, "login-ip", ipGroup(clientIp(request))), now);
 	if (limited) return limited;
 	const account = await env.DB.prepare(
-		`SELECT a.id, a.username, a.key_id, a.epoch, a.has_password, a.disabled_at,
+		`SELECT a.id, a.username, a.key_id, a.epoch, a.has_password, a.disabled_at, a.auth_hash,
   (SELECT s.proof_hash FROM sessions s WHERE s.account_id = a.id AND s.device_id = ?3 AND s.revoked_at IS NULL) AS device_proof_hash
   FROM account_identities i JOIN accounts a ON a.id = i.account_id WHERE i.provider = ?1 AND i.subject = ?2`,
 	)
@@ -394,7 +397,9 @@ async function signIn(
 	await consumeFlow(env, flow.id, now);
 	const session = await newSession(device);
 	const results = await env.DB.batch(
-		sessionStatements(env.DB, { accountId: account.id, deviceId: device.id, ...session, sealedName: null, now }, []),
+		sessionStatements(env.DB, { accountId: account.id, deviceId: device.id, ...session, sealedName: null, now }, [
+			["auth_hash", account.auth_hash],
+		]),
 	);
 	const outcome = sessionOutcome(results, 0);
 	if (!outcome.ok) return invalidCredentials();
@@ -556,7 +561,7 @@ export const githubPoll: PepperHandler = async (request, env, now, keys) => {
 			}
 			case "flow_expired":
 				await consumeFlow(env, flow.id, now);
-				return flowExpired();
+				return flowGone();
 			case "provider_denied":
 				await consumeFlow(env, flow.id, now);
 				return providerDenied();
