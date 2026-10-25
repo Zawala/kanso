@@ -20,8 +20,8 @@ use std::time::{Duration, Instant};
 
 use kanso_acp::detect::{self, Detection};
 use kanso_acp::{
-    AcpError, AcpEvent, AgentInfo, AgentProcess, AgentSpec, Limits, McpServer, PermissionPolicy, Session,
-    StopReason,
+    AcpError, AcpEvent, AgentInfo, AgentProcess, AgentSpec, Limits, McpServer, PermissionPolicy,
+    Session, StopReason,
 };
 
 pub use kanso_acp::AgentKind;
@@ -160,6 +160,11 @@ impl AgentSettings {
 
     /// What to run, or why it can't run.
     pub fn spec(&self) -> Result<AgentSpec, AiError> {
+        self.spec_in(&detect::search_dirs())
+    }
+
+    /// [`spec`](Self::spec), looking for the agent in `dirs`.
+    fn spec_in(&self, dirs: &[PathBuf]) -> Result<AgentSpec, AiError> {
         let label = self.label();
         let (command, args) = match self.kind {
             AgentKind::Custom => {
@@ -175,14 +180,16 @@ impl AgentSettings {
                 let found = if path.is_absolute() {
                     path.exists().then_some(path)
                 } else {
-                    detect::which_in(command, &detect::search_dirs())
+                    detect::which_in(command, dirs)
                 };
                 let found = found.ok_or_else(|| {
-                    AiError::Agent(format!("Kanso can't find {command} on this computer."))
+                    AiError::Agent(format!(
+                        "Kanso can't find {command} on this computer. Settings › AI has the agent's command."
+                    ))
                 })?;
                 (found, self.args.clone())
             }
-            kind => match detect::detect(kind) {
+            kind => match detect::detect_in(kind, dirs) {
                 Detection::Found(path) => (
                     path,
                     kind.args().iter().map(|arg| (*arg).to_owned()).collect(),
@@ -1175,6 +1182,37 @@ mod tests {
     use crate::client::Turn;
     use crate::prompt::{self, Excerpt, Prompt};
     use proptest::prelude::*;
+
+    /// An agent that is gone is a line that points to Settings, for a known
+    /// agent and for a custom command, and never a panic.
+    #[test]
+    fn an_agent_that_is_not_installed_says_so_and_points_to_settings() {
+        let nowhere = std::env::temp_dir().join("kanso-no-agents-here");
+        for kind in AgentKind::ALL {
+            let settings = AgentSettings {
+                kind,
+                command: Some("kanso-no-such-agent".to_owned()),
+                args: Vec::new(),
+                env: Vec::new(),
+                workspace: nowhere.clone(),
+            };
+            let err = settings
+                .spec_in(std::slice::from_ref(&nowhere))
+                .expect_err("nothing is installed in an empty folder")
+                .to_string();
+            assert!(err.contains("Settings › AI"), "{kind:?}: {err}");
+            assert!(!err.is_empty());
+        }
+        let known = AgentSettings {
+            kind: AgentKind::Codex,
+            command: None,
+            args: Vec::new(),
+            env: Vec::new(),
+            workspace: nowhere.clone(),
+        };
+        let err = known.spec_in(&[nowhere]).unwrap_err().to_string();
+        assert_eq!(err, "Codex isn't installed. Settings › AI has the command.");
+    }
 
     #[test]
     fn the_report_writes_the_home_folder_as_a_tilde() {
