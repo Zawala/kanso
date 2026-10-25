@@ -245,7 +245,7 @@ impl AiPage {
     /// as they were; a running agent stops.
     fn set_backend(&mut self, backend: AiBackend, cx: &mut Context<Self>) {
         AppState::update_config(cx, |config| config.ai.backend = backend);
-        kanso_ai::agent::shutdown();
+        crate::ai_agent::stop_agents(cx);
         self.test = Test::NotRun;
         self.task = None;
         if backend == AiBackend::Agent && self.detections.is_none() {
@@ -256,7 +256,12 @@ impl AiPage {
 
     /// Picks which agent answers.
     fn set_agent(&mut self, kind: AgentKind, cx: &mut Context<Self>) {
-        AppState::update_config(cx, |config| config.ai.agent.kind = kind);
+        AppState::update_config(cx, |config| {
+            config.ai.agent.kind = kind;
+            config.ai.agent.registry = None;
+        });
+        // Another agent: the last one stops, and its note access ends.
+        crate::ai_agent::stop_agents(cx);
         self.test = Test::NotRun;
         self.task = None;
         cx.notify();
@@ -280,7 +285,7 @@ impl AiPage {
         if !on {
             self.task = None;
             self.test = Test::NotRun;
-            kanso_ai::agent::shutdown();
+            crate::ai_agent::stop_agents(cx);
         } else if cx.global::<AppState>().config.ai.backend == AiBackend::Agent
             && self.detections.is_none()
         {
@@ -328,7 +333,7 @@ impl AiPage {
         });
         if cx.global::<AppState>().config.ai.agent != before {
             // A different command is a different agent.
-            kanso_ai::agent::shutdown();
+            crate::ai_agent::stop_agents(cx);
         }
         if !typed_key.is_empty() {
             match write_key(cx, provider, &typed_key) {

@@ -1,13 +1,112 @@
 //! An agent on this computer as the source of AI answers: what the settings
-//! mean for `kanso-ai`, and the plain lines Settings and the Ask panel show
-//! about what the agent sees and who it sends questions to.
+//! mean for `kanso-ai`, the read-only notes access each of its sessions
+//! gets, and the plain lines Settings and the Ask panel show about what the
+//! agent sees and who it sends questions to.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use gpui_kit::App;
 use kanso_ai::AgentKind;
-use kanso_ai::agent::AgentSettings;
+use kanso_ai::agent::{AgentSettings, NotesAccess, NotesGrant, NotesLease};
+use kanso_server::{AgentScope, TokenId, TokenStore};
 
 use crate::config::AgentChoice;
+
+/// One session's notes token. Dropping it revokes the token.
+struct Lease {
+    tokens: TokenStore,
+    id: TokenId,
+}
+
+impl NotesLease for Lease {
+    fn is_live(&self) -> bool {
+        self.tokens.is_live(self.id)
+    }
+
+    fn renew(&self) -> bool {
+        self.tokens.renew(self.id)
+    }
+
+    fn begin_turn(&self) {
+        self.tokens.begin_turn(self.id);
+    }
+
+    fn reads(&self) -> Vec<String> {
+        self.tokens.reads(self.id)
+    }
+}
+
+impl Drop for Lease {
+    fn drop(&mut self) {
+        self.tokens.revoke(self.id);
+    }
+}
+
+/// The notebooks `choice` lets the agent read: `None` for every unlocked
+/// one.
+pub fn scope_notebooks(choice: &AgentChoice) -> Option<HashSet<String>> {
+    (!choice.notebooks.is_empty()).then(|| choice.notebooks.iter().cloned().collect())
+}
+
+/// How each new session of `choice` gets read-only access to the notes at
+/// `url`: a token of its own over the notebooks `choice` allows, with
+/// Ask's two tools, and `relay` for an agent without HTTP MCP.
+pub fn notes_access_at(
+    choice: &AgentChoice,
+    url: String,
+    tokens: TokenStore,
+    relay: Option<PathBuf>,
+) -> NotesAccess {
+    let notebooks = scope_notebooks(choice);
+    Arc::new(move || {
+        let minted = tokens.mint(AgentScope::ask(notebooks.clone()));
+        Some(NotesGrant {
+            url: url.clone(),
+            token: minted.token,
+            relay: relay.clone(),
+            lease: Box::new(Lease {
+                tokens: tokens.clone(),
+                id: minted.id,
+            }),
+        })
+    })
+}
+
+/// The notes access the Ask panel's agent gets, or `None` when note access
+/// is off in Settings or nothing can listen for it (then the agent has only
+/// the excerpts). Starts the agents' private listener if the local API
+/// isn't reachable from this computer alone.
+pub fn notes_access(cx: &mut App) -> Option<NotesAccess> {
+    let choice = cx
+        .global::<crate::workspace::AppState>()
+        .config
+        .ai
+        .agent
+        .clone();
+    if !choice.mcp {
+        return None;
+    }
+    let url = crate::services::agent_mcp_endpoint(cx)?;
+    let tokens = cx
+        .global::<crate::services::Services>()
+        .agent_tokens
+        .clone();
+    Some(notes_access_at(
+        &choice,
+        url,
+        tokens,
+        std::env::current_exe().ok(),
+    ))
+}
+
+/// Stops every agent and ends its note access: AI was turned off, the
+/// agent or backend changed, or Kanso is quitting.
+pub fn stop_agents(cx: &mut App) {
+    kanso_ai::agent::shutdown();
+    crate::services::end_agent_access(cx);
+}
 
 /// The empty private folder agents start in, inside Kanso's data folder.
 pub fn workspace(data_dir: &Path) -> PathBuf {
@@ -100,6 +199,39 @@ mod tests {
         let settings = agent_settings(&AgentChoice::default(), dir);
         assert_eq!(settings.workspace, workspace(dir));
         assert_eq!(settings.kind, AgentKind::ClaudeAgent);
+    }
+
+    #[test]
+    fn each_session_gets_its_own_token_which_ends_with_it() {
+        use super::{notes_access_at, scope_notebooks};
+        let tokens = kanso_server::TokenStore::new();
+        let mut choice = AgentChoice::default();
+        assert_eq!(scope_notebooks(&choice), None);
+        choice.notebooks = vec!["book:a".into()];
+        assert_eq!(
+            scope_notebooks(&choice),
+            Some(["book:a".to_owned()].into_iter().collect())
+        );
+        let access = notes_access_at(
+            &choice,
+            "http://127.0.0.1:1/mcp".into(),
+            tokens.clone(),
+            None,
+        );
+        let first = access().unwrap();
+        let second = access().unwrap();
+        assert_ne!(first.token, second.token);
+        assert_eq!(tokens.live_count(), 2);
+        let Some(kanso_server::Caller::Agent { scope, .. }) = tokens.verify(&first.token) else {
+            panic!("the token is an agent's");
+        };
+        assert!(scope.read_only && !scope.allow_attachments);
+        assert_eq!(scope.notebooks, scope_notebooks(&choice));
+        assert!(scope.allows_tool("read-note") && !scope.allows_tool("create-note"));
+        assert!(first.lease.is_live());
+        drop(first);
+        assert_eq!(tokens.live_count(), 1);
+        assert!(tokens.verify(&second.token).is_some());
     }
 
     #[test]

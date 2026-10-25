@@ -567,8 +567,9 @@ fn offer_first_import(window: &mut Window, cx: &mut App) {
 fn watch_for_quit(cx: &mut App) {
     cx.on_app_quit(|cx| {
         services::stop_server(cx);
-        // Any agent Kanso started for AI answers stops with it.
-        kanso_ai::agent::shutdown();
+        // Any agent Kanso started for AI answers stops with it, and its
+        // note access ends.
+        ai_agent::stop_agents(cx);
         // A staged update goes in now, and Kanso opens again if Restart
         // asked for it.
         updates::install_on_quit(cx);

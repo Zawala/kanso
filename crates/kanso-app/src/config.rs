@@ -588,8 +588,8 @@ pub enum AiBackend {
 
 /// The agent that answers when [`AiBackend::Agent`] is chosen. Known agents
 /// are found at run time; only a custom agent's command is kept. Nothing
-/// here is secret.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// here is secret: no token or running scope is ever written.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AgentChoice {
     pub kind: kanso_ai::AgentKind,
@@ -599,6 +599,28 @@ pub struct AgentChoice {
     pub args: Vec<String>,
     /// A custom agent's own variables.
     pub env: std::collections::BTreeMap<String, String>,
+    /// Whether the agent may search and read the notes itself, through
+    /// Kanso's read-only notes server. On unless turned off.
+    pub mcp: bool,
+    /// The notebooks it may read there, by ID, with the ones inside them;
+    /// empty is every unlocked notebook. Names aren't kept: they change.
+    pub notebooks: Vec<String>,
+    /// The ACP registry entry a custom agent was picked from, by its ID.
+    pub registry: Option<String>,
+}
+
+impl Default for AgentChoice {
+    fn default() -> Self {
+        AgentChoice {
+            kind: kanso_ai::AgentKind::default(),
+            command: None,
+            args: Vec::new(),
+            env: Default::default(),
+            mcp: true,
+            notebooks: Vec::new(),
+            registry: None,
+        }
+    }
 }
 
 /// AI in Settings › AI. Off until turned on: nothing asks a model or shows a
@@ -968,13 +990,21 @@ mod tests {
             prop::option::of("[a-zA-Z0-9._/ -]{1,30}"),
             prop::collection::vec("[ -~]{0,12}", 0..4),
             prop::collection::btree_map("[A-Z_]{1,10}", "[ -~]{0,12}", 0..3),
+            any::<bool>(),
+            prop::collection::vec("book:[a-zA-Z0-9]{8}", 0..3),
+            prop::option::of("[a-z-]{1,12}"),
         )
-            .prop_map(|(kind, command, args, env)| AgentChoice {
-                kind,
-                command,
-                args,
-                env,
-            })
+            .prop_map(
+                |(kind, command, args, env, mcp, notebooks, registry)| AgentChoice {
+                    kind,
+                    command,
+                    args,
+                    env,
+                    mcp,
+                    notebooks,
+                    registry,
+                },
+            )
     }
 
     fn gen_ai() -> impl Strategy<Value = AiSettings> {
@@ -1381,6 +1411,10 @@ mod tests {
         assert_eq!(old.ai.provider, kanso_ai::Provider::Anthropic);
         assert_eq!(old.ai.base_url, "https://api.anthropic.com");
         assert_eq!(old.ai.model, "claude-haiku-5-5");
+        // Note access is on for an agent unless turned off, over every
+        // unlocked notebook.
+        assert!(old.ai.agent.mcp);
+        assert!(old.ai.agent.notebooks.is_empty());
         old.ai.backend = AiBackend::Agent;
         old.ai.agent.kind = kanso_ai::AgentKind::Codex;
         let written = serde_json::to_value(&old).unwrap();

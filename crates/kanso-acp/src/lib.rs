@@ -21,8 +21,8 @@ pub mod framing;
 pub mod process;
 
 pub use connection::{
-    AgentInfo, AgentProcess, AuthMethod, PermissionPolicy, PermissionRequest, Session, SessionMode,
-    Turn, reject_all,
+    AgentInfo, AgentProcess, AuthMethod, McpServer, PermissionPolicy, PermissionRequest, Session,
+    SessionMode, Turn, reject_all,
 };
 pub use detect::{AgentKind, Detection};
 pub use process::AgentSpec;

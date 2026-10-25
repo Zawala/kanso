@@ -1,7 +1,9 @@
 //! A scriptable ACP agent for tests. It speaks the same newline-delimited
 //! JSON-RPC as a real agent, over stdio (`kanso-acp-fake`) or in process
 //! over pipes ([`in_process`]), and can stream, hang, crash, ask
-//! permission, request the file system or a terminal, or misbehave.
+//! permission, request the file system or a terminal, or misbehave. With
+//! [`Script::Notes`] it uses the MCP server it was given in `session/new`,
+//! over HTTP or by starting the stdio command, as a real agent would.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::time::Duration;
@@ -45,6 +47,12 @@ pub enum Script {
     Slow(u64),
     /// Sends `count` pieces of text as fast as it can.
     Flood(usize),
+    /// Searches the MCP server from `session/new` for the question's last
+    /// word, reads the first note found, and cites it: "<text> [[Title]]
+    /// (via http|stdio, turn N)". With no server: "no notes server".
+    Notes,
+    /// Answers HTTP MCP is not supported; otherwise as [`Script::Notes`].
+    NotesStdio,
 }
 
 impl Script {
@@ -67,6 +75,8 @@ impl Script {
             "spawn-child" => Script::SpawnChild,
             "slow" => Script::Slow(arg(1).parse().unwrap_or(1000)),
             "flood" => Script::Flood(arg(1).parse().unwrap_or(1000)),
+            "notes" => Script::Notes,
+            "notes-stdio" => Script::NotesStdio,
             "sleep" => {
                 std::thread::sleep(Duration::from_secs(600));
                 Script::Hang
@@ -89,6 +99,140 @@ struct Fake<W: Write> {
     open_prompt: Option<Value>,
     next_id: u64,
     children: Vec<std::process::Child>,
+    /// Each session's MCP servers and how many prompts it has had.
+    sessions: Vec<(String, Value, usize)>,
+}
+
+/// One JSON-RPC request to an MCP server entry from `session/new`; the
+/// answer, or why there is none.
+fn mcp_call(server: &Value, method: &str, params: Value) -> Result<Value, String> {
+    let message = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params });
+    let pairs = |key: &str| -> Vec<(String, String)> {
+        server
+            .get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|pair| {
+                Some((
+                    pair.get("name")?.as_str()?.to_owned(),
+                    pair.get("value")?.as_str()?.to_owned(),
+                ))
+            })
+            .collect()
+    };
+    if server.get("type").and_then(Value::as_str) == Some("http") {
+        let url = server
+            .get("url")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let rest = url.strip_prefix("http://").ok_or("not an http url")?;
+        let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+        let mut stream = std::net::TcpStream::connect(host).map_err(|err| err.to_string())?;
+        let body = message.to_string();
+        let mut request = format!(
+            "POST /{path} HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n",
+            body.len()
+        );
+        for (name, value) in pairs("headers") {
+            request.push_str(&format!("{name}: {value}\r\n"));
+        }
+        request.push_str("\r\n");
+        request.push_str(&body);
+        stream
+            .write_all(request.as_bytes())
+            .map_err(|err| err.to_string())?;
+        let mut response = String::new();
+        stream
+            .read_to_string(&mut response)
+            .map_err(|err| err.to_string())?;
+        let status = response.split(' ').nth(1).unwrap_or_default().to_owned();
+        if status != "200" {
+            return Err(format!("HTTP {status}"));
+        }
+        let (_, body) = response.split_once("\r\n\r\n").ok_or("no body")?;
+        return serde_json::from_str(body).map_err(|err| err.to_string());
+    }
+    let command = server
+        .get("command")
+        .and_then(Value::as_str)
+        .ok_or("no command")?;
+    let args: Vec<String> = server
+        .get("args")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|arg| arg.as_str().map(str::to_owned))
+        .collect();
+    let mut child = std::process::Command::new(command)
+        .args(&args)
+        .envs(pairs("env"))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|err| err.to_string())?;
+    let mut stdin = child.stdin.take().ok_or("no stdin")?;
+    writeln!(stdin, "{message}").map_err(|err| err.to_string())?;
+    drop(stdin);
+    let mut line = String::new();
+    BufReader::new(child.stdout.take().ok_or("no stdout")?)
+        .read_line(&mut line)
+        .map_err(|err| err.to_string())?;
+    child.wait().ok();
+    serde_json::from_str(&line).map_err(|err| err.to_string())
+}
+
+/// The text of a tool result.
+fn tool_text(answer: &Value) -> String {
+    answer
+        .pointer("/result/content/0/text")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// What [`Script::Notes`] answers for `question`, using `server`.
+fn answer_from_notes(server: &Value, question: &str, turn: usize) -> String {
+    let via = if server.get("type").and_then(Value::as_str) == Some("http") {
+        "http"
+    } else {
+        "stdio"
+    };
+    let keyword = question
+        .split_whitespace()
+        .last()
+        .unwrap_or_default()
+        .trim_matches(|c: char| !c.is_alphanumeric());
+    let found = match mcp_call(
+        server,
+        "tools/call",
+        json!({ "name": "search-notes", "arguments": { "keyword": keyword } }),
+    ) {
+        Ok(found) => found,
+        Err(why) => return format!("the notes server failed: {why} (via {via}, turn {turn})"),
+    };
+    let notes: Vec<Value> = serde_json::from_str(&tool_text(&found)).unwrap_or_default();
+    let Some(id) = notes
+        .first()
+        .and_then(|note| note.get("_id"))
+        .and_then(Value::as_str)
+    else {
+        return format!("nothing found for {keyword} (via {via}, turn {turn})");
+    };
+    let read = mcp_call(
+        server,
+        "tools/call",
+        json!({ "name": "read-note", "arguments": { "noteId": id } }),
+    )
+    .unwrap_or_default();
+    let note: Value = serde_json::from_str(&tool_text(&read)).unwrap_or_default();
+    let title = note
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let body = note.get("body").and_then(Value::as_str).unwrap_or_default();
+    format!("{} [[{title}]] (via {via}, turn {turn})", body.trim())
 }
 
 impl<W: Write> Fake<W> {
@@ -167,7 +311,32 @@ impl<W: Write> Fake<W> {
             .flatten()
             .filter_map(|block| block.get("text").and_then(Value::as_str))
             .collect();
+        let turn = match self.sessions.iter_mut().find(|(id, _, _)| *id == session) {
+            Some((_, _, turns)) => {
+                *turns += 1;
+                *turns
+            }
+            None => 1,
+        };
         match self.script.clone() {
+            Script::Notes | Script::NotesStdio => {
+                let question = text
+                    .lines()
+                    .rev()
+                    .find_map(|line| line.strip_prefix("Question: "))
+                    .unwrap_or_default()
+                    .to_owned();
+                let server = self
+                    .sessions
+                    .iter()
+                    .find(|(id, _, _)| *id == session)
+                    .and_then(|(_, servers, _)| servers.get(0).cloned());
+                let answer = match server {
+                    Some(server) => answer_from_notes(&server, &question, turn),
+                    None => format!("no notes server (turn {turn})"),
+                };
+                self.answer(&id, &session, &answer);
+            }
             Script::Answer(answer) => self.answer(&id, &session, &answer),
             Script::Echo => self.answer(&id, &session, &text),
             Script::EchoInit => {
@@ -289,7 +458,7 @@ impl<W: Write> Fake<W> {
                     json!({
                         "protocolVersion": version,
                         "agentCapabilities": {
-                            "mcpCapabilities": { "http": true },
+                            "mcpCapabilities": { "http": self.script != Script::NotesStdio },
                             "sessionCapabilities": { "close": {} },
                         },
                         "agentInfo": { "name": "fake-agent", "title": "Fake Agent", "version": "1.2.3" },
@@ -306,10 +475,13 @@ impl<W: Write> Fake<W> {
                     self.error(&id, crate::AUTH_REQUIRED, "Authentication required");
                     return;
                 }
+                let session = format!("fake-session-{}", self.sessions.len() + 1);
+                let servers = params.get("mcpServers").cloned().unwrap_or(json!([]));
+                self.sessions.push((session.clone(), servers, 0));
                 self.reply(
                     &id,
                     json!({
-                        "sessionId": "fake-session",
+                        "sessionId": session,
                         "modes": {
                             "currentModeId": "code",
                             "availableModes": [
@@ -339,6 +511,7 @@ pub fn serve(input: impl Read, output: impl Write, script: Script) {
         open_prompt: None,
         next_id: 0,
         children: Vec::new(),
+        sessions: Vec::new(),
     };
     let mut line = String::new();
     loop {

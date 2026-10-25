@@ -394,3 +394,28 @@ fn acp_child_tree_is_killed_on_drop() {
         "the grandchild survived: {state}"
     );
 }
+
+#[test]
+fn a_session_gets_its_mcp_servers_and_the_token_is_never_logged() {
+    let agent = connect(Script::Notes, quick(), reject_all());
+    let dir = workspace();
+    let secret = "s3cret-t0ken-for-the-notes";
+    // Nothing listens on port 1: the agent says it couldn't reach it.
+    let server = kanso_acp::McpServer::Http {
+        name: "kanso".into(),
+        url: "http://127.0.0.1:1/mcp".into(),
+        headers: vec![("Authorization".into(), format!("Bearer {secret}"))],
+    };
+    assert!(!format!("{server:?}").contains(secret));
+    let session = agent.new_session_with(dir.path(), &[server]).unwrap();
+    let events = collect(session.prompt("Question: zebra?", None).unwrap());
+    let said = text_of(&events);
+    assert!(said.contains("the notes server failed"), "{said}");
+    assert!(said.contains("via http, turn 1"), "{said}");
+    assert!(!agent.diagnostics().contains(secret));
+    assert!(!agent.stderr_tail().contains(secret));
+    // A session without one gets none.
+    let plain = agent.new_session(dir.path()).unwrap();
+    let said = text_of(&collect(plain.prompt("Question: zebra?", None).unwrap()));
+    assert!(said.contains("no notes server"), "{said}");
+}

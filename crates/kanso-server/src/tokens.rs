@@ -58,7 +58,7 @@ struct Entry {
     last_used: Instant,
     renewed: bool,
     scope: Arc<AgentScope>,
-    /// Every note the token's answers have shown, in order, once each.
+    /// Every note shown since the question began, in order, once each.
     reads: Vec<String>,
     /// Tool calls since the question began.
     calls: usize,
@@ -211,10 +211,12 @@ impl TokenStore {
         }
     }
 
-    /// A new question begins on token `id`: its tool-call budget starts over.
+    /// A new question begins on token `id`: its tool-call budget and its
+    /// reads start over.
     pub fn begin_turn(&self, id: TokenId) {
         if let Some(entry) = self.lock().entries.iter_mut().find(|entry| entry.id == id) {
             entry.calls = 0;
+            entry.reads.clear();
         }
     }
 
@@ -241,8 +243,8 @@ impl TokenStore {
         }
     }
 
-    /// Every note token `id` has been shown, in order: what the agent
-    /// searched or read. Empty once the token is revoked.
+    /// Every note token `id` has been shown this question, in order: what
+    /// the agent searched or read. Empty once the token is revoked.
     pub fn reads(&self, id: TokenId) -> Vec<String> {
         self.lock()
             .entries
