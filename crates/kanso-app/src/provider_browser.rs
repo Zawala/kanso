@@ -253,7 +253,10 @@ mod apple {
         let mtm = MainThreadMarker::new().ok_or(BrowserError::Unsupported(
             "the sign-in sheet needs the main thread",
         ))?;
-        let url = NSURL::URLWithString(&NSString::from_str(auth_url))
+        // The start's URL as kanso-sync parsed and checked it; the same
+        // web-page rule as the system opener, again.
+        let auth_url = super::external_url(auth_url)?;
+        let url = NSURL::URLWithString(&NSString::from_str(&auth_url))
             .ok_or_else(|| BrowserError::Io("the provider's URL is malformed".into()))?;
         let scheme = NSString::from_str(scheme);
         let presenter = Presenter::new(mtm);

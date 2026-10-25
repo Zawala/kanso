@@ -42,7 +42,7 @@ use crate::passkey_accounts::{
     self, PasskeyContext, PasskeyFlowError, PasskeySignedUp, RpRule, SyncPasskeyAccounts,
 };
 use crate::passkey_ceremony::{PlatformCeremony, platform_ceremony};
-use crate::security_key_flow::OwnedSecurityKey;
+use crate::security_key_flow::{OwnedSecurityKey, PinProblem};
 use crate::services::{
     self, AccountDetails, AccountState, PendingKey, RunningTask, Services, TaskKind, notify_windows,
 };
@@ -1776,14 +1776,17 @@ impl Runner {
         }
     }
 
-    /// Runs `work` with the ceremony; the flag says a security key asked
-    /// for its PIN.
-    fn run<T>(self, work: impl FnOnce(&dyn kanso_sync::PasskeyCeremony) -> T) -> (T, bool) {
+    /// Runs `work` with the ceremony; afterwards, what a security key said
+    /// about its PIN, if anything.
+    fn run<T>(
+        self,
+        work: impl FnOnce(&dyn kanso_sync::PasskeyCeremony) -> T,
+    ) -> (T, Option<PinProblem>) {
         match self {
-            Runner::Platform(ceremony) => (work(ceremony.as_ref()), false),
+            Runner::Platform(ceremony) => (work(ceremony.as_ref()), None),
             Runner::SecurityKey(key) => key.with(work),
             #[cfg(test)]
-            Runner::Test(ceremony) => (work(ceremony.as_ref()), false),
+            Runner::Test(ceremony) => (work(ceremony.as_ref()), None),
         }
     }
 }
@@ -1805,7 +1808,7 @@ impl From<Failure> for PasskeyEnd {
 
 fn passkey_end(
     error: PasskeyFlowError,
-    pin_required: bool,
+    pin: Option<PinProblem>,
     security_key: bool,
     context: ErrorContext,
 ) -> PasskeyEnd {
@@ -1815,8 +1818,16 @@ fn passkey_end(
     } else {
         words::PASSKEY_FAILED
     };
-    if pin_required {
-        return Failure::words(words::SECURITY_KEY_PIN).into();
+    match pin {
+        Some(PinProblem::Required) => return Failure::words(words::SECURITY_KEY_PIN).into(),
+        Some(PinProblem::Invalid { retries }) => {
+            return Failure::words(&words::security_key_pin_wrong(retries)).into();
+        }
+        Some(PinProblem::AuthBlocked) => {
+            return Failure::words(words::SECURITY_KEY_PIN_AUTH_BLOCKED).into();
+        }
+        Some(PinProblem::Blocked) => return Failure::words(words::SECURITY_KEY_PIN_BLOCKED).into(),
+        None => {}
     }
     match error {
         PasskeyFlowError::Account(err) => Failure::account(err, context).into(),
@@ -1886,7 +1897,7 @@ pub fn passkey_sign_in(
         move |step| -> Result<PasskeyIn, PasskeyEnd> {
             let s = thread;
             let device = s.device()?;
-            let (signed, pin_required) = runner.run(|ceremony| {
+            let (signed, pin) = runner.run(|ceremony| {
                 let context = PasskeyContext {
                     accounts: &SyncPasskeyAccounts,
                     backend: s.backend.as_ref(),
@@ -1898,9 +1909,8 @@ pub fn passkey_sign_in(
                 };
                 passkey_accounts::sign_in(&context, username.as_deref(), ceremony)
             });
-            let signed = signed.map_err(|err| {
-                passkey_end(err, pin_required, security_key, ErrorContext::Passkey)
-            })?;
+            let signed =
+                signed.map_err(|err| passkey_end(err, pin, security_key, ErrorContext::Passkey))?;
             match signed.signed {
                 kanso_sync::PasskeySignIn::Unlocked(kanso_sync::SignedIn { session, evicted }) => {
                     let auth = authenticated(&s, device.library_id, session, evicted, None)?;
@@ -2014,7 +2024,7 @@ fn create_with_passkey(
         move |step| -> Result<(PasskeySignedUp, String), PasskeyEnd> {
             let s = thread;
             let device = s.device()?;
-            let (made, pin_required) = runner.run(|ceremony| {
+            let (made, pin) = runner.run(|ceremony| {
                 let context = PasskeyContext {
                     accounts: &SyncPasskeyAccounts,
                     backend: s.backend.as_ref(),
@@ -2026,9 +2036,8 @@ fn create_with_passkey(
                 };
                 passkey_accounts::sign_up(&context, &username, ceremony)
             });
-            let made = made.map_err(|err| {
-                passkey_end(err, pin_required, security_key, ErrorContext::SignUp)
-            })?;
+            let made =
+                made.map_err(|err| passkey_end(err, pin, security_key, ErrorContext::SignUp))?;
             step(Step::Saving);
             let bound = save_and_bind(
                 &s,
@@ -4220,6 +4229,48 @@ pub fn recover_locked(
         },
     );
     rx
+}
+
+#[cfg(test)]
+mod passkey_end_tests {
+    use super::{ErrorContext, PasskeyEnd, PasskeyFlowError, PinProblem, passkey_end, words};
+
+    fn said(pin: Option<PinProblem>) -> Option<String> {
+        let failed = PasskeyFlowError::Ceremony(kanso_sync::PasskeyCeremonyError::Failed);
+        match passkey_end(failed, pin, true, ErrorContext::Passkey) {
+            PasskeyEnd::Failed(failure) => Some(failure.words),
+            _ => None,
+        }
+    }
+
+    /// Each thing a key says about its PIN is its own line: a wrong PIN
+    /// isn't "enter your PIN", and a locked one isn't "try again".
+    #[test]
+    fn each_pin_problem_says_what_to_do() {
+        let lines = [
+            said(Some(PinProblem::Required)),
+            said(Some(PinProblem::Invalid { retries: Some(3) })),
+            said(Some(PinProblem::Invalid { retries: Some(1) })),
+            said(Some(PinProblem::Invalid { retries: None })),
+            said(Some(PinProblem::AuthBlocked)),
+            said(Some(PinProblem::Blocked)),
+            said(None),
+        ]
+        .map(Option::unwrap);
+        assert_eq!(lines[0], words::SECURITY_KEY_PIN);
+        assert!(
+            lines[1].contains("after 3 more wrong tries"),
+            "{}",
+            lines[1]
+        );
+        assert!(lines[2].contains("one more wrong try"), "{}", lines[2]);
+        assert!(!lines[3].contains("more wrong"), "{}", lines[3]);
+        assert_eq!(lines[4], words::SECURITY_KEY_PIN_AUTH_BLOCKED);
+        assert_eq!(lines[5], words::SECURITY_KEY_PIN_BLOCKED);
+        assert_eq!(lines[6], words::SECURITY_KEY_FAILED);
+        let distinct: std::collections::HashSet<_> = lines.iter().collect();
+        assert_eq!(distinct.len(), lines.len());
+    }
 }
 
 #[cfg(test)]

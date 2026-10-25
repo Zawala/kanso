@@ -48,7 +48,7 @@ impl RpRule {
             RpRule::Entitlement => {
                 platform_rp_allowed(crate::passkey_ceremony::Platform::MacOs, rp_id, server)
             }
-            RpRule::ServerHost => kanso_sync::passkey_rp_allowed(rp_id, server),
+            RpRule::ServerHost => crate::passkey_ceremony::passkey_rp_allowed(rp_id, server),
         }
     }
 }

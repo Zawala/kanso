@@ -19,12 +19,18 @@
 //! - The endpoint file is readable only by its owner, and each side proves
 //!   it read it: the app greets with one token before the forwarder sends
 //!   anything, so a port another process took over after Kanso quit never
-//!   receives a secret; the forwarder answers with the other.
+//!   receives a secret; the forwarder answers with the other. The tokens
+//!   come from the system's random source.
+//! - Each connection is served on its own thread and gets [`IO_TIMEOUT`] in
+//!   all, however it trickles bytes, so a silent or slow local client can't
+//!   hold up a real forward; at most [`MAX_SERVING`] are served at once.
 
 use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::provider_browser::BrowserError;
@@ -35,8 +41,11 @@ pub const SCHEME: &str = "kanso";
 /// The longest a callback wait lasts, whatever the server says.
 pub const MAX_WAIT: Duration = Duration::from_secs(10 * 60);
 
-/// How long either side of a forward waits for the other.
+/// How long either side of a forward waits for the other, in all.
 const IO_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// The most connections served at once; more are closed unanswered.
+const MAX_SERVING: usize = 16;
 
 /// The longest message a forwarder may send: two lines, a token and a URL.
 const MAX_MESSAGE: u64 = 4096;
@@ -185,10 +194,11 @@ impl Endpoint {
     }
 }
 
+/// 32 bytes from the system's random source, in hex.
 fn token() -> String {
-    (0..32)
-        .map(|_| format!("{:02x}", fastrand::u8(..)))
-        .collect()
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).expect("the system's random source failed");
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn is_token(text: &str) -> bool {
@@ -235,32 +245,89 @@ fn write_endpoint(path: &Path, endpoint: &Endpoint) -> std::io::Result<()> {
 /// endpoint into `data_dir`. Runs for the rest of the process.
 pub fn listen(data_dir: &Path, router: &'static Router) -> std::io::Result<()> {
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
-    let endpoint = Endpoint::new(listener.local_addr()?.port());
+    let endpoint = Arc::new(Endpoint::new(listener.local_addr()?.port()));
     write_endpoint(&endpoint_path(data_dir), &endpoint)?;
+    let serving = Arc::new(AtomicUsize::new(0));
     std::thread::Builder::new()
         .name("kanso-callbacks".into())
         .spawn(move || {
             for stream in listener.incoming() {
                 let Ok(stream) = stream else { continue };
-                // One forward at a time: each is a few bytes and short-lived.
-                if let Err(error) = serve(stream, &endpoint, router) {
-                    // The error never carries the URL.
-                    eprintln!("kanso: a sign-in callback couldn't be read: {error}");
+                if serving.fetch_add(1, Ordering::AcqRel) >= MAX_SERVING {
+                    serving.fetch_sub(1, Ordering::AcqRel);
+                    continue;
+                }
+                let endpoint = endpoint.clone();
+                let slot = serving.clone();
+                let spawned = std::thread::Builder::new()
+                    .name("kanso-callback".into())
+                    .spawn(move || {
+                        let deadline = Instant::now() + IO_TIMEOUT;
+                        if let Err(error) = serve(stream, &endpoint, router, deadline) {
+                            // The error never carries the URL.
+                            eprintln!("kanso: a sign-in callback couldn't be read: {error}");
+                        }
+                        slot.fetch_sub(1, Ordering::AcqRel);
+                    });
+                if spawned.is_err() {
+                    serving.fetch_sub(1, Ordering::AcqRel);
                 }
             }
         })?;
     Ok(())
 }
 
-fn serve(stream: TcpStream, endpoint: &Endpoint, router: &Router) -> std::io::Result<()> {
+/// A connection that gives up at `deadline`: each read or write may wait
+/// only for the time left, so trickled bytes can't stretch it.
+struct Until {
+    stream: TcpStream,
+    deadline: Instant,
+}
+
+impl Until {
+    fn left(&self) -> std::io::Result<Duration> {
+        let left = self.deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            Err(std::io::ErrorKind::TimedOut.into())
+        } else {
+            Ok(left)
+        }
+    }
+}
+
+impl std::io::Read for Until {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.stream.set_read_timeout(Some(self.left()?))?;
+        self.stream.read(buf)
+    }
+}
+
+impl std::io::Write for Until {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.stream.set_write_timeout(Some(self.left()?))?;
+        self.stream.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.stream.flush()
+    }
+}
+
+fn serve(
+    stream: TcpStream,
+    endpoint: &Endpoint,
+    router: &Router,
+    deadline: Instant,
+) -> std::io::Result<()> {
     if !stream.peer_addr()?.ip().is_loopback() {
         return Ok(());
     }
-    stream.set_read_timeout(Some(IO_TIMEOUT))?;
-    stream.set_write_timeout(Some(IO_TIMEOUT))?;
-    let mut writer = stream.try_clone()?;
+    let mut writer = Until {
+        stream: stream.try_clone()?,
+        deadline,
+    };
     writer.write_all(format!("{}\n", endpoint.server_token).as_bytes())?;
-    let mut reader = BufReader::new(stream.take(MAX_MESSAGE));
+    let mut reader = BufReader::new(Until { stream, deadline }.take(MAX_MESSAGE));
     let mut client_token = String::new();
     reader.read_line(&mut client_token)?;
     if !same(client_token.trim_end(), &endpoint.client_token) {
@@ -370,17 +437,29 @@ mod tests {
         }
     }
 
-    /// The OS starts `kanso <url>`, or `kanso --data-dir <dir> <url>`: the
-    /// URL arrives as the command, which `main` forwards instead of running.
+    /// The OS starts `kanso <url>`: the URL arrives as the command, which
+    /// `main` forwards to the default data folder instead of running. A link
+    /// with anything beside it, before or after, is refused, so no flag can
+    /// pick the folder it's forwarded to.
     #[test]
-    fn the_launch_arguments_carry_the_url_as_the_command() {
+    fn a_link_counts_only_as_the_whole_command_line() {
         let url = callback(&b64_32(1));
         let parsed = crate::parse_args_from([url.clone()]).unwrap();
-        assert!(parsed.command.as_deref().is_some_and(is_callback_argument));
-        let parsed =
-            crate::parse_args_from(["--data-dir".into(), "/tmp/k".into(), url.clone()]).unwrap();
         assert_eq!(parsed.command.as_deref(), Some(url.as_str()));
-        assert_eq!(parsed.data_dir, PathBuf::from("/tmp/k"));
+        assert_eq!(parsed.data_dir, crate::paths::default_data_dir());
+        assert!(parsed.rest.is_empty() && !parsed.after_update);
+        for args in [
+            vec!["--data-dir".to_owned(), "/tmp/k".to_owned(), url.clone()],
+            vec![url.clone(), "--data-dir".to_owned(), "/tmp/k".to_owned()],
+            vec![url.clone(), "--after-update".to_owned()],
+            vec!["--after-update".to_owned(), url.clone()],
+            vec![url.clone(), url.clone()],
+        ] {
+            assert!(crate::parse_args_from(args.clone()).is_err(), "{args:?}");
+        }
+        // A link that is an argument of another command is that command's.
+        let parsed = crate::parse_args_from(["import".to_owned(), url.clone()]).unwrap();
+        assert_eq!(parsed.command.as_deref(), Some("import"));
     }
 
     /// The desktop entry and the installer register the scheme the router
@@ -522,6 +601,70 @@ mod tests {
         stream.read_to_string(&mut answer).ok();
         assert!(!answer.contains("ok"));
         assert!(waiting.try_recv().is_err());
+    }
+
+    /// A local client that connects and says nothing doesn't hold up the
+    /// real forward behind it.
+    #[test]
+    fn a_silent_connection_does_not_hold_up_a_forward() {
+        let dir = tempfile::tempdir().unwrap();
+        let router = leaked();
+        let flow = b64_32(10);
+        let waiting = router.wait_for(&flow, Instant::now() + Duration::from_secs(60));
+        listen(dir.path(), router).unwrap();
+        let endpoint =
+            Endpoint::parse(&std::fs::read_to_string(endpoint_path(dir.path())).unwrap()).unwrap();
+        let _silent: Vec<TcpStream> = (0..3)
+            .map(|_| TcpStream::connect((Ipv4Addr::LOCALHOST, endpoint.port)).unwrap())
+            .collect();
+        std::thread::sleep(Duration::from_millis(50));
+        let started = Instant::now();
+        assert_eq!(forward(dir.path(), &callback(&flow)), Ok(()));
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_eq!(waiting.try_recv().unwrap().unwrap(), callback(&flow));
+    }
+
+    /// A client trickling a byte at a time is cut off when its time is up,
+    /// not kept alive by each byte.
+    #[test]
+    fn a_trickling_connection_gets_the_timeout_in_all() {
+        let dir = tempfile::tempdir().unwrap();
+        listen(dir.path(), leaked()).unwrap();
+        let endpoint =
+            Endpoint::parse(&std::fs::read_to_string(endpoint_path(dir.path())).unwrap()).unwrap();
+        let stream = TcpStream::connect((Ipv4Addr::LOCALHOST, endpoint.port)).unwrap();
+        let started = Instant::now();
+        let mut reader = stream.try_clone().unwrap();
+        let closed = std::thread::spawn(move || {
+            let mut seen = Vec::new();
+            reader.read_to_end(&mut seen).ok();
+            Instant::now()
+        });
+        let mut writer = stream;
+        let trickle = endpoint.client_token.clone();
+        for byte in trickle.bytes().take(20) {
+            if writer.write_all(&[byte]).is_err() || closed.is_finished() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        let closed_at = closed.join().unwrap();
+        let lasted = closed_at - started;
+        assert!(
+            lasted >= IO_TIMEOUT - Duration::from_millis(100),
+            "{lasted:?}"
+        );
+        assert!(
+            lasted < IO_TIMEOUT + Duration::from_millis(1500),
+            "{lasted:?}"
+        );
+    }
+
+    #[test]
+    fn tokens_differ_each_time() {
+        let tokens: std::collections::HashSet<String> = (0..64).map(|_| token()).collect();
+        assert_eq!(tokens.len(), 64);
+        assert!(tokens.iter().all(|token| is_token(token)));
     }
 
     proptest! {

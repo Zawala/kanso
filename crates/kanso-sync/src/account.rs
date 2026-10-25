@@ -882,7 +882,8 @@ pub fn start_provider(
         .map_err(AccountError::from),
     }?;
     // Nothing opens a page the server named until it is the provider's.
-    crate::provider::check_provider_start(provider, &start, &server)?;
+    let mut start = start;
+    crate::provider::check_provider_start(provider, &mut start, &server)?;
     Ok(start)
 }
 
@@ -1078,6 +1079,7 @@ pub fn sign_up_with_provider(
 
 /// `POST /v2/account/sign-in/identities/<provider>/start`: a link (with a
 /// password or passkey proof) or a provider proof (the session is enough).
+/// The page it names is checked as [`start_provider`]'s is.
 #[allow(clippy::too_many_arguments, reason = "the flow's inputs")]
 pub fn start_identity(
     b: &dyn Backend,
@@ -1090,7 +1092,7 @@ pub fn start_identity(
     device: &LoginDevice,
 ) -> Result<ProviderStart, AccountError> {
     let api = b.api(&session.server);
-    retrying(b, || {
+    let start = retrying(b, || {
         api.identity_start(
             session.token(),
             provider,
@@ -1103,7 +1105,12 @@ pub fn start_identity(
             },
         )
     })
-    .map_err(AccountError::from)
+    .map_err(AccountError::from)?;
+    // As for a sign-in start: nothing opens a page the server named until
+    // it is the provider's.
+    let mut start = start;
+    crate::provider::check_provider_start(provider, &mut start, &session.server)?;
+    Ok(start)
 }
 
 /// The completion of a link or proof flow on Apple or GitHub; `secret` as

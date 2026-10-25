@@ -86,8 +86,24 @@ pub const SECURITY_KEY_SIGN_IN_NOTE: &str =
 pub const SECURITY_KEY_SIGN_UP_NOTE: &str =
     "Touch the key when it blinks. A key that can unlock asks for a second touch.";
 pub const SECURITY_KEY_PIN_HINT: &str = "Only if your key has one.";
-/// The PIN a security key asked for wasn't given (or was wrong).
+/// The PIN a security key asked for wasn't given.
 pub const SECURITY_KEY_PIN: &str = "This security key needs its PIN. Enter it, then try again.";
+/// Too many wrong PINs in a row: the key takes another after a reconnect.
+pub const SECURITY_KEY_PIN_AUTH_BLOCKED: &str =
+    "That PIN was wrong too many times in a row. Unplug the key, plug it back in, then try again.";
+/// The key's PIN is locked for good.
+pub const SECURITY_KEY_PIN_BLOCKED: &str = "This security key's PIN is locked after too many wrong tries. Only resetting the key unlocks it, and that erases its passkeys.";
+
+/// A wrong security-key PIN, with the tries the key has left when it said.
+pub fn security_key_pin_wrong(retries: Option<u8>) -> String {
+    match retries {
+        Some(1) => "That PIN isn't right. The key locks its PIN after one more wrong try.".into(),
+        Some(left) => {
+            format!("That PIN isn't right. The key locks its PIN after {left} more wrong tries.")
+        }
+        None => "That PIN isn't right. Check it, then try again.".into(),
+    }
+}
 /// The platform ceremony couldn't run: the method isn't offered again.
 pub const PASSKEY_UNAVAILABLE: &str = "Passkeys aren't available on this device.";
 pub const PASSKEY_FAILED: &str = "The passkey didn't work. Try again.";

@@ -23,6 +23,10 @@ async-channel.workspace = true
 base64.workspace = true
 chrono.workspace = true
 fastrand.workspace = true
+getrandom.workspace = true
+# Mozilla's Public Suffix List (ICANN and private sections), compiled in:
+# a passkey relying party may not be a public suffix such as workers.dev.
+psl = "2"
 # Icon theme packages and extensions come as .tgz / .tar.gz, unpacked in
 # process with caps. Both are already built for the updater.
 flate2 = "1.1"

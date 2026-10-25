@@ -173,6 +173,18 @@ pub enum FidoError {
     /// The key asked for a PIN this call didn't carry.
     #[error("the security key needs its PIN")]
     PinRequired,
+    /// The PIN was wrong; `retries` is how many tries the key has left
+    /// before it locks the PIN, when it said.
+    #[error("the security key's PIN is wrong")]
+    PinInvalid { retries: Option<u8> },
+    /// Too many wrong PINs in a row: the key takes no more until it is
+    /// unplugged and plugged back in.
+    #[error("the security key wants to be reconnected before another PIN")]
+    PinAuthBlocked,
+    /// The PIN is locked for good: only resetting the key (which erases its
+    /// credentials) clears it.
+    #[error("the security key's PIN is locked")]
+    PinBlocked,
     /// The key or libfido2 refused the ceremony.
     #[error("the security key refused: {0}")]
     Refused(String),
@@ -182,6 +194,30 @@ pub enum FidoError {
     /// The request couldn't be made (an empty RP ID, a long name).
     #[error("the security-key request is not valid")]
     Invalid,
+}
+
+// libfido2 <fido/err.h>, the CTAP2 status codes for the PIN. Only the
+// Linux binding reads libfido2's codes; the tests read them everywhere.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const FIDO_ERR_PIN_INVALID: i32 = 0x31;
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const FIDO_ERR_PIN_BLOCKED: i32 = 0x32;
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const FIDO_ERR_PIN_AUTH_BLOCKED: i32 = 0x34;
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const FIDO_ERR_PIN_REQUIRED: i32 = 0x36;
+
+/// The PIN error a libfido2 status code is, if it is one. `retries` asks
+/// the key how many PIN tries are left, only for a wrong PIN.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn pin_error(code: i32, retries: impl FnOnce() -> Option<u8>) -> Option<FidoError> {
+    match code {
+        FIDO_ERR_PIN_REQUIRED => Some(FidoError::PinRequired),
+        FIDO_ERR_PIN_INVALID => Some(FidoError::PinInvalid { retries: retries() }),
+        FIDO_ERR_PIN_AUTH_BLOCKED => Some(FidoError::PinAuthBlocked),
+        FIDO_ERR_PIN_BLOCKED => Some(FidoError::PinBlocked),
+        _ => None,
+    }
 }
 
 /// Enumerates attached USB HID and NFC security keys. Empty where libfido2
@@ -444,6 +480,7 @@ mod platform {
         fn fido_cbor_info_extensions_len(info: *const FidoCborInfo) -> usize;
 
         fn fido_strerr(code: c_int) -> *const c_char;
+        fn fido_dev_get_retry_count(dev: *mut FidoDev, retries: *mut c_int) -> c_int;
     }
 
     const FIDO_OPT_TRUE: c_int = 1;
@@ -464,10 +501,23 @@ mod platform {
             .into_owned()
     }
 
+    /// `code` as an error, asking `dev` for the PIN tries left when the PIN
+    /// was wrong.
+    fn error_on(dev: &Device, code: c_int) -> FidoError {
+        if let Some(error) = super::pin_error(code, || {
+            let mut retries: c_int = 0;
+            // SAFETY: `dev` is open; libfido2 writes one int.
+            let read = unsafe { fido_dev_get_retry_count(dev.0, &mut retries) };
+            (read == 0).then(|| u8::try_from(retries).ok()).flatten()
+        }) {
+            return error;
+        }
+        error(code)
+    }
+
     fn error(code: c_int) -> FidoError {
-        // FIDO_ERR_PIN_REQUIRED is 0x36 (54) and FIDO_ERR_PIN_INVALID 0x31.
-        if code == 0x36 || code == 0x31 {
-            return FidoError::PinRequired;
+        if let Some(error) = super::pin_error(code, || None) {
+            return error;
         }
         let message = text(unsafe { fido_strerr(code) });
         if message.is_empty() {
@@ -662,7 +712,7 @@ mod platform {
                 );
             }
             if code != 0 {
-                return Err(error(code));
+                return Err(error_on(&dev, code));
             }
             // WebAuthn uses the raw authenticator data. `*_authdata_ptr`
             // returns the CBOR byte string that wraps these bytes in the
@@ -748,7 +798,7 @@ mod platform {
                 }
             }
             if code != 0 {
-                return Err(error(code));
+                return Err(error_on(&dev, code));
             }
             if fido_assert_count(assertion.0) == 0 {
                 return Err(FidoError::NoDevice);
@@ -1018,6 +1068,42 @@ mod tests {
             let shown = format!("{without:?}");
             prop_assert!(shown.contains("pin: None"), "{}", shown);
         }
+    }
+
+    #[test]
+    fn each_pin_status_is_its_own_error() {
+        let asked = std::cell::Cell::new(0);
+        let retries = |left| {
+            asked.set(asked.get() + 1);
+            left
+        };
+        assert_eq!(
+            pin_error(FIDO_ERR_PIN_INVALID, || retries(Some(2))),
+            Some(FidoError::PinInvalid { retries: Some(2) })
+        );
+        assert_eq!(
+            pin_error(0x31, || retries(None)),
+            Some(FidoError::PinInvalid { retries: None })
+        );
+        assert_eq!(asked.get(), 2);
+        assert_eq!(
+            pin_error(0x36, || retries(Some(8))),
+            Some(FidoError::PinRequired)
+        );
+        assert_eq!(
+            pin_error(0x32, || retries(Some(8))),
+            Some(FidoError::PinBlocked)
+        );
+        assert_eq!(
+            pin_error(0x34, || retries(Some(8))),
+            Some(FidoError::PinAuthBlocked)
+        );
+        // Only a wrong PIN asks the key for its count.
+        assert_eq!(asked.get(), 2);
+        for other in [0, 0x16, 0x27, 0x33, 0x35, 0x37, -7] {
+            assert_eq!(pin_error(other, || retries(Some(1))), None, "{other}");
+        }
+        assert_eq!(asked.get(), 2);
     }
 
     #[test]

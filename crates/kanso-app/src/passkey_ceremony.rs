@@ -24,6 +24,25 @@ use kanso_sync::{PasskeyAssertion, PasskeyMethods, PasskeyRegistration};
 /// accepts as an RP ID, and the server's host or a parent of it.
 pub use kanso_sync::OFFICIAL_RP_ID;
 
+/// Whether `rp_id` is itself a public suffix on Mozilla's Public Suffix
+/// List, ICANN or private (`com`, `co.uk`, `workers.dev`, `github.io`).
+/// Everyone under such a suffix is a different party, so a passkey for it
+/// would be one any of them could ask for. `localhost` is the one
+/// single-label ID WebAuthn allows, and is no one else's.
+pub fn is_public_suffix(rp_id: &str) -> bool {
+    let id = rp_id.trim_end_matches('.').to_ascii_lowercase();
+    id != "localhost"
+        && psl::suffix(id.as_bytes()).is_none_or(|suffix| suffix.as_bytes() == id.as_bytes())
+}
+
+/// `kanso-sync`'s relying-party rule ([`kanso_sync::passkey_rp_allowed`]),
+/// and the relying party isn't a public suffix ([`is_public_suffix`]):
+/// "the server's host or a parent of it" would otherwise let a server on
+/// `name.workers.dev` claim `workers.dev`.
+pub fn passkey_rp_allowed(rp_id: &str, server: &str) -> bool {
+    kanso_sync::passkey_rp_allowed(rp_id, server) && !is_public_suffix(rp_id)
+}
+
 /// The platform the app runs on, as the method rules see it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Platform {
@@ -68,8 +87,12 @@ pub fn offers_platform_passkeys(
 /// host or a parent of it.
 pub fn platform_rp_allowed(platform: Platform, rp_id: &str, server: &str) -> bool {
     match platform {
-        Platform::MacOs => rp_id == OFFICIAL_RP_ID && kanso_sync::is_owner_server(server),
-        Platform::Windows => kanso_sync::passkey_rp_allowed(rp_id, server),
+        Platform::MacOs => {
+            rp_id == OFFICIAL_RP_ID
+                && kanso_sync::is_owner_server(server)
+                && !is_public_suffix(rp_id)
+        }
+        Platform::Windows => passkey_rp_allowed(rp_id, server),
         Platform::Linux => false,
     }
 }
@@ -402,6 +425,59 @@ mod tests {
     }
 
     const OWNER: &str = "https://sync.kansoapp.app";
+
+    #[test]
+    fn a_public_suffix_is_never_a_relying_party() {
+        for suffix in [
+            "com",
+            "co.uk",
+            "workers.dev",
+            "pages.dev",
+            "github.io",
+            "herokuapp.com",
+            "WORKERS.DEV",
+            "workers.dev.",
+        ] {
+            assert!(is_public_suffix(suffix), "{suffix}");
+        }
+        for not in [
+            "localhost",
+            OFFICIAL_RP_ID,
+            "kansoapp.app",
+            "example.com",
+            "kanso.example.co.uk",
+            "kanso.workers.dev",
+            "memory.kanso.test",
+        ] {
+            assert!(!is_public_suffix(not), "{not}");
+        }
+        // A server on a shared host's subdomain fits "a parent of the host"
+        // for the suffix itself, which kanso-sync's rule alone accepts.
+        let server = "https://kanso-sync.someone.workers.dev";
+        assert!(kanso_sync::passkey_rp_allowed("workers.dev", server));
+        assert!(!passkey_rp_allowed("workers.dev", server));
+        assert!(passkey_rp_allowed("someone.workers.dev", server));
+        assert!(!passkey_rp_allowed(
+            "github.io",
+            "https://someone.github.io"
+        ));
+        assert!(passkey_rp_allowed(
+            "example.com",
+            "https://sync.example.com"
+        ));
+        assert!(!offers_platform_passkeys(
+            Platform::Windows,
+            Some(&methods("workers.dev")),
+            server,
+            true
+        ));
+        assert!(offers_platform_passkeys(
+            Platform::Windows,
+            Some(&methods("someone.workers.dev")),
+            server,
+            true
+        ));
+    }
 
     #[test]
     fn macos_offers_platform_passkeys_only_for_the_entitled_relying_party() {
