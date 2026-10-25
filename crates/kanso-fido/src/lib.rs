@@ -55,8 +55,9 @@ pub struct SecurityKeyDevice {
     pub hmac_secret: bool,
 }
 
-/// What a registration ceremony needs, in CTAP2 terms.
-#[derive(Clone, Debug)]
+/// What a registration ceremony needs, in CTAP2 terms. `Debug` never shows
+/// the PIN, only whether there is one.
+#[derive(Clone)]
 pub struct RegistrationRequest {
     pub rp_id: String,
     pub origin: String,
@@ -71,8 +72,9 @@ pub struct RegistrationRequest {
     pub pin: Option<zeroize::Zeroizing<String>>,
 }
 
-/// What an assertion ceremony needs.
-#[derive(Clone, Debug)]
+/// What an assertion ceremony needs. `Debug` never shows the PIN, only
+/// whether there is one.
+#[derive(Clone)]
 pub struct AssertionRequest {
     pub rp_id: String,
     pub origin: String,
@@ -82,6 +84,39 @@ pub struct AssertionRequest {
     /// Ask for `hmac-secret` (the PRF output).
     pub hmac_secret: bool,
     pub pin: Option<zeroize::Zeroizing<String>>,
+}
+
+/// How a request's PIN appears in `Debug`: whether there is one, never it.
+fn redacted_pin(pin: &Option<zeroize::Zeroizing<String>>) -> Option<&'static str> {
+    pin.as_ref().map(|_| "<redacted>")
+}
+
+impl std::fmt::Debug for RegistrationRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegistrationRequest")
+            .field("rp_id", &self.rp_id)
+            .field("origin", &self.origin)
+            .field("challenge", &self.challenge)
+            .field("user_handle", &self.user_handle)
+            .field("username", &self.username)
+            .field("display_name", &self.display_name)
+            .field("hmac_secret", &self.hmac_secret)
+            .field("pin", &redacted_pin(&self.pin))
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for AssertionRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AssertionRequest")
+            .field("rp_id", &self.rp_id)
+            .field("origin", &self.origin)
+            .field("challenge", &self.challenge)
+            .field("allow_credentials", &self.allow_credentials)
+            .field("hmac_secret", &self.hmac_secret)
+            .field("pin", &redacted_pin(&self.pin))
+            .finish()
+    }
 }
 
 /// The raw authenticator data libfido2 produced, before the app wraps it in
@@ -943,7 +978,47 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
+
+    proptest! {
+        // The other fields are lowercase or bytes, so six or more capitals
+        // only appear if the PIN does.
+        #[test]
+        fn debug_never_shows_the_pin(pin in "[A-Z]{6,63}") {
+            let registration = RegistrationRequest {
+                rp_id: "kanso.example".into(),
+                origin: "https://kanso.example".into(),
+                challenge: vec![1; 32],
+                user_handle: vec![2; 16],
+                username: "quiet-otter".into(),
+                display_name: "quiet otter".into(),
+                hmac_secret: true,
+                pin: Some(zeroize::Zeroizing::new(pin.clone())),
+            };
+            let assertion = AssertionRequest {
+                rp_id: "kanso.example".into(),
+                origin: "https://kanso.example".into(),
+                challenge: vec![1; 32],
+                allow_credentials: vec![vec![3; 16]],
+                hmac_secret: true,
+                pin: Some(zeroize::Zeroizing::new(pin.clone())),
+            };
+            for shown in [
+                format!("{registration:?}"),
+                format!("{registration:#?}"),
+                format!("{assertion:?}"),
+                format!("{assertion:#?}"),
+            ] {
+                prop_assert!(!shown.contains(&pin), "{}", shown);
+                prop_assert!(shown.contains("\"<redacted>\""), "{}", shown);
+            }
+            let without = AssertionRequest { pin: None, ..assertion };
+            let shown = format!("{without:?}");
+            prop_assert!(shown.contains("pin: None"), "{}", shown);
+        }
+    }
 
     #[test]
     fn the_pin_is_passed_with_one_nul_and_never_with_an_inner_one() {
