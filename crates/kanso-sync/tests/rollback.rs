@@ -140,11 +140,16 @@ fn v2_then_unbind_then_v1_loses_no_edit() {
     assert_eq!(all_docs(&other), all_docs(&mac.store));
 }
 
+/// The crate's folder: cargo's at run time (the phone runners set it to where
+/// they copied the fixtures), else where it was built.
+fn manifest_dir() -> std::path::PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(Into::into)
+        .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())
+}
+
 fn v1_fixture() -> Value {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../cloud/test/fixtures/conformance-v1.json"
-    );
+    let path = manifest_dir().join("../../cloud/test/fixtures/conformance-v1.json");
     serde_json::from_str(&std::fs::read_to_string(path).expect("read the fixture"))
         .expect("parse the fixture")
 }

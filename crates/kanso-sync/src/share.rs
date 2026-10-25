@@ -803,14 +803,20 @@ mod tests {
         b64(&bytes)
     }
 
+    /// The crate's folder: cargo's at run time (the phone runners set it to where
+    /// they copied the fixtures), else where it was built.
+    fn manifest_dir() -> std::path::PathBuf {
+        std::env::var_os("CARGO_MANIFEST_DIR")
+            .map(Into::into)
+            .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())
+    }
+
     /// The vector the Worker's tests open with the viewer's WebCrypto code.
     #[test]
     fn matches_the_shared_fixture() {
-        let text = std::fs::read_to_string(format!(
-            "{}/../../cloud/test/fixtures/share.json",
-            env!("CARGO_MANIFEST_DIR")
-        ))
-        .unwrap();
+        let text =
+            std::fs::read_to_string(manifest_dir().join("../../cloud/test/fixtures/share.json"))
+                .unwrap();
         let fixture: Value = serde_json::from_str(&text).unwrap();
         let s = |k: &str| fixture[k].as_str().unwrap().to_owned();
         let unhex = |h: String| -> Vec<u8> {

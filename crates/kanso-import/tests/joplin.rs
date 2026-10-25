@@ -17,8 +17,16 @@ const MEETING: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const OLD: &str = "cccccccccccccccccccccccccccccccc";
 const SKETCH: &str = "dddddddddddddddddddddddddddddddd";
 
+/// The crate's folder: cargo's at run time (the phone runners set it to where
+/// they copied the fixtures), else where it was built.
+fn manifest_dir() -> std::path::PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(Into::into)
+        .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())
+}
+
 fn fixture() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/joplin")
+    manifest_dir().join("tests/fixtures/joplin")
 }
 
 struct Env {

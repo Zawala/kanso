@@ -735,10 +735,18 @@ mod tests {
         assert_eq!(from_hsl(120., 1., 0.5), 0x00_FF00);
     }
 
+    /// The crate's folder: cargo's at run time (the phone runners set it to where
+    /// they copied the fixtures), else where it was built.
+    fn manifest_dir() -> std::path::PathBuf {
+        std::env::var_os("CARGO_MANIFEST_DIR")
+            .map(Into::into)
+            .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())
+    }
+
     /// The themes in the repository's `themes/` folder, as `index.json`
     /// lists them: `(file, text, parsed)`.
     fn theme_files() -> Vec<(String, String, ThemeFile)> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../themes");
+        let root = manifest_dir().join("../../themes");
         assert!(
             root.is_dir(),
             "themes is missing: run `git submodule update --init` (the themes are the kanso-themes submodule)"
@@ -779,7 +787,7 @@ mod tests {
             let resolved = theme.resolve();
             assert_eq!(resolved.dark, theme.appearance.is_dark(), "{file}");
         }
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../themes");
+        let root = manifest_dir().join("../../themes");
         for entry in std::fs::read_dir(root).unwrap() {
             let path = entry.unwrap().path();
             let name = path.file_name().unwrap().to_string_lossy().into_owned();

@@ -1448,11 +1448,18 @@ mod tests {
         }
     }
 
+    /// The crate's folder: cargo's at run time (the phone runners set it to where
+    /// they copied the fixtures), else where it was built.
+    fn manifest_dir() -> std::path::PathBuf {
+        std::env::var_os("CARGO_MANIFEST_DIR")
+            .map(Into::into)
+            .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())
+    }
+
     /// The schema in the repository is the one the key tables make.
     #[test]
     fn schema_file_is_current() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../themes/schema/kanso-theme-v1.json");
+        let path = manifest_dir().join("../../themes/schema/kanso-theme-v1.json");
         let mut expected = serde_json::to_string_pretty(&schema()).unwrap();
         expected.push('\n');
         if std::env::var_os("KANSO_THEME_FMT").is_some() {

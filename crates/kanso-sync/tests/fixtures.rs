@@ -28,13 +28,19 @@ use kanso_sync::{ApiError, KdfParams, Route, is_valid_setting};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+/// The crate's folder: cargo's at run time (the phone runners set it to where
+/// they copied the fixtures), else where it was built.
+fn manifest_dir() -> std::path::PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(Into::into)
+        .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())
+}
+
 fn load(name: &str) -> Value {
-    let path = format!(
-        "{}/../../cloud/test/fixtures/{name}",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
-    serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {path}: {e}"))
+    let path = manifest_dir().join(format!("../../cloud/test/fixtures/{name}"));
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
 }
 
 /// Replaces `"$name"` with the fixture value, or with a placeholder string for
@@ -374,11 +380,8 @@ fn auth_fixture_has_the_api_shapes() {
 /// must be re-run once it does.
 #[test]
 fn sign_in_fixture_has_the_api_shapes() {
-    let path = format!(
-        "{}/../../cloud/test/fixtures/sign_in.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    if !std::path::Path::new(&path).exists() {
+    let path = manifest_dir().join("../../cloud/test/fixtures/sign_in.json");
+    if !path.exists() {
         eprintln!("skipped: cloud/test/fixtures/sign_in.json isn't in this checkout yet");
         return;
     }

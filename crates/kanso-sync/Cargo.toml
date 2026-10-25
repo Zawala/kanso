@@ -68,8 +68,10 @@ system-keychain = ["dep:keyring"]
 test-support = []
 
 [dev-dependencies]
-# This crate's integration tests use `TestAuthenticator`.
-kanso-sync = { path = ".", features = ["test-support"] }
+# This crate's integration tests use `TestAuthenticator`. Default features off,
+# so the phones' test build (`--no-default-features`) doesn't turn the desktop
+# Keychain, and the binary that needs it, back on.
+kanso-sync = { path = ".", default-features = false, features = ["test-support"] }
 async-channel.workspace = true
 # The rollback test replays the old app's store rules (tests/common/legacy.rs).
 kanso-store = { workspace = true, features = ["legacy-v1-rules"] }

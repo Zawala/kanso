@@ -95,11 +95,16 @@ mod tests {
     use proptest::prelude::*;
     use serde_json::Value;
 
+    /// The crate's folder: cargo's at run time (the phone runners set it to where
+    /// they copied the fixtures), else where it was built.
+    fn manifest_dir() -> std::path::PathBuf {
+        std::env::var_os("CARGO_MANIFEST_DIR")
+            .map(Into::into)
+            .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())
+    }
+
     fn fixture() -> Vec<Value> {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../cloud/test/fixtures/usernames.json"
-        );
+        let path = manifest_dir().join("../../cloud/test/fixtures/usernames.json");
         let text = std::fs::read_to_string(path).expect("read usernames.json");
         let value: Value = serde_json::from_str(&text).expect("parse usernames.json");
         value["cases"].as_array().expect("cases").clone()
