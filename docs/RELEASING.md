@@ -264,6 +264,28 @@ gh secret set APPLE_API_ISSUER --repo iamngoni/kanso --env release --body <issue
 Keep the `.p8` in the password manager and delete the download. The
 workflow signs and notarizes only when all five Apple secrets are set.
 
+**The provisioning profile**, for native passkeys (docs/ACCOUNTS.md › Where
+the ceremony runs). Associated Domains (`webcredentials:sync.kansoapp.app`)
+is a restricted entitlement: macOS launches the app with it only when
+`Kanso.app/Contents/embedded.provisionprofile` authorizes it. The profile is
+"Kanso Developer ID" in the developer account: a Developer ID profile for
+`4973Y692JU.app.kanso.Kanso` with Associated Domains, made for the Developer
+ID Application certificate above (it expires 2031-01-16; renew the profile
+with the certificate). Then:
+
+```sh
+base64 -i Kanso_Developer_ID.provisionprofile | gh secret set MACOS_PROVISION_PROFILE_BASE64 --repo iamngoni/kanso --env release
+```
+
+The profile isn't secret, but it lives beside the certificate. With it and
+the signing secrets, the workflow passes it to `scripts/bundle-macos.sh` as
+`KANSO_PROVISION_PROFILE`, which embeds it and keeps the entitlement. Without
+it, the script builds without Associated Domains and says so: the app runs
+as before, and platform passkeys say they aren't available. To build a
+release with passkeys locally, set both `KANSO_SIGN_IDENTITY` and
+`KANSO_PROVISION_PROFILE` (for example
+`~/.config/kanso/Kanso_Developer_ID.provisionprofile`).
+
 ### 4. The built-in themes
 
 This release keeps every built-in color and icon theme compiled in: they are

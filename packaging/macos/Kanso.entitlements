@@ -6,5 +6,13 @@
          that doesn't ask for it here, and macOS then never even asks. -->
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <!-- Native passkeys (docs/ACCOUNTS.md › Where the ceremony runs): the
+         relying party AuthenticationServices may use. This is a restricted
+         entitlement: it needs Contents/embedded.provisionprofile, so
+         scripts/bundle-macos.sh removes it when no profile is given. -->
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>webcredentials:sync.kansoapp.app</string>
+    </array>
 </dict>
 </plist>
