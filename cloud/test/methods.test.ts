@@ -467,3 +467,106 @@ describe("POST /v2/account/sign-in/passkeys/start and /finish", () => {
 		expect((await registerStart(alice.token, passwordProof(alice))).body).toMatchObject({ error: "rate_limited", limit: "passkey-manage" });
 	});
 });
+
+// ---------------------------------------------------------- removing passkeys
+
+export const removePasskey = (token: string, credential: Credential | string, body: Record<string, unknown>, now = T0) =>
+	as(`/v2/account/sign-in/passkeys/${typeof credential === "string" ? credential : base64url(credential.credentialId)}/remove`, body, token, now);
+
+describe("POST /v2/account/sign-in/passkeys/<credential_id>/remove", () => {
+	it("removes a passkey of a password account with a password proof; other devices stay signed in", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		const key = newCredential();
+		await addCredential(alice.creds.accountId, key);
+		const removed = await removePasskey(alice.token, key, { proof: passwordProof(alice) });
+		expect(removed.status).toBe(204);
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_passkeys").first()).toEqual({ n: 0 });
+		expect(await removePasskey(alice.token, key, { proof: passwordProof(alice) })).toMatchObject({ status: 404, body: { error: "not_found" } });
+	});
+
+	it("the last way in needs the recovery key: 409 last_method without it, 204 with it, 401 with a wrong one", async () => {
+		const p = await passkeyAccount("prover");
+		const last = await removePasskey(p.token, p.credential, { proof: await passkeyProof(p.token, p.credential, { signCount: 1 }) });
+		expect(last).toMatchObject({ status: 409, body: { error: "last_method" } });
+		const wrong = await removePasskey(p.token, p.credential, {
+			proof: await passkeyProof(p.token, p.credential, { signCount: 2 }),
+			recovery_auth_key: newCreds("x").recoveryAuthKey,
+		});
+		expect(wrong).toMatchObject({ status: 401, body: { error: "invalid_credentials" } });
+		const done = await removePasskey(p.token, p.credential, {
+			proof: await passkeyProof(p.token, p.credential, { signCount: 3 }),
+			recovery_auth_key: p.recoveryAuthKey,
+		});
+		expect(done.status).toBe(204);
+		// A recovery-only account still has its session and can recover.
+		expect((await callJson("/v2/account/sign-in", { env: menv(), now: T0, token: p.token })).body).toMatchObject({ has_password: false, passkeys: [], identities: [] });
+	});
+
+	it("another passkey or a linked identity keeps it from being the last", async () => {
+		const p = await passkeyAccount("prover");
+		const second = newCredential();
+		await addCredential(p.accountId, second);
+		expect((await removePasskey(p.token, p.credential, { proof: await passkeyProof(p.token, second) })).status).toBe(204);
+		await env.DB.prepare("INSERT INTO account_identities (account_id, provider, subject, created_at) VALUES (?1, 'github', '42', ?2)").bind(p.accountId, T0).run();
+		expect((await removePasskey(p.token, second, { proof: await passkeyProof(p.token, second, { signCount: 2 }) })).status).toBe(204);
+	});
+
+	it("needs a password or passkey proof, used once; a provider proof can't remove a passkey", async () => {
+		const p = await passkeyAccount("prover");
+		await addCredential(p.accountId, newCredential());
+		expect((await removePasskey(p.token, p.credential, {})).body.error).toBe("reauth_required");
+		expect((await removePasskey(p.token, p.credential, { proof: { kind: "provider", flow: base64url(new Uint8Array(32)) } })).body.error).toBe(
+			"reauth_required",
+		);
+		const proof = await passkeyProof(p.token, p.credential);
+		const unknown = await removePasskey(p.token, newCredential(), { proof });
+		expect(unknown.status).toBe(404);
+		expect(await removePasskey(p.token, p.credential, { proof })).toMatchObject({ status: 204 });
+	});
+
+	it("another account's credential is 404 and stays; a malformed ID is 400", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		const bob = await passkeyAccount("bob");
+		expect((await removePasskey(alice.token, bob.credential, { proof: passwordProof(alice) })).status).toBe(404);
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_passkeys").first()).toEqual({ n: 1 });
+		expect((await removePasskey(alice.token, "not-an-id", { proof: passwordProof(alice) })).body.error).toBe("bad_request");
+	});
+
+	it("parallel removals of an account's last two passkeys leave one", async () => {
+		const p = await passkeyAccount("prover");
+		const second = newCredential();
+		await addCredential(p.accountId, second);
+		const [a, b] = await Promise.all([
+			passkeyProof(p.token, p.credential, { signCount: 1 }).then((proof) => removePasskey(p.token, p.credential, { proof })),
+			passkeyProof(p.token, second, { signCount: 1 }).then((proof) => removePasskey(p.token, second, { proof })),
+		]);
+		expect([a.status, b.status].sort()).toEqual([204, 409]);
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_passkeys").first()).toEqual({ n: 1 });
+	});
+
+	it("property: whatever the account holds, a removal never leaves it with no way in unless the recovery key was proved", async () => {
+		await fc.assert(
+			fc.asyncProperty(fc.boolean(), fc.boolean(), fc.integer({ min: 1, max: 3 }), fc.boolean(), async (password, identity, keys, withRecovery) => {
+				await resetServer({ signup: "open", signups_per_day: "1000" });
+				const p = await passkeyAccount("prover");
+				if (password) await env.DB.prepare("UPDATE accounts SET has_password = 1 WHERE id = ?1").bind(p.accountId).run();
+				if (identity) {
+					await env.DB.prepare("INSERT INTO account_identities (account_id, provider, subject, created_at) VALUES (?1, 'github', '7', ?2)").bind(p.accountId, T0).run();
+				}
+				for (let i = 1; i < keys; i++) await addCredential(p.accountId, newCredential());
+				const body: Record<string, unknown> = { proof: await passkeyProof(p.token, p.credential) };
+				if (withRecovery) body.recovery_auth_key = p.recoveryAuthKey;
+				const answer = await removePasskey(p.token, p.credential, body);
+				const others = password || identity || keys > 1;
+				expect(answer.status).toBe(others || withRecovery ? 204 : 409);
+			}),
+			runs(20),
+		);
+	});
+
+	it("counts passkey-manage", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		for (let i = 0; i < 20; i++) await removePasskey(alice.token, newCredential(), {});
+		expect((await removePasskey(alice.token, newCredential(), {})).body).toMatchObject({ error: "rate_limited", limit: "passkey-manage" });
+	});
+});

@@ -59,6 +59,7 @@
 //   POST   /v2/account/sign-in/proof/start            a passkey proof's challenge          (session)
 //   POST   /v2/account/sign-in/passkeys/start         add a passkey: its options (proof)   (session)
 //   POST   /v2/account/sign-in/passkeys/finish        add a passkey: its registration      (session)
+//   POST   /v2/account/sign-in/passkeys/<id>/remove   remove a passkey (proof)             (session)
 //   POST   /v2/account/sign-in/identities/<provider>/start   link, or a proof flow   (session)
 //   POST   /v2/account/sign-in/identities/<provider>/unlink  unlink a provider       (session)
 //   POST   /v2/account/sign-in/approvals              ask another device to approve this one (session)
@@ -238,6 +239,8 @@ function match(path: string): Route | null {
 			? { name: "identity_start", methods: { POST: json(providers.identityStart(provider), true) } }
 			: { name: "identity_unlink", methods: { POST: json(providers.unlink(provider), true) } };
 	}
+	const passkeyRemove = /^\/v2\/account\/sign-in\/passkeys\/([^/]+)\/remove$/.exec(path);
+	if (passkeyRemove) return { name: "passkey_remove", methods: { POST: json(passkeys.removePasskey(segment(passkeyRemove[1]))) } };
 	const notification = /^\/v2\/collab\/notifications\/([^/]+)$/.exec(path);
 	if (notification) return { name: "collab_notification", methods: { DELETE: { handler: collab.deleteNotification(segment(notification[1])) } } };
 	const approval = /^\/v2\/account\/sign-in\/approvals\/([^/]+)(\/[^/]+)?$/.exec(path);

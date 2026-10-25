@@ -31,7 +31,8 @@ import {
 	isWrappedKey,
 	proof32,
 } from "./protocol";
-import { checkProof, proofAccount, proofUsed } from "./proofs";
+import { checkProof, proofAccount, proofUsed, recoveryProof } from "./proofs";
+import { lastMethod } from "./providers";
 import { flowById, flowForDevice, flowExpired, flowStatement, hexEqual, isFlowId, newFlow, passkeyAdvertisement } from "./sign_in";
 import { isReserved, normalizeUsername } from "./usernames";
 import {
@@ -808,3 +809,60 @@ export const registerFinish = withSession(async (request, env, now, session) => 
 	if (results[1].results.length !== 1) return error(409, "credential_exists", "That passkey is already added.");
 	return answer(wrapped !== null, now);
 });
+
+// ----------------------------------------------- removing a passkey (session)
+
+/**
+ * `POST /v2/account/sign-in/passkeys/<credential_id>/remove` — `{proof,
+ * recovery_auth_key?}`, a password or passkey proof. Deletes the credential
+ * and its wrap; no other key or session changes. One statement holds the
+ * proof's guard, the last-method rule (refused unless the account keeps a
+ * password, an identity or another passkey) and, when the body has one, the
+ * recovery key, so two removals of an account's last two ways in can't both
+ * pass. 204; 404 for a credential this account doesn't have; 409
+ * `last_method` without a recovery proof. Counts `passkey-manage`.
+ */
+export function removePasskey(raw: string) {
+	return withSession(async (request, env, now, session) => {
+		const limited = await count(env.DB, "passkey-manage", accountKey("passkey-manage", session.accountId), now);
+		if (limited) return limited;
+		const credentialId = bytesField(raw, 16, 1023);
+		if (!credentialId) return badRequest("The credential ID must be 16–1023 bytes of canonical base64url.");
+		const credential = base64url(credentialId);
+		const body = await readObject(request);
+		if (!body.ok) return body.response;
+		const account = await proofAccount(env, session.accountId);
+		if (!account) return INVALID();
+		const checked = await checkProof(env, now, session, account, body.value.proof, { provider: null });
+		if (!checked.ok) return checked.response;
+		const recovery = await recoveryProof(body.value, "recovery_auth_key", account);
+		if (!recovery.ok) return recovery.response;
+		const exists = await env.DB.prepare("SELECT 1 AS found FROM account_passkeys WHERE credential_id = ?1 AND account_id = ?2")
+			.bind(credential, session.accountId)
+			.first();
+		if (!exists) return error(404, "not_found", "Not found.");
+
+		const { guard } = checked;
+		const deletion = env.DB.prepare(
+			`DELETE FROM account_passkeys WHERE credential_id = ?3 AND account_id = ?1
+  AND (?4 IS NOT NULL OR (SELECT has_password FROM accounts WHERE id = ?1) = 1
+    OR EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?1)
+    OR EXISTS (SELECT 1 FROM account_passkeys WHERE account_id = ?1 AND credential_id != ?3))
+  AND (?4 IS NULL OR EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND recovery_hash = ?4))
+  AND ${guard.sql(1, 2)} RETURNING credential_id`,
+		).bind(session.accountId, guard.value, credential, recovery.hash ?? null);
+		// The proof is used first, in the same batch: single use even when the removal is refused.
+		const results = await env.DB.batch([...guard.before, deletion]);
+		if (results[results.length - 1].results.length === 1) return new Response(null, { status: 204 });
+		if (!proofUsed(guard, results)) return flowExpired();
+		const still = await env.DB.prepare("SELECT 1 AS found FROM account_passkeys WHERE credential_id = ?1 AND account_id = ?2")
+			.bind(credential, session.accountId)
+			.first();
+		if (!still) return error(404, "not_found", "Not found.");
+		const current = await proofAccount(env, session.accountId);
+		// The password or the recovery key changed since the check.
+		if (checked.kind === "password" && current?.auth_hash !== account.auth_hash) return INVALID();
+		if (recovery.hash !== undefined && current?.recovery_hash !== recovery.hash) return INVALID();
+		return lastMethod();
+	});
+}
