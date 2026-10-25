@@ -144,11 +144,32 @@ impl RootTag {
     }
 }
 
-/// The fonts drawings are set in: this machine's.
-fn fonts() -> Arc<usvg::fontdb::Database> {
+/// The fonts drawings are set in: this machine's. The font database finds
+/// none of a phone's on its own (it has no folder for Android, and looks for
+/// iOS's where Linux keeps them), so those are loaded from where the system
+/// keeps them, and the generic families are set to faces that exist there.
+/// Without that, text in a drawing would be left out, or set in whichever
+/// face came first. The app's own fonts are not here: the facade passes them
+/// in (#48, step 4).
+// no-prop-test: reads the machine's fonts; the drawing tests go through it.
+pub(crate) fn fonts() -> Arc<usvg::fontdb::Database> {
     static FONTS: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {
         let mut db = usvg::fontdb::Database::new();
         db.load_system_fonts();
+        #[cfg(target_os = "ios")]
+        {
+            db.load_fonts_dir("/System/Library/Fonts");
+            db.set_serif_family("Times New Roman");
+            db.set_sans_serif_family("Helvetica");
+            db.set_monospace_family("Courier");
+        }
+        #[cfg(target_os = "android")]
+        {
+            db.load_fonts_dir("/system/fonts");
+            db.set_serif_family("Noto Serif");
+            db.set_sans_serif_family("Roboto");
+            db.set_monospace_family("Droid Sans Mono");
+        }
         Arc::new(db)
     });
     FONTS.clone()

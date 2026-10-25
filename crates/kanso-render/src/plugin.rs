@@ -131,16 +131,6 @@ pub(crate) fn render(job: &Job) -> Outcome {
     })
 }
 
-/// The fonts text in a plugin's drawing is set in: this machine's.
-fn fonts() -> Arc<usvg::fontdb::Database> {
-    static FONTS: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {
-        let mut db = usvg::fontdb::Database::new();
-        db.load_system_fonts();
-        Arc::new(db)
-    });
-    FONTS.clone()
-}
-
 fn options() -> usvg::Options<'static> {
     let default_font = usvg::FontResolver::default_font_selector();
     usvg::Options {
@@ -150,7 +140,7 @@ fn options() -> usvg::Options<'static> {
             resolve_data: Box::new(|_, _, _| None),
             resolve_string: Box::new(|_, _| None),
         },
-        fontdb: fonts(),
+        fontdb: crate::svg::fonts(),
         font_resolver: usvg::FontResolver {
             select_font: Box::new(move |font, db| {
                 default_font(font, db).or_else(|| {
