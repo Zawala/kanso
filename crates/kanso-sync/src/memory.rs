@@ -177,6 +177,10 @@ enum Rule {
     ApprovalPoll,
     ApprovalRespond,
     ProofAccount,
+    /// Per account, counted after a device's own `password-account`.
+    PasswordTotal,
+    /// Per account, counted after a device's own `proof-account`.
+    ProofTotal,
     PasskeyChallenge,
     PasskeyManage,
     ProviderPoll,
@@ -196,6 +200,8 @@ impl Rule {
             Rule::ApprovalPoll => "approval-poll",
             Rule::ApprovalRespond => "approval-respond",
             Rule::ProofAccount => "proof-account",
+            Rule::PasswordTotal => "password-total",
+            Rule::ProofTotal => "proof-total",
             Rule::PasskeyChallenge => "passkey-challenge",
             Rule::PasskeyManage => "passkey-manage",
             Rule::ProviderPoll => "provider-poll",
@@ -205,10 +211,12 @@ impl Rule {
     fn window(self) -> i64 {
         match self {
             Rule::SignupIp | Rule::RecoverIp => HOUR_MS,
-            Rule::LoginUser | Rule::LoginIp | Rule::PasswordAccount => QUARTER_HOUR_MS,
+            Rule::LoginUser | Rule::LoginIp | Rule::PasswordAccount | Rule::PasswordTotal => {
+                QUARTER_HOUR_MS
+            }
             Rule::WritesAccount | Rule::UploadsAccount => DAY_MS,
             Rule::ApprovalCreate | Rule::ApprovalPoll | Rule::ApprovalRespond => HOUR_MS,
-            Rule::ProofAccount | Rule::PasskeyManage => HOUR_MS,
+            Rule::ProofAccount | Rule::ProofTotal | Rule::PasskeyManage => HOUR_MS,
             Rule::PasskeyChallenge | Rule::ProviderPoll => QUARTER_HOUR_MS,
         }
     }
@@ -731,6 +739,24 @@ impl ServerState {
             return Err(rate_limited(rule.name(), start + window - now));
         }
         Ok(())
+    }
+
+    /// The Worker's `countSession`: `password-account` (5 per 15 minutes)
+    /// or `proof-account` (20 an hour) per account and device (the device
+    /// ID's first 64 bits), then, only once that passes, the account's total
+    /// (`password-total` 15, `proof-total` 60), so one session can't use up
+    /// another device's allowance.
+    fn count_session(&mut self, rule: Rule, caller: &Caller, now: i64) -> Result<(), ApiError> {
+        let (max, total, total_max) = match rule {
+            Rule::PasswordAccount => (5, Rule::PasswordTotal, 15),
+            Rule::ProofAccount => (20, Rule::ProofTotal, 60),
+            _ => unreachable!("only the per-session proof rules"),
+        };
+        let device = caller.device_id.get(2..18).unwrap_or(&caller.device_id);
+        let own = format!("{}:{}:{device}", rule.name(), caller.account_id);
+        self.count(rule, &own, now, 1, max)?;
+        let total_key = format!("{}:{}", total.name(), caller.account_id);
+        self.count(total, &total_key, now, 1, total_max)
     }
 
     fn quota_docs(&self, a: &Account) -> u64 {
@@ -2430,13 +2456,7 @@ impl ServerState {
         key: &str,
         now: i64,
     ) -> Result<String, ApiError> {
-        self.count(
-            Rule::PasswordAccount,
-            &format!("password-account:{}", caller.account_id),
-            now,
-            1,
-            5,
-        )?;
+        self.count_session(Rule::PasswordAccount, caller, now)?;
         let current = key32(key).ok_or(ApiError::BadRequest)?;
         Ok(sha256_hex(&current))
     }
@@ -2574,6 +2594,14 @@ impl ServerState {
         ] {
             self.limits.remove(&format!("{rule}:{id}"));
         }
+        // The per-device proof rows and their totals.
+        self.limits.retain(|key, _| {
+            !["password-account", "proof-account"]
+                .iter()
+                .any(|rule| key.starts_with(&format!("{rule}:{id}:")))
+                && key != &format!("password-total:{id}")
+                && key != &format!("proof-total:{id}")
+        });
         self.accounts.remove(&id);
         Ok(DeleteResponse { deleted: true })
     }
@@ -2626,13 +2654,7 @@ impl ServerState {
             None | Some(ProofWire::Unknown) => Err(ApiError::ReauthRequired),
             Some(ProofWire::Password { auth_key }) => {
                 if !rules.password_counted {
-                    self.count(
-                        Rule::PasswordAccount,
-                        &format!("password-account:{}", caller.account_id),
-                        now,
-                        1,
-                        5,
-                    )?;
+                    self.count_session(Rule::PasswordAccount, caller, now)?;
                 }
                 let key = key32(auth_key).ok_or(ApiError::BadRequest)?;
                 let account = &self.accounts[&caller.account_id];
@@ -2655,13 +2677,7 @@ impl ServerState {
                     return Err(ApiError::BadRequest);
                 };
                 if rules.count_proof {
-                    self.count(
-                        Rule::ProofAccount,
-                        &format!("proof-account:{}", caller.account_id),
-                        now,
-                        1,
-                        20,
-                    )?;
+                    self.count_session(Rule::ProofAccount, caller, now)?;
                 }
                 let proof_hash = self.session_proof_hash(caller);
                 let f = self
@@ -2718,13 +2734,7 @@ impl ServerState {
                     return Err(ApiError::ReauthRequired);
                 }
                 if rules.count_proof {
-                    self.count(
-                        Rule::ProofAccount,
-                        &format!("proof-account:{}", caller.account_id),
-                        now,
-                        1,
-                        20,
-                    )?;
+                    self.count_session(Rule::ProofAccount, caller, now)?;
                 }
                 let f = self
                     .provider_flows
@@ -2882,13 +2892,7 @@ impl ServerState {
     ) -> Result<PasskeyProofStartResponse, ApiError> {
         let caller = self.authenticate(token, now, false)?;
         let (rp_id, _) = self.relying_party()?;
-        self.count(
-            Rule::ProofAccount,
-            &format!("proof-account:{}", caller.account_id),
-            now,
-            1,
-            20,
-        )?;
+        self.count_session(Rule::ProofAccount, &caller, now)?;
         let only = match &r.credential_id {
             Some(id) => Some(b64(
                 &passkey_bytes(id, 16, 1023).ok_or(ApiError::BadRequest)?
@@ -3149,13 +3153,7 @@ impl ServerState {
         now: i64,
     ) -> Result<PasswordResponse, ApiError> {
         let caller = self.authenticate(token, now, false)?;
-        self.count(
-            Rule::PasswordAccount,
-            &format!("password-account:{}", caller.account_id),
-            now,
-            1,
-            5,
-        )?;
+        self.count_session(Rule::PasswordAccount, &caller, now)?;
         let kdf = self.check_kdf(&r.kdf)?;
         if !is_salt(&r.salt) {
             return Err(ApiError::BadRequest);
@@ -4951,13 +4949,7 @@ impl Api for MemoryApi<'_> {
             if !s.providers.contains(p) {
                 return Err(ApiError::ProviderDisabled);
             }
-            s.count(
-                Rule::ProofAccount,
-                &format!("proof-account:{}", c.account_id),
-                n,
-                1,
-                20,
-            )?;
+            s.count_session(Rule::ProofAccount, &c, n)?;
             let row = s
                 .sessions
                 .iter()
@@ -5115,6 +5107,46 @@ mod server_tests {
             id: id.into(),
             sealed_name: None,
             proof: b64(&[9; 32]),
+        }
+    }
+
+    /// The Worker's countSession: each device has its own `password-account`
+    /// (5) and `proof-account` (20); the account's total (15, 60) is three
+    /// devices' worth and is counted only once a device's own rule passes.
+    #[test]
+    fn proof_limits_count_per_device_then_per_account() {
+        for (rule, own, total, total_name) in [
+            (Rule::PasswordAccount, 5, 15, "password-total"),
+            (Rule::ProofAccount, 20, 60, "proof-total"),
+        ] {
+            let mut state = ServerState::new(KdfParams::TEST, KdfParams::TEST);
+            let caller = |n: u8| Caller {
+                account_id: "a_1".into(),
+                // Keyed by the ID's first 64 bits, as the Worker's.
+                device_id: format!("d_{n:02x}{}", "0".repeat(30)),
+                token_hash: String::new(),
+            };
+            // One device using up its own leaves the others theirs, and a
+            // refused try doesn't reach the total.
+            for _ in 0..own {
+                state.count_session(rule, &caller(1), 0).unwrap();
+            }
+            for _ in 0..3 {
+                assert!(matches!(
+                    state.count_session(rule, &caller(1), 0),
+                    Err(ApiError::RateLimited { ref limit, .. }) if limit == rule.name()
+                ));
+            }
+            for _ in 0..own {
+                state.count_session(rule, &caller(2), 0).unwrap();
+                state.count_session(rule, &caller(3), 0).unwrap();
+            }
+            assert_eq!(3 * own, total);
+            // A fourth device has its own allowance but the account's total is spent.
+            assert!(matches!(
+                state.count_session(rule, &caller(4), 0),
+                Err(ApiError::RateLimited { ref limit, .. }) if limit == total_name
+            ));
         }
     }
 

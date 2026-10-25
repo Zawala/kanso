@@ -34,6 +34,8 @@
   "(GET /.well-known/apple-app-site-association; its body is matched as JSON). The approval_* routes are auth.json's.",
   "Not covered here, because they need Apple or Google: the Apple callback page, nonce_reused, provider_unavailable.",
   "providers.test.ts covers them on the Worker.",
+  "proof-account and password-account count per account and device; proof-total (60 an hour) and password-total",
+  "(15 per 15 minutes) count per account, after the device's own rule passes.",
   "Expected values follow the spec, except its listed divergences (ACCOUNTS.md \u203a Changes since review). A used,",
   "unknown or expired flow is 400 flow_expired; no proof, or a kind the change doesn't take, is 401 reauth_required."
  ],
@@ -1796,6 +1798,148 @@
      "request": "proof_start",
      "t": 3600000,
      "as": "t1",
+     "body": {},
+     "status": 200
+    }
+   ]
+  },
+  {
+   "name": "proof-account is per session: one device using up its own leaves the others theirs",
+   "steps": [
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "user": {
+       "id": "*",
+       "name": "alice",
+       "displayName": "alice"
+      },
+      "pub_key_cred_params": [
+       -7,
+       -8,
+       -257
+      ],
+      "authenticator_selection": {
+       "residentKey": "required",
+       "userVerification": "required"
+      },
+      "exclude_credentials": []
+     },
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k1",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "internal"
+      ],
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "passkey_start",
+     "body": {
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "capture": {
+      "f": "flow_id",
+      "c": "challenge"
+     }
+    },
+    {
+     "request": "passkey_finish",
+     "body": {
+      "flow_id": "$f",
+      "$assert": {
+       "authenticator": "k1",
+       "challenge": "$c",
+       "sign_count": 1
+      },
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "session"
+     },
+     "capture": {
+      "t2": "token"
+     }
+    },
+    {
+     "repeat": 20,
+     "steps": [
+      {
+       "request": "proof_start",
+       "as": "t1",
+       "body": {},
+       "status": 200
+      }
+     ]
+    },
+    {
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "proof-account"
+     }
+    },
+    {
+     "request": "proof_start",
+     "as": "t2",
      "body": {},
      "status": 200
     }
