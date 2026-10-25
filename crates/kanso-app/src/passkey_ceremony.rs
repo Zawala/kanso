@@ -15,8 +15,7 @@
 
 use gpui_kit::App;
 use kanso_sync::passkey::{
-    PasskeyAssertionChallenge, PasskeyCeremony, PasskeyCeremonyError,
-    PasskeyRegistrationChallenge,
+    PasskeyAssertionChallenge, PasskeyCeremony, PasskeyCeremonyError, PasskeyRegistrationChallenge,
 };
 use kanso_sync::{PasskeyAssertion, PasskeyMethods, PasskeyRegistration};
 
@@ -95,15 +94,6 @@ pub fn rp_id_fits_server(rp_id: &str, server: &str) -> bool {
     let host = crate::account_words::host_of(server);
     let host = host.split(['/', ':']).next().unwrap_or_default();
     valid_rp_id(rp_id) && (host == rp_id || host.ends_with(&format!(".{rp_id}")))
-}
-
-/// The `clientDataJSON` origin the platform reports for `rp_id`: the first
-/// advertised origin, or `https://<rp_id>` when the server lists none.
-pub fn ceremony_origin(rp_id: &str, origins: &[String]) -> String {
-    origins
-        .first()
-        .cloned()
-        .unwrap_or_else(|| format!("https://{rp_id}"))
 }
 
 /// Why a native ceremony ended, in `kanso-sync`'s words. Native messages
@@ -375,7 +365,12 @@ mod tests {
 
     #[test]
     fn relying_party_ids_are_hosts_without_extras() {
-        for good in [OFFICIAL_RP_ID, "kansoapp.app", "localhost", "a-b.example.org"] {
+        for good in [
+            OFFICIAL_RP_ID,
+            "kansoapp.app",
+            "localhost",
+            "a-b.example.org",
+        ] {
             assert!(valid_rp_id(good), "{good}");
         }
         for bad in [
@@ -400,29 +395,61 @@ mod tests {
             OFFICIAL_RP_ID,
             "https://sync.kansoapp.app"
         ));
-        assert!(rp_id_fits_server("kansoapp.app", "https://sync.kansoapp.app"));
-        assert!(rp_id_fits_server("example.com", "https://sync.example.com:8443/"));
-        assert!(!rp_id_fits_server(OFFICIAL_RP_ID, "https://sync.example.com"));
+        assert!(rp_id_fits_server(
+            "kansoapp.app",
+            "https://sync.kansoapp.app"
+        ));
+        assert!(rp_id_fits_server(
+            "example.com",
+            "https://sync.example.com:8443/"
+        ));
+        assert!(!rp_id_fits_server(
+            OFFICIAL_RP_ID,
+            "https://sync.example.com"
+        ));
         // A suffix that isn't a whole label doesn't count.
         assert!(!rp_id_fits_server("ample.com", "https://sync.example.com"));
     }
 
+    /// `kanso-fido` and `kanso-webauthn` keep their own copies of the PRF
+    /// input, the CTAP salt and the client data, so they stay free of the
+    /// sync client; these keep them equal to `kanso-sync`'s.
     #[test]
-    fn the_origin_is_the_first_advertised_or_the_relying_party() {
+    fn the_platform_crates_share_kanso_syncs_constants() {
+        assert_eq!(kanso_fido::PRF_INPUT, kanso_sync::PRF_INPUT);
         assert_eq!(
-            ceremony_origin(OFFICIAL_RP_ID, &[]),
-            "https://sync.kansoapp.app"
+            kanso_fido::CTAP_PRF_LABEL,
+            kanso_sync::security_key::CTAP_PRF_LABEL
         );
         assert_eq!(
-            ceremony_origin(
-                OFFICIAL_RP_ID,
-                &["https://sync.kansoapp.app".into(), "https://x".into()]
-            ),
-            "https://sync.kansoapp.app"
+            kanso_fido::ctap_salt(),
+            kanso_sync::security_key::ctap_salt()
         );
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        assert_eq!(kanso_webauthn::PRF_INPUT, kanso_sync::PRF_INPUT);
     }
 
     proptest! {
+        /// Every crate writes the same `clientDataJSON` for any challenge
+        /// and origin, escapes included.
+        #[test]
+        fn prop_every_crate_writes_the_same_client_data(
+            kind in prop::sample::select(vec!["webauthn.create", "webauthn.get"]),
+            challenge in prop::collection::vec(any::<u8>(), 0..64),
+            origin in "[ -~\\t\\n\\r\"\\\\\u{1}\u{1f}é]{0,40}",
+        ) {
+            let sync = kanso_sync::passkey::client_data_json(kind, &challenge, &origin);
+            prop_assert_eq!(
+                kanso_fido::client_data_json(kind, &challenge, &origin),
+                sync.to_vec()
+            );
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            prop_assert_eq!(
+                kanso_webauthn::client_data_json(kind, &challenge, &origin),
+                sync.to_vec()
+            );
+        }
+
         /// A parent of the host fits; a host that isn't under the RP ID
         /// never does.
         #[test]
