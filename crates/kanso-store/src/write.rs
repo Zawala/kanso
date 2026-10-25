@@ -341,7 +341,8 @@ fn books_changed(tx: &Transaction, before: BTreeSet<String>, origin: Origin) -> 
     let after = locked_book_ids(tx)?;
     // Only Kanso (or a lock taken off on another device) unlocks a
     // notebook: moving one out of a locked notebook would, too.
-    if matches!(origin, Origin::Api | Origin::Import) && before.difference(&after).next().is_some()
+    if matches!(origin, Origin::Api | Origin::Import | Origin::Agent)
+        && before.difference(&after).next().is_some()
     {
         return Err(StoreError::Invalid(
             "The notebook is locked: unlock it in Kanso first.".into(),
@@ -515,6 +516,29 @@ impl Store {
     /// taken from `body`: the document keeps its current values for them (in
     /// the same transaction), and a new document gets none. The local API
     /// uses it for fields only the app may set.
+    /// [`Store::put`] for an edit the agent called `agent` suggested and the
+    /// person applied (`Origin::Agent`): the version it replaces is kept in
+    /// the note's history, naming the agent. All in one transaction.
+    pub fn put_by_agent(
+        &self,
+        doc_type: DocType,
+        body: Value,
+        mode: Put,
+        agent: &str,
+    ) -> Result<WriteResult> {
+        let Value::Object(fields) = body else {
+            return Err(StoreError::Invalid("Expected a JSON object.".into()));
+        };
+        self.write(|tx, changes| {
+            let result = put_in(tx, changes, doc_type, fields, mode, Origin::Agent, &[])?;
+            tx.execute(
+                "UPDATE revisions SET agent = ?1 WHERE doc_id = ?2 AND origin = 'agent' AND agent IS NULL",
+                params![agent, result.id],
+            )?;
+            Ok(result)
+        })
+    }
+
     pub fn put_keeping(
         &self,
         doc_type: DocType,
