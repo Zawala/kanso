@@ -577,8 +577,9 @@ describe("POST /v2/account/sign-in/passkeys/<credential_id>/remove", () => {
  * A finished provider proof flow for `accountId`, as the provider routes leave
  * one (providers.test.ts runs the real flows), with the identity linked.
  */
-export async function providerProof(accountId: string, deviceId: string, provider = "github", subject = "583231", now = T0) {
+export async function providerProof(accountId: string, device: Device, provider = "github", subject = "583231", now = T0) {
 	const flow = base64url(crypto.getRandomValues(new Uint8Array(32)));
+	const proofHash = await sha256Hex(Uint8Array.from(Buffer.from(device.proof, "base64url")));
 	await env.DB.batch([
 		env.DB.prepare("INSERT OR IGNORE INTO account_identities (account_id, provider, subject, created_at) VALUES (?1, ?2, ?3, ?4)").bind(
 			accountId,
@@ -587,9 +588,9 @@ export async function providerProof(accountId: string, deviceId: string, provide
 			now,
 		),
 		env.DB.prepare(
-			`INSERT INTO auth_flows (id, kind, intent, account_id, device_id, provider, subject, created_at, expires_at)
-  VALUES (?1, ?2, 'proof', ?3, ?4, ?2, ?5, ?6, ?7)`,
-		).bind(flow, provider, accountId, deviceId, subject, now, now + 600_000),
+			`INSERT INTO auth_flows (id, kind, intent, account_id, device_id, device_proof_hash, provider, subject, created_at, expires_at)
+  VALUES (?1, ?2, 'proof', ?3, ?4, ?8, ?2, ?5, ?6, ?7)`,
+		).bind(flow, provider, accountId, device.id, subject, now, now + 600_000, proofHash),
 	]);
 	return { kind: "provider", flow };
 }
@@ -653,23 +654,23 @@ describe("POST /v2/account/sign-in/password", () => {
 
 	it("a provider proof needs the current recovery key: missing is reauth_required, wrong is invalid_credentials", async () => {
 		const p = await passkeyAccount("prover");
-		const without = await setPassword(p.token, firstPasswordBody(await providerProof(p.accountId, p.device.id)));
+		const without = await setPassword(p.token, firstPasswordBody(await providerProof(p.accountId, p.device)));
 		expect(without).toMatchObject({ status: 401, body: { error: "reauth_required" } });
 		const wrong = await setPassword(
 			p.token,
-			firstPasswordBody(await providerProof(p.accountId, p.device.id), newCreds("n"), { current_recovery_auth_key: newCreds("x").recoveryAuthKey }),
+			firstPasswordBody(await providerProof(p.accountId, p.device), newCreds("n"), { current_recovery_auth_key: newCreds("x").recoveryAuthKey }),
 		);
 		expect(wrong).toMatchObject({ status: 401, body: { error: "invalid_credentials" } });
 		const right = await setPassword(
 			p.token,
-			firstPasswordBody(await providerProof(p.accountId, p.device.id), newCreds("n"), { current_recovery_auth_key: p.recoveryAuthKey }),
+			firstPasswordBody(await providerProof(p.accountId, p.device), newCreds("n"), { current_recovery_auth_key: p.recoveryAuthKey }),
 		);
 		expect(right.status).toBe(200);
 	});
 
 	it("a provider proof is used once and only while the recovery key is unchanged", async () => {
 		const p = await passkeyAccount("prover");
-		const proof = await providerProof(p.accountId, p.device.id);
+		const proof = await providerProof(p.accountId, p.device);
 		// The recovery key changes between the check and the change: the proof isn't used and nothing changes.
 		await env.DB.prepare("UPDATE accounts SET recovery_hash = ?2 WHERE id = ?1").bind(p.accountId, "0".repeat(64)).run();
 		const raced = await setPassword(p.token, firstPasswordBody(proof, newCreds("n"), { current_recovery_auth_key: p.recoveryAuthKey }));
@@ -748,15 +749,15 @@ describe("POST /v2/account/recovery-key with a proof", () => {
 		const p = await passkeyAccount("prover");
 		const next = newCreds("next");
 		const fields = { recovery_auth_key: next.recoveryAuthKey, recovery_wrapped_key: next.recoveryWrappedKey };
-		const without = await recoveryKey(p.token, { proof: await providerProof(p.accountId, p.device.id), ...fields });
+		const without = await recoveryKey(p.token, { proof: await providerProof(p.accountId, p.device), ...fields });
 		expect(without).toMatchObject({ status: 401, body: { error: "reauth_required" } });
 		const wrong = await recoveryKey(p.token, {
-			proof: await providerProof(p.accountId, p.device.id),
+			proof: await providerProof(p.accountId, p.device),
 			current_recovery_auth_key: newCreds("x").recoveryAuthKey,
 			...fields,
 		});
 		expect(wrong).toMatchObject({ status: 401, body: { error: "invalid_credentials" } });
-		const right = await recoveryKey(p.token, { proof: await providerProof(p.accountId, p.device.id), current_recovery_auth_key: p.recoveryAuthKey, ...fields });
+		const right = await recoveryKey(p.token, { proof: await providerProof(p.accountId, p.device), current_recovery_auth_key: p.recoveryAuthKey, ...fields });
 		expect(right.status).toBe(200);
 		expect((await recoverStart("prover", next.recoveryAuthKey)).status).toBe(200);
 	});
@@ -787,7 +788,7 @@ describe("POST /v2/account/recovery-key with a proof", () => {
 describe("POST /v2/account/delete with a proof", () => {
 	it("deletes a passwordless account with a passkey proof: its passkeys, identities, flows and sessions too", async () => {
 		const p = await passkeyAccount("prover");
-		await providerProof(p.accountId, p.device.id);
+		await providerProof(p.accountId, p.device);
 		const answer = await deleteAccount(p.token, { proof: await passkeyProof(p.token, p.credential), username: "Prover" });
 		expect(answer).toMatchObject({ status: 200, body: { deleted: true } });
 		expect(await rowsOf(p.accountId)).toEqual({ accounts: 0, sessions: 0, account_passkeys: 0, account_identities: 0, auth_flows: 0 });
@@ -796,10 +797,10 @@ describe("POST /v2/account/delete with a proof", () => {
 
 	it("a provider proof needs the current recovery key", async () => {
 		const p = await passkeyAccount("prover");
-		const without = await deleteAccount(p.token, { proof: await providerProof(p.accountId, p.device.id), username: "prover" });
+		const without = await deleteAccount(p.token, { proof: await providerProof(p.accountId, p.device), username: "prover" });
 		expect(without).toMatchObject({ status: 401, body: { error: "reauth_required" } });
 		const right = await deleteAccount(p.token, {
-			proof: await providerProof(p.accountId, p.device.id),
+			proof: await providerProof(p.accountId, p.device),
 			current_recovery_auth_key: p.recoveryAuthKey,
 			username: "prover",
 		});
@@ -961,5 +962,27 @@ describe("session ends consume the device's sensitive flows", () => {
 			expect(r.status).toBe(200);
 		}
 		expect(await evicted()).not.toBeNull();
+	});
+});
+
+// Security review of PR #67, finding 2: a provider proof is bound to the
+// session's device and its proof, as a passkey proof is.
+describe("a provider proof is the session's own device's", () => {
+	const recoveryBody = (p: PasskeyAccount, proof: unknown) => {
+		const next = newCreds("next");
+		return { proof, current_recovery_auth_key: p.recoveryAuthKey, recovery_auth_key: next.recoveryAuthKey, recovery_wrapped_key: next.recoveryWrappedKey };
+	};
+
+	it("another device's flow, or one with another proof hash, is flow_expired and stays unused", async () => {
+		const p = await passkeyAccount("prover");
+		const other = newDevice();
+		const theirs = await providerProof(p.accountId, other);
+		expect(await recoveryKey(p.token, recoveryBody(p, theirs))).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+		const forged = await providerProof(p.accountId, { ...p.device, proof: other.proof });
+		expect(await recoveryKey(p.token, recoveryBody(p, forged))).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+		const unused = await env.DB.prepare("SELECT count(*) AS n FROM auth_flows WHERE consumed_at IS NULL AND intent = 'proof'").first();
+		expect(unused).toEqual({ n: 2 });
+		// The session's own device's flow works.
+		expect((await recoveryKey(p.token, recoveryBody(p, await providerProof(p.accountId, p.device)))).status).toBe(200);
 	});
 });

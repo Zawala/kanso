@@ -271,7 +271,17 @@ async function providerProof(env: Env, now: number, session: Session, value: Rec
 		if (limited) return failed(limited);
 	}
 	const flow = await flowById(env, flowId);
-	if (!liveFlow(flow, session, now) || flow.intent !== "proof" || flow.provider === null) return failed(flowExpired());
+	// Bound to this session's device and its proof, as a passkey proof's flow is; another session's is unknown.
+	if (
+		!liveFlow(flow, session, now) ||
+		flow.intent !== "proof" ||
+		flow.provider === null ||
+		flow.device_id !== session.deviceId ||
+		flow.device_proof_hash === null ||
+		!hexEqual(flow.device_proof_hash, session.proofHash)
+	) {
+		return failed(flowExpired());
+	}
 	// A provider proof acts only on its own provider, unless the change takes any.
 	if (rules.provider !== "any" && flow.kind !== rules.provider) return failed(reauthRequired());
 	// Not finished at the provider yet (or an Apple flow its app never claimed).
@@ -286,11 +296,13 @@ async function providerProof(env: Env, now: number, session: Session, value: Rec
 	const consume = env.DB.prepare(
 		`UPDATE auth_flows SET consumed_at = ?2, completion_attempt_id = ?3
   WHERE id = ?1 AND account_id = ?4 AND intent = 'proof' AND consumed_at IS NULL AND expires_at > ?2
+    AND device_id = ?5 AND device_proof_hash = ?6
+    AND EXISTS (SELECT 1 FROM sessions WHERE token_hash = ?7 AND device_id = ?5 AND proof_hash = ?6 AND revoked_at IS NULL)
     AND EXISTS (SELECT 1 FROM account_identities i WHERE i.account_id = ?4 AND i.provider = auth_flows.kind AND i.subject = auth_flows.subject)${
-			recovery === undefined ? "" : recoveryCondition(4, 5)
+			recovery === undefined ? "" : recoveryCondition(4, 8)
 		}
   RETURNING id`,
-	).bind(flowId, now, attemptId, session.accountId, ...(recovery === undefined ? [] : [recovery]));
+	).bind(flowId, now, attemptId, session.accountId, session.deviceId, session.proofHash, session.tokenHash, ...(recovery === undefined ? [] : [recovery]));
 	return { ok: true, kind: "provider", guard: flowGuard(session.accountId, attemptId, [consume]) };
 }
 

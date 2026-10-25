@@ -102,8 +102,13 @@ const AUTH_CODE = /^[\x21-\x7e]{1,2048}$/;
 // ------------------------------------------------------------------ helpers
 
 /** The hash a flow stores for a device: SHA-256 of its proof as sent (base64url), as `flowForDevice` compares it. */
-const flowProofHash = (device: NewDevice): Promise<string> => sha256Hex(base64url(device.proof));
-const flowDevice = (device: NewDevice) => ({ id: device.id, proof: base64url(device.proof) });
+/**
+ * A provider flow's `device_proof_hash`: SHA-256 of the device proof's bytes,
+ * the same value as `sessions.proof_hash`, so a session-started flow can be
+ * checked against the session that uses it (proofs.ts).
+ */
+const flowProofHash = (device: NewDevice): Promise<string> => sha256Hex(device.proof);
+const flowDevice = (device: NewDevice) => ({ id: device.id, proof: device.proof });
 
 const providerUnavailable = (provider: string): Response =>
 	error(503, "provider_unavailable", "The provider could not be reached.", { provider });
