@@ -312,6 +312,9 @@ struct ProviderFlow {
     consumed: bool,
     /// A completed proof flow was spent on a sensitive change.
     proof_used: bool,
+    /// Its starting session ended, or its account was disabled (migration
+    /// 0010): it is used up, a finished proof included.
+    ended: bool,
     /// The device flow's state when the fake GitHub runs it
     /// ([`MemoryServer::set_github_device_flow`]).
     github: Option<GithubFlow>,
@@ -1008,6 +1011,7 @@ impl ServerState {
                 code_challenge,
                 consumed: false,
                 proof_used: false,
+                ended: false,
                 github: github.as_ref().map(|fake| GithubFlow {
                     subject: None,
                     next_poll_at: now + fake.interval as i64 * 1000,
@@ -1096,7 +1100,18 @@ impl ServerState {
             return self.github_complete(flow_id, &checked, now);
         }
         if f.consumed {
-            return Err(ApiError::ProviderDenied);
+            // The Worker's endedFlow: used up before GitHub answered. A link
+            // or proof whose starting session has since ended (migration
+            // 0010 used it up) is 400 flow_expired; otherwise GitHub refused.
+            let ended = f.intent.is_some()
+                && !f.account_id.as_deref().is_some_and(|account| {
+                    self.starting_session_live(account, &checked.id, &checked.proof_hash)
+                });
+            return Err(if ended {
+                ApiError::FlowExpired { gone: false }
+            } else {
+                ApiError::ProviderDenied
+            });
         }
         if !self.providers.contains(&Provider::Github) {
             return Err(ApiError::ProviderDisabled);
@@ -1138,6 +1153,57 @@ impl ServerState {
                 state.subject = Some(subject);
                 self.github_complete(flow_id, &checked, now)
             }
+        }
+    }
+
+    /// The Worker's migration 0010 triggers: a session's sensitive flows end
+    /// with it. Unconsumed passkey proof and registration flows, and link
+    /// and proof provider flows, are used up once no live session of their
+    /// account is on their device (a revocation, a sign-out, an eviction),
+    /// and every one of an account's once it is disabled. Sign-in and
+    /// sign-up flows belong to no session and are left alone. Run after
+    /// every request and after [`MemoryServer::disable`].
+    fn end_flows_of_ended_sessions(&mut self, now: i64) {
+        let live = |state: &ServerState, account_id: &str, device_id: &str| {
+            state
+                .accounts
+                .get(account_id)
+                .is_some_and(|a| a.disabled_at.is_none())
+                && state.sessions.iter().any(|s| {
+                    s.account_id == account_id && s.device_id == device_id && s.revoked_at.is_none()
+                })
+        };
+        let ended: Vec<String> = self
+            .passkey_flows
+            .iter()
+            .filter(|(_, f)| {
+                matches!(f.kind, PasskeyFlowKind::Proof | PasskeyFlowKind::Register)
+                    && f.consumed_at.is_none()
+                    && f.account_id
+                        .as_deref()
+                        .is_some_and(|account| !live(self, account, &f.device_id))
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ended {
+            self.passkey_flows.get_mut(&id).expect("listed").consumed_at = Some(now);
+        }
+        let ended: Vec<String> = self
+            .provider_flows
+            .iter()
+            .filter(|(_, f)| {
+                f.intent.is_some()
+                    && !f.ended
+                    && f.account_id
+                        .as_deref()
+                        .is_some_and(|account| !live(self, account, &f.device_id))
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ended {
+            let flow = self.provider_flows.get_mut(&id).expect("listed");
+            flow.consumed = true;
+            flow.ended = true;
         }
     }
 
@@ -2771,6 +2837,7 @@ impl ServerState {
                     .filter(|f| {
                         f.account_id.as_deref() == Some(caller.account_id.as_str())
                             && !f.proof_used
+                            && !f.ended
                             && f.expires_at > now
                             && f.intent == Some(IdentityIntent::Proof)
                             && f.device_id == caller.device_id
@@ -4335,6 +4402,7 @@ impl MemoryServer {
         let now = state.clock();
         let id = state.account_id_of(username);
         state.accounts.get_mut(&id).expect("found").disabled_at = Some(now);
+        state.end_flows_of_ended_sessions(now);
     }
 
     /// Clears `disabled_at`.
@@ -4524,6 +4592,7 @@ impl MemoryServer {
         let now = state.clock();
         *state.stats.requests.entry(route).or_default() += 1;
         let result = handle(&mut state, now);
+        state.end_flows_of_ended_sessions(now);
         if let Some(n) = state.drops.get_mut(&route)
             && *n > 0
         {

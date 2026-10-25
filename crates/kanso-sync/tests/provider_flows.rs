@@ -195,3 +195,102 @@ fn a_provider_proof_is_only_its_devices() {
     // Its own session may use it.
     rotate(&w, &w.a, &flow).unwrap();
 }
+
+/// Mac 1 signs in again after its session ended: the same device ID and proof.
+fn sign_in_again(w: &World) -> Session {
+    let start =
+        kanso_sync::start_passkey_sign_in(&w.server, SERVER, None, &device(1, &w.a)).unwrap();
+    let assertion = w.auth.assert(&start.challenge).unwrap();
+    let PasskeySignIn::Unlocked(again) = kanso_sync::sign_in_with_passkey(
+        &w.server,
+        &MemorySecrets::new(),
+        &start,
+        &mac(1),
+        assertion,
+        &quiet,
+    )
+    .unwrap() else {
+        panic!("the PRF opens the wrap");
+    };
+    again.session
+}
+
+/// As the Worker's migration 0010: ending a session ends the link, proof
+/// and passkey-registration flows its device started, so none outlives it,
+/// not even into the device's next session.
+#[test]
+fn ending_a_session_ends_its_flows() {
+    let w = world();
+    let flow = start_link(&w);
+    let proof = kanso_sync::start_passkey_proof(&w.server, &w.a, None).unwrap();
+    let proof = Proof::passkey(&proof, w.auth.assert(&proof.challenge).unwrap());
+    let register = kanso_sync::start_add_passkey(&w.server, &w.a, &proof).unwrap();
+    let a_device = mac(1).device_id(&w.a.account_id);
+    kanso_sync::revoke_device(&w.server, &w.b, &a_device).unwrap();
+    let again = sign_in_again(&w);
+
+    // The link was used up before GitHub answered, by a session that is
+    // live again: GitHub's answer no longer counts.
+    let out = kanso_sync::finish_identity(
+        &w.server,
+        &again,
+        &Provider::Github,
+        &flow,
+        None,
+        &device(1, &again),
+    );
+    assert!(matches!(out, Err(AccountError::ProviderDenied)), "{out:?}");
+    assert_eq!(linked(&w), 0);
+    let other = TestAuthenticator::new(7);
+    let out = kanso_sync::add_passkey(
+        &w.server,
+        &again,
+        &register,
+        other.register(&register.challenge).unwrap(),
+    );
+    assert!(matches!(out, Err(AccountError::FlowExpired)), "{out:?}");
+}
+
+/// Disabling an account ends all of its sessions' flows.
+#[test]
+fn disabling_an_account_ends_its_flows() {
+    let w = world();
+    let proof = kanso_sync::start_passkey_proof(&w.server, &w.a, None).unwrap();
+    let proof = Proof::passkey(&proof, w.auth.assert(&proof.challenge).unwrap());
+    let register = kanso_sync::start_add_passkey(&w.server, &w.a, &proof).unwrap();
+    let pending = kanso_sync::start_passkey_proof(&w.server, &w.b, None).unwrap();
+    w.server.disable("alice");
+    w.server.enable("alice");
+    let other = TestAuthenticator::new(7);
+    let out = kanso_sync::add_passkey(
+        &w.server,
+        &w.a,
+        &register,
+        other.register(&register.challenge).unwrap(),
+    );
+    assert!(matches!(out, Err(AccountError::FlowExpired)), "{out:?}");
+    let proof = Proof::passkey(&pending, w.auth.assert(&pending.challenge).unwrap());
+    let out = kanso_sync::new_recovery_key_with_proof(
+        &w.server,
+        &MemorySecrets::new(),
+        &w.b,
+        &proof,
+        None,
+        &quiet,
+    )
+    .map(|_| ())
+    .map_err(|err| err.error);
+    assert!(matches!(out, Err(AccountError::FlowExpired)), "{out:?}");
+}
+
+/// A finished provider proof ends with its session too.
+#[test]
+fn a_finished_provider_proof_ends_with_its_session() {
+    let w = world();
+    let flow = finished_proof(&w);
+    let a_device = mac(1).device_id(&w.a.account_id);
+    kanso_sync::revoke_device(&w.server, &w.b, &a_device).unwrap();
+    let again = sign_in_again(&w);
+    let out = rotate(&w, &again, &flow);
+    assert!(matches!(out, Err(AccountError::FlowExpired)), "{out:?}");
+}
