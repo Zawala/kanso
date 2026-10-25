@@ -944,6 +944,7 @@ impl Palette {
                 Needs::AudioLine => audio_line,
                 Needs::SharedNote => shared_note,
                 Needs::AiOn => ai_on,
+                Needs::AiNote => ai_on && note.is_some_and(|n| !n.is_locked()) && !in_trash,
             })
             .map(|command| {
                 let pinned = match self.shared_by_several(|n| n.pinned) {

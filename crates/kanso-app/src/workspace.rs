@@ -20,6 +20,7 @@ use crate::account_page::SignedOutForm;
 use crate::commands::Picker;
 use crate::config::{AppConfig, InspectorTab, ViewMode};
 use crate::dialogs::{confirm, prompt_text};
+use crate::editor::inline_glue::InlineAssist;
 use crate::editor::{EditorEvent, NoteEditor};
 use crate::inspector::{Inspector, InspectorEvent};
 use crate::layout::{
@@ -82,6 +83,7 @@ actions!(
         ShowOutline,
         ShowBacklinks,
         AskYourNotes,
+        SummarizeNote,
     ]
 );
 
@@ -2342,6 +2344,23 @@ impl Render for Workspace {
                 this.close_settings(window, cx);
                 this.set_focus_mode(false, window, cx);
                 this.show_inspector(Some(InspectorTab::Backlinks), cx);
+            }))
+            .on_action(cx.listener(|this, action: &InlineAssist, window, cx| {
+                // The palette closed with the focus elsewhere; the editor
+                // takes it from here.
+                this.close_settings(window, cx);
+                this.editor
+                    .update(cx, |editor, cx| editor.start_inline(action.action, cx));
+            }))
+            .on_action(cx.listener(|this, _: &SummarizeNote, window, cx| {
+                if !cx.global::<AppState>().config.ai.enabled {
+                    return;
+                }
+                this.close_settings(window, cx);
+                this.set_focus_mode(false, window, cx);
+                this.show_inspector(Some(InspectorTab::Ask), cx);
+                this.inspector
+                    .update(cx, |inspector, cx| inspector.summarize_note(window, cx));
             }))
             .on_action(cx.listener(|this, _: &AskYourNotes, window, cx| {
                 if !cx.global::<AppState>().config.ai.enabled {
