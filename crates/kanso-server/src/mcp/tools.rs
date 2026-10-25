@@ -5,6 +5,10 @@
 //! through the same operations the REST handlers use, and formats its result
 //! the same way: documents as `JSON.stringify(value, null, 2)`, failed
 //! requests as `Fetch error [<status>] <reason>`.
+//!
+//! For an agent, each read tool gets the request's [`Visibility`]: a note it
+//! may not see is answered exactly as a missing one, results are filtered
+//! before they are cut to their limit, and every note shown is noted.
 
 use std::path::Path;
 
@@ -23,6 +27,7 @@ use super::schema;
 use crate::AppState;
 use crate::api::{self, NoteQuery};
 use crate::error::ApiError;
+use crate::scope::{self, Visibility};
 
 type Args = Map<String, Value>;
 
@@ -39,8 +44,17 @@ type ToolResult = Result<Value, ToolError>;
 
 const SOURCE_TEMPLATE_DESCRIPTION: &str = "The template this note was created from. Read it to get the fill-out instructions and examples before completing this note.";
 
-/// Runs `tools/call`.
-pub(crate) fn call(state: &AppState, name: &str, arguments: Option<&Value>) -> Value {
+/// How many more rows a filtered search fetches, so that what an agent may
+/// see still fills the limit.
+const SCOPED_WIDEN: usize = 5;
+
+/// Runs `tools/call`; `vis` is an agent's, when one is asking.
+pub(crate) fn call(
+    state: &AppState,
+    vis: Option<&Visibility>,
+    name: &str,
+    arguments: Option<&Value>,
+) -> Value {
     let Some(tool) = schema::tool(name) else {
         return error_result(format!("MCP error -32602: Tool {name} not found"));
     };
@@ -53,11 +67,28 @@ pub(crate) fn call(state: &AppState, name: &str, arguments: Option<&Value>) -> V
         }
     };
     let store = &*state.store;
-    let result = match name {
-        "read-note" => read_note(store, &args),
+    let result = match (name, vis) {
+        ("read-note", vis) => read_note(store, vis, &args),
+        ("search-notes", vis) => search_notes(store, vis, &args),
+        ("list-notes", vis) => list_notes(store, vis, &args),
+        ("list-notebooks", Some(vis)) => list_visible_books(store, vis),
+        ("kanso-get-outline", vis) => get_outline(store, vis, &args),
+        ("kanso-list-tasks", vis) => list_tasks(store, vis, &args),
+        ("kanso-related-notes", vis) => related_notes(store, vis, &args),
+        ("kanso-resolve-wikilink", vis) => resolve_wikilink(store, vis, &args),
+        ("kanso-search-by-meaning", vis) => search_by_meaning(store, vis, &args),
+        // Nothing else is ever an agent's; the scope is checked before this.
+        (_, Some(_)) => Err(ToolError(super::READ_ONLY.to_owned())),
+        (name, None) => call_full(state, name, args),
+    };
+    result.unwrap_or_else(|ToolError(message)| error_result(message))
+}
+
+/// The tools only the local API's own sign-in reaches.
+fn call_full(state: &AppState, name: &str, args: Args) -> ToolResult {
+    let store = &*state.store;
+    match name {
         "read-backlinks" => read_backlinks(store, &args),
-        "search-notes" => search_notes(store, &args),
-        "list-notes" => list_notes(store, &args),
         "create-note" => upsert(store, DocType::Note, args),
         "update-note" => update_note(store, args),
         "patch-note" => patch_note(store, &args),
@@ -74,16 +105,67 @@ pub(crate) fn call(state: &AppState, name: &str, arguments: Option<&Value>) -> V
         "kanso-create-daily-note" => create_daily_note(store, &args),
         "kanso-create-from-template" => create_from_template(store, &args),
         "kanso-export-html" => export_html(store, &args),
-        "kanso-get-outline" => get_outline(store, &args),
-        "kanso-list-tasks" => list_tasks(store, &args),
-        "kanso-related-notes" => related_notes(store, &args),
-        "kanso-resolve-wikilink" => resolve_wikilink(store, &args),
-        "kanso-search-by-meaning" => search_by_meaning(store, &args),
         _ => Err(ToolError(format!(
             "MCP error -32602: Tool {name} not found"
         ))),
+    }
+}
+
+/// `get_doc` for a note an agent may not see: the same failure as a note
+/// that isn't there.
+fn visible_note(store: &Store, vis: Option<&Visibility>, id: &str) -> ToolResult {
+    if let Some(vis) = vis {
+        if !vis.allows(id) {
+            return Err(ApiError::not_found().into());
+        }
+        let note = api::get_doc(store, id, None, false)?;
+        vis.show(id);
+        return Ok(scope::strip(note));
+    }
+    Ok(api::get_doc(store, id, None, false)?)
+}
+
+/// `list-notebooks` for an agent: only notebooks in scope and unlocked, so a
+/// locked notebook's name doesn't show, and without note counts, which
+/// count notes the agent may not see.
+fn list_visible_books(store: &Store, vis: &Visibility) -> ToolResult {
+    let books: Vec<Value> = api::list_docs(store, DocType::Book, None, 0)?
+        .into_iter()
+        .filter(|book| {
+            book.get("_id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| vis.book_visible(id))
+        })
+        .map(|book| {
+            let mut book = scope::strip(book);
+            if let Some(fields) = book.as_object_mut() {
+                fields.remove("count");
+            }
+            book
+        })
+        .collect();
+    result(vec![text(pretty(&Value::Array(books)))])
+}
+
+/// Search rows an agent may see, at most `limit`, each noted as shown.
+fn visible_rows(vis: Option<&Visibility>, rows: Vec<Value>, limit: usize) -> Vec<Value> {
+    let Some(vis) = vis else {
+        return rows;
     };
-    result.unwrap_or_else(|ToolError(message)| error_result(message))
+    rows.into_iter()
+        .filter(|row| {
+            row.get("_id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| vis.allows(id))
+        })
+        .take(limit)
+        .inspect(|row| {
+            if let Some(id) = row.get("_id").and_then(Value::as_str) {
+                vis.show(id);
+            }
+        })
+        .map(scope::strip)
+        .collect()
 }
 
 /// Now on this computer's clock, in its time zone.
@@ -173,8 +255,13 @@ fn export_html(store: &Store, args: &Args) -> ToolResult {
     result(vec![text(html)])
 }
 
-/// Runs `resources/read` for a note link ([`NOTE_LINK_PREFIX`]`{noteId}`).
-pub(crate) fn read_resource(state: &AppState, uri: &str) -> Result<Value, RpcError> {
+/// Runs `resources/read` for a note link ([`NOTE_LINK_PREFIX`]`{noteId}`);
+/// for an agent, only a note `vis` lets it see.
+pub(crate) fn read_resource(
+    state: &AppState,
+    vis: Option<&Visibility>,
+    uri: &str,
+) -> Result<Value, RpcError> {
     let note_id = uri
         .get(..LINK_SCHEME.len())
         .filter(|scheme| scheme.eq_ignore_ascii_case(LINK_SCHEME))
@@ -184,8 +271,8 @@ pub(crate) fn read_resource(state: &AppState, uri: &str) -> Result<Value, RpcErr
             RpcError::invalid_params(format!("MCP error -32602: Resource {uri} not found"))
         })?;
     let id = with_prefix(DocType::Note, note_id);
-    let note = api::get_doc(&state.store, &id, None, false)
-        .map_err(|err| RpcError::internal(err.fetch_error_text()))?;
+    let note =
+        visible_note(&state.store, vis, &id).map_err(|ToolError(text)| RpcError::internal(text))?;
     Ok(json!({
         "contents": [{ "uri": uri, "text": pretty(&note), "mimeType": "application/json" }]
     }))
@@ -199,7 +286,7 @@ fn result(blocks: Vec<Value>) -> ToolResult {
     Ok(json!({ "content": blocks }))
 }
 
-fn error_result(message: impl Into<String>) -> Value {
+pub(crate) fn error_result(message: impl Into<String>) -> Value {
     json!({ "content": [text(message)], "isError": true })
 }
 
@@ -291,17 +378,19 @@ fn summary(mut note: Value) -> Value {
     note
 }
 
-fn read_note(store: &Store, args: &Args) -> ToolResult {
+fn read_note(store: &Store, vis: Option<&Visibility>, args: &Args) -> ToolResult {
     let id = with_prefix(DocType::Note, str_arg(args, "noteId"));
-    let note = api::get_doc(store, &id, None, false)?;
+    let note = visible_note(store, vis, &id)?;
     let source = note
         .get("sourceTemplateId")
         .filter(|v| js_truthy(v))
-        .map(|v| js_string(Some(v)));
+        .map(|v| js_string(Some(v)))
+        // A template an agent may not see is as good as missing.
+        .filter(|source| vis.is_none_or(|vis| vis.allows(source)));
     let template = match &source {
         // A missing template (e.g. deleted) only skips the embed.
         Some(source) if bool_arg(args, "includeTemplate") => {
-            api::get_doc(store, source, None, false).ok().map(|t| {
+            visible_note(store, vis, source).ok().map(|t| {
                 format!(
                     "# Source template: {}\n\n{}",
                     js_string(t.get("title")),
@@ -358,10 +447,10 @@ fn read_backlinks(store: &Store, args: &Args) -> ToolResult {
 }
 
 /// `kanso-get-outline`: the note's headings as JSON.
-fn get_outline(store: &Store, args: &Args) -> ToolResult {
+fn get_outline(store: &Store, vis: Option<&Visibility>, args: &Args) -> ToolResult {
     let id = with_prefix(DocType::Note, str_arg(args, "noteId"));
     // The same failure as reading a note that isn't there.
-    api::get_doc(store, &id, None, false)?;
+    visible_note(store, vis, &id)?;
     let headings = store
         .outline(&id)
         .map_err(|err| ToolError(err.to_string()))?;
@@ -373,16 +462,23 @@ fn get_outline(store: &Store, args: &Args) -> ToolResult {
 }
 
 /// `kanso-list-tasks`: tasks across notes, with their notes.
-fn list_tasks(store: &Store, args: &Args) -> ToolResult {
+fn list_tasks(store: &Store, vis: Option<&Visibility>, args: &Args) -> ToolResult {
     let status = str_arg(args, "status");
     let limit = args.get("limit").and_then(Value::as_f64).unwrap_or(100.0);
+    let book_id = opt_str(args, "bookId").map(|id| with_prefix(DocType::Book, id));
+    if let (Some(vis), Some(book)) = (vis, &book_id)
+        && !vis.book_visible(book)
+    {
+        return result(vec![text("No tasks match.")]);
+    }
     let query = kanso_store::TaskQuery {
-        book_id: opt_str(args, "bookId").map(|id| with_prefix(DocType::Book, id)),
+        book_id,
         include_done: status != "open",
         due_before: opt_str(args, "dueBefore").map(str::to_owned),
         due_after: opt_str(args, "dueAfter").map(str::to_owned),
-        // Done ones are left out below, after the limit would cut.
-        limit: (status != "done")
+        // Done ones, and an agent's unseen ones, are left out below, after
+        // the limit would cut.
+        limit: (status != "done" && vis.is_none())
             .then(|| api::count_param("limit", limit))
             .transpose()?,
     };
@@ -392,7 +488,13 @@ fn list_tasks(store: &Store, args: &Args) -> ToolResult {
         .map_err(|err| ToolError(err.to_string()))?
         .into_iter()
         .filter(|t| status != "done" || t.checked)
+        .filter(|t| vis.is_none_or(|vis| vis.allows(&t.note_id)))
         .take(limit)
+        .inspect(|t| {
+            if let Some(vis) = vis {
+                vis.show(&t.note_id);
+            }
+        })
         .map(|t| {
             json!({
                 "text": t.text,
@@ -415,10 +517,10 @@ fn list_tasks(store: &Store, args: &Args) -> ToolResult {
 /// `kanso-related-notes`: the notes nearest a note by the embeddings the
 /// app keeps, without loading a model. An empty list, and why, while
 /// related notes are off or the note isn't indexed.
-fn related_notes(store: &Store, args: &Args) -> ToolResult {
+fn related_notes(store: &Store, vis: Option<&Visibility>, args: &Args) -> ToolResult {
     let id = with_prefix(DocType::Note, str_arg(args, "noteId"));
     // The same failure as reading a note that isn't there.
-    api::get_doc(store, &id, None, false)?;
+    visible_note(store, vis, &id)?;
     let limit = args
         .get("limit")
         .and_then(Value::as_i64)
@@ -435,8 +537,13 @@ fn related_notes(store: &Store, args: &Args) -> ToolResult {
             ),
         ]);
     };
+    let wide = if vis.is_some() {
+        limit * SCOPED_WIDEN
+    } else {
+        limit
+    };
     let found = store
-        .related_notes(&id, &model, limit)
+        .related_notes(&id, &model, wide)
         .map_err(|err| ToolError(err.to_string()))?;
     let Some(found) = found else {
         return result(vec![
@@ -449,6 +556,13 @@ fn related_notes(store: &Store, args: &Args) -> ToolResult {
     };
     let notes: Vec<Value> = found
         .into_iter()
+        .filter(|note| vis.is_none_or(|vis| vis.allows(&note.id)))
+        .take(limit)
+        .inspect(|note| {
+            if let Some(vis) = vis {
+                vis.show(&note.id);
+            }
+        })
         .map(|note| {
             json!({
                 "noteId": note.id,
@@ -464,7 +578,7 @@ fn related_notes(store: &Store, args: &Args) -> ToolResult {
 /// `kanso-search-by-meaning`: the notes nearest a search by the embeddings
 /// the app keeps, with the model the app lends the store. An empty list,
 /// and why, while related notes are off or no model is loaded here.
-fn search_by_meaning(store: &Store, args: &Args) -> ToolResult {
+fn search_by_meaning(store: &Store, vis: Option<&Visibility>, args: &Args) -> ToolResult {
     let query = str_arg(args, "query").trim();
     if query.is_empty() {
         return Err(ToolError("Say what the notes should be about.".into()));
@@ -474,8 +588,13 @@ fn search_by_meaning(store: &Store, args: &Args) -> ToolResult {
         .and_then(Value::as_i64)
         .unwrap_or(5)
         .clamp(1, 20) as usize;
+    let wide = if vis.is_some() {
+        limit * SCOPED_WIDEN
+    } else {
+        limit
+    };
     let found = store
-        .search_by_meaning(query, limit)
+        .search_by_meaning(query, wide)
         .map_err(|err| ToolError(err.to_string()))?;
     let found = match found {
         MeaningSearch::Off => {
@@ -496,8 +615,17 @@ fn search_by_meaning(store: &Store, args: &Args) -> ToolResult {
         }
         MeaningSearch::Found(found) => found,
     };
+    let found = found
+        .into_iter()
+        .filter(|note| vis.is_none_or(|vis| vis.allows(&note.id)))
+        .collect();
     let notes: Vec<Value> = kanso_store::blend_meaning(&[], found, MEANING_SIMILARITY, limit)
         .into_iter()
+        .inspect(|note| {
+            if let Some(vis) = vis {
+                vis.show(&note.id);
+            }
+        })
         .map(|note| {
             json!({
                 "noteId": note.id,
@@ -517,7 +645,7 @@ fn search_by_meaning(store: &Store, args: &Args) -> ToolResult {
 }
 
 /// `kanso-resolve-wikilink`: the note a wiki-link names.
-fn resolve_wikilink(store: &Store, args: &Args) -> ToolResult {
+fn resolve_wikilink(store: &Store, vis: Option<&Visibility>, args: &Args) -> ToolResult {
     let link = str_arg(args, "link").trim();
     let inner = link
         .strip_prefix("[[")
@@ -530,10 +658,14 @@ fn resolve_wikilink(store: &Store, args: &Args) -> ToolResult {
     };
     let found = store
         .resolve_title(&title)
-        .map_err(|err| ToolError(err.to_string()))?;
+        .map_err(|err| ToolError(err.to_string()))?
+        .filter(|(id, _)| vis.is_none_or(|vis| vis.allows(id)));
     let Some((id, note_title)) = found else {
         return Err(ToolError(format!("No note is titled \"{title}\".")));
     };
+    if let Some(vis) = vis {
+        vis.show(&id);
+    }
     let mut answer = Map::new();
     answer.insert("noteId".into(), json!(id));
     answer.insert("title".into(), json!(note_title));
@@ -562,13 +694,18 @@ fn summaries(notes: Vec<Value>) -> ToolResult {
     result(vec![text(pretty(&notes))])
 }
 
-fn search_notes(store: &Store, args: &Args) -> ToolResult {
+fn search_notes(store: &Store, vis: Option<&Visibility>, args: &Args) -> ToolResult {
+    const LIMIT: usize = 10;
     let query = NoteQuery {
         keyword: str_arg(args, "keyword").to_owned(),
-        limit: Some(10),
+        limit: Some(if vis.is_some() {
+            LIMIT * SCOPED_WIDEN
+        } else {
+            LIMIT
+        }),
         ..NoteQuery::default()
     };
-    summaries(api::list_notes(store, &query)?)
+    summaries(visible_rows(vis, api::list_notes(store, &query)?, LIMIT))
 }
 
 /// The keyword `list-notes` searches for: `bookId:<id> tagId:<tag>… <keyword>`.
@@ -595,16 +732,27 @@ pub(crate) fn list_notes_keyword(
     .to_owned()
 }
 
-fn list_notes(store: &Store, args: &Args) -> ToolResult {
+fn list_notes(store: &Store, vis: Option<&Visibility>, args: &Args) -> ToolResult {
+    if let (Some(vis), Some(book)) = (vis, opt_str(args, "bookId"))
+        && !book.is_empty()
+        && !vis.book_visible(book)
+    {
+        return summaries(Vec::new());
+    }
     let tag_ids = args
         .get("tagIds")
         .and_then(Value::as_array)
         .map(Vec::as_slice)
         .unwrap_or_default();
     let limit = args.get("limit").and_then(Value::as_f64).unwrap_or(100.0);
+    let limit = api::count_param("limit", limit)?;
     let query = NoteQuery {
         keyword: list_notes_keyword(opt_str(args, "bookId"), tag_ids, opt_str(args, "keyword")),
-        limit: Some(api::count_param("limit", limit)?),
+        limit: Some(if vis.is_some() {
+            limit.saturating_mul(SCOPED_WIDEN)
+        } else {
+            limit
+        }),
         skip: 0,
         sort: api::parse_sort(str_arg(args, "sort")),
         descending: args
@@ -612,7 +760,7 @@ fn list_notes(store: &Store, args: &Args) -> ToolResult {
             .and_then(Value::as_bool)
             .unwrap_or(true),
     };
-    summaries(api::list_notes(store, &query)?)
+    summaries(visible_rows(vis, api::list_notes(store, &query)?, limit))
 }
 
 fn upsert(store: &Store, doc_type: DocType, args: Args) -> ToolResult {

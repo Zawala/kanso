@@ -12,12 +12,15 @@ axum = { version = "0.8", default-features = false, features = ["http1", "json",
 base64.workspace = true
 # Today, in the computer's time zone, for daily notes.
 chrono.workspace = true
+# Agents' MCP tokens: 256 bits from the OS, kept only as SHA-256.
+getrandom.workspace = true
 kanso-core.workspace = true
 kanso-render.workspace = true
 kanso-store.workspace = true
 regex-lite = "0.1"
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 subtle = "2.6"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 

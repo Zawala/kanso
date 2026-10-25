@@ -1,4 +1,6 @@
 //! HTTP Basic authentication. Every route requires it, as the local-server API does.
+//! `/mcp` also takes an agent's `Authorization: Bearer` token, and nothing
+//! else does.
 
 use std::sync::Arc;
 
@@ -12,6 +14,11 @@ use base64::engine::{DecodePaddingMode, general_purpose};
 use subtle::ConstantTimeEq;
 
 use crate::error::ApiError;
+use crate::scope::Caller;
+use crate::tokens::TokenStore;
+
+/// The one route an agent's token opens.
+pub(crate) const MCP_PATH: &str = "/mcp";
 
 /// Basic tokens with or without `=` padding.
 const BASIC: GeneralPurpose = GeneralPurpose::new(
@@ -59,19 +66,61 @@ pub fn basic_header(username: &str, password: &str) -> String {
     )
 }
 
+/// The token of a `Bearer` header value.
+fn bearer(header: &[u8]) -> Option<&str> {
+    let header = std::str::from_utf8(header).ok()?.trim();
+    let (scheme, token) = header.split_once(' ')?;
+    scheme
+        .eq_ignore_ascii_case("bearer")
+        .then(|| token.trim())
+        .filter(|token| !token.is_empty())
+}
+
+/// Who an `Authorization` header on `path` signs in as: the API's
+/// credentials anywhere, an agent's live token on `/mcp` only. `None` is
+/// refused.
+pub(crate) fn caller(
+    credentials: Option<&Credentials>,
+    tokens: &TokenStore,
+    path: &str,
+    header: Option<&[u8]>,
+) -> Option<Caller> {
+    if let Some(token) = header.and_then(bearer) {
+        return (path == MCP_PATH).then(|| tokens.verify(token)).flatten();
+    }
+    credentials
+        .is_some_and(|credentials| credentials.accepts(header))
+        .then_some(Caller::Full)
+}
+
+/// What the sign-in middleware checks against: the API's credentials, when
+/// it has them (the private agents' listener has none), and the tokens.
+#[derive(Clone)]
+pub(crate) struct Gate {
+    pub credentials: Option<Arc<Credentials>>,
+    pub tokens: TokenStore,
+}
+
 pub(crate) async fn require_auth(
-    State(credentials): State<Arc<Credentials>>,
-    request: Request,
+    State(gate): State<Gate>,
+    mut request: Request,
     next: Next,
 ) -> Response {
     let header = request
         .headers()
         .get(AUTHORIZATION)
         .map(|value| value.as_bytes());
-    if credentials.accepts(header) {
-        next.run(request).await
-    } else {
-        ApiError::unauthorized().into_response()
+    match caller(
+        gate.credentials.as_deref(),
+        &gate.tokens,
+        request.uri().path(),
+        header,
+    ) {
+        Some(caller) => {
+            request.extensions_mut().insert(caller);
+            next.run(request).await
+        }
+        None => ApiError::unauthorized().into_response(),
     }
 }
 
@@ -98,5 +147,36 @@ mod tests {
             assert!(!creds.accepts(Some(bad.as_bytes())), "{bad}");
         }
         assert!(!creds.accepts(None));
+    }
+
+    #[test]
+    fn a_token_opens_mcp_and_nothing_else() {
+        let creds = Credentials::new("user", "pass");
+        let tokens = TokenStore::new();
+        let minted = tokens.mint(crate::scope::AgentScope::ask(None));
+        let bearer = format!("Bearer {}", minted.token);
+        let header = Some(bearer.as_bytes());
+        assert!(matches!(
+            caller(Some(&creds), &tokens, "/mcp", header),
+            Some(Caller::Agent { .. })
+        ));
+        for path in ["/notes", "/", "/mcp/", "/_changes", "/note:abc"] {
+            assert!(
+                caller(Some(&creds), &tokens, path, header).is_none(),
+                "{path}"
+            );
+        }
+        // A wrong token never falls back to the API's sign-in.
+        let wrong = Some("Bearer nope".as_bytes());
+        assert!(caller(Some(&creds), &tokens, "/mcp", wrong).is_none());
+        let basic = basic_header("user", "pass");
+        assert!(matches!(
+            caller(Some(&creds), &tokens, "/notes", Some(basic.as_bytes())),
+            Some(Caller::Full)
+        ));
+        // Without credentials (the private listener), Basic opens nothing.
+        assert!(caller(None, &tokens, "/mcp", Some(basic.as_bytes())).is_none());
+        tokens.revoke(minted.id);
+        assert!(caller(Some(&creds), &tokens, "/mcp", header).is_none());
     }
 }

@@ -5,6 +5,11 @@
 //! that API work against Kanso unchanged. `/mcp` serves the same 17 MCP tools natively
 //! on the same port. Every route requires HTTP Basic authentication.
 //!
+//! Agents on this computer reach `/mcp` with a short-lived bearer token
+//! instead ([`TokenStore`]): read only, and only the notes in the token's
+//! scope ([`AgentScope`]). When the local API is off, [`spawn_agents`] serves
+//! just that, on a loopback port of its own.
+//!
 //! The server stays thin: validation, conflicts and search live in
 //! [`kanso_store::Store`], which is synchronous and is called on tokio's
 //! blocking pool.
@@ -14,6 +19,8 @@ mod auth;
 mod error;
 mod mcp;
 mod rest;
+mod scope;
+mod tokens;
 
 use std::fmt;
 use std::future::Future;
@@ -30,6 +37,8 @@ use axum::routing::post;
 use kanso_store::Store;
 
 pub use auth::basic_header;
+pub use scope::{ASK_TOOLS, AgentScope, Caller, READ_TOOLS};
+pub use tokens::{Minted, TokenId, TokenStore};
 
 /// Largest request body accepted. A 10 MB image is about 13.4 MB in base64.
 pub const MAX_BODY_BYTES: usize = 16 * 1024 * 1024;
@@ -59,28 +68,63 @@ pub(crate) struct AppState {
     /// `filePath`, `read-file` with `outputPath`). Only when the server is
     /// bound to a loopback address, so every client is on this machine.
     pub local_files: bool,
+    /// The agents' tokens, to count and record what each one reads.
+    pub tokens: TokenStore,
 }
 
 /// The full API: REST endpoints, `/mcp`, Basic auth and the body limit.
 pub fn router(store: Arc<Store>, config: &ServerConfig) -> Router {
+    router_with_tokens(store, config, TokenStore::new())
+}
+
+/// [`router`], where `/mcp` also takes the agents' tokens in `tokens`.
+pub fn router_with_tokens(store: Arc<Store>, config: &ServerConfig, tokens: TokenStore) -> Router {
     let state = AppState {
         store,
         local_files: config.bind.ip().is_loopback(),
+        tokens: tokens.clone(),
     };
-    let credentials = Arc::new(auth::Credentials::new(&config.username, &config.password));
+    let gate = auth::Gate {
+        credentials: Some(Arc::new(auth::Credentials::new(
+            &config.username,
+            &config.password,
+        ))),
+        tokens,
+    };
     rest::routes()
         .route(
-            "/mcp",
+            auth::MCP_PATH,
             post(mcp::handle).get(mcp::no_stream).delete(mcp::no_stream),
         )
         .fallback(rest::not_found)
         .method_not_allowed_fallback(rest::method_not_allowed)
         .with_state(state)
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
-        .layer(middleware::from_fn_with_state(
-            credentials,
-            auth::require_auth,
-        ))
+        .layer(middleware::from_fn_with_state(gate, auth::require_auth))
+}
+
+/// The agents' private listener: `/mcp` alone, opened by a token in
+/// `tokens` alone. No REST routes, no Basic sign-in, no local files.
+pub fn agents_router(store: Arc<Store>, tokens: TokenStore) -> Router {
+    let state = AppState {
+        store,
+        local_files: false,
+        tokens: tokens.clone(),
+    };
+    let gate = auth::Gate {
+        credentials: None,
+        tokens,
+    };
+    Router::new()
+        .route(
+            auth::MCP_PATH,
+            post(mcp::handle).get(mcp::no_stream).delete(mcp::no_stream),
+        )
+        .fallback(rest::not_found)
+        .method_not_allowed_fallback(rest::method_not_allowed)
+        .with_state(state)
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+        .layer(middleware::from_fn_with_state(gate, auth::require_auth))
 }
 
 /// How long in-flight requests may run on after shutdown is requested.
@@ -97,16 +141,14 @@ pub async fn serve(
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
-    serve_on(listener, store, &config, shutdown).await
+    serve_on(listener, router(store, &config), shutdown).await
 }
 
 async fn serve_on(
     listener: tokio::net::TcpListener,
-    store: Arc<Store>,
-    config: &ServerConfig,
+    app: Router,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> anyhow::Result<()> {
-    let app = router(store, config);
     let (stopping_tx, stopping) = tokio::sync::watch::channel(false);
     tokio::spawn(async move {
         shutdown.await;
@@ -141,6 +183,7 @@ pub fn is_addr_in_use(err: &anyhow::Error) -> bool {
 /// are not async (the GPUI app). Dropping the handle asks the server to stop.
 pub struct ServerHandle {
     bound: Result<SocketAddr, io::Error>,
+    tokens: TokenStore,
     stop: Option<tokio::sync::oneshot::Sender<()>>,
     thread: Option<JoinHandle<anyhow::Result<()>>>,
 }
@@ -149,12 +192,38 @@ pub struct ServerHandle {
 /// its own tokio runtime. The bind result is available immediately from the
 /// handle, so the caller can show "API off: port in use".
 pub fn spawn(store: Arc<Store>, config: ServerConfig) -> ServerHandle {
+    spawn_with_tokens(store, config, TokenStore::new())
+}
+
+/// [`spawn`], where `/mcp` also takes the agents' tokens in `tokens`.
+pub fn spawn_with_tokens(
+    store: Arc<Store>,
+    config: ServerConfig,
+    tokens: TokenStore,
+) -> ServerHandle {
+    let app = router_with_tokens(store, &config, tokens.clone());
+    spawn_router(config.bind, app, tokens)
+}
+
+/// The agents' private listener ([`agents_router`]) on a free loopback port,
+/// for when the local API is off.
+pub fn spawn_agents(store: Arc<Store>, tokens: TokenStore) -> ServerHandle {
+    let app = agents_router(store, tokens.clone());
+    spawn_router(
+        SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0)),
+        app,
+        tokens,
+    )
+}
+
+fn spawn_router(bind: SocketAddr, app: Router, tokens: TokenStore) -> ServerHandle {
     let failed = |err| ServerHandle {
         bound: Err(err),
+        tokens: tokens.clone(),
         stop: None,
         thread: None,
     };
-    let listener = match std::net::TcpListener::bind(config.bind) {
+    let listener = match std::net::TcpListener::bind(bind) {
         Ok(listener) => listener,
         Err(err) => return failed(err),
     };
@@ -176,7 +245,7 @@ pub fn spawn(store: Arc<Store>, config: ServerConfig) -> ServerHandle {
                 .build()?;
             let result = runtime.block_on(async move {
                 let listener = tokio::net::TcpListener::from_std(listener)?;
-                serve_on(listener, store, &config, async move {
+                serve_on(listener, app, async move {
                     let _ = stop_rx.await;
                 })
                 .await
@@ -187,6 +256,7 @@ pub fn spawn(store: Arc<Store>, config: ServerConfig) -> ServerHandle {
     match thread {
         Ok(thread) => ServerHandle {
             bound: Ok(addr),
+            tokens,
             stop: Some(stop_tx),
             thread: Some(thread),
         },
@@ -203,6 +273,11 @@ impl ServerHandle {
     /// The bound address, when binding succeeded.
     pub fn local_addr(&self) -> Option<SocketAddr> {
         self.bound.as_ref().ok().copied()
+    }
+
+    /// The agents' tokens this server accepts on `/mcp`.
+    pub fn tokens(&self) -> &TokenStore {
+        &self.tokens
     }
 
     /// Whether binding failed because the port is taken.

@@ -16,6 +16,17 @@ use std::ops::Range;
 /// The separator between a nested tag's levels.
 pub const SEPARATOR: char = '/';
 
+/// The tag whose notes never reach AI, in any case and with or without `#`.
+pub const AI_EXCLUDE: &str = "ai-exclude";
+
+/// Whether tag `name` is [`AI_EXCLUDE`], however it is written. Retrieval
+/// and the agents' read-only MCP both decide `#ai-exclude` here.
+pub fn is_ai_exclude(name: &str) -> bool {
+    name.trim()
+        .trim_start_matches('#')
+        .eq_ignore_ascii_case(AI_EXCLUDE)
+}
+
 /// Whether tag `name` is `path` or inside it: `work/clients` is inside
 /// `work`. Case is ignored for ASCII letters, as tag search ignores it.
 pub fn is_within(name: &str, path: &str) -> bool {

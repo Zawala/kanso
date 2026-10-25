@@ -23,7 +23,7 @@ pub const MAX_NOTES: usize = 8;
 /// The prompt's character budget.
 pub const BUDGET: usize = kanso_ai::DEFAULT_BUDGET;
 /// The tag whose notes are never sent, in any case and with or without `#`.
-pub const EXCLUDE_TAG: &str = "ai-exclude";
+pub const EXCLUDE_TAG: &str = kanso_core::tags::AI_EXCLUDE;
 
 /// How many question words are searched for, and how many hits each gets.
 const MAX_TERMS: usize = 8;
@@ -75,9 +75,7 @@ pub fn eligible(candidate: &Candidate) -> bool {
 
 /// Whether `tag` is the exclusion tag, however it is written.
 pub fn is_exclude_tag(tag: &str) -> bool {
-    tag.trim()
-        .trim_start_matches('#')
-        .eq_ignore_ascii_case(EXCLUDE_TAG)
+    kanso_core::tags::is_ai_exclude(tag)
 }
 
 /// The words of a question worth searching for, without the ones every
