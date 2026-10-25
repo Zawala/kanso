@@ -119,6 +119,7 @@ export async function authenticate(request: Request, env: Env, now: number, allo
 		await env.DB.prepare("UPDATE sessions SET revoked_at = ?2, revoked_reason = 'expired' WHERE token_hash = ?1 AND revoked_at IS NULL")
 			.bind(tokenHash, now)
 			.run();
+		await signOutSockets(env, row.account_id, [row.device_id]);
 		return unauthorized("expired");
 	}
 	if (row.disabled_at !== null && !allowDisabled) return accountDisabled();
@@ -255,6 +256,15 @@ export function sessionStatements(
 export interface SessionOutcome {
 	ok: boolean;
 	evicted: { id: string; sealed_name: string | null } | null;
+}
+
+/**
+ * After a batch with `sessionStatements` committed: closes the event socket of
+ * the device it evicted (the ten-device limit), if any. Every route that makes
+ * a session calls it, so an evicted device learns at once, not at its next request.
+ */
+export async function closeEvicted(env: Env, accountId: string, outcome: SessionOutcome): Promise<void> {
+	if (outcome.evicted) await signOutSockets(env, accountId, [outcome.evicted.id]);
 }
 
 /** Reads `sessionStatements`' results, starting at `offset` in the batch. */
@@ -421,7 +431,9 @@ export const signup: PepperHandler = async (request, env, now, keys) => {
 				[["auth_hash", existing.auth_hash]],
 			),
 		);
-		if (!sessionOutcome(results, 0).ok) return error(409, "username_taken", "That username is taken.");
+		const outcome = sessionOutcome(results, 0);
+		await closeEvicted(env, existing.id, outcome);
+		if (!outcome.ok) return error(409, "username_taken", "That username is taken.");
 		return json({ account_id: existing.id, username: b.username, token: session.token, epoch: existing.epoch }, 201);
 	};
 	const retry = await retried();
@@ -532,6 +544,7 @@ export const login: PepperHandler = async (request, env, now, keys) => {
 		]),
 	);
 	const outcome = sessionOutcome(results, 0);
+	await closeEvicted(env, account.id, outcome);
 	// The password changed, or the account was disabled or deleted, since the check.
 	if (!outcome.ok) return invalidCredentials();
 	return json({
@@ -639,7 +652,9 @@ export const recoverFinish: PepperHandler = async (request, env, now, keys) => {
 				["auth_hash", authHash],
 			]),
 		);
-		if (sessionOutcome(results, 0).ok) {
+		const outcome = sessionOutcome(results, 0);
+		await closeEvicted(env, account.id, outcome);
+		if (outcome.ok) {
 			return json({ account_id: account.id, username: account.username, token: session.token, epoch: account.epoch });
 		}
 	}

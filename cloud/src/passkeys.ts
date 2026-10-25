@@ -46,7 +46,7 @@ import {
 	verifyAssertion,
 	verifyRegistration,
 } from "./webauthn";
-import { readObject, respond, sessionOutcome, sessionStatements, withSession, withSessionKeys } from "./auth";
+import { closeEvicted, readObject, respond, sessionOutcome, sessionStatements, withSession, withSessionKeys } from "./auth";
 
 /** The session shape every sign-in route answers (docs/ACCOUNTS.md › Sign-in routes). */
 interface SessionAnswer {
@@ -329,6 +329,7 @@ export const passkeyFinish = async (request: Request, env: Env, now: number, key
 		),
 	);
 	const outcome = sessionOutcome(results, 0);
+	await closeEvicted(env, found.account.id, outcome);
 	if (!outcome.ok) return INVALID();
 	return sessionAnswer(found.account, token, outcome.evicted, found.wrapped_key, 200);
 };
@@ -522,6 +523,7 @@ export const passkeySignupFinish = async (request: Request, env: Env, now: numbe
 			),
 		);
 		const outcome = sessionOutcome(results, 0);
+		await closeEvicted(env, existing.id, outcome);
 		if (!outcome.ok) return flowExpired();
 		return sessionAnswer(
 			{

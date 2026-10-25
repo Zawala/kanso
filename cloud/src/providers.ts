@@ -20,6 +20,7 @@
 
 import {
 	authenticate,
+	closeEvicted,
 	newSession,
 	readObject,
 	respond,
@@ -464,6 +465,7 @@ async function signIn(
 			),
 		);
 		const outcome = sessionOutcome(results, 0);
+		await closeEvicted(env, account.id, outcome);
 		if (!outcome.ok) return invalidCredentials();
 		return sessionAnswer(account, session.token, outcome.evicted);
 	}
@@ -491,6 +493,7 @@ async function signIn(
 	]);
 	if (results[0].results.length !== 1) return flowExpired();
 	const outcome = sessionOutcome(results, 1);
+	await closeEvicted(env, account.id, outcome);
 	if (!outcome.ok || results[4].results.length !== 1) return invalidCredentials();
 	return sessionAnswer(account, session.token, outcome.evicted);
 }
@@ -917,6 +920,7 @@ export const socialSignup: PepperHandler = async (request, env, now, keys) => {
 			),
 		);
 		const outcome = sessionOutcome(results, 0);
+		await closeEvicted(env, existing.id, outcome);
 		if (!outcome.ok) return null;
 		return sessionAnswer(existing, session.token, outcome.evicted, 201);
 	};
