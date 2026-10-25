@@ -590,6 +590,43 @@ fn note_actions_leave_settings_first(cx: &mut TestAppContext) {
     assert!(!labels.iter().any(|l| l == "Back to notes"), "{labels:?}");
 }
 
+/// With other methods advertised, Create account lists them with the
+/// username one; that shows the password form in their place, and Cancel
+/// there goes back to the list.
+#[gpui_kit::test]
+fn create_account_offers_the_username_form_as_one_method(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    f.dispatch(cx, Box::new(OpenAccountSettings));
+    f.click(cx, "account-create");
+    cx.update(|cx| {
+        let services = cx.global_mut::<Services>();
+        services.auth = Some((
+            kanso_sync::DEFAULT_SERVER.to_owned(),
+            kanso_sync::ServerAuth {
+                password: true,
+                providers: vec![kanso_sync::Provider::Github],
+                ..Default::default()
+            },
+        ));
+        services.signup = Some((
+            kanso_sync::DEFAULT_SERVER.to_owned(),
+            kanso_sync::SignupState::Open,
+        ));
+    });
+    f.draw(cx);
+    assert!(f.drawn(cx, "account-provider-github"));
+    assert!(f.drawn(cx, "account-username-create"));
+    assert!(!f.drawn(cx, "account-username"));
+    assert!(!f.drawn(cx, "account-submit"));
+    f.click(cx, "account-username-create");
+    assert!(f.drawn(cx, "account-username"));
+    assert!(f.drawn(cx, "account-password"));
+    assert!(!f.drawn(cx, "account-provider-github"));
+    f.click(cx, "account-cancel");
+    assert!(f.drawn(cx, "account-username-create"));
+    assert!(!f.drawn(cx, "account-username"));
+}
+
 /// Signed out, the page offers the two ways in; each opens its form, which
 /// checks what was typed before anything starts, and says plainly why it
 /// can't reach a server when there is none (tests have no backend).
