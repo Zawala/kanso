@@ -64,11 +64,16 @@ fn runnable_methods(auth: Option<&kanso_sync::ServerAuth>) -> (bool, Vec<kanso_s
             auth.password,
             auth.providers
                 .iter()
+                // Apple, Google and GitHub run on every platform: Apple's
+                // sheet on macOS, the system browser and the `kanso://`
+                // handler elsewhere (`url_callback.rs`).
                 .filter(|provider| {
                     matches!(
                         provider,
-                        kanso_sync::Provider::Google | kanso_sync::Provider::Github
-                    ) || (cfg!(target_os = "macos") && **provider == kanso_sync::Provider::Apple)
+                        kanso_sync::Provider::Apple
+                            | kanso_sync::Provider::Google
+                            | kanso_sync::Provider::Github
+                    )
                 })
                 .cloned()
                 .collect(),
@@ -693,7 +698,7 @@ impl AccountPage {
                             div()
                                 .text_size(px(12.))
                                 .text_color(colors.text_secondary)
-                                .child("Cancel stops waiting. Dismiss the Apple sign-in sheet separately."),
+                                .child(words::APPLE_WAIT_NOTE),
                         )
                     })
                     .into_any_element(),
@@ -864,7 +869,7 @@ impl AccountPage {
         {
             for provider in &advertised {
                 let (sign_in_label, create_label, selector, icon) = match provider {
-                    kanso_sync::Provider::Apple if cfg!(target_os = "macos") => (
+                    kanso_sync::Provider::Apple => (
                         "Continue with Apple",
                         "Create with Apple",
                         "account-provider-apple",
@@ -912,11 +917,7 @@ impl AccountPage {
                         .into_any_element(),
                 );
             }
-            if advertised.iter().any(|provider| {
-                *provider == kanso_sync::Provider::Google
-                    || *provider == kanso_sync::Provider::Github
-                    || (cfg!(target_os = "macos") && *provider == kanso_sync::Provider::Apple)
-            }) {
+            if !advertised.is_empty() {
                 page.push(
                     div()
                         .mt(px(10.))
@@ -2080,13 +2081,8 @@ mod tests {
             kanso_sync::Provider::Google,
         ];
         let methods = runnable_methods(Some(&auth)).1;
-        #[cfg(target_os = "macos")]
+        // Apple too, on every platform, in the server's order.
         assert_eq!(methods, auth.providers, "preserve server method ordering");
-        #[cfg(not(target_os = "macos"))]
-        assert_eq!(
-            methods,
-            vec![kanso_sync::Provider::Github, kanso_sync::Provider::Google]
-        );
     }
 
     #[test]

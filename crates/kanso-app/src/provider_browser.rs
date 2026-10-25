@@ -76,8 +76,10 @@ pub fn open_external(url: &str) -> Result<(), BrowserError> {
     }
     #[cfg(target_os = "windows")]
     {
-        let status = std::process::Command::new("cmd")
-            .args(["/C", "start", "", url])
+        // Not `cmd /C start`: cmd splits the URL at every `&`, and provider
+        // URLs have several. The URL handler takes it as one argument.
+        let status = std::process::Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", url])
             .status()
             .map_err(|err| BrowserError::Io(format!("couldn't open the browser: {err}")))?;
         if status.success() {
@@ -100,25 +102,35 @@ pub fn open_external(url: &str) -> Result<(), BrowserError> {
 
 // ------------------------------------------------------------------- Apple
 
-/// Opens `start.auth_url` in `ASWebAuthenticationSession` (macOS) with the
-/// `kanso` scheme and waits for the callback URL. The flow ID alone grants
-/// nothing: the caller polls the Worker with its device and proof, and the
-/// secret the callback URL carries, which the system delivers only to this
-/// process.
+/// Opens `start.auth_url` and waits for the `kanso://` callback URL. On
+/// macOS that is `ASWebAuthenticationSession`, which delivers the callback
+/// to this process only. On Windows and Linux it is the system browser, and
+/// the callback comes back through the `kanso` scheme handler and
+/// [`crate::url_callback`], which hands it only to this flow while it waits.
+/// The flow ID alone grants nothing either way: the caller polls the Worker
+/// with its device and proof and the secret the callback URL carries.
 pub fn apple_sign_in(
     start: &AppleStart,
 ) -> Result<async_channel::Receiver<Result<String, BrowserError>>, BrowserError> {
     #[cfg(target_os = "macos")]
     {
-        apple::start(&start.auth_url, "kanso")
+        apple::start(&start.auth_url, crate::url_callback::SCHEME)
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = start;
-        Err(BrowserError::Unsupported(
-            "Sign in with Apple needs macOS's system sign-in sheet",
-        ))
+        let deadline = apple_deadline(start.expires_at, kanso_core::now_ms());
+        let callback = crate::url_callback::ROUTER.wait_for(&start.flow_id, deadline);
+        open_external(&start.auth_url)?;
+        Ok(callback)
     }
+}
+
+/// When the wait for Apple's callback ends: the flow's own expiry, never
+/// later than [`crate::url_callback::MAX_WAIT`].
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn apple_deadline(expires_at_ms: i64, now_ms: i64) -> Instant {
+    let left = u64::try_from(expires_at_ms.saturating_sub(now_ms)).unwrap_or(0);
+    Instant::now() + Duration::from_millis(left).min(crate::url_callback::MAX_WAIT)
 }
 
 /// The flow ID and secret in Apple's callback URL, when it is the callback
@@ -612,5 +624,15 @@ mod tests {
         assert_eq!(callback.secret, secret);
         assert_eq!(apple_flow(&format!("kanso://auth/apple?flow={flow}")), None);
         assert_eq!(apple_flow("kanso://auth/apple?flow=short"), None);
+    }
+
+    /// The browser wait ends with the flow, and never after the cap.
+    #[test]
+    fn apple_waits_end_with_the_flow() {
+        let now = Instant::now();
+        let soon = apple_deadline(1_000 + 90_000, 1_000);
+        assert!(soon >= now + Duration::from_secs(89) && soon <= Instant::now() + Duration::from_secs(90));
+        assert!(apple_deadline(0, 1_000) <= Instant::now());
+        assert!(apple_deadline(i64::MAX, 0) <= Instant::now() + crate::url_callback::MAX_WAIT);
     }
 }

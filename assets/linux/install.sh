@@ -25,6 +25,8 @@ install -m 644 "$here/kanso.png" "$icon_dir/kanso.png"
 sed "s|^Exec=kanso|Exec=\"$bin_dir/kanso\"|" "$here/kanso.desktop" >"$apps_dir/kanso.desktop"
 chmod 644 "$apps_dir/kanso.desktop"
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$apps_dir" || true
+# kanso:// opens Kanso: Sign in with Apple returns through it.
+command -v xdg-mime >/dev/null 2>&1 && xdg-mime default kanso.desktop x-scheme-handler/kanso || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q "$data_home/icons/hicolor" || true
 
 echo "Installed Kanso in $bin_dir/kanso; it's in your applications menu."

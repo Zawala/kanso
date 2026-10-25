@@ -45,6 +45,13 @@ pub const NOT_A_KANSO_SERVER: &str = "That server doesn't run this version of Ka
 pub const KEYS_WRONG: &str =
     "Something's wrong with the server's copy of your keys. Nothing was changed on this device.";
 pub const PASSWORDS_DIFFER: &str = "The passwords don't match.";
+/// Under the Apple wait: macOS shows Apple's sheet; elsewhere the system
+/// browser returns to Kanso by itself.
+#[cfg(target_os = "macos")]
+pub const APPLE_WAIT_NOTE: &str = "Cancel stops waiting. Dismiss the Apple sign-in sheet separately.";
+#[cfg(not(target_os = "macos"))]
+pub const APPLE_WAIT_NOTE: &str =
+    "Finish signing in with Apple in your browser. Kanso opens again when you're done.";
 const SERVER_TROUBLE: &str = "The server couldn't do that. Try again in a moment.";
 /// The approver found the request's key or name doesn't match what it
 /// committed to (docs/ACCOUNTS.md › The protocol, step 5).

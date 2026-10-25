@@ -154,6 +154,7 @@ mod transcribe;
 #[cfg(test)]
 mod ui_tests;
 mod updates;
+mod url_callback;
 mod vim;
 mod voice;
 mod voice_commands;
@@ -261,6 +262,10 @@ fn main() -> Result<()> {
     let args = parse_args()?;
     match args.command.as_deref() {
         None => run_app(args.data_dir, args.after_update),
+        Some(url) if url_callback::is_callback_argument(url) => {
+            forward_callback(&args.data_dir, url);
+            Ok(())
+        }
         Some("serve") => serve(args.data_dir),
         Some("import") => library_import::run_cli(&args.data_dir, &args.rest),
         Some("theme") => theme_import::run_cli(&args.data_dir, &args.rest),
@@ -272,6 +277,16 @@ fn main() -> Result<()> {
             Ok(())
         }
         Some(other) => bail!("unknown command `{other}`\n\n{USAGE}{DATA_DIR_NOTE}"),
+    }
+}
+
+/// The browser opened `kanso://…` (Sign in with Apple on Windows and Linux)
+/// and the system started this process with it: hand it to the Kanso that
+/// is running, which accepts it only for a sign-in it is waiting on. The URL
+/// carries a secret, so it is never printed.
+fn forward_callback(data_dir: &std::path::Path, url: &str) {
+    if let Err(error) = url_callback::forward(data_dir, url) {
+        eprintln!("kanso: couldn't pass the sign-in back to Kanso: {error}");
     }
 }
 
@@ -347,6 +362,12 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
     };
     let config = load_config(&data_dir)?;
     let store = Arc::new(Store::open(paths::db_path(&data_dir))?);
+    // Sign in with Apple returns through the browser and `kanso://` outside
+    // macOS; a second `kanso` started with the URL forwards it here.
+    #[cfg(not(target_os = "macos"))]
+    if let Err(err) = url_callback::listen(&data_dir, &url_callback::ROUTER) {
+        eprintln!("kanso: Sign in with Apple can't return to Kanso: {err}");
+    }
 
     // A daily snapshot of the database, off the main thread.
     let backup_store = store.clone();

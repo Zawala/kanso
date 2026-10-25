@@ -75,6 +75,14 @@ Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "kanso.exe"; Flags: ignoreve
 Name: "{userprograms}\Kanso"; Filename: "{app}\kanso.exe"
 Name: "{userdesktop}\Kanso"; Filename: "{app}\kanso.exe"; Tasks: desktopicon
 
+[Registry]
+; The kanso:// scheme, for this user: Sign in with Apple's page returns to
+; Kanso through it, and a second kanso.exe hands the URL to the running one.
+Root: HKCU; Subkey: "Software\Classes\kanso"; ValueType: string; ValueName: ""; ValueData: "URL:Kanso"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\kanso"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\kanso\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\kanso.exe,0"
+Root: HKCU; Subkey: "Software\Classes\kanso\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\kanso.exe"" ""%1"""
+
 [Run]
 Filename: "{app}\kanso.exe"; Description: "{cm:LaunchProgram,Kanso}"; Flags: nowait postinstall skipifsilent
 
