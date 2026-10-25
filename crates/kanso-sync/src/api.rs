@@ -891,12 +891,17 @@ pub struct PasskeyProofStartRequest {
 pub struct PasskeyProofStartResponse {
     pub flow_id: String,
     pub challenge: String,
+    #[serde(default)]
+    pub rp_id: String,
     pub allow_credentials: Vec<PasskeyAllowedCredential>,
+    #[serde(default)]
+    pub user_verification: String,
     pub timeout: u64,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PasskeyProofRequest {
+    #[serde(default, deserialize_with = "crate::provider::required_proof")]
     pub proof: ProofRequest,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recovery_auth_key: Option<String>,
@@ -917,6 +922,7 @@ pub struct AccountPasskeysStartResponse {
 }
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccountPasskeysStartRequest {
+    #[serde(default, deserialize_with = "crate::provider::required_proof")]
     pub proof: ProofRequest,
 }
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1051,6 +1057,7 @@ pub struct DeleteRequest {
 /// `current_recovery_auth_key`. 200 [`PasswordResponse`].
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignInPasswordRequest {
+    #[serde(default, deserialize_with = "crate::provider::required_proof")]
     pub proof: ProofRequest,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_recovery_auth_key: Option<String>,

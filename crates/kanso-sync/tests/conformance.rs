@@ -23,11 +23,17 @@ mod v2 {
         PasskeyStartRequest, PasswordRequest, PreloginRequest, RecoverFinishRequest,
         RecoverStartRequest, RecoveryKeyRequest, SignInPasswordRequest, SignupRequest,
     };
+    use kanso_sync::provider::{
+        IdentityStartRequest, LinkOutcome, ProviderPollRequest, ProviderStart,
+        ProviderStartRequest, ProviderStep, SocialSignupRequest, UnlinkRequest,
+    };
     use kanso_sync::wire::PushRequest;
-    use kanso_sync::{ApiError, Backend, KdfParams, MemoryServer, SessionToken};
+    use kanso_sync::{ApiError, Backend, KdfParams, MemoryServer, Provider, SessionToken};
+    use ring::signature::{Ed25519KeyPair, KeyPair as _};
     use serde::Serialize;
     use serde::de::DeserializeOwned;
     use serde_json::{Value, json};
+    use sha2::{Digest as _, Sha256};
 
     fn fixture_path(name: &str) -> String {
         format!(
@@ -49,6 +55,51 @@ mod v2 {
         captured: BTreeMap<String, Value>,
         start: i64,
         t: i64,
+        /// sign_in.json's Ed25519 authenticators: seed and credential ID.
+        authenticators: BTreeMap<String, (Vec<u8>, String)>,
+        /// Flows `identity_start` began: their poll is a link or a proof.
+        identity_flows: std::collections::BTreeSet<String>,
+        /// Steps only the Worker can answer (the AASA file), skipped.
+        skipped: usize,
+    }
+
+    fn b64(bytes: &[u8]) -> String {
+        URL_SAFE_NO_PAD.encode(bytes)
+    }
+
+    /// A CBOR head: major type and argument, in the shortest form.
+    fn cbor_head(major: u8, n: usize, out: &mut Vec<u8>) {
+        let m = major << 5;
+        match n {
+            0..=23 => out.push(m | n as u8),
+            24..=0xff => out.extend([m | 24, n as u8]),
+            0x100..=0xffff => {
+                out.push(m | 25);
+                out.extend((n as u16).to_be_bytes());
+            }
+            _ => {
+                out.push(m | 26);
+                out.extend((n as u32).to_be_bytes());
+            }
+        }
+    }
+
+    fn cbor_text(text: &str, out: &mut Vec<u8>) {
+        cbor_head(3, text.len(), out);
+        out.extend(text.as_bytes());
+    }
+
+    fn cbor_bytes(bytes: &[u8], out: &mut Vec<u8>) {
+        cbor_head(2, bytes.len(), out);
+        out.extend(bytes);
+    }
+
+    /// The fixture's `client_data_json`, byte for byte.
+    fn client_data(kind: &str, challenge: &str, origin: &str) -> Vec<u8> {
+        format!(
+            r#"{{"type":"{kind}","challenge":"{challenge}","origin":"{origin}","crossOrigin":false}}"#
+        )
+        .into_bytes()
     }
 
     impl Runner<'_> {
@@ -57,6 +108,101 @@ mod v2 {
                 .get(name)
                 .or_else(|| self.values.get(name))
                 .cloned()
+        }
+
+        /// `resolve`, then sign_in.json's `$register` and `$assert`.
+        fn body(&self, value: &Value) -> Result<Value, String> {
+            let resolved = self.resolve(value)?;
+            self.expand(&resolved)
+        }
+
+        /// Replaces each object holding `$register` or `$assert` by the
+        /// WebAuthn fields it stands for, merged with its other keys
+        /// (sign_in.json's `about`).
+        fn expand(&self, value: &Value) -> Result<Value, String> {
+            Ok(match value {
+                Value::Array(items) => Value::Array(
+                    items
+                        .iter()
+                        .map(|v| self.expand(v))
+                        .collect::<Result<_, _>>()?,
+                ),
+                Value::Object(map) => {
+                    let mut out = serde_json::Map::new();
+                    for (k, v) in map {
+                        if k != "$register" && k != "$assert" {
+                            out.insert(k.clone(), self.expand(v)?);
+                        }
+                    }
+                    for kind in ["$register", "$assert"] {
+                        if let Some(spec) = map.get(kind) {
+                            for (k, v) in self.webauthn(kind, spec)? {
+                                out.insert(k, v);
+                            }
+                        }
+                    }
+                    Value::Object(out)
+                }
+                _ => value.clone(),
+            })
+        }
+
+        fn webauthn(
+            &self,
+            kind: &str,
+            spec: &Value,
+        ) -> Result<serde_json::Map<String, Value>, String> {
+            let name = spec["authenticator"].as_str().ok_or("an authenticator")?;
+            let (seed, credential_id) = self
+                .authenticators
+                .get(name)
+                .ok_or_else(|| format!("no authenticator {name}"))?;
+            let key = Ed25519KeyPair::from_seed_unchecked(seed).map_err(|e| e.to_string())?;
+            let challenge = spec["challenge"].as_str().ok_or("a challenge")?;
+            let origin = spec["origin"]
+                .as_str()
+                .unwrap_or("https://sync.kansoapp.app");
+            let rp_id = spec["rp_id"].as_str().unwrap_or("sync.kansoapp.app");
+            let count = spec["sign_count"].as_u64();
+            let flags = spec["flags"].as_u64();
+            let credential = URL_SAFE_NO_PAD
+                .decode(credential_id)
+                .map_err(|e| e.to_string())?;
+            let mut data = Sha256::digest(rp_id.as_bytes()).to_vec();
+            let mut out = serde_json::Map::new();
+            out.insert("credential_id".into(), json!(credential_id));
+            if kind == "$register" {
+                data.push(flags.unwrap_or(0x45) as u8);
+                data.extend((count.unwrap_or(0) as u32).to_be_bytes());
+                data.extend([0x07; 16]);
+                data.extend((credential.len() as u16).to_be_bytes());
+                data.extend(&credential);
+                // {1: 1, 3: -8, -1: 6, -2: x}
+                data.extend([0xa4, 0x01, 0x01, 0x03, 0x27, 0x20, 0x06, 0x21]);
+                cbor_bytes(key.public_key().as_ref(), &mut data);
+                let mut attestation = vec![0xa3];
+                cbor_text("fmt", &mut attestation);
+                cbor_text("none", &mut attestation);
+                cbor_text("attStmt", &mut attestation);
+                attestation.push(0xa0);
+                cbor_text("authData", &mut attestation);
+                cbor_bytes(&data, &mut attestation);
+                out.insert("attestation_object".into(), json!(b64(&attestation)));
+                out.insert(
+                    "client_data_json".into(),
+                    json!(b64(&client_data("webauthn.create", challenge, origin))),
+                );
+            } else {
+                data.push(flags.unwrap_or(0x05) as u8);
+                data.extend((count.unwrap_or(1) as u32).to_be_bytes());
+                let client = client_data("webauthn.get", challenge, origin);
+                let mut signed = data.clone();
+                signed.extend(Sha256::digest(&client));
+                out.insert("authenticator_data".into(), json!(b64(&data)));
+                out.insert("client_data_json".into(), json!(b64(&client)));
+                out.insert("signature".into(), json!(b64(key.sign(&signed).as_ref())));
+            }
+            Ok(out)
         }
 
         /// Replaces every string that is exactly `"$name"`.
@@ -165,6 +311,23 @@ mod v2 {
             {
                 return Ok(());
             }
+            if let Some(n) = step.get("repeat").and_then(Value::as_u64) {
+                for _ in 0..n {
+                    for inner in step["steps"].as_array().ok_or("repeat steps")? {
+                        self.run(inner)?;
+                    }
+                }
+                return Ok(());
+            }
+            if let Some(answer) = step.get("github").and_then(Value::as_str) {
+                self.server.push_github_answer(answer);
+                return Ok(());
+            }
+            // A static file of the Worker's, not an API MemoryServer serves.
+            if step.get("request").and_then(Value::as_str) == Some("aasa") {
+                self.skipped += 1;
+                return Ok(());
+            }
             if let Some(Value::Object(settings)) = step.get("settings") {
                 for (name, value) in settings {
                     self.server
@@ -220,7 +383,7 @@ mod v2 {
                 _ => String::new(),
             };
             let token = SessionToken::new(token);
-            let body = self.resolve(step.get("body").unwrap_or(&Value::Null))?;
+            let body = self.body(step.get("body").unwrap_or(&Value::Null))?;
             let path = self.resolve(step.get("path").unwrap_or(&Value::Null))?;
             let (status, answer) = self.send(route, &token, body, &path, step)?;
             let expected = step["status"].as_u64().ok_or("a status")? as u16;
@@ -232,6 +395,11 @@ mod v2 {
             }
             if let Some(pattern) = step.get("response") {
                 self.matches(pattern, answer.as_ref(), route)?;
+            }
+            if route == "identity_start"
+                && let Some(flow) = answer.as_ref().and_then(|a| a["flow_id"].as_str())
+            {
+                self.identity_flows.insert(flow.to_owned());
             }
             if let Some(Value::Object(capture)) = step.get("capture") {
                 for (name, at) in capture {
@@ -293,6 +461,72 @@ mod v2 {
                     .map(str::to_owned)
                     .ok_or_else(|| format!("path.{key}"))
             };
+            let provider_part = || -> Result<Provider, String> {
+                serde_json::from_value(json!(path_part("provider")?)).map_err(|e| e.to_string())
+            };
+            /// The provider answers, as the Worker writes them.
+            fn started(
+                result: Result<ProviderStart, ApiError>,
+            ) -> Result<(u16, Option<Value>), String> {
+                match result {
+                    Ok(ProviderStart::Github(g)) => Ok((
+                        200,
+                        Some(json!({
+                            "flow_id": g.flow_id,
+                            "user_code": g.user_code,
+                            "verification_uri": g.verification_uri,
+                            "interval": g.interval,
+                            "expires_in": g.expires_in,
+                        })),
+                    )),
+                    Ok(other) => Err(format!("an answer the fixture has no case for: {other:?}")),
+                    Err(err) => answer::<()>(200, Err(err)),
+                }
+            }
+            fn stepped(
+                result: Result<ProviderStep, ApiError>,
+            ) -> Result<(u16, Option<Value>), String> {
+                match result {
+                    Ok(ProviderStep::Pending { slow_down }) => {
+                        let mut value = json!({ "status": "pending" });
+                        if slow_down {
+                            value["slow_down"] = json!(true);
+                        }
+                        Ok((200, Some(value)))
+                    }
+                    Ok(ProviderStep::NewAccount(ticket)) => {
+                        let mut value = serde_json::to_value(ticket).map_err(|e| e.to_string())?;
+                        value["kind"] = json!("new_account");
+                        Ok((200, Some(value)))
+                    }
+                    Ok(ProviderStep::Session(session)) => {
+                        let mut value = serde_json::to_value(session).map_err(|e| e.to_string())?;
+                        value["kind"] = json!("session");
+                        Ok((200, Some(value)))
+                    }
+                    Err(err) => answer::<()>(200, Err(err)),
+                }
+            }
+            fn linked(
+                result: Result<LinkOutcome, ApiError>,
+            ) -> Result<(u16, Option<Value>), String> {
+                match result {
+                    Ok(LinkOutcome::Linked {
+                        provider,
+                        created_at,
+                    }) => Ok((
+                        200,
+                        Some(
+                            json!({ "kind": "linked", "provider": provider.as_str(), "created_at": created_at }),
+                        ),
+                    )),
+                    Ok(LinkOutcome::Proof { provider }) => Ok((
+                        200,
+                        Some(json!({ "kind": "proof", "provider": provider.as_str() })),
+                    )),
+                    Err(err) => answer::<()>(200, Err(err)),
+                }
+            }
             let api = self.server.api("http://127.0.0.1:8787");
             match route {
                 "health" => answer(200, api.health()),
@@ -347,8 +581,7 @@ mod v2 {
                     &parse::<ApprovalApproveRequest>(body)?,
                 )),
                 "approval_cancel" => empty(api.cancel_approval(token, &path_part("id")?)),
-                // Sign-in (sign_in.json): passkeys, proofs and the first
-                // password. Provider routes have their own fixture.
+                // sign_in.json's routes, by its names.
                 "passkey_start" => {
                     answer(200, api.passkey_start(&parse::<PasskeyStartRequest>(body)?))
                 }
@@ -364,31 +597,60 @@ mod v2 {
                     201,
                     api.passkey_signup_finish(&parse::<PasskeySignupFinishRequest>(body)?),
                 ),
-                "account_sign_in_methods" => answer(200, api.account_sign_in_methods(token)),
-                "passkey_proof_start" => answer(
+                "sign_in_methods" => answer(200, api.account_sign_in_methods(token)),
+                "proof_start" => answer(
                     200,
                     api.passkey_proof_start(token, &parse::<PasskeyProofStartRequest>(body)?),
                 ),
-                "account_passkeys_start" => answer(
+                "passkey_register_start" => answer(
                     200,
                     api.account_passkeys_start(token, &parse::<AccountPasskeysStartRequest>(body)?),
                 ),
-                "account_passkeys_finish" => answer(
-                    200,
+                "passkey_register_finish" => answer(
+                    201,
                     api.account_passkeys_finish(
                         token,
                         &parse::<AccountPasskeysFinishRequest>(body)?,
                     ),
                 ),
-                "account_passkey_remove" => empty(api.account_passkey_remove(
+                "passkey_remove" => empty(api.account_passkey_remove(
                     token,
                     &path_part("credential_id")?,
                     &parse::<PasskeyProofRequest>(body)?,
                 )),
-                "sign_in_password" => answer(
+                "set_password" => answer(
                     200,
                     api.set_first_password(token, &parse::<SignInPasswordRequest>(body)?),
                 ),
+                "github_start" => started(
+                    api.provider_start(&Provider::Github, &parse::<ProviderStartRequest>(body)?),
+                ),
+                "github_poll" => {
+                    let request = parse::<ProviderPollRequest>(body)?;
+                    if self.identity_flows.contains(&request.flow_id) {
+                        linked(api.identity_poll(token, &Provider::Github, &request))
+                    } else {
+                        stepped(api.provider_poll(&Provider::Github, &request))
+                    }
+                }
+                "social_signup" => match api.social_signup(&parse::<SocialSignupRequest>(body)?) {
+                    Ok(session) => {
+                        let mut value = serde_json::to_value(session).map_err(|e| e.to_string())?;
+                        value["kind"] = json!("session");
+                        Ok((201, Some(value)))
+                    }
+                    Err(err) => answer::<()>(201, Err(err)),
+                },
+                "identity_start" => started(api.identity_start(
+                    token,
+                    &provider_part()?,
+                    &parse::<IdentityStartRequest>(body)?,
+                )),
+                "identity_unlink" => empty(api.unlink_identity(
+                    token,
+                    &provider_part()?,
+                    &parse::<UnlinkRequest>(body)?,
+                )),
                 "push" => answer(200, api.push(token, &parse::<PushRequest>(body)?)),
                 "changes" => {
                     let query = step.get("query");
@@ -421,11 +683,34 @@ mod v2 {
     /// Runs every case MemoryServer runs; returns how many ran.
     fn run_fixture(name: &str) -> usize {
         let fixture = load(name);
-        assert_eq!(fixture["protocol"], 2);
+        // sign_in.json leaves `protocol` out; it is 2 wherever it is given.
+        assert!(matches!(
+            fixture.get("protocol"),
+            None | Some(Value::Number(_))
+        ));
+        if let Some(protocol) = fixture.get("protocol") {
+            assert_eq!(protocol, 2);
+        }
         let start = fixture["start"].as_i64().unwrap();
         let values = fixture["values"].as_object().unwrap();
         let mut failures = Vec::new();
         let mut ran = 0;
+        let mut skipped = 0;
+        let authenticators: BTreeMap<String, (Vec<u8>, String)> = fixture
+            .get("authenticators")
+            .and_then(Value::as_object)
+            .map(|all| {
+                all.iter()
+                    .map(|(name, a)| {
+                        let seed = URL_SAFE_NO_PAD.decode(a["seed"].as_str().unwrap()).unwrap();
+                        (
+                            name.clone(),
+                            (seed, a["credential_id"].as_str().unwrap().to_owned()),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         for case in fixture["cases"].as_array().unwrap() {
             if case.get("runner").and_then(Value::as_str) == Some("worker") {
                 continue;
@@ -439,14 +724,49 @@ mod v2 {
                 captured: BTreeMap::new(),
                 start,
                 t: 0,
+                authenticators: authenticators.clone(),
+                identity_flows: Default::default(),
+                skipped: 0,
             };
             runner.server.set_now(start);
+            if let Some(Value::Object(base)) = fixture.get("env") {
+                // A case's env merges over the file's; null unsets.
+                let mut env = base.clone();
+                if let Some(Value::Object(over)) = case.get("env") {
+                    for (k, v) in over {
+                        env.insert(k.clone(), v.clone());
+                    }
+                }
+                let var = |name: &str| env.get(name).and_then(Value::as_str);
+                runner
+                    .server
+                    .set_passkey_env(var("PASSKEY_RP_ID"), var("PASSKEY_ORIGINS"));
+                let github = var("GITHUB_CLIENT_ID").is_some_and(|id| !id.trim().is_empty());
+                runner.server.set_providers(if github {
+                    vec![Provider::Github]
+                } else {
+                    vec![]
+                });
+            }
+            if let Some(github) = fixture.get("github") {
+                runner.server.set_github_device_flow(
+                    &github["id"].to_string(),
+                    github["user_code"].as_str().unwrap(),
+                    github["interval"].as_u64().unwrap(),
+                );
+            }
             for (index, step) in case["steps"].as_array().unwrap().iter().enumerate() {
                 if let Err(why) = runner.run(step) {
                     failures.push(format!("{name} › {case_name} › step {index}: {why}"));
                     break;
                 }
             }
+            skipped += runner.skipped;
+        }
+        if skipped > 0 {
+            eprintln!(
+                "{name}: {ran} cases ran; {skipped} Worker-only steps (the AASA file) skipped"
+            );
         }
         assert!(
             failures.is_empty(),
@@ -476,6 +796,6 @@ mod v2 {
             eprintln!("skipped: cloud/test/fixtures/sign_in.json isn't in this checkout yet");
             return;
         }
-        assert!(run_fixture("sign_in.json") >= 1);
+        assert!(run_fixture("sign_in.json") >= 24);
     }
 }
