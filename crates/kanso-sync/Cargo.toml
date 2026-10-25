@@ -35,6 +35,9 @@ zeroize.workspace = true
 rustls.workspace = true
 tungstenite.workspace = true
 webpki-roots.workspace = true
+# WebAuthn signature checks (ES256, EdDSA, RS256): MemoryServer's relying party
+# and the Linux security-key registration check. Already built for rustls.
+ring = "0.17"
 # Blocking HTTP with rustls: the GPUI app has no async runtime.
 ureq = "3.4"
 url = "2.5"
@@ -52,7 +55,13 @@ keyring = { version = "3.6", features = ["windows-native"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", features = ["linux-native-sync-persistent", "crypto-rust"] }
 
+[features]
+# `TestAuthenticator`, a software passkey for tests in this crate and the app.
+test-support = []
+
 [dev-dependencies]
+# This crate's integration tests use `TestAuthenticator`.
+kanso-sync = { path = ".", features = ["test-support"] }
 async-channel.workspace = true
 # The rollback test replays the old app's store rules (tests/common/legacy.rs).
 kanso-store = { workspace = true, features = ["legacy-v1-rules"] }

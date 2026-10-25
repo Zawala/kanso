@@ -33,8 +33,11 @@ mod sealed;
 pub mod security_key;
 pub mod share;
 pub mod site;
+#[cfg(any(test, feature = "test-support"))]
+mod test_authenticator;
 pub mod username;
 mod verify;
+pub mod webauthn;
 pub mod wire;
 pub mod ws;
 
@@ -75,8 +78,8 @@ pub use http::HttpBackend;
 pub use kanso_store::SyncDoc;
 pub use keychain::{Keychain, MemorySecrets, SecretError, SecretStore};
 pub use memory::{
-    AccountSnapshot, DEFAULT_SETTINGS, Limits, MemoryServer, QuotaOverride, ServerDevice,
-    ServerStats, Signup, is_valid_setting,
+    AccountSnapshot, DEFAULT_SETTINGS, Limits, MEMORY_PASSKEY_ORIGIN, MEMORY_PASSKEY_RP_ID,
+    MemoryServer, QuotaOverride, ServerDevice, ServerStats, Signup, is_valid_setting,
 };
 pub use methods::{
     PasskeyProofStart, PasskeyRegistrationStart, PasskeySignIn, PasskeySignInStart,
@@ -99,6 +102,8 @@ pub use remote::{
     PushResult, RemoteDoc, RemoteError, is_doc_id, is_file_id, is_md5_hex, is_rev, md5_hex,
 };
 pub use sealed::PlainView;
+#[cfg(any(test, feature = "test-support"))]
+pub use test_authenticator::TestAuthenticator;
 pub use username::{UsernameError, check_new_username, is_reserved_username, normalize_username};
 pub use verify::{
     Estimate, LegacyManifest, LegacyReport, LegacyRow, VerifyReport, estimate, manifest_sha256,
