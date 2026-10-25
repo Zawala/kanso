@@ -1,0 +1,35 @@
+[package]
+name = "kanso-mobile-bridge"
+description = "The phones' native library (#48): kanso-mobile behind flutter_rust_bridge, and the C entry points the app's background jobs call."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "kanso_mobile_bridge"
+# The static library is what iOS links, the dynamic one what Android loads
+# and what `flutter test` loads on a computer; the rlib is for this crate's
+# own tests.
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+kanso-mobile.workspace = true
+# The same sync client kanso-mobile uses, for the background entry's server;
+# without the desktop Keychain.
+kanso-sync = { path = "../../crates/kanso-sync", default-features = false }
+# Pinned: the generated code in lib/core/bridge must be the generator's, at
+# this version (CI checks it).
+flutter_rust_bridge = "=2.13.0"
+
+# `KansoNative.init` is a native method, so it is written here with the JNI.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.22", default-features = false }
+kanso-tls.workspace = true
+
+[dev-dependencies]
+# The tests sign in with the test-support constructors.
+kanso-mobile = { workspace = true, features = ["test-support"] }
+proptest.workspace = true
+tempfile.workspace = true

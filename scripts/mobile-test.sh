@@ -111,9 +111,10 @@ esac
 upper="$(echo "$target" | tr '[:lower:]-' '[:upper:]_')"
 export "CARGO_TARGET_${upper}_RUNNER=$runner"
 
-# Library and integration tests of each crate the facade is built on, one
-# crate at a time so each one's counts are its own. kanso-sync and kanso-ai
-# are tested without their desktop features, as they are built.
+# Library and integration tests of each crate the facade is built on, the
+# facade (kanso-mobile) and the library the app loads (kanso-mobile-bridge),
+# one crate at a time so each one's counts are its own. kanso-sync and
+# kanso-ai are tested without their desktop features, as they are built.
 log="${KANSO_TEST_LOG:-$(mktemp -t kanso-mobile-test)}"
 : >"$log"
 failed=0
@@ -124,8 +125,8 @@ run() {
 	fi
 }
 # KANSO_TEST_CRATES narrows the run to some of them while working on one.
-wanted=" ${KANSO_TEST_CRATES:-kanso-core kanso-store kanso-engine kanso-render kanso-collab kanso-import kanso-tls kanso-sync kanso-ai} "
-for crate in kanso-core kanso-store kanso-engine kanso-render kanso-collab kanso-import kanso-tls; do
+wanted=" ${KANSO_TEST_CRATES:-kanso-core kanso-store kanso-engine kanso-render kanso-collab kanso-import kanso-tls kanso-mobile kanso-mobile-bridge kanso-sync kanso-ai} "
+for crate in kanso-core kanso-store kanso-engine kanso-render kanso-collab kanso-import kanso-tls kanso-mobile kanso-mobile-bridge; do
 	case "$wanted" in *" $crate "*) run -p "$crate" ;; esac
 done
 for crate in kanso-sync kanso-ai; do

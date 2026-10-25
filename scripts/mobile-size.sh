@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Measures what the core weighs on a phone (#48): builds kanso-mobile-size
-# with the mobile profile for iOS and Android, in full and minimal (core and
-# store only) variants, unwinding and aborting, and prints a Markdown table.
+# Measures what the bare library weighs on a phone (#48): builds
+# kanso-mobile-bridge's dynamic library (the facade and the core, without
+# Flutter or the app) with the mobile profile for iOS and Android, unwinding
+# and aborting, and prints a Markdown table.
 # Usage: scripts/mobile-size.sh [output folder] [target...]
 #
 # A phone's library is the dylib for iOS (standing in for the static library
@@ -62,31 +63,28 @@ print(total)'
 	esac
 }
 
-echo "| Target | Variant | Panic | Raw | gzip -9 | zip -9 | Unwind sections |"
-echo "|---|---|---|---:|---:|---:|---:|"
+echo "| Target | Panic | Raw | gzip -9 | zip -9 | Unwind sections |"
+echo "|---|---|---:|---:|---:|---:|"
 for target in "${targets[@]}"; do
 	case "$target" in
-	*apple*) lib=libkanso_mobile_size.dylib ;;
-	*) lib=libkanso_mobile_size.so ;;
+	*apple*) lib=libkanso_mobile_bridge.dylib ;;
+	*) lib=libkanso_mobile_bridge.so ;;
 	esac
-	for variant in full minimal; do
-		for panic in unwind abort; do
-			flags=()
-			[ "$variant" = minimal ] && flags=(--no-default-features)
-			(
-				export CARGO_PROFILE_MOBILE_PANIC="$panic"
-				cargo build --locked --profile mobile --target "$target" -p kanso-mobile-size "${flags[@]}" >&2
-			)
-			built="$target_dir/$target/mobile/$lib"
-			copy="$out/$target-$variant-$panic-$lib"
-			cp "$built" "$copy"
-			raw="$(stat -f %z "$copy" 2>/dev/null || stat -c %s "$copy")"
-			gz="$(gzip -9 -c "$copy" | wc -c | tr -d ' ')"
-			rm -f "$copy.zip"
-			(cd "$out" && zip -9 -q "$(basename "$copy").zip" "$(basename "$copy")")
-			zp="$(stat -f %z "$copy.zip" 2>/dev/null || stat -c %s "$copy.zip")"
-			unwind="$(section_bytes "$copy" "$target")"
-			echo "| $target | $variant | $panic | $raw | $gz | $zp | $unwind |"
-		done
+	for panic in unwind abort; do
+		(
+			export CARGO_PROFILE_MOBILE_PANIC="$panic"
+			# Only the dynamic library: the crate also builds a static one.
+			cargo rustc --locked --profile mobile --target "$target" -p kanso-mobile-bridge --lib --crate-type cdylib >&2
+		)
+		built="$target_dir/$target/mobile/$lib"
+		copy="$out/$target-$panic-$lib"
+		cp "$built" "$copy"
+		raw="$(stat -f %z "$copy" 2>/dev/null || stat -c %s "$copy")"
+		gz="$(gzip -9 -c "$copy" | wc -c | tr -d ' ')"
+		rm -f "$copy.zip"
+		(cd "$out" && zip -9 -q "$(basename "$copy").zip" "$(basename "$copy")")
+		zp="$(stat -f %z "$copy.zip" 2>/dev/null || stat -c %s "$copy.zip")"
+		unwind="$(section_bytes "$copy" "$target")"
+		echo "| $target | $panic | $raw | $gz | $zp | $unwind |"
 	done
 done
