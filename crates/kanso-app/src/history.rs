@@ -14,9 +14,10 @@ use gpui_kit::*;
 use kanso_store::Revision;
 
 use crate::clock::Clock;
+use crate::diff_view::hunk_lines;
 use crate::editor::NoteEditor;
 use crate::grouping::as_title;
-use crate::history_diff::{Hunk, LineKind, hunks};
+use crate::history_diff::{Hunk, hunks};
 use crate::theme::Colors;
 use crate::zoom::px;
 
@@ -28,6 +29,7 @@ pub fn origin_label(origin: &str) -> &'static str {
         "sync" => "Replaced by sync",
         "import" => "Replaced by an import",
         "collab" => "Edited in a shared note",
+        "agent" => "Suggested by an agent, applied by you",
         "plugin" => "Changed by a plugin",
         _ => "Saved version",
     }
@@ -158,81 +160,6 @@ impl HistoryView {
             };
             let text = hunk.old_text();
             let was_copied = copied == Some((selected, ix));
-            let lines = hunk.lines.iter().map(|line| {
-                let (bg, mark, sign, sign_color) = match line.kind {
-                    LineKind::Same => (None, None, " ", colors.text_muted),
-                    LineKind::Added => (
-                        Some(Hsla::from(colors.success).opacity(0.13)),
-                        Some(Hsla::from(colors.success).opacity(0.34)),
-                        "+",
-                        colors.success,
-                    ),
-                    LineKind::Removed => (
-                        Some(Hsla::from(colors.danger).opacity(0.13)),
-                        Some(Hsla::from(colors.danger).opacity(0.34)),
-                        "−",
-                        colors.danger,
-                    ),
-                };
-                let number = line
-                    .old_line
-                    .or(line.new_line)
-                    .map(|n| n.to_string())
-                    .unwrap_or_default();
-                let highlights: Vec<(std::ops::Range<usize>, HighlightStyle)> = mark
-                    .map(|mark| {
-                        line.changed
-                            .iter()
-                            .map(|r| {
-                                (
-                                    r.clone(),
-                                    HighlightStyle {
-                                        background_color: Some(mark),
-                                        ..Default::default()
-                                    },
-                                )
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let words = if line.text.is_empty() {
-                    " ".to_owned()
-                } else {
-                    line.text.clone()
-                };
-                h_flex()
-                    .items_start()
-                    .min_h(px(20.))
-                    .when_some(bg, |el, bg| el.bg(bg))
-                    .child(
-                        div()
-                            .w(px(34.))
-                            .flex_none()
-                            .pr(px(6.))
-                            .text_right()
-                            .text_color(colors.text_muted)
-                            .child(number),
-                    )
-                    .child(
-                        div()
-                            .w(px(14.))
-                            .flex_none()
-                            .text_color(sign_color)
-                            .child(sign),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .pr(px(8.))
-                            .text_color(if line.kind == LineKind::Same {
-                                colors.text_secondary
-                            } else {
-                                colors.text
-                            })
-                            .child(StyledText::new(words).with_highlights(highlights)),
-                    )
-            });
             let section = v_flex()
                 .flex_none()
                 .rounded(px(8.))
@@ -290,14 +217,7 @@ impl HistoryView {
                                 })),
                         ),
                 )
-                .child(
-                    v_flex()
-                        .py(px(4.))
-                        .text_size(px(12.5))
-                        .line_height(px(20.))
-                        .when_some(mono, |el, font| el.font_family(font))
-                        .children(lines),
-                );
+                .child(hunk_lines(hunk, colors, mono));
             sections.push(section);
         }
         v_flex()
@@ -582,6 +502,7 @@ mod tests {
             kanso_store::Origin::Sync,
             kanso_store::Origin::Import,
             kanso_store::Origin::Collab,
+            kanso_store::Origin::Agent,
             kanso_store::Origin::Plugin,
         ] {
             assert_ne!(origin_label(origin.as_str()), "Saved version");

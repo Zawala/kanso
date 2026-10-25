@@ -20,6 +20,7 @@ use crate::account_page::SignedOutForm;
 use crate::commands::Picker;
 use crate::config::{AppConfig, InspectorTab, ViewMode};
 use crate::dialogs::{confirm, prompt_text};
+use crate::editor::inline_glue::InlineAssist;
 use crate::editor::{EditorEvent, NoteEditor};
 use crate::inspector::{Inspector, InspectorEvent};
 use crate::layout::{
@@ -82,6 +83,7 @@ actions!(
         ShowOutline,
         ShowBacklinks,
         AskYourNotes,
+        SummarizeNote,
     ]
 );
 
@@ -428,6 +430,9 @@ pub struct Workspace {
     pub(crate) title_bar: Option<Entity<gpui_kit::component::menu::AppMenuBar>>,
     _subscriptions: Vec<Subscription>,
     _links: Task<()>,
+    /// Opens the review sheet when an agent suggests an edit while this
+    /// window is focused.
+    _reviews: Vec<Task<()>>,
     /// Locks the notes again once they go unused for a while.
     _auto_lock: Task<()>,
 }
@@ -671,6 +676,8 @@ impl Workspace {
             }
         });
 
+        let reviews = crate::review_queue::watch(window, cx);
+
         let auto_lock = cx.spawn_in(window, async move |this, cx| {
             loop {
                 cx.background_executor()
@@ -738,6 +745,7 @@ impl Workspace {
                 .then(|| gpui_kit::component::menu::AppMenuBar::new(cx)),
             _subscriptions: subscriptions,
             _links: links,
+            _reviews: reviews,
             _auto_lock: auto_lock,
         }
     }
@@ -2342,6 +2350,23 @@ impl Render for Workspace {
                 this.close_settings(window, cx);
                 this.set_focus_mode(false, window, cx);
                 this.show_inspector(Some(InspectorTab::Backlinks), cx);
+            }))
+            .on_action(cx.listener(|this, action: &InlineAssist, window, cx| {
+                // The palette closed with the focus elsewhere; the editor
+                // takes it from here.
+                this.close_settings(window, cx);
+                this.editor
+                    .update(cx, |editor, cx| editor.start_inline(action.action, cx));
+            }))
+            .on_action(cx.listener(|this, _: &SummarizeNote, window, cx| {
+                if !cx.global::<AppState>().config.ai.enabled {
+                    return;
+                }
+                this.close_settings(window, cx);
+                this.set_focus_mode(false, window, cx);
+                this.show_inspector(Some(InspectorTab::Ask), cx);
+                this.inspector
+                    .update(cx, |inspector, cx| inspector.summarize_note(window, cx));
             }))
             .on_action(cx.listener(|this, _: &AskYourNotes, window, cx| {
                 if !cx.global::<AppState>().config.ai.enabled {

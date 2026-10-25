@@ -1,6 +1,7 @@
 //! An agent on this computer as the source of AI answers: what the settings
-//! mean for `kanso-ai`, the read-only notes access each of its sessions
-//! gets, and the plain lines Settings and the Ask panel show about what the
+//! mean for `kanso-ai`, the notes access each of its sessions gets (read
+//! only, and suggested edits that wait for review when the person allowed
+//! them), and the plain lines Settings and the Ask panel show about what the
 //! agent sees and who it sends questions to.
 
 use std::collections::HashSet;
@@ -50,9 +51,25 @@ pub fn scope_notebooks(choice: &AgentChoice) -> Option<HashSet<String>> {
     (!choice.notebooks.is_empty()).then(|| choice.notebooks.iter().cloned().collect())
 }
 
-/// How each new session of `choice` gets read-only access to the notes at
-/// `url`: a token of its own over the notebooks `choice` allows, with
-/// Ask's two tools, and `relay` for an agent without HTTP MCP.
+/// The scope each session of `choice` gets over `notebooks`: Ask's two read
+/// tools, and the suggesting tools too when the person allowed suggested
+/// edits. Those only queue a change for review; the agent never writes.
+pub fn scope_for(
+    choice: &AgentChoice,
+    notebooks: Option<HashSet<String>>,
+    agent: &str,
+) -> AgentScope {
+    if choice.suggest_edits {
+        AgentScope::ask_and_suggest(notebooks, agent)
+    } else {
+        AgentScope::ask(notebooks)
+    }
+}
+
+/// How each new session of `choice` gets access to the notes at `url`: a
+/// token of its own over the notebooks `choice` allows, with Ask's two
+/// tools (and the suggesting ones when allowed), and `relay` for an agent
+/// without HTTP MCP.
 pub fn notes_access_at(
     choice: &AgentChoice,
     url: String,
@@ -60,12 +77,15 @@ pub fn notes_access_at(
     relay: Option<PathBuf>,
 ) -> NotesAccess {
     let notebooks = scope_notebooks(choice);
+    let choice = choice.clone();
+    let agent = label(&choice);
     Arc::new(move || {
-        let minted = tokens.mint(AgentScope::ask(notebooks.clone()));
+        let minted = tokens.mint(scope_for(&choice, notebooks.clone(), &agent));
         Some(NotesGrant {
             url: url.clone(),
             token: minted.token,
             relay: relay.clone(),
+            suggest: choice.suggest_edits,
             lease: Box::new(Lease {
                 tokens: tokens.clone(),
                 id: minted.id,
@@ -148,8 +168,13 @@ pub fn requests_line(choice: &AgentChoice) -> String {
     } else {
         "Questions and the note excerpts they use"
     };
+    let suggest = if choice.mcp && choice.suggest_edits {
+        format!(" {label} may also suggest edits to notes; nothing changes until you apply one.")
+    } else {
+        String::new()
+    };
     format!(
-        "{what} go to {label} on this computer, which sends them to {vendor} under your own account. Kanso doesn't proxy or keep them. Locked notes and notes tagged #ai-exclude are never sent. {label} may keep its own history of the conversation."
+        "{what} go to {label} on this computer, which sends them to {vendor} under your own account. Kanso doesn't proxy or keep them. Locked notes, notes in the trash and notes tagged #ai-exclude are never sent. {label} may keep its own history of the conversation.{suggest}"
     )
 }
 
@@ -157,7 +182,7 @@ pub fn requests_line(choice: &AgentChoice) -> String {
 pub fn trust_line(choice: &AgentChoice) -> String {
     let label = label(choice);
     format!(
-        "{label} runs as a program on this computer, as you. Kanso gives it no access to files or a terminal and refuses its requests for them, but it can still read files and run commands with its own tools. Notes are data, not instructions: Kanso asks the agent to ignore instructions inside them, but a note can still steer an answer. Check the citations."
+        "{label} runs as a program on this computer, as you. Kanso gives it no access to files or a terminal and refuses its requests for them. It can still read files and run commands with its own tools: Kanso asks before it uses one (Allow once or Reject), but can't see or limit what the tool then does. Notes are data, not instructions: Kanso asks the agent to ignore instructions inside them, but a note can still steer an answer. Check the citations."
     )
 }
 
@@ -238,10 +263,52 @@ mod tests {
         assert!(scope.read_only && !scope.allow_attachments);
         assert_eq!(scope.notebooks, scope_notebooks(&choice));
         assert!(scope.allows_tool("read-note") && !scope.allows_tool("create-note"));
+        assert!(scope.suggests_as.is_none());
         assert!(first.lease.is_live());
         drop(first);
         assert_eq!(tokens.live_count(), 1);
         assert!(tokens.verify(&second.token).is_some());
+    }
+
+    #[test]
+    fn suggested_edits_are_off_unless_allowed_and_never_write() {
+        use super::{notes_access_at, scope_for};
+        let mut choice = AgentChoice::default();
+        assert!(!choice.suggest_edits, "off by default");
+        let off = scope_for(&choice, None, "Claude Agent");
+        assert!(!off.allows_tool("patch-note") && off.suggests_as.is_none());
+        choice.suggest_edits = true;
+        let on = scope_for(&choice, None, "Claude Agent");
+        for tool in ["patch-note", "update-note", "create-note", "read-note"] {
+            assert!(on.allows_tool(tool), "{tool}");
+        }
+        // Tags and notebooks stay denied; nothing in it writes the store.
+        for tool in [
+            "update-tag",
+            "update-book",
+            "create-tag",
+            "create-book",
+            "create-file",
+        ] {
+            assert!(!on.allows_tool(tool), "{tool}");
+        }
+        assert!(on.read_only && !on.allow_attachments);
+        assert_eq!(on.suggests_as.as_deref(), Some("Claude Agent"));
+        // A session's token carries the scope the setting meant.
+        let tokens = kanso_server::TokenStore::new();
+        let access = notes_access_at(
+            &choice,
+            "http://127.0.0.1:1/mcp".into(),
+            tokens.clone(),
+            None,
+        );
+        let grant = access().unwrap();
+        assert!(grant.suggest, "the agent is told it may suggest");
+        let Some(kanso_server::Caller::Agent { scope, .. }) = tokens.verify(&grant.token) else {
+            panic!("the token is an agent's");
+        };
+        assert!(scope.allows_tool("patch-note"));
+        assert!(scope.suggests_as.is_some());
     }
 
     #[test]
@@ -287,6 +354,25 @@ mod tests {
             let trust = trust_line(&choice);
             prop_assert!(trust.contains("its own tools"));
             prop_assert!(trust.contains("as you"));
+            prop_assert!(trust.contains("Allow once or Reject"));
+            prop_assert!(!trust.to_lowercase().contains("never leave"));
+        }
+
+        /// Suggested edits are mentioned only when they are on, and say that
+        /// nothing changes until the person applies them.
+        #[test]
+        fn prop_the_requests_line_mentions_suggested_edits_only_when_on(
+            choice in gen_choice(),
+            mcp in any::<bool>(),
+            suggest in any::<bool>(),
+        ) {
+            let choice = AgentChoice { mcp, suggest_edits: suggest, ..choice };
+            let line = requests_line(&choice);
+            prop_assert_eq!(line.contains("suggest edits"), mcp && suggest);
+            if mcp && suggest {
+                prop_assert!(line.contains("nothing changes until you apply one"));
+            }
+            prop_assert!(line.contains("notes in the trash"));
         }
     }
 }

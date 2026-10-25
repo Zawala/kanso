@@ -9,6 +9,10 @@
 //! inside them. Anything else does not exist for the agent: it reads as
 //! "not found", never "forbidden", and an error deciding counts as not
 //! visible.
+//!
+//! An agent never writes. A scope the person has let suggest edits also
+//! offers [`SUGGEST_TOOLS`], which only stage a change in the
+//! [`ReviewQueue`](crate::review::ReviewQueue) for the person to apply.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
@@ -38,18 +42,31 @@ pub const READ_TOOLS: [&str; 9] = [
 /// API key gets.
 pub const ASK_TOOLS: [&str; 2] = ["search-notes", "read-note"];
 
+/// The tools that stage an edit for review instead of writing, given only to
+/// a scope the person allowed to suggest edits. The first write release is
+/// note text and title only (issue #46, the review queue, decision 8):
+/// `update-tag` and `update-book` stay denied, and so does everything that
+/// touches attachments, notebooks' locks, or deletes.
+pub const SUGGEST_TOOLS: [&str; 3] = ["patch-note", "update-note", "create-note"];
+
 /// What one agent token may do.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentScope {
-    /// Always true: an agent writes nothing.
+    /// Always true: no call of an agent's writes the store. Edits it
+    /// suggests wait in the review queue until the person applies them.
     pub read_only: bool,
     /// The notebooks it may read, with the ones inside them; `None` is every
     /// unlocked notebook.
     pub notebooks: Option<HashSet<String>>,
     /// Always false: attachments are never served to an agent.
     pub allow_attachments: bool,
-    /// The tools it is offered, within [`READ_TOOLS`].
+    /// The tools it is offered, within [`READ_TOOLS`] and, when it may
+    /// suggest edits, [`SUGGEST_TOOLS`].
     pub tools: BTreeSet<String>,
+    /// What the person calls the agent, when it may suggest edits: the
+    /// name its suggestions carry in the review queue and in the note's
+    /// history. `None` is a scope that suggests nothing.
+    pub suggests_as: Option<String>,
 }
 
 impl AgentScope {
@@ -70,12 +87,26 @@ impl AgentScope {
                 .filter(|tool| READ_TOOLS.contains(tool))
                 .map(|tool| (*tool).to_owned())
                 .collect(),
+            suggests_as: None,
         }
+    }
+
+    /// [`AgentScope::ask`], and the agent called `agent` may also suggest
+    /// edits to the notes it may read.
+    pub fn ask_and_suggest(notebooks: Option<HashSet<String>>, agent: &str) -> AgentScope {
+        let mut scope = AgentScope::ask(notebooks);
+        scope
+            .tools
+            .extend(SUGGEST_TOOLS.iter().map(|tool| (*tool).to_owned()));
+        scope.suggests_as = Some(agent.trim().to_owned());
+        scope
     }
 
     /// Whether this scope offers tool `name`.
     pub fn allows_tool(&self, name: &str) -> bool {
-        READ_TOOLS.contains(&name) && self.tools.contains(name)
+        self.tools.contains(name)
+            && (READ_TOOLS.contains(&name)
+                || (SUGGEST_TOOLS.contains(&name) && self.suggests_as.is_some()))
     }
 }
 

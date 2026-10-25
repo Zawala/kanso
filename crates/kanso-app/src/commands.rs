@@ -7,6 +7,9 @@
 use gpui_kit::Action;
 use gpui_kit::assets::IconName;
 
+use kanso_ai::InlineAction;
+
+use crate::editor::inline_glue::InlineAssist;
 use crate::journal::{NewTemplate, NextDay, OpenToday, PreviousDay, QuickCapture};
 use crate::settings::{
     BrowseIconThemes, BrowseThemes, CloseSettings, ImportIconTheme, OpenAccountSettings,
@@ -23,8 +26,9 @@ use crate::workspace::{
     ExportNote, ExportPdf, FocusNoteList, FocusSearch, FormatTable, GoBack, GoForward,
     ImportLibrary, NewNote, NewNotebook, NewRecoveryKey, NextNote, OpenFile, OpenNotePicker,
     OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes, ShowBacklinks, ShowCreateAccount,
-    ShowEditor, ShowHistory, ShowOutline, ShowPreview, ShowSignIn, ShowSplit, SignOut, SyncNow,
-    ToggleFocusMode, ToggleInspector, TogglePinned, ToggleSidebar, TrashNote,
+    ShowEditor, ShowHistory, ShowOutline, ShowPreview, ShowSignIn, ShowSplit, SignOut,
+    SummarizeNote, SyncNow, ToggleFocusMode, ToggleInspector, TogglePinned, ToggleSidebar,
+    TrashNote,
 };
 
 /// The palette's sections, in the order they appear with nothing typed.
@@ -103,6 +107,8 @@ pub enum Needs {
     SharedNote,
     /// AI is on in Settings › AI.
     AiOn,
+    /// AI is on and a note is open that isn't in the trash or locked.
+    AiNote,
 }
 
 pub struct Command {
@@ -771,6 +777,82 @@ static COMMANDS: &[Command] = &[
         group: Group::View,
         run: action!(AskYourNotes),
         needs: Needs::AiOn,
+    },
+    Command {
+        id: "summarize-note",
+        label: "Summarize Note",
+        label_when_pinned: None,
+        description: "Summarizes the open note in the Ask panel. The note isn't changed. It works only while AI is on in Settings › AI, and not for a locked note or one tagged #ai-exclude.",
+        icon: IconName::Sparkles,
+        keywords: &["ai", "summary", "summarise", "tl;dr", "digest", "assistant"],
+        group: Group::Note,
+        run: action!(SummarizeNote),
+        needs: Needs::AiNote,
+    },
+    Command {
+        id: "improve-writing",
+        label: InlineAction::Improve.label(),
+        label_when_pinned: None,
+        description: "Suggests a better-written version of the selected text. Nothing changes until you accept it. It works only while AI is on in Settings › AI.",
+        icon: IconName::Sparkles,
+        keywords: &["ai", "rewrite", "polish", "edit", "assistant"],
+        group: Group::Note,
+        run: action!(InlineAssist {
+            action: InlineAction::Improve
+        }),
+        needs: Needs::AiNote,
+    },
+    Command {
+        id: "make-shorter",
+        label: InlineAction::Shorten.label(),
+        label_when_pinned: None,
+        description: "Suggests a shorter version of the selected text. Nothing changes until you accept it. It works only while AI is on in Settings › AI.",
+        icon: IconName::Sparkles,
+        keywords: &["ai", "shorten", "condense", "trim", "assistant"],
+        group: Group::Note,
+        run: action!(InlineAssist {
+            action: InlineAction::Shorten
+        }),
+        needs: Needs::AiNote,
+    },
+    Command {
+        id: "fix-spelling-and-grammar",
+        label: InlineAction::Fix.label(),
+        label_when_pinned: None,
+        description: "Suggests the selected text with its spelling and grammar corrected. Nothing changes until you accept it. It works only while AI is on in Settings › AI.",
+        icon: IconName::Sparkles,
+        keywords: &["ai", "proofread", "typos", "correct", "assistant"],
+        group: Group::Note,
+        run: action!(InlineAssist {
+            action: InlineAction::Fix
+        }),
+        needs: Needs::AiNote,
+    },
+    Command {
+        id: "continue-writing",
+        label: InlineAction::Continue.label(),
+        label_when_pinned: None,
+        description: "Suggests what comes next after the selected text, or after the paragraph before the cursor. Nothing changes until you accept it. It works only while AI is on in Settings › AI.",
+        icon: IconName::Sparkles,
+        keywords: &["ai", "write", "next", "extend", "assistant"],
+        group: Group::Note,
+        run: action!(InlineAssist {
+            action: InlineAction::Continue
+        }),
+        needs: Needs::AiNote,
+    },
+    Command {
+        id: "summarize-selection",
+        label: InlineAction::Summarize.label(),
+        label_when_pinned: None,
+        description: "Suggests a short summary of the selected text, to put after it. Nothing changes until you accept it. It works only while AI is on in Settings › AI.",
+        icon: IconName::Sparkles,
+        keywords: &["ai", "summary", "summarise", "digest", "assistant"],
+        group: Group::Note,
+        run: action!(InlineAssist {
+            action: InlineAction::Summarize
+        }),
+        needs: Needs::AiNote,
     },
     Command {
         id: "show-backlinks",

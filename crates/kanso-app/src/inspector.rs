@@ -184,6 +184,12 @@ impl Inspector {
             .update(cx, |ask, cx| ask.focus_question(window, cx));
     }
 
+    /// Summarises the open note in the Ask panel.
+    pub fn summarize_note(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.ask
+            .update(cx, |ask, cx| ask.summarize_note(window, cx));
+    }
+
     /// Ends the Ask conversation, as turning AI off or closing the pane does.
     pub fn stop_ask(&mut self, cx: &mut Context<Self>) {
         self.ask.update(cx, |ask, cx| ask.end_conversation(cx));

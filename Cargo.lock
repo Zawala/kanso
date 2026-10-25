@@ -4543,6 +4543,7 @@ name = "kanso-server"
 version = "0.8.4"
 dependencies = [
  "anyhow",
+ "async-channel",
  "axum",
  "base64 0.22.1",
  "chrono",

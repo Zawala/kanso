@@ -158,6 +158,7 @@ fn answers_through(script: Script, via: &str) {
         Arc::new(move || {
             let minted = tokens.mint(AgentScope::ask(None));
             Some(NotesGrant {
+                suggest: false,
                 url: url.clone(),
                 token: minted.token,
                 relay: Some(PathBuf::from(env!("CARGO_BIN_EXE_kanso"))),
@@ -244,6 +245,7 @@ fn an_expired_token_starts_a_new_session_rather_than_widening_the_old() {
             *minted_count.lock().unwrap() += 1;
             let minted = tokens.mint(AgentScope::ask(None));
             Some(NotesGrant {
+                suggest: false,
                 url: url.clone(),
                 token: minted.token,
                 relay: None,

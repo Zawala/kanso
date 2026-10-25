@@ -11,9 +11,12 @@
 //! tools its scope offers are listed or run, every note they would show is
 //! checked first ([`Visibility`](crate::scope::Visibility)), and `resources/read`
 //! follows the same rule. Everything else answers that the agent has
-//! read-only access.
+//! read-only access. A scope the person let suggest edits also gets
+//! `patch-note`, `update-note` and `create-note`, which stage a change in the
+//! review queue (`suggest.rs`) and write nothing.
 
 mod schema;
+mod suggest;
 mod tools;
 
 use axum::body::Bytes;
@@ -264,7 +267,12 @@ fn call(
                     let Some(visible) = crate::scope::Visibility::new(&state.store, scope) else {
                         return Ok(tools::error_result("Couldn't read the notes."));
                     };
-                    let answer = tools::call(state, Some(&visible), name, param("arguments"));
+                    let answer = if crate::scope::SUGGEST_TOOLS.contains(&name) {
+                        // Staged for review; the store is only read.
+                        suggest::call(state, *token, scope, &visible, name, param("arguments"))
+                    } else {
+                        tools::call(state, Some(&visible), name, param("arguments"))
+                    };
                     state.tokens.record(*token, &visible.shown());
                     Ok(answer)
                 }

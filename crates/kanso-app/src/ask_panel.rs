@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use gpui_kit::base::text::TextView;
 use gpui_kit::component::Disableable as _;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -18,6 +18,7 @@ use gpui_kit::*;
 use kanso_ai::{ClientSettings, Excerpt, Provider};
 use kanso_store::Store;
 
+use crate::ai_feature;
 use crate::config::{AgentChoice, AiBackend};
 use crate::editor::NoteEditor;
 use crate::library::Library;
@@ -121,6 +122,10 @@ pub struct AskPanel {
     notice: Option<String>,
     cancel: Option<Arc<AtomicBool>>,
     task: Option<Task<()>>,
+    /// The edits the agent suggested, kept apart from the conversation:
+    /// clearing it doesn't drop them.
+    reviews: Option<kanso_server::ReviewQueue>,
+    _review_watch: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -146,6 +151,17 @@ impl AskPanel {
                 _ => {}
             },
         )];
+        let reviews = crate::review_queue::queue(cx);
+        let review_watch = reviews.as_ref().map(|queue| {
+            let events = queue.subscribe();
+            cx.spawn(async move |this, cx| {
+                while events.recv().await.is_ok() {
+                    if this.update(cx, |_, cx| cx.notify()).is_err() {
+                        break;
+                    }
+                }
+            })
+        });
         AskPanel {
             store,
             library,
@@ -168,6 +184,8 @@ impl AskPanel {
             notice: None,
             cancel: None,
             task: None,
+            reviews,
+            _review_watch: review_watch,
             _subscriptions: subscriptions,
         }
     }
@@ -362,7 +380,13 @@ impl AskPanel {
             cx.notify();
             return;
         }
-        self.task = Some(cx.spawn(async move |this, cx| {
+        self.task = Some(Self::watch(rx, cx));
+    }
+
+    /// Carries what the worker says into the panel until the request is
+    /// over, or settles the panel if the worker ended without saying so.
+    fn watch(rx: async_channel::Receiver<Update>, cx: &mut Context<Self>) -> Task<()> {
+        cx.spawn(async move |this, cx| {
             while let Ok(update) = rx.recv().await {
                 let finished = this
                     .update(cx, |this, cx| {
@@ -436,7 +460,103 @@ impl AskPanel {
                 }
             })
             .ok();
-        }));
+        })
+    }
+
+    /// Whether the note open beside the panel can be summarised: it is open
+    /// in the clear and not in the trash. (Whether AI may see it is checked
+    /// when the summary is asked for.)
+    fn can_summarize(&self, cx: &App) -> bool {
+        let editor = self.editor.read(cx);
+        editor.lock_view() == crate::locked::LockView::Plain
+            && editor
+                .current_note(cx)
+                .is_some_and(|note| note.book_id != kanso_core::model::TRASH_BOOK_ID)
+    }
+
+    /// Summarises the note open beside the panel as the next turn: the one
+    /// note goes in the request, a long one in parts, and no note is
+    /// changed. Nothing is sent for a note kept out of AI.
+    pub fn summarize_note(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+        let ai = cx.global::<AppState>().config.ai.clone();
+        if !ai.enabled {
+            return;
+        }
+        self.stop(cx);
+        let Some(note) = self.editor.read(cx).current_note(cx) else {
+            return;
+        };
+        let plain = self.editor.read(cx).lock_view() == crate::locked::LockView::Plain;
+        let title = if note.title.trim().is_empty() {
+            "Untitled".to_owned()
+        } else {
+            note.title.trim().to_owned()
+        };
+        // The same conversation rules as a question: another backend or model
+        // starts afresh, and what can no longer be sent is dropped.
+        let conversation = ConversationKey::of(&ai);
+        if self
+            .conversation
+            .as_ref()
+            .is_some_and(|last| last != &conversation)
+        {
+            self.clear_conversation();
+        }
+        self.conversation = Some(conversation);
+        self.prune_history();
+        self.asked = true;
+        self.answer.clear();
+        self.empty = false;
+        self.error = None;
+        self.notice = None;
+        self.cut_off = false;
+        self.searching = false;
+        self.turn_notes.clear();
+        if !plain
+            || note.book_id == kanso_core::model::TRASH_BOOK_ID
+            || !ai_feature::eligible(&self.store, &note.id)
+        {
+            self.asking = None;
+            self.streaming = false;
+            self.error = Some(ai_feature::KEPT_OUT.to_owned());
+            cx.notify();
+            return;
+        }
+        let question = format!("Summary of \u{201c}{title}\u{201d}");
+        self.asking = Some(question);
+        self.turn_notes.push(note.id.clone());
+        self.streaming = true;
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.cancel = Some(cancel.clone());
+        cx.notify();
+
+        let maker = ai_feature::maker(cx);
+        let (tx, rx) = async_channel::unbounded::<Update>();
+        let spawned = std::thread::Builder::new()
+            .name("kanso-summary".into())
+            .spawn(move || {
+                ai_feature::summarize(&maker, &title, &note.body, &cancel.clone(), |event| {
+                    let update = match event {
+                        kanso_ai::Event::Text(text) => Update::Text(text),
+                        kanso_ai::Event::Status(line) => Update::Status(line),
+                        kanso_ai::Event::Done => Update::Done,
+                        kanso_ai::Event::Error(message) if message == kanso_ai::CUT_OFF => {
+                            Update::CutOff
+                        }
+                        kanso_ai::Event::Error(message) => Update::Error(message),
+                    };
+                    tx.try_send(update).ok();
+                });
+            });
+        if spawned.is_err() {
+            self.cancel = None;
+            self.asking = None;
+            self.streaming = false;
+            self.error = Some("Couldn't start the summary.".to_owned());
+            cx.notify();
+            return;
+        }
+        self.task = Some(Self::watch(rx, cx));
     }
 
     /// Settles a request whose event channel closed without Done or Error.
@@ -452,6 +572,32 @@ impl AskPanel {
         self.streaming = false;
         self.cancel = None;
         true
+    }
+
+    /// How many suggested edits the panel says are waiting.
+    #[cfg(test)]
+    pub(crate) fn suggested_for_test(&self) -> usize {
+        self.reviews.as_ref().map_or(0, |queue| queue.len())
+    }
+
+    /// The finished exchanges as (question, answer), for tests.
+    #[cfg(test)]
+    pub(crate) fn turns_for_test(&self) -> Vec<(String, String)> {
+        self.turns
+            .iter()
+            .map(|turn| (turn.question.clone(), turn.answer.clone()))
+            .collect()
+    }
+
+    /// Whether a request is running, and the lines the panel shows for an
+    /// error and for progress, for tests.
+    #[cfg(test)]
+    pub(crate) fn state_for_test(&self) -> (bool, Option<String>, Option<String>) {
+        (
+            self.searching || self.streaming,
+            self.error.clone(),
+            self.notice.clone(),
+        )
     }
 
     #[cfg(test)]
@@ -715,6 +861,7 @@ impl Render for AskPanel {
         let finished = self.finished.clone();
         let used = self.render_used(cx);
         let view = cx.entity();
+        let suggested = self.reviews.as_ref().map_or(0, |queue| queue.len());
         v_flex()
             .id("ask")
             .size_full()
@@ -722,6 +869,32 @@ impl Render for AskPanel {
             .pt(px(10.))
             .pb(px(10.))
             .gap(px(8.))
+            .when(suggested > 0, |el| {
+                el.child(
+                    h_flex()
+                        .gap(px(8.))
+                        .items_center()
+                        .child(
+                            div()
+                                .debug_selector(|| "ask-suggested".into())
+                                .text_size(px(12.5))
+                                .text_color(colors.text)
+                                .child(format!(
+                                    "{} —",
+                                    crate::review_queue::pending_line(suggested)
+                                )),
+                        )
+                        .child(
+                            Button::new("ask-review")
+                                .outline()
+                                .small()
+                                .label("Review")
+                                .on_click(|_, window, cx| {
+                                    crate::review_queue::open_review(window, cx);
+                                }),
+                        ),
+                )
+            })
             .when(
                 !self.asked
                     && (ai.backend == AiBackend::Agent || ai.provider.is_remote(&ai.base_url)),
@@ -761,6 +934,18 @@ impl Render for AskPanel {
                                 }
                             }),
                     )
+                    .when(!running && ai.enabled && self.can_summarize(cx), |el| {
+                        let view = view.clone();
+                        el.child(
+                            Button::new("ask-summarize")
+                                .ghost()
+                                .small()
+                                .label("Summarize this note")
+                                .on_click(move |_, window, cx| {
+                                    view.update(cx, |this, cx| this.summarize_note(window, cx));
+                                }),
+                        )
+                    })
                     .when(running, |el| {
                         let view = view.clone();
                         el.child(

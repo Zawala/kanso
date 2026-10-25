@@ -68,9 +68,15 @@ use crate::wikilinks::{SharedIndex, WikiCompletion, WikiIndex, rewrite_for_previ
 use crate::word_goal::{self, GoalSetting};
 use crate::workspace::{AppState, NewNote};
 use crate::zoom::px;
+use inline_glue::InlineAssist;
 
 #[path = "editor_collab.rs"]
 mod collab_glue;
+#[path = "ai_inline.rs"]
+pub(crate) mod inline_glue;
+#[cfg(test)]
+#[path = "ai_inline_tests.rs"]
+mod inline_tests;
 #[path = "editor_peers.rs"]
 pub(crate) mod peers;
 #[cfg(test)]
@@ -309,6 +315,8 @@ pub struct NoteEditor {
     typewriter: bool,
     /// Vim keys, while the setting is on.
     vim: Option<vim_glue::VimState>,
+    /// The inline assistant's suggestion, while there is one.
+    inline: Option<inline_glue::Suggestion>,
     /// The tints on tasks' due dates in the text.
     due_marks: crate::due::DueMarks,
     /// The underlines under misspelled words in the text.
@@ -540,6 +548,7 @@ impl NoteEditor {
             live_voice: None,
             typewriter: false,
             vim: None,
+            inline: None,
             due_marks: Default::default(),
             spell_marks: Default::default(),
             shared: None,
@@ -876,6 +885,14 @@ impl NoteEditor {
         self.lock = note
             .as_mut()
             .map_or(LockView::Plain, |note| crate::locked::reveal(note, cx));
+        // A suggestion belongs to the note it was asked for, in the clear.
+        if self.lock != LockView::Plain
+            || self.inline.as_ref().is_some_and(|suggestion| {
+                note.as_ref().map(|note| note.id.as_str()) != Some(suggestion.note_id())
+            })
+        {
+            self.inline = None;
+        }
         let (title, body) = note.as_ref().map_or((String::new(), String::new()), |n| {
             (n.title.clone(), n.body.clone())
         });
@@ -1016,6 +1033,7 @@ impl NoteEditor {
                 note.body = body;
                 self.note = Some(note);
                 self.lock = LockView::Open;
+                self.inline = None;
                 cx.notify();
             }
             Err(err) => self.notice(format!("Couldn't lock the note: {err}"), cx),
@@ -2039,11 +2057,21 @@ impl NoteEditor {
             }
             menu = menu.separator();
         }
-        menu.menu_with_disabled("Cut", !(editable && copyable), Box::new(Cut))
+        let mut menu = menu
+            .menu_with_disabled("Cut", !(editable && copyable), Box::new(Cut))
             .menu_with_disabled("Copy", !copyable, Box::new(Copy))
             .menu_with_disabled("Paste", !editable, Box::new(Paste))
             .separator()
-            .menu("Select All", Box::new(SelectAll))
+            .menu("Select All", Box::new(SelectAll));
+        // The inline assistant works on a selection, while AI is on.
+        let assists = self.inline_menu(cx);
+        if !assists.is_empty() {
+            menu = menu.separator();
+            for action in assists {
+                menu = menu.menu(action.label(), Box::new(InlineAssist { action }));
+            }
+        }
+        menu
     }
 
     /// The spelling items for the misspelled word the right-click landed
@@ -2143,6 +2171,12 @@ impl NoteEditor {
                 .is_some_and(|voice| voice.is_for(&cx.entity()))
         {
             crate::voice::cancel(cx);
+            cx.stop_propagation();
+            return;
+        }
+        // Escape drops the inline assistant's suggestion.
+        if event.keystroke.key == "escape" && self.inline.is_some() {
+            self.discard_inline(cx);
             cx.stop_propagation();
             return;
         }
@@ -4115,6 +4149,7 @@ impl Render for NoteEditor {
             .capture_action(cx.listener(Self::on_enter))
             .capture_action(cx.listener(Self::on_paste))
             .on_action(cx.listener(Self::correct_spelling))
+            .on_action(cx.listener(Self::inline_assist))
             .on_action(cx.listener(Self::learn_spelling))
             .on_action(cx.listener(Self::ignore_spelling))
             .on_drop(cx.listener(Self::on_drop))
@@ -4244,6 +4279,7 @@ impl Render for NoteEditor {
                 el.children(self.render_twin_banner(cx))
             })
             .children(self.render_transcribing(cx))
+            .children(self.render_suggestion(cx))
             .when(self.shared.as_ref().is_some_and(|s| s.ended), |el| {
                 el.child(self.banner(
                     colors.fill.into(),

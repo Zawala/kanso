@@ -99,6 +99,10 @@ pub enum Origin {
     /// `kanso-collab` writing a shared note's merged text. Snapshots are
     /// throttled as for the UI.
     Collab,
+    /// An edit an agent suggested and the person applied in Kanso's review
+    /// queue. Every write is snapshotted, as for the API, and the version it
+    /// replaces names the agent ([`Store::put_by_agent`]).
+    Agent,
     /// A plugin's batch ([`Store::apply_plugin_batch`]). Every write is
     /// snapshotted, unthrottled, with the plugin's name, so history can say
     /// which plugin changed what.
@@ -113,6 +117,7 @@ impl Origin {
             Origin::Sync => "sync",
             Origin::Import => "import",
             Origin::Collab => "collab",
+            Origin::Agent => "agent",
             Origin::Plugin => "plugin",
         }
     }
