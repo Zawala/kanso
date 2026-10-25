@@ -719,7 +719,7 @@ async function checkCurrentPassword(
  * recovery key and a password change both carry: the new recovery hash and
  * wrap, or the 400 that ends the request.
  */
-async function newRecoveryKey(b: Record<string, unknown>): Promise<{ ok: true; hash: string; wrap: string } | { ok: false; response: Response }> {
+export async function newRecoveryKey(b: Record<string, unknown>): Promise<{ ok: true; hash: string; wrap: string } | { ok: false; response: Response }> {
 	const recoveryAuthKey = proof32(b.recovery_auth_key);
 	if (!recoveryAuthKey) return { ok: false, response: badRequest("recovery_auth_key must be 32 bytes of canonical base64url.") };
 	if (typeof b.recovery_wrapped_key !== "string" || !isWrappedKey(b.recovery_wrapped_key)) {

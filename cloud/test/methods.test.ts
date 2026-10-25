@@ -570,3 +570,134 @@ describe("POST /v2/account/sign-in/passkeys/<credential_id>/remove", () => {
 		expect((await removePasskey(alice.token, newCredential(), {})).body).toMatchObject({ error: "rate_limited", limit: "passkey-manage" });
 	});
 });
+
+// ------------------------------------------------------------ first password
+
+/**
+ * A finished provider proof flow for `accountId`, as the provider routes leave
+ * one (providers.test.ts runs the real flows), with the identity linked.
+ */
+export async function providerProof(accountId: string, deviceId: string, provider = "github", subject = "583231", now = T0) {
+	const flow = base64url(crypto.getRandomValues(new Uint8Array(32)));
+	await env.DB.batch([
+		env.DB.prepare("INSERT OR IGNORE INTO account_identities (account_id, provider, subject, created_at) VALUES (?1, ?2, ?3, ?4)").bind(
+			accountId,
+			provider,
+			subject,
+			now,
+		),
+		env.DB.prepare(
+			`INSERT INTO auth_flows (id, kind, intent, account_id, device_id, provider, subject, created_at, expires_at)
+  VALUES (?1, ?2, 'proof', ?3, ?4, ?2, ?5, ?6, ?7)`,
+		).bind(flow, provider, accountId, deviceId, subject, now, now + 600_000),
+	]);
+	return { kind: "provider", flow };
+}
+
+/** A first password's body: `next`'s KDF, salt, keys and new recovery key. */
+export function firstPasswordBody(proof: unknown, next = newCreds("next"), extra: Record<string, unknown> = {}) {
+	return {
+		proof,
+		kdf: { alg: "argon2id", version: 19, m_kib: 1_048_576, t: 3, p: 4 },
+		salt: next.salt,
+		auth_key: next.authKey,
+		wrapped_key: next.wrappedKey,
+		recovery_auth_key: next.recoveryAuthKey,
+		recovery_wrapped_key: next.recoveryWrappedKey,
+		...extra,
+	};
+}
+
+export const setPassword = (token: string, body: unknown, now = T0) => as("/v2/account/sign-in/password", body, token, now);
+
+describe("POST /v2/account/sign-in/password", () => {
+	it("sets the first password with a passkey proof, rotates the recovery key and signs out every other device", async () => {
+		const p = await passkeyAccount("prover");
+		const other = newDevice();
+		const begin = await callJson("/v2/auth/passkey/start", { json: { device: wire(other) }, env: menv(), now: T0 });
+		const second = await callJson("/v2/auth/passkey/finish", {
+			json: { flow_id: begin.body.flow_id, ...assertion(p.credential, begin.body.challenge, { signCount: 0 }), device: wire(other) },
+			env: menv(),
+			now: T0,
+		});
+		const next = newCreds("prover");
+		const answer = await setPassword(p.token, firstPasswordBody(await passkeyProof(p.token, p.credential, { signCount: 0 }), next));
+		expect(answer).toMatchObject({ status: 200, body: { signed_out_devices: 1 } });
+		expect((await callJson("/v2/account", { env: menv(), now: T0, token: second.body.token })).body).toMatchObject({ reason: "password_changed" });
+		expect((await callJson("/v2/account", { env: menv(), now: T0, token: p.token })).status).toBe(200);
+		const login = await callJson("/v2/auth/login", { env: menv(), now: T0, json: { username: "prover", auth_key: next.authKey, device: wire(p.device) } });
+		expect(login).toMatchObject({ status: 200, body: { wrapped_key: next.wrappedKey } });
+		// The old recovery key stopped working; the new one works.
+		const old = await callJson("/v2/auth/recover/start", { env: menv(), now: T0, json: { username: "prover", recovery_auth_key: p.recoveryAuthKey } });
+		expect(old.status).toBe(401);
+		const fresh = await callJson("/v2/auth/recover/start", { env: menv(), now: T0, json: { username: "prover", recovery_auth_key: next.recoveryAuthKey } });
+		expect(fresh.status).toBe(200);
+		// Signing in again on the same device replaced its token.
+		const methods = await callJson("/v2/account/sign-in", { env: menv(), now: T0, token: login.body.token });
+		expect(methods.body, JSON.stringify(methods.body)).toMatchObject({ has_password: true });
+		// Passkeys are kept.
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_passkeys").first()).toEqual({ n: 1 });
+	});
+
+	it("a retry with the same values is 200 with 0; anything else on an account with a password is 409 already_has_password", async () => {
+		const p = await passkeyAccount("prover");
+		const next = newCreds("prover");
+		const body = firstPasswordBody(await passkeyProof(p.token, p.credential), next);
+		expect((await setPassword(p.token, body)).status).toBe(200);
+		expect(await setPassword(p.token, body)).toMatchObject({ status: 200, body: { signed_out_devices: 0 } });
+		const different = firstPasswordBody(await passkeyProof(p.token, p.credential, { signCount: 2 }));
+		expect(await setPassword(p.token, different)).toMatchObject({ status: 409, body: { error: "already_has_password" } });
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		expect((await setPassword(alice.token, firstPasswordBody(passwordProof(alice)))).body.error).toBe("already_has_password");
+	});
+
+	it("a provider proof needs the current recovery key: missing is reauth_required, wrong is invalid_credentials", async () => {
+		const p = await passkeyAccount("prover");
+		const without = await setPassword(p.token, firstPasswordBody(await providerProof(p.accountId, p.device.id)));
+		expect(without).toMatchObject({ status: 401, body: { error: "reauth_required" } });
+		const wrong = await setPassword(
+			p.token,
+			firstPasswordBody(await providerProof(p.accountId, p.device.id), newCreds("n"), { current_recovery_auth_key: newCreds("x").recoveryAuthKey }),
+		);
+		expect(wrong).toMatchObject({ status: 401, body: { error: "invalid_credentials" } });
+		const right = await setPassword(
+			p.token,
+			firstPasswordBody(await providerProof(p.accountId, p.device.id), newCreds("n"), { current_recovery_auth_key: p.recoveryAuthKey }),
+		);
+		expect(right.status).toBe(200);
+	});
+
+	it("a provider proof is used once and only while the recovery key is unchanged", async () => {
+		const p = await passkeyAccount("prover");
+		const proof = await providerProof(p.accountId, p.device.id);
+		// The recovery key changes between the check and the change: the proof isn't used and nothing changes.
+		await env.DB.prepare("UPDATE accounts SET recovery_hash = ?2 WHERE id = ?1").bind(p.accountId, "0".repeat(64)).run();
+		const raced = await setPassword(p.token, firstPasswordBody(proof, newCreds("n"), { current_recovery_auth_key: p.recoveryAuthKey }));
+		expect(raced.status).toBe(401);
+		const row = await env.DB.prepare("SELECT has_password FROM accounts WHERE id = ?1").bind(p.accountId).first();
+		expect(row).toEqual({ has_password: 0 });
+	});
+
+	it("needs a proof; a used one is flow_expired; a bad body is 400", async () => {
+		const p = await passkeyAccount("prover");
+		expect((await setPassword(p.token, firstPasswordBody(undefined))).body.error).toBe("reauth_required");
+		const proof = await passkeyProof(p.token, p.credential);
+		await linkStart(p.token, p.device, proof);
+		expect(await setPassword(p.token, firstPasswordBody(proof))).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+		expect((await setPassword(p.token, { ...firstPasswordBody(proof), salt: "short" })).body.error).toBe("bad_request");
+		expect((await setPassword(p.token, { ...firstPasswordBody(proof), kdf: { alg: "scrypt", version: 19, m_kib: 1_048_576, t: 3, p: 4 } })).body.error).toBe("unsupported_kdf");
+	});
+
+	it("parallel first passwords with one proof: one wins", async () => {
+		const p = await passkeyAccount("prover");
+		const proof = await passkeyProof(p.token, p.credential);
+		const answers = await Promise.all([1, 2, 3].map(() => setPassword(p.token, firstPasswordBody(proof))));
+		expect(answers.filter((a) => a.status === 200)).toHaveLength(1);
+	});
+
+	it("counts password-account: five per 15 minutes", async () => {
+		const p = await passkeyAccount("prover");
+		for (let i = 0; i < 5; i++) expect((await setPassword(p.token, {})).status).toBe(400);
+		expect((await setPassword(p.token, {})).body).toMatchObject({ error: "rate_limited", limit: "password-account" });
+	});
+});
