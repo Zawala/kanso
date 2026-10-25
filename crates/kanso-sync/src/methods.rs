@@ -404,7 +404,8 @@ pub fn start_passkey_sign_in(
 /// session comes back locked, with the flow's device kept for a password
 /// unlock. A wrap that doesn't open to the server's key ID is
 /// [`AccountError::KeyMismatch`]: the new session is logged out and nothing
-/// is saved. An unlocked session gets its sealed name; saving it, the
+/// is saved. An answer for another account than the assertion's user handle
+/// names is [`AccountError::Protocol`], also logged out. An unlocked session gets its sealed name; saving it, the
 /// binding question and `bind` are the app's, as for a password sign-in.
 pub fn sign_in_with_passkey(
     b: &dyn Backend,
@@ -436,6 +437,16 @@ pub fn sign_in_with_passkey(
         let _ = api.logout(&answer.token);
         Err(err)
     };
+    // The authenticator names the account its passkey belongs to. A server
+    // that answers with another (one whose password the user would then
+    // type on a locked Mac) is refused before anything else is believed.
+    if let Some(handle) = &assertion.user_handle
+        && *handle != crate::passkey::user_handle(&answer.account_id)
+    {
+        return fail(AccountError::Protocol(
+            "the passkey sign-in answered for another account than the passkey's".into(),
+        ));
+    }
     let username_ok = normalize_username(&answer.username).is_ok_and(|n| n == answer.username)
         && start
             .username
