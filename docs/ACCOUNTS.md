@@ -3750,7 +3750,7 @@ account] [Sign in].
     without `hmac-secret` can sign in but not unlock a new device, and the app says so.
   - [Continue with Apple], [Continue with Google], [Continue with GitHub] — only the advertised
     ones, with the provider's own button rules.
-  - A divider, then Username and Password (and Server, below).
+  - Under the heading "Or sign in with your username", Username and Password (and Server, below).
   - "Forgot your password?" switches to Username, Recovery key, New password, Confirm and
     [Set new password].
   - The server row shows "sync.kansoapp.app (default)" or the custom URL, with "Use a different
@@ -3763,7 +3763,11 @@ account] [Sign in].
     libfido2 ceremony.
   - [Create with Apple] / [Google] / [GitHub] — completes the provider flow, then asks for a
     username (suggested, with "You can change this before creating the account").
-  - [Create with a username] — Username, Password, Confirm password, with the hints as today.
+  - [Create with a username] — Username, Password, Confirm password, with the hints as today,
+    shown in place of the method list; Cancel there returns to the list. A server that offers
+    only passwords opens this form directly.
+
+  The method buttons are one left-aligned column of equal width, not the page's full width.
   - Server as today.
 
   The social and passkey forms then show "Your *N* notes on this Mac will be encrypted and uploaded.

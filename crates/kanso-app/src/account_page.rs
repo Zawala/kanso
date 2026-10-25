@@ -188,6 +188,9 @@ pub struct AccountPage {
     pin: Entity<InputState>,
     /// The passkey form shown in place of the username form.
     passkey_form: Option<PasskeyForm>,
+    /// Create account: [Create with a username] was chosen from the
+    /// methods, so the password form shows in their place.
+    password_form: bool,
     error: Option<SharedString>,
     /// A task started from these forms runs: they stay disabled until it
     /// says it is done, through any question it asks on the way.
@@ -215,7 +218,7 @@ impl AccountPage {
                     .placeholder(placeholder)
             })
         };
-        let username = input(false, "ngoni", cx);
+        let username = input(false, "", cx);
         let password = input(true, "", cx);
         let confirm = input(true, "", cx);
         let recovery_key = input(false, "XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX", cx);
@@ -243,6 +246,7 @@ impl AccountPage {
             recovery_key,
             pin,
             passkey_form: None,
+            password_form: false,
             error: None,
             waiting: false,
             notes: 0,
@@ -288,6 +292,7 @@ impl AccountPage {
         }
         self.form = form;
         self.passkey_form = None;
+        self.password_form = false;
         if matches!(form, SignedOutForm::CreateAccount | SignedOutForm::SignIn) {
             self.watch_security_keys(cx);
         } else {
@@ -316,6 +321,16 @@ impl AccountPage {
             self.username
                 .update(cx, |input, cx| input.focus(window, cx));
         }
+        cx.notify();
+    }
+
+    /// Create account: [Create with a username] shows the password form in
+    /// place of the methods.
+    pub fn choose_password_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.password_form = true;
+        self.error = None;
+        self.username
+            .update(cx, |input, cx| input.focus(window, cx));
         cx.notify();
     }
 
@@ -1053,8 +1068,19 @@ impl AccountPage {
                 "Set new password",
             ),
         };
+        let has_methods = !advertised.is_empty()
+            || offer.platform
+            || offer.security_key != SecurityKeyOffer::None;
+        // Create account lists its methods, the username one among them; the
+        // password form replaces the list once that one is chosen.
+        let choosing = form == SignedOutForm::CreateAccount
+            && provider_signup.is_none()
+            && has_methods
+            && !self.password_form;
+        let mut methods: Vec<AnyElement> = Vec::new();
         if matches!(form, SignedOutForm::SignIn | SignedOutForm::CreateAccount)
-            && !(form == SignedOutForm::CreateAccount && provider_signup.is_some())
+            && !(form == SignedOutForm::CreateAccount
+                && (provider_signup.is_some() || self.password_form))
         {
             let creating = form == SignedOutForm::CreateAccount;
             let closed_to_new = creating && !matches!(signup.as_ref(), Some(SignupState::Open));
@@ -1064,7 +1090,7 @@ impl AccountPage {
                 } else {
                     (words::CONTINUE_WITH_PASSKEY, "account-passkey")
                 };
-                page.push(
+                methods.push(
                     Button::new(selector)
                         .outline()
                         .icon(Lucide::FingerprintPattern)
@@ -1095,7 +1121,7 @@ impl AccountPage {
                     } else {
                         (words::CONTINUE_WITH_SECURITY_KEY, "account-security-key")
                     };
-                    page.push(
+                    methods.push(
                         Button::new(selector)
                             .outline()
                             .icon(Lucide::Usb)
@@ -1112,7 +1138,7 @@ impl AccountPage {
                             .into_any_element(),
                     );
                 }
-                SecurityKeyOffer::Connect => page.push(
+                SecurityKeyOffer::Connect => methods.push(
                     h_flex()
                         .gap(px(8.))
                         .debug_selector(|| "account-security-key-connect".into())
@@ -1160,7 +1186,7 @@ impl AccountPage {
                     create_label
                 };
                 let provider = provider.clone();
-                page.push(
+                methods.push(
                     Button::new(SharedString::from(selector))
                         .outline()
                         .icon(icon)
@@ -1182,20 +1208,70 @@ impl AccountPage {
                         .into_any_element(),
                 );
             }
-            if !advertised.is_empty()
-                || offer.platform
-                || offer.security_key != SecurityKeyOffer::None
-            {
-                page.push(
-                    div()
-                        .mt(px(10.))
-                        .mb(px(10.))
-                        .h(px(1.))
-                        .w_full()
-                        .bg(colors.divider)
+            if creating && password_available {
+                methods.push(
+                    Button::new("account-username-create")
+                        .outline()
+                        .icon(Lucide::User)
+                        .label(words::CREATE_WITH_USERNAME)
+                        .disabled(busy || closed_to_new)
+                        .debug_selector(|| "account-username-create".into())
+                        .on_click(
+                            cx.listener(|this, _, window, cx| {
+                                this.choose_password_form(window, cx)
+                            }),
+                        )
                         .into_any_element(),
                 );
             }
+        }
+        if !methods.is_empty() {
+            // One column of equal buttons, not the page's full width.
+            page.push(
+                v_flex()
+                    .mt(px(18.))
+                    .w(px(300.))
+                    .gap(px(8.))
+                    .children(methods)
+                    .into_any_element(),
+            );
+        }
+        if choosing {
+            page.push(
+                v_flex()
+                    .mt(px(14.))
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .line_height(px(18.))
+                            .text_color(colors.text_secondary)
+                            .child(sign_up_line(self.notes, signup)),
+                    )
+                    .when_some(self.error.clone(), |el, error| {
+                        el.child(
+                            div()
+                                .debug_selector(|| "account-error".into())
+                                .text_size(px(13.))
+                                .line_height(px(18.))
+                                .text_color(colors.danger)
+                                .child(error),
+                        )
+                    })
+                    .child(
+                        h_flex().mt(px(6.)).child(
+                            Button::new("account-cancel")
+                                .label("Cancel")
+                                .disabled(busy)
+                                .debug_selector(|| "account-cancel".into())
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.open_form(SignedOutForm::None, window, cx)
+                                })),
+                        ),
+                    )
+                    .into_any_element(),
+            );
+            return page;
         }
 
         if form == SignedOutForm::CreateAccount
@@ -1236,6 +1312,12 @@ impl AccountPage {
             } else {
                 rows.into_iter().last().into_iter().collect()
             };
+            // Under the methods, the username form says it's the other way.
+            let title = if form == SignedOutForm::SignIn && has_methods && password_available {
+                "Or sign in with your username"
+            } else {
+                title
+            };
             page.push(section(title, rows, colors));
         }
 
@@ -1259,6 +1341,10 @@ impl AccountPage {
             && !Self::value(&self.username, cx).trim().is_empty()
             && !(form == SignedOutForm::CreateAccount && closed);
         let ended = matches!(account, AccountState::SessionEnded { .. });
+        let back_to_methods = form == SignedOutForm::CreateAccount
+            && self.password_form
+            && has_methods
+            && provider_signup.is_none();
         let footer = h_flex()
             .mt(px(14.))
             .gap_2()
@@ -1288,8 +1374,16 @@ impl AccountPage {
                         .label("Cancel")
                         .disabled(busy)
                         .debug_selector(|| "account-cancel".into())
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_form(SignedOutForm::None, window, cx)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            // From the password form, back to the methods.
+                            if back_to_methods {
+                                this.password_form = false;
+                                this.error = None;
+                                this.clear_secrets(window, cx);
+                                cx.notify();
+                            } else {
+                                this.open_form(SignedOutForm::None, window, cx)
+                            }
                         })),
                 )
             })

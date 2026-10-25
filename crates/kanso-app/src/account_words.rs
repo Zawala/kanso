@@ -79,6 +79,7 @@ pub const CONTINUE_WITH_PASSKEY: &str = "Continue with a passkey";
 pub const CREATE_WITH_PASSKEY: &str = "Create with a passkey";
 pub const CONTINUE_WITH_SECURITY_KEY: &str = "Continue with a security key";
 pub const CREATE_WITH_SECURITY_KEY: &str = "Create with a security key";
+pub const CREATE_WITH_USERNAME: &str = "Create with a username";
 /// Linux, when the server advertises security keys and none is attached.
 pub const CONNECT_SECURITY_KEY: &str = "Connect a FIDO2 security key to use one.";
 /// Over the passkey sign-up's username, like a provider sign-up's.

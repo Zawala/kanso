@@ -2603,6 +2603,27 @@ fn settings_create_methods(
     advertise_every_method(cx);
 }
 
+/// Create account after [Create with a username]: the password form alone.
+fn settings_create_username(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    let page = open_account_form(
+        cx,
+        window,
+        workspace,
+        SignedOutForm::CreateAccount,
+        ["", "", "", ""],
+    );
+    advertise_every_method(cx);
+    cx.update_window(window, |_, window, cx| {
+        page.update(cx, |page, cx| page.choose_password_form(window, cx));
+    })
+    .unwrap();
+}
+
 /// Opens `form` over Create account or Sign in, with `username` in place of
 /// the random suggestion.
 fn open_passkey_form(
@@ -5332,6 +5353,18 @@ fn snapshots() {
             Dark,
             Edit,
             settings_create_methods,
+        ),
+        shot(
+            "light-settings-create-methods",
+            Light,
+            Edit,
+            settings_create_methods,
+        ),
+        shot(
+            "dark-settings-create-username",
+            Dark,
+            Edit,
+            settings_create_username,
         ),
         shot(
             "dark-settings-passkey-username",
