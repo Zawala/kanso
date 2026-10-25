@@ -140,7 +140,7 @@ pub fn change_method(request: ChangeRequest, cx: &mut App) -> Receiver<Progress>
         move |step| {
             let rule = runner.as_ref().map(Runner::rule);
             let words = context(&proof, recovery.is_some());
-            let (result, pin_required) = with_runner(runner, |ceremony| {
+            let (result, pin) = with_runner(runner, |ceremony| {
                 let auth_key;
                 let proof = match proof {
                     ProofWith::Password(password) => {
@@ -174,7 +174,7 @@ pub fn change_method(request: ChangeRequest, cx: &mut App) -> Receiver<Progress>
                 )
             });
             result.map_err(|fail| match fail {
-                Fail::Ceremony(err) => passkey_end(err, pin_required, security_key, words),
+                Fail::Ceremony(err) => passkey_end(err, pin, security_key, words),
                 Fail::Failed(failure) => PasskeyEnd::Failed(failure),
             })
         },
@@ -190,10 +190,10 @@ pub fn change_method(request: ChangeRequest, cx: &mut App) -> Receiver<Progress>
 fn with_runner<T>(
     runner: Option<Runner>,
     work: impl FnOnce(Option<&dyn PasskeyCeremony>) -> T,
-) -> (T, bool) {
+) -> (T, Option<PinProblem>) {
     match runner {
         Some(runner) => runner.run(|ceremony| work(Some(ceremony))),
-        None => (work(None), false),
+        None => (work(None), None),
     }
 }
 
@@ -431,7 +431,7 @@ fn provider_change(
             // A link adds a way in: its start carries a password or
             // passkey proof. A provider proof needs only the session.
             let rule = runner.as_ref().map(Runner::rule);
-            let (wire, pin_required) = with_runner(runner, |ceremony| -> Result<_, Fail> {
+            let (wire, pin) = with_runner(runner, |ceremony| -> Result<_, Fail> {
                 if !linking {
                     return Ok(None);
                 }
@@ -461,7 +461,7 @@ fn provider_change(
                 Ok(Some(wire))
             });
             let wire = wire.map_err(|fail| match fail {
-                Fail::Ceremony(err) => passkey_end(err, pin_required, security_key, words),
+                Fail::Ceremony(err) => passkey_end(err, pin, security_key, words),
                 Fail::Failed(failure) => PasskeyEnd::Failed(failure),
             })?;
             let route = ProviderRoute::Session {
@@ -655,7 +655,7 @@ fn finish_provider_change(
                     )
                     .map(Some)
                     .map_err(|fail| match fail {
-                        Fail::Ceremony(err) => passkey_end(err, false, false, words),
+                        Fail::Ceremony(err) => passkey_end(err, None, false, words),
                         Fail::Failed(failure) => PasskeyEnd::Failed(failure),
                     })
                 }
