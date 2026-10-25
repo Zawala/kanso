@@ -168,8 +168,13 @@ pub fn requests_line(choice: &AgentChoice) -> String {
     } else {
         "Questions and the note excerpts they use"
     };
+    let suggest = if choice.mcp && choice.suggest_edits {
+        format!(" {label} may also suggest edits to notes; nothing changes until you apply one.")
+    } else {
+        String::new()
+    };
     format!(
-        "{what} go to {label} on this computer, which sends them to {vendor} under your own account. Kanso doesn't proxy or keep them. Locked notes and notes tagged #ai-exclude are never sent. {label} may keep its own history of the conversation."
+        "{what} go to {label} on this computer, which sends them to {vendor} under your own account. Kanso doesn't proxy or keep them. Locked notes, notes in the trash and notes tagged #ai-exclude are never sent. {label} may keep its own history of the conversation.{suggest}"
     )
 }
 
@@ -177,7 +182,7 @@ pub fn requests_line(choice: &AgentChoice) -> String {
 pub fn trust_line(choice: &AgentChoice) -> String {
     let label = label(choice);
     format!(
-        "{label} runs as a program on this computer, as you. Kanso gives it no access to files or a terminal and refuses its requests for them, but it can still read files and run commands with its own tools. Notes are data, not instructions: Kanso asks the agent to ignore instructions inside them, but a note can still steer an answer. Check the citations."
+        "{label} runs as a program on this computer, as you. Kanso gives it no access to files or a terminal and refuses its requests for them. It can still read files and run commands with its own tools: Kanso asks before it uses one (Allow once or Reject), but can't see or limit what the tool then does. Notes are data, not instructions: Kanso asks the agent to ignore instructions inside them, but a note can still steer an answer. Check the citations."
     )
 }
 
@@ -349,6 +354,25 @@ mod tests {
             let trust = trust_line(&choice);
             prop_assert!(trust.contains("its own tools"));
             prop_assert!(trust.contains("as you"));
+            prop_assert!(trust.contains("Allow once or Reject"));
+            prop_assert!(!trust.to_lowercase().contains("never leave"));
+        }
+
+        /// Suggested edits are mentioned only when they are on, and say that
+        /// nothing changes until the person applies them.
+        #[test]
+        fn prop_the_requests_line_mentions_suggested_edits_only_when_on(
+            choice in gen_choice(),
+            mcp in any::<bool>(),
+            suggest in any::<bool>(),
+        ) {
+            let choice = AgentChoice { mcp, suggest_edits: suggest, ..choice };
+            let line = requests_line(&choice);
+            prop_assert_eq!(line.contains("suggest edits"), mcp && suggest);
+            if mcp && suggest {
+                prop_assert!(line.contains("nothing changes until you apply one"));
+            }
+            prop_assert!(line.contains("notes in the trash"));
         }
     }
 }

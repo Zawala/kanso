@@ -24,6 +24,9 @@ use crate::theme::Colors;
 use crate::workspace::AppState;
 use crate::zoom::px;
 
+/// How long Copy diagnostics says "Copied".
+const COPIED_FOR: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// The Keychain item a provider's API key is kept in.
 pub fn api_key_item(provider: Provider) -> String {
     format!("ai-key:{}", provider.key())
@@ -135,6 +138,9 @@ pub struct AiPage {
     install: Install,
     install_task: Option<Task<()>>,
     test: Test,
+    /// Copy diagnostics was just pressed: its button says "Copied".
+    diagnostics_copied: bool,
+    copied_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
     task: Option<Task<()>>,
 }
@@ -212,6 +218,8 @@ impl AiPage {
             install: Install::Idle,
             install_task: None,
             test: Test::NotRun,
+            diagnostics_copied: false,
+            copied_task: None,
             _subscriptions: subscriptions,
             task: None,
         };
@@ -614,6 +622,26 @@ impl AiPage {
         }));
     }
 
+    /// Puts the agent's diagnostics report, which holds no note content, on
+    /// the clipboard and says so for a moment.
+    fn copy_diagnostics(&mut self, cx: &mut Context<Self>) {
+        let state = cx.global::<AppState>();
+        let settings = crate::ai_agent::agent_settings(&state.config.ai.agent, &state.data_dir);
+        let report = kanso_ai::agent::diagnostics(&settings, env!("CARGO_PKG_VERSION"));
+        cx.write_to_clipboard(ClipboardItem::new_string(report));
+        self.diagnostics_copied = true;
+        cx.notify();
+        self.copied_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(COPIED_FOR).await;
+            this.update(cx, |this, cx| {
+                this.diagnostics_copied = false;
+                this.copied_task = None;
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
     /// Hands sign-in to the agent with its first offered way, then tests
     /// again: one attempt, no loop.
     fn sign_in(&mut self, method: String, cx: &mut Context<Self>) {
@@ -1009,17 +1037,33 @@ impl AiPage {
                     }),
             );
         }
-        buttons = buttons.child(
-            Button::new("ai-test")
-                .debug_selector(|| "ai-test".into())
-                .outline()
-                .small()
-                .label(if busy { "Testing…" } else { "Test" })
-                .disabled(busy || !ai.enabled)
-                .on_click(move |_, window, cx| {
-                    view.update(cx, |this, cx| this.run_test(window, cx));
-                }),
-        );
+        let copy_view = view.clone();
+        buttons = buttons
+            .child(
+                Button::new("ai-agent-copy-diagnostics")
+                    .debug_selector(|| "ai-agent-copy-diagnostics".into())
+                    .outline()
+                    .small()
+                    .label(if self.diagnostics_copied {
+                        "Copied"
+                    } else {
+                        "Copy diagnostics"
+                    })
+                    .on_click(move |_, _, cx| {
+                        copy_view.update(cx, |this, cx| this.copy_diagnostics(cx));
+                    }),
+            )
+            .child(
+                Button::new("ai-test")
+                    .debug_selector(|| "ai-test".into())
+                    .outline()
+                    .small()
+                    .label(if busy { "Testing…" } else { "Test" })
+                    .disabled(busy || !ai.enabled)
+                    .on_click(move |_, window, cx| {
+                        view.update(cx, |this, cx| this.run_test(window, cx));
+                    }),
+            );
         Row::new(gpui_kit::assets::IconName::FlaskConical, "Test")
             .detail(detail)
             .trailing(buttons)

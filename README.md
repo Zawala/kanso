@@ -57,6 +57,11 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
   copies the setup for Claude Code, Claude Desktop, Codex, Cursor, VS Code, Gemini CLI,
   Windsurf, Zed or OpenCode. Its REST API is compatible with popular local-server clients, so
   clients written for that API work too.
+- **Ask your notes, with a key or an agent.** Off until you turn it on in Settings › AI. Answers cite
+  the notes they used, and an inline assistant and note summaries work the same way. They come
+  from a provider you have a key for, or from an agent on this computer (Claude Agent, Codex, Gemini
+  CLI, OpenCode or any ACP agent) on your own subscription. Either way the notes it is sent leave your
+  computer; [AI](#ai) says what is sent and what Kanso refuses.
 - **History and backups.** Earlier versions of each note, including every version replaced by the
   API, sync or an import, and a daily database backup.
 - **Imports.** Bring in a folder of Markdown files, an Obsidian vault or a Logseq graph, or an
@@ -247,6 +252,70 @@ a folder of SVGs and one JSON file in the `icon-themes` folder of Kanso's data f
 (Settings › Icon Themes › Icon theme files › **Open Folder**), or import a Zed icon theme with
 **Import…** there or `kanso icon-theme import <path>`. An icon a theme leaves out stays Kanso's own.
 [themes/icon-themes/README.md](https://github.com/iamngoni/kanso-themes/blob/main/icon-themes/README.md) has the format.
+
+### AI
+
+AI is off until you turn it on in Settings › AI. Then **Ask Your Notes…** (⇧⌘A) answers a question
+from your own notes, with links to the notes the answer used. **Summarize this note**, in the Ask
+panel (also **Summarize Note** in the command palette), sums up the open note without changing it.
+Select some text and right-click for **Improve Writing**, **Make Shorter**, **Fix Spelling and
+Grammar**, **Continue Writing** and **Summarize Selection**: each suggests new text, which you
+**Accept** or **Discard**. Locked notes, notes in the trash and notes tagged `#ai-exclude` are never
+sent, and a feature on such a note sends nothing.
+
+**Answers come from** one of two places, chosen in Settings › AI:
+
+- **A provider you have a key for**, or a model on this computer or your network (Ollama, LM Studio
+  or any OpenAI-compatible server). The key is kept in the system keychain (macOS Keychain, Windows
+  Credential Manager, the Secret Service on Linux), never in the settings file. Questions and the
+  excerpts they use go straight from this computer to that provider.
+- **An agent on this computer** that speaks the [Agent Client Protocol](https://agentclientprotocol.com):
+  Claude Agent, Codex, Gemini CLI or OpenCode, signed in with your own subscription, or another
+  agent from the ACP registry, or your own command. The agent keeps its own sign-in, model and
+  billing; Kanso doesn't proxy or keep what it sends.
+
+**What an agent is sent.** Ask sends the question and up to eight excerpts from notes chosen on this
+computer. With **Note access** on (it is on unless you turn it off), the agent may also search and
+read notes through Kanso's read-only notes server, with a token that ends with the conversation and
+only the notebooks you pick under **Notebooks**; every note it reads is counted and listed under
+the answer as **Used notes**. Summaries and the inline items send only the note or selection they
+work on, and get no search. **These notes leave your computer**: the agent sends what it is sent to
+its provider (Anthropic, OpenAI, Google, or whichever one it uses), and it may keep its own history
+of the conversation. Kanso can't stop that, so leave AI off, or tag a note `#ai-exclude`, for notes
+that must not go anywhere.
+
+**What Kanso refuses.** Kanso gives an agent no file system and no terminal, and refuses its
+requests for them. When it asks to use one of its own tools, a sheet names the agent and the tool,
+and **Reject** is the default (Enter and Escape reject); **Allow once** allows that one request and
+is never remembered. Kanso starts the agent in an empty private folder inside its data folder, with
+an environment that carries none of Kanso's settings or secrets, and asks for the agent's most
+restrictive mode where it offers one. That is not a sandbox: the agent runs as you, and once you
+allow a tool Kanso can't see or limit what it does. Notes are sent as data, not instructions, but a
+note can still steer an answer, so check the citations.
+
+**Suggested edits.** With **Let the agent suggest edits** on (under Note access, off by default), an
+agent can propose changes to a note's title and text, or a new note. Nothing is written until you
+press **Apply**: **Review** in the Ask panel opens the suggested edits, each as a diff, and
+**Discard** drops one. If the note changed since the agent read it, Kanso refuses the edit and shows
+both versions. Suggestions are kept in memory for an hour and are gone when Kanso quits. An applied
+edit keeps the version it replaced in the note's history, naming the agent.
+
+**Signing in.** Install an agent with the command shown in Settings › AI (for an npm package,
+**Install…** runs `npm install -g` after you confirm), then **Test**. If the agent needs a sign-in,
+**Sign in** hands it to the agent's own sign-in, usually in your browser; Kanso never sees the
+password or token. After installing, **Find again** looks for the agent once more.
+
+**When something goes wrong**, Settings › AI › **Copy diagnostics**, beside Test, copies a report
+you can paste into an issue: Kanso's version and this computer's system, whether the agent was found
+and where, its name and version, whether it is running, and the names, timings and error codes of
+the last protocol messages. It carries no note text or titles, questions, answers, tokens or the
+agent's own output, and your home folder is written `~`. The agent's own log may say more.
+
+**Removing an agent.** Uninstall it the way you installed it (for example `npm uninstall -g
+@agentclientprotocol/claude-agent-acp`). If **Answers come from** is a provider, nothing changes and
+nothing shows an error. If it is that agent, Ask and the other AI features say it isn't installed
+and point you to Settings › AI; choose another agent or a provider there. Switching to a provider
+stops every agent at once.
 
 ### Shortcuts
 

@@ -775,8 +775,10 @@ mod tests {
         assert!(missing.is_empty(), "Phosphor lacks {missing:?}");
         // No partial themes: every built-in but Lucide draws every UI icon.
         for theme in &builtins()[1..] {
-            let missing: Vec<&String> =
-                all.iter().filter(|n| !theme.icons.contains_key(*n)).collect();
+            let missing: Vec<&String> = all
+                .iter()
+                .filter(|n| !theme.icons.contains_key(*n))
+                .collect();
             assert!(missing.is_empty(), "{} lacks {missing:?}", theme.id);
         }
         assert!(phosphor.library.len() >= 20);
