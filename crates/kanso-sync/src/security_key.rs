@@ -14,6 +14,8 @@
 //! `salt1`; the authenticator's `HMAC-SHA256(credential_secret, salt)` is
 //! `prf_out` exactly, used without another hash.
 
+use std::sync::Mutex;
+
 use sha2::{Digest as _, Sha256};
 use zeroize::{Zeroize as _, Zeroizing};
 
@@ -269,11 +271,37 @@ pub fn register_security_key(
 
 /// A [`SecurityKeyCeremony`] as a [`PasskeyCeremony`], so the account flows
 /// take a security key as they take a platform passkey. Registration runs
-/// [`register_security_key`]; a failed local check registers without PRF.
+/// [`register_security_key`]; a failed local check registers without PRF,
+/// and [`SecurityKeyPasskeys::check`] says why.
 pub struct SecurityKeyPasskeys<'a> {
     pub ceremony: &'a dyn SecurityKeyCeremony,
     /// Whether the key advertises `hmac-secret` (`fido_cbor_info_extensions`).
     pub hmac_secret: bool,
+    check: Mutex<Option<LocalCheckError>>,
+}
+
+impl<'a> SecurityKeyPasskeys<'a> {
+    pub fn new(
+        ceremony: &'a dyn SecurityKeyCeremony,
+        hmac_secret: bool,
+    ) -> SecurityKeyPasskeys<'a> {
+        SecurityKeyPasskeys {
+            ceremony,
+            hmac_secret,
+            check: Mutex::new(None),
+        }
+    }
+
+    /// Why the last registration through this adapter got no PRF output
+    /// ([`SecurityKeyRegistered::check`]): `None` before any, when the key
+    /// has no `hmac-secret`, or when the check passed. The app shows a
+    /// failure ("This key can sign in, but can't unlock a new device").
+    pub fn check(&self) -> Option<LocalCheckError> {
+        *self
+            .check
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 }
 
 impl PasskeyCeremony for SecurityKeyPasskeys<'_> {
@@ -281,8 +309,16 @@ impl PasskeyCeremony for SecurityKeyPasskeys<'_> {
         &self,
         challenge: &PasskeyRegistrationChallenge,
     ) -> Result<PasskeyRegistration, PasskeyCeremonyError> {
-        register_security_key(self.ceremony, challenge, self.hmac_secret)
-            .map(|registered| registered.registration)
+        let registered = register_security_key(self.ceremony, challenge, self.hmac_secret);
+        let mut check = self
+            .check
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *check = registered
+            .as_ref()
+            .ok()
+            .and_then(|registered| registered.check);
+        registered.map(|registered| registered.registration)
     }
 
     fn assert(
@@ -507,6 +543,25 @@ mod tests {
         );
     }
 
+    /// The adapter keeps why its last registration got no PRF, so the app
+    /// can say "This key can sign in, but can't unlock a new device".
+    #[test]
+    fn the_adapter_keeps_the_local_check_result() {
+        let key = TestAuthenticator::new(9);
+        let impostor = TestAuthenticator::new(9);
+        let mut forged = FakeKey::new(&key);
+        forged.signer = &impostor;
+        let passkeys = SecurityKeyPasskeys::new(&forged, true);
+        let registration = passkeys.register(&registration_challenge(9)).unwrap();
+        assert_eq!(registration.prf, None);
+        assert_eq!(passkeys.check(), Some(LocalCheckError::BadAssertion));
+        // The next registration's result replaces it.
+        let honest = FakeKey::new(&key);
+        let passkeys = SecurityKeyPasskeys::new(&honest, true);
+        passkeys.register(&registration_challenge(9)).unwrap();
+        assert_eq!(passkeys.check(), None);
+    }
+
     /// Reads `prf` from a value whose destructor just ran in place.
     fn prf_after_drop<T>(
         value: T,
@@ -553,16 +608,12 @@ mod tests {
     fn the_adapter_is_a_passkey_ceremony() {
         let key = TestAuthenticator::new(8);
         let fake = FakeKey::new(&key);
-        let passkeys = SecurityKeyPasskeys {
-            ceremony: &fake,
-            hmac_secret: true,
-        };
+        let passkeys = SecurityKeyPasskeys::new(&fake, true);
+        assert_eq!(passkeys.check(), None);
         let registration = passkeys.register(&registration_challenge(8)).unwrap();
         assert_eq!(registration.prf, Some(key.prf_output()));
-        let no_hmac = SecurityKeyPasskeys {
-            ceremony: &fake,
-            hmac_secret: false,
-        };
+        assert_eq!(passkeys.check(), None);
+        let no_hmac = SecurityKeyPasskeys::new(&fake, false);
         let assertion = no_hmac
             .assert(&local_check_request(
                 &registration_challenge(8),
