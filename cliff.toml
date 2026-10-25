@@ -17,7 +17,8 @@ body = """
 {%- set repo = "https://github.com/iamngoni/kanso" -%}
 {#- Entries by anyone else end "by @login" (their GitHub no-reply address)
     or "by Name", so each feature is credited to whoever made it. -#}
-{%- set owners = ["@iamngoni", "Ngonidzashe Mangudya"] -%}
+{#- "Kanso Audit" is the owner's own coding agents committing for him. -#}
+{%- set owners = ["@iamngoni", "Ngonidzashe Mangudya", "Kanso Audit"] -%}
 {% if version -%}
 ## [{{ version | trim_start_matches(pat="v") }}]\
 ({% if previous.version %}{{ repo }}/compare/{{ previous.version }}...{{ version }}\
