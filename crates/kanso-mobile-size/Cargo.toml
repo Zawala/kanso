@@ -1,3 +1,6 @@
+# Temporary. This only exists to measure what the core weighs on a phone
+# (scripts/mobile-size.sh). Step 4 of #48 adds `kanso-mobile`, the real
+# library, and removes this crate.
 [package]
 name = "kanso-mobile-size"
 description = "A stand-in for the mobile library, to measure what the core weighs on a phone (#48). Temporary: step 4's kanso-mobile replaces it."

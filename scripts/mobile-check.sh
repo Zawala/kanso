@@ -21,7 +21,7 @@ fi
 
 # The crates the facade is built on. kanso-sync and kanso-ai leave their
 # desktop features off: the system Keychain and agents on this computer.
-with_defaults=(-p kanso-core -p kanso-store -p kanso-engine -p kanso-render -p kanso-collab -p kanso-import)
+with_defaults=(-p kanso-core -p kanso-store -p kanso-engine -p kanso-render -p kanso-collab -p kanso-import -p kanso-tls -p kanso-mobile-size)
 without_defaults=(-p kanso-sync -p kanso-ai)
 
 for t in "${targets[@]}"; do
@@ -42,7 +42,7 @@ for t in "${targets[@]}"; do
 	aarch64-apple-ios | aarch64-linux-android) ;;
 	*) continue ;;
 	esac
-	for crate in kanso-core kanso-store kanso-engine kanso-render kanso-collab kanso-import; do
+	for crate in kanso-core kanso-store kanso-engine kanso-render kanso-collab kanso-import kanso-tls kanso-mobile-size; do
 		banned="$(cargo tree -p "$crate" --locked --target "$t" -e normal | grep -Ei "$banned_pattern" || true)"
 		if [ -n "$banned" ]; then
 			echo "$banned"
