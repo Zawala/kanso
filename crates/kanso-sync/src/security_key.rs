@@ -15,6 +15,7 @@
 //! `prf_out` exactly, used without another hash.
 
 use sha2::{Digest as _, Sha256};
+use zeroize::{Zeroize as _, Zeroizing};
 
 use crate::crypto::{PRF_INPUT, b64};
 use crate::passkey::{
@@ -59,6 +60,24 @@ pub struct SecurityKeyAssertion {
     pub signature: Vec<u8>,
     pub user_handle: Option<Vec<u8>>,
     pub prf: Option<[u8; 32]>,
+}
+
+// The PRF output is key material: wiped when its holder goes, as
+// `PasskeyRegistration` and `PasskeyAssertion` wipe theirs.
+impl Drop for SecurityKeyRegistration {
+    fn drop(&mut self) {
+        if let Some(prf_out) = self.prf.as_mut() {
+            prf_out.zeroize();
+        }
+    }
+}
+
+impl Drop for SecurityKeyAssertion {
+    fn drop(&mut self) {
+        if let Some(prf_out) = self.prf.as_mut() {
+            prf_out.zeroize();
+        }
+    }
 }
 
 impl SecurityKeyRegistration {
@@ -155,7 +174,7 @@ pub fn verify_local_check(
     challenge: &PasskeyRegistrationChallenge,
     registration: &SecurityKeyRegistration,
     assertion: &SecurityKeyAssertion,
-) -> Result<[u8; 32], LocalCheckError> {
+) -> Result<Zeroizing<[u8; 32]>, LocalCheckError> {
     let attested = parse_authenticator_data(&registration.auth_data)
         .and_then(|data| data.attested)
         .filter(|attested| attested.credential_id == registration.credential_id)
@@ -179,7 +198,10 @@ pub fn verify_local_check(
         },
     )
     .ok_or(LocalCheckError::BadAssertion)?;
-    assertion.prf.ok_or(LocalCheckError::NoPrf)
+    assertion
+        .prf
+        .map(Zeroizing::new)
+        .ok_or(LocalCheckError::NoPrf)
 }
 
 /// The app's libfido2 client (kanso-app). `make_credential` runs
@@ -231,7 +253,7 @@ pub fn register_security_key(
             .and_then(|assertion| verify_local_check(challenge, &made, &assertion))
         {
             Ok(prf) => {
-                made.prf = Some(prf);
+                made.prf = Some(*prf);
                 None
             }
             Err(err) => Some(err),
@@ -482,6 +504,48 @@ mod tests {
         assert_eq!(
             verify_local_check(&challenge, &made, &assertion),
             Err(LocalCheckError::OtherCredential)
+        );
+    }
+
+    /// Reads `prf` from a value whose destructor just ran in place.
+    fn prf_after_drop<T>(
+        value: T,
+        prf: impl Fn(&T) -> *const Option<[u8; 32]>,
+    ) -> Option<[u8; 32]> {
+        let mut value = std::mem::ManuallyDrop::new(value);
+        let at = prf(&value);
+        // SAFETY: the value stays allocated in the ManuallyDrop; only its
+        // plain `Option<[u8; 32]>` field is read after its destructor ran.
+        unsafe {
+            std::ptr::drop_in_place(&mut *value);
+            at.read()
+        }
+    }
+
+    #[test]
+    fn security_key_prf_outputs_are_wiped_on_drop() {
+        let registration = SecurityKeyRegistration {
+            credential_id: vec![1; 16],
+            auth_data: vec![2; 37],
+            client_data_json: vec![3],
+            transports: vec!["usb".into()],
+            prf: Some([7; 32]),
+        };
+        assert_eq!(
+            prf_after_drop(registration, |r| std::ptr::addr_of!(r.prf)),
+            Some([0; 32])
+        );
+        let assertion = SecurityKeyAssertion {
+            credential_id: vec![1; 16],
+            authenticator_data: vec![2; 37],
+            client_data_json: vec![3],
+            signature: vec![4],
+            user_handle: None,
+            prf: Some([7; 32]),
+        };
+        assert_eq!(
+            prf_after_drop(assertion, |a| std::ptr::addr_of!(a.prf)),
+            Some([0; 32])
         );
     }
 
