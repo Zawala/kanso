@@ -17,8 +17,9 @@ use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use crate::Provider;
 use crate::prompt::Prompt;
 
-/// The most tokens an answer may take.
-const MAX_TOKENS: u32 = 1024;
+/// The most tokens an answer may take: room for the inline assistant to
+/// give back its whole selection.
+const MAX_TOKENS: u32 = 2048;
 /// The most tool calls one question may make.
 pub const MAX_TOOL_CALLS: usize = 6;
 /// What the panel says when a stream stopped without its end marker.
