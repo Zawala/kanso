@@ -1141,6 +1141,22 @@ impl ServerState {
         }
     }
 
+    /// Whether the session that started a link or proof flow is still
+    /// live, as the Worker's link completion requires: a session of the
+    /// account on the flow's device with this poll's device proof, not
+    /// revoked, and the account enabled.
+    fn starting_session_live(&self, account_id: &str, device_id: &str, proof_hash: &str) -> bool {
+        self.accounts
+            .get(account_id)
+            .is_some_and(|a| a.disabled_at.is_none())
+            && self.sessions.iter().any(|s| {
+                s.account_id == account_id
+                    && s.device_id == device_id
+                    && s.proof_hash == proof_hash
+                    && s.revoked_at.is_none()
+            })
+    }
+
     /// What a verified GitHub subject does, by the flow's intent.
     fn github_complete(
         &mut self,
@@ -1228,6 +1244,10 @@ impl ServerState {
                     .get_mut(flow_id)
                     .expect("flow was checked")
                     .consumed = true;
+                // It adds a way in: only while the session that started it lives.
+                if !self.starting_session_live(&account_id, &device.id, &device.proof_hash) {
+                    return Err(ApiError::FlowExpired { gone: false });
+                }
                 let has_provider = self
                     .identities
                     .iter()
@@ -1453,6 +1473,12 @@ impl ServerState {
                     return Err(ApiError::IdentityTaken);
                 }
                 self.provider_flows.get_mut(flow_id).unwrap().consumed = true;
+                let proof_hash = sha256_hex(&unb64(&device.proof).ok_or(ApiError::BadRequest)?);
+                if intent == IdentityIntent::Link
+                    && !self.starting_session_live(&account, &device.id, &proof_hash)
+                {
+                    return Err(ApiError::FlowExpired { gone: false });
+                }
                 match intent {
                     IdentityIntent::Proof => Ok(LinkOutcome::Proof {
                         provider: provider.clone(),
