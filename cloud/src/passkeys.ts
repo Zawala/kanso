@@ -32,7 +32,7 @@ import {
 	proof32,
 } from "./protocol";
 import { checkProof, proofAccount, proofUsed, recoveryProof } from "./proofs";
-import { lastMethod } from "./providers";
+import { lastMethod, offeredMethods } from "./providers";
 import { consumeFlow, flowById, flowForDevice, flowExpired, flowStatement, hexEqual, isFlowId, newFlow, passkeyAdvertisement } from "./sign_in";
 import { isReserved, normalizeUsername } from "./usernames";
 import {
@@ -849,14 +849,16 @@ export function removePasskey(raw: string) {
 		if (!exists) return error(404, "not_found", "Not found.");
 
 		const { guard } = checked;
+		// Only ways in this server offers count (providers.ts offeredMethods); this route needs passkeys, so the others do.
+		const offered = offeredMethods(env);
 		const deletion = env.DB.prepare(
 			`DELETE FROM account_passkeys WHERE credential_id = ?3 AND account_id = ?1
   AND (?4 IS NOT NULL OR (SELECT has_password FROM accounts WHERE id = ?1) = 1
-    OR EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?1)
+    OR EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?1 AND provider IN (SELECT value FROM json_each(?5)))
     OR EXISTS (SELECT 1 FROM account_passkeys WHERE account_id = ?1 AND credential_id != ?3))
   AND (?4 IS NULL OR EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND recovery_hash = ?4))
   AND ${guard.sql(1, 2)} RETURNING credential_id`,
-		).bind(session.accountId, guard.value, credential, recovery.hash ?? null);
+		).bind(session.accountId, guard.value, credential, recovery.hash ?? null, offered.providers);
 		// The proof is used first, in the same batch: single use even when the removal is refused.
 		const results = await env.DB.batch([...guard.before, deletion]);
 		if (results[results.length - 1].results.length === 1) return new Response(null, { status: 204 });

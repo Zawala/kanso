@@ -753,7 +753,10 @@ password, no provider identity and no passkey, unless the request also proves th
 `"recovery_auth_key"` in the body, checked against `recovery_hash`. Proving it is what "unless a
 recovery path exists" means in practice. The app warns first: "This is your last way to sign in. If
 you remove it, you'll need your recovery key." A recovery-only account is allowed; `recover/finish`
-sets a password, so it isn't stuck.
+sets a password, so it isn't stuck. Only ways in this server offers count (security review of PR #67,
+finding 5): an identity of a provider the deployment no longer serves or configures, or a passkey on
+a deployment without `PASSKEY_RP_ID`, can't sign in, so it never keeps another method from being
+the last. The rule is checked inside the deleting statement, with the offered providers bound to it.
 
 **Changing a way in needs a fresh proof.** A session can sync; it can't change how the account is
 entered. Linking or unlinking a provider, adding or removing a passkey, setting a first password,
@@ -1439,7 +1442,7 @@ Bitwarden's phrase derivation are not public; only their user-facing behaviour i
 | 409 | `username_taken` | | |
 | 409 | `account_id_taken` | | Sign-up with an existing account ID (client retries with a new one) |
 | 409 | `identity_taken` | `provider` | The provider identity belongs to another account |
-| 409 | `last_method` | | The change would leave no password, identity or passkey, without a recovery proof |
+| 409 | `last_method` | | The change would leave no password, identity or passkey this server offers, without a recovery proof |
 | 409 | `already_has_password` | | `sign-in/password` on an account that has one |
 | 409 | `no_password` | | `account/password` on an account that has none |
 | 409 | `credential_exists` | | A passkey credential ID already registered |

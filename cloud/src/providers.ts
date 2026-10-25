@@ -66,6 +66,7 @@ import { type ProofGuard, appClaimed, checkProof, proofAccount, proofUsed, reaut
 import { accountPrefix } from "./purge";
 import {
 	type AuthFlowRow,
+	PROVIDERS,
 	type Provider,
 	SIGN_IN_ROUTES,
 	consumeFlow,
@@ -76,6 +77,7 @@ import {
 	isFlowId,
 	isProvider,
 	openDeviceCode,
+	passkeyAdvertisement,
 	providerConfigured,
 } from "./sign_in";
 import { storedTransports } from "./webauthn";
@@ -115,6 +117,20 @@ const providerUnavailable = (provider: string): Response =>
 const providerDenied = (): Response => error(403, "provider_denied", "The sign-in was declined at the provider.");
 /** 410: the provider itself expired the flow (GitHub's `expired_token`), not our ten-minute clock. */
 const flowGone = (): Response => error(410, "flow_expired", "This sign-in flow has expired.");
+/**
+ * The ways in this server offers, for the last-method rule (security review
+ * of PR #67, finding 5): the providers it serves and has configured, as a JSON
+ * array for `json_each`, and whether it offers passkeys. An identity of a
+ * provider it no longer offers, or a passkey on a deployment without passkeys,
+ * can't sign in, so it never keeps another method from being the last.
+ */
+export function offeredMethods(env: Env): { providers: string; passkeys: number } {
+	return {
+		providers: JSON.stringify(PROVIDERS.filter((p) => SIGN_IN_ROUTES[p] && providerConfigured(env, p))),
+		passkeys: passkeyAdvertisement(env) ? 1 : 0,
+	};
+}
+
 export const lastMethod = (): Response =>
 	error(409, "last_method", "This is the account's last way to sign in; prove the recovery key to remove it.");
 const providerDisabled = (): Response => error(403, "provider_disabled", "That provider isn't configured on this server.");
@@ -1129,14 +1145,16 @@ export function unlink(name: string): PepperHandler {
 		// The rule, the recovery key, the proof's guard and the deletion are one
 		// statement, so two unlinks of an account's last two methods can't both pass.
 		const { guard } = checked;
+		const offered = offeredMethods(env);
 		const deletion = env.DB.prepare(
 			`DELETE FROM account_identities WHERE account_id = ?1 AND provider = ?2
   AND (?3 IS NOT NULL OR (SELECT has_password FROM accounts WHERE id = ?1) = 1
-    OR EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?1 AND provider != ?2)
-    OR EXISTS (SELECT 1 FROM account_passkeys WHERE account_id = ?1))
+    OR EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?1 AND provider != ?2
+      AND provider IN (SELECT value FROM json_each(?5)))
+    OR (?6 = 1 AND EXISTS (SELECT 1 FROM account_passkeys WHERE account_id = ?1)))
   AND (?3 IS NULL OR EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND recovery_hash = ?3))
   AND ${guard.sql(1, 4)} RETURNING provider`,
-		).bind(session.accountId, name, recovery.hash ?? null, guard.value);
+		).bind(session.accountId, name, recovery.hash ?? null, guard.value, offered.providers, offered.passkeys);
 		// The proof is used first, in the same batch: single use even when the change is refused.
 		const results = await env.DB.batch([...guard.before, deletion]);
 		if (results[results.length - 1].results.length === 1) return new Response(null, { status: 204 });

@@ -507,8 +507,19 @@ describe("POST /v2/account/sign-in/passkeys/<credential_id>/remove", () => {
 		const second = newCredential();
 		await addCredential(p.accountId, second);
 		expect((await removePasskey(p.token, p.credential, { proof: await passkeyProof(p.token, second) })).status).toBe(204);
-		await env.DB.prepare("INSERT INTO account_identities (account_id, provider, subject, created_at) VALUES (?1, 'github', '42', ?2)").bind(p.accountId, T0).run();
+		// Apple is configured here (menv), so its identity is a way in.
+		await env.DB.prepare("INSERT INTO account_identities (account_id, provider, subject, created_at) VALUES (?1, 'apple', '42', ?2)").bind(p.accountId, T0).run();
 		expect((await removePasskey(p.token, second, { proof: await passkeyProof(p.token, second, { signCount: 2 }) })).status).toBe(204);
+	});
+
+	it("an identity of a provider this server doesn't offer doesn't keep a passkey from being the last", async () => {
+		const p = await passkeyAccount("prover");
+		// GitHub isn't configured here (menv), so this link can't sign in.
+		await env.DB.prepare("INSERT INTO account_identities (account_id, provider, subject, created_at) VALUES (?1, 'github', '42', ?2)").bind(p.accountId, T0).run();
+		expect(await removePasskey(p.token, p.credential, { proof: await passkeyProof(p.token, p.credential) })).toMatchObject({
+			status: 409,
+			body: { error: "last_method" },
+		});
 	});
 
 	it("needs a password or passkey proof, used once; a provider proof can't remove a passkey", async () => {

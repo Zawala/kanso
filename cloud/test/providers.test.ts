@@ -1394,3 +1394,32 @@ describe("a link ends with the session that started it", () => {
 		expect(await consumed("mine")).toBeNull();
 	});
 });
+
+// Security review of PR #67, finding 5: only ways in this server offers count
+// for the last-method rule.
+describe("the last-method rule counts only offered methods", () => {
+	it("an identity of an unconfigured provider, or a passkey without passkeys, doesn't keep an unlink from being the last", async () => {
+		const made = await socialAccount("github", 31, "solo");
+		const accountId = made.session.account_id as string;
+		await env.DB.batch([
+			env.DB.prepare("INSERT INTO account_identities (account_id, provider, subject, created_at) VALUES (?1, 'google', '1234', ?2)").bind(accountId, T0),
+			env.DB.prepare(
+				`INSERT INTO account_passkeys (credential_id, account_id, public_key, alg, sign_count, transports, created_at)
+  VALUES (?1, ?2, ?4, -7, 0, 'internal', ?3)`,
+			).bind(b64(crypto.getRandomValues(new Uint8Array(32))), accountId, T0, "A".repeat(64)),
+		]);
+		const solo = { token: made.session.token, device: made.device } as Account;
+		const withoutGoogle = testEnv({ ...CONFIG, GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined, PASSKEY_RP_ID: undefined });
+		const proof = (await linkStart(solo, "github", undefined, "proof")).body.flow_id;
+		providers.github.id = 1031;
+		providers.github.answers.push({ access_token: PII.accessToken });
+		await as("/v2/auth/github/poll", { flow_id: proof, device: wireDevice(made.device) }, { now: T0 + 5000 });
+		const r = await callJson("/v2/account/sign-in/identities/github/unlink", {
+			env: withoutGoogle,
+			now: T0 + 6000,
+			token: solo.token,
+			json: { proof: { kind: "provider", flow: proof } },
+		});
+		expect(r).toMatchObject({ status: 409, body: { error: "last_method" } });
+	});
+});
