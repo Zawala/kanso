@@ -593,7 +593,7 @@ mod preview_code {
 #[cfg(test)]
 mod tests {
     use super::{BUILTIN, Themes, builtins};
-    use crate::theme_file::{ThemeFile, contrast, mix};
+    use crate::theme_file::{ThemeFile, contrast, fit_preview, fit_syntax, mix};
 
     /// Every built-in file reads, under a name of its own, and says the
     /// truth about its appearance: a dark theme's text is lighter than its
@@ -905,5 +905,144 @@ mod tests {
         let new = after.get("Hot").unwrap().resolved.colors.editor;
         assert_eq!(old, crate::theme::Rgb(0x101010));
         assert_eq!(new, crate::theme::Rgb(0x202020));
+    }
+
+    /// The resolved colors as hex, field by field.
+    fn colors_json(c: &crate::theme::Colors) -> serde_json::Value {
+        serde_json::json!({
+            "app": c.app.hex(), "sidebar": c.sidebar.hex(), "list": c.list.hex(),
+            "editor": c.editor.hex(), "elevated": c.elevated.hex(), "fill": c.fill.hex(),
+            "text": c.text.hex(), "text_secondary": c.text_secondary.hex(),
+            "text_muted": c.text_muted.hex(), "divider": c.divider.hex(),
+            "accent": c.accent.hex(), "link": c.link.hex(),
+            "row_active": c.row_active.hex(), "row_hover": c.row_hover.hex(),
+            "sidebar_active": c.sidebar_active.hex(), "sidebar_hover": c.sidebar_hover.hex(),
+            "hover": c.hover.hex(), "selected": c.selected.hex(),
+            "active_line": c.active_line.hex(), "button": c.button.hex(),
+            "button_text": c.button_text.hex(), "code": c.code.hex(),
+            "code_text": c.code_text.hex(), "syntax_keyword": c.syntax_keyword.hex(),
+            "syntax_string": c.syntax_string.hex(), "success": c.success.hex(),
+            "warning": c.warning.hex(), "danger": c.danger.hex(),
+        })
+    }
+
+    fn styles_json(
+        styles: &std::collections::BTreeMap<&'static str, crate::theme_file::TokenStyle>,
+    ) -> serde_json::Value {
+        styles
+            .iter()
+            .map(|(key, style)| ((*key).to_owned(), style.to_highlight_json()))
+            .collect::<serde_json::Map<_, _>>()
+            .into()
+    }
+
+    fn preview_json(p: &crate::theme_file::PreviewColors) -> serde_json::Value {
+        let hex = |c: Option<crate::theme::Rgb>| c.map(|c| c.hex());
+        serde_json::json!({
+            "text": p.text.hex(), "heading": hex(p.heading), "link": p.link.hex(),
+            "quote": p.quote.hex(), "task_done": p.task_done.hex(),
+            "border": p.border.hex(), "code_background": p.code_background.hex(),
+            "code_text": hex(p.code_text),
+            "inline_code_background": p.inline_code_background.hex(),
+            "inline_code_text": hex(p.inline_code_text),
+            "table_header_background": hex(p.table_header_background),
+            "selection": p.selection.map(|c| c.hex()),
+        })
+    }
+
+    /// What drawing `ui` with the syntax theme `syntax` and the preview
+    /// theme `preview` uses, as `apply` fits it.
+    fn drawn_json(
+        ui: &super::ThemeEntry,
+        syntax: &super::ThemeEntry,
+        preview: &super::ThemeEntry,
+    ) -> serde_json::Value {
+        let colors = ui.resolved.colors;
+        let fitted = fit_syntax(&syntax.resolved.syntax, colors.editor, colors.text);
+        let preview_fitted = fit_preview(&preview.resolved.preview, &colors);
+        let code = if preview.name() != syntax.name() {
+            fit_syntax(
+                &preview.resolved.syntax,
+                preview_fitted.code_background,
+                colors.text,
+            )
+        } else {
+            fitted.clone()
+        };
+        serde_json::json!({
+            "syntax": styles_json(&fitted),
+            "preview": preview_json(&preview_fitted),
+            // The same as the syntax when the preview theme is the syntax theme.
+            "code": (code != fitted).then(|| styles_json(&code)),
+        })
+    }
+
+    /// `entries` as an object with one line per entry, so a change to a
+    /// theme shows as a change to its line.
+    fn lines(entries: &serde_json::Map<String, serde_json::Value>) -> String {
+        let lines: Vec<String> = entries
+            .iter()
+            .map(|(name, value)| format!("    {}: {value}", serde_json::json!(name)))
+            .collect();
+        format!("{{\n{}\n  }}", lines.join(",\n"))
+    }
+
+    /// Every built-in theme resolves, fits and reaches the component
+    /// library as it did when the theme code lived in the app alone: the
+    /// colors, caret, selection, syntax and preview as written, the same
+    /// fitted to the theme's own panes, the theme the library is given, and
+    /// Kanso Light and Kanso Dark as the UI under every built-in as the
+    /// syntax and preview theme. Compares with `themes.golden.json`;
+    /// `KANSO_THEME_GOLDEN=1 cargo test -p kanso-app builtin_themes_resolve_as_before`
+    /// writes it again after a deliberate change.
+    #[test]
+    fn builtin_themes_resolve_as_before() {
+        let mut themes = serde_json::Map::new();
+        for entry in builtins() {
+            let t = &entry.resolved;
+            let fitted = fit_syntax(&t.syntax, t.colors.editor, t.colors.text);
+            themes.insert(
+                entry.id.clone(),
+                serde_json::json!({
+                    "name": t.name,
+                    "dark": t.dark,
+                    "colors": colors_json(&t.colors),
+                    "caret": t.caret.hex(),
+                    "selection": t.selection.hex(),
+                    "syntax": styles_json(&t.syntax),
+                    "preview": preview_json(&t.preview),
+                    "own_panes": drawn_json(entry, entry, entry),
+                    "config": crate::theme::theme_config(t, &t.colors, &fitted, None),
+                }),
+            );
+        }
+        let mut crossed = serde_json::Map::new();
+        for ui in &builtins()[..2] {
+            for other in builtins() {
+                crossed.insert(
+                    format!("{} | {}", ui.id, other.id),
+                    serde_json::json!({
+                        "same": drawn_json(ui, other, other),
+                        "ui_syntax": drawn_json(ui, ui, other),
+                    }),
+                );
+            }
+        }
+        let now = format!(
+            "{{\n  \"themes\": {},\n  \"crossed\": {}\n}}\n",
+            lines(&themes),
+            lines(&crossed)
+        );
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/themes.golden.json");
+        if std::env::var_os("KANSO_THEME_GOLDEN").is_some() {
+            std::fs::write(&path, &now).unwrap();
+            return;
+        }
+        let before = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(
+            now == before,
+            "the built-in themes no longer resolve as they did; if that is on purpose, run \
+             `KANSO_THEME_GOLDEN=1 cargo test -p kanso-app builtin_themes_resolve_as_before`"
+        );
     }
 }
