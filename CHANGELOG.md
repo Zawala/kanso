@@ -12,6 +12,7 @@ heading compares the release with the one before.
 - **themes:** Browse the gallery from Settings › Themes and Icon Themes, with search, filters, paired cards, live color preview and install/use/remove actions (#49 step 4)
 - **themes:** Check the gallery on the app's update timer, update unedited installed themes quietly, honour signed revocations (an edited revoked copy is disabled, not deleted), fall back when a selected theme is withdrawn, and add the "Keep gallery themes up to date" switch and `themes.log` (#49 step 5)
 - **themes:** Document the gallery (Browse, badges, offline, edited copies, revocation, built-ins), add the loopback end-to-end test and Browse snapshots, and wire the `KANSO_GALLERY_INDEX` debug override (#49 step 7)
+- **ai:** Answer with an agent on this computer: Settings › AI › Answers come from adds Claude Agent, Codex, Gemini CLI, OpenCode or a custom ACP command, used through the person's own subscription. Kanso starts the agent in an empty private folder with a scrubbed environment, offers it no file or terminal access, rejects its permission requests, and picks its most restrictive mode (#46 steps 0–4)
 
 ## [0.8.4](https://github.com/iamngoni/kanso/compare/v0.8.3...v0.8.4) - 2026-10-22
 

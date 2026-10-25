@@ -44,6 +44,8 @@ htmd = "0.5.6"
 image = { version = "0.25", default-features = false, features = ["png", "tiff", "webp", "bmp", "ico"] }
 # Shared notes: end-to-end encrypted collaboration over the sync server.
 kanso-ai.workspace = true
+# Finding the agents Settings › AI lists; the fake agent for tests.
+kanso-acp.workspace = true
 kanso-collab.workspace = true
 kanso-gallery.workspace = true
 kanso-core.workspace = true

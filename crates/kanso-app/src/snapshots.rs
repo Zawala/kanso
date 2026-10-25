@@ -49,6 +49,7 @@ use crate::theme::{Colors, DARK, LIGHT, Rgb};
 use crate::updates::{Phase, Problem as UpdateProblem, Updates};
 use crate::workspace::{AppState, Workspace, apply_theme};
 
+mod ai;
 mod discovery;
 mod voice;
 
@@ -5127,6 +5128,43 @@ fn snapshots() {
             Dark,
             Edit,
             voice::settings_voice_failed,
+        ),
+        shot("light-settings-ai-api", Light, Edit, ai::settings_ai_api),
+        shot(
+            "light-settings-ai-agent-ready",
+            Light,
+            Edit,
+            ai::settings_ai_agent_ready,
+        ),
+        shot(
+            "dark-settings-ai-agent-ready",
+            Dark,
+            Edit,
+            ai::settings_ai_agent_ready,
+        ),
+        shot(
+            "light-settings-ai-agent-sign-in",
+            Light,
+            Edit,
+            ai::settings_ai_agent_sign_in,
+        ),
+        shot(
+            "light-settings-ai-agent-not-installed",
+            Light,
+            Edit,
+            ai::settings_ai_agent_not_installed,
+        ),
+        shot(
+            "dark-settings-ai-agent-failed",
+            Dark,
+            Edit,
+            ai::settings_ai_agent_failed,
+        ),
+        shot(
+            "light-settings-ai-agent-custom",
+            Light,
+            Edit,
+            ai::settings_ai_agent_custom,
         ),
         shot("dark-settings-appearance", Dark, Edit, settings_appearance),
         shot("dark-settings-gallery-browse", Dark, Edit, settings_gallery),

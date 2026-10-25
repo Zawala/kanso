@@ -1,20 +1,22 @@
-//! Settings › AI: whether AI is on, where questions go, and the key that
-//! cloud providers need. The key is kept in the Keychain, never in
-//! `config.json`.
+//! Settings › AI: whether AI is on, where answers come from (an API key or
+//! an agent on this computer), and the key that cloud providers need. The
+//! key is kept in the Keychain, never in `config.json`; an agent keeps its
+//! own sign-in.
 
 use std::sync::Arc;
 
 use gpui_kit::component::Disableable as _;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{Sizable as _, v_flex};
+use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::*;
-use kanso_ai::{ClientSettings, Provider};
+use kanso_acp::Detection;
+use kanso_ai::{AgentCheck, AgentKind, ClientSettings, Provider};
 use kanso_sync::SecretStore;
 
-use crate::config::AiSettings;
+use crate::config::{AiBackend, AiSettings};
 use crate::services::Services;
 use crate::settings::{Row, section};
 use crate::theme::Colors;
@@ -92,12 +94,15 @@ fn client_settings(ai: &AiSettings, typed_key: &str, saved_key: Option<&str>) ->
 
 /// What the Test button found, or is doing.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-enum Test {
+pub(crate) enum Test {
     #[default]
     NotRun,
     Running,
     Ok(String),
     Failed(String),
+    /// The agent wants the person to sign in: the ways it offers.
+    SignIn(Vec<(String, String)>),
+    SigningIn,
 }
 
 pub struct AiPage {
@@ -106,6 +111,13 @@ pub struct AiPage {
     key: Entity<InputState>,
     /// Whether a key is in the Keychain for the chosen provider.
     has_key: bool,
+    /// A custom agent's command, arguments and variables.
+    agent_command: Entity<InputState>,
+    agent_args: Entity<InputState>,
+    agent_env: Entity<InputState>,
+    /// Where each known agent was found, once looked for.
+    detections: Option<Vec<(AgentKind, Detection)>>,
+    detect_task: Option<Task<()>>,
     test: Test,
     _subscriptions: Vec<Subscription>,
     task: Option<Task<()>>,
@@ -123,40 +135,131 @@ impl AiPage {
         };
         let base_url = field(&ai.base_url, "http://localhost:11434/v1", cx);
         let model = field(&ai.model, "Model name", cx);
+        let agent_command = field(
+            ai.agent.command.as_deref().unwrap_or(""),
+            "/path/to/agent, or its command",
+            cx,
+        );
+        let agent_args = field(&join_args(&ai.agent.args), "--acp", cx);
+        let env_line = ai
+            .agent
+            .env
+            .iter()
+            .map(|(name, value)| join_args(&[format!("{name}={value}")]))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let agent_env = field(&env_line, "NAME=value", cx);
         let key = cx.new(|cx| {
             InputState::new(window, cx)
                 .masked(true)
                 .placeholder("Paste the key")
         });
-        let subscriptions = [&base_url, &model, &key]
-            .into_iter()
-            .map(|input| {
-                cx.subscribe_in(
-                    input,
-                    window,
-                    |this: &mut AiPage, _, event: &InputEvent, window, cx| match event {
-                        InputEvent::PressEnter { shift: false, .. } => {
-                            this.commit(window, cx);
-                        }
-                        InputEvent::Blur => this.commit(window, cx),
-                        InputEvent::Change => {
-                            this.test = Test::NotRun;
-                            cx.notify();
-                        }
-                        _ => {}
-                    },
-                )
-            })
-            .collect();
-        AiPage {
+        let subscriptions = [
+            &base_url,
+            &model,
+            &key,
+            &agent_command,
+            &agent_args,
+            &agent_env,
+        ]
+        .into_iter()
+        .map(|input| {
+            cx.subscribe_in(
+                input,
+                window,
+                |this: &mut AiPage, _, event: &InputEvent, window, cx| match event {
+                    InputEvent::PressEnter { shift: false, .. } => {
+                        this.commit(window, cx);
+                    }
+                    InputEvent::Blur => this.commit(window, cx),
+                    InputEvent::Change => {
+                        this.test = Test::NotRun;
+                        cx.notify();
+                    }
+                    _ => {}
+                },
+            )
+        })
+        .collect();
+        let mut page = AiPage {
             base_url,
             model,
             key,
             has_key: read_key(cx, ai.provider).is_some(),
+            agent_command,
+            agent_args,
+            agent_env,
+            detections: None,
+            detect_task: None,
             test: Test::NotRun,
             _subscriptions: subscriptions,
             task: None,
+        };
+        if ai.enabled && ai.backend == AiBackend::Agent {
+            page.find_agents(cx);
         }
+        page
+    }
+
+    /// Fixed agent states for the snapshots: what was found, and what Test
+    /// said.
+    #[cfg(test)]
+    pub(crate) fn snapshot_agents(&mut self, detections: Vec<(AgentKind, Detection)>, test: Test) {
+        self.detections = Some(detections);
+        self.detect_task = None;
+        self.test = test;
+    }
+
+    /// Looks for the known agents, off the main thread: a path search, and
+    /// once the login shell's `PATH`. Nothing is started.
+    fn find_agents(&mut self, cx: &mut Context<Self>) {
+        let found = cx.background_executor().spawn(async move {
+            let dirs = kanso_acp::detect::search_dirs();
+            AgentKind::ALL
+                .into_iter()
+                .filter(|kind| *kind != AgentKind::Custom)
+                .map(|kind| (kind, kanso_acp::detect::detect_in(kind, &dirs)))
+                .collect::<Vec<_>>()
+        });
+        self.detect_task = Some(cx.spawn(async move |this, cx| {
+            let found = found.await;
+            this.update(cx, |this, cx| {
+                this.detections = Some(found);
+                this.detect_task = None;
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    /// "Find again": looks for the agents again, and lets one that failed to
+    /// start be tried again.
+    fn find_again(&mut self, cx: &mut Context<Self>) {
+        kanso_ai::agent::find_again();
+        self.test = Test::NotRun;
+        self.find_agents(cx);
+        cx.notify();
+    }
+
+    /// Answers from an API key or an agent. The other side's settings stay
+    /// as they were; a running agent stops.
+    fn set_backend(&mut self, backend: AiBackend, cx: &mut Context<Self>) {
+        AppState::update_config(cx, |config| config.ai.backend = backend);
+        kanso_ai::agent::shutdown();
+        self.test = Test::NotRun;
+        self.task = None;
+        if backend == AiBackend::Agent && self.detections.is_none() {
+            self.find_agents(cx);
+        }
+        cx.notify();
+    }
+
+    /// Picks which agent answers.
+    fn set_agent(&mut self, kind: AgentKind, cx: &mut Context<Self>) {
+        AppState::update_config(cx, |config| config.ai.agent.kind = kind);
+        self.test = Test::NotRun;
+        self.task = None;
+        cx.notify();
     }
 
     /// The page came into view: says whether a key is saved for the provider
@@ -177,6 +280,11 @@ impl AiPage {
         if !on {
             self.task = None;
             self.test = Test::NotRun;
+            kanso_ai::agent::shutdown();
+        } else if cx.global::<AppState>().config.ai.backend == AiBackend::Agent
+            && self.detections.is_none()
+        {
+            self.find_agents(cx);
         }
         cx.notify();
     }
@@ -205,12 +313,23 @@ impl AiPage {
         let model = self.model.read(cx).value().trim().to_owned();
         let typed_key = self.key.read(cx).value().trim().to_owned();
         let provider = cx.global::<AppState>().config.ai.provider;
+        let command = self.agent_command.read(cx).value().trim().to_owned();
+        let args = kanso_acp::detect::split_args(&self.agent_args.read(cx).value());
+        let env = kanso_acp::detect::split_env(&self.agent_env.read(cx).value());
+        let before = cx.global::<AppState>().config.ai.agent.clone();
         AppState::update_config(cx, |config| {
             if !base_url.is_empty() {
                 config.ai.base_url = base_url;
             }
             config.ai.model = model;
+            config.ai.agent.command = (!command.is_empty()).then_some(command);
+            config.ai.agent.args = args;
+            config.ai.agent.env = env.into_iter().collect();
         });
+        if cx.global::<AppState>().config.ai.agent != before {
+            // A different command is a different agent.
+            kanso_ai::agent::shutdown();
+        }
         if !typed_key.is_empty() {
             match write_key(cx, provider, &typed_key) {
                 Ok(()) => {
@@ -233,6 +352,10 @@ impl AiPage {
         }
         self.commit(window, cx);
         let ai = cx.global::<AppState>().config.ai.clone();
+        if ai.backend == AiBackend::Agent {
+            self.run_agent_test(cx);
+            return;
+        }
         let typed_key = self.key.read(cx).value().trim().to_owned();
         let saved = read_key(cx, ai.provider);
         let settings = client_settings(&ai, &typed_key, saved.as_deref());
@@ -253,6 +376,273 @@ impl AiPage {
             })
             .ok();
         }));
+    }
+
+    /// Starts the chosen agent if needed and asks it "Reply with OK.", with
+    /// no note content.
+    fn run_agent_test(&mut self, cx: &mut Context<Self>) {
+        let state = cx.global::<AppState>();
+        let settings = crate::ai_agent::agent_settings(&state.config.ai.agent, &state.data_dir);
+        self.test = Test::Running;
+        cx.notify();
+        let check = cx
+            .background_executor()
+            .spawn(async move { kanso_ai::agent::check(&settings) });
+        self.task = Some(cx.spawn(async move |this, cx| {
+            let result = check.await;
+            this.update(cx, |this, cx| {
+                this.task = None;
+                this.test = match result {
+                    Ok(AgentCheck::Ready {
+                        name,
+                        version,
+                        said,
+                    }) => Test::Ok(ready_line(&name, version.as_deref(), &said)),
+                    Ok(AgentCheck::SignIn { methods }) => Test::SignIn(methods),
+                    Err(err) => Test::Failed(err.to_string()),
+                };
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    /// Hands sign-in to the agent with its first offered way, then tests
+    /// again: one attempt, no loop.
+    fn sign_in(&mut self, method: String, cx: &mut Context<Self>) {
+        let state = cx.global::<AppState>();
+        let settings = crate::ai_agent::agent_settings(&state.config.ai.agent, &state.data_dir);
+        self.test = Test::SigningIn;
+        cx.notify();
+        let signed = cx
+            .background_executor()
+            .spawn(async move { kanso_ai::agent::sign_in(&settings, &method) });
+        self.task = Some(cx.spawn(async move |this, cx| {
+            let result = signed.await;
+            this.update(cx, |this, cx| {
+                this.task = None;
+                match result {
+                    Ok(()) => this.run_agent_test(cx),
+                    Err(err) => this.test = Test::Failed(err.to_string()),
+                }
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    fn backend_row(&self, ai: &AiSettings, cx: &mut Context<Self>) -> Row {
+        let view = cx.entity();
+        let chosen = ai.backend;
+        let label = |backend: AiBackend| match backend {
+            AiBackend::Api => "An API key",
+            AiBackend::Agent => "An agent on this computer",
+        };
+        let button = Button::new("ai-backend")
+            .debug_selector(|| "ai-backend".into())
+            .outline()
+            .small()
+            .label(label(chosen))
+            .dropdown_caret(true)
+            .dropdown_menu(move |mut menu, _, _| {
+                for option in [AiBackend::Api, AiBackend::Agent] {
+                    let view = view.clone();
+                    menu = menu.item(
+                        PopupMenuItem::new(label(option))
+                            .checked(option == chosen)
+                            .on_click(move |_, _, cx| {
+                                view.update(cx, |this, cx| this.set_backend(option, cx));
+                            }),
+                    );
+                }
+                menu
+            });
+        Row::new(gpui_kit::assets::IconName::Waypoints, "Answers come from")
+            .detail(match chosen {
+                AiBackend::Api => {
+                    "A provider you have a key for, or a model on this Mac or your network."
+                }
+                AiBackend::Agent => {
+                    "Claude Agent, Codex, Gemini CLI or OpenCode, signed in with your own subscription. It keeps its own sign-in, model and billing."
+                }
+            })
+            .trailing(button)
+    }
+
+    fn detection(&self, kind: AgentKind) -> Option<&Detection> {
+        self.detections
+            .as_ref()?
+            .iter()
+            .find(|(found, _)| *found == kind)
+            .map(|(_, detection)| detection)
+    }
+
+    fn agent_row(&self, ai: &AiSettings, cx: &mut Context<Self>) -> Row {
+        let view = cx.entity();
+        let chosen = ai.agent.kind;
+        let words: Vec<(AgentKind, String)> = AgentKind::ALL
+            .into_iter()
+            .map(|kind| {
+                let word = match (kind, self.detection(kind)) {
+                    (AgentKind::Custom, _) => "Advanced".to_owned(),
+                    (_, Some(detection)) => crate::ai_agent::status_word(detection).to_owned(),
+                    (_, None) => "Looking…".to_owned(),
+                };
+                (kind, format!("{} · {word}", kind.label()))
+            })
+            .collect();
+        let button = Button::new("ai-agent")
+            .debug_selector(|| "ai-agent".into())
+            .outline()
+            .small()
+            .label(crate::ai_agent::label(&ai.agent))
+            .dropdown_caret(true)
+            .dropdown_menu(move |mut menu, _, _| {
+                for (kind, text) in &words {
+                    let view = view.clone();
+                    let kind = *kind;
+                    menu = menu.item(
+                        PopupMenuItem::new(text.clone())
+                            .checked(kind == chosen)
+                            .on_click(move |_, _, cx| {
+                                view.update(cx, |this, cx| this.set_agent(kind, cx));
+                            }),
+                    );
+                }
+                menu
+            });
+        let detail = match (chosen, self.detection(chosen)) {
+            (AgentKind::Custom, _) => {
+                "Any other program that speaks the Agent Client Protocol: an executable and its arguments, never a shell command. Not tested with Kanso.".to_owned()
+            }
+            (kind, Some(detection)) => crate::ai_agent::status_line(kind, detection),
+            (_, None) => "Looking for it on this computer…".to_owned(),
+        };
+        let find = {
+            let view = cx.entity();
+            Button::new("ai-agent-find")
+                .debug_selector(|| "ai-agent-find".into())
+                .ghost()
+                .small()
+                .label("Find again")
+                .disabled(self.detect_task.is_some())
+                .on_click(move |_, _, cx| view.update(cx, |this, cx| this.find_again(cx)))
+        };
+        Row::new(gpui_kit::assets::IconName::Terminal, "Agent")
+            .detail(detail)
+            .trailing(h_flex().gap(px(6.)).child(find).child(button))
+    }
+
+    /// The command to install the chosen agent, with Copy, when it isn't
+    /// found. Kanso never installs anything by itself.
+    fn install_row(&self, kind: AgentKind) -> Option<Row> {
+        let command = kind.install()?;
+        if !matches!(
+            self.detection(kind),
+            Some(Detection::NotInstalled | Detection::OldClaudeAdapter(_))
+        ) {
+            return None;
+        }
+        Some(
+            Row::new(gpui_kit::assets::IconName::Package, "Install")
+                .detail(format!(
+                    "Run this in your terminal, then Find again: {command}"
+                ))
+                .trailing(
+                    Button::new("ai-agent-copy-install")
+                        .debug_selector(|| "ai-agent-copy-install".into())
+                        .outline()
+                        .small()
+                        .label("Copy")
+                        .on_click(move |_, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(command.to_owned()));
+                        }),
+                ),
+        )
+    }
+
+    fn custom_rows(&self) -> Vec<Row> {
+        vec![
+            Row::new(gpui_kit::assets::IconName::Command, "Command")
+                .detail("The agent's executable: a full path, or a command Kanso finds on your PATH.")
+                .trailing(
+                    div()
+                        .w(px(FIELD_WIDTH))
+                        .debug_selector(|| "ai-agent-command".into())
+                        .child(Input::new(&self.agent_command)),
+                ),
+            Row::new(gpui_kit::assets::IconName::List, "Arguments")
+                .detail("Separated by spaces; quote one that has spaces in it.")
+                .trailing(
+                    div()
+                        .w(px(FIELD_WIDTH))
+                        .debug_selector(|| "ai-agent-args".into())
+                        .child(Input::new(&self.agent_args)),
+                ),
+            Row::new(gpui_kit::assets::IconName::Key, "Environment")
+                .detail("NAME=value pairs the agent needs. Kept in the settings file, so no secrets here.")
+                .trailing(
+                    div()
+                        .w(px(FIELD_WIDTH))
+                        .debug_selector(|| "ai-agent-env".into())
+                        .child(Input::new(&self.agent_env)),
+                ),
+        ]
+    }
+
+    fn agent_test_row(&self, ai: &AiSettings, view: Entity<Self>) -> Row {
+        let label = crate::ai_agent::label(&ai.agent);
+        let detail = match &self.test {
+            Test::NotRun => format!(
+                "Starts {label} if needed and asks it to reply with OK. No notes are sent; it uses a little of your subscription or quota."
+            ),
+            Test::Running => format!("Asking {label}…"),
+            Test::Ok(said) => said.clone(),
+            Test::Failed(why) => why.clone(),
+            Test::SignIn(_) => match ai.agent.kind.sign_in() {
+                Some(command) => format!(
+                    "{label} needs you to sign in. Sign in lets it open its own page; or run this in your terminal, then Test again: {command}"
+                ),
+                None => {
+                    format!("{label} needs you to sign in. Sign in lets it do that its own way.")
+                }
+            },
+            Test::SigningIn => format!("Waiting for {label} to sign you in…"),
+        };
+        let busy = matches!(self.test, Test::Running | Test::SigningIn);
+        let sign_in = match &self.test {
+            Test::SignIn(methods) => methods.first().map(|(id, _)| id.clone()),
+            _ => None,
+        };
+        let mut buttons = h_flex().gap(px(6.));
+        if let Some(method) = sign_in {
+            let view = view.clone();
+            buttons = buttons.child(
+                Button::new("ai-agent-sign-in")
+                    .debug_selector(|| "ai-agent-sign-in".into())
+                    .outline()
+                    .small()
+                    .label("Sign in")
+                    .on_click(move |_, _, cx| {
+                        let method = method.clone();
+                        view.update(cx, |this, cx| this.sign_in(method, cx));
+                    }),
+            );
+        }
+        buttons = buttons.child(
+            Button::new("ai-test")
+                .debug_selector(|| "ai-test".into())
+                .outline()
+                .small()
+                .label(if busy { "Testing…" } else { "Test" })
+                .disabled(busy || !ai.enabled)
+                .on_click(move |_, window, cx| {
+                    view.update(cx, |this, cx| this.run_test(window, cx));
+                }),
+        );
+        Row::new(gpui_kit::assets::IconName::FlaskConical, "Test")
+            .detail(detail)
+            .trailing(buttons)
     }
 
     fn provider_row(&self, ai: &AiSettings, cx: &mut Context<Self>) -> Row {
@@ -346,6 +736,7 @@ impl AiPage {
             Test::Running => "Asking the model…".to_owned(),
             Test::Ok(said) => said.clone(),
             Test::Failed(why) => why.clone(),
+            Test::SignIn(_) | Test::SigningIn => String::new(),
         };
         let running = self.test == Test::Running;
         Row::new(gpui_kit::assets::IconName::FlaskConical, "Test")
@@ -414,6 +805,30 @@ pub fn ai_changed(cx: &mut App) {
     });
 }
 
+/// What Test says when an agent answered.
+fn ready_line(name: &str, version: Option<&str>, said: &str) -> String {
+    let version = version
+        .map(|version| format!(" {version}"))
+        .unwrap_or_default();
+    format!(
+        "Ready · {name}{version} said “{said}”. Billing is with the agent's provider, not Kanso."
+    )
+}
+
+/// Arguments as one line [`kanso_acp::detect::split_args`] reads back.
+fn join_args(args: &[String]) -> String {
+    args.iter()
+        .map(|arg| {
+            if arg.is_empty() || arg.chars().any(char::is_whitespace) {
+                format!("\"{arg}\"")
+            } else {
+                arg.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// The width of a page's fields, as Account's are.
 const FIELD_WIDTH: f32 = 260.;
 
@@ -439,23 +854,44 @@ impl Render for AiPage {
                 )),
         ];
         if ai.enabled {
-            rows.push(self.provider_row(&ai, cx));
-            rows.push(self.base_url_row(&ai));
-            rows.push(self.model_row(&ai));
-            if ai.provider.accepts_key() {
-                rows.push(self.key_row(ai.provider));
+            rows.push(self.backend_row(&ai, cx));
+            if ai.backend == AiBackend::Agent {
+                rows.push(self.agent_row(&ai, cx));
+                if ai.agent.kind == AgentKind::Custom {
+                    rows.extend(self.custom_rows());
+                } else if let Some(row) = self.install_row(ai.agent.kind) {
+                    rows.push(row);
+                }
+                rows.push(self.agent_test_row(&ai, view.clone()));
+            } else {
+                rows.push(self.provider_row(&ai, cx));
+                rows.push(self.base_url_row(&ai));
+                rows.push(self.model_row(&ai));
+                if ai.provider.accepts_key() {
+                    rows.push(self.key_row(ai.provider));
+                }
+                rows.push(self.test_row(&ai, view.clone()));
             }
-            rows.push(self.test_row(&ai, view.clone()));
         }
         let mut page = v_flex().w_full().child(section("AI", rows, colors));
         if ai.enabled {
+            let lines = if ai.backend == AiBackend::Agent {
+                vec![
+                    crate::ai_agent::requests_line(&ai.agent),
+                    crate::ai_agent::trust_line(&ai.agent),
+                ]
+            } else {
+                vec![requests_line(ai.provider, &ai.base_url)]
+            };
             page = page.child(
-                div()
+                v_flex()
                     .mt(px(12.))
+                    .gap(px(8.))
                     .text_size(px(12.5))
                     .line_height(px(18.))
                     .text_color(colors.text_secondary)
-                    .child(requests_line(ai.provider, &ai.base_url)),
+                    .debug_selector(|| "ai-requests-line".into())
+                    .children(lines),
             );
         }
         page
@@ -464,7 +900,10 @@ impl Render for AiPage {
 
 #[cfg(test)]
 mod tests {
-    use super::{Test, api_key_item, client_settings, read_from, requests_line, write_to};
+    use super::{
+        Test, api_key_item, client_settings, join_args, read_from, ready_line, requests_line,
+        write_to,
+    };
     use crate::config::AiSettings;
     use kanso_ai::Provider;
     use kanso_sync::keychain::MemorySecrets;
@@ -519,7 +958,27 @@ mod tests {
         assert!(line.contains("Kanso's servers"), "{line}");
     }
 
+    #[test]
+    fn a_ready_agent_names_itself_and_where_billing_is() {
+        let line = ready_line("Claude Agent", Some("0.94.0"), "OK");
+        assert!(line.starts_with("Ready · Claude Agent 0.94.0"), "{line}");
+        assert!(line.contains("not Kanso"), "{line}");
+        assert_eq!(
+            join_args(&["--acp".into(), "two words".into(), String::new()]),
+            "--acp \"two words\" \"\""
+        );
+    }
+
     proptest! {
+        /// A custom agent's arguments, shown in their field and read back,
+        /// are the arguments it had.
+        #[test]
+        fn prop_agent_arguments_survive_the_field(
+            args in prop::collection::vec("[A-Za-z0-9 ._/=-]{0,12}", 0..6),
+        ) {
+            prop_assert_eq!(kanso_acp::detect::split_args(&join_args(&args)), args);
+        }
+
         /// The line always names the server the address points at, says
         /// locked notes and `#ai-exclude` are never sent, and has no line
         /// breaks.

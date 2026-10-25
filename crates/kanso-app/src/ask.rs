@@ -2261,4 +2261,155 @@ mod tests {
         assert!(clamped[1].text.is_empty());
         assert_eq!(*room.lock().unwrap(), 0);
     }
+
+    /// An agent on this computer through the fake ACP agent, in process.
+    fn fake_agent(script: kanso_acp::fake::Script, name: &str) -> kanso_ai::SharedProvider {
+        let settings = kanso_ai::agent::AgentSettings {
+            kind: kanso_ai::AgentKind::Custom,
+            command: Some(
+                std::env::current_exe()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            args: Vec::new(),
+            env: Vec::new(),
+            workspace: std::env::temp_dir().join(format!("kanso-ask-agent-{name}")),
+        };
+        kanso_ai::agent::agent_client_with(
+            &settings,
+            kanso_acp::Limits::default(),
+            Arc::new(move |spec, limits| {
+                let (from_agent, to_agent) = kanso_acp::fake::in_process(script.clone())
+                    .map_err(|err| kanso_acp::AcpError::Spawn(err.to_string()))?;
+                kanso_acp::AgentProcess::connect(
+                    &spec.label,
+                    from_agent,
+                    to_agent,
+                    limits,
+                    kanso_acp::reject_all(),
+                )
+            }),
+        )
+    }
+
+    /// Asks `provider` the way the panel does, returning the answer's text.
+    fn ask_through(provider: &kanso_ai::SharedProvider, prompt: &Prompt) -> (String, Vec<Event>) {
+        let provider = provider.lock().unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let mut events = Vec::new();
+        stream_answer(
+            provider.as_ref(),
+            prompt,
+            &[],
+            ToolRegistry::new(),
+            Box::new(|| {}),
+            &cancel,
+            |event| events.push(event),
+        );
+        let text = events
+            .iter()
+            .filter_map(|event| match event {
+                Event::Text(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        (text, events)
+    }
+
+    #[test]
+    fn an_agent_answers_from_the_notes_and_its_citation_links_the_note() {
+        let (_dir, store) = open();
+        let id = note(
+            &store,
+            "Pricing",
+            "We decided the yearly plan costs 40 dollars.",
+            vec![],
+        );
+        let question = "What did we decide about pricing?";
+        let excerpts = retrieve(&store, question).unwrap();
+        let prompt = kanso_ai::build_prompt(question, &excerpts, super::BUDGET);
+        let provider = fake_agent(
+            kanso_acp::fake::Script::Answer("A yearly plan, see [[Pricing]].".into()),
+            "cite",
+        );
+        let (answer, events) = ask_through(&provider, &prompt);
+        assert_eq!(answer, "A yearly plan, see [[Pricing]].");
+        assert_eq!(events.last(), Some(&Event::Done));
+        let linked = linkify(&answer, &excerpts);
+        let slug = id.trim_start_matches("note:");
+        assert!(
+            linked.contains(&format!(
+                "[Pricing]({}{slug})",
+                kanso_core::links::NOTE_LINK_PREFIX
+            )),
+            "{linked}"
+        );
+    }
+
+    #[test]
+    fn an_agent_is_sent_only_eligible_notes() {
+        let (_dir, store) = open();
+        note(
+            &store,
+            "Pricing",
+            "We decided the yearly plan costs 40 dollars.",
+            vec![],
+        );
+        let locked = note(
+            &store,
+            "Locked pricing",
+            "The locked pricing is 99.",
+            vec![],
+        );
+        store
+            .put(
+                DocType::Note,
+                json!({"_id": locked, "kansoLock": {"salt": "abc"}}),
+                Put::Merge,
+                Origin::Sync,
+            )
+            .unwrap();
+        let tag = store
+            .put(
+                DocType::Tag,
+                json!({"name": "AI-Exclude"}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        note(
+            &store,
+            "Excluded pricing",
+            "The excluded pricing is 77.",
+            vec![tag],
+        );
+        let trashed = note(
+            &store,
+            "Trashed pricing",
+            "The trashed pricing is 55.",
+            vec![],
+        );
+        store.delete(&trashed, Origin::Ui).unwrap();
+        let question = "What is the pricing?";
+        let excerpts = retrieve(&store, question).unwrap();
+        let prompt = kanso_ai::build_prompt(question, &excerpts, super::BUDGET);
+        // The fake agent says back exactly what it was sent.
+        let provider = fake_agent(kanso_acp::fake::Script::Echo, "eligible");
+        let (sent, _) = ask_through(&provider, &prompt);
+        assert!(sent.contains("yearly plan"), "{sent}");
+        assert!(sent.starts_with(kanso_ai::agent::AGENT_SYSTEM));
+        for hidden in [
+            "99",
+            "77",
+            "55",
+            "Locked pricing",
+            "Excluded pricing",
+            "Trashed pricing",
+        ] {
+            assert!(!sent.contains(hidden), "{hidden} reached the agent");
+        }
+        assert!(sent.trim_end().ends_with("Question: What is the pricing?"));
+    }
 }

@@ -29,6 +29,9 @@ pub const CUT_OFF: &str = "The answer was cut off before it finished.";
 pub enum Event {
     /// A piece of the answer, to add to what came before.
     Text(String),
+    /// A line about what is happening that isn't part of the answer: an
+    /// agent starting, still working, or using one of its tools.
+    Status(String),
     /// The answer is complete.
     Done,
     /// The answer stopped, with a plain reason.
@@ -52,6 +55,8 @@ pub enum AiError {
     Transport(String),
     /// The server did not answer within its limits.
     Timeout(String),
+    /// An agent on this computer couldn't answer; a whole sentence.
+    Agent(String),
 }
 
 impl std::fmt::Display for AiError {
@@ -68,6 +73,7 @@ impl std::fmt::Display for AiError {
             AiError::Timeout(message) => {
                 write!(f, "The model's server didn't answer in time ({message}).")
             }
+            AiError::Agent(message) => f.write_str(message),
         }
     }
 }
@@ -239,6 +245,7 @@ pub fn probe(settings: &ClientSettings) -> Result<String, AiError> {
                     return Ok(said.trim().to_owned());
                 }
             }
+            Event::Status(_) => {}
             Event::Done => break,
             Event::Error(message) => return Err(AiError::Provider(message)),
         }

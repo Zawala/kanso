@@ -576,6 +576,31 @@ impl Default for VoiceSettings {
     }
 }
 
+/// Where answers come from: a provider reached with an API key, or an agent
+/// on this computer that keeps its own sign-in and billing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AiBackend {
+    #[default]
+    Api,
+    Agent,
+}
+
+/// The agent that answers when [`AiBackend::Agent`] is chosen. Known agents
+/// are found at run time; only a custom agent's command is kept. Nothing
+/// here is secret.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AgentChoice {
+    pub kind: kanso_ai::AgentKind,
+    /// A custom agent's executable: a path or a command name, never a shell
+    /// string.
+    pub command: Option<String>,
+    pub args: Vec<String>,
+    /// A custom agent's own variables.
+    pub env: std::collections::BTreeMap<String, String>,
+}
+
 /// AI in Settings › AI. Off until turned on: nothing asks a model or shows a
 /// question box before then. The API key is not here; it lives in the
 /// Keychain (`settings_ai.rs`).
@@ -583,10 +608,14 @@ impl Default for VoiceSettings {
 #[serde(default, rename_all = "camelCase")]
 pub struct AiSettings {
     pub enabled: bool,
+    /// An API key or an agent. Choosing an agent leaves the provider, its
+    /// address, model and key as they were, so switching back loses nothing.
+    pub backend: AiBackend,
     pub provider: kanso_ai::Provider,
     /// The provider's address; local and custom servers can change it.
     pub base_url: String,
     pub model: String,
+    pub agent: AgentChoice,
 }
 
 impl Default for AiSettings {
@@ -600,9 +629,11 @@ impl AiSettings {
     pub fn for_provider(provider: kanso_ai::Provider) -> AiSettings {
         AiSettings {
             enabled: false,
+            backend: AiBackend::Api,
             provider,
             base_url: provider.default_base_url().to_owned(),
             model: provider.default_model().to_owned(),
+            agent: AgentChoice::default(),
         }
     }
 
@@ -624,7 +655,7 @@ pub struct LockedSettings {
 }
 
 /// The layout [`AppConfig::migrate`] brings older files up to.
-pub const CONFIG_VERSION: u32 = 4;
+pub const CONFIG_VERSION: u32 = 5;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -695,7 +726,8 @@ impl AppConfig {
     /// light and dark themes, fixed or following the system. Version 4
     /// replaced icon packs with icon themes: a pack chosen for the app's
     /// icons becomes the icon theme of the same folder name, which draws
-    /// Kanso's own icons until there is one.
+    /// Kanso's own icons until there is one. Version 5 added where AI
+    /// answers come from; an older file means an API key, as before.
     pub fn migrate(&mut self) -> bool {
         if self.version >= CONFIG_VERSION {
             return false;
@@ -930,19 +962,40 @@ mod tests {
             )
     }
 
+    fn gen_agent() -> impl Strategy<Value = AgentChoice> {
+        (
+            prop::sample::select(kanso_ai::AgentKind::ALL.to_vec()),
+            prop::option::of("[a-zA-Z0-9._/ -]{1,30}"),
+            prop::collection::vec("[ -~]{0,12}", 0..4),
+            prop::collection::btree_map("[A-Z_]{1,10}", "[ -~]{0,12}", 0..3),
+        )
+            .prop_map(|(kind, command, args, env)| AgentChoice {
+                kind,
+                command,
+                args,
+                env,
+            })
+    }
+
     fn gen_ai() -> impl Strategy<Value = AiSettings> {
         (
             any::<bool>(),
+            prop::sample::select(vec![AiBackend::Api, AiBackend::Agent]),
             prop::sample::select(kanso_ai::Provider::ALL.to_vec()),
             "https?://[a-z.:0-9/-]{1,40}",
             "[a-zA-Z0-9._/-]{0,40}",
+            gen_agent(),
         )
-            .prop_map(|(enabled, provider, base_url, model)| AiSettings {
-                enabled,
-                provider,
-                base_url,
-                model,
-            })
+            .prop_map(
+                |(enabled, backend, provider, base_url, model, agent)| AiSettings {
+                    enabled,
+                    backend,
+                    provider,
+                    base_url,
+                    model,
+                    agent,
+                },
+            )
     }
 
     fn gen_settings() -> impl Strategy<Value = AppConfig> {
@@ -1313,6 +1366,32 @@ mod tests {
         }
     }
 
+    /// A version 4 file means an API key: its provider, address, model and
+    /// switch are kept, and saving writes no key or token.
+    #[test]
+    fn a_version_4_file_answers_with_its_api_key_provider() {
+        let mut old: AppConfig = serde_json::from_str(
+            r#"{"version": 4, "ai": {"enabled": true, "provider": "anthropic", "baseUrl": "https://api.anthropic.com", "model": "claude-haiku-5-5"}}"#,
+        )
+        .unwrap();
+        assert!(old.migrate());
+        assert_eq!(old.version, 5);
+        assert_eq!(old.ai.backend, AiBackend::Api);
+        assert!(old.ai.enabled);
+        assert_eq!(old.ai.provider, kanso_ai::Provider::Anthropic);
+        assert_eq!(old.ai.base_url, "https://api.anthropic.com");
+        assert_eq!(old.ai.model, "claude-haiku-5-5");
+        old.ai.backend = AiBackend::Agent;
+        old.ai.agent.kind = kanso_ai::AgentKind::Codex;
+        let written = serde_json::to_value(&old).unwrap();
+        assert_eq!(written["ai"]["backend"], "agent");
+        assert_eq!(written["ai"]["agent"]["kind"], "codex");
+        let ai = written["ai"].to_string().to_ascii_lowercase();
+        for secret in ["key", "token", "secret", "password"] {
+            assert!(!ai.contains(secret), "{secret} written");
+        }
+    }
+
     /// An icon pack chosen before version 4 becomes the icon theme of the
     /// same folder name, and isn't written back; a later file keeps its
     /// icon theme.
@@ -1328,7 +1407,7 @@ mod tests {
         assert_eq!(written["appearance"]["iconTheme"], "phosphor");
         assert!(written["appearance"].get("iconPack").is_none());
         let mut current: AppConfig = serde_json::from_str(
-            r#"{"version": 4, "appearance": {"iconTheme": "mine", "iconPack": "old"}}"#,
+            r#"{"version": 5, "appearance": {"iconTheme": "mine", "iconPack": "old"}}"#,
         )
         .unwrap();
         assert!(!current.migrate());
