@@ -76,7 +76,9 @@ pub use engine::{
 pub use events::{AccountEvent, EventError, EventSource, Signal};
 pub use http::HttpBackend;
 pub use kanso_store::SyncDoc;
-pub use keychain::{Keychain, MemorySecrets, SecretError, SecretStore};
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+pub use keychain::Keychain;
+pub use keychain::{MemorySecrets, SecretError, SecretStore};
 pub use memory::{
     AccountSnapshot, DEFAULT_SETTINGS, Limits, MEMORY_PASSKEY_ORIGIN, MEMORY_PASSKEY_RP_ID,
     MEMORY_PASSKEY_SERVER, MemoryServer, QuotaOverride, ServerDevice, ServerStats, Signup,

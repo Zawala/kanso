@@ -4333,6 +4333,7 @@ dependencies = [
  "kanso-ai",
  "kanso-collab",
  "kanso-core",
+ "kanso-engine",
  "kanso-fido",
  "kanso-gallery",
  "kanso-import",
@@ -4422,6 +4423,20 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "kanso-engine"
+version = "0.8.4"
+dependencies = [
+ "chrono",
+ "kanso-core",
+ "kanso-store",
+ "kanso-sync",
+ "proptest",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
