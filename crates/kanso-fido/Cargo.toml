@@ -12,6 +12,10 @@ sha2.workspace = true
 thiserror.workspace = true
 zeroize.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# The kernel's uevents, for the security-key watch.
+libc = "0.2"
+
 [dev-dependencies]
 hmac.workspace = true
 proptest.workspace = true

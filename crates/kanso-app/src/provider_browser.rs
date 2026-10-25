@@ -61,8 +61,43 @@ impl std::fmt::Display for BrowserError {
 
 impl std::error::Error for BrowserError {}
 
-/// Opens `url` in the system browser. Never a web view.
+/// The URL the system opener may be given: an https page, or plain http to
+/// this device, with no user info, whitespace or control characters, in its
+/// parsed form. `kanso-sync` already pins a provider start's page to the
+/// provider's host or the server's; this is the second check, so no caller
+/// can hand `open`, the Windows URL handler (which also opens files, UNC
+/// paths and `search-ms:`/`ms-*:` links) or `xdg-open` (which reads a
+/// leading `-` as an option) something else.
+pub fn external_url(text: &str) -> Result<String, BrowserError> {
+    let refuse = || BrowserError::Io("Kanso won't open that page".into());
+    if text.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(refuse());
+    }
+    let url = url::Url::parse(text).map_err(|_| refuse())?;
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(refuse());
+    }
+    let allowed = match url.scheme() {
+        "https" => url.host_str().is_some(),
+        "http" => match url.host() {
+            Some(url::Host::Domain(host)) => host == "localhost",
+            Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+            Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+            None => false,
+        },
+        _ => false,
+    };
+    if !allowed {
+        return Err(refuse());
+    }
+    Ok(url.into())
+}
+
+/// Opens `url` in the system browser, once [`external_url`] allows it.
+/// Never a web view.
 pub fn open_external(url: &str) -> Result<(), BrowserError> {
+    let url = external_url(url)?;
+    let url = url.as_str();
     #[cfg(target_os = "macos")]
     {
         let status = std::process::Command::new("open")
@@ -76,8 +111,10 @@ pub fn open_external(url: &str) -> Result<(), BrowserError> {
     }
     #[cfg(target_os = "windows")]
     {
-        let status = std::process::Command::new("cmd")
-            .args(["/C", "start", "", url])
+        // Not `cmd /C start`: cmd splits the URL at every `&`, and provider
+        // URLs have several. The URL handler takes it as one argument.
+        let status = std::process::Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", url])
             .status()
             .map_err(|err| BrowserError::Io(format!("couldn't open the browser: {err}")))?;
         if status.success() {
@@ -100,25 +137,35 @@ pub fn open_external(url: &str) -> Result<(), BrowserError> {
 
 // ------------------------------------------------------------------- Apple
 
-/// Opens `start.auth_url` in `ASWebAuthenticationSession` (macOS) with the
-/// `kanso` scheme and waits for the callback URL. The flow ID alone grants
-/// nothing: the caller polls the Worker with its device and proof, and the
-/// secret the callback URL carries, which the system delivers only to this
-/// process.
+/// Opens `start.auth_url` and waits for the `kanso://` callback URL. On
+/// macOS that is `ASWebAuthenticationSession`, which delivers the callback
+/// to this process only. On Windows and Linux it is the system browser, and
+/// the callback comes back through the `kanso` scheme handler and
+/// [`crate::url_callback`], which hands it only to this flow while it waits.
+/// The flow ID alone grants nothing either way: the caller polls the Worker
+/// with its device and proof and the secret the callback URL carries.
 pub fn apple_sign_in(
     start: &AppleStart,
 ) -> Result<async_channel::Receiver<Result<String, BrowserError>>, BrowserError> {
     #[cfg(target_os = "macos")]
     {
-        apple::start(&start.auth_url, "kanso")
+        apple::start(&start.auth_url, crate::url_callback::SCHEME)
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = start;
-        Err(BrowserError::Unsupported(
-            "Sign in with Apple needs macOS's system sign-in sheet",
-        ))
+        let deadline = apple_deadline(start.expires_at, kanso_core::now_ms());
+        let callback = crate::url_callback::ROUTER.wait_for(&start.flow_id, deadline);
+        open_external(&start.auth_url)?;
+        Ok(callback)
     }
+}
+
+/// When the wait for Apple's callback ends: the flow's own expiry, never
+/// later than [`crate::url_callback::MAX_WAIT`].
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn apple_deadline(expires_at_ms: i64, now_ms: i64) -> Instant {
+    let left = u64::try_from(expires_at_ms.saturating_sub(now_ms)).unwrap_or(0);
+    Instant::now() + Duration::from_millis(left).min(crate::url_callback::MAX_WAIT)
 }
 
 /// The flow ID and secret in Apple's callback URL, when it is the callback
@@ -196,7 +243,10 @@ mod apple {
         let mtm = MainThreadMarker::new().ok_or(BrowserError::Unsupported(
             "the sign-in sheet needs the main thread",
         ))?;
-        let url = NSURL::URLWithString(&NSString::from_str(auth_url))
+        // The start's URL as kanso-sync parsed and checked it; the same
+        // web-page rule as the system opener, again.
+        let auth_url = super::external_url(auth_url)?;
+        let url = NSURL::URLWithString(&NSString::from_str(&auth_url))
             .ok_or_else(|| BrowserError::Io("the provider's URL is malformed".into()))?;
         let scheme = NSString::from_str(scheme);
         let presenter = Presenter::new(mtm);
@@ -490,6 +540,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_web_pages_reach_the_system_opener() {
+        assert_eq!(
+            external_url("https://appleid.apple.com/auth/authorize?a=1&b=2").unwrap(),
+            "https://appleid.apple.com/auth/authorize?a=1&b=2"
+        );
+        assert!(external_url("http://127.0.0.1:8787/device").is_ok());
+        assert!(external_url("http://localhost:8787/device").is_ok());
+        for bad in [
+            "file:///C:/Windows/System32/calc.exe",
+            "\\\\evil\\share\\run.exe",
+            "search-ms:query=x&crumb=location:\\\\evil\\s",
+            "ms-settings:",
+            "ms-msdt:/id",
+            "-aflag",
+            "--help",
+            "javascript:alert(1)",
+            "kanso://auth/apple?flow=x&s=y",
+            "http://evil.example/page",
+            "https://user:pass@evil.example/",
+            " https://example.com/",
+            "https://example.com/\npage",
+            "",
+        ] {
+            assert!(external_url(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
     fn the_loopback_parser_needs_the_right_path_and_state() {
         assert_eq!(
             parse_loopback_request(
@@ -612,5 +690,18 @@ mod tests {
         assert_eq!(callback.secret, secret);
         assert_eq!(apple_flow(&format!("kanso://auth/apple?flow={flow}")), None);
         assert_eq!(apple_flow("kanso://auth/apple?flow=short"), None);
+    }
+
+    /// The browser wait ends with the flow, and never after the cap.
+    #[test]
+    fn apple_waits_end_with_the_flow() {
+        let now = Instant::now();
+        let soon = apple_deadline(1_000 + 90_000, 1_000);
+        assert!(
+            soon >= now + Duration::from_secs(89)
+                && soon <= Instant::now() + Duration::from_secs(90)
+        );
+        assert!(apple_deadline(0, 1_000) <= Instant::now());
+        assert!(apple_deadline(i64::MAX, 0) <= Instant::now() + crate::url_callback::MAX_WAIT);
     }
 }

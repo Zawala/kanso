@@ -13,6 +13,13 @@
 # KANSO_SIGN_IDENTITY signs with that identity, the hardened runtime and a
 # secure timestamp (the release workflow's Developer ID); without it the app
 # is signed ad hoc, enough to run on this Mac.
+#
+# KANSO_PROVISION_PROFILE is a Developer ID provisioning profile for
+# app.kanso.Kanso with Associated Domains. With it and KANSO_SIGN_IDENTITY,
+# it is embedded as Contents/embedded.provisionprofile and native passkeys
+# work. Without either, the app is built without the Associated Domains
+# entitlement, which macOS refuses to launch an app with when no profile
+# authorizes it; everything else works, and passkeys say they aren't available.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -24,7 +31,7 @@ for arg in "$@"; do
     --dev) dev=1 ;;
     --install) install=1 ;;
     -h | --help)
-        sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
         exit 0
         ;;
     *)
@@ -110,9 +117,53 @@ cat > "$app/Contents/Info.plist" <<PLIST
 PLIST
 
 plutil -lint "$app/Contents/Info.plist" >/dev/null
-# The microphone, for voice input (packaging/macos/Kanso.entitlements).
-entitlements=packaging/macos/Kanso.entitlements
+# The microphone, for voice input, and the passkey domain
+# (packaging/macos/Kanso.entitlements). Signed from a copy, which the
+# provisioning profile below completes or strips.
+plutil -lint packaging/macos/Kanso.entitlements >/dev/null
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+entitlements="$work/Kanso.entitlements"
+cp packaging/macos/Kanso.entitlements "$entitlements"
+
+profile=${KANSO_PROVISION_PROFILE:-}
+skip_profile() {
+    echo "bundle-macos: $1; building without Associated Domains, so native passkeys are unavailable in this build." >&2
+    plutil -remove 'com\.apple\.developer\.associated-domains' "$entitlements"
+}
+# profile_unexpired and profile_has_certificate.
+. "$(dirname "$0")/macos-profile.sh"
+
+if [ -z "$profile" ]; then
+    skip_profile "no KANSO_PROVISION_PROFILE"
+elif [ ! -f "$profile" ]; then
+    skip_profile "KANSO_PROVISION_PROFILE ($profile) is not a file"
+elif [ -z "${KANSO_SIGN_IDENTITY:-}" ]; then
+    skip_profile "a provisioning profile needs KANSO_SIGN_IDENTITY, and this build is signed ad hoc"
+elif ! security cms -D -i "$profile" >"$work/profile.plist" 2>/dev/null; then
+    skip_profile "KANSO_PROVISION_PROFILE isn't a readable provisioning profile"
+else
+    team=$(plutil -extract TeamIdentifier.0 raw "$work/profile.plist" 2>/dev/null || true)
+    profile_app=$(plutil -extract 'Entitlements.com\.apple\.application-identifier' raw "$work/profile.plist" 2>/dev/null || true)
+    if ! profile_unexpired "$work/profile.plist"; then
+        skip_profile "the provisioning profile has expired (or has no ExpirationDate)"
+    elif ! profile_has_certificate "$work/profile.plist" "$KANSO_SIGN_IDENTITY"; then
+        skip_profile "the provisioning profile doesn't list the certificate of $KANSO_SIGN_IDENTITY"
+    elif [ -z "$team" ] || [ "$profile_app" != "$team.$bundle_id" ]; then
+        skip_profile "the provisioning profile is for ${profile_app:-another app}, not $bundle_id"
+    elif ! plutil -extract 'Entitlements.com\.apple\.developer\.associated-domains' raw "$work/profile.plist" >/dev/null 2>&1; then
+        skip_profile "the provisioning profile doesn't allow Associated Domains"
+    else
+        cp "$profile" "$app/Contents/embedded.provisionprofile"
+        # A restricted entitlement is honored only with the app and team it
+        # was provisioned for.
+        plutil -insert 'com\.apple\.application-identifier' -string "$team.$bundle_id" "$entitlements"
+        plutil -insert 'com\.apple\.developer\.team-identifier' -string "$team" "$entitlements"
+        echo "Embedded the provisioning profile for $team.$bundle_id."
+    fi
+fi
 plutil -lint "$entitlements" >/dev/null
+
 if [ -n "${KANSO_SIGN_IDENTITY:-}" ]; then
     codesign --force --options runtime --timestamp --entitlements "$entitlements" \
         --sign "$KANSO_SIGN_IDENTITY" "$app"

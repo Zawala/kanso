@@ -38,6 +38,11 @@ use crate::account_words::{self as words, Answer, ErrorContext, Question};
 use crate::clock::Clock;
 use crate::config::{AccountRef, is_default_server};
 use crate::dialogs::{self, Described, Progress};
+use crate::passkey_accounts::{
+    self, PasskeyContext, PasskeyFlowError, PasskeySignedUp, RpRule, SyncPasskeyAccounts,
+};
+use crate::passkey_ceremony::{PlatformCeremony, platform_ceremony};
+use crate::security_key_flow::{OwnedSecurityKey, PinProblem};
 use crate::services::{
     self, AccountDetails, AccountState, PendingKey, RunningTask, Services, TaskKind, notify_windows,
 };
@@ -126,6 +131,18 @@ impl Failure {
         eprintln!("kanso: account: the library: {err}");
         Failure {
             words: LIBRARY_TROUBLE.to_owned(),
+            signed_out: None,
+            recovery: None,
+            backup: None,
+            locked_cleanup: false,
+            keychain_warning: false,
+        }
+    }
+
+    /// A failure that is only its words.
+    fn words(words: &str) -> Failure {
+        Failure {
+            words: words.to_owned(),
             signed_out: None,
             recovery: None,
             backup: None,
@@ -1574,6 +1591,377 @@ fn create_provider_signup(
     );
 }
 
+// MARK: Passkeys and security keys
+
+/// Which authenticator a passkey task uses.
+pub enum PasskeyMethod {
+    /// The platform's sheet: AuthenticationServices on macOS, Windows Hello
+    /// and security keys through webauthn.h on Windows, owned by `window`
+    /// (`passkey_ceremony::native_window`; 0 when there is none).
+    Platform { window: isize },
+    /// A Linux security key, with its PIN when it needs one.
+    SecurityKey {
+        device: kanso_fido::SecurityKeyDevice,
+        pin: Option<zeroize::Zeroizing<String>>,
+    },
+}
+
+impl PasskeyMethod {
+    fn is_security_key(&self) -> bool {
+        matches!(self, PasskeyMethod::SecurityKey { .. })
+    }
+}
+
+/// The ceremony a passkey task's thread runs, made on the main thread.
+enum Runner {
+    /// The platform's sheet (`passkey_ceremony::platform_ceremony`).
+    Platform(PlatformCeremony),
+    SecurityKey(OwnedSecurityKey),
+    #[cfg(test)]
+    Test(Arc<dyn kanso_sync::PasskeyCeremony + Send + Sync>),
+}
+
+impl Runner {
+    /// The runner, and the main-thread task serving a platform ceremony
+    /// (kept until the task finishes).
+    fn new(method: PasskeyMethod, cx: &mut App) -> (Runner, Option<Task<()>>) {
+        #[cfg(test)]
+        if let Some(ceremony) = cx.global::<Services>().test_ceremony.clone() {
+            return (Runner::Test(ceremony), None);
+        }
+        match method {
+            PasskeyMethod::Platform { window } => {
+                let (ceremony, serving) = platform_ceremony(window, cx);
+                (Runner::Platform(ceremony), serving)
+            }
+            PasskeyMethod::SecurityKey { device, pin } => {
+                (Runner::SecurityKey(OwnedSecurityKey { device, pin }), None)
+            }
+        }
+    }
+
+    fn rule(&self) -> RpRule {
+        match self {
+            Runner::Platform(_) => RpRule::platform(),
+            Runner::SecurityKey(_) => RpRule::ServerHost,
+            #[cfg(test)]
+            Runner::Test(_) => RpRule::ServerHost,
+        }
+    }
+
+    /// Runs `work` with the ceremony; afterwards, what a security key said
+    /// about its PIN, if anything.
+    fn run<T>(
+        self,
+        work: impl FnOnce(&dyn kanso_sync::PasskeyCeremony) -> T,
+    ) -> (T, Option<PinProblem>) {
+        match self {
+            Runner::Platform(ceremony) => (work(ceremony.as_ref()), None),
+            Runner::SecurityKey(key) => key.with(work),
+            #[cfg(test)]
+            Runner::Test(ceremony) => (work(ceremony.as_ref()), None),
+        }
+    }
+}
+
+/// How a passkey task ended without an answer.
+enum PasskeyEnd {
+    /// The sheet or the key was dismissed: the page stays as it was.
+    Cancelled,
+    /// The platform's ceremony can't run here: the buttons go.
+    Unavailable,
+    Failed(Failure),
+}
+
+impl From<Failure> for PasskeyEnd {
+    fn from(failure: Failure) -> Self {
+        PasskeyEnd::Failed(failure)
+    }
+}
+
+fn passkey_end(
+    error: PasskeyFlowError,
+    pin: Option<PinProblem>,
+    security_key: bool,
+    context: ErrorContext,
+) -> PasskeyEnd {
+    use kanso_sync::PasskeyCeremonyError as Ceremony;
+    let failed = if security_key {
+        words::SECURITY_KEY_FAILED
+    } else {
+        words::PASSKEY_FAILED
+    };
+    match pin {
+        Some(PinProblem::Required) => return Failure::words(words::SECURITY_KEY_PIN).into(),
+        Some(PinProblem::Invalid { retries }) => {
+            return Failure::words(&words::security_key_pin_wrong(retries)).into();
+        }
+        Some(PinProblem::AuthBlocked) => {
+            return Failure::words(words::SECURITY_KEY_PIN_AUTH_BLOCKED).into();
+        }
+        Some(PinProblem::Blocked) => return Failure::words(words::SECURITY_KEY_PIN_BLOCKED).into(),
+        None => {}
+    }
+    match error {
+        PasskeyFlowError::Account(err) => Failure::account(err, context).into(),
+        PasskeyFlowError::Rotation(err) => Failure::rotation(
+            err,
+            ErrorContext::SignUp,
+            words::KEY_UNCONFIRMED_PASSKEY_SIGN_UP,
+        )
+        .into(),
+        PasskeyFlowError::Ceremony(Ceremony::Cancelled) => PasskeyEnd::Cancelled,
+        // A security key that went away is the page's to show again.
+        PasskeyFlowError::Ceremony(Ceremony::Unavailable) if security_key => {
+            Failure::words(failed).into()
+        }
+        PasskeyFlowError::Ceremony(Ceremony::Unavailable) => PasskeyEnd::Unavailable,
+        PasskeyFlowError::Ceremony(Ceremony::Failed) => Failure::words(failed).into(),
+        PasskeyFlowError::WrongRelyingParty => Failure::words(words::PASSKEY_WRONG_SERVER).into(),
+    }
+}
+
+fn passkey_ended(end: PasskeyEnd, tx: &Sender<Progress>, cx: &mut App) {
+    match end {
+        PasskeyEnd::Cancelled => done(tx, Ok(())),
+        PasskeyEnd::Unavailable => {
+            cx.global_mut::<Services>().platform_passkeys_failed = true;
+            done(tx, Err(words::PASSKEY_UNAVAILABLE.to_owned()));
+        }
+        PasskeyEnd::Failed(failure) => failed(tx, Some(failure), cx),
+    }
+}
+
+/// What a passkey sign-in's thread found.
+enum PasskeyIn {
+    /// The key came with it: binding as after a password sign-in.
+    Unlocked(Box<Authenticated>),
+    /// Signed in without the key, its pending item saved: approval, the
+    /// password or the recovery key unlocks it. The flag says the
+    /// credential answered PRF.
+    Locked(Box<LockedSession>, DeviceIdentity, bool),
+}
+
+/// Signs in with a passkey or a security key (Settings › Account › Sign in
+/// › Continue with a passkey / a security key). `username` is the security
+/// key's username-first name; the platform picker takes none.
+pub fn passkey_sign_in(
+    server: String,
+    method: PasskeyMethod,
+    username: Option<String>,
+    window: AnyWindowHandle,
+    cx: &mut App,
+) -> Receiver<Progress> {
+    let (tx, rx) = async_channel::unbounded();
+    let Some(seams) = begin(&tx, cx) else {
+        return rx;
+    };
+    let security_key = method.is_security_key();
+    let (runner, serving) = Runner::new(method, cx);
+    let rule = runner.rule();
+    let was_signed_in = cx.global::<Services>().signed_in();
+    let thread = seams.clone();
+    run(
+        TaskKind::SignIn,
+        Step::Contacting,
+        was_signed_in,
+        Some(tx.clone()),
+        cx,
+        move |step| -> Result<PasskeyIn, PasskeyEnd> {
+            let s = thread;
+            let device = s.device()?;
+            let (signed, pin) = runner.run(|ceremony| {
+                let context = PasskeyContext {
+                    accounts: &SyncPasskeyAccounts,
+                    backend: s.backend.as_ref(),
+                    secrets: s.secrets.as_ref(),
+                    server: &server,
+                    device: &device,
+                    rule,
+                    progress: step,
+                };
+                passkey_accounts::sign_in(&context, username.as_deref(), ceremony)
+            });
+            let signed =
+                signed.map_err(|err| passkey_end(err, pin, security_key, ErrorContext::Passkey))?;
+            match signed.signed {
+                kanso_sync::PasskeySignIn::Unlocked(kanso_sync::SignedIn { session, evicted }) => {
+                    let auth = authenticated(&s, device.library_id, session, evicted, None)?;
+                    Ok(PasskeyIn::Unlocked(Box::new(auth)))
+                }
+                kanso_sync::PasskeySignIn::Locked(locked) => {
+                    save_provider_pending(s.backend.as_ref(), s.secrets.as_ref(), &locked)
+                        .map_err(Failure::keychain)?;
+                    Ok(PasskeyIn::Locked(Box::new(locked), device, signed.prf))
+                }
+            }
+        },
+        move |result, cx| {
+            drop(serving);
+            match result {
+                Some(Ok(PasskeyIn::Unlocked(auth))) => settle_authenticated(
+                    Flow::SignIn,
+                    Some(window),
+                    seams,
+                    *auth,
+                    was_signed_in,
+                    tx,
+                    cx,
+                ),
+                Some(Ok(PasskeyIn::Locked(locked, device, prf))) => {
+                    enter_locked(*locked, device, Some(window), cx);
+                    if !prf {
+                        let notice = words::passkey_signs_in_only(security_key);
+                        notify_windows(move || Notification::info(notice), cx);
+                    }
+                    done(&tx, Ok(()));
+                }
+                Some(Err(end)) => passkey_ended(end, &tx, cx),
+                None => failed(&tx, None, cx),
+            }
+        },
+    );
+    rx
+}
+
+/// Creates an account whose first way in is a new passkey or security key
+/// (Settings › Account › Create account › Create with a passkey / a
+/// security key), and signs this device in with it. Notes that came from
+/// another account are asked about in `window` first, as for a password
+/// sign-up.
+pub fn passkey_sign_up(
+    server: String,
+    method: PasskeyMethod,
+    username: String,
+    window: AnyWindowHandle,
+    cx: &mut App,
+) -> Receiver<Progress> {
+    let (tx, rx) = async_channel::unbounded();
+    let Some(seams) = begin(&tx, cx) else {
+        return rx;
+    };
+    let origin = kanso_sync::origin(&server).unwrap_or_default();
+    let thread = seams.clone();
+    run(
+        TaskKind::SignUp,
+        Step::Contacting,
+        false,
+        Some(tx.clone()),
+        cx,
+        move |_| kanso_sync::local_library(&thread.store, &origin, "").map_err(Failure::library),
+        move |result, cx| match result {
+            Some(Ok(library)) => match kanso_sync::plan(Flow::SignUp, &library) {
+                Plan::AskBeforeSignUp { from, .. } => {
+                    let (title, body, upload) = words::upload_question(&from);
+                    let question = Question {
+                        title,
+                        body,
+                        answers: vec![Answer {
+                            choice: Choice::Add,
+                            label: upload.to_owned(),
+                            description: "They're encrypted and uploaded to the new account. Nothing changes in the other one.".to_owned(),
+                        }],
+                    };
+                    ask(window, question, cx, move |choice, cx| match choice {
+                        Choice::Cancel => done(&tx, Ok(())),
+                        _ => create_with_passkey(seams, server, username, method, tx, cx),
+                    });
+                }
+                _ => create_with_passkey(seams, server, username, method, tx, cx),
+            },
+            Some(Err(failure)) => failed(&tx, Some(failure), cx),
+            None => failed(&tx, None, cx),
+        },
+    );
+    rx
+}
+
+fn create_with_passkey(
+    seams: Seams,
+    server: String,
+    username: String,
+    method: PasskeyMethod,
+    tx: Sender<Progress>,
+    cx: &mut App,
+) {
+    let security_key = method.is_security_key();
+    let (runner, serving) = Runner::new(method, cx);
+    let rule = runner.rule();
+    let thread = seams.clone();
+    run(
+        TaskKind::SignUp,
+        Step::Contacting,
+        true,
+        Some(tx.clone()),
+        cx,
+        move |step| -> Result<(PasskeySignedUp, String), PasskeyEnd> {
+            let s = thread;
+            let device = s.device()?;
+            let (made, pin) = runner.run(|ceremony| {
+                let context = PasskeyContext {
+                    accounts: &SyncPasskeyAccounts,
+                    backend: s.backend.as_ref(),
+                    secrets: s.secrets.as_ref(),
+                    server: &server,
+                    device: &device,
+                    rule,
+                    progress: step,
+                };
+                passkey_accounts::sign_up(&context, &username, ceremony)
+            });
+            let made =
+                made.map_err(|err| passkey_end(err, pin, security_key, ErrorContext::SignUp))?;
+            step(Step::Saving);
+            let bound = save_and_bind(
+                &s,
+                &device.library_id,
+                &made.signed.session,
+                Some(Choice::Add),
+            );
+            if let Err(failure) = bound {
+                // As after a password sign-up: the account and its key stay.
+                kanso_sync::discard_session(
+                    s.backend.as_ref(),
+                    s.secrets.as_ref(),
+                    &made.signed.session,
+                )
+                .ok();
+                let SignedUp {
+                    session,
+                    recovery_key,
+                } = made.signed;
+                return Err(failure
+                    .after_key(words::CREATED_NOT_SIGNED_IN_PASSKEY, &session, recovery_key)
+                    .into());
+            }
+            Ok((made, device.library_id))
+        },
+        move |result, cx| {
+            drop(serving);
+            match result {
+                Some(Ok((made, library_id))) => {
+                    let PasskeySignedUp { signed, can_unlock } = made;
+                    let SignedUp {
+                        session,
+                        recovery_key,
+                    } = signed;
+                    show_key(&session, recovery_key, cx);
+                    signed_in(session, library_id, true, cx);
+                    let notice = words::passkey_created(security_key, can_unlock);
+                    if can_unlock {
+                        notify_windows(move || Notification::success(notice), cx);
+                    } else {
+                        notify_windows(move || Notification::warning(notice), cx);
+                    }
+                    done(&tx, Ok(()));
+                }
+                Some(Err(end)) => passkey_ended(end, &tx, cx),
+                None => failed(&tx, None, cx),
+            }
+        },
+    );
+}
+
 /// Sets a new password with the recovery key, and signs this Mac in
 /// ("Forgot your password?"). Signed out, it asks in `window` what to do
 /// with notes already here; signed in, it replaces this Mac's session.
@@ -1660,65 +2048,83 @@ fn authenticate(
             let s = thread;
             let device = s.device()?;
             let (session, evicted, recovery_key) = auth(&s, &device, step)?;
-            let library =
-                match kanso_sync::local_library(&s.store, &session.origin, &session.account_id) {
-                    Ok(library) => library,
-                    Err(err) => {
-                        let failure = Failure::library(err);
-                        kanso_sync::discard_session(
-                            s.backend.as_ref(),
-                            s.secrets.as_ref(),
-                            &session,
-                        )
-                        .ok();
-                        return Err(match recovery_key {
-                            Some(key) => {
-                                failure.after_key(words::CHANGED_NOT_SIGNED_IN, &session, key)
-                            }
-                            None => failure,
-                        });
-                    }
-                };
-            Ok(Authenticated {
-                session,
-                evicted,
-                library,
-                library_id: device.library_id,
-                recovery_key,
-            })
+            authenticated(&s, device.library_id, session, evicted, recovery_key)
         },
-        move |result, cx| {
-            let auth = match result {
-                Some(Ok(authenticated)) => authenticated,
-                Some(Err(failure)) => return failed(&tx, Some(failure), cx),
-                None => return failed(&tx, None, cx),
-            };
-            // A used recovery key is gone: the new one shows at once, even if
-            // the binding question is cancelled.
-            if let Some(key) = &auth.recovery_key {
-                show_key(&auth.session, key.clone(), cx);
+        move |result, cx| match result {
+            Some(Ok(auth)) => {
+                settle_authenticated(flow, window, seams, auth, was_signed_in, tx, cx)
             }
-            let plan = kanso_sync::plan(flow, &auth.library);
-            let question = words::binding_question(&plan, &auth.session.username);
-            match (plan, question, window) {
-                (Plan::Ask { .. }, Some(question), Some(window)) => {
-                    ask(window, question, cx, move |choice, cx| match choice {
-                        Choice::Cancel => abandon(seams, auth.session, tx, cx),
-                        choice => {
-                            bind_and_save(kind, seams, auth, Some(choice), was_signed_in, tx, cx)
-                        }
-                    });
-                }
-                (Plan::Ask { .. }, _, _) => abandon(seams, auth.session, tx, cx),
-                (Plan::Resume, _, _) => {
-                    bind_and_save(kind, seams, auth, None, was_signed_in, tx, cx)
-                }
-                (Plan::Fresh | Plan::AskBeforeSignUp { .. }, _, _) => {
-                    bind_and_save(kind, seams, auth, Some(Choice::Add), was_signed_in, tx, cx)
-                }
-            }
+            Some(Err(failure)) => failed(&tx, Some(failure), cx),
+            None => failed(&tx, None, cx),
         },
     );
+}
+
+/// On the task's thread, after a sign-in: the library the account would
+/// bind, or the failure (the new session is logged out).
+fn authenticated(
+    s: &Seams,
+    library_id: String,
+    session: Session,
+    evicted: Option<DeviceInfo>,
+    recovery_key: Option<RecoveryKey>,
+) -> Result<Authenticated, Failure> {
+    let library = match kanso_sync::local_library(&s.store, &session.origin, &session.account_id) {
+        Ok(library) => library,
+        Err(err) => {
+            let failure = Failure::library(err);
+            kanso_sync::discard_session(s.backend.as_ref(), s.secrets.as_ref(), &session).ok();
+            return Err(match recovery_key {
+                Some(key) => failure.after_key(words::CHANGED_NOT_SIGNED_IN, &session, key),
+                None => failure,
+            });
+        }
+    };
+    Ok(Authenticated {
+        session,
+        evicted,
+        library,
+        library_id,
+        recovery_key,
+    })
+}
+
+/// On the main thread, after [`authenticated`]: the binding question when
+/// there is one, then the binding and the Keychain item.
+fn settle_authenticated(
+    flow: Flow,
+    window: Option<AnyWindowHandle>,
+    seams: Seams,
+    auth: Authenticated,
+    was_signed_in: bool,
+    tx: Sender<Progress>,
+    cx: &mut App,
+) {
+    let kind = match flow {
+        Flow::SignUp => TaskKind::SignUp,
+        Flow::SignIn => TaskKind::SignIn,
+        Flow::Recover => TaskKind::Recover,
+    };
+    // A used recovery key is gone: the new one shows at once, even if
+    // the binding question is cancelled.
+    if let Some(key) = &auth.recovery_key {
+        show_key(&auth.session, key.clone(), cx);
+    }
+    let plan = kanso_sync::plan(flow, &auth.library);
+    let question = words::binding_question(&plan, &auth.session.username);
+    match (plan, question, window) {
+        (Plan::Ask { .. }, Some(question), Some(window)) => {
+            ask(window, question, cx, move |choice, cx| match choice {
+                Choice::Cancel => abandon(seams, auth.session, tx, cx),
+                choice => bind_and_save(kind, seams, auth, Some(choice), was_signed_in, tx, cx),
+            });
+        }
+        (Plan::Ask { .. }, _, _) => abandon(seams, auth.session, tx, cx),
+        (Plan::Resume, _, _) => bind_and_save(kind, seams, auth, None, was_signed_in, tx, cx),
+        (Plan::Fresh | Plan::AskBeforeSignUp { .. }, _, _) => {
+            bind_and_save(kind, seams, auth, Some(Choice::Add), was_signed_in, tx, cx)
+        }
+    }
 }
 
 /// Binds the library (unless `choice` is `None`: it already is), saves the
@@ -3692,6 +4098,48 @@ pub fn recover_locked(
         },
     );
     rx
+}
+
+#[cfg(test)]
+mod passkey_end_tests {
+    use super::{ErrorContext, PasskeyEnd, PasskeyFlowError, PinProblem, passkey_end, words};
+
+    fn said(pin: Option<PinProblem>) -> Option<String> {
+        let failed = PasskeyFlowError::Ceremony(kanso_sync::PasskeyCeremonyError::Failed);
+        match passkey_end(failed, pin, true, ErrorContext::Passkey) {
+            PasskeyEnd::Failed(failure) => Some(failure.words),
+            _ => None,
+        }
+    }
+
+    /// Each thing a key says about its PIN is its own line: a wrong PIN
+    /// isn't "enter your PIN", and a locked one isn't "try again".
+    #[test]
+    fn each_pin_problem_says_what_to_do() {
+        let lines = [
+            said(Some(PinProblem::Required)),
+            said(Some(PinProblem::Invalid { retries: Some(3) })),
+            said(Some(PinProblem::Invalid { retries: Some(1) })),
+            said(Some(PinProblem::Invalid { retries: None })),
+            said(Some(PinProblem::AuthBlocked)),
+            said(Some(PinProblem::Blocked)),
+            said(None),
+        ]
+        .map(Option::unwrap);
+        assert_eq!(lines[0], words::SECURITY_KEY_PIN);
+        assert!(
+            lines[1].contains("after 3 more wrong tries"),
+            "{}",
+            lines[1]
+        );
+        assert!(lines[2].contains("one more wrong try"), "{}", lines[2]);
+        assert!(!lines[3].contains("more wrong"), "{}", lines[3]);
+        assert_eq!(lines[4], words::SECURITY_KEY_PIN_AUTH_BLOCKED);
+        assert_eq!(lines[5], words::SECURITY_KEY_PIN_BLOCKED);
+        assert_eq!(lines[6], words::SECURITY_KEY_FAILED);
+        let distinct: std::collections::HashSet<_> = lines.iter().collect();
+        assert_eq!(distinct.len(), lines.len());
+    }
 }
 
 #[cfg(test)]

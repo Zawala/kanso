@@ -38,6 +38,8 @@ pub enum ErrorContext {
     Server,
     /// Anything else signed in (devices, usage).
     Account,
+    /// Signing in with a passkey or a security key.
+    Passkey,
 }
 
 pub const CANT_REACH: &str = "Can't reach the server. Your notes are safe on this device.";
@@ -45,10 +47,92 @@ pub const NOT_A_KANSO_SERVER: &str = "That server doesn't run this version of Ka
 pub const KEYS_WRONG: &str =
     "Something's wrong with the server's copy of your keys. Nothing was changed on this device.";
 pub const PASSWORDS_DIFFER: &str = "The passwords don't match.";
+/// Under the Apple wait: macOS shows Apple's sheet; elsewhere the system
+/// browser returns to Kanso by itself.
+#[cfg(target_os = "macos")]
+pub const APPLE_WAIT_NOTE: &str =
+    "Cancel stops waiting. Dismiss the Apple sign-in sheet separately.";
+#[cfg(not(target_os = "macos"))]
+pub const APPLE_WAIT_NOTE: &str =
+    "Finish signing in with Apple in your browser. Kanso opens again when you're done.";
 const SERVER_TROUBLE: &str = "The server couldn't do that. Try again in a moment.";
 /// The approver found the request's key or name doesn't match what it
 /// committed to (docs/ACCOUNTS.md › The protocol, step 5).
 pub const APPROVAL_CHANGED: &str = "This request changed after it was made. Don't approve.";
+
+// MARK: Passkeys and security keys (docs/ACCOUNTS.md › Account page)
+
+pub const CONTINUE_WITH_PASSKEY: &str = "Continue with a passkey";
+pub const CREATE_WITH_PASSKEY: &str = "Create with a passkey";
+pub const CONTINUE_WITH_SECURITY_KEY: &str = "Continue with a security key";
+pub const CREATE_WITH_SECURITY_KEY: &str = "Create with a security key";
+/// Linux, when the server advertises security keys and none is attached.
+pub const CONNECT_SECURITY_KEY: &str = "Connect a FIDO2 security key to use one.";
+/// Over the passkey sign-up's username, like a provider sign-up's.
+pub const PASSKEY_USERNAME_NOTE: &str = "You can change this before creating the account.";
+/// Under the security key's username, before it is touched.
+pub const SECURITY_KEY_SIGN_IN_NOTE: &str =
+    "Kanso asks your key for this account's passkey. Touch the key when it blinks.";
+/// Under a security-key sign-up: the key is touched twice when it can
+/// unlock (docs/ACCOUNTS.md › Where the ceremony runs › Linux).
+pub const SECURITY_KEY_SIGN_UP_NOTE: &str =
+    "Touch the key when it blinks. A key that can unlock asks for a second touch.";
+pub const SECURITY_KEY_PIN_HINT: &str = "Only if your key has one.";
+/// The PIN a security key asked for wasn't given.
+pub const SECURITY_KEY_PIN: &str = "This security key needs its PIN. Enter it, then try again.";
+/// Too many wrong PINs in a row: the key takes another after a reconnect.
+pub const SECURITY_KEY_PIN_AUTH_BLOCKED: &str =
+    "That PIN was wrong too many times in a row. Unplug the key, plug it back in, then try again.";
+/// The key's PIN is locked for good.
+pub const SECURITY_KEY_PIN_BLOCKED: &str = "This security key's PIN is locked after too many wrong tries. Only resetting the key unlocks it, and that erases its passkeys.";
+
+/// A wrong security-key PIN, with the tries the key has left when it said.
+pub fn security_key_pin_wrong(retries: Option<u8>) -> String {
+    match retries {
+        Some(1) => "That PIN isn't right. The key locks its PIN after one more wrong try.".into(),
+        Some(left) => {
+            format!("That PIN isn't right. The key locks its PIN after {left} more wrong tries.")
+        }
+        None => "That PIN isn't right. Check it, then try again.".into(),
+    }
+}
+/// The platform ceremony couldn't run: the method isn't offered again.
+pub const PASSKEY_UNAVAILABLE: &str = "Passkeys aren't available on this device.";
+pub const PASSKEY_FAILED: &str = "The passkey didn't work. Try again.";
+pub const SECURITY_KEY_FAILED: &str = "The security key didn't finish. Try again.";
+/// The server's relying party isn't one this app may use.
+pub const PASSKEY_WRONG_SERVER: &str = "This server's passkeys don't work with this app.";
+/// A passkey the server doesn't know (or a device with none).
+pub const PASSKEY_UNKNOWN: &str = "This server doesn't know that passkey.";
+
+/// After a passkey or security-key sign-up: whether it can unlock a new
+/// device ("can unlock") or only signs in ("signs in only").
+pub fn passkey_created(security_key: bool, can_unlock: bool) -> &'static str {
+    match (security_key, can_unlock) {
+        (false, true) => {
+            "Your passkey can unlock: on a new device it signs in and opens your notes."
+        }
+        (false, false) => {
+            "Your passkey signs in only: a new device also needs another device's approval or your recovery key."
+        }
+        (true, true) => {
+            "Your security key can unlock: on a new device it signs in and opens your notes."
+        }
+        (true, false) => {
+            "Your security key signs in only: a new device also needs another device's approval or your recovery key."
+        }
+    }
+}
+
+/// After a sign-in with a key that gave no PRF output and left the device
+/// locked: why it still asks for approval.
+pub fn passkey_signs_in_only(security_key: bool) -> &'static str {
+    if security_key {
+        "This security key can sign in but not unlock a new device, so this device needs approval or your recovery key."
+    } else {
+        "This passkey can sign in but not unlock a new device, so this device needs approval or your recovery key."
+    }
+}
 
 /// The words for a failed account task. Every variant has words, and none
 /// repeats text that came from the server or the network.
@@ -57,6 +141,7 @@ pub fn error_words(err: &AccountError, context: ErrorContext) -> String {
         AccountError::InvalidCredentials => match context {
             ErrorContext::Recovery => "That recovery key doesn't match this account.",
             ErrorContext::CurrentPassword => "That isn't your current password.",
+            ErrorContext::Passkey => PASSKEY_UNKNOWN,
             _ => "That username and password don't match.",
         },
         AccountError::UsernameTaken => "That username is taken. Try another.",
@@ -297,6 +382,19 @@ pub fn host_of(server: &str) -> String {
         .to_owned()
 }
 
+/// The line under the passkey and social sign-up forms (docs/ACCOUNTS.md ›
+/// Account page): no password to reset, so only the recovery key.
+pub fn passkey_sign_up_line(notes: usize, signup: Option<SignupState>) -> String {
+    let line = sign_up_line(notes, signup);
+    match line.strip_suffix(PASSWORD_LINE_END) {
+        Some(start) => format!("{start}You'll get a recovery key instead of a password reset."),
+        None => line,
+    }
+}
+
+const PASSWORD_LINE_END: &str =
+    "Kanso can't reset your password; you'll get a recovery key instead.";
+
 /// Under the Create account form: what happens to the notes here, and that
 /// the password can't be reset, or that the server takes no accounts.
 pub fn sign_up_line(notes: usize, signup: Option<SignupState>) -> String {
@@ -317,7 +415,7 @@ pub fn sign_up_line(notes: usize, signup: Option<SignupState>) -> String {
             format_count(n as u64)
         ),
     };
-    format!("{uploaded}Kanso can't reset your password; you'll get a recovery key instead.")
+    format!("{uploaded}{PASSWORD_LINE_END}")
 }
 
 // MARK: Storage and devices
@@ -580,6 +678,11 @@ pub const KEY_READY: &str = "Save your new recovery key. It's on the Account pag
 pub const KEY_UNCONFIRMED: &str = "Kanso couldn't tell yet whether the server took this key. Save it, and keep your old recovery key too until Kanso confirms which one works.";
 /// Over a sign-up's key, when the answer was lost.
 pub const KEY_UNCONFIRMED_SIGN_UP: &str = "Kanso couldn't tell yet whether your account was created. Save this key anyway: if it was, it's the account's recovery key. Then sign in with your password.";
+/// Over a passkey sign-up's key, when the answer was lost.
+pub const KEY_UNCONFIRMED_PASSKEY_SIGN_UP: &str = "Kanso couldn't tell yet whether your account was created. Save this key anyway: if it was, it's the account's recovery key. Then sign in with your passkey.";
+/// Over a passkey sign-up's unconfirmed key once the server said it holds it.
+pub const KEY_TAKEN_PASSKEY_SIGN_UP: &str =
+    "Your account was created, and this is its recovery key. Sign in with your passkey.";
 /// Over a recovery's or a password change's key, when the answer was lost.
 pub const KEY_UNCONFIRMED_PASSWORD: &str = "Kanso couldn't tell yet whether your password was changed. Save this key, and keep your old recovery key too until Kanso confirms which one works.";
 /// Over an unconfirmed key once the server said it holds it.
@@ -620,6 +723,7 @@ pub fn key_checked(note: &str) -> Option<KeyChecked> {
     let (taken, not_taken) = match note {
         KEY_UNCONFIRMED => (KEY_TAKEN, KEY_NOT_TAKEN),
         KEY_UNCONFIRMED_SIGN_UP => (KEY_TAKEN_SIGN_UP, KEY_NOT_TAKEN_SIGN_UP),
+        KEY_UNCONFIRMED_PASSKEY_SIGN_UP => (KEY_TAKEN_PASSKEY_SIGN_UP, KEY_NOT_TAKEN_SIGN_UP),
         KEY_UNCONFIRMED_PASSWORD => (KEY_TAKEN_PASSWORD, KEY_NOT_TAKEN_PASSWORD),
         _ => return None,
     };
@@ -630,6 +734,8 @@ pub const KEY_AFTER_PASSWORD: &str =
     "Your password changed, and so did your recovery key: the one you saved no longer works.";
 /// The account exists, but this Mac isn't signed in to it.
 pub const CREATED_NOT_SIGNED_IN: &str = "Your account was created, but this device couldn't finish signing in. Sign in with your password.";
+/// A passkey's account exists, but this device isn't signed in to it.
+pub const CREATED_NOT_SIGNED_IN_PASSKEY: &str = "Your account was created, but this device couldn't finish signing in. Sign in with your passkey.";
 /// The password changed, but this Mac isn't signed in with it.
 pub const CHANGED_NOT_SIGNED_IN: &str = "Your password was changed, but this device couldn't finish signing in. Sign in with the new password.";
 pub const RECOVERY_KEY_FILE_NAME: &str = "Kanso recovery key.txt";
@@ -1007,6 +1113,14 @@ mod tests {
         );
         assert_eq!(
             sign_up_line(42, Some(SignupState::Full)),
+            "This server isn't taking new accounts."
+        );
+        assert_eq!(
+            passkey_sign_up_line(9, Some(SignupState::Open)),
+            "Your 9 notes on this device will be encrypted and uploaded. You'll get a recovery key instead of a password reset."
+        );
+        assert_eq!(
+            passkey_sign_up_line(42, Some(SignupState::Full)),
             "This server isn't taking new accounts."
         );
         let day = 86_400_000;

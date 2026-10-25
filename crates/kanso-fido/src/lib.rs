@@ -15,6 +15,8 @@
 //! exactly, used without another hash. A key without `hmac-secret` registers
 //! without a wrap: it signs in, but a new device needs approval or recovery.
 
+pub mod watch;
+
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sha2::{Digest as _, Sha256};
@@ -53,8 +55,9 @@ pub struct SecurityKeyDevice {
     pub hmac_secret: bool,
 }
 
-/// What a registration ceremony needs, in CTAP2 terms.
-#[derive(Clone, Debug)]
+/// What a registration ceremony needs, in CTAP2 terms. `Debug` never shows
+/// the PIN, only whether there is one.
+#[derive(Clone)]
 pub struct RegistrationRequest {
     pub rp_id: String,
     pub origin: String,
@@ -69,8 +72,9 @@ pub struct RegistrationRequest {
     pub pin: Option<zeroize::Zeroizing<String>>,
 }
 
-/// What an assertion ceremony needs.
-#[derive(Clone, Debug)]
+/// What an assertion ceremony needs. `Debug` never shows the PIN, only
+/// whether there is one.
+#[derive(Clone)]
 pub struct AssertionRequest {
     pub rp_id: String,
     pub origin: String,
@@ -80,6 +84,39 @@ pub struct AssertionRequest {
     /// Ask for `hmac-secret` (the PRF output).
     pub hmac_secret: bool,
     pub pin: Option<zeroize::Zeroizing<String>>,
+}
+
+/// How a request's PIN appears in `Debug`: whether there is one, never it.
+fn redacted_pin(pin: &Option<zeroize::Zeroizing<String>>) -> Option<&'static str> {
+    pin.as_ref().map(|_| "<redacted>")
+}
+
+impl std::fmt::Debug for RegistrationRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegistrationRequest")
+            .field("rp_id", &self.rp_id)
+            .field("origin", &self.origin)
+            .field("challenge", &self.challenge)
+            .field("user_handle", &self.user_handle)
+            .field("username", &self.username)
+            .field("display_name", &self.display_name)
+            .field("hmac_secret", &self.hmac_secret)
+            .field("pin", &redacted_pin(&self.pin))
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for AssertionRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AssertionRequest")
+            .field("rp_id", &self.rp_id)
+            .field("origin", &self.origin)
+            .field("challenge", &self.challenge)
+            .field("allow_credentials", &self.allow_credentials)
+            .field("hmac_secret", &self.hmac_secret)
+            .field("pin", &redacted_pin(&self.pin))
+            .finish()
+    }
 }
 
 /// The raw authenticator data libfido2 produced, before the app wraps it in
@@ -136,6 +173,18 @@ pub enum FidoError {
     /// The key asked for a PIN this call didn't carry.
     #[error("the security key needs its PIN")]
     PinRequired,
+    /// The PIN was wrong; `retries` is how many tries the key has left
+    /// before it locks the PIN, when it said.
+    #[error("the security key's PIN is wrong")]
+    PinInvalid { retries: Option<u8> },
+    /// Too many wrong PINs in a row: the key takes no more until it is
+    /// unplugged and plugged back in.
+    #[error("the security key wants to be reconnected before another PIN")]
+    PinAuthBlocked,
+    /// The PIN is locked for good: only resetting the key (which erases its
+    /// credentials) clears it.
+    #[error("the security key's PIN is locked")]
+    PinBlocked,
     /// The key or libfido2 refused the ceremony.
     #[error("the security key refused: {0}")]
     Refused(String),
@@ -145,6 +194,30 @@ pub enum FidoError {
     /// The request couldn't be made (an empty RP ID, a long name).
     #[error("the security-key request is not valid")]
     Invalid,
+}
+
+// libfido2 <fido/err.h>, the CTAP2 status codes for the PIN. Only the
+// Linux binding reads libfido2's codes; the tests read them everywhere.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const FIDO_ERR_PIN_INVALID: i32 = 0x31;
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const FIDO_ERR_PIN_BLOCKED: i32 = 0x32;
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const FIDO_ERR_PIN_AUTH_BLOCKED: i32 = 0x34;
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const FIDO_ERR_PIN_REQUIRED: i32 = 0x36;
+
+/// The PIN error a libfido2 status code is, if it is one. `retries` asks
+/// the key how many PIN tries are left, only for a wrong PIN.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn pin_error(code: i32, retries: impl FnOnce() -> Option<u8>) -> Option<FidoError> {
+    match code {
+        FIDO_ERR_PIN_REQUIRED => Some(FidoError::PinRequired),
+        FIDO_ERR_PIN_INVALID => Some(FidoError::PinInvalid { retries: retries() }),
+        FIDO_ERR_PIN_AUTH_BLOCKED => Some(FidoError::PinAuthBlocked),
+        FIDO_ERR_PIN_BLOCKED => Some(FidoError::PinBlocked),
+        _ => None,
+    }
 }
 
 /// Enumerates attached USB HID and NFC security keys. Empty where libfido2
@@ -179,6 +252,35 @@ fn validate(empty_rp: bool, username: &str) -> Result<(), FidoError> {
         return Err(FidoError::Invalid);
     }
     Ok(())
+}
+
+/// The PIN as libfido2 takes it: its bytes and a NUL, in memory that is
+/// wiped when it goes. Sized up front, so no reallocation leaves a copy
+/// behind. A PIN with a NUL in it can't be passed.
+#[cfg_attr(
+    not(target_os = "linux"),
+    allow(dead_code, reason = "tested everywhere")
+)]
+fn pin_bytes(pin: Option<&str>) -> Result<Option<zeroize::Zeroizing<Vec<u8>>>, FidoError> {
+    let Some(pin) = pin else {
+        return Ok(None);
+    };
+    if pin.as_bytes().contains(&0) {
+        return Err(FidoError::Invalid);
+    }
+    let mut bytes = zeroize::Zeroizing::new(Vec::with_capacity(pin.len() + 1));
+    bytes.extend_from_slice(pin.as_bytes());
+    bytes.push(0);
+    Ok(Some(bytes))
+}
+
+impl Drop for Assertion {
+    fn drop(&mut self) {
+        use zeroize::Zeroize as _;
+        if let Some(secret) = self.hmac_secret.as_mut() {
+            secret.zeroize();
+        }
+    }
 }
 
 // ------------------------------------------------------------- WebAuthn shapes
@@ -378,6 +480,7 @@ mod platform {
         fn fido_cbor_info_extensions_len(info: *const FidoCborInfo) -> usize;
 
         fn fido_strerr(code: c_int) -> *const c_char;
+        fn fido_dev_get_retry_count(dev: *mut FidoDev, retries: *mut c_int) -> c_int;
     }
 
     const FIDO_OPT_TRUE: c_int = 1;
@@ -398,10 +501,23 @@ mod platform {
             .into_owned()
     }
 
+    /// `code` as an error, asking `dev` for the PIN tries left when the PIN
+    /// was wrong.
+    fn error_on(dev: &Device, code: c_int) -> FidoError {
+        if let Some(error) = super::pin_error(code, || {
+            let mut retries: c_int = 0;
+            // SAFETY: `dev` is open; libfido2 writes one int.
+            let read = unsafe { fido_dev_get_retry_count(dev.0, &mut retries) };
+            (read == 0).then(|| u8::try_from(retries).ok()).flatten()
+        }) {
+            return error;
+        }
+        error(code)
+    }
+
     fn error(code: c_int) -> FidoError {
-        // FIDO_ERR_PIN_REQUIRED is 0x36 (54) and FIDO_ERR_PIN_INVALID 0x31.
-        if code == 0x36 || code == 0x31 {
-            return FidoError::PinRequired;
+        if let Some(error) = super::pin_error(code, || None) {
+            return error;
         }
         let message = text(unsafe { fido_strerr(code) });
         if message.is_empty() {
@@ -547,11 +663,7 @@ mod platform {
         let client_data =
             super::client_data_json("webauthn.create", &request.challenge, &request.origin);
         let hash = Sha256::digest(&client_data);
-        let pin = request
-            .pin
-            .as_deref()
-            .map(|pin| CString::new(pin.as_bytes()).map_err(|_| FidoError::Invalid))
-            .transpose()?;
+        let pin = super::pin_bytes(request.pin.as_deref().map(String::as_str))?;
         let use_hmac_secret = request.hmac_secret && supports_hmac_secret(&dev);
         // SAFETY: every pointer is valid for the call; libfido2 owns the credential.
         unsafe {
@@ -595,11 +707,12 @@ mod platform {
                 code = fido_dev_make_cred(
                     dev.0,
                     cred.0,
-                    pin.as_ref().map_or(std::ptr::null(), |p| p.as_ptr()),
+                    pin.as_ref()
+                        .map_or(std::ptr::null(), |p| p.as_ptr().cast::<c_char>()),
                 );
             }
             if code != 0 {
-                return Err(error(code));
+                return Err(error_on(&dev, code));
             }
             // WebAuthn uses the raw authenticator data. `*_authdata_ptr`
             // returns the CBOR byte string that wraps these bytes in the
@@ -628,11 +741,7 @@ mod platform {
             super::client_data_json("webauthn.get", &request.challenge, &request.origin);
         let hash = Sha256::digest(&client_data);
         let salt = super::ctap_salt();
-        let pin = request
-            .pin
-            .as_deref()
-            .map(|pin| CString::new(pin.as_bytes()).map_err(|_| FidoError::Invalid))
-            .transpose()?;
+        let pin = super::pin_bytes(request.pin.as_deref().map(String::as_str))?;
         let use_hmac_secret = request.hmac_secret && supports_hmac_secret(&dev);
         // SAFETY: every pointer is valid for the call; libfido2 owns the assertion.
         unsafe {
@@ -669,7 +778,8 @@ mod platform {
                 code = fido_dev_get_assert(
                     dev.0,
                     assertion.0,
-                    pin.as_ref().map_or(std::ptr::null(), |p| p.as_ptr()),
+                    pin.as_ref()
+                        .map_or(std::ptr::null(), |p| p.as_ptr().cast::<c_char>()),
                 );
             }
             // A key can advertise hmac-secret but still hold an older
@@ -682,12 +792,13 @@ mod platform {
                     code = fido_dev_get_assert(
                         dev.0,
                         assertion.0,
-                        pin.as_ref().map_or(std::ptr::null(), |p| p.as_ptr()),
+                        pin.as_ref()
+                            .map_or(std::ptr::null(), |p| p.as_ptr().cast::<c_char>()),
                     );
                 }
             }
             if code != 0 {
-                return Err(error(code));
+                return Err(error_on(&dev, code));
             }
             if fido_assert_count(assertion.0) == 0 {
                 return Err(FidoError::NoDevice);
@@ -707,17 +818,20 @@ mod platform {
                 fido_assert_user_id_ptr(assertion.0, 0),
                 fido_assert_user_id_len(assertion.0, 0),
             );
+            // The PRF output is a key: the copy libfido2's buffer is read
+            // into is wiped when it goes.
             let secret = slice_opt(
                 fido_assert_hmac_secret_ptr(assertion.0, 0),
                 fido_assert_hmac_secret_len(assertion.0, 0),
-            );
+            )
+            .map(zeroize::Zeroizing::new);
             if authenticator_data.is_empty() || signature.is_empty() || credential_id.is_empty() {
                 return Err(FidoError::Incomplete);
             }
-            let hmac_secret = match secret {
+            let hmac_secret = match secret.as_deref() {
                 Some(bytes) if bytes.len() == 32 => {
                     let mut out = [0u8; 32];
-                    out.copy_from_slice(&bytes);
+                    out.copy_from_slice(bytes);
                     Some(out)
                 }
                 _ => None,
@@ -914,7 +1028,91 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
+
+    proptest! {
+        // The other fields are lowercase or bytes, so six or more capitals
+        // only appear if the PIN does.
+        #[test]
+        fn debug_never_shows_the_pin(pin in "[A-Z]{6,63}") {
+            let registration = RegistrationRequest {
+                rp_id: "kanso.example".into(),
+                origin: "https://kanso.example".into(),
+                challenge: vec![1; 32],
+                user_handle: vec![2; 16],
+                username: "quiet-otter".into(),
+                display_name: "quiet otter".into(),
+                hmac_secret: true,
+                pin: Some(zeroize::Zeroizing::new(pin.clone())),
+            };
+            let assertion = AssertionRequest {
+                rp_id: "kanso.example".into(),
+                origin: "https://kanso.example".into(),
+                challenge: vec![1; 32],
+                allow_credentials: vec![vec![3; 16]],
+                hmac_secret: true,
+                pin: Some(zeroize::Zeroizing::new(pin.clone())),
+            };
+            for shown in [
+                format!("{registration:?}"),
+                format!("{registration:#?}"),
+                format!("{assertion:?}"),
+                format!("{assertion:#?}"),
+            ] {
+                prop_assert!(!shown.contains(&pin), "{}", shown);
+                prop_assert!(shown.contains("\"<redacted>\""), "{}", shown);
+            }
+            let without = AssertionRequest { pin: None, ..assertion };
+            let shown = format!("{without:?}");
+            prop_assert!(shown.contains("pin: None"), "{}", shown);
+        }
+    }
+
+    #[test]
+    fn each_pin_status_is_its_own_error() {
+        let asked = std::cell::Cell::new(0);
+        let retries = |left| {
+            asked.set(asked.get() + 1);
+            left
+        };
+        assert_eq!(
+            pin_error(FIDO_ERR_PIN_INVALID, || retries(Some(2))),
+            Some(FidoError::PinInvalid { retries: Some(2) })
+        );
+        assert_eq!(
+            pin_error(0x31, || retries(None)),
+            Some(FidoError::PinInvalid { retries: None })
+        );
+        assert_eq!(asked.get(), 2);
+        assert_eq!(
+            pin_error(0x36, || retries(Some(8))),
+            Some(FidoError::PinRequired)
+        );
+        assert_eq!(
+            pin_error(0x32, || retries(Some(8))),
+            Some(FidoError::PinBlocked)
+        );
+        assert_eq!(
+            pin_error(0x34, || retries(Some(8))),
+            Some(FidoError::PinAuthBlocked)
+        );
+        // Only a wrong PIN asks the key for its count.
+        assert_eq!(asked.get(), 2);
+        for other in [0, 0x16, 0x27, 0x33, 0x35, 0x37, -7] {
+            assert_eq!(pin_error(other, || retries(Some(1))), None, "{other}");
+        }
+        assert_eq!(asked.get(), 2);
+    }
+
+    #[test]
+    fn the_pin_is_passed_with_one_nul_and_never_with_an_inner_one() {
+        assert_eq!(pin_bytes(None), Ok(None));
+        let pin = pin_bytes(Some("4821")).unwrap().unwrap();
+        assert_eq!(pin.as_slice(), b"4821\0");
+        assert_eq!(pin_bytes(Some("48\x0021")), Err(FidoError::Invalid));
+    }
 
     #[test]
     fn ctap_salt_is_the_webauthn_hash_of_the_prf_input() {

@@ -2858,3 +2858,157 @@ fn a_sync_asked_for_during_a_stale_one_still_runs(cx: &mut TestAppContext) {
     });
     assert!(ok(&synced(cx)), "the new session syncs");
 }
+
+// MARK: Passkeys and security keys
+
+impl Mac {
+    /// The page's passkey ceremony from now on: `key` stands in for the
+    /// platform sheet (or a security key).
+    fn use_passkey(&self, cx: &mut TestAppContext, key: Arc<kanso_sync::TestAuthenticator>) {
+        cx.update(|cx| cx.global_mut::<Services>().test_ceremony = Some(key));
+    }
+
+    fn passkey_sign_up(&self, cx: &mut TestAppContext, username: &str) -> Receiver<Progress> {
+        let (window, username) = (self.window, username.to_owned());
+        cx.update(|cx| {
+            account_flow::passkey_sign_up(
+                kanso_sync::MEMORY_PASSKEY_SERVER.into(),
+                account_flow::PasskeyMethod::Platform { window: 0 },
+                username,
+                window,
+                cx,
+            )
+        })
+    }
+
+    fn passkey_sign_in(&self, cx: &mut TestAppContext) -> Receiver<Progress> {
+        let window = self.window;
+        cx.update(|cx| {
+            account_flow::passkey_sign_in(
+                kanso_sync::MEMORY_PASSKEY_SERVER.into(),
+                account_flow::PasskeyMethod::Platform { window: 0 },
+                None,
+                window,
+                cx,
+            )
+        })
+    }
+}
+
+/// A ceremony that ends one way, as a dismissed or missing sheet does.
+struct Ends(kanso_sync::PasskeyCeremonyError);
+
+impl kanso_sync::PasskeyCeremony for Ends {
+    fn register(
+        &self,
+        _: &kanso_sync::PasskeyRegistrationChallenge,
+    ) -> Result<kanso_sync::PasskeyRegistration, kanso_sync::PasskeyCeremonyError> {
+        Err(self.0)
+    }
+
+    fn assert(
+        &self,
+        _: &kanso_sync::PasskeyAssertionChallenge,
+    ) -> Result<kanso_sync::PasskeyAssertion, kanso_sync::PasskeyCeremonyError> {
+        Err(self.0)
+    }
+}
+
+/// Create with a passkey: the account, its recovery key and a signed-in
+/// Mac; then another Mac signs in with the same (synced) passkey and its
+/// PRF opens the key, so it is signed in without approval.
+#[gpui_kit::test]
+fn a_passkey_creates_the_account_and_unlocks_a_second_mac(
+    cx: &mut TestAppContext,
+    cx_b: &mut TestAppContext,
+) {
+    let server = Arc::new(MemoryServer::new());
+    let passkey = Arc::new(kanso_sync::TestAuthenticator::new(21));
+    let a = mac(cx, &server, "Studio", 1);
+    a.use_passkey(cx, passkey.clone());
+    let rx = a.passkey_sign_up(cx, "quiet-otter-4821");
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert_eq!(account(cx), signed_in_as("quiet-otter-4821"));
+    assert!(pending_key(cx).is_some(), "the recovery key shows");
+    assert!(a.bound_to().is_some());
+    assert!(ok(&synced(cx)));
+
+    let b = mac(cx_b, &server, "Laptop", 0);
+    b.use_passkey(cx_b, passkey);
+    let rx = b.passkey_sign_in(cx_b);
+    assert_eq!(finish(cx_b, rx), Ok(()));
+    assert_eq!(account(cx_b), signed_in_as("quiet-otter-4821"));
+    assert_eq!(b.bound_to(), a.bound_to());
+    assert!(ok(&synced(cx_b)));
+    assert_eq!(b.notes(), 1, "the first Mac's note arrives");
+}
+
+/// A passkey without PRF signs in, but the second Mac waits locked for
+/// approval or the recovery key.
+#[gpui_kit::test]
+fn a_passkey_without_prf_signs_in_locked(cx: &mut TestAppContext, cx_b: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let passkey = Arc::new(kanso_sync::TestAuthenticator::new(22).without_prf());
+    let a = mac(cx, &server, "Studio", 0);
+    a.use_passkey(cx, passkey.clone());
+    let rx = a.passkey_sign_up(cx, "quiet-otter-4821");
+    assert_eq!(finish(cx, rx), Ok(()));
+
+    let b = mac(cx_b, &server, "Laptop", 0);
+    b.use_passkey(cx_b, passkey);
+    let rx = b.passkey_sign_in(cx_b);
+    assert_eq!(finish(cx_b, rx), Ok(()));
+    assert_eq!(
+        account(cx_b),
+        AccountState::SignedInLocked {
+            username: "quiet-otter-4821".into()
+        }
+    );
+    assert!(cx_b.read(|cx| cx.global::<Services>().has_locked_session()));
+}
+
+/// A dismissed sheet leaves the page as it was; a sheet that can't run
+/// says so once and the passkey buttons go.
+#[gpui_kit::test]
+fn a_dismissed_or_missing_sheet_signs_nothing_in(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    cx.update(|cx| {
+        cx.global_mut::<Services>().test_ceremony =
+            Some(Arc::new(Ends(kanso_sync::PasskeyCeremonyError::Cancelled)))
+    });
+    let rx = a.passkey_sign_in(cx);
+    assert_eq!(finish(cx, rx), Ok(()));
+    let rx = a.passkey_sign_up(cx, "quiet-otter-4821");
+    assert_eq!(finish(cx, rx), Ok(()));
+    assert_eq!(account(cx), AccountState::SignedOut);
+    assert!(pending_key(cx).is_none());
+
+    cx.update(|cx| {
+        cx.global_mut::<Services>().test_ceremony = Some(Arc::new(Ends(
+            kanso_sync::PasskeyCeremonyError::Unavailable,
+        )))
+    });
+    let rx = a.passkey_sign_in(cx);
+    assert_eq!(finish(cx, rx), Err(words::PASSKEY_UNAVAILABLE.to_owned()));
+    assert!(cx.read(|cx| cx.global::<Services>().platform_passkeys_failed));
+
+    cx.update(|cx| {
+        cx.global_mut::<Services>().test_ceremony =
+            Some(Arc::new(Ends(kanso_sync::PasskeyCeremonyError::Failed)))
+    });
+    let rx = a.passkey_sign_in(cx);
+    assert_eq!(finish(cx, rx), Err(words::PASSKEY_FAILED.to_owned()));
+    assert_eq!(account(cx), AccountState::SignedOut);
+}
+
+/// A passkey the server doesn't know is refused in a passkey's words.
+#[gpui_kit::test]
+fn an_unknown_passkey_is_refused(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    a.use_passkey(cx, Arc::new(kanso_sync::TestAuthenticator::new(23)));
+    let rx = a.passkey_sign_in(cx);
+    assert_eq!(finish(cx, rx), Err(words::PASSKEY_UNKNOWN.to_owned()));
+    assert_eq!(account(cx), AccountState::SignedOut);
+}

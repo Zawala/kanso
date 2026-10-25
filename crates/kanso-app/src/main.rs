@@ -94,6 +94,8 @@ mod ocr;
 mod origin;
 mod pairing;
 mod palette;
+mod passkey_accounts;
+mod passkey_ceremony;
 mod paths;
 mod pouch_import;
 mod preview;
@@ -107,6 +109,7 @@ mod query_view_ui;
 mod related;
 mod reminders;
 mod replace;
+mod security_key_flow;
 mod selection;
 mod services;
 mod settings;
@@ -152,6 +155,10 @@ mod transcribe;
 #[cfg(test)]
 mod ui_tests;
 mod updates;
+// macOS finishes Apple's sign-in in its own sheet: only the forwarding of a
+// `kanso://` argument and the tests reach the router there.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+mod url_callback;
 mod vim;
 mod voice;
 mod voice_commands;
@@ -222,12 +229,28 @@ fn parse_args() -> Result<Args> {
 }
 
 /// Reads the command line after the program name.
+///
+/// A `kanso://` link counts only when it is the whole command line, the way
+/// the desktop entry and the installer pass it (`kanso <url>`): the
+/// operating system passes the link, so flags beside it, such as a
+/// `--data-dir` naming the folder to forward to, can't come from Kanso.
 fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
     let mut command = None;
     let mut data_dir = None;
     let mut rest = Vec::new();
     let mut after_update = false;
-    let mut args = args.into_iter();
+    let mut args = args.into_iter().peekable();
+    if let Some(url) = args.next_if(|arg| url_callback::is_callback_argument(arg)) {
+        if args.next().is_some() {
+            bail!("a kanso:// link is passed on its own");
+        }
+        return Ok(Args {
+            command: Some(url),
+            data_dir: paths::default_data_dir(),
+            rest,
+            after_update,
+        });
+    }
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--data-dir" => {
@@ -239,6 +262,9 @@ fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
             "--after-update" => after_update = true,
             // macOS adds this when launching from Finder.
             arg if arg.starts_with("-psn_") => {}
+            arg if command.is_none() && url_callback::is_callback_argument(arg) => {
+                bail!("a kanso:// link is passed on its own")
+            }
             _ if command.is_none() && !arg.starts_with('-') => command = Some(arg),
             _ => rest.push(arg),
         }
@@ -259,6 +285,10 @@ fn main() -> Result<()> {
     let args = parse_args()?;
     match args.command.as_deref() {
         None => run_app(args.data_dir, args.after_update),
+        Some(url) if url_callback::is_callback_argument(url) => {
+            forward_callback(&args.data_dir, url);
+            Ok(())
+        }
         Some("serve") => serve(args.data_dir),
         Some("import") => library_import::run_cli(&args.data_dir, &args.rest),
         Some("theme") => theme_import::run_cli(&args.data_dir, &args.rest),
@@ -270,6 +300,16 @@ fn main() -> Result<()> {
             Ok(())
         }
         Some(other) => bail!("unknown command `{other}`\n\n{USAGE}{DATA_DIR_NOTE}"),
+    }
+}
+
+/// The browser opened `kanso://…` (Sign in with Apple on Windows and Linux)
+/// and the system started this process with it: hand it to the Kanso that
+/// is running, which accepts it only for a sign-in it is waiting on. The URL
+/// carries a secret, so it is never printed.
+fn forward_callback(data_dir: &std::path::Path, url: &str) {
+    if let Err(error) = url_callback::forward(data_dir, url) {
+        eprintln!("kanso: couldn't pass the sign-in back to Kanso: {error}");
     }
 }
 
@@ -345,6 +385,12 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
     };
     let config = load_config(&data_dir)?;
     let store = Arc::new(Store::open(paths::db_path(&data_dir))?);
+    // Sign in with Apple returns through the browser and `kanso://` outside
+    // macOS; a second `kanso` started with the URL forwards it here.
+    #[cfg(not(target_os = "macos"))]
+    if let Err(err) = url_callback::listen(&data_dir, &url_callback::ROUTER) {
+        eprintln!("kanso: Sign in with Apple can't return to Kanso: {err}");
+    }
 
     // A daily snapshot of the database, off the main thread.
     let backup_store = store.clone();

@@ -23,6 +23,10 @@ async-channel.workspace = true
 base64.workspace = true
 chrono.workspace = true
 fastrand.workspace = true
+getrandom.workspace = true
+# Mozilla's Public Suffix List (ICANN and private sections), compiled in:
+# a passkey relying party may not be a public suffix such as workers.dev.
+psl = "2"
 # Icon theme packages and extensions come as .tgz / .tar.gz, unpacked in
 # process with caps. Both are already built for the updater.
 flate2 = "1.1"
@@ -31,6 +35,8 @@ flate2 = "1.1"
 # key grab on Linux.
 global-hotkey = "0.9"
 gpui-kit.workspace = true
+# Parses a provider's page before the system opener sees it.
+url = "2.5"
 # HTML on the clipboard pasted as Markdown (Apache-2.0).
 htmd = "0.5.6"
 # Pasted images the API doesn't take (TIFF, WebP, BMP) are stored as PNG.
@@ -45,6 +51,9 @@ kanso-import.workspace = true
 kanso-render.workspace = true
 kanso-server.workspace = true
 kanso-sync.workspace = true
+# Linux security keys (docs/ACCOUNTS.md › Where the ceremony runs): the
+# libfido2 CTAP2 client. Pure everywhere else, where it finds no keys.
+kanso-fido = { path = "../kanso-fido" }
 kanso-update.workspace = true
 kanso-voice.workspace = true
 kanso-store.workspace = true
@@ -80,9 +89,13 @@ unicode-width = "0.2"
 ureq = "3.4"
 # Vim keys step over a character as it is read (a grapheme cluster).
 unicode-segmentation = "1.13"
+# A passkey's PRF output and a security key's PIN are wiped after use.
+zeroize.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+# TestAuthenticator: a software passkey MemoryServer verifies.
+kanso-sync = { workspace = true, features = ["test-support"] }
 # gpui-kit's own test-support feature also resolves its alternative GPUI
 # backend, whose cocoa pin conflicts; enabling it on each layer is equivalent.
 gpui-pre = { version = "=0.3.9", features = ["test-support"] }
@@ -96,6 +109,15 @@ rusqlite.workspace = true
 tempfile.workspace = true
 # Names the item type of a test Keychain that wraps MemorySecrets.
 zeroize.workspace = true
+
+# The PRF input, CTAP salt and client data are written in three crates; a
+# test keeps them equal (`key_constants_tests.rs`).
+kanso-webauthn = { path = "../kanso-webauthn" }
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+# Native platform passkeys: AuthenticationServices on macOS, webauthn.h on
+# Windows (`passkey_ceremony.rs`). Linux has no platform passkeys.
+kanso-webauthn = { path = "../kanso-webauthn" }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 # Real text shaping for the PNG snapshots, without the main-thread-only platform.
@@ -118,6 +140,8 @@ objc2-vision = { version = "0.3", default-features = false, features = ["std", "
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-app-kit", "objc2-core-foundation", "WKWebView", "WKWebViewConfiguration", "WKPDFConfiguration", "WKNavigation"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+# The window a passkey sheet belongs to (its HWND).
+raw-window-handle = "0.6"
 # Windows Hello unlocks locked notes (`touch_id.rs`): UserConsentVerifier,
 # asked over Kanso's window. The version GPUI already builds.
 windows = { version = "0.62", features = [

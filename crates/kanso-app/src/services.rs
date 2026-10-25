@@ -302,6 +302,20 @@ pub struct Services {
     pub auth_generation: u64,
     pub provider_signup: Option<ProviderSignup>,
     pub provider_wait: Option<ProviderWait>,
+    /// The platform's passkey ceremony failed as unavailable this launch:
+    /// the passkey buttons go, and the page said why (docs/ACCOUNTS.md ›
+    /// Where the ceremony runs).
+    pub platform_passkeys_failed: bool,
+    /// Whether the platform can run a passkey ceremony, as tests and
+    /// snapshots set it; `None` asks the platform.
+    pub platform_passkeys: Option<bool>,
+    /// The security keys attached, as the sign-in page last enumerated them
+    /// (Linux; always empty elsewhere).
+    pub security_keys: Vec<kanso_fido::SecurityKeyDevice>,
+    /// Tests: the ceremony passkey tasks run instead of the platform's or a
+    /// security key's.
+    #[cfg(test)]
+    pub test_ceremony: Option<Arc<dyn kanso_sync::PasskeyCeremony + Send + Sync>>,
     /// A provider-authenticated token awaiting a local key, approval, or
     /// recovery. It stays outside `AccountState` and is never a sync session.
     pub locked_session: Option<Arc<kanso_sync::LockedSession>>,
