@@ -61,8 +61,43 @@ impl std::fmt::Display for BrowserError {
 
 impl std::error::Error for BrowserError {}
 
-/// Opens `url` in the system browser. Never a web view.
+/// The URL the system opener may be given: an https page, or plain http to
+/// this device, with no user info, whitespace or control characters, in its
+/// parsed form. `kanso-sync` already pins a provider start's page to the
+/// provider's host or the server's; this is the second check, so no caller
+/// can hand `open`, the Windows URL handler (which also opens files, UNC
+/// paths and `search-ms:`/`ms-*:` links) or `xdg-open` (which reads a
+/// leading `-` as an option) something else.
+pub fn external_url(text: &str) -> Result<String, BrowserError> {
+    let refuse = || BrowserError::Io("Kanso won't open that page".into());
+    if text.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(refuse());
+    }
+    let url = url::Url::parse(text).map_err(|_| refuse())?;
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(refuse());
+    }
+    let allowed = match url.scheme() {
+        "https" => url.host_str().is_some(),
+        "http" => match url.host() {
+            Some(url::Host::Domain(host)) => host == "localhost",
+            Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+            Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+            None => false,
+        },
+        _ => false,
+    };
+    if !allowed {
+        return Err(refuse());
+    }
+    Ok(url.into())
+}
+
+/// Opens `url` in the system browser, once [`external_url`] allows it.
+/// Never a web view.
 pub fn open_external(url: &str) -> Result<(), BrowserError> {
+    let url = external_url(url)?;
+    let url = url.as_str();
     #[cfg(target_os = "macos")]
     {
         let status = std::process::Command::new("open")
@@ -500,6 +535,34 @@ pub fn google_device_page(start: &GoogleStart) -> Result<(), BrowserError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_web_pages_reach_the_system_opener() {
+        assert_eq!(
+            external_url("https://appleid.apple.com/auth/authorize?a=1&b=2").unwrap(),
+            "https://appleid.apple.com/auth/authorize?a=1&b=2"
+        );
+        assert!(external_url("http://127.0.0.1:8787/device").is_ok());
+        assert!(external_url("http://localhost:8787/device").is_ok());
+        for bad in [
+            "file:///C:/Windows/System32/calc.exe",
+            "\\\\evil\\share\\run.exe",
+            "search-ms:query=x&crumb=location:\\\\evil\\s",
+            "ms-settings:",
+            "ms-msdt:/id",
+            "-aflag",
+            "--help",
+            "javascript:alert(1)",
+            "kanso://auth/apple?flow=x&s=y",
+            "http://evil.example/page",
+            "https://user:pass@evil.example/",
+            " https://example.com/",
+            "https://example.com/\npage",
+            "",
+        ] {
+            assert!(external_url(bad).is_err(), "{bad:?}");
+        }
+    }
 
     #[test]
     fn the_loopback_parser_needs_the_right_path_and_state() {
