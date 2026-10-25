@@ -9,7 +9,10 @@ use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 use gpui_kit::component::WindowExt as _;
-use gpui_kit::{AnyWindowHandle, AppContext as _, Modifiers, TestAppContext, VisualTestContext};
+use gpui_kit::{
+    AnyWindowHandle, AppContext as _, InteractiveElement as _, Modifiers, ParentElement as _,
+    TestAppContext, VisualTestContext,
+};
 use kanso_acp::fake::{self, Script};
 use kanso_acp::{AcpEvent, AgentProcess, Limits, PermissionPolicy};
 
@@ -297,4 +300,44 @@ fn a_request_that_times_out_behind_its_sheet_closes_it(cx: &mut TestAppContext) 
     cx.executor().advance_clock(Duration::from_millis(300));
     cx.run_until_parked();
     assert!(!f.sheet_open(cx));
+}
+
+#[gpui_kit::test]
+fn a_request_that_times_out_under_another_dialog_leaves_that_dialog_open(cx: &mut TestAppContext) {
+    let f = setup(cx, true);
+    let limits = Limits {
+        permission: Duration::from_millis(200),
+        ..Limits::default()
+    };
+    let asking = ask(Script::Permission, "Fake Agent", limits, &f.policy);
+    f.wait_for_sheet(cx);
+    // Another dialog opens over the sheet.
+    f.window()
+        .update(cx, |_, window, cx| {
+            window.open_alert_dialog(cx, |alert, _, _| {
+                alert.title("Other").description(
+                    gpui_kit::div()
+                        .debug_selector(|| "other-dialog".into())
+                        .child("Another dialog"),
+                )
+            })
+        })
+        .unwrap();
+    f.draw(cx);
+    assert_eq!(asking.heard(cx), "permission=no");
+    cx.executor().advance_clock(Duration::from_millis(300));
+    cx.run_until_parked();
+    // The other dialog is still up; the sheet under it says its request
+    // ended once it is back in front, and allowing then allows nothing.
+    assert!(f.shows(cx, "other-dialog"));
+    f.window()
+        .update(cx, |_, window, cx| window.close_dialog(cx))
+        .unwrap();
+    f.draw(cx);
+    assert!(f.sheet_open(cx));
+    assert!(f.shows(cx, "permission-tool"));
+    f.click(cx, "permission-allow");
+    assert!(!f.sheet_open(cx));
+    // The agent was told no once, and nothing more after the late click.
+    assert!(asking.still_waiting(cx));
 }

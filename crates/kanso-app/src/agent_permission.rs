@@ -29,6 +29,9 @@ use crate::zoom::px;
 /// The line every sheet carries.
 pub const NO_SANDBOX: &str = "Kanso can't see or limit what the agent's own tools do.";
 
+/// What a sheet says once its request ended behind another dialog.
+pub const ENDED: &str = "This request has ended. Nothing was allowed.";
+
 /// The longest tool title shown; the agent chooses the title, so it is cut.
 const TITLE_MAX: usize = 240;
 
@@ -123,6 +126,9 @@ pub(crate) fn start(cx: &mut App) -> PermissionPolicy {
 struct Sheet {
     reply: RefCell<Option<PermissionReply>>,
     done: async_channel::Sender<()>,
+    /// The dialog's own focus, taken when it first draws, so the sheet
+    /// closes itself only when it is the dialog in front.
+    focus: RefCell<Option<FocusHandle>>,
 }
 
 impl Sheet {
@@ -157,6 +163,7 @@ async fn present(ask: Ask, cx: &mut AsyncApp) {
     let sheet = Rc::new(Sheet {
         reply: RefCell::new(Some(ask.reply)),
         done,
+        focus: RefCell::new(None),
     });
     let request = ask.request;
     let shown = cx.update(|cx| {
@@ -183,7 +190,8 @@ async fn present(ask: Ask, cx: &mut AsyncApp) {
                 return;
             }
             if watched.is_over() {
-                cx.update(close_sheet);
+                let sheet = watched.clone();
+                cx.update(|cx| close_sheet(&sheet, cx));
                 watched.answer(Input::Dismiss);
                 return;
             }
@@ -193,11 +201,24 @@ async fn present(ask: Ask, cx: &mut AsyncApp) {
     drop(watch);
 }
 
-/// Closes the sheet: its request ended behind it.
-fn close_sheet(cx: &mut App) {
+/// Closes the sheet: its request ended behind it. Only when it is the
+/// dialog in front: another dialog opened over it is left alone, and the
+/// sheet, once back in front, says its request ended.
+fn close_sheet(sheet: &Sheet, cx: &mut App) {
     if let Some((window, _)) = crate::workspace::main_workspace(cx) {
         window
-            .update(cx, |_, window, cx| window.close_dialog(cx))
+            .update(cx, |_, window, cx| {
+                let in_front = sheet
+                    .focus
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|focus| focus.contains_focused(window, cx));
+                if in_front {
+                    window.close_dialog(cx);
+                } else {
+                    window.refresh();
+                }
+            })
             .ok();
     }
 }
@@ -210,8 +231,12 @@ fn open_sheet(request: &PermissionRequest, sheet: Rc<Sheet>, window: &mut Window
     );
     let tool = tool_line(request);
     let kind = kind_line(request);
-    window.open_alert_dialog(cx, move |alert, _, cx| {
+    window.open_alert_dialog(cx, move |alert, window, cx| {
         let colors = Colors::get(cx);
+        if sheet.focus.borrow().is_none() {
+            *sheet.focus.borrow_mut() = window.focused(cx);
+        }
+        let ended = sheet.is_over();
         let reject = sheet.clone();
         let allow = sheet.clone();
         let enter = sheet.clone();
@@ -244,7 +269,7 @@ fn open_sheet(request: &PermissionRequest, sheet: Rc<Sheet>, window: &mut Window
                             .text_size(px(12.5))
                             .line_height(px(17.))
                             .text_color(colors.text_secondary)
-                            .child(NO_SANDBOX),
+                            .child(if ended { ENDED } else { NO_SANDBOX }),
                     ),
             )
             .footer(
