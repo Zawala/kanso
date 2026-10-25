@@ -1774,6 +1774,11 @@ impl ServerState {
         )
         .ok_or(ApiError::InvalidCredentials)?;
         if !counts_up(row.sign_count, count) {
+            // A possible clone: the challenge is used up, as a proof's is.
+            self.passkey_flows
+                .get_mut(&r.flow_id)
+                .expect("flow was checked")
+                .consumed_at = Some(now);
             return Err(ApiError::InvalidCredentials);
         }
         // The account is checked after the signature.
