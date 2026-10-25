@@ -34,12 +34,18 @@ use crate::manifest::is_valid_id;
 use crate::model::Installed;
 use crate::registry_model::{Bundle, Entry, INDEX_SCHEMA, Index, Offer, Revocation};
 
+/// The repository the directory is published from, as `owner/name`.
+pub const REPOSITORY: &str = "iamngoni/kanso-plugins";
+/// The only host the app asks: GitHub's raw file server.
+pub const HOST: &str = "raw.githubusercontent.com";
+/// Where in the repository the published directory lives.
+const DIRECTORY_PATH: &str = "main/directory";
 /// The directory's index.
-pub const INDEX_URL: &str = "https://plugins.kansoapp.app/index.json";
+pub const INDEX_URL: &str =
+    "https://raw.githubusercontent.com/iamngoni/kanso-plugins/main/directory/index.json";
 /// Its signature.
-pub const SIGNATURE_URL: &str = "https://plugins.kansoapp.app/index.json.sig";
-/// The only host the app asks.
-pub const HOST: &str = "plugins.kansoapp.app";
+pub const SIGNATURE_URL: &str =
+    "https://raw.githubusercontent.com/iamngoni/kanso-plugins/main/directory/index.json.sig";
 /// The largest index read, in bytes.
 pub const MAX_INDEX_BYTES: u64 = 4 * 1024 * 1024;
 /// The largest signature read, in bytes.
@@ -64,7 +70,7 @@ const WITHDRAWN: &str = "The directory withdrew this version.";
 /// The address of a published bundle. `id` and `version` must already be
 /// valid; they are checked again where the index is checked. Pure.
 pub fn bundle_url(id: &str, version: &str) -> String {
-    format!("https://{HOST}/bundles/{id}/{version}.kansoplugin")
+    format!("https://{HOST}/{REPOSITORY}/{DIRECTORY_PATH}/bundles/{id}/{version}.kansoplugin")
 }
 
 /// Why the directory, an index or a bundle was refused.
@@ -534,7 +540,7 @@ impl Endpoint {
     /// The real directory.
     pub fn directory() -> Endpoint {
         Endpoint {
-            base: format!("https://{HOST}"),
+            base: format!("https://{HOST}/{REPOSITORY}/{DIRECTORY_PATH}"),
             loopback: None,
         }
     }
@@ -598,10 +604,17 @@ impl Endpoint {
                     && url.host() == only.host()
                     && url.port_or_known_default() == only.port_or_known_default()
             }
+            // That host, under this repository only: another repository on
+            // the same server is anyone's.
             None => {
                 url.scheme() == "https"
                     && url.port().is_none()
                     && url.host_str().is_some_and(|h| h.eq_ignore_ascii_case(HOST))
+                    && url
+                        .path()
+                        .strip_prefix(&format!("/{REPOSITORY}/"))
+                        .is_some_and(|rest| !rest.is_empty())
+                    && url.query().is_none()
             }
         }
     }
@@ -848,7 +861,7 @@ mod tests {
     fn urls_are_fixed() {
         assert_eq!(
             bundle_url(ID, "1.2.0"),
-            "https://plugins.kansoapp.app/bundles/com.example.words/1.2.0.kansoplugin"
+            "https://raw.githubusercontent.com/iamngoni/kanso-plugins/main/directory/bundles/com.example.words/1.2.0.kansoplugin"
         );
         assert_eq!(SIGNATURE_URL, format!("{INDEX_URL}.sig"));
     }
@@ -1050,6 +1063,22 @@ mod tests {
     }
 
     proptest! {
+        /// Invariant: the real endpoint allows a URL only on that host,
+        /// over HTTPS, under the directory's repository.
+        #[test]
+        fn prop_the_endpoint_stays_in_its_repository(owner in "[a-z-]{1,12}", repo in "[a-z-]{1,16}", rest in "[a-z0-9/._-]{0,30}") {
+            let url = format!("https://raw.githubusercontent.com/{owner}/{repo}/{rest}");
+            let Ok(parsed) = Url::parse(&url) else { return Ok(()) };
+            let allowed = Endpoint::directory().allows(&parsed);
+            if allowed {
+                let under = parsed.path().strip_prefix("/iamngoni/kanso-plugins/");
+                prop_assert!(under.is_some_and(|r| !r.is_empty()), "{}", url);
+            }
+            if format!("{owner}/{repo}") != REPOSITORY {
+                prop_assert!(!allowed, "{}", url);
+            }
+        }
+
         /// Invariant: a bundle whose manifest differs from its entry in ID,
         /// version, author key or permissions never verifies, even when the
         /// hash and signature are the entry's own.
@@ -1294,11 +1323,17 @@ mod tests {
         assert!(ok(&real, INDEX_URL));
         assert!(ok(&real, &bundle_url(ID, "1.0.0")));
         for bad in [
-            "http://plugins.kansoapp.app/index.json",
-            "https://plugins.kansoapp.app:8443/index.json",
-            "https://evil.example/index.json",
-            "https://plugins.kansoapp.app.evil.example/index.json",
-            "https://user@plugins.kansoapp.app/index.json",
+            "http://raw.githubusercontent.com/iamngoni/kanso-plugins/main/directory/index.json",
+            "https://raw.githubusercontent.com:8443/iamngoni/kanso-plugins/main/directory/index.json",
+            "https://evil.example/iamngoni/kanso-plugins/main/directory/index.json",
+            "https://raw.githubusercontent.com.evil.example/iamngoni/kanso-plugins/main/index.json",
+            "https://user@raw.githubusercontent.com/iamngoni/kanso-plugins/main/index.json",
+            "https://raw.githubusercontent.com/someone/kanso-plugins/main/directory/index.json",
+            "https://raw.githubusercontent.com/iamngoni/kanso-plugins-evil/main/index.json",
+            "https://raw.githubusercontent.com/iamngoni/kanso-plugins/../other/main/index.json",
+            "https://raw.githubusercontent.com/iamngoni/kanso-plugins/%2e%2e/other/index.json",
+            "https://raw.githubusercontent.com/iamngoni/kanso-plugins/",
+            "https://raw.githubusercontent.com/iamngoni/kanso-plugins/main/index.json?x=1",
             "http://127.0.0.1/index.json",
         ] {
             assert!(!ok(&real, bad), "{bad}");

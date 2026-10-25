@@ -108,6 +108,10 @@ pub struct Seal {
     /// [`payload_digest`] of the payload, taken right after unpacking and
     /// before the code-signature check.
     pub(crate) digest: Option<String>,
+    /// [`payload_digest`] of the plugin host staged beside the payload,
+    /// taken at the same time; `None` when the update has no host. Only a
+    /// host with a digest here is ever swapped in.
+    pub(crate) host_digest: Option<String>,
     /// The staging folder's device and inode, where the system has them.
     pub(crate) stage_id: Option<(u64, u64)>,
 }
@@ -144,11 +148,15 @@ pub fn prepare(
         // The digest first: whatever the signature check then sees, only
         // these bytes are ever swapped in.
         let digest = payload_digest(&payload)?;
+        let host_digest = match find_host(&payload, install.platform)? {
+            Some(host) => Some(payload_digest(&host)?),
+            None => None,
+        };
         verify(&payload).map_err(StageError::CodeSignature)?;
-        Ok((payload, digest))
+        Ok((payload, digest, host_digest))
     })();
     fs::remove_file(&archive).ok();
-    let (payload, digest) = match result {
+    let (payload, digest, host_digest) = match result {
         Ok(found) => found,
         Err(err) => {
             fs::remove_dir_all(&unpacked).ok();
@@ -164,6 +172,7 @@ pub fn prepare(
         notes: update.notes.clone(),
         seal: Seal {
             digest: Some(digest),
+            host_digest,
             stage_id,
         },
     };
@@ -511,7 +520,7 @@ fn copy_error(e: io::Error) -> StageError {
 
 /// What in an unpacked update replaces the install: the one `.app` on
 /// macOS; `kanso` or `kanso.exe`, at the top or in the one folder there,
-/// elsewhere.
+/// elsewhere. The plugin host beside it is found by [`find_host`].
 pub fn find_payload(unpacked: &Path, platform: Platform) -> Result<PathBuf, StageError> {
     let top: Vec<PathBuf> = fs::read_dir(unpacked)?
         .flatten()
@@ -549,6 +558,33 @@ pub fn find_payload(unpacked: &Path, platform: Platform) -> Result<PathBuf, Stag
         }
     }
     Err(bad(&format!("no {exe} in it")))
+}
+
+/// The plugin host staged beside `payload` (`kanso-plugin-host` or
+/// `kanso-plugin-host.exe`), if the update has one. Older archives have
+/// none, and macOS keeps its host inside the `.app`, so both give `None`. A
+/// host that is a folder, a link or anything but a plain file is refused.
+pub fn find_host(payload: &Path, platform: Platform) -> Result<Option<PathBuf>, StageError> {
+    if platform.is_bundle() {
+        return Ok(None);
+    }
+    let host = payload.with_file_name(platform.host_name());
+    match fs::symlink_metadata(&host) {
+        Ok(meta) if meta.is_file() => Ok(Some(host)),
+        Ok(_) => Err(StageError::BadArchive(format!(
+            "{} isn't a plain file",
+            platform.host_name()
+        ))),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err.into()),
+    }
+}
+
+/// Where the sealed plugin host is in the staging folder: beside the
+/// payload, and only if the seal says [`prepare`] found one.
+pub fn staged_host(pending: &Pending, platform: Platform) -> Option<PathBuf> {
+    pending.seal.host_digest.as_ref()?;
+    Some(pending.payload.with_file_name(platform.host_name()))
 }
 
 fn is_hidden(path: &Path) -> bool {
@@ -783,6 +819,202 @@ mod tests {
         );
     }
 
+    /// Unpacks `bytes` as a `kind` archive into a fresh folder.
+    fn unpacked(dir: &Path, kind: ArchiveKind, bytes: &[u8]) -> PathBuf {
+        let archive = dir.join("a.archive");
+        write(&archive, bytes);
+        let dest = dir.join("out");
+        extract(&archive, kind, &dest).unwrap();
+        dest
+    }
+
+    #[test]
+    fn a_host_beside_kanso_is_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = unpacked(
+            dir.path(),
+            ArchiveKind::TarGz,
+            &tar_gz(&[
+                ("Kanso-0.2.0-linux-x64/kanso", b"\x7fELF", 0o755),
+                ("Kanso-0.2.0-linux-x64/kanso-plugin-host", b"\x7fELF", 0o755),
+            ]),
+        );
+        let payload = find_payload(&dest, Platform::LinuxX64).unwrap();
+        assert_eq!(
+            find_host(&payload, Platform::LinuxX64).unwrap(),
+            Some(dest.join("Kanso-0.2.0-linux-x64/kanso-plugin-host"))
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let dest = unpacked(
+            dir.path(),
+            ArchiveKind::Zip,
+            &zip(&[("kanso.exe", b"MZ"), ("kanso-plugin-host.exe", b"MZ")]),
+        );
+        let payload = find_payload(&dest, Platform::WindowsX64).unwrap();
+        assert_eq!(
+            find_host(&payload, Platform::WindowsX64).unwrap(),
+            Some(dest.join("kanso-plugin-host.exe"))
+        );
+    }
+
+    #[test]
+    fn an_older_archive_has_no_host() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = unpacked(dir.path(), ArchiveKind::Zip, &zip(&[("kanso.exe", b"MZ")]));
+        let payload = find_payload(&dest, Platform::WindowsX64).unwrap();
+        assert_eq!(find_host(&payload, Platform::WindowsX64).unwrap(), None);
+    }
+
+    #[test]
+    fn a_host_in_another_folder_is_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = unpacked(
+            dir.path(),
+            ArchiveKind::TarGz,
+            &tar_gz(&[
+                ("kanso", b"\x7fELF", 0o755),
+                ("bin/kanso-plugin-host", b"\x7fELF", 0o755),
+                ("Other/kanso-plugin-host", b"\x7fELF", 0o755),
+            ]),
+        );
+        let payload = find_payload(&dest, Platform::LinuxX64).unwrap();
+        assert_eq!(find_host(&payload, Platform::LinuxX64).unwrap(), None);
+    }
+
+    #[test]
+    fn a_host_that_is_a_folder_or_a_link_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = unpacked(
+            dir.path(),
+            ArchiveKind::TarGz,
+            &tar_gz(&[
+                ("kanso", b"\x7fELF", 0o755),
+                ("kanso-plugin-host/inner", b"x", 0o755),
+            ]),
+        );
+        let payload = find_payload(&dest, Platform::LinuxX64).unwrap();
+        assert!(matches!(
+            find_host(&payload, Platform::LinuxX64),
+            Err(StageError::BadArchive(_))
+        ));
+        #[cfg(unix)]
+        {
+            let dir = tempfile::tempdir().unwrap();
+            let dest = unpacked(
+                dir.path(),
+                ArchiveKind::TarGz,
+                &tar_gz(&[("kanso", b"\x7fELF", 0o755)]),
+            );
+            std::os::unix::fs::symlink("/bin/sh", dest.join("kanso-plugin-host")).unwrap();
+            let payload = find_payload(&dest, Platform::LinuxX64).unwrap();
+            assert!(matches!(
+                find_host(&payload, Platform::LinuxX64),
+                Err(StageError::BadArchive(_))
+            ));
+            // A link in an archive never even unpacks.
+            let archive = dir.path().join("l.tar.gz");
+            write(
+                &archive,
+                &tar_gz_raw_name("kanso-plugin-host", tar::EntryType::Symlink),
+            );
+            assert!(extract(&archive, ArchiveKind::TarGz, &dir.path().join("l")).is_err());
+        }
+    }
+
+    #[test]
+    fn a_host_never_matters_on_macos() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = unpacked(
+            dir.path(),
+            ArchiveKind::TarGz,
+            &tar_gz(&[
+                ("Kanso.app/Contents/Info.plist", b"<plist/>", 0o644),
+                ("Kanso.app/Contents/MacOS/kanso", b"#!/bin/sh\n", 0o755),
+                (
+                    "Kanso.app/Contents/MacOS/kanso-plugin-host",
+                    b"#!/bin/sh\n",
+                    0o755,
+                ),
+                ("kanso-plugin-host", b"stray", 0o755),
+            ]),
+        );
+        let app = find_payload(&dest, Platform::MacosArm64).unwrap();
+        assert_eq!(app, dest.join("Kanso.app"));
+        assert_eq!(find_host(&app, Platform::MacosArm64).unwrap(), None);
+        // And with a folder where the host would be, nothing is said.
+        fs::create_dir(dest.join("Kanso.app/kanso-plugin-host")).unwrap();
+        assert_eq!(find_host(&app, Platform::MacosArm64).unwrap(), None);
+    }
+
+    /// Stages `archive` as `platform` would, with `kanso` named as it is.
+    fn prepared(archive: Vec<u8>, platform: Platform, dir: &Path) -> Result<Pending, StageError> {
+        let t = FakeTransport::default().with(URL, Answer::Body(archive.clone()));
+        let asset = Asset {
+            url: URL.into(),
+            sha256: sha(&archive),
+            size: archive.len() as u64,
+        };
+        let update = Update {
+            version: "0.2.0".into(),
+            pub_date: String::new(),
+            release_url: String::new(),
+            notes: String::new(),
+            asset,
+        };
+        let install = Install {
+            target: dir.join("kanso"),
+            stage_dir: dir.join(".kanso-update"),
+            platform,
+        };
+        fs::create_dir_all(dir).unwrap();
+        prepare(
+            &t,
+            &UrlPolicy::RELEASE,
+            &update,
+            &install,
+            &mut |_, _| {},
+            &AtomicBool::new(false),
+            &|_| Ok(()),
+        )
+    }
+
+    #[test]
+    fn staging_seals_the_host_beside_kanso() {
+        let dir = tempfile::tempdir().unwrap();
+        let with = prepared(
+            tar_gz(&[
+                ("Kanso-0.2.0-linux-x64/kanso", b"k", 0o755),
+                ("Kanso-0.2.0-linux-x64/kanso-plugin-host", b"h", 0o755),
+            ]),
+            Platform::LinuxX64,
+            &dir.path().join("with"),
+        )
+        .unwrap();
+        let host = staged_host(&with, Platform::LinuxX64).unwrap();
+        assert_eq!(fs::read(&host).unwrap(), b"h");
+        assert_eq!(
+            with.seal.host_digest.as_deref(),
+            Some(payload_digest(&host).unwrap().as_str())
+        );
+        let without = prepared(
+            tar_gz(&[("kanso", b"k", 0o755)]),
+            Platform::LinuxX64,
+            &dir.path().join("without"),
+        )
+        .unwrap();
+        assert!(without.seal.is_set() && without.seal.host_digest.is_none());
+        assert_eq!(staged_host(&without, Platform::LinuxX64), None);
+        // A host that is a folder stops the update, and nothing stays staged.
+        let err = prepared(
+            tar_gz(&[("kanso", b"k", 0o755), ("kanso-plugin-host/x", b"h", 0o755)]),
+            Platform::LinuxX64,
+            &dir.path().join("dir"),
+        )
+        .unwrap_err();
+        assert!(matches!(err, StageError::BadArchive(_)), "{err:?}");
+    }
+
     #[test]
     fn archives_without_kanso_are_refused() {
         let dir = tempfile::tempdir().unwrap();
@@ -848,11 +1080,15 @@ mod tests {
             notes: "- New".into(),
             seal: Seal {
                 digest: Some("ab".repeat(32)),
+                host_digest: Some("cd".repeat(32)),
                 stage_id: Some((1, 2)),
             },
         };
         let json = serde_json::to_string(&pending).unwrap();
-        assert!(!json.contains("abab"), "the seal stays in memory: {json}");
+        assert!(
+            !json.contains("abab") && !json.contains("cdcd"),
+            "the seal stays in memory: {json}"
+        );
         let back: Pending = serde_json::from_str(&json).unwrap();
         assert!(!back.seal.is_set());
     }
@@ -991,6 +1227,67 @@ mod tests {
                 }
             }
             prop_assert_ne!(payload_digest(&root).unwrap(), before);
+        }
+
+        /// The host is found iff the archive has it beside `kanso`, at the
+        /// top or in the one folder; one anywhere else is never taken.
+        #[test]
+        fn prop_the_host_is_found_iff_it_is_beside_kanso(
+            windows in any::<bool>(),
+            nested in any::<bool>(),
+            host_beside in any::<bool>(),
+            host_elsewhere in prop::sample::select(vec!["", "bin", "other", "a/b"]),
+            content in prop::collection::vec(any::<u8>(), 0..64),
+        ) {
+            let platform = if windows { Platform::WindowsX64 } else { Platform::LinuxX64 };
+            let (exe, host) = (if windows { "kanso.exe" } else { "kanso" }, platform.host_name());
+            let folder = if nested { "Kanso-0.2.0/" } else { "" };
+            let mut names = vec![format!("{folder}{exe}")];
+            if host_beside {
+                names.push(format!("{folder}{host}"));
+            }
+            if !host_elsewhere.is_empty() {
+                // Another folder's host: below the folder with `kanso`, or
+                // beside the one folder, never next to the payload.
+                names.push(format!("{folder}{host_elsewhere}/{host}"));
+            }
+            let dir = tempfile::tempdir().unwrap();
+            let bytes = if windows {
+                let files: Vec<(&str, &[u8])> = names.iter().map(|n| (n.as_str(), &content[..])).collect();
+                zip(&files)
+            } else {
+                let files: Vec<(&str, &[u8], u32)> = names.iter().map(|n| (n.as_str(), &content[..], 0o755)).collect();
+                tar_gz(&files)
+            };
+            let kind = platform.archive();
+            let dest = unpacked(dir.path(), kind, &bytes);
+            let payload = find_payload(&dest, platform).unwrap();
+            let found = find_host(&payload, platform).unwrap();
+            if host_beside {
+                prop_assert_eq!(found, Some(dest.join(format!("{folder}{host}"))));
+            } else {
+                prop_assert_eq!(found, None);
+            }
+        }
+
+        /// A macOS update never has a host to find, whatever is beside.
+        #[test]
+        fn prop_hosts_never_affect_macos_bundles(stray in any::<bool>(), inside in any::<bool>()) {
+            let dir = tempfile::tempdir().unwrap();
+            let mut files: Vec<(&str, &[u8], u32)> = vec![
+                ("Kanso.app/Contents/Info.plist", b"<plist/>", 0o644),
+                ("Kanso.app/Contents/MacOS/kanso", b"x", 0o755),
+            ];
+            if inside {
+                files.push(("Kanso.app/Contents/MacOS/kanso-plugin-host", b"x", 0o755));
+            }
+            if stray {
+                files.push(("kanso-plugin-host", b"x", 0o755));
+            }
+            let dest = unpacked(dir.path(), ArchiveKind::TarGz, &tar_gz(&files));
+            let app = find_payload(&dest, Platform::MacosArm64).unwrap();
+            prop_assert_eq!(&app, &dest.join("Kanso.app"));
+            prop_assert_eq!(find_host(&app, Platform::MacosArm64).unwrap(), None);
         }
 
         /// Paths inside the folder are kept as they are; anything else is

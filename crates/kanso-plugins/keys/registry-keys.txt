@@ -5,7 +5,7 @@
 # `.kansoplugin` file, its `.sig`) signs its SHA-256. This list is separate
 # from the update keys and the theme gallery's; never reuse either.
 #
-# Empty until the owner sets up the directory: until then Settings › Plugins
-# says the directory isn't set up, never fetches, and only developer mode
-# installs (docs/PLUGINS.md › The directory). Make a key with
+# The directory is the `iamngoni/kanso-plugins` repository; its CI signs
+# the index in the protected `directory` environment. Make a key with
 # `kanso-plugin keygen` and rotate by adding a second line.
+qSRJsfUmDyKjLv9mYVvOmpZL7AE4EbXxaR2oGVEPIzk=

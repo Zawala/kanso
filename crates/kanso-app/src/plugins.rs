@@ -49,6 +49,10 @@ pub const IDLE: Duration = Duration::from_secs(30);
 /// How often idle hosts, developer folders and `kanso plugin dev` requests
 /// are looked at.
 const TICK: Duration = Duration::from_secs(2);
+/// When the directory is first asked for revocations and updates, after
+/// launch, and how often after that. Only with a plugin from it installed.
+const FIRST_CHECK: Duration = Duration::from_secs(30);
+const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 /// The longest text a command's answer may show in a notification.
 const MAX_NOTICE: usize = 400;
 
@@ -975,8 +979,20 @@ impl Plugins {
         };
         let requests = dev_requests_dir(data_dir);
         let tick = cx.spawn(async move |cx| {
+            let mut next_check = Instant::now() + FIRST_CHECK;
             loop {
                 cx.background_executor().timer(TICK).await;
+                if Instant::now() >= next_check {
+                    next_check = Instant::now() + CHECK_EVERY;
+                    cx.update(|cx| {
+                        let wanted = cx
+                            .try_global::<Plugins>()
+                            .is_some_and(|p| checks_directory(&p.shared.state()));
+                        if wanted && registry::is_configured() {
+                            refresh_directory(cx);
+                        }
+                    });
+                }
                 let Some((shared, keep)) = cx.update(|cx| {
                     let plugins = cx.try_global::<Plugins>()?;
                     let keep = plugins.panel.as_ref().map(|p| p.panel.plugin_id.clone());
@@ -1039,6 +1055,13 @@ impl Plugins {
             })
             .collect()
     }
+}
+
+/// Whether the directory is worth asking for revocations and updates: a
+/// plugin from it is installed. Developer folders never are. Pure.
+// no-prop-test: one `any` over `Installed::is_developer`, which has its own tests.
+pub fn checks_directory(state: &State) -> bool {
+    state.plugins.iter().any(|p| !p.is_developer())
 }
 
 /// Reads and clears the folders `kanso plugin dev` asked for.

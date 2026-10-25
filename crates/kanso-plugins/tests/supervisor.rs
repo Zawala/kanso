@@ -395,10 +395,10 @@ kanso.commands.register({ id: "env", title: "Env", run() {
     assert_eq!(value, json!(vec!["undefined"; 6]));
 }
 
-/// The samples in `docs/plugins/`, as `kanso plugin dev` opens them.
+/// The sample plugins (published in `iamngoni/kanso-plugins`), as `kanso plugin dev` opens them.
 fn sample(name: &str) -> (kanso_plugins::registry_model::Bundle, String) {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/plugins")
+        .join("tests/fixtures")
         .join(name);
     let bundle = kanso_plugins::bundle::open_dir(&dir).unwrap();
     kanso_plugins::manifest::validate(&bundle.manifest).unwrap();

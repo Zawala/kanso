@@ -8,6 +8,9 @@
 //! kanso-plugin index-add <index.json> <bundle> --signature <b64> --published-at <rfc3339>
 //! kanso-plugin index-sign <index.json> [--allow-untrusted]
 //! kanso-plugin verify <index.json> <index.json.sig> [--key <b64>]...
+//! kanso-plugin build-directory --plugins <dir> --out <dir> --published-at <rfc3339>
+//!                              [--previous <index.json>] [--revocations <file>]
+//! kanso-plugin verify-directory <dir> [--key <b64>]...
 //! ```
 
 use std::collections::BTreeMap;
@@ -15,8 +18,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use kanso_plugins::bundle::{self, publisher_key_text};
+use kanso_plugins::directory;
 use kanso_plugins::registry::{self, check_index, validate_index};
-use kanso_plugins::registry_model::{Entry, INDEX_SCHEMA, Index};
+use kanso_plugins::registry_model::{INDEX_SCHEMA, Index, Revocation};
 use kanso_update::feed::{generate_signing_key, parse_public_key, parse_signing_key, sign_feed};
 
 const AUTHOR_KEY_ENV: &str = "KANSO_PLUGIN_AUTHOR_KEY";
@@ -47,6 +51,18 @@ Usage:
   kanso-plugin verify <index.json> <index.json.sig> [--key <base64>]...
       Checks the signature and every entry against the given keys, or the
       app's own.
+  kanso-plugin build-directory --plugins <dir> --out <dir>
+                               --published-at <rfc3339>
+                               [--previous <index.json>] [--revocations <file>]
+      Builds the next directory from <dir>/<plugin id>/source/ and its
+      author-signature.txt. Every entry in --previous stays; --revocations is
+      a JSON list of { id, versions, reason } and becomes the index's whole
+      revocation list (leave it out for none). When anything changed, writes
+      <out>/index.json (unsigned) and the new bundles under
+      <out>/bundles/<id>/<version>.kansoplugin, and prints the new serial.
+  kanso-plugin verify-directory <dir> [--key <base64>]...
+      Checks <dir>/index.json against <dir>/index.json.sig and every listed
+      bundle under <dir>/bundles/ against its entry.
 ";
 
 fn main() -> ExitCode {
@@ -59,6 +75,8 @@ fn main() -> ExitCode {
         Some("index-add") => index_add(&rest),
         Some("index-sign") => index_sign(&rest),
         Some("verify") => verify(&rest),
+        Some("build-directory") => build_directory(&rest),
+        Some("verify-directory") => verify_directory(&rest),
         Some("help" | "-h" | "--help") => {
             print!("{USAGE}");
             Ok(())
@@ -215,8 +233,7 @@ fn index_add(args: &Args) -> Result<(), String> {
     let published_at = args.need("published-at")?.to_owned();
     let bytes = read(&bundle_path)?;
     let opened = bundle::open(&bytes).map_err(|e| format!("{}: {e}", bundle_path.display()))?;
-    let m = &opened.manifest;
-    bundle::verify_hash(&opened.sha256, &signature, &m.publisher.key)
+    let entry = directory::entry_for_bundle(&bytes, &opened, &signature, &published_at)
         .map_err(|_| "the signature isn't the manifest's author's, over this bundle".to_owned())?;
     let mut index = if index_path.exists() {
         serde_json::from_slice::<Index>(&read(&index_path)?)
@@ -228,21 +245,6 @@ fn index_add(args: &Args) -> Result<(), String> {
             plugins: Vec::new(),
             revoked: Vec::new(),
         }
-    };
-    let entry = Entry {
-        id: m.id.clone(),
-        name: m.name.clone(),
-        publisher: m.publisher.name.clone(),
-        description: m.description.clone().unwrap_or_default(),
-        version: m.version.clone(),
-        sha256: opened.sha256.clone(),
-        size: bytes.len() as u64,
-        signer: m.publisher.key.clone(),
-        author_signature: signature,
-        min_app_version: m.min_app_version.clone(),
-        permissions: m.permissions.clone(),
-        published_at,
-        revoked: false,
     };
     index
         .plugins
@@ -306,6 +308,63 @@ fn verify(args: &Args) -> Result<(), String> {
     let index = check_index(&read(&path)?, &read(&sig)?, &keys, None).map_err(|e| e.to_string())?;
     println!(
         "Signature OK: serial {}, {} plugin versions, {} revocations",
+        index.serial,
+        index.plugins.len(),
+        index.revoked.len()
+    );
+    Ok(())
+}
+
+fn build_directory(args: &Args) -> Result<(), String> {
+    let plugins = PathBuf::from(args.need("plugins")?);
+    let out = PathBuf::from(args.need("out")?);
+    let published_at = args.need("published-at")?.to_owned();
+    let previous = match args.get("previous") {
+        Some(path) => {
+            let path = Path::new(path);
+            Some(
+                serde_json::from_slice::<Index>(&read(path)?)
+                    .map_err(|e| format!("{} isn't an index: {e}", path.display()))?,
+            )
+        }
+        None => None,
+    };
+    let revocations = match args.get("revocations") {
+        Some(path) => {
+            let path = Path::new(path);
+            serde_json::from_slice::<Vec<Revocation>>(&read(path)?)
+                .map_err(|e| format!("{} isn't a list of revocations: {e}", path.display()))?
+        }
+        None => Vec::new(),
+    };
+    let candidates = directory::read_plugins(&plugins).map_err(|e| e.to_string())?;
+    let built = directory::build(previous, candidates, revocations, &published_at)
+        .map_err(|e| e.to_string())?;
+    if !built.changed {
+        println!("The directory is unchanged.");
+        return Ok(());
+    }
+    directory::write_built(&out, &built).map_err(|e| e.to_string())?;
+    for (id, version, _) in &built.new_bundles {
+        println!("Added {id} {version}");
+    }
+    println!("Serial is now {}", built.index.serial);
+    Ok(())
+}
+
+fn verify_directory(args: &Args) -> Result<(), String> {
+    let dir = PathBuf::from(args.positional(0, "the directory")?);
+    let keys = if args.all("key").is_empty() {
+        registry::trusted_keys()
+    } else {
+        args.all("key")
+            .iter()
+            .map(|k| parse_public_key(k).map_err(|_| format!("--key {k} isn't a public key")))
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    let index = directory::verify_dir(&dir, &keys).map_err(|e| e.to_string())?;
+    println!(
+        "Directory OK: serial {}, {} plugin versions, {} revocations, every bundle matches",
         index.serial,
         index.plugins.len(),
         index.revoked.len()

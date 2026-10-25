@@ -6,6 +6,10 @@
 //! undone. A running program may be renamed on every system Kanso ships
 //! for, so the swap happens while the old Kanso is quitting; the new one
 //! then waits for its data-folder lock (`--after-update`).
+//!
+//! Beside `kanso` on Windows and Linux sits the plugin host. When the update
+//! has one it is swapped in the same way, first, and put back if `kanso`
+//! then fails, so the update lands whole or not at all.
 
 use std::fs;
 use std::io;
@@ -208,6 +212,49 @@ pub fn backup_path(target: &Path, stage_dir: &Path, platform: Platform) -> PathB
     }
 }
 
+/// Where the plugin host is installed: beside the executable. `None` on
+/// macOS, where it is inside the `.app` that is swapped whole.
+pub fn host_target(install: &Install) -> Option<PathBuf> {
+    (!install.platform.is_bundle())
+        .then(|| install.target.with_file_name(install.platform.host_name()))
+}
+
+/// The plugin host's swap: the staged file, the installed one it replaces
+/// (which may not exist yet), and where the installed one goes aside.
+struct HostSwap {
+    staged: PathBuf,
+    target: PathBuf,
+    backup: PathBuf,
+}
+
+impl HostSwap {
+    /// Puts the staged host in place, moving an installed one aside as
+    /// [`swap_in`] does. Gives whether there was one. On failure nothing has
+    /// changed.
+    fn swap_in(&self) -> io::Result<bool> {
+        match fs::symlink_metadata(&self.target) {
+            Ok(_) => swap_in(&self.staged, &self.target, &self.backup).map(|()| true),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                fs::rename(&self.staged, &self.target).map(|()| false)
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Undoes [`HostSwap::swap_in`]: the new host goes back to the staging
+    /// folder (or is removed if it can't), and the old one, if there was
+    /// one, back to its place.
+    fn undo(&self, had_old: bool) -> io::Result<()> {
+        if fs::rename(&self.target, &self.staged).is_err() {
+            remove_any(&self.target)?;
+        }
+        if had_old {
+            fs::rename(&self.backup, &self.target)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ApplyError {
     #[error("the staged update is for {staged}, not this install")]
@@ -225,10 +272,15 @@ pub enum ApplyError {
 /// [`backup_path`] only if it couldn't be removed. On failure everything is
 /// as it was.
 ///
+/// On Windows and Linux a plugin host staged beside the payload goes in
+/// beside the installed `kanso`, before it, with its own backup; if `kanso`
+/// then fails the host is put back. An update without a host leaves any
+/// installed one alone.
+///
 /// Only an update this run staged is swapped in, and only as it was when
 /// it was checked: its [`stage::Seal`] must be set, the staging folder must
 /// be the one [`stage::prepare`] made, and the payload's digest must be
-/// unchanged.
+/// unchanged, and so must the host's.
 pub fn apply(pending: &Pending, install: &Install) -> Result<(), ApplyError> {
     if pending.target != install.target {
         return Err(ApplyError::WrongTarget {
@@ -244,12 +296,41 @@ pub fn apply(pending: &Pending, install: &Install) -> Result<(), ApplyError> {
     check_seal(pending, install)?;
     let backup = backup_path(&install.target, &install.stage_dir, install.platform);
     remove_any(&backup)?;
-    swap_in(&pending.payload, &install.target, &backup)?;
+    let host = match (
+        stage::staged_host(pending, install.platform),
+        host_target(install),
+    ) {
+        (Some(staged), Some(target)) => {
+            let backup = backup_path(&target, &install.stage_dir, install.platform);
+            remove_any(&backup)?;
+            Some(HostSwap {
+                staged,
+                target,
+                backup,
+            })
+        }
+        _ => None,
+    };
+    let had_old_host = host.as_ref().map(HostSwap::swap_in).transpose()?;
+    if let Err(err) = swap_in(&pending.payload, &install.target, &backup) {
+        if let (Some(host), Some(had_old)) = (&host, had_old_host)
+            && let Err(undo) = host.undo(had_old)
+        {
+            return Err(io::Error::other(format!(
+                "{err}; and putting the plugin host back failed: {undo}"
+            ))
+            .into());
+        }
+        return Err(err.into());
+    }
     if install.platform.is_bundle() {
         fs::remove_dir_all(&install.stage_dir).ok();
     } else {
         // Windows keeps the running executable: it goes on the next start.
         remove_any(&backup).ok();
+        if let Some(host) = &host {
+            remove_any(&host.backup).ok();
+        }
         fs::remove_dir_all(&install.stage_dir).ok();
     }
     Ok(())
@@ -272,9 +353,21 @@ fn check_seal(pending: &Pending, install: &Install) -> Result<(), ApplyError> {
         return Err(ApplyError::Tampered);
     }
     match stage::payload_digest(&pending.payload) {
-        Ok(digest) if digest == *expected => Ok(()),
-        _ => Err(ApplyError::Tampered),
+        Ok(digest) if digest == *expected => {}
+        _ => return Err(ApplyError::Tampered),
     }
+    // The host is held to the same: sealed when staged, unchanged now.
+    if let Some(expected) = &pending.seal.host_digest {
+        let host = stage::staged_host(pending, install.platform).ok_or(ApplyError::Tampered)?;
+        if install.platform.is_bundle() {
+            return Err(ApplyError::Tampered);
+        }
+        match stage::payload_digest(&host) {
+            Ok(digest) if digest == *expected => {}
+            _ => return Err(ApplyError::Tampered),
+        }
+    }
+    Ok(())
 }
 
 /// The two renames: `target` to `backup`, then `staged` to `target`,
@@ -293,14 +386,18 @@ pub fn swap_in(staged: &Path, target: &Path, backup: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// After a start: removes what an earlier update left, an `.old`
-/// executable and the staging folder, whatever is in it. An update staged
+/// After a start: removes what an earlier update left, the `.old`
+/// executables (`kanso` and the plugin host) and the staging folder, whatever is in it. An update staged
 /// by an earlier run is never installed: it is downloaded and checked
 /// again, since nothing on disk can say it wasn't changed in between.
 /// Links are removed, never followed.
 pub fn clean_up(install: &Install) {
     let backup = backup_path(&install.target, &install.stage_dir, install.platform);
     if !install.platform.is_bundle() {
+        remove_any(&backup).ok();
+    }
+    if let Some(host) = host_target(install) {
+        let backup = backup_path(&host, &install.stage_dir, install.platform);
         remove_any(&backup).ok();
     }
     remove_any(&install.stage_dir).ok();
@@ -691,6 +788,7 @@ mod tests {
     fn seal(stage_dir: &Path, payload: &Path) -> stage::Seal {
         stage::Seal {
             digest: Some(stage::payload_digest(payload).unwrap()),
+            host_digest: None,
             stage_id: stage::dir_identity(stage_dir).unwrap(),
         }
     }
@@ -713,6 +811,210 @@ mod tests {
             assert!(!install.stage_dir.exists());
             assert!(!backup_path(&install.target, &install.stage_dir, platform).exists());
         }
+    }
+
+    /// Stages a plugin host beside `pending`'s payload (when `staged` has
+    /// bytes) and installs one beside the target (when `installed` does),
+    /// and seals what is staged as `stage::prepare` would.
+    fn with_host(
+        install: &Install,
+        mut pending: Pending,
+        staged: Option<&[u8]>,
+        installed: Option<&[u8]>,
+    ) -> Pending {
+        if let Some(bytes) = staged {
+            let host = pending.payload.with_file_name(install.platform.host_name());
+            fs::write(&host, bytes).unwrap();
+            pending.seal = seal(&install.stage_dir, &pending.payload);
+            pending.seal.host_digest = Some(stage::payload_digest(&host).unwrap());
+        }
+        if let Some(bytes) = installed {
+            fs::write(host_target(install).unwrap(), bytes).unwrap();
+        }
+        pending
+    }
+
+    fn installed_host(install: &Install) -> Option<Vec<u8>> {
+        fs::read(host_target(install).unwrap()).ok()
+    }
+
+    #[test]
+    fn a_host_goes_in_beside_kanso_with_it() {
+        for platform in [Platform::LinuxX64, Platform::WindowsX64] {
+            // Replacing an installed host, and adding one to a folder that
+            // had none.
+            for before in [Some(&b"old host"[..]), None] {
+                let dir = tempfile::tempdir().unwrap();
+                let (install, pending) = fake_install(dir.path(), platform);
+                let pending = with_host(&install, pending, Some(b"new host"), before);
+                apply(&pending, &install).unwrap();
+                assert_eq!(installed(&install), "new");
+                assert_eq!(installed_host(&install).unwrap(), b"new host");
+                assert!(!install.stage_dir.exists());
+                let host = host_target(&install).unwrap();
+                assert_eq!(host.parent(), install.target.parent());
+                assert!(
+                    !backup_path(&host, &install.stage_dir, platform).exists(),
+                    "{platform:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_update_without_a_host_leaves_the_installed_one_alone() {
+        for platform in [Platform::LinuxArm64, Platform::WindowsX64] {
+            let dir = tempfile::tempdir().unwrap();
+            let (install, pending) = fake_install(dir.path(), platform);
+            let pending = with_host(&install, pending, None, Some(b"old host"));
+            apply(&pending, &install).unwrap();
+            assert_eq!(installed(&install), "new");
+            assert_eq!(installed_host(&install).unwrap(), b"old host");
+            // And one with neither stays without.
+            let dir = tempfile::tempdir().unwrap();
+            let (install, pending) = fake_install(dir.path(), platform);
+            apply(&pending, &install).unwrap();
+            assert_eq!(installed_host(&install), None);
+        }
+    }
+
+    #[test]
+    fn a_host_that_was_not_sealed_is_not_swapped_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let (install, pending) = fake_install(dir.path(), Platform::LinuxX64);
+        // Planted in the staging folder after the checks, with no seal for it.
+        fs::write(
+            pending.payload.with_file_name(install.platform.host_name()),
+            b"planted",
+        )
+        .unwrap();
+        let installed_before = Some(b"old host".to_vec());
+        fs::write(host_target(&install).unwrap(), b"old host").unwrap();
+        apply(&pending, &install).unwrap();
+        assert_eq!(installed(&install), "new");
+        assert_eq!(installed_host(&install), installed_before);
+    }
+
+    #[test]
+    fn a_changed_or_missing_staged_host_is_never_swapped_in() {
+        for change in 0..3 {
+            let dir = tempfile::tempdir().unwrap();
+            let (install, pending) = fake_install(dir.path(), Platform::WindowsX64);
+            let pending = with_host(&install, pending, Some(b"new host"), Some(b"old host"));
+            let staged = stage::staged_host(&pending, install.platform).unwrap();
+            match change {
+                0 => fs::write(&staged, b"evil host").unwrap(),
+                1 => fs::remove_file(&staged).unwrap(),
+                _ => {
+                    fs::remove_file(&staged).unwrap();
+                    fs::create_dir(&staged).unwrap();
+                }
+            }
+            assert!(matches!(
+                apply(&pending, &install),
+                Err(ApplyError::Tampered)
+            ));
+            assert_eq!(installed(&install), "old");
+            assert_eq!(installed_host(&install).unwrap(), b"old host");
+        }
+    }
+
+    #[test]
+    fn a_failed_kanso_swap_puts_the_host_back() {
+        for before in [Some(&b"old host"[..]), None] {
+            let dir = tempfile::tempdir().unwrap();
+            let (install, pending) = fake_install(dir.path(), Platform::LinuxX64);
+            let pending = with_host(&install, pending, Some(b"new host"), before);
+            let staged = stage::staged_host(&pending, install.platform).unwrap();
+            // Kanso is gone from where it was, so its swap fails after the
+            // host's has gone through.
+            fs::remove_file(&install.target).unwrap();
+            assert!(matches!(apply(&pending, &install), Err(ApplyError::Io(_))));
+            assert_eq!(installed_host(&install).as_deref(), before);
+            assert!(!install.target.exists());
+            // The new host is back where it was staged, so a retry has it.
+            assert_eq!(fs::read(&staged).unwrap(), b"new host");
+            assert!(pending.payload.exists());
+            let backup = backup_path(
+                &host_target(&install).unwrap(),
+                &install.stage_dir,
+                install.platform,
+            );
+            assert!(!backup.exists());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_host_that_cannot_be_swapped_changes_nothing() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let (install, pending) = fake_install(dir.path(), Platform::LinuxX64);
+        let pending = with_host(&install, pending, Some(b"new host"), Some(b"old host"));
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o555)).unwrap();
+        // Root can write anywhere; the check only means something for an
+        // ordinary user.
+        let blocked = !writable_dir(dir.path());
+        let result = apply(&pending, &install);
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o755)).unwrap();
+        if blocked {
+            assert!(matches!(result, Err(ApplyError::Io(_))));
+            assert_eq!(installed(&install), "old");
+            assert_eq!(installed_host(&install).unwrap(), b"old host");
+            assert!(pending.payload.exists());
+        }
+    }
+
+    #[test]
+    fn a_host_never_touches_a_bundle_swap() {
+        let dir = tempfile::tempdir().unwrap();
+        let (install, pending) = fake_install(dir.path(), Platform::MacosArm64);
+        assert_eq!(host_target(&install), None);
+        // A host file in the staging folder, sealed or not, is not looked at.
+        fs::write(
+            pending.payload.with_file_name("kanso-plugin-host"),
+            b"stray",
+        )
+        .unwrap();
+        assert_eq!(stage::staged_host(&pending, install.platform), None);
+        apply(&pending, &install).unwrap();
+        assert_eq!(installed(&install), "new");
+        assert!(!dir.path().join("kanso-plugin-host").exists());
+        // And a seal that claims one on a bundle is refused.
+        let dir = tempfile::tempdir().unwrap();
+        let (install, mut pending) = fake_install(dir.path(), Platform::MacosArm64);
+        pending.seal.host_digest = Some("ab".repeat(32));
+        assert!(matches!(
+            apply(&pending, &install),
+            Err(ApplyError::Tampered)
+        ));
+        assert_eq!(installed(&install), "old");
+    }
+
+    #[test]
+    fn clean_up_removes_the_hosts_backup_too() {
+        for platform in [Platform::LinuxX64, Platform::WindowsX64] {
+            let dir = tempfile::tempdir().unwrap();
+            let (install, _) = fake_install(dir.path(), platform);
+            let host = host_target(&install).unwrap();
+            fs::write(&host, "host").unwrap();
+            let old = backup_path(&host, &install.stage_dir, platform);
+            fs::write(&old, "previous host").unwrap();
+            clean_up(&install);
+            assert!(!old.exists(), "{platform:?}");
+            assert_eq!(fs::read(&host).unwrap(), b"host", "the host itself stays");
+        }
+    }
+
+    /// Where a swap is made to fail.
+    #[derive(Clone, Copy, Debug)]
+    enum Fault {
+        None,
+        /// Kanso isn't where it should be, so its swap fails.
+        KansoGone,
+        MissingStagedHost,
+        MissingStagedKanso,
+        ChangedStagedHost,
     }
 
     #[test]
@@ -906,6 +1208,73 @@ mod tests {
             let result = apply(&pending, &install);
             prop_assert_eq!(result.is_ok(), staged_exists);
             prop_assert_eq!(installed(&install), if staged_exists { "new" } else { "old" });
+        }
+
+        /// A swap with a host ends whole or not at all: both installed
+        /// files are the staged ones, or both are what they were (a host
+        /// that was absent stays absent), wherever it was made to fail.
+        #[test]
+        fn prop_a_host_swap_is_whole_or_nothing(
+            windows in any::<bool>(),
+            kanso in prop::collection::vec(any::<u8>(), 0..64),
+            old_host in prop::option::of(prop::collection::vec(any::<u8>(), 0..64)),
+            new_host in prop::option::of(prop::collection::vec(any::<u8>(), 0..64)),
+            fault in prop::sample::select(vec![
+                Fault::None,
+                Fault::KansoGone,
+                Fault::MissingStagedHost,
+                Fault::MissingStagedKanso,
+                Fault::ChangedStagedHost,
+            ]),
+            backups_left in any::<bool>(),
+        ) {
+            let platform = if windows { Platform::WindowsX64 } else { Platform::LinuxX64 };
+            let dir = tempfile::tempdir().unwrap();
+            let (install, pending) = fake_install(dir.path(), platform);
+            fs::write(&pending.payload, &kanso).unwrap();
+            let mut pending = pending;
+            pending.seal = seal(&install.stage_dir, &pending.payload);
+            let pending = with_host(&install, pending, new_host.as_deref(), old_host.as_deref());
+            let host = host_target(&install).unwrap();
+            if backups_left {
+                fs::write(backup_path(&host, &install.stage_dir, platform), b"older").unwrap();
+            }
+            let staged_host = pending.payload.with_file_name(platform.host_name());
+            let old_kanso = fs::read(&install.target).unwrap();
+            let mut expect_ok = true;
+            match fault {
+                Fault::None => {}
+                Fault::KansoGone => {
+                    fs::remove_file(&install.target).unwrap();
+                    expect_ok = false;
+                }
+                Fault::MissingStagedHost if new_host.is_some() => {
+                    fs::remove_file(&staged_host).unwrap();
+                    expect_ok = false;
+                }
+                Fault::ChangedStagedHost if new_host.is_some() => {
+                    fs::write(&staged_host, b"changed").unwrap();
+                    expect_ok = false;
+                }
+                Fault::MissingStagedKanso => {
+                    fs::remove_file(&pending.payload).unwrap();
+                    expect_ok = false;
+                }
+                _ => {}
+            }
+            let result = apply(&pending, &install);
+            prop_assert_eq!(result.is_ok(), expect_ok, "{:?}", result);
+            if expect_ok {
+                prop_assert_eq!(fs::read(&install.target).unwrap(), kanso);
+                prop_assert_eq!(installed_host(&install), new_host.clone().or(old_host.clone()));
+                prop_assert!(!install.stage_dir.exists());
+            } else {
+                match fault {
+                    Fault::KansoGone => prop_assert!(!install.target.exists()),
+                    _ => prop_assert_eq!(fs::read(&install.target).unwrap(), old_kanso),
+                }
+                prop_assert_eq!(installed_host(&install), old_host.clone());
+            }
         }
 
         /// Only Cargo's own output folders count as a cargo build.

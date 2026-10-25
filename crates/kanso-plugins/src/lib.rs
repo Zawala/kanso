@@ -17,6 +17,7 @@
 pub mod batch;
 pub mod bundle;
 pub mod consent;
+pub mod directory;
 pub mod grant;
 pub mod install;
 pub mod manifest;
