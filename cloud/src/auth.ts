@@ -487,9 +487,10 @@ interface AccountRow {
 	key_id: string;
 	epoch: string;
 	disabled_at: number | null;
+	has_password: number;
 }
 
-const ACCOUNT_COLUMNS = "id, username, auth_hash, wrapped_key, recovery_hash, recovery_wrapped_key, key_id, epoch, disabled_at";
+const ACCOUNT_COLUMNS = "id, username, auth_hash, wrapped_key, recovery_hash, recovery_wrapped_key, key_id, epoch, disabled_at, has_password";
 const ACCOUNT_BY_NAME = `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE username = ?1`;
 const ACCOUNT_BY_ID = `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE id = ?1`;
 
@@ -719,6 +720,9 @@ async function checkCurrentPassword(
  * recovery key and a password change both carry: the new recovery hash and
  * wrap, or the 400 that ends the request.
  */
+const noPassword = (): Response =>
+	error(409, "no_password", "The account has no password; set its first one with POST /v2/account/sign-in/password.");
+
 export async function newRecoveryKey(b: Record<string, unknown>): Promise<{ ok: true; hash: string; wrap: string } | { ok: false; response: Response }> {
 	const recoveryAuthKey = proof32(b.recovery_auth_key);
 	if (!recoveryAuthKey) return { ok: false, response: badRequest("recovery_auth_key must be 32 bytes of canonical base64url.") };
@@ -731,13 +735,16 @@ export async function newRecoveryKey(b: Record<string, unknown>): Promise<{ ok: 
 /**
  * Changes the password and replaces the recovery key in one compare-and-swap
  * update, so a password change always ends every older recovery key,
- * including one planted by someone who once knew the password.
+ * including one planted by someone who once knew the password. 409
+ * `no_password` for an account made without one: its first password is
+ * `POST /v2/account/sign-in/password`.
  */
 export const password = withSession(async (request, env, now, session) => {
 	const checked = await checkCurrentPassword(request, env, now, session, "current_auth_key");
 	if (!checked.ok) return checked.response;
 	const { body: b, current } = checked;
 	let account = checked.account;
+	if (account.has_password !== 1) return noPassword();
 	const kdf = checkKdf(b.kdf);
 	if (!kdf.ok) return respond(kdf);
 	if (typeof b.salt !== "string" || !isSalt(b.salt)) return badRequest("salt must be 22 base64url characters.");
@@ -753,13 +760,13 @@ export const password = withSession(async (request, env, now, session) => {
 			env.DB.prepare(
 				`UPDATE sessions SET revoked_at = ?2, revoked_reason = 'password_changed'
   WHERE account_id = ?1 AND revoked_at IS NULL AND token_hash != ?3
-    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND auth_hash = ?4)
+    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND has_password = 1 AND auth_hash = ?4)
   RETURNING device_id`,
 			).bind(account.id, now, session.tokenHash, account.auth_hash),
 			env.DB.prepare(
 				`UPDATE accounts SET kdf_m_kib = ?3, kdf_t = ?4, kdf_p = ?5, salt = ?6, auth_hash = ?7, wrapped_key = ?8,
   recovery_hash = ?9, recovery_wrapped_key = ?10
-  WHERE id = ?1 AND auth_hash = ?2 RETURNING id`,
+  WHERE id = ?1 AND has_password = 1 AND auth_hash = ?2 RETURNING id`,
 			).bind(
 				account.id,
 				account.auth_hash,

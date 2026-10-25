@@ -10,7 +10,7 @@ import fc from "fast-check";
 import { beforeEach, describe, expect, it } from "vitest";
 import { sha256Hex } from "../src/crypto";
 import { base64url } from "../src/protocol";
-import { type Account, type Device, START, callJson, newCreds, newDevice, resetServer, signUp } from "./helpers";
+import { type Account, type Device, KDF, START, callJson, newCreds, newDevice, passwordBody, resetServer, signUp } from "./helpers";
 import { type Credential, assertion, newCredential, newEd25519Credential, passkeyConfig, passkeyEnv, registration } from "./webauthn-helpers";
 
 const runs = (n: number) => ({ numRuns: Math.min(n, Number(env.FAST_CHECK_RUNS)) });
@@ -842,5 +842,29 @@ describe("POST /v2/account/delete with a proof", () => {
 			runs(15),
 		);
 		expect((await rowsOf(p.accountId)).accounts).toBe(1);
+	});
+});
+
+// --------------------------------------------- password changes and recovery
+
+describe("POST /v2/account/password on a passwordless account", () => {
+	it("is 409 no_password whatever key it's sent, and changes nothing", async () => {
+		const p = await passkeyAccount("prover");
+		const before = await env.DB.prepare("SELECT auth_hash, recovery_hash FROM accounts WHERE id = ?1").bind(p.accountId).first();
+		await fc.assert(
+			fc.asyncProperty(fc.uint8Array({ minLength: 32, maxLength: 32 }), async (bytes) => {
+				const r = await as("/v2/account/password", passwordBody(base64url(bytes), newCreds("next")), p.token, T0);
+				expect(r).toMatchObject({ status: 409, body: { error: "no_password" } });
+			}),
+			runs(4),
+		);
+		expect(await env.DB.prepare("SELECT auth_hash, recovery_hash FROM accounts WHERE id = ?1").bind(p.accountId).first()).toEqual(before);
+	});
+
+	it("still counts password-account first", async () => {
+		const p = await passkeyAccount("prover");
+		for (let i = 0; i < 5; i++) await as("/v2/account/password", passwordBody(newCreds("x").authKey, newCreds("next")), p.token, T0);
+		const r = await as("/v2/account/password", passwordBody(newCreds("x").authKey, newCreds("next")), p.token, T0);
+		expect(r.body).toMatchObject({ error: "rate_limited", limit: "password-account" });
 	});
 });
