@@ -47,6 +47,14 @@ pub const NOT_A_KANSO_SERVER: &str = "That server doesn't run this version of Ka
 pub const KEYS_WRONG: &str =
     "Something's wrong with the server's copy of your keys. Nothing was changed on this device.";
 pub const PASSWORDS_DIFFER: &str = "The passwords don't match.";
+/// 400 `flow_expired`: a sign-in, proof or passkey flow ran out of time.
+pub const FLOW_EXPIRED: &str = "That took too long. Try again.";
+/// 409 `last_method`.
+pub const LAST_METHOD: &str =
+    "This is your only way to sign in. Add another, or confirm your recovery key.";
+/// 409 `already_has_password` and `no_password`: the page was out of date.
+pub const PASSWORD_STATE_CHANGED: &str =
+    "This account's password state changed. Reopen Settings › Account.";
 /// Under the Apple wait: macOS shows Apple's sheet; elsewhere the system
 /// browser returns to Kanso by itself.
 #[cfg(target_os = "macos")]
@@ -161,22 +169,17 @@ pub fn error_words(err: &AccountError, context: ErrorContext) -> String {
             "Your account is full. Delete something or ask the server's owner for more space."
         }
         AccountError::UnsupportedMethod => "That sign-in method isn't available on this server.",
-        AccountError::FlowExpired | AccountError::NonceReused => "That sign-in expired. Try again.",
-        AccountError::ReauthRequired => {
-            "Confirm it's you with your password or a passkey, then try again."
-        }
+        AccountError::FlowExpired => FLOW_EXPIRED,
+        AccountError::NonceReused => "That sign-in didn't come from where it should. Try again.",
+        AccountError::ReauthRequired => "Confirm it's you to change how you sign in.",
         AccountError::ProviderDisabled => "That sign-in method isn't available on this server.",
         AccountError::ProviderDenied => "The sign-in was cancelled at the provider.",
         AccountError::ProviderUnavailable => {
             "The provider couldn't be reached. Try again in a moment."
         }
         AccountError::IdentityTaken => "That account is already linked to another Kanso account.",
-        AccountError::LastMethod => {
-            "This is the last way to sign in. Save your recovery key first."
-        }
-        AccountError::AlreadyHasPassword => {
-            "This account already has a password. Change it instead."
-        }
+        AccountError::LastMethod => LAST_METHOD,
+        AccountError::AlreadyHasPassword | AccountError::NoPassword => PASSWORD_STATE_CHANGED,
         AccountError::CredentialExists => "That passkey is already added.",
         AccountError::Keychain(_) => SECRET_STORE_TROUBLE,
         AccountError::UnsavedRecoveryKey { username } => {
@@ -775,6 +778,7 @@ mod tests {
             AccountError::IdentityTaken,
             AccountError::LastMethod,
             AccountError::AlreadyHasPassword,
+            AccountError::NoPassword,
             AccountError::CredentialExists,
             AccountError::NonceReused,
             AccountError::NotFound,

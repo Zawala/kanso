@@ -637,13 +637,24 @@ impl ProviderStep {
 /// The answer to a link or proof flow's completion.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LinkOutcome {
-    Linked { provider: Provider, created_at: i64 },
-    Proof { provider: Provider },
+    Linked {
+        provider: Provider,
+        created_at: i64,
+    },
+    Proof {
+        provider: Provider,
+    },
+    /// Apple's or GitHub's flow isn't finished yet: poll again.
+    Pending {
+        slow_down: bool,
+    },
 }
 
 #[derive(Deserialize)]
 struct LinkReply {
     kind: Option<String>,
+    status: Option<String>,
+    slow_down: Option<bool>,
     provider: Option<Provider>,
     created_at: Option<i64>,
 }
@@ -652,6 +663,11 @@ impl LinkOutcome {
     pub fn from_json(value: &[u8]) -> Result<LinkOutcome, String> {
         let reply: LinkReply =
             serde_json::from_slice(value).map_err(|e| format!("a link answer: {e}"))?;
+        if reply.kind.is_none() && reply.status.as_deref() == Some("pending") {
+            return Ok(LinkOutcome::Pending {
+                slow_down: reply.slow_down.unwrap_or(false),
+            });
+        }
         let provider = reply
             .provider
             .ok_or_else(|| "a link answer without a provider".to_owned())?;
@@ -901,6 +917,32 @@ mod tests {
     use proptest::prelude::*;
 
     use super::*;
+
+    #[test]
+    fn a_link_poll_can_be_pending_linked_or_a_proof() {
+        assert_eq!(
+            LinkOutcome::from_json(br#"{"status":"pending"}"#),
+            Ok(LinkOutcome::Pending { slow_down: false })
+        );
+        assert_eq!(
+            LinkOutcome::from_json(br#"{"status":"pending","slow_down":true}"#),
+            Ok(LinkOutcome::Pending { slow_down: true })
+        );
+        assert_eq!(
+            LinkOutcome::from_json(br#"{"kind":"linked","provider":"github","created_at":5}"#),
+            Ok(LinkOutcome::Linked {
+                provider: Provider::Github,
+                created_at: 5
+            })
+        );
+        assert_eq!(
+            LinkOutcome::from_json(br#"{"kind":"proof","provider":"apple"}"#),
+            Ok(LinkOutcome::Proof {
+                provider: Provider::Apple
+            })
+        );
+        assert!(LinkOutcome::from_json(br#"{"status":"done"}"#).is_err());
+    }
 
     #[test]
     fn provider_names_are_open_but_well_formed() {

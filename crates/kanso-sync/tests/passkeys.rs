@@ -359,7 +359,19 @@ fn a_passkey_account_sets_its_first_password_once() {
         .unwrap_err();
     assert_eq!(err, ApiError::NoPassword);
 
+    // The app gets its own error for it, not a protocol failure.
     let secrets = MemorySecrets::new();
+    let err = kanso_sync::change_password(
+        &server,
+        &secrets,
+        &up.session,
+        &Password::new("any old guess here", "alice").unwrap(),
+        &password,
+        &|_| {},
+    )
+    .unwrap_err();
+    assert!(matches!(err.error, AccountError::NoPassword), "{err:?}");
+
     let proof = passkey_proof(&server, &up.session, &auth);
     let changed = kanso_sync::set_password(
         &server,

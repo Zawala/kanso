@@ -293,6 +293,10 @@ pub enum AccountError {
     /// 409 `already_has_password`.
     #[error("this account already has a password")]
     AlreadyHasPassword,
+    /// 409 `no_password`: `account/password` on an account without one; it
+    /// sets a first password with [`crate::set_password`] instead.
+    #[error("this account has no password")]
+    NoPassword,
     #[error("that passkey is already registered")]
     CredentialExists,
     /// 403 `self_approval`: "A device can't approve itself."
@@ -421,7 +425,7 @@ impl From<ApiError> for AccountError {
             ApiError::AlreadyHasPassword => AccountError::AlreadyHasPassword,
             // The app's words match `AccountError` exhaustively; until it
             // has a variant for this race, it reads as an unexpected answer.
-            ApiError::NoPassword => AccountError::Protocol("409 no_password".into()),
+            ApiError::NoPassword => AccountError::NoPassword,
             ApiError::CredentialExists => AccountError::CredentialExists,
             ApiError::SelfApproval => AccountError::SelfApproval,
             ApiError::ApprovalUsed => AccountError::ApprovalUsed,
