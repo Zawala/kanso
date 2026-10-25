@@ -13,6 +13,7 @@ use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::*;
 use kanso_acp::Detection;
+use kanso_acp::registry::{Distribution, RegistryAgent};
 use kanso_ai::{AgentCheck, AgentKind, ClientSettings, Provider};
 use kanso_sync::SecretStore;
 
@@ -105,6 +106,16 @@ pub(crate) enum Test {
     SigningIn,
 }
 
+/// What the one-click install is doing.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Install {
+    #[default]
+    Idle,
+    Running(String),
+    Done(String),
+    Failed(String),
+}
+
 pub struct AiPage {
     base_url: Entity<InputState>,
     model: Entity<InputState>,
@@ -118,6 +129,11 @@ pub struct AiPage {
     /// Where each known agent was found, once looked for.
     detections: Option<Vec<(AgentKind, Detection)>>,
     detect_task: Option<Task<()>>,
+    /// The ACP registry, once read; `Some(Err)` when it couldn't be.
+    registry: Option<Result<Vec<RegistryAgent>, String>>,
+    registry_task: Option<Task<()>>,
+    install: Install,
+    install_task: Option<Task<()>>,
     test: Test,
     _subscriptions: Vec<Subscription>,
     task: Option<Task<()>>,
@@ -191,6 +207,10 @@ impl AiPage {
             agent_env,
             detections: None,
             detect_task: None,
+            registry: crate::agent_registry::cached().map(Ok),
+            registry_task: None,
+            install: Install::Idle,
+            install_task: None,
             test: Test::NotRun,
             _subscriptions: subscriptions,
             task: None,
@@ -207,12 +227,50 @@ impl AiPage {
     pub(crate) fn snapshot_agents(&mut self, detections: Vec<(AgentKind, Detection)>, test: Test) {
         self.detections = Some(detections);
         self.detect_task = None;
+        self.registry_task = None;
         self.test = test;
+    }
+
+    /// A fixed registry for the snapshots.
+    #[cfg(test)]
+    pub(crate) fn snapshot_registry(&mut self, agents: Vec<RegistryAgent>, install: Install) {
+        crate::agent_registry::seed(agents.clone());
+        self.registry = Some(Ok(agents));
+        self.registry_task = None;
+        self.install = install;
     }
 
     /// Looks for the known agents, off the main thread: a path search, and
     /// once the login shell's `PATH`. Nothing is started.
+    /// Reads the ACP registry in the background, once an hour at most.
+    /// Settings never waits for it.
+    fn fetch_registry(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.registry, Some(Ok(_))) || self.registry_task.is_some() {
+            return;
+        }
+        let fetched = cx
+            .background_executor()
+            .spawn(async move { crate::agent_registry::fetch() });
+        self.registry_task = Some(cx.spawn(async move |this, cx| {
+            let fetched = fetched.await;
+            this.update(cx, |this, cx| {
+                this.registry = Some(fetched);
+                this.registry_task = None;
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    fn registry_agents(&self) -> &[RegistryAgent] {
+        match &self.registry {
+            Some(Ok(agents)) => agents,
+            _ => &[],
+        }
+    }
+
     fn find_agents(&mut self, cx: &mut Context<Self>) {
+        self.fetch_registry(cx);
         let found = cx.background_executor().spawn(async move {
             let dirs = kanso_acp::detect::search_dirs();
             AgentKind::ALL
@@ -255,6 +313,134 @@ impl AiPage {
     }
 
     /// Picks which agent answers.
+    /// Picks an agent from the ACP registry: a custom command made from its
+    /// entry, not tested with Kanso.
+    fn set_registry_agent(
+        &mut self,
+        agent: RegistryAgent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let current = cx.global::<AppState>().config.ai.agent.clone();
+        let choice = crate::agent_registry::choice_for(&agent, &current);
+        self.agent_command.update(cx, |field, cx| {
+            field.set_value(choice.command.clone().unwrap_or_default(), window, cx)
+        });
+        self.agent_args.update(cx, |field, cx| {
+            field.set_value(join_args(&choice.args), window, cx)
+        });
+        let env_line = choice
+            .env
+            .iter()
+            .map(|(name, value)| join_args(&[format!("{name}={value}")]))
+            .collect::<Vec<_>>()
+            .join(" ");
+        self.agent_env
+            .update(cx, |field, cx| field.set_value(env_line, window, cx));
+        AppState::update_config(cx, |config| config.ai.agent = choice);
+        crate::ai_agent::stop_agents(cx);
+        self.test = Test::NotRun;
+        self.install = Install::Idle;
+        self.task = None;
+        cx.notify();
+    }
+
+    /// Lets the agent search and read the notes itself, or not.
+    fn set_note_access(&mut self, on: bool, cx: &mut Context<Self>) {
+        AppState::update_config(cx, |config| config.ai.agent.mcp = on);
+        // Tokens already given end; the next question follows the setting.
+        crate::services::end_agent_access(cx);
+        cx.notify();
+    }
+
+    /// What installing the chosen agent would run: its name, the package,
+    /// the Node it needs and whether it is tested with Kanso.
+    fn install_plan(&self, ai: &AiSettings) -> Option<(String, String, Option<u32>, bool)> {
+        let agents = self.registry_agents();
+        if ai.agent.kind == AgentKind::Custom {
+            let agent = crate::agent_registry::chosen(&ai.agent, agents)?;
+            if ai.agent.command.is_some() {
+                return None;
+            }
+            let package = agent.npm_package()?.to_owned();
+            return Some((agent.name.clone(), package, None, false));
+        }
+        if !matches!(
+            self.detection(ai.agent.kind),
+            Some(Detection::NotInstalled | Detection::OldClaudeAdapter(_))
+        ) {
+            return None;
+        }
+        let package = crate::agent_registry::featured_package(ai.agent.kind, Some(agents))?;
+        Some((
+            ai.agent.kind.label().to_owned(),
+            package,
+            ai.agent.kind.node(),
+            true,
+        ))
+    }
+
+    /// Asks before installing: the exact command, the Node it needs, and
+    /// that it runs as the person. Nothing runs until Install is clicked.
+    fn confirm_install(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let ai = cx.global::<AppState>().config.ai.clone();
+        let Some((name, package, node, tested)) = self.install_plan(&ai) else {
+            return;
+        };
+        let view = cx.entity();
+        crate::dialogs::confirm(
+            format!("Install {name}?"),
+            crate::agent_registry::confirm_text(&name, &package, node, tested),
+            "Install",
+            window,
+            cx,
+            move |_, cx| {
+                let (name, package) = (name.clone(), package.clone());
+                view.update(cx, |this, cx| this.start_install(name, package, cx));
+            },
+        );
+    }
+
+    fn start_install(&mut self, name: String, package: String, cx: &mut Context<Self>) {
+        self.install = Install::Running(format!("Installing {name} with npm…"));
+        let worker = package.clone();
+        let installed = cx
+            .background_executor()
+            .spawn(async move { crate::agent_registry::install(&worker) });
+        self.install_task = Some(cx.spawn(async move |this, cx| {
+            let installed = installed.await;
+            this.update(cx, |this, cx| {
+                this.install_task = None;
+                this.install = match installed {
+                    Ok(()) => Install::Done(format!(
+                        "{name} is installed. Test checks that it's signed in."
+                    )),
+                    Err(why) => Install::Failed(why),
+                };
+                this.installed(cx);
+                cx.notify();
+            })
+            .ok();
+        }));
+        cx.notify();
+    }
+
+    /// After an install: a featured agent is found again; a registry agent
+    /// gets the command it was installed as.
+    fn installed(&mut self, cx: &mut Context<Self>) {
+        let ai = cx.global::<AppState>().config.ai.clone();
+        if ai.agent.kind != AgentKind::Custom {
+            kanso_ai::agent::find_again();
+            self.find_agents(cx);
+            return;
+        }
+        let command = crate::agent_registry::chosen(&ai.agent, self.registry_agents())
+            .and_then(crate::agent_registry::installed_command);
+        if let Some(command) = command {
+            AppState::update_config(cx, |config| config.ai.agent.command = Some(command));
+        }
+    }
+
     fn set_agent(&mut self, kind: AgentKind, cx: &mut Context<Self>) {
         AppState::update_config(cx, |config| {
             config.ai.agent.kind = kind;
@@ -263,6 +449,7 @@ impl AiPage {
         // Another agent: the last one stops, and its note access ends.
         crate::ai_agent::stop_agents(cx);
         self.test = Test::NotRun;
+        self.install = Install::Idle;
         self.task = None;
         cx.notify();
     }
@@ -496,27 +683,87 @@ impl AiPage {
                 (kind, format!("{} · {word}", kind.label()))
             })
             .collect();
+        let from_registry =
+            crate::agent_registry::chosen(&ai.agent, self.registry_agents()).cloned();
+        let others = crate::agent_registry::others(self.registry_agents());
+        let registry_state = match &self.registry {
+            Some(Ok(_)) => None,
+            Some(Err(why)) => Some(why.clone()),
+            None => Some("Looking up the ACP registry…".to_owned()),
+        };
+        let picked = ai.agent.registry.clone();
         let button = Button::new("ai-agent")
             .debug_selector(|| "ai-agent".into())
             .outline()
             .small()
-            .label(crate::ai_agent::label(&ai.agent))
+            .label(
+                from_registry
+                    .as_ref()
+                    .map(|agent| agent.name.clone())
+                    .unwrap_or_else(|| crate::ai_agent::label(&ai.agent)),
+            )
             .dropdown_caret(true)
-            .dropdown_menu(move |mut menu, _, _| {
+            .dropdown_menu(move |mut menu, window, cx| {
                 for (kind, text) in &words {
                     let view = view.clone();
                     let kind = *kind;
                     menu = menu.item(
                         PopupMenuItem::new(text.clone())
-                            .checked(kind == chosen)
+                            .checked(
+                                kind == chosen && (kind != AgentKind::Custom || picked.is_none()),
+                            )
                             .on_click(move |_, _, cx| {
                                 view.update(cx, |this, cx| this.set_agent(kind, cx));
                             }),
                     );
                 }
-                menu
+                let view = view.clone();
+                let others = others.clone();
+                let picked = picked.clone();
+                let state = registry_state.clone();
+                menu.separator().submenu(
+                    "More agents from the ACP registry",
+                    window,
+                    cx,
+                    move |mut menu, _, _| {
+                        if let Some(state) = &state {
+                            return menu.label(state.clone());
+                        }
+                        for agent in &others {
+                            let view = view.clone();
+                            let pick = agent.clone();
+                            menu = menu.item(
+                                PopupMenuItem::new(format!(
+                                    "{} · Not tested with Kanso",
+                                    agent.name
+                                ))
+                                .checked(picked.as_deref() == Some(agent.id.as_str()))
+                                .on_click(move |_, window, cx| {
+                                    let pick = pick.clone();
+                                    view.update(cx, |this, cx| {
+                                        this.set_registry_agent(pick, window, cx)
+                                    });
+                                }),
+                            );
+                        }
+                        menu
+                    },
+                )
             });
         let detail = match (chosen, self.detection(chosen)) {
+            (AgentKind::Custom, _) if let Some(agent) = &from_registry => {
+                let about = if agent.description.is_empty() {
+                    String::new()
+                } else {
+                    format!("{} ", agent.description.trim_end_matches('.'))
+                        .trim_end()
+                        .to_owned()
+                        + ". "
+                };
+                format!(
+                    "{about}From the ACP registry; not tested with Kanso. It runs as a program on this computer, as you."
+                )
+            }
             (AgentKind::Custom, _) => {
                 "Any other program that speaks the Agent Client Protocol: an executable and its arguments, never a shell command. Not tested with Kanso.".to_owned()
             }
@@ -538,32 +785,130 @@ impl AiPage {
             .trailing(h_flex().gap(px(6.)).child(find).child(button))
     }
 
-    /// The command to install the chosen agent, with Copy, when it isn't
-    /// found. Kanso never installs anything by itself.
-    fn install_row(&self, kind: AgentKind) -> Option<Row> {
-        let command = kind.install()?;
-        if !matches!(
-            self.detection(kind),
-            Some(Detection::NotInstalled | Detection::OldClaudeAdapter(_))
-        ) {
-            return None;
+    /// How to install the chosen agent when it isn't found: the command,
+    /// with Copy, and Install… for an npm package, which runs that command
+    /// only after the person confirms it. Kanso never installs anything by
+    /// itself.
+    fn install_row(&self, ai: &AiSettings, cx: &mut Context<Self>) -> Option<Row> {
+        let plan = self.install_plan(ai);
+        let command = match (&plan, ai.agent.kind) {
+            (Some((_, package, _, _)), _) => format!("npm install -g {package}"),
+            (None, AgentKind::Custom) => {
+                let agent = crate::agent_registry::chosen(&ai.agent, self.registry_agents())?;
+                if ai.agent.command.is_some() || agent.distribution != Distribution::Other {
+                    return None;
+                }
+                let site = agent
+                    .website
+                    .clone()
+                    .unwrap_or_else(|| "its website".to_owned());
+                return Some(
+                    Row::new(gpui_kit::assets::IconName::Package, "Install")
+                        .detail(format!(
+                            "Kanso can't install {} itself. Get it from {site}, then put its command under Command.",
+                            agent.name
+                        )),
+                );
+            }
+            (None, kind) => {
+                if !matches!(
+                    self.detection(kind),
+                    Some(Detection::NotInstalled | Detection::OldClaudeAdapter(_))
+                ) {
+                    return None;
+                }
+                kind.install()?.to_owned()
+            }
+        };
+        let detail = match &self.install {
+            Install::Idle if plan.is_some() => format!(
+                "Install runs this after you confirm, or run it in your terminal and Find again: {command}"
+            ),
+            Install::Idle => format!("Run this in your terminal, then Find again: {command}"),
+            Install::Running(line) | Install::Done(line) | Install::Failed(line) => line.clone(),
+        };
+        let copy = Button::new("ai-agent-copy-install")
+            .debug_selector(|| "ai-agent-copy-install".into())
+            .outline()
+            .small()
+            .label("Copy")
+            .on_click(move |_, _, cx| {
+                cx.write_to_clipboard(ClipboardItem::new_string(command.clone()));
+            });
+        let mut buttons = h_flex().gap(px(6.)).child(copy);
+        if plan.is_some() {
+            let view = cx.entity();
+            let running = matches!(self.install, Install::Running(_));
+            buttons = buttons.child(
+                Button::new("ai-agent-install")
+                    .debug_selector(|| "ai-agent-install".into())
+                    .outline()
+                    .small()
+                    .label(if running {
+                        "Installing…"
+                    } else {
+                        "Install…"
+                    })
+                    .disabled(running)
+                    .on_click(move |_, window, cx| {
+                        view.update(cx, |this, cx| this.confirm_install(window, cx));
+                    }),
+            );
         }
         Some(
             Row::new(gpui_kit::assets::IconName::Package, "Install")
-                .detail(format!(
-                    "Run this in your terminal, then Find again: {command}"
-                ))
-                .trailing(
-                    Button::new("ai-agent-copy-install")
-                        .debug_selector(|| "ai-agent-copy-install".into())
-                        .outline()
-                        .small()
-                        .label("Copy")
-                        .on_click(move |_, _, cx| {
-                            cx.write_to_clipboard(ClipboardItem::new_string(command.to_owned()));
-                        }),
-                ),
+                .detail(detail)
+                .trailing(buttons),
         )
+    }
+
+    /// Whether the agent may search and read the notes itself, and which
+    /// notebooks it may.
+    fn note_access_rows(&self, ai: &AiSettings, cx: &mut Context<Self>) -> Vec<Row> {
+        let view = cx.entity();
+        let on = ai.agent.mcp;
+        let label = crate::ai_agent::label(&ai.agent);
+        let mut rows = vec![
+            Row::new(gpui_kit::assets::IconName::BookOpen, "Note access")
+                .detail(if on {
+                    format!(
+                        "{label} may also search and read your notes itself, read only. Every note it reads is listed under Used notes. Locked notes, the trash and notes tagged #ai-exclude never reach it."
+                    )
+                } else {
+                    format!("{label} gets only the excerpts Kanso finds for each question.")
+                })
+                .trailing(div().debug_selector(|| "ai-agent-mcp".into()).child(
+                    Switch::new("ai-agent-mcp").checked(on).on_click(move |on, _, cx| {
+                        view.update(cx, |this, cx| this.set_note_access(*on, cx));
+                    }),
+                )),
+        ];
+        if on {
+            let summary = if ai.agent.notebooks.is_empty() {
+                crate::agent_scope::scope_summary(&[], &[])
+            } else {
+                let store = cx.global::<AppState>().store.clone();
+                crate::agent_scope::scope_summary(
+                    &ai.agent.notebooks,
+                    &crate::agent_scope::scope_books(&store),
+                )
+            };
+            rows.push(
+                Row::new(gpui_kit::assets::IconName::Folder, "Notebooks")
+                    .detail(summary)
+                    .trailing(
+                        Button::new("ai-agent-scope")
+                            .debug_selector(|| "ai-agent-scope".into())
+                            .outline()
+                            .small()
+                            .label("Choose…")
+                            .on_click(|_, window, cx| {
+                                crate::agent_scope::open_sheet(window, cx);
+                            }),
+                    ),
+            );
+        }
+        rows
     }
 
     fn custom_rows(&self) -> Vec<Row> {
@@ -862,11 +1207,13 @@ impl Render for AiPage {
             rows.push(self.backend_row(&ai, cx));
             if ai.backend == AiBackend::Agent {
                 rows.push(self.agent_row(&ai, cx));
-                if ai.agent.kind == AgentKind::Custom {
-                    rows.extend(self.custom_rows());
-                } else if let Some(row) = self.install_row(ai.agent.kind) {
+                if let Some(row) = self.install_row(&ai, cx) {
                     rows.push(row);
                 }
+                if ai.agent.kind == AgentKind::Custom {
+                    rows.extend(self.custom_rows());
+                }
+                rows.extend(self.note_access_rows(&ai, cx));
                 rows.push(self.agent_test_row(&ai, view.clone()));
             } else {
                 rows.push(self.provider_row(&ai, cx));

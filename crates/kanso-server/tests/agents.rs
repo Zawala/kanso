@@ -293,7 +293,10 @@ async fn an_agent_reads_what_its_scope_holds_and_nothing_else() {
     assert!(resource.get("error").is_some(), "{resource}");
     assert!(!resource.to_string().contains("Sealed plan"));
     // What it saw is what Used notes lists.
-    assert_eq!(agents.tokens.reads(minted.id), [pricing.clone()]);
+    assert_eq!(
+        agents.tokens.reads(minted.id),
+        std::slice::from_ref(&pricing)
+    );
 
     // The local API's own sign-in still sees everything.
     let full = tool(&agents.api, "search-notes", json!({ "keyword": "zebra" })).await;

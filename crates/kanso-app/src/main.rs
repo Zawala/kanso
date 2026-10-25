@@ -11,6 +11,8 @@ mod account_flow;
 mod account_flow_tests;
 mod account_page;
 mod account_words;
+mod agent_registry;
+mod agent_scope;
 mod ai_agent;
 mod ask;
 mod ask_panel;

@@ -5166,6 +5166,21 @@ fn snapshots() {
             Edit,
             ai::settings_ai_agent_custom,
         ),
+        shot(
+            "light-settings-ai-agent-registry",
+            Light,
+            Edit,
+            ai::settings_ai_agent_registry,
+        ),
+        Shot {
+            dialog_width: crate::agent_scope::SHEET_WIDTH,
+            ..shot(
+                "light-settings-ai-agent-scope",
+                Light,
+                Edit,
+                ai::settings_ai_agent_scope,
+            )
+        },
         shot("dark-settings-appearance", Dark, Edit, settings_appearance),
         shot("dark-settings-gallery-browse", Dark, Edit, settings_gallery),
         shot(

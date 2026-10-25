@@ -79,6 +79,16 @@ impl AgentKind {
         }
     }
 
+    /// Its npm package, for the agents Kanso can install with one click.
+    pub fn npm_package(self) -> Option<&'static str> {
+        match self {
+            AgentKind::ClaudeAgent => Some("@agentclientprotocol/claude-agent-acp"),
+            AgentKind::Codex => Some("@agentclientprotocol/codex-acp"),
+            AgentKind::GeminiCli => Some("@google/gemini-cli"),
+            AgentKind::OpenCode | AgentKind::Custom => None,
+        }
+    }
+
     /// How to install it, shown when it isn't found.
     pub fn install(self) -> Option<&'static str> {
         match self {

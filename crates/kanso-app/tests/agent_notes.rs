@@ -191,7 +191,7 @@ fn answers_through(script: Script, via: &str) {
         "{said}"
     );
     assert!(said.contains(&format!("(via {via}, turn 1)")), "{said}");
-    assert_eq!(read, [facts.clone()]);
+    assert_eq!(read, std::slice::from_ref(&facts));
     for id in &hidden {
         assert!(!said.contains(id.trim_start_matches("note:")));
     }

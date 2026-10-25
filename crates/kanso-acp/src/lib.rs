@@ -19,6 +19,7 @@ pub mod env;
 pub mod fake;
 pub mod framing;
 pub mod process;
+pub mod registry;
 
 pub use connection::{
     AgentInfo, AgentProcess, AuthMethod, McpServer, PermissionPolicy, PermissionRequest, Session,

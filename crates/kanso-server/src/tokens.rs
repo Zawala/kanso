@@ -383,10 +383,10 @@ mod tests {
             for (op, pick, secs) in ops {
                 match op {
                     0 => minted.push(store.mint(AgentScope::ask(None))),
-                    1 => if let Some(m) = minted.get(pick % minted.len().max(1)) {
-                        if let Some(Caller::Agent { token, .. }) = store.verify(&m.token) {
-                            prop_assert_eq!(token, m.id);
-                        }
+                    1 => if let Some(m) = minted.get(pick % minted.len().max(1))
+                        && let Some(Caller::Agent { token, .. }) = store.verify(&m.token)
+                    {
+                        prop_assert_eq!(token, m.id);
                     },
                     2 => if let Some(m) = minted.get(pick % minted.len().max(1)) {
                         store.revoke(m.id);

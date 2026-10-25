@@ -128,9 +128,14 @@ pub fn agent_settings(choice: &AgentChoice, data_dir: &Path) -> AgentSettings {
     }
 }
 
-/// What the person calls the chosen agent.
+/// What the person calls the chosen agent: a registry agent by its name
+/// there, once the registry has been read.
 pub fn label(choice: &AgentChoice) -> String {
-    agent_settings(choice, Path::new("")).label()
+    let registry = crate::agent_registry::cached().unwrap_or_default();
+    match crate::agent_registry::chosen(choice, &registry) {
+        Some(agent) => agent.name.clone(),
+        None => agent_settings(choice, Path::new("")).label(),
+    }
 }
 
 /// Where a question goes when an agent answers. Settings and the Ask panel
@@ -138,8 +143,13 @@ pub fn label(choice: &AgentChoice) -> String {
 pub fn requests_line(choice: &AgentChoice) -> String {
     let label = label(choice);
     let vendor = choice.kind.vendor();
+    let what = if choice.mcp {
+        "Questions, the note excerpts they use, and the notes it searches or reads"
+    } else {
+        "Questions and the note excerpts they use"
+    };
     format!(
-        "Questions and the note excerpts they use go to {label} on this computer, which sends them to {vendor} under your own account. Kanso doesn't proxy or keep them. Locked notes and notes tagged #ai-exclude are never sent. {label} may keep its own history of the conversation."
+        "{what} go to {label} on this computer, which sends them to {vendor} under your own account. Kanso doesn't proxy or keep them. Locked notes and notes tagged #ai-exclude are never sent. {label} may keep its own history of the conversation."
     )
 }
 
