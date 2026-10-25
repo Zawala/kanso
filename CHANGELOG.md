@@ -19,6 +19,10 @@ heading compares the release with the one before.
 - **ai:** When an agent asks to use one of its own tools, a sheet names the agent, the tool and its kind, with Reject as the default (Enter and Escape reject) and Allow once for just that request; Kanso never answers "always", a request waits a minute at most and is cancelled with the turn, and without a window it is rejected (#46 step 4)
 - **ai:** Copy diagnostics in Settings › AI, beside Test, copies a report to paste into an issue: Kanso's version and system, whether the agent was found and where, its name and version, whether it runs, and the names, timings and error codes of its last messages. It holds no note text, titles, answers, tokens or the agent's own output, and a crash can still be diagnosed (#46 step 8)
 
+### Fixed
+
+- **app:** Kanso is listed in Finder's and Explorer's Open With for Markdown and text files, and opens a file from there, from a double-click once chosen, or from `kanso file.md`, as a note that is shown and selected
+
 ## [0.8.4](https://github.com/iamngoni/kanso/compare/v0.8.3...v0.8.4) - 2026-10-22
 
 ### New
