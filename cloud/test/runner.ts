@@ -117,7 +117,9 @@ function flatten(steps: Step[]): Step[] {
 function installGithub(fixture: Fixture, queue: string[]): void {
 	const github = fixture.github!;
 	const reply = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
-	vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+	vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+		// Throws on options the runtime's fetch refuses, as the deployed Worker would.
+		new Request(input, init);
 		const url = String(input instanceof Request ? input.url : input);
 		if (url === GITHUB_DEVICE_CODE_URL) {
 			return reply({

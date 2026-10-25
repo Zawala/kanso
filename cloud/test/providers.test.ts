@@ -107,6 +107,8 @@ function installProviders(): void {
 	vi.stubGlobal(
 		"fetch",
 		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			// Throws on options the runtime's fetch refuses, as the deployed Worker would.
+			new Request(input, init);
 			const url = String(input instanceof Request ? input.url : input);
 			providers.calls.push(url);
 			const form = new URLSearchParams(typeof init?.body === "string" ? init.body : "");
