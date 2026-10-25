@@ -511,7 +511,9 @@ impl NoteEditor {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::Arc;
+
+    use super::{InlineAction, Suggestion};
     use proptest::prelude::*;
 
     fn suggestion(action: InlineAction, text: &str, running: bool, complete: bool) -> Suggestion {
@@ -547,8 +549,7 @@ mod tests {
         fn prop_only_a_whole_rewrite_is_accepted(
             action in prop::sample::select(InlineAction::ALL.to_vec()),
             text in "\\PC{0,20}",
-            running in any::<bool>(),
-            complete in any::<bool>(),
+            (running, complete) in (any::<bool>(), any::<bool>()),
         ) {
             let accepted = suggestion(action, &text, running, complete).acceptable();
             if accepted {
