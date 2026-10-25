@@ -202,7 +202,7 @@ fn allocating_too_much_is_a_limit_and_the_host_answers_again() {
 fn a_renderer_that_fetches_is_denied_and_the_app_hears_nothing() {
     let code = r#"
         kanso.fences.register('chart', () => kanso.fetch('https://example.com'));
-        kanso.fences.register('plain', (source) => '<svg>' + source + '</svg>');
+        kanso.fences.register('plain', ({ source }) => '<svg>' + source + '</svg>');
     "#;
     let (mut host, started) = Host::started(code);
     assert_eq!(started["registered"]["fences"], json!(["chart", "plain"]));

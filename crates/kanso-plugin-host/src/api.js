@@ -208,6 +208,10 @@
   }
 
   function thrown(error) {
+    // QuickJS throws null when it can't even make the out-of-memory error.
+    if (error === null) {
+      return stringify({ ok: false, code: 'limit', message: 'it used too much memory' });
+    }
     let code = 'thrown';
     let message;
     try {
@@ -235,7 +239,7 @@
       }
       if (kind === 'render') {
         if (!(name in fences)) return missing('there is no renderer for "' + name + '"');
-        const drawn = fences[name](first, parse(second));
+        const drawn = fences[name](freeze({ source: first, theme: parse(second) }));
         if (typeof drawn !== 'string') {
           return stringify({ ok: false, code: 'invalid', message: 'a renderer must return a string' });
         }

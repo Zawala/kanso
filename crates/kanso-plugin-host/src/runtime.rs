@@ -695,7 +695,7 @@ mod tests {
     fn what_a_plugin_registers_is_reported() {
         let code = r#"
             kanso.commands.register({ id: 'a', title: 'A', run() {} });
-            kanso.fences.register('chart', (source, theme) => '<svg/>');
+            kanso.fences.register('chart', ({ source, theme }) => '<svg/>');
             kanso.ui.onPress('go', () => 1);
         "#;
         let (_, registered) = start(code, &mut Fake::silent()).unwrap();
@@ -879,9 +879,9 @@ mod tests {
         let code = r#"
             kanso.fences.register('bad', () => kanso.fetch('https://example.com'));
             kanso.fences.register('sneaky', () => { try { kanso.notes.list(); } catch (e) {} return kanso.settings.get(); });
-            kanso.fences.register('logs', (source) => { kanso.log('info', 'drawing ' + source); return '<svg/>'; });
+            kanso.fences.register('logs', ({ source }) => { kanso.log('info', 'drawing ' + source); return '<svg/>'; });
             kanso.fences.register('number', () => 5);
-            kanso.fences.register('echo', (source, theme) => source + theme.accent + (theme.dark ? 'd' : 'l'));
+            kanso.fences.register('echo', ({ source, theme }) => source + theme.accent + (theme.dark ? 'd' : 'l'));
         "#;
         let mut plugin = started(code, &mut link);
         let err = plugin.render("bad", "", &theme(), &mut link).unwrap_err();
