@@ -25,8 +25,10 @@ class KansoGoldenComparator extends LocalFileComparator {
   /// changed. Measured drift between Macs stays under 80 and mostly under 16.
   static const int channelTolerance = 32;
 
-  /// The share of pixels that may change: 0.1%.
-  static const double pixelTolerance = 0.001;
+  /// The share of pixels that may change: 0.3%. Text in a variable font
+  /// (the serif preview) drifts most, about 0.13% between Macs by this rule;
+  /// static fonts about 0.05%.
+  static const double pixelTolerance = 0.003;
 
   @override
   Future<bool> compare(Uint8List imageBytes, Uri golden) async {
