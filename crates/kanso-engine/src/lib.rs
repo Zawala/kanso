@@ -14,8 +14,14 @@
 //! [`tasks`] reads due dates and decides reminders; [`edit`] turns the
 //! formatting toolbar, auto-pairing and Tab and Enter in lists and tables
 //! into one change to the text; [`text`] converts offsets between UTF-8 and
-//! UTF-16; and [`theme`] has the palettes, the theme file format and how
-//! three themes are fitted together for drawing.
+//! UTF-16; [`theme`] has the palettes, the theme file format and how three
+//! themes are fitted together for drawing; and `highlight` (the `highlight`
+//! feature, with the `code-grammars` feature for the code in fenced blocks)
+//! says which parts of a note are headings, markers, links, keywords and the
+//! like, as spans of tokens the theme colors. It is a tree-sitter
+//! highlighter on the runtime and grammar crates the desktop editor's
+//! component library compiles in, with the same queries, and a test in
+//! `kanso-app` holds the two to the same colors on a corpus of notes.
 //!
 //! Nothing here opens a window, reads a clock of its own or touches the
 //! system's secret store: the caller passes the time, and secrets go through
