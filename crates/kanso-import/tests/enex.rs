@@ -11,10 +11,16 @@ use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 use serde_json::json;
 
+/// The crate's folder: cargo's at run time (the phone runners set it to where
+/// they copied the fixtures), else where it was built.
+fn manifest_dir() -> std::path::PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(Into::into)
+        .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())
+}
+
 fn fixture(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/evernote")
-        .join(name)
+    manifest_dir().join("tests/fixtures/evernote").join(name)
 }
 
 /// An empty store in a temporary folder.

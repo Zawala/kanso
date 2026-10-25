@@ -1,0 +1,69 @@
+name: Mobile core
+
+# The core the mobile app shares (#48), tested in an Android emulator. It
+# runs only for changes that can affect it, because starting an emulator
+# takes a while: the Rust crates, the lock file and the manifest, the mobile
+# scripts, and this file. The iOS Simulator tests are the engine-mobile job
+# in ci.yml.
+on:
+  push:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/mobile*"
+      - ".github/workflows/mobile-core.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/mobile*"
+      - ".github/workflows/mobile-core.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run per branch at a time: a newer push cancels the older run.
+concurrency:
+  group: mobile-core-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Property tests run with a fixed seed so a CI failure reproduces locally.
+  PROPTEST_RNG_SEED: "20261017"
+
+jobs:
+  # On Linux, not a Mac: the Apple-silicon runners can't run an emulator
+  # (no nested virtualisation), and the Linux ones can with KVM. The
+  # emulator is x86-64 at API 29, the lowest Android the app supports; the
+  # developer's Mac tests the 64-bit ARM build.
+  core-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The built-in themes: the kanso-themes repository.
+          submodules: true
+      # Installs the toolchain pinned in rust-toolchain.toml.
+      - run: scripts/ci-rust.sh
+      - run: rustup target add x86_64-linux-android
+      # The emulator needs /dev/kvm to be usable by this user.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      # Compile first, so the emulator only runs for the tests themselves.
+      - name: Build the tests
+        run: KANSO_TEST_BUILD_ONLY=1 KANSO_ANDROID_TARGET=x86_64-linux-android scripts/mobile-test.sh android
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 29
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
+          script: scripts/mobile-test.sh android

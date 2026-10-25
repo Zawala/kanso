@@ -257,14 +257,19 @@ mod tests {
         }
     }
 
+    /// The crate's folder: cargo's at run time (the phone runners set it to where
+    /// they copied the fixtures), else where it was built.
+    fn manifest_dir() -> std::path::PathBuf {
+        std::env::var_os("CARGO_MANIFEST_DIR")
+            .map(Into::into)
+            .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())
+    }
+
     /// The Worker's header cases (`cloud/test/fixtures/collab.json`): both
     /// parsers agree on every one.
     #[test]
     fn the_workers_header_cases_parse_alike() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../cloud/test/fixtures/collab.json"
-        );
+        let path = manifest_dir().join("../../cloud/test/fixtures/collab.json");
         let fixtures: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         let cases = fixtures["cases"].as_array().unwrap();

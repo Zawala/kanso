@@ -1,0 +1,43 @@
+# Temporary. This only exists to measure what the core weighs on a phone
+# (scripts/mobile-size.sh). Step 4 of #48 adds `kanso-mobile`, the real
+# library, and removes this crate.
+[package]
+name = "kanso-mobile-size"
+description = "A stand-in for the mobile library, to measure what the core weighs on a phone (#48). Temporary: step 4's kanso-mobile replaces it."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+kanso-core.workspace = true
+kanso-store.workspace = true
+serde_json.workspace = true
+markdown = { workspace = true, optional = true }
+kanso-collab = { workspace = true, optional = true }
+kanso-engine = { workspace = true, optional = true }
+kanso-import = { workspace = true, optional = true }
+kanso-render = { workspace = true, optional = true }
+# The phones build these two without their desktop features, so the paths are
+# given here rather than inherited from the workspace entries.
+kanso-ai = { path = "../kanso-ai", default-features = false, optional = true }
+kanso-sync = { path = "../kanso-sync", default-features = false, optional = true }
+
+[features]
+default = ["full"]
+# Everything the facade will hold. Without it (`--no-default-features`) only
+# the core and the store are in: what the spike's 17.8 MB zipped app held,
+# for comparison.
+full = [
+    "dep:kanso-collab",
+    "dep:kanso-engine",
+    "dep:kanso-import",
+    "dep:kanso-render",
+    "dep:kanso-ai",
+    "dep:kanso-sync",
+    "dep:markdown",
+]

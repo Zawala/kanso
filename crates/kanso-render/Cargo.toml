@@ -24,6 +24,12 @@ serde_json.workspace = true
 # bounds, whatever the SVG says.
 usvg = "0.46"
 
+# rquickjs ships no bindings for phones: generate them with the build
+# machine's libclang (Xcode's, or the Android NDK's), as scripts/mobile-test.sh
+# and CI set up. Cargo's resolver keeps this feature off desktop builds.
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+rquickjs = { version = "0.14", features = ["bindgen"] }
+
 [build-dependencies]
 flate2 = "1.1"
 

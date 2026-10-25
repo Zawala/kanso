@@ -9,7 +9,7 @@ rust-version.workspace = true
 [dependencies]
 agent-runtime.workspace = true
 # An agent on this computer, over the Agent Client Protocol.
-kanso-acp.workspace = true
+kanso-acp = { workspace = true, optional = true }
 anyhow.workspace = true
 async-trait = "0.1"
 serde.workspace = true
@@ -17,6 +17,19 @@ serde_json.workspace = true
 # agent-runtime is async. kanso-ai owns one small runtime on a named
 # background thread; the app keeps its synchronous Event iterator.
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+
+# On iOS and Android, the HTTP client trusts the phone's certificates
+# (kanso-tls). reqwest is the one agent-runtime already builds, and its
+# rustls features come from there.
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+kanso-tls.workspace = true
+reqwest = { version = "0.12", default-features = false }
+
+[features]
+default = ["acp"]
+# An agent on this computer (ACP): it starts a process and reads the
+# environment, so it is left out of the phones' build (#48).
+acp = ["dep:kanso-acp"]
 
 [dev-dependencies]
 futures-util = "0.3"

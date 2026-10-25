@@ -162,8 +162,40 @@ impl ClientSettings {
 
     fn llm(&self) -> Result<Llm, AiError> {
         self.validate()?;
-        self.llm_builder().build().map_err(map_error)
+        let builder = self.llm_builder();
+        // A phone trusts its own certificate store, not the web's roots
+        // built into the program. A model on this network over plain http
+        // has no certificate to check.
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let builder = if self.provider == Provider::Bedrock
+            || self
+                .base_url
+                .trim()
+                .to_ascii_lowercase()
+                .starts_with("https:")
+        {
+            builder.reqwest_client(phone_http_client(Timeouts::default())?)
+        } else {
+            builder
+        };
+        builder.build().map_err(map_error)
     }
+}
+
+/// The HTTP client on iOS and Android: what the runtime builds by default,
+/// except that it checks certificates with the phone (`kanso-tls`). Fails,
+/// instead of panicking later, when the Android app hasn't set that up.
+#[cfg(any(target_os = "ios", target_os = "android"))]
+// no-prop-test: needs the phone's certificate store; kanso-tls has the tests.
+fn phone_http_client(timeouts: Timeouts) -> Result<reqwest::Client, AiError> {
+    let tls = kanso_tls::client_config().map_err(|err| AiError::Transport(err.to_string()))?;
+    let mut builder = reqwest::Client::builder().use_preconfigured_tls((*tls).clone());
+    if let Some(connect) = timeouts.connect {
+        builder = builder.connect_timeout(connect);
+    }
+    builder
+        .build()
+        .map_err(|err| AiError::Transport(err.to_string()))
 }
 
 /// A client for `settings`, or why one can't be made.
@@ -710,6 +742,21 @@ mod tests {
         }
     }
 
+    /// On a phone the client trusts the phone's store: it builds where that
+    /// store is ready (iOS), and is refused, not panicked, where it isn't yet
+    /// (an Android app before it hands over its Context).
+    // no-prop-test: one client built from fixed settings; kanso-tls has the properties.
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    #[test]
+    fn a_phones_client_uses_the_phones_certificates_once_they_are_ready() {
+        let made = super::client(&settings(Provider::OpenAi));
+        if cfg!(target_os = "android") {
+            assert!(matches!(made, Err(AiError::Transport(_))));
+        } else {
+            assert!(made.is_ok());
+        }
+    }
+
     fn events(provider: Provider, body: &str) -> Vec<Event> {
         let client = client_with_timeouts(
             &settings(provider),
@@ -1145,7 +1192,9 @@ mod tests {
 
     #[test]
     fn a_client_is_reused_until_its_settings_change() {
-        let first = settings(Provider::OpenAi);
+        // A model on this network (plain http), which checks no certificate,
+        // so this runs on an Android device before its app sets up TLS.
+        let first = settings(Provider::LocalModel);
         let one = super::cached_client(&first).expect("client");
         let two = super::cached_client(&first).expect("client");
         assert!(Arc::ptr_eq(&one, &two));

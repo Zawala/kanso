@@ -1,6 +1,6 @@
 //! [`CollabApi`] over HTTPS, as `kanso-sync` talks to the Worker: no
 //! redirects, no `Origin`, capped answers; and the live room over a
-//! WebSocket (`tungstenite`) on the same rustls and web PKI roots.
+//! WebSocket (`tungstenite`) on the same rustls and trusted certificates (`kanso-tls`).
 
 use std::io;
 use std::time::Duration;
@@ -30,15 +30,19 @@ const USER_AGENT: &str = concat!("kanso-sync/", env!("CARGO_PKG_VERSION"));
 #[derive(Clone, Copy, Debug, Default)]
 pub struct HttpCollab;
 
-fn agent() -> Agent {
-    Agent::config_builder()
+/// The client for one request to `url`. An Android app that hasn't handed over
+/// its Context yet gets an error here, not a panic in the handshake.
+fn agent(url: &str) -> Result<Agent> {
+    kanso_tls::ready_for(url).map_err(|err| CollabError::Transport(err.to_string()))?;
+    Ok(Agent::config_builder()
         .http_status_as_error(false)
         .max_redirects(0)
         .timeout_connect(Some(Duration::from_secs(20)))
         .timeout_global(Some(Duration::from_secs(120)))
         .user_agent(USER_AGENT)
+        .tls_config(kanso_tls::ureq_tls())
         .build()
-        .into()
+        .into())
 }
 
 /// A path segment, percent-encoded.
@@ -85,18 +89,20 @@ fn json_of<T: DeserializeOwned>(body: Option<Vec<u8>>) -> Result<T> {
 }
 
 fn get(caller: &Caller, path: &str) -> Result<Option<Vec<u8>>> {
+    let target = url(caller, path);
     answer(
-        agent()
-            .get(url(caller, path))
+        agent(&target)?
+            .get(target)
             .header("authorization", caller.authorization.as_str())
             .call(),
     )
 }
 
 fn delete(caller: &Caller, path: &str) -> Result<()> {
+    let target = url(caller, path);
     answer(
-        agent()
-            .delete(url(caller, path))
+        agent(&target)?
+            .delete(target)
             .header("authorization", caller.authorization.as_str())
             .call(),
     )
@@ -112,8 +118,8 @@ fn send_json<T: Serialize>(
     let bytes = serde_json::to_vec(body).map_err(|err| CollabError::Protocol(err.to_string()))?;
     let target = url(caller, path);
     let request = match method {
-        "PUT" => agent().put(target),
-        _ => agent().post(target),
+        "PUT" => agent(&target)?.put(target),
+        _ => agent(&target)?.post(target),
     };
     answer(
         request
@@ -129,8 +135,9 @@ fn send_bytes(
     bytes: &[u8],
     base_seq: Option<u64>,
 ) -> Result<Option<Vec<u8>>> {
-    let mut request = agent()
-        .post(url(caller, path))
+    let target = url(caller, path);
+    let mut request = agent(&target)?
+        .post(target)
         .header("authorization", caller.authorization.as_str())
         .header("content-type", "application/octet-stream");
     if let Some(seq) = base_seq {

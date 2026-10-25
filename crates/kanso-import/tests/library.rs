@@ -10,10 +10,16 @@ use kanso_import::library::{
 use kanso_store::{Doc, Origin, Put, Store};
 use serde_json::{Value, json};
 
+/// The crate's folder: cargo's at run time (the phone runners set it to where
+/// they copied the fixtures), else where it was built.
+fn manifest_dir() -> std::path::PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(Into::into)
+        .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())
+}
+
 fn fixture(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures")
-        .join(name)
+    manifest_dir().join("tests/fixtures").join(name)
 }
 
 /// A copy of a fixture to change, and an empty store.

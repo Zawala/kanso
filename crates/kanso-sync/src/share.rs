@@ -448,15 +448,19 @@ fn bearer(token: &SessionToken) -> Zeroizing<String> {
 pub struct HttpShares;
 
 impl HttpShares {
-    fn agent() -> Agent {
-        Agent::config_builder()
+    /// The client for one request to `url`. An Android app that hasn't handed
+    /// over its Context yet gets an error here, not a panic in the handshake.
+    fn agent(url: &str) -> Result<Agent, ApiError> {
+        kanso_tls::ready_for(url).map_err(|err| ApiError::Transport(err.to_string()))?;
+        Ok(Agent::config_builder()
             .http_status_as_error(false)
             .max_redirects(0)
             .timeout_connect(Some(Duration::from_secs(20)))
             .timeout_global(Some(Duration::from_secs(300)))
             .user_agent(concat!("kanso-sync/", env!("CARGO_PKG_VERSION")))
+            .tls_config(kanso_tls::ureq_tls())
             .build()
-            .into()
+            .into())
     }
 
     /// Ok for a 2xx answer, whose body isn't read (a 204 has none).
@@ -515,8 +519,9 @@ impl ShareApi for HttpShares {
         expires_at: Option<i64>,
     ) -> Result<Uploaded, ApiError> {
         let auth = bearer(session.token());
-        let mut request = HttpShares::agent()
-            .put(share_url(session, share_id))
+        let url = share_url(session, share_id);
+        let mut request = HttpShares::agent(&url)?
+            .put(url)
             .header("authorization", auth.as_str())
             .header("content-type", "application/octet-stream")
             .header("x-kanso-sha256", sha256_hex(sealed))
@@ -529,9 +534,10 @@ impl ShareApi for HttpShares {
 
     fn delete_share(&self, session: &Session, share_id: &str) -> Result<(), ApiError> {
         let auth = bearer(session.token());
+        let url = share_url(session, share_id);
         HttpShares::answer(
-            HttpShares::agent()
-                .delete(share_url(session, share_id))
+            HttpShares::agent(&url)?
+                .delete(url)
                 .header("authorization", auth.as_str())
                 .call(),
         )
@@ -803,14 +809,20 @@ mod tests {
         b64(&bytes)
     }
 
+    /// The crate's folder: cargo's at run time (the phone runners set it to where
+    /// they copied the fixtures), else where it was built.
+    fn manifest_dir() -> std::path::PathBuf {
+        std::env::var_os("CARGO_MANIFEST_DIR")
+            .map(Into::into)
+            .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())
+    }
+
     /// The vector the Worker's tests open with the viewer's WebCrypto code.
     #[test]
     fn matches_the_shared_fixture() {
-        let text = std::fs::read_to_string(format!(
-            "{}/../../cloud/test/fixtures/share.json",
-            env!("CARGO_MANIFEST_DIR")
-        ))
-        .unwrap();
+        let text =
+            std::fs::read_to_string(manifest_dir().join("../../cloud/test/fixtures/share.json"))
+                .unwrap();
         let fixture: Value = serde_json::from_str(&text).unwrap();
         let s = |k: &str| fixture[k].as_str().unwrap().to_owned();
         let unhex = |h: String| -> Vec<u8> {

@@ -157,6 +157,7 @@ impl HttpApi {
             .timeout_connect(Some(Duration::from_secs(20)))
             .timeout_global(Some(Duration::from_secs(300)))
             .user_agent(concat!("kanso-sync/", env!("CARGO_PKG_VERSION")))
+            .tls_config(kanso_tls::ureq_tls())
             .build()
             .into();
         HttpApi {
@@ -177,6 +178,9 @@ impl HttpApi {
     ) -> Result<(u16, Vec<u8>), ApiError> {
         let (method, _) = route.http();
         let url = format!("{}{path}", self.base);
+        // Before the handshake: an Android app that hasn't handed over its
+        // Context gets an error, not a panic inside the verifier.
+        kanso_tls::ready_for(&url).map_err(|err| ApiError::Transport(err.to_string()))?;
         let auth = token.map(|t| Zeroizing::new(format!("Bearer {}", t.expose())));
         let timeout = Some(timeout(route));
         let response = match method {

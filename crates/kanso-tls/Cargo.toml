@@ -1,0 +1,33 @@
+[package]
+name = "kanso-tls"
+description = "Which certificates Kanso trusts: the web's roots on a computer, and the phone's own store on iOS and Android."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rustls.workspace = true
+thiserror.workspace = true
+webpki-roots.workspace = true
+# The HTTP client's side of the choice (kanso-sync, kanso-collab). kanso-ai
+# builds its own client from `client_config` and leaves this off.
+ureq = { version = "3.4", optional = true }
+
+# A phone checks a server's certificate with the system: iOS's Security
+# framework and Android's TrustManager, so a root the person's company or
+# school installed works, and a revoked one stops.
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+rustls-platform-verifier = "0.7"
+ureq = { version = "3.4", optional = true, features = ["platform-verifier"] }
+
+# The verifier reaches the system through the app's JVM; `init_android` hands
+# it the Context.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.22", default-features = false }
+
+[features]
+ureq = ["dep:ureq"]
+
+[dev-dependencies]
+proptest.workspace = true

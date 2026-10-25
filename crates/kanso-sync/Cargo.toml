@@ -33,10 +33,11 @@ thiserror.workspace = true
 unicode-normalization.workspace = true
 zeroize.workspace = true
 # The account event socket (events.rs) and shared notes' live room (kanso-collab): a
-# WebSocket over the rustls (ring) and web PKI roots ureq already uses.
+# WebSocket over rustls (ring), trusting what kanso-tls says (the web's roots on a
+# computer, the phone's store on iOS and Android).
+kanso-tls = { workspace = true, features = ["ureq"] }
 rustls.workspace = true
 tungstenite.workspace = true
-webpki-roots.workspace = true
 # WebAuthn signature checks (ES256, EdDSA, RS256): MemoryServer's relying party
 # and the Linux security-key registration check. Already built for rustls.
 ring = "0.17"
@@ -68,8 +69,10 @@ system-keychain = ["dep:keyring"]
 test-support = []
 
 [dev-dependencies]
-# This crate's integration tests use `TestAuthenticator`.
-kanso-sync = { path = ".", features = ["test-support"] }
+# This crate's integration tests use `TestAuthenticator`. Default features off,
+# so the phones' test build (`--no-default-features`) doesn't turn the desktop
+# Keychain, and the binary that needs it, back on.
+kanso-sync = { path = ".", default-features = false, features = ["test-support"] }
 async-channel.workspace = true
 # The rollback test replays the old app's store rules (tests/common/legacy.rs).
 kanso-store = { workspace = true, features = ["legacy-v1-rules"] }

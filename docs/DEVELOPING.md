@@ -63,3 +63,44 @@ ONNX Runtime is linked into the app statically; its build script downloads
 pyke's prebuilt archive once and checks it. On macOS the bundle carries the
 microphone entitlement (`packaging/macos/Kanso.entitlements`), without which
 the hardened runtime keeps the microphone from Kanso and macOS never asks.
+
+## Mobile targets
+
+The core the mobile app shares (`kanso-core`, `kanso-store`, `kanso-engine`,
+`kanso-render`, `kanso-collab`, `kanso-import`, `kanso-sync` and `kanso-ai`,
+the last two without their desktop features, plus `kanso-tls`) builds for
+`aarch64-apple-ios`, `aarch64-apple-ios-sim`, `aarch64-linux-android`,
+`armv7-linux-androideabi` and `x86_64-linux-android`. Add the targets once
+with `rustup target add`; Android needs the NDK (`ANDROID_NDK_HOME`, else the
+newest in `~/Library/Android/sdk/ndk`), which `scripts/mobile/env.sh` points
+the C compilers and bindgen at.
+
+```sh
+scripts/mobile-check.sh                  # cargo check for the five targets, the banned-dependency look, clippy
+scripts/mobile-test.sh ios-sim           # the tests, in a booted iPhone simulator
+scripts/mobile-test.sh android           # the tests, on the one device or emulator adb lists
+scripts/mobile-size.sh                   # the size table: iOS and Android, full and minimal, unwinding and aborting
+```
+
+- `mobile-test.sh` runs each crate's library and integration tests (not
+  doctests) through a Cargo runner: `KANSO_IOS_SIM_UDID` picks a simulator,
+  `ANDROID_SERIAL` a device, and `KANSO_TEST_CRATES="kanso-sync kanso-ai"`
+  narrows the run. On Android the test binaries and the fixtures they read are
+  copied to `/data/local/tmp/kanso`, so fixture paths are read from
+  `CARGO_MANIFEST_DIR` at run time, not when the test is built. An Apple-silicon
+  Mac runs `aarch64-linux-android` in an arm64 emulator; CI runs an x86-64 one
+  at API 29 (`.github/workflows/mobile-core.yml`, only for changes that can
+  affect it).
+- `cargo build --profile mobile` is the phones' release build: `opt-level =
+  "z"`, fat LTO, one codegen unit, and `panic = "unwind"`, so the facade
+  catches a panic and returns an error. The desktop's `[profile.release]` is
+  unchanged. `crates/kanso-mobile-size` is a temporary stand-in for the
+  library, only there to measure; the mobile library replaces it.
+- rquickjs ships no bindings for phones, so `kanso-render` builds them with
+  libclang (Xcode's, or the NDK's) on iOS and Android. A bindgen setting for
+  your own Mac in `BINDGEN_EXTRA_CLANG_ARGS` would be passed to the phones'
+  targets too; the scripts unset it.
+- Phones check servers' certificates with the system (`kanso-tls`). On
+  Android that needs the app's `Context` first; until the app hands it over,
+  requests over HTTPS fail with an error. A bare `adb shell` test binary has no
+  JVM, so the real certificate check on Android is tested in the app.

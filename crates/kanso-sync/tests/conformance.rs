@@ -35,11 +35,19 @@ mod v2 {
     use serde_json::{Value, json};
     use sha2::{Digest as _, Sha256};
 
+    /// The crate's folder: cargo's at run time (the phone runners set it to where
+    /// they copied the fixtures), else where it was built.
+    fn manifest_dir() -> std::path::PathBuf {
+        std::env::var_os("CARGO_MANIFEST_DIR")
+            .map(Into::into)
+            .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())
+    }
+
     fn fixture_path(name: &str) -> String {
-        format!(
-            "{}/../../cloud/test/fixtures/{name}",
-            env!("CARGO_MANIFEST_DIR")
-        )
+        manifest_dir()
+            .join(format!("../../cloud/test/fixtures/{name}"))
+            .to_string_lossy()
+            .into_owned()
     }
 
     fn load(name: &str) -> Value {
