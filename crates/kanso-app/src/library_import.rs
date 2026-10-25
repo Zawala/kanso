@@ -709,47 +709,76 @@ pub fn open_files(
     cx: &mut App,
     on_opened: impl Fn(String, &mut Window, &mut App) + 'static,
 ) {
-    let store = cx.global::<AppState>().store.clone();
     let picked = cx.prompt_for_paths(PathPromptOptions {
         files: true,
         directories: false,
         multiple: true,
         prompt: Some("Open".into()),
     });
+    let store = cx.global::<AppState>().store.clone();
     window
         .spawn(cx, async move |cx| {
             let Ok(Ok(Some(paths))) = picked.await else {
                 return;
             };
-            let result = cx
-                .background_executor()
-                .spawn(async move { open_paths(&paths, &store) })
-                .await;
-            cx.update(|window, cx| match result {
-                Ok((Some(id), problems)) => {
-                    on_opened(id, window, cx);
-                    for problem in problems {
-                        window.push_notification(Notification::warning(problem), cx);
-                    }
-                }
-                Ok((None, problems)) => {
-                    for problem in problems {
-                        window.push_notification(Notification::error(problem), cx);
-                    }
-                }
-                Err(err) => window.push_notification(
-                    Notification::error(format!("Couldn't open it: {err:#}")),
-                    cx,
-                ),
-            })
-            .ok();
+            open_and_report(paths, store, on_opened, cx).await;
         })
         .detach();
 }
 
+/// Opens `paths` the way File › Open… does, for files the system opened
+/// (Finder, `kanso file.md`): the same import, then `on_opened` with the
+/// last note, and what went wrong in the window's notifications.
+pub fn open_paths_in(
+    paths: Vec<PathBuf>,
+    window: &mut Window,
+    cx: &mut App,
+    on_opened: impl Fn(String, &mut Window, &mut App) + 'static,
+) {
+    let store = cx.global::<AppState>().store.clone();
+    window
+        .spawn(cx, async move |cx| {
+            open_and_report(paths, store, on_opened, cx).await;
+        })
+        .detach();
+}
+
+async fn open_and_report(
+    paths: Vec<PathBuf>,
+    store: Arc<Store>,
+    on_opened: impl Fn(String, &mut Window, &mut App) + 'static,
+    cx: &mut AsyncWindowContext,
+) {
+    let result = cx
+        .background_executor()
+        .spawn(async move { open_paths(&paths, &store) })
+        .await;
+    cx.update(|window, cx| match result {
+        Ok((Some(id), problems)) => {
+            on_opened(id, window, cx);
+            for problem in problems {
+                window.push_notification(Notification::warning(problem), cx);
+            }
+        }
+        Ok((None, problems)) => {
+            for problem in problems {
+                window.push_notification(Notification::error(problem), cx);
+            }
+        }
+        Err(err) => window.push_notification(
+            Notification::error(format!("Couldn't open it: {err:#}")),
+            cx,
+        ),
+    })
+    .ok();
+}
+
 /// Imports each Markdown file; returns the last note and what went wrong
 /// with the others.
-fn open_paths(paths: &[PathBuf], store: &Store) -> anyhow::Result<(Option<String>, Vec<String>)> {
+pub(crate) fn open_paths(
+    paths: &[PathBuf],
+    store: &Store,
+) -> anyhow::Result<(Option<String>, Vec<String>)> {
     let mut last = None;
     let mut problems = Vec::new();
     for path in paths {
@@ -902,6 +931,25 @@ mod tests {
 
     use super::{Cli, LibraryReport, SourceKind, parse_cli, summary};
     use proptest::prelude::*;
+
+    /// Opening a file the system handed over and opening it again from
+    /// the picker is one note, with the file's new text.
+    #[test]
+    fn opening_a_file_again_updates_the_same_note() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = kanso_store::Store::open(dir.path().join("db.sqlite")).unwrap();
+        let file = dir.path().join("README.md");
+        std::fs::write(&file, "# Title\n\nfirst").unwrap();
+        let (first, problems) = super::open_paths(std::slice::from_ref(&file), &store).unwrap();
+        assert!(problems.is_empty());
+        let first = first.expect("a note");
+        std::fs::write(&file, "# Title\n\nsecond").unwrap();
+        let (second, problems) = super::open_paths(&[file], &store).unwrap();
+        assert!(problems.is_empty());
+        assert_eq!(second.as_deref(), Some(first.as_str()));
+        let note = store.note(&first).unwrap().unwrap();
+        assert!(note.body.contains("second") && !note.body.contains("first"));
+    }
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| (*s).to_owned()).collect()

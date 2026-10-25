@@ -99,6 +99,7 @@ mod note_window_tests;
 mod notebook_lock;
 mod notify_support;
 mod ocr;
+mod open_documents;
 mod origin;
 mod pairing;
 mod palette;
@@ -193,9 +194,12 @@ use crate::workspace::{AppState, Quit, Workspace};
 
 const USAGE: &str = "\
 Usage: kanso [command] [--data-dir <dir>]
+       kanso <file.md> [more files]
 
 Commands:
   (none)            Open the app
+  <file.md> ...     Open Markdown or text files as notes in the Inbox,
+                    in the running Kanso if there is one
   serve             Run only the local API (REST and /mcp), without a
                     window
   import <kind> [path]
@@ -231,6 +235,8 @@ struct Args {
     command: Option<String>,
     data_dir: PathBuf,
     rest: Vec<String>,
+    /// Markdown or text files to open: every argument was one.
+    files: Vec<PathBuf>,
     /// Opened by an update: the Kanso that installed it may still be
     /// quitting, so wait for the data folder.
     after_update: bool,
@@ -246,11 +252,25 @@ fn parse_args() -> Result<Args> {
 /// the desktop entry and the installer pass it (`kanso <url>`): the
 /// operating system passes the link, so flags beside it, such as a
 /// `--data-dir` naming the folder to forward to, can't come from Kanso.
+///
+/// Arguments that are all existing Markdown or text files (or `file://` URLs
+/// for them, which is how a Linux file manager passes them) are files to
+/// open, and mean nothing else.
 fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
     let mut command = None;
     let mut data_dir = None;
     let mut rest = Vec::new();
     let mut after_update = false;
+    let args: Vec<String> = args.into_iter().collect();
+    if let Some(files) = file_arguments(&args) {
+        return Ok(Args {
+            command: None,
+            data_dir: paths::default_data_dir(),
+            rest,
+            files,
+            after_update,
+        });
+    }
     let mut args = args.into_iter().peekable();
     if let Some(url) = args.next_if(|arg| url_callback::is_callback_argument(arg)) {
         if args.next().is_some() {
@@ -260,6 +280,7 @@ fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
             command: Some(url),
             data_dir: paths::default_data_dir(),
             rest,
+            files: Vec::new(),
             after_update,
         });
     }
@@ -285,8 +306,32 @@ fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
         command,
         data_dir: data_dir.unwrap_or_else(paths::default_data_dir),
         rest,
+        files: Vec::new(),
         after_update,
     })
+}
+
+/// The absolute paths of `args` when there is at least one and every one is
+/// an existing file named like a note, or a `file://` URL for one.
+fn file_arguments(args: &[String]) -> Option<Vec<PathBuf>> {
+    if args.is_empty() {
+        return None;
+    }
+    args.iter()
+        .map(|arg| {
+            let path = if arg
+                .get(..7)
+                .is_some_and(|p| p.eq_ignore_ascii_case("file://"))
+            {
+                open_documents::paths_from_urls(std::slice::from_ref(arg))
+                    .pop()
+                    .filter(|path| path.is_absolute())?
+            } else {
+                std::path::absolute(arg).ok()?
+            };
+            open_documents::is_note_file(&path).then_some(path)
+        })
+        .collect()
 }
 
 fn main() -> Result<()> {
@@ -296,7 +341,8 @@ fn main() -> Result<()> {
     }
     let args = parse_args()?;
     match args.command.as_deref() {
-        None => run_app(args.data_dir, args.after_update),
+        None if forwarded_files(&args.data_dir, &args.files) => Ok(()),
+        None => run_app(args.data_dir, args.after_update, args.files),
         Some(url) if url_callback::is_callback_argument(url) => {
             forward_callback(&args.data_dir, url);
             Ok(())
@@ -323,6 +369,30 @@ fn forward_callback(data_dir: &std::path::Path, url: &str) {
     if let Err(error) = url_callback::forward(data_dir, url) {
         eprintln!("kanso: couldn't pass the sign-in back to Kanso: {error}");
     }
+}
+
+/// `kanso file.md` while another Kanso holds the data folder: hands it the
+/// files and returns true. Anywhere else, or with nothing to hand over,
+/// false and this process opens them itself. macOS opens documents through
+/// the system, which sends them to the running app.
+#[cfg(not(target_os = "macos"))]
+fn forwarded_files(data_dir: &std::path::Path, files: &[PathBuf]) -> bool {
+    if files.is_empty() {
+        return false;
+    }
+    match url_callback::forward_files(data_dir, files) {
+        Ok(()) => true,
+        Err(url_callback::ForwardError::NotRunning) => false,
+        Err(error) => {
+            eprintln!("kanso: couldn't pass the files to Kanso: {error}");
+            true
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn forwarded_files(_: &std::path::Path, _: &[PathBuf]) -> bool {
+    false
 }
 
 /// Writes the commands' output to the console Kanso was started from, if
@@ -380,7 +450,7 @@ fn load_config(data_dir: &std::path::Path) -> Result<AppConfig> {
 /// it to let go of the data folder.
 const AFTER_UPDATE_WAIT: std::time::Duration = std::time::Duration::from_secs(20);
 
-fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
+fn run_app(data_dir: PathBuf, after_update: bool, files: Vec<PathBuf>) -> Result<()> {
     std::fs::create_dir_all(&data_dir)
         .with_context(|| format!("creating {}", data_dir.display()))?;
     let mut lock = lock_data_dir(&data_dir)?;
@@ -397,11 +467,21 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
     };
     let config = load_config(&data_dir)?;
     let store = Arc::new(Store::open(paths::db_path(&data_dir))?);
+    // Files to open: from the command line now, from the system's open
+    // events (Finder) and from a second `kanso file.md` later. They wait
+    // here until the main window exists.
+    let (opener, opened) = open_documents::channel();
+    opener.paths(files);
     // Sign in with Apple returns through the browser and `kanso://` outside
-    // macOS; a second `kanso` started with the URL forwards it here.
+    // macOS, and files come from a second `kanso`; the second one forwards
+    // them here.
     #[cfg(not(target_os = "macos"))]
-    if let Err(err) = url_callback::listen(&data_dir, &url_callback::ROUTER) {
-        eprintln!("kanso: Sign in with Apple can't return to Kanso: {err}");
+    {
+        let opener = opener.clone();
+        let sink: url_callback::FileSink = Arc::new(move |paths| opener.paths(paths));
+        if let Err(err) = url_callback::listen(&data_dir, &url_callback::ROUTER, sink) {
+            eprintln!("kanso: Sign in with Apple and opening files can't reach Kanso: {err}");
+        }
     }
 
     // A daily snapshot of the database, off the main thread.
@@ -416,6 +496,10 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
     let app = application().with_assets(assets::KansoAssets);
     // The Dock's icon brings the main window back, even while notes are
     // open in windows of their own.
+    app.on_open_urls({
+        let opener = opener.clone();
+        move |urls| opener.urls(&urls)
+    });
     app.on_reopen(|cx| {
         if workspace::main_workspace(cx).is_none() {
             open_main_window(cx);
@@ -482,6 +566,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         ocr::init(cx);
         open_main_window(cx);
         note_window::restore(cx);
+        open_documents::serve(opened, open_main_window, cx);
         cx.activate(true);
         // Held until the process exits so no second Kanso opens this folder.
         let _ = &lock;

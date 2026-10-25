@@ -764,6 +764,21 @@ impl Workspace {
         self.editor.update(cx, |editor, cx| editor.flush(cx));
     }
 
+    /// Opens Markdown and text files the system handed to Kanso, as File ›
+    /// Open… does, and shows the last one. Nothing makes a new note.
+    pub(crate) fn open_documents(
+        &mut self,
+        paths: Vec<PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.flush(cx);
+        let library = self.library.clone();
+        crate::library_import::open_paths_in(paths, window, cx, move |id, _, cx| {
+            library.update(cx, |library, cx| library.select(Some(id), cx));
+        });
+    }
+
     fn new_note(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.flush(cx);
         let library = self.library.read(cx);

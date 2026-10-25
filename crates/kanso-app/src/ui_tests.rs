@@ -2269,3 +2269,107 @@ fn a_query_view_draws_a_table_in_the_preview(cx: &mut TestAppContext) {
     let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
     assert!(vcx.debug_bounds("kanso-query-row-1").is_some());
 }
+
+fn open_test_window(cx: &mut gpui_kit::App) {
+    gpui_kit::open_window(Default::default(), cx, |window, cx| {
+        cx.new(|cx| Workspace::new(window, cx))
+    })
+    .unwrap();
+}
+
+/// What the main window's editor shows, and that note's text.
+fn shown_note(cx: &mut TestAppContext) -> (Option<String>, String) {
+    cx.update(|cx| {
+        let (window, workspace) = crate::workspace::main_workspace(cx).expect("a main window");
+        let shown = window
+            .update(cx, |_, _, cx| {
+                workspace
+                    .read(cx)
+                    .editor
+                    .read(cx)
+                    .note_id()
+                    .map(str::to_owned)
+            })
+            .unwrap();
+        let body = shown
+            .as_deref()
+            .map(|id| note_body(&cx.global::<AppState>().store, id))
+            .unwrap_or_default();
+        (shown, body)
+    })
+}
+
+fn start_without_window(
+    cx: &mut TestAppContext,
+    dir: &tempfile::TempDir,
+    store: &Arc<Store>,
+    with_window: bool,
+    receiver: async_channel::Receiver<Vec<std::path::PathBuf>>,
+) {
+    let (data_dir, app_store) = (dir.path().to_path_buf(), store.clone());
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        cx.set_global(AppState {
+            store: app_store,
+            data_dir,
+            config: AppConfig::default(),
+        });
+        cx.set_global(Services::default());
+        if with_window {
+            open_test_window(cx);
+        }
+        crate::open_documents::serve(receiver, open_test_window, cx);
+    });
+}
+
+/// A launch that carries a file (Finder's Open With starts Kanso, and the
+/// file is queued before any window exists), then a file opened while
+/// running: each ends with that file's note shown, and no note is made
+/// that nobody wrote.
+#[gpui_kit::test]
+fn files_opened_at_launch_and_later_are_shown_never_a_new_note(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(dir.path().join("kanso.db")).unwrap());
+    let first = dir.path().join("first.md");
+    let second = dir.path().join("second.md");
+    std::fs::write(&first, "# First\n\nfrom launch").unwrap();
+    std::fs::write(&second, "# Second\n\nwhile running").unwrap();
+    // The system's event arrives before the app has a window.
+    let (opener, receiver) = crate::open_documents::channel();
+    opener.urls(&[url::Url::from_file_path(&first).unwrap().to_string()]);
+    start_without_window(cx, &dir, &store, true, receiver);
+    cx.run_until_parked();
+    let (shown, body) = shown_note(cx);
+    assert!(shown.is_some(), "the launch file's note is shown");
+    assert!(body.contains("from launch"));
+    let count = |store: &Store| store.counts().unwrap()[&DocType::Note];
+    assert_eq!(count(&store), 1, "no empty note beside it");
+
+    opener.paths(vec![second]);
+    cx.run_until_parked();
+    let (shown_now, body) = shown_note(cx);
+    assert_ne!(shown_now, shown);
+    assert!(body.contains("while running"));
+    assert_eq!(count(&store), 2);
+
+    // Opening the first again selects its note, not a copy.
+    opener.paths(vec![first]);
+    cx.run_until_parked();
+    assert_eq!(shown_note(cx).0, shown);
+    assert_eq!(count(&store), 2);
+}
+
+/// The main window was closed: a file opens it again.
+#[gpui_kit::test]
+fn a_file_opened_with_no_window_opens_the_window(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(dir.path().join("kanso.db")).unwrap());
+    let file = dir.path().join("late.md");
+    std::fs::write(&file, "# Late\n\nbody").unwrap();
+    let (opener, receiver) = crate::open_documents::channel();
+    start_without_window(cx, &dir, &store, false, receiver);
+    opener.paths(vec![file]);
+    cx.run_until_parked();
+    assert!(shown_note(cx).1.contains("body"));
+    assert_eq!(store.counts().unwrap()[&DocType::Note], 1);
+}
