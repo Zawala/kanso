@@ -2,7 +2,7 @@
 //! thread routing whatever comes back, and prompt turns as blocking
 //! iterators.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -22,19 +22,83 @@ use crate::{
 /// What an agent asked permission for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PermissionRequest {
+    /// The agent's name, as the person sees it.
+    pub agent: String,
     /// The tool call's title, as the agent gave it.
     pub title: String,
     /// The kind of tool (read, edit, execute, …), if given.
     pub kind: Option<String>,
 }
 
-/// Decides a permission request: `true` allows it once. Kanso never answers
-/// "always".
-pub type PermissionPolicy = Arc<dyn Fn(&PermissionRequest) -> bool + Send + Sync>;
+/// How a pending permission request ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Decision {
+    Allow,
+    Reject,
+    /// Nobody answered within [`Limits::permission`].
+    TimedOut,
+    /// The turn was cancelled, or the session or process ended, while it
+    /// waited.
+    Cancelled,
+}
+
+/// The way to answer one [`PermissionRequest`], from any thread, once.
+/// Dropping it unanswered rejects the request. Kanso never answers "always",
+/// so there is no way to.
+pub struct PermissionReply {
+    tx: Option<Sender<Decision>>,
+    settled: Arc<AtomicBool>,
+}
+
+impl PermissionReply {
+    /// Lets the agent use the tool this once.
+    pub fn allow_once(mut self) {
+        self.send(Decision::Allow);
+    }
+
+    /// Tells the agent no.
+    pub fn reject(mut self) {
+        self.send(Decision::Reject);
+    }
+
+    /// The request is already over: answered, timed out, or cancelled. A
+    /// sheet showing it has nothing left to ask.
+    pub fn is_settled(&self) -> bool {
+        self.settled.load(Ordering::Relaxed)
+    }
+
+    fn send(&mut self, decision: Decision) {
+        if let Some(tx) = self.tx.take() {
+            tx.send(decision).ok();
+        }
+    }
+}
+
+impl Drop for PermissionReply {
+    fn drop(&mut self) {
+        self.send(Decision::Reject);
+    }
+}
+
+/// Decides a permission request. It is called on the connection's reader
+/// thread, so it must hand the request on and return at once; the answer
+/// comes later through the [`PermissionReply`], from any thread. With no
+/// answer within [`Limits::permission`] the request is rejected, and a
+/// cancelled turn or an ended connection settles it as cancelled.
+pub type PermissionPolicy = Arc<dyn Fn(PermissionRequest, PermissionReply) + Send + Sync>;
 
 /// The policy when no person can be asked: every request is rejected.
 pub fn reject_all() -> PermissionPolicy {
-    Arc::new(|_| false)
+    Arc::new(|_, reply| reply.reject())
+}
+
+/// The most permission requests waiting at once; more are rejected unasked.
+const MAX_PENDING_PERMISSIONS: usize = 8;
+
+/// A permission request waiting for its decision.
+struct PendingPermission {
+    session: Option<String>,
+    tx: Sender<Decision>,
 }
 
 /// One way an agent can sign the person in.
@@ -162,6 +226,10 @@ struct Shared {
     /// Method names, timings, error codes and exit status: never a payload.
     diagnostics: Mutex<VecDeque<String>>,
     permission: PermissionPolicy,
+    pending_permissions: Mutex<HashMap<u64, PendingPermission>>,
+    /// Sessions whose turn was cancelled: a request they make is cancelled
+    /// without asking.
+    cancelling: Mutex<HashSet<String>>,
     unknown_responses: AtomicU64,
     child: Mutex<Option<ChildGuard>>,
     stderr: Arc<Mutex<StderrRing>>,
@@ -284,6 +352,7 @@ impl Shared {
         }
         self.note(format!("ended: {}", ended_label(&reason)));
         lock(&self.writer).take();
+        self.cancel_permissions(None);
         let waiters: Vec<Waiter> = lock(&self.waiters)
             .drain()
             .map(|(_, waiter)| waiter)
@@ -347,7 +416,7 @@ impl Shared {
 
     /// Handles one line from the agent. Returns false once the connection is
     /// over.
-    fn handle_line(&self, line: &str) -> bool {
+    fn handle_line(self: &Arc<Self>, line: &str) -> bool {
         let Ok(message) = serde_json::from_str::<Value>(line) else {
             self.end(AcpError::Protocol("a message that isn't JSON".to_owned()));
             self.kill();
@@ -360,7 +429,7 @@ impl Shared {
         self.ended().is_none()
     }
 
-    fn handle(&self, message: &Value) {
+    fn handle(self: &Arc<Self>, message: &Value) {
         let method = message.get("method").and_then(Value::as_str);
         let id = message.get("id").filter(|id| !id.is_null()).cloned();
         let params = message.get("params").cloned().unwrap_or(Value::Null);
@@ -461,7 +530,7 @@ impl Shared {
     /// A request from the agent. Only permission requests are answered; every
     /// other method (`fs/*`, `terminal/*`, elicitation, anything new) is
     /// refused and does nothing.
-    fn agent_request(&self, method: &str, id: Value, params: &Value) {
+    fn agent_request(self: &Arc<Self>, method: &str, id: Value, params: &Value) {
         if method != "session/request_permission" {
             self.note(format!("refused {}", short(method)));
             self.respond_error(id, METHOD_NOT_FOUND, "Kanso doesn't offer this.");
@@ -469,6 +538,7 @@ impl Shared {
         }
         let tool = params.get("toolCall").cloned().unwrap_or(Value::Null);
         let request = PermissionRequest {
+            agent: self.label.clone(),
             title: tool
                 .get("title")
                 .and_then(Value::as_str)
@@ -477,41 +547,154 @@ impl Shared {
                 .to_owned(),
             kind: tool.get("kind").and_then(Value::as_str).map(str::to_owned),
         };
-        let allowed = (self.permission)(&request);
-        let wanted = if allowed { "allow_once" } else { "reject_once" };
-        let option = params
-            .get("options")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .find(|option| option.get("kind").and_then(Value::as_str) == Some(wanted))
-            .and_then(|option| option.get("optionId").and_then(Value::as_str));
+        let asked = AskedPermission {
+            id,
+            session: params
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            options: params.get("options").cloned().unwrap_or(Value::Null),
+            request,
+        };
+        let (tx, rx) = mpsc::channel();
+        let key = self.take_id();
+        {
+            let mut pending = lock(&self.pending_permissions);
+            if pending.len() >= MAX_PENDING_PERMISSIONS {
+                drop(pending);
+                self.answer_permission(&asked, Decision::Reject);
+                return;
+            }
+            pending.insert(
+                key,
+                PendingPermission {
+                    session: asked.session.clone(),
+                    tx: tx.clone(),
+                },
+            );
+        }
+        // A cancel or an end may have come in just before the request was
+        // listed, so look again now that it is.
+        let over = self.ended().is_some()
+            || asked
+                .session
+                .as_ref()
+                .is_some_and(|session| lock(&self.cancelling).contains(session));
+        if over {
+            lock(&self.pending_permissions).remove(&key);
+            self.answer_permission(&asked, Decision::Cancelled);
+            return;
+        }
+        let settled = Arc::new(AtomicBool::new(false));
+        // The waiter owns the decision; it answers the agent, so the reader
+        // goes on reading while a person decides.
+        let waiting = Arc::new(Mutex::new(Some((rx, asked.clone()))));
+        let shared = self.clone();
+        let flag = settled.clone();
+        let slot = waiting.clone();
+        let spawned = std::thread::Builder::new()
+            .name("kanso-acp-permission".into())
+            .spawn(move || {
+                let Some((rx, asked)) = lock(&slot).take() else {
+                    return;
+                };
+                let decision = match rx.recv_timeout(shared.limits.permission) {
+                    Ok(decision) => decision,
+                    Err(RecvTimeoutError::Timeout) => Decision::TimedOut,
+                    Err(RecvTimeoutError::Disconnected) => Decision::Reject,
+                };
+                lock(&shared.pending_permissions).remove(&key);
+                flag.store(true, Ordering::Relaxed);
+                shared.answer_permission(&asked, decision);
+            });
+        if spawned.is_err() {
+            lock(&self.pending_permissions).remove(&key);
+            settled.store(true, Ordering::Relaxed);
+            if lock(&waiting).take().is_some() {
+                self.answer_permission(&asked, Decision::Reject);
+            }
+            return;
+        }
+        (self.permission)(
+            asked.request,
+            PermissionReply {
+                tx: Some(tx),
+                settled,
+            },
+        );
+    }
+
+    /// Settles every waiting permission request of `session`, or of all
+    /// sessions, as cancelled.
+    fn cancel_permissions(&self, session: Option<&str>) {
+        let pending = lock(&self.pending_permissions);
+        for waiting in pending.values() {
+            if session.is_none() || waiting.session.as_deref() == session {
+                waiting.tx.send(Decision::Cancelled).ok();
+            }
+        }
+    }
+
+    /// Answers the agent's permission request, once: allow once, reject
+    /// once, or cancelled. Never an "always" option.
+    fn answer_permission(&self, asked: &AskedPermission, decision: Decision) {
+        let wanted = match decision {
+            Decision::Allow => Some("allow_once"),
+            Decision::Reject | Decision::TimedOut => Some("reject_once"),
+            Decision::Cancelled => None,
+        };
+        let option = wanted.and_then(|wanted| {
+            asked
+                .options
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|option| option.get("kind").and_then(Value::as_str) == Some(wanted))
+                .and_then(|option| option.get("optionId").and_then(Value::as_str))
+        });
+        let allowed = decision == Decision::Allow && option.is_some();
         self.note(format!(
             "permission {} {}",
-            request.kind.as_deref().unwrap_or("tool"),
-            if allowed && option.is_some() {
-                "allowed once"
-            } else {
-                "rejected"
+            asked.request.kind.as_deref().unwrap_or("tool"),
+            match decision {
+                Decision::Allow if allowed => "allowed once",
+                Decision::TimedOut => "timed out",
+                Decision::Cancelled => "cancelled",
+                _ => "rejected",
             }
         ));
         let outcome = match option {
             Some(option) => json!({ "outcome": "selected", "optionId": option }),
             None => json!({ "outcome": "cancelled" }),
         };
-        self.respond(id, json!({ "outcome": outcome }));
-        if (!allowed || option.is_none())
-            && let Some(session) = params.get("sessionId").and_then(Value::as_str)
-        {
+        self.respond(asked.id.clone(), json!({ "outcome": outcome }));
+        if allowed || decision == Decision::Cancelled {
+            return;
+        }
+        if let Some(session) = &asked.session {
+            let why = if decision == Decision::TimedOut {
+                "No one answered in time, so Kanso said no."
+            } else {
+                "Kanso said no."
+            };
             self.deliver(
                 session,
                 AcpEvent::Notice(format!(
-                    "{} asked to use {}. Kanso said no.",
-                    self.label, request.title
+                    "{} asked to use {}. {why}",
+                    self.label, asked.request.title
                 )),
             );
         }
     }
+}
+
+/// A permission request as the agent sent it.
+#[derive(Clone)]
+struct AskedPermission {
+    id: Value,
+    session: Option<String>,
+    options: Value,
+    request: PermissionRequest,
 }
 
 /// A method name for diagnostics: short, and only what a method name has.
@@ -660,6 +843,8 @@ impl AgentProcess {
             ended: Mutex::new(None),
             diagnostics: Mutex::new(VecDeque::new()),
             permission,
+            pending_permissions: Mutex::new(HashMap::new()),
+            cancelling: Mutex::new(HashSet::new()),
             unknown_responses: AtomicU64::new(0),
             child: Mutex::new(child),
             stderr,
@@ -925,6 +1110,7 @@ impl Session {
     /// Setting `cancel` asks the agent to stop.
     pub fn prompt(&self, text: &str, cancel: Option<Arc<AtomicBool>>) -> Result<Turn, AcpError> {
         let (tx, rx) = mpsc::sync_channel(512);
+        lock(&self.shared.cancelling).remove(&self.id);
         lock(&self.shared.sessions).insert(self.id.clone(), tx);
         let id = self.shared.take_id();
         lock(&self.shared.waiters).insert(id, Waiter::Prompt(self.id.clone()));
@@ -998,6 +1184,8 @@ impl Turn {
         }
         self.cancelling = Some(Instant::now());
         self.shared.note("session/cancel sent");
+        lock(&self.shared.cancelling).insert(self.session.clone());
+        self.shared.cancel_permissions(Some(&self.session));
         self.shared
             .notify("session/cancel", json!({ "sessionId": self.session }))
             .ok();

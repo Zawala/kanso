@@ -8,8 +8,10 @@ use std::time::{Duration, Instant};
 
 use kanso_acp::fake::{self, Script};
 use kanso_acp::{
-    AcpError, AcpEvent, AgentProcess, AgentSpec, Limits, PermissionPolicy, StopReason, reject_all,
+    AcpError, AcpEvent, AgentProcess, AgentSpec, Limits, PermissionPolicy, PermissionReply,
+    PermissionRequest, StopReason, reject_all,
 };
+use proptest::prelude::*;
 
 fn quick() -> Limits {
     Limits {
@@ -138,25 +140,241 @@ fn a_permission_request_with_no_person_is_rejected() {
     )));
 }
 
+/// A policy that records each request and hands its reply to the test.
+fn held() -> (
+    PermissionPolicy,
+    std::sync::mpsc::Receiver<(PermissionRequest, PermissionReply)>,
+) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let tx = std::sync::Mutex::new(tx);
+    let policy: PermissionPolicy = Arc::new(move |request, reply| {
+        tx.lock().unwrap().send((request, reply)).ok();
+    });
+    (policy, rx)
+}
+
 #[test]
 fn an_allowed_permission_is_allowed_once_never_always() {
-    let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let policy: PermissionPolicy = {
-        let asked = asked.clone();
-        Arc::new(move |request| {
-            asked.lock().unwrap().push(request.title.clone());
-            true
-        })
-    };
+    let (policy, asked) = held();
+    let agent = connect(Script::Permission, quick(), policy);
+    let dir = workspace();
+    let session = agent.new_session(dir.path()).unwrap();
+    let turn = session.prompt("x", None).unwrap();
+    let answerer = std::thread::spawn(move || {
+        let (request, reply) = asked.recv().unwrap();
+        reply.allow_once();
+        request
+    });
+    let events = collect(turn);
+    assert_eq!(text_of(&events), "permission=yes");
+    let request = answerer.join().unwrap();
+    assert_eq!(request.title, "Read ~/.ssh/id_ed25519");
+    assert_eq!(request.kind.as_deref(), Some("read"));
+    assert_eq!(request.agent, "Fake Agent");
+}
+
+#[test]
+fn a_rejected_permission_is_rejected_once() {
+    let (policy, asked) = held();
+    let agent = connect(Script::Permission, quick(), policy);
+    let dir = workspace();
+    let session = agent.new_session(dir.path()).unwrap();
+    let turn = session.prompt("x", None).unwrap();
+    let answerer = std::thread::spawn(move || asked.recv().unwrap().1.reject());
+    let events = collect(turn);
+    answerer.join().unwrap();
+    assert_eq!(text_of(&events), "permission=no");
+    assert!(events.iter().any(
+        |event| matches!(event, AcpEvent::Notice(notice) if notice.contains("Kanso said no"))
+    ));
+}
+
+#[test]
+fn a_dropped_reply_rejects() {
+    let policy: PermissionPolicy = Arc::new(|_, reply| drop(reply));
     let agent = connect(Script::Permission, quick(), policy);
     let dir = workspace();
     let session = agent.new_session(dir.path()).unwrap();
     let events = collect(session.prompt("x", None).unwrap());
-    assert_eq!(text_of(&events), "permission=yes");
-    assert_eq!(
-        *asked.lock().unwrap(),
-        vec!["Read ~/.ssh/id_ed25519".to_owned()]
+    assert_eq!(text_of(&events), "permission=no");
+}
+
+#[test]
+fn no_answer_within_the_deadline_rejects() {
+    let (policy, asked) = held();
+    let limits = Limits {
+        permission: Duration::from_millis(150),
+        ..quick()
+    };
+    let agent = connect(Script::Permission, limits, policy);
+    let dir = workspace();
+    let session = agent.new_session(dir.path()).unwrap();
+    let started = Instant::now();
+    let events = collect(session.prompt("x", None).unwrap());
+    assert_eq!(text_of(&events), "permission=no");
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AcpEvent::Notice(notice) if notice.contains("No one answered in time")
+    )));
+    // The sheet can see there is nothing left to answer.
+    let (_, reply) = asked.recv().unwrap();
+    assert!(reply.is_settled());
+}
+
+#[test]
+fn cancelling_while_a_decision_waits_answers_cancelled() {
+    let (policy, asked) = held();
+    let agent = connect(Script::Permission, quick(), policy);
+    let dir = workspace();
+    let session = agent.new_session(dir.path()).unwrap();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let turn = session.prompt("x", Some(cancel.clone())).unwrap();
+    let canceller = std::thread::spawn(move || {
+        let (_, reply) = asked.recv().unwrap();
+        cancel.store(true, Ordering::Relaxed);
+        // Keep the reply, unanswered, until the turn is over.
+        reply
+    });
+    let events = collect(turn);
+    let reply = canceller.join().unwrap();
+    assert_eq!(text_of(&events), "permission=cancelled");
+    assert!(reply.is_settled());
+    // No "Kanso said no": the person stopped it.
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, AcpEvent::Notice(_)))
     );
+}
+
+#[test]
+fn the_process_ending_while_a_decision_waits_settles_it() {
+    let (policy, asked) = held();
+    let agent = connect(Script::Permission, quick(), policy);
+    let dir = workspace();
+    let session = agent.new_session(dir.path()).unwrap();
+    let mut turn = session.prompt("x", None).unwrap();
+    let (_, reply) = asked.recv().unwrap();
+    assert!(!reply.is_settled());
+    agent.close();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !reply.is_settled() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(reply.is_settled());
+    assert!(matches!(turn.next(), Some(AcpEvent::Error(_))));
+}
+
+#[test]
+fn text_keeps_arriving_while_a_decision_waits() {
+    let (policy, asked) = held();
+    let agent = connect(Script::Permissions(1), quick(), policy);
+    let dir = workspace();
+    let session = agent.new_session(dir.path()).unwrap();
+    let mut turn = session.prompt("x", None).unwrap();
+    // The agent's words before its question are delivered while the
+    // question is still open.
+    assert_eq!(turn.next(), Some(AcpEvent::Text("before ".to_owned())));
+    let (request, reply) = asked.recv().unwrap();
+    assert_eq!(request.title, "Tool 0");
+    assert!(!reply.is_settled());
+    reply.allow_once();
+    let events = collect(turn);
+    assert_eq!(text_of(&events), "permissions=yes");
+}
+
+/// What a scripted permission request is told.
+#[derive(Clone, Copy, Debug)]
+enum Fate {
+    Allow,
+    Reject,
+    /// Held, never answered.
+    Ignore,
+    /// Cancels the turn, holding the reply.
+    Cancel,
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 12,
+        failure_persistence: None,
+        ..ProptestConfig::default()
+    })]
+
+    /// Whatever mix of answers, silences and cancels arrives, every request
+    /// is answered exactly once, never with an "always" option, and a
+    /// request after a cancel is cancelled without being asked.
+    #[test]
+    fn prop_every_request_gets_one_answer_and_never_always(
+        fates in proptest::collection::vec(
+            prop_oneof![
+                Just(Fate::Allow),
+                Just(Fate::Reject),
+                Just(Fate::Ignore),
+                Just(Fate::Cancel),
+            ],
+            1..4,
+        ),
+    ) {
+        let asked_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let held_replies = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let cancel = Arc::new(AtomicBool::new(false));
+        let policy: PermissionPolicy = {
+            let fates = fates.clone();
+            let asked_count = asked_count.clone();
+            let held_replies = held_replies.clone();
+            let cancel = cancel.clone();
+            Arc::new(move |_, reply| {
+                let ix = asked_count.fetch_add(1, Ordering::SeqCst);
+                match fates[ix] {
+                    Fate::Allow => reply.allow_once(),
+                    Fate::Reject => reply.reject(),
+                    Fate::Ignore => held_replies.lock().unwrap().push(reply),
+                    Fate::Cancel => {
+                        held_replies.lock().unwrap().push(reply);
+                        cancel.store(true, Ordering::Relaxed);
+                    }
+                }
+            })
+        };
+        let limits = Limits {
+            permission: Duration::from_millis(80),
+            ..quick()
+        };
+        let agent = connect(Script::Permissions(fates.len()), limits, policy);
+        let dir = workspace();
+        let session = agent.new_session(dir.path()).unwrap();
+        let events = collect(session.prompt("x", Some(cancel)).unwrap());
+        let text = text_of(&events);
+        let answers: Vec<&str> = text
+            .strip_prefix("before permissions=")
+            .expect("the agent finished its questions")
+            .split(',')
+            .collect();
+        prop_assert_eq!(answers.len(), fates.len());
+        let mut cancelled = false;
+        for (fate, answer) in fates.iter().zip(&answers) {
+            prop_assert!(!matches!(*answer, "always" | "never"));
+            let expected = if cancelled {
+                "cancelled"
+            } else {
+                match fate {
+                    Fate::Allow => "yes",
+                    Fate::Reject | Fate::Ignore => "no",
+                    Fate::Cancel => {
+                        cancelled = true;
+                        "cancelled"
+                    }
+                }
+            };
+            prop_assert_eq!(*answer, expected);
+        }
+        // Requests after a cancel were never asked.
+        let asked = asked_count.load(Ordering::SeqCst);
+        let first_cancel = fates.iter().position(|fate| matches!(fate, Fate::Cancel));
+        prop_assert_eq!(asked, first_cancel.map_or(fates.len(), |ix| ix + 1));
+    }
 }
 
 #[test]
