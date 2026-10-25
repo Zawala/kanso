@@ -599,6 +599,7 @@ mod tests {
                     last_used_at: None,
                     prf: true,
                     transports: vec![],
+                    aaguid: None,
                 })
                 .collect(),
         }

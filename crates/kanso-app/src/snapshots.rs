@@ -2207,6 +2207,7 @@ fn settings_account_methods(
                     last_used_at: Some(now - 2 * 60 * MINUTE),
                     prf: true,
                     transports: vec!["internal".into()],
+                    aaguid: Some(kanso_sync::provider::ICLOUD_KEYCHAIN_AAGUIDS[0].into()),
                 }],
             }),
             ..AccountMethodsState::default()
@@ -2264,6 +2265,7 @@ fn set_methods(
                         last_used_at: None,
                         prf: true,
                         transports: vec!["internal".into()],
+                        aaguid: None,
                     })
                     .collect(),
             }),

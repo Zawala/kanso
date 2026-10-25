@@ -2055,7 +2055,7 @@ fn sign_in_methods_rows(
             ),
         ));
     }
-    if methods.rp_id.is_some() {
+    if methods.rp_id.is_some() && !passkey_already_here(Platform::current(), methods) {
         let ceremony = proof_sheet::ceremony(cx);
         let (title, detail) = match ceremony {
             Some(true) => ("Add a security key", "Sign in with a FIDO2 security key."),
@@ -2184,7 +2184,11 @@ fn sign_in_method_lines(
         } else {
             " · signs in only"
         });
-        (Lucide::FingerprintPattern, "Passkey".into(), detail)
+        let title = match passkey.manager() {
+            Some(manager) => format!("Passkey in {manager}"),
+            None => "Passkey".to_owned(),
+        };
+        (Lucide::FingerprintPattern, title, detail)
     }));
     let unlinked = methods.unlinked();
     if !unlinked.is_empty() {
@@ -2213,6 +2217,16 @@ fn sign_in_method_lines(
 
 fn sign_in_method_count(methods: &kanso_sync::AccountMethods) -> usize {
     usize::from(methods.has_password) + methods.linked.len() + methods.passkeys.len()
+}
+
+/// A Mac already has a passkey the account holds in iCloud Keychain, so
+/// [Add a passkey…] would only meet the platform's "already registered".
+fn passkey_already_here(platform: Platform, methods: &kanso_sync::AccountMethods) -> bool {
+    platform == Platform::MacOs
+        && methods
+            .passkeys
+            .iter()
+            .any(kanso_sync::provider::PasskeyInfo::in_icloud_keychain)
 }
 
 fn provider_name(provider: &kanso_sync::Provider) -> String {
@@ -2626,8 +2640,8 @@ fn write_and_tell(path: &Path, text: &str, window: &mut Window, cx: &mut App) {
 mod tests {
     use super::{
         FINGERPRINT_SENTENCE, PasskeyOffer, SecurityKeyOffer, SignedOutForm, device_detail,
-        fingerprint_lines, form_for, passkey_offer, runnable_methods, sign_in_method_count,
-        sign_in_method_lines, storage_detail, write_key_file,
+        fingerprint_lines, form_for, passkey_already_here, passkey_offer, runnable_methods,
+        sign_in_method_count, sign_in_method_lines, storage_detail, write_key_file,
     };
     use crate::passkey_ceremony::Platform;
     use crate::services::{AccountDetails, AccountMethodsState, AccountState, strategies};
@@ -2692,6 +2706,52 @@ mod tests {
     }
 
     #[test]
+    fn an_icloud_keychain_passkey_is_named_and_needs_no_second_one_on_a_mac() {
+        let passkey = |aaguid: Option<&str>| kanso_sync::provider::PasskeyInfo {
+            credential_id: vec![1],
+            created_at: 2,
+            last_used_at: None,
+            prf: true,
+            transports: vec!["internal".into()],
+            aaguid: aaguid.map(str::to_owned),
+        };
+        let methods = |passkeys| kanso_sync::AccountMethods {
+            has_password: false,
+            rp_id: Some("sync.kansoapp.app".into()),
+            available: vec![],
+            linked: vec![],
+            passkeys,
+        };
+        let icloud = methods(vec![passkey(Some(
+            kanso_sync::provider::ICLOUD_KEYCHAIN_AAGUIDS[0],
+        ))]);
+        assert!(passkey_already_here(Platform::MacOs, &icloud));
+        // Elsewhere, or kept by another manager, another passkey can be added.
+        assert!(!passkey_already_here(Platform::Windows, &icloud));
+        assert!(!passkey_already_here(Platform::Linux, &icloud));
+        let other = methods(vec![passkey(Some("bada5566a7aa401fbd9645619a55120d"))]);
+        assert!(!passkey_already_here(Platform::MacOs, &other));
+        assert!(!passkey_already_here(
+            Platform::MacOs,
+            &methods(vec![passkey(None)])
+        ));
+        assert!(!passkey_already_here(Platform::MacOs, &methods(vec![])));
+
+        let state = AccountMethodsState {
+            last_successful: Some(icloud),
+            ..AccountMethodsState::default()
+        };
+        let titles: Vec<String> = sign_in_method_lines(&state, |at| format!("date-{at}"))
+            .into_iter()
+            .map(|(_, title, _)| title)
+            .collect();
+        assert!(
+            titles.contains(&"Passkey in iCloud Keychain".to_owned()),
+            "{titles:?}"
+        );
+    }
+
+    #[test]
     fn signed_in_methods_show_current_text_and_last_way_only_for_one_method() {
         let mut methods = kanso_sync::AccountMethods {
             has_password: false,
@@ -2707,6 +2767,7 @@ mod tests {
                 last_used_at: Some(3),
                 prf: true,
                 transports: vec![],
+                aaguid: None,
             }],
         };
         let state = AccountMethodsState {

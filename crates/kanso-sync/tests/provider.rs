@@ -191,6 +191,7 @@ impl Api for StubApi {
                 last_used_at: None,
                 prf: true,
                 transports: vec!["internal".into()],
+                aaguid: None,
             }],
             recovery: true,
         })

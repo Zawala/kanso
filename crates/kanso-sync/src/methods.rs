@@ -835,6 +835,7 @@ pub fn add_passkey(
                 last_used_at: None,
                 prf,
                 transports: registration.transports.clone(),
+                aaguid: None,
             })
         }
         Err(ApiError::CredentialExists) if sent.reached => Ok(PasskeyInfo {
@@ -843,6 +844,7 @@ pub fn add_passkey(
             last_used_at: None,
             prf,
             transports: registration.transports.clone(),
+            aaguid: None,
         }),
         Err(err) => Err(err.into()),
     }
