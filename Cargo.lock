@@ -4579,6 +4579,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kanso-mobile-size"
+version = "0.8.4"
+dependencies = [
+ "kanso-ai",
+ "kanso-collab",
+ "kanso-core",
+ "kanso-engine",
+ "kanso-import",
+ "kanso-render",
+ "kanso-store",
+ "kanso-sync",
+ "markdown",
+ "serde_json",
+]
+
+[[package]]
 name = "kanso-plugin-host"
 version = "0.8.4"
 dependencies = [
