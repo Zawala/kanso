@@ -5,7 +5,7 @@
 //! proof). Plus properties of proof construction, the sign-in decision and
 //! the PRF wrap. CI pins the seed with `PROPTEST_RNG_SEED`.
 
-use kanso_sync::api::{Backend as _, LoginDevice, PasswordRequest};
+use kanso_sync::api::{Backend as _, LoginDevice, PasswordRequest, Route};
 use kanso_sync::crypto::{DataKey, key_id};
 use kanso_sync::keychain;
 use kanso_sync::passkey::{open_passkey_session_key, passkey_wrapped_key};
@@ -302,6 +302,36 @@ fn the_last_passkey_needs_the_recovery_key_to_go() {
             .passkeys
             .is_empty()
     );
+}
+
+/// The removal went through but its answer was lost: the resend's proof is
+/// spent (400 flow_expired), and the passkey is gone, so it's done.
+#[test]
+fn a_removal_whose_answer_was_lost_is_done() {
+    let server = MemoryServer::new();
+    let auth = TestAuthenticator::new(12);
+    let other = TestAuthenticator::new(13);
+    let up = passkey_sign_up(&server, &auth, &mac(1));
+    let proof = passkey_proof(&server, &up.session, &auth);
+    let start = kanso_sync::start_add_passkey(&server, &up.session, &proof).unwrap();
+    kanso_sync::add_passkey(
+        &server,
+        &up.session,
+        &start,
+        other.register(&start.challenge).unwrap(),
+    )
+    .unwrap();
+
+    let proof = passkey_proof(&server, &up.session, &auth);
+    server.drop_next_responses(Route::AccountPasskeyRemove, 1);
+    kanso_sync::remove_passkey(&server, &up.session, other.credential_id(), &proof, None).unwrap();
+    let left = kanso_sync::methods(&server, &up.session).unwrap().passkeys;
+    assert_eq!(left.len(), 1);
+
+    // A spent proof for a passkey that is still there is still refused.
+    let err = kanso_sync::remove_passkey(&server, &up.session, auth.credential_id(), &proof, None)
+        .unwrap_err();
+    assert!(matches!(err, AccountError::FlowExpired), "{err:?}");
 }
 
 #[test]

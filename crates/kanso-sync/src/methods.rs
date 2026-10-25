@@ -838,7 +838,9 @@ pub fn add_passkey(
 /// password or passkey proof, and the recovery key when it is the account's
 /// last way in (409 [`AccountError::LastMethod`] without it). Other devices
 /// keep their data key. A lost answer whose resend finds it gone counts as
-/// done.
+/// done: a password proof's resend gets 404, and a passkey proof's gets 400
+/// `flow_expired` (the first try spent it), after which the account's
+/// passkeys are listed and its absence is the answer.
 pub fn remove_passkey(
     b: &dyn Backend,
     session: &Session,
@@ -858,6 +860,14 @@ pub fn remove_passkey(
     match sent.result {
         Ok(()) => Ok(()),
         Err(ApiError::NotFound) if sent.reached => Ok(()),
+        Err(ApiError::FlowExpired { .. }) if sent.reached => {
+            let listed = retrying(b, || api.sign_in_methods(session.token()))?;
+            if listed.passkeys.iter().any(|row| row.credential_id == id) {
+                Err(AccountError::FlowExpired)
+            } else {
+                Ok(())
+            }
+        }
         Err(err) => Err(err.into()),
     }
 }
