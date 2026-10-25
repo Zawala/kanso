@@ -26,6 +26,19 @@ struct Swapping {
     server: MemoryServer,
     captured: Mutex<Option<PasskeySessionResponse>>,
     armed: Mutex<bool>,
+    /// The page every identity start names instead of the provider's.
+    page: Mutex<Option<String>>,
+}
+
+impl Swapping {
+    fn new() -> Swapping {
+        Swapping {
+            server: MemoryServer::new(),
+            captured: Mutex::new(None),
+            armed: Mutex::new(false),
+            page: Mutex::new(None),
+        }
+    }
 }
 
 struct SwappingApi<'a> {
@@ -77,6 +90,20 @@ impl Api for SwappingApi<'_> {
     }
     fn health(&self) -> Result<Health, ApiError> {
         self.inner.health()
+    }
+    fn identity_start(
+        &self,
+        t: &SessionToken,
+        p: &kanso_sync::Provider,
+        r: &kanso_sync::provider::IdentityStartRequest,
+    ) -> Result<kanso_sync::ProviderStart, ApiError> {
+        let mut start = self.inner.identity_start(t, p, r)?;
+        if let Some(page) = self.evil.page.lock().unwrap().clone()
+            && let kanso_sync::ProviderStart::Github(github) = &mut start
+        {
+            github.verification_uri = page;
+        }
+        Ok(start)
     }
     fn prelogin(&self, r: &PreloginRequest) -> Result<PreloginResponse, ApiError> {
         self.inner.prelogin(r)
@@ -172,11 +199,7 @@ fn sign_up(b: &Swapping, auth: &TestAuthenticator, name: &str, m: u8) -> String 
 /// refused, and the session it handed over is signed out.
 #[test]
 fn a_session_for_another_account_than_the_user_handle_is_refused() {
-    let evil = Swapping {
-        server: MemoryServer::new(),
-        captured: Mutex::new(None),
-        armed: Mutex::new(false),
-    };
+    let evil = Swapping::new();
     let alice = TestAuthenticator::new(1);
     let mallory = TestAuthenticator::new(2).without_prf();
     let alice_id = sign_up(&evil, &alice, "alice", 1);
@@ -224,4 +247,115 @@ fn a_session_for_another_account_than_the_user_handle_is_refused() {
         evil.server.api(SERVER).account(&captured.token),
         Err(ApiError::Unauthorized { .. })
     ));
+}
+
+/// The same swap with an authenticator that returns no user handle: nothing
+/// names the account, so a locked session (whose password the user would
+/// type next) is refused unless it is the account of the username typed at
+/// the start. An unlocked one proves itself: the wrap or the saved key opens
+/// only for its own account.
+#[test]
+fn without_a_user_handle_a_locked_session_needs_the_typed_username() {
+    let evil = Swapping::new();
+    let alice = TestAuthenticator::new(1).without_prf();
+    let mallory = TestAuthenticator::new(2).without_prf();
+    sign_up(&evil, &alice, "alice", 1);
+    let mallory_id = sign_up(&evil, &mallory, "mallory", 2);
+    alice.set_user_handle(None);
+    mallory.set_user_handle(None);
+
+    // Alice's own locked sign-in, no handle and no username: refused too,
+    // since nothing ties the account to her passkey.
+    let s =
+        kanso_sync::start_passkey_sign_in(&evil, SERVER, None, &LoginDevice::ephemeral()).unwrap();
+    let a = alice.assert(&s.challenge).unwrap();
+    let out =
+        kanso_sync::sign_in_with_passkey(&evil, &MemorySecrets::new(), &s, &mac(3), a, &quiet);
+    assert!(
+        matches!(out, Err(AccountError::Protocol(_))),
+        "{:?}",
+        out.err()
+    );
+    // With the username typed first it is hers.
+    let s =
+        kanso_sync::start_passkey_sign_in(&evil, SERVER, Some("alice"), &LoginDevice::ephemeral())
+            .unwrap();
+    let a = alice.assert(&s.challenge).unwrap();
+    let PasskeySignIn::Locked(locked) =
+        kanso_sync::sign_in_with_passkey(&evil, &MemorySecrets::new(), &s, &mac(3), a, &quiet)
+            .unwrap()
+    else {
+        panic!("no PRF: locked");
+    };
+    assert_eq!(locked.username, "alice");
+
+    // Capture mallory's session, then swap it in for alice's sign-in.
+    let s = kanso_sync::start_passkey_sign_in(
+        &evil,
+        SERVER,
+        Some("mallory"),
+        &LoginDevice::ephemeral(),
+    )
+    .unwrap();
+    let a = mallory.assert(&s.challenge).unwrap();
+    kanso_sync::sign_in_with_passkey(&evil, &MemorySecrets::new(), &s, &mac(9), a, &quiet).unwrap();
+    *evil.armed.lock().unwrap() = true;
+    for typed in [None, Some("alice")] {
+        let s = kanso_sync::start_passkey_sign_in(&evil, SERVER, typed, &LoginDevice::ephemeral())
+            .unwrap();
+        let a = alice.assert(&s.challenge).unwrap();
+        assert_eq!(a.user_handle, None);
+        let out =
+            kanso_sync::sign_in_with_passkey(&evil, &MemorySecrets::new(), &s, &mac(4), a, &quiet);
+        assert!(
+            matches!(out, Err(AccountError::Protocol(_))),
+            "{typed:?}: {:?}",
+            out.as_ref().map(|o| match o {
+                PasskeySignIn::Locked(l) => format!("Locked({})", l.account_id == mallory_id),
+                PasskeySignIn::Unlocked(_) => "Unlocked".into(),
+            })
+        );
+    }
+}
+
+/// A link or provider-proof start is checked as a sign-in start is: the app
+/// opens nothing that isn't the provider's own page or the server's.
+#[test]
+fn an_identity_start_naming_another_page_is_refused() {
+    use kanso_sync::Provider;
+    use kanso_sync::provider::IdentityIntent;
+    let evil = Swapping::new();
+    evil.server.set_providers(vec![Provider::Github]);
+    evil.server.set_github_device_flow("4242", "WXYZ-1234", 5);
+    let alice = TestAuthenticator::new(1);
+    let start = kanso_sync::start_passkey_sign_up(&evil, SERVER, "alice", &mac(1)).unwrap();
+    let registration = alice.register(&start.challenge).unwrap();
+    let session = kanso_sync::sign_up_with_passkey(
+        &evil,
+        &MemorySecrets::new(),
+        &start,
+        &mac(1),
+        registration,
+        &quiet,
+    )
+    .map_err(|e| e.error)
+    .unwrap()
+    .session;
+    let device = LoginDevice::for_identity(&mac(1), &session.origin, &session.account_id);
+    let start = |evil: &Swapping| {
+        kanso_sync::start_identity(
+            evil,
+            &session,
+            &Provider::Github,
+            IdentityIntent::Proof,
+            None,
+            None,
+            None,
+            &device,
+        )
+    };
+    assert!(start(&evil).is_ok());
+    *evil.page.lock().unwrap() = Some("file:///Applications/Calculator.app".into());
+    let out = start(&evil);
+    assert!(matches!(out, Err(AccountError::Protocol(_))), "{out:?}");
 }

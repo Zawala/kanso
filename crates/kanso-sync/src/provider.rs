@@ -186,55 +186,68 @@ pub const GITHUB_DEVICE_PAGE: &str = "https://github.com/login/device";
 /// or on the server's own origin (`http` only when that origin is this
 /// device). Anything else (a file, a UNC path, `search-ms:`, an argument
 /// that starts with `-`, another host) would have the system opener launch
-/// whatever the server chose. Pure.
+/// whatever the server chose. The raw text must be ASCII without `\\`,
+/// starting `https://` (or `http://`), so a parser and the system opener
+/// can't read it differently; the start then carries the URL as parsed,
+/// which is what the app opens, and it is returned. Pure apart from the
+/// start.
 pub fn check_provider_start(
     provider: &Provider,
-    start: &ProviderStart,
+    start: &mut ProviderStart,
     server: &str,
-) -> Result<(), AccountError> {
-    let fits = match (provider, start) {
+) -> Result<String, AccountError> {
+    let page = match (provider, &mut *start) {
         (Provider::Apple, ProviderStart::Apple(start)) => {
-            provider_page(&start.auth_url, server, |url| {
+            provider_page(&mut start.auth_url, server, |url| {
                 url.host_str() == Some(APPLE_AUTHORIZE.0) && url.path() == APPLE_AUTHORIZE.1
             })
         }
         (Provider::Google, ProviderStart::Google(start)) => {
-            provider_page(&start.auth_url, server, |url| {
+            provider_page(&mut start.auth_url, server, |url| {
                 url.host_str() == Some(GOOGLE_AUTHORIZE.0)
                     && url.path().starts_with(GOOGLE_AUTHORIZE.1)
             })
         }
         (Provider::Github, ProviderStart::Github(start)) => {
-            provider_page(&start.verification_uri, server, |url| {
+            provider_page(&mut start.verification_uri, server, |url| {
                 url.as_str() == GITHUB_DEVICE_PAGE
             })
         }
-        _ => false,
+        _ => None,
     };
-    if fits {
-        Ok(())
-    } else {
-        Err(AccountError::Protocol(
-            "the provider start names a page Kanso won't open".into(),
-        ))
-    }
+    page.ok_or_else(|| {
+        AccountError::Protocol("the provider start names a page Kanso won't open".into())
+    })
 }
 
-/// Whether `text` is an https page `provider_host` accepts, or a page on
-/// the server's own origin.
-fn provider_page(text: &str, server: &str, provider_host: impl Fn(&Url) -> bool) -> bool {
-    if text.is_empty() || text.chars().any(|c| c.is_whitespace() || c.is_control()) {
-        return false;
+/// When `text` is an https page `provider_host` accepts, or a page on the
+/// server's own origin: `text` becomes the URL as parsed, also returned.
+fn provider_page(
+    text: &mut String,
+    server: &str,
+    provider_host: impl Fn(&Url) -> bool,
+) -> Option<String> {
+    let page = checked_page(text, server, provider_host)?;
+    text.clone_from(&page);
+    Some(page)
+}
+
+fn checked_page(text: &str, server: &str, provider_host: impl Fn(&Url) -> bool) -> Option<String> {
+    if !text.is_ascii()
+        || text
+            .bytes()
+            .any(|b| b == b'\\' || b.is_ascii_whitespace() || b.is_ascii_control())
+        || !(text.starts_with("https://") || text.starts_with("http://"))
+    {
+        return None;
     }
-    let Ok(url) = Url::parse(text) else {
-        return false;
-    };
+    let url = Url::parse(text).ok()?;
     if !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() {
-        return false;
+        return None;
     }
     let same_origin = Url::parse(server)
         .is_ok_and(|server| server.origin() == url.origin() && server.origin().is_tuple());
-    match url.scheme() {
+    let fits = match url.scheme() {
         "https" => (url.port().is_none() && provider_host(&url)) || same_origin,
         "http" => {
             same_origin
@@ -246,7 +259,8 @@ fn provider_page(text: &str, server: &str, provider_host: impl Fn(&Url) -> bool)
                 }
         }
         _ => false,
-    }
+    };
+    fits.then(|| url.as_str().to_owned())
 }
 
 /// A device for a provider flow. A first sign-in has no account ID yet, so
@@ -1016,7 +1030,7 @@ mod tests {
     fn provider_pages_are_the_providers_own_or_the_servers() {
         let server = "https://sync.example.com";
         let ok = |provider: &Provider, start: &ProviderStart| {
-            check_provider_start(provider, start, server).is_ok()
+            check_provider_start(provider, &mut start.clone(), server).is_ok()
         };
         assert!(ok(
             &Provider::Apple,
@@ -1038,7 +1052,7 @@ mod tests {
         assert!(
             check_provider_start(
                 &Provider::Github,
-                &github("http://127.0.0.1:8787/device"),
+                &mut github("http://127.0.0.1:8787/device"),
                 "http://127.0.0.1:8787"
             )
             .is_ok()
@@ -1068,6 +1082,20 @@ mod tests {
             &Provider::Google,
             &google("https://accounts.google.com/logout")
         ));
+        // What a URL parser and the system opener could read differently:
+        // a backslash (with user info after it), invisible characters in the
+        // host, a scheme without its slashes, any non-ASCII.
+        for bad in [
+            "https://accounts.google.com\\o\\oauth2\\@evil.example/",
+            "https://accounts.google.com\\o/oauth2/v2/auth",
+            "https://accounts.\u{200b}google.com/o/oauth2/v2/auth",
+            "https://accounts.google.com\u{200d}/o/oauth2/v2/auth",
+            "https:accounts.google.com/o/oauth2/v2/auth",
+            "https:/accounts.google.com/o/oauth2/v2/auth",
+            "https://accounts.google.com/o/oauth2/v2/auth?q=\u{e9}",
+        ] {
+            assert!(!ok(&Provider::Google, &google(bad)), "{bad:?}");
+        }
         assert!(!ok(
             &Provider::Github,
             &github("https://github.com/login/device/evil")
@@ -1085,10 +1113,39 @@ mod tests {
         assert!(
             check_provider_start(
                 &Provider::Github,
-                &github("http://sync.example.com/device"),
+                &mut github("http://sync.example.com/device"),
                 "http://sync.example.com"
             )
             .is_err()
+        );
+    }
+
+    /// The start carries the URL as parsed, which is what the app opens.
+    #[test]
+    fn a_checked_start_carries_its_page_as_parsed() {
+        let mut start = google("https://ACCOUNTS.google.com/o/oauth2/v2/auth?client_id=g");
+        let page = check_provider_start(&Provider::Google, &mut start, "https://sync.example.com")
+            .unwrap();
+        assert_eq!(
+            page,
+            "https://accounts.google.com/o/oauth2/v2/auth?client_id=g"
+        );
+        let ProviderStart::Google(google) = &start else {
+            unreachable!()
+        };
+        assert_eq!(google.auth_url, page);
+        // A refused start is left as it was.
+        let mut start = github("https://github.com/login/device/evil");
+        assert!(
+            check_provider_start(&Provider::Github, &mut start, "https://sync.example.com")
+                .is_err()
+        );
+        let ProviderStart::Github(github) = &start else {
+            unreachable!()
+        };
+        assert_eq!(
+            github.verification_uri,
+            "https://github.com/login/device/evil"
         );
     }
 

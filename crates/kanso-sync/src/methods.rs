@@ -405,7 +405,9 @@ pub fn start_passkey_sign_in(
 /// unlock. A wrap that doesn't open to the server's key ID is
 /// [`AccountError::KeyMismatch`]: the new session is logged out and nothing
 /// is saved. An answer for another account than the assertion's user handle
-/// names is [`AccountError::Protocol`], also logged out. An unlocked session gets its sealed name; saving it, the
+/// names is [`AccountError::Protocol`], also logged out, and so is a locked
+/// one when the assertion has no user handle and no username was typed at
+/// the start: nothing then says the account is the passkey's. An unlocked session gets its sealed name; saving it, the
 /// binding question and `bind` are the app's, as for a password sign-in.
 pub fn sign_in_with_passkey(
     b: &dyn Backend,
@@ -478,6 +480,17 @@ pub fn sign_in_with_passkey(
     let data_key = match decided {
         Ok((_, Some(data_key))) => data_key,
         Ok((_, None)) => {
+            // Locked, the user types the account's password next, so the
+            // account must be known to be the passkey's: the user handle
+            // named it (checked above), or, without one, it is the account
+            // of the username typed at the start (`username_ok`). Otherwise
+            // the server chose it. An unlocked session needs neither: the
+            // saved key or the wrap opens only for its own account.
+            if assertion.user_handle.is_none() && start.username.is_none() {
+                return fail(AccountError::Protocol(
+                    "the passkey named no account, and none was typed".into(),
+                ));
+            }
             let mut locked = LockedSession::new(
                 server,
                 origin,

@@ -306,6 +306,8 @@ fn check_fixture(name: &str) -> usize {
                             "provider-poll",
                             "passkey-challenge",
                             "proof-account",
+                            "proof-total",
+                            "password-total",
                             "passkey-manage"
                         ]
                         .contains(&limit.as_str()),
