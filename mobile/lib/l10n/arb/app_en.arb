@@ -1,0 +1,11 @@
+{
+  "@@locale": "en",
+  "appName": "Kanso",
+  "@appName": {
+    "description": "The app's name, shown as its title."
+  },
+  "homePlaceholder": "Kanso for iPhone, iPad and Android is on its way.",
+  "@homePlaceholder": {
+    "description": "A line on the placeholder home page, until the real screens arrive."
+  }
+}

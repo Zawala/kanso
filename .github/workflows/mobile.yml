@@ -1,0 +1,114 @@
+name: Mobile
+
+# The Flutter app in mobile/ (iPhone, iPad and Android). It reads the theme
+# files in themes/ (a submodule) in a test, so a change there runs it too.
+on:
+  push:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
+      - "themes"
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
+      - "themes"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run per branch at a time: a newer push cancels the older run.
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Flutter release the app is built and tested with. Bump it here and
+  # in mobile/pubspec.yaml together.
+  FLUTTER_VERSION: "3.44.8"
+
+defaults:
+  run:
+    working-directory: mobile
+
+jobs:
+  # On macOS because the golden images are generated on a Mac; text and
+  # image rendering differs slightly between operating systems, so they are
+  # only compared on the system that wrote them. GitHub-hosted: this is a
+  # public repository, and the self-hosted runners are for Rust.
+  analyze-and-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The colour test reads themes/kanso-dark.json and kanso-light.json.
+          submodules: true
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      # pubspec.lock is committed; a stale lock file fails here.
+      - run: flutter pub get --enforce-lockfile
+      # Generated code (Freezed, Injectable, json_serializable) is committed.
+      # Regenerate it and fail if anything changed or is missing.
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - name: Generated code is current
+        run: |
+          if [ -n "$(git status --porcelain -- .)" ]; then
+            git status --short -- .
+            echo "::error::Generated code is out of date. Run build_runner and commit the result."
+            exit 1
+          fi
+      # The localisation classes (lib/gen/l10n) are committed too.
+      - run: flutter gen-l10n
+      - name: Localisations are current
+        run: |
+          if [ -n "$(git status --porcelain -- .)" ]; then
+            git status --short -- .
+            echo "::error::Localisations are out of date. Run flutter gen-l10n and commit the result."
+            exit 1
+          fi
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze
+      - run: flutter test
+      # A failing golden leaves its comparison images in a failures folder.
+      - name: Upload golden failures
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: golden-failures
+          path: mobile/test/**/failures/
+          if-no-files-found: ignore
+
+  # Proves the iOS project compiles for the simulator (iOS 17 and up, iPhone
+  # and iPad). No signing: nothing here ships.
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter build ios --simulator --debug --no-codesign
+
+  # Proves the Android project compiles (Android 10 and up).
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter build apk --debug
