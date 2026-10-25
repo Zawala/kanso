@@ -127,7 +127,10 @@ impl Api for StubApi {
         self.stub.seen.lock().unwrap().starts.push("google".into());
         Ok(ProviderStart::Google(kanso_sync::GoogleStart {
             flow_id: "B".repeat(43),
-            auth_url: format!("https://accounts.google.com/o/oauth2/v2/auth?{request:?}"),
+            auth_url: format!(
+                "https://accounts.google.com/o/oauth2/v2/auth?code_challenge={}",
+                request.code_challenge
+            ),
             nonce: "n".repeat(43),
             state: "s".repeat(43),
             expires_at: 1_800_000_600_000,

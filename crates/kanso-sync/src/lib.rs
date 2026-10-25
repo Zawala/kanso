@@ -25,6 +25,7 @@ mod http;
 pub mod keychain;
 pub mod lock;
 mod memory;
+pub mod methods;
 pub mod passkey;
 pub mod provider;
 mod remote;
@@ -32,8 +33,11 @@ mod sealed;
 pub mod security_key;
 pub mod share;
 pub mod site;
+#[cfg(any(test, feature = "test-support"))]
+mod test_authenticator;
 pub mod username;
 mod verify;
+pub mod webauthn;
 pub mod wire;
 pub mod ws;
 
@@ -74,10 +78,21 @@ pub use http::HttpBackend;
 pub use kanso_store::SyncDoc;
 pub use keychain::{Keychain, MemorySecrets, SecretError, SecretStore};
 pub use memory::{
-    AccountSnapshot, DEFAULT_SETTINGS, Limits, MemoryServer, QuotaOverride, ServerDevice,
-    ServerStats, Signup, is_valid_setting,
+    AccountSnapshot, DEFAULT_SETTINGS, Limits, MEMORY_PASSKEY_ORIGIN, MEMORY_PASSKEY_RP_ID,
+    MEMORY_PASSKEY_SERVER, MemoryServer, QuotaOverride, ServerDevice, ServerStats, Signup,
+    is_valid_setting,
 };
-pub use passkey::{PasskeyAssertion, PasskeyRegistration};
+pub use methods::{
+    PasskeyProofStart, PasskeyRegistrationStart, PasskeySignIn, PasskeySignInStart,
+    PasskeySignUpStart, PasskeyUnlock, Proof, add_passkey, delete_account_with_proof,
+    new_recovery_key_with_proof, passkey_unlock, password_proof, remove_passkey, set_password,
+    sign_in_with_passkey, sign_up_with_passkey, start_add_passkey, start_passkey_proof,
+    start_passkey_sign_in, start_passkey_sign_up,
+};
+pub use passkey::{
+    PasskeyAssertion, PasskeyAssertionChallenge, PasskeyCeremony, PasskeyCeremonyError,
+    PasskeyRegistration, PasskeyRegistrationChallenge,
+};
 pub use provider::{
     AccountMethods, AppleCallback, AppleStart, GithubStart, GoogleStart, IdentityIntent,
     LinkOutcome, LinkedProvider, Loopback, NewAccount, PasskeyInfo, PasskeyMethods, ProofWire,
@@ -88,6 +103,8 @@ pub use remote::{
     PushResult, RemoteDoc, RemoteError, is_doc_id, is_file_id, is_md5_hex, is_rev, md5_hex,
 };
 pub use sealed::PlainView;
+#[cfg(any(test, feature = "test-support"))]
+pub use test_authenticator::TestAuthenticator;
 pub use username::{UsernameError, check_new_username, is_reserved_username, normalize_username};
 pub use verify::{
     Estimate, LegacyManifest, LegacyReport, LegacyRow, VerifyReport, estimate, manifest_sha256,
@@ -162,6 +179,74 @@ pub fn origin(server: &str) -> Result<String, EndpointError> {
 /// Whether `server` is the owner's, under any of its names. Pure.
 pub fn is_owner_server(server: &str) -> bool {
     origin(server).as_deref() == Ok(OWNER_ORIGIN)
+}
+
+/// The relying party the official app's Associated Domains entitlement
+/// names (`webcredentials:sync.kansoapp.app`), which the owner's server
+/// advertises.
+pub const OFFICIAL_RP_ID: &str = "sync.kansoapp.app";
+
+/// A relying-party ID WebAuthn accepts: a lowercase DNS name with a dot, or
+/// `localhost` for development. No scheme, port, path or IP literal. Pure.
+pub fn valid_rp_id(rp_id: &str) -> bool {
+    if rp_id == "localhost" {
+        return true;
+    }
+    rp_id.len() <= 253
+        && rp_id.contains('.')
+        && rp_id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.')
+        && !rp_id.split('.').any(str::is_empty)
+        && !rp_id
+            .split('.')
+            .all(|label| label.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// Whether `rp_id` is the host of `server` or a parent of it. Pure.
+pub fn rp_id_fits_server(rp_id: &str, server: &str) -> bool {
+    let Some(host) = url::Url::parse(server.trim())
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+    else {
+        return false;
+    };
+    valid_rp_id(rp_id) && (host == rp_id || host.ends_with(&format!(".{rp_id}")))
+}
+
+/// Whether this client runs a passkey ceremony for `rp_id` when `server`
+/// advertises it. [`OFFICIAL_RP_ID`] only from the owner's server: the
+/// official Mac app's entitlement lets it sign for that relying party, so
+/// another server advertising it could relay the owner's challenges and
+/// have them signed. Any other relying party must be the server's host or a
+/// parent of it. Pure.
+pub fn passkey_rp_allowed(rp_id: &str, server: &str) -> bool {
+    if rp_id == OFFICIAL_RP_ID {
+        is_owner_server(server)
+    } else {
+        rp_id_fits_server(rp_id, server)
+    }
+}
+
+/// Whether `origin` may go in the client data for `rp_id`: scheme, host and
+/// port only, `https://` on the relying party or under it, or
+/// `http://localhost` for the `localhost` relying party. Pure.
+pub fn passkey_origin_allowed(origin: &str, rp_id: &str) -> bool {
+    let Ok(url) = url::Url::parse(origin) else {
+        return false;
+    };
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let secure = match url.scheme() {
+        "https" => true,
+        "http" => rp_id == "localhost" && host == "localhost",
+        _ => false,
+    };
+    secure
+        && url.origin().ascii_serialization() == origin
+        && valid_rp_id(rp_id)
+        && (host == rp_id || host.ends_with(&format!(".{rp_id}")))
 }
 
 /// Checks a Worker URL and returns it normalized, without a trailing slash.
@@ -355,5 +440,76 @@ mod endpoint_tests {
                 prop_assert_eq!(check_endpoint(&url), Ok(url.clone()));
             }
         }
+
+        /// Refinement: the relying-party rule. The official relying party
+        /// only from a server that is the owner's; any other only from a
+        /// server on it or under it; a label-boundary lookalike never.
+        #[test]
+        fn prop_passkey_rp_allowed(
+            labels in prop::collection::vec("[a-z][a-z0-9]{0,6}", 1..3),
+            sub in "[a-z]{1,6}",
+            beside in "[a-z]{1,6}",
+        ) {
+            let rp_id = format!("{}.example", labels.join("."));
+            let under = format!("https://{sub}.{rp_id}");
+            let itself = format!("https://{rp_id}:8443/v2");
+            let lookalike = format!("https://{beside}{rp_id}");
+            prop_assert!(super::passkey_rp_allowed(&rp_id, &under));
+            prop_assert!(super::passkey_rp_allowed(&rp_id, &itself));
+            prop_assert!(!super::passkey_rp_allowed(&rp_id, &lookalike));
+            prop_assert!(!super::passkey_rp_allowed(super::OFFICIAL_RP_ID, &under));
+            let official_under = format!("https://{sub}.{}", super::OFFICIAL_RP_ID);
+            prop_assert!(!super::passkey_rp_allowed(super::OFFICIAL_RP_ID, &official_under));
+            prop_assert!(super::passkey_origin_allowed(&under, &rp_id));
+            prop_assert!(!super::passkey_origin_allowed(&lookalike, &rp_id));
+            let http_under = under.replacen("https", "http", 1);
+            prop_assert!(!super::passkey_origin_allowed(&http_under, &rp_id));
+            let with_path = format!("{under}/x");
+            prop_assert!(!super::passkey_origin_allowed(&with_path, &rp_id));
+        }
+    }
+
+    #[test]
+    fn the_relying_party_rule() {
+        use super::{OFFICIAL_RP_ID, passkey_origin_allowed, passkey_rp_allowed, valid_rp_id};
+        assert!(passkey_rp_allowed(OFFICIAL_RP_ID, OWNER_ORIGIN));
+        assert!(passkey_rp_allowed(
+            OFFICIAL_RP_ID,
+            "https://sync.kansoapp.app/"
+        ));
+        assert!(!passkey_rp_allowed(OFFICIAL_RP_ID, "https://evil.example"));
+        assert!(!passkey_rp_allowed(
+            OFFICIAL_RP_ID,
+            "https://sync.kansoapp.app.evil.example"
+        ));
+        assert!(!passkey_rp_allowed("example.com", "https://ample.com"));
+        assert!(!passkey_rp_allowed("ample.com", "https://example.com"));
+        assert!(passkey_rp_allowed("localhost", "http://localhost:8787"));
+        assert!(!passkey_rp_allowed("localhost", "http://127.0.0.1:8787"));
+        assert!(!passkey_rp_allowed("127.0.0.1", "http://127.0.0.1:8787"));
+        assert!(!passkey_rp_allowed("com", "https://example.com"));
+        assert!(!valid_rp_id("Sync.Example.com"));
+        assert!(!valid_rp_id("sync.example.com."));
+        assert!(passkey_origin_allowed(
+            "https://sync.kansoapp.app",
+            OFFICIAL_RP_ID
+        ));
+        assert!(passkey_origin_allowed("http://localhost:8787", "localhost"));
+        assert!(!passkey_origin_allowed(
+            "http://sync.kansoapp.app",
+            OFFICIAL_RP_ID
+        ));
+        assert!(!passkey_origin_allowed(
+            "https://evil.example",
+            OFFICIAL_RP_ID
+        ));
+        assert!(!passkey_origin_allowed(
+            "https://user@sync.kansoapp.app",
+            OFFICIAL_RP_ID
+        ));
+        assert!(!passkey_origin_allowed(
+            "https://sync.kansoapp.app/",
+            OFFICIAL_RP_ID
+        ));
     }
 }

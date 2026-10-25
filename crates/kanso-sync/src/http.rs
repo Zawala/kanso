@@ -19,7 +19,7 @@ use crate::api::{
     PasskeySignupStartRequest, PasskeySignupStartResponse, PasskeyStartRequest,
     PasskeyStartResponse, PasswordRequest, PasswordResponse, PreloginRequest, PreloginResponse,
     RecoverFinishRequest, RecoverStartRequest, RecoverStartResponse, RecoveryKeyRequest,
-    RecoveryKeyResponse, Route, SessionResponse, SignupRequest,
+    RecoveryKeyResponse, Route, SessionResponse, SignInPasswordRequest, SignupRequest,
 };
 use crate::api::{
     ApprovalApproveRequest, ApprovalChallengeRequest, ApprovalCreateRequest, ApprovalCreated,
@@ -106,6 +106,7 @@ fn timeout(route: Route) -> Duration {
         | Route::AccountPasskeysStart
         | Route::AccountPasskeysFinish
         | Route::AccountPasskeyRemove
+        | Route::SignInPassword
         | Route::RecoverStart
         | Route::RecoverFinish
         | Route::Account
@@ -468,6 +469,20 @@ impl Api for HttpApi {
             encode_segment(credential_id)
         );
         self.empty(Route::AccountPasskeyRemove, &path, token, Some(request))
+    }
+
+    fn set_first_password(
+        &self,
+        token: &SessionToken,
+        request: &SignInPasswordRequest,
+    ) -> Result<PasswordResponse, ApiError> {
+        self.json(
+            Route::SignInPassword,
+            "/v2/account/sign-in/password",
+            Some(token),
+            Some(request),
+            MAX_AUTH_RESPONSE,
+        )
     }
 
     fn recover_start(

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 4d07dd423fec564f2a5f51bfd39219e72a9f482dbc3dd467e579b901ab00b293 # shrinks to credential = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 197, 42, 106, 208, 40, 84, 222, 124, 1, 207, 213, 227, 62, 138, 77, 175, 204, 189, 163, 109, 147, 15, 66, 77, 253, 142], signature = [103, 94, 150, 104, 144, 90, 219, 3, 184, 181, 109], prf = [27, 90, 23, 118, 105, 6, 33, 238, 251, 179, 58, 165, 25, 122, 220, 114, 163, 166, 106, 78, 174, 107, 220, 200, 66, 250, 175, 106, 110, 57, 25, 61], flow = "B3EprfdLw-3-JD2z-_M1_-_m-7xa_GvvkB__rp5--cn"

@@ -14,6 +14,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::AccountError;
 use crate::api::{LoginDevice, WireDevice};
 use crate::wire::SessionToken;
 
@@ -170,6 +171,98 @@ impl ProviderStart {
     }
 }
 
+/// Apple's authorization page (docs/ACCOUNTS.md › Sign in with Apple).
+pub const APPLE_AUTHORIZE: (&str, &str) = ("appleid.apple.com", "/auth/authorize");
+/// Google's authorization pages live under this path.
+pub const GOOGLE_AUTHORIZE: (&str, &str) = ("accounts.google.com", "/o/oauth2/");
+/// GitHub's device page, exactly.
+pub const GITHUB_DEVICE_PAGE: &str = "https://github.com/login/device";
+
+/// Checks the page a provider start asks the app to open, before anything
+/// opens it: the start is `provider`'s, and its URL is an https URL with no
+/// user info, fragment, whitespace or control characters, on the
+/// provider's own host (Apple's `appleid.apple.com/auth/authorize`, Google's
+/// `accounts.google.com/o/oauth2/…`, exactly `https://github.com/login/device`)
+/// or on the server's own origin (`http` only when that origin is this
+/// device). Anything else (a file, a UNC path, `search-ms:`, an argument
+/// that starts with `-`, another host) would have the system opener launch
+/// whatever the server chose. The raw text must be ASCII without `\\`,
+/// starting `https://` (or `http://`), so a parser and the system opener
+/// can't read it differently; the start then carries the URL as parsed,
+/// which is what the app opens, and it is returned. Pure apart from the
+/// start.
+pub fn check_provider_start(
+    provider: &Provider,
+    start: &mut ProviderStart,
+    server: &str,
+) -> Result<String, AccountError> {
+    let page = match (provider, &mut *start) {
+        (Provider::Apple, ProviderStart::Apple(start)) => {
+            provider_page(&mut start.auth_url, server, |url| {
+                url.host_str() == Some(APPLE_AUTHORIZE.0) && url.path() == APPLE_AUTHORIZE.1
+            })
+        }
+        (Provider::Google, ProviderStart::Google(start)) => {
+            provider_page(&mut start.auth_url, server, |url| {
+                url.host_str() == Some(GOOGLE_AUTHORIZE.0)
+                    && url.path().starts_with(GOOGLE_AUTHORIZE.1)
+            })
+        }
+        (Provider::Github, ProviderStart::Github(start)) => {
+            provider_page(&mut start.verification_uri, server, |url| {
+                url.as_str() == GITHUB_DEVICE_PAGE
+            })
+        }
+        _ => None,
+    };
+    page.ok_or_else(|| {
+        AccountError::Protocol("the provider start names a page Kanso won't open".into())
+    })
+}
+
+/// When `text` is an https page `provider_host` accepts, or a page on the
+/// server's own origin: `text` becomes the URL as parsed, also returned.
+fn provider_page(
+    text: &mut String,
+    server: &str,
+    provider_host: impl Fn(&Url) -> bool,
+) -> Option<String> {
+    let page = checked_page(text, server, provider_host)?;
+    text.clone_from(&page);
+    Some(page)
+}
+
+fn checked_page(text: &str, server: &str, provider_host: impl Fn(&Url) -> bool) -> Option<String> {
+    if !text.is_ascii()
+        || text
+            .bytes()
+            .any(|b| b == b'\\' || b.is_ascii_whitespace() || b.is_ascii_control())
+        || !(text.starts_with("https://") || text.starts_with("http://"))
+    {
+        return None;
+    }
+    let url = Url::parse(text).ok()?;
+    if !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() {
+        return None;
+    }
+    let same_origin = Url::parse(server)
+        .is_ok_and(|server| server.origin() == url.origin() && server.origin().is_tuple());
+    let fits = match url.scheme() {
+        "https" => (url.port().is_none() && provider_host(&url)) || same_origin,
+        "http" => {
+            same_origin
+                && match url.host() {
+                    Some(url::Host::Domain(host)) => host == "localhost",
+                    Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+                    Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+                    None => false,
+                }
+        }
+        _ => false,
+    };
+    fits.then(|| url.as_str().to_owned())
+}
+
 /// A device for a provider flow. A first sign-in has no account ID yet, so
 /// it uses an ephemeral one for the flow; a link or a sign-in whose account
 /// this library knows uses its own device.
@@ -256,15 +349,46 @@ pub struct SocialSignupRequest {
     pub device: crate::api::NewDevice,
 }
 
-/// A fresh proof for a sensitive change (docs/ACCOUNTS.md › Changing a way in
-/// needs a fresh proof). A provider proof is a completed proof flow; it can
-/// only unlink that same provider. A passkey proof lands with the passkey
-/// routes.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// A fresh proof for a sensitive change, as the wire carries it
+/// (docs/ACCOUNTS.md › Changing a way in needs a fresh proof):
+///
+/// ```json
+/// {"kind": "password", "auth_key"}
+/// | {"kind": "passkey", "flow", "assertion": {"credential_id", "authenticator_data", "client_data_json", "signature"}}
+/// | {"kind": "provider", "flow"}
+/// ```
+///
+/// A provider proof is a completed proof flow; it can only unlink that same
+/// provider, and setting a password, replacing the recovery key or deleting
+/// with it also needs the recovery key. [`crate::Proof`] builds these.
+///
+/// [`ProofWire::Unknown`] is what a server reads for a `kind` it doesn't know,
+/// or for a required proof that is missing or `null` ([`required_proof`]); it
+/// answers 401 `reauth_required`. The client never sends it.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProofWire {
-    Password { auth_key: String },
-    Provider { flow: String },
+    Password {
+        auth_key: String,
+    },
+    Passkey {
+        flow: String,
+        assertion: crate::api::PasskeyProofAssertion,
+    },
+    Provider {
+        flow: String,
+    },
+    /// No proof, or a kind this protocol doesn't have.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// Reads a required `proof` that may be missing or `null` as
+/// [`ProofWire::Unknown`], so the server answers `reauth_required` rather
+/// than a malformed body. Used with `#[serde(default, deserialize_with)]`.
+pub fn required_proof<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ProofWire, D::Error> {
+    Ok(Option::<ProofWire>::deserialize(d)?.unwrap_or_default())
 }
 
 impl ProofWire {
@@ -272,18 +396,39 @@ impl ProofWire {
         ProofWire::Password { auth_key }
     }
 
+    pub fn passkey(flow: String, assertion: crate::api::PasskeyProofAssertion) -> ProofWire {
+        ProofWire::Passkey { flow, assertion }
+    }
+
     pub fn provider(flow: String) -> ProofWire {
         ProofWire::Provider { flow }
+    }
+
+    /// The wire's `kind`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            ProofWire::Password { .. } => "password",
+            ProofWire::Passkey { .. } => "passkey",
+            ProofWire::Provider { .. } => "provider",
+            ProofWire::Unknown => "unknown",
+        }
     }
 }
 
 impl fmt::Debug for ProofWire {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ProofWire::Password { .. } => f.write_str("ProofWire::Password(<redacted>)"),
-            ProofWire::Provider { flow } => {
-                f.debug_tuple("ProofWire::Provider").field(flow).finish()
-            }
+            ProofWire::Password { .. } => f
+                .debug_struct("Password")
+                .field("auth_key", &"<redacted>")
+                .finish(),
+            ProofWire::Passkey { flow, assertion } => f
+                .debug_struct("Passkey")
+                .field("flow", flow)
+                .field("assertion", assertion)
+                .finish(),
+            ProofWire::Provider { flow } => f.debug_struct("Provider").field("flow", flow).finish(),
+            ProofWire::Unknown => f.write_str("Unknown"),
         }
     }
 }
@@ -322,6 +467,7 @@ pub enum IdentityIntent {
 /// `POST /v2/account/sign-in/identities/<provider>/unlink`.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnlinkRequest {
+    #[serde(default, deserialize_with = "required_proof")]
     pub proof: ProofWire,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery_auth_key: Option<String>,
@@ -850,6 +996,157 @@ mod tests {
             let parsed = apple_callback_flow(&format!("kanso://auth/apple?flow={flow}&s={secret}"));
             prop_assert_eq!(parsed, Some(AppleCallback { flow, secret }));
         }
+    }
+
+    fn apple(url: &str) -> ProviderStart {
+        ProviderStart::Apple(AppleStart {
+            flow_id: "f".into(),
+            auth_url: url.into(),
+            expires_at: 1,
+        })
+    }
+
+    fn google(url: &str) -> ProviderStart {
+        ProviderStart::Google(GoogleStart {
+            flow_id: "f".into(),
+            auth_url: url.into(),
+            nonce: "n".into(),
+            state: "s".into(),
+            expires_at: 1,
+        })
+    }
+
+    fn github(url: &str) -> ProviderStart {
+        ProviderStart::Github(GithubStart {
+            flow_id: "f".into(),
+            user_code: "ABCD-EFGH".into(),
+            verification_uri: url.into(),
+            interval: 5,
+            expires_in: 600,
+        })
+    }
+
+    #[test]
+    fn provider_pages_are_the_providers_own_or_the_servers() {
+        let server = "https://sync.example.com";
+        let ok = |provider: &Provider, start: &ProviderStart| {
+            check_provider_start(provider, &mut start.clone(), server).is_ok()
+        };
+        assert!(ok(
+            &Provider::Apple,
+            &apple("https://appleid.apple.com/auth/authorize?client_id=a&state=s")
+        ));
+        assert!(ok(
+            &Provider::Google,
+            &google("https://accounts.google.com/o/oauth2/v2/auth?client_id=g")
+        ));
+        assert!(ok(
+            &Provider::Github,
+            &github("https://github.com/login/device")
+        ));
+        // The server's own origin, as a development server's page.
+        assert!(ok(
+            &Provider::Apple,
+            &apple("https://sync.example.com/apple")
+        ));
+        assert!(
+            check_provider_start(
+                &Provider::Github,
+                &mut github("http://127.0.0.1:8787/device"),
+                "http://127.0.0.1:8787"
+            )
+            .is_ok()
+        );
+
+        for bad in [
+            "file:///C:/Windows/System32/calc.exe",
+            "\\\\evil\\share\\x.exe",
+            "search-ms:query=x",
+            "ms-settings:",
+            "-aflag",
+            " https://appleid.apple.com/auth/authorize",
+            "https://appleid.apple.com/auth/authorize\n",
+            "https://user@appleid.apple.com/auth/authorize",
+            "https://appleid.apple.com:8443/auth/authorize",
+            "https://appleid.apple.com/auth/authorize#x",
+            "https://appleid.apple.com.evil.example/auth/authorize",
+            "https://appleid.apple.com/other",
+            "http://appleid.apple.com/auth/authorize",
+            "https://evil.example/auth/authorize",
+            "http://sync.example.com/apple",
+            "",
+        ] {
+            assert!(!ok(&Provider::Apple, &apple(bad)), "{bad:?}");
+        }
+        assert!(!ok(
+            &Provider::Google,
+            &google("https://accounts.google.com/logout")
+        ));
+        // What a URL parser and the system opener could read differently:
+        // a backslash (with user info after it), invisible characters in the
+        // host, a scheme without its slashes, any non-ASCII.
+        for bad in [
+            "https://accounts.google.com\\o\\oauth2\\@evil.example/",
+            "https://accounts.google.com\\o/oauth2/v2/auth",
+            "https://accounts.\u{200b}google.com/o/oauth2/v2/auth",
+            "https://accounts.google.com\u{200d}/o/oauth2/v2/auth",
+            "https:accounts.google.com/o/oauth2/v2/auth",
+            "https:/accounts.google.com/o/oauth2/v2/auth",
+            "https://accounts.google.com/o/oauth2/v2/auth?q=\u{e9}",
+        ] {
+            assert!(!ok(&Provider::Google, &google(bad)), "{bad:?}");
+        }
+        assert!(!ok(
+            &Provider::Github,
+            &github("https://github.com/login/device/evil")
+        ));
+        assert!(!ok(
+            &Provider::Github,
+            &github("https://github.com/login/device?x=1")
+        ));
+        // A start for another provider than the one asked for.
+        assert!(!ok(
+            &Provider::Google,
+            &apple("https://appleid.apple.com/auth/authorize")
+        ));
+        // Plain http to the server only when the server is this device.
+        assert!(
+            check_provider_start(
+                &Provider::Github,
+                &mut github("http://sync.example.com/device"),
+                "http://sync.example.com"
+            )
+            .is_err()
+        );
+    }
+
+    /// The start carries the URL as parsed, which is what the app opens.
+    #[test]
+    fn a_checked_start_carries_its_page_as_parsed() {
+        let mut start = google("https://ACCOUNTS.google.com/o/oauth2/v2/auth?client_id=g");
+        let page = check_provider_start(&Provider::Google, &mut start, "https://sync.example.com")
+            .unwrap();
+        assert_eq!(
+            page,
+            "https://accounts.google.com/o/oauth2/v2/auth?client_id=g"
+        );
+        let ProviderStart::Google(google) = &start else {
+            unreachable!()
+        };
+        assert_eq!(google.auth_url, page);
+        // A refused start is left as it was.
+        let mut start = github("https://github.com/login/device/evil");
+        assert!(
+            check_provider_start(&Provider::Github, &mut start, "https://sync.example.com")
+                .is_err()
+        );
+        let ProviderStart::Github(github) = &start else {
+            unreachable!()
+        };
+        assert_eq!(
+            github.verification_uri,
+            "https://github.com/login/device/evil"
+        );
     }
 
     #[test]

@@ -3,9 +3,11 @@
 #
 # Everything here is Miniflare: a throwaway state directory, `wrangler dev`
 # on 127.0.0.1 with a fixed test pepper, and the Rust e2e test
-# (`cargo test -p kanso-sync --test e2e`) pointed at it. Once the Worker has
-# stopped, a second test scans the state directory for the first one's
-# canaries. No Cloudflare credentials are read or needed; the script unsets
+# (`cargo test -p kanso-sync --test e2e`) pointed at it: two Macs syncing,
+# and a new Mac approved live by a signed-in one over the account event socket,
+# which the test drops after its first event so it must reconnect and deliver
+# the next. Once the Worker has stopped, a third test scans the state directory
+# for the first one's canaries. No Cloudflare credentials are read or needed; the script unsets
 # them to be sure.
 #
 #   cloud/scripts/e2e-local.sh            from anywhere in the repository
@@ -108,7 +110,8 @@ if ! curl -fsS "$ENDPOINT/v2/health"; then
 fi
 echo
 
-# 5. The Rust end-to-end test.
+# 5. The Rust end-to-end tests: the sync run, and the live two-device approval
+#    with its dropped-socket reconnect (docs/ACCOUNTS.md › Delivery plan, step 7).
 cd "$REPO"
 KANSO_SYNC_E2E_ENDPOINT="$ENDPOINT" KANSO_SYNC_E2E_CANARIES="$CANARIES" \
 	cargo test -p kanso-sync --test e2e -- --nocapture

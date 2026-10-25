@@ -419,6 +419,9 @@ impl From<ApiError> for AccountError {
             ApiError::IdentityTaken => AccountError::IdentityTaken,
             ApiError::LastMethod => AccountError::LastMethod,
             ApiError::AlreadyHasPassword => AccountError::AlreadyHasPassword,
+            // The app's words match `AccountError` exhaustively; until it
+            // has a variant for this race, it reads as an unexpected answer.
+            ApiError::NoPassword => AccountError::Protocol("409 no_password".into()),
             ApiError::CredentialExists => AccountError::CredentialExists,
             ApiError::SelfApproval => AccountError::SelfApproval,
             ApiError::ApprovalUsed => AccountError::ApprovalUsed,
@@ -467,18 +470,18 @@ pub(crate) fn retrying<T>(
 }
 
 /// What a request sent up to [`ATTEMPTS`] times came to.
-struct Attempts<T> {
+pub(crate) struct Attempts<T> {
     /// The last attempt's result.
-    result: Result<T, ApiError>,
+    pub(crate) result: Result<T, ApiError>,
     /// Whether any attempt may have been carried out by the server: its
     /// answer was lost, garbled or a 5xx ([`ApiError::may_have_applied`]).
     /// A later attempt that never left this Mac, or that the server refused
     /// (a 429), doesn't undo an earlier one that arrived (review-verify 1).
-    reached: bool,
+    pub(crate) reached: bool,
 }
 
 /// [`retrying`], noting whether any attempt may have reached the server.
-fn retrying_noted<T>(
+pub(crate) fn retrying_noted<T>(
     b: &dyn Backend,
     mut send: impl FnMut() -> Result<T, ApiError>,
 ) -> Attempts<T> {
@@ -516,7 +519,7 @@ fn retrying_noted<T>(
 /// rotation sets that same key again (unless it is the key a recovery
 /// proves), so a retried or repeated change can never leave the server
 /// with a key the Mac no longer has.
-struct Rotation<'a> {
+pub(crate) struct Rotation<'a> {
     secrets: &'a dyn SecretStore,
     library_id: String,
     /// The item before this rotation.
@@ -531,7 +534,7 @@ impl<'a> Rotation<'a> {
     /// Chooses the key, reading the Keychain; writes nothing yet. `used` is
     /// the key a recovery proves, which has to change.
     #[allow(clippy::too_many_arguments, reason = "the item's fields")]
-    fn choose(
+    pub(crate) fn choose(
         secrets: &'a dyn SecretStore,
         library_id: &str,
         server: &str,
@@ -574,12 +577,12 @@ impl<'a> Rotation<'a> {
         })
     }
 
-    fn key(&self) -> &RecoveryKey {
+    pub(crate) fn key(&self) -> &RecoveryKey {
         &self.item.recovery_key
     }
 
     /// Saves the key, unconfirmed, for `account_id`: right before sending.
-    fn keep(&mut self, account_id: &str) -> Result<(), SecretError> {
+    pub(crate) fn keep(&mut self, account_id: &str) -> Result<(), SecretError> {
         self.item.account_id = account_id.to_owned();
         keychain::save_recovery_key(self.secrets, &self.library_id, &self.item)?;
         self.written = true;
@@ -588,7 +591,7 @@ impl<'a> Rotation<'a> {
 
     /// The server took it. Marking it confirmed may fail: the key stays in
     /// the Keychain, unconfirmed, and the app shows it either way.
-    fn accepted(mut self) -> RecoveryKey {
+    pub(crate) fn accepted(mut self) -> RecoveryKey {
         self.item.unconfirmed = false;
         keychain::save_recovery_key(self.secrets, &self.library_id, &self.item).ok();
         self.item.recovery_key
@@ -596,7 +599,7 @@ impl<'a> Rotation<'a> {
 
     /// The request failed with `error`; `maybe_applied` says whether the
     /// server may have carried it out.
-    fn failed(self, error: AccountError, maybe_applied: bool) -> RotationError {
+    pub(crate) fn failed(self, error: AccountError, maybe_applied: bool) -> RotationError {
         if maybe_applied {
             return RotationError {
                 error,
@@ -617,7 +620,7 @@ impl<'a> Rotation<'a> {
 
     /// The request got `error` back instead of an answer; `reached` says
     /// whether an earlier attempt may have been carried out.
-    fn failed_api(self, error: ApiError, reached: bool) -> RotationError {
+    pub(crate) fn failed_api(self, error: ApiError, reached: bool) -> RotationError {
         let maybe_applied = reached || error.may_have_applied();
         self.failed(error.into(), maybe_applied)
     }
@@ -631,7 +634,7 @@ pub(crate) fn checked_server(server: &str) -> Result<(String, String), AccountEr
 }
 
 /// Refuses a password equal to the (normalized) username, ignoring case.
-fn check_not_username(password: &Password, username: &str) -> Result<(), AccountError> {
+pub(crate) fn check_not_username(password: &Password, username: &str) -> Result<(), AccountError> {
     if password.is_username(username) {
         return Err(PasswordError::SameAsUsername.into());
     }
@@ -640,7 +643,7 @@ fn check_not_username(password: &Password, username: &str) -> Result<(), Account
 
 /// The parameters new keys use: the backend's default, which must itself
 /// lie within the backend's floor and the ceilings.
-fn default_params(b: &dyn Backend) -> Result<KdfParams, AccountError> {
+pub(crate) fn default_params(b: &dyn Backend) -> Result<KdfParams, AccountError> {
     let params = b.kdf_default();
     if params.is_within(&b.kdf_floor()) {
         Ok(params)
@@ -688,12 +691,12 @@ fn prelogin(b: &dyn Backend, api: &dyn Api, username: &str) -> Result<Prelogin, 
 }
 
 /// `a_` and 32 random lowercase hex digits.
-fn new_account_id() -> String {
+pub(crate) fn new_account_id() -> String {
     format!("a_{}", hex(&random::<16>()))
 }
 
 /// The value of a sealed name, or `None` when it doesn't open.
-fn opened_name(
+pub(crate) fn opened_name(
     keys: &ContentKeys,
     account_id: &str,
     device_id: &str,
@@ -707,7 +710,7 @@ fn opened_name(
 
 /// This device as a sign-up or recovery sends it: its ID, sealed name and
 /// proof for the account.
-fn new_device(
+pub(crate) fn new_device(
     device: &DeviceIdentity,
     keys: &ContentKeys,
     origin: &str,
@@ -851,7 +854,7 @@ pub fn start_provider(
     let (server, _) = checked_server(server)?;
     let api = b.api(&server);
     let device = provider_device(device);
-    match provider {
+    let start = match provider {
         Provider::Google => {
             let loopback = loopback.ok_or(AccountError::BadRequest)?;
             let challenge = code_challenge.ok_or(AccountError::BadRequest)?;
@@ -873,7 +876,11 @@ pub fn start_provider(
             )
         })
         .map_err(AccountError::from),
-    }
+    }?;
+    // Nothing opens a page the server named until it is the provider's.
+    let mut start = start;
+    crate::provider::check_provider_start(provider, &mut start, &server)?;
+    Ok(start)
 }
 
 /// One Apple or GitHub poll of a started flow. `secret` is Apple's, from the
@@ -1068,6 +1075,7 @@ pub fn sign_up_with_provider(
 
 /// `POST /v2/account/sign-in/identities/<provider>/start`: a link (with a
 /// password or passkey proof) or a provider proof (the session is enough).
+/// The page it names is checked as [`start_provider`]'s is.
 #[allow(clippy::too_many_arguments, reason = "the flow's inputs")]
 pub fn start_identity(
     b: &dyn Backend,
@@ -1080,7 +1088,7 @@ pub fn start_identity(
     device: &LoginDevice,
 ) -> Result<ProviderStart, AccountError> {
     let api = b.api(&session.server);
-    retrying(b, || {
+    let start = retrying(b, || {
         api.identity_start(
             session.token(),
             provider,
@@ -1093,7 +1101,12 @@ pub fn start_identity(
             },
         )
     })
-    .map_err(AccountError::from)
+    .map_err(AccountError::from)?;
+    // As for a sign-in start: nothing opens a page the server named until
+    // it is the provider's.
+    let mut start = start;
+    crate::provider::check_provider_start(provider, &mut start, &session.server)?;
+    Ok(start)
 }
 
 /// The completion of a link or proof flow on Apple or GitHub; `secret` as
@@ -1780,7 +1793,7 @@ pub fn flush_pending_logouts(b: &dyn Backend, secrets: &dyn SecretStore, library
 
 /// The current password's auth key: prelogin for the salt and parameters
 /// (refused outside the floor or ceilings), then Argon2id.
-fn current_auth(
+pub(crate) fn current_auth(
     b: &dyn Backend,
     api: &dyn Api,
     session: &Session,
@@ -1866,7 +1879,7 @@ pub fn change_password(
 }
 
 /// The library whose Keychain items hold `session`.
-fn session_library(session: &Session) -> Result<&str, AccountError> {
+pub(crate) fn session_library(session: &Session) -> Result<&str, AccountError> {
     session
         .library_id()
         .ok_or_else(|| AccountError::Keychain(SecretError("the session names no library".into())))
@@ -1896,7 +1909,9 @@ pub fn new_recovery_key(
     )?;
     let next = recovery_keys(rotation.key(), &session.origin, &session.username);
     let request = RecoveryKeyRequest {
-        current_auth_key: current_keys.auth_key.to_base64url(),
+        current_auth_key: Some(current_keys.auth_key.to_base64url()),
+        proof: None,
+        current_recovery_auth_key: None,
         recovery_auth_key: next.auth_key.to_base64url(),
         recovery_wrapped_key: wrap(
             &next.kek,
@@ -1934,7 +1949,9 @@ pub fn delete_account(
     let api = b.api(&session.server);
     let keys = current_auth(b, &*api, session, password, progress)?;
     let request = DeleteRequest {
-        auth_key: keys.auth_key.to_base64url(),
+        auth_key: Some(keys.auth_key.to_base64url()),
+        proof: None,
+        current_recovery_auth_key: None,
         username: typed,
     };
     progress(Step::Contacting);
