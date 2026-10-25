@@ -5684,6 +5684,11 @@ fn snapshots() {
         if let Some(width) = dialog {
             plugin_shot.dialog_width = *width;
         }
+        // A short confirmation sits near the top, as the account's do, and
+        // the developer sheet has its warning where the check usually looks.
+        if name.ends_with("-remove") || name.ends_with("-plugin-developer") {
+            plugin_shot.dialog_sample_y = Some(30.);
+        }
         shots.push(plugin_shot);
     }
     // The Themes page whole, in both of Kanso's themes and in another.

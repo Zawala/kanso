@@ -101,7 +101,9 @@ mod passkey_accounts;
 mod passkey_ceremony;
 mod paths;
 mod plugin_panel;
+mod plugin_panel_model;
 mod plugin_sheets;
+mod plugin_sheets_model;
 mod plugins;
 mod plugins_model;
 mod pouch_import;
@@ -126,6 +128,7 @@ mod settings_capture;
 mod settings_discovery;
 mod settings_gallery;
 mod settings_plugins;
+mod settings_plugins_model;
 mod settings_themes;
 mod settings_voice;
 #[cfg(test)]

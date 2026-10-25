@@ -597,10 +597,10 @@ impl Shared {
             let Ok(mut slot) = slot.try_lock() else {
                 continue;
             };
-            if slot.host.is_some() && slot.last_used.is_none_or(|at| at.elapsed() >= IDLE) {
-                if let Some(host) = slot.host.take() {
-                    host.stop();
-                }
+            if slot.last_used.is_none_or(|at| at.elapsed() >= IDLE)
+                && let Some(host) = slot.host.take()
+            {
+                host.stop();
             }
         }
     }
@@ -1039,11 +1039,6 @@ impl Plugins {
             })
             .collect()
     }
-
-    pub fn safe_mode(cx: &App) -> bool {
-        cx.try_global::<Plugins>()
-            .is_some_and(|p| p.shared.safe_mode())
-    }
 }
 
 /// Reads and clears the folders `kanso plugin dev` asked for.
@@ -1100,7 +1095,10 @@ pub fn run_command(
     editor: Entity<crate::editor::NoteEditor>,
     cx: &mut App,
 ) {
+    // The plugin reads the library, so what was typed is saved first.
+    editor.update(cx, |editor, cx| editor.flush(cx));
     let context = editor_context(&editor, cx);
+    let seen = context.selection.clone();
     let key = format!("{plugin_id}/{command}");
     let Some(plugins) = plugins_mut(cx) else {
         return;
@@ -1121,7 +1119,7 @@ pub fn run_command(
             if let Some(plugins) = plugins_mut(cx) {
                 plugins.running.remove(&key);
             }
-            finish(&plugin_id, report, Some(editor), cx);
+            finish(&plugin_id, report, Some(editor), seen, cx);
         });
     })
     .detach();
@@ -1146,10 +1144,14 @@ pub fn press(button: String, cx: &mut App) {
     let run = Run::Press { button, values };
     let editor = crate::workspace::main_workspace(cx)
         .map(|(_, workspace)| workspace.read(cx).editor.clone());
+    if let Some(editor) = &editor {
+        editor.update(cx, |editor, cx| editor.flush(cx));
+    }
     let context = editor
         .as_ref()
         .map(|e| editor_context(e, cx))
         .unwrap_or_default();
+    let seen = context.selection.clone();
     let plugin = id.clone();
     let task = cx.background_spawn(async move { shared.run(&plugin, run, context) });
     cx.spawn(async move |cx| {
@@ -1158,7 +1160,7 @@ pub fn press(button: String, cx: &mut App) {
             if let Some(panel) = plugins_mut(cx).and_then(|p| p.panel.as_mut()) {
                 panel.busy = false;
             }
-            finish(&id, report, editor, cx);
+            finish(&id, report, editor, seen, cx);
         });
     })
     .detach();
@@ -1169,6 +1171,7 @@ fn finish(
     plugin_id: &str,
     report: Report,
     editor: Option<Entity<crate::editor::NoteEditor>>,
+    seen: Option<router::Selection>,
     cx: &mut App,
 ) {
     let Some(plugins) = cx.try_global::<Plugins>() else {
@@ -1220,30 +1223,32 @@ fn finish(
             notify_windows(move || Notification::error(text.clone()), cx);
         }
     }
-    if let Some(edit) = outcome.selection_edit {
-        if let Some(editor) = &editor {
-            cx.defer({
-                let editor = editor.clone();
-                move |cx| {
-                    let Some((handle, _)) = crate::workspace::main_workspace(cx) else {
-                        return;
-                    };
-                    handle
-                        .update(cx, |_, window, cx| {
-                            editor.update(cx, |editor, cx| {
-                                editor.replace_for_plugin(
-                                    &edit.note_id,
-                                    edit.start..edit.end,
-                                    &edit.text,
-                                    window,
-                                    cx,
-                                );
-                            });
-                        })
-                        .ok();
-                }
-            });
-        }
+    if let (Some(edit), Some(editor), Some(seen)) = (outcome.selection_edit, &editor, seen) {
+        let editor = editor.clone();
+        let name = name.clone();
+        cx.defer(move |cx| {
+            let Some((handle, _)) = crate::workspace::main_workspace(cx) else {
+                return;
+            };
+            let replaced = handle
+                .update(cx, |_, window, cx| {
+                    editor.update(cx, |editor, cx| {
+                        editor.replace_for_plugin(
+                            &edit.note_id,
+                            edit.start..edit.end,
+                            &seen.text,
+                            &edit.text,
+                            window,
+                            cx,
+                        )
+                    })
+                })
+                .unwrap_or(false);
+            if !replaced {
+                let text = format!("{name} didn't change the selection: it changed while it ran.");
+                notify_windows(move || Notification::warning(text.clone()), cx);
+            }
+        });
     }
     if let Some(root) = outcome.panel {
         let plugins = cx.global_mut::<Plugins>();
@@ -1251,6 +1256,7 @@ fn finish(
             Some(open) if open.panel.plugin_id == plugin_id => open.values.clone(),
             _ => Default::default(),
         };
+        let values = crate::plugin_panel::initial_values(&root, &values);
         plugins.panel = Some(PanelState {
             panel: Panel {
                 plugin_id: plugin_id.to_owned(),
@@ -1259,7 +1265,7 @@ fn finish(
                 root,
             },
             developer: installed.is_developer(),
-            values: crate::plugin_panel::initial_values(&plugins.panel, values),
+            values,
             busy: false,
         });
         crate::plugin_panel::reveal(cx);
@@ -1285,17 +1291,25 @@ fn finish(
         {
             let editor = editor.clone();
             let id = edit.id.clone();
+            let plugin_id = plugin_id.to_owned();
+            let current = shared.store.get(&id).ok().flatten().map(|doc| doc.rev);
+            let unchanged = current.as_deref() == Some(edit.base_rev.as_str());
             cx.defer(move |cx| {
-                let Some((handle, _)) = crate::workspace::main_workspace(cx) else {
-                    return;
-                };
-                handle
-                    .update(cx, |_, window, cx| {
-                        editor.update(cx, |editor, cx| {
-                            editor.replace_body_for_plugin(&id, &body, window, cx);
-                        });
-                    })
-                    .ok();
+                let replaced = unchanged
+                    && crate::workspace::main_workspace(cx).is_some_and(|(handle, _)| {
+                        handle
+                            .update(cx, |_, window, cx| {
+                                editor.update(cx, |editor, cx| {
+                                    editor.replace_body_for_plugin(&id, &body, window, cx)
+                                })
+                            })
+                            .unwrap_or(false)
+                    });
+                // Otherwise through the library, which checks the note
+                // against what the plugin read.
+                if !replaced {
+                    apply_batch(&plugin_id, &name, batch, cx);
+                }
             });
             return;
         }
@@ -1668,6 +1682,18 @@ pub fn init_for_test(store: Arc<Store>, data_dir: &Path, plugins: Vec<Installed>
         dev_requests: Vec::new(),
         _tick: None,
     });
+}
+
+/// Adds a line to plugin `id`'s log, for a test or snapshot.
+#[cfg(test)]
+pub fn push_log_for_test(id: &str, level: &str, text: &str, cx: &App) {
+    if let Some(plugins) = cx.try_global::<Plugins>() {
+        let slot = plugins.shared.slot(id);
+        slot.lock()
+            .expect("plugin slot poisoned")
+            .log
+            .push(level, text);
+    }
 }
 
 /// Turns safe mode on or off for a test or snapshot.

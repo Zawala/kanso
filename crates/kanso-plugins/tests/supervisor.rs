@@ -485,7 +485,12 @@ fn the_documented_samples_run() {
         .unwrap();
     let panel = serde_json::to_value(router.out.panel.as_ref().unwrap()).unwrap();
     assert!(panel.to_string().contains("Draft"), "{panel}");
-    assert_eq!(router.out.refused, 0, "{:?}", log.lines().collect::<Vec<_>>());
+    assert_eq!(
+        router.out.refused,
+        0,
+        "{:?}",
+        log.lines().collect::<Vec<_>>()
+    );
     host.stop();
 
     // Bar chart: SVG from the block's text, in the theme's colors.
