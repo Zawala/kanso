@@ -9,6 +9,8 @@ rust-version.workspace = true
 [[bin]]
 name = "kanso-sync"
 path = "src/bin/kanso-sync.rs"
+# It reads the library's secrets from the system's store.
+required-features = ["system-keychain"]
 
 [dependencies]
 aes-gcm.workspace = true
@@ -45,17 +47,23 @@ url = "2.5"
 # The system's secret store for sessions, data keys, recovery keys and pending
 # logouts: the Keychain on macOS, the Credential Manager on Windows, and the
 # Secret Service (GNOME Keyring, KWallet) over D-Bus on Linux, with the kernel
-# keyring in front of it.
+# keyring in front of it. Only with the `system-keychain` feature.
 [target.'cfg(target_os = "macos")'.dependencies]
-keyring = { version = "3.6", features = ["apple-native"] }
+keyring = { version = "3.6", features = ["apple-native"], optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-keyring = { version = "3.6", features = ["windows-native"] }
+keyring = { version = "3.6", features = ["windows-native"], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-keyring = { version = "3.6", features = ["linux-native-sync-persistent", "crypto-rust"] }
+keyring = { version = "3.6", features = ["linux-native-sync-persistent", "crypto-rust"], optional = true }
 
 [features]
+default = ["system-keychain"]
+# `Keychain`, the desktop's `SecretStore`. The engine shared with the mobile
+# app leaves it out: a phone's secret store is the platform's, behind the
+# same trait. On iOS and Android the feature adds no code, as they have no
+# system store here.
+system-keychain = ["dep:keyring"]
 # `TestAuthenticator`, a software passkey for tests in this crate and the app.
 test-support = []
 

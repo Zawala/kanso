@@ -14,7 +14,8 @@ chrono.workspace = true
 fastrand.workspace = true
 kanso-core.workspace = true
 kanso-store.workspace = true
-kanso-sync.workspace = true
+# Without the desktop Keychain: secrets go through the `Secrets` trait.
+kanso-sync = { path = "../kanso-sync", default-features = false }
 serde_json.workspace = true
 sha2.workspace = true
 # The generators the apps' view tests share (strategies.rs).

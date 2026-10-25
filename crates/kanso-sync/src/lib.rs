@@ -76,7 +76,10 @@ pub use engine::{
 pub use events::{AccountEvent, EventError, EventSource, Signal};
 pub use http::HttpBackend;
 pub use kanso_store::SyncDoc;
-#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+#[cfg(all(
+    feature = "system-keychain",
+    any(target_os = "macos", target_os = "windows", target_os = "linux")
+))]
 pub use keychain::Keychain;
 pub use keychain::{MemorySecrets, SecretError, SecretStore};
 pub use memory::{
@@ -125,6 +128,10 @@ const _: fn() = || {
     send_sync::<HttpBackend>();
     send_sync::<MemoryServer>();
     send_sync::<dyn SecretStore>();
+    #[cfg(all(
+        feature = "system-keychain",
+        any(target_os = "macos", target_os = "windows", target_os = "linux")
+    ))]
     send_sync::<Keychain>();
     send_sync::<MemorySecrets>();
     send_sync::<SyncOptions>();
