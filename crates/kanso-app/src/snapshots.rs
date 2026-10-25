@@ -5094,6 +5094,18 @@ fn snapshots() {
         ),
         shot("dark-voice-writing", Dark, Edit, voice::editor_writing),
         shot(
+            "dark-editor-inline-suggestion",
+            Dark,
+            Edit,
+            ai::editor_inline_suggestion,
+        ),
+        shot(
+            "light-editor-inline-suggestion",
+            Light,
+            Split,
+            ai::editor_inline_suggestion,
+        ),
+        shot(
             "dark-editor-transcribing",
             Dark,
             Edit,

@@ -17,6 +17,7 @@ mod agent_permission_tests;
 mod agent_registry;
 mod agent_scope;
 mod ai_agent;
+mod ai_feature;
 mod ask;
 mod ask_panel;
 #[cfg(test)]
