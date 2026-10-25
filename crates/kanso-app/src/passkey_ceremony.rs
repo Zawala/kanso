@@ -22,7 +22,7 @@ use kanso_sync::{PasskeyAssertion, PasskeyMethods, PasskeyRegistration};
 /// The relying-party rules are `kanso-sync`'s, so the app and the client
 /// library hold one rule: the entitled relying party, what WebAuthn
 /// accepts as an RP ID, and the server's host or a parent of it.
-pub use kanso_sync::{OFFICIAL_RP_ID, rp_id_fits_server, valid_rp_id};
+pub use kanso_sync::OFFICIAL_RP_ID;
 
 /// The platform the app runs on, as the method rules see it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -290,6 +290,7 @@ impl PasskeyCeremony for MainThreadCeremony {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kanso_sync::{rp_id_fits_server, valid_rp_id};
     use proptest::prelude::*;
 
     fn methods(rp_id: &str) -> PasskeyMethods {
