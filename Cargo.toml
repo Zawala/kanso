@@ -145,6 +145,17 @@ opt-level = 2
 [profile.release]
 strip = "symbols"
 
+# The phones' libraries (#48): as small as possible, and unwinding, so the
+# facade catches a panic and returns it as an error. The desktop ships with
+# [profile.release] above, unchanged. Build with `cargo build --profile mobile`.
+[profile.mobile]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "unwind"
+
 # GPUI Kit's component crate with one small hook added, so an icon theme
 # restyles the component library's own icons too (vendor/README.md).
 [patch.crates-io]
