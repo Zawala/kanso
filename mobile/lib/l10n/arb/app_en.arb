@@ -4,8 +4,512 @@
   "@appName": {
     "description": "The app's name, shown as its title."
   },
-  "homePlaceholder": "Kanso for iPhone, iPad and Android is on its way.",
-  "@homePlaceholder": {
-    "description": "A line on the placeholder home page, until the real screens arrive."
+  "libraryAllNotes": "All Notes",
+  "@libraryAllNotes": {
+    "description": "The library row that lists every note."
+  },
+  "libraryTemplates": "Templates",
+  "@libraryTemplates": {
+    "description": "The library row for note templates."
+  },
+  "libraryPinned": "Pinned",
+  "@libraryPinned": {
+    "description": "The library row for pinned notes, and the list's group of them."
+  },
+  "libraryRecent": "Recent",
+  "@libraryRecent": {
+    "description": "The library row for recently opened notes."
+  },
+  "libraryTasks": "Tasks",
+  "@libraryTasks": {
+    "description": "The library row for open tasks across notes."
+  },
+  "libraryNotebooks": "Notebooks",
+  "@libraryNotebooks": {
+    "description": "The label above the list of notebooks."
+  },
+  "libraryTags": "Tags",
+  "@libraryTags": {
+    "description": "The label above the list of tags."
+  },
+  "libraryTrash": "Trash",
+  "@libraryTrash": {
+    "description": "The library row for deleted notes."
+  },
+  "librarySortNotebooks": "Sort notebooks",
+  "@librarySortNotebooks": {
+    "description": "What the sort button of the notebooks header does."
+  },
+  "libraryNewNotebook": "New notebook",
+  "@libraryNewNotebook": {
+    "description": "What the add button of the notebooks header does."
+  },
+  "openSettings": "Settings",
+  "@openSettings": {
+    "description": "What the settings button does."
+  },
+  "openLibrary": "Library",
+  "@openLibrary": {
+    "description": "What the button that opens the library does."
+  },
+  "searchHint": "Search notes",
+  "@searchHint": {
+    "description": "The hint in an empty search field."
+  },
+  "searchClear": "Clear search",
+  "@searchClear": {
+    "description": "What the clear button of a search field does."
+  },
+  "searchCancel": "Cancel",
+  "@searchCancel": {
+    "description": "Leaves the search."
+  },
+  "searchFilterAll": "All",
+  "@searchFilterAll": {
+    "description": "A search filter: everything."
+  },
+  "searchFilterTitles": "Titles",
+  "@searchFilterTitles": {
+    "description": "A search filter: only note titles."
+  },
+  "searchFilterTags": "Tags",
+  "@searchFilterTags": {
+    "description": "A search filter: only tags."
+  },
+  "searchFilterNotebook": "This notebook",
+  "@searchFilterNotebook": {
+    "description": "A search filter: the open notebook only."
+  },
+  "searchResultCount": "{count, plural, =1{1 result} other{{count} results}}",
+  "@searchResultCount": {
+    "description": "How many notes match a search.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noteListCount": "{count, plural, =1{1 note} other{{count} notes}}",
+  "@noteListCount": {
+    "description": "How many notes a list holds.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noteListNewNote": "New note",
+  "@noteListNewNote": {
+    "description": "What the add button of the note list does."
+  },
+  "noteListMore": "More",
+  "@noteListMore": {
+    "description": "What the more button of the note list does."
+  },
+  "noteBack": "Back",
+  "@noteBack": {
+    "description": "Goes back."
+  },
+  "noteForward": "Forward",
+  "@noteForward": {
+    "description": "Goes forward."
+  },
+  "noteSearch": "Search",
+  "@noteSearch": {
+    "description": "Opens search."
+  },
+  "notePreview": "Preview",
+  "@notePreview": {
+    "description": "Shows the note rendered."
+  },
+  "noteEdit": "Edit",
+  "@noteEdit": {
+    "description": "Shows the note as text to edit."
+  },
+  "noteInfo": "Note info",
+  "@noteInfo": {
+    "description": "Shows the note's details."
+  },
+  "noteMetaNotebook": "Notebook",
+  "@noteMetaNotebook": {
+    "description": "The label of a note's notebook."
+  },
+  "noteMetaStatus": "Status",
+  "@noteMetaStatus": {
+    "description": "The label of a note's status."
+  },
+  "noteMetaCreated": "Created",
+  "@noteMetaCreated": {
+    "description": "The label of when a note was made."
+  },
+  "noteMetaUpdated": "Updated",
+  "@noteMetaUpdated": {
+    "description": "The label of when a note last changed."
+  },
+  "statusActive": "Active",
+  "@statusActive": {
+    "description": "A note's status: in progress."
+  },
+  "statusOnHold": "On hold",
+  "@statusOnHold": {
+    "description": "A note's status: paused."
+  },
+  "statusCompleted": "Completed",
+  "@statusCompleted": {
+    "description": "A note's status: done."
+  },
+  "statusDropped": "Dropped",
+  "@statusDropped": {
+    "description": "A note's status: given up."
+  },
+  "editProperties": "Properties · {count}",
+  "@editProperties": {
+    "description": "The collapsed row of a note's properties, with how many it has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "accessoryHeading": "Heading",
+  "@accessoryHeading": {
+    "description": "A keyboard shortcut that starts a heading."
+  },
+  "accessoryList": "List",
+  "@accessoryList": {
+    "description": "A keyboard shortcut that starts a list."
+  },
+  "accessoryTask": "Task",
+  "@accessoryTask": {
+    "description": "A keyboard shortcut that starts a task."
+  },
+  "accessoryBold": "Bold",
+  "@accessoryBold": {
+    "description": "A keyboard shortcut that makes text bold."
+  },
+  "accessoryLink": "Link",
+  "@accessoryLink": {
+    "description": "A keyboard shortcut that makes a link."
+  },
+  "accessoryImage": "Image",
+  "@accessoryImage": {
+    "description": "A keyboard shortcut that adds an image."
+  },
+  "accessoryWikiLink": "Link to a note",
+  "@accessoryWikiLink": {
+    "description": "A keyboard shortcut that starts a link to another note."
+  },
+  "accessoryIndent": "Indent",
+  "@accessoryIndent": {
+    "description": "A keyboard shortcut that indents a line."
+  },
+  "accessoryOutdent": "Outdent",
+  "@accessoryOutdent": {
+    "description": "A keyboard shortcut that outdents a line."
+  },
+  "accessoryUndo": "Undo",
+  "@accessoryUndo": {
+    "description": "A keyboard shortcut that undoes the last change."
+  },
+  "settingsTitle": "Settings",
+  "@settingsTitle": {
+    "description": "The title of the settings page."
+  },
+  "settingsClose": "Close",
+  "@settingsClose": {
+    "description": "Closes a page."
+  },
+  "settingsGeneral": "General",
+  "@settingsGeneral": {
+    "description": "A section of settings."
+  },
+  "settingsDefaultNotebook": "Default notebook",
+  "@settingsDefaultNotebook": {
+    "description": "The notebook new notes go to."
+  },
+  "settingsEditorFont": "Editor font",
+  "@settingsEditorFont": {
+    "description": "The font of the editor."
+  },
+  "settingsAppearance": "Appearance",
+  "@settingsAppearance": {
+    "description": "A section of settings."
+  },
+  "settingsTheme": "Theme",
+  "@settingsTheme": {
+    "description": "The colour theme."
+  },
+  "settingsIcons": "Icons",
+  "@settingsIcons": {
+    "description": "The icon set."
+  },
+  "settingsTextSize": "Text size",
+  "@settingsTextSize": {
+    "description": "The size of text in notes."
+  },
+  "settingsTextSizeDefault": "Default",
+  "@settingsTextSizeDefault": {
+    "description": "The text size that follows the device."
+  },
+  "settingsSync": "Sync",
+  "@settingsSync": {
+    "description": "A section of settings."
+  },
+  "settingsSyncAccount": "Account",
+  "@settingsSyncAccount": {
+    "description": "The row that shows the sync account."
+  },
+  "settingsSyncedJustNow": "Synced · just now",
+  "@settingsSyncedJustNow": {
+    "description": "The sync state, a moment after it finished."
+  },
+  "settingsWakeDevice": "Wake this device when notes change elsewhere",
+  "@settingsWakeDevice": {
+    "description": "A switch for push notifications that trigger a sync."
+  },
+  "settingsLockedNotes": "Locked notes",
+  "@settingsLockedNotes": {
+    "description": "A section of settings."
+  },
+  "settingsUnlockFaceId": "Unlock with Face ID",
+  "@settingsUnlockFaceId": {
+    "description": "A switch to unlock notes with Face ID."
+  },
+  "settingsLockAfter": "Lock after",
+  "@settingsLockAfter": {
+    "description": "How long until a note locks again."
+  },
+  "settingsTenMinutes": "10 minutes",
+  "@settingsTenMinutes": {
+    "description": "A length of time."
+  },
+  "settingsAccount": "Account",
+  "@settingsAccount": {
+    "description": "A section of settings."
+  },
+  "settingsSignedInAs": "Signed in as",
+  "@settingsSignedInAs": {
+    "description": "Who is signed in."
+  },
+  "settingsSignOut": "Sign out",
+  "@settingsSignOut": {
+    "description": "Signs out of the account."
+  },
+  "settingsAbout": "About",
+  "@settingsAbout": {
+    "description": "A section of settings."
+  },
+  "settingsVersion": "Version",
+  "@settingsVersion": {
+    "description": "The app's version."
+  },
+  "settingsWebsite": "Website",
+  "@settingsWebsite": {
+    "description": "Opens Kanso's website."
+  },
+  "settingsReleaseNotes": "Release notes",
+  "@settingsReleaseNotes": {
+    "description": "Opens the release notes."
+  },
+  "settingsHelp": "Help",
+  "@settingsHelp": {
+    "description": "Opens the help."
+  },
+  "settingsLicences": "Licences",
+  "@settingsLicences": {
+    "description": "Opens the licences of what Kanso is made of."
+  },
+  "themesTitle": "Themes",
+  "@themesTitle": {
+    "description": "The title of the theme page."
+  },
+  "themesInstalled": "Installed",
+  "@themesInstalled": {
+    "description": "The label above the installed themes."
+  },
+  "themesGallery": "Gallery",
+  "@themesGallery": {
+    "description": "The label above the themes that can be installed."
+  },
+  "themesSearchHint": "Search themes",
+  "@themesSearchHint": {
+    "description": "The hint in the theme search field."
+  },
+  "themesFilterAll": "All",
+  "@themesFilterAll": {
+    "description": "A theme filter: every theme."
+  },
+  "themesFilterLight": "Light",
+  "@themesFilterLight": {
+    "description": "A theme filter: light themes."
+  },
+  "themesFilterDark": "Dark",
+  "@themesFilterDark": {
+    "description": "A theme filter: dark themes."
+  },
+  "themesFilterInstalled": "Installed",
+  "@themesFilterInstalled": {
+    "description": "A theme filter: installed themes."
+  },
+  "themesFilterUpdates": "Updates",
+  "@themesFilterUpdates": {
+    "description": "A theme filter: themes with an update."
+  },
+  "themesBadgeBuiltIn": "Built in",
+  "@themesBadgeBuiltIn": {
+    "description": "A badge on a theme that comes with Kanso."
+  },
+  "themesBadgeInstalled": "Installed",
+  "@themesBadgeInstalled": {
+    "description": "A badge on a theme that is installed."
+  },
+  "themesInstall": "Install",
+  "@themesInstall": {
+    "description": "Installs a theme."
+  },
+  "themesCurrent": "In use",
+  "@themesCurrent": {
+    "description": "Marks the theme in use."
+  },
+  "themesAppearanceLight": "Light",
+  "@themesAppearanceLight": {
+    "description": "A theme made for a light interface."
+  },
+  "themesAppearanceDark": "Dark",
+  "@themesAppearanceDark": {
+    "description": "A theme made for a dark interface."
+  },
+  "lockedTitle": "This note is locked",
+  "@lockedTitle": {
+    "description": "The title of the card shown in place of a locked note."
+  },
+  "lockedMessage": "Unlock it to read and edit. It locks again after {minutes} minutes or when you leave Kanso.",
+  "@lockedMessage": {
+    "description": "Says how a locked note is opened and when it locks.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "lockedUnlock": "Unlock with Face ID",
+  "@lockedUnlock": {
+    "description": "Unlocks a note with Face ID."
+  },
+  "lockedUsePassword": "Use password",
+  "@lockedUsePassword": {
+    "description": "Unlocks a note with a password instead."
+  },
+  "errorSignedOutTitle": "Signed out on this device",
+  "@errorSignedOutTitle": {
+    "description": "The title of the card shown when the session ended."
+  },
+  "errorSignedOutMessage": "Your session on this phone ended. Sign in again to keep syncing; your notes stay here.",
+  "@errorSignedOutMessage": {
+    "description": "Says what happened and that no notes are lost."
+  },
+  "errorSignInAgain": "Sign in again",
+  "@errorSignInAgain": {
+    "description": "Starts signing in again."
+  },
+  "errorNotNow": "Not now",
+  "@errorNotNow": {
+    "description": "Dismisses the card."
+  },
+  "designGalleryTitle": "Design proposal",
+  "@designGalleryTitle": {
+    "description": "The title of the page that lists the mock screens."
+  },
+  "designGalleryIntro": "Static screens for review. Nothing here saves or syncs.",
+  "@designGalleryIntro": {
+    "description": "Explains the page that lists the mock screens."
+  },
+  "designGalleryAppearance": "Appearance",
+  "@designGalleryAppearance": {
+    "description": "The label of the control that switches between light and dark."
+  },
+  "designGalleryPhone": "Phone",
+  "@designGalleryPhone": {
+    "description": "The group of mock screens drawn for a phone."
+  },
+  "designGalleryTablet": "Tablet",
+  "@designGalleryTablet": {
+    "description": "The group of mock screens drawn for a tablet."
+  },
+  "appearanceSystem": "System",
+  "@appearanceSystem": {
+    "description": "Follow the device's light or dark setting."
+  },
+  "appearanceLight": "Light",
+  "@appearanceLight": {
+    "description": "Always light."
+  },
+  "appearanceDark": "Dark",
+  "@appearanceDark": {
+    "description": "Always dark."
+  },
+  "screenLibrary": "Library",
+  "@screenLibrary": {
+    "description": "The name of a mock screen."
+  },
+  "screenLibraryScrolled": "Library, scrolled",
+  "@screenLibraryScrolled": {
+    "description": "The name of a mock screen."
+  },
+  "screenNoteList": "Note list",
+  "@screenNoteList": {
+    "description": "The name of a mock screen."
+  },
+  "screenNotePreview": "Note, preview",
+  "@screenNotePreview": {
+    "description": "The name of a mock screen."
+  },
+  "screenNoteEdit": "Note, edit",
+  "@screenNoteEdit": {
+    "description": "The name of a mock screen."
+  },
+  "screenSearch": "Search",
+  "@screenSearch": {
+    "description": "The name of a mock screen."
+  },
+  "screenSettings": "Settings",
+  "@screenSettings": {
+    "description": "The name of a mock screen."
+  },
+  "screenThemePicker": "Theme picker",
+  "@screenThemePicker": {
+    "description": "The name of a mock screen."
+  },
+  "screenLockedNote": "Locked note",
+  "@screenLockedNote": {
+    "description": "The name of a mock screen."
+  },
+  "screenError": "Error card",
+  "@screenError": {
+    "description": "The name of a mock screen."
+  },
+  "themesSampleHeading": "Heading",
+  "@themesSampleHeading": {
+    "description": "The heading in a theme's sample Markdown; the # mark is added."
+  },
+  "themesSampleLine": "Some **bold** and *italic*",
+  "@themesSampleLine": {
+    "description": "A line of a theme's sample Markdown with bold and italic text."
+  },
+  "themesSampleCode": "`code`, [a link](url)",
+  "@themesSampleCode": {
+    "description": "A line of a theme's sample Markdown with code and a link."
+  },
+  "themesSampleQuote": "a quote",
+  "@themesSampleQuote": {
+    "description": "The quote in a theme's sample Markdown; the > mark is added."
+  },
+  "screenSettingsScrolled": "Settings, scrolled",
+  "@screenSettingsScrolled": {
+    "description": "The name of a mock screen."
+  },
+  "screenThemePickerScrolled": "Theme picker, scrolled",
+  "@screenThemePickerScrolled": {
+    "description": "The name of a mock screen."
   }
 }

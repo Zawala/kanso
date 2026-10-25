@@ -39,6 +39,17 @@ flutter analyze
 flutter test
 ```
 
+## Design proposal
+
+Until the real screens are built, the app opens on a gallery of static mock
+screens (`lib/design/`) for the owner to review: the library, note list, note
+(preview and edit), search, settings, theme picker, a locked note and an error
+card, for a phone and for a tablet in landscape, with a light, dark or system
+switch. The mock data is fixed (`lib/design/models/data/mock_data.dart`). The
+components the screens are made of (`lib/core/views/widgets/`) are the ones
+the real app will use. The images in `test/design/views/pages/goldens/` are
+the proposal as pictures.
+
 ## Golden images
 
 Golden tests render a widget as iOS and as Android and compare both renders
@@ -46,6 +57,12 @@ with the same file, so any difference between the platforms fails. The helper
 is `expectGoldenOnBothPlatforms` in `test/helpers/golden.dart`; the images sit
 in a `goldens/` folder next to the test that wrote them. Text scale is 1 and
 animations are off. The bundled fonts are loaded in `test/flutter_test_config.dart`.
+
+The two renders are also compared with each other pixel by pixel, in memory,
+with no tolerance. Against the stored file a diff of up to 0.5% of the pixels
+is accepted (`test/helpers/kanso_golden_comparator.dart`), because the images
+are generated on one Mac and compared on another, and text rasterisation
+differs slightly between machines. Only one file is kept per screen.
 
 Update the images after an intended visual change, look at them, and commit
 them:

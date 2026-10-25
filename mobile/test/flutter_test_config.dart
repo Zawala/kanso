@@ -8,11 +8,19 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'helpers/kanso_golden_comparator.dart';
+
 /// Loads the bundled fonts from their files before any test runs, so text
 /// in widget tests and goldens is drawn in Kanso's fonts rather than the
 /// test harness's placeholder font.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   TestWidgetsFlutterBinding.ensureInitialized();
+  final comparator = goldenFileComparator;
+  if (comparator is LocalFileComparator) {
+    goldenFileComparator = KansoGoldenComparator(
+      comparator.basedir.resolve('test.dart'),
+    );
+  }
   await _loadFamily('Instrument Sans', <String>[
     'InstrumentSans-Regular.ttf',
     'InstrumentSans-Medium.ttf',

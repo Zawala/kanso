@@ -10,10 +10,11 @@ import 'core/state/appearance/appearance_bloc.dart';
 import 'core/utils/appearance_mode_theme_mode.dart';
 import 'core/utils/context_extensions.dart';
 import 'core/utils/kanso_scroll_behavior.dart';
+import 'design/views/pages/design_gallery_page.dart';
 import 'gen/l10n/app_localizations.dart';
-import 'home/views/pages/home_page.dart';
 
-/// The Kanso app: themes, language and the first page.
+/// The Kanso app: themes, language and the first page, which for now is the
+/// gallery of the design proposal.
 class App extends StatelessWidget {
   const App({super.key});
 
@@ -30,7 +31,7 @@ class App extends StatelessWidget {
           scrollBehavior: const KansoScrollBehavior(),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: const HomePage(),
+          home: const DesignGalleryPage(),
         );
       },
     );

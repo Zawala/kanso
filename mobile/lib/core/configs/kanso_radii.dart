@@ -4,7 +4,7 @@
 
 import 'package:flutter/painting.dart';
 
-/// Corner radii: the desktop's 6 and 10, and 14 for sheets and cards.
+/// Corner radii: the desktop's 6 and 10, 14 for sheets and cards, and pills.
 abstract final class KansoRadii {
   /// 6: rows, fields and small controls.
   static const double small = 6;
@@ -15,6 +15,9 @@ abstract final class KansoRadii {
   /// 14: sheets and cards.
   static const double large = 14;
 
+  /// 999: chips and the knob of a switch.
+  static const double pill = 999;
+
   static const BorderRadius smallBorder = BorderRadius.all(
     Radius.circular(small),
   );
@@ -23,5 +26,8 @@ abstract final class KansoRadii {
   );
   static const BorderRadius largeBorder = BorderRadius.all(
     Radius.circular(large),
+  );
+  static const BorderRadius pillBorder = BorderRadius.all(
+    Radius.circular(pill),
   );
 }

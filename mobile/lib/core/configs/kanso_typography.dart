@@ -18,11 +18,17 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
   const KansoTypography({
     required this.largeTitle,
     required this.noteTitle,
+    required this.barTitle,
+    required this.heading1,
+    required this.heading2,
     required this.listTitle,
     required this.body,
     required this.secondary,
+    required this.label,
+    required this.meta,
     required this.sectionLabel,
     required this.mono,
+    required this.monoSmall,
   });
 
   /// The styles for [colors]: text in `text`, secondary lines in
@@ -41,6 +47,27 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
         fontSize: 24,
         fontWeight: FontWeight.w700,
         height: 1.25,
+        color: colors.text,
+      ),
+      barTitle: TextStyle(
+        fontFamily: sansFamily,
+        fontSize: 17,
+        fontWeight: FontWeight.w600,
+        height: 1.3,
+        color: colors.text,
+      ),
+      heading1: TextStyle(
+        fontFamily: sansFamily,
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        height: 1.3,
+        color: colors.text,
+      ),
+      heading2: TextStyle(
+        fontFamily: sansFamily,
+        fontSize: 17,
+        fontWeight: FontWeight.w600,
+        height: 1.3,
         color: colors.text,
       ),
       listTitle: TextStyle(
@@ -64,6 +91,20 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
         height: 1.35,
         color: colors.textSecondary,
       ),
+      label: TextStyle(
+        fontFamily: sansFamily,
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        height: 1.3,
+        color: colors.textSecondary,
+      ),
+      meta: TextStyle(
+        fontFamily: sansFamily,
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+        height: 1.3,
+        color: colors.textMuted,
+      ),
       sectionLabel: TextStyle(
         fontFamily: sansFamily,
         fontSize: 12,
@@ -77,6 +118,13 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
         fontSize: 13.5,
         fontWeight: FontWeight.w400,
         height: 1.5,
+        color: colors.text,
+      ),
+      monoSmall: TextStyle(
+        fontFamily: monoFamily,
+        fontSize: 11.5,
+        fontWeight: FontWeight.w400,
+        height: 1.55,
         color: colors.text,
       ),
     );
@@ -94,6 +142,15 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
   /// The title of the open note: 24, bold.
   final TextStyle noteTitle;
 
+  /// A top bar's title: 17, semibold.
+  final TextStyle barTitle;
+
+  /// A first-level heading inside a note: 20, bold.
+  final TextStyle heading1;
+
+  /// A second-level heading inside a note: 17, semibold.
+  final TextStyle heading2;
+
   /// A row's title in a list: 15, semibold.
   final TextStyle listTitle;
 
@@ -103,11 +160,20 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
   /// A row's second line, captions and hints: 13.
   final TextStyle secondary;
 
+  /// A control's label (chips, buttons' small text): 13, medium.
+  final TextStyle label;
+
+  /// A quiet line of facts under a title: 12, muted.
+  final TextStyle meta;
+
   /// A section's label above its rows: 12, medium, muted.
   final TextStyle sectionLabel;
 
   /// Code, in the editor and in blocks: 13.5.
   final TextStyle mono;
+
+  /// Code in a small preview: 11.5.
+  final TextStyle monoSmall;
 
   /// A full Material [TextTheme] built from these styles, so no widget
   /// falls back to a platform font.
@@ -119,7 +185,7 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
       headlineLarge: noteTitle,
       headlineMedium: largeTitle,
       headlineSmall: largeTitle,
-      titleLarge: largeTitle,
+      titleLarge: barTitle,
       titleMedium: listTitle,
       titleSmall: listTitle,
       bodyLarge: body,
@@ -135,20 +201,32 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
   KansoTypography copyWith({
     TextStyle? largeTitle,
     TextStyle? noteTitle,
+    TextStyle? barTitle,
+    TextStyle? heading1,
+    TextStyle? heading2,
     TextStyle? listTitle,
     TextStyle? body,
     TextStyle? secondary,
+    TextStyle? label,
+    TextStyle? meta,
     TextStyle? sectionLabel,
     TextStyle? mono,
+    TextStyle? monoSmall,
   }) {
     return KansoTypography(
       largeTitle: largeTitle ?? this.largeTitle,
       noteTitle: noteTitle ?? this.noteTitle,
+      barTitle: barTitle ?? this.barTitle,
+      heading1: heading1 ?? this.heading1,
+      heading2: heading2 ?? this.heading2,
       listTitle: listTitle ?? this.listTitle,
       body: body ?? this.body,
       secondary: secondary ?? this.secondary,
+      label: label ?? this.label,
+      meta: meta ?? this.meta,
       sectionLabel: sectionLabel ?? this.sectionLabel,
       mono: mono ?? this.mono,
+      monoSmall: monoSmall ?? this.monoSmall,
     );
   }
 
@@ -160,11 +238,17 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
     return KansoTypography(
       largeTitle: TextStyle.lerp(largeTitle, other.largeTitle, t)!,
       noteTitle: TextStyle.lerp(noteTitle, other.noteTitle, t)!,
+      barTitle: TextStyle.lerp(barTitle, other.barTitle, t)!,
+      heading1: TextStyle.lerp(heading1, other.heading1, t)!,
+      heading2: TextStyle.lerp(heading2, other.heading2, t)!,
       listTitle: TextStyle.lerp(listTitle, other.listTitle, t)!,
       body: TextStyle.lerp(body, other.body, t)!,
       secondary: TextStyle.lerp(secondary, other.secondary, t)!,
+      label: TextStyle.lerp(label, other.label, t)!,
+      meta: TextStyle.lerp(meta, other.meta, t)!,
       sectionLabel: TextStyle.lerp(sectionLabel, other.sectionLabel, t)!,
       mono: TextStyle.lerp(mono, other.mono, t)!,
+      monoSmall: TextStyle.lerp(monoSmall, other.monoSmall, t)!,
     );
   }
 }
