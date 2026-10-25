@@ -268,7 +268,11 @@ pub struct SocialSignupRequest {
 /// A provider proof is a completed proof flow; it can only unlink that same
 /// provider, and setting a password, replacing the recovery key or deleting
 /// with it also needs the recovery key. [`crate::Proof`] builds these.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// [`ProofWire::Unknown`] is what a server reads for a `kind` it doesn't know,
+/// or for a required proof that is missing or `null` ([`required_proof`]); it
+/// answers 401 `reauth_required`. The client never sends it.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProofWire {
     Password {
@@ -281,6 +285,17 @@ pub enum ProofWire {
     Provider {
         flow: String,
     },
+    /// No proof, or a kind this protocol doesn't have.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// Reads a required `proof` that may be missing or `null` as
+/// [`ProofWire::Unknown`], so the server answers `reauth_required` rather
+/// than a malformed body. Used with `#[serde(default, deserialize_with)]`.
+pub fn required_proof<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ProofWire, D::Error> {
+    Ok(Option::<ProofWire>::deserialize(d)?.unwrap_or_default())
 }
 
 impl ProofWire {
@@ -302,6 +317,7 @@ impl ProofWire {
             ProofWire::Password { .. } => "password",
             ProofWire::Passkey { .. } => "passkey",
             ProofWire::Provider { .. } => "provider",
+            ProofWire::Unknown => "unknown",
         }
     }
 }
@@ -319,6 +335,7 @@ impl fmt::Debug for ProofWire {
                 .field("assertion", assertion)
                 .finish(),
             ProofWire::Provider { flow } => f.debug_struct("Provider").field("flow", flow).finish(),
+            ProofWire::Unknown => f.write_str("Unknown"),
         }
     }
 }
@@ -357,6 +374,7 @@ pub enum IdentityIntent {
 /// `POST /v2/account/sign-in/identities/<provider>/unlink`.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnlinkRequest {
+    #[serde(default, deserialize_with = "required_proof")]
     pub proof: ProofWire,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery_auth_key: Option<String>,

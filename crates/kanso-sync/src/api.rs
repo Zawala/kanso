@@ -425,10 +425,9 @@ pub enum Route {
 }
 
 impl Route {
-    /// Routes the shared conformance fixtures cover. The four public passkey
-    /// routes are implemented by `MemoryServer` and exercised by its own
-    /// tests, but have no fixture case yet; the account-management passkeys
-    /// are contracts only (neither the Worker nor `MemoryServer` serves them).
+    /// Routes the shared conformance fixtures cover. The passkey routes
+    /// ([`Route::PASSKEYS`]) are served by `MemoryServer` and the Worker and
+    /// covered by `sign_in.json`.
     pub const ALL: [Route; 25] = [
         Route::Health,
         Route::Prelogin,
@@ -457,9 +456,9 @@ impl Route {
         Route::ApprovalCancel,
     ];
 
-    /// Passkey HTTP contracts: the four public routes `MemoryServer` fakes,
-    /// plus account-management routes described by revision 3 but not yet
-    /// implemented by this checkout's Worker or `MemoryServer`.
+    /// The passkey, proof and first-password routes: the four public routes
+    /// and the account's own, all verified by `MemoryServer` as the Worker
+    /// verifies them.
     pub const PASSKEYS: [Route; 10] = [
         Route::PasskeyStart,
         Route::PasskeyFinish,
@@ -892,12 +891,17 @@ pub struct PasskeyProofStartRequest {
 pub struct PasskeyProofStartResponse {
     pub flow_id: String,
     pub challenge: String,
+    #[serde(default)]
+    pub rp_id: String,
     pub allow_credentials: Vec<PasskeyAllowedCredential>,
+    #[serde(default)]
+    pub user_verification: String,
     pub timeout: u64,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PasskeyProofRequest {
+    #[serde(default, deserialize_with = "crate::provider::required_proof")]
     pub proof: ProofRequest,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recovery_auth_key: Option<String>,
@@ -918,6 +922,7 @@ pub struct AccountPasskeysStartResponse {
 }
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccountPasskeysStartRequest {
+    #[serde(default, deserialize_with = "crate::provider::required_proof")]
     pub proof: ProofRequest,
 }
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1052,6 +1057,7 @@ pub struct DeleteRequest {
 /// `current_recovery_auth_key`. 200 [`PasswordResponse`].
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignInPasswordRequest {
+    #[serde(default, deserialize_with = "crate::provider::required_proof")]
     pub proof: ProofRequest,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_recovery_auth_key: Option<String>,

@@ -10,6 +10,10 @@
 //!     cargo test -p kanso-sync --test e2e -- --ignored the_stopped_state_holds_no_canary
 //! ```
 //!
+//! Beside the sync run, `a_new_mac_is_approved_live_and_the_dropped_socket_reconnects`
+//! approves a new Mac over the live account event socket and checks the
+//! socket's reconnect after a drop.
+//!
 //! It runs at production KDF parameters (`HttpBackend`) and passes without
 //! doing anything when `KANSO_SYNC_E2E_ENDPOINT` is unset. Sessions stay in
 //! memory; nothing touches the Keychain. The canary scan reads the state
@@ -509,6 +513,204 @@ fn two_macs_sync_through_a_local_worker() {
     });
     std::fs::write(&canaries, list.to_string()).expect("write the canary list");
     eprintln!("canary list written for the scan of the stopped state");
+}
+
+/// Wraps the first socket so it drops right after its first event, as a
+/// lost connection would: the loop must reconnect and the next event must
+/// arrive on the new socket.
+struct DropsAfterFirstEvent {
+    inner: Box<dyn kanso_sync::events::EventSource>,
+    dropped: bool,
+}
+
+impl kanso_sync::events::EventSource for DropsAfterFirstEvent {
+    fn next(
+        &mut self,
+        wait: Duration,
+    ) -> Result<Option<kanso_sync::events::Frame>, kanso_sync::events::EventError> {
+        if self.dropped {
+            return Err(kanso_sync::events::EventError::Dropped(
+                "dropped by the test".into(),
+            ));
+        }
+        let frame = self.inner.next(wait)?;
+        if matches!(frame, Some(kanso_sync::events::Frame::Event(_))) {
+            self.dropped = true;
+        }
+        Ok(frame)
+    }
+
+    fn ping(&mut self) -> Result<(), kanso_sync::events::EventError> {
+        self.inner.ping()
+    }
+}
+
+/// docs/ACCOUNTS.md › Delivery plan, step 7: a new Mac is approved by the
+/// signed-in one, which learns of the request and of its name over the live
+/// account event socket (no timer), and that socket, dropped after the first
+/// event, reconnects and delivers the second.
+#[test]
+fn a_new_mac_is_approved_live_and_the_dropped_socket_reconnects() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
+
+    use kanso_sync::events::{self, AccountEvent, EventError, EventSource, Signal};
+    use kanso_sync::{
+        ApprovalKeys, LockedSession, PinnedRequest, RequestState, SessionToken,
+        account_events_path, challenge_request, complete_request, finish_approval, finish_unlock,
+        name_device, open_request, pending_approvals, poll_approval, request_approval,
+    };
+
+    let Ok(endpoint) = std::env::var("KANSO_SYNC_E2E_ENDPOINT") else {
+        eprintln!("skipped: set KANSO_SYNC_E2E_ENDPOINT (see cloud/scripts/e2e-local.sh)");
+        return;
+    };
+    let backend = HttpBackend;
+    let run = format!("{:x}", kanso_core::now_ms());
+    let username = format!("e2eapprove{run}");
+    let password = Password::new(&format!("{PASSWORD} approve"), &username).unwrap();
+    let mac_a = identity(11, "Approver Mac");
+    let mac_b = identity(12, "New Mac");
+    let a = patiently(|| {
+        kanso_sync::sign_up(
+            &backend,
+            &MemorySecrets::new(),
+            &endpoint,
+            &username,
+            &password,
+            &mac_a,
+            &|_| {},
+        )
+        .map_err(|err| err.error)
+    })
+    .expect("sign up")
+    .session;
+
+    // Mac A's event loop, on its own thread, as the app runs it.
+    let path = account_events_path(&backend, &endpoint)
+        .expect("health")
+        .unwrap_or_else(|| events::ACCOUNT_EVENTS_PATH.to_owned());
+    let stop = AtomicBool::new(false);
+    let (tx, rx) = mpsc::channel::<Signal>();
+    let (session_a, device_a, path) = (&a, &mac_a, path.as_str());
+    std::thread::scope(|scope| {
+        let events_thread = {
+            let stop = &stop;
+            scope.spawn(move || {
+                let mut connects = 0;
+                let mut connect = || -> Result<Box<dyn EventSource>, EventError> {
+                    connects += 1;
+                    let inner = HttpBackend.events(session_a, device_a, path)?;
+                    Ok(if connects == 1 {
+                        Box::new(DropsAfterFirstEvent {
+                            inner,
+                            dropped: false,
+                        })
+                    } else {
+                        inner
+                    })
+                };
+                let mut on = |signal: Signal| {
+                    tx.send(signal).ok();
+                };
+                let sleep = |wait: Duration| events::sleep_unless_stopped(stop, wait);
+                events::run(&mut connect, stop, &mut on, &sleep);
+            })
+        };
+        let next_signal = |what: &str| -> Signal {
+            rx.recv_timeout(Duration::from_secs(20))
+                .unwrap_or_else(|_| panic!("no {what} within 20 s"))
+        };
+        let expect_connected = |what: &str| match next_signal(what) {
+            Signal::Connected => {}
+            other => panic!("{what}: expected Connected, got {other:?}"),
+        };
+        expect_connected("first connection");
+
+        // Mac B signs in and, holding no data key, asks to be approved.
+        let b = patiently(|| {
+            kanso_sync::sign_in(&backend, &endpoint, &username, &password, &mac_b, &|_| {})
+        })
+        .expect("sign in")
+        .session;
+        let token = SessionToken::new(b.authorization().trim_start_matches("Bearer ").to_owned());
+        let mut locked = LockedSession::new(
+            b.server.clone(),
+            b.origin.clone(),
+            b.account_id.clone(),
+            b.username.clone(),
+            b.device_id.clone(),
+            token,
+            b.key_id(),
+            "0000000000000000".to_owned(),
+            None,
+            None,
+        )
+        .with_login_device(LoginDevice::for_identity(&mac_b, &b.origin, &b.account_id));
+        locked.set_library_id(&mac_b.library_id);
+        let keys_b = ApprovalKeys::generate();
+        let started = Instant::now();
+        let request = request_approval(&backend, &locked, &keys_b).expect("ask");
+
+        // A hears of it live, then its socket drops and comes back.
+        match next_signal("approval.created") {
+            Signal::Event(AccountEvent::ApprovalCreated(id)) => assert_eq!(id, request.id),
+            other => panic!("expected approval.created, got {other:?}"),
+        }
+        eprintln!("approval.created after {:?}", started.elapsed());
+        expect_connected("the reconnect after the drop");
+
+        // A challenges; B shows the code and names itself; A hears that on the
+        // new socket.
+        let pending = pending_approvals(&backend, &a).expect("list");
+        let row = pending
+            .iter()
+            .find(|row| row.id == request.id)
+            .expect("the request is listed");
+        let pin = PinnedRequest::of(row);
+        let keys_a = ApprovalKeys::generate();
+        challenge_request(&backend, &a, row, &keys_a).expect("challenge");
+        let RequestState::Challenged { approver_epk, .. } =
+            poll_approval(&backend, &locked, &request).expect("poll")
+        else {
+            panic!("B should be challenged");
+        };
+        let approval_b = complete_request(&locked, &request, &keys_b, &approver_epk).expect("code");
+        name_device(&backend, &locked, &request, &approval_b, &mac_b).expect("name");
+        loop {
+            match next_signal("approval.named") {
+                Signal::Event(AccountEvent::ApprovalNamed(id)) => {
+                    assert_eq!(id, request.id);
+                    break;
+                }
+                // A challenge isn't an event, but a late duplicate is harmless.
+                Signal::Event(_) | Signal::Connected => {}
+                Signal::Ended(err) => panic!("the event loop ended: {err:?}"),
+            }
+        }
+
+        // The codes agree; A approves and B unlocks with the same data key.
+        let pending = pending_approvals(&backend, &a).expect("list");
+        let row = pending.iter().find(|row| row.id == request.id).unwrap();
+        let opened = open_request(&a, row, &pin, &keys_a)
+            .expect("open")
+            .expect("named");
+        assert_eq!(opened.approval.code(), approval_b.code());
+        assert_eq!(opened.name, "New Mac");
+        finish_approval(&backend, &a, row, &opened.approval).expect("approve");
+        let RequestState::Approved(approved) =
+            poll_approval(&backend, &locked, &request).expect("poll")
+        else {
+            panic!("B should be approved");
+        };
+        let unlocked =
+            finish_unlock(&backend, &locked, &approval_b, &approved, &mac_b).expect("unlock");
+        assert_eq!(unlocked.session.key_id(), a.key_id());
+        eprintln!("live approval end to end: {:?}", started.elapsed());
+
+        stop.store(true, Ordering::SeqCst);
+        events_thread.join().expect("the event loop stops");
+    });
 }
 
 /// The state directory of the stopped Worker (D1's SQLite files and R2's
