@@ -1930,7 +1930,7 @@ fn provider_wait_view(
             div()
                 .text_size(px(13.))
                 .text_color(colors.text_secondary)
-                .child(format!("Enter this code at {uri}: {code}")),
+                .child(format!("Paste this code at {uri}: {code}")),
         )
     } else {
         waiting.child(
@@ -1969,7 +1969,7 @@ fn provider_wait_view(
                 div()
                     .text_size(px(12.))
                     .text_color(colors.text_secondary)
-                    .child("This code stays here while Kanso checks for approval."),
+                    .child("It's copied, so you can paste it on GitHub's page. It stays here while Kanso checks for approval."),
             )
         })
         .when(wait.provider == "Apple", |view| {

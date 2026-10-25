@@ -3350,6 +3350,9 @@ fn linking_and_unlinking_github_take_their_proofs(cx: &mut TestAppContext) {
     assert_eq!(linked.len(), 1);
     assert_eq!(linked[0].provider, Provider::Github);
     assert!(cx.read(|cx| cx.global::<Services>().provider_wait.is_none()));
+    // GitHub's code went to the clipboard, ready to paste on its page.
+    let copied = cx.update(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
+    assert_eq!(copied.as_deref(), Some("MEMORY-CODE"));
 
     // A provider can't prove a link: that needs the password or a passkey.
     assert_eq!(
