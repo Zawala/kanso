@@ -2171,6 +2171,9 @@ mod tests {
             in_syntax in any::<bool>(),
             in_preview in any::<bool>(),
         ) {
+            // The fallback is Kanso's own theme, never the gallery theme
+            // being cleared.
+            prop_assume!(fallback != name);
             let mut settings = crate::config::ThemeSettings {
                 ui: if in_ui { name.clone() } else { "Other Ui".into() },
                 light: if in_light { name.clone() } else { "Other Light".into() },
