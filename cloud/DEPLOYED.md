@@ -23,6 +23,14 @@ storage, migration tag `v1`), deployed as Worker version `a0084598-4b14-4106-a56
 The D1 Time Travel bookmark from just before the migration is
 `000005fe-00000000-0000510b-6bef7dc050eff27b48f8086073e12b82`.
 
+Since 2026-10-25 it runs sign-in (issue #32): migrations `0006_sign_in` to `0010_end_flows_with_sessions`
+(passkeys, security keys, Sign in with Apple, Google and GitHub, device approvals, account events
+on the `AccountRoom` Durable Object), with the step-7 vars and the `GOOGLE_CLIENT_SECRET` and
+`APPLE_PRIVATE_KEY` secrets set, deployed as Worker version `f3d2c292-04c0-4998-bd16-25b91b587a63`.
+`/.well-known/apple-app-site-association` serves `4973Y692JU.app.kanso.Kanso`. The D1 Time Travel
+bookmark from just before the migrations is
+`00000b40-00000000-0000510f-b10566111c0634a2bf7087e3b325f71d`.
+
 ## Restoring D1
 
 Only with `npm run -s admin -- restore <time | bookmark>`, run first without `--confirm` to see
