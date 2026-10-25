@@ -82,6 +82,15 @@ Root: HKCU; Subkey: "Software\Classes\kanso"; ValueType: string; ValueName: ""; 
 Root: HKCU; Subkey: "Software\Classes\kanso"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\kanso\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\kanso.exe,0"
 Root: HKCU; Subkey: "Software\Classes\kanso\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\kanso.exe"" ""%1"""
+; Open with > Kanso for Markdown files, for this user. Kanso is listed there
+; and does not become the default program. A second kanso.exe started with
+; the file hands it to the running one.
+Root: HKCU; Subkey: "Software\Classes\Applications\kanso.exe"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "Kanso"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\Applications\kanso.exe\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\kanso.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\Applications\kanso.exe\SupportedTypes"; ValueType: string; ValueName: ".md"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\Applications\kanso.exe\SupportedTypes"; ValueType: string; ValueName: ".markdown"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\.md\OpenWithProgids"; ValueType: string; ValueName: "Applications\kanso.exe"; ValueData: ""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.markdown\OpenWithProgids"; ValueType: string; ValueName: "Applications\kanso.exe"; ValueData: ""; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\kanso.exe"; Description: "{cm:LaunchProgram,Kanso}"; Flags: nowait postinstall skipifsilent
