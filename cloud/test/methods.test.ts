@@ -868,3 +868,32 @@ describe("POST /v2/account/password on a passwordless account", () => {
 		expect(r.body).toMatchObject({ error: "rate_limited", limit: "password-account" });
 	});
 });
+
+describe("POST /v2/auth/recover/finish on a passwordless account", () => {
+	it("sets has_password: the recovered account signs in with its new password and changes it normally", async () => {
+		const p = await passkeyAccount("prover");
+		const next = newCreds("prover");
+		const d = newDevice();
+		const recovered = await callJson("/v2/auth/recover/finish", {
+			env: menv(),
+			now: T0,
+			json: {
+				username: "prover",
+				recovery_auth_key: p.recoveryAuthKey,
+				kdf: KDF,
+				salt: next.salt,
+				auth_key: next.authKey,
+				wrapped_key: next.wrappedKey,
+				recovery_auth_key_new: next.recoveryAuthKey,
+				recovery_wrapped_key_new: next.recoveryWrappedKey,
+				device: named(d),
+			},
+		});
+		expect(recovered.status).toBe(200);
+		const methods = await callJson("/v2/account/sign-in", { env: menv(), now: T0, token: recovered.body.token });
+		expect(methods.body).toMatchObject({ has_password: true });
+		const changed = await as("/v2/account/password", passwordBody(next.authKey, newCreds("prover")), recovered.body.token, T0);
+		expect(changed.status).toBe(200);
+		expect(await env.DB.prepare("SELECT has_password FROM accounts WHERE id = ?1").bind(p.accountId).first()).toEqual({ has_password: 1 });
+	});
+});

@@ -609,7 +609,7 @@ export const recoverFinish: PepperHandler = async (request, env, now, keys) => {
 			).bind(account.id, old),
 			env.DB.prepare(
 				`UPDATE accounts SET kdf_m_kib = ?3, kdf_t = ?4, kdf_p = ?5, salt = ?6, auth_hash = ?7, wrapped_key = ?8,
-  recovery_hash = ?9, recovery_wrapped_key = ?10
+  recovery_hash = ?9, recovery_wrapped_key = ?10, has_password = 1
   WHERE id = ?1 AND recovery_hash = ?2 AND disabled_at IS NULL RETURNING id`,
 			).bind(
 				account.id,
