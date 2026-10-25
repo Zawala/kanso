@@ -28,6 +28,7 @@ pub fn origin_label(origin: &str) -> &'static str {
         "sync" => "Replaced by sync",
         "import" => "Replaced by an import",
         "collab" => "Edited in a shared note",
+        "plugin" => "Changed by a plugin",
         _ => "Saved version",
     }
 }
@@ -581,6 +582,7 @@ mod tests {
             kanso_store::Origin::Sync,
             kanso_store::Origin::Import,
             kanso_store::Origin::Collab,
+            kanso_store::Origin::Plugin,
         ] {
             assert_ne!(origin_label(origin.as_str()), "Saved version");
         }

@@ -402,6 +402,11 @@ fn lock_salt(fields: &Map<String, Value>) -> Option<String> {
 }
 
 fn snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Origin) -> Result<()> {
+    // A plugin's batch keeps every version itself, under the batch and by
+    // the plugin's name (`plugin.rs`), never throttled.
+    if origin == Origin::Plugin {
+        return Ok(());
+    }
     if matches!(origin, Origin::Ui | Origin::Collab) {
         let last: Option<i64> = tx.query_row(
             "SELECT MAX(saved_at) FROM revisions WHERE doc_id = ?",
@@ -447,7 +452,7 @@ pub(crate) fn keep_snapshot(tx: &Transaction, id: &str, prev: &Row, origin: Orig
 /// snapshot: sync tells a replay of content this Mac held from another
 /// Mac's edit it never saw by that history, and only the edit may beat the
 /// deletion (docs/ACCOUNTS.md › Sync with encryption, review-verify 2).
-fn delete_row(
+pub(crate) fn delete_row(
     tx: &Transaction,
     id: &str,
     prev: &Row,

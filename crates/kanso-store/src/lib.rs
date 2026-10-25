@@ -14,6 +14,7 @@ mod graph;
 mod history;
 mod meaning;
 mod ocr;
+mod plugin;
 mod query_view;
 mod read;
 mod replace;
@@ -47,6 +48,10 @@ pub use meaning::rank::{
     merged_tags, suggest_tags,
 };
 pub use ocr::{OCR_TYPES, UnreadImage};
+pub use plugin::{
+    PLUGIN_DATA_FIELD, PluginCreate, PluginEdit, PluginReport, PluginWriter, plugin_data,
+    set_plugin_data,
+};
 pub use query_view::QueryNoteRow;
 pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
 pub use replace::{
@@ -94,6 +99,10 @@ pub enum Origin {
     /// `kanso-collab` writing a shared note's merged text. Snapshots are
     /// throttled as for the UI.
     Collab,
+    /// A plugin's batch ([`Store::apply_plugin_batch`]). Every write is
+    /// snapshotted, unthrottled, with the plugin's name, so history can say
+    /// which plugin changed what.
+    Plugin,
 }
 
 impl Origin {
@@ -104,6 +113,7 @@ impl Origin {
             Origin::Sync => "sync",
             Origin::Import => "import",
             Origin::Collab => "collab",
+            Origin::Plugin => "plugin",
         }
     }
 }
