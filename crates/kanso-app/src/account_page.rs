@@ -137,6 +137,7 @@ pub fn passkey_offer(
         platform: passkey_ceremony::offers_platform_passkeys(
             platform,
             passkeys,
+            server,
             ceremony_available,
         ),
         security_key,

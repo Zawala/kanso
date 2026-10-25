@@ -45,24 +45,30 @@ impl Platform {
 
 /// Whether the signed-out page offers [Continue with a passkey] and [Create
 /// with a passkey]: the server advertises passkeys, this platform has a
-/// native ceremony that hasn't failed, and on macOS the relying party is the
-/// one in the app's entitlement. A self-hosted server with its own domain
-/// doesn't get platform passkeys from the official Mac app even when it
-/// advertises them. Linux never shows a platform-passkey button.
+/// native ceremony that hasn't failed, and the relying party passes
+/// [`platform_rp_allowed`]. Linux never shows a platform-passkey button.
 pub fn offers_platform_passkeys(
     platform: Platform,
     passkeys: Option<&PasskeyMethods>,
+    server: &str,
     ceremony_available: bool,
 ) -> bool {
-    let Some(passkeys) = passkeys else {
-        return false;
-    };
-    if !ceremony_available || !valid_rp_id(&passkeys.rp_id) {
-        return false;
-    }
+    passkeys.is_some_and(|passkeys| {
+        ceremony_available && platform_rp_allowed(platform, &passkeys.rp_id, server)
+    })
+}
+
+/// Whether `platform`'s own passkeys may be used for `rp_id` from
+/// `server`. On macOS the entitlement names the owner's relying party, so
+/// only the owner's server may ask for it: any other server advertising it
+/// could relay the owner's challenges and have the entitled app sign them.
+/// A self-hosted server with its own domain gets no platform passkeys from
+/// the official Mac app. On Windows the relying party must be the server's
+/// host or a parent of it.
+pub fn platform_rp_allowed(platform: Platform, rp_id: &str, server: &str) -> bool {
     match platform {
-        Platform::MacOs => passkeys.rp_id == OFFICIAL_RP_ID,
-        Platform::Windows => true,
+        Platform::MacOs => rp_id == OFFICIAL_RP_ID && kanso_sync::is_owner_server(server),
+        Platform::Windows => rp_id_fits_server(rp_id, server),
         Platform::Linux => false,
     }
 }
@@ -321,44 +327,85 @@ mod tests {
         }
     }
 
+    const OWNER: &str = "https://sync.kansoapp.app";
+
     #[test]
     fn macos_offers_platform_passkeys_only_for_the_entitled_relying_party() {
         let official = methods(OFFICIAL_RP_ID);
         assert!(offers_platform_passkeys(
             Platform::MacOs,
             Some(&official),
+            OWNER,
+            true
+        ));
+        assert!(offers_platform_passkeys(
+            Platform::MacOs,
+            Some(&official),
+            "https://kanso.antonlabs.cc",
+            true
+        ));
+        // Another server advertising the owner's relying party would relay
+        // the owner's challenges to the entitled app.
+        assert!(!offers_platform_passkeys(
+            Platform::MacOs,
+            Some(&official),
+            "https://evil.example",
             true
         ));
         // A self-hosted server's own domain isn't in the entitlement.
         assert!(!offers_platform_passkeys(
             Platform::MacOs,
             Some(&methods("sync.example.com")),
+            "https://sync.example.com",
             true
         ));
         // No advertisement, or a ceremony that failed: no button.
-        assert!(!offers_platform_passkeys(Platform::MacOs, None, true));
+        assert!(!offers_platform_passkeys(
+            Platform::MacOs,
+            None,
+            OWNER,
+            true
+        ));
         assert!(!offers_platform_passkeys(
             Platform::MacOs,
             Some(&official),
+            OWNER,
             false
         ));
     }
 
     #[test]
-    fn windows_offers_any_valid_relying_party_and_linux_none() {
+    fn windows_offers_the_servers_own_relying_party_and_linux_none() {
+        let own = "https://sync.example.com";
         assert!(offers_platform_passkeys(
             Platform::Windows,
             Some(&methods("sync.example.com")),
+            own,
+            true
+        ));
+        assert!(offers_platform_passkeys(
+            Platform::Windows,
+            Some(&methods("example.com")),
+            own,
+            true
+        ));
+        // Someone else's relying party, from this server: refused.
+        assert!(!offers_platform_passkeys(
+            Platform::Windows,
+            Some(&methods(OFFICIAL_RP_ID)),
+            "https://evil.example",
             true
         ));
         assert!(!offers_platform_passkeys(
             Platform::Windows,
             Some(&methods("10.0.0.1")),
+            "https://10.0.0.1",
             true
         ));
         assert!(!offers_platform_passkeys(
             Platform::Linux,
             Some(&methods(OFFICIAL_RP_ID)),
+            OWNER,
             true
         ));
     }

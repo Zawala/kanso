@@ -18,7 +18,7 @@ use kanso_sync::{
     PasskeySignInStart, PasskeySignUpStart, RotationError, SecretStore, SignedUp, Step,
 };
 
-use crate::passkey_ceremony::{OFFICIAL_RP_ID, rp_id_fits_server};
+use crate::passkey_ceremony::{platform_rp_allowed, rp_id_fits_server};
 
 pub use kanso_sync::api::LoginDevice;
 
@@ -26,7 +26,7 @@ pub use kanso_sync::api::LoginDevice;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RpRule {
     /// macOS platform passkeys: only the RP ID in the app's Associated
-    /// Domains entitlement.
+    /// Domains entitlement, and only from the owner's server.
     Entitlement,
     /// Windows platform passkeys and Linux security keys: the server's host
     /// or a parent of it.
@@ -49,7 +49,9 @@ impl RpRule {
 
     pub fn allows(self, rp_id: &str, server: &str) -> bool {
         match self {
-            RpRule::Entitlement => rp_id == OFFICIAL_RP_ID,
+            RpRule::Entitlement => {
+                platform_rp_allowed(crate::passkey_ceremony::Platform::MacOs, rp_id, server)
+            }
             RpRule::ServerHost => rp_id_fits_server(rp_id, server),
             #[cfg(test)]
             RpRule::Any => true,
@@ -288,6 +290,7 @@ mod tests {
     use proptest::prelude::*;
 
     use super::*;
+    use crate::passkey_ceremony::OFFICIAL_RP_ID;
 
     const SERVER: &str = "https://memory.kanso.test";
     /// `MemoryServer`'s relying party.
@@ -477,6 +480,13 @@ mod tests {
     #[test]
     fn rules_follow_the_entitlement_and_the_server_host() {
         assert!(RpRule::Entitlement.allows(OFFICIAL_RP_ID, "https://kanso.antonlabs.cc"));
+        assert!(RpRule::Entitlement.allows(OFFICIAL_RP_ID, "https://sync.kansoapp.app/"));
+        // A server that claims the owner's relying party could relay the
+        // owner's challenges to the entitled app: refused.
+        assert!(!RpRule::Entitlement.allows(OFFICIAL_RP_ID, "https://evil.example"));
+        assert!(
+            !RpRule::Entitlement.allows(OFFICIAL_RP_ID, "https://sync.kansoapp.app.evil.example")
+        );
         assert!(!RpRule::Entitlement.allows("sync.example.com", "https://sync.example.com"));
         assert!(RpRule::ServerHost.allows("sync.example.com", "https://sync.example.com"));
         assert!(!RpRule::ServerHost.allows(OFFICIAL_RP_ID, "https://sync.example.com"));
