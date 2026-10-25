@@ -40,6 +40,11 @@ pub enum ErrorContext {
     Account,
     /// Signing in with a passkey or a security key.
     Passkey,
+    /// A change sent with the current password's proof and the recovery
+    /// key: the server's refusal doesn't say which didn't match.
+    PasswordOrRecovery,
+    /// The same with a passkey's proof.
+    PasskeyOrRecovery,
 }
 
 pub const CANT_REACH: &str = "Can't reach the server. Your notes are safe on this device.";
@@ -133,6 +138,12 @@ pub const RECOVERY_FOR_PROOF_HINT: &str = "The key you saved, in groups of four.
 pub const SET_PASSWORD_TEXT: &str = "Your other devices sign out and ask for the new password. Your recovery key changes too: the one you saved stops working, and Kanso shows the new one to save.";
 /// The Add a passkey row when this device can't run a ceremony for the server.
 pub const PASSKEYS_NOT_HERE: &str = "This device can't make a passkey for this server.";
+/// A change with a password proof and the recovery key was refused.
+pub const PASSWORD_OR_RECOVERY: &str =
+    "That isn't your current password, or that recovery key doesn't match this account.";
+/// A change with a passkey proof and the recovery key was refused.
+pub const PASSKEY_OR_RECOVERY: &str =
+    "That passkey or that recovery key doesn't match this account.";
 pub const PASSKEY_REMOVED: &str = "Removed the passkey.";
 pub const PROVIDER_LINKED: &str = "Linked. You can sign in with it now.";
 pub const PROVIDER_UNLINKED: &str = "Unlinked. It no longer signs in to this account.";
@@ -192,6 +203,8 @@ pub fn error_words(err: &AccountError, context: ErrorContext) -> String {
     let words: &str = match err {
         AccountError::InvalidCredentials => match context {
             ErrorContext::Recovery => "That recovery key doesn't match this account.",
+            ErrorContext::PasswordOrRecovery => PASSWORD_OR_RECOVERY,
+            ErrorContext::PasskeyOrRecovery => PASSKEY_OR_RECOVERY,
             ErrorContext::CurrentPassword => "That isn't your current password.",
             ErrorContext::Passkey => PASSKEY_UNKNOWN,
             _ => "That username and password don't match.",
@@ -203,7 +216,9 @@ pub fn error_words(err: &AccountError, context: ErrorContext) -> String {
         AccountError::Password(err) => match context {
             // No account has such a password, so it can't be the right one.
             ErrorContext::SignIn => "That username and password don't match.",
-            ErrorContext::CurrentPassword => "That isn't your current password.",
+            ErrorContext::CurrentPassword | ErrorContext::PasswordOrRecovery => {
+                "That isn't your current password."
+            }
             _ => password_words(*err),
         },
         AccountError::RecoveryKey(err) => recovery_key_words(*err),

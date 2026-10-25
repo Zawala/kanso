@@ -91,13 +91,26 @@ impl From<Failure> for Fail {
     }
 }
 
-/// The words context for an error: which secret was checked.
-fn context(proof: &ProofWith, recovery: bool) -> ErrorContext {
+/// The words for an error while making the proof: only the proof's secret
+/// was checked.
+fn proof_context(proof: &ProofWith) -> ErrorContext {
     match proof {
-        _ if recovery => ErrorContext::Recovery,
         ProofWith::Password(_) => ErrorContext::CurrentPassword,
         ProofWith::Passkey => ErrorContext::Passkey,
         ProofWith::Provider(_) => ErrorContext::Account,
+    }
+}
+
+/// The words for an error from the change itself. A password or passkey
+/// proof is checked with the change, beside the recovery key when one goes
+/// too, and the server doesn't say which failed; a provider proof was
+/// checked by its flow already, so then it is the key.
+fn change_context(proof: &ProofWith, recovery: bool) -> ErrorContext {
+    match (proof, recovery) {
+        (ProofWith::Password(_), true) => ErrorContext::PasswordOrRecovery,
+        (ProofWith::Passkey, true) => ErrorContext::PasskeyOrRecovery,
+        (ProofWith::Provider(_), true) => ErrorContext::Recovery,
+        (proof, false) => proof_context(proof),
     }
 }
 
@@ -139,7 +152,8 @@ pub fn change_method(request: ChangeRequest, cx: &mut App) -> Receiver<Progress>
         cx,
         move |step| {
             let rule = runner.as_ref().map(Runner::rule);
-            let words = context(&proof, recovery.is_some());
+            let proving = proof_context(&proof);
+            let words = change_context(&proof, recovery.is_some());
             let (result, pin) = with_runner(runner, |ceremony| {
                 let auth_key;
                 let proof = match proof {
@@ -150,7 +164,7 @@ pub fn change_method(request: ChangeRequest, cx: &mut App) -> Receiver<Progress>
                             &password,
                             step,
                         )
-                        .map_err(|err| Failure::account(err, words))?;
+                        .map_err(|err| Failure::account(err, proving))?;
                         Proof::Password(&auth_key)
                     }
                     ProofWith::Passkey => {
@@ -174,7 +188,7 @@ pub fn change_method(request: ChangeRequest, cx: &mut App) -> Receiver<Progress>
                 )
             });
             result.map_err(|fail| match fail {
-                Fail::Ceremony(err) => passkey_end(err, pin, security_key, words),
+                Fail::Ceremony(err) => passkey_end(err, pin, security_key, proving),
                 Fail::Failed(failure) => PasskeyEnd::Failed(failure),
             })
         },
@@ -415,7 +429,8 @@ fn provider_change(
     let start_session = session.clone();
     let start_provider = provider.clone();
     let linking = matches!(change, MethodChange::Link(_));
-    let words = context(&proof, recovery.is_some());
+    let proving = proof_context(&proof);
+    let words = change_context(&proof, recovery.is_some());
     run(
         kind,
         Step::Contacting,
@@ -439,7 +454,7 @@ fn provider_change(
                             password,
                             step,
                         )
-                        .map_err(|err| Failure::account(err, words))?;
+                        .map_err(|err| Failure::account(err, proving))?;
                         Proof::Password(&auth_key).to_wire()
                     }
                     ProofWith::Passkey => passkey_proof(
@@ -451,13 +466,13 @@ fn provider_change(
                     )?
                     .to_wire(),
                     ProofWith::Provider(_) => {
-                        return Err(Failure::account(AccountError::ReauthRequired, words).into());
+                        return Err(Failure::account(AccountError::ReauthRequired, proving).into());
                     }
                 };
                 Ok(Some(wire))
             });
             let wire = wire.map_err(|fail| match fail {
-                Fail::Ceremony(err) => passkey_end(err, pin, security_key, words),
+                Fail::Ceremony(err) => passkey_end(err, pin, security_key, proving),
                 Fail::Failed(failure) => PasskeyEnd::Failed(failure),
             })?;
             let route = ProviderRoute::Session {
@@ -476,7 +491,7 @@ fn provider_change(
                 &device,
                 step,
             )
-            .map_err(|err| Failure::account(err, words))?;
+            .map_err(|err| Failure::account(err, ErrorContext::Account))?;
             Ok((started, device, route))
         },
         move |result, cx| {
@@ -623,7 +638,7 @@ fn finish_provider_change(
                 cancel,
                 step,
             )
-            .map_err(|err| Failure::account(err, words))?;
+            .map_err(|err| Failure::account(err, ErrorContext::Account))?;
             let outcome = match answer {
                 None => return Ok(None),
                 Some(ProviderDone::Link(outcome)) => outcome,

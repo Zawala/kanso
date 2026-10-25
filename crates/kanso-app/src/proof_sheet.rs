@@ -17,7 +17,7 @@ use kanso_sync::{AccountMethods, PasskeyMethods, Provider, RecoveryKey};
 
 use crate::account_flow::{self, ChangeRequest, MethodChange, PasskeyMethod, ProofWith};
 use crate::account_words::{self as words, check_current_password, check_new_password};
-use crate::dialogs::{self, Described, Field, FormSpec, Submit};
+use crate::dialogs::{self, Described, Field, FormSpec, FormView, Progress, Submit};
 use crate::passkey_ceremony::{self, Platform};
 use crate::security_key_flow;
 use crate::services::{AccountState, Services};
@@ -89,9 +89,7 @@ pub fn needs_recovery(action: &Action, proof: &ProofOption, methods: &AccountMet
     let provider = matches!(proof, ProofOption::Provider(_));
     match action {
         Action::SetPassword | Action::NewRecoveryKey | Action::DeleteAccount => provider,
-        Action::RemovePasskey(_) => {
-            !methods.has_password && methods.linked.is_empty() && methods.passkeys.len() == 1
-        }
+        Action::RemovePasskey(credential_id) => methods.last_passkey(credential_id),
         Action::Unlink(provider) => methods.last_method(provider),
         Action::AddPasskey | Action::Link(_) => false,
     }
@@ -140,17 +138,21 @@ pub fn ceremony(cx: &App) -> Option<bool> {
 
 /// This account's ways in, as this device can prove them.
 fn ways(methods: &AccountMethods, cx: &App) -> Ways {
+    ways_from(methods, ceremony(cx))
+}
+
+/// [`ways`] for a device whose passkey ceremony is `ceremony`. A linked
+/// provider proves only while the server offers it and this app runs it.
+pub fn ways_from(methods: &AccountMethods, ceremony: Option<bool>) -> Ways {
     let runnable = |provider: &Provider| {
         matches!(
             provider,
             Provider::Apple | Provider::Google | Provider::Github
-        )
+        ) && methods.available.contains(provider)
     };
     Ways {
         has_password: methods.has_password,
-        passkey: (!methods.passkeys.is_empty())
-            .then(|| ceremony(cx))
-            .flatten(),
+        passkey: (!methods.passkeys.is_empty()).then_some(ceremony).flatten(),
         linked: methods
             .linked
             .iter()
@@ -340,13 +342,24 @@ fn form(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let Some(username) = username(cx) else {
-        return;
-    };
-    let security_key = matches!(proof, ProofOption::Passkey { security_key: true })
-        || (action == Action::AddPasskey && ceremony(cx) == Some(true));
     let recovery = needs_recovery(&action, &proof, methods);
     let last = is_last_method(&action, methods);
+    form_with(action, proof, recovery, last, window, cx);
+}
+
+/// The form, with the recovery key's field when `recovery`, and the last
+/// way in's warning when `last`.
+fn form_with(
+    action: Action,
+    proof: ProofOption,
+    recovery: bool,
+    last: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<Entity<FormView>> {
+    let username = username(cx)?;
+    let security_key = matches!(proof, ProofOption::Passkey { security_key: true })
+        || (action == Action::AddPasskey && ceremony(cx) == Some(true));
     let (title, submit, mut description) = wording(&action, security_key, last, &username);
     match &proof {
         ProofOption::Passkey { .. } if action != Action::AddPasskey => {
@@ -396,14 +409,79 @@ fn form(
     let on_submit = move |values: Vec<String>, window: &mut Window, cx: &mut App| match request(
         &action, &proof, &inputs, &values, &username, window, cx,
     ) {
-        Ok(request) => Submit::Running(account_flow::change_method(request, cx)),
+        Ok(request) => {
+            let progress = account_flow::change_method(request, cx);
+            if recovery {
+                Submit::Running(progress)
+            } else {
+                Submit::Running(ask_again_on_last_method(
+                    progress,
+                    action.clone(),
+                    proof.clone(),
+                    window.window_handle(),
+                    cx,
+                ))
+            }
+        }
         Err(words) => Submit::Invalid(words),
     };
-    if deleting {
-        dialogs::confirm_typed(spec, &typed, window, cx, on_submit);
+    let form = if deleting {
+        dialogs::confirm_typed(spec, &typed, window, cx, on_submit)
     } else {
-        dialogs::form(spec, window, cx, on_submit);
-    }
+        dialogs::form(spec, window, cx, on_submit)
+    };
+    #[cfg(test)]
+    SHOWN.with(|shown| *shown.borrow_mut() = Some(form.downgrade()));
+    Some(form)
+}
+
+/// Passes a task's progress on to its form, except a 409 `last_method`
+/// (the page's list was out of date): that form closes and opens again
+/// with the recovery key's field, the warning and the reason.
+fn ask_again_on_last_method(
+    progress: async_channel::Receiver<Progress>,
+    action: Action,
+    proof: ProofOption,
+    window: AnyWindowHandle,
+    cx: &mut App,
+) -> async_channel::Receiver<Progress> {
+    let (tx, rx) = async_channel::unbounded();
+    cx.spawn(async move |cx| {
+        while let Ok(event) = progress.recv().await {
+            if event == Progress::Done(Err(words::LAST_METHOD.to_owned())) {
+                // The old form is closed here, then its channel ends with
+                // nothing more for it to show.
+                cx.update(|cx| {
+                    window
+                        .update(cx, |_, window, cx| {
+                            window.close_dialog(cx);
+                            if let Some(form) = form_with(action, proof, true, true, window, cx) {
+                                form.update(cx, |form, cx| form.show_error(words::LAST_METHOD, cx));
+                            }
+                        })
+                        .ok();
+                });
+                return;
+            }
+            let finished = matches!(event, Progress::Done(_));
+            if tx.send(event).await.is_err() || finished {
+                return;
+            }
+        }
+    })
+    .detach();
+    rx
+}
+
+#[cfg(test)]
+thread_local! {
+    static SHOWN: std::cell::RefCell<Option<WeakEntity<FormView>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Tests: the proof sheet's form shown last, while it is open.
+#[cfg(test)]
+pub fn shown_form(_: &App) -> Option<Entity<FormView>> {
+    SHOWN.with(|shown| shown.borrow().as_ref().and_then(WeakEntity::upgrade))
 }
 
 /// The task's request from the form's values, or the words for what's wrong.
@@ -497,7 +575,9 @@ mod tests {
     use kanso_sync::{AccountMethods, Provider};
     use proptest::prelude::*;
 
-    use super::{Action, ProofOption, Ways, is_last_method, needs_recovery, proof_options};
+    use super::{
+        Action, ProofOption, Ways, is_last_method, needs_recovery, proof_options, ways_from,
+    };
 
     fn methods(has_password: bool, linked: &[Provider], passkeys: usize) -> AccountMethods {
         AccountMethods {
@@ -579,6 +659,30 @@ mod tests {
             proof_options(&Action::SetPassword, &provider_only),
             vec![ProofOption::Provider(Provider::Github)]
         );
+    }
+
+    /// A provider the server no longer offers neither proves nor counts as
+    /// a way in, as the Worker counts.
+    #[test]
+    fn an_unoffered_provider_neither_proves_nor_counts() {
+        let mut account = methods(false, &[Provider::Google], 1);
+        account.available = vec![Provider::Apple];
+        let ways = ways_from(&account, Some(false));
+        assert!(ways.linked.is_empty());
+        assert!(needs_recovery(
+            &Action::RemovePasskey(vec![0]),
+            &ProofOption::Passkey {
+                security_key: false
+            },
+            &account
+        ));
+        assert!(is_last_method(&Action::RemovePasskey(vec![0]), &account));
+        account.available = vec![Provider::Google];
+        assert_eq!(
+            ways_from(&account, Some(false)).linked,
+            vec![Provider::Google]
+        );
+        assert!(!is_last_method(&Action::RemovePasskey(vec![0]), &account));
     }
 
     #[test]
@@ -667,7 +771,9 @@ mod tests {
         let ways_in = usize::from(has_password) + linked.len() + passkeys;
         let expected = match &action {
             Action::SetPassword | Action::NewRecoveryKey | Action::DeleteAccount => provider_proof,
-            Action::RemovePasskey(_) => passkeys == 1 && ways_in == 1,
+            // No other passkey, password or offered provider (all three are
+            // offered here); with none at all there is nothing to remove.
+            Action::RemovePasskey(_) => passkeys <= 1 && !has_password && linked.is_empty(),
             Action::Unlink(provider) => ways_in == 1 && linked.contains(provider),
             _ => false,
         };
