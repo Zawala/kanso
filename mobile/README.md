@@ -59,10 +59,11 @@ in a `goldens/` folder next to the test that wrote them. Text scale is 1 and
 animations are off. The bundled fonts are loaded in `test/flutter_test_config.dart`.
 
 The two renders are also compared with each other pixel by pixel, in memory,
-with no tolerance. Against the stored file a diff of up to 0.5% of the pixels
-is accepted (`test/helpers/kanso_golden_comparator.dart`), because the images
-are generated on one Mac and compared on another, and text rasterisation
-differs slightly between machines. Only one file is kept per screen.
+with no tolerance. Against the stored file, anti-aliasing is ignored
+(`test/helpers/kanso_golden_comparator.dart`): a pixel counts as changed only
+when a channel moves by more than 32 of 255, and at most 0.1% of the pixels
+may change. The images are generated on one Mac and compared on another, and
+text rasterisation differs slightly between machines. Only one file is kept per screen.
 
 Update the images after an intended visual change, look at them, and commit
 them:
