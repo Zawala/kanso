@@ -97,6 +97,50 @@ pub const PASSKEY_WRONG_SERVER: &str = "This server's passkeys don't work with t
 /// A passkey the server doesn't know (or a device with none).
 pub const PASSKEY_UNKNOWN: &str = "This server doesn't know that passkey.";
 
+/// The proof sheet's question when the account has more than one proof.
+pub const PROOF_CHOICE: &str = "Confirm it's you to change how you sign in.";
+/// Before the method list has loaded.
+pub const METHODS_NOT_READY: &str =
+    "Kanso is still checking how you sign in. Try again in a moment.";
+/// A provider-only account can't add a way in with its provider.
+pub const SET_PASSWORD_FIRST: &str =
+    "Set a password first. A sign-in at a provider can't add another way in.";
+/// No proof this device can make for the change.
+pub const NO_PROOF_HERE: &str = "Confirm it's you with your password or a passkey. This device can't use either for this account.";
+/// Over removing or unlinking the last way in (docs/ACCOUNTS.md › Linking
+/// and unlinking).
+pub const LAST_METHOD_WARNING: &str =
+    "This is your last way to sign in. If you remove it, you'll need your recovery key.";
+/// Under the proof sheet's recovery key field.
+pub const RECOVERY_FOR_PROOF_HINT: &str = "The key you saved, in groups of four.";
+/// Over Set a password.
+pub const SET_PASSWORD_TEXT: &str = "Your other devices sign out and ask for the new password. Your recovery key changes too: the one you saved stops working, and Kanso shows the new one to save.";
+/// The Add a passkey row when this device can't run a ceremony for the server.
+pub const PASSKEYS_NOT_HERE: &str = "This device can't make a passkey for this server.";
+pub const PASSKEY_REMOVED: &str = "Removed the passkey.";
+pub const PROVIDER_LINKED: &str = "Linked. You can sign in with it now.";
+pub const PROVIDER_UNLINKED: &str = "Unlinked. It no longer signs in to this account.";
+pub const PASSWORD_SET: &str = "Password set. Your other devices will ask for it.";
+
+/// After Settings › Account › [Add a passkey…]: whether the new passkey or
+/// security key can unlock a new device.
+pub fn passkey_added(security_key: bool, can_unlock: bool) -> &'static str {
+    match (security_key, can_unlock) {
+        (false, true) => {
+            "Added the passkey. It can unlock: on a new device it signs in and opens your notes."
+        }
+        (false, false) => {
+            "Added the passkey. It signs in only: a new device will also need approval or your recovery key."
+        }
+        (true, true) => {
+            "Added the security key. It can unlock: on a new device it signs in and opens your notes."
+        }
+        (true, false) => {
+            "Added the security key. It signs in only: a new device will also need approval or your recovery key."
+        }
+    }
+}
+
 /// After a passkey or security-key sign-up: whether it can unlock a new
 /// device ("can unlock") or only signs in ("signs in only").
 pub fn passkey_created(security_key: bool, can_unlock: bool) -> &'static str {

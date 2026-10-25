@@ -94,6 +94,8 @@ pub enum TaskKind {
     /// "Use a different server…" asking the server whether it is one.
     CheckServer,
     RevokeDevice,
+    /// A change in Settings › Account › Sign-in methods, after its proof.
+    ChangeMethod,
     /// Asking the server once whether it took a shown key Kanso couldn't
     /// tell it took (review-verify 6).
     CheckKey,
@@ -173,6 +175,9 @@ pub struct AccountMethodsState {
     pub failed: Option<String>,
     /// Rejects answers from an earlier Account page visit.
     pub generation: u64,
+    /// The server's passkeys, as its health last advertised them: which
+    /// ceremony this device may run to add or prove one.
+    pub passkeys: Option<kanso_sync::PasskeyMethods>,
 }
 
 impl AccountMethodsState {

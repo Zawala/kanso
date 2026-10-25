@@ -97,7 +97,17 @@ pub fn external_url(text: &str) -> Result<String, BrowserError> {
 /// Never a web view.
 pub fn open_external(url: &str) -> Result<(), BrowserError> {
     let url = external_url(url)?;
-    let url = url.as_str();
+    open_system(url.as_str())
+}
+
+/// Tests run provider flows against `MemoryServer`: nothing opens.
+#[cfg(test)]
+fn open_system(_url: &str) -> Result<(), BrowserError> {
+    Ok(())
+}
+
+#[cfg(not(test))]
+fn open_system(url: &str) -> Result<(), BrowserError> {
     #[cfg(target_os = "macos")]
     {
         let status = std::process::Command::new("open")
