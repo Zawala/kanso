@@ -108,8 +108,9 @@ received the redirect has it.
 
 **Migrations.** `0006_sign_in` (passkeys, linked identities, sign-in flows, device approvals and
 `has_password`), `0007_provider_completion` (idempotent provider completions), `0008_apple_app_secret`
-(the Apple flow's `app_secret_hash` and `app_claimed_at`) and `0009_socket_closes` (the admin
-script's requests to close event sockets). All are additive; apply them with
+(the Apple flow's `app_secret_hash` and `app_claimed_at`), `0009_socket_closes` (the admin
+script's requests to close event sockets) and `0010_end_flows_with_sessions` (a session's end, or
+an account's disable, consumes the link, proof and passkey flows it started). All are additive; apply them with
 `npm run migrate:remote` before deploying the Worker that uses them.
 
 **What is stored.** No email, name, profile data or provider token is stored, only each provider's
@@ -161,7 +162,7 @@ unset pepper
 # on Rerout; without it, published notes keep their long links.
 npx wrangler secret put REROUT_API_KEY
 
-npm run migrate:remote     # 0002 to 0009 are additive; sign-ups start closed
+npm run migrate:remote     # 0002 to 0010 are additive; sign-ups start closed
 npm run deploy
 ```
 

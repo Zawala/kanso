@@ -369,7 +369,7 @@ async function complete(request: Request, env: Env, keys: PepperKeys, now: numbe
 		case "signin":
 			return signIn(request, env, keys, now, flow, device, provider, subject);
 		case "link":
-			return link(env, now, flow, provider, subject);
+			return link(env, now, flow, device, provider, subject);
 		case "proof":
 			return proof(env, flow, provider, subject);
 		default:
@@ -498,8 +498,17 @@ async function signIn(
 	return sessionAnswer(account, session.token, outcome.evicted);
 }
 
-async function link(env: Env, now: number, flow: AuthFlowRow, provider: string, subject: string): Promise<Response> {
+/**
+ * A link's completion. It adds a way in, so it holds only while the session
+ * that started it is still live: the account enabled, and a session of the
+ * flow's device, proving itself with this poll's device proof, not revoked.
+ * A link started by a session that has since been signed out (a password
+ * change, a revocation, an eviction) links nothing; migration 0010 also
+ * consumes such flows when the session ends.
+ */
+async function link(env: Env, now: number, flow: AuthFlowRow, device: NewDevice, provider: string, subject: string): Promise<Response> {
 	const accountId = flow.account_id as string;
+	const sessionProofHash = await sha256Hex(device.proof);
 	if (flow.consumed_at !== null) {
 		if (
 			flow.completion_succeeded !== 1 ||
@@ -531,21 +540,34 @@ async function link(env: Env, now: number, flow: AuthFlowRow, provider: string, 
 		env.DB.prepare(
 			`INSERT INTO account_identities (account_id, provider, subject, created_at)
   SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM auth_flows WHERE id = ?5 AND completion_attempt_id = ?6)
-    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1)
+    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND disabled_at IS NULL)
+    AND EXISTS (SELECT 1 FROM sessions WHERE account_id = ?1 AND device_id = ?7 AND proof_hash = ?8 AND revoked_at IS NULL)
     AND NOT EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?1 AND provider = ?2)
 	  ON CONFLICT (provider, subject) DO NOTHING RETURNING created_at`,
-		).bind(accountId, provider, subject, completionNow, flow.id, attemptId),
+		).bind(accountId, provider, subject, completionNow, flow.id, attemptId, flow.device_id, sessionProofHash),
 		markCompletionSucceeded(
 			env,
 			flow.id,
 			attemptId,
 			"link",
 			accountId,
-			"EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?4 AND provider = ?5 AND subject = ?6)",
-			[provider, subject],
+			`EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?4 AND provider = ?5 AND subject = ?6)
+    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?4 AND disabled_at IS NULL)
+    AND EXISTS (SELECT 1 FROM sessions WHERE account_id = ?4 AND device_id = ?7 AND proof_hash = ?8 AND revoked_at IS NULL)`,
+			[provider, subject, flow.device_id, sessionProofHash],
 		),
 	]);
 	if (results[0].results.length !== 1) return flowExpired();
+	if (results[2].results.length !== 1) {
+		// The session that started the link ended (or the account was disabled) before it finished.
+		const live = await env.DB.prepare(
+			`SELECT 1 AS live FROM sessions s JOIN accounts a ON a.id = s.account_id
+  WHERE s.account_id = ?1 AND s.device_id = ?2 AND s.proof_hash = ?3 AND s.revoked_at IS NULL AND a.disabled_at IS NULL`,
+		)
+			.bind(accountId, flow.device_id, sessionProofHash)
+			.first();
+		if (!live) return flowExpired();
+	}
 	if (results[2].results.length === 1) {
 		const linked = await env.DB.prepare(
 			"SELECT created_at FROM account_identities WHERE account_id = ?1 AND provider = ?2 AND subject = ?3",
@@ -618,7 +640,7 @@ export const applePoll: PepperHandler = async (request, env, now, keys) => {
 	if (flow.subject === null) {
 		// The callback consumes a flow it refused (a cancel, a bad code, a failed
 		// verification), so the poll can stop instead of waiting out the flow.
-		return flow.consumed_at === null ? json({ status: "pending" }) : providerDenied();
+		return flow.consumed_at === null ? json({ status: "pending" }) : endedFlow(env, flow, device);
 	}
 	const secret = body.s === undefined ? null : proof32(body.s);
 	if (body.s !== undefined && secret === null) return badRequest("s must be 32 bytes of canonical base64url.");
@@ -663,13 +685,29 @@ export const googleFinish: PepperHandler = async (request, env, now, keys) => {
 	return complete(request, env, keys, now, { ...flow, subject }, device);
 };
 
+/**
+ * The answer for a flow consumed before the provider finished: a refusal at the
+ * provider (403 `provider_denied`), or, for a link or proof whose starting
+ * session has since ended (migration 0010 consumed it), 400 `flow_expired`.
+ */
+async function endedFlow(env: Env, flow: AuthFlowRow, device: NewDevice): Promise<Response> {
+	if (flow.intent !== "link" && flow.intent !== "proof") return providerDenied();
+	const live = await env.DB.prepare(
+		`SELECT 1 AS live FROM sessions s JOIN accounts a ON a.id = s.account_id
+  WHERE s.account_id = ?1 AND s.device_id = ?2 AND s.proof_hash = ?3 AND s.revoked_at IS NULL AND a.disabled_at IS NULL`,
+	)
+		.bind(flow.account_id, flow.device_id, await sha256Hex(device.proof))
+		.first();
+	return live ? providerDenied() : flowExpired();
+}
+
 /** `POST /v2/auth/github/poll`: one device-flow poll, no faster than GitHub's interval. */
 export const githubPoll: PepperHandler = async (request, env, now, keys) => {
 	const found = await deviceFlow(request, env, now, "github", pollCounter(env, keys, now));
 	if (!found.ok) return found.response;
 	const { flow, device } = found;
 	if (flow.subject !== null) return complete(request, env, keys, now, flow, device);
-	if (flow.consumed_at !== null) return providerDenied();
+	if (flow.consumed_at !== null) return endedFlow(env, flow, device);
 	if (!providerConfigured(env, "github")) return providerDisabled();
 
 	// Claim this poll slot: of two parallel polls one calls GitHub, the other is told to wait.

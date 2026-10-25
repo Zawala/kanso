@@ -897,3 +897,69 @@ describe("POST /v2/auth/recover/finish on a passwordless account", () => {
 		expect(await env.DB.prepare("SELECT has_password FROM accounts WHERE id = ?1").bind(p.accountId).first()).toEqual({ has_password: 1 });
 	});
 });
+
+// Security review of PR #67, finding 1: a session's end consumes the link,
+// proof and passkey flows its device started (migration 0010).
+describe("session ends consume the device's sensitive flows", () => {
+	async function linkFlow(accountId: string, deviceId: string) {
+		const id = base64url(crypto.getRandomValues(new Uint8Array(32)));
+		await env.DB.prepare(
+			`INSERT INTO auth_flows (id, kind, intent, account_id, device_id, provider, created_at, expires_at)
+  VALUES (?1, 'github', 'link', ?2, ?3, 'github', ?4, ?5)`,
+		)
+			.bind(id, accountId, deviceId, T0, T0 + 600_000)
+			.run();
+		return async () => (await env.DB.prepare("SELECT consumed_at FROM auth_flows WHERE id = ?1").bind(id).first<{ consumed_at: number | null }>())?.consumed_at;
+	}
+
+	it("a first password consumes the other devices' flows", async () => {
+		const p = await passkeyAccount("prover");
+		const other = newDevice();
+		const begin = await callJson("/v2/auth/passkey/start", { json: { device: wire(other) }, env: menv(), now: T0 });
+		await callJson("/v2/auth/passkey/finish", {
+			json: { flow_id: begin.body.flow_id, ...assertion(p.credential, begin.body.challenge, { signCount: 0 }), device: wire(other) },
+			env: menv(),
+			now: T0,
+		});
+		const theirs = await linkFlow(p.accountId, other.id);
+		const mine = await linkFlow(p.accountId, p.device.id);
+		expect((await setPassword(p.token, firstPasswordBody(await passkeyProof(p.token, p.credential, { signCount: 0 })), T0 + 5)).status).toBe(200);
+		expect(await theirs()).toBe(T0 + 5);
+		expect(await mine()).toBeNull();
+	});
+
+	it("a recovery consumes every device's flows", async () => {
+		const p = await passkeyAccount("prover");
+		const mine = await linkFlow(p.accountId, p.device.id);
+		const next = newCreds("prover");
+		const d = newDevice();
+		const recovered = await callJson("/v2/auth/recover/finish", {
+			env: menv(),
+			now: T0 + 7,
+			json: {
+				username: "prover",
+				recovery_auth_key: p.recoveryAuthKey,
+				kdf: KDF,
+				salt: next.salt,
+				auth_key: next.authKey,
+				wrapped_key: next.wrappedKey,
+				recovery_auth_key_new: next.recoveryAuthKey,
+				recovery_wrapped_key_new: next.recoveryWrappedKey,
+				device: named(d),
+			},
+		});
+		expect(recovered.status).toBe(200);
+		expect(await mine()).toBe(T0 + 7);
+	});
+
+	it("an eviction by the ten-device limit consumes the evicted device's flows", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		const evicted = await linkFlow(alice.creds.accountId, alice.device.id);
+		for (let i = 0; i < 10; i++) {
+			const d = newDevice();
+			const r = await callJson("/v2/auth/login", { env: menv(), now: T0 + 10 + i, json: { username: "alice", auth_key: alice.creds.authKey, device: wire(d) } });
+			expect(r.status).toBe(200);
+		}
+		expect(await evicted()).not.toBeNull();
+	});
+});

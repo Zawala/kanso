@@ -196,6 +196,13 @@ Where the finished Worker differs from the text below, the code wins and this do
 - **`POST /v2/auth/recover/finish` sets `has_password = 1`**: the recovered account has a password
   from then on.
 - **The AASA route is `GET` and `HEAD`, and 404 when `APP_ASSOC_APPS` is unset or malformed.**
+- **A link ends with the session that started it** (security review of PR #67, finding 1). The
+  identity insert and the completion's success mark hold only while the account is enabled and a
+  session of the flow's device, proving itself with the poll's device proof, is not revoked. A
+  session's end also consumes its device's link, proof and passkey-registration flows (migration
+  `0010`), so a link started with a stolen password and finished after the owner's password change,
+  a revocation, an eviction or an admin `disable` links nothing; its poll answers 400
+  `flow_expired`.
 - **Event sockets close on every session end.** These close at once: sign-out, revocation, a
   password change or first password, a recovery, eviction by the ten-device limit (every sign-in
   and sign-up route), account deletion, and the 180-day expiry (on the expired session's next
@@ -2615,13 +2622,16 @@ leave old rows valid:
 `0007` is applied after `0006` by the same `npm run migrate:remote` step. It is the only additive
 migration this step introduces; no existing column, constraint, index or trigger changes.
 
-### Migrations `0008_apple_app_secret.sql` and `0009_socket_closes.sql`
+### Migrations `0008_apple_app_secret.sql`, `0009_socket_closes.sql` and `0010_end_flows_with_sessions.sql`
 
 `0008` adds `auth_flows.app_secret_hash` (SHA-256 of the secret the Apple callback hands the app
 through `kanso://auth/apple?…&s=`) and `auth_flows.app_claimed_at` (set by the first poll that
 sends it). `0009` adds `socket_closes (account_id PRIMARY KEY, requested_at)`: the admin script's
 `disable` and `delete` insert the account, and the cron closes its event sockets and deletes the
-row (at most 100 accounts a run). Both are additive and applied by `npm run migrate:remote`.
+row (at most 100 accounts a run). `0010` adds two triggers: when a session is revoked, for any
+reason, its device's unconsumed `link` and `proof` flows (provider flows by intent, passkey proofs by
+kind) and `passkey_register` flows are consumed in the same transaction; when an account is
+disabled, all of the account's. All three are additive and applied by `npm run migrate:remote`.
 
 ### Sessions in the Worker
 
@@ -4346,7 +4356,7 @@ rollback is `wrangler rollback` to the previous version; the new tables stay and
 1. **Back up.** Record the D1 Time Travel bookmark (`npx wrangler d1 time-travel info kanso-sync`)
    before the migration. Old app builds keep signing in to password accounts; they can't sign in
    to an account created without a password, so update the app before making one.
-2. **Migration.** `npm run migrate:remote` applies `0006_sign_in` through `0009_socket_closes`
+2. **Migration.** `npm run migrate:remote` applies `0006_sign_in` through `0010_end_flows_with_sessions`
    (all additive).
 3. **Secrets and vars.** `APPLE_PRIVATE_KEY` is already uploaded to the `kanso-sync` Worker. In
    `cloud/`, set the four Apple vars from the owner table in `wrangler.jsonc`; add
