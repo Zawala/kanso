@@ -16,12 +16,14 @@
 //! alone; tests use [`MemorySecrets`].
 
 pub mod account;
+pub mod daily;
 pub mod fuzzy;
 pub mod links;
 pub mod lock;
 #[cfg(any(test, feature = "test-support"))]
 pub mod strategies;
 pub mod sync;
+pub mod tasks;
 
 /// Where secrets live: the seam the Keychain, the Credential Manager and the
 /// mobile keystores stand behind.

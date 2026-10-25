@@ -23,8 +23,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::dates::DateTime;
-use kanso_core::links::plain_line;
-use kanso_core::tasks::{Due, TaskGroup, due_token, task_group};
+use kanso_core::tasks::{Due, TaskGroup, task_group};
 use kanso_store::{CheckOff, Origin, Store, StoreError, TaskQuery, TaskRow};
 
 use crate::clock::Clock;
@@ -287,21 +286,7 @@ impl Board {
     }
 }
 
-/// A task's words as the list shows them: plain, without its due date
-/// (the chip beside it says that). Pure.
-pub fn display_text(text: &str) -> String {
-    let without = match due_token(text) {
-        Some(range) => format!("{}{}", &text[..range.start], &text[range.end..]),
-        None => text.to_owned(),
-    };
-    let plain = plain_line(&without);
-    let plain = plain.split_whitespace().collect::<Vec<_>>().join(" ");
-    if plain.is_empty() {
-        text.trim().to_owned()
-    } else {
-        plain
-    }
-}
+pub use kanso_engine::tasks::display_text;
 
 /// The workspace opens notes.
 pub enum TasksEvent {
@@ -1008,7 +993,7 @@ impl Render for TasksView {
 mod tests {
     // Not `super::*`: GPUI's own `test` attribute would shadow the built-in
     // one inside `proptest!`.
-    use super::{Board, Entry, TaskId, Toggled, display_text};
+    use super::{Board, Entry, TaskId, Toggled};
     use kanso_core::DocType;
     use kanso_core::dates::{Date, DateTime};
     use kanso_core::tasks::TaskGroup;
@@ -1056,16 +1041,6 @@ mod tests {
                 ..Default::default()
             })
             .unwrap()
-    }
-
-    #[test]
-    fn display_text_drops_the_date() {
-        assert_eq!(
-            display_text("Pay **rent** @2026-10-25 soon"),
-            "Pay rent soon"
-        );
-        assert_eq!(display_text("@2026-10-25"), "@2026-10-25");
-        assert_eq!(display_text("See [doc](https://x.y)"), "See doc");
     }
 
     #[test]
