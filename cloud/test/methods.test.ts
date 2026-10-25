@@ -318,3 +318,152 @@ describe("a passkey proof", () => {
 		expect((await linkStart(alice.token, alice.device, wrong)).body).toMatchObject({ error: "rate_limited", limit: "password-account" });
 	});
 });
+
+// ------------------------------------------------------------ adding passkeys
+
+export const registerStart = (token: string, proof: unknown, now = T0) => as("/v2/account/sign-in/passkeys/start", { proof }, token, now);
+
+/** Starts and finishes a registration of `credential`; the finish's answer. */
+export async function addPasskey(token: string, proof: unknown, credential: Credential, extra: Record<string, unknown> = {}, now = T0) {
+	const started = await registerStart(token, proof, now);
+	expect(started.status).toBe(200);
+	return as(
+		"/v2/account/sign-in/passkeys/finish",
+		{ flow_id: started.body.flow_id, ...registration(credential, started.body.challenge), transports: ["usb"], ...extra },
+		token,
+		now,
+	);
+}
+
+describe("POST /v2/account/sign-in/passkeys/start and /finish", () => {
+	it("adds a passkey with a password proof: the options exclude the account's credentials; the wrap is kept", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		const first = newCredential();
+		const wrap = base64url(crypto.getRandomValues(new Uint8Array(73)));
+		const started = await registerStart(alice.token, passwordProof(alice));
+		expect(started.status).toBe(200);
+		expect(started.body).toMatchObject({
+			rp_id: passkeyConfig.PASSKEY_RP_ID,
+			user: { name: "alice", displayName: "alice" },
+			pub_key_cred_params: [-7, -8, -257],
+			authenticator_selection: { residentKey: "required", userVerification: "required" },
+			exclude_credentials: [],
+		});
+		const flow = await env.DB.prepare("SELECT kind, account_id, device_id, expires_at FROM auth_flows WHERE id = ?1").bind(started.body.flow_id).first();
+		expect(flow).toEqual({ kind: "passkey_register", account_id: alice.creds.accountId, device_id: alice.device.id, expires_at: T0 + 300_000 });
+		const finished = await as(
+			"/v2/account/sign-in/passkeys/finish",
+			{
+				flow_id: started.body.flow_id,
+				...registration(first, started.body.challenge),
+				transports: ["smart-card", "usb", "x-vendor"],
+				passkey_wrapped_key: wrap,
+			},
+			alice.token,
+		);
+		expect(finished).toMatchObject({ status: 201, body: { credential_id: base64url(first.credentialId), prf: true, created_at: T0 } });
+		const row = await env.DB.prepare("SELECT account_id, transports, wrapped_key, last_used_at FROM account_passkeys").first();
+		expect(row).toEqual({ account_id: alice.creds.accountId, transports: "smartcard usb", wrapped_key: wrap, last_used_at: null });
+		const again = await registerStart(alice.token, passwordProof(alice));
+		expect(again.body.exclude_credentials).toEqual([{ id: base64url(first.credentialId), transports: ["smart-card", "usb"] }]);
+		const methods = await callJson("/v2/account/sign-in", { env: menv(), now: T0, token: alice.token });
+		expect(methods.body.passkeys).toEqual([
+			{ credential_id: base64url(first.credentialId), created_at: T0, last_used_at: null, prf: true, transports: ["smart-card", "usb"] },
+		]);
+	});
+
+	it("adds a second passkey with a passkey proof, without PRF", async () => {
+		const p = await passkeyAccount("prover");
+		const second = newEd25519Credential();
+		const added = await addPasskey(p.token, await passkeyProof(p.token, p.credential), second);
+		expect(added).toMatchObject({ status: 201, body: { prf: false } });
+		// The new one proves and signs in.
+		expect((await linkStart(p.token, p.device, await passkeyProof(p.token, second))).status).toBe(200);
+	});
+
+	it("a session alone, a provider proof or a wrong password can't add one", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		expect((await registerStart(alice.token, undefined)).body).toMatchObject({ error: "reauth_required" });
+		expect((await registerStart(alice.token, { kind: "provider", flow: base64url(new Uint8Array(32)) })).body.error).toBe("reauth_required");
+		expect((await registerStart(alice.token, { kind: "password", auth_key: newCreds("x").authKey })).status).toBe(401);
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM auth_flows").first()).toEqual({ n: 0 });
+	});
+
+	it("a passkey proof is used once by the start", async () => {
+		const p = await passkeyAccount("prover");
+		const proof = await passkeyProof(p.token, p.credential);
+		expect((await registerStart(p.token, proof)).status).toBe(200);
+		expect(await registerStart(p.token, proof)).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+	});
+
+	it("credential_exists for a credential ID on this account or another, which is never overwritten", async () => {
+		const p = await passkeyAccount("prover");
+		const bob = await passkeyAccount("bob");
+		const own = await addPasskey(p.token, await passkeyProof(p.token, p.credential, { signCount: 1 }), p.credential);
+		expect(own).toMatchObject({ status: 409, body: { error: "credential_exists" } });
+		const theirs = await addPasskey(p.token, await passkeyProof(p.token, p.credential, { signCount: 2 }), bob.credential);
+		expect(theirs).toMatchObject({ status: 409, body: { error: "credential_exists" } });
+		const row = await env.DB.prepare("SELECT account_id FROM account_passkeys WHERE credential_id = ?1").bind(base64url(bob.credential.credentialId)).first();
+		expect(row).toEqual({ account_id: bob.accountId });
+	});
+
+	it("the finish is the session's own flow, five minutes, once; a retry after a lost answer gets the same answer", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		const bob = await signUp("bob", { env: menv(), now: T0 });
+		const credential = newCredential();
+		const started = await registerStart(alice.token, passwordProof(alice));
+		const body = { flow_id: started.body.flow_id, ...registration(credential, started.body.challenge) };
+		expect(await as("/v2/account/sign-in/passkeys/finish", body, bob.token)).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+		expect(await as("/v2/account/sign-in/passkeys/finish", body, alice.token, T0 + 300_000)).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+		const done = await as("/v2/account/sign-in/passkeys/finish", body, alice.token, T0 + 1000);
+		expect(done).toMatchObject({ status: 201, body: { created_at: T0 + 1000 } });
+		expect(await as("/v2/account/sign-in/passkeys/finish", body, alice.token, T0 + 2000)).toEqual({ ...done, headers: expect.anything() });
+		const other = { flow_id: started.body.flow_id, ...registration(newCredential(), started.body.challenge) };
+		expect(await as("/v2/account/sign-in/passkeys/finish", other, alice.token, T0 + 2000)).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+	});
+
+	it("parallel finishes of one flow store one credential", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		const started = await registerStart(alice.token, passwordProof(alice));
+		const answers = await Promise.all(
+			Array.from({ length: 4 }, () =>
+				as("/v2/account/sign-in/passkeys/finish", { flow_id: started.body.flow_id, ...registration(newCredential(), started.body.challenge) }, alice.token),
+			),
+		);
+		expect(answers.filter((a) => a.status === 201)).toHaveLength(1);
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_passkeys").first()).toEqual({ n: 1 });
+	});
+
+	it("refuses a bad registration (wrong challenge, origin, RP ID, no UV) with 401 and malformed bodies with 400", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		const credential = newCredential();
+		for (const make of [
+			(c: string) => registration(credential, base64url(new Uint8Array(32))),
+			(c: string) => registration(credential, c, { origin: "https://evil.example" }),
+			(c: string) => registration(credential, c, { rpId: "evil.example" }),
+			(c: string) => registration(credential, c, { flags: 0x41 }),
+		]) {
+			const started = await registerStart(alice.token, passwordProof(alice));
+			const answer = await as("/v2/account/sign-in/passkeys/finish", { flow_id: started.body.flow_id, ...make(started.body.challenge) }, alice.token);
+			expect(answer).toMatchObject({ status: 401, body: { error: "invalid_credentials" } });
+		}
+		await env.DB.prepare("DELETE FROM limits").run();
+		const started = await registerStart(alice.token, passwordProof(alice));
+		const good = { flow_id: started.body.flow_id, ...registration(credential, started.body.challenge) };
+		for (const broken of [{ transports: ["USB!"] }, { passkey_wrapped_key: "short" }, { credential_id: "!" }, { flow_id: "x" }]) {
+			expect((await as("/v2/account/sign-in/passkeys/finish", { ...good, ...broken }, alice.token)).body.error).toBe("bad_request");
+		}
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_passkeys").first()).toEqual({ n: 0 });
+	});
+
+	it("needs passkeys configured, and counts passkey-manage: twenty an hour across starts and finishes", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		const off = await callJson("/v2/account/sign-in/passkeys/start", { now: T0, json: { proof: passwordProof(alice) }, token: alice.token });
+		expect(off).toMatchObject({ status: 400, body: { error: "unsupported_method" } });
+		for (let i = 0; i < 20; i++) {
+			const r = await as("/v2/account/sign-in/passkeys/finish", { flow_id: base64url(new Uint8Array(32)) }, alice.token);
+			expect(r.status).toBe(400);
+		}
+		expect((await registerStart(alice.token, passwordProof(alice))).body).toMatchObject({ error: "rate_limited", limit: "passkey-manage" });
+	});
+});

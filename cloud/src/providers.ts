@@ -1136,7 +1136,7 @@ export const methods = async (request: Request, env: Env, now: number): Promise<
 			created_at: r.created_at,
 			last_used_at: r.last_used_at === null ? null : Math.floor(r.last_used_at / hour) * hour,
 			prf: r.prf === 1,
-			transports: r.transports === "" ? [] : r.transports.split(" "),
+			transports: storedTransports(r.transports),
 		})),
 		recovery: true,
 	});

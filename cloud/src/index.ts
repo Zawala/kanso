@@ -57,6 +57,8 @@
 //   POST   /v2/auth/social/signup       the account a provider flow's ticket names
 //   GET    /v2/account/sign-in          the account's ways in                         (session)
 //   POST   /v2/account/sign-in/proof/start            a passkey proof's challenge          (session)
+//   POST   /v2/account/sign-in/passkeys/start         add a passkey: its options (proof)   (session)
+//   POST   /v2/account/sign-in/passkeys/finish        add a passkey: its registration      (session)
 //   POST   /v2/account/sign-in/identities/<provider>/start   link, or a proof flow   (session)
 //   POST   /v2/account/sign-in/identities/<provider>/unlink  unlink a provider       (session)
 //   POST   /v2/account/sign-in/approvals              ask another device to approve this one (session)
@@ -163,6 +165,8 @@ const ROUTES: Record<string, Route> = {
 	"/v2/auth/social/signup": { name: "social_signup", binding: true, methods: { POST: json(providers.socialSignup, true) } },
 	"/v2/account/sign-in": { name: "sign_in_methods", methods: { GET: { handler: providers.methods } } },
 	"/v2/account/sign-in/proof/start": { name: "proof_start", methods: { POST: json(proofs.proofStart, true) } },
+	"/v2/account/sign-in/passkeys/start": { name: "passkey_register_start", methods: { POST: json(passkeys.registerStart, true) } },
+	"/v2/account/sign-in/passkeys/finish": { name: "passkey_register_finish", methods: { POST: json(passkeys.registerFinish) } },
 	"/v2/account/sign-in/approvals": { name: "approvals", methods: { POST: json(approvals.create), GET: { handler: approvals.list } } },
 	"/v2/account/events": { name: "account_events", methods: { GET: { handler: approvals.events } } },
 };
