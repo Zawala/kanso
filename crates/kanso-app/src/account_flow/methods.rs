@@ -374,15 +374,11 @@ fn finished(
 
 // MARK: Through a provider
 
-/// The device a session's provider flow is bound to: this library's own,
-/// the one every other session route uses.
+/// The device a session's provider flow is bound to: the one the session
+/// was created with (a passkey or provider sign-in's flow device), or this
+/// library's own. The server checks it against the session's.
 fn session_device(s: &Seams, session: &Session) -> Result<LoginDevice, Failure> {
-    let device = s.device()?;
-    Ok(LoginDevice::for_identity(
-        &device,
-        &session.origin,
-        &session.account_id,
-    ))
+    Ok(session.login_device(&s.device()?))
 }
 
 /// A link (after a password or passkey proof) or a provider proof: starts

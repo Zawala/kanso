@@ -71,15 +71,15 @@ impl Backend for HttpBackend {
         device: &DeviceIdentity,
         path: &str,
     ) -> Result<Box<dyn EventSource>, EventError> {
-        let proof = device
-            .device_proof(&session.origin, &session.account_id)
-            .to_base64url();
+        // The proof the session was created with: a passkey or provider
+        // sign-in's flow device, else this library's own.
+        let login = session.login_device(device);
         let stream = EventStream::connect(
             &session.server,
             path,
             &session.authorization(),
-            &session.device_id,
-            &proof,
+            &login.id,
+            &login.proof,
         )?;
         Ok(Box::new(stream))
     }

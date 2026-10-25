@@ -3378,3 +3378,162 @@ fn linking_and_unlinking_github_take_their_proofs(cx: &mut TestAppContext) {
     assert!(ways_in(&server, cx).linked.is_empty());
     assert_eq!(account(cx), signed_in_as("alice"));
 }
+
+/// Links GitHub with a passkey proof, then unlinks it with a GitHub proof,
+/// from whatever session `mac` holds now.
+fn link_and_unlink_github(mac: &Mac, cx: &mut TestAppContext, server: &MemoryServer) {
+    use account_flow::{MethodChange, ProofWith};
+    let account_id = session(cx).account_id.clone();
+    server.set_providers(vec![Provider::Github]);
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        mac.change(
+            cx,
+            MethodChange::Link(Provider::Github),
+            ProofWith::Passkey,
+            None
+        ),
+        Ok(())
+    );
+    assert_eq!(ways_in(server, cx).linked.len(), 1);
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        mac.change(
+            cx,
+            MethodChange::Unlink(Provider::Github),
+            ProofWith::Provider(Provider::Github),
+            None
+        ),
+        Ok(())
+    );
+    assert!(ways_in(server, cx).linked.is_empty());
+}
+
+/// A device that signed in with a synced passkey is bound to that sign-in's
+/// own device, not the library's: its link and provider proof starts carry
+/// that device's proof, before and after a relaunch.
+#[gpui_kit::test]
+fn a_passkey_signed_in_device_links_and_proves_with_its_own_device(
+    cx: &mut TestAppContext,
+    cx_b: &mut TestAppContext,
+) {
+    let server = Arc::new(MemoryServer::new());
+    let passkey = Arc::new(kanso_sync::TestAuthenticator::new(41));
+    let a = mac(cx, &server, "Studio", 0);
+    a.use_passkey(cx, passkey.clone());
+    let rx = a.passkey_sign_up(cx, "quiet-otter-4821");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+    link_and_unlink_github(&a, cx, &server);
+
+    let b = mac(cx_b, &server, "Laptop", 0);
+    b.use_passkey(cx_b, passkey.clone());
+    let rx = b.passkey_sign_in(cx_b);
+    assert_eq!(finish(cx_b, rx), Ok(()));
+    assert_eq!(account(cx_b), signed_in_as("quiet-otter-4821"));
+    let machine = cx_b.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let own = kanso_sync::device_identity(&b.store, &machine)
+        .unwrap()
+        .device_id(&session(cx_b).account_id);
+    assert_ne!(
+        session(cx_b).device_id,
+        own,
+        "a first passkey sign-in uses the flow's device"
+    );
+    link_and_unlink_github(&b, cx_b, &server);
+
+    // The proof survives a relaunch in the Keychain item.
+    relaunched(cx_b, &server, &b);
+    cx_b.update(account_flow::restore);
+    restored(cx_b);
+    assert_eq!(account(cx_b), signed_in_as("quiet-otter-4821"));
+    b.use_passkey(cx_b, passkey);
+    link_and_unlink_github(&b, cx_b, &server);
+}
+
+/// An account made with GitHub is bound to the provider flow's device; its
+/// link and provider proof starts carry that device's proof.
+#[gpui_kit::test]
+fn a_provider_created_session_links_and_proves_with_its_own_device(cx: &mut TestAppContext) {
+    use account_flow::{MethodChange, ProofWith};
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    server.set_providers(vec![Provider::Github]);
+    server.set_provider_outcomes(Provider::Github, ["new_account:quiet-otter-4821"]);
+    let login_device = LoginDevice::ephemeral();
+    let started = kanso_sync::start_provider(
+        server.as_ref(),
+        PASSKEY_SERVER,
+        &Provider::Github,
+        &login_device,
+        None,
+        None,
+    )
+    .unwrap();
+    let ProviderStep::NewAccount(ticket) = kanso_sync::poll_provider(
+        server.as_ref(),
+        PASSKEY_SERVER,
+        &Provider::Github,
+        started.flow_id(),
+        None,
+        &login_device,
+    )
+    .unwrap() else {
+        panic!("the scripted GitHub sign-in is a new account")
+    };
+    let pending = crate::services::ProviderSignup {
+        server: PASSKEY_SERVER.into(),
+        provider: Provider::Github,
+        ticket: ticket.ticket,
+        suggested_username: ticket.suggested_username,
+        login_device: login_device.clone(),
+    };
+    let window = a.window;
+    let rx = cx.update(|cx| {
+        account_flow::provider_sign_up(pending, "quiet-otter-4821".into(), window, cx)
+    });
+    assert_eq!(finish(cx, rx), Ok(()));
+    let key = pending_key(cx).expect("the sign-up's recovery key");
+    key_saved(cx);
+    assert_eq!(session(cx).device_id, login_device.id);
+    let account_id = session(cx).account_id.clone();
+
+    // A GitHub proof, with the recovery key, makes a new recovery key.
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::NewRecoveryKey,
+            ProofWith::Provider(Provider::Github),
+            Some(key)
+        ),
+        Ok(())
+    );
+    let key = pending_key(cx).expect("the new key");
+    key_saved(cx);
+
+    // And it starts an unlink: the server then refuses the last way in
+    // without the recovery key, and takes it with the key.
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::Unlink(Provider::Github),
+            ProofWith::Provider(Provider::Github),
+            None
+        ),
+        Err(words::LAST_METHOD.to_owned())
+    );
+    assert_eq!(ways_in(&server, cx).linked.len(), 1);
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::Unlink(Provider::Github),
+            ProofWith::Provider(Provider::Github),
+            Some(key)
+        ),
+        Ok(())
+    );
+    assert!(ways_in(&server, cx).linked.is_empty());
+}

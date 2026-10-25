@@ -546,6 +546,7 @@ pub fn sign_in_with_passkey(
         data_key,
     );
     session.set_library_id(&device.library_id);
+    session.set_login_device(start.login_device.clone());
     Ok(PasskeySignIn::Unlocked(SignedIn { session, evicted }))
 }
 
