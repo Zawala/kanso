@@ -13,12 +13,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use gpui_kit::*;
+use kanso_engine::sync::Request;
 use kanso_server::{ServerConfig, ServerHandle, TokenStore};
-use kanso_store::{Change, Origin};
-use kanso_sync::keychain::PendingRecoveryKey;
 use kanso_sync::{
-    Backend, DeviceInfo, Machine, PendingApproval, RecoveryKey, Schedule, SecretStore, Session,
-    SignOutReason, SignupState, Step, SyncError, SyncOptions, SyncProblem, SyncReport, Usage,
+    Backend, Machine, PendingApproval, SecretStore, Session, SignOutReason, SignupState, Step,
+    SyncError, SyncProblem, SyncReport,
 };
 
 use crate::config::ServerSettings;
@@ -26,9 +25,6 @@ use crate::workspace::AppState;
 
 /// How often to try again for a port another app holds.
 const PORT_RETRY: Duration = Duration::from_secs(15);
-/// How long after the last local edit to sync.
-const SYNC_AFTER_EDIT: Duration = Duration::from_secs(20);
-
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum ApiState {
     #[default]
@@ -40,23 +36,7 @@ pub enum ApiState {
     Failed(String),
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
-pub enum SyncState {
-    /// Signed out, or signed in and not synced yet.
-    #[default]
-    Off,
-    Syncing,
-    Synced {
-        at_ms: i64,
-        /// Conflicts in that sync; the losing versions are in history.
-        conflicts: usize,
-        /// The documents that had them, to show and open the note.
-        conflicted: Vec<String>,
-        /// A problem the sync finished with (`report_problem`).
-        problem: Option<SyncProblem>,
-    },
-    Failed(SyncProblem),
-}
+pub use kanso_engine::sync::SyncState;
 
 /// The account as the app shows it (docs/ACCOUNTS.md › Services).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -107,16 +87,7 @@ pub struct RunningTask {
     pub step: Step,
 }
 
-/// A provider ticket waiting for the user to choose a username. Kept only in
-/// process until signup or cancellation; it is never persisted.
-#[derive(Clone)]
-pub struct ProviderSignup {
-    pub server: String,
-    pub provider: kanso_sync::Provider,
-    pub ticket: String,
-    pub suggested_username: String,
-    pub login_device: kanso_sync::api::LoginDevice,
-}
+pub use kanso_engine::account::provider::ProviderSignup;
 
 /// A provider flow the account worker is waiting on. Cancellation is logical:
 /// Apple may leave its native system sheet open until the user dismisses it.
@@ -128,88 +99,7 @@ pub struct ProviderWait {
     pub cancel: Arc<std::sync::atomic::AtomicBool>,
 }
 
-/// A recovery key the user hasn't confirmed saving: the Account page shows
-/// it until "I've saved it" (its Keychain item lasts as long).
-#[derive(Clone, Debug)]
-pub struct PendingKey {
-    pub key: RecoveryKey,
-    pub username: String,
-    pub server: String,
-    /// What else the screen says: the task that made the key failed, or
-    /// Kanso couldn't tell whether the server took it.
-    pub note: Option<&'static str>,
-}
-
-impl PendingKey {
-    /// The Keychain's unsaved key; `note` shows when the server may not
-    /// have taken it.
-    pub fn kept(item: PendingRecoveryKey, note: &'static str) -> PendingKey {
-        PendingKey {
-            note: item.unconfirmed.then_some(note),
-            key: item.recovery_key,
-            username: item.username,
-            server: item.server,
-        }
-    }
-}
-
-/// The signed-in account's storage and devices, as last fetched.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct AccountDetails {
-    pub usage: Option<Usage>,
-    pub devices: Option<Vec<DeviceInfo>>,
-    pub loading: bool,
-    /// A sync changed what the server holds while a fetch ran: that fetch's
-    /// answer may be from before it, so it is fetched again.
-    pub stale: bool,
-    /// Why the last fetch failed, in plain words.
-    pub failed: Option<String>,
-}
-
-/// The signed-in account's ways in, as last fetched. A newer refresh hides
-/// the retained success from the page until it has answered.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct AccountMethodsState {
-    pub last_successful: Option<kanso_sync::AccountMethods>,
-    pub loading: bool,
-    pub failed: Option<String>,
-    /// Rejects answers from an earlier Account page visit.
-    pub generation: u64,
-    /// The server's passkeys, as its health last advertised them: which
-    /// ceremony this device may run to add or prove one.
-    pub passkeys: Option<kanso_sync::PasskeyMethods>,
-}
-
-impl AccountMethodsState {
-    /// Starts a refresh and makes every earlier answer stale.
-    pub fn begin_refresh(&mut self) -> u64 {
-        self.generation = self.generation.wrapping_add(1);
-        self.loading = true;
-        self.failed = None;
-        self.generation
-    }
-
-    /// Keeps the previous success available internally if the latest fetch
-    /// fails; the page uses `failed` to avoid presenting it as current.
-    pub fn finish_failure(&mut self, generation: u64, reason: String) -> bool {
-        if self.generation != generation {
-            return false;
-        }
-        self.loading = false;
-        self.failed = Some(reason);
-        true
-    }
-
-    pub fn finish_success(&mut self, generation: u64, methods: kanso_sync::AccountMethods) -> bool {
-        if self.generation != generation {
-            return false;
-        }
-        self.last_successful = Some(methods);
-        self.loading = false;
-        self.failed = None;
-        true
-    }
-}
+pub use kanso_engine::account::{AccountDetails, AccountMethodsState, PendingKey};
 
 /// The live account approval UI: what the approver's sheet shows, and the
 /// new device's waiting page. The socket's stop flag lives here so a
@@ -226,36 +116,8 @@ pub struct ApprovalUi {
     pub event_stop: Option<Arc<AtomicBool>>,
 }
 
-/// What keeps automatic syncs from running after a problem (the problems
-/// table's last column). "Sync now" always runs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Hold {
-    /// Until this time (ms): a paused account.
-    Until(i64),
-    /// Until Sync now.
-    UntilSyncNow,
-    /// Until the user signs in again.
-    Stopped,
-}
-
-/// What the schedule does after `problem`.
-pub fn hold_after(problem: Option<&SyncProblem>) -> Option<Hold> {
-    match problem?.schedule() {
-        Schedule::KeepsRunning => None,
-        Schedule::WaitsUntil(until) => Some(Hold::Until(until)),
-        Schedule::StopsUntilSyncNow => Some(Hold::UntilSyncNow),
-        Schedule::Stops => Some(Hold::Stopped),
-    }
-}
-
-/// Whether `hold` keeps an automatic sync from running at `now_ms`.
-pub fn holds_at(hold: Option<Hold>, now_ms: i64) -> bool {
-    match hold {
-        None => false,
-        Some(Hold::Until(until)) => now_ms < until,
-        Some(Hold::UntilSyncNow | Hold::Stopped) => true,
-    }
-}
+#[cfg(test)]
+pub use kanso_engine::sync::Hold;
 
 /// The running sync's thread, and the flag that stops it between pages,
 /// batches and files.
@@ -354,7 +216,8 @@ pub struct Services {
     /// keep their edits unsaved until it is done (A10).
     pub writes_held: bool,
     session: Option<Arc<Session>>,
-    hold: Option<Hold>,
+    /// When syncs run, queue or are held back (`kanso_engine::sync`).
+    scheduler: kanso_engine::sync::Scheduler,
     server: Option<ServerHandle>,
     /// The agents' read-only notes tokens (`ai_agent.rs`), accepted on the
     /// local API's `/mcp` while it listens on this computer only, and on
@@ -366,10 +229,6 @@ pub struct Services {
     port_retry: Option<Task<()>>,
     sync_tasks: Vec<Task<()>>,
     sync_after_edit: Option<Task<()>>,
-    sync_running: bool,
-    /// A sync asked for while one ran, to run right after it: `Some(true)`
-    /// when any of the requests was Sync now (sync 8).
-    sync_again: Option<bool>,
     sync_handle: Option<SyncHandle>,
     /// The session whose sync an account task stopped: it starts again
     /// when the last task of the chain ends with it still signed in (A8).
@@ -488,7 +347,7 @@ impl Services {
             username: session.username.clone(),
         };
         self.session = Some(session);
-        self.hold = None;
+        self.scheduler.clear_hold();
         self.details = AccountDetails::default();
         self.account_methods = AccountMethodsState::default();
     }
@@ -503,7 +362,7 @@ impl Services {
         self.approval.waiting = None;
         self.locked_replace_write_consent = false;
         self.account = account;
-        self.hold = None;
+        self.scheduler.clear_hold();
         self.sync = SyncState::Off;
         self.details = AccountDetails::default();
         self.account_methods = AccountMethodsState::default();
@@ -652,44 +511,6 @@ pub fn stop_server(cx: &mut App) {
     }
 }
 
-/// What the status shows after a sync: `None` for one that was cancelled,
-/// which changes nothing.
-pub fn sync_outcome(result: Result<SyncReport, SyncError>, now_ms: i64) -> Option<SyncState> {
-    match result {
-        Ok(report) => Some(SyncState::Synced {
-            at_ms: now_ms,
-            conflicts: report.conflicts(),
-            problem: kanso_sync::report_problem(&report),
-            conflicted: report.conflicted,
-        }),
-        Err(err) => kanso_sync::problem(&err).map(SyncState::Failed),
-    }
-}
-
-/// Whether a sync changed what the account holds on the server: it pushed,
-/// uploaded, or pulled what another Mac pushed.
-pub fn changed_storage(report: &SyncReport) -> bool {
-    report.pushed > 0 || report.files_up > 0 || report.pulled > 0
-}
-
-/// The problem a sync state shows, if any.
-pub fn state_problem(state: &SyncState) -> Option<&SyncProblem> {
-    match state {
-        SyncState::Failed(problem)
-        | SyncState::Synced {
-            problem: Some(problem),
-            ..
-        } => Some(problem),
-        _ => None,
-    }
-}
-
-/// Whether a change should be sent to the server soon. Changes that came
-/// from sync, and bulk imports, wait for the regular sync.
-pub fn is_local_edit(change: &Change) -> bool {
-    matches!(change.origin, Origin::Ui | Origin::Api)
-}
-
 /// Starts or stops background sync to match the settings: it runs while
 /// signed in with Sync automatically on.
 pub fn apply_sync_settings(cx: &mut App) {
@@ -704,7 +525,7 @@ pub fn apply_sync_settings(cx: &mut App) {
         cx.refresh_windows();
         return;
     }
-    let interval = Duration::from_secs(settings.interval_secs.max(60));
+    let interval = kanso_engine::sync::interval(settings.interval_secs);
     // Shared notes sync on the same cadence, whether or not the library
     // syncs on its own: invitations and mentions come that way.
     let shared = crate::collab::periodic(interval, cx);
@@ -722,12 +543,14 @@ pub fn apply_sync_settings(cx: &mut App) {
     let changes = store.subscribe();
     let after_edits = cx.spawn(async move |cx| {
         while let Ok(change) = changes.recv().await {
-            if !is_local_edit(&change) {
+            if !kanso_engine::sync::is_local_edit(&change) {
                 continue;
             }
             cx.update(|cx| {
                 let delayed = cx.spawn(async move |cx| {
-                    cx.background_executor().timer(SYNC_AFTER_EDIT).await;
+                    cx.background_executor()
+                        .timer(kanso_engine::sync::AFTER_EDIT)
+                        .await;
                     cx.update(|cx| start_sync(false, cx));
                 });
                 cx.global_mut::<Services>().sync_after_edit = Some(delayed);
@@ -762,35 +585,33 @@ fn start_sync(manual: bool, cx: &mut App) {
     else {
         return;
     };
-    if services.task.is_some() || (!manual && holds_at(services.hold, now)) {
-        return;
-    }
-    if manual {
-        services.hold = None;
-    }
-    if services.sync_running {
-        services.sync_again = Some(queued_again(services.sync_again, manual));
-        return;
+    let busy = services.task.is_some();
+    match services.scheduler.request(manual, busy, now) {
+        Request::Refused | Request::Queued => return,
+        Request::Start => {}
     }
     let secrets = services.secrets.clone();
     let library_id = services.library_id.clone();
-    services.sync_running = true;
     services.sync = SyncState::Syncing;
 
     let cancel = Arc::new(AtomicBool::new(false));
-    let options = SyncOptions {
-        cancel: Some(cancel.clone()),
-        ..SyncOptions::default()
-    };
+    let thread_cancel = cancel.clone();
     let (tx, rx) = async_channel::bounded(1);
     let thread_session = session.clone();
     let thread = std::thread::Builder::new()
         .name("kanso-sync".into())
         .spawn(move || {
-            if let (Some(secrets), Some(library_id)) = (&secrets, &library_id) {
-                kanso_sync::flush_pending_logouts(backend.as_ref(), secrets.as_ref(), library_id);
-            }
-            let result = kanso_sync::sync(&store, backend.as_ref(), &thread_session, &options);
+            let logouts = match (&secrets, &library_id) {
+                (Some(secrets), Some(library_id)) => Some((secrets.as_ref(), library_id.as_str())),
+                _ => None,
+            };
+            let result = kanso_engine::sync::run_once(
+                &store,
+                backend.as_ref(),
+                &thread_session,
+                logouts,
+                thread_cancel,
+            );
             tx.try_send(result).ok();
         });
     match thread {
@@ -803,7 +624,7 @@ fn start_sync(manual: bool, cx: &mut App) {
         }
         Err(err) => {
             eprintln!("kanso: couldn't start the sync thread: {err}");
-            services.sync_running = false;
+            services.scheduler.start_failed();
             services.sync = SyncState::Failed(SyncProblem::Other);
             cx.refresh_windows();
             return;
@@ -821,7 +642,6 @@ fn start_sync(manual: bool, cx: &mut App) {
 fn finish_sync(session: Arc<Session>, result: Option<Result<SyncReport, SyncError>>, cx: &mut App) {
     let now = crate::clock::Clock::now_ms(cx);
     let services = cx.global_mut::<Services>();
-    services.sync_running = false;
     // The handle is gone already when an account task took it to stop us.
     if services
         .sync_handle
@@ -834,42 +654,27 @@ fn finish_sync(session: Arc<Session>, result: Option<Result<SyncReport, SyncErro
         .session
         .as_ref()
         .is_some_and(|s| Arc::ptr_eq(s, &session));
-    let again = services.sync_again.take();
+    let finished = services.scheduler.finished(current, result, now);
     if !current {
-        // Signed out or in again meanwhile: this sync's news is stale, but
-        // a sync asked for meanwhile is the current session's.
         cx.refresh_windows();
-        if let Some(manual) = again {
+        if let Some(manual) = finished.again {
             start_sync(manual, cx);
         }
         return;
     }
-    let remerged = matches!(&result, Some(Ok(report)) if report.remerged);
-    // What the server holds changed: the Account page's storage line is
-    // fetched again. A sync that moved nothing asks for nothing (each
-    // account has 120 requests a minute).
-    let changed = matches!(&result, Some(Ok(report)) if changed_storage(report));
-    let outcome = match result {
-        Some(result) => sync_outcome(result, now),
-        None => Some(SyncState::Failed(SyncProblem::Other)),
-    };
-    match outcome {
-        // Cancelled: whatever cancelled it says what happens next.
-        None => {
-            if matches!(services.sync, SyncState::Syncing) {
-                services.sync = SyncState::Off;
-            }
-        }
-        Some(state) => {
-            services.hold = hold_after(state_problem(&state));
-            if let SyncState::Failed(SyncProblem::SignedOut(reason)) = state {
-                end_session(reason, cx);
-                return;
-            }
-            services.sync = state;
-        }
+    if let Some(reason) = finished.signed_out {
+        end_session(reason, cx);
+        return;
     }
-    if remerged {
+    if finished.cancelled {
+        // Cancelled: whatever cancelled it says what happens next.
+        if matches!(services.sync, SyncState::Syncing) {
+            services.sync = SyncState::Off;
+        }
+    } else if let Some(state) = finished.state {
+        services.sync = state;
+    }
+    if finished.remerged {
         notify_windows(
             || {
                 gpui_kit::component::notification::Notification::info(
@@ -879,31 +684,27 @@ fn finish_sync(session: Arc<Session>, result: Option<Result<SyncReport, SyncErro
             cx,
         );
     }
-    if changed {
+    if finished.storage_changed {
         crate::account_flow::refresh_details_after_sync(cx);
     }
     cx.refresh_windows();
     // Automatic requests stay automatic: the holds this sync just set
     // apply to them.
-    if let Some(manual) = again {
+    if let Some(manual) = finished.again {
         start_sync(manual, cx);
     }
 }
 
-/// The sync to run after the current one, given what was queued and a new
-/// request: manual if any request was.
-fn queued_again(queued: Option<bool>, manual: bool) -> bool {
-    queued.unwrap_or(false) || manual
-}
-
 #[cfg(test)]
 impl Services {
+    // no-prop-test: delegates to kanso_engine::sync::Scheduler, tested there.
     pub fn set_hold(&mut self, hold: Option<Hold>) {
-        self.hold = hold;
+        self.scheduler.set_hold(hold);
     }
 
+    // no-prop-test: delegates to kanso_engine::sync::Scheduler, tested there.
     pub fn hold(&self) -> Option<Hold> {
-        self.hold
+        self.scheduler.hold()
     }
 }
 
@@ -961,21 +762,13 @@ pub fn end_session(reason: SignOutReason, cx: &mut App) {
         cx.spawn(async move |cx| {
             let stale = cx
                 .background_spawn(async move {
-                    let deleted = match ended.as_deref() {
-                        Some(ended) => kanso_sync::keychain::delete_ended_session(
-                            secrets.as_ref(),
-                            &library_id,
-                            ended,
-                        ),
-                        None => kanso_sync::keychain::delete_session(secrets.as_ref(), &library_id),
-                    };
-                    if let Err(err) = deleted {
-                        eprintln!("kanso: couldn't remove the ended session: {err}");
-                    }
-                    if own_recovery {
-                        return None;
-                    }
-                    drop_stale_key(secrets.as_ref(), &library_id, reason, ended.as_deref())
+                    kanso_engine::sync::forget_ended_session(
+                        secrets.as_ref(),
+                        &library_id,
+                        reason,
+                        ended.as_deref(),
+                        own_recovery,
+                    )
                 })
                 .await;
             if let Some(stale) = stale {
@@ -998,104 +791,15 @@ pub fn end_session(reason: SignOutReason, cx: &mut App) {
     cx.refresh_windows();
 }
 
-/// Whether `kept` is a recovery key the server no longer holds, because the
-/// session of `origin`'s `account_id` ended with `reason`: another device
-/// recovered the account or changed its password, and either replaced the
-/// key. A key the server took before that is stale. One whose request went
-/// unanswered stays: the server may have taken it after, so it may be the
-/// only working key (sec-client 3).
-pub fn stale_key(
-    kept: &PendingRecoveryKey,
-    reason: SignOutReason,
-    origin: &str,
-    account_id: &str,
-) -> bool {
-    matches!(
-        reason,
-        SignOutReason::PasswordChanged | SignOutReason::Recovered
-    ) && !kept.unconfirmed
-        && kept.origin == origin
-        && kept.account_id == account_id
-}
-
-/// Deletes the library's unsaved recovery key when it is [`stale_key`];
-/// returns the key it deleted.
-fn drop_stale_key(
-    secrets: &dyn SecretStore,
-    library_id: &str,
-    reason: SignOutReason,
-    ended: Option<&Session>,
-) -> Option<RecoveryKey> {
-    let ended = ended?;
-    let kept = match kanso_sync::keychain::load_any_recovery_key(secrets, library_id) {
-        Ok(kept) => kept?,
-        Err(err) => {
-            eprintln!("kanso: reading the unsaved recovery key: {err}");
-            return None;
-        }
-    };
-    if !stale_key(&kept, reason, &ended.origin, &ended.account_id) {
-        return None;
-    }
-    match kanso_sync::keychain::delete_recovery_key(secrets, library_id) {
-        Ok(()) => Some(kept.recovery_key),
-        Err(err) => {
-            eprintln!("kanso: removing a recovery key replaced elsewhere: {err}");
-            None
-        }
-    }
-}
-
 /// Strategies for the account's and sync's states, shared by the tests of
-/// the views that show them.
+/// the views that show them. The sync ones are the engine's.
 #[cfg(test)]
 pub(crate) mod strategies {
-    use super::{AccountState, SyncState};
-    use kanso_sync::{QuotaKind, SignOutReason, Step, SyncProblem};
+    use super::AccountState;
+    use kanso_sync::SignOutReason;
     use proptest::prelude::*;
 
-    pub fn problem() -> impl Strategy<Value = SyncProblem> {
-        prop_oneof![
-            prop::sample::select(SignOutReason::ALL.to_vec()).prop_map(SyncProblem::SignedOut),
-            Just(SyncProblem::AccountDisabled),
-            (0i64..1_000_000).prop_map(|until| SyncProblem::Paused { until }),
-            (0i64..1_000_000).prop_map(|until| SyncProblem::ServerBusy { until }),
-            (0i64..1_000_000).prop_map(|until| SyncProblem::BackOff { until }),
-            prop::sample::select(QuotaKind::ALL.to_vec()).prop_map(SyncProblem::QuotaExceeded),
-            Just(SyncProblem::ServerFull),
-            (1usize..100).prop_map(|count| SyncProblem::Skipped { count }),
-            Just(SyncProblem::UpdateKanso),
-            Just(SyncProblem::WrongKey),
-            Just(SyncProblem::ServerOutdated),
-            Just(SyncProblem::Offline),
-            Just(SyncProblem::Other),
-        ]
-    }
-
-    pub fn step() -> impl Strategy<Value = Step> {
-        prop::sample::select(vec![
-            Step::StoppingSync,
-            Step::DerivingKeys,
-            Step::Contacting,
-            Step::Saving,
-        ])
-    }
-
-    pub fn sync_state() -> impl Strategy<Value = SyncState> {
-        prop_oneof![
-            Just(SyncState::Off),
-            Just(SyncState::Syncing),
-            (0i64..1_000_000_000, 0usize..4, prop::option::of(problem())).prop_map(
-                |(at_ms, conflicts, problem)| SyncState::Synced {
-                    at_ms,
-                    conflicts,
-                    conflicted: Vec::new(),
-                    problem,
-                }
-            ),
-            problem().prop_map(SyncState::Failed),
-        ]
-    }
+    pub(crate) use kanso_engine::strategies::{problem, step, sync_state};
 
     pub fn account() -> impl Strategy<Value = AccountState> {
         prop_oneof![
@@ -1114,14 +818,11 @@ pub(crate) mod strategies {
 #[cfg(test)]
 mod tests {
     use super::{
-        AccountMethodsState, AccountState, ApiState, Hold, Services, SyncState, api_state,
-        hold_after, holds_at, is_local_edit, queued_again, server_config, stale_key, state_problem,
-        sync_outcome,
+        AccountMethodsState, AccountState, ApiState, Hold, Services, api_state, server_config,
     };
     use crate::config::ServerSettings;
-    use kanso_sync::RecoveryKey;
-    use kanso_sync::keychain::PendingRecoveryKey;
-    use kanso_sync::{ApiError, SignOutReason, SyncError, SyncProblem, SyncReport};
+    use kanso_engine::sync::{hold_after, holds_at, state_problem, sync_outcome};
+    use kanso_sync::SyncProblem;
     use proptest::prelude::*;
     use std::net::IpAddr;
 
@@ -1133,20 +834,6 @@ mod tests {
             linked: Vec::new(),
             passkeys: Vec::new(),
         }
-    }
-
-    #[test]
-    fn methods_refresh_rejects_stale_answers_and_marks_retained_success_failed() {
-        let mut state = AccountMethodsState::default();
-        let first = state.begin_refresh();
-        assert!(state.finish_success(first, account_methods(true)));
-
-        let second = state.begin_refresh();
-        assert!(!state.finish_success(first, account_methods(false)));
-        assert!(state.finish_failure(second, "offline".into()));
-        assert_eq!(state.last_successful, Some(account_methods(true)));
-        assert!(!state.loading);
-        assert_eq!(state.failed.as_deref(), Some("offline"));
     }
 
     #[test]
@@ -1163,16 +850,6 @@ mod tests {
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(256))]
 
-        /// A sync asked for during another runs once after it, manual if
-        /// any of the requests was.
-        #[test]
-        fn prop_queued_syncs_are_manual_only_if_one_was(requests in prop::collection::vec(any::<bool>(), 1..12)) {
-            let queued = requests
-                .iter()
-                .fold(None, |queued, &manual| Some(queued_again(queued, manual)));
-            prop_assert_eq!(queued, Some(requests.iter().any(|&manual| manual)));
-        }
-
         /// Round-trip: the listen address keeps the configured IP and port,
         /// IPv6 included.
         #[test]
@@ -1188,131 +865,12 @@ mod tests {
             prop_assert_eq!((config.bind.ip(), config.bind.port()), (ip, port));
         }
 
-        /// Sec-client 3: an unsaved key is dropped only when the session of
-        /// its own account ended because another device replaced the key,
-        /// and only when the server had taken it.
-        #[test]
-        fn prop_only_a_key_replaced_elsewhere_is_stale(
-            reason in prop::sample::select(SignOutReason::ALL.to_vec()),
-            unconfirmed: bool,
-            same_origin: bool,
-            same_account: bool,
-        ) {
-            let kept = PendingRecoveryKey {
-                origin: "https://a.example".into(),
-                account_id: "acct".into(),
-                username: "alice".into(),
-                server: "https://a.example".into(),
-                recovery_key: RecoveryKey::from_bytes([7; 16]),
-                unconfirmed,
-            };
-            let origin = if same_origin { "https://a.example" } else { "https://b.example" };
-            let account = if same_account { "acct" } else { "other" };
-            let replaced = matches!(reason, SignOutReason::PasswordChanged | SignOutReason::Recovered);
-            prop_assert_eq!(
-                stale_key(&kept, reason, origin, account),
-                replaced && !unconfirmed && same_origin && same_account
-            );
-        }
-
         /// Refinement: text that isn't an IP address is refused.
         #[test]
         fn prop_bad_addresses_are_refused(text in "[a-z]{1,10}") {
             let settings = ServerSettings { bind_address: text, ..ServerSettings::default() };
             prop_assert!(server_config(&settings).is_err());
         }
-
-        /// The schedule after a problem follows the problems table: what
-        /// keeps running never holds, a pause holds exactly until its end,
-        /// and the rest hold until someone acts.
-        #[test]
-        fn prop_holds_follow_the_problems_table(problem in super::strategies::problem(), now in 0i64..2_000_000) {
-            let hold = hold_after(Some(&problem));
-            match problem.schedule() {
-                kanso_sync::Schedule::KeepsRunning => prop_assert_eq!(hold, None),
-                kanso_sync::Schedule::WaitsUntil(until) => {
-                    prop_assert_eq!(hold, Some(Hold::Until(until)));
-                    prop_assert_eq!(holds_at(hold, now), now < until);
-                }
-                kanso_sync::Schedule::StopsUntilSyncNow => prop_assert_eq!(hold, Some(Hold::UntilSyncNow)),
-                kanso_sync::Schedule::Stops => prop_assert_eq!(hold, Some(Hold::Stopped)),
-            }
-            if hold.is_some() && !matches!(hold, Some(Hold::Until(_))) {
-                prop_assert!(holds_at(hold, now));
-            }
-            prop_assert_eq!(hold_after(None), None);
-            prop_assert!(!holds_at(None, now));
-        }
-
-        /// A finished sync is Synced, with the problem `report_problem`
-        /// finds; a failed one shows `problem`'s; a cancelled one changes
-        /// nothing.
-        #[test]
-        fn prop_sync_outcomes_follow_the_report(
-            conflicts_local in 0usize..3,
-            conflicts_remote in 0usize..3,
-            skipped in 0usize..3,
-            too_new: bool,
-            paused in prop::option::of(0i64..1_000),
-            at in 0i64..1_000_000,
-        ) {
-            let report = SyncReport {
-                conflicts_local,
-                conflicts_remote,
-                skipped: (0..skipped).map(|n| format!("note:{n}")).collect(),
-                too_new,
-                paused_until: paused,
-                ..SyncReport::default()
-            };
-            let state = sync_outcome(Ok(report.clone()), at).unwrap();
-            let SyncState::Synced { at_ms, conflicts, problem, .. } = &state else {
-                panic!("{state:?}");
-            };
-            prop_assert_eq!(*at_ms, at);
-            prop_assert_eq!(*conflicts, conflicts_local + conflicts_remote);
-            prop_assert_eq!(problem.clone(), kanso_sync::report_problem(&report));
-            prop_assert_eq!(state_problem(&state), problem.as_ref());
-        }
-    }
-
-    #[test]
-    fn sync_errors_become_problems() {
-        assert_eq!(sync_outcome(Err(SyncError::Cancelled), 1), None);
-        assert_eq!(
-            sync_outcome(Err(SyncError::WrongKey), 1),
-            Some(SyncState::Failed(SyncProblem::WrongKey))
-        );
-        assert_eq!(
-            sync_outcome(
-                Err(SyncError::Api(ApiError::Unauthorized {
-                    reason: SignOutReason::PasswordChanged
-                })),
-                1
-            ),
-            Some(SyncState::Failed(SyncProblem::SignedOut(
-                SignOutReason::PasswordChanged
-            )))
-        );
-        assert_eq!(
-            sync_outcome(Err(SyncError::Api(ApiError::Transport("reset".into()))), 1),
-            Some(SyncState::Failed(SyncProblem::Offline))
-        );
-        assert_eq!(
-            sync_outcome(Err(SyncError::Api(ApiError::NotFound)), 1),
-            Some(SyncState::Failed(SyncProblem::ServerOutdated))
-        );
-        // A clean sync has no problem, and holds nothing back.
-        let clean = sync_outcome(Ok(SyncReport::default()), 7).unwrap();
-        assert_eq!(
-            clean,
-            SyncState::Synced {
-                at_ms: 7,
-                conflicts: 0,
-                conflicted: Vec::new(),
-                problem: None,
-            }
-        );
-        assert_eq!(hold_after(state_problem(&clean)), None);
     }
 
     #[test]
@@ -1382,60 +940,6 @@ mod tests {
         )
         .unwrap();
         (store, session, dir)
-    }
-
-    /// End to end through the Worker's rules (in memory): two libraries of
-    /// one account sync through `kanso_sync::sync`, encrypted, and the status
-    /// reflects the result.
-    #[test]
-    fn syncing_two_libraries_reports_synced() {
-        use kanso_core::DocType;
-        use kanso_store::{Origin, Put};
-        let server = kanso_sync::MemoryServer::new();
-        let (a, a_session, _a_dir) = library(&server, "alice", 1, true);
-        let (b, b_session, _b_dir) = library(&server, "alice", 2, false);
-        let book = a
-            .put(
-                DocType::Book,
-                serde_json::json!({"name": "B"}),
-                Put::Upsert,
-                Origin::Ui,
-            )
-            .unwrap();
-        let note = a
-            .put(
-                DocType::Note,
-                serde_json::json!({"title": "hello", "bookId": book.id}),
-                Put::Upsert,
-                Origin::Ui,
-            )
-            .unwrap();
-        let options = kanso_sync::SyncOptions::default();
-        let state = sync_outcome(kanso_sync::sync(&a, &server, &a_session, &options), 7);
-        assert_eq!(
-            state,
-            Some(SyncState::Synced {
-                at_ms: 7,
-                conflicts: 0,
-                conflicted: Vec::new(),
-                problem: None,
-            })
-        );
-        // The server holds both, under opaque IDs.
-        let view = server.plain_view(&a_session);
-        assert_eq!(view.docs().len(), 2);
-        assert!(
-            view.wire_docs()
-                .iter()
-                .all(|doc| doc.id != note.id && doc.id != book.id)
-        );
-
-        let state = sync_outcome(kanso_sync::sync(&b, &server, &b_session, &options), 8);
-        assert!(matches!(
-            state,
-            Some(SyncState::Synced { problem: None, .. })
-        ));
-        assert_eq!(b.note(&note.id).unwrap().unwrap().title, "hello");
     }
 
     /// The server's own daily cap (`writes-global`) reads "Server busy", not
@@ -1522,20 +1026,5 @@ mod tests {
         assert_eq!(hold, Some(Hold::Until(until)));
         assert!(holds_at(hold, until - 1));
         assert!(!holds_at(hold, until));
-    }
-
-    #[test]
-    fn only_local_edits_trigger_a_quick_sync() {
-        let change = |origin| kanso_store::Change {
-            id: "note:a".into(),
-            rev: "1-a".into(),
-            seq: 1,
-            deleted: false,
-            origin,
-        };
-        assert!(is_local_edit(&change(kanso_store::Origin::Ui)));
-        assert!(is_local_edit(&change(kanso_store::Origin::Api)));
-        assert!(!is_local_edit(&change(kanso_store::Origin::Sync)));
-        assert!(!is_local_edit(&change(kanso_store::Origin::Import)));
     }
 }

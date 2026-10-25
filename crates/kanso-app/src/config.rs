@@ -299,11 +299,7 @@ impl Default for Appearance {
     }
 }
 
-/// Whether `server` is the compiled-in default, however it is written, or
-/// the same server under its first name.
-pub fn is_default_server(server: &str) -> bool {
-    kanso_sync::check_endpoint(server).is_ok_and(|server| kanso_sync::is_owner_server(&server))
-}
+pub use kanso_engine::account::is_default_server;
 
 /// The owner's Worker before it moved to its own domain; v1 files that name
 /// it migrate to the default, like the default itself. It no longer answers.

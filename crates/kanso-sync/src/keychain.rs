@@ -77,17 +77,29 @@ pub trait SecretStore: Send + Sync {
 /// The macOS Keychain, service [`SERVICE`] (or another, for Kanso Dev):
 /// generic passwords whose account is the item name. Tests never construct
 /// it; they use [`MemorySecrets`].
+#[cfg(all(
+    feature = "system-keychain",
+    any(target_os = "macos", target_os = "windows", target_os = "linux")
+))]
 #[derive(Clone, Copy, Debug)]
 pub struct Keychain {
     service: &'static str,
 }
 
+#[cfg(all(
+    feature = "system-keychain",
+    any(target_os = "macos", target_os = "windows", target_os = "linux")
+))]
 impl Default for Keychain {
     fn default() -> Self {
         Keychain::with_service(SERVICE)
     }
 }
 
+#[cfg(all(
+    feature = "system-keychain",
+    any(target_os = "macos", target_os = "windows", target_os = "linux")
+))]
 // no-prop-test: a thin wrapper over the system Keychain, which tests must
 // never touch; the item formats above it are tested through `MemorySecrets`.
 impl Keychain {
@@ -106,10 +118,18 @@ impl Keychain {
     }
 }
 
+#[cfg(all(
+    feature = "system-keychain",
+    any(target_os = "macos", target_os = "windows", target_os = "linux")
+))]
 fn keychain_error(err: keyring::Error) -> SecretError {
     SecretError(err.to_string())
 }
 
+#[cfg(all(
+    feature = "system-keychain",
+    any(target_os = "macos", target_os = "windows", target_os = "linux")
+))]
 impl SecretStore for Keychain {
     fn get(&self, item: &str) -> Result<Option<Zeroizing<String>>, SecretError> {
         match self.entry(item)?.get_password() {

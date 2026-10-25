@@ -486,6 +486,7 @@ fn provider_change(
             };
             let started = provider_begin(
                 thread.backend.as_ref(),
+                &Desktop,
                 &route,
                 &start_provider,
                 &device,
@@ -538,8 +539,7 @@ struct ProviderFlow {
     device: LoginDevice,
     route: ProviderRoute,
     started: StartedProviderFlow,
-    apple_callback:
-        Option<async_channel::Receiver<Result<String, crate::provider_browser::BrowserError>>>,
+    apple_callback: Option<Box<dyn AppleWait>>,
     cancel: Arc<AtomicBool>,
 }
 
@@ -554,14 +554,12 @@ fn provider_wait(
     provider: &Provider,
     tx: &Sender<Progress>,
     cx: &mut App,
-) -> Option<(
-    Option<async_channel::Receiver<Result<String, crate::provider_browser::BrowserError>>>,
-    Arc<AtomicBool>,
-)> {
+) -> Option<(Option<Box<dyn AppleWait>>, Arc<AtomicBool>)> {
     let apple_callback = match (&started.start, provider) {
         (ProviderStart::Apple(apple), Provider::Apple) => {
             match crate::provider_browser::apple_sign_in(apple) {
-                Ok(callback) => Some(callback),
+                Ok(callback) => Some(Box::new(crate::provider_browser::AppleReceiver(callback))
+                    as Box<dyn AppleWait>),
                 Err(_) => {
                     failed(
                         tx,
@@ -631,6 +629,7 @@ fn finish_provider_change(
             let flow_id = started.start.flow_id().to_owned();
             let answer = provider_finish(
                 seams.backend.as_ref(),
+                &Desktop,
                 &route,
                 &provider,
                 &device,

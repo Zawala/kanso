@@ -651,24 +651,6 @@ pub fn is_book_locked(id: &str, books: &[Book]) -> bool {
     book_path(id, books).iter().any(|book| book.is_locked())
 }
 
-/// Notebook `id` and every notebook inside it, at any depth: what locking
-/// it seals. Should the notebooks form a cycle, each is taken once.
-pub fn book_subtree(id: &str, books: &[Book]) -> Vec<String> {
-    let mut found = vec![id.to_owned()];
-    let mut i = 0;
-    while i < found.len() {
-        for book in books {
-            if book.parent_book_id.as_deref() == Some(found[i].as_str())
-                && !found.contains(&book.id)
-            {
-                found.push(book.id.clone());
-            }
-        }
-        i += 1;
-    }
-    found
-}
-
 /// Whether a notebook inside `id`, at any depth, has notes of its own. A
 /// notebook can hold only notebooks, its notes all a level or more down;
 /// it isn't empty then. Should the notebooks form a cycle, each is looked
@@ -738,10 +720,11 @@ pub fn book_tree(books: &[Book]) -> Vec<(usize, &Book)> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Filter, book_path, book_subtree, book_tree, has_notes_inside, is_book_locked, list_notes,
-        pinned_first, recent_first, recent_notes, refine_status, search_params,
+        Filter, book_path, book_tree, has_notes_inside, is_book_locked, list_notes, pinned_first,
+        recent_first, recent_notes, refine_status, search_params,
     };
     use kanso_core::{Book, NoteFacts, NoteStatus, Query};
+    use kanso_engine::lock::book_subtree;
     use kanso_store::{NoteSummary, Sort};
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;

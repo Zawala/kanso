@@ -1,0 +1,32 @@
+[package]
+name = "kanso-engine"
+description = "Kanso's engine without a window: lock sessions, account flows and sync scheduling, shared by the desktop app and the mobile app."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Google's PKCE challenge (account/provider.rs).
+base64.workspace = true
+# The recovery-key file's date and the resume time (account/words.rs).
+chrono.workspace = true
+fastrand.workspace = true
+kanso-core.workspace = true
+kanso-store.workspace = true
+# Without the desktop Keychain: secrets go through the `Secrets` trait.
+kanso-sync = { path = "../kanso-sync", default-features = false }
+serde_json.workspace = true
+sha2.workspace = true
+# The generators the apps' view tests share (strategies.rs).
+proptest = { workspace = true, optional = true }
+
+[features]
+# `strategies`: generators for kanso-app's view tests.
+test-support = ["dep:proptest"]
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+# A store that refuses a write, to test a binding that fails.
+rusqlite.workspace = true

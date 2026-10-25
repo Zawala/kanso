@@ -12,6 +12,7 @@ license = "AGPL-3.0-or-later"
 kanso-acp = { path = "crates/kanso-acp" }
 kanso-ai = { path = "crates/kanso-ai" }
 kanso-core = { path = "crates/kanso-core" }
+kanso-engine = { path = "crates/kanso-engine" }
 kanso-store = { path = "crates/kanso-store" }
 kanso-import = { path = "crates/kanso-import" }
 kanso-server = { path = "crates/kanso-server" }
