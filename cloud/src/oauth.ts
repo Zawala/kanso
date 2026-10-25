@@ -123,10 +123,13 @@ async function fetchJwks(url: string, force = false): Promise<JwksCacheEntry> {
 
 	let response: Response;
 	try {
+		// Workers can't refuse a redirect (`redirect: "error"` throws before
+		// anything is sent): "manual" hands it back as a 3xx, which every
+		// provider call here treats as unavailable, since none is `ok`.
 		response = await fetch(url, {
 			method: "GET",
 			headers: { accept: "application/json" },
-			redirect: "error",
+			redirect: "manual",
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 		});
 	} catch {
@@ -429,7 +432,7 @@ async function exchangeToken(url: string, form: URLSearchParams): Promise<{ ok: 
 			method: "POST",
 			headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
 			body: form.toString(),
-			redirect: "error",
+			redirect: "manual",
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 		});
 	} catch {
@@ -502,13 +505,13 @@ export async function githubDeviceToken(env: Env, deviceCode: string): Promise<G
 	try {
 		response = await fetch(GITHUB_TOKEN_URL, {
 			method: "POST",
-			headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
+			headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", "user-agent": "kanso-sync/0.1.0" },
 			body: new URLSearchParams({
 				client_id: env.GITHUB_CLIENT_ID,
 				device_code: deviceCode,
 				grant_type: "urn:ietf:params:oauth:grant-type:device_code",
 			}).toString(),
-			redirect: "error",
+			redirect: "manual",
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 		});
 	} catch {
@@ -550,7 +553,7 @@ export async function githubSubject(token: string): Promise<{ ok: true; subject:
 				"user-agent": "kanso-sync/0.1.0",
 				accept: "application/vnd.github+json",
 			},
-			redirect: "error",
+			redirect: "manual",
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 		});
 	} catch {
@@ -592,9 +595,9 @@ export async function githubDeviceCode(
 	try {
 		response = await fetch(GITHUB_DEVICE_CODE_URL, {
 			method: "POST",
-			headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
+			headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", "user-agent": "kanso-sync/0.1.0" },
 			body: new URLSearchParams({ client_id: env.GITHUB_CLIENT_ID }).toString(),
-			redirect: "error",
+			redirect: "manual",
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 		});
 	} catch {

@@ -19,6 +19,7 @@ import {
 	appleClientSecret,
 	exchangeAppleCode,
 	exchangeGoogleCode,
+	githubDeviceCode,
 	githubDeviceToken,
 	githubSubject,
 	pkceChallenge,
@@ -85,7 +86,11 @@ function jsonResponse(value: unknown, status = 200): Response {
 }
 
 function stubFetch(response: (input: Parameters<typeof fetch>[0], init?: RequestInit) => Promise<Response> | Response) {
-	const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input, init) => response(input, init));
+	const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input, init) => {
+		// Throws on options the runtime's fetch refuses, as the deployed Worker would.
+		new Request(input, init);
+		return response(input, init);
+	});
 	vi.stubGlobal("fetch", fetchMock);
 	return fetchMock;
 }
@@ -355,7 +360,7 @@ describe("provider code exchanges", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		const [url, init] = fetchMock.mock.calls[0];
 		expect(url).toBe(APPLE_TOKEN_URL);
-		expect(init?.redirect).toBe("error");
+		expect(init?.redirect).toBe("manual");
 		expect(init?.signal).toBeDefined();
 		const form = new URLSearchParams(String(init?.body));
 		expect(form.get("client_id")).toBe("apple-client");
@@ -398,6 +403,31 @@ describe("provider code exchanges", () => {
 });
 
 describe("GitHub device flow", () => {
+	it("starts with a device code the deployed runtime can fetch", async () => {
+		const fetchMock = stubFetch(() =>
+			jsonResponse({
+				device_code: "device-code-value",
+				user_code: "ABCD-1234",
+				verification_uri: "https://github.com/login/device",
+				expires_in: 900,
+				interval: 5,
+			}),
+		);
+		const result = await githubDeviceCode(testEnv({ GITHUB_CLIENT_ID: "github-client" }));
+		expect(result.ok).toBe(true);
+		expect(fetchMock.mock.calls[0][1]?.redirect).toBe("manual");
+	});
+
+	it("treats a provider's redirect as unavailable, never following it", async () => {
+		const moved = () => new Response(null, { status: 302, headers: { location: "https://example.com/" } });
+		stubFetch(moved);
+		expect(await githubDeviceCode(testEnv({ GITHUB_CLIENT_ID: "id" }))).toEqual({ ok: false, error: "provider_unavailable" });
+		expect(await githubDeviceToken(testEnv({ GITHUB_CLIENT_ID: "id" }), "code")).toEqual({ ok: false, error: "provider_unavailable" });
+		expect(await githubSubject("token")).toEqual({ ok: false, error: "provider_unavailable" });
+		expect(await exchangeGoogleCode(testEnv({ GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret" }), "code", "verifier"))
+			.toEqual({ ok: false, error: "provider_unavailable" });
+	});
+
 	it.each([
 		["authorization_pending", "pending"],
 		["slow_down", "slow_down"],
@@ -410,7 +440,7 @@ describe("GitHub device flow", () => {
 		const [url, init] = fetchMock.mock.calls[0];
 		expect(url).toBe(GITHUB_TOKEN_URL);
 		expect(init?.method).toBe("POST");
-		expect(init?.redirect).toBe("error");
+		expect(init?.redirect).toBe("manual");
 		expect(init?.signal).toBeDefined();
 		expect(new URLSearchParams(String(init?.body))).toEqual(
 			new URLSearchParams({
