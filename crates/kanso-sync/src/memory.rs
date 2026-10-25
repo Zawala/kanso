@@ -992,12 +992,12 @@ impl ServerState {
         Ok(match provider {
             Provider::Apple => ProviderStart::Apple(AppleStart {
                 flow_id,
-                auth_url: "https://memory.kanso.test/apple".into(),
+                auth_url: "https://appleid.apple.com/auth/authorize?client_id=memory".into(),
                 expires_at: now + 600_000,
             }),
             Provider::Google => ProviderStart::Google(GoogleStart {
                 flow_id,
-                auth_url: "https://memory.kanso.test/google".into(),
+                auth_url: "https://accounts.google.com/o/oauth2/v2/auth?client_id=memory".into(),
                 nonce: b64(&random::<32>()),
                 state: b64(&random::<32>()),
                 expires_at: now + 600_000,
@@ -1013,7 +1013,7 @@ impl ServerState {
                 None => ProviderStart::Github(GithubStart {
                     flow_id,
                     user_code: "MEMORY-CODE".into(),
-                    verification_uri: "https://memory.kanso.test/device".into(),
+                    verification_uri: "https://github.com/login/device".into(),
                     interval: 5,
                     expires_in: 600,
                 }),
