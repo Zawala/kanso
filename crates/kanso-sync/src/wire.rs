@@ -488,6 +488,10 @@ pub enum ApiError {
     /// 409 `already_has_password`.
     #[error("409 already_has_password")]
     AlreadyHasPassword,
+    /// 409 `no_password`: `account/password` on an account without one; it
+    /// sets its first with `sign-in/password`.
+    #[error("409 no_password")]
+    NoPassword,
     /// 409 `credential_exists`.
     #[error("409 credential_exists")]
     CredentialExists,
@@ -603,6 +607,7 @@ impl ApiError {
             | ApiError::IdentityTaken
             | ApiError::LastMethod
             | ApiError::AlreadyHasPassword
+            | ApiError::NoPassword
             | ApiError::CredentialExists
             | ApiError::ApprovalUsed
             | ApiError::ApprovalRequestIdConflict
@@ -637,6 +642,7 @@ impl ApiError {
             ApiError::ProviderDenied => "provider_denied",
             ApiError::IdentityTaken => "identity_taken",
             ApiError::AlreadyHasPassword => "already_has_password",
+            ApiError::NoPassword => "no_password",
             ApiError::ForbiddenOrigin => "forbidden_origin",
             ApiError::AccountDisabled => "account_disabled",
             ApiError::SignupClosed { .. } => "signup_closed",
@@ -718,6 +724,7 @@ impl ApiError {
             "provider_denied" => ApiError::ProviderDenied,
             "identity_taken" => ApiError::IdentityTaken,
             "already_has_password" => ApiError::AlreadyHasPassword,
+            "no_password" => ApiError::NoPassword,
             "forbidden_origin" => ApiError::ForbiddenOrigin,
             "account_disabled" => ApiError::AccountDisabled,
             "signup_closed" => ApiError::SignupClosed {
@@ -830,6 +837,7 @@ mod tests {
             ApiError::ProviderDenied,
             ApiError::IdentityTaken,
             ApiError::AlreadyHasPassword,
+            ApiError::NoPassword,
             ApiError::ProviderUnavailable,
             ApiError::ForbiddenOrigin,
             ApiError::AccountDisabled,

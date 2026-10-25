@@ -419,6 +419,9 @@ impl From<ApiError> for AccountError {
             ApiError::IdentityTaken => AccountError::IdentityTaken,
             ApiError::LastMethod => AccountError::LastMethod,
             ApiError::AlreadyHasPassword => AccountError::AlreadyHasPassword,
+            // The app's words match `AccountError` exhaustively; until it
+            // has a variant for this race, it reads as an unexpected answer.
+            ApiError::NoPassword => AccountError::Protocol("409 no_password".into()),
             ApiError::CredentialExists => AccountError::CredentialExists,
             ApiError::SelfApproval => AccountError::SelfApproval,
             ApiError::ApprovalUsed => AccountError::ApprovalUsed,
