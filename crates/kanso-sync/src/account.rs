@@ -854,7 +854,7 @@ pub fn start_provider(
     let (server, _) = checked_server(server)?;
     let api = b.api(&server);
     let device = provider_device(device);
-    match provider {
+    let start = match provider {
         Provider::Google => {
             let loopback = loopback.ok_or(AccountError::BadRequest)?;
             let challenge = code_challenge.ok_or(AccountError::BadRequest)?;
@@ -876,7 +876,10 @@ pub fn start_provider(
             )
         })
         .map_err(AccountError::from),
-    }
+    }?;
+    // Nothing opens a page the server named until it is the provider's.
+    crate::provider::check_provider_start(provider, &start, &server)?;
+    Ok(start)
 }
 
 /// One Apple or GitHub poll of a started flow. `secret` is Apple's, from the
