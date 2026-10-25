@@ -54,7 +54,7 @@ impl InlineAction {
     ];
 
     /// The menu label.
-    pub fn label(self) -> &'static str {
+    pub const fn label(self) -> &'static str {
         match self {
             InlineAction::Improve => "Improve Writing",
             InlineAction::Shorten => "Make Shorter",
@@ -291,8 +291,9 @@ pub fn summarize(
 }
 
 /// Hands a stream's events to `on_event` until it ends, fails or `cancel` is
-/// set.
-fn relay(
+/// set. The stream is a provider's `stream` result, taken before this runs
+/// so the provider isn't held while the reply arrives.
+pub fn relay(
     events: Result<Box<dyn Iterator<Item = Event> + Send>, crate::AiError>,
     cancel: &Arc<AtomicBool>,
     on_event: &mut dyn FnMut(Event),
