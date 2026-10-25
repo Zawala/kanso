@@ -75,6 +75,7 @@
   // Sign-in configuration (keep commented until step 7):
   // PASSKEY_RP_ID: "sync.kansoapp.app"
   // PASSKEY_ORIGINS: "[\"https://sync.kansoapp.app\"]"
+  // APP_ASSOC_APPS: "[\"4973Y692JU.app.kanso.Kanso\"]"  (the AASA file's webcredentials apps)
   // APPLE_CLIENT_ID: "app.kanso.Kanso.web"
   // APPLE_TEAM_ID: "4973Y692JU"
   // APPLE_KEY_ID: "MS6Y3S5ZL7"

@@ -30,8 +30,9 @@ import {
 import { env } from "cloudflare:workers";
 import { pepperKeys, randomBytes } from "../src/crypto";
 import { base64url } from "../src/protocol";
-import { type SignInRoutes, consumeFlow, flowById, flowForDevice, healthAuth, newFlow, openDeviceCode, openFlowSecret } from "../src/sign_in";
-import { callJson, resetServer, signUp, testEnv } from "./helpers";
+import { AASA_PATH, type SignInRoutes, assocApps, consumeFlow, flowById, flowForDevice, healthAuth, newFlow, openDeviceCode, openFlowSecret } from "../src/sign_in";
+import { call, callJson, resetServer, signUp, testEnv } from "./helpers";
+import fc from "fast-check";
 
 const NOW = Date.UTC(2026, 9, 24, 12);
 const nowSeconds = Math.floor(NOW / 1000);
@@ -669,5 +670,47 @@ describe("auth_flows", () => {
 		expect(await consumeFlow(env, live, NOW)).toBe(false);
 		const expiring = await newFlow(env, keys, flow, NOW);
 		expect(await consumeFlow(env, expiring, NOW + 60_001)).toBe(false);
+	});
+});
+
+describe("GET /.well-known/apple-app-site-association", () => {
+	const APPS = '["4973Y692JU.app.kanso.Kanso"]';
+
+	it("serves the webcredentials apps from APP_ASSOC_APPS: 200 application/json, short cache, no redirect", async () => {
+		const r = await call(AASA_PATH, { env: testEnv({ APP_ASSOC_APPS: APPS }) });
+		expect(r.status).toBe(200);
+		expect(r.headers.get("content-type")).toBe("application/json");
+		expect(r.headers.get("cache-control")).toBe("public, max-age=300");
+		expect(r.headers.get("location")).toBeNull();
+		expect(await r.json()).toEqual({ webcredentials: { apps: ["4973Y692JU.app.kanso.Kanso"] } });
+	});
+
+	it("answers HEAD with the headers and no body, and takes an Origin (it is public)", async () => {
+		const head = await call(AASA_PATH, { method: "HEAD", env: testEnv({ APP_ASSOC_APPS: APPS }) });
+		expect(head.status).toBe(200);
+		expect(head.headers.get("content-type")).toBe("application/json");
+		expect(await head.text()).toBe("");
+		const browser = await call(AASA_PATH, { env: testEnv({ APP_ASSOC_APPS: APPS }), headers: { origin: "https://example.com" } });
+		expect(browser.status).toBe(200);
+		expect((await call(AASA_PATH, { method: "POST", body: "{}", env: testEnv({ APP_ASSOC_APPS: APPS }) })).status).toBe(405);
+	});
+
+	it("is 404 without APP_ASSOC_APPS or with a malformed one", async () => {
+		for (const value of [undefined, "", "[]", "not json", '"4973Y692JU.app.kanso.Kanso"', '["app.kanso.Kanso"]', '["4973y692ju.app.kanso.Kanso"]', '[1]', `[${'"4973Y692JU.a.b",'.repeat(2).slice(0, -1)}]`]) {
+			const r = await callJson(AASA_PATH, { env: testEnv({ APP_ASSOC_APPS: value }) });
+			expect(r.status, String(value)).toBe(404);
+		}
+	});
+
+	it("property: assocApps keeps exactly the arrays of distinct well-formed IDs", () => {
+		const team = fc.stringMatching(/^[A-Z0-9]{10}$/);
+		const bundle = fc.array(fc.stringMatching(/^[A-Za-z0-9-]{1,8}$/), { minLength: 2, maxLength: 4 }).map((parts) => parts.join("."));
+		fc.assert(
+			fc.property(fc.uniqueArray(fc.tuple(team, bundle).map(([t, b]) => `${t}.${b}`), { minLength: 1, maxLength: 16 }), (ids) => {
+				expect(assocApps(JSON.stringify(ids))).toEqual(ids);
+				expect(assocApps(JSON.stringify([...ids, ids[0]]))).toBeNull();
+			}),
+			{ numRuns: Math.min(100, Number(env.FAST_CHECK_RUNS)) },
+		);
 	});
 });

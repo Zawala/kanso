@@ -96,6 +96,7 @@ import * as passkeys from "./passkeys";
 import * as proofs from "./proofs";
 import { runCron } from "./purge";
 import * as shares from "./shares";
+import * as signIn from "./sign_in";
 import * as sync from "./sync";
 
 export type { Env } from "./env";
@@ -127,6 +128,8 @@ interface Route {
 }
 
 const json = (handler: Handler | PepperHandler, pepper = false): Method => ({ handler, body: "json", pepper });
+
+const aasa: Handler = async (request, env) => signIn.appSiteAssociation(request, env);
 
 const ROUTES: Record<string, Route> = {
 	"/v2/health": { name: "health", binding: true, methods: { GET: { handler: auth.health, pepper: true } } },
@@ -173,6 +176,12 @@ const ROUTES: Record<string, Route> = {
 	"/v2/account/sign-in/passkeys/finish": { name: "passkey_register_finish", methods: { POST: json(passkeys.registerFinish) } },
 	"/v2/account/sign-in/approvals": { name: "approvals", methods: { POST: json(approvals.create), GET: { handler: approvals.list } } },
 	"/v2/account/events": { name: "account_events", methods: { GET: { handler: approvals.events } } },
+	// Read by Apple's CDN, which may send an Origin-less GET or HEAD; no secret, so public.
+	[signIn.AASA_PATH]: {
+		name: "aasa",
+		public: true,
+		methods: { GET: { handler: aasa }, HEAD: { handler: aasa } },
+	},
 };
 
 /** The routes under /v2/account/sign-in/approvals/<id>, by what follows the ID. */

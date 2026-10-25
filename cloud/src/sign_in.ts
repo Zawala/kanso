@@ -136,6 +136,50 @@ export const ACCOUNT_EVENTS_PATH = "/v2/account/events";
 /** Always present on this Worker, which serves the account event socket; an older one omits it. */
 export const healthEvents = (): EventsAdvertisement => ({ account: ACCOUNT_EVENTS_PATH });
 
+// ----------------------------------------------- apple-app-site-association
+
+export const AASA_PATH = "/.well-known/apple-app-site-association";
+
+/** `<TEAMID>.<bundle ID>`: a 10-character team ID, then a reverse-DNS bundle ID. */
+const APP_ID = /^[A-Z0-9]{10}\.[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
+
+/**
+ * `APP_ASSOC_APPS`, a JSON array of app IDs (`["<TEAMID>.app.kanso.Kanso"]`),
+ * or null when it is unset or anything but 1–16 well-formed, distinct IDs.
+ */
+export function assocApps(value: string | undefined): string[] | null {
+	if (!present(value)) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(value);
+	} catch {
+		return null;
+	}
+	if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 16) return null;
+	if (!parsed.every((id) => typeof id === "string" && APP_ID.test(id))) return null;
+	return new Set(parsed).size === parsed.length ? (parsed as string[]) : null;
+}
+
+/**
+ * `GET` and `HEAD /.well-known/apple-app-site-association` (docs/ACCOUNTS.md ›
+ * Passkeys › Where the ceremony runs): the Associated Domains file macOS reads
+ * (through Apple's CDN) before it lets the app use passkeys for this RP ID.
+ * `{"webcredentials":{"apps":[…]}}` from `APP_ASSOC_APPS`, 200
+ * `application/json` with a short `Cache-Control`, never a redirect; 404 when
+ * the var is unset or malformed. It holds no secret.
+ */
+export function appSiteAssociation(request: Request, env: Env): Response {
+	const apps = assocApps(env.APP_ASSOC_APPS);
+	if (!apps) return error(404, "not_found", "Not found.");
+	const body = JSON.stringify({ webcredentials: { apps } });
+	const headers = {
+		"content-type": "application/json",
+		"cache-control": "public, max-age=300",
+		"x-content-type-options": "nosniff",
+	};
+	return new Response(request.method === "HEAD" ? null : body, { status: 200, headers });
+}
+
 // ---------------------------------------------------------------- auth flows
 
 /** One ceremony (docs/ACCOUNTS.md › Migration 0006 › `auth_flows`). */
