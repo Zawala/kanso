@@ -2214,6 +2214,138 @@ fn settings_account_methods(
     });
 }
 
+/// Linking GitHub from Sign-in methods: the device code waits under the list.
+fn settings_account_methods_linking(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account_methods(cx, window, workspace, store);
+    cx.update(|cx| {
+        cx.global_mut::<Services>().provider_wait = Some(ProviderWait {
+            provider: "GitHub",
+            user_code: Some("ABCD-1234".into()),
+            verification_uri: Some("https://github.com/login/device".into()),
+            cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        });
+    });
+}
+
+/// The account's ways in for the proof sheet's shots, as of a minute ago.
+fn set_methods(
+    cx: &mut HeadlessAppContext,
+    has_password: bool,
+    linked: Vec<kanso_sync::Provider>,
+    passkeys: usize,
+) {
+    let now = cx.update(|cx| Clock::now_ms(cx));
+    cx.update(|cx| {
+        cx.global_mut::<Services>().account_methods = AccountMethodsState {
+            last_successful: Some(kanso_sync::AccountMethods {
+                has_password,
+                rp_id: Some("sync.kansoapp.app".into()),
+                available: vec![
+                    kanso_sync::Provider::Apple,
+                    kanso_sync::Provider::Google,
+                    kanso_sync::Provider::Github,
+                ],
+                linked: linked
+                    .into_iter()
+                    .map(|provider| kanso_sync::provider::LinkedProvider {
+                        provider,
+                        created_at: now - 14 * DAY,
+                    })
+                    .collect(),
+                passkeys: (0..passkeys)
+                    .map(|n| kanso_sync::provider::PasskeyInfo {
+                        credential_id: vec![n as u8 + 1],
+                        created_at: now - 30 * DAY,
+                        last_used_at: None,
+                        prf: true,
+                        transports: vec!["internal".into()],
+                    })
+                    .collect(),
+            }),
+            ..AccountMethodsState::default()
+        };
+    });
+}
+
+/// "Confirm it's you": the password or Apple, for a new recovery key.
+fn proof_choice(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
+    set_methods(cx, true, vec![kanso_sync::Provider::Apple], 0);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        crate::proof_sheet::open(crate::proof_sheet::Action::NewRecoveryKey, window, cx)
+    })
+    .unwrap();
+}
+
+/// Unlinking Apple when it is the only way in: Apple proves it, and the
+/// recovery key comes with it.
+fn proof_unlink_last(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
+    set_methods(cx, false, vec![kanso_sync::Provider::Apple], 0);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        crate::proof_sheet::open(
+            crate::proof_sheet::Action::Unlink(kanso_sync::Provider::Apple),
+            window,
+            cx,
+        )
+    })
+    .unwrap();
+}
+
+/// [Set a password…] on an Apple-only account: Apple, the new password and
+/// the recovery key.
+fn proof_set_password(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
+    set_methods(cx, false, vec![kanso_sync::Provider::Apple], 0);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        crate::proof_sheet::open(crate::proof_sheet::Action::SetPassword, window, cx)
+    })
+    .unwrap();
+}
+
+/// Removing a passkey with the password as proof.
+fn proof_remove_passkey(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    settings_account(cx, window, workspace, store);
+    set_methods(cx, true, vec![], 2);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    cx.update_window(window, |_, window, cx| {
+        crate::proof_sheet::open(
+            crate::proof_sheet::Action::RemovePasskey(vec![1]),
+            window,
+            cx,
+        )
+    })
+    .unwrap();
+}
+
 fn settings_account_offline(
     cx: &mut HeadlessAppContext,
     window: AnyWindowHandle,
@@ -5081,6 +5213,28 @@ fn snapshots() {
                 settings_account_methods,
             )
         },
+        Shot {
+            size: size(px(1440.), px(1400.)),
+            ..shot(
+                "light-settings-account-methods",
+                Light,
+                Edit,
+                settings_account_methods,
+            )
+        },
+        Shot {
+            size: size(px(1440.), px(1400.)),
+            ..shot(
+                "dark-settings-account-methods-linking",
+                Dark,
+                Edit,
+                settings_account_methods_linking,
+            )
+        },
+        form("dark-proof-choice", Dark, proof_choice),
+        form("dark-proof-unlink-last", Dark, proof_unlink_last),
+        form("light-proof-set-password", Light, proof_set_password),
+        form("dark-proof-remove-passkey", Dark, proof_remove_passkey),
         shot(
             "dark-settings-account-offline",
             Dark,

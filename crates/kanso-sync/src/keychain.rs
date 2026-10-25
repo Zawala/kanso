@@ -265,6 +265,37 @@ struct AccountItem {
     /// 43 base64url characters.
     #[serde(with = "zeroizing_string")]
     data_key: Zeroizing<String>,
+    /// The device proof a passkey or provider sign-in bound the session
+    /// to (43 base64url characters), when it isn't this library's own.
+    /// Older items have none, and an older app ignores it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "optional_zeroizing_string"
+    )]
+    device_proof: Option<Zeroizing<String>>,
+}
+
+/// `Option<Zeroizing<String>>` as an optional JSON string.
+mod optional_zeroizing_string {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use zeroize::Zeroizing;
+
+    pub fn serialize<S: Serializer>(
+        value: &Option<Zeroizing<String>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        match value {
+            Some(text) => serializer.serialize_some(text.as_str()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<Zeroizing<String>>, D::Error> {
+        Ok(Option::<String>::deserialize(deserializer)?.map(Zeroizing::new))
+    }
 }
 
 /// The v2 `sync-pending` item. It contains the original device proof and raw
@@ -653,6 +684,9 @@ pub fn save_session(
         device_id: session.device_id.clone(),
         token: session.token().clone(),
         data_key: Zeroizing::new(b64(session.data_key().bytes())),
+        device_proof: session
+            .stored_login_device()
+            .map(|device| Zeroizing::new(device.proof.clone())),
     };
     let json = Zeroizing::new(serde_json::to_string(&item).expect("the item serializes"));
     secrets.set(&account_item(library_id), &json)
@@ -696,6 +730,12 @@ pub fn load_session(
                 DataKey::from_bytes(data_key),
             );
             session.set_library_id(library_id);
+            if let Some(proof) = &item.device_proof {
+                session.set_login_device(crate::api::LoginDevice {
+                    id: session.device_id.clone(),
+                    proof: proof.to_string(),
+                });
+            }
             Ok(Some(session))
         }
         _ => Ok(None),
@@ -882,6 +922,72 @@ mod tests {
         assert_eq!(pending_item("l_00ff"), "sync-pending:l_00ff");
         assert_eq!(recovery_item("l_00ff"), "sync-recovery-key:l_00ff");
         assert_eq!(logout_item("l_00ff"), "sync-logout:l_00ff");
+    }
+
+    /// A session bound to its sign-in's device keeps that device's proof
+    /// in the Keychain item and gets it back on load; one that isn't bound
+    /// writes no proof and falls back to this library's own device. Neither
+    /// prints the proof.
+    #[test]
+    fn a_session_keeps_the_device_it_was_created_with() {
+        let secrets = MemorySecrets::new();
+        let origin = "https://a.example";
+        let account = "a_0123456789abcdef0123456789abcdef";
+        let device_id = "d_0123456789abcdef0123456789abcdef";
+        let proof = b64(&[9; 32]);
+        let session = |bound: bool| {
+            let mut session = Session::new(
+                origin.into(),
+                origin.into(),
+                account.into(),
+                "alice".into(),
+                device_id.into(),
+                SessionToken::new(format!("kanso_{}", b64(&[6; 32]))),
+                DataKey::from_bytes([7; 32]),
+            );
+            if bound {
+                session.set_login_device(crate::api::LoginDevice {
+                    id: device_id.into(),
+                    proof: proof.clone(),
+                });
+            }
+            session
+        };
+        let identity = crate::binding::DeviceIdentity::from_parts(
+            "l_00000000000000000000000000000001",
+            "Mac",
+            [1; 32],
+        );
+
+        save_session(&secrets, "l_1", &session(true)).unwrap();
+        let loaded = load_session(&secrets, "l_1", origin, account)
+            .unwrap()
+            .unwrap();
+        let device = loaded.login_device(&identity);
+        assert_eq!(
+            (device.id.as_str(), device.proof.as_str()),
+            (device_id, proof.as_str())
+        );
+        assert!(!format!("{loaded:?}").contains(&proof));
+
+        save_session(&secrets, "l_2", &session(false)).unwrap();
+        let raw = secrets.get(&account_item("l_2")).unwrap().unwrap();
+        assert!(!raw.contains("device_proof"));
+        let loaded = load_session(&secrets, "l_2", origin, account)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            loaded.login_device(&identity),
+            crate::api::LoginDevice::for_identity(&identity, origin, account)
+        );
+
+        // A proof for another device ID is never kept.
+        let mut other = session(false);
+        other.set_login_device(crate::api::LoginDevice {
+            id: "d_ffffffffffffffffffffffffffffffff".into(),
+            proof: proof.clone(),
+        });
+        assert!(other.stored_login_device().is_none());
     }
 
     fn locked() -> LockedSession {

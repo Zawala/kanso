@@ -651,13 +651,24 @@ impl ProviderStep {
 /// The answer to a link or proof flow's completion.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LinkOutcome {
-    Linked { provider: Provider, created_at: i64 },
-    Proof { provider: Provider },
+    Linked {
+        provider: Provider,
+        created_at: i64,
+    },
+    Proof {
+        provider: Provider,
+    },
+    /// Apple's or GitHub's flow isn't finished yet: poll again.
+    Pending {
+        slow_down: bool,
+    },
 }
 
 #[derive(Deserialize)]
 struct LinkReply {
     kind: Option<String>,
+    status: Option<String>,
+    slow_down: Option<bool>,
     provider: Option<Provider>,
     created_at: Option<i64>,
 }
@@ -666,6 +677,11 @@ impl LinkOutcome {
     pub fn from_json(value: &[u8]) -> Result<LinkOutcome, String> {
         let reply: LinkReply =
             serde_json::from_slice(value).map_err(|e| format!("a link answer: {e}"))?;
+        if reply.kind.is_none() && reply.status.as_deref() == Some("pending") {
+            return Ok(LinkOutcome::Pending {
+                slow_down: reply.slow_down.unwrap_or(false),
+            });
+        }
         let provider = reply
             .provider
             .ok_or_else(|| "a link answer without a provider".to_owned())?;
@@ -754,13 +770,34 @@ impl AccountMethods {
             .collect()
     }
 
-    /// Whether removing `provider` would leave no password, no other
-    /// identity and no passkey: the call needs the recovery key.
+    /// Whether unlinking `provider` would leave no way in, as the Worker
+    /// counts them: no password, no other linked provider the server still
+    /// offers, and no passkey while it offers passkeys. The call then needs
+    /// the recovery key.
     pub fn last_method(&self, provider: &Provider) -> bool {
+        self.linked
+            .iter()
+            .any(|linked| &linked.provider == provider)
+            && !self.has_password
+            && !self.linked.iter().any(|linked| {
+                &linked.provider != provider && self.available.contains(&linked.provider)
+            })
+            && !(self.rp_id.is_some() && !self.passkeys.is_empty())
+    }
+
+    /// Whether removing the passkey `credential_id` would leave no way in,
+    /// as the Worker counts them: no password, no linked provider the
+    /// server still offers, and no other passkey.
+    pub fn last_passkey(&self, credential_id: &[u8]) -> bool {
         !self.has_password
-            && self.passkeys.is_empty()
-            && self.linked.len() == 1
-            && &self.linked[0].provider == provider
+            && !self
+                .linked
+                .iter()
+                .any(|linked| self.available.contains(&linked.provider))
+            && !self
+                .passkeys
+                .iter()
+                .any(|passkey| passkey.credential_id != credential_id)
     }
 }
 
@@ -915,6 +952,32 @@ mod tests {
     use proptest::prelude::*;
 
     use super::*;
+
+    #[test]
+    fn a_link_poll_can_be_pending_linked_or_a_proof() {
+        assert_eq!(
+            LinkOutcome::from_json(br#"{"status":"pending"}"#),
+            Ok(LinkOutcome::Pending { slow_down: false })
+        );
+        assert_eq!(
+            LinkOutcome::from_json(br#"{"status":"pending","slow_down":true}"#),
+            Ok(LinkOutcome::Pending { slow_down: true })
+        );
+        assert_eq!(
+            LinkOutcome::from_json(br#"{"kind":"linked","provider":"github","created_at":5}"#),
+            Ok(LinkOutcome::Linked {
+                provider: Provider::Github,
+                created_at: 5
+            })
+        );
+        assert_eq!(
+            LinkOutcome::from_json(br#"{"kind":"proof","provider":"apple"}"#),
+            Ok(LinkOutcome::Proof {
+                provider: Provider::Apple
+            })
+        );
+        assert!(LinkOutcome::from_json(br#"{"status":"done"}"#).is_err());
+    }
 
     #[test]
     fn provider_names_are_open_but_well_formed() {
@@ -1234,18 +1297,87 @@ mod tests {
             }
             .last_method(&provider)
         );
+        let passkey = PasskeyInfo {
+            credential_id: vec![1],
+            created_at: 1,
+            last_used_at: None,
+            prf: false,
+            transports: vec![],
+        };
         assert!(
             !AccountMethods {
-                passkeys: vec![PasskeyInfo {
-                    credential_id: vec![1],
-                    created_at: 1,
-                    last_used_at: None,
-                    prf: false,
-                    transports: vec![]
-                }],
+                rp_id: Some("sync.kansoapp.app".into()),
+                passkeys: vec![passkey.clone()],
                 ..only.clone()
             }
             .last_method(&provider)
+        );
+        // As the Worker counts: a passkey only while the server offers
+        // passkeys, and another provider only while it is offered.
+        assert!(
+            AccountMethods {
+                rp_id: None,
+                passkeys: vec![passkey.clone()],
+                ..only.clone()
+            }
+            .last_method(&provider)
+        );
+        assert!(
+            AccountMethods {
+                linked: vec![
+                    LinkedProvider {
+                        provider: provider.clone(),
+                        created_at: 1,
+                    },
+                    LinkedProvider {
+                        provider: Provider::Google,
+                        created_at: 1,
+                    },
+                ],
+                ..only.clone()
+            }
+            .last_method(&provider)
+        );
+        // Removing the only passkey beside a provider the server no longer
+        // offers is the last way in; another passkey or an offered provider
+        // isn't.
+        let passkey_only = AccountMethods {
+            rp_id: Some("sync.kansoapp.app".into()),
+            available: vec![Provider::Apple],
+            linked: vec![LinkedProvider {
+                provider: Provider::Google,
+                created_at: 1,
+            }],
+            passkeys: vec![passkey.clone()],
+            ..only.clone()
+        };
+        assert!(passkey_only.last_passkey(&[1]));
+        assert!(
+            !AccountMethods {
+                available: vec![Provider::Google],
+                ..passkey_only.clone()
+            }
+            .last_passkey(&[1])
+        );
+        assert!(
+            !AccountMethods {
+                passkeys: vec![
+                    passkey.clone(),
+                    PasskeyInfo {
+                        credential_id: vec![2],
+                        ..passkey.clone()
+                    }
+                ],
+                ..passkey_only.clone()
+            }
+            .last_passkey(&[1])
+        );
+        assert!(
+            !AccountMethods {
+                has_password: true,
+                ..passkey_only
+            }
+            .last_passkey(&[1])
         );
         assert!(
             !AccountMethods {

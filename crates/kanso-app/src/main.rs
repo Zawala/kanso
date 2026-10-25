@@ -102,6 +102,7 @@ mod preview;
 mod preview_chunks;
 mod preview_rich;
 #[allow(dead_code)]
+mod proof_sheet;
 mod provider_browser;
 mod publish;
 mod publish_site;

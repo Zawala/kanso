@@ -385,6 +385,12 @@ impl FormView {
 
     /// Shows `error` as a failed task would (snapshots).
     #[cfg(test)]
+    /// Tests: the error under the fields.
+    #[cfg(test)]
+    pub fn error_text(&self) -> Option<&str> {
+        self.error.as_ref().map(|error| error.as_ref())
+    }
+
     pub fn show_error(&mut self, error: &str, cx: &mut Context<Self>) {
         self.error = Some(error.to_owned().into());
         cx.notify();

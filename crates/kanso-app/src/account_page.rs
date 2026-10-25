@@ -34,6 +34,7 @@ use crate::clock::Clock;
 use crate::dialogs::{self, Field, FormSpec, FormView, Progress, Submit};
 use crate::library::Library;
 use crate::passkey_ceremony::{self, Platform};
+use crate::proof_sheet;
 use crate::security_key_flow;
 use crate::services::{
     self, AccountDetails, AccountMethodsState, AccountState, PendingKey, Services, SyncState,
@@ -884,67 +885,7 @@ impl AccountPage {
         );
         let mut page = vec![status_row(&status, Self::tooltip(cx), None, colors)];
         if let Some(wait) = services.provider_wait.as_ref() {
-            let mut waiting = h_flex().mt(px(14.)).gap(px(8.));
-            waiting = if let (Some(uri), Some(code)) =
-                (wait.verification_uri.as_ref(), wait.user_code.as_ref())
-            {
-                waiting.child(
-                    div()
-                        .text_size(px(13.))
-                        .text_color(colors.text_secondary)
-                        .child(format!("Enter this code at {uri}: {code}")),
-                )
-            } else {
-                waiting.child(
-                    div()
-                        .text_size(px(13.))
-                        .text_color(colors.text_secondary)
-                        .child(format!("Waiting for {0} sign-in…", wait.provider)),
-                )
-            };
-            waiting = waiting.child(
-                Button::new("cancel-provider-wait")
-                    .ghost()
-                    .small()
-                    .label("Cancel")
-                    .debug_selector(|| "cancel-provider-wait".into())
-                    .on_click(|_, _, cx| account_flow::cancel_provider_wait(cx))
-                    .into_any_element(),
-            );
-            page.push(
-                v_flex()
-                    .mt(px(14.))
-                    .gap(px(6.))
-                    .child(waiting)
-                    .children(wait.user_code.as_ref().map(|code| {
-                        div()
-                            .px(px(12.))
-                            .py(px(8.))
-                            .rounded(px(6.))
-                            .bg(colors.list)
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .text_size(px(20.))
-                            .text_color(colors.text)
-                            .child(code.clone())
-                    }))
-                    .when(wait.user_code.is_some(), |view| {
-                        view.child(
-                            div()
-                                .text_size(px(12.))
-                                .text_color(colors.text_secondary)
-                                .child("This code stays here while Kanso checks for approval."),
-                        )
-                    })
-                    .when(wait.provider == "Apple", |view| {
-                        view.child(
-                            div()
-                                .text_size(px(12.))
-                                .text_color(colors.text_secondary)
-                                .child(words::APPLE_WAIT_NOTE),
-                        )
-                    })
-                    .into_any_element(),
-            );
+            page.push(provider_wait_view(wait, colors, cx));
         }
         if form == SignedOutForm::None {
             // What an account gives, before what it asks.
@@ -1744,7 +1685,15 @@ impl AccountPage {
         let storage = storage_detail(&details);
         let devices = device_rows(&details, busy, cx);
         let sign_in_methods =
-            sign_in_methods_rows(&account_methods, |at| Clock::edited_label(cx, at));
+            sign_in_methods_rows(&account_methods, |at| Clock::edited_label(cx, at), busy, cx);
+        let has_password = account_methods
+            .last_successful
+            .as_ref()
+            .is_none_or(|methods| methods.has_password);
+        let provider_wait = services
+            .provider_wait
+            .as_ref()
+            .map(|wait| provider_wait_view(wait, colors, cx));
 
         vec![
             status_row(&status, Self::tooltip(cx), Some(actions.into_any_element()), colors),
@@ -1778,11 +1727,12 @@ impl AccountPage {
             div()
                 .debug_selector(|| "account-sign-in-methods".into())
                 .child(section("Sign-in methods", sign_in_methods, colors))
+                .children(provider_wait)
                 .into_any_element(),
             section("Devices", devices, colors),
             section(
                 "Security",
-                vec![
+                has_password.then(|| {
                     Row::new(Lucide::KeyRound, "Password")
                         .detail("Your other devices ask for the new one, and you get a new recovery key.")
                         .trailing(
@@ -1795,7 +1745,10 @@ impl AccountPage {
                                 .on_click(|_, window, cx| {
                                     change_password_dialog(window, cx);
                                 }),
-                        ),
+                        )
+                })
+                .into_iter()
+                .chain([
                     Row::new(Lucide::FileKey, "Recovery key")
                         .detail("A new key replaces the one you saved, which stops working.")
                         .trailing(
@@ -1811,7 +1764,11 @@ impl AccountPage {
                         ),
                 fingerprint_row(cx),
                     Row::new(Lucide::LockKeyhole, "Forgot your password?")
-                        .detail("Set a new one with your recovery key.")
+                        .detail(if has_password {
+                            "Set a new one with your recovery key."
+                        } else {
+                            "Set one with your recovery key. It removes every passkey."
+                        })
                         .trailing(
                             Button::new("recover-signed-in")
                                 .outline()
@@ -1823,7 +1780,8 @@ impl AccountPage {
                                     recover_dialog(window, cx);
                                 }),
                         ),
-                ],
+                ])
+                .collect(),
                 colors,
             ),
             section(
@@ -1863,6 +1821,74 @@ impl AccountPage {
     }
 }
 
+/// The wait for a provider: GitHub's code, or "Waiting for Apple sign-in…",
+/// with [Cancel]. Shown on the signed-out page and over Sign-in methods.
+fn provider_wait_view(
+    wait: &crate::services::ProviderWait,
+    colors: &Colors,
+    cx: &App,
+) -> AnyElement {
+    let mut waiting = h_flex().mt(px(14.)).gap(px(8.));
+    waiting = if let (Some(uri), Some(code)) =
+        (wait.verification_uri.as_ref(), wait.user_code.as_ref())
+    {
+        waiting.child(
+            div()
+                .text_size(px(13.))
+                .text_color(colors.text_secondary)
+                .child(format!("Enter this code at {uri}: {code}")),
+        )
+    } else {
+        waiting.child(
+            div()
+                .text_size(px(13.))
+                .text_color(colors.text_secondary)
+                .child(format!("Waiting for {0} sign-in…", wait.provider)),
+        )
+    };
+    waiting = waiting.child(
+        Button::new("cancel-provider-wait")
+            .ghost()
+            .small()
+            .label("Cancel")
+            .debug_selector(|| "cancel-provider-wait".into())
+            .on_click(|_, _, cx| account_flow::cancel_provider_wait(cx))
+            .into_any_element(),
+    );
+    v_flex()
+        .mt(px(14.))
+        .gap(px(6.))
+        .child(waiting)
+        .children(wait.user_code.as_ref().map(|code| {
+            div()
+                .px(px(12.))
+                .py(px(8.))
+                .rounded(px(6.))
+                .bg(colors.list)
+                .font_family(cx.theme().mono_font_family.clone())
+                .text_size(px(20.))
+                .text_color(colors.text)
+                .child(code.clone())
+        }))
+        .when(wait.user_code.is_some(), |view| {
+            view.child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(colors.text_secondary)
+                    .child("This code stays here while Kanso checks for approval."),
+            )
+        })
+        .when(wait.provider == "Apple", |view| {
+            view.child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(colors.text_secondary)
+                    .child(words::APPLE_WAIT_NOTE),
+            )
+        })
+        .into_any_element()
+}
+
 /// The Storage row's line, or why it isn't there yet.
 pub fn storage_detail(details: &AccountDetails) -> String {
     match (&details.usage, &details.failed) {
@@ -1875,11 +1901,135 @@ pub fn storage_detail(details: &AccountDetails) -> String {
 /// Sign-in method rows, in display order. While a refresh is pending or has
 /// failed, retained methods are deliberately hidden so old data is not shown
 /// as current.
-fn sign_in_methods_rows(state: &AccountMethodsState, when: impl Fn(i64) -> String) -> Vec<Row> {
-    sign_in_method_lines(state, when)
+fn sign_in_methods_rows(
+    state: &AccountMethodsState,
+    when: impl Fn(i64) -> String,
+    busy: bool,
+    cx: &App,
+) -> Vec<Row> {
+    let mut rows: Vec<Row> = sign_in_method_lines(state, when)
         .into_iter()
         .map(|(icon, title, detail)| Row::new(icon, title).detail(detail))
-        .collect()
+        .collect();
+    let (false, None, Some(methods)) = (state.loading, &state.failed, &state.last_successful)
+    else {
+        return rows;
+    };
+    let small = |id: SharedString, label: &'static str| {
+        Button::new(id.clone())
+            .outline()
+            .small()
+            .label(label)
+            .disabled(busy)
+            .debug_selector(move || id.to_string())
+    };
+    // The rows' order is `sign_in_method_lines`': the password, the linked
+    // providers, the passkeys, then the providers left to link.
+    let mut rows_out = Vec::with_capacity(rows.len() + 1);
+    let mut rest = rows.drain(..);
+    if let Some(password) = rest.next() {
+        let button = if methods.has_password {
+            small("change-password-method".into(), "Change password…").on_click(|_, window, cx| {
+                change_password_dialog(window, cx);
+            })
+        } else {
+            small("set-password".into(), "Set a password…").on_click(|_, window, cx| {
+                proof_sheet::open(proof_sheet::Action::SetPassword, window, cx)
+            })
+        };
+        rows_out.push(password.trailing(button));
+    }
+    for linked in &methods.linked {
+        let Some(row) = rest.next() else { break };
+        let provider = linked.provider.clone();
+        rows_out.push(row.trailing(
+            small(format!("unlink-{}", provider.as_str()).into(), "Unlink").on_click(
+                move |_, window, cx| {
+                    proof_sheet::open(proof_sheet::Action::Unlink(provider.clone()), window, cx)
+                },
+            ),
+        ));
+    }
+    for (ix, passkey) in methods.passkeys.iter().enumerate() {
+        let Some(row) = rest.next() else { break };
+        let id = passkey.credential_id.clone();
+        rows_out.push(row.trailing(
+            small(format!("remove-passkey-{ix}").into(), "Remove").on_click(
+                move |_, window, cx| {
+                    proof_sheet::open(proof_sheet::Action::RemovePasskey(id.clone()), window, cx)
+                },
+            ),
+        ));
+    }
+    if methods.rp_id.is_some() {
+        let ceremony = proof_sheet::ceremony(cx);
+        let (title, detail) = match ceremony {
+            Some(true) => ("Add a security key", "Sign in with a FIDO2 security key."),
+            _ => (
+                "Add a passkey",
+                "Sign in with this device's passkey, without a password.",
+            ),
+        };
+        let detail = if ceremony.is_none() {
+            words::PASSKEYS_NOT_HERE
+        } else {
+            detail
+        };
+        rows_out.push(
+            Row::new(Lucide::FingerprintPattern, title)
+                .detail(detail)
+                .trailing(
+                    small("add-passkey".into(), "Add a passkey…")
+                        .disabled(busy || ceremony.is_none())
+                        .on_click(|_, window, cx| {
+                            proof_sheet::open(proof_sheet::Action::AddPasskey, window, cx)
+                        }),
+                ),
+        );
+    }
+    let linkable: Vec<kanso_sync::Provider> = methods
+        .unlinked()
+        .into_iter()
+        .filter(|provider| {
+            matches!(
+                provider,
+                kanso_sync::Provider::Apple
+                    | kanso_sync::Provider::Google
+                    | kanso_sync::Provider::Github
+            )
+        })
+        .collect();
+    if !methods.unlinked().is_empty()
+        && let Some(row) = rest.next()
+    {
+        let row = if linkable.is_empty() {
+            row
+        } else {
+            row.trailing(
+                small("link-provider".into(), "Link a provider…")
+                    .dropdown_caret(true)
+                    .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                        linkable.iter().fold(menu, |menu, provider| {
+                            let chosen = provider.clone();
+                            menu.item(
+                                PopupMenuItem::new(proof_sheet::provider_name(provider)).on_click(
+                                    move |_, window, cx| {
+                                        proof_sheet::open(
+                                            proof_sheet::Action::Link(chosen.clone()),
+                                            window,
+                                            cx,
+                                        )
+                                    },
+                                ),
+                            )
+                        })
+                    }),
+            )
+        };
+        rows_out.push(row);
+    }
+    rows_out.extend(rest);
+    rows_out
 }
 
 fn sign_in_method_lines(
@@ -2111,7 +2261,19 @@ pub fn server_dialog(window: &mut Window, cx: &mut App) -> Entity<FormView> {
     )
 }
 
+/// Whether the account is known to have no password: its changes then take
+/// a proof through the proof sheet.
+fn passwordless(cx: &App) -> bool {
+    cx.try_global::<Services>()
+        .and_then(|services| services.account_methods.last_successful.as_ref())
+        .is_some_and(|methods| !methods.has_password)
+}
+
 pub fn change_password_dialog(window: &mut Window, cx: &mut App) -> Option<Entity<FormView>> {
+    if passwordless(cx) {
+        proof_sheet::open(proof_sheet::Action::SetPassword, window, cx);
+        return None;
+    }
     let username = account_name(cx)?;
     Some(dialogs::form(
         FormSpec::new("Change password", "Change password")
@@ -2138,6 +2300,10 @@ pub fn change_password_dialog(window: &mut Window, cx: &mut App) -> Option<Entit
 }
 
 pub fn new_recovery_key_dialog(window: &mut Window, cx: &mut App) -> Option<Entity<FormView>> {
+    if passwordless(cx) {
+        proof_sheet::open(proof_sheet::Action::NewRecoveryKey, window, cx);
+        return None;
+    }
     let username = account_name(cx)?;
     Some(dialogs::form(
         FormSpec::new("New recovery key", "Make a new key")
@@ -2238,6 +2404,10 @@ fn sign_out_dialog_for(username: &str, window: &mut Window, cx: &mut App) {
 }
 
 pub fn delete_account_dialog(window: &mut Window, cx: &mut App) -> Option<Entity<FormView>> {
+    if passwordless(cx) {
+        proof_sheet::open(proof_sheet::Action::DeleteAccount, window, cx);
+        return None;
+    }
     let username = account_name(cx)?;
     Some(delete_account_dialog_for(&username, window, cx))
 }

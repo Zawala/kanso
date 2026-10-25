@@ -524,6 +524,14 @@ mod v2 {
                         200,
                         Some(json!({ "kind": "proof", "provider": provider.as_str() })),
                     )),
+                    Ok(LinkOutcome::Pending { slow_down }) => Ok((
+                        200,
+                        Some(if slow_down {
+                            json!({ "status": "pending", "slow_down": true })
+                        } else {
+                            json!({ "status": "pending" })
+                        }),
+                    )),
                     Err(err) => answer::<()>(200, Err(err)),
                 }
             }

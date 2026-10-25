@@ -40,6 +40,11 @@ pub enum ErrorContext {
     Account,
     /// Signing in with a passkey or a security key.
     Passkey,
+    /// A change sent with the current password's proof and the recovery
+    /// key: the server's refusal doesn't say which didn't match.
+    PasswordOrRecovery,
+    /// The same with a passkey's proof.
+    PasskeyOrRecovery,
 }
 
 pub const CANT_REACH: &str = "Can't reach the server. Your notes are safe on this device.";
@@ -47,6 +52,14 @@ pub const NOT_A_KANSO_SERVER: &str = "That server doesn't run this version of Ka
 pub const KEYS_WRONG: &str =
     "Something's wrong with the server's copy of your keys. Nothing was changed on this device.";
 pub const PASSWORDS_DIFFER: &str = "The passwords don't match.";
+/// 400 `flow_expired`: a sign-in, proof or passkey flow ran out of time.
+pub const FLOW_EXPIRED: &str = "That took too long. Try again.";
+/// 409 `last_method`.
+pub const LAST_METHOD: &str =
+    "This is your only way to sign in. Add another, or confirm your recovery key.";
+/// 409 `already_has_password` and `no_password`: the page was out of date.
+pub const PASSWORD_STATE_CHANGED: &str =
+    "This account's password state changed. Reopen Settings › Account.";
 /// Under the Apple wait: macOS shows Apple's sheet; elsewhere the system
 /// browser returns to Kanso by itself.
 #[cfg(target_os = "macos")]
@@ -105,6 +118,56 @@ pub const PASSKEY_WRONG_SERVER: &str = "This server's passkeys don't work with t
 /// A passkey the server doesn't know (or a device with none).
 pub const PASSKEY_UNKNOWN: &str = "This server doesn't know that passkey.";
 
+/// The proof sheet's question when the account has more than one proof.
+pub const PROOF_CHOICE: &str = "Confirm it's you to change how you sign in.";
+/// Before the method list has loaded.
+pub const METHODS_NOT_READY: &str =
+    "Kanso is still checking how you sign in. Try again in a moment.";
+/// A provider-only account can't add a way in with its provider.
+pub const SET_PASSWORD_FIRST: &str =
+    "Set a password first. A sign-in at a provider can't add another way in.";
+/// No proof this device can make for the change.
+pub const NO_PROOF_HERE: &str = "Confirm it's you with your password or a passkey. This device can't use either for this account.";
+/// Over removing or unlinking the last way in (docs/ACCOUNTS.md › Linking
+/// and unlinking).
+pub const LAST_METHOD_WARNING: &str =
+    "This is your last way to sign in. If you remove it, you'll need your recovery key.";
+/// Under the proof sheet's recovery key field.
+pub const RECOVERY_FOR_PROOF_HINT: &str = "The key you saved, in groups of four.";
+/// Over Set a password.
+pub const SET_PASSWORD_TEXT: &str = "Your other devices sign out and ask for the new password. Your recovery key changes too: the one you saved stops working, and Kanso shows the new one to save.";
+/// The Add a passkey row when this device can't run a ceremony for the server.
+pub const PASSKEYS_NOT_HERE: &str = "This device can't make a passkey for this server.";
+/// A change with a password proof and the recovery key was refused.
+pub const PASSWORD_OR_RECOVERY: &str =
+    "That isn't your current password, or that recovery key doesn't match this account.";
+/// A change with a passkey proof and the recovery key was refused.
+pub const PASSKEY_OR_RECOVERY: &str =
+    "That passkey or that recovery key doesn't match this account.";
+pub const PASSKEY_REMOVED: &str = "Removed the passkey.";
+pub const PROVIDER_LINKED: &str = "Linked. You can sign in with it now.";
+pub const PROVIDER_UNLINKED: &str = "Unlinked. It no longer signs in to this account.";
+pub const PASSWORD_SET: &str = "Password set. Your other devices will ask for it.";
+
+/// After Settings › Account › [Add a passkey…]: whether the new passkey or
+/// security key can unlock a new device.
+pub fn passkey_added(security_key: bool, can_unlock: bool) -> &'static str {
+    match (security_key, can_unlock) {
+        (false, true) => {
+            "Added the passkey. It can unlock: on a new device it signs in and opens your notes."
+        }
+        (false, false) => {
+            "Added the passkey. It signs in only: a new device will also need approval or your recovery key."
+        }
+        (true, true) => {
+            "Added the security key. It can unlock: on a new device it signs in and opens your notes."
+        }
+        (true, false) => {
+            "Added the security key. It signs in only: a new device will also need approval or your recovery key."
+        }
+    }
+}
+
 /// After a passkey or security-key sign-up: whether it can unlock a new
 /// device ("can unlock") or only signs in ("signs in only").
 pub fn passkey_created(security_key: bool, can_unlock: bool) -> &'static str {
@@ -140,6 +203,8 @@ pub fn error_words(err: &AccountError, context: ErrorContext) -> String {
     let words: &str = match err {
         AccountError::InvalidCredentials => match context {
             ErrorContext::Recovery => "That recovery key doesn't match this account.",
+            ErrorContext::PasswordOrRecovery => PASSWORD_OR_RECOVERY,
+            ErrorContext::PasskeyOrRecovery => PASSKEY_OR_RECOVERY,
             ErrorContext::CurrentPassword => "That isn't your current password.",
             ErrorContext::Passkey => PASSKEY_UNKNOWN,
             _ => "That username and password don't match.",
@@ -151,7 +216,9 @@ pub fn error_words(err: &AccountError, context: ErrorContext) -> String {
         AccountError::Password(err) => match context {
             // No account has such a password, so it can't be the right one.
             ErrorContext::SignIn => "That username and password don't match.",
-            ErrorContext::CurrentPassword => "That isn't your current password.",
+            ErrorContext::CurrentPassword | ErrorContext::PasswordOrRecovery => {
+                "That isn't your current password."
+            }
             _ => password_words(*err),
         },
         AccountError::RecoveryKey(err) => recovery_key_words(*err),
@@ -177,22 +244,17 @@ pub fn error_words(err: &AccountError, context: ErrorContext) -> String {
             "Your account is full. Delete something or ask the server's owner for more space."
         }
         AccountError::UnsupportedMethod => "That sign-in method isn't available on this server.",
-        AccountError::FlowExpired | AccountError::NonceReused => "That sign-in expired. Try again.",
-        AccountError::ReauthRequired => {
-            "Confirm it's you with your password or a passkey, then try again."
-        }
+        AccountError::FlowExpired => FLOW_EXPIRED,
+        AccountError::NonceReused => "That sign-in didn't come from where it should. Try again.",
+        AccountError::ReauthRequired => "Confirm it's you to change how you sign in.",
         AccountError::ProviderDisabled => "That sign-in method isn't available on this server.",
         AccountError::ProviderDenied => "The sign-in was cancelled at the provider.",
         AccountError::ProviderUnavailable => {
             "The provider couldn't be reached. Try again in a moment."
         }
         AccountError::IdentityTaken => "That account is already linked to another Kanso account.",
-        AccountError::LastMethod => {
-            "This is the last way to sign in. Save your recovery key first."
-        }
-        AccountError::AlreadyHasPassword => {
-            "This account already has a password. Change it instead."
-        }
+        AccountError::LastMethod => LAST_METHOD,
+        AccountError::AlreadyHasPassword | AccountError::NoPassword => PASSWORD_STATE_CHANGED,
         AccountError::CredentialExists => "That passkey is already added.",
         AccountError::Keychain(_) => SECRET_STORE_TROUBLE,
         AccountError::UnsavedRecoveryKey { username } => {
@@ -791,6 +853,7 @@ mod tests {
             AccountError::IdentityTaken,
             AccountError::LastMethod,
             AccountError::AlreadyHasPassword,
+            AccountError::NoPassword,
             AccountError::CredentialExists,
             AccountError::NonceReused,
             AccountError::NotFound,

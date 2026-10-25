@@ -56,6 +56,9 @@ const SOMETHING_WRONG: &str = "Something went wrong. Try again.";
 /// When another account task is still running.
 const BUSY: &str = "Kanso is still busy with your account. Try again in a moment.";
 
+mod methods;
+pub use methods::{ChangeRequest, MethodChange, ProofWith, change_method};
+
 // MARK: Running a task
 
 /// Why a task failed: the words to show, the reason when the server ended
@@ -888,7 +891,9 @@ pub fn start_provider(
         move |step| {
             provider_begin(
                 thread.backend.as_ref(),
-                &start_server,
+                &ProviderRoute::Public {
+                    server: start_server,
+                },
                 &start_provider,
                 &start_device,
                 step,
@@ -1023,11 +1028,141 @@ pub(crate) fn save_provider_pending(
     }
 }
 
+/// Which routes a provider flow uses: the public sign-in and sign-up ones,
+/// or a signed-in session's link or proof (docs/ACCOUNTS.md › Sign-in routes
+/// › `identities/<provider>/start`).
+#[derive(Clone)]
+enum ProviderRoute {
+    Public {
+        server: String,
+    },
+    Session {
+        session: Arc<Session>,
+        intent: kanso_sync::provider::IdentityIntent,
+        proof: Option<kanso_sync::provider::ProofWire>,
+    },
+}
+
+/// One poll or finish of a provider flow.
+enum Polled {
+    Done(ProviderDone),
+    Pending { slow_down: bool },
+}
+
+/// A provider flow's answer: a sign-in's, or a link's or proof's.
+enum ProviderDone {
+    SignIn(ProviderSignIn),
+    Link(kanso_sync::provider::LinkOutcome),
+}
+
+impl Polled {
+    fn sign_in(step: kanso_sync::ProviderStep) -> Polled {
+        use kanso_sync::ProviderStep;
+        match step {
+            ProviderStep::Session(session) => {
+                Polled::Done(ProviderDone::SignIn(ProviderSignIn::Session(session)))
+            }
+            ProviderStep::NewAccount(account) => {
+                Polled::Done(ProviderDone::SignIn(ProviderSignIn::NewAccount(account)))
+            }
+            ProviderStep::Pending { slow_down } => Polled::Pending { slow_down },
+        }
+    }
+
+    fn link(outcome: kanso_sync::provider::LinkOutcome) -> Polled {
+        match outcome {
+            kanso_sync::provider::LinkOutcome::Pending { slow_down } => {
+                Polled::Pending { slow_down }
+            }
+            done => Polled::Done(ProviderDone::Link(done)),
+        }
+    }
+}
+
+impl ProviderRoute {
+    fn start(
+        &self,
+        backend: &dyn Backend,
+        provider: &Provider,
+        device: &LoginDevice,
+        loopback: Option<&kanso_sync::Loopback>,
+        challenge: Option<&str>,
+    ) -> Result<ProviderStart, AccountError> {
+        match self {
+            ProviderRoute::Public { server } => {
+                kanso_sync::start_provider(backend, server, provider, device, loopback, challenge)
+            }
+            ProviderRoute::Session {
+                session,
+                intent,
+                proof,
+            } => kanso_sync::account::start_identity(
+                backend,
+                session,
+                provider,
+                *intent,
+                proof.clone(),
+                loopback,
+                challenge,
+                device,
+            ),
+        }
+    }
+
+    /// Apple's or GitHub's poll.
+    fn poll(
+        &self,
+        backend: &dyn Backend,
+        provider: &Provider,
+        flow: &str,
+        secret: Option<&str>,
+        device: &LoginDevice,
+    ) -> Result<Polled, AccountError> {
+        match self {
+            ProviderRoute::Public { server } => {
+                kanso_sync::poll_provider(backend, server, provider, flow, secret, device)
+                    .map(Polled::sign_in)
+            }
+            ProviderRoute::Session { session, .. } => kanso_sync::account::finish_identity(
+                backend, session, provider, flow, secret, device,
+            )
+            .map(Polled::link),
+        }
+    }
+
+    /// Google's finish.
+    fn google(
+        &self,
+        backend: &dyn Backend,
+        flow: &str,
+        code: &str,
+        verifier: &str,
+        device: &LoginDevice,
+    ) -> Result<Polled, AccountError> {
+        match self {
+            ProviderRoute::Public { server } => {
+                kanso_sync::finish_google(backend, server, flow, code, verifier, device)
+                    .map(Polled::sign_in)
+            }
+            ProviderRoute::Session { session, .. } => kanso_sync::account::finish_identity_google(
+                backend,
+                session,
+                &Provider::Google,
+                flow,
+                code,
+                verifier,
+                device,
+            )
+            .map(Polled::link),
+        }
+    }
+}
+
 /// Starts the server side of a provider flow. This runs on the worker; any
 /// native authentication sheet is opened later by the main-thread callback.
 fn provider_begin(
     backend: &dyn Backend,
-    server: &str,
+    route: &ProviderRoute,
     provider: &Provider,
     device: &LoginDevice,
     progress: &dyn Fn(Step),
@@ -1045,9 +1180,8 @@ fn provider_begin(
     let wire_loopback = loopback.as_ref().map(|loopback| {
         kanso_sync::Loopback::parse(&loopback.uri()).expect("bound loopback has canonical URI")
     });
-    let start = kanso_sync::start_provider(
+    let start = route.start(
         backend,
-        server,
         provider,
         device,
         wire_loopback.as_ref(),
@@ -1070,7 +1204,7 @@ fn provider_begin(
 #[allow(clippy::too_many_arguments)] // The arguments are the explicit ceremony context.
 fn provider_finish(
     backend: &dyn Backend,
-    server: &str,
+    route: &ProviderRoute,
     provider: &Provider,
     device: &LoginDevice,
     started: StartedProviderFlow,
@@ -1079,8 +1213,7 @@ fn provider_finish(
     >,
     cancel: Arc<AtomicBool>,
     _progress: &dyn Fn(Step),
-) -> Result<Option<ProviderSignIn>, AccountError> {
-    use kanso_sync::ProviderStep;
+) -> Result<Option<ProviderDone>, AccountError> {
     let StartedProviderFlow {
         start,
         loopback,
@@ -1123,9 +1256,8 @@ fn provider_finish(
                 if wait_cancelled_or_expired(&cancel, deadline)? {
                     return Ok(None);
                 }
-                let answer = kanso_sync::poll_provider(
+                let answer = route.poll(
                     backend,
-                    server,
                     provider,
                     &callback.flow,
                     Some(&callback.secret),
@@ -1135,9 +1267,8 @@ fn provider_finish(
                     return Ok(None);
                 }
                 match answer {
-                    ProviderStep::Session(session) => break ProviderSignIn::Session(session),
-                    ProviderStep::NewAccount(account) => break ProviderSignIn::NewAccount(account),
-                    ProviderStep::Pending { .. } => {
+                    Polled::Done(done) => break done,
+                    Polled::Pending { .. } => {
                         if wait_provider(&cancel, deadline, Duration::from_secs(4))? {
                             return Ok(None);
                         }
@@ -1167,9 +1298,8 @@ fn provider_finish(
             if wait_cancelled_or_expired(&cancel, deadline)? {
                 return Ok(None);
             }
-            let answer = kanso_sync::finish_google(
+            let answer = route.google(
                 backend,
-                server,
                 &start.flow_id,
                 &code,
                 verifier.as_deref().ok_or(AccountError::BadRequest)?,
@@ -1179,9 +1309,8 @@ fn provider_finish(
                 return Ok(None);
             }
             match answer {
-                ProviderStep::Session(session) => ProviderSignIn::Session(session),
-                ProviderStep::NewAccount(account) => ProviderSignIn::NewAccount(account),
-                ProviderStep::Pending { .. } => return Err(AccountError::ProviderUnavailable),
+                Polled::Done(done) => done,
+                Polled::Pending { .. } => return Err(AccountError::ProviderUnavailable),
             }
         }
         (ProviderStart::Github(start), Provider::Github) => {
@@ -1196,21 +1325,13 @@ fn provider_finish(
                 if wait_cancelled_or_expired(&cancel, deadline)? {
                     return Ok(None);
                 }
-                let answer = kanso_sync::poll_provider(
-                    backend,
-                    server,
-                    provider,
-                    &start.flow_id,
-                    None,
-                    device,
-                )?;
+                let answer = route.poll(backend, provider, &start.flow_id, None, device)?;
                 if wait_cancelled_or_expired(&cancel, deadline)? {
                     return Ok(None);
                 }
                 match answer {
-                    ProviderStep::Session(session) => break ProviderSignIn::Session(session),
-                    ProviderStep::NewAccount(account) => break ProviderSignIn::NewAccount(account),
-                    ProviderStep::Pending { slow_down } => {
+                    Polled::Done(done) => break done,
+                    Polled::Pending { slow_down } => {
                         if slow_down {
                             interval = github_next_poll_interval(interval, slow_down);
                         }
@@ -1318,7 +1439,9 @@ fn continue_provider(
         move |step| {
             let answer = provider_finish(
                 thread.backend.as_ref(),
-                &work_server,
+                &ProviderRoute::Public {
+                    server: work_server.clone(),
+                },
                 &work_provider,
                 &work_login_device,
                 started,
@@ -1329,10 +1452,14 @@ fn continue_provider(
             .map_err(|err| Failure::account(err, ErrorContext::SignIn))?;
             match answer {
                 None => Ok(ProviderTaskResult::Cancelled),
-                Some(ProviderSignIn::NewAccount(account)) => {
+                Some(ProviderDone::Link(_)) => Err(Failure::account(
+                    AccountError::Protocol("a link answer to a sign-in".into()),
+                    ErrorContext::SignIn,
+                )),
+                Some(ProviderDone::SignIn(ProviderSignIn::NewAccount(account))) => {
                     Ok(ProviderTaskResult::NewAccount(account))
                 }
-                Some(ProviderSignIn::Session(session)) => {
+                Some(ProviderDone::SignIn(ProviderSignIn::Session(session))) => {
                     let device = thread.device()?;
                     let locked = locked_provider_session(
                         work_server,
@@ -3248,8 +3375,11 @@ pub fn refresh_account_methods(cx: &mut App) {
     let spawned = std::thread::Builder::new()
         .name("kanso-account".into())
         .spawn(move || {
-            tx.try_send(kanso_sync::account::methods(backend.as_ref(), &asked))
-                .ok();
+            let methods = kanso_sync::account::methods(backend.as_ref(), &asked);
+            let passkeys = kanso_sync::server_auth(backend.as_ref(), &asked.server)
+                .ok()
+                .and_then(|auth| auth.passkeys);
+            tx.try_send((methods, passkeys)).ok();
         });
     if spawned.is_err() {
         cx.global_mut::<Services>()
@@ -3268,7 +3398,7 @@ pub fn refresh_account_methods(cx: &mut App) {
             if !current_session {
                 return;
             }
-            let Some(answer) = answer else {
+            let Some((answer, passkeys)) = answer else {
                 services
                     .account_methods
                     .finish_failure(generation, SOMETHING_WRONG.to_owned());
@@ -3280,6 +3410,7 @@ pub fn refresh_account_methods(cx: &mut App) {
                     if !services.account_methods.finish_success(generation, methods) {
                         return;
                     }
+                    services.account_methods.passkeys = passkeys;
                     cx.refresh_windows();
                 }
                 Err(AccountError::Unauthorized { reason }) => {

@@ -97,7 +97,17 @@ pub fn external_url(text: &str) -> Result<String, BrowserError> {
 /// Never a web view.
 pub fn open_external(url: &str) -> Result<(), BrowserError> {
     let url = external_url(url)?;
-    let url = url.as_str();
+    open_system(url.as_str())
+}
+
+/// Tests run provider flows against `MemoryServer`: nothing opens.
+#[cfg(test)]
+fn open_system(_url: &str) -> Result<(), BrowserError> {
+    Ok(())
+}
+
+#[cfg(not(test))]
+fn open_system(url: &str) -> Result<(), BrowserError> {
     #[cfg(target_os = "macos")]
     {
         let status = std::process::Command::new("open")
@@ -222,6 +232,10 @@ mod apple {
         }
     }
 
+    #[allow(
+        dead_code,
+        reason = "held only to keep the session and its presenter alive"
+    )]
     struct Live {
         id: u64,
         session: Retained<AnyObject>,
@@ -323,12 +337,14 @@ impl Loopback {
         format!("http://127.0.0.1:{}", self.port)
     }
 
+    #[cfg(test)]
     pub fn port(&self) -> u16 {
         self.port
     }
 
     /// Accepts one request, checks `state`, answers "Return to Kanso" and
     /// returns the `code`. The listener is done either way.
+    #[cfg(test)]
     pub fn wait(&self, expected_state: &str, timeout: Duration) -> Result<String, BrowserError> {
         let cancel = AtomicBool::new(false);
         self.wait_until(expected_state, Instant::now() + timeout, &cancel)
@@ -439,6 +455,10 @@ fn respond(stream: &mut TcpStream, status: u16, sentence: &str) -> std::io::Resu
 /// The `code` in a loopback request's `GET /?code=…&state=…`, when the
 /// request line is well formed and `state` is the one the start returned.
 /// Google's codes are percent-encoded; `+` is a space in a query.
+#[cfg_attr(
+    not(test),
+    allow(dead_code, reason = "the loopback parses inline; tests use this")
+)]
 pub fn parse_loopback_request(request: &str, expected_state: &str) -> Option<String> {
     parse_loopback_callback(request, expected_state).ok()
 }

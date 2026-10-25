@@ -1094,10 +1094,15 @@ fn key_checked(cx: &mut TestAppContext) {
 
 /// Whether `key` is the account's recovery key on `server` now.
 fn holds(server: &MemoryServer, username: &str, key: &RecoveryKey) -> bool {
-    let origin = kanso_sync::origin(SERVER).unwrap();
+    holds_at(server, SERVER, username, key)
+}
+
+/// [`holds`] for an account on the server at `url`.
+fn holds_at(server: &MemoryServer, url: &str, username: &str, key: &RecoveryKey) -> bool {
+    let origin = kanso_sync::origin(url).unwrap();
     let auth = kanso_sync::crypto::recovery_keys(key, &origin, username).auth_key;
     server
-        .api(SERVER)
+        .api(url)
         .recover_start(&kanso_sync::api::RecoverStartRequest {
             username: username.into(),
             recovery_auth_key: auth.to_base64url(),
@@ -3011,4 +3016,648 @@ fn an_unknown_passkey_is_refused(cx: &mut TestAppContext) {
     let rx = a.passkey_sign_in(cx);
     assert_eq!(finish(cx, rx), Err(words::PASSKEY_UNKNOWN.to_owned()));
     assert_eq!(account(cx), AccountState::SignedOut);
+}
+
+// MARK: Sign-in methods
+
+const PASSKEY_SERVER: &str = kanso_sync::MEMORY_PASSKEY_SERVER;
+
+impl Mac {
+    /// A password sign-up on the server that runs passkeys.
+    fn sign_up_with_passkeys(&self, cx: &mut TestAppContext, username: &str) {
+        let (window, username) = (self.window, username.to_owned());
+        let rx = cx.update(|cx| {
+            let password = password(PASSWORD, &username);
+            account_flow::sign_up(PASSKEY_SERVER.into(), username, password, window, cx)
+        });
+        assert_eq!(finish(cx, rx), Ok(()));
+        key_saved(cx);
+    }
+
+    fn change(
+        &self,
+        cx: &mut TestAppContext,
+        change: account_flow::MethodChange,
+        proof: account_flow::ProofWith,
+        recovery: Option<RecoveryKey>,
+    ) -> Result<(), String> {
+        let passkey = matches!(
+            (&change, &proof),
+            (account_flow::MethodChange::AddPasskey, _) | (_, account_flow::ProofWith::Passkey)
+        )
+        .then_some(account_flow::PasskeyMethod::Platform { window: 0 });
+        let rx = cx.update(|cx| {
+            account_flow::change_method(
+                account_flow::ChangeRequest {
+                    change,
+                    proof,
+                    recovery,
+                    passkey,
+                },
+                cx,
+            )
+        });
+        finish(cx, rx)
+    }
+}
+
+/// The account's ways in, as the server holds them now.
+fn ways_in(server: &MemoryServer, cx: &mut TestAppContext) -> kanso_sync::AccountMethods {
+    kanso_sync::methods(server, &session(cx)).unwrap()
+}
+
+fn password_proof(username: &str, text: &str) -> account_flow::ProofWith {
+    account_flow::ProofWith::Password(password(text, username))
+}
+
+/// A passkey ceremony that lets the proof's five minutes pass before it
+/// answers.
+struct Late {
+    key: Arc<kanso_sync::TestAuthenticator>,
+    server: Arc<MemoryServer>,
+}
+
+impl kanso_sync::PasskeyCeremony for Late {
+    fn register(
+        &self,
+        challenge: &kanso_sync::PasskeyRegistrationChallenge,
+    ) -> Result<kanso_sync::PasskeyRegistration, kanso_sync::PasskeyCeremonyError> {
+        self.key.register(challenge)
+    }
+
+    fn assert(
+        &self,
+        challenge: &kanso_sync::PasskeyAssertionChallenge,
+    ) -> Result<kanso_sync::PasskeyAssertion, kanso_sync::PasskeyCeremonyError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        self.server.set_now(now + 6 * 60 * 1000);
+        self.key.assert(challenge)
+    }
+}
+
+/// [Add a passkey…] with the password as proof, and [Remove] with the new
+/// passkey as proof. A wrong password changes nothing and says so.
+#[gpui_kit::test]
+fn a_password_account_adds_and_removes_a_passkey(cx: &mut TestAppContext) {
+    use account_flow::{MethodChange, ProofWith};
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    a.sign_up_with_passkeys(cx, "alice");
+    a.use_passkey(cx, Arc::new(kanso_sync::TestAuthenticator::new(31)));
+
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::AddPasskey,
+            password_proof("alice", "not the password at all"),
+            None
+        ),
+        Err("That isn't your current password.".to_owned())
+    );
+    assert!(ways_in(&server, cx).passkeys.is_empty());
+
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::AddPasskey,
+            password_proof("alice", PASSWORD),
+            None
+        ),
+        Ok(())
+    );
+    let passkeys = ways_in(&server, cx).passkeys;
+    assert_eq!(passkeys.len(), 1);
+    assert!(passkeys[0].prf, "the PRF wrap went with it: it can unlock");
+    wait_until(cx, "the method list", |cx| {
+        cx.read(|cx| {
+            cx.global::<Services>()
+                .account_methods
+                .last_successful
+                .as_ref()
+                .is_some_and(|methods| methods.passkeys.len() == 1)
+        })
+    });
+
+    let credential_id = passkeys[0].credential_id.clone();
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::RemovePasskey { credential_id },
+            ProofWith::Passkey,
+            None
+        ),
+        Ok(())
+    );
+    assert!(ways_in(&server, cx).passkeys.is_empty());
+    assert_eq!(account(cx), signed_in_as("alice"));
+}
+
+/// Removing the only way in is refused without the recovery key, and done
+/// with it. A proof whose five minutes ran out says it took too long.
+#[gpui_kit::test]
+fn the_last_passkey_needs_the_recovery_key(cx: &mut TestAppContext) {
+    use account_flow::{MethodChange, ProofWith};
+    let server = Arc::new(MemoryServer::new());
+    let passkey = Arc::new(kanso_sync::TestAuthenticator::new(32));
+    let a = mac(cx, &server, "Studio", 0);
+    a.use_passkey(cx, passkey.clone());
+    let rx = a.passkey_sign_up(cx, "quiet-otter-4821");
+    assert_eq!(finish(cx, rx), Ok(()));
+    let key = pending_key(cx).expect("the sign-up's recovery key");
+    key_saved(cx);
+    let credential_id = ways_in(&server, cx).passkeys[0].credential_id.clone();
+    let remove = || MethodChange::RemovePasskey {
+        credential_id: credential_id.clone(),
+    };
+
+    assert_eq!(
+        a.change(cx, remove(), ProofWith::Passkey, None),
+        Err(words::LAST_METHOD.to_owned())
+    );
+    assert_eq!(ways_in(&server, cx).passkeys.len(), 1);
+
+    cx.update(|cx| {
+        cx.global_mut::<Services>().test_ceremony = Some(Arc::new(Late {
+            key: passkey.clone(),
+            server: server.clone(),
+        }))
+    });
+    assert_eq!(
+        a.change(cx, remove(), ProofWith::Passkey, Some(key.clone())),
+        Err(words::FLOW_EXPIRED.to_owned())
+    );
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    server.set_now(now + 7 * 60 * 1000);
+    a.use_passkey(cx, passkey);
+    assert_eq!(ways_in(&server, cx).passkeys.len(), 1);
+
+    assert_eq!(
+        a.change(cx, remove(), ProofWith::Passkey, Some(key)),
+        Ok(())
+    );
+    assert!(ways_in(&server, cx).passkeys.is_empty());
+}
+
+/// A passkey account's [Set a password…]: the first password, a new
+/// recovery key on the key screen, and the password row's state. The
+/// password routes say when the page was out of date.
+#[gpui_kit::test]
+fn a_passkey_account_sets_its_first_password(cx: &mut TestAppContext) {
+    use account_flow::{MethodChange, ProofWith};
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    a.use_passkey(cx, Arc::new(kanso_sync::TestAuthenticator::new(33)));
+    let rx = a.passkey_sign_up(cx, "quiet-otter-4821");
+    assert_eq!(finish(cx, rx), Ok(()));
+    let first_key = pending_key(cx).unwrap();
+    key_saved(cx);
+
+    // 409 no_password, in words.
+    let rx = cx.update(|cx| {
+        account_flow::change_password(
+            password("any old guess here", "quiet-otter-4821"),
+            password(NEW_PASSWORD, "quiet-otter-4821"),
+            cx,
+        )
+    });
+    assert_eq!(
+        finish(cx, rx),
+        Err(words::PASSWORD_STATE_CHANGED.to_owned())
+    );
+
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::SetPassword(password(NEW_PASSWORD, "quiet-otter-4821")),
+            ProofWith::Passkey,
+            None
+        ),
+        Ok(())
+    );
+    assert!(ways_in(&server, cx).has_password);
+    assert_eq!(key_note(cx), Some(words::KEY_AFTER_PASSWORD));
+    let new_key = pending_key(cx).unwrap();
+    assert!(holds_at(
+        &server,
+        PASSKEY_SERVER,
+        "quiet-otter-4821",
+        &new_key
+    ));
+    assert!(!holds_at(
+        &server,
+        PASSKEY_SERVER,
+        "quiet-otter-4821",
+        &first_key
+    ));
+    key_saved(cx);
+
+    // 409 already_has_password, in words.
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::SetPassword(password(NEW_PASSWORD, "quiet-otter-4821")),
+            ProofWith::Passkey,
+            None
+        ),
+        Err(words::PASSWORD_STATE_CHANGED.to_owned())
+    );
+}
+
+/// A passwordless account makes a new recovery key and deletes itself with
+/// a passkey proof; a mistyped name deletes nothing.
+#[gpui_kit::test]
+fn a_passwordless_account_replaces_its_key_and_deletes_with_a_passkey(cx: &mut TestAppContext) {
+    use account_flow::{MethodChange, ProofWith};
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 1);
+    a.use_passkey(cx, Arc::new(kanso_sync::TestAuthenticator::new(34)));
+    let rx = a.passkey_sign_up(cx, "quiet-otter-4821");
+    assert_eq!(finish(cx, rx), Ok(()));
+    let first_key = pending_key(cx).unwrap();
+    key_saved(cx);
+
+    assert_eq!(
+        a.change(cx, MethodChange::NewRecoveryKey, ProofWith::Passkey, None),
+        Ok(())
+    );
+    let new_key = pending_key(cx).expect("the new key shows");
+    assert_ne!(new_key.display(), first_key.display());
+    assert!(holds_at(
+        &server,
+        PASSKEY_SERVER,
+        "quiet-otter-4821",
+        &new_key
+    ));
+    key_saved(cx);
+
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::DeleteAccount {
+                typed: "someone-else".into()
+            },
+            ProofWith::Passkey,
+            None
+        ),
+        Err("That isn't this account's username.".to_owned())
+    );
+    assert_eq!(account(cx), signed_in_as("quiet-otter-4821"));
+
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::DeleteAccount {
+                typed: "quiet-otter-4821".into()
+            },
+            ProofWith::Passkey,
+            None
+        ),
+        Ok(())
+    );
+    assert_eq!(account(cx), AccountState::SignedOut);
+    assert_eq!(a.bound_to(), None);
+    assert_eq!(a.notes(), 1, "the notes on this device stay");
+}
+
+/// [Link a provider…] after a password proof, then [Unlink] with a fresh
+/// sign-in at that provider as the proof. Nothing opens a browser in tests.
+#[gpui_kit::test]
+fn linking_and_unlinking_github_take_their_proofs(cx: &mut TestAppContext) {
+    use account_flow::{MethodChange, ProofWith};
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    a.sign_up_with_passkeys(cx, "alice");
+    let account_id = session(cx).account_id.clone();
+    server.set_providers(vec![Provider::Github]);
+
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::Link(Provider::Github),
+            password_proof("alice", PASSWORD),
+            None
+        ),
+        Ok(())
+    );
+    let linked = ways_in(&server, cx).linked;
+    assert_eq!(linked.len(), 1);
+    assert_eq!(linked[0].provider, Provider::Github);
+    assert!(cx.read(|cx| cx.global::<Services>().provider_wait.is_none()));
+
+    // A provider can't prove a link: that needs the password or a passkey.
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::Link(Provider::Github),
+            ProofWith::Provider(Provider::Github),
+            None
+        ),
+        Err(words::error_words(
+            &AccountError::ReauthRequired,
+            words::ErrorContext::Account
+        ))
+    );
+
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::Unlink(Provider::Github),
+            ProofWith::Provider(Provider::Github),
+            None
+        ),
+        Ok(())
+    );
+    assert!(ways_in(&server, cx).linked.is_empty());
+    assert_eq!(account(cx), signed_in_as("alice"));
+}
+
+/// Links GitHub with a passkey proof, then unlinks it with a GitHub proof,
+/// from whatever session `mac` holds now.
+fn link_and_unlink_github(mac: &Mac, cx: &mut TestAppContext, server: &MemoryServer) {
+    use account_flow::{MethodChange, ProofWith};
+    let account_id = session(cx).account_id.clone();
+    server.set_providers(vec![Provider::Github]);
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        mac.change(
+            cx,
+            MethodChange::Link(Provider::Github),
+            ProofWith::Passkey,
+            None
+        ),
+        Ok(())
+    );
+    assert_eq!(ways_in(server, cx).linked.len(), 1);
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        mac.change(
+            cx,
+            MethodChange::Unlink(Provider::Github),
+            ProofWith::Provider(Provider::Github),
+            None
+        ),
+        Ok(())
+    );
+    assert!(ways_in(server, cx).linked.is_empty());
+}
+
+/// A device that signed in with a synced passkey is bound to that sign-in's
+/// own device, not the library's: its link and provider proof starts carry
+/// that device's proof, before and after a relaunch.
+#[gpui_kit::test]
+fn a_passkey_signed_in_device_links_and_proves_with_its_own_device(
+    cx: &mut TestAppContext,
+    cx_b: &mut TestAppContext,
+) {
+    let server = Arc::new(MemoryServer::new());
+    let passkey = Arc::new(kanso_sync::TestAuthenticator::new(41));
+    let a = mac(cx, &server, "Studio", 0);
+    a.use_passkey(cx, passkey.clone());
+    let rx = a.passkey_sign_up(cx, "quiet-otter-4821");
+    assert_eq!(finish(cx, rx), Ok(()));
+    key_saved(cx);
+    link_and_unlink_github(&a, cx, &server);
+
+    let b = mac(cx_b, &server, "Laptop", 0);
+    b.use_passkey(cx_b, passkey.clone());
+    let rx = b.passkey_sign_in(cx_b);
+    assert_eq!(finish(cx_b, rx), Ok(()));
+    assert_eq!(account(cx_b), signed_in_as("quiet-otter-4821"));
+    let machine = cx_b.read(|cx| cx.global::<Services>().machine.clone().unwrap());
+    let own = kanso_sync::device_identity(&b.store, &machine)
+        .unwrap()
+        .device_id(&session(cx_b).account_id);
+    assert_ne!(
+        session(cx_b).device_id,
+        own,
+        "a first passkey sign-in uses the flow's device"
+    );
+    link_and_unlink_github(&b, cx_b, &server);
+
+    // The proof survives a relaunch in the Keychain item.
+    relaunched(cx_b, &server, &b);
+    cx_b.update(account_flow::restore);
+    restored(cx_b);
+    assert_eq!(account(cx_b), signed_in_as("quiet-otter-4821"));
+    b.use_passkey(cx_b, passkey);
+    link_and_unlink_github(&b, cx_b, &server);
+}
+
+/// An account made with GitHub is bound to the provider flow's device; its
+/// link and provider proof starts carry that device's proof.
+#[gpui_kit::test]
+fn a_provider_created_session_links_and_proves_with_its_own_device(cx: &mut TestAppContext) {
+    use account_flow::{MethodChange, ProofWith};
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    let (login_device, key) = github_account(cx, &server, &a);
+    assert_eq!(session(cx).device_id, login_device.id);
+    let account_id = session(cx).account_id.clone();
+
+    // A GitHub proof, with the recovery key, makes a new recovery key.
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::NewRecoveryKey,
+            ProofWith::Provider(Provider::Github),
+            Some(key)
+        ),
+        Ok(())
+    );
+    let key = pending_key(cx).expect("the new key");
+    key_saved(cx);
+
+    // And it starts an unlink: the server then refuses the last way in
+    // without the recovery key, and takes it with the key.
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::Unlink(Provider::Github),
+            ProofWith::Provider(Provider::Github),
+            None
+        ),
+        Err(words::LAST_METHOD.to_owned())
+    );
+    assert_eq!(ways_in(&server, cx).linked.len(), 1);
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::Unlink(Provider::Github),
+            ProofWith::Provider(Provider::Github),
+            Some(key)
+        ),
+        Ok(())
+    );
+    assert!(ways_in(&server, cx).linked.is_empty());
+}
+
+/// An account made with GitHub on `a`, signed in: the flow's device and the
+/// sign-up's recovery key (saved).
+fn github_account(
+    cx: &mut TestAppContext,
+    server: &Arc<MemoryServer>,
+    a: &Mac,
+) -> (LoginDevice, RecoveryKey) {
+    server.set_providers(vec![Provider::Github]);
+    server.set_provider_outcomes(Provider::Github, ["new_account:quiet-otter-4821"]);
+    let login_device = LoginDevice::ephemeral();
+    let started = kanso_sync::start_provider(
+        server.as_ref(),
+        PASSKEY_SERVER,
+        &Provider::Github,
+        &login_device,
+        None,
+        None,
+    )
+    .unwrap();
+    let ProviderStep::NewAccount(ticket) = kanso_sync::poll_provider(
+        server.as_ref(),
+        PASSKEY_SERVER,
+        &Provider::Github,
+        started.flow_id(),
+        None,
+        &login_device,
+    )
+    .unwrap() else {
+        panic!("the scripted GitHub sign-in is a new account")
+    };
+    let pending = crate::services::ProviderSignup {
+        server: PASSKEY_SERVER.into(),
+        provider: Provider::Github,
+        ticket: ticket.ticket,
+        suggested_username: ticket.suggested_username,
+        login_device: login_device.clone(),
+    };
+    let window = a.window;
+    let rx = cx.update(|cx| {
+        account_flow::provider_sign_up(pending, "quiet-otter-4821".into(), window, cx)
+    });
+    assert_eq!(finish(cx, rx), Ok(()));
+    let key = pending_key(cx).expect("the sign-up's recovery key");
+    key_saved(cx);
+    (login_device, key)
+}
+
+/// When the page's list was out of date and the server answers 409
+/// last_method, the form opens again with the recovery key's field and the
+/// reason, instead of a dead end.
+#[gpui_kit::test]
+fn a_last_method_refusal_asks_again_with_the_recovery_key(cx: &mut TestAppContext) {
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    let (_, key) = github_account(cx, &server, &a);
+    let account_id = session(cx).account_id.clone();
+    // Out of date: the page still thinks the account has a password.
+    let mut stale = ways_in(&server, cx);
+    stale.has_password = true;
+    cx.update(|cx| {
+        cx.global_mut::<Services>().account_methods = crate::services::AccountMethodsState {
+            last_successful: Some(stale),
+            ..Default::default()
+        }
+    });
+    let window = a.window;
+    cx.update(|cx| {
+        window
+            .update(cx, |_, window, cx| {
+                crate::proof_sheet::open(
+                    crate::proof_sheet::Action::Unlink(Provider::Github),
+                    window,
+                    cx,
+                )
+            })
+            .unwrap()
+    });
+    // "Sign in with GitHub", after "Use your password".
+    a.click(cx, "choice-1");
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    a.click(cx, "form-submit");
+    wait_until(cx, "the form with the recovery key", |cx| {
+        a.draw(cx);
+        let mut vcx = VisualTestContext::from_window(a.window, cx);
+        vcx.debug_bounds("form-field-0").is_some()
+    });
+    assert_eq!(ways_in(&server, cx).linked.len(), 1);
+    let form = cx.read(crate::proof_sheet::shown_form).expect("the form");
+    cx.read(|cx| {
+        assert_eq!(form.read(cx).error_text(), Some(words::LAST_METHOD));
+    });
+    // With the key it goes through.
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    a.window
+        .update(cx, |_, window, cx| {
+            form.update(cx, |form, cx| {
+                form.fill(&[&key.display()], window, cx);
+                form.submit(window, cx);
+            })
+        })
+        .unwrap();
+    wait_until(cx, "the unlink", |cx| {
+        cx.read(|cx| cx.global::<Services>().task.is_none())
+            && kanso_sync::methods(server.as_ref(), &session(cx))
+                .unwrap()
+                .linked
+                .is_empty()
+    });
+}
+
+/// A wrong password with a right recovery key says the password or the key
+/// didn't match, never only "the recovery key"; a provider proof's change
+/// that fails on the key blames the key.
+#[gpui_kit::test]
+fn a_failed_proof_is_not_blamed_on_the_recovery_key(cx: &mut TestAppContext) {
+    use account_flow::{MethodChange, ProofWith};
+    let server = Arc::new(MemoryServer::new());
+    let a = mac(cx, &server, "Studio", 0);
+    let (_, key) = github_account(cx, &server, &a);
+    let account_id = session(cx).account_id.clone();
+    a.use_passkey(cx, Arc::new(kanso_sync::TestAuthenticator::new(51)));
+
+    // A wrong password goes with the change, beside a right key: the words
+    // name both, never only the key.
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::NewRecoveryKey,
+            password_proof("quiet-otter-4821", "not the password at all"),
+            Some(key.clone())
+        ),
+        Err(words::PASSWORD_OR_RECOVERY.to_owned())
+    );
+    // A passkey this account doesn't have.
+    let said = a.change(
+        cx,
+        MethodChange::NewRecoveryKey,
+        ProofWith::Passkey,
+        Some(key.clone()),
+    );
+    assert!(
+        said == Err(words::PASSKEY_UNKNOWN.to_owned())
+            || said == Err(words::PASSKEY_OR_RECOVERY.to_owned()),
+        "{said:?}"
+    );
+
+    // GitHub proved it; the recovery key is the one that's wrong.
+    let wrong = RecoveryKey::parse(&kanso_sync::RecoveryKey::generate().display()).unwrap();
+    server.set_provider_outcomes(Provider::Github, [format!("session:{account_id}")]);
+    assert_eq!(
+        a.change(
+            cx,
+            MethodChange::NewRecoveryKey,
+            ProofWith::Provider(Provider::Github),
+            Some(wrong)
+        ),
+        Err("That recovery key doesn't match this account.".to_owned())
+    );
 }

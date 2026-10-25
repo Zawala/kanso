@@ -74,6 +74,12 @@ pub struct Session {
     /// The library whose Keychain items hold this session (sign-out deletes
     /// them and queues its logout there).
     library_id: Option<String>,
+    /// The device ID and proof the session was created with, when they
+    /// aren't this library's own: a passkey or provider sign-in binds the
+    /// session to its flow's device. Session routes that check the device
+    /// (the event socket, a link's or proof's start) need that proof. Kept
+    /// in the `sync-account` Keychain item, zeroized on drop, never printed.
+    login_device: Option<LoginDevice>,
 }
 
 impl Session {
@@ -97,7 +103,30 @@ impl Session {
             token,
             data_key,
             library_id: None,
+            login_device: None,
         }
+    }
+
+    /// Records the device this session was created with. Ignored unless it
+    /// is the session's own device ID with a 32-byte proof.
+    pub(crate) fn set_login_device(&mut self, device: LoginDevice) {
+        if device.id == self.device_id && unb64(&device.proof).is_some_and(|p| p.len() == 32) {
+            self.login_device = Some(device);
+        }
+    }
+
+    /// The recorded device, for the Keychain item.
+    pub(crate) fn stored_login_device(&self) -> Option<&LoginDevice> {
+        self.login_device.as_ref()
+    }
+
+    /// The device ID and proof this session's device-checked routes send:
+    /// the ones it was created with (a passkey or provider sign-in), or this
+    /// library's own (`identity`) for a session it made itself.
+    pub fn login_device(&self, identity: &crate::binding::DeviceIdentity) -> LoginDevice {
+        self.login_device
+            .clone()
+            .unwrap_or_else(|| LoginDevice::for_identity(identity, &self.origin, &self.account_id))
     }
 
     pub(crate) fn token(&self) -> &SessionToken {
@@ -293,6 +322,10 @@ pub enum AccountError {
     /// 409 `already_has_password`.
     #[error("this account already has a password")]
     AlreadyHasPassword,
+    /// 409 `no_password`: `account/password` on an account without one; it
+    /// sets a first password with [`crate::set_password`] instead.
+    #[error("this account has no password")]
+    NoPassword,
     #[error("that passkey is already registered")]
     CredentialExists,
     /// 403 `self_approval`: "A device can't approve itself."
@@ -421,7 +454,7 @@ impl From<ApiError> for AccountError {
             ApiError::AlreadyHasPassword => AccountError::AlreadyHasPassword,
             // The app's words match `AccountError` exhaustively; until it
             // has a variant for this race, it reads as an unexpected answer.
-            ApiError::NoPassword => AccountError::Protocol("409 no_password".into()),
+            ApiError::NoPassword => AccountError::NoPassword,
             ApiError::CredentialExists => AccountError::CredentialExists,
             ApiError::SelfApproval => AccountError::SelfApproval,
             ApiError::ApprovalUsed => AccountError::ApprovalUsed,
@@ -1057,6 +1090,7 @@ pub fn sign_up_with_provider(
                     data_key,
                 );
                 session.set_library_id(&device.library_id);
+                session.set_login_device(login_device.clone());
                 return Ok(SignedUp {
                     session,
                     recovery_key,
@@ -1433,6 +1467,7 @@ pub fn unlock_with_password(
     {
         return Err(AccountError::KeyMismatch);
     }
+    let kept_device = login_device.clone();
     let request = LoginRequest {
         username: username.clone(),
         auth_key: keys.auth_key.to_base64url(),
@@ -1501,6 +1536,7 @@ pub fn unlock_with_password(
         data_key,
     );
     session.set_library_id(&device.library_id);
+    session.set_login_device(kept_device);
     Ok(SignedIn { session, evicted })
 }
 

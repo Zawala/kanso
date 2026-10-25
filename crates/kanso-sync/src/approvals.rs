@@ -377,6 +377,9 @@ pub fn unlock_with_local_key(
     } else if let Some(library_id) = local.library_id() {
         session.set_library_id(library_id);
     }
+    if let Some(device) = locked.login_device() {
+        session.set_login_device(device.clone());
+    }
     let content = ContentKeys::derive(local.data_key());
     let evicted = opened_evicted(locked, &content);
     Ok(SignedIn { session, evicted })
@@ -880,6 +883,9 @@ pub fn finish_unlock(
     );
     if let Some(library_id) = locked.library_id() {
         session.set_library_id(library_id);
+    }
+    if let Some(device) = locked.login_device() {
+        session.set_login_device(device.clone());
     }
     let evicted = opened_evicted(locked, &content);
     Ok(SignedIn { session, evicted })
