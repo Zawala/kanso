@@ -1025,3 +1025,32 @@ describe("proof limits count per session first", () => {
 		expect((await body(other.body.token)).body.error).toBe("invalid_credentials");
 	});
 });
+
+// Security review of PR #67, finding 4: a sign count that drops to 0 after
+// counting is refused as a clone, and its challenge is used up.
+describe("a sign count dropping to 0", () => {
+	it("is invalid_credentials for a proof, and the proof's challenge is used up", async () => {
+		const p = await passkeyAccount("prover");
+		await env.DB.prepare("UPDATE account_passkeys SET sign_count = 5").run();
+		const proof = await passkeyProof(p.token, p.credential, { signCount: 0 });
+		expect(await linkStart(p.token, p.device, proof)).toMatchObject({ status: 401, body: { error: "invalid_credentials" } });
+		const again = { ...proof, assertion: assertion(p.credential, (await env.DB.prepare("SELECT challenge FROM auth_flows WHERE id = ?1").bind(proof.flow).first<{ challenge: string }>())!.challenge, { signCount: 6 }) };
+		expect(await linkStart(p.token, p.device, again)).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+		expect(await env.DB.prepare("SELECT sign_count FROM account_passkeys").first()).toEqual({ sign_count: 5 });
+	});
+
+	it("is invalid_credentials for a sign-in, and the sign-in challenge is used up", async () => {
+		const p = await passkeyAccount("prover");
+		await env.DB.prepare("UPDATE account_passkeys SET sign_count = 5").run();
+		const d = newDevice();
+		const begin = await callJson("/v2/auth/passkey/start", { json: { device: wire(d) }, env: menv(), now: T0 });
+		const finish = (signCount: number) =>
+			callJson("/v2/auth/passkey/finish", {
+				json: { flow_id: begin.body.flow_id, ...assertion(p.credential, begin.body.challenge, { signCount }), device: wire(d) },
+				env: menv(),
+				now: T0,
+			});
+		expect(await finish(0)).toMatchObject({ status: 401, body: { error: "invalid_credentials" } });
+		expect(await finish(6)).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+	});
+});

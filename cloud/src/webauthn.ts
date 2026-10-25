@@ -366,10 +366,11 @@ export async function verifyAssertion(
 /**
  * The sign-count rule (docs/ACCOUNTS.md › Passkeys › Sign count): a stored
  * count of 0 means the authenticator doesn't count and is never enforced;
- * when both are above 0, a new count at or below the stored one is a possible
- * clone and is refused.
+ * once it is above 0, a new count must be greater, so a count that drops to 0
+ * is refused like any other that doesn't grow (a possible clone). The same
+ * rule as the statements that record it (`sign_count = 0 OR sign_count < ?`).
  */
-export const signCountAccepted = (stored: number, next: number): boolean => stored === 0 || next === 0 || next > stored;
+export const signCountAccepted = (stored: number, next: number): boolean => stored === 0 || next > stored;
 
 /** The WebAuthn user handle: `SHA-256("kanso/v1/webauthn-user" || lp(account_id))[0..16]`, base64url. */
 export async function userHandle(accountId: string): Promise<string> {

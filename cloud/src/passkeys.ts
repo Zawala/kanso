@@ -33,7 +33,7 @@ import {
 } from "./protocol";
 import { checkProof, proofAccount, proofUsed, recoveryProof } from "./proofs";
 import { lastMethod } from "./providers";
-import { flowById, flowForDevice, flowExpired, flowStatement, hexEqual, isFlowId, newFlow, passkeyAdvertisement } from "./sign_in";
+import { consumeFlow, flowById, flowForDevice, flowExpired, flowStatement, hexEqual, isFlowId, newFlow, passkeyAdvertisement } from "./sign_in";
 import { isReserved, normalizeUsername } from "./usernames";
 import {
 	type Expected,
@@ -291,7 +291,11 @@ export const passkeyFinish = async (request: Request, env: Env, now: number, key
 		expectedValue,
 	);
 	if (!verified) return INVALID();
-	if (!signCountAccepted(found.sign_count, verified.signCount)) return INVALID();
+	if (!signCountAccepted(found.sign_count, verified.signCount)) {
+		// A possible clone: the challenge is used up, as a proof's is.
+		await consumeFlow(env, flowId, now);
+		return INVALID();
+	}
 	// The account is checked after the signature, so a disabled flag never
 	// short-circuits a credential failure.
 	if (found.account.disabled_at !== null) return accountDisabled();
