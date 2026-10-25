@@ -8,6 +8,8 @@
 //!
 //! `KANSO_REAL_AGENT` is `claudeAgent`, `codex`, `geminiCli` or `opencode`.
 
+#![cfg(feature = "acp")]
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};

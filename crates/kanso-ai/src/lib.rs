@@ -6,14 +6,17 @@
 //! timeouts. Kanso keeps a small synchronous surface here (an [`Event`]
 //! iterator) so the GPUI app never awaits, and owns one small tokio runtime on
 //! a background thread for the async calls. An agent on this computer
-//! (`agent.rs`, over `kanso-acp`) answers through the same [`ChatProvider`].
+//! (`agent.rs`, over `kanso-acp`, with the `acp` feature the phones leave
+//! off) answers through the same [`ChatProvider`].
 //! Nothing in this crate reads or writes notes.
 
+#[cfg(feature = "acp")]
 pub mod agent;
 pub mod client;
 pub mod features;
 pub mod prompt;
 
+#[cfg(feature = "acp")]
 pub use agent::{AgentCheck, AgentKind, AgentSettings};
 pub use client::{
     AiError, CUT_OFF, ChatProvider, ClientSettings, Event, SharedProvider, Turn, answer,

@@ -1,6 +1,8 @@
 //! An agent on this computer answering through `ChatProvider`, against the
 //! fake ACP agent in process.
 
+#![cfg(feature = "acp")]
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
