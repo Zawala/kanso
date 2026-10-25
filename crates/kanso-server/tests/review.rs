@@ -14,7 +14,7 @@ use axum::http::{Method, Request, StatusCode, header};
 use common::*;
 use kanso_core::DocType;
 use kanso_server::{
-    AgentScope, ApplyError, ChangeId, ReviewQueue, TokenStore, agents_router, REVIEW_EXPIRY,
+    AgentScope, ApplyError, ChangeId, REVIEW_EXPIRY, ReviewQueue, TokenStore, agents_router,
 };
 use kanso_store::{Origin, Put, Store};
 use proptest::prelude::*;
@@ -123,13 +123,7 @@ fn snapshot(store: &Store) -> (i64, Vec<(String, String, String)>) {
         .changes_since(0, None, false)
         .unwrap()
         .into_iter()
-        .map(|doc| {
-            (
-                doc.id,
-                doc.rev,
-                serde_json::to_string(&doc.fields).unwrap(),
-            )
-        })
+        .map(|doc| (doc.id, doc.rev, serde_json::to_string(&doc.fields).unwrap()))
         .collect();
     (store.last_seq().unwrap(), docs)
 }
@@ -235,7 +229,10 @@ async fn a_new_note_waits_and_is_created_on_apply() {
         .apply(&setup.store, change.id)
         .unwrap();
     let made = setup.store.note(&applied.note_id).unwrap().unwrap();
-    assert_eq!((made.title.as_str(), made.body.as_str()), ("Ideas", "- one"));
+    assert_eq!(
+        (made.title.as_str(), made.body.as_str()),
+        ("Ideas", "- one")
+    );
     assert_eq!(made.book_id, shelf);
 }
 
@@ -247,15 +244,33 @@ async fn only_text_and_title_can_be_suggested() {
     let minted = suggester(&setup, None);
     let rev = rev_of(&setup.store, &id);
     let calls = [
-        ("update-note", json!({ "_id": id, "_rev": rev, "body": "x", "pinned": true })),
-        ("update-note", json!({ "_id": id, "_rev": rev, "body": "x", "bookId": "trash" })),
+        (
+            "update-note",
+            json!({ "_id": id, "_rev": rev, "body": "x", "pinned": true }),
+        ),
+        (
+            "update-note",
+            json!({ "_id": id, "_rev": rev, "body": "x", "bookId": "trash" }),
+        ),
         ("update-note", json!({ "_id": id, "_rev": rev })),
-        ("create-note", json!({ "bookId": shelf, "title": "t", "body": "b", "status": "active" })),
-        ("update-tag", json!({ "_id": "tag:x", "_rev": "1-x", "name": "y" })),
-        ("update-book", json!({ "_id": shelf, "_rev": "1-x", "name": "y" })),
+        (
+            "create-note",
+            json!({ "bookId": shelf, "title": "t", "body": "b", "status": "active" }),
+        ),
+        (
+            "update-tag",
+            json!({ "_id": "tag:x", "_rev": "1-x", "name": "y" }),
+        ),
+        (
+            "update-book",
+            json!({ "_id": shelf, "_rev": "1-x", "name": "y" }),
+        ),
         ("create-tag", json!({ "name": "x" })),
         ("create-book", json!({ "name": "x" })),
-        ("create-file", json!({ "name": "a.png", "contentType": "image/png", "data": "aGVsbG8=" })),
+        (
+            "create-file",
+            json!({ "name": "a.png", "contentType": "image/png", "data": "aGVsbG8=" }),
+        ),
         ("read-file", json!({ "fileId": "file:x" })),
         ("kanso-create-daily-note", json!({})),
     ];
@@ -276,9 +291,15 @@ async fn with_the_setting_off_the_write_tools_are_read_only() {
     let minted = setup.tokens.mint(AgentScope::ask(None));
     let before = snapshot(&setup.store);
     for (name, arguments) in [
-        ("patch-note", json!({ "_id": id, "_rev": rev_of(&setup.store, &id), "old_string": "body", "new_string": "x" })),
+        (
+            "patch-note",
+            json!({ "_id": id, "_rev": rev_of(&setup.store, &id), "old_string": "body", "new_string": "x" }),
+        ),
         ("update-note", update_args(&setup.store, &id, "x")),
-        ("create-note", json!({ "bookId": shelf, "title": "t", "body": "b" })),
+        (
+            "create-note",
+            json!({ "bookId": shelf, "title": "t", "body": "b" }),
+        ),
     ] {
         let result = agent_tool(&setup.private, &minted.token, name, arguments).await;
         assert_eq!(result["isError"], true, "{name}");
@@ -607,15 +628,7 @@ fn two_applies_at_once_write_once() {
     let change = setup.tokens.reviews().list().remove(0).id;
     let outcomes: Vec<bool> = std::thread::scope(|scope| {
         let tries: Vec<_> = (0..4)
-            .map(|_| {
-                scope.spawn(|| {
-                    setup
-                        .tokens
-                        .reviews()
-                        .apply(&setup.store, change)
-                        .is_ok()
-                })
-            })
+            .map(|_| scope.spawn(|| setup.tokens.reviews().apply(&setup.store, change).is_ok()))
             .collect();
         tries.into_iter().map(|t| t.join().unwrap()).collect()
     });
@@ -809,14 +822,24 @@ fn a_locked_trashed_excluded_or_out_of_scope_note_cannot_be_targeted() {
     let vault = book(&setup.store, "Vault", None, true);
     let tag = setup
         .store
-        .put(DocType::Tag, json!({ "name": "ai-exclude" }), Put::Upsert, Origin::Ui)
+        .put(
+            DocType::Tag,
+            json!({ "name": "ai-exclude" }),
+            Put::Upsert,
+            Origin::Ui,
+        )
         .unwrap()
         .id;
     let plain = note(&setup.store, "Plain", "x", &inside, vec![]);
     let sealed = note(&setup.store, "Sealed", "x", &inside, vec![]);
     setup
         .store
-        .put(DocType::Note, json!({ "_id": sealed, "kansoLock": { "salt": "abc" } }), Put::Merge, Origin::Sync)
+        .put(
+            DocType::Note,
+            json!({ "_id": sealed, "kansoLock": { "salt": "abc" } }),
+            Put::Merge,
+            Origin::Sync,
+        )
         .unwrap();
     let trashed = note(&setup.store, "Trashed", "x", "trash", vec![]);
     let excluded = note(&setup.store, "Excluded", "x", &inside, vec![tag]);
@@ -826,16 +849,28 @@ fn a_locked_trashed_excluded_or_out_of_scope_note_cannot_be_targeted() {
     for id in [&sealed, &trashed, &excluded, &in_vault, &elsewhere] {
         let rev = rev_of(&setup.store, id);
         for (name, arguments) in [
-            ("update-note", json!({ "_id": id, "_rev": rev, "body": "y" })),
-            ("patch-note", json!({ "_id": id, "_rev": rev, "old_string": "x", "new_string": "y" })),
+            (
+                "update-note",
+                json!({ "_id": id, "_rev": rev, "body": "y" }),
+            ),
+            (
+                "patch-note",
+                json!({ "_id": id, "_rev": rev, "old_string": "x", "new_string": "y" }),
+            ),
         ] {
-            let result = runtime().block_on(agent_tool(&setup.private, &minted.token, name, arguments));
+            let result =
+                runtime().block_on(agent_tool(&setup.private, &minted.token, name, arguments));
             assert_eq!(result["isError"], true, "{id} {name}: {result}");
             assert!(text_of(&result).contains("404"), "{result}");
         }
     }
     // Nor can a new note go into a notebook it can't see.
-    for target in [&vault, &outside, &"trash".to_owned(), &"book:nosuchbook".to_owned()] {
+    for target in [
+        &vault,
+        &outside,
+        &"trash".to_owned(),
+        &"book:nosuchbook".to_owned(),
+    ] {
         let result = runtime().block_on(agent_tool(
             &setup.private,
             &minted.token,

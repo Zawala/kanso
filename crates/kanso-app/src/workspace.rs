@@ -428,6 +428,9 @@ pub struct Workspace {
     pub(crate) title_bar: Option<Entity<gpui_kit::component::menu::AppMenuBar>>,
     _subscriptions: Vec<Subscription>,
     _links: Task<()>,
+    /// Opens the review sheet when an agent suggests an edit while this
+    /// window is focused.
+    _reviews: Vec<Task<()>>,
     /// Locks the notes again once they go unused for a while.
     _auto_lock: Task<()>,
 }
@@ -671,6 +674,8 @@ impl Workspace {
             }
         });
 
+        let reviews = crate::review_queue::watch(window, cx);
+
         let auto_lock = cx.spawn_in(window, async move |this, cx| {
             loop {
                 cx.background_executor()
@@ -738,6 +743,7 @@ impl Workspace {
                 .then(|| gpui_kit::component::menu::AppMenuBar::new(cx)),
             _subscriptions: subscriptions,
             _links: links,
+            _reviews: reviews,
             _auto_lock: auto_lock,
         }
     }

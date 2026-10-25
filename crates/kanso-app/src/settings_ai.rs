@@ -345,6 +345,21 @@ impl AiPage {
         cx.notify();
     }
 
+    /// Lets the agent suggest edits for review, or not. Turning it off
+    /// drops the suggestions still waiting.
+    fn set_suggest_edits(&mut self, on: bool, cx: &mut Context<Self>) {
+        AppState::update_config(cx, |config| config.ai.agent.suggest_edits = on);
+        if !on && cx.has_global::<crate::services::Services>() {
+            cx.global::<crate::services::Services>()
+                .agent_tokens
+                .reviews()
+                .clear();
+        }
+        // Tokens already given end; the next question gets the new tools.
+        crate::services::end_agent_access(cx);
+        cx.notify();
+    }
+
     /// Lets the agent search and read the notes itself, or not.
     fn set_note_access(&mut self, on: bool, cx: &mut Context<Self>) {
         AppState::update_config(cx, |config| config.ai.agent.mcp = on);
@@ -906,6 +921,21 @@ impl AiPage {
                                 crate::agent_scope::open_sheet(window, cx);
                             }),
                     ),
+            );
+            let suggest = ai.agent.suggest_edits;
+            let view = cx.entity();
+            rows.push(
+                Row::new(gpui_kit::assets::IconName::Pencil, "Let the agent suggest edits")
+                    .detail(format!(
+                        "{label} may suggest changes to the text and title of these notes, or a new note. Nothing changes until you review a suggestion and apply it in Kanso. Locked notes, the trash and notes tagged #ai-exclude can't be suggested for."
+                    ))
+                    .trailing(div().debug_selector(|| "ai-agent-suggest".into()).child(
+                        Switch::new("ai-agent-suggest")
+                            .checked(suggest)
+                            .on_click(move |on, _, cx| {
+                                view.update(cx, |this, cx| this.set_suggest_edits(*on, cx));
+                            }),
+                    )),
             );
         }
         rows

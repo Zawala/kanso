@@ -41,7 +41,7 @@ use axum::routing::post;
 use kanso_store::Store;
 
 pub use auth::basic_header;
-pub use proposal::{Applied, ApplyError, ChangeId, ProposedChange};
+pub use proposal::{Applied, ApplyError, ChangeId, NewChange, ProposedChange};
 pub use review::{EXPIRY as REVIEW_EXPIRY, ReviewEvent, ReviewQueue};
 pub use scope::{ASK_TOOLS, AgentScope, Caller, READ_TOOLS, SUGGEST_TOOLS};
 pub use tokens::{Minted, TokenId, TokenStore};

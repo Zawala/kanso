@@ -1,6 +1,7 @@
 //! An agent on this computer as the source of AI answers: what the settings
-//! mean for `kanso-ai`, the read-only notes access each of its sessions
-//! gets, and the plain lines Settings and the Ask panel show about what the
+//! mean for `kanso-ai`, the notes access each of its sessions gets (read
+//! only, and suggested edits that wait for review when the person allowed
+//! them), and the plain lines Settings and the Ask panel show about what the
 //! agent sees and who it sends questions to.
 
 use std::collections::HashSet;
@@ -50,9 +51,25 @@ pub fn scope_notebooks(choice: &AgentChoice) -> Option<HashSet<String>> {
     (!choice.notebooks.is_empty()).then(|| choice.notebooks.iter().cloned().collect())
 }
 
-/// How each new session of `choice` gets read-only access to the notes at
-/// `url`: a token of its own over the notebooks `choice` allows, with
-/// Ask's two tools, and `relay` for an agent without HTTP MCP.
+/// The scope each session of `choice` gets over `notebooks`: Ask's two read
+/// tools, and the suggesting tools too when the person allowed suggested
+/// edits. Those only queue a change for review; the agent never writes.
+pub fn scope_for(
+    choice: &AgentChoice,
+    notebooks: Option<HashSet<String>>,
+    agent: &str,
+) -> AgentScope {
+    if choice.suggest_edits {
+        AgentScope::ask_and_suggest(notebooks, agent)
+    } else {
+        AgentScope::ask(notebooks)
+    }
+}
+
+/// How each new session of `choice` gets access to the notes at `url`: a
+/// token of its own over the notebooks `choice` allows, with Ask's two
+/// tools (and the suggesting ones when allowed), and `relay` for an agent
+/// without HTTP MCP.
 pub fn notes_access_at(
     choice: &AgentChoice,
     url: String,
@@ -60,8 +77,10 @@ pub fn notes_access_at(
     relay: Option<PathBuf>,
 ) -> NotesAccess {
     let notebooks = scope_notebooks(choice);
+    let choice = choice.clone();
+    let agent = label(&choice);
     Arc::new(move || {
-        let minted = tokens.mint(AgentScope::ask(notebooks.clone()));
+        let minted = tokens.mint(scope_for(&choice, notebooks.clone(), &agent));
         Some(NotesGrant {
             url: url.clone(),
             token: minted.token,
@@ -238,10 +257,51 @@ mod tests {
         assert!(scope.read_only && !scope.allow_attachments);
         assert_eq!(scope.notebooks, scope_notebooks(&choice));
         assert!(scope.allows_tool("read-note") && !scope.allows_tool("create-note"));
+        assert!(scope.suggests_as.is_none());
         assert!(first.lease.is_live());
         drop(first);
         assert_eq!(tokens.live_count(), 1);
         assert!(tokens.verify(&second.token).is_some());
+    }
+
+    #[test]
+    fn suggested_edits_are_off_unless_allowed_and_never_write() {
+        use super::{notes_access_at, scope_for};
+        let mut choice = AgentChoice::default();
+        assert!(!choice.suggest_edits, "off by default");
+        let off = scope_for(&choice, None, "Claude Agent");
+        assert!(!off.allows_tool("patch-note") && off.suggests_as.is_none());
+        choice.suggest_edits = true;
+        let on = scope_for(&choice, None, "Claude Agent");
+        for tool in ["patch-note", "update-note", "create-note", "read-note"] {
+            assert!(on.allows_tool(tool), "{tool}");
+        }
+        // Tags and notebooks stay denied; nothing in it writes the store.
+        for tool in [
+            "update-tag",
+            "update-book",
+            "create-tag",
+            "create-book",
+            "create-file",
+        ] {
+            assert!(!on.allows_tool(tool), "{tool}");
+        }
+        assert!(on.read_only && !on.allow_attachments);
+        assert_eq!(on.suggests_as.as_deref(), Some("Claude Agent"));
+        // A session's token carries the scope the setting meant.
+        let tokens = kanso_server::TokenStore::new();
+        let access = notes_access_at(
+            &choice,
+            "http://127.0.0.1:1/mcp".into(),
+            tokens.clone(),
+            None,
+        );
+        let grant = access().unwrap();
+        let Some(kanso_server::Caller::Agent { scope, .. }) = tokens.verify(&grant.token) else {
+            panic!("the token is an agent's");
+        };
+        assert!(scope.allows_tool("patch-note"));
+        assert!(scope.suggests_as.is_some());
     }
 
     #[test]

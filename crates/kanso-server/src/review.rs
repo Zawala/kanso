@@ -182,9 +182,10 @@ impl ReviewQueue {
             .cloned()
     }
 
-    /// Queues `new`. A suggestion that builds on one already waiting
+    /// Queues `new` (the server does, for an agent's call; staging writes
+    /// nothing). A suggestion that builds on one already waiting
     /// (`pending_for`) replaces it, in place.
-    pub(crate) fn stage(&self, new: NewChange) -> Result<ChangeId, QueueFull> {
+    pub fn stage(&self, new: NewChange) -> Result<ChangeId, QueueFull> {
         let made = (self.clock)();
         let mut inner = self.lock();
         let same = new
@@ -235,6 +236,15 @@ impl ReviewQueue {
         };
         inner.tell(ReviewEvent::Arrived(id));
         Ok(id)
+    }
+
+    /// Throws every suggestion away.
+    pub fn clear(&self) {
+        let mut inner = self.lock();
+        if !inner.entries.is_empty() {
+            inner.entries.clear();
+            inner.tell(ReviewEvent::Changed);
+        }
     }
 
     /// Throws suggestion `id` away. `false` when it isn't waiting.
@@ -294,11 +304,7 @@ impl ReviewQueue {
     /// when the store fails. In the last two it stays queued.
     pub fn apply(&self, store: &Store, id: ChangeId) -> Result<Applied, ApplyError> {
         let mut inner = self.lock();
-        let Some(at) = inner
-            .entries
-            .iter()
-            .position(|entry| entry.change.id == id)
-        else {
+        let Some(at) = inner.entries.iter().position(|entry| entry.change.id == id) else {
             return Err(ApplyError::Gone);
         };
         let change = inner.entries[at].change.clone();
