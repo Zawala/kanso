@@ -28,6 +28,8 @@ pub mod account;
 pub mod daily;
 pub mod edit;
 pub mod fuzzy;
+#[cfg(feature = "highlight")]
+pub mod highlight;
 pub mod links;
 pub mod lock;
 #[cfg(any(test, feature = "test-support"))]

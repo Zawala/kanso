@@ -213,6 +213,25 @@ impl Tokens {
     }
 }
 
+/// How text drawn with `tokens` (outermost first, as a
+/// [`crate::highlight::Span`] lists them) is styled: the style of each
+/// token laid over the ones before it, attribute by attribute, so a later
+/// token's color, slant or weight wins and what it leaves unset shows what is
+/// under it. Tokens the theme gives no style leave the rest as it was.
+#[cfg(feature = "highlight")]
+pub fn style(
+    tokens: &[crate::highlight::Token],
+    syntax: &BTreeMap<&'static str, TokenStyle>,
+) -> TokenStyle {
+    tokens.iter().fold(TokenStyle::default(), |under, token| {
+        syntax
+            .get(token.key())
+            .copied()
+            .unwrap_or_default()
+            .or(under)
+    })
+}
+
 /// How strongly the accent tints the palette's selected row over the
 /// elevated panel, in the dark theme and the light one: enough to show, and
 /// little enough that secondary text on it still reads at 4.5:1.

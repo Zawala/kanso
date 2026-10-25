@@ -110,6 +110,34 @@ gpui-kit = { version = "=0.7.3", features = [
 # without one (`code_lang::ensure_registered`). Pinned to the versions it uses.
 tree-sitter-c-sharp = "=0.23.5"
 tree-sitter-swift = "=0.7.4"
+# The engine's own Markdown highlighter (kanso-engine, `highlight`), on the
+# runtime and grammar crates gpui-kit's component library compiles in. The
+# requirements equal that library's, version for version: the runtime
+# declares `links = "tree-sitter"` and every grammar exports unmangled C
+# symbols, so a second copy of either fails to link. CI fails if
+# `cargo tree -d -p kanso-app` lists a tree-sitter crate twice.
+tree-sitter = "0.26.13"
+tree-sitter-bash = "0.23.3"
+tree-sitter-c = "0.24.1"
+tree-sitter-cpp = "0.23.4"
+tree-sitter-css = "0.23.2"
+tree-sitter-diff = "0.1.0"
+tree-sitter-go = "0.23.4"
+tree-sitter-html = "0.23.2"
+tree-sitter-java = "0.23.5"
+tree-sitter-javascript = "0.23.1"
+tree-sitter-json = "0.24.8"
+tree-sitter-kotlin-sg = "0.4.0"
+tree-sitter-lua = "0.4.1"
+tree-sitter-md = "0.5.1"
+tree-sitter-php = "0.24.2"
+tree-sitter-python = "0.23.6"
+tree-sitter-ruby = "0.23.1"
+tree-sitter-rust = "0.24.0"
+tree-sitter-sequel = "0.3.8"
+tree-sitter-toml-ng = "0.7.0"
+tree-sitter-typescript = "0.23.2"
+tree-sitter-yaml = "0.7.1"
 
 [profile.dev.package."*"]
 opt-level = 2
