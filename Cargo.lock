@@ -4336,6 +4336,7 @@ dependencies = [
  "kanso-fido",
  "kanso-gallery",
  "kanso-import",
+ "kanso-plugins",
  "kanso-render",
  "kanso-server",
  "kanso-store",
@@ -4482,6 +4483,43 @@ dependencies = [
  "sha1 0.10.7",
  "tar",
  "tempfile",
+ "zip",
+]
+
+[[package]]
+name = "kanso-plugin-host"
+version = "0.8.4"
+dependencies = [
+ "proptest",
+ "rquickjs",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "kanso-plugins"
+version = "0.8.4"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "ed25519-dalek",
+ "getrandom 0.4.3",
+ "kanso-core",
+ "kanso-plugin-host",
+ "kanso-store",
+ "kanso-update",
+ "proptest",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "similar",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tiny_http",
+ "ureq",
+ "url",
+ "zeroize",
  "zip",
 ]
 

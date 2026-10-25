@@ -649,7 +649,7 @@ impl Store {
     pub fn revisions(&self, id: &str) -> Result<Vec<Revision>> {
         self.read(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT rev, saved_at, origin, json, author, agent FROM revisions WHERE doc_id = ? ORDER BY saved_at DESC, id DESC",
+                "SELECT rev, saved_at, origin, json, author, agent FROM revisions WHERE doc_id = ? AND json != 'null' ORDER BY saved_at DESC, id DESC",
             )?;
             let rows = stmt.query_map([id], |row| {
                 let json: String = row.get(3)?;

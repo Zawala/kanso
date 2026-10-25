@@ -14,6 +14,7 @@ mod graph;
 mod history;
 mod meaning;
 mod ocr;
+mod plugin;
 mod query_view;
 mod read;
 mod replace;
@@ -47,6 +48,10 @@ pub use meaning::rank::{
     merged_tags, suggest_tags,
 };
 pub use ocr::{OCR_TYPES, UnreadImage};
+pub use plugin::{
+    PLUGIN_DATA_FIELD, PluginCreate, PluginEdit, PluginReport, PluginWriter, plugin_data,
+    set_plugin_data,
+};
 pub use query_view::QueryNoteRow;
 pub use read::{NoteSummary, Revision, SearchParams, Sort, StatusCounts};
 pub use replace::{
@@ -98,6 +103,10 @@ pub enum Origin {
     /// queue. Every write is snapshotted, as for the API, and the version it
     /// replaces names the agent ([`Store::put_by_agent`]).
     Agent,
+    /// A plugin's batch ([`Store::apply_plugin_batch`]). Every write is
+    /// snapshotted, unthrottled, with the plugin's name, so history can say
+    /// which plugin changed what.
+    Plugin,
 }
 
 impl Origin {
@@ -109,6 +118,7 @@ impl Origin {
             Origin::Import => "import",
             Origin::Collab => "collab",
             Origin::Agent => "agent",
+            Origin::Plugin => "plugin",
         }
     }
 }

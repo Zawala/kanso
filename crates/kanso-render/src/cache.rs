@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex, mpsc};
 
-use crate::{Job, Outcome, render};
+use crate::{Job, Kind, Outcome, plugin, render};
 
 /// The most drawings kept, and the most SVG they may hold between them.
 const MAX_ENTRIES: usize = 768;
@@ -62,6 +62,21 @@ impl State {
     }
 }
 
+impl State {
+    /// Drops every kept drawing of `kind`.
+    fn forget(&mut self, kind: Kind) {
+        let mut freed = 0;
+        self.done.retain(|job, entry| {
+            let keep = job.kind != kind;
+            if !keep {
+                freed += entry.size;
+            }
+            keep
+        });
+        self.bytes -= freed;
+    }
+}
+
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(Default::default);
 
 /// Where jobs go: the workers, started on first use.
@@ -81,10 +96,7 @@ static QUEUE: LazyLock<Mutex<mpsc::Sender<Job>>> = LazyLock::new(|| {
                         },
                         Err(_) => return,
                     };
-                    let outcome = std::panic::catch_unwind(|| render(&job)).unwrap_or_else(|_| {
-                        Err(crate::Failure::Invalid("Drawing this failed.".into()))
-                    });
-                    finish(job, outcome);
+                    draw(job);
                 }
             })
             .expect("starting a render thread");
@@ -92,15 +104,55 @@ static QUEUE: LazyLock<Mutex<mpsc::Sender<Job>>> = LazyLock::new(|| {
     Mutex::new(send)
 });
 
-fn finish(job: Job, outcome: Outcome) {
+/// Drops every kept plugin drawing, and makes one still being drawn for
+/// the previous renderer not be kept. Called when the renderer changes.
+pub fn forget_plugin_drawings() {
+    forget_kind(Kind::Plugin);
+}
+
+/// Drops every kept drawing of `kind`. For plugin drawings, also moves the
+/// generation on first, so a drawing in flight isn't kept afterwards.
+pub(crate) fn forget_kind(kind: Kind) {
+    if kind == Kind::Plugin {
+        plugin::next_generation();
+    }
+    if let Ok(mut state) = STATE.lock() {
+        state.forget(kind);
+    }
+}
+
+/// Draws `job` and keeps the result. A plugin drawing made for a renderer
+/// that has since changed is thrown away and made again.
+fn draw(job: Job) {
+    for attempt in 0..3 {
+        let generation = plugin::generation();
+        let outcome = std::panic::catch_unwind(|| render(&job))
+            .unwrap_or_else(|_| Err(crate::Failure::Invalid("Drawing this failed.".into())));
+        let last = attempt == 2;
+        if finish(job.clone(), outcome, (!last).then_some(generation)) {
+            return;
+        }
+    }
+}
+
+/// Keeps `outcome` and wakes whoever waited for it. Given the generation
+/// a plugin drawing was made in, keeps nothing and returns false when that
+/// is no longer the current one.
+fn finish(job: Job, outcome: Outcome, generation: Option<u64>) -> bool {
     let waiters = {
-        let Ok(mut state) = STATE.lock() else { return };
+        let Ok(mut state) = STATE.lock() else {
+            return true;
+        };
+        if job.kind == Kind::Plugin && generation.is_some_and(|g| g != plugin::generation()) {
+            return false;
+        }
         state.insert(job.clone(), Arc::new(outcome));
         state.pending.remove(&job).unwrap_or_default()
     };
     for waiter in waiters {
         waiter();
     }
+    true
 }
 
 /// The drawing for `job`, if it has been made and is still kept.
@@ -131,8 +183,7 @@ pub fn request(job: Job, done: impl FnOnce() + Send + 'static) {
     let sent = QUEUE.lock().map(|queue| queue.send(job.clone()).is_ok());
     if !matches!(sent, Ok(true)) {
         // No workers: draw here rather than never.
-        let outcome = render(&job);
-        finish(job, outcome);
+        draw(job);
     }
 }
 

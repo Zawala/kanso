@@ -1,0 +1,11 @@
+# The plugin directory's signing keys: one base64 Ed25519 public key a line.
+#
+# Kanso takes a directory index only when `index.json.sig` verifies against
+# one of these, and installs a bundle only when the index (or, for a
+# `.kansoplugin` file, its `.sig`) signs its SHA-256. This list is separate
+# from the update keys and the theme gallery's; never reuse either.
+#
+# Empty until the owner sets up the directory: until then Settings › Plugins
+# says the directory isn't set up, never fetches, and only developer mode
+# installs (docs/PLUGINS.md › The directory). Make a key with
+# `kanso-plugin keygen` and rotate by adding a second line.

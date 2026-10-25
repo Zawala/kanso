@@ -30,6 +30,7 @@ pub fn origin_label(origin: &str) -> &'static str {
         "import" => "Replaced by an import",
         "collab" => "Edited in a shared note",
         "agent" => "Suggested by an agent, applied by you",
+        "plugin" => "Changed by a plugin",
         _ => "Saved version",
     }
 }
@@ -502,6 +503,7 @@ mod tests {
             kanso_store::Origin::Import,
             kanso_store::Origin::Collab,
             kanso_store::Origin::Agent,
+            kanso_store::Origin::Plugin,
         ] {
             assert_ne!(origin_label(origin.as_str()), "Saved version");
         }

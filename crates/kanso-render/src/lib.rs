@@ -18,16 +18,21 @@ pub mod markdown_safe;
 mod math;
 mod mermaid;
 mod pele;
+pub mod plugin;
 mod rough;
 pub mod svg;
 pub mod typography;
 
 use std::sync::Arc;
 
-pub use cache::{cached, render_blocking, request};
+pub use cache::{cached, forget_plugin_drawings, render_blocking, request};
 pub use mermaid::is_supported as mermaid_is_supported;
 pub use mermaid::{
     Engine as MermaidEngine, render_with as render_mermaid_with, set_engine as set_mermaid_engine,
+};
+pub use plugin::{
+    MAX_PLUGIN_SVG_BYTES, PluginRenderer, is_plugin_language, plugin_languages,
+    sanitize_plugin_svg, set_plugin_renderer,
 };
 
 /// The text size drawings are measured for.
@@ -141,6 +146,8 @@ pub enum Kind {
     /// An `excalidraw` fence, or an attached `.excalidraw` file: the
     /// scene's JSON.
     Excalidraw,
+    /// A fence in a language a plugin draws; see [`Job::plugin`].
+    Plugin,
 }
 
 /// One thing to draw.
@@ -152,6 +159,9 @@ pub struct Job {
     /// What draws a Mermaid diagram: part of the job, so choosing another
     /// engine draws again rather than showing what the cache has.
     pub mermaid: MermaidEngine,
+    /// For [`Kind::Plugin`]: the fence's language (lowercase). `None` for
+    /// every other kind.
+    pub language: Option<Arc<str>>,
 }
 
 impl Job {
@@ -162,6 +172,7 @@ impl Job {
             source: source.into(),
             palette,
             mermaid: mermaid::engine(),
+            language: None,
         }
     }
 }
@@ -185,6 +196,8 @@ pub enum Failure {
     Unsupported(String),
     /// A mistake in the source.
     Invalid(String),
+    /// A fence in a language no plugin draws (any more): the language.
+    NoPlugin(String),
 }
 
 impl Failure {
@@ -194,13 +207,14 @@ impl Failure {
             Failure::Unsupported(kind) if kind.is_empty() => "Not a diagram Kanso draws".into(),
             Failure::Unsupported(kind) => format!("{kind} diagrams aren't drawn yet"),
             Failure::Invalid(_) => "Couldn't draw this".into(),
+            Failure::NoPlugin(language) => format!("No plugin draws {language} blocks"),
         }
     }
 
     /// The details, for a tooltip.
     pub fn detail(&self) -> &str {
         match self {
-            Failure::Unsupported(_) => "",
+            Failure::Unsupported(_) | Failure::NoPlugin(_) => "",
             Failure::Invalid(message) => message,
         }
     }
@@ -217,6 +231,7 @@ pub fn render(job: &Job) -> Outcome {
         Kind::DisplayMath => math::render(&job.source, true, &job.palette),
         Kind::Mermaid => mermaid::render_with(job.mermaid, &job.source, &job.palette),
         Kind::Excalidraw => excalidraw::render(&job.source, &job.palette),
+        Kind::Plugin => plugin::render(job),
     }
 }
 

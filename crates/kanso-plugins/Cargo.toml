@@ -1,0 +1,37 @@
+[package]
+name = "kanso-plugins"
+description = "Kanso's plugins: manifests and permissions, scoped reads of the store, staged writes, the supervisor that runs each plugin's host, installing and removing, the network proxy, and the signed registry."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "kanso-plugin"
+path = "src/bin/kanso-plugin.rs"
+
+[dependencies]
+anyhow.workspace = true
+base64.workspace = true
+ed25519-dalek = { version = "3", default-features = false, features = ["fast", "zeroize"] }
+getrandom.workspace = true
+kanso-core.workspace = true
+kanso-plugin-host = { path = "../kanso-plugin-host" }
+kanso-store.workspace = true
+kanso-update.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+similar.workspace = true
+thiserror.workspace = true
+# The same blocking HTTP client as the updater and sync, with rustls.
+ureq = "3.4"
+url = "2.5"
+zeroize.workspace = true
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+tiny_http = "0.12"

@@ -14,6 +14,9 @@
 #ifndef SourceExe
   #define SourceExe "..\..\target\release\kanso.exe"
 #endif
+#ifndef SourceHostExe
+  #define SourceHostExe "..\..\target\release\kanso-plugin-host.exe"
+#endif
 #ifndef OutputDir
   #define OutputDir "..\..\dist"
 #endif
@@ -70,6 +73,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "kanso.exe"; Flags: ignoreversion
+; Plugins run in their own process, beside Kanso (docs/PLUGINS.md).
+Source: "{#SourceHostExe}"; DestDir: "{app}"; DestName: "kanso-plugin-host.exe"; Flags: ignoreversion
 
 [Icons]
 Name: "{userprograms}\Kanso"; Filename: "{app}\kanso.exe"

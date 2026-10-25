@@ -45,7 +45,7 @@ if [ "$dev" = 1 ]; then
     # Its own target folder, so switching between the two never rebuilds
     # everything and a release build never picks up the dev flavour.
     target_dir=target/kanso-dev
-    cargo build --release -p kanso-app --features dev-flavour --target-dir "$target_dir"
+    cargo build --release -p kanso-app -p kanso-plugin-host --features kanso-app/dev-flavour --target-dir "$target_dir"
     name="Kanso Dev"
     bundle_id=app.kanso.Kanso.dev
 else
@@ -54,7 +54,7 @@ else
         echo "bundle-macos: Kanso itself installs from a release and updates itself; --install is for --dev builds." >&2
         exit 1
     fi
-    cargo build --release -p kanso-app
+    cargo build --release -p kanso-app -p kanso-plugin-host
     name=Kanso
     bundle_id=app.kanso.Kanso
 fi
@@ -64,6 +64,8 @@ app="$target_dir/release/$name.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$target_dir/release/kanso" "$app/Contents/MacOS/kanso"
+# Plugins run in their own process, beside Kanso (docs/PLUGINS.md).
+cp "$target_dir/release/kanso-plugin-host" "$app/Contents/MacOS/kanso-plugin-host"
 
 # The icon; regenerate Kanso's with assets/icon/make-icon.swift and iconutil.
 if [ "$dev" = 1 ]; then
@@ -164,11 +166,16 @@ else
 fi
 plutil -lint "$entitlements" >/dev/null
 
+# The plugin host is signed first, with no entitlements: it needs none,
+# and the hardened runtime keeps it from loading code it wasn't built with.
+host="$app/Contents/MacOS/kanso-plugin-host"
 if [ -n "${KANSO_SIGN_IDENTITY:-}" ]; then
+    codesign --force --options runtime --timestamp --sign "$KANSO_SIGN_IDENTITY" "$host"
     codesign --force --options runtime --timestamp --entitlements "$entitlements" \
         --sign "$KANSO_SIGN_IDENTITY" "$app"
 else
     # Ad hoc: macOS runs it on this Mac; not for distribution.
+    codesign --force --sign - "$host"
     codesign --force --entitlements "$entitlements" --sign - "$app"
 fi
 codesign --verify --deep --strict "$app"

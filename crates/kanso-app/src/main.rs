@@ -105,6 +105,12 @@ mod palette;
 mod passkey_accounts;
 mod passkey_ceremony;
 mod paths;
+mod plugin_panel;
+mod plugin_panel_model;
+mod plugin_sheets;
+mod plugin_sheets_model;
+mod plugins;
+mod plugins_model;
 mod pouch_import;
 mod preview;
 mod preview_chunks;
@@ -129,6 +135,8 @@ mod settings_ai;
 mod settings_capture;
 mod settings_discovery;
 mod settings_gallery;
+mod settings_plugins;
+mod settings_plugins_model;
 mod settings_themes;
 mod settings_voice;
 #[cfg(test)]
@@ -192,7 +200,10 @@ use crate::services::Services;
 use crate::workspace::{AppState, Quit, Workspace};
 
 const USAGE: &str = "\
-Usage: kanso [command] [--data-dir <dir>]
+Usage: kanso [command] [--data-dir <dir>] [--safe-mode]
+
+--safe-mode (or Shift held as Kanso opens) keeps every plugin off for the
+session.
 
 Commands:
   (none)            Open the app
@@ -215,6 +226,7 @@ Commands:
   theme             Work with themes; `kanso theme help` lists how
   icon-theme        Work with icon themes; `kanso icon-theme help` lists
                     how
+  plugin            Work with plugins; `kanso plugin help` lists how
   help              Show this message
 
 ";
@@ -296,7 +308,10 @@ fn main() -> Result<()> {
     }
     let args = parse_args()?;
     match args.command.as_deref() {
-        None => run_app(args.data_dir, args.after_update),
+        None => {
+            let safe_mode = plugins::safe_mode_requested(&args.rest);
+            run_app(args.data_dir, args.after_update, safe_mode)
+        }
         Some(url) if url_callback::is_callback_argument(url) => {
             forward_callback(&args.data_dir, url);
             Ok(())
@@ -307,6 +322,7 @@ fn main() -> Result<()> {
         Some("icon-theme") => icon_theme_import::run_cli(&args.data_dir, &args.rest),
         Some("capture") => capture_cli::run_cli(&args.data_dir, &args.rest),
         Some("mcp") => mcp_cli::run_cli(&args.data_dir, &args.rest),
+        Some("plugin") => plugins::run_cli(&args.data_dir, &args.rest),
         Some("help") => {
             println!("{USAGE}{DATA_DIR_NOTE}");
             Ok(())
@@ -380,7 +396,7 @@ fn load_config(data_dir: &std::path::Path) -> Result<AppConfig> {
 /// it to let go of the data folder.
 const AFTER_UPDATE_WAIT: std::time::Duration = std::time::Duration::from_secs(20);
 
-fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
+fn run_app(data_dir: PathBuf, after_update: bool, safe_mode: bool) -> Result<()> {
     std::fs::create_dir_all(&data_dir)
         .with_context(|| format!("creating {}", data_dir.display()))?;
     let mut lock = lock_data_dir(&data_dir)?;
@@ -475,6 +491,14 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         updates::init(cx);
         hotkey::init(cx);
         let store = cx.global::<AppState>().store.clone();
+        // Plugins: none starts here. Safe mode is settled before any could.
+        plugins::Plugins::init(
+            store.clone(),
+            &cx.global::<AppState>().data_dir.clone(),
+            safe_mode,
+            Arc::new(flavour::CURRENT.keychain()),
+            cx,
+        );
         reminders::init(store, open_main_window, cx);
         // Discovery, in the background: related notes and text in images.
         related::init(cx);

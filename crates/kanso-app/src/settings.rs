@@ -58,6 +58,7 @@ actions!(
         OpenIconThemeSettings,
         OpenAccountSettings,
         OpenAiSettings,
+        OpenPluginSettings,
         OpenApiSettings,
         OpenUpdateSettings,
         CloseSettings,
@@ -101,19 +102,21 @@ pub enum SettingsPage {
     IconThemes,
     Account,
     Ai,
+    Plugins,
     LocalApi,
     Updates,
 }
 
 impl SettingsPage {
     /// In the order the column lists them.
-    pub const ALL: [SettingsPage; 8] = [
+    pub const ALL: [SettingsPage; 9] = [
         SettingsPage::General,
         SettingsPage::Editor,
         SettingsPage::Appearance,
         SettingsPage::IconThemes,
         SettingsPage::Account,
         SettingsPage::Ai,
+        SettingsPage::Plugins,
         SettingsPage::LocalApi,
         SettingsPage::Updates,
     ];
@@ -126,6 +129,7 @@ impl SettingsPage {
             SettingsPage::IconThemes => "Icon Themes",
             SettingsPage::Account => "Account",
             SettingsPage::Ai => "AI",
+            SettingsPage::Plugins => "Plugins",
             SettingsPage::LocalApi => "Local API",
             SettingsPage::Updates => "Updates",
         }
@@ -139,6 +143,7 @@ impl SettingsPage {
             SettingsPage::IconThemes => Lucide::Shapes,
             SettingsPage::Account => Lucide::CircleUser,
             SettingsPage::Ai => Lucide::Sparkles,
+            SettingsPage::Plugins => Lucide::Puzzle,
             SettingsPage::LocalApi => Lucide::Plug,
             SettingsPage::Updates => Lucide::CircleArrowDown,
         }
@@ -152,6 +157,7 @@ impl SettingsPage {
             SettingsPage::IconThemes => "settings-icon-themes",
             SettingsPage::Account => "settings-account",
             SettingsPage::Ai => "settings-ai",
+            SettingsPage::Plugins => "settings-plugins",
             SettingsPage::LocalApi => "settings-api",
             SettingsPage::Updates => "settings-updates",
         }
@@ -811,6 +817,8 @@ pub struct SettingsView {
     pub(crate) account: Entity<AccountPage>,
     /// The AI page, with its fields and test.
     pub(crate) ai: Entity<crate::settings_ai::AiPage>,
+    /// The Plugins page, with its search and token fields.
+    pub(crate) plugins: Entity<crate::settings_plugins::PluginsPage>,
     /// The page column's: up and down move between pages there.
     nav_focus: FocusHandle,
     /// The whole view's, to tell whether the keyboard is somewhere in it.
@@ -861,10 +869,12 @@ impl SettingsView {
             },
         );
         let ai = cx.new(|cx| crate::settings_ai::AiPage::new(window, cx));
+        let plugins = cx.new(|cx| crate::settings_plugins::PluginsPage::new(window, cx));
         SettingsView {
             page: SettingsPage::default(),
             account,
             ai,
+            plugins,
             // In the Tab order, so the keyboard can come back to it from
             // a page's controls to switch pages.
             nav_focus: cx.focus_handle().tab_stop(true),
@@ -901,6 +911,9 @@ impl SettingsView {
         }
         if page == SettingsPage::Ai {
             self.ai.update(cx, |ai, cx| ai.shown(cx));
+        }
+        if page == SettingsPage::Plugins {
+            self.plugins.update(cx, |plugins, cx| plugins.shown(cx));
         }
         if self.page != page {
             self.page = page;
@@ -1114,6 +1127,7 @@ impl SettingsView {
             }
             SettingsPage::Account => vec![self.account.clone().into_any_element()],
             SettingsPage::Ai => vec![self.ai.clone().into_any_element()],
+            SettingsPage::Plugins => vec![self.plugins.clone().into_any_element()],
             SettingsPage::LocalApi => api_page(self.mcp_agent, cx),
             SettingsPage::Updates => crate::updates::page(cx),
         }
@@ -2016,6 +2030,7 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
     let icon_themes = page(SettingsPage::IconThemes);
     let account = page(SettingsPage::Account);
     let ai = page(SettingsPage::Ai);
+    let plugins = page(SettingsPage::Plugins);
     let api = page(SettingsPage::LocalApi);
     let updates = page(SettingsPage::Updates);
     el.on_action(
@@ -2041,6 +2056,9 @@ pub fn on_actions(el: Div, cx: &mut Context<Workspace>) -> Div {
         cx.listener(move |this, _: &OpenAccountSettings, window, cx| account(this, window, cx)),
     )
     .on_action(cx.listener(move |this, _: &OpenAiSettings, window, cx| ai(this, window, cx)))
+    .on_action(
+        cx.listener(move |this, _: &OpenPluginSettings, window, cx| plugins(this, window, cx)),
+    )
     .on_action(cx.listener(move |this, _: &OpenApiSettings, window, cx| api(this, window, cx)))
     .on_action(
         cx.listener(move |this, _: &OpenUpdateSettings, window, cx| updates(this, window, cx)),
@@ -2097,6 +2115,9 @@ pub fn register_app_actions(cx: &mut App, open_main_window: fn(&mut App)) {
         show(Some(SettingsPage::Account), open_main_window, cx)
     });
     cx.on_action(move |_: &OpenAiSettings, cx| show(Some(SettingsPage::Ai), open_main_window, cx));
+    cx.on_action(move |_: &OpenPluginSettings, cx| {
+        show(Some(SettingsPage::Plugins), open_main_window, cx)
+    });
     cx.on_action(move |_: &OpenApiSettings, cx| {
         show(Some(SettingsPage::LocalApi), open_main_window, cx)
     });
