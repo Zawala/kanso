@@ -5,7 +5,7 @@
 //! proof). Plus properties of proof construction, the sign-in decision and
 //! the PRF wrap. CI pins the seed with `PROPTEST_RNG_SEED`.
 
-use kanso_sync::api::{Backend as _, LoginDevice, PasswordRequest};
+use kanso_sync::api::{Backend as _, LoginDevice, PasswordRequest, Route};
 use kanso_sync::crypto::{DataKey, key_id};
 use kanso_sync::keychain;
 use kanso_sync::passkey::{open_passkey_session_key, passkey_wrapped_key};
@@ -304,6 +304,36 @@ fn the_last_passkey_needs_the_recovery_key_to_go() {
     );
 }
 
+/// The removal went through but its answer was lost: the resend's proof is
+/// spent (400 flow_expired), and the passkey is gone, so it's done.
+#[test]
+fn a_removal_whose_answer_was_lost_is_done() {
+    let server = MemoryServer::new();
+    let auth = TestAuthenticator::new(12);
+    let other = TestAuthenticator::new(13);
+    let up = passkey_sign_up(&server, &auth, &mac(1));
+    let proof = passkey_proof(&server, &up.session, &auth);
+    let start = kanso_sync::start_add_passkey(&server, &up.session, &proof).unwrap();
+    kanso_sync::add_passkey(
+        &server,
+        &up.session,
+        &start,
+        other.register(&start.challenge).unwrap(),
+    )
+    .unwrap();
+
+    let proof = passkey_proof(&server, &up.session, &auth);
+    server.drop_next_responses(Route::AccountPasskeyRemove, 1);
+    kanso_sync::remove_passkey(&server, &up.session, other.credential_id(), &proof, None).unwrap();
+    let left = kanso_sync::methods(&server, &up.session).unwrap().passkeys;
+    assert_eq!(left.len(), 1);
+
+    // A spent proof for a passkey that is still there is still refused.
+    let err = kanso_sync::remove_passkey(&server, &up.session, auth.credential_id(), &proof, None)
+        .unwrap_err();
+    assert!(matches!(err, AccountError::FlowExpired), "{err:?}");
+}
+
 #[test]
 fn a_passkey_account_sets_its_first_password_once() {
     let server = MemoryServer::new();
@@ -414,6 +444,174 @@ fn a_password_account_adds_a_passkey_with_a_password_proof() {
 }
 
 // ---------------------------------------------------------------- properties
+
+// ------------------------------------------- MemoryServer's proofs, as the Worker's
+//
+// Ported from the PR #65 security review: each was something MemoryServer
+// accepted and the Worker refuses.
+
+/// A signed-up Mac and a second Mac signed in with the same passkey.
+fn two_macs(server: &MemoryServer, auth: &TestAuthenticator) -> (Session, Session) {
+    let up = passkey_sign_up(server, auth, &mac(1));
+    let PasskeySignIn::Unlocked(second) =
+        passkey_sign_in(server, &MemorySecrets::new(), auth, &mac(2)).unwrap()
+    else {
+        panic!("the PRF opens the wrap on a second Mac");
+    };
+    (up.session, second.session)
+}
+
+fn rotate(server: &MemoryServer, session: &Session, proof: &Proof) -> Result<(), AccountError> {
+    kanso_sync::new_recovery_key_with_proof(
+        server,
+        &MemorySecrets::new(),
+        session,
+        proof,
+        None,
+        &quiet,
+    )
+    .map(|_| ())
+    .map_err(|err| err.error)
+}
+
+#[test]
+fn a_proof_flow_is_only_the_starting_sessions() {
+    let server = MemoryServer::new();
+    let auth = TestAuthenticator::new(1);
+    let (a, b) = two_macs(&server, &auth);
+    let start = kanso_sync::start_passkey_proof(&server, &a, None).unwrap();
+    let proof = Proof::passkey(&start, auth.assert(&start.challenge).unwrap());
+    let out = rotate(&server, &b, &proof);
+    assert!(
+        matches!(out, Err(AccountError::FlowExpired)),
+        "{:?}",
+        out.err()
+    );
+}
+
+#[test]
+fn a_proof_for_one_credential_refuses_another() {
+    let server = MemoryServer::new();
+    let auth = TestAuthenticator::new(1);
+    let (a, _b) = two_macs(&server, &auth);
+    let other = TestAuthenticator::new(9);
+    let proof = passkey_proof(&server, &a, &auth);
+    let start = kanso_sync::start_add_passkey(&server, &a, &proof).unwrap();
+    kanso_sync::add_passkey(
+        &server,
+        &a,
+        &start,
+        other.register(&start.challenge).unwrap(),
+    )
+    .unwrap();
+    let start = kanso_sync::start_passkey_proof(&server, &a, Some(auth.credential_id())).unwrap();
+    assert_eq!(
+        start.challenge.allow_credentials,
+        vec![auth.credential_id().to_vec()]
+    );
+    let assertion = other.assertion(
+        &start.challenge.rp_id,
+        &start.challenge.origin,
+        &start.challenge.challenge,
+        false,
+    );
+    let proof = Proof::passkey(&start, assertion);
+    let out = rotate(&server, &a, &proof);
+    assert!(
+        matches!(out, Err(AccountError::InvalidCredentials)),
+        "{:?}",
+        out.err()
+    );
+    // That used the flow up.
+    let proof = Proof::passkey(&start, auth.assert(&start.challenge).unwrap());
+    let out = rotate(&server, &a, &proof);
+    assert!(
+        matches!(out, Err(AccountError::FlowExpired)),
+        "{:?}",
+        out.err()
+    );
+}
+
+#[test]
+fn a_failed_proof_assertion_uses_the_flow_up() {
+    let server = MemoryServer::new();
+    let auth = TestAuthenticator::new(1);
+    let (a, _b) = two_macs(&server, &auth);
+    let start = kanso_sync::start_passkey_proof(&server, &a, None).unwrap();
+    let mut bad = auth.assert(&start.challenge).unwrap();
+    let last = bad.signature.len() - 1;
+    bad.signature[last] ^= 1;
+    let out = rotate(&server, &a, &Proof::passkey(&start, bad));
+    assert!(
+        matches!(out, Err(AccountError::InvalidCredentials)),
+        "{:?}",
+        out.err()
+    );
+    let good = auth.assert(&start.challenge).unwrap();
+    let out = rotate(&server, &a, &Proof::passkey(&start, good));
+    assert!(
+        matches!(out, Err(AccountError::FlowExpired)),
+        "{:?}",
+        out.err()
+    );
+}
+
+/// Stored count above 0, then an assertion with count 0: a clone. Refused
+/// on sign-in and on proofs, and either way the flow is used up.
+#[test]
+fn a_count_dropping_to_zero_is_refused_and_uses_the_flow_up() {
+    let server = MemoryServer::new();
+    let auth = TestAuthenticator::new(1);
+    let (a, _b) = two_macs(&server, &auth); // the stored count is now 2
+    let zero = auth.without_counter();
+
+    let start = kanso_sync::start_passkey_sign_in(&server, SERVER, None, &LoginDevice::ephemeral())
+        .unwrap();
+    let assertion = zero.assert(&start.challenge).unwrap();
+    let out = kanso_sync::sign_in_with_passkey(
+        &server,
+        &MemorySecrets::new(),
+        &start,
+        &mac(3),
+        assertion,
+        &quiet,
+    );
+    assert!(
+        matches!(out, Err(AccountError::InvalidCredentials)),
+        "{:?}",
+        out.err()
+    );
+    let again = zero.assert(&start.challenge).unwrap();
+    let out = kanso_sync::sign_in_with_passkey(
+        &server,
+        &MemorySecrets::new(),
+        &start,
+        &mac(3),
+        again,
+        &quiet,
+    );
+    assert!(
+        matches!(out, Err(AccountError::FlowExpired)),
+        "{:?}",
+        out.err()
+    );
+
+    let start = kanso_sync::start_passkey_proof(&server, &a, None).unwrap();
+    let proof = Proof::passkey(&start, zero.assert(&start.challenge).unwrap());
+    let out = rotate(&server, &a, &proof);
+    assert!(
+        matches!(out, Err(AccountError::InvalidCredentials)),
+        "{:?}",
+        out.err()
+    );
+    let proof = Proof::passkey(&start, zero.assert(&start.challenge).unwrap());
+    let out = rotate(&server, &a, &proof);
+    assert!(
+        matches!(out, Err(AccountError::FlowExpired)),
+        "{:?}",
+        out.err()
+    );
+}
 
 fn config() -> ProptestConfig {
     ProptestConfig::with_cases(64)

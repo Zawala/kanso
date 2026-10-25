@@ -14,7 +14,10 @@
 //! `salt1`; the authenticator's `HMAC-SHA256(credential_secret, salt)` is
 //! `prf_out` exactly, used without another hash.
 
+use std::sync::Mutex;
+
 use sha2::{Digest as _, Sha256};
+use zeroize::{Zeroize as _, Zeroizing};
 
 use crate::crypto::{PRF_INPUT, b64};
 use crate::passkey::{
@@ -59,6 +62,24 @@ pub struct SecurityKeyAssertion {
     pub signature: Vec<u8>,
     pub user_handle: Option<Vec<u8>>,
     pub prf: Option<[u8; 32]>,
+}
+
+// The PRF output is key material: wiped when its holder goes, as
+// `PasskeyRegistration` and `PasskeyAssertion` wipe theirs.
+impl Drop for SecurityKeyRegistration {
+    fn drop(&mut self) {
+        if let Some(prf_out) = self.prf.as_mut() {
+            prf_out.zeroize();
+        }
+    }
+}
+
+impl Drop for SecurityKeyAssertion {
+    fn drop(&mut self) {
+        if let Some(prf_out) = self.prf.as_mut() {
+            prf_out.zeroize();
+        }
+    }
 }
 
 impl SecurityKeyRegistration {
@@ -155,7 +176,7 @@ pub fn verify_local_check(
     challenge: &PasskeyRegistrationChallenge,
     registration: &SecurityKeyRegistration,
     assertion: &SecurityKeyAssertion,
-) -> Result<[u8; 32], LocalCheckError> {
+) -> Result<Zeroizing<[u8; 32]>, LocalCheckError> {
     let attested = parse_authenticator_data(&registration.auth_data)
         .and_then(|data| data.attested)
         .filter(|attested| attested.credential_id == registration.credential_id)
@@ -179,7 +200,10 @@ pub fn verify_local_check(
         },
     )
     .ok_or(LocalCheckError::BadAssertion)?;
-    assertion.prf.ok_or(LocalCheckError::NoPrf)
+    assertion
+        .prf
+        .map(Zeroizing::new)
+        .ok_or(LocalCheckError::NoPrf)
 }
 
 /// The app's libfido2 client (kanso-app). `make_credential` runs
@@ -231,7 +255,7 @@ pub fn register_security_key(
             .and_then(|assertion| verify_local_check(challenge, &made, &assertion))
         {
             Ok(prf) => {
-                made.prf = Some(prf);
+                made.prf = Some(*prf);
                 None
             }
             Err(err) => Some(err),
@@ -247,11 +271,37 @@ pub fn register_security_key(
 
 /// A [`SecurityKeyCeremony`] as a [`PasskeyCeremony`], so the account flows
 /// take a security key as they take a platform passkey. Registration runs
-/// [`register_security_key`]; a failed local check registers without PRF.
+/// [`register_security_key`]; a failed local check registers without PRF,
+/// and [`SecurityKeyPasskeys::check`] says why.
 pub struct SecurityKeyPasskeys<'a> {
     pub ceremony: &'a dyn SecurityKeyCeremony,
     /// Whether the key advertises `hmac-secret` (`fido_cbor_info_extensions`).
     pub hmac_secret: bool,
+    check: Mutex<Option<LocalCheckError>>,
+}
+
+impl<'a> SecurityKeyPasskeys<'a> {
+    pub fn new(
+        ceremony: &'a dyn SecurityKeyCeremony,
+        hmac_secret: bool,
+    ) -> SecurityKeyPasskeys<'a> {
+        SecurityKeyPasskeys {
+            ceremony,
+            hmac_secret,
+            check: Mutex::new(None),
+        }
+    }
+
+    /// Why the last registration through this adapter got no PRF output
+    /// ([`SecurityKeyRegistered::check`]): `None` before any, when the key
+    /// has no `hmac-secret`, or when the check passed. The app shows a
+    /// failure ("This key can sign in, but can't unlock a new device").
+    pub fn check(&self) -> Option<LocalCheckError> {
+        *self
+            .check
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 }
 
 impl PasskeyCeremony for SecurityKeyPasskeys<'_> {
@@ -259,8 +309,16 @@ impl PasskeyCeremony for SecurityKeyPasskeys<'_> {
         &self,
         challenge: &PasskeyRegistrationChallenge,
     ) -> Result<PasskeyRegistration, PasskeyCeremonyError> {
-        register_security_key(self.ceremony, challenge, self.hmac_secret)
-            .map(|registered| registered.registration)
+        let registered = register_security_key(self.ceremony, challenge, self.hmac_secret);
+        let mut check = self
+            .check
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *check = registered
+            .as_ref()
+            .ok()
+            .and_then(|registered| registered.check);
+        registered.map(|registered| registered.registration)
     }
 
     fn assert(
@@ -485,20 +543,77 @@ mod tests {
         );
     }
 
+    /// The adapter keeps why its last registration got no PRF, so the app
+    /// can say "This key can sign in, but can't unlock a new device".
+    #[test]
+    fn the_adapter_keeps_the_local_check_result() {
+        let key = TestAuthenticator::new(9);
+        let impostor = TestAuthenticator::new(9);
+        let mut forged = FakeKey::new(&key);
+        forged.signer = &impostor;
+        let passkeys = SecurityKeyPasskeys::new(&forged, true);
+        let registration = passkeys.register(&registration_challenge(9)).unwrap();
+        assert_eq!(registration.prf, None);
+        assert_eq!(passkeys.check(), Some(LocalCheckError::BadAssertion));
+        // The next registration's result replaces it.
+        let honest = FakeKey::new(&key);
+        let passkeys = SecurityKeyPasskeys::new(&honest, true);
+        passkeys.register(&registration_challenge(9)).unwrap();
+        assert_eq!(passkeys.check(), None);
+    }
+
+    /// Reads `prf` from a value whose destructor just ran in place.
+    fn prf_after_drop<T>(
+        value: T,
+        prf: impl Fn(&T) -> *const Option<[u8; 32]>,
+    ) -> Option<[u8; 32]> {
+        let mut value = std::mem::ManuallyDrop::new(value);
+        let at = prf(&value);
+        // SAFETY: the value stays allocated in the ManuallyDrop; only its
+        // plain `Option<[u8; 32]>` field is read after its destructor ran.
+        unsafe {
+            std::ptr::drop_in_place(&mut *value);
+            at.read()
+        }
+    }
+
+    #[test]
+    fn security_key_prf_outputs_are_wiped_on_drop() {
+        let registration = SecurityKeyRegistration {
+            credential_id: vec![1; 16],
+            auth_data: vec![2; 37],
+            client_data_json: vec![3],
+            transports: vec!["usb".into()],
+            prf: Some([7; 32]),
+        };
+        assert_eq!(
+            prf_after_drop(registration, |r| std::ptr::addr_of!(r.prf)),
+            Some([0; 32])
+        );
+        let assertion = SecurityKeyAssertion {
+            credential_id: vec![1; 16],
+            authenticator_data: vec![2; 37],
+            client_data_json: vec![3],
+            signature: vec![4],
+            user_handle: None,
+            prf: Some([7; 32]),
+        };
+        assert_eq!(
+            prf_after_drop(assertion, |a| std::ptr::addr_of!(a.prf)),
+            Some([0; 32])
+        );
+    }
+
     #[test]
     fn the_adapter_is_a_passkey_ceremony() {
         let key = TestAuthenticator::new(8);
         let fake = FakeKey::new(&key);
-        let passkeys = SecurityKeyPasskeys {
-            ceremony: &fake,
-            hmac_secret: true,
-        };
+        let passkeys = SecurityKeyPasskeys::new(&fake, true);
+        assert_eq!(passkeys.check(), None);
         let registration = passkeys.register(&registration_challenge(8)).unwrap();
         assert_eq!(registration.prf, Some(key.prf_output()));
-        let no_hmac = SecurityKeyPasskeys {
-            ceremony: &fake,
-            hmac_secret: false,
-        };
+        assert_eq!(passkeys.check(), None);
+        let no_hmac = SecurityKeyPasskeys::new(&fake, false);
         let assertion = no_hmac
             .assert(&local_check_request(
                 &registration_challenge(8),

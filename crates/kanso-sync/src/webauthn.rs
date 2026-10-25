@@ -62,10 +62,16 @@ impl Cbor {
     }
 }
 
-const MAX_DEPTH: usize = 8;
+/// The Worker's `MAX_DEPTH`.
+const MAX_DEPTH: usize = 16;
 
-/// Decodes one item at `at`; returns it and where it ends. Definite lengths
-/// only, as WebAuthn's canonical CBOR.
+/// JavaScript's `Number.MAX_SAFE_INTEGER`, the largest argument the Worker
+/// reads.
+const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
+
+/// Decodes one item at `at`; returns it and where it ends. As the Worker's
+/// `decodeCbor`: definite lengths only, map keys that are integers or text,
+/// no tags or floats, arguments up to 2^53 - 1, at most 16 levels deep.
 pub fn decode_cbor(bytes: &[u8], at: usize) -> Option<(Cbor, usize)> {
     decode(bytes, at, 0)
 }
@@ -90,7 +96,11 @@ fn decode(bytes: &[u8], at: usize, depth: usize) -> Option<(Cbor, usize)> {
             let len = 1usize << (info - 24);
             let slice = bytes.get(at..at.checked_add(len)?)?;
             at += len;
-            slice.iter().fold(0u64, |acc, b| (acc << 8) | u64::from(*b))
+            let value = slice.iter().fold(0u64, |acc, b| (acc << 8) | u64::from(*b));
+            if value > MAX_SAFE_INTEGER {
+                return None;
+            }
+            value
         }
         _ => return None,
     };
@@ -128,6 +138,9 @@ fn decode(bytes: &[u8], at: usize, depth: usize) -> Option<(Cbor, usize)> {
             let mut entries = Vec::with_capacity(count);
             for _ in 0..count {
                 let (key, end) = decode(bytes, at, depth + 1)?;
+                if !matches!(key, Cbor::Int(_) | Cbor::Text(_)) {
+                    return None;
+                }
                 let (value, end) = decode(bytes, end, depth + 1)?;
                 if entries.iter().any(|(k, _)| *k == key) {
                     return None;
@@ -246,6 +259,53 @@ pub fn cose_algorithm(cose: &[u8]) -> Option<i32> {
     }
 }
 
+/// Whether a COSE key [`cose_algorithm`] accepts also imports, as the
+/// Worker's `importCose` (WebCrypto `importKey`) requires at registration:
+/// an ES256 point on P-256, an EdDSA key that decompresses to a point on
+/// Ed25519, an RS256 key with a minimal modulus and an odd exponent of at
+/// least 3 that fits in 32 bits.
+pub fn cose_key_imports(cose: &[u8], alg: i32) -> bool {
+    if cose_algorithm(cose) != Some(alg) {
+        return false;
+    }
+    let Some(key) = decode_cbor_exactly(cose) else {
+        return false;
+    };
+    let bytes = |label| key.int(label).and_then(Cbor::bytes).unwrap_or_default();
+    match alg {
+        -7 => {
+            let mut point = vec![0x04];
+            point.extend_from_slice(bytes(-2));
+            point.extend_from_slice(bytes(-3));
+            p256_point(&point)
+        }
+        -8 => <[u8; 32]>::try_from(bytes(-2)).is_ok_and(|y| {
+            curve25519_dalek::edwards::CompressedEdwardsY(y)
+                .decompress()
+                .is_some()
+        }),
+        -257 => {
+            let (n, e) = (bytes(-1), bytes(-2));
+            n.first().is_some_and(|b| *b != 0)
+                && e.first().is_some_and(|b| *b != 0)
+                && e.len() <= 4
+                && e.last().is_some_and(|b| b & 1 == 1)
+                && e.iter().fold(0u64, |acc, b| (acc << 8) | u64::from(*b)) >= 3
+        }
+        _ => false,
+    }
+}
+
+/// Whether `point` (uncompressed SEC1) is on P-256: ring validates a peer's
+/// public key before an ECDH agreement with it.
+fn p256_point(point: &[u8]) -> bool {
+    use ring::agreement::{ECDH_P256, EphemeralPrivateKey, UnparsedPublicKey, agree_ephemeral};
+    let rng = ring::rand::SystemRandom::new();
+    EphemeralPrivateKey::generate(&ECDH_P256, &rng).is_ok_and(|mine| {
+        agree_ephemeral(mine, &UnparsedPublicKey::new(&ECDH_P256, point), |_| ()).is_ok()
+    })
+}
+
 /// The COSE map of a P-256 key from its uncompressed SEC1 point.
 pub fn cose_es256(point: &[u8]) -> Option<Vec<u8>> {
     if point.len() != 65 || point[0] != 0x04 {
@@ -355,7 +415,8 @@ pub fn attestation_auth_data(attestation_object: &[u8]) -> Option<Vec<u8>> {
 
 /// Verifies a registration (WebAuthn §7.1) with attestation `"none"`: the
 /// client data, the RP ID hash, UP and UV, attested credential data naming
-/// `credential_id`, and a public key in an accepted algorithm.
+/// `credential_id`, and a public key in an accepted algorithm that imports
+/// ([`cose_key_imports`]).
 pub fn verify_registration(
     credential_id: &[u8],
     attestation_object: &[u8],
@@ -375,6 +436,9 @@ pub fn verify_registration(
         return None;
     }
     let alg = cose_algorithm(&attested.public_key)?;
+    if !cose_key_imports(&attested.public_key, alg) {
+        return None;
+    }
     Some(Registration {
         credential_id: attested.credential_id,
         public_key: attested.public_key,
@@ -451,6 +515,89 @@ mod tests {
         assert!(verify_signature(&cose, -7, b"data", signature.as_ref()));
         assert!(!verify_signature(&cose, -7, b"date", signature.as_ref()));
         assert!(!verify_signature(&cose, -8, b"data", signature.as_ref()));
+    }
+
+    fn nested(levels: usize) -> Vec<u8> {
+        let mut bytes = vec![0x81; levels];
+        bytes.push(0x00);
+        bytes
+    }
+
+    #[test]
+    fn cbor_is_read_as_the_worker_reads_it() {
+        // Sixteen levels deep, as the Worker's MAX_DEPTH; seventeen is refused.
+        assert!(decode_cbor_exactly(&nested(16)).is_some());
+        assert_eq!(decode_cbor_exactly(&nested(17)), None);
+        // Map keys are integers or text only.
+        assert!(decode_cbor_exactly(&[0xa1, 0x01, 0x00]).is_some());
+        assert!(decode_cbor_exactly(&[0xa1, 0x61, b'a', 0x00]).is_some());
+        assert_eq!(decode_cbor_exactly(&[0xa1, 0x41, 0x01, 0x00]), None);
+        assert_eq!(decode_cbor_exactly(&[0xa1, 0x80, 0x00]), None);
+        assert_eq!(decode_cbor_exactly(&[0xa1, 0xf5, 0x00]), None);
+        // Integers past JavaScript's safe range are refused.
+        let mut big = vec![0x1b];
+        big.extend_from_slice(&(1u64 << 53).to_be_bytes());
+        assert_eq!(decode_cbor_exactly(&big), None);
+        let mut safe = vec![0x1b];
+        safe.extend_from_slice(&((1u64 << 53) - 1).to_be_bytes());
+        assert!(decode_cbor_exactly(&safe).is_some());
+    }
+
+    /// A registration over `cose` that is otherwise valid.
+    fn registration_with(cose: &[u8]) -> Option<Registration> {
+        let rp_id = "rp.test";
+        let origins = vec!["https://rp.test".to_owned()];
+        let challenge = [7u8; 32];
+        let credential_id = [9u8; 16];
+        let mut data = Sha256::digest(rp_id.as_bytes()).to_vec();
+        data.push(FLAG_UP | FLAG_UV | FLAG_AT);
+        data.extend_from_slice(&0u32.to_be_bytes());
+        data.extend_from_slice(&[0; 16]);
+        data.extend_from_slice(&(credential_id.len() as u16).to_be_bytes());
+        data.extend_from_slice(&credential_id);
+        data.extend_from_slice(cose);
+        let client_data =
+            crate::passkey::client_data_json("webauthn.create", &challenge, &origins[0]);
+        verify_registration(
+            &credential_id,
+            &crate::passkey::attestation_object_none(&data),
+            &client_data,
+            &Expected {
+                rp_id,
+                origins: &origins,
+                challenge: &challenge_text(&challenge),
+            },
+        )
+    }
+
+    fn cose_ed25519(x: &[u8; 32]) -> Vec<u8> {
+        // map(4) {1: 1, 3: -8, -1: 6, -2: x}
+        let mut out = vec![0xa4, 0x01, 0x01, 0x03, 0x27, 0x20, 0x06, 0x21, 0x58, 0x20];
+        out.extend_from_slice(x);
+        out
+    }
+
+    #[test]
+    fn a_registration_needs_a_public_key_that_imports() {
+        let rng = SystemRandom::new();
+        let pkcs8 = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &rng).unwrap();
+        let pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8.as_ref(), &rng)
+            .unwrap();
+        let good = cose_es256(pair.public_key().as_ref()).unwrap();
+        assert!(registration_with(&good).is_some());
+        // Well formed, but not a point on P-256.
+        let off_curve = cose_es256(&[[4u8].as_slice(), &[1; 64]].concat()).unwrap();
+        assert_eq!(cose_algorithm(&off_curve), Some(-7));
+        assert_eq!(registration_with(&off_curve), None);
+
+        let ed = ring::signature::Ed25519KeyPair::from_seed_unchecked(&[3; 32]).unwrap();
+        let ed_key: [u8; 32] = ed.public_key().as_ref().try_into().unwrap();
+        assert!(registration_with(&cose_ed25519(&ed_key)).is_some());
+        // y = 2 (little-endian) has no x on the curve: not a point.
+        let mut not_a_point = [0u8; 32];
+        not_a_point[0] = 2;
+        assert_eq!(cose_algorithm(&cose_ed25519(&not_a_point)), Some(-8));
+        assert_eq!(registration_with(&cose_ed25519(&not_a_point)), None);
     }
 
     proptest! {

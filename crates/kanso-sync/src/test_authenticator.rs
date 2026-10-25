@@ -4,6 +4,7 @@
 //! Worker verify it, and returns a deterministic PRF output. Behind the
 //! `test-support` feature; the app never builds it.
 
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use ring::rand::SystemRandom;
@@ -26,6 +27,7 @@ pub struct TestAuthenticator {
     user_verification: bool,
     counts: bool,
     sign_count: AtomicU32,
+    user_handle: Mutex<Option<Vec<u8>>>,
     rng: SystemRandom,
 }
 
@@ -52,6 +54,7 @@ impl TestAuthenticator {
             user_verification: true,
             counts: true,
             sign_count: AtomicU32::new(0),
+            user_handle: Mutex::new(None),
             rng,
         }
     }
@@ -88,6 +91,12 @@ impl TestAuthenticator {
     /// The credential's COSE public key.
     pub fn cose_public_key(&self) -> Vec<u8> {
         cose_es256(self.key.public_key().as_ref()).expect("an uncompressed P-256 point")
+    }
+
+    /// The user handle its assertions return: the one it last registered
+    /// with, or this. `None` returns none, as some authenticators do.
+    pub fn set_user_handle(&self, handle: Option<Vec<u8>>) {
+        *self.user_handle.lock().expect("the user handle") = handle;
     }
 
     /// Sets the next assertion's counter (to replay a clone).
@@ -149,7 +158,7 @@ impl TestAuthenticator {
             authenticator_data,
             client_data_json: client_data,
             signature,
-            user_handle: None,
+            user_handle: self.user_handle.lock().expect("the user handle").clone(),
             prf: (request_prf && self.prf).then(|| self.prf_output()),
         }
     }
@@ -168,6 +177,7 @@ impl PasskeyCeremony for TestAuthenticator {
             return Err(PasskeyCeremonyError::Failed);
         }
         let auth_data = self.registration_auth_data(&challenge.rp_id);
+        self.set_user_handle(Some(challenge.user_handle.clone()));
         Ok(PasskeyRegistration {
             credential_id: self.credential_id.clone(),
             attestation_object: attestation_object_none(&auth_data),
