@@ -1,0 +1,410 @@
+//! Tokens for agents: short-lived bearer tokens that open `/mcp` alone, read
+//! only, and only the notes in their scope.
+//!
+//! A token is 256 bits from the OS random source, in base64url. Only its
+//! SHA-256 is kept, and a token given is compared with every one kept in
+//! constant time. One token per agent session, at most [`MAX_LIVE`] at once;
+//! each expires [`LIFETIME`] after it was minted or [`IDLE`] after its last
+//! request, whichever is sooner, and may be renewed once. Revoking one is
+//! immediate. Nothing here is written anywhere: the tokens live in memory
+//! and end with the app.
+
+use std::collections::HashSet;
+use std::fmt;
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
+
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use sha2::{Digest as _, Sha256};
+use subtle::ConstantTimeEq as _;
+
+use crate::scope::{AgentScope, Caller};
+
+/// How long a token lasts after it is minted (or renewed).
+pub const LIFETIME: Duration = Duration::from_secs(15 * 60);
+/// How long a token lasts after its last request.
+pub const IDLE: Duration = Duration::from_secs(5 * 60);
+/// The most tokens live at once; minting another revokes the oldest.
+pub const MAX_LIVE: usize = 4;
+/// The most tool calls one question may make with a token.
+pub const MAX_CALLS_PER_TURN: usize = 40;
+
+/// Which token, without the token itself: what the app keeps to renew,
+/// revoke, or ask what the agent read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TokenId(u64);
+
+/// A token just minted. The text is what the agent sends; it is never
+/// printed.
+pub struct Minted {
+    pub id: TokenId,
+    pub token: String,
+}
+
+impl fmt::Debug for Minted {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Minted")
+            .field("id", &self.id)
+            .field("token", &"<redacted>")
+            .finish()
+    }
+}
+
+struct Entry {
+    id: TokenId,
+    hash: [u8; 32],
+    minted: Instant,
+    last_used: Instant,
+    renewed: bool,
+    scope: Arc<AgentScope>,
+    /// Every note shown since the question began, in order, once each.
+    reads: Vec<String>,
+    /// Tool calls since the question began.
+    calls: usize,
+}
+
+impl Entry {
+    fn live_at(&self, now: Instant) -> bool {
+        now.saturating_duration_since(self.minted) < LIFETIME
+            && now.saturating_duration_since(self.last_used) < IDLE
+    }
+}
+
+type Clock = Arc<dyn Fn() -> Instant + Send + Sync>;
+
+struct Inner {
+    entries: Vec<Entry>,
+    next_id: u64,
+}
+
+/// The agents' tokens. Cloning shares the same store: the app keeps one and
+/// hands it to whichever server answers the agents.
+#[derive(Clone)]
+pub struct TokenStore {
+    inner: Arc<Mutex<Inner>>,
+    clock: Clock,
+}
+
+impl Default for TokenStore {
+    fn default() -> Self {
+        TokenStore::new()
+    }
+}
+
+impl fmt::Debug for TokenStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TokenStore")
+            .field("live", &self.live_count())
+            .finish()
+    }
+}
+
+fn hash(token: &str) -> [u8; 32] {
+    Sha256::digest(token.as_bytes()).into()
+}
+
+impl TokenStore {
+    pub fn new() -> TokenStore {
+        TokenStore::with_clock(Arc::new(Instant::now))
+    }
+
+    /// A store reading the time from `clock`, for tests.
+    pub fn with_clock(clock: Arc<dyn Fn() -> Instant + Send + Sync>) -> TokenStore {
+        TokenStore {
+            inner: Arc::new(Mutex::new(Inner {
+                entries: Vec::new(),
+                next_id: 1,
+            })),
+            clock,
+        }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Inner> {
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn prune(inner: &mut Inner, now: Instant) {
+        inner.entries.retain(|entry| entry.live_at(now));
+    }
+
+    /// A new token for `scope`. With [`MAX_LIVE`] already live, the one used
+    /// longest ago is revoked first.
+    pub fn mint(&self, scope: AgentScope) -> Minted {
+        let mut bytes = [0u8; 32];
+        getrandom::fill(&mut bytes).expect("the system's random source failed");
+        let token = URL_SAFE_NO_PAD.encode(bytes);
+        let now = (self.clock)();
+        let mut inner = self.lock();
+        Self::prune(&mut inner, now);
+        while inner.entries.len() >= MAX_LIVE {
+            let oldest = inner
+                .entries
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(at, _)| at)
+                .unwrap_or(0);
+            inner.entries.remove(oldest);
+        }
+        let id = TokenId(inner.next_id);
+        inner.next_id += 1;
+        inner.entries.push(Entry {
+            id,
+            hash: hash(&token),
+            minted: now,
+            last_used: now,
+            renewed: false,
+            scope: Arc::new(scope),
+            reads: Vec::new(),
+            calls: 0,
+        });
+        Minted { id, token }
+    }
+
+    /// The caller a bearer token stands for, when it is live; its use is
+    /// counted. Every kept token is compared, each in constant time.
+    pub fn verify(&self, token: &str) -> Option<Caller> {
+        let given = hash(token.trim());
+        let now = (self.clock)();
+        let mut inner = self.lock();
+        Self::prune(&mut inner, now);
+        let mut found = None;
+        for (at, entry) in inner.entries.iter().enumerate() {
+            if bool::from(entry.hash.ct_eq(&given)) {
+                found = Some(at);
+            }
+        }
+        let entry = &mut inner.entries[found?];
+        entry.last_used = now;
+        Some(Caller::Agent {
+            token: entry.id,
+            scope: entry.scope.clone(),
+        })
+    }
+
+    /// Whether token `id` would still be accepted.
+    pub fn is_live(&self, id: TokenId) -> bool {
+        let now = (self.clock)();
+        self.lock()
+            .entries
+            .iter()
+            .any(|entry| entry.id == id && entry.live_at(now))
+    }
+
+    /// Gives a live token a fresh lifetime, once. `false` when it has been
+    /// renewed already, or is gone.
+    pub fn renew(&self, id: TokenId) -> bool {
+        let now = (self.clock)();
+        let mut inner = self.lock();
+        Self::prune(&mut inner, now);
+        match inner.entries.iter_mut().find(|entry| entry.id == id) {
+            Some(entry) if !entry.renewed => {
+                entry.renewed = true;
+                entry.minted = now;
+                entry.last_used = now;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// A new question begins on token `id`: its tool-call budget and its
+    /// reads start over.
+    pub fn begin_turn(&self, id: TokenId) {
+        if let Some(entry) = self.lock().entries.iter_mut().find(|entry| entry.id == id) {
+            entry.calls = 0;
+            entry.reads.clear();
+        }
+    }
+
+    /// Counts one tool call on `id`; `false` once the question has made
+    /// [`MAX_CALLS_PER_TURN`].
+    pub(crate) fn charge(&self, id: TokenId) -> bool {
+        let mut inner = self.lock();
+        let Some(entry) = inner.entries.iter_mut().find(|entry| entry.id == id) else {
+            return false;
+        };
+        entry.calls += 1;
+        entry.calls <= MAX_CALLS_PER_TURN
+    }
+
+    /// Notes an answer on `id` showed, for the person to see.
+    pub(crate) fn record(&self, id: TokenId, notes: &[String]) {
+        let mut inner = self.lock();
+        if let Some(entry) = inner.entries.iter_mut().find(|entry| entry.id == id) {
+            for note in notes {
+                if !entry.reads.contains(note) {
+                    entry.reads.push(note.clone());
+                }
+            }
+        }
+    }
+
+    /// Every note token `id` has been shown this question, in order: what
+    /// the agent searched or read. Empty once the token is revoked.
+    pub fn reads(&self, id: TokenId) -> Vec<String> {
+        self.lock()
+            .entries
+            .iter()
+            .find(|entry| entry.id == id)
+            .map(|entry| entry.reads.clone())
+            .unwrap_or_default()
+    }
+
+    /// Ends token `id` now.
+    pub fn revoke(&self, id: TokenId) {
+        self.lock().entries.retain(|entry| entry.id != id);
+    }
+
+    /// Ends every token: AI was turned off, the agent changed, or Kanso is
+    /// quitting.
+    pub fn revoke_all(&self) {
+        self.lock().entries.clear();
+    }
+
+    /// How many tokens are live.
+    pub fn live_count(&self) -> usize {
+        let now = (self.clock)();
+        self.lock()
+            .entries
+            .iter()
+            .filter(|entry| entry.live_at(now))
+            .count()
+    }
+
+    /// The ids of the live tokens, oldest first, for tests.
+    pub fn live(&self) -> HashSet<TokenId> {
+        let now = (self.clock)();
+        self.lock()
+            .entries
+            .iter()
+            .filter(|entry| entry.live_at(now))
+            .map(|entry| entry.id)
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn clock() -> (Arc<Mutex<Instant>>, TokenStore) {
+        let now = Arc::new(Mutex::new(Instant::now()));
+        let read = now.clone();
+        let store = TokenStore::with_clock(Arc::new(move || *read.lock().unwrap()));
+        (now, store)
+    }
+
+    fn advance(now: &Mutex<Instant>, by: Duration) {
+        let mut now = now.lock().unwrap();
+        *now += by;
+    }
+
+    #[test]
+    fn a_token_is_256_bits_of_base64url_and_never_printed() {
+        let store = TokenStore::new();
+        let minted = store.mint(AgentScope::ask(None));
+        assert_eq!(minted.token.len(), 43);
+        assert!(
+            minted
+                .token
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        );
+        assert!(!format!("{minted:?}").contains(&minted.token));
+        assert!(!format!("{store:?}").contains(&minted.token));
+        assert!(store.verify(&minted.token).is_some());
+        assert!(store.verify(&minted.token[1..]).is_none());
+        assert!(store.verify("").is_none());
+    }
+
+    #[test]
+    fn tokens_expire_after_their_lifetime_or_idling() {
+        let (now, store) = clock();
+        let minted = store.mint(AgentScope::ask(None));
+        advance(&now, IDLE - Duration::from_secs(1));
+        assert!(store.verify(&minted.token).is_some());
+        advance(&now, IDLE - Duration::from_secs(1));
+        assert!(store.verify(&minted.token).is_some());
+        // In use all along, it still ends at its lifetime.
+        for _ in 0..3 {
+            advance(&now, Duration::from_secs(4 * 60));
+            store.verify(&minted.token);
+        }
+        assert!(store.verify(&minted.token).is_none());
+        assert!(!store.is_live(minted.id));
+
+        let idle = store.mint(AgentScope::ask(None));
+        advance(&now, IDLE);
+        assert!(store.verify(&idle.token).is_none());
+    }
+
+    #[test]
+    fn a_token_renews_once_and_revokes_at_once() {
+        let (now, store) = clock();
+        let minted = store.mint(AgentScope::ask(None));
+        advance(&now, Duration::from_secs(4 * 60));
+        assert!(store.renew(minted.id));
+        assert!(!store.renew(minted.id));
+        store.revoke(minted.id);
+        assert!(store.verify(&minted.token).is_none());
+        assert!(!store.renew(minted.id));
+    }
+
+    #[test]
+    fn a_question_has_a_budget_of_tool_calls() {
+        let store = TokenStore::new();
+        let minted = store.mint(AgentScope::ask(None));
+        for _ in 0..MAX_CALLS_PER_TURN {
+            assert!(store.charge(minted.id));
+        }
+        assert!(!store.charge(minted.id));
+        store.begin_turn(minted.id);
+        assert!(store.charge(minted.id));
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(128))]
+
+        /// However tokens are minted, used, renewed and revoked, no more than
+        /// four are ever live, a revoked token is never accepted again, and a
+        /// token is accepted only as itself.
+        #[test]
+        fn prop_tokens_stay_bounded_and_revocation_is_final(
+            ops in prop::collection::vec((0u8..5, 0usize..8, 0u64..400), 1..60),
+        ) {
+            let (now, store) = clock();
+            let mut minted: Vec<Minted> = Vec::new();
+            let mut revoked: HashSet<TokenId> = HashSet::new();
+            for (op, pick, secs) in ops {
+                match op {
+                    0 => minted.push(store.mint(AgentScope::ask(None))),
+                    1 => if let Some(m) = minted.get(pick % minted.len().max(1))
+                        && let Some(Caller::Agent { token, .. }) = store.verify(&m.token)
+                    {
+                        prop_assert_eq!(token, m.id);
+                    },
+                    2 => if let Some(m) = minted.get(pick % minted.len().max(1)) {
+                        store.revoke(m.id);
+                        revoked.insert(m.id);
+                    },
+                    3 => if let Some(m) = minted.get(pick % minted.len().max(1)) {
+                        store.renew(m.id);
+                    },
+                    _ => advance(&now, Duration::from_secs(secs)),
+                }
+                prop_assert!(store.live_count() <= MAX_LIVE);
+                for m in &minted {
+                    if revoked.contains(&m.id) {
+                        prop_assert!(store.verify(&m.token).is_none());
+                        prop_assert!(!store.renew(m.id));
+                    }
+                }
+            }
+        }
+    }
+}

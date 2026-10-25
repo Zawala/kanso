@@ -6,20 +6,30 @@
 //! each POST carries a JSON-RPC message (or a batch) and requests get a JSON
 //! answer; notifications get `202 Accepted`. The server keeps no sessions and
 //! offers no event stream, so GET and DELETE answer 405.
+//!
+//! An agent's token ([`Caller::Agent`]) sees a narrower server: only the read
+//! tools its scope offers are listed or run, every note they would show is
+//! checked first ([`Visibility`](crate::scope::Visibility)), and `resources/read`
+//! follows the same rule. Everything else answers that the agent has
+//! read-only access.
 
 mod schema;
 mod tools;
 
-use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::extract::rejection::BytesRejection;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use axum::{Extension, Json};
 use serde_json::{Value, json};
 
 use crate::AppState;
 use crate::error::ApiError;
+use crate::scope::Caller;
+
+/// What an agent is told for a tool it isn't given.
+pub(crate) const READ_ONLY: &str = "This agent has read-only access to your notes.";
 
 /// Protocol versions Kanso speaks, newest first (as the Node server's SDK).
 pub(crate) const PROTOCOL_VERSIONS: [&str; 5] = [
@@ -91,6 +101,7 @@ fn is_local_origin(origin: &HeaderValue) -> bool {
 /// `POST /mcp`.
 pub(crate) async fn handle(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     headers: HeaderMap,
     body: Result<Bytes, BytesRejection>,
 ) -> Response {
@@ -126,7 +137,7 @@ pub(crate) async fn handle(
     let Ok(message) = serde_json::from_slice::<Value>(&bytes) else {
         return error_response(StatusCode::BAD_REQUEST, PARSE_ERROR, "Parse error");
     };
-    match tokio::task::spawn_blocking(move || dispatch(&state, message)).await {
+    match tokio::task::spawn_blocking(move || dispatch(&state, &caller, message)).await {
         Ok(Some(answer)) => Json(answer).into_response(),
         Ok(None) => StatusCode::ACCEPTED.into_response(),
         Err(_) => error_response(
@@ -151,7 +162,7 @@ pub(crate) async fn no_stream() -> Response {
 }
 
 /// Answers one message or a batch; `None` when nothing needs an answer.
-pub(crate) fn dispatch(state: &AppState, message: Value) -> Option<Value> {
+pub(crate) fn dispatch(state: &AppState, caller: &Caller, message: Value) -> Option<Value> {
     match message {
         Value::Array(batch) if batch.is_empty() => Some(error_message(
             Value::Null,
@@ -161,15 +172,15 @@ pub(crate) fn dispatch(state: &AppState, message: Value) -> Option<Value> {
         Value::Array(batch) => {
             let answers: Vec<Value> = batch
                 .into_iter()
-                .filter_map(|message| dispatch_one(state, message))
+                .filter_map(|message| dispatch_one(state, caller, message))
                 .collect();
             (!answers.is_empty()).then_some(Value::Array(answers))
         }
-        message => dispatch_one(state, message),
+        message => dispatch_one(state, caller, message),
     }
 }
 
-fn dispatch_one(state: &AppState, message: Value) -> Option<Value> {
+fn dispatch_one(state: &AppState, caller: &Caller, message: Value) -> Option<Value> {
     let Value::Object(message) = message else {
         return Some(error_message(
             Value::Null,
@@ -190,13 +201,18 @@ fn dispatch_one(state: &AppState, message: Value) -> Option<Value> {
     if message.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
         return Some(error_message(id, INVALID_REQUEST, "Invalid Request"));
     }
-    Some(match call(state, method, message.get("params")) {
+    Some(match call(state, caller, method, message.get("params")) {
         Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
         Err(err) => error_message(id, err.code, &err.message),
     })
 }
 
-fn call(state: &AppState, method: &str, params: Option<&Value>) -> Result<Value, RpcError> {
+fn call(
+    state: &AppState,
+    caller: &Caller,
+    method: &str,
+    params: Option<&Value>,
+) -> Result<Value, RpcError> {
     let param = |key: &str| params.and_then(|p| p.get(key));
     match method {
         "initialize" => {
@@ -214,12 +230,45 @@ fn call(state: &AppState, method: &str, params: Option<&Value>) -> Result<Value,
             }))
         }
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": schema::definitions() })),
+        "tools/list" => match caller {
+            Caller::Full => Ok(json!({ "tools": schema::definitions() })),
+            Caller::Agent { scope, .. } => {
+                let offered: Vec<&Value> = schema::definitions()
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|tool| {
+                        tool.get("name")
+                            .and_then(Value::as_str)
+                            .is_some_and(|name| scope.allows_tool(name))
+                    })
+                    .collect();
+                Ok(json!({ "tools": offered }))
+            }
+        },
         "tools/call" => {
             let name = param("name").and_then(Value::as_str).ok_or_else(|| {
                 RpcError::invalid_params("Invalid params: `name` must be a string.")
             })?;
-            Ok(tools::call(state, name, param("arguments")))
+            match caller {
+                Caller::Full => Ok(tools::call(state, None, name, param("arguments"))),
+                Caller::Agent { token, scope } => {
+                    if !scope.allows_tool(name) {
+                        return Ok(tools::error_result(READ_ONLY));
+                    }
+                    if !state.tokens.charge(*token) {
+                        return Ok(tools::error_result(
+                            "This question has used as many note lookups as it may. Answer from what you have read.",
+                        ));
+                    }
+                    let Some(visible) = crate::scope::Visibility::new(&state.store, scope) else {
+                        return Ok(tools::error_result("Couldn't read the notes."));
+                    };
+                    let answer = tools::call(state, Some(&visible), name, param("arguments"));
+                    state.tokens.record(*token, &visible.shown());
+                    Ok(answer)
+                }
+            }
         }
         "resources/list" => Ok(json!({ "resources": [] })),
         "resources/templates/list" => Ok(json!({
@@ -234,7 +283,20 @@ fn call(state: &AppState, method: &str, params: Option<&Value>) -> Result<Value,
             let uri = param("uri").and_then(Value::as_str).ok_or_else(|| {
                 RpcError::invalid_params("Invalid params: `uri` must be a string.")
             })?;
-            tools::read_resource(state, uri)
+            match caller {
+                Caller::Full => tools::read_resource(state, None, uri),
+                Caller::Agent { token, scope } => {
+                    let visible = crate::scope::Visibility::new(&state.store, scope);
+                    let Some(visible) = visible else {
+                        return Err(RpcError::invalid_params(format!(
+                            "MCP error -32602: Resource {uri} not found"
+                        )));
+                    };
+                    let answer = tools::read_resource(state, Some(&visible), uri);
+                    state.tokens.record(*token, &visible.shown());
+                    answer
+                }
+            }
         }
         _ => Err(RpcError::new(METHOD_NOT_FOUND, "Method not found")),
     }

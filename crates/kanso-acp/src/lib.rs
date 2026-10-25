@@ -19,10 +19,11 @@ pub mod env;
 pub mod fake;
 pub mod framing;
 pub mod process;
+pub mod registry;
 
 pub use connection::{
-    AgentInfo, AgentProcess, AuthMethod, PermissionPolicy, PermissionRequest, Session, SessionMode,
-    Turn, reject_all,
+    AgentInfo, AgentProcess, AuthMethod, McpServer, PermissionPolicy, PermissionRequest, Session,
+    SessionMode, Turn, reject_all,
 };
 pub use detect::{AgentKind, Detection};
 pub use process::AgentSpec;

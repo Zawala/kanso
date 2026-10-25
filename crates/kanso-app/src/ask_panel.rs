@@ -107,6 +107,10 @@ pub struct AskPanel {
     finished: String,
     /// What the conversation was asked under, if it has one.
     conversation: Option<ConversationKey>,
+    /// The agent's side of the conversation: one ACP session for all its
+    /// questions, and that session's notes token. Dropped with the
+    /// conversation, which closes the session and revokes the token.
+    agent: Option<Arc<kanso_ai::agent::Conversation>>,
     used: Vec<Excerpt>,
     cut_off: bool,
     searching: bool,
@@ -154,6 +158,7 @@ impl AskPanel {
             turn_notes: Vec::new(),
             finished: String::new(),
             conversation: None,
+            agent: None,
             used: Vec::new(),
             cut_off: false,
             searching: false,
@@ -233,7 +238,18 @@ impl AskPanel {
             .try_global::<Services>()
             .and_then(|services| services.secrets.clone());
         let worker_ai = ai.clone();
-        let data_dir = cx.global::<AppState>().data_dir.clone();
+        // An agent keeps one session for the conversation; it is opened on
+        // this question if there isn't one yet.
+        let agent = (ai.backend == AiBackend::Agent).then(|| {
+            if self.agent.is_none() {
+                let data_dir = cx.global::<AppState>().data_dir.clone();
+                let settings = crate::ai_agent::agent_settings(&ai.agent, &data_dir);
+                let notes = crate::ai_agent::notes_access(cx);
+                self.agent = Some(kanso_ai::agent::conversation(&settings, notes));
+            }
+            self.agent.clone()
+        });
+        let agent = agent.flatten();
         let (tx, rx) = async_channel::unbounded::<Update>();
         let spawned = std::thread::Builder::new()
             .name("kanso-ask".into())
@@ -252,13 +268,48 @@ impl AskPanel {
                 }
                 tx.try_send(Update::Used(excerpts.clone())).ok();
                 let prompt = kanso_ai::build_prompt(&asked, &excerpts, crate::ask::BUDGET);
-                let provider = if worker_ai.backend == AiBackend::Agent {
-                    // The agent keeps its own sign-in: no key is read.
-                    kanso_ai::agent::agent_client(&crate::ai_agent::agent_settings(
-                        &worker_ai.agent,
-                        &data_dir,
-                    ))
-                } else {
+                // Every note this question's tools search or read is kept, so
+                // the panel can list all of them.
+                let used = Arc::new(std::sync::Mutex::new(excerpts));
+                let on_event = |event| {
+                    if cancel.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    let update = match event {
+                        kanso_ai::Event::Text(text) => Update::Text(text),
+                        kanso_ai::Event::Status(line) => Update::Status(line),
+                        kanso_ai::Event::Done => Update::Done,
+                        kanso_ai::Event::Error(message) if message == kanso_ai::CUT_OFF => {
+                            Update::CutOff
+                        }
+                        kanso_ai::Event::Error(message) => Update::Error(message),
+                    };
+                    tx.try_send(update).ok();
+                };
+                if let Some(agent) = agent {
+                    // The agent keeps its own sign-in: no key is read. What it
+                    // searches or reads through Kanso's notes server is
+                    // checked again here and listed with the rest.
+                    let on_read: kanso_ai::agent::OnRead = {
+                        let store = store.clone();
+                        let used = used.clone();
+                        let tx = tx.clone();
+                        Box::new(move |id: &str| {
+                            if let Ok(Some(_)) = crate::ask::read_note(&store, id, &used)
+                                && let Ok(list) = used.lock()
+                            {
+                                tx.try_send(Update::Used(list.clone())).ok();
+                            }
+                        })
+                    };
+                    crate::ask::stream_events(
+                        agent.ask(&prompt, &history, on_read, cancel.clone()),
+                        &cancel,
+                        on_event,
+                    );
+                    return;
+                }
+                let provider = {
                     // The Keychain read and the client build happen here,
                     // never on the UI thread: the macOS prompt can block, and
                     // building a reqwest client is not work for a frame.
@@ -283,9 +334,6 @@ impl AskPanel {
                 let provider = provider
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
-                // Every note this question's tools search or read is kept, so
-                // the panel can list all of them.
-                let used = Arc::new(std::sync::Mutex::new(excerpts));
                 let tools = crate::ask::tool_registry(store.clone(), used.clone());
                 let on_tool = {
                     let tx = tx.clone();
@@ -303,21 +351,7 @@ impl AskPanel {
                     tools,
                     on_tool,
                     &cancel,
-                    |event| {
-                        if cancel.load(Ordering::Relaxed) {
-                            return;
-                        }
-                        let update = match event {
-                            kanso_ai::Event::Text(text) => Update::Text(text),
-                            kanso_ai::Event::Status(line) => Update::Status(line),
-                            kanso_ai::Event::Done => Update::Done,
-                            kanso_ai::Event::Error(message) if message == kanso_ai::CUT_OFF => {
-                                Update::CutOff
-                            }
-                            kanso_ai::Event::Error(message) => Update::Error(message),
-                        };
-                        tx.try_send(update).ok();
-                    },
+                    on_event,
                 );
             });
         if spawned.is_err() {
@@ -455,6 +489,8 @@ impl AskPanel {
     }
 
     fn clear_conversation(&mut self) {
+        // The agent's session closes and its notes token is revoked.
+        self.agent = None;
         self.turns.clear();
         self.turn_notes.clear();
         self.finished.clear();
@@ -473,7 +509,13 @@ impl AskPanel {
     /// by characters, and rebuilds the finished Markdown once.
     fn prune_history(&mut self) {
         let store = self.store.clone();
+        let before = self.turns.len();
         self.turns = eligible_turns(std::mem::take(&mut self.turns), &store);
+        if self.turns.len() != before {
+            // The agent's session holds what those turns said: it ends, and
+            // the next question starts one with only what is still allowed.
+            self.agent = None;
+        }
         self.turns = cap_history(std::mem::take(&mut self.turns), HISTORY_BUDGET);
         self.used
             .retain(|excerpt| crate::ask::note_is_eligible(&store, &excerpt.id));

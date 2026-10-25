@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -56,6 +56,80 @@ pub struct AgentInfo {
     pub mcp_http: bool,
     /// It offers `session/close`.
     pub close_session: bool,
+}
+
+/// An MCP server a session may reach: Kanso's read-only notes server, over
+/// HTTP when the agent can, or through a program it starts. Header and
+/// variable values hold a token, so they are never printed.
+#[derive(Clone, PartialEq, Eq)]
+pub enum McpServer {
+    Http {
+        name: String,
+        url: String,
+        headers: Vec<(String, String)>,
+    },
+    Stdio {
+        name: String,
+        command: PathBuf,
+        args: Vec<String>,
+        env: Vec<(String, String)>,
+    },
+}
+
+impl McpServer {
+    /// The entry in `session/new`'s `mcpServers`.
+    pub fn to_json(&self) -> Value {
+        let pairs = |pairs: &[(String, String)]| {
+            pairs
+                .iter()
+                .map(|(name, value)| json!({ "name": name, "value": value }))
+                .collect::<Vec<_>>()
+        };
+        match self {
+            McpServer::Http { name, url, headers } => json!({
+                "type": "http", "name": name, "url": url, "headers": pairs(headers),
+            }),
+            McpServer::Stdio {
+                name,
+                command,
+                args,
+                env,
+            } => json!({
+                "name": name, "command": command, "args": args, "env": pairs(env),
+            }),
+        }
+    }
+}
+
+impl std::fmt::Debug for McpServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names = |pairs: &[(String, String)]| {
+            pairs
+                .iter()
+                .map(|(name, _)| format!("{name}=<redacted>"))
+                .collect::<Vec<_>>()
+        };
+        match self {
+            McpServer::Http { name, url, headers } => f
+                .debug_struct("Http")
+                .field("name", name)
+                .field("url", url)
+                .field("headers", &names(headers))
+                .finish(),
+            McpServer::Stdio {
+                name,
+                command,
+                args,
+                env,
+            } => f
+                .debug_struct("Stdio")
+                .field("name", name)
+                .field("command", command)
+                .field("args", args)
+                .field("env", &names(env))
+                .finish(),
+        }
+    }
 }
 
 /// A mode a session can run in.
@@ -648,9 +722,17 @@ impl AgentProcess {
     /// Opens a session working in `cwd`, in the most restrictive mode the
     /// agent offers. No MCP servers are passed.
     pub fn new_session(&self, cwd: &Path) -> Result<Session, AcpError> {
+        self.new_session_with(cwd, &[])
+    }
+
+    /// [`new_session`](Self::new_session) that may reach `mcp`. An HTTP
+    /// entry is only for an agent that said it can reach one
+    /// ([`AgentInfo::mcp_http`]); the caller picks.
+    pub fn new_session_with(&self, cwd: &Path, mcp: &[McpServer]) -> Result<Session, AcpError> {
+        let servers: Vec<Value> = mcp.iter().map(McpServer::to_json).collect();
         let result = self.shared.request(
             "session/new",
-            json!({ "cwd": cwd, "mcpServers": [] }),
+            json!({ "cwd": cwd, "mcpServers": servers }),
             self.shared.limits.session_new,
             Stage::SessionNew,
         )?;
@@ -815,7 +897,8 @@ pub(crate) fn safest_mode(modes: &[SessionMode], current: Option<&str>) -> Optio
         .then(|| best.id.clone())
 }
 
-/// One conversation with an agent. Kanso opens one per question.
+/// One conversation with an agent: one per question, or one per Ask panel
+/// conversation so a follow-up keeps what came before.
 pub struct Session {
     shared: Arc<Shared>,
     id: String,

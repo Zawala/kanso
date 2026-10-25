@@ -22,8 +22,6 @@ use serde::Deserialize;
 pub const MAX_NOTES: usize = 8;
 /// The prompt's character budget.
 pub const BUDGET: usize = kanso_ai::DEFAULT_BUDGET;
-/// The tag whose notes are never sent, in any case and with or without `#`.
-pub const EXCLUDE_TAG: &str = "ai-exclude";
 
 /// How many question words are searched for, and how many hits each gets.
 const MAX_TERMS: usize = 8;
@@ -73,11 +71,10 @@ pub fn eligible(candidate: &Candidate) -> bool {
     !candidate.locked && !candidate.trashed && !candidate.tags.iter().any(|tag| is_exclude_tag(tag))
 }
 
-/// Whether `tag` is the exclusion tag, however it is written.
+/// Whether `tag` is the exclusion tag (`#ai-exclude`), however it is
+/// written: the same rule the agents' notes server applies.
 pub fn is_exclude_tag(tag: &str) -> bool {
-    tag.trim()
-        .trim_start_matches('#')
-        .eq_ignore_ascii_case(EXCLUDE_TAG)
+    kanso_core::tags::is_ai_exclude(tag)
 }
 
 /// The words of a question worth searching for, without the ones every
@@ -644,12 +641,26 @@ pub fn stream_answer(
     tools: ToolRegistry<()>,
     on_tool_completed: Box<dyn FnMut() + Send>,
     cancel: &Arc<AtomicBool>,
-    mut on_event: impl FnMut(Event),
+    on_event: impl FnMut(Event),
 ) {
     if cancel.load(Ordering::Relaxed) {
         return;
     }
-    let events = match provider.ask(prompt, history, tools, on_tool_completed, cancel.clone()) {
+    stream_events(
+        provider.ask(prompt, history, tools, on_tool_completed, cancel.clone()),
+        cancel,
+        on_event,
+    );
+}
+
+/// Hands an answer's events to `on_event` until it ends, fails, or `cancel`
+/// is set: a provider's, or an agent conversation's.
+pub fn stream_events(
+    events: Result<Box<dyn Iterator<Item = Event> + Send>, kanso_ai::AiError>,
+    cancel: &Arc<AtomicBool>,
+    mut on_event: impl FnMut(Event),
+) {
+    let events = match events {
         Ok(events) => events,
         Err(err) => {
             on_event(Event::Error(err.to_string()));

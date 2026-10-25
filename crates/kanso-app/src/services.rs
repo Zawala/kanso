@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use gpui_kit::*;
-use kanso_server::{ServerConfig, ServerHandle};
+use kanso_server::{ServerConfig, ServerHandle, TokenStore};
 use kanso_store::{Change, Origin};
 use kanso_sync::keychain::PendingRecoveryKey;
 use kanso_sync::{
@@ -356,6 +356,13 @@ pub struct Services {
     session: Option<Arc<Session>>,
     hold: Option<Hold>,
     server: Option<ServerHandle>,
+    /// The agents' read-only notes tokens (`ai_agent.rs`), accepted on the
+    /// local API's `/mcp` while it listens on this computer only, and on
+    /// the agents' private listener.
+    pub(crate) agent_tokens: TokenStore,
+    /// The agents' private listener, started while the local API is off (or
+    /// reachable from other computers) and an agent may read the notes.
+    pub(crate) agent_mcp: Option<ServerHandle>,
     port_retry: Option<Task<()>>,
     sync_tasks: Vec<Task<()>>,
     sync_after_edit: Option<Task<()>>,
@@ -551,7 +558,14 @@ pub fn apply_server_settings(cx: &mut App) {
         match server_config(&settings) {
             Err(reason) => ApiState::Failed(reason),
             Ok(config) => {
-                let handle = kanso_server::spawn(store, config);
+                // Agents' tokens open `/mcp` only where every client is on
+                // this computer; otherwise agents use their own listener.
+                let tokens = if config.bind.ip().is_loopback() {
+                    services.agent_tokens.clone()
+                } else {
+                    TokenStore::new()
+                };
+                let handle = kanso_server::spawn_with_tokens(store, config, tokens);
                 let api = api_state(&handle, settings.port);
                 if matches!(api, ApiState::Running(_)) {
                     services.server = Some(handle);
@@ -568,6 +582,41 @@ pub fn apply_server_settings(cx: &mut App) {
         cx.global_mut::<Services>().port_retry = Some(retry);
     }
     cx.refresh_windows();
+}
+
+/// Where an agent reaches the notes server: the local API's `/mcp` when it
+/// runs on this computer only, or else the agents' private listener,
+/// started now. `None` when neither can listen.
+pub fn agent_mcp_endpoint(cx: &mut App) -> Option<String> {
+    let store = cx.global::<AppState>().store.clone();
+    let services = cx.global_mut::<Services>();
+    if let Some(addr) = services.server.as_ref().and_then(ServerHandle::local_addr)
+        && addr.ip().is_loopback()
+    {
+        return Some(format!("http://{addr}/mcp"));
+    }
+    if services
+        .agent_mcp
+        .as_ref()
+        .is_none_or(|listener| !listener.is_running())
+    {
+        let listener = kanso_server::spawn_agents(store, services.agent_tokens.clone());
+        services.agent_mcp = listener.local_addr().is_some().then_some(listener);
+    }
+    let addr = services.agent_mcp.as_ref()?.local_addr()?;
+    Some(format!("http://{addr}/mcp"))
+}
+
+/// Ends every agent's notes token and stops the private listener: AI was
+/// turned off, the agent changed, or Kanso is quitting.
+pub fn end_agent_access(cx: &mut App) {
+    if !cx.has_global::<Services>() {
+        return;
+    }
+    let services = cx.global_mut::<Services>();
+    services.agent_tokens.revoke_all();
+    // Stopping waits for in-flight requests; a stopping listener is let go.
+    services.agent_mcp = None;
 }
 
 /// Before a Replace backs the library up and empties it (A10): every

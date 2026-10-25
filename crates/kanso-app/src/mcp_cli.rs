@@ -5,6 +5,11 @@
 //! is written back on a line of its own. It never opens the library
 //! itself: an agent keeps this process running, and holding the library
 //! would stop Kanso from opening.
+//!
+//! An agent Kanso itself starts gets this relay with `KANSO_MCP_URL` and
+//! `KANSO_MCP_TOKEN` in its environment (never in its arguments): then it
+//! signs in with that read-only token, to that address on this computer,
+//! and reads no settings at all.
 
 use std::io::{BufRead as _, Write as _};
 use std::path::Path;
@@ -26,13 +31,19 @@ so Kanso must be open with Settings › Local API on.
 /// The JSON-RPC error code for a request the app couldn't answer.
 const UNAVAILABLE: i64 = -32000;
 
+/// The variables that put the relay in an agent's token mode.
+pub const URL_VAR: &str = "KANSO_MCP_URL";
+pub const TOKEN_VAR: &str = "KANSO_MCP_TOKEN";
+
 pub fn run_cli(data_dir: &Path, rest: &[String]) -> Result<()> {
     if rest.iter().any(|arg| arg == "help" || arg == "--help") {
         println!("{USAGE}");
         return Ok(());
     }
-    let config = crate::load_config(data_dir)?;
-    let relay = Relay::new(&config.server);
+    let relay = match token_mode(std::env::var(URL_VAR).ok(), std::env::var(TOKEN_VAR).ok())? {
+        Some(relay) => relay,
+        None => Relay::new(&crate::load_config(data_dir)?.server),
+    };
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout().lock();
     for line in stdin.lock().lines() {
@@ -40,7 +51,7 @@ pub fn run_cli(data_dir: &Path, rest: &[String]) -> Result<()> {
         if line.trim().is_empty() {
             continue;
         }
-        if let Some(answer) = relay.send(&config.server, &line) {
+        if let Some(answer) = relay.send(&line) {
             writeln!(stdout, "{answer}")?;
             stdout.flush()?;
         }
@@ -48,10 +59,59 @@ pub fn run_cli(data_dir: &Path, rest: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// The relay for an agent's token, when both variables are set: only to
+/// `http://` on a loopback address, so the token can't be sent elsewhere.
+fn token_mode(url: Option<String>, token: Option<String>) -> Result<Option<Relay>> {
+    let (Some(url), Some(token)) = (url, token) else {
+        return Ok(None);
+    };
+    let token = token.trim();
+    if token.is_empty() || !is_loopback_url(&url) {
+        anyhow::bail!("{URL_VAR} must be Kanso's own address on this computer");
+    }
+    Ok(Some(Relay {
+        endpoint: url,
+        authorization: format!("Bearer {token}"),
+        enabled: true,
+        agent: http_agent(),
+    }))
+}
+
+/// Whether `url` is plain HTTP to this computer: `http://127.0.0.1:…`,
+/// `http://[::1]:…` or `http://localhost:…`.
+fn is_loopback_url(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.contains('@') {
+        return false;
+    }
+    let host = match authority.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or_default(),
+        None => authority.split(':').next().unwrap_or_default(),
+    };
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
+fn http_agent() -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .max_redirects(0)
+        .timeout_global(Some(Duration::from_secs(120)))
+        .build()
+        .into()
+}
+
 /// The running app's MCP endpoint and how to sign in to it.
 struct Relay {
     endpoint: String,
     authorization: String,
+    /// Whether the local API is on (always, for an agent's token).
+    enabled: bool,
     agent: ureq::Agent,
 }
 
@@ -60,21 +120,17 @@ impl Relay {
         Relay {
             endpoint: crate::settings::mcp_endpoint(&server.bind_address, server.port),
             authorization: kanso_server::basic_header(&server.username, &server.password),
-            agent: ureq::Agent::config_builder()
-                .http_status_as_error(false)
-                .max_redirects(0)
-                .timeout_global(Some(Duration::from_secs(120)))
-                .build()
-                .into(),
+            enabled: server.enabled,
+            agent: http_agent(),
         }
     }
 
     /// Passes one message on, and gives back the line to answer with:
     /// the app's answer, an error for a request it couldn't answer, or
     /// nothing for a notification.
-    fn send(&self, server: &ServerSettings, message: &str) -> Option<String> {
+    fn send(&self, message: &str) -> Option<String> {
         let id = request_id(message);
-        if !server.enabled {
+        if !self.enabled {
             return id.map(|id| {
                 error(
                     id,
@@ -97,6 +153,11 @@ impl Relay {
         };
         let status = response.status().as_u16();
         let body = response.body_mut().read_to_string().unwrap_or_default();
+        if status == 401 && self.authorization.starts_with("Bearer ") {
+            // An agent's token expired or was revoked: the question goes on
+            // with what it has read.
+            return id.map(|id| error(id, "Kanso's note access for this question has ended."));
+        }
         answer(id, status, &body)
     }
 }
@@ -135,6 +196,40 @@ fn error(id: Value, message: &str) -> String {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    #[test]
+    fn a_token_goes_only_to_this_computer() {
+        for ok in [
+            "http://127.0.0.1:4242/mcp",
+            "http://localhost:1/mcp",
+            "http://[::1]:9/mcp",
+        ] {
+            assert!(is_loopback_url(ok), "{ok}");
+            let relay = token_mode(Some(ok.into()), Some("tok".into()))
+                .unwrap()
+                .unwrap();
+            assert_eq!(relay.authorization, "Bearer tok");
+        }
+        for bad in [
+            "https://127.0.0.1/mcp",
+            "http://example.com/mcp",
+            "http://127.0.0.1.example.com/mcp",
+            "http://user@127.0.0.1/mcp",
+            "http://10.0.0.2/mcp",
+            "127.0.0.1:4242",
+        ] {
+            assert!(!is_loopback_url(bad), "{bad}");
+            assert!(token_mode(Some(bad.into()), Some("tok".into())).is_err());
+        }
+        assert!(token_mode(Some("http://127.0.0.1/mcp".into()), Some(" ".into())).is_err());
+        // Without both variables, the relay signs in as the local API does.
+        assert!(token_mode(None, Some("tok".into())).unwrap().is_none());
+        assert!(
+            token_mode(Some("http://127.0.0.1/mcp".into()), None)
+                .unwrap()
+                .is_none()
+        );
+    }
 
     #[test]
     fn answer_examples() {
