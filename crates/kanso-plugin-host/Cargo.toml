@@ -1,0 +1,20 @@
+[package]
+name = "kanso-plugin-host"
+description = "The process a Kanso plugin runs in: one QuickJS runtime, the plugin's JavaScript API, and the message loop to the app. It links no store, sync or Keychain code."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "kanso-plugin-host"
+path = "src/main.rs"
+
+[dependencies]
+# The engine Kanso already draws math and diagrams with (kanso-render).
+rquickjs = "0.14"
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

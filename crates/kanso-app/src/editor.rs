@@ -1255,6 +1255,64 @@ impl NoteEditor {
             .flatten()
     }
 
+    /// The selection a plugin may see: its byte range in the body and its
+    /// text. None for a locked or read-only note, or with nothing selected.
+    pub fn plugin_selection(&self, cx: &App) -> Option<(usize, usize, String)> {
+        if self.note.is_none() || self.text_read_only {
+            return None;
+        }
+        let range = self.body.read(cx).selected_range();
+        let text = self.selected_text(cx)?;
+        Some((range.start, range.end, text))
+    }
+
+    /// Replaces bytes `range` of note `id`'s body with `text` for a plugin,
+    /// as one edit that undoes in one step, when the range still holds
+    /// `seen` (what the plugin was shown). False, changing nothing, when
+    /// another note is open now or the text there changed.
+    pub fn replace_for_plugin(
+        &mut self,
+        id: &str,
+        range: std::ops::Range<usize>,
+        seen: &str,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.note_id() != Some(id) || self.text_read_only {
+            return false;
+        }
+        self.body.update(cx, |state, cx| {
+            let value = state.value();
+            if value.get(range.clone()) != Some(seen) {
+                return false;
+            }
+            state.set_selected_range(range.clone(), cx);
+            state.replace(text.to_owned(), window, cx);
+            let end = range.start + text.len();
+            state.set_selected_range(range.start..end, cx);
+            true
+        })
+    }
+
+    /// Puts `body` in place of note `id`'s text for a plugin, as one edit
+    /// that undoes in one step, saved as typing is. Only when the editor
+    /// holds no edits unsaved since the plugin read the note: false, with
+    /// nothing changed, otherwise.
+    pub fn replace_body_for_plugin(
+        &mut self,
+        id: &str,
+        body: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.autosave.is_some() || self.has_unsaved_edits(cx) {
+            return false;
+        }
+        let current = self.body.read(cx).value().to_string();
+        self.replace_for_plugin(id, 0..current.len(), &current, body, window, cx)
+    }
+
     /// Shows `line` of note `id` once it opens.
     pub fn reveal_after_open(&mut self, id: String, line: u32) {
         self.pending_reveal = Some((id, line));

@@ -14,8 +14,8 @@ use crate::journal::{NewTemplate, NextDay, OpenToday, PreviousDay, QuickCapture}
 use crate::settings::{
     BrowseIconThemes, BrowseThemes, CloseSettings, ImportIconTheme, OpenAccountSettings,
     OpenAiSettings, OpenApiSettings, OpenAppearanceSettings, OpenEditorSettings,
-    OpenGeneralSettings, OpenIconThemeSettings, OpenUpdateSettings, RefreshThemeGallery,
-    ReloadIconThemes, ReloadThemes, StopThemePreview,
+    OpenGeneralSettings, OpenIconThemeSettings, OpenPluginSettings, OpenUpdateSettings,
+    RefreshThemeGallery, ReloadIconThemes, ReloadThemes, StopThemePreview,
 };
 use crate::tabs::{
     CloseTab, GoToTab1, GoToTab2, GoToTab3, GoToTab4, GoToTab5, GoToTab6, GoToTab7, GoToTab8,
@@ -1584,6 +1584,26 @@ static COMMANDS: &[Command] = &[
         ],
         group: Group::App,
         run: action!(OpenAiSettings),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "settings-plugins",
+        label: "Settings: Plugins",
+        label_when_pinned: None,
+        description: "The plugins installed, what each may do, and the plugin directory.",
+        icon: IconName::Puzzle,
+        keywords: &[
+            "preferences",
+            "plugins",
+            "extensions",
+            "add-ons",
+            "permissions",
+            "directory",
+            "developer mode",
+            "safe mode",
+        ],
+        group: Group::App,
+        run: action!(OpenPluginSettings),
         needs: Needs::Nothing,
     },
     Command {

@@ -443,6 +443,13 @@ fn collect(
             drawn(Kind::Excalidraw, &code.value)
                 .map(|svg| Piece::Block(svg_markup(&svg, "kanso-drawing", 1.)))
         }
+        Node::Code(code) if code.lang.as_deref().is_some_and(crate::is_plugin_language) => {
+            let language = code.lang.as_deref().unwrap_or_default().trim();
+            match render_blocking(&Job::plugin(language, code.value.as_str(), *palette)).as_ref() {
+                Ok(svg) => Some(Piece::Block(svg_markup(svg, "kanso-drawing", 1.))),
+                Err(_) => None,
+            }
+        }
         Node::Code(code) => options.highlight.and_then(|highlight| {
             let lang = code.lang.as_deref().unwrap_or_default();
             highlight

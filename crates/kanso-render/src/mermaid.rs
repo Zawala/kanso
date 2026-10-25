@@ -398,7 +398,7 @@ mod tests {
                     prop_assert!(usvg::Tree::from_str(&svg.markup, &usvg::Options::default()).is_ok());
                 }
                 Err(Failure::Unsupported(kind)) => prop_assert_eq!(kind, "nonsense"),
-                Err(Failure::Invalid(_)) => {}
+                Err(Failure::Invalid(_) | Failure::NoPlugin(_)) => {}
             }
         }
     }

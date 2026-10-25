@@ -128,6 +128,8 @@ enum Target {
     ImageWidth(Option<u32>),
     /// Draw the app's icons with the icon theme of this ID.
     IconTheme(String),
+    /// Run a plugin's command.
+    Plugin(crate::plugins_model::PluginCommand),
 }
 
 #[derive(Clone)]
@@ -221,6 +223,7 @@ impl Item {
             Target::NewTemplate => "new-template".to_owned(),
             Target::ImageWidth(width) => format!("image-width:{width:?}"),
             Target::IconTheme(id) => format!("icon-theme:{id}"),
+            Target::Plugin(command) => format!("plugin:{}/{}", command.plugin_id, command.spec.id),
         }
     }
 }
@@ -646,6 +649,7 @@ impl Palette {
                     self.commands(Group::App, query, cx),
                     false,
                 ));
+                sections.push(section("Plugins", self.plugin_commands(query, cx), false));
                 if !query.is_empty() {
                     sections.push(section("Notes", self.note_entries(query, cx), true));
                     sections.push(section(ABOUT_HEADING, self.about_entries(query), true));
@@ -958,6 +962,35 @@ impl Palette {
                 let label = several_label(command.id, label, self.several.len());
                 let score = item_score(query, &label, command.keywords);
                 (Item::new(Target::Command(command), label, icon), score)
+            })
+            .collect()
+    }
+
+    /// The plugins' commands that apply now: those for an open note only
+    /// with a live, unlocked one, and those for a selection only with text
+    /// selected.
+    fn plugin_commands(&self, query: &str, cx: &App) -> Vec<(Item, Option<i64>)> {
+        use kanso_plugins::protocol::When;
+        let note = self.note.as_ref();
+        let note_open = note.is_some_and(|n| !n.is_locked() && n.book_id != TRASH_BOOK_ID);
+        let selection = note_open && self.editor.read(cx).plugin_selection(cx).is_some();
+        crate::plugins::Plugins::commands(cx)
+            .into_iter()
+            .filter(|command| match command.spec.when {
+                When::Always => true,
+                When::NoteOpen => note_open,
+                When::Selection => selection,
+            })
+            .map(|command| {
+                let mut keywords: Vec<&str> =
+                    command.spec.keywords.iter().map(String::as_str).collect();
+                keywords.push(&command.plugin_name);
+                let score = item_score(query, &command.spec.title, &keywords);
+                let label = command.spec.title.clone();
+                (
+                    Item::new(Target::Plugin(command), label, IconName::Puzzle),
+                    score,
+                )
             })
             .collect()
     }
@@ -1380,6 +1413,15 @@ impl Palette {
             Target::NewTemplate => {
                 self.close(window, cx);
                 crate::journal::new_template(&self.library, &self.editor, window, cx);
+            }
+            Target::Plugin(command) => {
+                self.close(window, cx);
+                crate::plugins::run_command(
+                    command.plugin_id,
+                    command.spec.id,
+                    self.editor.clone(),
+                    cx,
+                );
             }
         }
     }
@@ -1855,6 +1897,16 @@ impl Palette {
                     "Creates a note in the Templates notebook. {{date}}, {{time}}, {{title}}, \
                      {{date:%A %e %B}} and {{cursor}} are filled in when a note is made from it."
                         .into(),
+                );
+            }
+            Target::Plugin(command) => {
+                detail.description = Some(
+                    format!(
+                        "A command from the {} plugin. It runs in its own sandbox and \
+                         reaches only what you gave it in Settings › Plugins.",
+                        command.plugin_name
+                    )
+                    .into(),
                 );
             }
         }

@@ -1137,10 +1137,13 @@ pub fn current_heading(headings: &[Heading], line: u32) -> Option<usize> {
 }
 
 impl Render for Inspector {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = Colors::get(cx);
         let backlinks = self.editor.read(cx).backlinks().len();
+        // A plugin's panel, while one is open, takes the pane's body.
+        let panel = crate::plugin_panel::element(window, cx);
         let body = match self.tab {
+            _ if panel.is_some() => panel.unwrap_or_else(|| div().into_any_element()),
             InspectorTab::Outline => {
                 let properties = self.render_properties(cx);
                 let outline = self.render_outline(cx);

@@ -50,6 +50,9 @@ kanso-collab.workspace = true
 kanso-gallery.workspace = true
 kanso-core.workspace = true
 kanso-import.workspace = true
+# Plugins (docs/PLUGINS.md): manifests, grants, the router and the
+# supervisor of each plugin's sandboxed host process.
+kanso-plugins = { path = "../kanso-plugins" }
 kanso-render.workspace = true
 kanso-server.workspace = true
 kanso-sync.workspace = true
@@ -130,7 +133,7 @@ gpui-pre-apple = "=0.3.9"
 # (WKWebView printing, and createPDF). GPUI already links objc2 and block2.
 block2 = "0.6"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSGraphics", "NSOpenPanel", "NSPanel", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSSavePanel", "NSSpellChecker", "NSView", "NSWindow", "block2"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSEvent", "NSGraphics", "NSOpenPanel", "NSPanel", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSSavePanel", "NSSpellChecker", "NSView", "NSWindow", "block2"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSCalendar", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSObject", "NSRange", "NSString", "NSURL"] }
 # Open at login with SMAppService on macOS 13 and later.
 objc2-service-management = { version = "0.3", default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }
