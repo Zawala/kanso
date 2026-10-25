@@ -811,16 +811,16 @@ impl Flow {
     /// the pending item and token. Both are attempted even when one fails;
     /// the first error is the answer.
     pub fn cancel_locked(&self, locked: &LockedSession) -> Result<(), AccountError> {
-        let approval = locked
-            .approval_resume()
-            .map(|_| {
-                kanso_sync::cancel_saved_approval(
-                    self.backend.as_ref(),
-                    self.secrets.as_ref(),
-                    locked,
-                )
-            })
-            .unwrap_or(Ok(()));
+        // The request is in the secret store: a session the caller loaded
+        // before it was made has no resume state to go by.
+        let has_request = kanso_sync::saved_locked_pending(self.secrets.as_ref(), locked)
+            .map(|saved| saved.approval_resume().is_some())
+            .unwrap_or_else(|_| locked.approval_resume().is_some());
+        let approval = if has_request {
+            kanso_sync::cancel_saved_approval(self.backend.as_ref(), self.secrets.as_ref(), locked)
+        } else {
+            Ok(())
+        };
         let sign_out = kanso_sync::discard_locked_session(
             self.backend.as_ref(),
             self.secrets.as_ref(),

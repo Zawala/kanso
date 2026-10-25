@@ -23,6 +23,7 @@ heading compares the release with the one before.
 
 ### Fixed
 
+- **accounts:** Approving a new device from another one works without restarting Kanso first, and cancelling the sign-in cancels that request
 - **app:** Kanso is listed in Finder's and Explorer's Open With for Markdown and text files, and opens a file from there, from a double-click once chosen, or from `kanso file.md`, as a note that is shown and selected
 
 ## [0.8.4](https://github.com/iamngoni/kanso/compare/v0.8.3...v0.8.4) - 2026-10-22

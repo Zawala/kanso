@@ -13,6 +13,7 @@ use kanso_sync::{
     PendingApproval, PinnedRequest, RequestState, Session, cancel_saved_approval,
     complete_saved_request, finish_unlock, name_device_resumable, new_approval_request_id,
     open_request, poll_saved_approval, request_approval_resumable, resume_approval,
+    saved_locked_pending,
 };
 
 use super::words::{self, ErrorContext};
@@ -349,7 +350,9 @@ impl Flow {
             match poll_saved_approval(backend, secrets, locked) {
                 Ok(RequestState::Waiting) => {}
                 Ok(RequestState::Challenged { approver_epk, .. }) => {
-                    let completed = complete_saved_request(locked, &approver_epk)
+                    // The challenge was just saved to the store, not to `locked`.
+                    let saved = saved_locked_pending(secrets, locked).map_err(approval_failure)?;
+                    let completed = complete_saved_request(&saved, &approver_epk)
                         .map_err(|e| WaitEnd::Failed(Failure::account(e, ErrorContext::Account)))?;
                     let code = completed.code();
                     if let Err(error) = name_device_resumable(backend, secrets, locked, device) {
@@ -367,18 +370,19 @@ impl Flow {
                     approval = Some(completed);
                 }
                 Ok(RequestState::Approved(approved)) => {
-                    let epk = locked
-                        .approval_resume()
-                        .and_then(|r| r.approver_epk())
-                        .ok_or_else(|| {
-                            WaitEnd::Failed(Failure::account(
-                                AccountError::ApprovalChanged,
-                                ErrorContext::Account,
-                            ))
-                        })?;
                     let approval = match approval.take() {
                         Some(approval) => approval,
-                        None => complete_saved_request(locked, &epk).map_err(approval_failure)?,
+                        None => {
+                            // Resumed after the challenge: the store knows the
+                            // approver's key, the caller's session may not.
+                            let saved =
+                                saved_locked_pending(secrets, locked).map_err(approval_failure)?;
+                            let epk = saved
+                                .approval_resume()
+                                .and_then(|r| r.approver_epk())
+                                .ok_or_else(|| approval_failure(AccountError::ApprovalChanged))?;
+                            complete_saved_request(&saved, &epk).map_err(approval_failure)?
+                        }
                     };
                     let unlocked = finish_unlock(backend, locked, &approval, &approved, device)
                         .map_err(approval_failure)?;
@@ -693,6 +697,115 @@ mod tests {
             })
             .collect();
         assert_eq!(kinds, ["devices 1", "request", "code", "tick"]);
+    }
+
+    /// Waits on `locked` as the new device, and has the first device answer
+    /// its request through the whole exchange once `idle` polls have passed.
+    /// With `challenged` the approver's key is already on the request.
+    fn wait_approved(
+        p: &super::super::lab::Paired,
+        locked: &LockedSession,
+        idle: usize,
+        key: Option<ApproverKey>,
+    ) -> Result<super::UnlockedCandidate, WaitEnd> {
+        let backend = p.server.as_ref();
+        let polls = Cell::new(0);
+        let key = RefCell::new(key);
+        p.second
+            .flow
+            .wait_for_approval(locked, &p.device, None, &|_| {}, &|_| {
+                polls.set(polls.get() + 1);
+                assert!(polls.get() < idle + 6, "the approval never arrived");
+                if polls.get() <= idle {
+                    return;
+                }
+                let pending = pending_approvals(backend, &p.alice).unwrap();
+                if key.borrow().is_none() {
+                    let made = ApproverKey::new(&pending[0]);
+                    challenge_request(backend, &p.alice, &pending[0], &made.keys).unwrap();
+                    *key.borrow_mut() = Some(made);
+                } else if let FrontStep::Open(opened) =
+                    front_step(&p.alice, &pending[0], key.borrow().as_ref().unwrap(), true)
+                {
+                    finish_approval(backend, &p.alice, &pending[0], &opened.approval).unwrap();
+                }
+            })
+    }
+
+    #[test]
+    fn a_fresh_request_is_approved_by_another_device_without_a_relaunch() {
+        let p = paired();
+        assert!(p.locked.approval_resume().is_none(), "a fresh request");
+        let candidate = wait_approved(&p, &p.locked, 0, None).expect("approved without a relaunch");
+        assert_eq!(candidate.session.key_id(), p.alice.key_id());
+        assert_eq!(candidate.library_id, p.device.library_id);
+    }
+
+    #[test]
+    fn cancelling_a_locked_sign_in_cancels_a_fresh_request_the_caller_never_reloaded() {
+        let p = paired();
+        // The request is saved to the store; `p.locked` still has no resume
+        // state, as the app's in-memory session does.
+        let backend = p.server.as_ref();
+        let secrets = p.second.secrets.as_ref();
+        request_approval_resumable(
+            backend,
+            secrets,
+            &p.locked,
+            &new_approval_request_id(),
+            &ApprovalKeys::generate(),
+        )
+        .unwrap();
+        assert_eq!(pending_approvals(backend, &p.alice).unwrap().len(), 1);
+        p.second.flow.cancel_locked(&p.locked).unwrap();
+        assert!(
+            pending_approvals(backend, &p.alice).unwrap().is_empty(),
+            "the server's request is cancelled"
+        );
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(12))]
+
+        /// However the request began (fresh, resumed from the store before
+        /// any answer, or resumed after the approver's key arrived) and
+        /// however many polls pass before the first device answers, the
+        /// answer to that request unlocks the new device.
+        #[test]
+        fn prop_any_request_is_approved_however_it_began(start in 0usize..3, idle in 0usize..3) {
+            let p = paired();
+            let backend = p.server.as_ref();
+            let secrets = p.second.secrets.as_ref();
+            let (locked, key) = if start == 0 {
+                (p.locked.clone(), None)
+            } else {
+                request_approval_resumable(
+                    backend,
+                    secrets,
+                    &p.locked,
+                    &new_approval_request_id(),
+                    &ApprovalKeys::generate(),
+                )
+                .unwrap();
+                let mut key = None;
+                if start == 2 {
+                    let pending = pending_approvals(backend, &p.alice).unwrap();
+                    let made = ApproverKey::new(&pending[0]);
+                    challenge_request(backend, &p.alice, &pending[0], &made.keys).unwrap();
+                    key = Some(made);
+                    let saved = keychain::load_locked_pending(secrets, &p.device.library_id)
+                        .unwrap()
+                        .unwrap();
+                    poll_saved_approval(backend, secrets, &saved).unwrap();
+                }
+                let reloaded = keychain::load_locked_pending(secrets, &p.device.library_id)
+                    .unwrap()
+                    .unwrap();
+                (reloaded, key)
+            };
+            let candidate = wait_approved(&p, &locked, idle, key).expect("approved");
+            prop_assert_eq!(candidate.session.key_id(), p.alice.key_id());
+        }
     }
 
     proptest! {
