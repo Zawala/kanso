@@ -94,6 +94,8 @@ mod ocr;
 mod origin;
 mod pairing;
 mod palette;
+mod passkey_accounts;
+mod passkey_ceremony;
 mod paths;
 mod pouch_import;
 mod preview;

@@ -45,6 +45,9 @@ kanso-import.workspace = true
 kanso-render.workspace = true
 kanso-server.workspace = true
 kanso-sync.workspace = true
+# Linux security keys (docs/ACCOUNTS.md › Where the ceremony runs): the
+# libfido2 CTAP2 client. Pure everywhere else, where it finds no keys.
+kanso-fido = { path = "../kanso-fido" }
 kanso-update.workspace = true
 kanso-voice.workspace = true
 kanso-store.workspace = true
@@ -80,6 +83,8 @@ unicode-width = "0.2"
 ureq = "3.4"
 # Vim keys step over a character as it is read (a grapheme cluster).
 unicode-segmentation = "1.13"
+# A passkey's PRF output and a security key's PIN are wiped after use.
+zeroize.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
@@ -96,6 +101,15 @@ rusqlite.workspace = true
 tempfile.workspace = true
 # Names the item type of a test Keychain that wraps MemorySecrets.
 zeroize.workspace = true
+
+# The PRF input, CTAP salt and client data are written in three crates; a
+# test keeps them equal (`key_constants_tests.rs`).
+kanso-webauthn = { path = "../kanso-webauthn" }
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+# Native platform passkeys: AuthenticationServices on macOS, webauthn.h on
+# Windows (`passkey_ceremony.rs`). Linux has no platform passkeys.
+kanso-webauthn = { path = "../kanso-webauthn" }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 # Real text shaping for the PNG snapshots, without the main-thread-only platform.
