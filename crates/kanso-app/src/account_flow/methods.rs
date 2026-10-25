@@ -587,6 +587,7 @@ fn provider_wait(
             Some(start.verification_uri.clone()),
         ),
     };
+    super::copy_device_code(user_code.as_deref(), cx);
     cx.global_mut::<Services>().provider_wait = Some(crate::services::ProviderWait {
         provider: label,
         user_code,

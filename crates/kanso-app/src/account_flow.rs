@@ -937,6 +937,7 @@ pub fn start_provider(
                         Some(start.verification_uri.clone()),
                     ),
                 };
+                copy_device_code(user_code.as_deref(), cx);
                 cx.global_mut::<Services>().provider_wait = Some(crate::services::ProviderWait {
                     provider: provider_label,
                     user_code,
@@ -1404,6 +1405,14 @@ fn github_next_poll_interval(interval: u64, slow_down: bool) -> u64 {
         interval.saturating_add(5)
     } else {
         interval
+    }
+}
+
+/// GitHub's page asks for the code: it goes on the clipboard before the
+/// page opens, ready to paste.
+pub(crate) fn copy_device_code(user_code: Option<&str>, cx: &mut App) {
+    if let Some(code) = user_code {
+        cx.write_to_clipboard(ClipboardItem::new_string(code.to_owned()));
     }
 }
 
