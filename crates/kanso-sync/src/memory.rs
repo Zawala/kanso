@@ -50,6 +50,11 @@ use sha2::{Digest as _, Sha256};
 pub const MEMORY_PASSKEY_RP_ID: &str = "memory.kanso.test";
 /// The one client-data origin the memory relying party accepts.
 pub const MEMORY_PASSKEY_ORIGIN: &str = "https://memory.kanso.test";
+
+/// A server URL whose host is [`MEMORY_PASSKEY_RP_ID`], so the client's
+/// relying-party rule ([`crate::passkey_rp_allowed`]) accepts
+/// `MemoryServer`'s default relying party from it.
+pub const MEMORY_PASSKEY_SERVER: &str = "https://memory.kanso.test";
 const PASSKEY_FLOW_TTL_MS: i64 = 5 * 60_000;
 
 // ---------------------------------------------------------------------------

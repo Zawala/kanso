@@ -16,7 +16,7 @@ use kanso_sync::{
 };
 use proptest::prelude::*;
 
-const SERVER: &str = "http://127.0.0.1:8787";
+const SERVER: &str = kanso_sync::MEMORY_PASSKEY_SERVER;
 
 fn mac(n: u8) -> DeviceIdentity {
     DeviceIdentity::from_parts(&format!("l_{:032x}", n), &format!("Mac {n}"), [n; 32])
@@ -132,6 +132,75 @@ fn a_sign_up_without_prf_sends_no_wrap_and_a_new_mac_is_locked() {
     assert!(!methods.passkeys[0].prf);
     let locked = passkey_sign_in(&server, &MemorySecrets::new(), &auth, &mac(2)).unwrap();
     assert!(matches!(locked, PasskeySignIn::Locked(_)));
+}
+
+/// A server that isn't the owner's advertising the official relying party,
+/// or a relying party its host doesn't sit under, gets no ceremony: the
+/// official Mac app would sign the owner's challenges it relays.
+#[test]
+fn a_relying_party_the_server_doesnt_own_gets_no_ceremony() {
+    let server = MemoryServer::new();
+    server.set_passkey_env(
+        Some(kanso_sync::OFFICIAL_RP_ID),
+        Some(r#"["https://sync.kansoapp.app"]"#),
+    );
+    for elsewhere in [
+        "https://evil.example",
+        "https://sync.kansoapp.app.evil.example",
+        "https://x.sync.kansoapp.app",
+    ] {
+        let start =
+            kanso_sync::start_passkey_sign_in(&server, elsewhere, None, &LoginDevice::ephemeral());
+        assert!(
+            matches!(start, Err(AccountError::UnsupportedMethod)),
+            "{elsewhere}: {:?}",
+            start.err()
+        );
+        let up = kanso_sync::start_passkey_sign_up(&server, elsewhere, "alice", &mac(1));
+        assert!(
+            matches!(up, Err(AccountError::UnsupportedMethod)),
+            "{elsewhere}"
+        );
+    }
+    // The owner's server under either name may ask for it.
+    for owner in [kanso_sync::OWNER_ORIGIN, "https://sync.kansoapp.app"] {
+        let start =
+            kanso_sync::start_passkey_sign_in(&server, owner, None, &LoginDevice::ephemeral())
+                .unwrap();
+        assert_eq!(start.challenge.rp_id, kanso_sync::OFFICIAL_RP_ID);
+        assert_eq!(start.challenge.origin, "https://sync.kansoapp.app");
+    }
+    // Another relying party must be the server's host or a parent of it.
+    server.set_passkey_env(Some("example.com"), Some(r#"["https://sync.example.com"]"#));
+    assert!(
+        kanso_sync::start_passkey_sign_in(
+            &server,
+            "https://sync.example.com",
+            None,
+            &LoginDevice::ephemeral()
+        )
+        .is_ok()
+    );
+    assert!(matches!(
+        kanso_sync::start_passkey_sign_in(
+            &server,
+            "https://sync.example.org",
+            None,
+            &LoginDevice::ephemeral()
+        ),
+        Err(AccountError::UnsupportedMethod)
+    ));
+    // The memory relying party from a server on another host is refused too.
+    let server = MemoryServer::new();
+    assert!(matches!(
+        kanso_sync::start_passkey_sign_in(
+            &server,
+            "http://127.0.0.1:8787",
+            None,
+            &LoginDevice::ephemeral()
+        ),
+        Err(AccountError::UnsupportedMethod)
+    ));
 }
 
 #[test]

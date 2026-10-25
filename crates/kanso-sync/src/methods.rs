@@ -139,8 +139,13 @@ fn recovery_auth(session: &Session, recovery: Option<&RecoveryKey>) -> Option<St
 // ------------------------------------------------------------ the relying party
 
 /// The relying party a server advertises and the client-data origin this
-/// client uses with it: the first advertised origin, or `https://<rp_id>`.
-/// [`AccountError::UnsupportedMethod`] when the server offers no passkeys.
+/// client uses with it: the first advertised origin that
+/// [`crate::passkey_origin_allowed`] accepts, or `https://<rp_id>` when none
+/// is advertised. [`AccountError::UnsupportedMethod`] when the server offers
+/// no passkeys, or offers a relying party [`crate::passkey_rp_allowed`]
+/// refuses for it (the official one from any server but the owner's, or one
+/// its host isn't under), so no flow runs a ceremony another server could
+/// relay.
 fn relying_party(b: &dyn Backend, server: &str) -> Result<(String, String), AccountError> {
     let health = match b.api(server).health() {
         Ok(health) if health.ok && health.protocol == PROTOCOL_VERSION => health,
@@ -153,11 +158,21 @@ fn relying_party(b: &dyn Backend, server: &str) -> Result<(String, String), Acco
         .auth
         .and_then(|auth| auth.passkeys)
         .ok_or(AccountError::UnsupportedMethod)?;
-    let origin = passkeys
-        .origins
-        .first()
-        .cloned()
-        .unwrap_or_else(|| format!("https://{}", passkeys.rp_id));
+    if !crate::passkey_rp_allowed(&passkeys.rp_id, server) {
+        return Err(AccountError::UnsupportedMethod);
+    }
+    let origin = if passkeys.origins.is_empty() {
+        Some(format!("https://{}", passkeys.rp_id))
+    } else {
+        passkeys
+            .origins
+            .iter()
+            .find(|origin| crate::passkey_origin_allowed(origin, &passkeys.rp_id))
+            .cloned()
+    };
+    let origin = origin
+        .filter(|origin| crate::passkey_origin_allowed(origin, &passkeys.rp_id))
+        .ok_or(AccountError::UnsupportedMethod)?;
     Ok((passkeys.rp_id, origin))
 }
 
