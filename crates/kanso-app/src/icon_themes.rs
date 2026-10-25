@@ -708,7 +708,8 @@ mod tests {
     use proptest::test_runner::FileFailurePersistence;
 
     /// Every built-in theme reads without a notice; Lucide draws nothing
-    /// over Kanso's icons, and Phosphor draws every UI icon and most slots.
+    /// over Kanso's icons, and every other draws every UI icon (Phosphor
+    /// most slots too).
     #[test]
     fn builtin_icon_themes_load() {
         for (id, json, files) in BUILTIN_FILES {
@@ -772,13 +773,21 @@ mod tests {
             .filter(|n| !phosphor.icons.contains_key(*n))
             .collect();
         assert!(missing.is_empty(), "Phosphor lacks {missing:?}");
+        // No partial themes: every built-in but Lucide draws every UI icon.
+        for theme in &builtins()[1..] {
+            let missing: Vec<&String> =
+                all.iter().filter(|n| !theme.icons.contains_key(*n)).collect();
+            assert!(missing.is_empty(), "{} lacks {missing:?}", theme.id);
+        }
         assert!(phosphor.library.len() >= 20);
         assert!(phosphor.extras.len() >= 20);
     }
 
     /// Lucide's card is the preview as it is; Phosphor's is the preview in
-    /// Phosphor; Catppuccin's, which draws only folders and files, opens
-    /// with its notebook and fills up with Kanso's own.
+    /// Phosphor; Catppuccin's, which keeps its own folders beside the icons
+    /// it draws for the rest of Kanso, opens with its notebook and is all
+    /// its own. (A theme that draws only a few icons filling up with
+    /// Kanso's own is `prop_a_card_leads_with_the_themes_own_icons`.)
     #[test]
     fn cards_show_what_each_theme_draws() {
         let lucide: Vec<SharedString> = PREVIEW
@@ -793,10 +802,8 @@ mod tests {
         let card = card_icons(catppuccin);
         assert_eq!(card[0], drawn_as(catppuccin, "icons/library/notebook.svg"));
         assert!(card[0].starts_with(THEMED_PREFIX));
-        assert!(
-            card.last().unwrap().starts_with("icons/")
-                && !card.last().unwrap().starts_with(THEMED_PREFIX)
-        );
+        assert_eq!(card.len(), PREVIEW.len());
+        assert!(card.iter().all(|path| path.starts_with(THEMED_PREFIX)));
     }
 
     /// With no theme in use, a slot loads the built-in icon it falls back to.
