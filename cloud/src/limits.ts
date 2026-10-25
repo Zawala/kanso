@@ -26,6 +26,8 @@ export type Rule =
 	| "passkey-manage"
 	| "proof-account"
 	| "password-account"
+	| "proof-total"
+	| "password-total"
 	| "writes-account"
 	| "uploads-account"
 	| "lookup-account"
@@ -74,6 +76,8 @@ export const RULES: Record<Rule, { window: number; max: number | null }> = {
 	"passkey-manage": { window: HOUR, max: 20 },
 	"proof-account": { window: HOUR, max: 20 },
 	"password-account": { window: 15 * 60_000, max: 5 },
+	"proof-total": { window: HOUR, max: 60 },
+	"password-total": { window: 15 * 60_000, max: 15 },
 	"writes-account": { window: DAY, max: null },
 	"uploads-account": { window: DAY, max: null },
 	"lookup-account": { window: HOUR, max: 120 },
@@ -119,6 +123,39 @@ export async function ipKey(keys: PepperKeys, rule: Rule, subject: string): Prom
 
 /** Account subjects aren't secret: `rule:<account id>`, which the admin can read. */
 export const accountKey = (rule: Rule, accountId: string): string => `${rule}:${accountId}`;
+
+/**
+ * The per-session proof rules (security review of PR #67, finding 3).
+ * `password-account` and `proof-account` count per account *and device*, with
+ * their old maximums, so one session sees exactly what it always did; a
+ * per-account total (`password-total`, `proof-total`, three sessions' worth)
+ * is counted only once the device's own rule passes. A stolen session can then
+ * use up at most a third of the account's total and none of another device's
+ * own allowance, so it can't lock a passkey-only owner out of proofs.
+ */
+const SESSION_TOTALS = { "password-account": "password-total", "proof-account": "proof-total" } as const;
+
+export async function countSession(
+	db: D1Database,
+	rule: keyof typeof SESSION_TOTALS,
+	session: { accountId: string; deviceId: string },
+	now: number,
+): Promise<Response | null> {
+	// `limits.key` is at most 80 characters: the device is its ID's first 64 bits (an account has ten devices).
+	const own = await count(db, rule, `${rule}:${session.accountId}:${session.deviceId.slice(2, 18)}`, now);
+	if (own) return own;
+	const total = SESSION_TOTALS[rule];
+	return count(db, total, accountKey(total, session.accountId), now);
+}
+
+/** SQL matching every per-session and total proof-limit row of the account `?n` (deletion). */
+export const sessionLimitKeys = (n: number): string => sessionLimitSql(`?${n}`);
+
+/** The same for an SQL expression of the account ID (the admin script quotes its own). A key range: ';' sorts right after ':'. */
+export const sessionLimitSql = (id: string): string =>
+	`(key > 'password-account:' || ${id} || ':' AND key < 'password-account:' || ${id} || ';')
+  OR (key > 'proof-account:' || ${id} || ':' AND key < 'proof-account:' || ${id} || ';')
+  OR key IN ('password-total:' || ${id}, 'proof-total:' || ${id})`;
 
 /** `login-user` for a name with no account: every such name shares this row. */
 export const UNKNOWN_LOGIN_KEY = "login-user:unknown";

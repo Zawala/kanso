@@ -32,6 +32,12 @@ export interface Env {
 	 */
 	PASSKEY_RP_ID?: string;
 	PASSKEY_ORIGINS?: string;
+	/**
+	 * The apps allowed to use this host's passkeys: a JSON array of `<TEAMID>.<bundle ID>`
+	 * (`["4973Y692JU.app.kanso.Kanso"]`), served at /.well-known/apple-app-site-association.
+	 * Without it that path is 404.
+	 */
+	APP_ASSOC_APPS?: string;
 	/** Sign in with Apple: the Services ID, team, key ID, exact callback and the `.p8` secret. */
 	APPLE_CLIENT_ID?: string;
 	APPLE_TEAM_ID?: string;
@@ -41,7 +47,6 @@ export interface Env {
 	/** Google's OAuth client (type Desktop app). Both values are needed to advertise it. */
 	GOOGLE_CLIENT_ID?: string;
 	GOOGLE_CLIENT_SECRET?: string;
-	/** GitHub's OAuth App. The device flow needs only the client ID; the secret is for the web fallback. */
+	/** GitHub's OAuth App. GitHub uses the device flow only (an owner decision), which needs no client secret. */
 	GITHUB_CLIENT_ID?: string;
-	GITHUB_CLIENT_SECRET?: string;
 }
