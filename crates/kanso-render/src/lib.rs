@@ -34,6 +34,7 @@ pub use plugin::{
     MAX_PLUGIN_SVG_BYTES, PluginRenderer, is_plugin_language, plugin_languages,
     sanitize_plugin_svg, set_plugin_renderer,
 };
+pub use svg::set_fonts;
 
 /// The text size drawings are measured for.
 pub const TEXT_SIZE: f32 = 16.;

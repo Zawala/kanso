@@ -1,0 +1,50 @@
+[package]
+name = "kanso-mobile"
+description = "Kanso's library for the phones' app (#48): the facade the Flutter shell calls. Notes, locked notes, sync, rendering and the background sync entry, on the shared core, with no window and no bridge generator."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+async-channel.workspace = true
+kanso-core.workspace = true
+# The highlighter (`highlight`, with the grammars for fenced code) is the
+# phones' editor colors.
+kanso-engine.workspace = true
+kanso-render.workspace = true
+kanso-store.workspace = true
+# Without the desktop Keychain: secrets go through `Secrets`, and the phones'
+# stores are in `secrets`.
+kanso-sync = { path = "../kanso-sync", default-features = false }
+# Whether Android has handed over its Context yet (`Library::open`) and the
+# phone's certificate store.
+kanso-tls.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# The secret stores hand values back zeroed on drop.
+zeroize.workspace = true
+
+# The Keychain: generic passwords, readable after the first unlock and never
+# leaving the device. Already in the iOS tree, through the certificate
+# verifier.
+[target.'cfg(target_os = "ios")'.dependencies]
+security-framework = "3.7"
+
+# The Keystore sits behind a Kotlin class (`secrets::android` says which).
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.22", default-features = false }
+
+[features]
+# Constructors that take cheap key derivation settings and a fault-ready
+# backend, so tests derive in milliseconds.
+test-support = []
+
+[dev-dependencies]
+# This crate's integration tests use the test-support constructors.
+kanso-mobile = { path = ".", features = ["test-support"] }
+# Generators for the sync problems the status maps.
+kanso-engine = { workspace = true, features = ["test-support"] }
+proptest.workspace = true
+tempfile.workspace = true

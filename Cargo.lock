@@ -4579,6 +4579,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "kanso-mobile"
+version = "0.8.4"
+dependencies = [
+ "async-channel",
+ "jni",
+ "kanso-core",
+ "kanso-engine",
+ "kanso-mobile",
+ "kanso-render",
+ "kanso-store",
+ "kanso-sync",
+ "kanso-tls",
+ "proptest",
+ "security-framework 3.7.0",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "zeroize",
+]
+
+[[package]]
 name = "kanso-mobile-size"
 version = "0.8.4"
 dependencies = [
