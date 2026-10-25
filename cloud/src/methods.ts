@@ -6,13 +6,25 @@
 // so the proof is used in the same transaction as the change.
 
 import { signOutSockets } from "./account_room";
-import { newRecoveryKey, readObject, respond, withSession } from "./auth";
-import { sha256Hex } from "./crypto";
+import {
+	type Session,
+	afterDeletion,
+	authHashGuard,
+	deletionStatements,
+	newRecoveryKey,
+	readObject,
+	respond,
+	withSession,
+} from "./auth";
+import { memberships } from "./collab";
+import { proofMatches, sha256Hex } from "./crypto";
+import type { Env } from "./env";
 import { badRequest, error, invalidCredentials, json } from "./http";
 import { accountKey, count } from "./limits";
 import { checkKdf, isSalt, isWrappedKey, proof32 } from "./protocol";
-import { proofAccount, proofUsed, proofWithRecovery } from "./proofs";
+import { type ProofAccount, type ProofGuard, proofAccount, proofUsed, proofWithRecovery } from "./proofs";
 import { flowExpired } from "./sign_in";
+import { normalizeUsername } from "./usernames";
 
 const alreadyHasPassword = (): Response =>
 	error(409, "already_has_password", "The account has a password; change it with POST /v2/account/password.");
@@ -100,4 +112,94 @@ export const setPassword = withSession(async (request, env, now, session) => {
 	const latest = await proofAccount(env, session.accountId);
 	if (latest?.has_password === 1) return done(latest) ? json({ signed_out_devices: 0 }) : alreadyHasPassword();
 	return invalidCredentials();
+});
+
+/**
+ * The body's proof, or for a password account its auth key in `field` (the
+ * routes' older form): the account and the guard to run the change under, or
+ * the response. Counts `password-account` for a password (either form) and
+ * `proof-account` for a passkey or provider proof. A provider proof also needs
+ * `current_recovery_auth_key` (401 `reauth_required` without it).
+ */
+async function proofOrPassword(
+	env: Env,
+	now: number,
+	session: Session,
+	body: Record<string, unknown>,
+	field: string,
+): Promise<{ ok: true; account: ProofAccount; guard: ProofGuard } | { ok: false; response: Response }> {
+	if (body.proof === undefined) {
+		const limited = await count(env.DB, "password-account", accountKey("password-account", session.accountId), now);
+		if (limited) return { ok: false, response: limited };
+		const current = proof32(body[field]);
+		if (!current) return { ok: false, response: badRequest(`${field} must be 32 bytes of canonical base64url.`) };
+		const account = await proofAccount(env, session.accountId);
+		if (!account) return { ok: false, response: invalidCredentials() };
+		if (!(await proofMatches(current, account.auth_hash))) return { ok: false, response: invalidCredentials() };
+		return { ok: true, account, guard: { before: [], accountId: account.id, ...authHashGuard(account.auth_hash) } };
+	}
+	const account = await proofAccount(env, session.accountId);
+	if (!account) return { ok: false, response: invalidCredentials() };
+	const checked = await proofWithRecovery(env, now, session, account, body, { countProof: true });
+	if (!checked.ok) return checked;
+	return { ok: true, account, guard: checked.guard };
+}
+
+/**
+ * `POST /v2/account/recovery-key` — `{current_auth_key, recovery_auth_key,
+ * recovery_wrapped_key}`, or `{proof, current_recovery_auth_key?, …}` in place
+ * of `current_auth_key`, which is how a passwordless account replaces its
+ * recovery key. 200 `{}`. Sessions stay. Setting the same values again with
+ * the current password (a retry) changes the row just the same; a proof is
+ * used once, so a retry with a used one is 400 `flow_expired`.
+ */
+export const recoveryKey = withSession(async (request, env, now, session) => {
+	const body = await readObject(request);
+	if (!body.ok) return body.response;
+	const b = body.value;
+	const checked = await proofOrPassword(env, now, session, b, "current_auth_key");
+	if (!checked.ok) return checked.response;
+	const recovery = await newRecoveryKey(b);
+	if (!recovery.ok) return recovery.response;
+	const { account, guard } = checked;
+	const results = await env.DB.batch([
+		...guard.before,
+		env.DB.prepare(`UPDATE accounts SET recovery_hash = ?3, recovery_wrapped_key = ?4 WHERE id = ?1 AND ${guard.sql(1, 2)} RETURNING id`).bind(
+			account.id,
+			guard.value,
+			recovery.hash,
+			recovery.wrap,
+		),
+	]);
+	if (results[guard.before.length].results.length === 1) return json({});
+	if (!proofUsed(guard, results)) return flowExpired();
+	return invalidCredentials();
+});
+
+/**
+ * `POST /v2/account/delete` — `{auth_key, username}` for a password account,
+ * or `{proof, current_recovery_auth_key?, username}`. 200 `{deleted: true}`.
+ * 400 `username_mismatch` unless the username normalizes to the account's
+ * (checked after the proof, which isn't used then). One batch deletes
+ * everything of the account under the proof's guard (auth.ts
+ * deletionStatements); then the R2 purge, shared rooms and every event socket.
+ */
+export const deleteAccount = withSession(async (request, env, now, session) => {
+	const body = await readObject(request);
+	if (!body.ok) return body.response;
+	const b = body.value;
+	const checked = await proofOrPassword(env, now, session, b, "auth_key");
+	if (!checked.ok) return checked.response;
+	const { account, guard } = checked;
+	if (typeof b.username !== "string") return badRequest("username must be a string.");
+	if (normalizeUsername(b.username) !== account.username) {
+		return error(400, "username_mismatch", "The username doesn't match this account.");
+	}
+	const shared = await memberships(env, account.id);
+	const statements = deletionStatements(env.DB, account.id, now, guard);
+	const results = await env.DB.batch([...guard.before, ...statements]);
+	// The account's deletion is the second to last statement.
+	if (results[results.length - 2].results.length !== 1) return proofUsed(guard, results) ? invalidCredentials() : flowExpired();
+	await afterDeletion(env, account.id, shared, now);
+	return json({ deleted: true });
 });

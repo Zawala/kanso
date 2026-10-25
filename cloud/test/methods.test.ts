@@ -701,3 +701,146 @@ describe("POST /v2/account/sign-in/password", () => {
 		expect((await setPassword(p.token, {})).body).toMatchObject({ error: "rate_limited", limit: "password-account" });
 	});
 });
+
+// ------------------------------------------------- recovery-key and delete
+
+export const recoveryKey = (token: string, body: unknown, now = T0) => as("/v2/account/recovery-key", body, token, now);
+export const deleteAccount = (token: string, body: unknown, now = T0) => as("/v2/account/delete", body, token, now);
+const recoverStart = (username: string, key: string) =>
+	callJson("/v2/auth/recover/start", { env: menv(), now: T0, json: { username, recovery_auth_key: key } });
+const rowsOf = async (accountId: string) => {
+	const out: Record<string, number> = {};
+	for (const [table, column] of [
+		["accounts", "id"],
+		["sessions", "account_id"],
+		["account_passkeys", "account_id"],
+		["account_identities", "account_id"],
+		["auth_flows", "account_id"],
+	]) {
+		out[table] = (await env.DB.prepare(`SELECT count(*) AS n FROM ${table} WHERE ${column} = ?1`).bind(accountId).first<number>("n")) ?? 0;
+	}
+	return out;
+};
+
+describe("POST /v2/account/recovery-key with a proof", () => {
+	it("a passwordless account replaces its recovery key with a passkey proof; sessions stay", async () => {
+		const p = await passkeyAccount("prover");
+		const next = newCreds("next");
+		const body = { proof: await passkeyProof(p.token, p.credential), recovery_auth_key: next.recoveryAuthKey, recovery_wrapped_key: next.recoveryWrappedKey };
+		expect(await recoveryKey(p.token, body)).toMatchObject({ status: 200, body: {} });
+		expect((await recoverStart("prover", p.recoveryAuthKey)).status).toBe(401);
+		expect(await recoverStart("prover", next.recoveryAuthKey)).toMatchObject({ status: 200, body: { recovery_wrapped_key: next.recoveryWrappedKey } });
+		expect((await callJson("/v2/account", { env: menv(), now: T0, token: p.token })).status).toBe(200);
+		// The proof was used: the same body again is flow_expired.
+		expect(await recoveryKey(p.token, body)).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+	});
+
+	it("a password proof works too, and the older current_auth_key form still does", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		const next = newCreds("next");
+		const fields = { recovery_auth_key: next.recoveryAuthKey, recovery_wrapped_key: next.recoveryWrappedKey };
+		expect((await recoveryKey(alice.token, { proof: passwordProof(alice), ...fields })).status).toBe(200);
+		expect((await recoveryKey(alice.token, { current_auth_key: alice.creds.authKey, ...fields })).status).toBe(200);
+		expect((await recoveryKey(alice.token, { proof: { kind: "password", auth_key: next.authKey }, ...fields })).body.error).toBe("invalid_credentials");
+	});
+
+	it("a provider proof needs the current recovery key", async () => {
+		const p = await passkeyAccount("prover");
+		const next = newCreds("next");
+		const fields = { recovery_auth_key: next.recoveryAuthKey, recovery_wrapped_key: next.recoveryWrappedKey };
+		const without = await recoveryKey(p.token, { proof: await providerProof(p.accountId, p.device.id), ...fields });
+		expect(without).toMatchObject({ status: 401, body: { error: "reauth_required" } });
+		const wrong = await recoveryKey(p.token, {
+			proof: await providerProof(p.accountId, p.device.id),
+			current_recovery_auth_key: newCreds("x").recoveryAuthKey,
+			...fields,
+		});
+		expect(wrong).toMatchObject({ status: 401, body: { error: "invalid_credentials" } });
+		const right = await recoveryKey(p.token, { proof: await providerProof(p.accountId, p.device.id), current_recovery_auth_key: p.recoveryAuthKey, ...fields });
+		expect(right.status).toBe(200);
+		expect((await recoverStart("prover", next.recoveryAuthKey)).status).toBe(200);
+	});
+
+	it("a passwordless account's auth_key form is invalid_credentials; no proof at all is too", async () => {
+		const p = await passkeyAccount("prover");
+		const next = newCreds("next");
+		const fields = { recovery_auth_key: next.recoveryAuthKey, recovery_wrapped_key: next.recoveryWrappedKey };
+		expect((await recoveryKey(p.token, { current_auth_key: next.authKey, ...fields })).body.error).toBe("invalid_credentials");
+		expect((await recoveryKey(p.token, { proof: { kind: "password", auth_key: next.authKey }, ...fields })).body.error).toBe("invalid_credentials");
+		expect((await recoveryKey(p.token, { proof: null, ...fields })).body.error).toBe("reauth_required");
+	});
+
+	it("a passkey proof counts proof-account; a password counts password-account", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		for (let i = 0; i < 5; i++) expect((await recoveryKey(alice.token, { proof: passwordProof(alice) })).status).toBe(400);
+		expect((await recoveryKey(alice.token, { proof: passwordProof(alice) })).body).toMatchObject({ limit: "password-account" });
+		const p = await passkeyAccount("prover");
+		await env.DB.prepare("INSERT INTO limits (key, window_start, count) VALUES (?1, ?2, 19)")
+			.bind(`proof-account:${p.accountId}`, Math.floor(T0 / 3_600_000) * 3_600_000)
+			.run();
+		// proof/start takes the twentieth; the proof itself is refused.
+		const proof = await passkeyProof(p.token, p.credential);
+		expect((await recoveryKey(p.token, { proof })).body).toMatchObject({ error: "rate_limited", limit: "proof-account" });
+	});
+});
+
+describe("POST /v2/account/delete with a proof", () => {
+	it("deletes a passwordless account with a passkey proof: its passkeys, identities, flows and sessions too", async () => {
+		const p = await passkeyAccount("prover");
+		await providerProof(p.accountId, p.device.id);
+		const answer = await deleteAccount(p.token, { proof: await passkeyProof(p.token, p.credential), username: "Prover" });
+		expect(answer).toMatchObject({ status: 200, body: { deleted: true } });
+		expect(await rowsOf(p.accountId)).toEqual({ accounts: 0, sessions: 0, account_passkeys: 0, account_identities: 0, auth_flows: 0 });
+		expect(await callJson("/v2/account", { env: menv(), now: T0, token: p.token })).toMatchObject({ status: 401, body: { reason: "unknown" } });
+	});
+
+	it("a provider proof needs the current recovery key", async () => {
+		const p = await passkeyAccount("prover");
+		const without = await deleteAccount(p.token, { proof: await providerProof(p.accountId, p.device.id), username: "prover" });
+		expect(without).toMatchObject({ status: 401, body: { error: "reauth_required" } });
+		const right = await deleteAccount(p.token, {
+			proof: await providerProof(p.accountId, p.device.id),
+			current_recovery_auth_key: p.recoveryAuthKey,
+			username: "prover",
+		});
+		expect(right).toMatchObject({ status: 200, body: { deleted: true } });
+		expect((await rowsOf(p.accountId)).accounts).toBe(0);
+	});
+
+	it("a username mismatch leaves the proof unused; a used proof deletes nothing", async () => {
+		const p = await passkeyAccount("prover");
+		const proof = await passkeyProof(p.token, p.credential);
+		expect(await deleteAccount(p.token, { proof, username: "someone" })).toMatchObject({ status: 400, body: { error: "username_mismatch" } });
+		await linkStart(p.token, p.device, proof);
+		expect(await deleteAccount(p.token, { proof, username: "prover" })).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+		expect((await rowsOf(p.accountId)).accounts).toBe(1);
+	});
+
+	it("a password account can delete itself with a password proof; the auth_key form on a passwordless one fails", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		expect((await deleteAccount(alice.token, { proof: passwordProof(alice), username: "alice" })).body).toEqual({ deleted: true });
+		const p = await passkeyAccount("prover");
+		expect((await deleteAccount(p.token, { auth_key: newCreds("x").authKey, username: "prover" })).body.error).toBe("invalid_credentials");
+	});
+
+	it("parallel deletions with one proof: one wins, the rest change nothing", async () => {
+		const p = await passkeyAccount("prover");
+		const proof = await passkeyProof(p.token, p.credential);
+		const answers = await Promise.all([1, 2, 3].map(() => deleteAccount(p.token, { proof, username: "prover" })));
+		expect(answers.filter((a) => a.status === 200)).toHaveLength(1);
+		expect(answers.filter((a) => a.status !== 200).every((a) => a.status === 400 || a.status === 401)).toBe(true);
+	});
+
+	it("property: any proof flow but a live one of this session deletes nothing", async () => {
+		const p = await passkeyAccount("prover");
+		await fc.assert(
+			fc.asyncProperty(fc.uint8Array({ minLength: 32, maxLength: 32 }), async (bytes) => {
+				const r = await deleteAccount(p.token, { proof: { kind: "provider", flow: base64url(bytes) }, current_recovery_auth_key: p.recoveryAuthKey, username: "prover" });
+				expect(r.status).toBe(400);
+				expect(r.body.error).toBe("flow_expired");
+			}),
+			runs(15),
+		);
+		expect((await rowsOf(p.accountId)).accounts).toBe(1);
+	});
+});

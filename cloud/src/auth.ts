@@ -792,76 +792,66 @@ export const password = withSession(async (request, env, now, session) => {
 	return invalidCredentials();
 });
 
-export const recoveryKey = withSession(async (request, env, now, session) => {
-	const checked = await checkCurrentPassword(request, env, now, session, "current_auth_key");
-	if (!checked.ok) return checked.response;
-	const { body: b, account, current } = checked;
-	const recovery = await newRecoveryKey(b);
-	if (!recovery.ok) return recovery.response;
-	if (!(await proofMatches(current, account.auth_hash))) return invalidCredentials();
-	// Setting the same values again (a retry) changes the row just the same.
-	const updated = await env.DB.prepare(
-		"UPDATE accounts SET recovery_hash = ?3, recovery_wrapped_key = ?4 WHERE id = ?1 AND auth_hash = ?2 RETURNING id",
-	)
-		.bind(account.id, account.auth_hash, recovery.hash, recovery.wrap)
-		.first();
-	return updated ? json({}) : invalidCredentials();
+/** A condition every statement of a deletion holds under, with the account and `value` at the given parameters. */
+export interface DeletionGuard {
+	sql(account: number, value: number): string;
+	value: string;
+}
+
+/** A password's guard: the auth hash the Worker just checked is still the account's. */
+export const authHashGuard = (authHash: string): DeletionGuard => ({
+	value: authHash,
+	sql: (a, v) => `EXISTS (SELECT 1 FROM accounts WHERE id = ?${a} AND auth_hash = ?${v})`,
 });
 
 /**
  * The deletion batch: documents, files, published notes (queued for their R2
  * objects' deletion), shared notes (its own stopped and their rooms queued for
  * purging; its identity, memberships, wraps, requests and notifications gone),
- * sessions, account-keyed limits, the purge row, then the account (children
- * first: D1 enforces foreign keys).
- * Every statement holds only while the checked auth hash is stored.
+ * the sign-in rows, sessions, account-keyed limits, the purge row, then the
+ * account (children first: D1 enforces foreign keys), and last its
+ * `auth_flows` rows. Every statement but the last holds only under `guard`:
+ * a password's auth hash, or a proof's attempt ID on its flow, which is why
+ * the flows go after the account (the last statement holds only once the
+ * account is gone). The account's deletion is the second to last result.
  */
-export function deletionStatements(db: D1Database, accountId: string, now: number, authHash: string): D1PreparedStatement[] {
-	const guard = "EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND auth_hash = ?2)";
-	const bind = (sql: string) => db.prepare(sql).bind(accountId, authHash);
+export function deletionStatements(db: D1Database, accountId: string, now: number, guard: DeletionGuard): D1PreparedStatement[] {
+	const where = guard.sql(1, 2);
+	const bind = (sql: string) => db.prepare(sql).bind(accountId, guard.value);
 	return [
-		bind(`DELETE FROM account_docs WHERE account_id = ?1 AND ${guard}`),
-		bind(`DELETE FROM account_files WHERE account_id = ?1 AND ${guard}`),
-		...accountShareStatements(db, accountId, guard, authHash, now),
-		...accountCollabStatements(db, accountId, guard, authHash, now),
-		bind(`DELETE FROM device_approvals WHERE account_id = ?1 AND ${guard}`),
-		bind(`DELETE FROM account_passkeys WHERE account_id = ?1 AND ${guard}`),
-		bind(`DELETE FROM account_identities WHERE account_id = ?1 AND ${guard}`),
-		bind(`DELETE FROM auth_flows WHERE account_id = ?1 AND ${guard}`),
-		bind(`DELETE FROM sessions WHERE account_id = ?1 AND ${guard}`),
+		bind(`DELETE FROM account_docs WHERE account_id = ?1 AND ${where}`),
+		bind(`DELETE FROM account_files WHERE account_id = ?1 AND ${where}`),
+		...accountShareStatements(db, accountId, where, guard.value, now),
+		...accountCollabStatements(db, accountId, where, guard.value, now),
+		bind(`DELETE FROM device_approvals WHERE account_id = ?1 AND ${where}`),
+		bind(`DELETE FROM account_passkeys WHERE account_id = ?1 AND ${where}`),
+		bind(`DELETE FROM account_identities WHERE account_id = ?1 AND ${where}`),
+		bind(`DELETE FROM sessions WHERE account_id = ?1 AND ${where}`),
 		bind(
 			`DELETE FROM limits WHERE key IN ('login-user:' || ?1, 'password-account:' || ?1, 'writes-account:' || ?1, 'uploads-account:' || ?1,
-  'lookup-account:' || ?1, 'join-account:' || ?1, 'notify-account:' || ?1, 'proof-account:' || ?1,
+  'lookup-account:' || ?1, 'join-account:' || ?1, 'notify-account:' || ?1, 'proof-account:' || ?1, 'passkey-manage:' || ?1,
   'approval-create:' || ?1, 'approval-poll:' || ?1, 'approval-respond:' || ?1)
-  AND ${guard}`,
+  AND ${where}`,
 		),
 		db
 			.prepare(
-				`INSERT INTO purges (prefix, requested_at) SELECT 'accounts/' || ?1 || '/', ?3 WHERE ${guard}
+				`INSERT INTO purges (prefix, requested_at) SELECT 'accounts/' || ?1 || '/', ?3 WHERE ${where}
   ON CONFLICT (prefix) DO UPDATE SET requested_at = excluded.requested_at`,
 			)
-			.bind(accountId, authHash, now),
-		bind(`DELETE FROM accounts WHERE id = ?1 AND ${guard} RETURNING id`),
+			.bind(accountId, guard.value, now),
+		bind(`DELETE FROM accounts WHERE id = ?1 AND ${where} RETURNING id`),
+		db.prepare("DELETE FROM auth_flows WHERE account_id = ?1 AND NOT EXISTS (SELECT 1 FROM accounts WHERE id = ?1)").bind(accountId),
 	];
 }
 
-export const deleteAccount = withSession(async (request, env, now, session) => {
-	const checked = await checkCurrentPassword(request, env, now, session, "auth_key");
-	if (!checked.ok) return checked.response;
-	const { body: b, account, current } = checked;
-	if (typeof b.username !== "string") return badRequest("username must be a string.");
-	if (!(await proofMatches(current, account.auth_hash))) return invalidCredentials();
-	if (normalizeUsername(b.username) !== account.username) {
-		return error(400, "username_mismatch", "The username doesn't match this account.");
-	}
-	const shared = await memberships(env, account.id);
-	const results = await env.DB.batch(deletionStatements(env.DB, account.id, now, account.auth_hash));
-	if (results[results.length - 1].results.length !== 1) return invalidCredentials();
-	await purgePrefix(env, accountPrefix(account.id), now, now, DELETE_PURGE_ROUNDS);
+/** After the deletion batch: its R2 prefix, published notes, shared rooms and event sockets. */
+export async function afterDeletion(env: Env, accountId: string, shared: string[], now: number): Promise<void> {
+	await purgePrefix(env, accountPrefix(accountId), now, now, DELETE_PURGE_ROUNDS);
 	await runSharePurges(env, now);
-	await afterAccountDeleted(env, account.id, shared, now);
-	return json({ deleted: true });
-});
+	await afterAccountDeleted(env, accountId, shared, now);
+	// The account's sessions are gone: every device's event socket closes.
+	await signOutSockets(env, accountId, null);
+}
 
 // ------------------------------------------------------------------- devices
 
