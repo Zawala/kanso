@@ -122,11 +122,21 @@ pub(super) struct Suggestion {
     notice: Option<String>,
     error: Option<String>,
     running: bool,
+    /// The whole answer arrived. A rewrite that stopped or failed partway
+    /// is never accepted: it would put half an answer in place of the text.
+    complete: bool,
     cancel: Arc<AtomicBool>,
     task: Option<Task<()>>,
 }
 
 impl Suggestion {
+    /// Whether Accept may put it in the note: it has text, and a rewrite
+    /// arrived whole. A continuation or a summary that stopped partway only
+    /// adds text, so what arrived may still go in.
+    fn acceptable(&self) -> bool {
+        !self.running && !self.text.trim().is_empty() && (self.complete || !self.action.replaces())
+    }
+
     /// The note it was asked for.
     pub(super) fn note_id(&self) -> &str {
         &self.note_id
@@ -254,6 +264,7 @@ impl NoteEditor {
             notice: None,
             error: None,
             running: true,
+            complete: false,
             cancel,
             task: Some(task),
         });
@@ -273,6 +284,7 @@ impl NoteEditor {
             Event::Status(line) => suggestion.notice = Some(line),
             Event::Done => {
                 suggestion.running = false;
+                suggestion.complete = true;
                 suggestion.text = features::clean_suggestion(&suggestion.text);
                 if suggestion.text.is_empty() {
                     suggestion.error = Some("Nothing came back.".to_owned());
@@ -298,7 +310,11 @@ impl NoteEditor {
         suggestion.task = None;
         suggestion.running = false;
         suggestion.text = features::clean_suggestion(&suggestion.text);
-        suggestion.notice = Some("Stopped.".to_owned());
+        suggestion.notice = Some(if suggestion.action.replaces() {
+            "Stopped. A partial rewrite can't be applied.".to_owned()
+        } else {
+            "Stopped.".to_owned()
+        });
         cx.notify();
     }
 
@@ -315,7 +331,7 @@ impl NoteEditor {
         let Some(suggestion) = self.inline.as_ref() else {
             return;
         };
-        if suggestion.running || suggestion.text.trim().is_empty() {
+        if !suggestion.acceptable() {
             return;
         }
         if self.note_id() != Some(suggestion.note_id.as_str())
@@ -361,7 +377,7 @@ impl NoteEditor {
             }
             (None, None) => (None, colors.text_secondary),
         };
-        let ready = !running && !suggestion.text.trim().is_empty();
+        let ready = suggestion.acceptable();
         Some(
             v_flex()
                 .flex_none()
@@ -473,6 +489,7 @@ impl NoteEditor {
             notice: None,
             error: None,
             running: false,
+            complete: true,
             cancel: Arc::default(),
             task: None,
         });
@@ -489,5 +506,55 @@ impl NoteEditor {
                 s.notice.clone().or(s.error.clone()),
             )
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn suggestion(action: InlineAction, text: &str, running: bool, complete: bool) -> Suggestion {
+        Suggestion {
+            action,
+            note_id: "note:a".to_owned(),
+            range: 0..0,
+            original: String::new(),
+            text: text.to_owned(),
+            notice: None,
+            error: None,
+            running,
+            complete,
+            cancel: Arc::default(),
+            task: None,
+        }
+    }
+
+    #[test]
+    fn a_rewrite_that_stopped_partway_is_never_accepted() {
+        assert!(!suggestion(InlineAction::Improve, "Half an ans", false, false).acceptable());
+        assert!(suggestion(InlineAction::Improve, "Whole answer.", false, true).acceptable());
+        // Adding text that stopped partway still adds only what arrived.
+        assert!(suggestion(InlineAction::Continue, "Half", false, false).acceptable());
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(128))]
+
+        /// Invariant: a replacing action is acceptable only once its whole
+        /// answer arrived, and nothing is acceptable while running or empty.
+        #[test]
+        fn prop_only_a_whole_rewrite_is_accepted(
+            action in prop::sample::select(InlineAction::ALL.to_vec()),
+            text in "\\PC{0,20}",
+            running in any::<bool>(),
+            complete in any::<bool>(),
+        ) {
+            let accepted = suggestion(action, &text, running, complete).acceptable();
+            if accepted {
+                prop_assert!(!running && !text.trim().is_empty());
+                prop_assert!(complete || !action.replaces());
+            }
+        }
     }
 }

@@ -305,7 +305,10 @@ fn stop_ends_the_request(cx: &mut TestAppContext) {
         .with(cx, |editor, _, _| editor.suggestion_for_test())
         .unwrap();
     assert!(!running);
-    assert_eq!(notice.as_deref(), Some("Stopped."));
+    assert_eq!(
+        notice.as_deref(),
+        Some("Stopped. A partial rewrite can't be applied.")
+    );
 }
 
 /// A note kept out of AI, locked or with AI off sends nothing and gets no
