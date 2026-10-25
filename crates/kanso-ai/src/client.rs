@@ -839,7 +839,7 @@ mod tests {
             request.url
         );
         let body = String::from_utf8_lossy(&request.body);
-        assert!(body.contains("\"max_completion_tokens\":1024"), "{body}");
+        assert!(body.contains("\"max_completion_tokens\":2048"), "{body}");
         assert!(body.contains("\"stream\":true"), "{body}");
     }
     #[test]
