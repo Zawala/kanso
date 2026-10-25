@@ -1729,6 +1729,155 @@ pub fn set_safe_mode_for_test(on: bool, cx: &mut App) {
     }
 }
 
+/// The live directory, through this service, as Kanso uses it: install a
+/// sample, take its update, then find it withdrawn. Needs the network and a
+/// persistent `KANSO_LIVE_DIR`; `KANSO_LIVE_STEP` is `install`, `update` or
+/// `revoked`, run in that order as the directory publishes each change.
+#[cfg(test)]
+mod live {
+    use std::sync::Arc;
+
+    use kanso_core::DocType;
+    use kanso_plugins::model::{Disabled, Source};
+    use kanso_plugins::registry;
+    use kanso_plugins::router::Editor;
+    use kanso_store::{Origin, Put, Store};
+    use serde_json::{Value, json};
+
+    use super::{Run, Shared, app_version};
+
+    const WORD_COUNT: &str = "app.kanso.sample.wordcount";
+
+    fn fetch(shared: &Arc<Shared>) -> kanso_plugins::registry_model::Index {
+        let agent = registry::agent();
+        let (bytes, signature) = registry::fetch_index(&agent).expect("the directory answers");
+        shared
+            .take_index(&bytes, &signature)
+            .expect("the directory verifies")
+    }
+
+    fn install(shared: &Arc<Shared>, entry: &kanso_plugins::registry_model::Entry) {
+        let bytes =
+            registry::fetch_bundle(&registry::agent(), entry).expect("the bundle downloads");
+        let bundle = registry::verify_bundle(&bytes, entry).expect("the bundle verifies");
+        let plan = shared
+            .plan(
+                bundle,
+                Source::Registry {
+                    sha256: entry.sha256.clone(),
+                },
+            )
+            .expect("Kanso offers to install it");
+        assert!(!plan.key_changed(), "the author's key is the pinned one");
+        let grant = plan.grant.clone();
+        shared.install(&plan, grant).expect("it installs");
+        shared.introduce(&entry.id).expect("its host starts");
+    }
+
+    fn count_words(shared: &Arc<Shared>, store: &Store) -> Value {
+        let book = store
+            .put(
+                DocType::Book,
+                json!({ "name": "Drafts" }),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let note = store
+            .put(
+                DocType::Note,
+                json!({ "bookId": book, "title": "Draft", "body": "one two three" }),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let editor = Editor {
+            note_id: Some(note),
+            selection: None,
+        };
+        let run = Run::Command {
+            id: "count-words".into(),
+            args: Value::Null,
+        };
+        shared
+            .run(WORD_COUNT, run, editor)
+            .result
+            .expect("the command runs")
+    }
+
+    #[test]
+    #[ignore = "uses the live plugin directory; see the module doc"]
+    fn the_live_directory() {
+        let dir =
+            std::path::PathBuf::from(std::env::var("KANSO_LIVE_DIR").expect("KANSO_LIVE_DIR"));
+        let step = std::env::var("KANSO_LIVE_STEP").expect("KANSO_LIVE_STEP");
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Arc::new(Store::open(dir.join("kanso.db")).unwrap());
+        let secrets: Arc<dyn kanso_sync::keychain::SecretStore> =
+            Arc::new(kanso_sync::keychain::MemorySecrets::default());
+        let shared = Shared::new(store.clone(), &dir, false, secrets);
+        assert!(
+            registry::is_configured(),
+            "this build trusts the directory key"
+        );
+        let index = fetch(&shared);
+        eprintln!("directory serial {}", index.serial);
+        match step.as_str() {
+            "install" => {
+                let entry = registry::latest(&index, WORD_COUNT).expect("Word count is listed");
+                install(&shared, entry);
+                assert_eq!(count_words(&shared, &store)["text"], "3 words");
+                eprintln!("installed {} and ran it", entry.version);
+            }
+            "update" => {
+                let installed = shared
+                    .installed(WORD_COUNT)
+                    .expect("installed at the first step");
+                let offer =
+                    registry::offer(&installed, &index, &app_version(), &Default::default())
+                        .expect("the directory offers an update");
+                assert!(!offer.key_changed);
+                eprintln!(
+                    "update offered: {} -> {}",
+                    installed.manifest.version, offer.entry.version
+                );
+                install(&shared, &offer.entry);
+                let now = shared.installed(WORD_COUNT).unwrap();
+                assert_eq!(now.manifest.version, offer.entry.version);
+                assert_eq!(count_words(&shared, &store)["text"], "3 words");
+            }
+            "revoked" => {
+                let installed = shared
+                    .installed(WORD_COUNT)
+                    .expect("installed at the earlier steps");
+                assert!(
+                    matches!(installed.disabled, Some(Disabled::Revoked { .. })),
+                    "the withdrawn version is off: {:?}",
+                    installed.disabled
+                );
+                assert!(!shared.may_run(WORD_COUNT));
+                let run = Run::Command {
+                    id: "count-words".into(),
+                    args: Value::Null,
+                };
+                assert!(
+                    shared
+                        .run(WORD_COUNT, run, Editor::default())
+                        .result
+                        .is_err()
+                );
+                eprintln!(
+                    "{} {} is withdrawn: {:?}",
+                    WORD_COUNT, installed.manifest.version, installed.disabled
+                );
+            }
+            other => panic!("unknown step {other}"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
