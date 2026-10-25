@@ -307,6 +307,42 @@ mod tests {
         assert!(text.ends_with(&prompt().user), "{text}");
     }
 
+    fn ai_without_its_agent(backend: AiBackend) -> AiSettings {
+        let mut ai = AiSettings::for_provider(kanso_ai::Provider::LocalModel);
+        ai.enabled = true;
+        ai.backend = backend;
+        ai.agent.kind = kanso_ai::AgentKind::Custom;
+        ai.agent.command = Some("/no/such/kanso-removed-agent".to_owned());
+        ai
+    }
+
+    /// With the backend on an API key, an agent that was uninstalled is
+    /// never looked at: the provider is made, and no error is raised.
+    // no-prop-test: glue over the settings; no input to vary.
+    #[test]
+    fn an_uninstalled_agent_does_not_touch_the_api_path() {
+        let ai = ai_without_its_agent(AiBackend::Api);
+        let made = provider(&ai, &std::env::temp_dir(), None);
+        assert!(made.is_ok(), "{:?}", made.err());
+    }
+
+    /// With the backend on an agent that is gone, a feature gets one plain
+    /// line that points to Settings, not a crash or a hang.
+    // no-prop-test: glue over the settings; no input to vary.
+    #[test]
+    fn a_missing_agent_is_a_line_that_points_to_settings() {
+        let ai = ai_without_its_agent(AiBackend::Agent);
+        let data_dir = std::env::temp_dir().join("kanso-removed-agent-test");
+        let maker: Maker = Arc::new(move || provider(&ai, &data_dir, None));
+        let (text, events) = run(&maker, &prompt());
+        assert_eq!(text, "");
+        let Some(Event::Error(message)) = events.last() else {
+            panic!("no error: {events:?}");
+        };
+        assert!(message.contains("Kanso can't find"), "{message}");
+        assert!(message.contains("Settings › AI"), "{message}");
+    }
+
     #[test]
     fn a_provider_that_cannot_be_made_is_an_error_event() {
         let maker: Maker = Arc::new(|| Err("No key".to_owned()));
