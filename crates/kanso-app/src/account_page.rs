@@ -402,7 +402,9 @@ impl AccountPage {
         let server = account_flow::form_server(cx);
         let progress = account_flow::passkey_sign_in(
             server,
-            account_flow::PasskeyMethod::Platform,
+            account_flow::PasskeyMethod::Platform {
+                window: passkey_ceremony::native_window(window),
+            },
             None,
             window.window_handle(),
             cx,
@@ -430,7 +432,9 @@ impl AccountPage {
                 pin: Some(pin),
             }
         } else {
-            account_flow::PasskeyMethod::Platform
+            account_flow::PasskeyMethod::Platform {
+                window: passkey_ceremony::native_window(window),
+            }
         };
         let started = if form.creating {
             kanso_sync::check_new_username(&username)

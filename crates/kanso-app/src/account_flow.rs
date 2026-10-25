@@ -41,7 +41,7 @@ use crate::dialogs::{self, Described, Progress};
 use crate::passkey_accounts::{
     self, PasskeyContext, PasskeyFlowError, PasskeySignedUp, RpRule, SyncPasskeyAccounts,
 };
-use crate::passkey_ceremony::MainThreadCeremony;
+use crate::passkey_ceremony::{PlatformCeremony, platform_ceremony};
 use crate::security_key_flow::OwnedSecurityKey;
 use crate::services::{
     self, AccountDetails, AccountState, PendingKey, RunningTask, Services, TaskKind, notify_windows,
@@ -1596,8 +1596,9 @@ fn create_provider_signup(
 /// Which authenticator a passkey task uses.
 pub enum PasskeyMethod {
     /// The platform's sheet: AuthenticationServices on macOS, Windows Hello
-    /// and security keys through webauthn.h on Windows.
-    Platform,
+    /// and security keys through webauthn.h on Windows, owned by `window`
+    /// (`passkey_ceremony::native_window`; 0 when there is none).
+    Platform { window: isize },
     /// A Linux security key, with its PIN when it needs one.
     SecurityKey {
         device: kanso_fido::SecurityKeyDevice,
@@ -1613,8 +1614,8 @@ impl PasskeyMethod {
 
 /// The ceremony a passkey task's thread runs, made on the main thread.
 enum Runner {
-    /// Hops each call to the main thread, where the sheet is presented.
-    Platform(MainThreadCeremony),
+    /// The platform's sheet (`passkey_ceremony::platform_ceremony`).
+    Platform(PlatformCeremony),
     SecurityKey(OwnedSecurityKey),
     #[cfg(test)]
     Test(Arc<dyn kanso_sync::PasskeyCeremony + Send + Sync>),
@@ -1629,9 +1630,9 @@ impl Runner {
             return (Runner::Test(ceremony), None);
         }
         match method {
-            PasskeyMethod::Platform => {
-                let (ceremony, serving) = MainThreadCeremony::serve(cx);
-                (Runner::Platform(ceremony), Some(serving))
+            PasskeyMethod::Platform { window } => {
+                let (ceremony, serving) = platform_ceremony(window, cx);
+                (Runner::Platform(ceremony), serving)
             }
             PasskeyMethod::SecurityKey { device, pin } => {
                 (Runner::SecurityKey(OwnedSecurityKey { device, pin }), None)
@@ -1652,7 +1653,7 @@ impl Runner {
     /// for its PIN.
     fn run<T>(self, work: impl FnOnce(&dyn kanso_sync::PasskeyCeremony) -> T) -> (T, bool) {
         match self {
-            Runner::Platform(ceremony) => (work(&ceremony), false),
+            Runner::Platform(ceremony) => (work(ceremony.as_ref()), false),
             Runner::SecurityKey(key) => key.with(work),
             #[cfg(test)]
             Runner::Test(ceremony) => (work(ceremony.as_ref()), false),

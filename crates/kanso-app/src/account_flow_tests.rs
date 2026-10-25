@@ -2873,7 +2873,7 @@ impl Mac {
         cx.update(|cx| {
             account_flow::passkey_sign_up(
                 kanso_sync::MEMORY_PASSKEY_SERVER.into(),
-                account_flow::PasskeyMethod::Platform,
+                account_flow::PasskeyMethod::Platform { window: 0 },
                 username,
                 window,
                 cx,
@@ -2886,7 +2886,7 @@ impl Mac {
         cx.update(|cx| {
             account_flow::passkey_sign_in(
                 kanso_sync::MEMORY_PASSKEY_SERVER.into(),
-                account_flow::PasskeyMethod::Platform,
+                account_flow::PasskeyMethod::Platform { window: 0 },
                 None,
                 window,
                 cx,

@@ -4339,6 +4339,7 @@ dependencies = [
  "objc2-vision",
  "objc2-web-kit",
  "proptest",
+ "raw-window-handle",
  "rusqlite",
  "schemars 0.8.22",
  "semver",

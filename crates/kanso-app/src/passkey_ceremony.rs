@@ -83,7 +83,10 @@ pub fn ceremony_error(error: kanso_webauthn::CeremonyError) -> PasskeyCeremonyEr
         CeremonyError::Unsupported | CeremonyError::NotMainThread | CeremonyError::Invalid => {
             PasskeyCeremonyError::Unavailable
         }
-        CeremonyError::Failed(_) | CeremonyError::Incomplete => PasskeyCeremonyError::Failed,
+        CeremonyError::Cancelled => PasskeyCeremonyError::Cancelled,
+        CeremonyError::Failed(_) | CeremonyError::Incomplete | CeremonyError::TimedOut => {
+            PasskeyCeremonyError::Failed
+        }
     }
 }
 
@@ -93,6 +96,7 @@ pub fn ceremony_error(error: kanso_webauthn::CeremonyError) -> PasskeyCeremonyEr
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn registration_request(
     challenge: &PasskeyRegistrationChallenge,
+    window: isize,
 ) -> kanso_webauthn::RegistrationRequest {
     kanso_webauthn::RegistrationRequest {
         rp_id: challenge.rp_id.clone(),
@@ -103,6 +107,7 @@ pub fn registration_request(
         display_name: challenge.display_name.clone(),
         exclude_credentials: challenge.exclude_credentials.clone(),
         prf_input: challenge.request_prf.then_some(kanso_webauthn::PRF_INPUT),
+        window,
     }
 }
 
@@ -111,6 +116,7 @@ pub fn registration_request(
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn assertion_request(
     challenge: &PasskeyAssertionChallenge,
+    window: isize,
 ) -> kanso_webauthn::AssertionRequest {
     kanso_webauthn::AssertionRequest {
         rp_id: challenge.rp_id.clone(),
@@ -119,6 +125,7 @@ pub fn assertion_request(
         allow_credentials: challenge.allow_credentials.clone(),
         prf_input: challenge.request_prf.then_some(kanso_webauthn::PRF_INPUT),
         user_verification: kanso_webauthn::UserVerification::Required,
+        window,
     }
 }
 
@@ -173,117 +180,211 @@ pub fn platform_available() -> bool {
     }
 }
 
-/// The platform's own ceremony, run on the calling thread. On macOS that
-/// must be the main thread: [`MainThreadCeremony`] takes an account task's
-/// call there.
-pub struct NativeCeremony;
+/// This platform's passkey sheet, as an account task's thread runs it.
+///
+/// - macOS: [`MainThreadCeremony`]. AuthenticationServices must be started
+///   on the main thread, so each call asks the main thread to start it and
+///   waits here for the delegate's answer. The main thread returns to
+///   GPUI's run loop at once, so nothing there waits on the sheet.
+/// - Windows: [`WindowsCeremony`], the blocking webauthn.h call made right
+///   here, owned by Kanso's window.
+/// - Elsewhere: none.
+pub type PlatformCeremony = Box<dyn PasskeyCeremony + Send>;
 
-impl PasskeyCeremony for NativeCeremony {
+/// The ceremony for `window` (its native handle, from [`native_window`]),
+/// and on macOS the main-thread task serving it, kept until the task ends.
+pub fn platform_ceremony(
+    window: isize,
+    cx: &mut App,
+) -> (PlatformCeremony, Option<gpui_kit::Task<()>>) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = window;
+        let (ceremony, serving) = MainThreadCeremony::serve(cx);
+        (Box::new(ceremony), Some(serving))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = cx;
+        (Box::new(WindowsCeremony { window }), None)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = (window, cx);
+        (Box::new(NoCeremony), None)
+    }
+}
+
+/// The native handle a Windows sheet is owned by (`HWND`); 0 elsewhere, or
+/// when the window has none.
+pub fn native_window(window: &gpui_kit::Window) -> isize {
+    #[cfg(target_os = "windows")]
+    {
+        use raw_window_handle::{HasWindowHandle as _, RawWindowHandle};
+        match window.window_handle().map(|handle| handle.as_raw()) {
+            Ok(RawWindowHandle::Win32(handle)) => handle.hwnd.get(),
+            _ => 0,
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = window;
+        0
+    }
+}
+
+/// Windows: webauthn.h on the calling thread (an account task's), owned by
+/// Kanso's window so the sheet sits over it. The UI thread keeps running.
+#[cfg(target_os = "windows")]
+pub struct WindowsCeremony {
+    pub window: isize,
+}
+
+#[cfg(target_os = "windows")]
+impl PasskeyCeremony for WindowsCeremony {
     fn register(
         &self,
         challenge: &PasskeyRegistrationChallenge,
     ) -> Result<PasskeyRegistration, PasskeyCeremonyError> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            kanso_webauthn::register(&registration_request(challenge))
-                .map(registration_from_native)
-                .map_err(ceremony_error)
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = challenge;
-            Err(PasskeyCeremonyError::Unavailable)
-        }
+        kanso_webauthn::register(&registration_request(challenge, self.window))
+            .map(registration_from_native)
+            .map_err(ceremony_error)
     }
 
     fn assert(
         &self,
         challenge: &PasskeyAssertionChallenge,
     ) -> Result<PasskeyAssertion, PasskeyCeremonyError> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            kanso_webauthn::assert(&assertion_request(challenge))
-                .map(assertion_from_native)
-                .map_err(ceremony_error)
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = challenge;
-            Err(PasskeyCeremonyError::Unavailable)
-        }
+        kanso_webauthn::assert(&assertion_request(challenge, self.window))
+            .map(assertion_from_native)
+            .map_err(ceremony_error)
     }
 }
 
-/// One ceremony an account task asks the main thread for.
-enum Job {
-    Register(
-        PasskeyRegistrationChallenge,
-        std::sync::mpsc::Sender<Result<PasskeyRegistration, PasskeyCeremonyError>>,
-    ),
-    Assert(
-        PasskeyAssertionChallenge,
-        std::sync::mpsc::Sender<Result<PasskeyAssertion, PasskeyCeremonyError>>,
-    ),
+/// Linux: no platform sheet; security keys go through `security_key_flow`.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+struct NoCeremony;
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+impl PasskeyCeremony for NoCeremony {
+    fn register(
+        &self,
+        _: &PasskeyRegistrationChallenge,
+    ) -> Result<PasskeyRegistration, PasskeyCeremonyError> {
+        Err(PasskeyCeremonyError::Unavailable)
+    }
+
+    fn assert(
+        &self,
+        _: &PasskeyAssertionChallenge,
+    ) -> Result<PasskeyAssertion, PasskeyCeremonyError> {
+        Err(PasskeyCeremonyError::Unavailable)
+    }
 }
 
-/// A [`PasskeyCeremony`] an account task's thread can call: each call is
-/// run by [`NativeCeremony`] on the main thread, where the system sheet can
-/// be presented, and the thread waits for its answer. When the main-thread
-/// side is gone (the task that serves it was dropped), a call fails as
-/// unavailable instead of waiting forever.
+/// What an account task asks the main thread for.
+#[cfg(target_os = "macos")]
+enum Job {
+    /// Start a registration and reply with its pending answer.
+    Register(
+        PasskeyRegistrationChallenge,
+        std::sync::mpsc::Sender<Result<kanso_webauthn::Pending, PasskeyCeremonyError>>,
+    ),
+    /// Start an assertion and reply with its pending answer.
+    Assert(
+        PasskeyAssertionChallenge,
+        std::sync::mpsc::Sender<Result<kanso_webauthn::Pending, PasskeyCeremonyError>>,
+    ),
+    /// Take the sheet down: the task stopped waiting.
+    Cancel(u64),
+}
+
+/// macOS: a [`PasskeyCeremony`] an account task's thread can call. Each
+/// call has the main thread *start* the ceremony, which returns at once,
+/// and then waits on this thread for the delegate's answer, up to
+/// `kanso_webauthn::TIMEOUT`, after which the sheet is cancelled. The main
+/// thread never blocks or spins a nested run loop, so GPUI and the
+/// system's callbacks keep running. When the main-thread side is gone, a
+/// call fails as unavailable instead of waiting forever.
+#[cfg(target_os = "macos")]
 #[derive(Clone)]
 pub struct MainThreadCeremony {
     jobs: async_channel::Sender<Job>,
 }
 
+#[cfg(target_os = "macos")]
 impl MainThreadCeremony {
     /// Starts serving ceremonies on the main thread. The returned task
     /// serves them while it lives; drop it when the account task ends.
     pub fn serve(cx: &mut App) -> (MainThreadCeremony, gpui_kit::Task<()>) {
         let (jobs, incoming) = async_channel::unbounded::<Job>();
         let task = cx.spawn(async move |_cx| {
-            // Outside any `update`: the ceremony pumps the run loop, and
-            // other UI work may run while the sheet is up.
             while let Ok(job) = incoming.recv().await {
                 match job {
                     Job::Register(challenge, reply) => {
-                        reply.send(NativeCeremony.register(&challenge)).ok();
+                        let started =
+                            kanso_webauthn::begin_register(&registration_request(&challenge, 0))
+                                .map_err(ceremony_error);
+                        reply.send(started).ok();
                     }
                     Job::Assert(challenge, reply) => {
-                        reply.send(NativeCeremony.assert(&challenge)).ok();
+                        let started =
+                            kanso_webauthn::begin_assert(&assertion_request(&challenge, 0))
+                                .map_err(ceremony_error);
+                        reply.send(started).ok();
                     }
+                    Job::Cancel(id) => kanso_webauthn::cancel(id),
                 }
             }
         });
         (MainThreadCeremony { jobs }, task)
     }
+
+    /// Has the main thread start a ceremony, then waits here for it.
+    fn run<T>(
+        &self,
+        job: impl FnOnce(
+            std::sync::mpsc::Sender<Result<kanso_webauthn::Pending, PasskeyCeremonyError>>,
+        ) -> Job,
+        wait: impl FnOnce(&kanso_webauthn::Pending) -> Result<T, kanso_webauthn::CeremonyError>,
+    ) -> Result<T, PasskeyCeremonyError> {
+        let (reply, started) = std::sync::mpsc::channel();
+        self.jobs
+            .send_blocking(job(reply))
+            .map_err(|_| PasskeyCeremonyError::Unavailable)?;
+        let pending = started
+            .recv()
+            .unwrap_or(Err(PasskeyCeremonyError::Unavailable))?;
+        let answer = wait(&pending);
+        if matches!(answer, Err(kanso_webauthn::CeremonyError::TimedOut)) {
+            self.jobs.send_blocking(Job::Cancel(pending.id())).ok();
+        }
+        answer.map_err(ceremony_error)
+    }
 }
 
+#[cfg(target_os = "macos")]
 impl PasskeyCeremony for MainThreadCeremony {
     fn register(
         &self,
         challenge: &PasskeyRegistrationChallenge,
     ) -> Result<PasskeyRegistration, PasskeyCeremonyError> {
-        let (reply, answer) = std::sync::mpsc::channel();
-        self.jobs
-            .send_blocking(Job::Register(challenge.clone(), reply))
-            .map_err(|_| PasskeyCeremonyError::Unavailable)?;
-        answer
-            .recv()
-            .unwrap_or(Err(PasskeyCeremonyError::Unavailable))
+        self.run(
+            |reply| Job::Register(challenge.clone(), reply),
+            |pending| pending.wait_registration(kanso_webauthn::TIMEOUT),
+        )
+        .map(registration_from_native)
     }
 
     fn assert(
         &self,
         challenge: &PasskeyAssertionChallenge,
     ) -> Result<PasskeyAssertion, PasskeyCeremonyError> {
-        let (reply, answer) = std::sync::mpsc::channel();
-        self.jobs
-            .send_blocking(Job::Assert(challenge.clone(), reply))
-            .map_err(|_| PasskeyCeremonyError::Unavailable)?;
-        answer
-            .recv()
-            .unwrap_or(Err(PasskeyCeremonyError::Unavailable))
+        self.run(
+            |reply| Job::Assert(challenge.clone(), reply),
+            |pending| pending.wait_assertion(kanso_webauthn::TIMEOUT),
+        )
+        .map(assertion_from_native)
     }
 }
 
@@ -503,25 +604,32 @@ mod tests {
                 exclude_credentials: vec![vec![3; 16]],
                 request_prf: true,
             };
-            let request = registration_request(&challenge);
+            let request = registration_request(&challenge, 0);
             assert_eq!(request.rp_id, challenge.rp_id);
             assert_eq!(request.challenge, challenge.challenge);
             assert_eq!(request.user_handle, challenge.user_handle);
             assert_eq!(request.exclude_credentials, challenge.exclude_credentials);
             assert_eq!(request.prf_input, Some(kanso_sync::PRF_INPUT));
-            let without = registration_request(&PasskeyRegistrationChallenge {
-                request_prf: false,
-                ..challenge
-            });
+            let without = registration_request(
+                &PasskeyRegistrationChallenge {
+                    request_prf: false,
+                    ..challenge
+                },
+                7,
+            );
+            assert_eq!(without.window, 7, "the sheet's owner window");
             assert_eq!(without.prf_input, None);
 
-            let assertion = assertion_request(&PasskeyAssertionChallenge {
-                rp_id: OFFICIAL_RP_ID.into(),
-                origin: "https://sync.kansoapp.app".into(),
-                challenge: vec![4; 32],
-                allow_credentials: vec![],
-                request_prf: true,
-            });
+            let assertion = assertion_request(
+                &PasskeyAssertionChallenge {
+                    rp_id: OFFICIAL_RP_ID.into(),
+                    origin: "https://sync.kansoapp.app".into(),
+                    challenge: vec![4; 32],
+                    allow_credentials: vec![],
+                    request_prf: true,
+                },
+                0,
+            );
             assert_eq!(
                 assertion.user_verification,
                 kanso_webauthn::UserVerification::Required
@@ -572,6 +680,15 @@ mod tests {
             assert_eq!(
                 ceremony_error(CeremonyError::NotMainThread),
                 PasskeyCeremonyError::Unavailable
+            );
+            // A dismissed sheet changes nothing; a timed-out one failed.
+            assert_eq!(
+                ceremony_error(CeremonyError::Cancelled),
+                PasskeyCeremonyError::Cancelled
+            );
+            assert_eq!(
+                ceremony_error(CeremonyError::TimedOut),
+                PasskeyCeremonyError::Failed
             );
         }
     }

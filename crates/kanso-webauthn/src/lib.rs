@@ -122,6 +122,9 @@ pub struct RegistrationRequest {
     pub exclude_credentials: Vec<Vec<u8>>,
     /// The fixed Kanso PRF input, when this ceremony asks for PRF.
     pub prf_input: Option<[u8; 32]>,
+    /// Windows: the top-level window (`HWND`) the sheet belongs to, or 0.
+    /// macOS anchors the sheet on the key window itself.
+    pub window: isize,
 }
 
 /// What an assertion ceremony needs.
@@ -134,6 +137,8 @@ pub struct AssertionRequest {
     pub allow_credentials: Vec<Vec<u8>>,
     pub prf_input: Option<[u8; 32]>,
     pub user_verification: UserVerification,
+    /// Windows: the top-level window (`HWND`) the sheet belongs to, or 0.
+    pub window: isize,
 }
 
 /// User verification, which every Kanso ceremony requires.
@@ -176,35 +181,81 @@ pub enum CeremonyError {
     /// The request was not usable (an empty RP ID, or the like).
     #[error("the passkey request is not valid")]
     Invalid,
+    /// The person dismissed the sheet.
+    #[error("the passkey sheet was dismissed")]
+    Cancelled,
+    /// The sheet stayed up past [`TIMEOUT`]; the caller cancels it.
+    #[error("the passkey ceremony timed out")]
+    TimedOut,
 }
+
+/// How long a sheet may stay up before the ceremony is given up and the
+/// sheet cancelled.
+pub const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// Whether this build can run a platform passkey ceremony now.
 pub fn available() -> bool {
     platform::available()
 }
 
-/// Runs a registration ceremony. Blocks the calling (main) thread while the
-/// platform's sheet is up.
-pub fn register(request: &RegistrationRequest) -> Result<PasskeyRegistration, CeremonyError> {
+fn check_registration(request: &RegistrationRequest) -> Result<(), CeremonyError> {
     if request.rp_id.is_empty() || request.challenge.is_empty() || request.user_handle.is_empty() {
         return Err(CeremonyError::Invalid);
     }
-    platform::register(request)
+    Ok(())
 }
 
-/// Runs an assertion ceremony.
-pub fn assert(request: &AssertionRequest) -> Result<PasskeyAssertion, CeremonyError> {
+fn check_assertion(request: &AssertionRequest) -> Result<(), CeremonyError> {
     if request.rp_id.is_empty() || request.challenge.is_empty() {
         return Err(CeremonyError::Invalid);
     }
+    Ok(())
+}
+
+/// Runs a registration ceremony on the calling thread, which waits while
+/// the sheet is up: an account task's thread, never the UI's (Windows, with
+/// `request.window` as the sheet's owner; nothing elsewhere).
+#[cfg(not(target_os = "macos"))]
+pub fn register(request: &RegistrationRequest) -> Result<PasskeyRegistration, CeremonyError> {
+    check_registration(request)?;
+    platform::register(request)
+}
+
+/// Runs an assertion ceremony on the calling thread (see [`register`]).
+#[cfg(not(target_os = "macos"))]
+pub fn assert(request: &AssertionRequest) -> Result<PasskeyAssertion, CeremonyError> {
+    check_assertion(request)?;
     platform::assert(request)
 }
+
+/// Starts a registration on macOS and returns at once: the system answers
+/// later, on the main run loop the app keeps running, and the answer
+/// arrives through the returned [`Pending`]. Must be called on the main
+/// thread. Nothing here spins a nested run loop, so the app's main-queue
+/// work, and the sheet's own callbacks, keep flowing.
+#[cfg(target_os = "macos")]
+pub fn begin_register(request: &RegistrationRequest) -> Result<Pending, CeremonyError> {
+    check_registration(request)?;
+    platform::begin_register(request)
+}
+
+/// Starts an assertion on macOS (see [`begin_register`]).
+#[cfg(target_os = "macos")]
+pub fn begin_assert(request: &AssertionRequest) -> Result<Pending, CeremonyError> {
+    check_assertion(request)?;
+    platform::begin_assert(request)
+}
+
+#[cfg(target_os = "macos")]
+pub use platform::{Pending, cancel};
 
 #[cfg(target_os = "macos")]
 mod platform {
     use super::*;
-    use std::sync::{Arc, Mutex};
-    use std::time::{Duration, Instant};
+    use std::cell::RefCell;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Mutex, mpsc};
+    use std::time::Duration;
 
     use objc2::rc::Retained;
     use objc2::runtime::{AnyClass, AnyObject, Bool, NSObject};
@@ -218,12 +269,13 @@ mod platform {
     unsafe extern "C" {}
 
     use objc2_app_kit::NSApplication;
-    use objc2_foundation::{
-        NSArray, NSData, NSDate, NSDefaultRunLoopMode, NSError, NSRunLoop, NSString,
-    };
+    use objc2_foundation::{NSArray, NSData, NSError, NSString};
 
-    /// How long a sheet may stay up before the app says it failed.
-    const TIMEOUT: Duration = Duration::from_secs(120);
+    /// `ASAuthorizationErrorDomain` and its `ASAuthorizationErrorCanceled`.
+    const AUTHORIZATION_ERROR_DOMAIN: &str = "com.apple.AuthenticationServices.AuthorizationError";
+    const AUTHORIZATION_CANCELED: isize = 1001;
+
+    type Answer = Result<Raw, CeremonyError>;
 
     enum Raw {
         Registration {
@@ -247,7 +299,7 @@ mod platform {
         #[unsafe(super(NSObject))]
         #[thread_kind = MainThreadOnly]
         #[name = "KansoPasskeyDelegate"]
-        #[ivars = Arc<Mutex<Option<Result<Raw, String>>>>]
+        #[ivars = Mutex<Option<mpsc::Sender<Answer>>>]
         struct Delegate;
 
         impl Delegate {
@@ -255,12 +307,18 @@ mod platform {
             fn did_complete(&self, _controller: &AnyObject, authorization: &AnyObject) {
                 // SAFETY: AuthenticationServices calls this on the main thread
                 // with a live authorization object.
-                self.finish(unsafe { interpret(authorization) });
+                self.finish(unsafe { interpret(authorization) }.map_err(CeremonyError::Failed));
             }
 
             #[unsafe(method(authorizationController:didCompleteWithError:))]
             fn did_fail(&self, _controller: &AnyObject, error: &NSError) {
-                self.finish(Err(error.localizedDescription().to_string()));
+                let cancelled = error.domain().to_string() == AUTHORIZATION_ERROR_DOMAIN
+                    && error.code() == AUTHORIZATION_CANCELED;
+                self.finish(Err(if cancelled {
+                    CeremonyError::Cancelled
+                } else {
+                    CeremonyError::Failed(error.localizedDescription().to_string())
+                }));
             }
 
             #[unsafe(method(presentationAnchorForAuthorizationController:))]
@@ -324,11 +382,156 @@ mod platform {
     }
 
     impl Delegate {
-        fn finish(&self, outcome: Result<Raw, String>) {
-            if let Ok(mut slot) = self.ivars().lock() {
-                *slot = Some(outcome);
+        /// Sends the one answer; later calls (a cancel after an answer)
+        /// find no sender and do nothing.
+        fn finish(&self, outcome: Answer) {
+            let sender = self.ivars().lock().ok().and_then(|mut slot| slot.take());
+            if let Some(sender) = sender {
+                let _ = sender.send(outcome);
             }
         }
+
+        fn finished(&self) -> bool {
+            self.ivars()
+                .lock()
+                .map(|slot| slot.is_none())
+                .unwrap_or(true)
+        }
+    }
+
+    /// A ceremony the system is running: the controller (which holds its
+    /// delegate weakly) and the delegate, kept alive here until the delegate
+    /// has answered, as `provider_browser::apple::LIVE` keeps its sessions.
+    struct Live {
+        id: u64,
+        controller: Retained<AnyObject>,
+        delegate: Retained<Delegate>,
+    }
+
+    thread_local! {
+        static LIVE: RefCell<Vec<Live>> = const { RefCell::new(Vec::new()) };
+    }
+
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+
+    /// Drops the ceremonies whose delegate has answered. Never from inside a
+    /// delegate callback, so no object is released while it runs.
+    fn sweep() {
+        LIVE.with(|live| live.borrow_mut().retain(|entry| !entry.delegate.finished()));
+    }
+
+    /// A started ceremony's answer, which any thread may wait for.
+    pub struct Pending {
+        id: u64,
+        answer: mpsc::Receiver<Answer>,
+    }
+
+    impl Pending {
+        /// What [`cancel`] takes, on the main thread.
+        pub fn id(&self) -> u64 {
+            self.id
+        }
+
+        fn wait(&self, timeout: Duration) -> Answer {
+            match self.answer.recv_timeout(timeout) {
+                Ok(answer) => answer,
+                Err(mpsc::RecvTimeoutError::Timeout) => Err(CeremonyError::TimedOut),
+                Err(mpsc::RecvTimeoutError::Disconnected) => Err(CeremonyError::Failed(
+                    "the ceremony ended without an answer".to_owned(),
+                )),
+            }
+        }
+
+        /// Waits (off the main thread) for a registration's answer.
+        pub fn wait_registration(
+            &self,
+            timeout: Duration,
+        ) -> Result<PasskeyRegistration, CeremonyError> {
+            match self.wait(timeout)? {
+                Raw::Registration {
+                    credential_id,
+                    attestation_object,
+                    client_data_json,
+                    prf,
+                } => Ok(PasskeyRegistration {
+                    credential_id,
+                    attestation_object,
+                    client_data_json,
+                    transports: vec!["internal".to_owned()],
+                    prf,
+                }),
+                Raw::Assertion { .. } => Err(CeremonyError::Incomplete),
+            }
+        }
+
+        /// Waits (off the main thread) for an assertion's answer.
+        pub fn wait_assertion(&self, timeout: Duration) -> Result<PasskeyAssertion, CeremonyError> {
+            match self.wait(timeout)? {
+                Raw::Assertion {
+                    credential_id,
+                    authenticator_data,
+                    client_data_json,
+                    signature,
+                    user_handle,
+                    prf,
+                } => Ok(PasskeyAssertion {
+                    credential_id,
+                    authenticator_data,
+                    client_data_json,
+                    signature,
+                    user_handle,
+                    prf,
+                }),
+                Raw::Registration { .. } => Err(CeremonyError::Incomplete),
+            }
+        }
+    }
+
+    /// Cancels ceremony `id` if it is still up (`[controller cancel]`, macOS
+    /// 13+). The delegate then answers [`CeremonyError::Cancelled`] to no one.
+    /// Main thread only; elsewhere, and for an unknown ID, nothing happens.
+    pub fn cancel(id: u64) {
+        if MainThreadMarker::new().is_none() {
+            return;
+        }
+        let controller = LIVE.with(|live| {
+            live.borrow()
+                .iter()
+                .find(|entry| entry.id == id && !entry.delegate.finished())
+                .map(|entry| entry.controller.clone())
+        });
+        if let Some(controller) = controller {
+            // SAFETY: a live controller, on the main thread.
+            unsafe {
+                if msg_send![&*controller, respondsToSelector: sel!(cancel)] {
+                    let _: () = msg_send![&*controller, cancel];
+                }
+            }
+        }
+        sweep();
+    }
+
+    /// Hands `controller` to the system and returns at once.
+    fn start(
+        controller: Retained<AnyObject>,
+        delegate: Retained<Delegate>,
+        answer: mpsc::Receiver<Answer>,
+    ) -> Pending {
+        sweep();
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        LIVE.with(|live| {
+            live.borrow_mut().push(Live {
+                id,
+                controller: controller.clone(),
+                delegate,
+            })
+        });
+        // SAFETY: on the main thread with a live controller; the answer comes
+        // through the delegate, kept in LIVE.
+        unsafe {
+            let _: () = msg_send![&*controller, performRequests];
+        }
+        Pending { id, answer }
     }
 
     /// # Safety
@@ -479,43 +682,13 @@ mod platform {
         MainThreadMarker::new().is_some() && available!(macos = 13.0)
     }
 
-    /// Runs `controller` and pumps the main run loop until the delegate
-    /// answers or the timeout passes.
-    fn perform(
-        controller: &AnyObject,
-        slot: &Arc<Mutex<Option<Result<Raw, String>>>>,
-    ) -> Result<Raw, CeremonyError> {
-        // SAFETY: the controller and delegate are live for the whole call.
-        unsafe {
-            let _: () = msg_send![controller, performRequests];
-            let deadline = Instant::now() + TIMEOUT;
-            while Instant::now() < deadline {
-                if slot.lock().map(|slot| slot.is_some()).unwrap_or(true) {
-                    break;
-                }
-                let date = NSDate::dateWithTimeIntervalSinceNow(0.05);
-                NSRunLoop::mainRunLoop().runMode_beforeDate(NSDefaultRunLoopMode, &date);
-            }
-        }
-        let mut guard = slot
-            .lock()
-            .map_err(|_| CeremonyError::Failed("the ceremony state was lost".to_owned()))?;
-        match guard.take() {
-            Some(Ok(raw)) => Ok(raw),
-            Some(Err(message)) => Err(CeremonyError::Failed(message)),
-            None => Err(CeremonyError::Failed("the ceremony timed out".to_owned())),
-        }
-    }
-
-    pub(super) fn register(
-        request: &RegistrationRequest,
-    ) -> Result<PasskeyRegistration, CeremonyError> {
+    pub(super) fn begin_register(request: &RegistrationRequest) -> Result<Pending, CeremonyError> {
         let mtm = MainThreadMarker::new().ok_or(CeremonyError::NotMainThread)?;
         if !available!(macos = 13.0) {
             return Err(CeremonyError::Unsupported);
         }
-        let slot: Arc<Mutex<Option<Result<Raw, String>>>> = Arc::new(Mutex::new(None));
-        let delegate = Delegate::alloc(mtm).set_ivars(Arc::clone(&slot));
+        let (tx, answer) = mpsc::channel();
+        let delegate = Delegate::alloc(mtm).set_ivars(Mutex::new(Some(tx)));
         // SAFETY: NSObject's init on a fresh allocation.
         let delegate: Retained<Delegate> = unsafe { msg_send![super(delegate), init] };
         let rp_id = NSString::from_str(&request.rp_id);
@@ -580,30 +753,16 @@ mod platform {
             let _: () = msg_send![&*controller, setPresentationContextProvider: &*delegate];
             controller
         };
-        match perform(&controller, &slot)? {
-            Raw::Registration {
-                credential_id,
-                attestation_object,
-                client_data_json,
-                prf,
-            } => Ok(PasskeyRegistration {
-                credential_id,
-                attestation_object,
-                client_data_json,
-                transports: vec!["internal".to_owned()],
-                prf,
-            }),
-            Raw::Assertion { .. } => Err(CeremonyError::Incomplete),
-        }
+        Ok(start(controller, delegate, answer))
     }
 
-    pub(super) fn assert(request: &AssertionRequest) -> Result<PasskeyAssertion, CeremonyError> {
+    pub(super) fn begin_assert(request: &AssertionRequest) -> Result<Pending, CeremonyError> {
         let mtm = MainThreadMarker::new().ok_or(CeremonyError::NotMainThread)?;
         if !available!(macos = 13.0) {
             return Err(CeremonyError::Unsupported);
         }
-        let slot: Arc<Mutex<Option<Result<Raw, String>>>> = Arc::new(Mutex::new(None));
-        let delegate = Delegate::alloc(mtm).set_ivars(Arc::clone(&slot));
+        let (tx, answer) = mpsc::channel();
+        let delegate = Delegate::alloc(mtm).set_ivars(Mutex::new(Some(tx)));
         // SAFETY: NSObject's init on a fresh allocation.
         let delegate: Retained<Delegate> = unsafe { msg_send![super(delegate), init] };
         let rp_id = NSString::from_str(&request.rp_id);
@@ -660,24 +819,7 @@ mod platform {
             let _: () = msg_send![&*controller, setPresentationContextProvider: &*delegate];
             controller
         };
-        match perform(&controller, &slot)? {
-            Raw::Assertion {
-                credential_id,
-                authenticator_data,
-                client_data_json,
-                signature,
-                user_handle,
-                prf,
-            } => Ok(PasskeyAssertion {
-                credential_id,
-                authenticator_data,
-                client_data_json,
-                signature,
-                user_handle,
-                prf,
-            }),
-            Raw::Registration { .. } => Err(CeremonyError::Incomplete),
-        }
+        Ok(start(controller, delegate, answer))
     }
 
     #[cfg(test)]
@@ -954,7 +1096,7 @@ mod platform {
         // an allocation freed below.
         let call_result = unsafe {
             WebAuthNAuthenticatorMakeCredential(
-                HWND(std::ptr::null_mut()),
+                HWND(request.window as *mut c_void),
                 &rp,
                 &user,
                 &params,
@@ -1060,7 +1202,7 @@ mod platform {
         // allocation freed below.
         let assertion = unsafe {
             WebAuthNAuthenticatorGetAssertion(
-                HWND(std::ptr::null_mut()),
+                HWND(request.window as *mut c_void),
                 pcwstr(&rp_id),
                 &client,
                 Some(&options),
@@ -1174,6 +1316,7 @@ mod tests {
             display_name: "Alice".into(),
             exclude_credentials: vec![],
             prf_input: Some(PRF_INPUT),
+            window: 0,
         }
     }
 
@@ -1181,10 +1324,11 @@ mod tests {
     fn invalid_requests_fail_before_the_platform() {
         let mut request = registration_request();
         request.rp_id.clear();
-        assert_eq!(register(&request), Err(CeremonyError::Invalid));
+        assert_eq!(check_registration(&request), Err(CeremonyError::Invalid));
         let mut request = registration_request();
         request.challenge.clear();
-        assert_eq!(register(&request), Err(CeremonyError::Invalid));
+        assert_eq!(check_registration(&request), Err(CeremonyError::Invalid));
+        assert_eq!(check_registration(&registration_request()), Ok(()));
         let assertion = AssertionRequest {
             rp_id: "".into(),
             origin: "https://sync.kansoapp.app".into(),
@@ -1192,8 +1336,22 @@ mod tests {
             allow_credentials: vec![],
             prf_input: None,
             user_verification: UserVerification::Required,
+            window: 0,
         };
-        assert_eq!(assert(&assertion), Err(CeremonyError::Invalid));
+        assert_eq!(check_assertion(&assertion), Err(CeremonyError::Invalid));
+    }
+
+    /// Off the main thread a macOS ceremony doesn't start: it would have no
+    /// sheet to present, and the caller hops to the main thread instead.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_macos_ceremony_starts_only_on_the_main_thread() {
+        assert!(matches!(
+            begin_register(&registration_request()),
+            Err(CeremonyError::NotMainThread)
+        ));
+        // Cancelling elsewhere, or an unknown ceremony, does nothing.
+        cancel(42);
     }
 
     #[test]
