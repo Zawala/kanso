@@ -47,7 +47,6 @@ use crate::editor_footer::{EditorFooter, FooterEvent};
 use crate::empty_state::EmptyNotebook;
 use crate::layout::{BOTTOM_BAND_HEIGHT, TOP_BAND_HEIGHT, leading_inset};
 use crate::library::{Filter, Library};
-use crate::list_edit::{self, TabIntent};
 use crate::locked::LockView;
 use crate::markdown_edit::{self, Edit, Format};
 use crate::models::note_visit::NotePlace;
@@ -2208,29 +2207,22 @@ impl NoteEditor {
 
     /// Tab and Shift-Tab: the next or previous table cell, a list item in
     /// or out with what hangs under it, or else the editor's own indent.
-    // no-prop-test: key glue over `list_edit::tab_intent`, which has the
-    // properties, as do `indent_list` and `next_cell`.
+    // no-prop-test: key glue over `kanso_engine::edit::tab`, tested there.
     fn on_tab(&mut self, out: bool, window: &mut Window, cx: &mut Context<Self>) {
         if !self.body_takes_edits(window, cx) {
             return;
         }
         let format = self.settings.format_tables;
-        if self.smart_edit(
-            window,
-            cx,
-            |_, text, selection| match list_edit::tab_intent(text, selection.start) {
-                TabIntent::Table => table_format::next_cell(text, selection.start, out, format),
-                TabIntent::List => list_edit::indent_list(text, selection, out),
-                TabIntent::Indent => None,
-            },
-        ) {
+        if self.smart_edit(window, cx, |_, text, selection| {
+            kanso_engine::edit::tab(text, selection, out, format)
+        }) {
             cx.stop_propagation();
         }
     }
 
     /// Enter at the end of a table row adds a row; in an empty last row it
     /// leaves the table.
-    // no-prop-test: key glue over `table_format::enter_in_table`.
+    // no-prop-test: key glue over `kanso_engine::edit::enter`, tested there.
     fn on_enter(&mut self, action: &Enter, window: &mut Window, cx: &mut Context<Self>) {
         if action.secondary || action.shift || !self.body_takes_edits(window, cx) {
             return;
@@ -2247,10 +2239,7 @@ impl NoteEditor {
         }
         let format = self.settings.format_tables;
         if self.smart_edit(window, cx, |_, text, selection| {
-            if !selection.is_empty() {
-                return None;
-            }
-            table_format::enter_in_table(text, selection.start, format)
+            kanso_engine::edit::enter(text, selection, format)
         }) {
             cx.stop_propagation();
         }
@@ -4572,7 +4561,7 @@ mod tests {
     /// The toolbar edits the body the way typing does: at the selection,
     /// saved after the pause, and counted in the footer once typing rests.
     // no-prop-test: glue between the toolbar, the text editor and autosave;
-    // the edits themselves are property-tested in `markdown_edit`.
+    // the edits themselves are property-tested in `kanso_engine::edit`.
     #[gpui_kit::test]
     fn formatting_edits_the_body_and_saves(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().unwrap();
@@ -5508,8 +5497,8 @@ mod writing_tests {
 
     /// Tab moves list items in and out, and through a table's cells,
     /// lining the table up; Enter at the end of a row adds one.
-    // no-prop-test: drives the editor with keys; `list_edit` and
-    // `table_format` have the properties.
+    // no-prop-test: drives the editor with keys; `kanso_engine::edit` has
+    // the properties.
     #[gpui_kit::test]
     fn tab_and_enter_in_lists_and_tables(cx: &mut TestAppContext) {
         let open = Open::new(cx, "- a\n- b");

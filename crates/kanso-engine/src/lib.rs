@@ -8,7 +8,11 @@
 //! a sync starts, queues, backs off or stops. [`links`] decides how
 //! wiki-links resolve, what `[[` and `#` autocomplete offer, which link a
 //! note copies and when a rename offers to update links, and [`fuzzy`] ranks
-//! what was typed against candidates. Nothing here opens a window, reads a
+//! what was typed against candidates, [`edit`] turns the formatting toolbar,
+//! auto-pairing and Tab and Enter in lists and tables into one change to the
+//! text, and [`daily`] and [`tasks`] make daily notes and templates and
+//! decide due dates and reminders. [`text`] converts offsets between UTF-8
+//! and UTF-16. Nothing here opens a window, reads a
 //! clock of its own or touches the system's secret store: the caller passes
 //! the time, and secrets go through [`Secrets`].
 //!
@@ -17,6 +21,7 @@
 
 pub mod account;
 pub mod daily;
+pub mod edit;
 pub mod fuzzy;
 pub mod links;
 pub mod lock;
@@ -24,6 +29,7 @@ pub mod lock;
 pub mod strategies;
 pub mod sync;
 pub mod tasks;
+pub mod text;
 
 /// Where secrets live: the seam the Keychain, the Credential Manager and the
 /// mobile keystores stand behind.

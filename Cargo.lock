@@ -4372,7 +4372,6 @@ dependencies = [
  "tree-sitter-c-sharp",
  "tree-sitter-swift",
  "unicode-segmentation",
- "unicode-width",
  "ureq",
  "url",
  "windows 0.62.2",
@@ -4440,6 +4439,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "tempfile",
+ "unicode-width",
 ]
 
 [[package]]

@@ -70,6 +70,9 @@ thiserror = "2"
 tempfile = "3"
 tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
 unicode-normalization = "0.1"
+# Column widths of table cells (kanso-engine, `edit::table`): CJK characters and
+# most emoji take two.
+unicode-width = "0.2"
 webpki-roots = "1"
 # The CRDT of shared notes (MIT), wrapped by kanso-collab so it can be swapped.
 yrs = "0.28"
