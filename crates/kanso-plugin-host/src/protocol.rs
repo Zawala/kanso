@@ -465,9 +465,18 @@ mod tests {
         );
         let mut reader = std::io::Cursor::new(lines);
         let invoke: ToHost = read_message(&mut reader, MAX_TO_HOST).unwrap().unwrap();
-        assert!(matches!(invoke, ToHost::Invoke { id: 7, ref command, .. } if command == "count-words"));
+        assert!(
+            matches!(invoke, ToHost::Invoke { id: 7, ref command, .. } if command == "count-words")
+        );
         let reply: ToHost = read_message(&mut reader, MAX_TO_HOST).unwrap().unwrap();
-        assert!(matches!(reply, ToHost::Reply { id: 7, ok: true, .. }));
+        assert!(matches!(
+            reply,
+            ToHost::Reply {
+                id: 7,
+                ok: true,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -477,7 +486,10 @@ mod tests {
             level: "info".into(),
             text: "x".repeat(64),
         };
-        assert!(matches!(write_message(&mut pipe, &big, 32), Err(FrameError::TooLong)));
+        assert!(matches!(
+            write_message(&mut pipe, &big, 32),
+            Err(FrameError::TooLong)
+        ));
         assert!(pipe.is_empty());
     }
 

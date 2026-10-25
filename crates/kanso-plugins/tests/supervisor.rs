@@ -46,7 +46,10 @@ fn info() -> PluginInfo {
     }
 }
 
-fn start(code: &str, budgets: Budgets) -> Result<(Host, kanso_plugins::protocol::Registered), RunError> {
+fn start(
+    code: &str,
+    budgets: Budgets,
+) -> Result<(Host, kanso_plugins::protocol::Registered), RunError> {
     let cwd = tempfile::tempdir().unwrap();
     Host::start_within(
         &host_exe(),
@@ -146,7 +149,12 @@ fn a_sample_plugin_runs_through_the_router() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(dir.path().join("kanso.db")).unwrap();
     let book = store
-        .put(DocType::Book, json!({ "name": "Work" }), Put::Upsert, Origin::Ui)
+        .put(
+            DocType::Book,
+            json!({ "name": "Work" }),
+            Put::Upsert,
+            Origin::Ui,
+        )
         .unwrap()
         .id;
     let note = store
@@ -258,10 +266,16 @@ fn runaway_code_is_stopped_and_the_host_carries_on() {
     };
     let began = std::time::Instant::now();
     let spun = host.invoke("spin", Value::Null, &mut router, &mut log);
-    assert!(matches!(spun, Err(RunError::Failed(ref f)) if f.code == "timeout"), "{spun:?}");
+    assert!(
+        matches!(spun, Err(RunError::Failed(ref f)) if f.code == "timeout"),
+        "{spun:?}"
+    );
     assert!(began.elapsed() < Duration::from_secs(3));
     let hogged = host.invoke("hog", Value::Null, &mut router, &mut log);
-    assert!(matches!(hogged, Err(RunError::Failed(ref f)) if f.code == "limit" || f.code == "thrown"), "{hogged:?}");
+    assert!(
+        matches!(hogged, Err(RunError::Failed(ref f)) if f.code == "limit" || f.code == "thrown"),
+        "{hogged:?}"
+    );
     // Still answering.
     assert!(host.is_running());
     let mut editor_router = Router {
@@ -375,6 +389,8 @@ kanso.commands.register({ id: "env", title: "Env", run() {
         network: &mut network,
         out: Default::default(),
     };
-    let value = host.invoke("env", Value::Null, &mut router, &mut log).unwrap();
+    let value = host
+        .invoke("env", Value::Null, &mut router, &mut log)
+        .unwrap();
     assert_eq!(value, json!(vec!["undefined"; 6]));
 }

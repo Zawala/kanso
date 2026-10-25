@@ -51,6 +51,9 @@ use crate::workspace::{AppState, Workspace, apply_theme};
 
 mod ai;
 mod discovery;
+mod plugins_panel;
+mod plugins_settings;
+mod plugins_sheets;
 mod voice;
 
 /// The demo's "now": Thursday 28 May 2026, 09:45 in a zone two hours ahead
@@ -5666,6 +5669,23 @@ fn snapshots() {
         shot("dark-dev-flavour", Dark, Edit, dev_flavour),
         shot("light-dev-flavour", Light, Edit, dev_flavour),
     ];
+    // Plugins: Settings › Plugins, the sheets and a panel.
+    for (name, prepare, dialog) in plugins_settings::SHOTS
+        .iter()
+        .chain(plugins_sheets::SHOTS)
+        .chain(plugins_panel::SHOTS)
+    {
+        let theme = if name.starts_with("dark-") {
+            Dark
+        } else {
+            Light
+        };
+        let mut plugin_shot = shot(name, theme, Edit, *prepare);
+        if let Some(width) = dialog {
+            plugin_shot.dialog_width = *width;
+        }
+        shots.push(plugin_shot);
+    }
     // The Themes page whole, in both of Kanso's themes and in another.
     let tall = size(px(1440.), px(2900.));
     shots.extend([

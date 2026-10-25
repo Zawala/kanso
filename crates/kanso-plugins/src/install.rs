@@ -112,7 +112,9 @@ pub fn remove(plugins: &Path, id: &str) -> std::io::Result<()> {
 
 /// Writes `bytes` to `path` atomically, readable only by this user.
 pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let dir = path.parent().ok_or_else(|| std::io::Error::other("no folder"))?;
+    let dir = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("no folder"))?;
     std::fs::create_dir_all(dir)?;
     let temp = hidden(dir, "write");
     let mut options = std::fs::OpenOptions::new();
@@ -145,7 +147,10 @@ pub fn read_settings(plugin_dir: &Path) -> Value {
 
 /// Saves plugin settings, owner-only.
 pub fn write_settings(plugin_dir: &Path, value: &Value) -> std::io::Result<()> {
-    write_private(&plugin_dir.join("settings.json"), &serde_json::to_vec(value)?)
+    write_private(
+        &plugin_dir.join("settings.json"),
+        &serde_json::to_vec(value)?,
+    )
 }
 
 /// The egress log Kanso keeps for a plugin.
@@ -165,12 +170,18 @@ pub fn read_egress(plugin_dir: &Path) -> crate::net::EgressLog {
 /// Saves the egress log.
 pub fn write_egress(plugin_dir: &Path, log: &crate::net::EgressLog) -> std::io::Result<()> {
     let entries = log.entries();
-    write_private(&plugin_dir.join("egress.json"), &serde_json::to_vec(&entries)?)
+    write_private(
+        &plugin_dir.join("egress.json"),
+        &serde_json::to_vec(&entries)?,
+    )
 }
 
 /// The entry script of a plugin: from its installed code, or, in developer
 /// mode, read and checked from its folder again.
-pub fn entry_script(plugin_dir: &Path, installed: &crate::model::Installed) -> Result<String, String> {
+pub fn entry_script(
+    plugin_dir: &Path,
+    installed: &crate::model::Installed,
+) -> Result<String, String> {
     let bundle_files = match &installed.source {
         crate::model::Source::Developer { path } => {
             let bundle = crate::bundle::open_dir(Path::new(path)).map_err(|e| e.to_string())?;
@@ -237,7 +248,8 @@ mod tests {
     fn install_replaces_whole_and_remove_deletes_everything() {
         let data = tempfile::tempdir().unwrap();
         let plugins = plugins_dir(data.path());
-        let dir = install_bundle(&plugins, &bundle(vec![("main.js", "1"), ("lib/a.js", "a")])).unwrap();
+        let dir =
+            install_bundle(&plugins, &bundle(vec![("main.js", "1"), ("lib/a.js", "a")])).unwrap();
         write_settings(&dir, &serde_json::json!({ "x": 1 })).unwrap();
         assert_eq!(read_settings(&dir)["x"], 1);
         install_bundle(&plugins, &bundle(vec![("main.js", "2")])).unwrap();

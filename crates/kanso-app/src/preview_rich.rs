@@ -82,6 +82,8 @@ pub struct Block {
     pub source: Arc<str>,
     /// The attachment an attached drawing is.
     pub file: Option<String>,
+    /// The fence's language, for a block a plugin draws.
+    pub language: Option<Arc<str>>,
     /// The block's Markdown as written: shown when it can't be drawn, and
     /// what an edit replaces.
     pub markdown: SharedString,
@@ -97,6 +99,7 @@ fn fence_is(lang: &Option<String>, want: &str) -> bool {
 /// The block `node` draws as, if any. Pure.
 pub fn block(node: &markdown_ast::Node, markdown: &str) -> Option<Block> {
     use markdown_ast::Node;
+    let mut language = None;
     let (kind, source, file) = match node {
         Node::Math(math) => (Kind::DisplayMath, math.value.clone(), None),
         Node::Code(code) if fence_is(&code.lang, "math") => {
@@ -107,6 +110,20 @@ pub fn block(node: &markdown_ast::Node, markdown: &str) -> Option<Block> {
         }
         Node::Code(code) if fence_is(&code.lang, "excalidraw") => {
             (Kind::Excalidraw, code.value.clone(), None)
+        }
+        Node::Code(code)
+            if code
+                .lang
+                .as_deref()
+                .and_then(|l| l.split_whitespace().next())
+                .is_some_and(kanso_render::is_plugin_language) =>
+        {
+            let lang = code
+                .lang
+                .as_deref()
+                .and_then(|l| l.split_whitespace().next());
+            language = lang.map(Arc::from);
+            (Kind::Plugin, code.value.clone(), None)
         }
         Node::Paragraph(_)
             if kanso_render::html::display_math_paragraph(node, markdown).is_some() =>
@@ -125,6 +142,7 @@ pub fn block(node: &markdown_ast::Node, markdown: &str) -> Option<Block> {
         kind,
         source: source.into(),
         file,
+        language,
         markdown: markdown.trim_end().to_owned().into(),
     })
 }
@@ -337,7 +355,10 @@ fn render_block(
             cx,
         );
     }
-    let job = Job::new(block.kind, source.clone(), palette(cx));
+    let job = match &block.language {
+        Some(language) => Job::plugin(language.clone(), source.clone(), palette(cx)),
+        None => Job::new(block.kind, source.clone(), palette(cx)),
+    };
     let Some(outcome) = drawing(&job, rich) else {
         return placeholder(block.kind, cx);
     };

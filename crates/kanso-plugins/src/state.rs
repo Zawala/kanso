@@ -57,7 +57,8 @@ impl State {
             Some(slot) => *slot = installed,
             None => {
                 self.plugins.push(installed);
-                self.plugins.sort_by(|a, b| a.manifest.name.cmp(&b.manifest.name));
+                self.plugins
+                    .sort_by(|a, b| a.manifest.name.cmp(&b.manifest.name));
             }
         }
     }

@@ -17,7 +17,12 @@ fn store() -> (tempfile::TempDir, Store) {
 
 fn book(store: &Store, name: &str) -> String {
     store
-        .put(DocType::Book, json!({ "name": name }), Put::Upsert, Origin::Ui)
+        .put(
+            DocType::Book,
+            json!({ "name": name }),
+            Put::Upsert,
+            Origin::Ui,
+        )
         .unwrap()
         .id
 }
@@ -184,7 +189,9 @@ fn locked_notes_and_notebooks_refuse_every_plugin_write() {
     let mut lock = store.get_api(&vault, None, false).unwrap();
     lock.as_object_mut().unwrap().remove("count");
     lock["kansoLock"] = json!({"v": 1, "salt": "c2FsdA", "m": 64, "t": 1, "p": 1, "data": "b"});
-    store.lock_book(lock, vec![sealed(&store, &inside)]).unwrap();
+    store
+        .lock_book(lock, vec![sealed(&store, &inside)])
+        .unwrap();
     let rev = store.get(&inside).unwrap().unwrap().rev;
     let result = store.apply_plugin_batch(WRITER, &[edit(&inside, &rev, "leak")], &[], 1);
     assert!(matches!(result, Err(StoreError::Invalid(_))));
@@ -254,11 +261,17 @@ fn each_plugins_data_is_its_own_and_removal_sweeps_only_it() {
         plugin_data(&fields, WRITER.plugin_id),
         Some(&json!({ "count": 1 }))
     );
-    assert_eq!(plugin_data(&fields, other.plugin_id), Some(&json!("theirs")));
+    assert_eq!(
+        plugin_data(&fields, other.plugin_id),
+        Some(&json!("theirs"))
+    );
     assert_eq!(store.remove_plugin_data(WRITER.plugin_id).unwrap(), 1);
     let fields = store.get(&id).unwrap().unwrap().fields;
     assert_eq!(plugin_data(&fields, WRITER.plugin_id), None);
-    assert_eq!(plugin_data(&fields, other.plugin_id), Some(&json!("theirs")));
+    assert_eq!(
+        plugin_data(&fields, other.plugin_id),
+        Some(&json!("theirs"))
+    );
     assert_eq!(store.remove_plugin_data(WRITER.plugin_id).unwrap(), 0);
 }
 
@@ -277,7 +290,11 @@ fn change() -> impl Strategy<Value = Change> {
         prop::option::of("[a-z ]{0,12}"),
         prop::option::of("[a-z\n ]{0,40}"),
         prop::option::of(prop::sample::select(vec![
-            "none", "active", "onHold", "completed", "dropped",
+            "none",
+            "active",
+            "onHold",
+            "completed",
+            "dropped",
         ])),
         prop::option::of(prop::option::of(any::<i64>())),
     )

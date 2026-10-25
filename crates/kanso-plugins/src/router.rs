@@ -36,7 +36,12 @@ pub trait Secrets {
 /// The network proxy, as the app runs it ([`crate::net`]).
 pub trait Network {
     /// `kanso.fetch` for `plugin_id`, to `hosts` only.
-    fn fetch(&mut self, plugin_id: &str, hosts: &BTreeSet<String>, args: &Value) -> Result<Value, Failure>;
+    fn fetch(
+        &mut self,
+        plugin_id: &str,
+        hosts: &BTreeSet<String>,
+        args: &Value,
+    ) -> Result<Value, Failure>;
 }
 
 /// No network: what a renderer and tests get.
@@ -124,7 +129,9 @@ pub fn edit_fields(fields: &Value) -> Result<PluginEdit, Failure> {
     for (key, value) in fields {
         match key.as_str() {
             "title" => {
-                let title = value.as_str().ok_or_else(|| invalid("title must be text"))?;
+                let title = value
+                    .as_str()
+                    .ok_or_else(|| invalid("title must be text"))?;
                 if title.chars().count() > MAX_TITLE_LEN {
                     return Err(invalid("the title is too long"));
                 }
@@ -180,8 +187,12 @@ impl Router<'_> {
     }
 
     fn scope(&self) -> Result<Scope<'_>, Failure> {
-        Scope::new(self.store, self.grant(), self.editor.note_id.as_deref())
-            .ok_or_else(|| Failure::new(kanso_plugin_host::protocol::CODE_UNAVAILABLE, "the library can't be read just now"))
+        Scope::new(self.store, self.grant(), self.editor.note_id.as_deref()).ok_or_else(|| {
+            Failure::new(
+                kanso_plugin_host::protocol::CODE_UNAVAILABLE,
+                "the library can't be read just now",
+            )
+        })
     }
 
     /// The open note, when the plugin may see it.
@@ -247,8 +258,16 @@ impl Router<'_> {
             return Err(self.refuse("to make notes"));
         }
         let book_id = text_arg(args, "bookId")?.to_owned();
-        let title = args.get("title").and_then(Value::as_str).unwrap_or("").to_owned();
-        let body = args.get("body").and_then(Value::as_str).unwrap_or("").to_owned();
+        let title = args
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        let body = args
+            .get("body")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned();
         if title.chars().count() > MAX_TITLE_LEN || body.chars().count() > MAX_BODY_LEN {
             return Err(invalid("the note is too long"));
         }
@@ -278,7 +297,10 @@ impl Router<'_> {
         if let Some(base) = base_rev
             && base != rev
         {
-            return Err(Failure::new(CODE_CONFLICT, "the note changed since it was read"));
+            return Err(Failure::new(
+                CODE_CONFLICT,
+                "the note changed since it was read",
+            ));
         }
         Ok(rev)
     }
@@ -301,15 +323,25 @@ impl Router<'_> {
         let id = text_arg(args, "id")?;
         let scope = self.scope()?;
         scope.readable(id).ok_or_else(Failure::not_found)?;
-        let doc = self.store.get(id).ok().flatten().ok_or_else(Failure::not_found)?;
-        Ok(plugin_data(&doc.fields, self.plugin.id()).cloned().unwrap_or(Value::Null))
+        let doc = self
+            .store
+            .get(id)
+            .ok()
+            .flatten()
+            .ok_or_else(Failure::not_found)?;
+        Ok(plugin_data(&doc.fields, self.plugin.id())
+            .cloned()
+            .unwrap_or(Value::Null))
     }
 
     fn data_set(&mut self, args: &Value) -> Result<Value, Failure> {
         let id = text_arg(args, "id")?.to_owned();
         let value = args.get("value").cloned().unwrap_or(Value::Null);
         if value.to_string().len() > MAX_PLUGIN_DATA {
-            return Err(Failure::new(CODE_LIMIT, "a note's plugin data is at most 32 KB"));
+            return Err(Failure::new(
+                CODE_LIMIT,
+                "a note's plugin data is at most 32 KB",
+            ));
         }
         let rev = self.writable_at(&id, None)?;
         let base_rev = self
@@ -351,7 +383,11 @@ impl Router<'_> {
     }
 
     fn editor_selection(&mut self) -> Result<Value, Failure> {
-        if !self.grant().editor.contains(&EditorPermission::SelectionRead) {
+        if !self
+            .grant()
+            .editor
+            .contains(&EditorPermission::SelectionRead)
+        {
             return Err(self.refuse("to read the selection"));
         }
         if self.open_note()?.is_none() {
@@ -364,7 +400,11 @@ impl Router<'_> {
     }
 
     fn replace_selection(&mut self, args: &Value) -> Result<Value, Failure> {
-        if !self.grant().editor.contains(&EditorPermission::SelectionReplace) {
+        if !self
+            .grant()
+            .editor
+            .contains(&EditorPermission::SelectionReplace)
+        {
             return Err(self.refuse("to change the selection"));
         }
         let text = text_arg(args, "text")?.to_owned();
@@ -372,7 +412,11 @@ impl Router<'_> {
             return Err(Failure::new(CODE_LIMIT, "the text is too long"));
         }
         let note_id = self.open_note()?.ok_or_else(Failure::not_found)?;
-        let selection = self.editor.selection.clone().ok_or_else(|| invalid("nothing is selected"))?;
+        let selection = self
+            .editor
+            .selection
+            .clone()
+            .ok_or_else(|| invalid("nothing is selected"))?;
         if let Some(given) = args.get("selection") {
             let at = |key: &str| given.get(key).and_then(Value::as_u64).map(|n| n as usize);
             if at("start") != Some(selection.start) || at("end") != Some(selection.end) {
@@ -414,8 +458,9 @@ impl Router<'_> {
         if value.to_string().len() > MAX_SETTINGS_BYTES {
             return Err(Failure::new(CODE_LIMIT, "settings are at most 64 KB"));
         }
-        crate::install::write_settings(self.plugin_dir, &value)
-            .map_err(|e| Failure::new(kanso_plugin_host::protocol::CODE_UNAVAILABLE, e.to_string()))?;
+        crate::install::write_settings(self.plugin_dir, &value).map_err(|e| {
+            Failure::new(kanso_plugin_host::protocol::CODE_UNAVAILABLE, e.to_string())
+        })?;
         Ok(Value::Null)
     }
 

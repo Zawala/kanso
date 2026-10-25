@@ -9,8 +9,8 @@ use std::collections::{BTreeSet, HashSet};
 
 use kanso_core::DocType;
 use kanso_plugins::model::{
-    EditorPermission, Grant, Installed, Manifest, NotesGrant, NotesRequest, Permissions,
-    Publisher, ReadRequest, Source,
+    EditorPermission, Grant, Installed, Manifest, NotesGrant, NotesRequest, Permissions, Publisher,
+    ReadRequest, Source,
 };
 use kanso_plugins::router::{Editor, NoNetwork, Request, Router, Secrets, Selection};
 use kanso_store::{Origin, PluginWriter, Put, Store};
@@ -45,14 +45,17 @@ struct Library {
 }
 
 fn library() -> impl Strategy<Value = Library> {
-    let books = prop::collection::vec((prop::option::of(0..6usize), prop::bool::weighted(0.3)), 2..6)
-        .prop_map(|books| {
-            books
-                .into_iter()
-                .enumerate()
-                .map(|(i, (parent, locked))| (parent.filter(|p| *p < i), locked))
-                .collect::<Vec<_>>()
-        });
+    let books = prop::collection::vec(
+        (prop::option::of(0..6usize), prop::bool::weighted(0.3)),
+        2..6,
+    )
+    .prop_map(|books| {
+        books
+            .into_iter()
+            .enumerate()
+            .map(|(i, (parent, locked))| (parent.filter(|p| *p < i), locked))
+            .collect::<Vec<_>>()
+    });
     books.prop_flat_map(|books| {
         let n = books.len();
         let kinds = prop::sample::select(vec![
@@ -80,7 +83,10 @@ struct Built {
 }
 
 fn put(store: &Store, doc_type: DocType, body: Value) -> String {
-    store.put(doc_type, body, Put::Upsert, Origin::Ui).unwrap().id
+    store
+        .put(doc_type, body, Put::Upsert, Origin::Ui)
+        .unwrap()
+        .id
 }
 
 fn sealed(store: &Store, id: &str) -> Value {
@@ -128,7 +134,12 @@ fn build(lib: &Library) -> Built {
             }
             Kind::Trashed => {
                 store
-                    .put(DocType::Note, json!({ "_id": id, "bookId": "trash" }), Put::Merge, Origin::Ui)
+                    .put(
+                        DocType::Note,
+                        json!({ "_id": id, "bookId": "trash" }),
+                        Put::Merge,
+                        Origin::Ui,
+                    )
                     .unwrap();
             }
             _ => {}
@@ -217,7 +228,12 @@ fn installed(grant: Grant) -> Installed {
 
 /// What the test expects the plugin may read: computed from the library
 /// independently of the scope code.
-fn expected_readable(built: &Built, lib: &Library, grant: &Grant, open: Option<&str>) -> HashSet<String> {
+fn expected_readable(
+    built: &Built,
+    lib: &Library,
+    grant: &Grant,
+    open: Option<&str>,
+) -> HashSet<String> {
     let locked_book = |mut i: usize| loop {
         if lib.books[i].1 {
             return true;
@@ -240,32 +256,57 @@ fn expected_readable(built: &Built, lib: &Library, grant: &Grant, open: Option<&
         .notes
         .iter()
         .filter(|(id, book, kind, _)| {
-            let hidden = matches!(kind, Kind::Sealed | Kind::Trashed | Kind::Excluded) || locked_book(*book);
-            let in_books = grant.notes.read_all || grant.notes.read_books.iter().any(|r| under(*book, r));
-            let in_tags = *kind == Kind::Tagged && grant.notes.read_tags.contains(&built.granted_tag);
-            let is_open = open == Some(id.as_str()) && grant.editor.contains(&EditorPermission::NoteRead);
+            let hidden =
+                matches!(kind, Kind::Sealed | Kind::Trashed | Kind::Excluded) || locked_book(*book);
+            let in_books =
+                grant.notes.read_all || grant.notes.read_books.iter().any(|r| under(*book, r));
+            let in_tags =
+                *kind == Kind::Tagged && grant.notes.read_tags.contains(&built.granted_tag);
+            let is_open =
+                open == Some(id.as_str()) && grant.editor.contains(&EditorPermission::NoteRead);
             !hidden && (in_books || in_tags || is_open)
         })
         .map(|(id, ..)| id.clone())
         .collect()
 }
 
-fn grant_for(built: &Built, books: &BTreeSet<usize>, write: &BTreeSet<usize>, all: bool, tag: bool, editor: bool) -> Grant {
+fn grant_for(
+    built: &Built,
+    books: &BTreeSet<usize>,
+    write: &BTreeSet<usize>,
+    all: bool,
+    tag: bool,
+    editor: bool,
+) -> Grant {
     let ids = |set: &BTreeSet<usize>| -> BTreeSet<String> {
-        set.iter().filter_map(|i| built.books.get(*i).cloned()).collect()
+        set.iter()
+            .filter_map(|i| built.books.get(*i).cloned())
+            .collect()
     };
     let read_books = ids(books);
-    let write_books: BTreeSet<String> = ids(write).into_iter().filter(|b| all || read_books.contains(b)).collect();
+    let write_books: BTreeSet<String> = ids(write)
+        .into_iter()
+        .filter(|b| all || read_books.contains(b))
+        .collect();
     Grant {
         commands: true,
         editor: if editor {
-            [EditorPermission::NoteRead, EditorPermission::SelectionRead, EditorPermission::SelectionReplace].into()
+            [
+                EditorPermission::NoteRead,
+                EditorPermission::SelectionRead,
+                EditorPermission::SelectionReplace,
+            ]
+            .into()
         } else {
             BTreeSet::new()
         },
         notes: NotesGrant {
             read_books,
-            read_tags: if tag { [built.granted_tag.clone()].into() } else { BTreeSet::new() },
+            read_tags: if tag {
+                [built.granted_tag.clone()].into()
+            } else {
+                BTreeSet::new()
+            },
             read_all: all,
             write_books,
             create: true,
@@ -508,10 +549,15 @@ fn a_renderer_can_call_nothing() {
         out: Default::default(),
     };
     for call in kanso_plugins::protocol::CALLS {
-        let refused = router.call(call, json!({ "id": built.notes[0].0 })).unwrap_err();
+        let refused = router
+            .call(call, json!({ "id": built.notes[0].0 }))
+            .unwrap_err();
         assert_eq!(refused.code, "denied", "{call}");
     }
-    assert_eq!(router.out.refused as usize, kanso_plugins::protocol::CALLS.len());
+    assert_eq!(
+        router.out.refused as usize,
+        kanso_plugins::protocol::CALLS.len()
+    );
 }
 
 #[test]
@@ -551,7 +597,10 @@ fn calls_without_a_permission_are_refused_and_counted() {
     for (call, args) in [
         ("notes.get", json!({ "id": id })),
         ("notes.list", json!({})),
-        ("notes.update", json!({ "id": id, "baseRev": "1-x", "fields": { "body": "x" } })),
+        (
+            "notes.update",
+            json!({ "id": id, "baseRev": "1-x", "fields": { "body": "x" } }),
+        ),
         ("editor.noteId", json!({})),
         ("fetch", json!({ "url": "https://example.com" })),
         ("secrets.get", json!({ "name": "token" })),
@@ -559,11 +608,17 @@ fn calls_without_a_permission_are_refused_and_counted() {
         ("notes.delete", json!({ "id": id })),
         ("fs.read", json!({ "path": "/etc/passwd" })),
     ] {
-        assert_eq!(router.call(call, args).unwrap_err().code, "denied", "{call}");
+        assert_eq!(
+            router.call(call, args).unwrap_err().code,
+            "denied",
+            "{call}"
+        );
     }
     assert_eq!(router.out.refused, 9);
     // Settings are the plugin's own.
-    router.call("settings.set", json!({ "value": { "a": 1 } })).unwrap();
+    router
+        .call("settings.set", json!({ "value": { "a": 1 } }))
+        .unwrap();
     assert_eq!(router.call("settings.get", json!({})).unwrap()["a"], 1);
 }
 
@@ -574,7 +629,14 @@ fn an_update_can_name_only_its_four_fields() {
         notes: vec![(0, Kind::Plain)],
     };
     let built = build(&lib);
-    let plugin = installed(grant_for(&built, &[0].into(), &[0].into(), false, false, false));
+    let plugin = installed(grant_for(
+        &built,
+        &[0].into(),
+        &[0].into(),
+        false,
+        false,
+        false,
+    ));
     let dir = tempfile::tempdir().unwrap();
     let mut network = NoNetwork;
     let editor = Editor::default();
@@ -590,14 +652,29 @@ fn an_update_can_name_only_its_four_fields() {
     };
     let id = &built.notes[0].0;
     let rev = built.store.get(id).unwrap().unwrap().rev;
-    for field in ["bookId", "kansoLock", "kansoPublish", "kansoShare", "_rev", "pinned", "share", "reminders"] {
+    for field in [
+        "bookId",
+        "kansoLock",
+        "kansoPublish",
+        "kansoShare",
+        "_rev",
+        "pinned",
+        "share",
+        "reminders",
+    ] {
         let refused = router
-            .call("notes.update", json!({ "id": id, "baseRev": rev, "fields": { field: "x" } }))
+            .call(
+                "notes.update",
+                json!({ "id": id, "baseRev": rev, "fields": { field: "x" } }),
+            )
             .unwrap_err();
         assert_eq!(refused.code, "invalid", "{field}");
     }
     let stale = router
-        .call("notes.update", json!({ "id": id, "baseRev": "1-stale", "fields": { "body": "x" } }))
+        .call(
+            "notes.update",
+            json!({ "id": id, "baseRev": "1-stale", "fields": { "body": "x" } }),
+        )
         .unwrap_err();
     assert_eq!(stale.code, "conflict");
     assert!(router.out.batch.is_empty());
