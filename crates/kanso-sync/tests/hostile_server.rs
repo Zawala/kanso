@@ -225,3 +225,76 @@ fn a_session_for_another_account_than_the_user_handle_is_refused() {
         Err(ApiError::Unauthorized { .. })
     ));
 }
+
+/// The same swap with an authenticator that returns no user handle: nothing
+/// names the account, so a locked session (whose password the user would
+/// type next) is refused unless it is the account of the username typed at
+/// the start. An unlocked one proves itself: the wrap or the saved key opens
+/// only for its own account.
+#[test]
+fn without_a_user_handle_a_locked_session_needs_the_typed_username() {
+    let evil = Swapping {
+        server: MemoryServer::new(),
+        captured: Mutex::new(None),
+        armed: Mutex::new(false),
+    };
+    let alice = TestAuthenticator::new(1).without_prf();
+    let mallory = TestAuthenticator::new(2).without_prf();
+    sign_up(&evil, &alice, "alice", 1);
+    let mallory_id = sign_up(&evil, &mallory, "mallory", 2);
+    alice.set_user_handle(None);
+    mallory.set_user_handle(None);
+
+    // Alice's own locked sign-in, no handle and no username: refused too,
+    // since nothing ties the account to her passkey.
+    let s =
+        kanso_sync::start_passkey_sign_in(&evil, SERVER, None, &LoginDevice::ephemeral()).unwrap();
+    let a = alice.assert(&s.challenge).unwrap();
+    let out =
+        kanso_sync::sign_in_with_passkey(&evil, &MemorySecrets::new(), &s, &mac(3), a, &quiet);
+    assert!(
+        matches!(out, Err(AccountError::Protocol(_))),
+        "{:?}",
+        out.err()
+    );
+    // With the username typed first it is hers.
+    let s =
+        kanso_sync::start_passkey_sign_in(&evil, SERVER, Some("alice"), &LoginDevice::ephemeral())
+            .unwrap();
+    let a = alice.assert(&s.challenge).unwrap();
+    let PasskeySignIn::Locked(locked) =
+        kanso_sync::sign_in_with_passkey(&evil, &MemorySecrets::new(), &s, &mac(3), a, &quiet)
+            .unwrap()
+    else {
+        panic!("no PRF: locked");
+    };
+    assert_eq!(locked.username, "alice");
+
+    // Capture mallory's session, then swap it in for alice's sign-in.
+    let s = kanso_sync::start_passkey_sign_in(
+        &evil,
+        SERVER,
+        Some("mallory"),
+        &LoginDevice::ephemeral(),
+    )
+    .unwrap();
+    let a = mallory.assert(&s.challenge).unwrap();
+    kanso_sync::sign_in_with_passkey(&evil, &MemorySecrets::new(), &s, &mac(9), a, &quiet).unwrap();
+    *evil.armed.lock().unwrap() = true;
+    for typed in [None, Some("alice")] {
+        let s = kanso_sync::start_passkey_sign_in(&evil, SERVER, typed, &LoginDevice::ephemeral())
+            .unwrap();
+        let a = alice.assert(&s.challenge).unwrap();
+        assert_eq!(a.user_handle, None);
+        let out =
+            kanso_sync::sign_in_with_passkey(&evil, &MemorySecrets::new(), &s, &mac(4), a, &quiet);
+        assert!(
+            matches!(out, Err(AccountError::Protocol(_))),
+            "{typed:?}: {:?}",
+            out.as_ref().map(|o| match o {
+                PasskeySignIn::Locked(l) => format!("Locked({})", l.account_id == mallory_id),
+                PasskeySignIn::Unlocked(_) => "Unlocked".into(),
+            })
+        );
+    }
+}
