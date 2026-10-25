@@ -229,12 +229,28 @@ fn parse_args() -> Result<Args> {
 }
 
 /// Reads the command line after the program name.
+///
+/// A `kanso://` link counts only when it is the whole command line, the way
+/// the desktop entry and the installer pass it (`kanso <url>`): the
+/// operating system passes the link, so flags beside it, such as a
+/// `--data-dir` naming the folder to forward to, can't come from Kanso.
 fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
     let mut command = None;
     let mut data_dir = None;
     let mut rest = Vec::new();
     let mut after_update = false;
-    let mut args = args.into_iter();
+    let mut args = args.into_iter().peekable();
+    if let Some(url) = args.next_if(|arg| url_callback::is_callback_argument(arg)) {
+        if args.next().is_some() {
+            bail!("a kanso:// link is passed on its own");
+        }
+        return Ok(Args {
+            command: Some(url),
+            data_dir: paths::default_data_dir(),
+            rest,
+            after_update,
+        });
+    }
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--data-dir" => {
@@ -246,6 +262,9 @@ fn parse_args_from(args: impl IntoIterator<Item = String>) -> Result<Args> {
             "--after-update" => after_update = true,
             // macOS adds this when launching from Finder.
             arg if arg.starts_with("-psn_") => {}
+            arg if command.is_none() && url_callback::is_callback_argument(arg) => {
+                bail!("a kanso:// link is passed on its own")
+            }
             _ if command.is_none() && !arg.starts_with('-') => command = Some(arg),
             _ => rest.push(arg),
         }

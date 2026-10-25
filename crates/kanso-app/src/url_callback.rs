@@ -437,17 +437,29 @@ mod tests {
         }
     }
 
-    /// The OS starts `kanso <url>`, or `kanso --data-dir <dir> <url>`: the
-    /// URL arrives as the command, which `main` forwards instead of running.
+    /// The OS starts `kanso <url>`: the URL arrives as the command, which
+    /// `main` forwards to the default data folder instead of running. A link
+    /// with anything beside it, before or after, is refused, so no flag can
+    /// pick the folder it's forwarded to.
     #[test]
-    fn the_launch_arguments_carry_the_url_as_the_command() {
+    fn a_link_counts_only_as_the_whole_command_line() {
         let url = callback(&b64_32(1));
         let parsed = crate::parse_args_from([url.clone()]).unwrap();
-        assert!(parsed.command.as_deref().is_some_and(is_callback_argument));
-        let parsed =
-            crate::parse_args_from(["--data-dir".into(), "/tmp/k".into(), url.clone()]).unwrap();
         assert_eq!(parsed.command.as_deref(), Some(url.as_str()));
-        assert_eq!(parsed.data_dir, PathBuf::from("/tmp/k"));
+        assert_eq!(parsed.data_dir, crate::paths::default_data_dir());
+        assert!(parsed.rest.is_empty() && !parsed.after_update);
+        for args in [
+            vec!["--data-dir".to_owned(), "/tmp/k".to_owned(), url.clone()],
+            vec![url.clone(), "--data-dir".to_owned(), "/tmp/k".to_owned()],
+            vec![url.clone(), "--after-update".to_owned()],
+            vec!["--after-update".to_owned(), url.clone()],
+            vec![url.clone(), url.clone()],
+        ] {
+            assert!(crate::parse_args_from(args.clone()).is_err(), "{args:?}");
+        }
+        // A link that is an argument of another command is that command's.
+        let parsed = crate::parse_args_from(["import".to_owned(), url.clone()]).unwrap();
+        assert_eq!(parsed.command.as_deref(), Some("import"));
     }
 
     /// The desktop entry and the installer register the scheme the router
