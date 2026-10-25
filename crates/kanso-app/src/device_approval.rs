@@ -46,8 +46,7 @@ use crate::zoom::px;
 // The waiting state and the approver's checks are the engine's, shared with
 // the mobile app; the sheet and page that show them are this app's.
 pub use kanso_engine::account::approval::{
-    ApproverKey, FrontStep, POLL_EVERY, WaitPhase, WaitingState, front_step, request_title,
-    waiting_line,
+    ApproverKey, FrontStep, WaitPhase, WaitingState, front_step, request_title, waiting_line,
 };
 
 /// The sheet's width.

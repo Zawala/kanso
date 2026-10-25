@@ -15,10 +15,9 @@ use std::time::Duration;
 use gpui_kit::*;
 use kanso_engine::sync::Request;
 use kanso_server::{ServerConfig, ServerHandle, TokenStore};
-use kanso_sync::keychain::PendingRecoveryKey;
 use kanso_sync::{
-    Backend, DeviceInfo, Machine, PendingApproval, RecoveryKey, SecretStore, Session,
-    SignOutReason, SignupState, Step, SyncError, SyncProblem, SyncReport, Usage,
+    Backend, Machine, PendingApproval, SecretStore, Session, SignOutReason, SignupState, Step,
+    SyncError, SyncProblem, SyncReport,
 };
 
 use crate::config::ServerSettings;
@@ -88,16 +87,7 @@ pub struct RunningTask {
     pub step: Step,
 }
 
-/// A provider ticket waiting for the user to choose a username. Kept only in
-/// process until signup or cancellation; it is never persisted.
-#[derive(Clone)]
-pub struct ProviderSignup {
-    pub server: String,
-    pub provider: kanso_sync::Provider,
-    pub ticket: String,
-    pub suggested_username: String,
-    pub login_device: kanso_sync::api::LoginDevice,
-}
+pub use kanso_engine::account::provider::ProviderSignup;
 
 /// A provider flow the account worker is waiting on. Cancellation is logical:
 /// Apple may leave its native system sheet open until the user dismisses it.
@@ -109,88 +99,7 @@ pub struct ProviderWait {
     pub cancel: Arc<std::sync::atomic::AtomicBool>,
 }
 
-/// A recovery key the user hasn't confirmed saving: the Account page shows
-/// it until "I've saved it" (its Keychain item lasts as long).
-#[derive(Clone, Debug)]
-pub struct PendingKey {
-    pub key: RecoveryKey,
-    pub username: String,
-    pub server: String,
-    /// What else the screen says: the task that made the key failed, or
-    /// Kanso couldn't tell whether the server took it.
-    pub note: Option<&'static str>,
-}
-
-impl PendingKey {
-    /// The Keychain's unsaved key; `note` shows when the server may not
-    /// have taken it.
-    pub fn kept(item: PendingRecoveryKey, note: &'static str) -> PendingKey {
-        PendingKey {
-            note: item.unconfirmed.then_some(note),
-            key: item.recovery_key,
-            username: item.username,
-            server: item.server,
-        }
-    }
-}
-
-/// The signed-in account's storage and devices, as last fetched.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct AccountDetails {
-    pub usage: Option<Usage>,
-    pub devices: Option<Vec<DeviceInfo>>,
-    pub loading: bool,
-    /// A sync changed what the server holds while a fetch ran: that fetch's
-    /// answer may be from before it, so it is fetched again.
-    pub stale: bool,
-    /// Why the last fetch failed, in plain words.
-    pub failed: Option<String>,
-}
-
-/// The signed-in account's ways in, as last fetched. A newer refresh hides
-/// the retained success from the page until it has answered.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct AccountMethodsState {
-    pub last_successful: Option<kanso_sync::AccountMethods>,
-    pub loading: bool,
-    pub failed: Option<String>,
-    /// Rejects answers from an earlier Account page visit.
-    pub generation: u64,
-    /// The server's passkeys, as its health last advertised them: which
-    /// ceremony this device may run to add or prove one.
-    pub passkeys: Option<kanso_sync::PasskeyMethods>,
-}
-
-impl AccountMethodsState {
-    /// Starts a refresh and makes every earlier answer stale.
-    pub fn begin_refresh(&mut self) -> u64 {
-        self.generation = self.generation.wrapping_add(1);
-        self.loading = true;
-        self.failed = None;
-        self.generation
-    }
-
-    /// Keeps the previous success available internally if the latest fetch
-    /// fails; the page uses `failed` to avoid presenting it as current.
-    pub fn finish_failure(&mut self, generation: u64, reason: String) -> bool {
-        if self.generation != generation {
-            return false;
-        }
-        self.loading = false;
-        self.failed = Some(reason);
-        true
-    }
-
-    pub fn finish_success(&mut self, generation: u64, methods: kanso_sync::AccountMethods) -> bool {
-        if self.generation != generation {
-            return false;
-        }
-        self.last_successful = Some(methods);
-        self.loading = false;
-        self.failed = None;
-        true
-    }
-}
+pub use kanso_engine::account::{AccountDetails, AccountMethodsState, PendingKey};
 
 /// The live account approval UI: what the approver's sheet shows, and the
 /// new device's waiting page. The socket's stop flag lives here so a
@@ -925,20 +834,6 @@ mod tests {
             linked: Vec::new(),
             passkeys: Vec::new(),
         }
-    }
-
-    #[test]
-    fn methods_refresh_rejects_stale_answers_and_marks_retained_success_failed() {
-        let mut state = AccountMethodsState::default();
-        let first = state.begin_refresh();
-        assert!(state.finish_success(first, account_methods(true)));
-
-        let second = state.begin_refresh();
-        assert!(!state.finish_success(first, account_methods(false)));
-        assert!(state.finish_failure(second, "offline".into()));
-        assert_eq!(state.last_successful, Some(account_methods(true)));
-        assert!(!state.loading);
-        assert_eq!(state.failed.as_deref(), Some("offline"));
     }
 
     #[test]

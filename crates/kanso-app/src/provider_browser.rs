@@ -555,6 +555,69 @@ pub fn google_device_page(start: &GoogleStart) -> Result<(), BrowserError> {
     open_external(&start.auth_url)
 }
 
+// ------------------------------------------------------------- The engine
+
+// no-prop-test: thin adapters from the system browser to the engine's
+// `Browser` seam; the flows that call them are tested in `kanso_engine`.
+use kanso_engine::account::provider as flow;
+
+impl From<BrowserError> for flow::BrowserError {
+    fn from(err: BrowserError) -> Self {
+        match err {
+            BrowserError::Cancelled => flow::BrowserError::Cancelled,
+            BrowserError::Expired => flow::BrowserError::Expired,
+            BrowserError::ProviderDenied => flow::BrowserError::ProviderDenied,
+            _ => flow::BrowserError::Failed,
+        }
+    }
+}
+
+impl flow::Listener for Loopback {
+    fn uri(&self) -> String {
+        Loopback::uri(self)
+    }
+
+    fn wait_until(
+        &self,
+        state: &str,
+        deadline: Instant,
+        cancel: &AtomicBool,
+    ) -> Result<String, flow::BrowserError> {
+        Loopback::wait_until(self, state, deadline, cancel).map_err(Into::into)
+    }
+}
+
+/// Apple's callback, as the engine's flow waits for it.
+pub struct AppleReceiver(pub async_channel::Receiver<Result<String, BrowserError>>);
+
+impl flow::AppleWait for AppleReceiver {
+    fn poll(&self) -> flow::ApplePoll {
+        match self.0.try_recv() {
+            Ok(result) => flow::ApplePoll::Answer(result.map_err(Into::into)),
+            Err(async_channel::TryRecvError::Closed) => flow::ApplePoll::Closed,
+            Err(async_channel::TryRecvError::Empty) => flow::ApplePoll::Waiting,
+        }
+    }
+}
+
+/// The system browser and a loopback listener, for the engine's provider
+/// sign-in flows.
+pub struct Desktop;
+
+impl flow::Browser for Desktop {
+    fn listen(&self) -> Result<Box<dyn flow::Listener>, flow::BrowserError> {
+        Ok(Box::new(Loopback::bind()?))
+    }
+
+    fn open_google(&self, start: &GoogleStart) -> Result<(), flow::BrowserError> {
+        google_device_page(start).map_err(Into::into)
+    }
+
+    fn open_github(&self, start: &GithubStart) -> Result<(), flow::BrowserError> {
+        github_device_page(start).map_err(Into::into)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

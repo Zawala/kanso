@@ -4,15 +4,20 @@
 //! at the front. The windows that show them are the apps'.
 
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use kanso_sync::keychain;
 use kanso_sync::{
-    AccountError, ApprovalKeys, OpenedRequest, PendingApproval, PinnedRequest, Session,
-    open_request,
+    AccountError, Approval, ApprovalKeys, DeviceIdentity, LockedSession, OpenedRequest,
+    PendingApproval, PinnedRequest, RequestState, Session, cancel_saved_approval,
+    complete_saved_request, finish_unlock, name_device_resumable, new_approval_request_id,
+    open_request, poll_saved_approval, request_approval_resumable, resume_approval,
 };
 
-use super::words;
+use super::words::{self, ErrorContext};
+use super::{Failure, Flow, UnlockedCandidate};
+use crate::Secrets;
 
 /// How long the new device waits before it offers the recovery key.
 pub const RECOVERY_AFTER_MS: i64 = 120_000;
@@ -191,20 +196,252 @@ pub fn front_step(
     }
 }
 
+impl WaitingState {
+    /// Takes what the waiting worker reported.
+    pub fn apply(&mut self, update: WaitUpdate, now_ms: i64) {
+        match update {
+            WaitUpdate::OtherDevices(count) => {
+                self.know_devices(count, now_ms);
+                self.phase = if count == 0 {
+                    WaitPhase::NoDevices
+                } else {
+                    WaitPhase::Waiting
+                };
+            }
+            WaitUpdate::Request(id) => self.request_id = Some(id),
+            WaitUpdate::Code(code) => {
+                self.code = Some(code.clone());
+                self.phase = WaitPhase::Compare { code };
+            }
+            WaitUpdate::Tick => self.offer_recovery(now_ms),
+        }
+    }
+
+    /// Takes how the wait ended without an unlock: the code goes when the
+    /// request is over, and the recovery key is offered whatever the time.
+    pub fn end(&mut self, end: &WaitEnd) {
+        if matches!(
+            end,
+            WaitEnd::Cancelled | WaitEnd::Expired | WaitEnd::NoDevices
+        ) {
+            self.code = None;
+        }
+        self.phase = end.phase();
+        self.recovery_offered = true;
+    }
+}
+
+/// What the waiting worker reports while it polls.
+#[derive(Debug)]
+pub enum WaitUpdate {
+    /// How many other devices could answer.
+    OtherDevices(usize),
+    /// The server's request ID.
+    Request(String),
+    /// A device answered: the code both screens compare.
+    Code(String),
+    /// One poll went by.
+    Tick,
+}
+
+/// How a wait ended without an unlock.
+#[derive(Debug)]
+pub enum WaitEnd {
+    Cancelled,
+    Expired,
+    NoDevices,
+    Failed(Failure),
+}
+
+impl WaitEnd {
+    pub fn phase(&self) -> WaitPhase {
+        match self {
+            WaitEnd::Cancelled => WaitPhase::Cancelled,
+            WaitEnd::Expired => WaitPhase::Expired,
+            WaitEnd::NoDevices => WaitPhase::NoDevices,
+            WaitEnd::Failed(failure) => WaitPhase::Failed(failure.words.clone()),
+        }
+    }
+}
+
+/// The wait ended in an error. Some errors mean the locked credentials can't
+/// be used again: `locked_cleanup` says to end the locked session.
+pub fn approval_failure(error: AccountError) -> WaitEnd {
+    let must_sign_out = matches!(
+        &error,
+        AccountError::Unauthorized { .. }
+            | AccountError::KeyMismatch
+            | AccountError::ApprovalChanged
+            | AccountError::ApprovalRequestIdConflict
+            | AccountError::Protocol(_)
+    );
+    let mut failure = Failure::account(error, ErrorContext::Account);
+    failure.locked_cleanup = must_sign_out;
+    WaitEnd::Failed(failure)
+}
+
+/// Forgets a locked session's saved approval request.
+pub fn clear_approval_resume(
+    secrets: &dyn Secrets,
+    locked: &LockedSession,
+) -> Result<(), AccountError> {
+    let library_id = locked.library_id().ok_or_else(|| {
+        AccountError::Protocol("the locked session has no library ID for Keychain storage".into())
+    })?;
+    keychain::clear_pending_approval(secrets, library_id).map_err(AccountError::Keychain)
+}
+
+// no-prop-test: the account tasks' workers, each a sequence of calls to
+// kanso_sync and the secret store; tested end to end against MemoryServer and
+// MemorySecrets, and the decisions between them by property.
+impl Flow {
+    /// Requests or resumes approval of a locked sign-in, and polls until a
+    /// device answers. It only creates, polls, names and unlocks; binding
+    /// decisions and promotion return to the caller's main thread.
+    ///
+    /// `update` hears each step as it happens; `pause` is how the worker
+    /// waits between polls (`std::thread::sleep` in an app); setting
+    /// `cancel` ends the request.
+    pub fn wait_for_approval(
+        &self,
+        locked: &LockedSession,
+        device: &DeviceIdentity,
+        cancel: Option<&AtomicBool>,
+        update: &dyn Fn(WaitUpdate),
+        pause: &dyn Fn(Duration),
+    ) -> Result<UnlockedCandidate, WaitEnd> {
+        let backend = self.backend.as_ref();
+        let secrets = self.secrets.as_ref();
+        let request = if let Some(resume) = locked.approval_resume() {
+            let request = match resume_approval(backend, secrets, locked) {
+                Ok(request) => request,
+                Err(
+                    AccountError::ApprovalExpired
+                    | AccountError::ApprovalUsed
+                    | AccountError::NotFound,
+                ) => {
+                    clear_approval_resume(secrets, locked).map_err(approval_failure)?;
+                    return Err(WaitEnd::Expired);
+                }
+                Err(error) => return Err(approval_failure(error)),
+            };
+            if request.id != resume.request_id() {
+                return Err(approval_failure(AccountError::ApprovalChanged));
+            }
+            request
+        } else {
+            let keys = ApprovalKeys::generate();
+            request_approval_resumable(backend, secrets, locked, &new_approval_request_id(), &keys)
+                .map_err(approval_failure)?
+        };
+        if request.other_devices == 0 {
+            cancel_saved_approval(backend, secrets, locked).map_err(approval_failure)?;
+            return Err(WaitEnd::NoDevices);
+        }
+        update(WaitUpdate::OtherDevices(request.other_devices));
+        update(WaitUpdate::Request(request.id.clone()));
+        let mut approval: Option<Approval> = None;
+        loop {
+            if cancel.is_some_and(|flag| flag.load(Ordering::SeqCst)) {
+                cancel_saved_approval(backend, secrets, locked).map_err(approval_failure)?;
+                return Err(WaitEnd::Cancelled);
+            }
+            match poll_saved_approval(backend, secrets, locked) {
+                Ok(RequestState::Waiting) => {}
+                Ok(RequestState::Challenged { approver_epk, .. }) => {
+                    let completed = complete_saved_request(locked, &approver_epk)
+                        .map_err(|e| WaitEnd::Failed(Failure::account(e, ErrorContext::Account)))?;
+                    let code = completed.code();
+                    if let Err(error) = name_device_resumable(backend, secrets, locked, device) {
+                        match error {
+                            AccountError::ApprovalExpired
+                            | AccountError::ApprovalUsed
+                            | AccountError::NotFound => {
+                                clear_approval_resume(secrets, locked).map_err(approval_failure)?;
+                                return Err(WaitEnd::Expired);
+                            }
+                            other => return Err(approval_failure(other)),
+                        }
+                    }
+                    update(WaitUpdate::Code(code));
+                    approval = Some(completed);
+                }
+                Ok(RequestState::Approved(approved)) => {
+                    let epk = locked
+                        .approval_resume()
+                        .and_then(|r| r.approver_epk())
+                        .ok_or_else(|| {
+                            WaitEnd::Failed(Failure::account(
+                                AccountError::ApprovalChanged,
+                                ErrorContext::Account,
+                            ))
+                        })?;
+                    let approval = match approval.take() {
+                        Some(approval) => approval,
+                        None => complete_saved_request(locked, &epk).map_err(approval_failure)?,
+                    };
+                    let unlocked = finish_unlock(backend, locked, &approval, &approved, device)
+                        .map_err(approval_failure)?;
+                    return Ok(UnlockedCandidate {
+                        session: unlocked.session,
+                        locked_session: locked.clone(),
+                        evicted: unlocked.evicted,
+                        library_id: device.library_id.clone(),
+                        same_token_as_locked: true,
+                    });
+                }
+                Ok(RequestState::Cancelled) => {
+                    clear_approval_resume(secrets, locked).map_err(approval_failure)?;
+                    return Err(WaitEnd::Cancelled);
+                }
+                Ok(RequestState::Expired) => {
+                    clear_approval_resume(secrets, locked).map_err(approval_failure)?;
+                    return Err(WaitEnd::Expired);
+                }
+                Err(
+                    AccountError::ApprovalExpired
+                    | AccountError::ApprovalUsed
+                    | AccountError::NotFound,
+                ) => {
+                    clear_approval_resume(secrets, locked).map_err(approval_failure)?;
+                    return Err(WaitEnd::Expired);
+                }
+                Err(
+                    error @ (AccountError::Unauthorized { .. }
+                    | AccountError::KeyMismatch
+                    | AccountError::ApprovalChanged
+                    | AccountError::ApprovalRequestIdConflict
+                    | AccountError::Protocol(_)),
+                ) => return Err(approval_failure(error)),
+                Err(_) => {}
+            }
+            update(WaitUpdate::Tick);
+            pause(POLL_EVERY);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::words;
+    use std::cell::{Cell, RefCell};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use super::super::lab::paired;
     use super::{
-        ApproverKey, FrontStep, RECOVERY_AFTER_MS, WaitPhase, WaitingState, front_step,
-        waiting_line,
+        ApproverKey, FrontStep, POLL_EVERY, RECOVERY_AFTER_MS, WaitEnd, WaitPhase, WaitUpdate,
+        WaitingState, front_step, waiting_line,
     };
     use kanso_sync::api::LoginDevice;
+    use kanso_sync::keychain;
     use kanso_sync::{
         AccountError, ApprovalKeys, DeviceIdentity, LockedSession, MemorySecrets, MemoryServer,
         Password, RequestState, Session, SessionToken, challenge_request, complete_request,
-        finish_approval, finish_unlock, name_device, pending_approvals, poll_approval,
-        request_approval, sign_in, sign_up,
+        finish_approval, finish_unlock, name_device, new_approval_request_id, pending_approvals,
+        poll_approval, poll_saved_approval, request_approval, request_approval_resumable, sign_in,
+        sign_up,
     };
+    use proptest::prelude::*;
 
     const SERVER: &str = "https://sync.kansoapp.app";
 
@@ -382,6 +619,206 @@ mod tests {
             state.offer_recovery(started + elapsed);
             let expected = other == 0 || elapsed >= RECOVERY_AFTER_MS;
             proptest::prop_assert_eq!(state.recovery_offered, expected);
+        }
+    }
+
+    #[test]
+    fn a_new_device_waits_for_approval_and_unlocks_with_the_approvers_answer() {
+        let mut p = paired();
+        let (backend, secrets) = (p.server.as_ref(), p.second.secrets.as_ref());
+        // The request was made, and the first device answered it, before
+        // this one came back to it (a relaunch while waiting): the locked
+        // item holds the request's key and the approver's.
+        request_approval_resumable(
+            backend,
+            secrets,
+            &p.locked,
+            &new_approval_request_id(),
+            &ApprovalKeys::generate(),
+        )
+        .unwrap();
+        let pending = pending_approvals(backend, &p.alice).unwrap();
+        let key = ApproverKey::new(&pending[0]);
+        challenge_request(backend, &p.alice, &pending[0], &key.keys).unwrap();
+        let resumed = keychain::load_locked_pending(secrets, &p.device.library_id)
+            .unwrap()
+            .expect("the pending item");
+        assert!(matches!(
+            poll_saved_approval(backend, secrets, &resumed).unwrap(),
+            RequestState::Challenged { .. }
+        ));
+        p.locked = keychain::load_locked_pending(secrets, &p.device.library_id)
+            .unwrap()
+            .expect("the pending item");
+        assert!(p.locked.approval_resume().unwrap().approver_epk().is_some());
+
+        let updates = RefCell::new(Vec::new());
+        let pauses = Cell::new(0);
+        let code = RefCell::new(None);
+        let result = p.second.flow.wait_for_approval(
+            &p.locked,
+            &p.device,
+            None,
+            &|update| updates.borrow_mut().push(update),
+            &|slept| {
+                assert_eq!(slept, POLL_EVERY);
+                pauses.set(pauses.get() + 1);
+                assert_eq!(pauses.get(), 1, "approved after one pause");
+                // The new device has revealed itself: the first device
+                // opens the request and approves it.
+                let pending = pending_approvals(backend, &p.alice).unwrap();
+                let FrontStep::Open(opened) = front_step(&p.alice, &pending[0], &key, true) else {
+                    panic!("an honest request opens");
+                };
+                *code.borrow_mut() = Some(opened.approval.code());
+                finish_approval(backend, &p.alice, &pending[0], &opened.approval).unwrap();
+            },
+        );
+        let candidate = result.expect("approved");
+        assert_eq!(candidate.session.key_id(), p.alice.key_id());
+        assert_eq!(candidate.library_id, p.device.library_id);
+        assert!(candidate.same_token_as_locked);
+        let code = code.into_inner().expect("the approver saw a code");
+        let kinds: Vec<String> = updates
+            .into_inner()
+            .iter()
+            .map(|update| match update {
+                WaitUpdate::OtherDevices(n) => format!("devices {n}"),
+                WaitUpdate::Request(_) => "request".to_owned(),
+                WaitUpdate::Code(shown) => {
+                    assert_eq!(*shown, code, "both screens show one code");
+                    "code".to_owned()
+                }
+                WaitUpdate::Tick => "tick".to_owned(),
+            })
+            .collect();
+        assert_eq!(kinds, ["devices 1", "request", "code", "tick"]);
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(8))]
+
+        /// Cancelling after `k` polls ends the wait as cancelled, at the next
+        /// poll and not before: nobody approved it.
+        #[test]
+        fn prop_cancelling_the_wait_ends_it_at_the_next_poll(k in 0usize..4) {
+            let p = paired();
+            let cancel = AtomicBool::new(k == 0);
+            let pauses = Cell::new(0);
+            let result = p.second.flow.wait_for_approval(
+                &p.locked,
+                &p.device,
+                Some(&cancel),
+                &|_| {},
+                &|_| {
+                    pauses.set(pauses.get() + 1);
+                    if pauses.get() == k {
+                        cancel.store(true, Ordering::SeqCst);
+                    }
+                },
+            );
+            prop_assert!(matches!(result, Err(WaitEnd::Cancelled)));
+            prop_assert_eq!(pauses.get(), k);
+        }
+    }
+
+    #[test]
+    fn a_wait_with_no_other_device_ends_at_once_offering_the_recovery_key() {
+        let p = paired();
+        // The first device goes: the new one is the account's only.
+        let others: Vec<_> = kanso_sync::devices(p.server.as_ref(), &p.signed_in)
+            .unwrap()
+            .into_iter()
+            .filter(|device| !device.current)
+            .collect();
+        assert_eq!(others.len(), 1);
+        kanso_sync::revoke_device(p.server.as_ref(), &p.signed_in, &others[0].id).unwrap();
+        let result = p
+            .second
+            .flow
+            .wait_for_approval(&p.locked, &p.device, None, &|_| {}, &|_| {
+                panic!("nothing to wait for")
+            });
+        let Err(end @ WaitEnd::NoDevices) = result else {
+            panic!("no other device answers: {:?}", result.err());
+        };
+        let mut waiting = WaitingState::requesting(0);
+        waiting.end(&end);
+        assert_eq!(waiting.phase, WaitPhase::NoDevices);
+        assert!(waiting.recovery_offered);
+    }
+
+    #[derive(Clone, Debug)]
+    enum Report {
+        Tick,
+        Code,
+        Request,
+    }
+
+    proptest! {
+        /// Model: the recovery key is offered only once the count of other
+        /// devices is known, and then exactly when there are none or two
+        /// minutes have passed at a poll; once offered it stays offered, and
+        /// the end of a wait offers it whatever the time.
+        #[test]
+        fn prop_waiting_state_offer_is_monotone(
+            others in 0usize..4,
+            before in prop::collection::vec(0i64..60_000, 0..3),
+            reports in prop::collection::vec(
+                (0i64..90_000, prop_oneof![Just(Report::Tick), Just(Report::Code), Just(Report::Request)]),
+                0..12,
+            ),
+            end in prop::option::of(0usize..3),
+        ) {
+            let started = 5_000;
+            let mut now = started;
+            let mut state = WaitingState::requesting(started);
+            // Ticks before the count is known offer nothing.
+            for dt in before {
+                now += dt;
+                state.apply(WaitUpdate::Tick, now);
+                prop_assert!(!state.recovery_offered);
+            }
+            state.apply(WaitUpdate::OtherDevices(others), now);
+            let mut offered = others == 0 || now - started >= RECOVERY_AFTER_MS;
+            prop_assert_eq!(state.recovery_offered, offered);
+            prop_assert_eq!(
+                &state.phase,
+                if others == 0 { &WaitPhase::NoDevices } else { &WaitPhase::Waiting }
+            );
+            for (dt, report) in reports {
+                now += dt;
+                let was = state.recovery_offered;
+                match report {
+                    Report::Tick => {
+                        state.apply(WaitUpdate::Tick, now);
+                        offered |= others == 0 || now - started >= RECOVERY_AFTER_MS;
+                    }
+                    Report::Code => {
+                        state.apply(WaitUpdate::Code("123 456".into()), now);
+                        prop_assert_eq!(state.code.as_deref(), Some("123 456"));
+                        prop_assert_eq!(&state.phase, &WaitPhase::Compare { code: "123 456".into() });
+                    }
+                    Report::Request => {
+                        state.apply(WaitUpdate::Request("r1".into()), now);
+                        prop_assert_eq!(state.request_id.as_deref(), Some("r1"));
+                    }
+                }
+                prop_assert_eq!(state.recovery_offered, offered);
+                prop_assert!(!was || state.recovery_offered, "offered stays offered");
+            }
+            if let Some(kind) = end {
+                let end = [WaitEnd::Cancelled, WaitEnd::Expired, WaitEnd::NoDevices][kind].phase();
+                let ended = match kind {
+                    0 => WaitEnd::Cancelled,
+                    1 => WaitEnd::Expired,
+                    _ => WaitEnd::NoDevices,
+                };
+                state.end(&ended);
+                prop_assert!(state.recovery_offered);
+                prop_assert_eq!(state.phase, end);
+                prop_assert_eq!(state.code, None);
+            }
         }
     }
 }
