@@ -1492,7 +1492,8 @@ fn pair_card(light: &Theme, dark: &Theme, colors: &Colors, cx: &mut App) -> AnyE
 fn color_placeholder(theme: &Theme, colors: &Colors) -> Div {
     let headline = theme.colors.clone().unwrap_or_default();
     let color = |text: &str, fallback: crate::theme::Rgb| {
-        crate::theme_file::Color::parse(text).map_or(fallback, |c| c.over(crate::theme::Rgb(0)))
+        crate::theme_file::Color::parse(text)
+            .map_or(fallback, |c| c.over(kanso_engine::theme::Rgb(0)).into())
     };
     let editor = color(&headline.editor, colors.editor);
     let sidebar = color(&headline.sidebar, colors.sidebar);

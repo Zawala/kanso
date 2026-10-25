@@ -22,8 +22,8 @@ use serde_json::Value;
 use super::color;
 use super::css::{self, Declaration, Sheet};
 use super::package_base;
-use crate::theme::Rgb;
 use crate::theme_file::{Appearance, Color, ThemeFile, TokenStyle, contrast, luminance};
+use kanso_engine::theme::Rgb;
 
 /// Which parts of the app a package styles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

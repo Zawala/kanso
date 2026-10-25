@@ -5,18 +5,45 @@
 //! of unlocked notes and seals and opens notes with them, [`account`] runs
 //! the account tasks (sign up, sign in, recover, unlock a device, restore at
 //! launch) and says their results in plain words, and [`sync`] decides when
-//! a sync starts, queues, backs off or stops. Nothing here opens a window,
-//! reads a clock of its own or touches the system's secret store: the caller
-//! passes the time, and secrets go through [`Secrets`].
+//! a sync starts, queues, backs off or stops.
+//!
+//! What happens in a note is here too. [`links`] decides how wiki-links
+//! resolve, what `[[` and `#` autocomplete offer, which link a note copies
+//! and when a rename offers to update links; [`fuzzy`] ranks what was typed
+//! against candidates; [`daily`] makes daily notes and notes from templates;
+//! [`tasks`] reads due dates and decides reminders; [`edit`] turns the
+//! formatting toolbar, auto-pairing and Tab and Enter in lists and tables
+//! into one change to the text; [`text`] converts offsets between UTF-8 and
+//! UTF-16; [`theme`] has the palettes, the theme file format and how three
+//! themes are fitted together for drawing; and `highlight` (the `highlight`
+//! feature, with the `code-grammars` feature for the code in fenced blocks)
+//! says which parts of a note are headings, markers, links, keywords and the
+//! like, as spans of tokens the theme colors. It is a tree-sitter
+//! highlighter on the runtime and grammar crates the desktop editor's
+//! component library compiles in, with the same queries, and a test in
+//! `kanso-app` holds the two to the same colors on a corpus of notes.
+//!
+//! Nothing here opens a window, reads a clock of its own or touches the
+//! system's secret store: the caller passes the time, and secrets go through
+//! [`Secrets`].
 //!
 //! The system's Keychain is `kanso_sync::Keychain`, built by the desktop app
 //! alone; tests use [`MemorySecrets`].
 
 pub mod account;
+pub mod daily;
+pub mod edit;
+pub mod fuzzy;
+#[cfg(feature = "highlight")]
+pub mod highlight;
+pub mod links;
 pub mod lock;
 #[cfg(any(test, feature = "test-support"))]
 pub mod strategies;
 pub mod sync;
+pub mod tasks;
+pub mod text;
+pub mod theme;
 
 /// Where secrets live: the seam the Keychain, the Credential Manager and the
 /// mobile keystores stand behind.

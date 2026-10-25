@@ -6,9 +6,10 @@
 use std::collections::HashSet;
 use std::ops::Range;
 
-use crate::markdown_edit::{Edit, ListKind, indent_len, line_end, line_start, list_marker};
-use crate::pairing::in_fenced_code;
-use crate::table_format::in_table;
+use super::Edit;
+use super::markdown::{ListKind, indent_len, line_end, line_start, list_marker};
+use super::pairing::in_fenced_code;
+use super::table::in_table;
 
 /// What Tab does where the cursor is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -259,6 +260,11 @@ pub fn indent_list(text: &str, selection: Range<usize>, out: bool) -> Option<Edi
     let new_text = lines.join("\n");
     // Each selection end keeps its place in its line's text.
     let map = |at: usize| {
+        // A selection that ends at the start of the line after the block
+        // (a drag down whole lines) keeps that place, past the change.
+        if line_of(at) >= block.end {
+            return at + new_text.len() - (range.end - range.start);
+        }
         let ix = rel(line_of(at));
         let new_start: usize = lines[..ix].iter().map(|l| l.len() + 1).sum();
         let col = at - starts[block.start + ix];
@@ -279,6 +285,113 @@ pub fn indent_list(text: &str, selection: Range<usize>, out: bool) -> Option<Edi
         range,
         text: new_text,
         selection,
+    })
+}
+
+/// The largest number a numbered item can have and still be an item
+/// ([`list_marker`] reads at most nine digits).
+const MAX_NUMBER: u64 = 999_999_999;
+
+/// Enter on a list item: the text after the caret starts the next item,
+/// with the same kind of marker (a task's box unchecked, a number one more
+/// with the numbers after it counting on), at the same indent. Enter on an
+/// empty item ends the list instead: its marker goes, and the line is left
+/// empty.
+///
+/// `None` when the selection isn't a caret, the caret is before the
+/// marker, on no item, or in a fenced block, or the number can't grow:
+/// Enter then types its newline as usual.
+pub fn enter_in_list(text: &str, selection: Range<usize>) -> Option<Edit> {
+    let cursor = floor(text, selection.start);
+    if cursor != floor(text, selection.end) || in_fenced_code(text, cursor) {
+        return None;
+    }
+    let start = line_start(text, cursor);
+    let end = line_end(text, cursor);
+    let line = &text[start..end];
+    let it = item(line)?;
+    if cursor < start + it.indent + it.marker {
+        return None;
+    }
+    if line[it.indent + it.marker..].trim().is_empty() {
+        return Some(Edit {
+            range: start..end,
+            text: String::new(),
+            selection: start..start,
+        });
+    }
+    let rest = &line[it.indent..];
+    let next_marker = match it.number {
+        Some(number) => {
+            let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+            if number >= MAX_NUMBER {
+                return None;
+            }
+            format!("{}{} ", number + 1, &rest[digits..=digits])
+        }
+        None if it.kind == ListKind::Task => format!("{} [ ] ", &rest[..1]),
+        None => format!("{} ", &rest[..1]),
+    };
+    let prefix = format!("\n{}{next_marker}", &line[..it.indent]);
+    let selection = cursor + prefix.len();
+
+    // The numbers after the new item count on, as far as its run goes.
+    let mut renumbered: Vec<(Range<usize>, String)> = Vec::new();
+    if let Some(number) = it.number {
+        let mut next = number + 2;
+        let mut at = end;
+        while at < text.len() {
+            let from = at + 1;
+            let to = line_end(text, from);
+            at = to;
+            let other = &text[from..to];
+            if other.trim().is_empty() || in_fenced_code(text, from) {
+                continue;
+            }
+            match item(other) {
+                Some(o) if o.indent == it.indent && o.kind == ListKind::Numbered => {
+                    if next > MAX_NUMBER {
+                        return None;
+                    }
+                    let digits = other[o.indent..]
+                        .bytes()
+                        .take_while(u8::is_ascii_digit)
+                        .count();
+                    let digits = from + o.indent..from + o.indent + digits;
+                    renumbered.push((digits, next.to_string()));
+                    next += 1;
+                }
+                Some(o) if o.indent > it.indent => {}
+                None if indent_len(other) > it.indent => {}
+                _ => break,
+            }
+        }
+    }
+    let Some(last) = renumbered
+        .last()
+        .map(|(digits, _)| line_end(text, digits.start))
+    else {
+        return Some(Edit {
+            range: cursor..cursor,
+            text: prefix,
+            selection: selection..selection,
+        });
+    };
+    // The rest of the caret's line, then the lines down to the last number
+    // that changed, each with its new number.
+    let mut new = prefix;
+    new.push_str(&text[cursor..end]);
+    let mut copied = end;
+    for (digits, number) in &renumbered {
+        new.push_str(&text[copied..digits.start]);
+        new.push_str(number);
+        copied = digits.end;
+    }
+    new.push_str(&text[copied..last]);
+    Some(Edit {
+        range: cursor..last,
+        text: new,
+        selection: selection..selection,
     })
 }
 
@@ -402,6 +515,105 @@ mod tests {
         assert_eq!(edit.apply(text), "- a\n  - b\n  - c");
     }
 
+    /// The text after Enter with the cursor at `|` in `text`, with the
+    /// cursor where the edit leaves it; unchanged when Enter does nothing.
+    fn enter(text: &str) -> String {
+        let at = text.find('|').unwrap();
+        let text = text.replace('|', "");
+        match enter_in_list(&text, at..at) {
+            Some(edit) => {
+                let new = edit.apply(&text);
+                format!(
+                    "{}|{}",
+                    &new[..edit.selection.start],
+                    &new[edit.selection.start..]
+                )
+            }
+            None => format!("{}|{}", &text[..at], &text[at..]),
+        }
+    }
+
+    #[test]
+    fn enter_continues_the_item() {
+        assert_eq!(enter("- a|"), "- a\n- |");
+        assert_eq!(enter("* a|"), "* a\n* |");
+        assert_eq!(enter("+ a|\n+ b"), "+ a\n+ |\n+ b");
+        // Nested items stay at their level.
+        assert_eq!(enter("- a\n  - b|"), "- a\n  - b\n  - |");
+        // The text after the caret moves to the new item.
+        assert_eq!(enter("- ab|cd"), "- ab\n- |cd");
+        assert_eq!(enter("- a|\n\nafter"), "- a\n- |\n\nafter");
+        // Multibyte text.
+        assert_eq!(enter("- 日本|語"), "- 日本\n- |語");
+    }
+
+    #[test]
+    fn enter_on_a_task_starts_an_unchecked_one() {
+        assert_eq!(enter("- [ ] a|"), "- [ ] a\n- [ ] |");
+        assert_eq!(enter("- [x] done|"), "- [x] done\n- [ ] |");
+        assert_eq!(enter("  * [X] done|"), "  * [X] done\n  * [ ] |");
+    }
+
+    #[test]
+    fn enter_on_a_numbered_item_counts_on() {
+        assert_eq!(enter("1. a|"), "1. a\n2. |");
+        assert_eq!(enter("1. a|\n2. b\n3. c"), "1. a\n2. |\n3. b\n4. c");
+        assert_eq!(enter("1. a\n2. b|\n3. c"), "1. a\n2. b\n3. |\n4. c");
+        assert_eq!(enter("9) a|\n10) b"), "9) a\n10) |\n11) b");
+        // Only the run the item is in is renumbered.
+        assert_eq!(
+            enter("1. a|\n   1. x\n2. b\n\n- z\n3. q"),
+            "1. a\n2. |\n   1. x\n3. b\n\n- z\n3. q"
+        );
+        // A list that starts at 5 keeps its start.
+        assert_eq!(enter("5. a|\n6. b"), "5. a\n6. |\n7. b");
+        assert_eq!(
+            enter("1. a|\n```\n2. in code\n```"),
+            "1. a\n2. |\n```\n2. in code\n```"
+        );
+    }
+
+    #[test]
+    fn enter_on_an_empty_item_ends_the_list() {
+        assert_eq!(enter("- a\n- |"), "- a\n|");
+        assert_eq!(enter("- a\n  - |"), "- a\n|");
+        assert_eq!(enter("1. a\n2. |"), "1. a\n|");
+        assert_eq!(enter("- [ ] a\n- [ ] |"), "- [ ] a\n|");
+        assert_eq!(enter("- [ ]|"), "|");
+        assert_eq!(enter("- |\ntext"), "|\ntext");
+        // Spaces only.
+        assert_eq!(enter("- a\n-   |"), "- a\n|");
+    }
+
+    #[test]
+    fn enter_elsewhere_is_enter() {
+        // Not a list, a quote, a table row, or code.
+        assert_eq!(enter("plain|"), "plain|");
+        assert_eq!(enter("> - a|"), "> - a|");
+        assert!(enter_in_list("| a | b |\n|---|---|\n| c | d |", 31..31).is_none());
+        assert_eq!(enter("```\n- a|\n```"), "```\n- a|\n```");
+        // Before the marker, or inside it.
+        assert_eq!(enter("|- a"), "|- a");
+        assert_eq!(enter("-| a"), "-| a");
+        assert_eq!(enter("- [|x] a"), "- [|x] a");
+        // A selection is replaced by Enter, not continued.
+        assert!(enter_in_list("- abc", 3..5).is_none());
+        // A number that can't grow.
+        assert_eq!(enter("999999999. a|"), "999999999. a|");
+    }
+
+    /// Dragging down whole list lines ends the selection at the start of
+    /// the line after them, which isn't part of the list.
+    #[test]
+    fn a_selection_ending_below_the_list_moves_its_items() {
+        let text = "- a\n- b\nafter";
+        let edit = indent_list(text, 0..8, false).unwrap();
+        let new = edit.apply(text);
+        assert_eq!(new, "  - a\n  - b\nafter");
+        // The selection still ends at the start of "after".
+        assert_eq!(edit.selection, 2..new.len() - "after".len());
+    }
+
     /// Lists of bullets, tasks and numbers, nested a level or two.
     fn list() -> impl Strategy<Value = String> {
         prop::collection::vec(
@@ -475,6 +687,93 @@ mod tests {
             let back = indent_list(&once, tabbed.selection.clone(), true).unwrap();
             prop_assert_eq!(back.apply(&once), text);
             prop_assert_eq!(back.selection, at..at);
+        }
+
+        /// Enter on an item with text adds exactly one line: an item of the
+        /// same kind and indent, with a task's box unchecked, holding what
+        /// was after the caret, with the caret at its start; every other
+        /// line is kept.
+        #[test]
+        fn prop_enter_adds_one_item_of_the_same_kind(
+            text in list(),
+            line in 0usize..8,
+            cut in 0usize..6,
+        ) {
+            let lines: Vec<&str> = text.split('\n').collect();
+            let line = line % lines.len();
+            let it = item(lines[line]).unwrap();
+            let start: usize = lines[..line].iter().map(|l| l.len() + 1).sum();
+            let at = start + it.indent + it.marker + cut.min(lines[line].len() - it.indent - it.marker);
+            let at = floor(&text, at);
+            let edit = enter_in_list(&text, at..at).unwrap();
+            let new = edit.apply(&text);
+            let new_lines: Vec<&str> = new.split('\n').collect();
+            prop_assert_eq!(new_lines.len(), lines.len() + 1);
+            // The caret's line is cut at the caret, the next line is the new item.
+            prop_assert_eq!(new_lines[line], &text[start..at]);
+            let made = item(new_lines[line + 1]).unwrap();
+            prop_assert_eq!(made.indent, it.indent);
+            prop_assert_eq!(made.kind, it.kind);
+            if it.kind == ListKind::Task {
+                let bullet = &lines[line][it.indent..=it.indent];
+                let box_ = format!("{bullet} [ ] ");
+                prop_assert!(new_lines[line + 1][made.indent..].starts_with(&box_));
+            }
+            if let Some(number) = it.number {
+                prop_assert_eq!(made.number, Some(number + 1));
+            }
+            let rest = &text[at..start + lines[line].len()];
+            prop_assert_eq!(&new_lines[line + 1][made.indent + made.marker..], rest);
+            // The caret is at the start of that text.
+            let made_at: usize = new_lines[..=line].iter().map(|l| l.len() + 1).sum();
+            let caret = made_at + made.indent + made.marker;
+            prop_assert_eq!(edit.selection.clone(), caret..caret);
+            // Lines below keep their words, kinds and indents; only numbers move.
+            for (old, new) in lines[line + 1..].iter().zip(&new_lines[line + 2..]) {
+                let (o, n) = (item(old).unwrap(), item(new).unwrap());
+                prop_assert_eq!((o.indent, o.kind), (n.indent, n.kind));
+                prop_assert_eq!(&old[o.indent + o.marker..], &new[n.indent + n.marker..]);
+                if o.number.is_none() {
+                    prop_assert_eq!(old, new);
+                }
+            }
+        }
+
+        /// Enter on the item it just made ends the list: that line is left
+        /// empty and nothing else changes.
+        #[test]
+        fn prop_enter_twice_ends_the_list(text in list(), line in 0usize..8) {
+            let lines: Vec<&str> = text.split('\n').collect();
+            let line = line % lines.len();
+            let end: usize = lines[..=line].iter().map(|l| l.len() + 1).sum::<usize>() - 1;
+            let first = enter_in_list(&text, end..end).unwrap();
+            let once = first.apply(&text);
+            let caret = first.selection.start;
+            let second = enter_in_list(&once, caret..caret).unwrap();
+            let mut expected: Vec<&str> = once.split('\n').collect();
+            expected[line + 1] = "";
+            prop_assert_eq!(second.apply(&once), expected.join("\n"));
+            prop_assert_eq!(second.selection.clone(), second.range.start..second.range.start);
+        }
+
+        /// In a numbered list that counts 1, 2, 3, …, Enter on any item
+        /// leaves it counting by one.
+        #[test]
+        fn prop_enter_keeps_a_numbered_list_counting(n in 1usize..9, pick in 0usize..9, sub in any::<bool>()) {
+            let pick = pick % n;
+            let mut lines: Vec<String> = Vec::new();
+            for i in 1..=n {
+                lines.push(format!("{i}. w{i}"));
+                if sub && i % 2 == 0 {
+                    lines.push("   1. inner".to_owned());
+                }
+            }
+            let text = lines.join("\n");
+            let at = text.find(&format!("w{}", pick + 1)).unwrap() + 2;
+            let edit = enter_in_list(&text, at..at).unwrap();
+            let new = edit.apply(&text);
+            let top: Vec<u64> = new.lines().filter_map(item).filter(|i| i.indent == 0).filter_map(|i| i.number).collect();
+            prop_assert_eq!(top, (1..=(n as u64 + 1)).collect::<Vec<_>>());
         }
 
         /// After Tab or Shift-Tab, a numbered run the move touched counts

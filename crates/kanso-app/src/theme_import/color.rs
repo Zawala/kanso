@@ -8,8 +8,8 @@
 //! value is often a shorthand with a color inside it (`1px solid #333`), so
 //! [`extract`] finds the first color among a value's words.
 
-use crate::theme::Rgb;
 use crate::theme_file::Color;
+use kanso_engine::theme::Rgb;
 
 /// The color `text` names, or `None` when it isn't one this reads (a
 /// length, `inherit`, `currentColor`, an unresolved `var()`).
@@ -425,8 +425,8 @@ fn named(name: &str) -> Option<Color> {
 #[cfg(test)]
 mod tests {
     use super::{extract, hsl_to_rgb, parse, rgb_to_hsl};
-    use crate::theme::Rgb;
     use crate::theme_file::Color;
+    use kanso_engine::theme::Rgb;
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
 

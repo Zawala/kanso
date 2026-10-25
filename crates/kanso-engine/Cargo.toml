@@ -16,12 +16,75 @@ kanso-core.workspace = true
 kanso-store.workspace = true
 # Without the desktop Keychain: secrets go through the `Secrets` trait.
 kanso-sync = { path = "../kanso-sync", default-features = false }
-serde_json.workspace = true
+# Theme files are written with their keys in the order the format lists them
+# (theme/file.rs), which a map keeps only with `preserve_order`.
+serde_json = { workspace = true, features = ["preserve_order"] }
 sha2.workspace = true
+# Column widths of table cells (edit/table.rs).
+unicode-width.workspace = true
 # The generators the apps' view tests share (strategies.rs).
 proptest = { workspace = true, optional = true }
 
+# Highlighting (highlight/): the runtime and the Markdown grammar, then a
+# grammar for each language a fence names. Their C code builds for iOS and
+# Android with the same compilers as SQLite's.
+tree-sitter = { workspace = true, optional = true }
+tree-sitter-md = { workspace = true, optional = true }
+tree-sitter-bash = { workspace = true, optional = true }
+tree-sitter-c = { workspace = true, optional = true }
+tree-sitter-c-sharp = { workspace = true, optional = true }
+tree-sitter-cpp = { workspace = true, optional = true }
+tree-sitter-css = { workspace = true, optional = true }
+tree-sitter-diff = { workspace = true, optional = true }
+tree-sitter-go = { workspace = true, optional = true }
+tree-sitter-html = { workspace = true, optional = true }
+tree-sitter-java = { workspace = true, optional = true }
+tree-sitter-javascript = { workspace = true, optional = true }
+tree-sitter-json = { workspace = true, optional = true }
+tree-sitter-kotlin-sg = { workspace = true, optional = true }
+tree-sitter-lua = { workspace = true, optional = true }
+tree-sitter-php = { workspace = true, optional = true }
+tree-sitter-python = { workspace = true, optional = true }
+tree-sitter-ruby = { workspace = true, optional = true }
+tree-sitter-rust = { workspace = true, optional = true }
+tree-sitter-sequel = { workspace = true, optional = true }
+tree-sitter-swift = { workspace = true, optional = true }
+tree-sitter-toml-ng = { workspace = true, optional = true }
+tree-sitter-typescript = { workspace = true, optional = true }
+tree-sitter-yaml = { workspace = true, optional = true }
+
 [features]
+default = ["highlight", "code-grammars"]
+# `highlight`: Markdown source and preview colors (a `Token` per span), with
+# the Markdown grammar alone.
+highlight = ["dep:tree-sitter", "dep:tree-sitter-md"]
+# `code-grammars`: the 23 other grammars, for fenced code, front matter and
+# HTML blocks.
+code-grammars = [
+    "highlight",
+    "dep:tree-sitter-bash",
+    "dep:tree-sitter-c",
+    "dep:tree-sitter-c-sharp",
+    "dep:tree-sitter-cpp",
+    "dep:tree-sitter-css",
+    "dep:tree-sitter-diff",
+    "dep:tree-sitter-go",
+    "dep:tree-sitter-html",
+    "dep:tree-sitter-java",
+    "dep:tree-sitter-javascript",
+    "dep:tree-sitter-json",
+    "dep:tree-sitter-kotlin-sg",
+    "dep:tree-sitter-lua",
+    "dep:tree-sitter-php",
+    "dep:tree-sitter-python",
+    "dep:tree-sitter-ruby",
+    "dep:tree-sitter-rust",
+    "dep:tree-sitter-sequel",
+    "dep:tree-sitter-swift",
+    "dep:tree-sitter-toml-ng",
+    "dep:tree-sitter-typescript",
+    "dep:tree-sitter-yaml",
+]
 # `strategies`: generators for kanso-app's view tests.
 test-support = ["dep:proptest"]
 

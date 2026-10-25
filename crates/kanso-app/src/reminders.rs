@@ -17,32 +17,16 @@ use std::time::Duration;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::*;
 use kanso_core::dates::DateTime;
-use kanso_core::reminders::{GRACE_MS, Timed, due_now, next_wake, timed};
-use kanso_core::tasks::{Due, due_label};
-use kanso_store::{Origin, ReminderTask, Store};
+use kanso_engine::tasks::reminders::{
+    self, ACTIONS, Answer, MAX_WAIT, SHOWN_META, Shown, parse_shown,
+};
+use kanso_store::{ReminderTask, Store};
 
 use crate::clock::Clock;
 use crate::notify_support::{self, Availability};
 use crate::settings::{Row, section};
-use crate::tasks_view::display_text;
 use crate::theme::Colors;
 use crate::workspace::AppState;
-
-/// The local record of reminders shown on this device: key → when shown.
-const SHOWN_META: &str = "app.remindersShown";
-/// The longest wait between looks: edits to tasks are picked up by then.
-const MAX_WAIT: Duration = Duration::from_secs(30);
-pub const MARK_DONE: &str = "mark-done";
-pub const DISMISS: &str = "dismiss";
-
-/// A reminder on screen, for its response.
-#[derive(Clone, Debug)]
-struct Shown {
-    note_id: String,
-    line: u32,
-    text: String,
-    at_ms: i64,
-}
 
 pub struct Reminders {
     store: Arc<Store>,
@@ -59,43 +43,22 @@ pub struct Reminders {
 
 impl Global for Reminders {}
 
-/// Reads the shown record, tolerating anything unreadable. Pure.
-pub fn parse_shown(raw: Option<&str>) -> BTreeMap<String, i64> {
-    raw.and_then(|raw| serde_json::from_str(raw).ok())
-        .unwrap_or_default()
-}
-
-/// Forgets reminders shown more than twice the grace period ago: they
-/// can't be due again. Pure.
-pub fn prune_shown(shown: &mut BTreeMap<String, i64>, now_ms: i64) {
-    shown.retain(|_, at| now_ms - *at <= 2 * GRACE_MS);
-}
-
 /// The notification for a task: its words, and when it is due and in
-/// which note. Pure.
-pub fn notification_for(task: &ReminderTask, today: kanso_core::dates::Date) -> SystemNotification {
-    let when = Due::parse(&task.due)
-        .map(|due| due_label(due, today))
-        .unwrap_or_else(|| task.due.clone());
-    let title = if task.note_title.trim().is_empty() {
-        "Untitled".to_owned()
-    } else {
-        task.note_title.clone()
-    };
+/// which note.
+// no-prop-test: delegates to kanso_engine::tasks::reminders::reminder, tested there.
+fn notification_for(task: &ReminderTask, today: kanso_core::dates::Date) -> SystemNotification {
+    let said = reminders::reminder(task, today);
     SystemNotification {
-        tag: task.key.clone().into(),
-        title: display_text(&task.text).into(),
-        body: format!("{when} · {title}").into(),
-        actions: vec![
-            SystemNotificationAction {
-                id: MARK_DONE.into(),
-                label: "Mark Done".into(),
-            },
-            SystemNotificationAction {
-                id: DISMISS.into(),
-                label: "Dismiss".into(),
-            },
-        ],
+        tag: said.tag.into(),
+        title: said.title.into(),
+        body: said.body.into(),
+        actions: ACTIONS
+            .iter()
+            .map(|(id, label)| SystemNotificationAction {
+                id: (*id).into(),
+                label: (*label).into(),
+            })
+            .collect(),
     }
 }
 
@@ -165,6 +128,7 @@ pub fn poke(cx: &mut App) {
 
 /// Shows the reminders that are due, and says how long until the next
 /// look.
+// no-prop-test: delegates to kanso_engine::tasks::reminders::{due, record, next_wait}, tested there.
 pub fn check(cx: &mut App) -> Duration {
     if !cx.has_global::<Reminders>() || !enabled(cx) || !can_notify(cx) {
         return MAX_WAIT;
@@ -174,66 +138,32 @@ pub fn check(cx: &mut App) -> Duration {
     let today = DateTime::from_local_ms(now_local).date;
     let store = cx.global::<Reminders>().store.clone();
     let tasks = store.reminder_tasks().unwrap_or_default();
-    let timed_tasks: Vec<(Timed, &ReminderTask)> = tasks
-        .iter()
-        .filter_map(|t| Some((timed(&t.note_id, &t.text, &t.due, false)?, t)))
-        .collect();
-    let list: Vec<Timed> = timed_tasks.iter().map(|(t, _)| t.clone()).collect();
-    let to_show: Vec<String> = {
-        let reminders = cx.global::<Reminders>();
-        let acked = |key: &str| {
-            tasks
-                .iter()
-                .any(|t| t.key == key && t.acks.contains_key(key))
-        };
-        let shown = |key: &str| reminders.shown.contains_key(key);
-        due_now(&list, &acked, &shown, now_local)
+    let notes: Vec<(SystemNotification, Shown)> =
+        reminders::due(&tasks, &cx.global::<Reminders>().shown, now_local)
             .into_iter()
-            .map(|t| t.key.clone())
-            .collect()
-    };
-    let mut notes = Vec::new();
-    for key in &to_show {
-        let Some((_, task)) = timed_tasks.iter().find(|(t, _)| &t.key == key) else {
-            continue;
-        };
-        notes.push((
-            notification_for(task, today),
-            Shown {
-                note_id: task.note_id.clone(),
-                line: task.line,
-                text: task.text.clone(),
-                at_ms: now_ms,
-            },
-        ));
-    }
+            .map(|task| (notification_for(task, today), Shown::new(task, now_ms)))
+            .collect();
     if !notes.is_empty() {
-        let reminders = cx.global_mut::<Reminders>();
+        let state = cx.global_mut::<Reminders>();
+        let keys: Vec<String> = notes.iter().map(|(n, _)| n.tag.to_string()).collect();
+        let record = reminders::record(&mut state.shown, &keys, now_ms);
         for (notification, shown) in &notes {
-            reminders
-                .shown
-                .insert(notification.tag.to_string(), shown.at_ms);
-            reminders
+            state
                 .on_screen
                 .insert(notification.tag.to_string(), shown.clone());
         }
-        prune_shown(&mut reminders.shown, now_ms);
-        if let Ok(raw) = serde_json::to_string(&reminders.shown) {
-            store.set_meta(SHOWN_META, &raw).ok();
-        }
+        store.set_meta(SHOWN_META, &record).ok();
         for (notification, _) in notes {
             cx.show_system_notification(notification);
         }
         // The first one asks for permission; hear the answer.
         notify_support::refresh_permission();
     }
-    let wait = next_wake(&list, now_local)
-        .map(|at| Duration::from_millis(u64::try_from(at - now_local).unwrap_or(0)))
-        .unwrap_or(MAX_WAIT);
-    wait.clamp(Duration::from_millis(500), MAX_WAIT)
+    reminders::next_wait(&tasks, now_local)
 }
 
 /// A click on a reminder or one of its buttons.
+// no-prop-test: delegates to kanso_engine::tasks::reminders::acknowledge, tested there.
 fn respond(response: SystemNotificationResponse, cx: &mut App) {
     if !cx.has_global::<Reminders>() {
         return;
@@ -246,33 +176,10 @@ fn respond(response: SystemNotificationResponse, cx: &mut App) {
     let store = reminders.store.clone();
     let open_window = reminders.open_window;
     let now_ms = Clock::now_ms(cx);
-    match response.action_id.as_deref() {
-        Some(MARK_DONE) => {
-            store
-                .set_task_checked(
-                    &shown.note_id,
-                    shown.line,
-                    &shown.text,
-                    true,
-                    now_ms,
-                    Origin::Ui,
-                )
-                .ok();
-            store
-                .ack_reminder(&shown.note_id, &key, shown.at_ms, Origin::Ui)
-                .ok();
-        }
-        Some(_) => {
-            store
-                .ack_reminder(&shown.note_id, &key, shown.at_ms, Origin::Ui)
-                .ok();
-        }
-        None => {
-            store
-                .ack_reminder(&shown.note_id, &key, shown.at_ms, Origin::Ui)
-                .ok();
-            open_task(&shown.note_id, shown.line, open_window, cx);
-        }
+    let answer = Answer::from_action(response.action_id.as_deref());
+    reminders::acknowledge(&store, &shown, &key, answer, now_ms);
+    if answer == Answer::Open {
+        open_task(&shown.note_id, shown.line, open_window, cx);
     }
     cx.dismiss_system_notification(&key);
 }
@@ -338,11 +245,11 @@ pub fn reminders_section(cx: &App) -> AnyElement {
 
 #[cfg(test)]
 mod tests {
-    use super::{DISMISS, MARK_DONE, Reminders, check, parse_shown, prune_shown, respond};
+    use super::{Reminders, check, respond};
     use crate::clock::Clock;
     use gpui_kit::{App, SystemNotificationResponse, TestAppContext};
     use kanso_core::DocType;
-    use kanso_core::reminders::GRACE_MS;
+    use kanso_engine::tasks::reminders::{DISMISS, MARK_DONE};
     use kanso_store::{Origin, Put, Store};
     use serde_json::json;
     use std::collections::{BTreeMap, HashMap};
@@ -350,15 +257,6 @@ mod tests {
 
     // Thursday 22 October 2026, 09:00:30 UTC.
     const NOW: i64 = 1_792_659_630_000;
-
-    #[test]
-    fn shown_record_reads_and_prunes() {
-        assert!(parse_shown(None).is_empty());
-        assert!(parse_shown(Some("not json")).is_empty());
-        let mut shown = parse_shown(Some(r#"{"a":10,"b":5000000}"#));
-        prune_shown(&mut shown, 10 + 2 * GRACE_MS + 1);
-        assert_eq!(shown.keys().collect::<Vec<_>>(), ["b"]);
-    }
 
     fn setup(cx: &mut TestAppContext) -> (tempfile::TempDir, Arc<Store>) {
         let dir = tempfile::tempdir().unwrap();
