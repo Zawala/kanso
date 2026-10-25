@@ -14,6 +14,9 @@
 
 pub mod account;
 pub mod lock;
+#[cfg(any(test, feature = "test-support"))]
+pub mod strategies;
+pub mod sync;
 
 /// Where secrets live: the seam the Keychain, the Credential Manager and the
 /// mobile keystores stand behind.
