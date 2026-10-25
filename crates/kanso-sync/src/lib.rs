@@ -59,7 +59,7 @@ pub use approvals::{
     challenge_request, complete_request, complete_saved_request, decline_request, finish_approval,
     finish_unlock, name_device, name_device_resumable, new_approval_request_id, open_request,
     pending_approvals, poll_approval, poll_saved_approval, request_approval,
-    request_approval_resumable, resume_approval, unlock_with_local_key,
+    request_approval_resumable, resume_approval, saved_locked_pending, unlock_with_local_key,
 };
 pub use binding::{
     BindError, Choice, DeviceIdentity, Flow, LocalLibrary, Machine, Plan, bind, device_identity,

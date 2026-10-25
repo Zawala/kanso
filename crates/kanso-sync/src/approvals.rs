@@ -607,7 +607,12 @@ fn same_locked_session(left: &LockedSession, right: &LockedSession) -> bool {
         && left.login_device() == right.login_device()
 }
 
-fn saved_locked_pending(
+/// The locked session as the secret store holds it, which is where a request
+/// made by [`request_approval_resumable`] keeps its keys and the approver's
+/// answer. A `LockedSession` the caller already holds does not change when
+/// the store does, so read the saved one before using the resume state. It
+/// must be the same sign-in as `locked`.
+pub fn saved_locked_pending(
     secrets: &dyn SecretStore,
     locked: &LockedSession,
 ) -> Result<LockedSession, AccountError> {
