@@ -206,7 +206,7 @@ impl Shared {
         self.state.read().map(|s| s.clone()).unwrap_or_default()
     }
 
-    fn installed(&self, id: &str) -> Option<Installed> {
+    pub fn installed(&self, id: &str) -> Option<Installed> {
         self.state.read().ok()?.get(id).cloned()
     }
 

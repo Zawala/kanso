@@ -394,3 +394,120 @@ kanso.commands.register({ id: "env", title: "Env", run() {
         .unwrap();
     assert_eq!(value, json!(vec!["undefined"; 6]));
 }
+
+/// The samples in `docs/plugins/`, as `kanso plugin dev` opens them.
+fn sample(name: &str) -> (kanso_plugins::registry_model::Bundle, String) {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/plugins")
+        .join(name);
+    let bundle = kanso_plugins::bundle::open_dir(&dir).unwrap();
+    kanso_plugins::manifest::validate(&bundle.manifest).unwrap();
+    let entry = bundle.manifest.entry.clone();
+    let code = bundle
+        .files
+        .iter()
+        .find(|(path, _)| *path == entry)
+        .map(|(_, bytes)| String::from_utf8(bytes.clone()).unwrap())
+        .unwrap();
+    (bundle, code)
+}
+
+#[test]
+fn the_documented_samples_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path().join("kanso.db")).unwrap();
+    let book = store
+        .put(
+            DocType::Book,
+            json!({ "name": "Work" }),
+            Put::Upsert,
+            Origin::Ui,
+        )
+        .unwrap()
+        .id;
+    let note = store
+        .put(
+            DocType::Note,
+            json!({ "bookId": book, "title": "Draft", "body": "one two three" }),
+            Put::Upsert,
+            Origin::Ui,
+        )
+        .unwrap()
+        .id;
+
+    // Word count: a command, the selection, and a panel of what it may read.
+    let (bundle, code) = sample("word-count");
+    let (mut host, registered) = start(&code, Budgets::DEFAULT).unwrap();
+    let ids: Vec<&str> = registered.commands.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(ids, ["count-words", "append-count", "recent-notes"]);
+    let mut plugin = installed(Grant {
+        notes: NotesGrant {
+            read_books: [book.clone()].into(),
+            ..NotesGrant::default()
+        },
+        panel: true,
+        fences: Default::default(),
+        ..editor_grant()
+    });
+    plugin.manifest = bundle.manifest.clone();
+    let editor = Editor {
+        note_id: Some(note.clone()),
+        selection: Some(Selection {
+            text: "two".into(),
+            start: 4,
+            end: 7,
+        }),
+    };
+    let plugin_dir = tempfile::tempdir().unwrap();
+    let mut network = NoNetwork;
+    let mut log = Log::default();
+    let mut router = Router {
+        store: &store,
+        plugin: &plugin,
+        plugin_dir: plugin_dir.path(),
+        editor: &editor,
+        request: Request::Command,
+        secrets: &NoSecrets,
+        network: &mut network,
+        out: Default::default(),
+    };
+    let counted = host
+        .invoke("count-words", Value::Null, &mut router, &mut log)
+        .unwrap();
+    assert_eq!(counted["text"], "3 words");
+    host.invoke("append-count", Value::Null, &mut router, &mut log)
+        .unwrap();
+    assert_eq!(
+        router.out.selection_edit.as_ref().unwrap().text,
+        "two (1 word)"
+    );
+    host.invoke("recent-notes", Value::Null, &mut router, &mut log)
+        .unwrap();
+    let panel = serde_json::to_value(router.out.panel.as_ref().unwrap()).unwrap();
+    assert!(panel.to_string().contains("Draft"), "{panel}");
+    assert_eq!(router.out.refused, 0, "{:?}", log.lines().collect::<Vec<_>>());
+    host.stop();
+
+    // Bar chart: SVG from the block's text, in the theme's colors.
+    let (_, code) = sample("bar-chart");
+    let (mut host, registered) = start(&code, Budgets::DEFAULT).unwrap();
+    assert_eq!(registered.fences, ["barchart"]);
+    let theme = Theme {
+        dark: false,
+        background: "#ffffff".into(),
+        text: "#111111".into(),
+        muted: "#777777".into(),
+        accent: "#3366ff".into(),
+        border: "#dddddd".into(),
+        surface: "#f4f4f4".into(),
+    };
+    let mut router = Router {
+        request: Request::Render,
+        out: Default::default(),
+        ..router
+    };
+    let svg = host
+        .render("barchart", "Mon: 3\nTue: 5", theme, &mut router, &mut log)
+        .unwrap();
+    assert!(svg.starts_with("<svg") && svg.contains("#3366ff") && svg.contains("Tue"));
+}

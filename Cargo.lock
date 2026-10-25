@@ -4336,6 +4336,7 @@ dependencies = [
  "kanso-fido",
  "kanso-gallery",
  "kanso-import",
+ "kanso-plugins",
  "kanso-render",
  "kanso-server",
  "kanso-store",

@@ -110,7 +110,7 @@ jobs:
           key: release-${{ matrix.target }}
 
       - name: Build
-        run: cargo build --release --locked -p kanso-app
+        run: cargo build --release --locked -p kanso-app -p kanso-plugin-host
 
       # Developer ID signing and notarization when every Apple secret is set;
       # otherwise an ad hoc signature, as before. The secrets reach the shell
@@ -238,7 +238,7 @@ jobs:
           STEM: ${{ steps.version.outputs.stem }}
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path target/release/kanso.exe `
+          Compress-Archive -Path target/release/kanso.exe, target/release/kanso-plugin-host.exe `
             -DestinationPath "dist/$env:STEM.zip"
 
       # A per-user installer beside the zip (packaging/windows/kanso.iss).
@@ -264,7 +264,8 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "Inno Setup didn't install (exit $($p.ExitCode))" }
           $exe = (Resolve-Path target/release/kanso.exe).Path
           $dist = (Resolve-Path dist).Path
-          & (Join-Path $inno 'ISCC.exe') "/DAppVersion=$env:VERSION" "/DSourceExe=$exe" `
+          $hostExe = (Resolve-Path target/release/kanso-plugin-host.exe).Path
+          & (Join-Path $inno 'ISCC.exe') "/DAppVersion=$env:VERSION" "/DSourceExe=$exe" "/DSourceHostExe=$hostExe" `
             "/DOutputDir=$dist" "/DOutputBase=$env:STEM-setup" packaging/windows/kanso.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -277,6 +278,8 @@ jobs:
           mkdir -p "dist" "$stem"
           install -m 755 target/release/kanso "$stem/kanso"
           strip "$stem/kanso"
+          install -m 755 target/release/kanso-plugin-host "$stem/kanso-plugin-host"
+          strip "$stem/kanso-plugin-host"
           install -m 644 assets/linux/kanso.desktop "$stem/kanso.desktop"
           install -m 644 assets/icon/kanso.png "$stem/kanso.png"
           install -m 755 assets/linux/install.sh "$stem/install.sh"
