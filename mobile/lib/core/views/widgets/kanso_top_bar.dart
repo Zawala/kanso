@@ -2,6 +2,8 @@
 // Created 2026-10-25.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../configs/kanso_sizes.dart';
@@ -43,6 +45,17 @@ class KansoTopBar extends StatelessWidget {
     final typography = context.typography;
     final name = title;
     final note = subtitle;
+    // The bar is 52 points, and taller when the device's text size makes
+    // its title (and subtitle) taller than that.
+    final scaler = MediaQuery.textScalerOf(context);
+    double line(TextStyle style) =>
+        scaler.scale(style.fontSize ?? 0) * (style.height ?? 1);
+    final height = math.max(
+      KansoSizes.barHeight,
+      (name == null ? 0 : line(typography.barTitle)) +
+          (note == null ? 0 : line(typography.meta)) +
+          2 * KansoSpacing.xxs,
+    );
     return ColoredBox(
       color: backgroundColor ?? colors.editor,
       child: SafeArea(
@@ -51,7 +64,7 @@ class KansoTopBar extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             SizedBox(
-              height: KansoSizes.barHeight,
+              height: height,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: KansoSpacing.xxs,

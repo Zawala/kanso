@@ -4,7 +4,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../../../core/configs/kanso_effects.dart';
+import '../../../core/configs/kanso_shadows.dart';
 import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_divider.dart';
@@ -36,12 +36,7 @@ class LibraryMockPage extends StatelessWidget {
             child: Container(
               width: width,
               decoration: BoxDecoration(
-                boxShadow: <BoxShadow>[
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: KansoEffects.shadow),
-                    blurRadius: 32,
-                  ),
-                ],
+                boxShadow: KansoShadows.sheet(Theme.brightnessOf(context)),
               ),
               child: Row(
                 children: <Widget>[

@@ -20,6 +20,7 @@ class NoteModeToggle extends StatelessWidget {
     final l10n = context.l10n;
     return KansoSegmented<bool>(
       selected: editing,
+      semanticLabel: l10n.noteModeLabel,
       onChanged: (_) {},
       segments: <KansoSegment<bool>>[
         KansoSegment<bool>(

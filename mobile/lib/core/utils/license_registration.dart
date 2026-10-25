@@ -18,6 +18,22 @@ void registerBundledLicenses() {
       await rootBundle.loadString('assets/fonts/OFL-JetBrainsMono.txt'),
     );
     yield LicenseEntryWithLineBreaks(
+      <String>['Inter'],
+      await rootBundle.loadString('assets/fonts/OFL-Inter.txt'),
+    );
+    yield LicenseEntryWithLineBreaks(
+      <String>['Source Serif 4'],
+      await rootBundle.loadString('assets/fonts/OFL-SourceSerif4.txt'),
+    );
+    yield LicenseEntryWithLineBreaks(
+      <String>['Literata'],
+      await rootBundle.loadString('assets/fonts/OFL-Literata.txt'),
+    );
+    yield LicenseEntryWithLineBreaks(
+      <String>['IBM Plex Mono'],
+      await rootBundle.loadString('assets/fonts/OFL-IBMPlexMono.txt'),
+    );
+    yield LicenseEntryWithLineBreaks(
       <String>['Lucide'],
       await rootBundle.loadString('assets/icons/lucide/LICENSE'),
     );

@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/configs/kanso_icons.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
@@ -17,6 +18,7 @@ class SignedOutCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     return KansoMessageCard(
+      icon: KansoIcons.logOut,
       title: l10n.errorSignedOutTitle,
       message: l10n.errorSignedOutMessage,
       actions: <Widget>[

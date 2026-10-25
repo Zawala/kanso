@@ -39,7 +39,7 @@ class NoteEditPane extends StatelessWidget {
               children: <Widget>[
                 Text(
                   MockData.openNoteTitle,
-                  style: context.typography.noteTitle,
+                  style: context.typography.editorTitle,
                 ),
                 const PropertiesRow(count: MockData.editPropertiesCount),
                 const NoteSourceBody(

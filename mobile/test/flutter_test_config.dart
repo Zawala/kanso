@@ -10,7 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/kanso_golden_comparator.dart';
 
-/// Loads the bundled fonts from their files before any test runs, so text
+/// Loads the bundled fonts (the variable ones draw every weight from one
+/// file) from their files before any test runs, so text
 /// in widget tests and goldens is drawn in Kanso's fonts rather than the
 /// test harness's placeholder font.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
@@ -31,6 +32,25 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   await _loadFamily('JetBrains Mono', <String>[
     'JetBrainsMono-Regular.ttf',
     'JetBrainsMono-Bold.ttf',
+  ]);
+  await _loadFamily('Inter', <String>[
+    'Inter-Variable.ttf',
+    'Inter-VariableItalic.ttf',
+  ]);
+  await _loadFamily('Source Serif 4', <String>[
+    'SourceSerif4-Variable.ttf',
+    'SourceSerif4-VariableItalic.ttf',
+  ]);
+  await _loadFamily('Literata', <String>[
+    'Literata-Variable.ttf',
+    'Literata-VariableItalic.ttf',
+  ]);
+  await _loadFamily('IBM Plex Mono', <String>[
+    'IBMPlexMono-Regular.ttf',
+    'IBMPlexMono-Medium.ttf',
+    'IBMPlexMono-SemiBold.ttf',
+    'IBMPlexMono-Bold.ttf',
+    'IBMPlexMono-Italic.ttf',
   ]);
   await testMain();
 }

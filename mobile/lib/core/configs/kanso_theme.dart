@@ -5,6 +5,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../models/data/kanso_fonts.dart';
+import '../models/data/kanso_text_size.dart';
 import 'kanso_colors.dart';
 import 'kanso_radii.dart';
 import 'kanso_syntax_colors.dart';
@@ -16,17 +18,28 @@ import 'kanso_typography.dart';
 /// fixed here (fonts, density, tap targets, page transitions, ripples), so
 /// the app renders identically on iPhone, iPad and Android.
 abstract final class KansoTheme {
-  static final ThemeData light = _build(
-    brightness: Brightness.light,
-    colors: KansoColors.light,
-    syntax: KansoSyntaxColors.light,
-  );
+  /// The light theme with the default fonts and text size.
+  static final ThemeData light = build(Brightness.light);
 
-  static final ThemeData dark = _build(
-    brightness: Brightness.dark,
-    colors: KansoColors.dark,
-    syntax: KansoSyntaxColors.dark,
-  );
+  /// The dark theme with the default fonts and text size.
+  static final ThemeData dark = build(Brightness.dark);
+
+  /// The theme for [brightness] with note text set in [fonts] at
+  /// [textSize]. Only the note styles of `KansoTypography` change.
+  static ThemeData build(
+    Brightness brightness, {
+    KansoFonts fonts = const KansoFonts(),
+    KansoTextSize textSize = KansoTextSize.standard,
+  }) {
+    final isLight = brightness == Brightness.light;
+    return _build(
+      brightness: brightness,
+      colors: isLight ? KansoColors.light : KansoColors.dark,
+      syntax: isLight ? KansoSyntaxColors.light : KansoSyntaxColors.dark,
+      fonts: fonts,
+      textSize: textSize,
+    );
+  }
 
   /// The same transition on every platform: a slide with an edge swipe
   /// back, so the back gesture works the same way on iPhone and Android.
@@ -45,8 +58,14 @@ abstract final class KansoTheme {
     required Brightness brightness,
     required KansoColors colors,
     required KansoSyntaxColors syntax,
+    required KansoFonts fonts,
+    required KansoTextSize textSize,
   }) {
-    final typography = KansoTypography.fromColors(colors);
+    final typography = KansoTypography.fromColors(
+      colors,
+      fonts: fonts,
+      textSize: textSize,
+    );
     final textTheme = typography.toTextTheme();
     final scheme = ColorScheme(
       brightness: brightness,

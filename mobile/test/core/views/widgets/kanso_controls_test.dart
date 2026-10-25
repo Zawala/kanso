@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/configs/kanso_icons.dart';
+import 'package:kanso/core/configs/kanso_sizes.dart';
 import 'package:kanso/core/models/data/note_status.dart';
 import 'package:kanso/core/models/data/tag_color.dart';
 import 'package:kanso/core/views/widgets/kanso_checkbox.dart';
@@ -111,7 +112,7 @@ void main() {
       expect(find.byType(KansoIcon), findsNWidgets(2));
     });
 
-    testWidgets('is 40 points tall', (tester) async {
+    testWidgets('is 44 points tall (a touch target)', (tester) async {
       await pumpKanso(
         tester,
         const KansoSidebarRow(label: 'Journal', icon: KansoIcons.notebook),
@@ -125,8 +126,34 @@ void main() {
               ),
             )
             .height,
-        40,
+        KansoSizes.touchTarget,
       );
+    });
+  });
+
+  group('KansoChip', () {
+    testWidgets('looks 32 points tall and reacts over 44', (tester) async {
+      var taps = 0;
+      await pumpKanso(
+        tester,
+        KansoChip(label: 'Titles', onTap: () => taps++),
+      );
+      expect(tester.getSize(find.byType(KansoChip)).height, 44);
+      expect(
+        tester
+            .getSize(
+              find.descendant(
+                of: find.byType(KansoChip),
+                matching: find.byType(Container),
+              ),
+            )
+            .height,
+        KansoSizes.chip,
+      );
+      // A touch above the pill, inside the target, still lands.
+      final center = tester.getCenter(find.byType(KansoChip));
+      await tester.tapAt(center - const Offset(0, 19));
+      expect(taps, 1);
     });
   });
 

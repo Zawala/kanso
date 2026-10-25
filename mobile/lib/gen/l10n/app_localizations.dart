@@ -412,12 +412,6 @@ abstract class AppLocalizations {
   /// **'Default notebook'**
   String get settingsDefaultNotebook;
 
-  /// The font of the editor.
-  ///
-  /// In en, this message translates to:
-  /// **'Editor font'**
-  String get settingsEditorFont;
-
   /// A section of settings.
   ///
   /// In en, this message translates to:
@@ -441,12 +435,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Text size'**
   String get settingsTextSize;
-
-  /// The text size that follows the device.
-  ///
-  /// In en, this message translates to:
-  /// **'Default'**
-  String get settingsTextSizeDefault;
 
   /// A section of settings.
   ///
@@ -831,6 +819,204 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Theme picker, scrolled'**
   String get screenThemePickerScrolled;
+
+  /// The settings row that opens the fonts of notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Fonts'**
+  String get settingsFonts;
+
+  /// Goes back to the page before.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get settingsBack;
+
+  /// The title of the page where the fonts of notes are chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Fonts'**
+  String get fontsTitle;
+
+  /// The section of fonts to write in.
+  ///
+  /// In en, this message translates to:
+  /// **'Editor font'**
+  String get fontsEditorSection;
+
+  /// Explains the editor font.
+  ///
+  /// In en, this message translates to:
+  /// **'The font you write in.'**
+  String get fontsEditorFooter;
+
+  /// The section of fonts to read notes in.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview font'**
+  String get fontsPreviewSection;
+
+  /// Explains the preview font.
+  ///
+  /// In en, this message translates to:
+  /// **'The font a note is read in.'**
+  String get fontsPreviewFooter;
+
+  /// The section of fonts for code.
+  ///
+  /// In en, this message translates to:
+  /// **'Code font'**
+  String get fontsCodeSection;
+
+  /// Explains the code font.
+  ///
+  /// In en, this message translates to:
+  /// **'Used for code in notes and in theme previews.'**
+  String get fontsCodeFooter;
+
+  /// The choice that uses the font of the device, not one of Kanso’s.
+  ///
+  /// In en, this message translates to:
+  /// **'System — your device’s font'**
+  String get fontsSystemName;
+
+  /// The short name of the device’s own font, for a summary.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get fontsSystemShort;
+
+  /// Says which font the device’s own font is on each platform.
+  ///
+  /// In en, this message translates to:
+  /// **'San Francisco on iOS, Roboto on Android'**
+  String get fontsSystemSample;
+
+  /// A short line shown in each font so it can be judged.
+  ///
+  /// In en, this message translates to:
+  /// **'Calm notes, clearly written'**
+  String get fontsSampleText;
+
+  /// A short line of code shown in each code font.
+  ///
+  /// In en, this message translates to:
+  /// **'let note = merge(a, b);'**
+  String get fontsSampleCode;
+
+  /// The section that sets how large the text of notes is.
+  ///
+  /// In en, this message translates to:
+  /// **'Text size'**
+  String get fontsTextSizeSection;
+
+  /// Explains the text size.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes the text of notes only. The rest of Kanso follows your device’s text size.'**
+  String get fontsTextSizeFooter;
+
+  /// A paragraph that shows the chosen text size.
+  ///
+  /// In en, this message translates to:
+  /// **'Calm software says less and remembers more. Every device keeps a full copy of your notes, and a change is merged on the others.'**
+  String get fontsTextSizeSample;
+
+  /// A text size.
+  ///
+  /// In en, this message translates to:
+  /// **'Small'**
+  String get textSizeSmall;
+
+  /// The text size the app was designed at.
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
+  String get textSizeDefault;
+
+  /// A text size.
+  ///
+  /// In en, this message translates to:
+  /// **'Large'**
+  String get textSizeLarge;
+
+  /// The largest text size.
+  ///
+  /// In en, this message translates to:
+  /// **'Larger'**
+  String get textSizeLarger;
+
+  /// Starts adding a font from a file.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a font…'**
+  String get fontsAdd;
+
+  /// Says which files can be added as fonts.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a .ttf or .otf file from Files.'**
+  String get fontsAddFooter;
+
+  /// Names the switch between a rendered note and its text.
+  ///
+  /// In en, this message translates to:
+  /// **'View mode'**
+  String get noteModeLabel;
+
+  /// Says to a screen reader that the list of notes is loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading notes'**
+  String get noteListLoading;
+
+  /// The title of a notebook that has no notes.
+  ///
+  /// In en, this message translates to:
+  /// **'No notes in {notebook} yet'**
+  String emptyNotebookTitle(String notebook);
+
+  /// Says what an empty notebook will hold.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes added here will appear in this list.'**
+  String get emptyNotebookMessage;
+
+  /// The title of the area where a note is read when none is open.
+  ///
+  /// In en, this message translates to:
+  /// **'No note selected'**
+  String get noNoteSelectedTitle;
+
+  /// Says how to open a note.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a note from the list to read it here.'**
+  String get noNoteSelectedMessage;
+
+  /// The name of a mock screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Fonts'**
+  String get screenFonts;
+
+  /// The name of a mock screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Fonts, scrolled'**
+  String get screenFontsScrolled;
+
+  /// The name of a mock screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Note list, loading'**
+  String get screenLoadingList;
+
+  /// The name of a mock screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Empty notebook'**
+  String get screenEmptyNotebook;
 }
 
 class _AppLocalizationsDelegate

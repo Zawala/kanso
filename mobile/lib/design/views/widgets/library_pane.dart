@@ -22,11 +22,17 @@ import '../../models/data/mock_data.dart';
 /// counts, the tags and Trash.
 ///
 /// A drawer on a phone, the first pane on a tablet. [startAtEnd] shows it
-/// scrolled to its foot.
+/// scrolled to its foot; [selectedNotebook] selects that notebook instead
+/// of All Notes.
 class LibraryPane extends StatelessWidget {
-  const LibraryPane({this.startAtEnd = false, super.key});
+  const LibraryPane({
+    this.startAtEnd = false,
+    this.selectedNotebook,
+    super.key,
+  });
 
   final bool startAtEnd;
+  final String? selectedNotebook;
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +96,7 @@ class LibraryPane extends StatelessWidget {
                       icon: KansoIcons.files,
                       label: l10n.libraryAllNotes,
                       count: MockData.allNotesCount,
-                      selected: true,
+                      selected: selectedNotebook == null,
                     ),
                     KansoSidebarRow(
                       icon: KansoIcons.layoutTemplate,
@@ -133,6 +139,7 @@ class LibraryPane extends StatelessWidget {
                         label: notebook.name,
                         count: notebook.count,
                         depth: notebook.depth,
+                        selected: notebook.name == selectedNotebook,
                         chevron: true,
                       ),
                     const SizedBox(height: KansoSpacing.xs),

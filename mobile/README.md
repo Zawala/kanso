@@ -42,10 +42,13 @@ flutter test
 ## Design proposal
 
 Until the real screens are built, the app opens on a gallery of static mock
-screens (`lib/design/`) for the owner to review: the library, note list, note
-(preview and edit), search, settings, theme picker, a locked note and an error
-card, for a phone and for a tablet in landscape, with a light, dark or system
-switch. The mock data is fixed (`lib/design/models/data/mock_data.dart`). The
+screens (`lib/design/`) for the owner to review: the library, note list (and
+its loading and empty states), note (preview and edit), search, settings,
+fonts, theme picker, a locked note and an error card, for a phone and for a
+tablet in landscape, with a light, dark or system switch. The mock data is
+fixed (`lib/design/models/data/mock_data.dart`). The Fonts screen is live:
+choosing a font or a text size there restyles every note in the running app
+(`AppearanceBloc`; nothing is saved yet). The
 components the screens are made of (`lib/core/views/widgets/`) are the ones
 the real app will use. The images in `test/design/views/pages/goldens/` are
 the proposal as pictures.
@@ -64,6 +67,8 @@ with no tolerance. Against the stored file, anti-aliasing is ignored
 when a channel moves by more than 32 of 255, and at most 0.1% of the pixels
 may change. The images are generated on one Mac and compared on another, and
 text rasterisation differs slightly between machines. Only one file is kept per screen.
+Shadows are drawn blurred, as on a device (the test binding would otherwise
+draw them as hard slabs).
 
 Update the images after an intended visual change, look at them, and commit
 them:
@@ -122,11 +127,32 @@ Bundled files:
 
 | Files | Used for | Licence |
 | --- | --- | --- |
-| Instrument Sans (`assets/fonts/InstrumentSans-*.ttf`) | Interface and note text | SIL Open Font Licence 1.1 (`assets/fonts/OFL-InstrumentSans.txt`) |
-| JetBrains Mono (`assets/fonts/JetBrainsMono-*.ttf`) | Code | SIL Open Font Licence 1.1 (`assets/fonts/OFL-JetBrainsMono.txt`) |
+| Instrument Sans (`assets/fonts/InstrumentSans-*.ttf`) | Interface; the default note font | SIL Open Font Licence 1.1 (`assets/fonts/OFL-InstrumentSans.txt`) |
+| Inter (`assets/fonts/Inter-Variable*.ttf`) | A note font (sans) | SIL Open Font Licence 1.1 (`assets/fonts/OFL-Inter.txt`) |
+| Source Serif 4 (`assets/fonts/SourceSerif4-Variable*.ttf`) | A note font (serif) | SIL Open Font Licence 1.1 (`assets/fonts/OFL-SourceSerif4.txt`) |
+| Literata (`assets/fonts/Literata-Variable*.ttf`) | A note font (serif) | SIL Open Font Licence 1.1 (`assets/fonts/OFL-Literata.txt`) |
+| JetBrains Mono (`assets/fonts/JetBrainsMono-*.ttf`) | The default code font | SIL Open Font Licence 1.1 (`assets/fonts/OFL-JetBrainsMono.txt`) |
+| IBM Plex Mono (`assets/fonts/IBMPlexMono-*.ttf`) | A code (and note) font | SIL Open Font Licence 1.1 (`assets/fonts/OFL-IBMPlexMono.txt`) |
 | Lucide icons (`assets/icons/lucide/*.svg`) | Icons, the same set as the desktop app | ISC, with some icons MIT (`assets/icons/lucide/LICENSE`) |
 
-The fonts are static instances (weights 400, 500, 600, 700 and italic 400 of
-Instrument Sans; 400 and 700 of JetBrains Mono) cut from the variable fonts
-that Google Fonts publishes, at the default width. The licences are added to
-Flutter's licence page at start-up (`lib/core/utils/license_registration.dart`).
+Instrument Sans and JetBrains Mono are static instances (weights 400, 500,
+600, 700 and italic 400 of Instrument Sans; 400 and 700 of JetBrains Mono) cut
+from the variable fonts that Google Fonts publishes, at the default width.
+Inter, Source Serif 4 and Literata are variable fonts, one file for the roman
+and one for the italic, weight axis (`wght`) kept in full; the optical-size
+axis was dropped with fonttools' instancer (it stays at the font's default)
+to save about 2 MB. Flutter draws the weight a style asks for from the `wght`
+axis, so styles use plain `FontWeight`s. IBM Plex Mono is published as static
+files; 400, 500, 600, 700 and italic 400 are bundled. All are SIL Open Font
+Licence 1.1, taken from `github.com/google/fonts` (`ofl/`); together the new
+families add about 4.2 MB of font files.
+
+Notes are set in the editor, preview and code fonts the person chooses
+(`KansoFonts`), scaled by the text size (`KansoTextSize`: note text only, on
+top of the device's own text size, which is never clamped); the interface
+stays in Instrument Sans. A note font can also be "System", the device's own
+font (San Francisco on iOS, the system font on Android): the one setting that
+looks different per platform on purpose, so no golden uses it.
+
+The licences are added to Flutter's licence page at start-up
+(`lib/core/utils/license_registration.dart`).

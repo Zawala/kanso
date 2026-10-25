@@ -20,8 +20,10 @@ class PreviewTaskList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final body = context.typography.body;
-    final lineHeight = (body.fontSize ?? 15) * (body.height ?? 1.4);
+    final body = context.typography.previewBody;
+    final lineHeight =
+        MediaQuery.textScalerOf(context).scale(body.fontSize ?? 15) *
+        (body.height ?? 1.4);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[

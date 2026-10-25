@@ -11,7 +11,7 @@ import '../../models/data/mock_code_token.dart';
 import '../../models/data/mock_token_kind.dart';
 import '../../utils/token_colors.dart';
 
-/// A fenced code block in JetBrains Mono, coloured with the theme's syntax
+/// A fenced code block in the code font, coloured with the theme's syntax
 /// colours. [fence] adds the ``` lines of the Markdown source.
 class CodeBlock extends StatelessWidget {
   const CodeBlock({

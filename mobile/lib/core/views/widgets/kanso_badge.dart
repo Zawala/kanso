@@ -35,9 +35,11 @@ class KansoBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
+        // A wash of the text colour, not the `fill` token: on a card in a
+        // dark theme `fill` is the card's own colour and would vanish.
         color: accent
             ? colors.accent.withValues(alpha: KansoEffects.wash)
-            : colors.fill,
+            : colors.text.withValues(alpha: KansoEffects.quietWash),
         borderRadius: KansoRadii.smallBorder,
       ),
       child: Text(

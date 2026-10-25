@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../configs/kanso_effects.dart';
 import '../../configs/kanso_icons.dart';
 import '../../configs/kanso_sizes.dart';
 import '../../configs/kanso_spacing.dart';
@@ -50,7 +51,9 @@ class KansoMessageCard extends StatelessWidget {
                   height: KansoSizes.touchTarget + KansoSpacing.xs,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: colors.fill,
+                    color: colors.text.withValues(
+                      alpha: KansoEffects.quietWash,
+                    ),
                     shape: BoxShape.circle,
                   ),
                   child: KansoIcon(

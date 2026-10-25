@@ -9,17 +9,19 @@ import '../../configs/kanso_spacing.dart';
 import '../../utils/context_extensions.dart';
 import 'kanso_divider.dart';
 
-/// Rows in one rounded surface, with hairlines between them and an
-/// optional [title] above.
+/// Rows in one rounded surface, with hairlines between them, an optional
+/// [title] above and an optional [footer] note below.
 class KansoGroupedSection extends StatelessWidget {
   const KansoGroupedSection({
     required this.children,
     this.title,
+    this.footer,
     this.dividerIndent = KansoSpacing.md,
     super.key,
   });
 
   final String? title;
+  final String? footer;
   final List<Widget> children;
 
   /// How far the hairlines are inset from the start.
@@ -28,6 +30,7 @@ class KansoGroupedSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final heading = title;
+    final note = footer;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -41,7 +44,7 @@ class KansoGroupedSection extends StatelessWidget {
           ),
         DecoratedBox(
           decoration: BoxDecoration(
-            color: context.colors.elevated,
+            color: context.groupedSurface,
             borderRadius: KansoRadii.largeBorder,
           ),
           child: ClipRRect(
@@ -56,6 +59,15 @@ class KansoGroupedSection extends StatelessWidget {
             ),
           ),
         ),
+        if (note != null)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(
+              start: KansoSpacing.md,
+              end: KansoSpacing.md,
+              top: KansoSpacing.xs,
+            ),
+            child: Text(note, style: context.typography.meta),
+          ),
       ],
     );
   }

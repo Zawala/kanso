@@ -4,8 +4,8 @@
 
 import 'package:flutter/material.dart';
 
-import '../../../core/configs/kanso_effects.dart';
 import '../../../core/configs/kanso_radii.dart';
+import '../../../core/configs/kanso_shadows.dart';
 import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
@@ -36,13 +36,7 @@ class WikiCompletionPopup extends StatelessWidget {
         color: colors.elevated,
         borderRadius: KansoRadii.mediumBorder,
         border: Border.all(color: colors.divider),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: Colors.black.withValues(alpha: KansoEffects.shadow),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        boxShadow: KansoShadows.floating(Theme.brightnessOf(context)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

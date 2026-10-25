@@ -13,7 +13,7 @@ import 'markdown_inline_text.dart';
 
 /// A note's blocks as Markdown source, as the editor shows them.
 ///
-/// Prose is in Instrument Sans with the marks in the muted `marker` colour,
+/// Prose is in the editor font with the marks in the muted `marker` colour,
 /// headings bold and code spans in the `code` colour. With [typing] a last
 /// paragraph is drawn with the caret after it.
 class NoteSourceBody extends StatelessWidget {
@@ -28,7 +28,7 @@ class NoteSourceBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final syntax = context.syntaxColors;
     final typography = context.typography;
-    final body = typography.body;
+    final body = typography.editorBody;
     TextStyle marked(Color color) => body.copyWith(color: color);
     final typed = typing;
     return Column(
@@ -51,7 +51,9 @@ class NoteSourceBody extends StatelessWidget {
                     TextSpan(text: text),
                   ],
                   style:
-                      (level == 1 ? typography.heading1 : typography.heading2)
+                      (level == 1
+                              ? typography.editorHeading1
+                              : typography.editorHeading2)
                           .copyWith(color: syntax.heading),
                 ),
               ),

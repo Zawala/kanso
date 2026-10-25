@@ -30,8 +30,9 @@ enum KansoButtonVariant {
 
 /// A button with a label and, optionally, an icon before it.
 ///
-/// It is 48 points tall (36 when [compact]) and as wide as its parent allows
-/// when [expanded]. Without [onPressed] it is drawn dimmed.
+/// It is 48 points tall (36 when [compact], with a 44 point target) and as
+/// wide as its parent allows when [expanded]. Without [onPressed] it is
+/// drawn dimmed.
 class KansoButton extends StatelessWidget {
   const KansoButton({
     required this.label,
@@ -55,7 +56,12 @@ class KansoButton extends StatelessWidget {
     final colors = context.colors;
     final (fill, ink) = switch (variant) {
       KansoButtonVariant.primary => (colors.button, colors.buttonText),
-      KansoButtonVariant.secondary => (colors.fill, colors.text),
+      // A wash of the text colour: the `fill` token is the card's own
+      // colour on a dark card, where a button of it would vanish.
+      KansoButtonVariant.secondary => (
+        colors.text.withValues(alpha: KansoEffects.secondaryWash),
+        colors.text,
+      ),
       KansoButtonVariant.quiet => (null, colors.textSecondary),
       KansoButtonVariant.danger => (
         colors.danger.withValues(alpha: KansoEffects.wash),
@@ -64,7 +70,9 @@ class KansoButton extends StatelessWidget {
     };
     final glyph = icon;
     final face = Container(
-      height: compact ? KansoSizes.touchTarget - 8 : KansoSizes.button,
+      height: compact
+          ? KansoSizes.touchTarget - 2 * KansoSpacing.xxs
+          : KansoSizes.button,
       padding: EdgeInsets.symmetric(
         horizontal: compact ? KansoSpacing.md : KansoSpacing.lg,
       ),
@@ -97,7 +105,14 @@ class KansoButton extends StatelessWidget {
       onTap: onPressed,
       child: Opacity(
         opacity: onPressed == null ? KansoEffects.disabled : 1,
-        child: expanded ? SizedBox(width: double.infinity, child: face) : face,
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            vertical: compact ? KansoSpacing.xxs : 0,
+          ),
+          child: expanded
+              ? SizedBox(width: double.infinity, child: face)
+              : face,
+        ),
       ),
     );
   }

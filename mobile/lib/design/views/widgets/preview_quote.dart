@@ -26,7 +26,7 @@ class PreviewQuote extends StatelessWidget {
       ),
       child: MarkdownInlineText(
         text,
-        style: context.typography.body.copyWith(
+        style: context.typography.previewBody.copyWith(
           color: colors.textSecondary,
           fontStyle: FontStyle.italic,
         ),

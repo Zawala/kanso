@@ -7,8 +7,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/core/models/data/appearance_mode.dart';
+import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
+import 'package:kanso/design/views/widgets/loading_list_pane.dart';
 import 'package:kanso/gen/l10n/app_localizations.dart';
 
 Future<AppearanceBloc> _pump(WidgetTester tester) async {
@@ -45,6 +47,11 @@ void main() {
       expect(find.text('Settings'), findsNWidgets(2));
       expect(find.text('Theme picker'), findsNWidgets(2));
       expect(find.text('Error card'), findsNWidgets(2));
+      // The fonts, the loading list and the empty notebook have both.
+      expect(find.text('Fonts'), findsNWidgets(2));
+      expect(find.text('Fonts, scrolled'), findsNWidgets(2));
+      expect(find.text('Note list, loading'), findsNWidgets(2));
+      expect(find.text('Empty notebook'), findsNWidgets(2));
     });
 
     testWidgets('the appearance control dispatches the chosen mode', (
@@ -68,6 +75,32 @@ void main() {
       tester.state<NavigatorState>(find.byType(Navigator)).pop();
       await tester.pumpAndSettle();
       expect(find.text('Design proposal'), findsOneWidget);
+    });
+
+    testWidgets('opens Fonts and a font chosen there restyles the notes', (
+      tester,
+    ) async {
+      final bloc = await _pump(tester);
+      await tester.tap(find.text('Fonts').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Editor font'), findsOneWidget);
+      await tester.tap(find.text('Literata').last);
+      await tester.pumpAndSettle();
+      expect(bloc.state.fonts.previewFont, KansoFontFamily.literata);
+    });
+
+    testWidgets('opens the empty notebook and the loading list', (
+      tester,
+    ) async {
+      await _pump(tester);
+      await tester.tap(find.text('Empty notebook').first);
+      await tester.pumpAndSettle();
+      expect(find.text('No notes in Someday yet'), findsOneWidget);
+      tester.state<NavigatorState>(find.byType(Navigator)).pop();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Note list, loading').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(LoadingListPane), findsOneWidget);
     });
   });
 }

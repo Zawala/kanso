@@ -43,7 +43,7 @@ class AccessoryKey extends StatelessWidget {
               ? KansoIcon(mark, color: colors.textSecondary)
               : Text(
                   glyph!,
-                  style: context.typography.mono.copyWith(
+                  style: context.typography.body.copyWith(
                     color: colors.textSecondary,
                     fontWeight: FontWeight.w700,
                   ),

@@ -13,6 +13,12 @@ enum DesignScreen {
   /// The list of notes.
   noteList(hasTablet: false),
 
+  /// The list of notes while it loads.
+  loadingList(),
+
+  /// A notebook with no notes.
+  emptyNotebook(),
+
   /// A note, rendered.
   notePreview(),
 
@@ -27,6 +33,12 @@ enum DesignScreen {
 
   /// Settings, scrolled to their end.
   settingsScrolled(),
+
+  /// Choosing the fonts of notes and their text size.
+  fonts(),
+
+  /// Choosing fonts, scrolled to the end.
+  fontsScrolled(),
 
   /// Choosing a theme.
   themePicker(),

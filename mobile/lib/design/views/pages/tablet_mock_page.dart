@@ -11,8 +11,12 @@ import '../../../core/views/widgets/kanso_sheet.dart';
 import '../../models/data/design_layout.dart';
 import '../../models/data/design_screen.dart';
 import '../../models/data/mock_data.dart';
+import '../widgets/empty_notebook_pane.dart';
+import '../widgets/fonts_pane.dart';
 import '../widgets/library_pane.dart';
+import '../widgets/loading_list_pane.dart';
 import '../widgets/locked_note_pane.dart';
+import '../widgets/no_note_selected_pane.dart';
 import '../widgets/note_edit_pane.dart';
 import '../widgets/note_list_pane.dart';
 import '../widgets/note_preview_pane.dart';
@@ -41,24 +45,34 @@ class TabletMockPage extends StatelessWidget {
     const tablet = DesignLayout.tablet;
     final scrolled =
         screen == DesignScreen.settingsScrolled ||
+        screen == DesignScreen.fontsScrolled ||
         screen == DesignScreen.themePickerScrolled;
-    final Widget list = screen == DesignScreen.search
-        ? const SearchPane()
-        : NoteListPane(
-            layout: tablet,
-            selectedTitle: screen == DesignScreen.lockedNote
-                ? MockData.lockedNoteTitle
-                : MockData.openNoteTitle,
-          );
+    final Widget list = switch (screen) {
+      DesignScreen.search => const SearchPane(),
+      DesignScreen.loadingList => const LoadingListPane(layout: tablet),
+      DesignScreen.emptyNotebook => const EmptyNotebookPane(layout: tablet),
+      _ => NoteListPane(
+        layout: tablet,
+        selectedTitle: screen == DesignScreen.lockedNote
+            ? MockData.lockedNoteTitle
+            : MockData.openNoteTitle,
+      ),
+    };
     final Widget note = switch (screen) {
       DesignScreen.noteEdit => const NoteEditPane(layout: tablet),
       DesignScreen.lockedNote => const LockedNotePane(layout: tablet),
+      DesignScreen.loadingList ||
+      DesignScreen.emptyNotebook => const NoNoteSelectedPane(),
       _ => const NotePreviewPane(layout: tablet),
     };
     final Widget? overlay = switch (screen) {
       DesignScreen.settings || DesignScreen.settingsScrolled => KansoSheet(
         height: designSize.height - 2 * KansoSizes.touchTarget,
         child: SettingsPane(startAtEnd: scrolled),
+      ),
+      DesignScreen.fonts || DesignScreen.fontsScrolled => KansoSheet(
+        height: designSize.height - 2 * KansoSizes.touchTarget,
+        child: FontsPane(startAtEnd: scrolled),
       ),
       DesignScreen.themePicker ||
       DesignScreen.themePickerScrolled => KansoSheet(
@@ -77,7 +91,11 @@ class TabletMockPage extends StatelessWidget {
           children: <Widget>[
             Positioned.fill(
               child: TabletLayout(
-                library: const LibraryPane(),
+                library: LibraryPane(
+                  selectedNotebook: screen == DesignScreen.emptyNotebook
+                      ? MockData.emptyNotebookName
+                      : null,
+                ),
                 list: list,
                 note: note,
               ),

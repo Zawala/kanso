@@ -11,8 +11,9 @@ import '../../utils/context_extensions.dart';
 /// A section's label above its rows, with optional controls at the end.
 ///
 /// The label is in one quiet style everywhere: the library's "Notebooks",
-/// the list's "Today". With [trailing] controls the header is as tall as a
-/// touch target.
+/// the list's "Today". A header has some air above it, so groups of rows
+/// read as groups; with [trailing] controls it is as tall as a touch
+/// target.
 class KansoSectionHeader extends StatelessWidget {
   const KansoSectionHeader({
     required this.label,
@@ -27,13 +28,16 @@ class KansoSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final plain = trailing.isEmpty;
     return Container(
       constraints: BoxConstraints(
-        minHeight: trailing.isEmpty ? KansoSizes.chip : KansoSizes.touchTarget,
+        minHeight: plain ? KansoSizes.chip : KansoSizes.touchTarget,
       ),
       padding: EdgeInsetsDirectional.only(
         start: horizontalPadding,
         end: horizontalPadding - KansoSpacing.xs,
+        top: plain ? KansoSpacing.sm : 0,
+        bottom: plain ? KansoSpacing.xxs : 0,
       ),
       child: Row(
         children: <Widget>[

@@ -56,14 +56,27 @@ void main() {
       expect((box.decoration! as BoxDecoration).color, isNull);
     });
 
-    testWidgets('is 48 points tall, 36 when compact', (tester) async {
+    testWidgets('is 48 points tall, a 44 point target when compact', (
+      tester,
+    ) async {
       await pumpKanso(tester, KansoButton(label: 'Go', onPressed: () {}));
       expect(tester.getSize(find.byType(KansoButton)).height, 48);
       await pumpKanso(
         tester,
         KansoButton(label: 'Go', compact: true, onPressed: () {}),
       );
-      expect(tester.getSize(find.byType(KansoButton)).height, 36);
+      expect(tester.getSize(find.byType(KansoButton)).height, 44);
+      expect(
+        tester
+            .getSize(
+              find.descendant(
+                of: find.byType(KansoButton),
+                matching: find.byType(Container),
+              ),
+            )
+            .height,
+        36,
+      );
     });
 
     testWidgets('a tap calls onPressed', (tester) async {

@@ -40,7 +40,7 @@ class NotePreviewPane extends StatelessWidget {
               children: <Widget>[
                 Text(
                   MockData.openNoteTitle,
-                  style: context.typography.noteTitle,
+                  style: context.typography.previewTitle,
                 ),
                 const SizedBox(height: KansoSpacing.sm),
                 const NoteMetadataBlock(

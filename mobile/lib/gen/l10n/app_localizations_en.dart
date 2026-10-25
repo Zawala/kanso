@@ -186,9 +186,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDefaultNotebook => 'Default notebook';
 
   @override
-  String get settingsEditorFont => 'Editor font';
-
-  @override
   String get settingsAppearance => 'Appearance';
 
   @override
@@ -199,9 +196,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsTextSize => 'Text size';
-
-  @override
-  String get settingsTextSizeDefault => 'Default';
 
   @override
   String get settingsSync => 'Sync';
@@ -399,4 +393,109 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get screenThemePickerScrolled => 'Theme picker, scrolled';
+
+  @override
+  String get settingsFonts => 'Fonts';
+
+  @override
+  String get settingsBack => 'Back';
+
+  @override
+  String get fontsTitle => 'Fonts';
+
+  @override
+  String get fontsEditorSection => 'Editor font';
+
+  @override
+  String get fontsEditorFooter => 'The font you write in.';
+
+  @override
+  String get fontsPreviewSection => 'Preview font';
+
+  @override
+  String get fontsPreviewFooter => 'The font a note is read in.';
+
+  @override
+  String get fontsCodeSection => 'Code font';
+
+  @override
+  String get fontsCodeFooter => 'Used for code in notes and in theme previews.';
+
+  @override
+  String get fontsSystemName => 'System — your device’s font';
+
+  @override
+  String get fontsSystemShort => 'System';
+
+  @override
+  String get fontsSystemSample => 'San Francisco on iOS, Roboto on Android';
+
+  @override
+  String get fontsSampleText => 'Calm notes, clearly written';
+
+  @override
+  String get fontsSampleCode => 'let note = merge(a, b);';
+
+  @override
+  String get fontsTextSizeSection => 'Text size';
+
+  @override
+  String get fontsTextSizeFooter =>
+      'Changes the text of notes only. The rest of Kanso follows your device’s text size.';
+
+  @override
+  String get fontsTextSizeSample =>
+      'Calm software says less and remembers more. Every device keeps a full copy of your notes, and a change is merged on the others.';
+
+  @override
+  String get textSizeSmall => 'Small';
+
+  @override
+  String get textSizeDefault => 'Default';
+
+  @override
+  String get textSizeLarge => 'Large';
+
+  @override
+  String get textSizeLarger => 'Larger';
+
+  @override
+  String get fontsAdd => 'Add a font…';
+
+  @override
+  String get fontsAddFooter => 'Choose a .ttf or .otf file from Files.';
+
+  @override
+  String get noteModeLabel => 'View mode';
+
+  @override
+  String get noteListLoading => 'Loading notes';
+
+  @override
+  String emptyNotebookTitle(String notebook) {
+    return 'No notes in $notebook yet';
+  }
+
+  @override
+  String get emptyNotebookMessage =>
+      'Notes added here will appear in this list.';
+
+  @override
+  String get noNoteSelectedTitle => 'No note selected';
+
+  @override
+  String get noNoteSelectedMessage =>
+      'Choose a note from the list to read it here.';
+
+  @override
+  String get screenFonts => 'Fonts';
+
+  @override
+  String get screenFontsScrolled => 'Fonts, scrolled';
+
+  @override
+  String get screenLoadingList => 'Note list, loading';
+
+  @override
+  String get screenEmptyNotebook => 'Empty notebook';
 }

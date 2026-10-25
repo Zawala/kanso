@@ -13,6 +13,9 @@ import 'kanso_pressable.dart';
 
 /// A filter chip: a pill with a label, outlined in the accent colour when
 /// [selected].
+///
+/// The pill is 32 points tall; the area that reacts to a touch is 44, so
+/// chips in a wrapping row sit closer than their targets suggest.
 class KansoChip extends StatelessWidget {
   const KansoChip({
     required this.label,
@@ -30,23 +33,30 @@ class KansoChip extends StatelessWidget {
     final colors = context.colors;
     return KansoPressable(
       onTap: onTap,
-      child: Container(
-        height: KansoSizes.chip,
-        padding: const EdgeInsets.symmetric(horizontal: KansoSpacing.sm),
-        decoration: BoxDecoration(
-          color: selected
-              ? colors.accent.withValues(alpha: KansoEffects.wash)
-              : null,
-          borderRadius: KansoRadii.pillBorder,
-          border: Border.all(color: selected ? colors.accent : colors.divider),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          vertical: (KansoSizes.touchTarget - KansoSizes.chip) / 2,
         ),
-        child: Center(
-          widthFactor: 1,
-          child: Text(
-            label,
-            maxLines: 1,
-            style: context.typography.label.copyWith(
-              color: selected ? colors.text : colors.textSecondary,
+        child: Container(
+          height: KansoSizes.chip,
+          padding: const EdgeInsets.symmetric(horizontal: KansoSpacing.sm),
+          decoration: BoxDecoration(
+            color: selected
+                ? colors.accent.withValues(alpha: KansoEffects.wash)
+                : null,
+            borderRadius: KansoRadii.pillBorder,
+            border: Border.all(
+              color: selected ? colors.accent : colors.divider,
+            ),
+          ),
+          child: Center(
+            widthFactor: 1,
+            child: Text(
+              label,
+              maxLines: 1,
+              style: context.typography.label.copyWith(
+                color: selected ? colors.text : colors.textSecondary,
+              ),
             ),
           ),
         ),

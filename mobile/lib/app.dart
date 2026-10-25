@@ -25,8 +25,16 @@ class App extends StatelessWidget {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           onGenerateTitle: (context) => context.l10n.appName,
-          theme: KansoTheme.light,
-          darkTheme: KansoTheme.dark,
+          theme: KansoTheme.build(
+            Brightness.light,
+            fonts: state.fonts,
+            textSize: state.textSize,
+          ),
+          darkTheme: KansoTheme.build(
+            Brightness.dark,
+            fonts: state.fonts,
+            textSize: state.textSize,
+          ),
           themeMode: state.mode.themeMode,
           scrollBehavior: const KansoScrollBehavior(),
           localizationsDelegates: AppLocalizations.localizationsDelegates,

@@ -43,11 +43,13 @@ class NotePreviewBody extends StatelessWidget {
             child: switch (block) {
               MockHeadingBlock(:final level, :final text) => Text(
                 text,
-                style: level == 1 ? typography.heading1 : typography.heading2,
+                style: level == 1
+                    ? typography.previewHeading1
+                    : typography.previewHeading2,
               ),
               MockParagraphBlock(:final text) => MarkdownInlineText(
                 text,
-                style: typography.body,
+                style: typography.previewBody,
               ),
               MockBulletsBlock(:final items) => PreviewBulletList(items: items),
               MockTasksBlock(:final items) => PreviewTaskList(items: items),

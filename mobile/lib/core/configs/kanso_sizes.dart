@@ -10,8 +10,8 @@ abstract final class KansoSizes {
   /// 52: a top or bottom bar, below the safe area.
   static const double barHeight = 52;
 
-  /// 40: a row of the library.
-  static const double sidebarRow = 40;
+  /// 44: a row of the library.
+  static const double sidebarRow = 44;
 
   /// 48: a row of settings.
   static const double settingsRow = 48;
@@ -19,11 +19,14 @@ abstract final class KansoSizes {
   /// 48: a button.
   static const double button = 48;
 
-  /// 40: a search field.
-  static const double searchField = 40;
+  /// 44: a search field.
+  static const double searchField = 44;
 
   /// 32: a filter chip.
   static const double chip = 32;
+
+  /// 56: the button for a new note that floats over a phone's list.
+  static const double floatingButton = 56;
 
   /// 22: a tag chip.
   static const double tagChip = 22;

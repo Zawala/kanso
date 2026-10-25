@@ -68,6 +68,7 @@ abstract final class MockData {
     MockNotebook(name: 'Garden', count: 6, depth: 1),
     MockNotebook(name: 'Reading', count: 9),
     MockNotebook(name: 'Recipes', count: 14),
+    MockNotebook(name: 'Someday', count: 0),
     MockNotebook(name: 'Travel', count: 5),
     MockNotebook(name: 'Work', count: 31),
   ];
@@ -329,7 +330,9 @@ abstract final class MockData {
   ];
 
   static const String defaultNotebook = 'Inbox';
-  static const String editorFont = 'Instrument Sans';
+
+  /// A notebook with no notes, for the empty state.
+  static const String emptyNotebookName = 'Someday';
   static const String currentThemeName = 'Kanso Dark';
   static const String iconSet = 'Lucide';
   static const String signedInAs = 'ngoni';

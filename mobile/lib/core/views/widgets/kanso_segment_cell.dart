@@ -13,6 +13,7 @@ import '../../utils/context_extensions.dart';
 import 'kanso_icon.dart';
 import 'kanso_pressable.dart';
 import 'kanso_segment.dart';
+import 'kanso_segmented.dart';
 
 /// One choice inside a `KansoSegmented`.
 class KansoSegmentCell<T> extends StatelessWidget {
@@ -38,37 +39,41 @@ class KansoSegmentCell<T> extends StatelessWidget {
       semanticLabel: segment.semanticLabel ?? label,
       child: AnimatedContainer(
         duration: KansoMotion.resolve(context, KansoMotion.short),
-        height: KansoSizes.chip,
+        height: KansoSizes.touchTarget - 2 * KansoSegmented.track,
         constraints: BoxConstraints(
-          minWidth: label == null ? KansoSizes.chip + KansoSpacing.xs : 0,
+          minWidth: label == null ? KansoSizes.touchTarget : 0,
         ),
         padding: const EdgeInsets.symmetric(horizontal: KansoSpacing.sm),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active
-              ? colors.accent.withValues(alpha: KansoEffects.matchWash)
+              ? colors.accent.withValues(alpha: KansoEffects.wash)
               : null,
           borderRadius: KansoRadii.smallBorder,
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            if (glyph != null)
-              KansoIcon(
-                glyph,
-                size: KansoSizes.iconSmall + 2,
-                color: active ? colors.accent : ink,
-              ),
-            if (glyph != null && label != null)
-              const SizedBox(width: KansoSpacing.xxs),
-            if (label != null)
-              Text(
-                label,
-                maxLines: 1,
-                style: context.typography.label.copyWith(color: ink),
-              ),
-          ],
+        // At a large device text size a label can outgrow its cell; it
+        // shrinks to fit rather than overflow, and stays as large as fits.
+        child: FittedBox(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              if (glyph != null)
+                KansoIcon(
+                  glyph,
+                  size: KansoSizes.iconSmall + 2,
+                  color: active ? colors.accent : ink,
+                ),
+              if (glyph != null && label != null)
+                const SizedBox(width: KansoSpacing.xxs),
+              if (label != null)
+                Text(
+                  label,
+                  maxLines: 1,
+                  style: context.typography.label.copyWith(color: ink),
+                ),
+            ],
+          ),
         ),
       ),
     );

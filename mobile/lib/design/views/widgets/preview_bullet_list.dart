@@ -17,7 +17,7 @@ class PreviewBulletList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final body = context.typography.body;
+    final body = context.typography.previewBody;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -29,7 +29,11 @@ class PreviewBulletList extends StatelessWidget {
               children: <Widget>[
                 SizedBox(
                   width: KansoSpacing.md,
-                  height: (body.fontSize ?? 15) * (body.height ?? 1.4),
+                  height:
+                      MediaQuery.textScalerOf(
+                        context,
+                      ).scale(body.fontSize ?? 15) *
+                      (body.height ?? 1.4),
                   child: Center(
                     child: Container(
                       width: 5,

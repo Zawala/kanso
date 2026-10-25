@@ -12,13 +12,16 @@ class KansoScrim extends StatelessWidget {
 
   final Widget? child;
 
+  /// The veil's colour on a light theme: dark, with the warmth of paper.
+  static const Color _warmDark = Color(0xFF2B2418);
+
   @override
   Widget build(BuildContext context) {
     final dark = Theme.brightnessOf(context) == Brightness.dark;
     return ColoredBox(
-      color: Colors.black.withValues(
-        alpha: dark ? KansoEffects.scrimDark : KansoEffects.scrimLight,
-      ),
+      color: dark
+          ? Colors.black.withValues(alpha: KansoEffects.scrimDark)
+          : _warmDark.withValues(alpha: KansoEffects.scrimLight),
       child: child,
     );
   }

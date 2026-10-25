@@ -4,8 +4,8 @@
 
 import 'package:flutter/material.dart';
 
-import '../../configs/kanso_effects.dart';
 import '../../configs/kanso_radii.dart';
+import '../../configs/kanso_shadows.dart';
 import '../../configs/kanso_sizes.dart';
 import '../../utils/context_extensions.dart';
 
@@ -33,13 +33,7 @@ class KansoSheet extends StatelessWidget {
         color: context.colors.app,
         borderRadius: KansoRadii.largeBorder,
         border: Border.all(color: context.colors.divider),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: Colors.black.withValues(alpha: KansoEffects.shadow),
-            blurRadius: 40,
-            offset: const Offset(0, 16),
-          ),
-        ],
+        boxShadow: KansoShadows.sheet(Theme.brightnessOf(context)),
       ),
       // A sheet floats clear of the status bar and the home indicator.
       child: MediaQuery.removePadding(

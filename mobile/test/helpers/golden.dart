@@ -5,10 +5,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/configs/kanso_theme.dart';
+import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/utils/kanso_scroll_behavior.dart';
 import 'package:kanso/gen/l10n/app_localizations.dart';
+
+import 'seeded_appearance_bloc.dart';
 
 /// The size of a phone in portrait, in logical pixels (device pixel ratio 3).
 const Size phoneSize = Size(393, 852);
@@ -32,12 +36,15 @@ const EdgeInsets tabletSafeArea = EdgeInsets.only(top: 24, bottom: 20);
 /// with no tolerance, and the test fails with the number of pixels that
 /// differ. The iOS render is then compared with `goldens/<name>.png` (see
 /// `KansoGoldenComparator` for the tolerance against the file). Text scale
-/// is 1 and animations are off. The golden path is relative to the test
-/// file that calls this.
+/// is 1, animations are off and shadows are blurred as on a device. The
+/// golden path is relative to the test file that calls this.
 ///
 /// [safeArea] simulates the device's status bar and home indicator for both
 /// platforms; it defaults to an iPhone's on a phone and an iPad's on a
-/// tablet.
+/// tablet. [appearance] sets the fonts and text size the themes are built
+/// with and the state of the `AppearanceBloc` the page can read; it must not
+/// use the device's own font (`KansoFontFamily.system`), which differs per
+/// platform by design.
 Future<void> expectGoldenOnBothPlatforms(
   WidgetTester tester,
   Widget child, {
@@ -45,6 +52,7 @@ Future<void> expectGoldenOnBothPlatforms(
   required Size size,
   required Brightness brightness,
   EdgeInsets? safeArea,
+  AppearanceState appearance = const AppearanceState(),
 }) async {
   final devicePixelRatio = size.shortestSide < 600 ? 3.0 : 2.0;
   final insets =
@@ -65,12 +73,18 @@ Future<void> expectGoldenOnBothPlatforms(
       ..clearAccessibilityFeaturesTestValue();
   });
 
+  final bloc = SeededAppearanceBloc(appearance);
+  addTearDown(bloc.close);
   final renders = <TargetPlatform, Uint8List>{};
   for (final platform in <TargetPlatform>[
     TargetPlatform.iOS,
     TargetPlatform.android,
   ]) {
     debugDefaultTargetPlatformOverride = platform;
+    // The test binding draws shadows as hard-edged slabs; the pictures
+    // should show them as a device does, blurred. The binding checks the
+    // flag when the test ends, so it is put back after each render.
+    debugDisableShadows = false;
     try {
       final key = ValueKey<String>('golden-${platform.name}');
       await tester.pumpWidget(
@@ -80,8 +94,16 @@ Future<void> expectGoldenOnBothPlatforms(
             debugShowCheckedModeBanner: false,
             // Built per platform: a ThemeData records the platform it was
             // made on, and the shared themes are made once.
-            theme: KansoTheme.light.copyWith(platform: platform),
-            darkTheme: KansoTheme.dark.copyWith(platform: platform),
+            theme: KansoTheme.build(
+              Brightness.light,
+              fonts: appearance.fonts,
+              textSize: appearance.textSize,
+            ).copyWith(platform: platform),
+            darkTheme: KansoTheme.build(
+              Brightness.dark,
+              fonts: appearance.fonts,
+              textSize: appearance.textSize,
+            ).copyWith(platform: platform),
             themeMode: brightness == Brightness.dark
                 ? ThemeMode.dark
                 : ThemeMode.light,
@@ -96,7 +118,10 @@ Future<void> expectGoldenOnBothPlatforms(
                 child: app!,
               );
             },
-            home: child,
+            home: BlocProvider<AppearanceBloc>.value(
+              value: bloc,
+              child: child,
+            ),
           ),
         ),
       );
@@ -117,6 +142,7 @@ Future<void> expectGoldenOnBothPlatforms(
         );
       }
     } finally {
+      debugDisableShadows = true;
       debugDefaultTargetPlatformOverride = null;
     }
   }

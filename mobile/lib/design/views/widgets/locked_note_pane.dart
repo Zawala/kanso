@@ -54,7 +54,7 @@ class LockedNotePane extends StatelessWidget {
                         MockData.lockedNoteTitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: context.typography.noteTitle,
+                        style: context.typography.previewTitle,
                       ),
                     ),
                     const SizedBox(width: KansoSpacing.xs),
@@ -75,25 +75,34 @@ class LockedNotePane extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: gutter),
-                child: KansoMessageCard(
-                  icon: KansoIcons.lock,
-                  title: l10n.lockedTitle,
-                  message: l10n.lockedMessage(lockMinutes),
-                  actions: <Widget>[
-                    KansoButton(
-                      label: l10n.lockedUnlock,
-                      icon: KansoIcons.scanFace,
-                      onPressed: () {},
+            // The card is centred, and scrolls when a large device text size
+            // makes it taller than the room.
+            child: LayoutBuilder(
+              builder: (context, box) => SingleChildScrollView(
+                padding: EdgeInsets.all(gutter),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: box.maxHeight - 2 * gutter,
+                  ),
+                  child: Center(
+                    child: KansoMessageCard(
+                      icon: KansoIcons.lock,
+                      title: l10n.lockedTitle,
+                      message: l10n.lockedMessage(lockMinutes),
+                      actions: <Widget>[
+                        KansoButton(
+                          label: l10n.lockedUnlock,
+                          icon: KansoIcons.scanFace,
+                          onPressed: () {},
+                        ),
+                        KansoButton(
+                          label: l10n.lockedUsePassword,
+                          variant: KansoButtonVariant.secondary,
+                          onPressed: () {},
+                        ),
+                      ],
                     ),
-                    KansoButton(
-                      label: l10n.lockedUsePassword,
-                      variant: KansoButtonVariant.secondary,
-                      onPressed: () {},
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),

@@ -41,7 +41,7 @@ class KansoSettingsRow extends StatelessWidget {
   final VoidCallback? onTap;
 
   /// The widest a value may grow before it is cut short.
-  static const double valueMaxWidth = 170;
+  static const double valueMaxWidth = 220;
 
   @override
   Widget build(BuildContext context) {
@@ -91,9 +91,7 @@ class KansoSettingsRow extends StatelessWidget {
                     note,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: typography.secondary.copyWith(
-                      color: colors.textMuted,
-                    ),
+                    style: typography.secondary,
                   ),
                 ),
               ],

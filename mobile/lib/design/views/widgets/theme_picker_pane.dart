@@ -15,6 +15,7 @@ import '../../../core/views/widgets/kanso_section_header.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../models/data/design_layout.dart';
 import '../../models/data/mock_data.dart';
+import '../../models/data/theme_preview.dart';
 import 'gallery_theme_card.dart';
 import 'installed_theme_card.dart';
 
@@ -40,6 +41,15 @@ class ThemePickerPane extends StatelessWidget {
     final bottom = MediaQuery.paddingOf(context).bottom;
     final columns = layout == DesignLayout.tablet ? 2 : 1;
     const themes = MockData.galleryThemes;
+    // The theme in use comes first, so its check is the first thing seen.
+    final installed = <ThemePreview>[
+      ...MockData.installedThemes.where(
+        (theme) => theme.name == MockData.currentThemeName,
+      ),
+      ...MockData.installedThemes.where(
+        (theme) => theme.name != MockData.currentThemeName,
+      ),
+    ];
     return ColoredBox(
       color: colors.app,
       child: Column(
@@ -74,8 +84,7 @@ class ThemePickerPane extends StatelessWidget {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          for (final theme
-                              in MockData.installedThemes) ...<Widget>[
+                          for (final theme in installed) ...<Widget>[
                             InstalledThemeCard(
                               theme: theme,
                               current: theme.name == MockData.currentThemeName,

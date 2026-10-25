@@ -1,0 +1,87 @@
+// Kanso — app_test.dart
+// Created 2026-10-25.
+// Licensed under AGPL-3.0-or-later (see LICENSE).
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:kanso/app.dart';
+import 'package:kanso/core/configs/kanso_typography.dart';
+import 'package:kanso/core/models/data/kanso_font_family.dart';
+import 'package:kanso/core/models/data/kanso_text_size.dart';
+import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/design/views/pages/design_gallery_page.dart';
+
+Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
+  final bloc = AppearanceBloc();
+  addTearDown(bloc.close);
+  tester.view
+    ..physicalSize = const Size(393, 2400)
+    ..devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    BlocProvider<AppearanceBloc>.value(value: bloc, child: const App()),
+  );
+  return bloc;
+}
+
+void main() {
+  Future<KansoTypography> typography(WidgetTester tester) async {
+    await tester.pumpAndSettle();
+    return Theme.of(
+      tester.element(find.byType(DesignGalleryPage)),
+    ).extension<KansoTypography>()!;
+  }
+
+  group('App', () {
+    testWidgets('builds its themes from the fonts and text size chosen', (
+      tester,
+    ) async {
+      final bloc = await pumpApp(tester);
+      var styles = await typography(tester);
+      expect(styles.previewBody.fontFamily, 'Instrument Sans');
+      expect(styles.previewBody.fontSize, 15);
+
+      bloc
+        ..add(
+          const AppearanceEvent.previewFontChanged(
+            KansoFontFamily.sourceSerif4,
+          ),
+        )
+        ..add(const AppearanceEvent.textSizeChanged(KansoTextSize.large));
+      styles = await typography(tester);
+      expect(styles.previewBody.fontFamily, 'Source Serif 4');
+      expect(styles.previewBody.fontSize, closeTo(15 * 1.15, 1e-9));
+      // The interface is Kanso's own, whatever the notes are set in.
+      expect(styles.body.fontFamily, 'Instrument Sans');
+      expect(styles.body.fontSize, 15);
+    });
+
+    testWidgets('the dark theme follows the same choices', (tester) async {
+      final bloc = await pumpApp(tester);
+      bloc.add(
+        const AppearanceEvent.codeFontChanged(KansoFontFamily.ibmPlexMono),
+      );
+      await tester.pumpAndSettle();
+      final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+      expect(
+        app.darkTheme!.extension<KansoTypography>()!.mono.fontFamily,
+        'IBM Plex Mono',
+      );
+      expect(
+        app.theme!.extension<KansoTypography>()!.mono.fontFamily,
+        'IBM Plex Mono',
+      );
+    });
+
+    testWidgets("does not clamp the device's text scale", (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2.5;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await pumpApp(tester);
+      final scale = MediaQuery.textScalerOf(
+        tester.element(find.byType(DesignGalleryPage)),
+      ).scale(10);
+      expect(scale, 25);
+    });
+  });
+}
