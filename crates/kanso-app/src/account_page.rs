@@ -45,9 +45,6 @@ use crate::theme::Colors;
 use crate::workspace::AppState;
 use crate::zoom::px;
 
-/// How wide the forms' fields are, beside their labels.
-const FIELD_WIDTH: f32 = 280.;
-
 /// Which form the signed-out page shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SignedOutForm {
@@ -794,31 +791,55 @@ impl AccountPage {
             .unwrap_or_default()
     }
 
-    /// One of a form's rows: a label, a hint, and the field on the right.
-    fn field_row(
+    /// A field in the sign-in column: its label above (with `aside` at the
+    /// label's right, such as "Forgot your password?"), its hint below.
+    #[allow(clippy::too_many_arguments, reason = "one field's whole description")]
+    fn stacked_field(
         &self,
-        icon: Lucide,
         label: &'static str,
         hint: Option<&'static str>,
         input: &Entity<InputState>,
         selector: &'static str,
         disabled: bool,
-    ) -> Row {
-        let row = Row::new(icon, label);
-        let row = match hint {
-            Some(hint) => row.detail(hint),
-            None => row,
-        };
-        row.trailing(
-            div()
-                .w(px(FIELD_WIDTH))
-                .debug_selector(move || selector.into())
-                .child(
-                    Input::new(input)
-                        .disabled(disabled)
-                        .when(self.is_password(input), |input| input.mask_toggle()),
-                ),
-        )
+        aside: Option<AnyElement>,
+        colors: &Colors,
+    ) -> AnyElement {
+        v_flex()
+            .gap(px(6.))
+            .child(
+                h_flex()
+                    .min_h(px(22.))
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(colors.text)
+                            .child(label),
+                    )
+                    .children(aside),
+            )
+            .child(
+                div()
+                    .w_full()
+                    .debug_selector(move || selector.into())
+                    .child(
+                        Input::new(input)
+                            .disabled(disabled)
+                            .when(self.is_password(input), |input| input.mask_toggle()),
+                    ),
+            )
+            .when_some(hint, |el, hint| {
+                el.child(
+                    div()
+                        .text_size(px(12.))
+                        .line_height(px(16.))
+                        .text_color(colors.text_secondary)
+                        .child(hint),
+                )
+            })
+            .into_any_element()
     }
 
     /// Whether `input` is one of the password fields, which can be shown.
@@ -828,36 +849,54 @@ impl AccountPage {
             .any(|field| field.entity_id() == input.entity_id())
     }
 
-    /// The Server row: the forms' server, and the way to change it.
-    fn server_row(&self, disabled: bool, cx: &App) -> Row {
+    /// The forms' server, quietly at the column's foot, and the way to
+    /// change it.
+    fn server_line(&self, disabled: bool, colors: &Colors, cx: &App) -> AnyElement {
         let server = cx.global::<AppState>().config.sync.server.clone();
         let custom = server.is_some();
-        let mut controls = vec![
-            Button::new("use-different-server")
-                .outline()
-                .small()
-                .label("Use a different server…")
-                .disabled(disabled)
-                .debug_selector(|| "use-different-server".into())
-                .on_click(|_, window, cx| {
-                    server_dialog(window, cx);
-                })
-                .into_any_element(),
-        ];
-        if custom {
-            controls.push(
-                Button::new("use-default-server")
+        h_flex()
+            .pt(px(12.))
+            .border_t_1()
+            .border_color(colors.divider)
+            .gap(px(6.))
+            .items_center()
+            .child(
+                Icon::new(Lucide::Server)
+                    .size(px(13.))
+                    .text_color(colors.text_muted),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_size(px(12.))
+                    .text_color(colors.text_secondary)
+                    .debug_selector(|| "account-server".into())
+                    .child(server_label(server.as_deref())),
+            )
+            .child(
+                Button::new("use-different-server")
                     .ghost()
-                    .small()
-                    .label("Use the default server")
+                    .xsmall()
+                    .label("Change…")
                     .disabled(disabled)
-                    .on_click(|_, _, cx| account_flow::set_server(None, cx))
-                    .into_any_element(),
-            );
-        }
-        Row::new(Lucide::Server, "Server")
-            .value(server_label(server.as_deref()))
-            .trailing_all(controls)
+                    .debug_selector(|| "use-different-server".into())
+                    .on_click(|_, window, cx| {
+                        server_dialog(window, cx);
+                    }),
+            )
+            .when(custom, |el| {
+                el.child(
+                    Button::new("use-default-server")
+                        .ghost()
+                        .xsmall()
+                        .label("Use the default")
+                        .disabled(disabled)
+                        .on_click(|_, _, cx| account_flow::set_server(None, cx)),
+                )
+            })
+            .into_any_element()
     }
 
     fn signed_out_page(
@@ -898,7 +937,12 @@ impl AccountPage {
             |_| String::new(),
             None,
         );
-        let mut page = vec![status_row(&status, Self::tooltip(cx), None, colors)];
+        // The forms carry their own heading; the landing page and an ended
+        // session (whose reason it says) keep the status row.
+        let mut page = Vec::new();
+        if form == SignedOutForm::None || matches!(account, AccountState::SessionEnded { .. }) {
+            page.push(status_row(&status, Self::tooltip(cx), None, colors));
+        }
         if let Some(wait) = services.provider_wait.as_ref() {
             page.push(provider_wait_view(wait, colors, cx));
         }
@@ -973,97 +1017,115 @@ impl AccountPage {
             page.extend(self.passkey_form_page(passkey_form, signup, busy, task, cx));
             return page;
         }
-        let (title, rows, submit) = match form {
+        let pw = |hint: &'static str| Some(hint);
+        let (heading, fields, submit): (&'static str, Vec<AnyElement>, &'static str) = match form {
             SignedOutForm::CreateAccount => (
-                "Create account",
+                words::CREATE_HEADING,
                 vec![
-                    self.field_row(
-                        Lucide::User,
+                    self.stacked_field(
                         "Username",
-                        Some("3–32 lowercase letters, digits, - or _"),
+                        pw("3–32 lowercase letters, digits, - or _"),
                         &self.username,
                         "account-username",
                         busy,
+                        None,
+                        colors,
                     ),
-                    self.field_row(
-                        Lucide::KeyRound,
+                    self.stacked_field(
                         "Password",
-                        Some("At least 12 characters. A few random words work well."),
+                        pw("At least 12 characters. A few random words work well."),
                         &self.password,
                         "account-password",
                         busy,
+                        None,
+                        colors,
                     ),
-                    self.field_row(
-                        Lucide::KeyRound,
+                    self.stacked_field(
                         "Confirm password",
                         None,
                         &self.confirm,
                         "account-confirm",
                         busy,
+                        None,
+                        colors,
                     ),
-                    self.server_row(busy, cx),
                 ],
                 "Create account",
             ),
             SignedOutForm::SignIn => (
-                "Sign in",
+                words::SIGN_IN_HEADING,
                 vec![
-                    self.field_row(
-                        Lucide::User,
+                    self.stacked_field(
                         "Username",
                         None,
                         &self.username,
                         "account-username",
                         busy,
+                        None,
+                        colors,
                     ),
-                    self.field_row(
-                        Lucide::KeyRound,
+                    self.stacked_field(
                         "Password",
                         None,
                         &self.password,
                         "account-password",
                         busy,
+                        password_available.then(|| {
+                            Button::new("account-forgot")
+                                .ghost()
+                                .xsmall()
+                                .label("Forgot your password?")
+                                .disabled(busy)
+                                .debug_selector(|| "account-forgot".into())
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.open_form(SignedOutForm::Recover, window, cx)
+                                }))
+                                .into_any_element()
+                        }),
+                        colors,
                     ),
-                    self.server_row(busy, cx),
                 ],
                 "Sign in",
             ),
             SignedOutForm::Recover | SignedOutForm::None => (
-                "Forgot your password?",
+                words::RECOVER_HEADING,
                 vec![
-                    self.field_row(
-                        Lucide::User,
+                    self.stacked_field(
                         "Username",
                         None,
                         &self.username,
                         "account-username",
                         busy,
+                        None,
+                        colors,
                     ),
-                    self.field_row(
-                        Lucide::FileKey,
+                    self.stacked_field(
                         "Recovery key",
-                        Some("The key Kanso gave you when you made the account."),
+                        pw("The key Kanso gave you when you made the account."),
                         &self.recovery_key,
                         "account-recovery-key",
                         busy,
+                        None,
+                        colors,
                     ),
-                    self.field_row(
-                        Lucide::KeyRound,
+                    self.stacked_field(
                         "New password",
-                        Some("At least 12 characters. A few random words work well."),
+                        pw("At least 12 characters. A few random words work well."),
                         &self.password,
                         "account-password",
                         busy,
+                        None,
+                        colors,
                     ),
-                    self.field_row(
-                        Lucide::KeyRound,
+                    self.stacked_field(
                         "Confirm",
                         None,
                         &self.confirm,
                         "account-confirm",
                         busy,
+                        None,
+                        colors,
                     ),
-                    self.server_row(busy, cx),
                 ],
                 "Set new password",
             ),
@@ -1077,13 +1139,12 @@ impl AccountPage {
             && provider_signup.is_none()
             && has_methods
             && !self.password_form;
+        let creating = form == SignedOutForm::CreateAccount;
+        let closed_to_new = creating && !matches!(signup.as_ref(), Some(SignupState::Open));
         let mut methods: Vec<AnyElement> = Vec::new();
         if matches!(form, SignedOutForm::SignIn | SignedOutForm::CreateAccount)
-            && !(form == SignedOutForm::CreateAccount
-                && (provider_signup.is_some() || self.password_form))
+            && !(creating && (provider_signup.is_some() || self.password_form))
         {
-            let creating = form == SignedOutForm::CreateAccount;
-            let closed_to_new = creating && !matches!(signup.as_ref(), Some(SignupState::Open));
             if offer.platform {
                 let (label, selector) = if creating {
                     (words::CREATE_WITH_PASSKEY, "account-passkey-create")
@@ -1091,12 +1152,8 @@ impl AccountPage {
                     (words::CONTINUE_WITH_PASSKEY, "account-passkey")
                 };
                 methods.push(
-                    Button::new(selector)
-                        .outline()
-                        .icon(Lucide::FingerprintPattern)
-                        .label(label)
+                    method_button(selector, Lucide::FingerprintPattern, label)
                         .disabled(busy || closed_to_new)
-                        .debug_selector(move || selector.into())
                         .on_click(cx.listener(move |this, _, window, cx| {
                             if creating {
                                 let form = PasskeyForm {
@@ -1122,12 +1179,8 @@ impl AccountPage {
                         (words::CONTINUE_WITH_SECURITY_KEY, "account-security-key")
                     };
                     methods.push(
-                        Button::new(selector)
-                            .outline()
-                            .icon(Lucide::Usb)
-                            .label(label)
+                        method_button(selector, Lucide::Usb, label)
                             .disabled(busy || closed_to_new)
-                            .debug_selector(move || selector.into())
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 let form = PasskeyForm {
                                     creating,
@@ -1147,13 +1200,7 @@ impl AccountPage {
                                 .size(px(16.))
                                 .text_color(colors.text_secondary),
                         )
-                        .child(
-                            div()
-                                .text_size(px(13.))
-                                .line_height(px(18.))
-                                .text_color(colors.text_secondary)
-                                .child(words::CONNECT_SECURITY_KEY),
-                        )
+                        .child(quiet_text(words::CONNECT_SECURITY_KEY, colors))
                         .into_any_element(),
                 ),
                 SecurityKeyOffer::None => {}
@@ -1180,26 +1227,19 @@ impl AccountPage {
                     ),
                     _ => continue,
                 };
-                let label = if form == SignedOutForm::SignIn {
-                    sign_in_label
-                } else {
+                let label = if creating {
                     create_label
+                } else {
+                    sign_in_label
                 };
                 let provider = provider.clone();
                 methods.push(
-                    Button::new(SharedString::from(selector))
-                        .outline()
-                        .icon(icon)
-                        .label(label)
-                        .disabled(
-                            busy || (form == SignedOutForm::CreateAccount
-                                && !matches!(signup.as_ref(), Some(SignupState::Open))),
-                        )
-                        .debug_selector(move || selector.into())
+                    method_button(selector, icon, label)
+                        .disabled(busy || closed_to_new)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             let progress = account_flow::start_provider(
                                 provider.clone(),
-                                form == SignedOutForm::CreateAccount,
+                                creating,
                                 window.window_handle(),
                                 cx,
                             );
@@ -1210,71 +1250,50 @@ impl AccountPage {
             }
             if creating && password_available {
                 methods.push(
-                    Button::new("account-username-create")
-                        .outline()
-                        .icon(Lucide::User)
-                        .label(words::CREATE_WITH_USERNAME)
-                        .disabled(busy || closed_to_new)
-                        .debug_selector(|| "account-username-create".into())
-                        .on_click(
-                            cx.listener(|this, _, window, cx| {
-                                this.choose_password_form(window, cx)
-                            }),
-                        )
-                        .into_any_element(),
+                    method_button(
+                        "account-username-create",
+                        Lucide::User,
+                        words::CREATE_WITH_USERNAME,
+                    )
+                    .disabled(busy || closed_to_new)
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.choose_password_form(window, cx)),
+                    )
+                    .into_any_element(),
                 );
             }
         }
-        if !methods.is_empty() {
-            // One column of equal buttons, not the page's full width.
-            page.push(
-                v_flex()
-                    .mt(px(18.))
-                    .w(px(300.))
-                    .gap(px(8.))
-                    .children(methods)
-                    .into_any_element(),
-            );
-        }
+
+        let error = self.error.clone().map(|error| error_text(error, colors));
         if choosing {
-            page.push(
-                v_flex()
-                    .mt(px(14.))
-                    .gap(px(8.))
+            let mut column = vec![
+                auth_heading(words::CREATE_HEADING, colors),
+                quiet_text(sign_up_line(self.notes, signup), colors),
+            ];
+            column.push(v_flex().gap(px(8.)).children(methods).into_any_element());
+            column.extend(error);
+            column.push(
+                h_flex()
                     .child(
-                        div()
-                            .text_size(px(13.))
-                            .line_height(px(18.))
-                            .text_color(colors.text_secondary)
-                            .child(sign_up_line(self.notes, signup)),
-                    )
-                    .when_some(self.error.clone(), |el, error| {
-                        el.child(
-                            div()
-                                .debug_selector(|| "account-error".into())
-                                .text_size(px(13.))
-                                .line_height(px(18.))
-                                .text_color(colors.danger)
-                                .child(error),
-                        )
-                    })
-                    .child(
-                        h_flex().mt(px(6.)).child(
-                            Button::new("account-cancel")
-                                .label("Cancel")
-                                .disabled(busy)
-                                .debug_selector(|| "account-cancel".into())
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.open_form(SignedOutForm::None, window, cx)
-                                })),
-                        ),
+                        Button::new("account-cancel")
+                            .ghost()
+                            .small()
+                            .label("Cancel")
+                            .disabled(busy)
+                            .debug_selector(|| "account-cancel".into())
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_form(SignedOutForm::None, window, cx)
+                            })),
                     )
                     .into_any_element(),
             );
+            column.push(self.server_line(busy, colors, cx));
+            page.push(auth_column(column));
             return page;
         }
 
-        if form == SignedOutForm::CreateAccount
+        let mut column = Vec::new();
+        let fields = if form == SignedOutForm::CreateAccount
             && let Some(provider_signup) = &provider_signup
         {
             self.username.update(cx, |input, cx| {
@@ -1282,55 +1301,52 @@ impl AccountPage {
                     input.set_value(provider_signup.suggested_username.clone(), window, cx);
                 }
             });
-            page.push(
-                div()
-                    .mb(px(8.))
-                    .text_size(px(13.))
-                    .line_height(px(18.))
-                    .text_color(colors.text_secondary)
-                    .child("You can change this before creating the account.")
-                    .into_any_element(),
-            );
-            page.push(section(
-                title,
-                vec![
-                    self.field_row(
-                        Lucide::User,
-                        "Username",
-                        Some("3–32 lowercase letters, digits, - or _"),
-                        &self.username,
-                        "account-username",
-                        busy,
-                    ),
-                    self.server_row(busy, cx),
-                ],
+            column.push(auth_heading(words::PICK_USERNAME_HEADING, colors));
+            column.push(quiet_text(
+                "You can change this before creating the account.",
                 colors,
             ));
+            vec![self.stacked_field(
+                "Username",
+                pw("3–32 lowercase letters, digits, - or _"),
+                &self.username,
+                "account-username",
+                busy,
+                None,
+                colors,
+            )]
         } else {
-            let rows = if password_available || form == SignedOutForm::Recover {
-                rows
+            column.push(auth_heading(heading, colors));
+            if form == SignedOutForm::Recover {
+                column.push(quiet_text(
+                    "The recovery key you use stops working; Kanso gives you a new one.",
+                    colors,
+                ));
+            }
+            if password_available || form == SignedOutForm::Recover {
+                fields
             } else {
-                rows.into_iter().last().into_iter().collect()
-            };
-            // Under the methods, the username form says it's the other way.
-            let title = if form == SignedOutForm::SignIn && has_methods && password_available {
-                "Or sign in with your username"
-            } else {
-                title
-            };
-            page.push(section(title, rows, colors));
+                Vec::new()
+            }
+        };
+        let has_fields = !fields.is_empty();
+        if !methods.is_empty() {
+            column.push(v_flex().gap(px(8.)).children(methods).into_any_element());
+            if has_fields {
+                column.push(or_divider(colors));
+            }
+        }
+        if has_fields {
+            column.push(v_flex().gap(px(14.)).children(fields).into_any_element());
         }
 
         // Under the form: what will happen, the error, and the buttons.
         // Only a full server blocks the form: "closed" may hide a reservation.
         let closed = matches!(signup, Some(SignupState::Full));
-        let line = match form {
-            SignedOutForm::CreateAccount => Some(sign_up_line(self.notes, signup)),
-            SignedOutForm::Recover => Some(
-                "The recovery key you use stops working; Kanso gives you a new one.".to_owned(),
-            ),
-            _ => None,
-        };
+        if form == SignedOutForm::CreateAccount {
+            column.push(quiet_text(sign_up_line(self.notes, signup), colors));
+        }
+        column.extend(error);
         let running_here = task.is_some_and(|task| Some(task.kind) == form.task());
         let spinning = busy && (running_here || self.waiting);
         let label = match task {
@@ -1345,91 +1361,59 @@ impl AccountPage {
             && self.password_form
             && has_methods
             && provider_signup.is_none();
-        let footer = h_flex()
-            .mt(px(14.))
-            .gap_2()
-            .items_center()
-            .child(
-                // A row, so the link keeps its own width at the left.
-                h_flex().flex_1().min_w_0().when(
-                    form == SignedOutForm::SignIn && password_available,
-                    |el| {
-                        el.child(
-                            Button::new("account-forgot")
-                                .ghost()
-                                .small()
-                                .label("Forgot your password?")
-                                .disabled(busy)
-                                .debug_selector(|| "account-forgot".into())
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.open_form(SignedOutForm::Recover, window, cx)
-                                })),
-                        )
-                    },
-                ),
-            )
-            .when(!(ended && form == SignedOutForm::SignIn), |el| {
-                el.child(
-                    Button::new("account-cancel")
-                        .label("Cancel")
-                        .disabled(busy)
-                        .debug_selector(|| "account-cancel".into())
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            // From the password form, back to the methods.
-                            if back_to_methods {
-                                this.password_form = false;
-                                this.error = None;
-                                this.clear_secrets(window, cx);
-                                cx.notify();
-                            } else {
-                                this.open_form(SignedOutForm::None, window, cx)
-                            }
-                        })),
-                )
-            })
-            .when(
-                password_available || form == SignedOutForm::Recover || provider_signup.is_some(),
-                |el| {
-                    el.child(
-                        Button::new("account-submit")
-                            .primary()
-                            .label(label)
-                            // The spinner takes the icon's place; a loading button
-                            // ignores clicks, and keeps its colors so the step reads.
-                            .when(spinning, |button| button.icon(Lucide::RefreshCcw))
-                            .loading(spinning)
-                            .disabled(!ready && !spinning)
-                            .debug_selector(|| "account-submit".into())
-                            .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))),
-                    )
-                },
+        if password_available || form == SignedOutForm::Recover || provider_signup.is_some() {
+            column.push(
+                Button::new("account-submit")
+                    .primary()
+                    .w_full()
+                    .label(label)
+                    // The spinner takes the icon's place; a loading button
+                    // ignores clicks, and keeps its colors so the step reads.
+                    .when(spinning, |button| button.icon(Lucide::RefreshCcw))
+                    .loading(spinning)
+                    .disabled(!ready && !spinning)
+                    .debug_selector(|| "account-submit".into())
+                    .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx)))
+                    .into_any_element(),
             );
-        page.push(
-            v_flex()
-                .mt(px(14.))
-                .gap(px(8.))
-                .when_some(line, |el, line| {
-                    el.child(
-                        div()
-                            .text_size(px(13.))
-                            .line_height(px(18.))
-                            .text_color(colors.text_secondary)
-                            .child(line),
+        }
+        if !(ended && form == SignedOutForm::SignIn) {
+            let cancel = if back_to_methods {
+                "Other ways to create an account"
+            } else if form == SignedOutForm::Recover {
+                "Back to sign in"
+            } else {
+                "Cancel"
+            };
+            column.push(
+                h_flex()
+                    .justify_center()
+                    .child(
+                        Button::new("account-cancel")
+                            .ghost()
+                            .small()
+                            .label(cancel)
+                            .disabled(busy)
+                            .debug_selector(|| "account-cancel".into())
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                // From the password form, back to the methods.
+                                if back_to_methods {
+                                    this.password_form = false;
+                                    this.error = None;
+                                    this.clear_secrets(window, cx);
+                                    cx.notify();
+                                } else if form == SignedOutForm::Recover {
+                                    this.open_form(SignedOutForm::SignIn, window, cx)
+                                } else {
+                                    this.open_form(SignedOutForm::None, window, cx)
+                                }
+                            })),
                     )
-                })
-                .when_some(self.error.clone(), |el, error| {
-                    el.child(
-                        div()
-                            .debug_selector(|| "account-error".into())
-                            .text_size(px(13.))
-                            .line_height(px(18.))
-                            .text_color(colors.danger)
-                            .child(error),
-                    )
-                })
-                .child(footer)
-                .into_any_element(),
-        );
+                    .into_any_element(),
+            );
+        }
+        column.push(self.server_line(busy, colors, cx));
+        page.push(auth_column(column));
         page
     }
 
@@ -1451,42 +1435,37 @@ impl AccountPage {
             (false, false) => words::CONTINUE_WITH_PASSKEY,
         };
         let no_key = form.security_key && cx.global::<Services>().security_keys.is_empty();
-        let mut rows = vec![
-            self.field_row(
-                Lucide::User,
+        let mut fields = vec![
+            self.stacked_field(
                 "Username",
                 form.creating
                     .then_some("3–32 lowercase letters, digits, - or _"),
                 &self.username,
                 "account-username",
                 busy,
+                None,
+                colors,
             ),
         ];
         if form.security_key {
-            rows.push(self.field_row(
-                Lucide::KeyRound,
+            fields.push(self.stacked_field(
                 "PIN",
                 Some(words::SECURITY_KEY_PIN_HINT),
                 &self.pin,
                 "account-security-key-pin",
                 busy,
+                None,
+                colors,
             ));
         }
-        rows.push(self.server_row(busy, cx));
         let note = match (form.creating, form.security_key) {
             (true, _) => words::PASSKEY_USERNAME_NOTE,
             (false, _) => words::SECURITY_KEY_SIGN_IN_NOTE,
         };
-        let quiet = |text: SharedString| {
-            div()
-                .text_size(px(13.))
-                .line_height(px(18.))
-                .text_color(colors.text_secondary)
-                .child(text)
-        };
-        let mut page = vec![
-            quiet(note.into()).mt(px(14.)).mb(px(8.)).into_any_element(),
-            section(title, rows, colors),
+        let mut column = vec![
+            auth_heading(title, colors),
+            quiet_text(note, colors),
+            v_flex().gap(px(14.)).children(fields).into_any_element(),
         ];
         let closed = matches!(signup, Some(SignupState::Full));
         let lines: Vec<SharedString> = [
@@ -1498,6 +1477,8 @@ impl AccountPage {
         .into_iter()
         .flatten()
         .collect();
+        column.extend(lines.into_iter().map(|line| quiet_text(line, colors)));
+        column.extend(self.error.clone().map(|error| error_text(error, colors)));
         let kind = if form.creating {
             TaskKind::SignUp
         } else {
@@ -1514,49 +1495,36 @@ impl AccountPage {
             && !no_key
             && !Self::value(&self.username, cx).trim().is_empty()
             && !(form.creating && closed);
-        let footer = h_flex()
-            .mt(px(14.))
-            .gap_2()
-            .items_center()
-            .child(h_flex().flex_1().min_w_0())
-            .child(
-                Button::new("account-passkey-back")
-                    .label("Cancel")
-                    .disabled(busy)
-                    .debug_selector(|| "account-passkey-back".into())
-                    .on_click(
-                        cx.listener(|this, _, window, cx| this.close_passkey_form(window, cx)),
-                    ),
-            )
-            .child(
-                Button::new("account-passkey-submit")
-                    .primary()
-                    .label(label)
-                    .when(spinning, |button| button.icon(Lucide::RefreshCcw))
-                    .loading(spinning)
-                    .disabled(!ready && !spinning)
-                    .debug_selector(|| "account-passkey-submit".into())
-                    .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))),
-            );
-        page.push(
-            v_flex()
-                .mt(px(14.))
-                .gap(px(8.))
-                .children(lines.into_iter().map(quiet))
-                .when_some(self.error.clone(), |el, error| {
-                    el.child(
-                        div()
-                            .debug_selector(|| "account-error".into())
-                            .text_size(px(13.))
-                            .line_height(px(18.))
-                            .text_color(colors.danger)
-                            .child(error),
-                    )
-                })
-                .child(footer)
+        column.push(
+            Button::new("account-passkey-submit")
+                .primary()
+                .w_full()
+                .label(label)
+                .when(spinning, |button| button.icon(Lucide::RefreshCcw))
+                .loading(spinning)
+                .disabled(!ready && !spinning)
+                .debug_selector(|| "account-passkey-submit".into())
+                .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx)))
                 .into_any_element(),
         );
-        page
+        column.push(
+            h_flex()
+                .justify_center()
+                .child(
+                    Button::new("account-passkey-back")
+                        .ghost()
+                        .small()
+                        .label("Cancel")
+                        .disabled(busy)
+                        .debug_selector(|| "account-passkey-back".into())
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.close_passkey_form(window, cx)),
+                        ),
+                )
+                .into_any_element(),
+        );
+        column.push(self.server_line(busy, colors, cx));
+        vec![auth_column(column)]
     }
 
     fn key_screen(&mut self, pending: &PendingKey, cx: &mut Context<Self>) -> Vec<AnyElement> {
@@ -1917,6 +1885,77 @@ impl AccountPage {
 
 /// The wait for a provider: GitHub's code, or "Waiting for Apple sign-in…",
 /// with [Cancel]. Shown on the signed-out page and over Sign-in methods.
+/// How wide the sign-in column is.
+const AUTH_COLUMN: f32 = 360.;
+
+/// The signed-out forms' one column: heading, ways in, fields, button.
+fn auth_column(children: Vec<AnyElement>) -> AnyElement {
+    v_flex()
+        .mt(px(20.))
+        .w(px(AUTH_COLUMN))
+        .max_w_full()
+        .gap(px(16.))
+        .children(children)
+        .into_any_element()
+}
+
+fn auth_heading(text: &'static str, colors: &Colors) -> AnyElement {
+    div()
+        .text_size(px(20.))
+        .line_height(px(26.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(colors.text)
+        .debug_selector(|| "account-form-heading".into())
+        .child(text)
+        .into_any_element()
+}
+
+fn quiet_text(text: impl Into<SharedString>, colors: &Colors) -> AnyElement {
+    div()
+        .text_size(px(13.))
+        .line_height(px(18.))
+        .text_color(colors.text_secondary)
+        .child(text.into())
+        .into_any_element()
+}
+
+fn error_text(text: impl Into<SharedString>, colors: &Colors) -> AnyElement {
+    div()
+        .debug_selector(|| "account-error".into())
+        .text_size(px(13.))
+        .line_height(px(18.))
+        .text_color(colors.danger)
+        .child(text.into())
+        .into_any_element()
+}
+
+/// One way in: a full-width outlined button with its mark at the left.
+fn method_button(selector: &'static str, icon: Lucide, label: &'static str) -> Button {
+    Button::new(SharedString::from(selector))
+        .outline()
+        .w_full()
+        .icon(icon)
+        .label(label)
+        .debug_selector(move || selector.into())
+}
+
+/// The rule between the ways in and the username form.
+fn or_divider(colors: &Colors) -> AnyElement {
+    let rule = || div().flex_1().h(px(1.)).bg(colors.divider);
+    h_flex()
+        .gap(px(10.))
+        .items_center()
+        .child(rule())
+        .child(
+            div()
+                .text_size(px(12.))
+                .text_color(colors.text_muted)
+                .child("or"),
+        )
+        .child(rule())
+        .into_any_element()
+}
+
 fn provider_wait_view(
     wait: &crate::services::ProviderWait,
     colors: &Colors,
