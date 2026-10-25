@@ -256,15 +256,31 @@ pub struct SocialSignupRequest {
     pub device: crate::api::NewDevice,
 }
 
-/// A fresh proof for a sensitive change (docs/ACCOUNTS.md › Changing a way in
-/// needs a fresh proof). A provider proof is a completed proof flow; it can
-/// only unlink that same provider. A passkey proof lands with the passkey
-/// routes.
+/// A fresh proof for a sensitive change, as the wire carries it
+/// (docs/ACCOUNTS.md › Changing a way in needs a fresh proof):
+///
+/// ```json
+/// {"kind": "password", "auth_key"}
+/// | {"kind": "passkey", "flow", "assertion": {"credential_id", "authenticator_data", "client_data_json", "signature"}}
+/// | {"kind": "provider", "flow"}
+/// ```
+///
+/// A provider proof is a completed proof flow; it can only unlink that same
+/// provider, and setting a password, replacing the recovery key or deleting
+/// with it also needs the recovery key. [`crate::Proof`] builds these.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProofWire {
-    Password { auth_key: String },
-    Provider { flow: String },
+    Password {
+        auth_key: String,
+    },
+    Passkey {
+        flow: String,
+        assertion: crate::api::PasskeyProofAssertion,
+    },
+    Provider {
+        flow: String,
+    },
 }
 
 impl ProofWire {
@@ -272,18 +288,37 @@ impl ProofWire {
         ProofWire::Password { auth_key }
     }
 
+    pub fn passkey(flow: String, assertion: crate::api::PasskeyProofAssertion) -> ProofWire {
+        ProofWire::Passkey { flow, assertion }
+    }
+
     pub fn provider(flow: String) -> ProofWire {
         ProofWire::Provider { flow }
+    }
+
+    /// The wire's `kind`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            ProofWire::Password { .. } => "password",
+            ProofWire::Passkey { .. } => "passkey",
+            ProofWire::Provider { .. } => "provider",
+        }
     }
 }
 
 impl fmt::Debug for ProofWire {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ProofWire::Password { .. } => f.write_str("ProofWire::Password(<redacted>)"),
-            ProofWire::Provider { flow } => {
-                f.debug_tuple("ProofWire::Provider").field(flow).finish()
-            }
+            ProofWire::Password { .. } => f
+                .debug_struct("Password")
+                .field("auth_key", &"<redacted>")
+                .finish(),
+            ProofWire::Passkey { flow, assertion } => f
+                .debug_struct("Passkey")
+                .field("flow", flow)
+                .field("assertion", assertion)
+                .finish(),
+            ProofWire::Provider { flow } => f.debug_struct("Provider").field("flow", flow).finish(),
         }
     }
 }
