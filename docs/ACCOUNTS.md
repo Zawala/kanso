@@ -150,6 +150,66 @@ The design below adds four tables, one column and a migration; it changes no exi
 fixture except where it says so, and it keeps the sessions, quotas, rate limits and sign-up gates as
 they are.
 
+Later owner decisions (recorded while the Worker was finished, PR A of issue #32):
+
+- **GitHub uses the device flow only.** There is no web + PKCE fallback and no
+  `GITHUB_CLIENT_SECRET`; open question 5 is closed.
+- **A username-first passkey start returns credential IDs.** `POST /v2/auth/passkey/start` with a
+  username lists that account's credential IDs and transports (an unknown name gets an empty list).
+  This is accepted: a credential ID is an opaque handle, and sign-up's `username_taken` already
+  says whether a name exists.
+- **Sign in with Apple works on every platform.** macOS catches the callback's
+  `kanso://auth/apple?flow=…&s=…` redirect with ASWebAuthenticationSession. Windows and Linux
+  register a `kanso://` scheme handler that hands the URL to the running app. The Worker doesn't
+  depend on the platform: the callback page meta-refreshes to that URL and shows a "Return to
+  Kanso." link, and the poll needs `s` whatever the platform. On Windows and Linux any local
+  program could register the same scheme, so the app registers it at install and claims the flow
+  with `s` before anyone else can; the device proof still binds the flow to the device that
+  started it.
+
+Where the finished Worker differs from the text below, the code wins and this document follows it:
+
+- **The Apple callback is POST only.** Apple always uses `form_post`, even for a cancel, so there
+  is no GET route.
+- **The callback redirects to `kanso://auth/apple?flow=<flow_id>&s=<secret>`.** The callback makes
+  a fresh 32-byte secret and stores only its SHA-256 (migration `0008_apple_app_secret`:
+  `app_secret_hash`, and `app_claimed_at` set by the first poll that sends it). `POST
+  /v2/auth/apple/poll` must send `s`, so whoever started a phished `auth_url` can't finish it. A
+  ticket or proof from an Apple flow counts only once the app has claimed it.
+- **The `smart-card` transport is stored as `smartcard`** (the `transports` column allows only
+  `[a-z ]`) and read back as `smart-card`.
+- **Approvals take a client `request_id`**, a stable canonical 32-byte ID, so a retried create
+  returns the original request instead of making a second one.
+- **The pending Keychain item holds the ephemeral approval secret**, so a quit doesn't lose the
+  request: on launch the app resumes the same request while it is alive.
+- **Linux needs libfido2 1.12 or newer.**
+- **An approver may decline only after it has challenged.** Until then, only the requester can
+  cancel; another device's `DELETE` is 404.
+- **A used, unknown, expired or other session's proof flow is 400 `flow_expired`**, as the error
+  table says. No proof, an unknown kind, or a kind the change doesn't take is 401
+  `reauth_required`. A provider proof flow whose identity isn't linked to the account answers its
+  poll with 401 `invalid_credentials`.
+- **`POST /v2/auth/passkey/signup/start` counts `signup-ip`**, as its route text says, not
+  `passkey-challenge`. The rate-limit table now says so.
+- **Account deletion removes the account's `auth_flows` rows in its own batch**, after the account
+  row (a proof's flow guards every earlier statement). The cron's sweep stays for anything left.
+- **`POST /v2/auth/recover/finish` sets `has_password = 1`**: the recovered account has a password
+  from then on.
+- **The AASA route is `GET` and `HEAD`, and 404 when `APP_ASSOC_APPS` is unset or malformed.**
+- **A link ends with the session that started it** (security review of PR #67, finding 1). The
+  identity insert and the completion's success mark hold only while the account is enabled and a
+  session of the flow's device, proving itself with the poll's device proof, is not revoked. A
+  session's end also consumes its device's link, proof and passkey-registration flows (migration
+  `0010`), so a link started with a stolen password and finished after the owner's password change,
+  a revocation, an eviction or an admin `disable` links nothing; its poll answers 400
+  `flow_expired`.
+- **Event sockets close on every session end.** These close at once: sign-out, revocation, a
+  password change or first password, a recovery, eviction by the ten-device limit (every sign-in
+  and sign-up route), account deletion, and the 180-day expiry (on the expired session's next
+  request, and in the cron's sweep). The admin script's `disable` and `delete` can't reach a
+  Durable Object, so they insert a row in `socket_closes` (migration `0009_socket_closes`) and the
+  cron closes those sockets within 15 minutes.
+
 ## Decisions
 
 | Topic | Decision |
@@ -693,7 +753,10 @@ password, no provider identity and no passkey, unless the request also proves th
 `"recovery_auth_key"` in the body, checked against `recovery_hash`. Proving it is what "unless a
 recovery path exists" means in practice. The app warns first: "This is your last way to sign in. If
 you remove it, you'll need your recovery key." A recovery-only account is allowed; `recover/finish`
-sets a password, so it isn't stuck.
+sets a password, so it isn't stuck. Only ways in this server offers count (security review of PR #67,
+finding 5): an identity of a provider the deployment no longer serves or configures, or a passkey on
+a deployment without `PASSKEY_RP_ID`, can't sign in, so it never keeps another method from being
+the last. The rule is checked inside the deleting statement, with the offered providers bound to it.
 
 **Changing a way in needs a fresh proof.** A session can sync; it can't change how the account is
 entered. Linking or unlinking a provider, adding or removing a passkey, setting a first password,
@@ -1008,8 +1071,10 @@ the Worker vars are still to be set.
   secret is an ES256 JWT with header `{alg:"ES256", kid:<Key ID>}` and claims
   `{iss:<Team ID>, iat, exp, aud:"https://appleid.apple.com", sub:<Services ID>}`, minted on demand
   and cached for at most a day (Apple's limit is six months).
-- The callback stores the subject on the flow and answers an HTML page that redirects to
-  `kanso://auth/apple?flow=<flow_id>`; the app's session completes and it polls
+- The callback stores the subject and the SHA-256 of a fresh secret on the flow, and answers an
+  HTML page that redirects to `kanso://auth/apple?flow=<flow_id>&s=<secret>` (ASWebAuthenticationSession
+  on macOS, the app's `kanso://` scheme handler on Windows and Linux); the app's session completes
+  and it polls with `s`
   `POST /v2/auth/apple/poll` with its device every 4 s (the `AUTH_LIMITER` allows 20 a
   minute). The flow ID alone grants nothing: the poll carries the device's proof and is the only
   thing that creates a session.
@@ -1061,10 +1126,8 @@ better for a desktop app: no loopback listener, no client secret, and a code the
   login name, email and avatar are ignored. GitHub issues no ID token, so there is no nonce to
   check; the device flow's `device_code` and the Worker's `client_id` are the binding, and the
   token exchange happens server-side.
-- The web flow with PKCE remains a fallback for a deployment that can't enable Device flow:
-  `https://github.com/login/oauth/authorize` with `code_challenge`/`code_challenge_method=S256`,
-  then the token endpoint with the client secret and verifier. It needs `GITHUB_CLIENT_SECRET`;
-  the device flow does not.
+- There is no web + PKCE fallback (an owner decision): GitHub is the device flow only, and the
+  Worker holds no GitHub client secret.
 
 **Adding another provider** means a module that starts a flow, exchanges a code or polls a device
 endpoint, and returns a stable subject; a row in `account_identities`; its secrets; and its name in
@@ -1379,7 +1442,7 @@ Bitwarden's phrase derivation are not public; only their user-facing behaviour i
 | 409 | `username_taken` | | |
 | 409 | `account_id_taken` | | Sign-up with an existing account ID (client retries with a new one) |
 | 409 | `identity_taken` | `provider` | The provider identity belongs to another account |
-| 409 | `last_method` | | The change would leave no password, identity or passkey, without a recovery proof |
+| 409 | `last_method` | | The change would leave no password, identity or passkey this server offers, without a recovery proof |
 | 409 | `already_has_password` | | `sign-in/password` on an account that has one |
 | 409 | `no_password` | | `account/password` on an account that has none |
 | 409 | `credential_exists` | | A passkey credential ID already registered |
@@ -1433,9 +1496,11 @@ Bitwarden's phrase derivation are not public; only their user-facing behaviour i
 | `login-user` | account ID; one shared row for names without an account | 15 min | 10 | Every sign-in, unless its device ID has an active session row (`revoked_at IS NULL`) for that account and SHA-256 of the request's device proof equals that row's `proof_hash` (M8, security re-check 5, security review 2) |
 | `login-ip` | IP group (/48) | 15 min | 30 | Every sign-in |
 | `recover-ip` | IP group (/48) | 1 h | 10 | Every `recover/start` and `recover/finish` |
-| `password-account` | account ID | 15 min | 5 | Every current-password proof (password change, set, new recovery key, delete, linking, unlinking, passkeys) |
-| `proof-account` | account ID | 1 h | 20 | Every passkey or provider proof for a sensitive change (`sign-in/proof/start`, link and proof flows) |
-| `passkey-challenge` | IP group (/48) | 15 min | 30 | Every passkey start and sign-up start |
+| `password-account` | account ID and device (the device ID's first 64 bits) | 15 min | 5 | Every current-password proof (password change, set, new recovery key, delete, linking, unlinking, passkeys) |
+| `password-total` | account ID | 15 min | 15 | The same requests, counted only after the device's `password-account` passes |
+| `proof-account` | account ID and device | 1 h | 20 | Every passkey or provider proof for a sensitive change (`sign-in/proof/start`, link and proof flows) |
+| `proof-total` | account ID | 1 h | 60 | The same requests, counted only after the device's `proof-account` passes |
+| `passkey-challenge` | IP group (/48) | 15 min | 30 | Every passkey sign-in start (`passkey/signup/start` counts `signup-ip`) |
 | `passkey-manage` | account ID | 1 h | 20 | Every passkey registration and removal |
 | `approval-create` | account ID | 1 h | 10 | Every new device-approval request |
 | `approval-poll` | account ID | 1 h | 900 | Only the requester's `GET /v2/account/sign-in/approvals/<id>` is counted; at most three requests, each polled every 2 s for its five-minute life, plus retry headroom. The approver's list GETs are not counted; it uses the event socket plus launch, Settings and reconnect GETs |
@@ -1443,6 +1508,11 @@ Bitwarden's phrase derivation are not public; only their user-facing behaviour i
 | `provider-poll` | flow ID | 15 min | 300 | Every GitHub device-flow poll and Apple callback poll; 20 a minute, enough for GitHub's 5 s interval; the Worker also enforces that interval |
 | `writes-account` | account ID | 1 day | the account's `quota_writes_per_day`, else `settings.writes_per_day` | Documents in each push, plus 1 per file upload, plus 1 per push refused as malformed or too large (so failed pushes aren't free) |
 | `uploads-account` | account ID | 1 day | `settings.upload_bytes_per_day` | Each upload's `Content-Length` (capped at the largest file plus one byte; the largest file when it's missing), counted before the body is read, after `writes-account` passes; a body longer than it declared counts the rest |
+
+The proof rules count per device first (security review of PR #67, finding 3). One session sees the
+same `password-account` and `proof-account` answers it always did, but it can use up at most a third
+of the account's total and none of another device's own allowance. A stolen session therefore can't
+lock a passkey-only owner out of proofs. Deleting the account deletes all of these rows.
 
 There is no per-username recovery rule, so nobody can lock someone else out of recovery (M8). A
 sign-up past `signups_per_day` (server-wide per UTC day, counted by a trigger in `daily`; deleting
@@ -1726,12 +1796,12 @@ later than the request. 400 `flow_expired`, 400 `nonce_reused`, 403 `provider_de
 `identity_taken` (a link to an account that already owns the identity), 503 `provider_unavailable`
 (the provider's endpoint failed or timed out).
 
-**GET and POST /v2/auth/apple/callback** — the `form_post` route. It takes
+**POST /v2/auth/apple/callback** — the `form_post` route (POST only). It takes
 `application/x-www-form-urlencoded`, not JSON, capped at 8 KiB, and is the one public route that
 ignores an `Origin` header: a browser form post from Apple carries one. It checks `state`,
 exchanges the code and
 verifies the token (see "Sign in with Apple"), stores the subject on the flow, and answers an HTML
-page that redirects to `kanso://auth/apple?flow=<flow_id>` and says "Return to Kanso." A bad
+page that redirects to `kanso://auth/apple?flow=<flow_id>&s=<secret>` and says "Return to Kanso." A bad
 `state`, a missing code or a failed verification answers the same page with a short error sentence
 and no flow. It never answers JSON and never creates a session.
 
@@ -1821,8 +1891,9 @@ device can't approve itself.
   `{"ok": true}`. Only the device that challenged, after its challenge; the same `wrapped_key`
   again is 200 (a retry); a different one, or a second device, is 409 `approval_used`; 409
   `approval_expired` past the time. Counts `approval-respond`.
-- **DELETE /v2/account/sign-in/approvals/<id>** — 204, by the requester or the approver.
-  Cancels it and publishes `approval.cancelled`; the other side's poll says `cancelled`.
+- **DELETE /v2/account/sign-in/approvals/<id>** — 204, by the requester, or by the approver once
+  it has challenged (a decline); 404 for any other device. Cancels it and publishes
+  `approval.cancelled`; the other side's poll says `cancelled`.
 
 #### GET /v2/account/events
 
@@ -1865,7 +1936,15 @@ connect, launch, Settings open and foreground. There is no 30-second approval ti
 recovery key and delete itself. `POST /v2/account/password` keeps `current_auth_key` and answers 409
 `no_password` for a passwordless account; `POST /v2/account/sign-in/password` is its first password.
 The delete batch gains the account's `account_identities`, `account_passkeys` and
-`device_approvals` rows; `auth_flows` rows for the account are deleted by the cron.
+`device_approvals` rows, and its `auth_flows` rows last, after the account row; the cron deletes any
+left over.
+
+**Which session ends close event sockets.** Every one: sign-out and revocation (that device), a
+password change, a first password and a recovery (the account's other devices, or all of them),
+eviction by the ten-device limit on every route that makes a session (the evicted device), account
+deletion (all), and the 180-day expiry (that device, on its next request or in the cron's sweep).
+The admin script's `disable` and `delete` close them through the cron within 15 minutes
+(`socket_closes`).
 
 #### POST /v2/auth/logout
 
@@ -2553,6 +2632,17 @@ leave old rows valid:
 `0007` is applied after `0006` by the same `npm run migrate:remote` step. It is the only additive
 migration this step introduces; no existing column, constraint, index or trigger changes.
 
+### Migrations `0008_apple_app_secret.sql`, `0009_socket_closes.sql` and `0010_end_flows_with_sessions.sql`
+
+`0008` adds `auth_flows.app_secret_hash` (SHA-256 of the secret the Apple callback hands the app
+through `kanso://auth/apple?…&s=`) and `auth_flows.app_claimed_at` (set by the first poll that
+sends it). `0009` adds `socket_closes (account_id PRIMARY KEY, requested_at)`: the admin script's
+`disable` and `delete` insert the account, and the cron closes its event sockets and deletes the
+row (at most 100 accounts a run). `0010` adds two triggers: when a session is revoked, for any
+reason, its device's unconsumed `link` and `proof` flows (provider flows by intent, passkey proofs by
+kind) and `passkey_register` flows are consumed in the same transaction; when an account is
+disabled, all of the account's. All three are additive and applied by `npm run migrate:remote`.
+
 ### Sessions in the Worker
 
 Every session route authenticates with one read:
@@ -2701,7 +2791,7 @@ PUBLIC_LIMITER?: RateLimit; REROUT_API_KEY?: string; REROUT_PROJECT_ID?: string;
 PASSKEY_RP_ID?: string; PASSKEY_ORIGINS?: string; APP_ASSOC_APPS?: string;
 APPLE_CLIENT_ID?: string; APPLE_TEAM_ID?: string; APPLE_KEY_ID?: string;
 APPLE_PRIVATE_KEY?: string; APPLE_REDIRECT_URI?: string; GOOGLE_CLIENT_ID?: string;
-GOOGLE_CLIENT_SECRET?: string; GITHUB_CLIENT_ID?: string; GITHUB_CLIENT_SECRET?: string }`.
+GOOGLE_CLIENT_SECRET?: string; GITHUB_CLIENT_ID?: string }`.
 `ACCOUNT_ROOM` uses `new_classes` rather than SQLite storage: the event room keeps no rows.
 `REROUT_API_KEY` (optional, a secret) turns on published notes' short links:
 `npx wrangler secret put REROUT_API_KEY` in `cloud/`, pasting a key of the Kanso project on Rerout;
@@ -2722,7 +2812,6 @@ Sign-in methods are optional per deployment and are advertised only when configu
 | `GOOGLE_CLIENT_ID` | var | The Desktop-app OAuth client ID. |
 | `GOOGLE_CLIENT_SECRET` | secret | The Desktop-app client secret (not confidential for a desktop client; it stays out of the app). |
 | `GITHUB_CLIENT_ID` | var | The OAuth app's client ID. |
-| `GITHUB_CLIENT_SECRET` | secret, optional | Only for the web+PKCE fallback; the device flow needs no secret. |
 
 A provider is advertised only when its client ID and (where it has one) its secret are present.
 `AUTH_PEPPER` also seals GitHub's short-lived device code and the flow results in D1; rotating it
@@ -4277,10 +4366,11 @@ rollback is `wrangler rollback` to the previous version; the new tables stay and
 1. **Back up.** Record the D1 Time Travel bookmark (`npx wrangler d1 time-travel info kanso-sync`)
    before the migration. Old app builds keep signing in to password accounts; they can't sign in
    to an account created without a password, so update the app before making one.
-2. **Migration.** `npm run migrate:remote` applies `0006_sign_in` (additive).
+2. **Migration.** `npm run migrate:remote` applies `0006_sign_in` through `0010_end_flows_with_sessions`
+   (all additive).
 3. **Secrets and vars.** `APPLE_PRIVATE_KEY` is already uploaded to the `kanso-sync` Worker. In
    `cloud/`, set the four Apple vars from the owner table in `wrangler.jsonc`; add
-   `GOOGLE_CLIENT_SECRET` and, if used, `GITHUB_CLIENT_SECRET` with `wrangler secret put`. A
+   `GOOGLE_CLIENT_SECRET` with `wrangler secret put`, and the passkey vars and `APP_ASSOC_APPS`. A
    provider appears in health only when its values are present, so they can be added one at a time.
 4. **Deploy.** `npm run deploy`.
 5. **Check the AASA file.** `curl -sI
@@ -4325,7 +4415,7 @@ repeated in this document.
 | 3 | Sign in with Apple: primary App ID `app.kanso.signin` (`4973Y692JU.app.kanso.signin`) with the capability; Services ID `app.kanso.Kanso.web` grouped under it, with domain `sync.kansoapp.app` and return URL `https://sync.kansoapp.app/v2/auth/apple/callback`; key "Kanso Sign in with Apple", Key ID `MS6Y3S5ZL7`. | The `.p8` is already uploaded as `APPLE_PRIVATE_KEY` on the `kanso-sync` Worker; `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID` and `APPLE_REDIRECT_URI` are not set. |
 | 4 | The Associated Domains entitlement `webcredentials:sync.kansoapp.app` and the AASA app list `["<TEAMID>.app.kanso.Kanso"]`. | The app's entitlements and `APP_ASSOC_APPS` (var); the Worker serves the AASA. |
 | 5 | A Google Cloud project with an OAuth consent screen (External; only `openid`, no email or profile scopes) and an OAuth client of type **Desktop app**. | `GOOGLE_CLIENT_ID` (var), `GOOGLE_CLIENT_SECRET` (`wrangler secret put`). |
-| 6 | A GitHub **OAuth App** (not a GitHub App) with Device flow enabled; homepage and callback `https://sync.kansoapp.app`. | `GITHUB_CLIENT_ID` (var); `GITHUB_CLIENT_SECRET` only for the web+PKCE fallback. |
+| 6 | A GitHub **OAuth App** (not a GitHub App) with Device flow enabled; homepage and callback `https://sync.kansoapp.app`. | `GITHUB_CLIENT_ID` (var). GitHub uses the device flow only; there is no secret. |
 | 7 | The passkey host. `sync.kansoapp.app` already resolves to the Worker; no new DNS is needed. `PASSKEY_RP_ID=sync.kansoapp.app`, `PASSKEY_ORIGINS=["https://sync.kansoapp.app"]`. Linux security keys use the same RP ID. | `wrangler.jsonc` vars. |
 | 8 | Apple's CDN fetch and a test device. Nothing to configure on Cloudflare beyond not blocking `/.well-known/*`; the Worker's `assets` config must let those paths reach the Worker (they are routes, not files). | — |
 | 9 | Test accounts: one Apple ID, one Google account, one GitHub account, two devices for approval, and one Linux-compatible USB or NFC security key. | — |
@@ -4359,7 +4449,8 @@ Recommendations are on merit; the effort is the added builder time if the other 
    Session-only changes would save that and leave a real escalation.
 5. **GitHub device flow or web + PKCE?** *Recommendation:* device flow. It needs no loopback
    listener, no client secret and no redirect; the user reads a code. GitHub supports PKCE now, so
-   the web fallback remains (~1 day) for a deployment that can't enable Device flow.
+   the web fallback remains (~1 day) for a deployment that can't enable Device flow. *Decided:*
+   device flow only, with no fallback.
 6. **Native platform passkeys on Windows?** *Recommendation:* the Win32 `webauthn.h` call, for
    platform passkeys on macOS and Windows. It is the only way to reach Windows Hello directly, and
    a page served by the Worker is rejected on E2E grounds (see "Where the ceremony runs"). Doing

@@ -136,6 +136,50 @@ export const ACCOUNT_EVENTS_PATH = "/v2/account/events";
 /** Always present on this Worker, which serves the account event socket; an older one omits it. */
 export const healthEvents = (): EventsAdvertisement => ({ account: ACCOUNT_EVENTS_PATH });
 
+// ----------------------------------------------- apple-app-site-association
+
+export const AASA_PATH = "/.well-known/apple-app-site-association";
+
+/** `<TEAMID>.<bundle ID>`: a 10-character team ID, then a reverse-DNS bundle ID. */
+const APP_ID = /^[A-Z0-9]{10}\.[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
+
+/**
+ * `APP_ASSOC_APPS`, a JSON array of app IDs (`["<TEAMID>.app.kanso.Kanso"]`),
+ * or null when it is unset or anything but 1–16 well-formed, distinct IDs.
+ */
+export function assocApps(value: string | undefined): string[] | null {
+	if (!present(value)) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(value);
+	} catch {
+		return null;
+	}
+	if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 16) return null;
+	if (!parsed.every((id) => typeof id === "string" && APP_ID.test(id))) return null;
+	return new Set(parsed).size === parsed.length ? (parsed as string[]) : null;
+}
+
+/**
+ * `GET` and `HEAD /.well-known/apple-app-site-association` (docs/ACCOUNTS.md ›
+ * Passkeys › Where the ceremony runs): the Associated Domains file macOS reads
+ * (through Apple's CDN) before it lets the app use passkeys for this RP ID.
+ * `{"webcredentials":{"apps":[…]}}` from `APP_ASSOC_APPS`, 200
+ * `application/json` with a short `Cache-Control`, never a redirect; 404 when
+ * the var is unset or malformed. It holds no secret.
+ */
+export function appSiteAssociation(request: Request, env: Env): Response {
+	const apps = assocApps(env.APP_ASSOC_APPS);
+	if (!apps) return error(404, "not_found", "Not found.");
+	const body = JSON.stringify({ webcredentials: { apps } });
+	const headers = {
+		"content-type": "application/json",
+		"cache-control": "public, max-age=300",
+		"x-content-type-options": "nosniff",
+	};
+	return new Response(request.method === "HEAD" ? null : body, { status: 200, headers });
+}
+
 // ---------------------------------------------------------------- auth flows
 
 /** One ceremony (docs/ACCOUNTS.md › Migration 0006 › `auth_flows`). */
@@ -261,37 +305,66 @@ export function openDeviceCode(keys: PepperKeys, flow: AuthFlowRow): Promise<str
 	return flow.device_code === null ? Promise.resolve(null) : openFlowSecret(keys, flow, flow.device_code);
 }
 
-/** Stores a ceremony; the caller owns the ID (a 32-byte flow ID) or gets a random one back. */
-export async function newFlow(env: Env, keys: PepperKeys, flow: FlowInput, now: number): Promise<string> {
+/**
+ * A condition a write holds under: `sql(account, value)` is SQL with the
+ * account ID and `value` at those parameter numbers. A sensitive change's
+ * proof (proofs.ts) is one: every statement of the change carries it, so the
+ * change and the proof's use are one transaction.
+ */
+export interface StatementGuard {
+	sql(account: number, value: number): string;
+	accountId: string;
+	value: string;
+}
+
+/**
+ * The statement that stores a ceremony, and its ID (the caller's, or a random
+ * 32-byte one). With a guard, the row is inserted only while it holds, and
+ * the statement returns the ID only when it was.
+ */
+export async function flowStatement(
+	env: Env,
+	keys: PepperKeys,
+	flow: FlowInput,
+	now: number,
+	guard?: StatementGuard,
+): Promise<{ id: string; statement: D1PreparedStatement }> {
 	const id = flow.id ?? base64url(randomBytes(32));
 	// The column holds no plaintext device code; only the exchange route opens it.
 	const deviceCode =
 		flow.device_code === null ? null : await sealFlowSecret(keys, { id, kind: flow.kind, account_id: flow.account_id }, flow.device_code);
-	await env.DB.prepare(
-		`INSERT INTO auth_flows (${FLOW_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, NULL, NULL, NULL, NULL, 0, NULL, NULL)`,
-	)
-		.bind(
-			id,
-			flow.kind,
-			flow.intent,
-			flow.account_id,
-			flow.device_id,
-			flow.device_proof_hash,
-			flow.challenge,
-			flow.rp_id,
-			flow.nonce_hash,
-			flow.state_hash,
-			flow.pkce_hash,
-			flow.redirect_uri,
-			flow.provider,
-			flow.subject,
-			deviceCode,
-			flow.poll_interval_seconds ?? null,
-			flow.next_poll_at,
-			now,
-			flow.expires_at,
-		)
-		.run();
+	const where = guard ? ` WHERE ${guard.sql(20, 21)}` : "";
+	const statement = env.DB.prepare(
+		`INSERT INTO auth_flows (${FLOW_COLUMNS}) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, NULL, NULL, NULL, NULL, 0, NULL, NULL${where} RETURNING id`,
+	).bind(
+		id,
+		flow.kind,
+		flow.intent,
+		flow.account_id,
+		flow.device_id,
+		flow.device_proof_hash,
+		flow.challenge,
+		flow.rp_id,
+		flow.nonce_hash,
+		flow.state_hash,
+		flow.pkce_hash,
+		flow.redirect_uri,
+		flow.provider,
+		flow.subject,
+		deviceCode,
+		flow.poll_interval_seconds ?? null,
+		flow.next_poll_at,
+		now,
+		flow.expires_at,
+		...(guard ? [guard.accountId, guard.value] : []),
+	);
+	return { id, statement };
+}
+
+/** Stores a ceremony; the caller owns the ID (a 32-byte flow ID) or gets a random one back. */
+export async function newFlow(env: Env, keys: PepperKeys, flow: FlowInput, now: number): Promise<string> {
+	const { id, statement } = await flowStatement(env, keys, flow, now);
+	await statement.run();
 	return id;
 }
 
@@ -354,7 +427,7 @@ const FLOW_ID = /^[A-Za-z0-9_-]{43}$/;
 export const isFlowId = (value: string): boolean => FLOW_ID.test(value);
 
 /** Constant-time comparison of two hex digests of equal length. */
-function hexEqual(left: string, right: string): boolean {
+export function hexEqual(left: string, right: string): boolean {
 	if (left.length !== right.length) return false;
 	let difference = 0;
 	for (let index = 0; index < left.length; index++) difference |= left.charCodeAt(index) ^ right.charCodeAt(index);

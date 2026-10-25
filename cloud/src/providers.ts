@@ -19,19 +19,20 @@
 // second account, identity or device.
 
 import {
-	type Session,
 	authenticate,
+	closeEvicted,
 	newSession,
 	readObject,
 	respond,
 	sessionOutcome,
 	sessionStatements,
 	username,
+	withSessionKeys,
 } from "./auth";
 import { type PepperKeys, proofMatches, randomBytes, sha256, sha256Hex } from "./crypto";
 import type { Env } from "./env";
 import { accountDisabled, badRequest, constraint, error, invalidCredentials, json, notFound, readBody, refusal } from "./http";
-import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, ipGroup, ipKey, sessionFilter } from "./limits";
+import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, countSession, ipGroup, ipKey, sessionFilter } from "./limits";
 import {
 	APPLE_ID_TOKEN_ALGORITHMS,
 	APPLE_ISSUER,
@@ -58,25 +59,28 @@ import {
 	checkDevice,
 	isAccountId,
 	isKeyId,
-	isObject,
 	isWrappedKey,
 	proof32,
 } from "./protocol";
+import { type ProofGuard, appClaimed, checkProof, proofAccount, proofUsed, reauthRequired, recoveryProof } from "./proofs";
 import { accountPrefix } from "./purge";
 import {
 	type AuthFlowRow,
+	PROVIDERS,
 	type Provider,
 	SIGN_IN_ROUTES,
 	consumeFlow,
 	flowById,
 	flowExpired,
 	flowForDevice,
+	flowStatement,
 	isFlowId,
 	isProvider,
-	newFlow,
 	openDeviceCode,
+	passkeyAdvertisement,
 	providerConfigured,
 } from "./sign_in";
+import { storedTransports } from "./webauthn";
 import { isReserved, normalizeUsername } from "./usernames";
 
 type PepperHandler = (request: Request, env: Env, now: number, keys: PepperKeys) => Promise<Response>;
@@ -100,18 +104,38 @@ const AUTH_CODE = /^[\x21-\x7e]{1,2048}$/;
 // ------------------------------------------------------------------ helpers
 
 /** The hash a flow stores for a device: SHA-256 of its proof as sent (base64url), as `flowForDevice` compares it. */
-const flowProofHash = (device: NewDevice): Promise<string> => sha256Hex(base64url(device.proof));
-const flowDevice = (device: NewDevice) => ({ id: device.id, proof: base64url(device.proof) });
+/**
+ * A provider flow's `device_proof_hash`: SHA-256 of the device proof's bytes,
+ * the same value as `sessions.proof_hash`, so a session-started flow can be
+ * checked against the session that uses it (proofs.ts).
+ */
+const flowProofHash = (device: NewDevice): Promise<string> => sha256Hex(device.proof);
+const flowDevice = (device: NewDevice) => ({ id: device.id, proof: device.proof });
 
 const providerUnavailable = (provider: string): Response =>
 	error(503, "provider_unavailable", "The provider could not be reached.", { provider });
 const providerDenied = (): Response => error(403, "provider_denied", "The sign-in was declined at the provider.");
 /** 410: the provider itself expired the flow (GitHub's `expired_token`), not our ten-minute clock. */
 const flowGone = (): Response => error(410, "flow_expired", "This sign-in flow has expired.");
+/**
+ * The ways in this server offers, for the last-method rule (security review
+ * of PR #67, finding 5): the providers it serves and has configured, as a JSON
+ * array for `json_each`, and whether it offers passkeys. An identity of a
+ * provider it no longer offers, or a passkey on a deployment without passkeys,
+ * can't sign in, so it never keeps another method from being the last.
+ */
+export function offeredMethods(env: Env): { providers: string; passkeys: number } {
+	return {
+		providers: JSON.stringify(PROVIDERS.filter((p) => SIGN_IN_ROUTES[p] && providerConfigured(env, p))),
+		passkeys: passkeyAdvertisement(env) ? 1 : 0,
+	};
+}
+
+export const lastMethod = (): Response =>
+	error(409, "last_method", "This is the account's last way to sign in; prove the recovery key to remove it.");
 const providerDisabled = (): Response => error(403, "provider_disabled", "That provider isn't configured on this server.");
 const identityTaken = (provider: string): Response =>
 	error(409, "identity_taken", "That identity belongs to another account.", { provider });
-const reauthRequired = (): Response => error(401, "reauth_required", "This change needs a fresh proof.", { reason: "reauth" });
 
 /** A provider this Worker serves and has configured, or the response that ends the request. */
 function servedProvider(env: Env, name: string): Provider | Response {
@@ -191,10 +215,27 @@ interface StartContext {
 	accountId: string | null;
 	device: NewDevice;
 	body: Record<string, unknown>;
+	/** A link's proof: used in the same batch that stores the flow. */
+	proof?: ProofGuard;
 }
 
-/** Creates the flow and answers the provider's start shape. */
+/**
+ * Creates the flow and answers the provider's start shape. With a proof, the
+ * flow is stored only in the batch that uses the proof up, and only while the
+ * proof holds; otherwise the start is refused and nothing is stored.
+ */
 async function startFlow(env: Env, keys: PepperKeys, now: number, c: StartContext): Promise<Response> {
+	const store = async (flow: Parameters<typeof flowStatement>[2]): Promise<Response | null> => {
+		const { statement } = await flowStatement(env, keys, flow, now, c.proof);
+		if (!c.proof) {
+			await statement.run();
+			return null;
+		}
+		const results = await env.DB.batch([...c.proof.before, statement]);
+		if (!proofUsed(c.proof, results)) return flowExpired();
+		// The password changed between the check and the batch.
+		return results[results.length - 1].results.length === 1 ? null : invalidCredentials();
+	};
 	const flowId = base64url(randomBytes(32));
 	const expiresAt = now + PROVIDER_FLOW_MS;
 	const base = {
@@ -225,12 +266,8 @@ async function startFlow(env: Env, keys: PepperKeys, now: number, c: StartContex
 			const state = `${flowId}.${base64url(randomBytes(32))}`;
 			const nonce = base64url(randomBytes(32));
 			const redirectUri = env.APPLE_REDIRECT_URI as string;
-			await newFlow(
-				env,
-				keys,
-				{ ...base, nonce_hash: await sha256Hex(nonce), state_hash: await sha256Hex(state), redirect_uri: redirectUri },
-				now,
-			);
+			const refused = await store({ ...base, nonce_hash: await sha256Hex(nonce), state_hash: await sha256Hex(state), redirect_uri: redirectUri });
+			if (refused) return refused;
 			// No scope: no name and no email, so Apple's private relay never enters the picture.
 			const url = new URL(APPLE_AUTHORIZE_URL);
 			url.search = new URLSearchParams({
@@ -255,18 +292,14 @@ async function startFlow(env: Env, keys: PepperKeys, now: number, c: StartContex
 			if (!pkce) return badRequest("code_challenge must be base64url(SHA-256(verifier)).");
 			const state = base64url(randomBytes(32));
 			const nonce = base64url(randomBytes(32));
-			await newFlow(
-				env,
-				keys,
-				{
-					...base,
-					nonce_hash: await sha256Hex(nonce),
-					state_hash: await sha256Hex(state),
-					pkce_hash: pkce,
-					redirect_uri: redirectUri as string,
-				},
-				now,
-			);
+			const refused = await store({
+				...base,
+				nonce_hash: await sha256Hex(nonce),
+				state_hash: await sha256Hex(state),
+				pkce_hash: pkce,
+				redirect_uri: redirectUri as string,
+			});
+			if (refused) return refused;
 			const url = new URL(GOOGLE_AUTHORIZE_URL);
 			url.search = new URLSearchParams({
 				client_id: env.GOOGLE_CLIENT_ID as string,
@@ -287,12 +320,8 @@ async function startFlow(env: Env, keys: PepperKeys, now: number, c: StartContex
 			const { device_code, user_code, verification_uri, expires_in, interval } = started.value;
 			const expires = Math.min(expiresAt, now + expires_in * 1000);
 			if (expires <= now) return providerUnavailable("github");
-			await newFlow(
-				env,
-				keys,
-				{ ...base, device_code, poll_interval_seconds: interval, next_poll_at: now + interval * 1000, expires_at: expires },
-				now,
-			);
+			const refused = await store({ ...base, device_code, poll_interval_seconds: interval, next_poll_at: now + interval * 1000, expires_at: expires });
+			if (refused) return refused;
 			return json({
 				flow_id: flowId,
 				user_code,
@@ -361,7 +390,7 @@ async function complete(request: Request, env: Env, keys: PepperKeys, now: numbe
 		case "signin":
 			return signIn(request, env, keys, now, flow, device, provider, subject);
 		case "link":
-			return link(env, now, flow, provider, subject);
+			return link(env, now, flow, device, provider, subject);
 		case "proof":
 			return proof(env, flow, provider, subject);
 		default:
@@ -457,6 +486,7 @@ async function signIn(
 			),
 		);
 		const outcome = sessionOutcome(results, 0);
+		await closeEvicted(env, account.id, outcome);
 		if (!outcome.ok) return invalidCredentials();
 		return sessionAnswer(account, session.token, outcome.evicted);
 	}
@@ -484,12 +514,22 @@ async function signIn(
 	]);
 	if (results[0].results.length !== 1) return flowExpired();
 	const outcome = sessionOutcome(results, 1);
+	await closeEvicted(env, account.id, outcome);
 	if (!outcome.ok || results[4].results.length !== 1) return invalidCredentials();
 	return sessionAnswer(account, session.token, outcome.evicted);
 }
 
-async function link(env: Env, now: number, flow: AuthFlowRow, provider: string, subject: string): Promise<Response> {
+/**
+ * A link's completion. It adds a way in, so it holds only while the session
+ * that started it is still live: the account enabled, and a session of the
+ * flow's device, proving itself with this poll's device proof, not revoked.
+ * A link started by a session that has since been signed out (a password
+ * change, a revocation, an eviction) links nothing; migration 0010 also
+ * consumes such flows when the session ends.
+ */
+async function link(env: Env, now: number, flow: AuthFlowRow, device: NewDevice, provider: string, subject: string): Promise<Response> {
 	const accountId = flow.account_id as string;
+	const sessionProofHash = await sha256Hex(device.proof);
 	if (flow.consumed_at !== null) {
 		if (
 			flow.completion_succeeded !== 1 ||
@@ -521,21 +561,34 @@ async function link(env: Env, now: number, flow: AuthFlowRow, provider: string, 
 		env.DB.prepare(
 			`INSERT INTO account_identities (account_id, provider, subject, created_at)
   SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM auth_flows WHERE id = ?5 AND completion_attempt_id = ?6)
-    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1)
+    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND disabled_at IS NULL)
+    AND EXISTS (SELECT 1 FROM sessions WHERE account_id = ?1 AND device_id = ?7 AND proof_hash = ?8 AND revoked_at IS NULL)
     AND NOT EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?1 AND provider = ?2)
 	  ON CONFLICT (provider, subject) DO NOTHING RETURNING created_at`,
-		).bind(accountId, provider, subject, completionNow, flow.id, attemptId),
+		).bind(accountId, provider, subject, completionNow, flow.id, attemptId, flow.device_id, sessionProofHash),
 		markCompletionSucceeded(
 			env,
 			flow.id,
 			attemptId,
 			"link",
 			accountId,
-			"EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?4 AND provider = ?5 AND subject = ?6)",
-			[provider, subject],
+			`EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?4 AND provider = ?5 AND subject = ?6)
+    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?4 AND disabled_at IS NULL)
+    AND EXISTS (SELECT 1 FROM sessions WHERE account_id = ?4 AND device_id = ?7 AND proof_hash = ?8 AND revoked_at IS NULL)`,
+			[provider, subject, flow.device_id, sessionProofHash],
 		),
 	]);
 	if (results[0].results.length !== 1) return flowExpired();
+	if (results[2].results.length !== 1) {
+		// The session that started the link ended (or the account was disabled) before it finished.
+		const live = await env.DB.prepare(
+			`SELECT 1 AS live FROM sessions s JOIN accounts a ON a.id = s.account_id
+  WHERE s.account_id = ?1 AND s.device_id = ?2 AND s.proof_hash = ?3 AND s.revoked_at IS NULL AND a.disabled_at IS NULL`,
+		)
+			.bind(accountId, flow.device_id, sessionProofHash)
+			.first();
+		if (!live) return flowExpired();
+	}
 	if (results[2].results.length === 1) {
 		const linked = await env.DB.prepare(
 			"SELECT created_at FROM account_identities WHERE account_id = ?1 AND provider = ?2 AND subject = ?3",
@@ -608,7 +661,7 @@ export const applePoll: PepperHandler = async (request, env, now, keys) => {
 	if (flow.subject === null) {
 		// The callback consumes a flow it refused (a cancel, a bad code, a failed
 		// verification), so the poll can stop instead of waiting out the flow.
-		return flow.consumed_at === null ? json({ status: "pending" }) : providerDenied();
+		return flow.consumed_at === null ? json({ status: "pending" }) : endedFlow(env, flow, device);
 	}
 	const secret = body.s === undefined ? null : proof32(body.s);
 	if (body.s !== undefined && secret === null) return badRequest("s must be 32 bytes of canonical base64url.");
@@ -620,9 +673,6 @@ export const applePoll: PepperHandler = async (request, env, now, keys) => {
 	}
 	return complete(request, env, keys, now, { ...flow, app_claimed_at: flow.app_claimed_at ?? now }, device);
 };
-
-/** Whether a flow's subject may be used: always, except an Apple flow the app hasn't claimed with its secret. */
-const appClaimed = (flow: AuthFlowRow): boolean => flow.kind !== "apple" || flow.app_claimed_at != null;
 
 /** `POST /v2/auth/google/finish`: the loopback's code, exchanged with the app's PKCE verifier. */
 export const googleFinish: PepperHandler = async (request, env, now, keys) => {
@@ -656,13 +706,29 @@ export const googleFinish: PepperHandler = async (request, env, now, keys) => {
 	return complete(request, env, keys, now, { ...flow, subject }, device);
 };
 
+/**
+ * The answer for a flow consumed before the provider finished: a refusal at the
+ * provider (403 `provider_denied`), or, for a link or proof whose starting
+ * session has since ended (migration 0010 consumed it), 400 `flow_expired`.
+ */
+async function endedFlow(env: Env, flow: AuthFlowRow, device: NewDevice): Promise<Response> {
+	if (flow.intent !== "link" && flow.intent !== "proof") return providerDenied();
+	const live = await env.DB.prepare(
+		`SELECT 1 AS live FROM sessions s JOIN accounts a ON a.id = s.account_id
+  WHERE s.account_id = ?1 AND s.device_id = ?2 AND s.proof_hash = ?3 AND s.revoked_at IS NULL AND a.disabled_at IS NULL`,
+	)
+		.bind(flow.account_id, flow.device_id, await sha256Hex(device.proof))
+		.first();
+	return live ? providerDenied() : flowExpired();
+}
+
 /** `POST /v2/auth/github/poll`: one device-flow poll, no faster than GitHub's interval. */
 export const githubPoll: PepperHandler = async (request, env, now, keys) => {
 	const found = await deviceFlow(request, env, now, "github", pollCounter(env, keys, now));
 	if (!found.ok) return found.response;
 	const { flow, device } = found;
 	if (flow.subject !== null) return complete(request, env, keys, now, flow, device);
-	if (flow.consumed_at !== null) return providerDenied();
+	if (flow.consumed_at !== null) return endedFlow(env, flow, device);
 	if (!providerConfigured(env, "github")) return providerDisabled();
 
 	// Claim this poll slot: of two parallel polls one calls GitHub, the other is told to wait.
@@ -913,6 +979,7 @@ export const socialSignup: PepperHandler = async (request, env, now, keys) => {
 			),
 		);
 		const outcome = sessionOutcome(results, 0);
+		await closeEvicted(env, existing.id, outcome);
 		if (!outcome.ok) return null;
 		return sessionAnswer(existing, session.token, outcome.evicted, 201);
 	};
@@ -1016,75 +1083,6 @@ export const socialSignup: PepperHandler = async (request, env, now, keys) => {
 
 // ----------------------------------------------------- session routes: proofs
 
-/** Authenticates, passes SESSION_LIMITER, then runs `handler` with the pepper's keys. */
-function withSessionKeys(
-	handler: (request: Request, env: Env, now: number, keys: PepperKeys, session: Session) => Promise<Response>,
-): PepperHandler {
-	return async (request, env, now, keys) => {
-		const session = await authenticate(request, env, now);
-		if (session instanceof Response) return session;
-		return (await sessionFilter(env.SESSION_LIMITER, session.accountId)) ?? handler(request, env, now, keys, session);
-	};
-}
-
-interface ProofAccount {
-	id: string;
-	auth_hash: string;
-	recovery_hash: string;
-	has_password: number;
-}
-
-/** A checked proof: the statement guard it holds under, and the provider proof flow to consume with the change. */
-type CheckedProof =
-	| { ok: true; kind: "password"; authHash: string }
-	| { ok: true; kind: "provider"; flowId: string }
-	| { ok: false; response: Response };
-
-/**
- * Checks a `proof` for a sensitive change (docs/ACCOUNTS.md › Changing a way in
- * needs a fresh proof). A password proof counts `password-account`. A provider
- * proof is accepted only where `provider` names the provider it may act on
- * (unlinking that same provider), and only while unconsumed. Passkey proofs
- * need the passkey routes (step 2) and are refused with `reauth_required` here.
- */
-async function checkProof(env: Env, now: number, session: Session, account: ProofAccount, value: unknown, provider: string | null): Promise<CheckedProof> {
-	if (!isObject(value)) return { ok: false, response: reauthRequired() };
-	if (value.kind === "password") {
-		const limited = await count(env.DB, "password-account", accountKey("password-account", session.accountId), now);
-		if (limited) return { ok: false, response: limited };
-		const authKey = proof32(value.auth_key);
-		if (!authKey) return { ok: false, response: badRequest("proof.auth_key must be 32 bytes of canonical base64url.") };
-		// A passwordless account's auth hash is random; nobody holds a key for it.
-		if (!(await proofMatches(authKey, account.auth_hash)) || account.has_password !== 1) return { ok: false, response: invalidCredentials() };
-		return { ok: true, kind: "password", authHash: account.auth_hash };
-	}
-	if (value.kind === "provider" && provider !== null) {
-		const flowId = value.flow;
-		if (typeof flowId !== "string" || !isFlowId(flowId)) return { ok: false, response: reauthRequired() };
-		const flow = await flowById(env, flowId);
-		const usable =
-			flow !== null &&
-			flow.kind === provider &&
-			flow.intent === "proof" &&
-			flow.account_id === session.accountId &&
-			flow.subject !== null &&
-			appClaimed(flow) &&
-			flow.consumed_at === null &&
-			flow.expires_at > now;
-		if (!usable) return { ok: false, response: reauthRequired() };
-		const linked = await env.DB.prepare("SELECT 1 AS linked FROM account_identities WHERE account_id = ?1 AND provider = ?2 AND subject = ?3")
-			.bind(session.accountId, provider, flow.subject)
-			.first();
-		if (!linked) return { ok: false, response: reauthRequired() };
-		return { ok: true, kind: "provider", flowId };
-	}
-	return { ok: false, response: reauthRequired() };
-}
-
-async function proofAccount(env: Env, accountId: string): Promise<ProofAccount | null> {
-	return env.DB.prepare("SELECT id, auth_hash, recovery_hash, has_password FROM accounts WHERE id = ?1").bind(accountId).first<ProofAccount>();
-}
-
 /**
  * `POST /v2/account/sign-in/identities/<provider>/start`: a link flow (with a
  * password or passkey proof) or a proof flow (the session is enough: the
@@ -1094,7 +1092,7 @@ export function identityStart(name: string): PepperHandler {
 	return withSessionKeys(async (request, env, now, keys, session) => {
 		const provider = servedProvider(env, name);
 		if (provider instanceof Response) return provider;
-		const limited = await count(env.DB, "proof-account", accountKey("proof-account", session.accountId), now);
+		const limited = await countSession(env.DB, "proof-account", session, now);
 		if (limited) return limited;
 		const body = await readObject(request);
 		if (!body.ok) return body.response;
@@ -1107,21 +1105,26 @@ export function identityStart(name: string): PepperHandler {
 		if (device.value.id !== session.deviceId || !row || !(await proofMatches(device.value.proof, row.proof_hash))) {
 			return badRequest("The device isn't this session's.");
 		}
+		let proof: ProofGuard | undefined;
 		if (b.intent === "link") {
 			const account = await proofAccount(env, session.accountId);
 			if (!account) return invalidCredentials();
-			const checked = await checkProof(env, now, session, account, b.proof, null);
+			// A link adds a way in: a password or passkey proof, never a provider's.
+			const checked = await checkProof(env, now, session, account, b.proof, { provider: null });
 			if (!checked.ok) return checked.response;
+			proof = checked.guard;
 		}
-		return startFlow(env, keys, now, { provider, intent: b.intent, accountId: session.accountId, device: device.value, body: b });
+		return startFlow(env, keys, now, { provider, intent: b.intent, accountId: session.accountId, device: device.value, body: b, proof });
 	});
 }
 
 /**
  * `POST /v2/account/sign-in/identities/<provider>/unlink`: removes the identity.
- * Refused with 409 `last_method` when the account would have no password, no
- * identity and no passkey, unless the body proves the recovery key. Works for
- * a provider this server no longer configures, so an old link can always go.
+ * Takes a password or passkey proof, or a provider proof of this same
+ * provider. Refused with 409 `last_method` when the account would have no
+ * password, no identity and no passkey, unless the body proves the recovery
+ * key. Works for a provider this server no longer configures, so an old link
+ * can always go.
  */
 export function unlink(name: string): PepperHandler {
 	return withSessionKeys(async (request, env, now, _keys, session) => {
@@ -1130,61 +1133,41 @@ export function unlink(name: string): PepperHandler {
 		if (!body.ok) return body.response;
 		const account = await proofAccount(env, session.accountId);
 		if (!account) return invalidCredentials();
-		const checked = await checkProof(env, now, session, account, body.value.proof, name);
+		const checked = await checkProof(env, now, session, account, body.value.proof, { provider: name });
 		if (!checked.ok) return checked.response;
-
-		let recovered = false;
-		if (body.value.recovery_auth_key !== undefined) {
-			const recovery = proof32(body.value.recovery_auth_key);
-			if (!recovery) return badRequest("recovery_auth_key must be 32 bytes of canonical base64url.");
-			if (!(await proofMatches(recovery, account.recovery_hash))) return invalidCredentials();
-			recovered = true;
-		}
+		const recovery = await recoveryProof(body.value, "recovery_auth_key", account);
+		if (!recovery.ok) return recovery.response;
 		const linked = await env.DB.prepare("SELECT 1 AS linked FROM account_identities WHERE account_id = ?1 AND provider = ?2")
 			.bind(session.accountId, name)
 			.first();
 		if (!linked) return notFound();
 
-		// The rule, the proof's guard and the deletion are one statement, so two
-		// unlinks of an account's last two methods can't both pass.
-		const others = `(?3 = 1 OR (SELECT has_password FROM accounts WHERE id = ?1) = 1
-    OR EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?1 AND provider != ?2)
-    OR EXISTS (SELECT 1 FROM account_passkeys WHERE account_id = ?1))`;
-		const deletion = `DELETE FROM account_identities WHERE account_id = ?1 AND provider = ?2 AND ${others} AND `;
-		const statements = [
-			checked.kind === "password"
-				? env.DB.prepare(`${deletion}EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND auth_hash = ?4) RETURNING provider`).bind(
-						session.accountId,
-						name,
-						recovered ? 1 : 0,
-						checked.authHash,
-					)
-				: env.DB.prepare(`${deletion}EXISTS (SELECT 1 FROM auth_flows WHERE id = ?4 AND consumed_at = ?5) RETURNING provider`).bind(
-						session.accountId,
-						name,
-						recovered ? 1 : 0,
-						checked.flowId,
-						now,
-					),
-		];
-		if (checked.kind === "provider") {
-			// Consumed first, in the same batch: a provider proof is single use even when the change is refused.
-			statements.unshift(
-				env.DB.prepare("UPDATE auth_flows SET consumed_at = ?2 WHERE id = ?1 AND consumed_at IS NULL AND expires_at > ?2").bind(checked.flowId, now),
-			);
-		}
-		const results = await env.DB.batch(statements);
+		// The rule, the recovery key, the proof's guard and the deletion are one
+		// statement, so two unlinks of an account's last two methods can't both pass.
+		const { guard } = checked;
+		const offered = offeredMethods(env);
+		const deletion = env.DB.prepare(
+			`DELETE FROM account_identities WHERE account_id = ?1 AND provider = ?2
+  AND (?3 IS NOT NULL OR (SELECT has_password FROM accounts WHERE id = ?1) = 1
+    OR EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?1 AND provider != ?2
+      AND provider IN (SELECT value FROM json_each(?5)))
+    OR (?6 = 1 AND EXISTS (SELECT 1 FROM account_passkeys WHERE account_id = ?1)))
+  AND (?3 IS NULL OR EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND recovery_hash = ?3))
+  AND ${guard.sql(1, 4)} RETURNING provider`,
+		).bind(session.accountId, name, recovery.hash ?? null, guard.value, offered.providers, offered.passkeys);
+		// The proof is used first, in the same batch: single use even when the change is refused.
+		const results = await env.DB.batch([...guard.before, deletion]);
 		if (results[results.length - 1].results.length === 1) return new Response(null, { status: 204 });
-		if (checked.kind === "provider" && (results[0].meta?.changes ?? 0) === 0) return reauthRequired();
+		if (!proofUsed(guard, results)) return flowExpired();
+		const current = await proofAccount(env, session.accountId);
 		const still = await env.DB.prepare("SELECT 1 AS linked FROM account_identities WHERE account_id = ?1 AND provider = ?2")
 			.bind(session.accountId, name)
 			.first();
 		if (!still) return notFound();
-		if (checked.kind === "password") {
-			const current = await proofAccount(env, session.accountId);
-			if (current?.auth_hash !== checked.authHash) return invalidCredentials();
-		}
-		return error(409, "last_method", "This is the account's last way to sign in; prove the recovery key to remove it.");
+		// The password or the recovery key changed since the check.
+		if (checked.kind === "password" && current?.auth_hash !== account.auth_hash) return invalidCredentials();
+		if (recovery.hash !== undefined && current?.recovery_hash !== recovery.hash) return invalidCredentials();
+		return lastMethod();
 	});
 }
 
@@ -1218,7 +1201,7 @@ export const methods = async (request: Request, env: Env, now: number): Promise<
 			created_at: r.created_at,
 			last_used_at: r.last_used_at === null ? null : Math.floor(r.last_used_at / hour) * hour,
 			prf: r.prf === 1,
-			transports: r.transports === "" ? [] : r.transports.split(" "),
+			transports: storedTransports(r.transports),
 		})),
 		recovery: true,
 	});

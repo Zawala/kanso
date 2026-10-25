@@ -1,0 +1,3525 @@
+{
+ "about": [
+  "Sign-in methods for protocol v2 (docs/ACCOUNTS.md \u203a Sign-in methods, \u203a Sign-in routes, \u203a Rate limits). Owner: the",
+  "Worker builder. Runners: cloud/test/sign_in.test.ts (the Worker, through handle(request, env, now)) and",
+  "crates/kanso-sync/tests/conformance.rs (MemoryServer). The step language is auth.json's, which this file extends:",
+  "start, values, $name values and captures, patterns, settings/admin/request/raw steps, t, as, path, status,",
+  "response, response_headers, capture, note and runner: \"worker\" all mean what they mean there.",
+  "env: the Worker vars each case starts with (strings, as wrangler sets them). A case's env merges over it; a null",
+  "value unsets the var. Apple and Google are never configured here.",
+  "authenticators: {name: {seed, credential_id}}, each 32 bytes of base64url. The credential is an Ed25519 key whose",
+  "RFC 8032 private key is the seed (COSE alg -8), with that credential ID. $cred_<name> is its ID.",
+  "WebAuthn in a body: any object holding a \"$register\" or \"$assert\" key ({authenticator, challenge, sign_count?,",
+  "flags?, origin?, rp_id?}, values resolved first) is replaced by the fields below merged with its other keys.",
+  "  client_data_json: exactly {\"type\":\"webauthn.create\"|\"webauthn.get\",\"challenge\":<challenge>,\"origin\":<origin>,",
+  "    \"crossOrigin\":false}, in that order, no spaces. origin defaults to https://sync.kansoapp.app, rp_id to",
+  "    sync.kansoapp.app.",
+  "  $register gives {credential_id, attestation_object, client_data_json}. attestation_object is the CBOR map",
+  "    {\"fmt\":\"none\",\"attStmt\":{},\"authData\":bytes}, keys in that order. authData is SHA-256(rp_id) || flags",
+  "    (default 0x45: UP, UV, AT) || u32be sign_count (default 0) || aaguid (16 bytes of 0x07) || u16be ID length ||",
+  "    credential ID || the COSE key {1:1, 3:-8, -1:6, -2:<32-byte public key>}, keys in that order. CBOR uses the",
+  "    shortest heads.",
+  "  $assert gives {credential_id, authenticator_data, client_data_json, signature}. authenticator_data is",
+  "    SHA-256(rp_id) || flags (default 0x05: UP, UV) || u32be sign_count (default 1). signature is Ed25519 over",
+  "    authenticator_data || SHA-256(client_data_json).",
+  "github: what the fake GitHub answers. device/code gives {device_code, user_code, verification_uri:",
+  "  \"https://github.com/login/device\", expires_in: 900, interval}. The token endpoint pops the case's queue: an empty",
+  "  queue is authorization_pending; \"authorized\" is an access token, after which /user gives {id}; \"denied\" is",
+  "  access_denied; \"slow_down\" is slow_down. A step {github: answer} pushes one answer.",
+  "A step {repeat: n, steps: [...]} runs its steps n times in order (captures are overwritten). It's for rate limits.",
+  "New request routes: passkey_start, passkey_finish, passkey_signup_start, passkey_signup_finish, github_start,",
+  "github_poll, social_signup, sign_in_methods (GET /v2/account/sign-in), proof_start, set_password",
+  "(POST /v2/account/sign-in/password), passkey_register_start, passkey_register_finish, passkey_remove",
+  "(path {credential_id}), identity_start and identity_unlink (path {provider}), and aasa",
+  "(GET /.well-known/apple-app-site-association; its body is matched as JSON). The approval_* routes are auth.json's.",
+  "Not covered here, because they need Apple or Google: the Apple callback page, nonce_reused, provider_unavailable.",
+  "providers.test.ts covers them on the Worker.",
+  "proof-account and password-account count per account and device; proof-total (60 an hour) and password-total",
+  "(15 per 15 minutes) count per account, after the device's own rule passes.",
+  "Expected values follow the spec, except its listed divergences (ACCOUNTS.md \u203a Changes since review). A used,",
+  "unknown or expired flow is 400 flow_expired; no proof, or a kind the change doesn't take, is 401 reauth_required."
+ ],
+ "start": 1800057600000,
+ "env": {
+  "PASSKEY_RP_ID": "sync.kansoapp.app",
+  "PASSKEY_ORIGINS": "[\"https://sync.kansoapp.app\"]",
+  "GITHUB_CLIENT_ID": "Iv1.kansofixture",
+  "APP_ASSOC_APPS": "[\"4973Y692JU.app.kanso.Kanso\"]"
+ },
+ "authenticators": {
+  "k1": {
+   "seed": "FbH0e_uU7tMLmKLrDxkIQWt49jd-CgWvUzpji3ZFllI",
+   "credential_id": "OSJ3dKf1DVxKOp-sHutRKvaoUdWDTWZejt1H3Y1lDq8"
+  },
+  "k2": {
+   "seed": "6AqyHhQmYZ0PzIdMg1pj-zkuqUWwY7EULMMAwZo0uc8",
+   "credential_id": "bq1qul7YSfeie6c4AMGc7B51XTnIiHT17YOpMz7kt54"
+  },
+  "k3": {
+   "seed": "NVcyA_s5gz6oDikoe5_nr9uFX740bHO4cA49_nDmPzY",
+   "credential_id": "MvQG7oCj36z0_ezFivQ9iCWBuZjaVE0vUDHi3K0-lbk"
+  }
+ },
+ "github": {
+  "id": 583231,
+  "device_code": "3584d83530557fdd1f46af8289938c8ef79f9dc5",
+  "user_code": "WDJB-MJHT",
+  "interval": 5
+ },
+ "values": {
+  "kdf": {
+   "alg": "argon2id",
+   "version": 19,
+   "m_kib": 1048576,
+   "t": 3,
+   "p": 4
+  },
+  "acct_alice": "a_71ac8434d35527f7fe9df6b2092298a2",
+  "kid_alice": "a7ef1cd126ac39f3",
+  "salt_alice1": "XFz_zcKcbbljBy5QTJPG1A",
+  "auth_alice1": "VbK-gGRzW6fPpViu3LzfyqbJTWbOsbCJX65ofaYNBqI",
+  "wrap_alice1": "Ft-uqbUOGswP9SfO0gG3pXJc6eUSf4V4CaV7DH0VzCY_101t4ZAuI3gjRs7I0XmhFd8o1qV5bVCnPT1JlH2QVTSoQLTtNbDW4g",
+  "salt_alice2": "jeXRSTI9-f98FZCdCZ_gsA",
+  "auth_alice2": "IpJ1vhQqsMfLC0vp7ReTj1WLsCzebCd9r_dsIkoFA_0",
+  "wrap_alice2": "Ey0JcbHqbt7uEwieiXsk7BTAgRYs9oyygGQTn1EylQKmmdxtvZQaxl5hI6HhiY1POas9OPyW_za-sry-ec-bbV8YamCk_5cj3g",
+  "rauth_alice1": "NkQdk2zuzNux3XbKWEpvpXiAxu4fuvDVVU992MrPPhM",
+  "rwrap_alice1": "YNrE7F0L-9g0CjqEFxDcef8EnXq8KsbHmhz9EAuwTI_7H04xLNqIip8Xt0hBbJh4BGrIWtqwb8oRg5cNQu5sZNU85D-tl0ANZg",
+  "rauth_alice2": "T237GKaG5oA3mjJ862vgtV5Y3hkDmS0iJR17hhwpoTk",
+  "rwrap_alice2": "8aAi3sZAwG3BcV__0wBeaotz9sfpLzcMYmORfniDa2xZZnkNS1AiTj1ETUQdI2sBy150Ou3iQ_319jOBQZpy6-MyWhsFF2QrTQ",
+  "acct_bob": "a_f105677d7b711a4fbf9f8ff403000790",
+  "kid_bob": "ca43df1c2552d8c2",
+  "salt_bob1": "mIPkF1IWq3rzM4QhW_8lUQ",
+  "auth_bob1": "rvvFKxtFcBEodmaFAoA8nBHlx_lu7Po4LT-4tyRopmY",
+  "wrap_bob1": "W23XIPfuBHGIxjXUnT0VUigCgG90jGXq4g7nWZjduyDNpDMKLBplB8JPMp-Nmm1RPJIBO54u2-dnIhwrlMWcb5c81coo88_-qw",
+  "salt_bob2": "NNRgirwKweTSXEfyD3q0LA",
+  "auth_bob2": "egAoHKCEFNTEMUVP6DqTUTs3Iu6lUGOTqTWQYPcCcPY",
+  "wrap_bob2": "Rd-r4iMzNFQSo1h1PeRyxPdxdlbfaTRnsObYeldgsea3msLHHi4LosQ4SeSkdJ6kfSYXVdVX7d3GJlgkZFU-0LXgWpINy3skHQ",
+  "rauth_bob1": "AgreP7yft0rXLPKkAbeWcSsEzqUSG6BGFbmW8cJuM2M",
+  "rwrap_bob1": "NpVgx2-JdMhTcgaLwfg64zgfG6wgwSAy9pvcGSNORBgWtmBLSDSyHxqq7YyZfiFt6Tz5xEAsKT3PE4YbgnoQ2DxRyIvxD4skkA",
+  "rauth_bob2": "hXAlztEhkLTEcL5TNmhvdeQun8Ju03U0rHg_BNbMGW8",
+  "rwrap_bob2": "nPI3I1uQYsSsoXQW2xwSZR4NCFJcxD7xEKccBbdQbkYyhNiwRhchtTZXK1LlaXyhooKu4Qi3Dmxfox-1U5bzS_J0vmhjOyfcRA",
+  "acct_carol": "a_2d224275f110a436f610c44feba00b41",
+  "kid_carol": "24924c378d6ed11f",
+  "salt_carol1": "8cCsWIKxfMTlQ7VsjMqJTg",
+  "auth_carol1": "Ephc6DmI-zVBlnunhorSXKq4GBxbgP6Y-SUvroN-XU4",
+  "wrap_carol1": "pHCgpAVYYzJOQR1xmxHhZdWY1M1JKic59VoNoE0tbpbwx-At8xoCXNCk8LzJoiUylUMJa8h-XxpJ8Z0dO-FGoRMwM4UfJWOpLA",
+  "salt_carol2": "RnWLGbUGGH8hRyKq4kzr5Q",
+  "auth_carol2": "93hvIlBeoDpa_TbS2xE56gjEfr6SK4hXflh3zFI19HU",
+  "wrap_carol2": "aCEBw9gTj-w2zEz-5gdyxk8KIA5kxBdwk8kHoHCVgdKG_bOt8mT4WbIs08svYc6IonbsfTNsdPuNSnkX2eHby5vL2qWAvjAWpA",
+  "rauth_carol1": "iSFZIK_dzJawlMBIOqvN0iFPJNiVFCi10dJfY2njJ28",
+  "rwrap_carol1": "Om2tQuESDKf6vOJXGO_cbIDy-F25djFvRbI_6_E7rm5aouH2518_HcZlU49trhlrpWbkP1-yshVaQrS9xfgCBXYOUZ0DUU6QVg",
+  "rauth_carol2": "C_DX9uhgjhKqrHlRbjwIc73BJ51-3P6PSDvBSe2o7ts",
+  "rwrap_carol2": "lAeldl9LR9R7sC4X44paeZDaPMYuyiFyOQHsQRzlxpEGk-qKYUgHJ2I_KPRwUQOtBtyAAhl8IxN5rzramKQuXKD2g6zsuqOw8A",
+  "dev_1": "d_f20d7bb39072c3cc11783e60e22377f6",
+  "dev_2": "d_add0c5988e58a95e1c366d3a8c7cf6eb",
+  "dev_3": "d_e69eab40e5180035369cf7ea8f29fe4b",
+  "dev_4": "d_4b99b86be38cc7c94eceb4801e4168f3",
+  "dev_5": "d_c131cdb06f18c37d7584bb79d0470407",
+  "dev_6": "d_50b747831f10f9387fc54b7747bb7da7",
+  "proof_1": "I8I_meZb0ibchEgIpnDftnz9bOMQy8v1KrqkbcIgeSw",
+  "proof_2": "hgQv4XKAxEH4ZL1RpsesNrse2VeDJFz-IvOzG5GjdyI",
+  "proof_3": "-JeUAVzC0m2rFot_v7c-dG-PIakYJv5HYEvqrHZmlco",
+  "proof_4": "6TEvWh9TZ8XrGhigGmZ7-2Uw7fRFaXH_RDqalsQovfk",
+  "proof_5": "O0dCXPivOG4hjP91my-3lF_k89_BtnX4Up3m3-Z1vC8",
+  "proof_6": "9KTUNFwMnEhOACRMOuImoRkwz4MZBXxmG6r_RziDQFc",
+  "name_1": "NTmYeTyOn1PZIpw059nwG__M2e3sIGkRgA3n6uJdMgcM2DyhuXfntkf7Tajxmwsz6p_o4ul2DX-jJN5A",
+  "name_2": "K3eY8Oe7vvP_wktdB0DB0wu_MjCqEA7KipwTEFeYxbeyniNdvWmE2reDfppyd1OrwKvxCGF-EPUHm35Q",
+  "name_3": "d3C2fVbgyJS2Law7IdWRDjXs96VkeVpI2j1bgCEvbPFh22PJQIacyMu_IvFrxrTiAOQjkt-qmXi3Zw8L",
+  "name_4": "bKbGxXjIo4Bum3RRbpCzlJt1wl4eEdyzprwPOHEoMoahUv9l3-htUEGo8tH8WwN6AST33hCX6606lw3N",
+  "name_5": "B2WCKZRxpdLf5N2XzBeC9Ko85644MSC4gbC4bBjlcTur0ebDZGusjDQhGRNIeQYm_tVOKg5paUWLNZ_b",
+  "name_6": "584yFh26qBP0C50cQpiiy17oiQCSh_gRXYPX5GkTE_sffeBQ8ZzOvOPf0y7OuVQ-FYnqZJdH6RBBsihV",
+  "epk_a": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+  "commit_a": "iDQIxLqv6l7U7szMxckKqgFWuYqNPnqQO-_YlRblU_E",
+  "epk_b": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+  "request_1": "oaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaE",
+  "request_2": "oqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqI",
+  "unknown_flow": "bGHHOTKtuJLhcRLR52hd8STEsOwiDVZwY6DBE-hblZ8",
+  "cred_k1": "OSJ3dKf1DVxKOp-sHutRKvaoUdWDTWZejt1H3Y1lDq8",
+  "cred_k2": "bq1qul7YSfeie6c4AMGc7B51XTnIiHT17YOpMz7kt54",
+  "cred_k3": "MvQG7oCj36z0_ezFivQ9iCWBuZjaVE0vUDHi3K0-lbk",
+  "github_subject": "583231"
+ },
+ "cases": [
+  {
+   "name": "health advertises password, passkeys (security keys too), GitHub and the event socket",
+   "steps": [
+    {
+     "request": "health",
+     "status": 200,
+     "response": {
+      "ok": true,
+      "protocol": 2,
+      "signup": "open",
+      "auth": {
+       "password": true,
+       "passkeys": {
+        "rp_id": "sync.kansoapp.app",
+        "origins": [
+         "https://sync.kansoapp.app"
+        ],
+        "security_key": true
+       },
+       "providers": [
+        "github"
+       ]
+      },
+      "events": {
+       "account": "/v2/account/events"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "health without sign-in configuration advertises only the password",
+   "env": {
+    "PASSKEY_RP_ID": null,
+    "PASSKEY_ORIGINS": null,
+    "GITHUB_CLIENT_ID": null
+   },
+   "steps": [
+    {
+     "request": "health",
+     "status": 200,
+     "response": {
+      "auth": {
+       "password": true,
+       "passkeys": null,
+       "providers": []
+      },
+      "events": {
+       "account": "/v2/account/events"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "health drops passkeys whose origins aren't under the RP ID",
+   "env": {
+    "PASSKEY_ORIGINS": "[\"https://evil.example\"]"
+   },
+   "steps": [
+    {
+     "request": "health",
+     "status": 200,
+     "response": {
+      "auth": {
+       "passkeys": null,
+       "providers": [
+        "github"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "the apple-app-site-association file",
+   "steps": [
+    {
+     "request": "aasa",
+     "response_headers": {
+      "content-type": "application/json",
+      "cache-control": "public, max-age=300"
+     },
+     "status": 200,
+     "response": {
+      "webcredentials": {
+       "apps": [
+        "4973Y692JU.app.kanso.Kanso"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "no apple-app-site-association file without APP_ASSOC_APPS",
+   "env": {
+    "APP_ASSOC_APPS": null
+   },
+   "steps": [
+    {
+     "request": "aasa",
+     "status": 404,
+     "response": {
+      "error": "not_found"
+     }
+    }
+   ]
+  },
+  {
+   "name": "passkey sign-up, then sign-in with a discoverable credential and with a username",
+   "steps": [
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "user": {
+       "id": "*",
+       "name": "alice",
+       "displayName": "alice"
+      },
+      "pub_key_cred_params": [
+       -7,
+       -8,
+       -257
+      ],
+      "authenticator_selection": {
+       "residentKey": "required",
+       "userVerification": "required"
+      },
+      "exclude_credentials": []
+     },
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k1",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "internal"
+      ],
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "passkey_start",
+     "body": {
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "allow_credentials": [],
+      "user_verification": "required",
+      "timeout": 300000
+     },
+     "capture": {
+      "f": "flow_id",
+      "c": "challenge"
+     }
+    },
+    {
+     "request": "passkey_finish",
+     "body": {
+      "flow_id": "$f",
+      "$assert": {
+       "authenticator": "k1",
+       "challenge": "$c",
+       "sign_count": 1
+      },
+      "user_handle": "$acct_alice",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t2": "token"
+     }
+    },
+    {
+     "note": "A flow is used once.",
+     "request": "passkey_finish",
+     "body": {
+      "flow_id": "$f",
+      "$assert": {
+       "authenticator": "k1",
+       "challenge": "$c",
+       "sign_count": 2
+      },
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 400,
+     "response": {
+      "error": "flow_expired"
+     }
+    },
+    {
+     "note": "Username first: the account's credentials, in the order added (an owner decision).",
+     "request": "passkey_start",
+     "body": {
+      "username": "alice",
+      "device": {
+       "id": "$dev_3",
+       "proof": "$proof_3"
+      }
+     },
+     "status": 200,
+     "response": {
+      "allow_credentials": [
+       {
+        "id": "$cred_k1",
+        "transports": [
+         "internal"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "note": "An unknown username gets an empty list.",
+     "request": "passkey_start",
+     "body": {
+      "username": "nobody",
+      "device": {
+       "id": "$dev_3",
+       "proof": "$proof_3"
+      }
+     },
+     "status": 200,
+     "response": {
+      "allow_credentials": []
+     }
+    },
+    {
+     "request": "sign_in_methods",
+     "as": "t2",
+     "status": 200,
+     "response": {
+      "username": "alice",
+      "has_password": false,
+      "identities": [],
+      "passkeys": [
+       {
+        "credential_id": "$cred_k1",
+        "created_at": "*",
+        "prf": false,
+        "transports": [
+         "internal"
+        ]
+       }
+      ],
+      "recovery": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "passkey sign-in failures are all 401 invalid_credentials",
+   "steps": [
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "user": {
+       "id": "*",
+       "name": "alice",
+       "displayName": "alice"
+      },
+      "pub_key_cred_params": [
+       -7,
+       -8,
+       -257
+      ],
+      "authenticator_selection": {
+       "residentKey": "required",
+       "userVerification": "required"
+      },
+      "exclude_credentials": []
+     },
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k1",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "internal"
+      ],
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "passkey_start",
+     "body": {
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "capture": {
+      "f": "flow_id",
+      "c": "challenge"
+     }
+    },
+    {
+     "note": "No UV flag.",
+     "request": "passkey_finish",
+     "body": {
+      "flow_id": "$f",
+      "$assert": {
+       "authenticator": "k1",
+       "challenge": "$c",
+       "flags": 1
+      },
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 401,
+     "response": {
+      "error": "invalid_credentials"
+     }
+    },
+    {
+     "request": "passkey_start",
+     "body": {
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "capture": {
+      "f": "flow_id",
+      "c": "challenge"
+     }
+    },
+    {
+     "note": "Another origin.",
+     "request": "passkey_finish",
+     "body": {
+      "flow_id": "$f",
+      "$assert": {
+       "authenticator": "k1",
+       "challenge": "$c",
+       "origin": "https://evil.example"
+      },
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 401,
+     "response": {
+      "error": "invalid_credentials"
+     }
+    },
+    {
+     "request": "passkey_start",
+     "body": {
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "capture": {
+      "f": "flow_id",
+      "c": "challenge"
+     }
+    },
+    {
+     "note": "An unregistered credential.",
+     "request": "passkey_finish",
+     "body": {
+      "flow_id": "$f",
+      "$assert": {
+       "authenticator": "k2",
+       "challenge": "$c"
+      },
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 401,
+     "response": {
+      "error": "invalid_credentials"
+     }
+    },
+    {
+     "request": "passkey_start",
+     "body": {
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "capture": {
+      "f": "flow_id",
+      "c": "challenge"
+     }
+    },
+    {
+     "request": "passkey_finish",
+     "body": {
+      "flow_id": "$f",
+      "$assert": {
+       "authenticator": "k1",
+       "challenge": "$c",
+       "sign_count": 5
+      },
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "session"
+     }
+    },
+    {
+     "request": "passkey_start",
+     "body": {
+      "device": {
+       "id": "$dev_3",
+       "proof": "$proof_3"
+      }
+     },
+     "status": 200,
+     "capture": {
+      "f": "flow_id",
+      "c": "challenge"
+     }
+    },
+    {
+     "note": "A sign count that doesn't grow (a clone).",
+     "request": "passkey_finish",
+     "body": {
+      "flow_id": "$f",
+      "$assert": {
+       "authenticator": "k1",
+       "challenge": "$c",
+       "sign_count": 5
+      },
+      "device": {
+       "id": "$dev_3",
+       "proof": "$proof_3"
+      }
+     },
+     "status": 401,
+     "response": {
+      "error": "invalid_credentials"
+     }
+    },
+    {
+     "request": "passkey_finish",
+     "body": {
+      "flow_id": "$unknown_flow",
+      "$assert": {
+       "authenticator": "k1",
+       "challenge": "$c",
+       "sign_count": 9
+      },
+      "device": {
+       "id": "$dev_3",
+       "proof": "$proof_3"
+      }
+     },
+     "status": 400,
+     "response": {
+      "error": "flow_expired"
+     }
+    }
+   ]
+  },
+  {
+   "name": "a security key: USB transports and a sign count that stays 0",
+   "steps": [
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "user": {
+       "id": "*",
+       "name": "alice",
+       "displayName": "alice"
+      },
+      "pub_key_cred_params": [
+       -7,
+       -8,
+       -257
+      ],
+      "authenticator_selection": {
+       "residentKey": "required",
+       "userVerification": "required"
+      },
+      "exclude_credentials": []
+     },
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k2",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "usb",
+       "nfc"
+      ],
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "passkey_start",
+     "body": {
+      "username": "alice",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "allow_credentials": [
+       {
+        "id": "$cred_k2",
+        "transports": [
+         "usb",
+         "nfc"
+        ]
+       }
+      ]
+     },
+     "capture": {
+      "f": "flow_id",
+      "c": "challenge"
+     }
+    },
+    {
+     "request": "passkey_finish",
+     "body": {
+      "flow_id": "$f",
+      "$assert": {
+       "authenticator": "k2",
+       "challenge": "$c",
+       "sign_count": 0
+      },
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "session"
+     }
+    },
+    {
+     "request": "passkey_start",
+     "body": {
+      "device": {
+       "id": "$dev_3",
+       "proof": "$proof_3"
+      }
+     },
+     "status": 200,
+     "capture": {
+      "f": "flow_id",
+      "c": "challenge"
+     }
+    },
+    {
+     "request": "passkey_finish",
+     "body": {
+      "flow_id": "$f",
+      "$assert": {
+       "authenticator": "k2",
+       "challenge": "$c",
+       "sign_count": 0
+      },
+      "device": {
+       "id": "$dev_3",
+       "proof": "$proof_3"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "session"
+     }
+    }
+   ]
+  },
+  {
+   "name": "passkey sign-up refuses a taken username and a reused flow",
+   "runner": "worker",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "token": "*"
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_bob",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 409,
+     "response": {
+      "error": "username_taken"
+     }
+    },
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "bob",
+      "account_id": "$acct_bob",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "note": "The username and account ID must be the flow's.",
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k1",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "internal"
+      ],
+      "username": "carol",
+      "account_id": "$acct_bob",
+      "recovery_auth_key": "$rauth_bob1",
+      "recovery_wrapped_key": "$rwrap_bob1",
+      "key_id": "$kid_bob",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2",
+       "sealed_name": "$name_2"
+      }
+     },
+     "status": 400
+    }
+   ]
+  },
+  {
+   "name": "no passkeys without PASSKEY_RP_ID: 400 unsupported_method",
+   "env": {
+    "PASSKEY_RP_ID": null
+   },
+   "steps": [
+    {
+     "request": "passkey_start",
+     "body": {
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 400,
+     "response": {
+      "error": "unsupported_method"
+     }
+    },
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 400,
+     "response": {
+      "error": "unsupported_method"
+     }
+    }
+   ]
+  },
+  {
+   "name": "passkey-challenge: thirty starts per 15 minutes per IP group",
+   "steps": [
+    {
+     "repeat": 30,
+     "steps": [
+      {
+       "request": "passkey_start",
+       "body": {
+        "device": {
+         "id": "$dev_1",
+         "proof": "$proof_1"
+        }
+       },
+       "status": 200
+      }
+     ]
+    },
+    {
+     "request": "passkey_start",
+     "body": {
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "passkey-challenge"
+     }
+    },
+    {
+     "note": "Sign-up start counts signup-ip instead (its route text; the table's \"and sign-up start\" is stale).",
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200
+    },
+    {
+     "request": "passkey_start",
+     "t": 900000,
+     "body": {
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200
+    }
+   ]
+  },
+  {
+   "name": "adding a passkey with a passkey proof, then removing one",
+   "steps": [
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "user": {
+       "id": "*",
+       "name": "alice",
+       "displayName": "alice"
+      },
+      "pub_key_cred_params": [
+       -7,
+       -8,
+       -257
+      ],
+      "authenticator_selection": {
+       "residentKey": "required",
+       "userVerification": "required"
+      },
+      "exclude_credentials": []
+     },
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k1",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "internal"
+      ],
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "timeout": 300000
+     },
+     "capture": {
+      "pf": "flow_id",
+      "pc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_register_start",
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$pf",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k1",
+         "challenge": "$pc",
+         "sign_count": 2
+        }
+       }
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "exclude_credentials": [
+       {
+        "id": "$cred_k1"
+       }
+      ]
+     },
+     "capture": {
+      "rf": "flow_id",
+      "rc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_register_finish",
+     "as": "t1",
+     "body": {
+      "flow_id": "$rf",
+      "$register": {
+       "authenticator": "k2",
+       "challenge": "$rc"
+      },
+      "transports": [
+       "usb"
+      ]
+     },
+     "status": 201,
+     "response": {
+      "credential_id": "$cred_k2",
+      "prf": false,
+      "created_at": "*"
+     }
+    },
+    {
+     "request": "sign_in_methods",
+     "as": "t1",
+     "status": 200,
+     "response": {
+      "passkeys": [
+       {
+        "credential_id": "$cred_k1",
+        "transports": [
+         "internal"
+        ]
+       },
+       {
+        "credential_id": "$cred_k2",
+        "transports": [
+         "usb"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "note": "The same credential again.",
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "timeout": 300000
+     },
+     "capture": {
+      "pf": "flow_id",
+      "pc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_register_start",
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$pf",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k2",
+         "challenge": "$pc",
+         "sign_count": 1
+        }
+       }
+      }
+     },
+     "status": 200,
+     "capture": {
+      "rf": "flow_id",
+      "rc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_register_finish",
+     "as": "t1",
+     "body": {
+      "flow_id": "$rf",
+      "$register": {
+       "authenticator": "k2",
+       "challenge": "$rc"
+      },
+      "transports": [
+       "usb"
+      ]
+     },
+     "status": 409,
+     "response": {
+      "error": "credential_exists"
+     }
+    },
+    {
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "timeout": 300000
+     },
+     "capture": {
+      "pf": "flow_id",
+      "pc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_remove",
+     "path": {
+      "credential_id": "$cred_k1"
+     },
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$pf",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k2",
+         "challenge": "$pc",
+         "sign_count": 2
+        }
+       }
+      }
+     },
+     "status": 204
+    },
+    {
+     "request": "sign_in_methods",
+     "as": "t1",
+     "status": 200,
+     "response": {
+      "passkeys": [
+       {
+        "credential_id": "$cred_k2"
+       }
+      ]
+     }
+    },
+    {
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "timeout": 300000
+     },
+     "capture": {
+      "pf": "flow_id",
+      "pc": "challenge"
+     }
+    },
+    {
+     "note": "An unknown credential of this account.",
+     "request": "passkey_remove",
+     "path": {
+      "credential_id": "$cred_k1"
+     },
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$pf",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k2",
+         "challenge": "$pc",
+         "sign_count": 3
+        }
+       }
+      }
+     },
+     "status": 404
+    },
+    {
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "timeout": 300000
+     },
+     "capture": {
+      "pf": "flow_id",
+      "pc": "challenge"
+     }
+    },
+    {
+     "note": "The last way in, without the recovery key.",
+     "request": "passkey_remove",
+     "path": {
+      "credential_id": "$cred_k2"
+     },
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$pf",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k2",
+         "challenge": "$pc",
+         "sign_count": 4
+        }
+       }
+      }
+     },
+     "status": 409,
+     "response": {
+      "error": "last_method"
+     }
+    }
+   ]
+  },
+  {
+   "name": "proofs: missing, used, unknown and the wrong kind",
+   "steps": [
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "user": {
+       "id": "*",
+       "name": "alice",
+       "displayName": "alice"
+      },
+      "pub_key_cred_params": [
+       -7,
+       -8,
+       -257
+      ],
+      "authenticator_selection": {
+       "residentKey": "required",
+       "userVerification": "required"
+      },
+      "exclude_credentials": []
+     },
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k1",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "internal"
+      ],
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "signup",
+     "body": {
+      "username": "bob",
+      "account_id": "$acct_bob",
+      "kdf": "$kdf",
+      "salt": "$salt_bob1",
+      "auth_key": "$auth_bob1",
+      "wrapped_key": "$wrap_bob1",
+      "recovery_auth_key": "$rauth_bob1",
+      "recovery_wrapped_key": "$rwrap_bob1",
+      "key_id": "$kid_bob",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2",
+       "sealed_name": "$name_2"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_bob",
+      "token": "*"
+     },
+     "capture": {
+      "tb": "token"
+     }
+    },
+    {
+     "request": "passkey_register_start",
+     "as": "t1",
+     "body": {},
+     "status": 401,
+     "response": {
+      "error": "reauth_required"
+     }
+    },
+    {
+     "request": "passkey_register_start",
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "secret"
+      }
+     },
+     "status": 401,
+     "response": {
+      "error": "reauth_required"
+     }
+    },
+    {
+     "note": "A provider proof can't add a passkey.",
+     "request": "passkey_register_start",
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "provider",
+       "flow": "$unknown_flow"
+      }
+     },
+     "status": 401,
+     "response": {
+      "error": "reauth_required"
+     }
+    },
+    {
+     "request": "passkey_register_start",
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$unknown_flow",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k1",
+         "challenge": "$unknown_flow",
+         "sign_count": 2
+        }
+       }
+      }
+     },
+     "status": 400,
+     "response": {
+      "error": "flow_expired"
+     }
+    },
+    {
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "timeout": 300000
+     },
+     "capture": {
+      "pf": "flow_id",
+      "pc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_register_start",
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$pf",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k1",
+         "challenge": "$pc",
+         "sign_count": 2
+        }
+       }
+      }
+     },
+     "status": 200
+    },
+    {
+     "note": "Used once.",
+     "request": "passkey_register_start",
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$pf",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k1",
+         "challenge": "$pc",
+         "sign_count": 3
+        }
+       }
+      }
+     },
+     "status": 400,
+     "response": {
+      "error": "flow_expired"
+     }
+    },
+    {
+     "note": "Another account's session can't use it.",
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "timeout": 300000
+     },
+     "capture": {
+      "pf": "flow_id",
+      "pc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_register_start",
+     "as": "tb",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$pf",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k1",
+         "challenge": "$pc",
+         "sign_count": 4
+        }
+       }
+      }
+     },
+     "status": 400,
+     "response": {
+      "error": "flow_expired"
+     }
+    },
+    {
+     "note": "A wrong password.",
+     "request": "passkey_register_start",
+     "as": "tb",
+     "body": {
+      "proof": {
+       "kind": "password",
+       "auth_key": "$auth_bob2"
+      }
+     },
+     "status": 401,
+     "response": {
+      "error": "invalid_credentials"
+     }
+    },
+    {
+     "request": "passkey_register_start",
+     "as": "tb",
+     "body": {
+      "proof": {
+       "kind": "password",
+       "auth_key": "$auth_bob1"
+      }
+     },
+     "status": 200
+    }
+   ]
+  },
+  {
+   "name": "proof-account: twenty proof challenges an hour",
+   "steps": [
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "user": {
+       "id": "*",
+       "name": "alice",
+       "displayName": "alice"
+      },
+      "pub_key_cred_params": [
+       -7,
+       -8,
+       -257
+      ],
+      "authenticator_selection": {
+       "residentKey": "required",
+       "userVerification": "required"
+      },
+      "exclude_credentials": []
+     },
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k1",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "internal"
+      ],
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "repeat": 20,
+     "steps": [
+      {
+       "request": "proof_start",
+       "as": "t1",
+       "body": {},
+       "status": 200
+      }
+     ]
+    },
+    {
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "proof-account"
+     }
+    },
+    {
+     "request": "proof_start",
+     "t": 3600000,
+     "as": "t1",
+     "body": {},
+     "status": 200
+    }
+   ]
+  },
+  {
+   "name": "proof-account is per session: one device using up its own leaves the others theirs",
+   "steps": [
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "user": {
+       "id": "*",
+       "name": "alice",
+       "displayName": "alice"
+      },
+      "pub_key_cred_params": [
+       -7,
+       -8,
+       -257
+      ],
+      "authenticator_selection": {
+       "residentKey": "required",
+       "userVerification": "required"
+      },
+      "exclude_credentials": []
+     },
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k1",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "internal"
+      ],
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "passkey_start",
+     "body": {
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "capture": {
+      "f": "flow_id",
+      "c": "challenge"
+     }
+    },
+    {
+     "request": "passkey_finish",
+     "body": {
+      "flow_id": "$f",
+      "$assert": {
+       "authenticator": "k1",
+       "challenge": "$c",
+       "sign_count": 1
+      },
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "session"
+     },
+     "capture": {
+      "t2": "token"
+     }
+    },
+    {
+     "repeat": 20,
+     "steps": [
+      {
+       "request": "proof_start",
+       "as": "t1",
+       "body": {},
+       "status": 200
+      }
+     ]
+    },
+    {
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "proof-account"
+     }
+    },
+    {
+     "request": "proof_start",
+     "as": "t2",
+     "body": {},
+     "status": 200
+    }
+   ]
+  },
+  {
+   "name": "passkey-manage: twenty registrations and removals an hour",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "token": "*"
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "repeat": 20,
+     "steps": [
+      {
+       "request": "passkey_register_start",
+       "as": "t1",
+       "body": {},
+       "status": 401,
+       "response": {
+        "error": "reauth_required"
+       }
+      }
+     ]
+    },
+    {
+     "request": "passkey_register_start",
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "password",
+       "auth_key": "$auth_alice1"
+      }
+     },
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "passkey-manage"
+     }
+    },
+    {
+     "request": "passkey_remove",
+     "path": {
+      "credential_id": "$cred_k1"
+     },
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "password",
+       "auth_key": "$auth_alice1"
+      }
+     },
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "passkey-manage"
+     }
+    }
+   ]
+  },
+  {
+   "name": "the first password, with a passkey proof",
+   "steps": [
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "user": {
+       "id": "*",
+       "name": "alice",
+       "displayName": "alice"
+      },
+      "pub_key_cred_params": [
+       -7,
+       -8,
+       -257
+      ],
+      "authenticator_selection": {
+       "residentKey": "required",
+       "userVerification": "required"
+      },
+      "exclude_credentials": []
+     },
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k1",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "internal"
+      ],
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "password",
+     "as": "t1",
+     "body": {
+      "current_auth_key": "$auth_alice1",
+      "kdf": "$kdf",
+      "salt": "$salt_alice2",
+      "auth_key": "$auth_alice2",
+      "wrapped_key": "$wrap_alice2",
+      "recovery_auth_key": "$rauth_alice2",
+      "recovery_wrapped_key": "$rwrap_alice2"
+     },
+     "status": 409,
+     "response": {
+      "error": "no_password"
+     }
+    },
+    {
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "timeout": 300000
+     },
+     "capture": {
+      "pf": "flow_id",
+      "pc": "challenge"
+     }
+    },
+    {
+     "request": "set_password",
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$pf",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k1",
+         "challenge": "$pc",
+         "sign_count": 2
+        }
+       }
+      },
+      "kdf": "$kdf",
+      "salt": "$salt_alice2",
+      "auth_key": "$auth_alice2",
+      "wrapped_key": "$wrap_alice2",
+      "recovery_auth_key": "$rauth_alice2",
+      "recovery_wrapped_key": "$rwrap_alice2"
+     },
+     "status": 200,
+     "response": {
+      "signed_out_devices": 0
+     }
+    },
+    {
+     "request": "sign_in_methods",
+     "as": "t1",
+     "status": 200,
+     "response": {
+      "has_password": true
+     }
+    },
+    {
+     "request": "login",
+     "body": {
+      "username": "alice",
+      "auth_key": "$auth_alice2",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "wrapped_key": "$wrap_alice2"
+     }
+    },
+    {
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "timeout": 300000
+     },
+     "capture": {
+      "pf": "flow_id",
+      "pc": "challenge"
+     }
+    },
+    {
+     "request": "set_password",
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$pf",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k1",
+         "challenge": "$pc",
+         "sign_count": 3
+        }
+       }
+      },
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1"
+     },
+     "status": 409,
+     "response": {
+      "error": "already_has_password"
+     }
+    }
+   ]
+  },
+  {
+   "name": "a GitHub proof of an identity the account hasn't linked is invalid_credentials",
+   "steps": [
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "user": {
+       "id": "*",
+       "name": "alice",
+       "displayName": "alice"
+      },
+      "pub_key_cred_params": [
+       -7,
+       -8,
+       -257
+      ],
+      "authenticator_selection": {
+       "residentKey": "required",
+       "userVerification": "required"
+      },
+      "exclude_credentials": []
+     },
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k1",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "internal"
+      ],
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "identity_start",
+     "path": {
+      "provider": "github"
+     },
+     "as": "t1",
+     "body": {
+      "intent": "proof",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "user_code": "WDJB-MJHT"
+     },
+     "capture": {
+      "g": "flow_id"
+     }
+    },
+    {
+     "github": "authorized"
+    },
+    {
+     "request": "github_poll",
+     "t": 5000,
+     "body": {
+      "flow_id": "$g",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 401,
+     "response": {
+      "error": "invalid_credentials"
+     }
+    }
+   ]
+  },
+  {
+   "name": "password-account: five first-password attempts per 15 minutes",
+   "steps": [
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "user": {
+       "id": "*",
+       "name": "alice",
+       "displayName": "alice"
+      },
+      "pub_key_cred_params": [
+       -7,
+       -8,
+       -257
+      ],
+      "authenticator_selection": {
+       "residentKey": "required",
+       "userVerification": "required"
+      },
+      "exclude_credentials": []
+     },
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k1",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "internal"
+      ],
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "repeat": 5,
+     "steps": [
+      {
+       "request": "set_password",
+       "as": "t1",
+       "body": {
+        "proof": null,
+        "kdf": "$kdf",
+        "salt": "$salt_alice2",
+        "auth_key": "$auth_alice2",
+        "wrapped_key": "$wrap_alice2",
+        "recovery_auth_key": "$rauth_alice2",
+        "recovery_wrapped_key": "$rwrap_alice2"
+       },
+       "status": 401,
+       "response": {
+        "error": "reauth_required"
+       }
+      }
+     ]
+    },
+    {
+     "request": "set_password",
+     "as": "t1",
+     "body": {
+      "proof": null,
+      "kdf": "$kdf",
+      "salt": "$salt_alice2",
+      "auth_key": "$auth_alice2",
+      "wrapped_key": "$wrap_alice2",
+      "recovery_auth_key": "$rauth_alice2",
+      "recovery_wrapped_key": "$rwrap_alice2"
+     },
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "password-account"
+     }
+    }
+   ]
+  },
+  {
+   "name": "GitHub sign-up: pending, then a ticket, then the account",
+   "steps": [
+    {
+     "request": "github_start",
+     "t": 0,
+     "body": {
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "user_code": "WDJB-MJHT",
+      "verification_uri": "https://github.com/login/device",
+      "interval": 5,
+      "expires_in": "*"
+     },
+     "capture": {
+      "g": "flow_id"
+     }
+    },
+    {
+     "note": "Polled before the interval.",
+     "request": "github_poll",
+     "t": 1000,
+     "body": {
+      "flow_id": "$g",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 429,
+     "response": {
+      "error": "rate_limited",
+      "limit": "provider-poll"
+     }
+    },
+    {
+     "request": "github_poll",
+     "t": 5000,
+     "body": {
+      "flow_id": "$g",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "status": "pending"
+     }
+    },
+    {
+     "github": "authorized"
+    },
+    {
+     "request": "github_poll",
+     "t": 10000,
+     "body": {
+      "flow_id": "$g",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "new_account",
+      "ticket": "$g",
+      "suggested_username": "*"
+     }
+    },
+    {
+     "request": "social_signup",
+     "body": {
+      "ticket": "$g",
+      "username": "bob",
+      "account_id": "$acct_bob",
+      "recovery_auth_key": "$rauth_bob1",
+      "recovery_wrapped_key": "$rwrap_bob1",
+      "key_id": "$kid_bob",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_bob",
+      "username": "bob",
+      "has_password": false,
+      "evicted_device": null
+     },
+     "capture": {
+      "tb": "token"
+     }
+    },
+    {
+     "note": "A ticket is used once.",
+     "request": "social_signup",
+     "body": {
+      "ticket": "$g",
+      "username": "carol",
+      "account_id": "$acct_carol",
+      "recovery_auth_key": "$rauth_carol1",
+      "recovery_wrapped_key": "$rwrap_carol1",
+      "key_id": "$kid_carol",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 400,
+     "response": {
+      "error": "flow_expired"
+     }
+    },
+    {
+     "request": "sign_in_methods",
+     "as": "tb",
+     "status": 200,
+     "response": {
+      "username": "bob",
+      "has_password": false,
+      "identities": [
+       {
+        "provider": "github",
+        "created_at": "*"
+       }
+      ],
+      "passkeys": []
+     }
+    },
+    {
+     "note": "The same GitHub account on a second device signs in.",
+     "request": "github_start",
+     "t": 20000,
+     "body": {
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "user_code": "WDJB-MJHT",
+      "verification_uri": "https://github.com/login/device",
+      "interval": 5,
+      "expires_in": "*"
+     },
+     "capture": {
+      "g2": "flow_id"
+     }
+    },
+    {
+     "github": "authorized"
+    },
+    {
+     "request": "github_poll",
+     "t": 25000,
+     "body": {
+      "flow_id": "$g2",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_bob",
+      "username": "bob",
+      "has_password": false
+     }
+    }
+   ]
+  },
+  {
+   "name": "GitHub: denied, a device that isn't the flow's, and an unknown flow",
+   "steps": [
+    {
+     "request": "github_start",
+     "t": 0,
+     "body": {
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "user_code": "WDJB-MJHT",
+      "verification_uri": "https://github.com/login/device",
+      "interval": 5,
+      "expires_in": "*"
+     },
+     "capture": {
+      "g": "flow_id"
+     }
+    },
+    {
+     "note": "Another device can't poll it.",
+     "request": "github_poll",
+     "t": 5000,
+     "body": {
+      "flow_id": "$g",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 400,
+     "response": {
+      "error": "bad_request"
+     }
+    },
+    {
+     "github": "denied"
+    },
+    {
+     "request": "github_poll",
+     "t": 10000,
+     "body": {
+      "flow_id": "$g",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 403,
+     "response": {
+      "error": "provider_denied"
+     }
+    },
+    {
+     "request": "github_poll",
+     "t": 15000,
+     "body": {
+      "flow_id": "$unknown_flow",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 400,
+     "response": {
+      "error": "flow_expired"
+     }
+    }
+   ]
+  },
+  {
+   "name": "GitHub isn't offered without GITHUB_CLIENT_ID",
+   "env": {
+    "GITHUB_CLIENT_ID": null
+   },
+   "steps": [
+    {
+     "request": "github_start",
+     "body": {
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 403,
+     "response": {
+      "error": "provider_disabled"
+     }
+    }
+   ]
+  },
+  {
+   "name": "linking GitHub with a password proof, then unlinking it",
+   "steps": [
+    {
+     "request": "signup",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "kdf": "$kdf",
+      "salt": "$salt_alice1",
+      "auth_key": "$auth_alice1",
+      "wrapped_key": "$wrap_alice1",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_alice",
+      "token": "*"
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "signup",
+     "body": {
+      "username": "bob",
+      "account_id": "$acct_bob",
+      "kdf": "$kdf",
+      "salt": "$salt_bob1",
+      "auth_key": "$auth_bob1",
+      "wrapped_key": "$wrap_bob1",
+      "recovery_auth_key": "$rauth_bob1",
+      "recovery_wrapped_key": "$rwrap_bob1",
+      "key_id": "$kid_bob",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2",
+       "sealed_name": "$name_2"
+      }
+     },
+     "status": 201,
+     "response": {
+      "account_id": "$acct_bob",
+      "token": "*"
+     },
+     "capture": {
+      "tb": "token"
+     }
+    },
+    {
+     "note": "A link needs a password or passkey proof.",
+     "request": "identity_start",
+     "path": {
+      "provider": "github"
+     },
+     "as": "t1",
+     "body": {
+      "intent": "link",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 401,
+     "response": {
+      "error": "reauth_required"
+     }
+    },
+    {
+     "request": "identity_start",
+     "path": {
+      "provider": "github"
+     },
+     "as": "t1",
+     "body": {
+      "intent": "link",
+      "proof": {
+       "kind": "password",
+       "auth_key": "$auth_alice1"
+      },
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*"
+     },
+     "capture": {
+      "g": "flow_id"
+     }
+    },
+    {
+     "github": "authorized"
+    },
+    {
+     "request": "github_poll",
+     "t": 5000,
+     "body": {
+      "flow_id": "$g",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "linked",
+      "provider": "github",
+      "created_at": "*"
+     }
+    },
+    {
+     "request": "sign_in_methods",
+     "as": "t1",
+     "status": 200,
+     "response": {
+      "identities": [
+       {
+        "provider": "github",
+        "created_at": "*"
+       }
+      ]
+     }
+    },
+    {
+     "note": "The same GitHub account can't be linked to bob.",
+     "request": "identity_start",
+     "path": {
+      "provider": "github"
+     },
+     "as": "tb",
+     "body": {
+      "intent": "link",
+      "proof": {
+       "kind": "password",
+       "auth_key": "$auth_bob1"
+      },
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "capture": {
+      "g2": "flow_id"
+     }
+    },
+    {
+     "github": "authorized"
+    },
+    {
+     "request": "github_poll",
+     "t": 10000,
+     "body": {
+      "flow_id": "$g2",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 409,
+     "response": {
+      "error": "identity_taken"
+     }
+    },
+    {
+     "request": "identity_unlink",
+     "path": {
+      "provider": "github"
+     },
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "password",
+       "auth_key": "$auth_alice1"
+      }
+     },
+     "status": 204
+    },
+    {
+     "request": "identity_unlink",
+     "path": {
+      "provider": "github"
+     },
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "password",
+       "auth_key": "$auth_alice1"
+      }
+     },
+     "status": 404
+    }
+   ]
+  },
+  {
+   "name": "a GitHub proof replaces the recovery key of a GitHub-only account, with the old recovery key",
+   "steps": [
+    {
+     "request": "github_start",
+     "t": 0,
+     "body": {
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "user_code": "WDJB-MJHT",
+      "verification_uri": "https://github.com/login/device",
+      "interval": 5,
+      "expires_in": "*"
+     },
+     "capture": {
+      "g": "flow_id"
+     }
+    },
+    {
+     "github": "authorized"
+    },
+    {
+     "request": "github_poll",
+     "t": 5000,
+     "body": {
+      "flow_id": "$g",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "new_account"
+     }
+    },
+    {
+     "request": "social_signup",
+     "body": {
+      "ticket": "$g",
+      "username": "bob",
+      "account_id": "$acct_bob",
+      "recovery_auth_key": "$rauth_bob1",
+      "recovery_wrapped_key": "$rwrap_bob1",
+      "key_id": "$kid_bob",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "capture": {
+      "tb": "token"
+     }
+    },
+    {
+     "request": "identity_start",
+     "path": {
+      "provider": "github"
+     },
+     "t": 10000,
+     "as": "tb",
+     "body": {
+      "intent": "proof",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "capture": {
+      "gp": "flow_id"
+     }
+    },
+    {
+     "github": "authorized"
+    },
+    {
+     "request": "github_poll",
+     "t": 15000,
+     "body": {
+      "flow_id": "$gp",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "proof",
+      "provider": "github"
+     }
+    },
+    {
+     "request": "recovery_key",
+     "as": "tb",
+     "body": {
+      "proof": {
+       "kind": "provider",
+       "flow": "$gp"
+      },
+      "recovery_auth_key": "$rauth_bob2",
+      "recovery_wrapped_key": "$rwrap_bob2"
+     },
+     "status": 401,
+     "response": {
+      "error": "reauth_required"
+     }
+    },
+    {
+     "request": "recovery_key",
+     "as": "tb",
+     "body": {
+      "proof": {
+       "kind": "provider",
+       "flow": "$gp"
+      },
+      "current_recovery_auth_key": "$rauth_bob1",
+      "recovery_auth_key": "$rauth_bob2",
+      "recovery_wrapped_key": "$rwrap_bob2"
+     },
+     "status": 200,
+     "response": {}
+    },
+    {
+     "request": "recover_start",
+     "body": {
+      "username": "bob",
+      "recovery_auth_key": "$rauth_bob2"
+     },
+     "status": 200,
+     "response": {
+      "account_id": "$acct_bob",
+      "recovery_wrapped_key": "$rwrap_bob2"
+     }
+    },
+    {
+     "note": "The proof was used.",
+     "request": "recovery_key",
+     "as": "tb",
+     "body": {
+      "proof": {
+       "kind": "provider",
+       "flow": "$gp"
+      },
+      "current_recovery_auth_key": "$rauth_bob2",
+      "recovery_auth_key": "$rauth_bob1",
+      "recovery_wrapped_key": "$rwrap_bob1"
+     },
+     "status": 400,
+     "response": {
+      "error": "flow_expired"
+     }
+    }
+   ]
+  },
+  {
+   "name": "a passwordless account deletes itself with a passkey proof",
+   "steps": [
+    {
+     "request": "passkey_signup_start",
+     "body": {
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "rp_id": "sync.kansoapp.app",
+      "user": {
+       "id": "*",
+       "name": "alice",
+       "displayName": "alice"
+      },
+      "pub_key_cred_params": [
+       -7,
+       -8,
+       -257
+      ],
+      "authenticator_selection": {
+       "residentKey": "required",
+       "userVerification": "required"
+      },
+      "exclude_credentials": []
+     },
+     "capture": {
+      "sf": "flow_id",
+      "sc": "challenge"
+     }
+    },
+    {
+     "request": "passkey_signup_finish",
+     "body": {
+      "flow_id": "$sf",
+      "$register": {
+       "authenticator": "k1",
+       "challenge": "$sc"
+      },
+      "transports": [
+       "internal"
+      ],
+      "username": "alice",
+      "account_id": "$acct_alice",
+      "recovery_auth_key": "$rauth_alice1",
+      "recovery_wrapped_key": "$rwrap_alice1",
+      "key_id": "$kid_alice",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "response": {
+      "kind": "session",
+      "token": "*",
+      "key_id": "*",
+      "epoch": "*",
+      "account_id": "$acct_alice",
+      "username": "alice",
+      "has_password": false,
+      "passkey_wrapped_key": null,
+      "evicted_device": null
+     },
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "proof_start",
+     "as": "t1",
+     "body": {},
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "challenge": "*",
+      "timeout": 300000
+     },
+     "capture": {
+      "pf": "flow_id",
+      "pc": "challenge"
+     }
+    },
+    {
+     "request": "delete",
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$pf",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k1",
+         "challenge": "$pc",
+         "sign_count": 2
+        }
+       }
+      },
+      "username": "bob"
+     },
+     "status": 400,
+     "response": {
+      "error": "username_mismatch"
+     }
+    },
+    {
+     "request": "delete",
+     "as": "t1",
+     "body": {
+      "proof": {
+       "kind": "passkey",
+       "flow": "$pf",
+       "assertion": {
+        "$assert": {
+         "authenticator": "k1",
+         "challenge": "$pc",
+         "sign_count": 2
+        }
+       }
+      },
+      "username": "alice"
+     },
+     "status": 200,
+     "response": {
+      "deleted": true
+     }
+    },
+    {
+     "request": "account",
+     "as": "t1",
+     "status": 401,
+     "response": {
+      "error": "unauthorized",
+      "reason": "unknown"
+     }
+    },
+    {
+     "request": "passkey_start",
+     "body": {
+      "username": "alice",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "allow_credentials": []
+     }
+    }
+   ]
+  },
+  {
+   "name": "a GitHub sign-in on a new device gets its data key from an approval",
+   "steps": [
+    {
+     "request": "github_start",
+     "t": 0,
+     "body": {
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "user_code": "WDJB-MJHT",
+      "verification_uri": "https://github.com/login/device",
+      "interval": 5,
+      "expires_in": "*"
+     },
+     "capture": {
+      "g": "flow_id"
+     }
+    },
+    {
+     "github": "authorized"
+    },
+    {
+     "request": "github_poll",
+     "t": 5000,
+     "body": {
+      "flow_id": "$g",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "new_account"
+     }
+    },
+    {
+     "request": "social_signup",
+     "body": {
+      "ticket": "$g",
+      "username": "bob",
+      "account_id": "$acct_bob",
+      "recovery_auth_key": "$rauth_bob1",
+      "recovery_wrapped_key": "$rwrap_bob1",
+      "key_id": "$kid_bob",
+      "device": {
+       "id": "$dev_1",
+       "proof": "$proof_1",
+       "sealed_name": "$name_1"
+      }
+     },
+     "status": 201,
+     "capture": {
+      "t1": "token"
+     }
+    },
+    {
+     "request": "github_start",
+     "t": 10000,
+     "body": {
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "flow_id": "*",
+      "user_code": "WDJB-MJHT",
+      "verification_uri": "https://github.com/login/device",
+      "interval": 5,
+      "expires_in": "*"
+     },
+     "capture": {
+      "g2": "flow_id"
+     }
+    },
+    {
+     "github": "authorized"
+    },
+    {
+     "request": "github_poll",
+     "t": 15000,
+     "body": {
+      "flow_id": "$g2",
+      "device": {
+       "id": "$dev_2",
+       "proof": "$proof_2"
+      }
+     },
+     "status": 200,
+     "response": {
+      "kind": "session"
+     },
+     "capture": {
+      "t2": "token"
+     }
+    },
+    {
+     "request": "approval_create",
+     "as": "t2",
+     "body": {
+      "request_id": "$request_1",
+      "commit": "$commit_a"
+     },
+     "status": 200,
+     "response": {
+      "id": "*",
+      "expires_at": "*",
+      "other_devices": 1
+     },
+     "capture": {
+      "ap": "id"
+     }
+    },
+    {
+     "note": "A repeat is the same request.",
+     "request": "approval_create",
+     "as": "t2",
+     "body": {
+      "request_id": "$request_1",
+      "commit": "$commit_a"
+     },
+     "status": 200,
+     "response": {
+      "id": "$ap"
+     }
+    },
+    {
+     "request": "approval_create",
+     "as": "t1",
+     "body": {
+      "request_id": "$request_1",
+      "commit": "$commit_a"
+     },
+     "status": 409,
+     "response": {
+      "error": "approval_request_id_conflict"
+     }
+    },
+    {
+     "request": "approval_list",
+     "as": "t1",
+     "status": 200,
+     "response": {
+      "approvals": [
+       {
+        "id": "$ap",
+        "device_id": "$dev_2",
+        "commit": "$commit_a",
+        "epk": null,
+        "approver_epk": null
+       }
+      ]
+     }
+    },
+    {
+     "request": "approval_list",
+     "as": "t2",
+     "status": 200,
+     "response": {
+      "approvals": []
+     }
+    },
+    {
+     "request": "approval_challenge",
+     "path": {
+      "id": "$ap"
+     },
+     "as": "t1",
+     "body": {
+      "epk": "$epk_b"
+     },
+     "status": 200,
+     "response": {
+      "ok": true
+     }
+    },
+    {
+     "request": "approval_poll",
+     "path": {
+      "id": "$ap"
+     },
+     "as": "t2",
+     "status": 200,
+     "response": {
+      "status": "challenged",
+      "approver_epk": "$epk_b",
+      "approver_device_id": "$dev_1"
+     }
+    },
+    {
+     "request": "approval_name",
+     "path": {
+      "id": "$ap"
+     },
+     "as": "t2",
+     "body": {
+      "epk": "$epk_a",
+      "sealed_name": "$name_2"
+     },
+     "status": 200,
+     "response": {
+      "ok": true
+     }
+    },
+    {
+     "request": "approval_approve",
+     "path": {
+      "id": "$ap"
+     },
+     "as": "t1",
+     "body": {
+      "wrapped_key": "$wrap_bob1"
+     },
+     "status": 200,
+     "response": {
+      "ok": true
+     }
+    },
+    {
+     "request": "approval_poll",
+     "path": {
+      "id": "$ap"
+     },
+     "as": "t2",
+     "status": 200,
+     "response": {
+      "status": "approved",
+      "wrapped_key": "$wrap_bob1"
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -11,7 +11,9 @@ import fc from "fast-check";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AccountRoom } from "../src/account_room";
 import { type Signed, another, approvalsAs, ephemeral, first, listening, openEvents, sealedName, wrappedKey } from "./approval-helpers";
-import { type Account, KDF, base64url, call, callJson, newCreds, newDevice, passwordBody, resetServer, signUp } from "./helpers";
+import { runCron } from "../src/purge";
+import { DAY } from "../src/protocol";
+import { type Account, KDF, START, base64url, call, callJson, newCreds, newDevice, passwordBody, resetServer, runAdmin, signUp, testEnv } from "./helpers";
 
 const runs = (n: number) => ({ numRuns: Math.min(n, Number(env.FAST_CHECK_RUNS)) });
 
@@ -195,6 +197,72 @@ describe("revoked sessions lose their sockets", () => {
 		expect(await aSocket.closed).toEqual(SIGNED_OUT);
 		expect(await nSocket.closed).toEqual(SIGNED_OUT);
 		expect(await runInDurableObject(room(), (instance: AccountRoom) => instance.sockets())).toEqual([]);
+	});
+});
+
+describe("every other session end closes sockets", () => {
+	const SIGNED_OUT = { code: 4001, reason: "signed_out" };
+	const sockets = () => runInDurableObject(room(), (instance: AccountRoom) => instance.sockets());
+
+	it("the ten-device limit: the evicted device's socket closes, and only its", async () => {
+		const aSocket = await listening(a);
+		const nSocket = await listening(n);
+		for (let i = 0; i < 8; i++) await another(alice);
+		// a is the least recently seen of the ten, so the eleventh evicts it.
+		await env.DB.prepare("UPDATE sessions SET last_seen_at = last_seen_at + 1 WHERE device_id != ?1").bind(a.device.id).run();
+		await another(alice);
+		expect(await env.DB.prepare("SELECT device_id FROM sessions WHERE revoked_reason = 'evicted'").all()).toMatchObject({
+			results: [{ device_id: a.device.id }],
+		});
+		expect(await aSocket.closed).toEqual(SIGNED_OUT);
+		expect(await sockets()).toEqual([n.device.id]);
+		nSocket.ws.close();
+	});
+
+	it("deleting the account closes every socket", async () => {
+		const aSocket = await listening(a);
+		const nSocket = await listening(n);
+		const r = await callJson("/v2/account/delete", { token: a.token, json: { auth_key: alice.creds.authKey, username: "alice" } });
+		expect(r.body).toEqual({ deleted: true });
+		expect(await aSocket.closed).toEqual(SIGNED_OUT);
+		expect(await nSocket.closed).toEqual(SIGNED_OUT);
+	});
+
+	for (const command of [["disable", "alice"], ["delete", "alice", "--confirm", "alice"]]) {
+		it(`admin ${command[0]}: the next cron closes every socket and drains its request`, async () => {
+			const aSocket = await listening(a);
+			const nSocket = await listening(n);
+			expect((await runAdmin(command)).ok).toBe(true);
+			expect(await env.DB.prepare("SELECT account_id FROM socket_closes").all()).toMatchObject({ results: [{ account_id: alice.creds.accountId }] });
+			const report = await runCron(testEnv(), START + 60_000);
+			expect(report.socketsClosed).toBe(1);
+			expect(await aSocket.closed).toEqual(SIGNED_OUT);
+			expect(await nSocket.closed).toEqual(SIGNED_OUT);
+			expect((await env.DB.prepare("SELECT count(*) AS n FROM socket_closes").first())?.n).toBe(0);
+			expect((await runCron(testEnv(), START + 120_000)).socketsClosed).toBe(0);
+		});
+	}
+
+	it("admin enable asks for nothing", async () => {
+		await runAdmin(["disable", "alice"]);
+		await runCron(testEnv(), START + 60_000);
+		expect((await runAdmin(["enable", "alice"])).ok).toBe(true);
+		expect((await env.DB.prepare("SELECT count(*) AS n FROM socket_closes").first())?.n).toBe(0);
+	});
+
+	it("a request on a session unseen for 180 days expires it and closes its socket", async () => {
+		const nSocket = await listening(n);
+		const r = await callJson("/v2/account", { token: n.token, now: START + 181 * DAY });
+		expect(r.body).toMatchObject({ reason: "expired" });
+		expect(await nSocket.closed).toEqual(SIGNED_OUT);
+	});
+
+	it("the cron's 180-day expiry closes the expired devices' sockets", async () => {
+		const nSocket = await listening(n);
+		const report = await runCron(testEnv(), START + 181 * DAY);
+		expect(report.socketsClosed).toBe(1);
+		expect(await nSocket.closed).toEqual(SIGNED_OUT);
+		expect(await sockets()).toEqual([]);
 	});
 });
 

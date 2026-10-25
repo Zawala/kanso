@@ -56,6 +56,11 @@
 //   POST   /v2/auth/github/poll         one device-flow poll
 //   POST   /v2/auth/social/signup       the account a provider flow's ticket names
 //   GET    /v2/account/sign-in          the account's ways in                         (session)
+//   POST   /v2/account/sign-in/password               set the first password (proof)       (session)
+//   POST   /v2/account/sign-in/proof/start            a passkey proof's challenge          (session)
+//   POST   /v2/account/sign-in/passkeys/start         add a passkey: its options (proof)   (session)
+//   POST   /v2/account/sign-in/passkeys/finish        add a passkey: its registration      (session)
+//   POST   /v2/account/sign-in/passkeys/<id>/remove   remove a passkey (proof)             (session)
 //   POST   /v2/account/sign-in/identities/<provider>/start   link, or a proof flow   (session)
 //   POST   /v2/account/sign-in/identities/<provider>/unlink  unlink a provider       (session)
 //   POST   /v2/account/sign-in/approvals              ask another device to approve this one (session)
@@ -86,9 +91,12 @@ import { error, isContentType, methodNotAllowed, notFound } from "./http";
 import * as identity from "./identity";
 import * as providers from "./providers";
 import { bindingFilter } from "./limits";
+import * as methods from "./methods";
 import * as passkeys from "./passkeys";
+import * as proofs from "./proofs";
 import { runCron } from "./purge";
 import * as shares from "./shares";
+import * as signIn from "./sign_in";
 import * as sync from "./sync";
 
 export type { Env } from "./env";
@@ -121,6 +129,8 @@ interface Route {
 
 const json = (handler: Handler | PepperHandler, pepper = false): Method => ({ handler, body: "json", pepper });
 
+const aasa: Handler = async (request, env) => signIn.appSiteAssociation(request, env);
+
 const ROUTES: Record<string, Route> = {
 	"/v2/health": { name: "health", binding: true, methods: { GET: { handler: auth.health, pepper: true } } },
 	"/v2/auth/prelogin": { name: "prelogin", binding: true, methods: { POST: json(auth.prelogin, true) } },
@@ -135,8 +145,8 @@ const ROUTES: Record<string, Route> = {
 	"/v2/auth/logout": { name: "logout", binding: true, methods: { POST: { handler: auth.logout } } },
 	"/v2/account": { name: "account", methods: { GET: { handler: auth.account } } },
 	"/v2/account/password": { name: "password", methods: { POST: json(auth.password) } },
-	"/v2/account/recovery-key": { name: "recovery_key", methods: { POST: json(auth.recoveryKey) } },
-	"/v2/account/delete": { name: "delete", methods: { POST: json(auth.deleteAccount) } },
+	"/v2/account/recovery-key": { name: "recovery_key", methods: { POST: json(methods.recoveryKey) } },
+	"/v2/account/delete": { name: "delete", methods: { POST: json(methods.deleteAccount) } },
 	"/v2/account/device": { name: "set_device", methods: { PUT: json(auth.setDevice) } },
 	"/v2/account/devices": { name: "devices", methods: { GET: { handler: auth.devices } } },
 	"/v2/push": { name: "push", methods: { POST: json(sync.push) } },
@@ -160,8 +170,18 @@ const ROUTES: Record<string, Route> = {
 	"/v2/auth/github/poll": { name: "github_poll", binding: true, methods: { POST: json(providers.githubPoll, true) } },
 	"/v2/auth/social/signup": { name: "social_signup", binding: true, methods: { POST: json(providers.socialSignup, true) } },
 	"/v2/account/sign-in": { name: "sign_in_methods", methods: { GET: { handler: providers.methods } } },
+	"/v2/account/sign-in/password": { name: "set_password", methods: { POST: json(methods.setPassword) } },
+	"/v2/account/sign-in/proof/start": { name: "proof_start", methods: { POST: json(proofs.proofStart, true) } },
+	"/v2/account/sign-in/passkeys/start": { name: "passkey_register_start", methods: { POST: json(passkeys.registerStart, true) } },
+	"/v2/account/sign-in/passkeys/finish": { name: "passkey_register_finish", methods: { POST: json(passkeys.registerFinish) } },
 	"/v2/account/sign-in/approvals": { name: "approvals", methods: { POST: json(approvals.create), GET: { handler: approvals.list } } },
 	"/v2/account/events": { name: "account_events", methods: { GET: { handler: approvals.events } } },
+	// Read by Apple's CDN, which may send an Origin-less GET or HEAD; no secret, so public.
+	[signIn.AASA_PATH]: {
+		name: "aasa",
+		public: true,
+		methods: { GET: { handler: aasa }, HEAD: { handler: aasa } },
+	},
 };
 
 /** The routes under /v2/account/sign-in/approvals/<id>, by what follows the ID. */
@@ -231,6 +251,8 @@ function match(path: string): Route | null {
 			? { name: "identity_start", methods: { POST: json(providers.identityStart(provider), true) } }
 			: { name: "identity_unlink", methods: { POST: json(providers.unlink(provider), true) } };
 	}
+	const passkeyRemove = /^\/v2\/account\/sign-in\/passkeys\/([^/]+)\/remove$/.exec(path);
+	if (passkeyRemove) return { name: "passkey_remove", methods: { POST: json(passkeys.removePasskey(segment(passkeyRemove[1]))) } };
 	const notification = /^\/v2\/collab\/notifications\/([^/]+)$/.exec(path);
 	if (notification) return { name: "collab_notification", methods: { DELETE: { handler: collab.deleteNotification(segment(notification[1])) } } };
 	const approval = /^\/v2\/account\/sign-in\/approvals\/([^/]+)(\/[^/]+)?$/.exec(path);

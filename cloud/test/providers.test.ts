@@ -35,6 +35,7 @@ import {
 	passwordBody,
 	resetServer,
 	setSetting,
+	runAdmin,
 	signUp,
 	testEnv,
 } from "./helpers";
@@ -1159,13 +1160,13 @@ describe("unlinking", () => {
 		const flow = await proofFlow();
 		const last = await as("/v2/account/sign-in/identities/github/unlink", { proof: { kind: "provider", flow } }, { token });
 		expect(last).toMatchObject({ status: 409, body: { error: "last_method" } });
-		// Used once already: the same proof again is refused.
+		// Used once already: the same proof again is a used flow (docs/ACCOUNTS.md › Conventions, 400 flow_expired).
 		const reused = await as(
 			"/v2/account/sign-in/identities/github/unlink",
 			{ proof: { kind: "provider", flow }, recovery_auth_key: made.body.recovery_auth_key },
 			{ token },
 		);
-		expect(reused.body.error).toBe("reauth_required");
+		expect(reused).toMatchObject({ status: 400, body: { error: "flow_expired" } });
 		// A provider proof can't act on another provider.
 		const other = await as("/v2/account/sign-in/identities/apple/unlink", { proof: { kind: "provider", flow: await proofFlow() } }, { token });
 		expect(other.body.error).toBe("reauth_required");
@@ -1291,5 +1292,134 @@ describe("suggested usernames", () => {
 			}),
 			runs(200),
 		);
+	});
+});
+
+// Security review of PR #67, finding 1: a link must not finish after the
+// session that started it ended (the reviewer's proof, inverted).
+describe("a link ends with the session that started it", () => {
+	async function malloryLinks() {
+		const alice = await signUp("alice", { env: penv(), now: T0 });
+		// Mallory knows the password and signs in on her own Mac.
+		const mdev = newDevice();
+		const ml = await callJson("/v2/auth/login", {
+			env: penv(),
+			now: T0,
+			json: { username: "alice", auth_key: alice.creds.authKey, device: { id: mdev.id, proof: mdev.proof } },
+		});
+		expect(ml.status).toBe(200);
+		const mallory = { ...alice, device: mdev, token: ml.body.token };
+		const started = await linkStart(mallory, "github", passwordProof(alice));
+		expect(started.status).toBe(200);
+		return { alice, mallory, started };
+	}
+
+	async function githubIsNotAlice() {
+		const back = await SIGN_IN.github(newDevice(), 66, T0 + 60_000);
+		expect(back.status).toBe(200);
+		expect(back.body.kind).toBe("new_account");
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_identities").first()).toEqual({ n: 0 });
+	}
+
+	it("a link started with a stolen password doesn't finish after the owner's password change", async () => {
+		const { alice, mallory, started } = await malloryLinks();
+		const changed = await callJson("/v2/account/password", {
+			env: penv(),
+			now: T0 + 1000,
+			token: alice.token,
+			json: passwordBody(alice.creds.authKey, newCreds("alice")),
+		});
+		expect(changed.body.signed_out_devices).toBe(1);
+		const done = await linkFinish(mallory, "github", started, 66);
+		expect(done).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+		await githubIsNotAlice();
+	});
+
+	it("the completion itself checks the session: a starter whose session row is gone links nothing", async () => {
+		const { mallory, started } = await malloryLinks();
+		// Deleting the row fires no trigger, so only the guard in the completion stops it.
+		await env.DB.prepare("DELETE FROM sessions WHERE device_id = ?1").bind(mallory.device.id).run();
+		const done = await linkFinish(mallory, "github", started, 66);
+		expect(done).toMatchObject({ status: 400, body: { error: "flow_expired" } });
+		await githubIsNotAlice();
+	});
+
+	it("revoking the starter's device ends its link", async () => {
+		const { alice, mallory, started } = await malloryLinks();
+		expect((await call(`/v2/account/devices/${mallory.device.id}`, { env: penv(), method: "DELETE", token: alice.token, now: T0 })).status).toBe(204);
+		expect((await linkFinish(mallory, "github", started, 66)).body.error).toBe("flow_expired");
+		await githubIsNotAlice();
+	});
+
+	it("disabling the account ends its links", async () => {
+		const { mallory, started } = await malloryLinks();
+		expect((await runAdmin(["disable", "alice"], T0 + 1000)).ok).toBe(true);
+		expect((await linkFinish(mallory, "github", started, 66)).body.error).toBe("flow_expired");
+		expect(await env.DB.prepare("SELECT count(*) AS n FROM account_identities").first()).toEqual({ n: 0 });
+	});
+
+	it("a session's end consumes its device's link, proof and passkey flows, and only those", async () => {
+		const alice = await signUp("alice", { env: penv(), now: T0 });
+		const other = newDevice();
+		const ol = await callJson("/v2/auth/login", {
+			env: penv(),
+			now: T0,
+			json: { username: "alice", auth_key: alice.creds.authKey, device: { id: other.id, proof: other.proof } },
+		});
+		const flows: [string, string, string | null, string][] = [
+			["link", "github", "link", other.id],
+			["proof", "github", "proof", other.id],
+			["passkey", "proof", "proof", other.id],
+			["register", "passkey_register", "link", other.id],
+			["signin", "github", "signin", other.id],
+			["mine", "github", "link", alice.device.id],
+		];
+		const ids: Record<string, string> = {};
+		for (const [name, kind, intent, device] of flows) {
+			ids[name] = b64(crypto.getRandomValues(new Uint8Array(32)));
+			await env.DB.prepare(
+				`INSERT INTO auth_flows (id, kind, intent, account_id, device_id, provider, created_at, expires_at)
+  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+			)
+				.bind(ids[name], kind, intent, alice.creds.accountId, device, kind === "github" ? "github" : null, T0, T0 + 600_000)
+				.run();
+		}
+		expect(ol.status).toBe(200);
+		await callJson("/v2/account/password", { env: penv(), now: T0 + 1000, token: alice.token, json: passwordBody(alice.creds.authKey, newCreds("alice")) });
+		const consumed = async (name: string) =>
+			(await env.DB.prepare("SELECT consumed_at FROM auth_flows WHERE id = ?1").bind(ids[name]).first<{ consumed_at: number | null }>())?.consumed_at;
+		for (const name of ["link", "proof", "passkey", "register"]) expect(await consumed(name), name).toBe(T0 + 1000);
+		// A sign-in flow belongs to no session; the device that changed the password keeps its own.
+		expect(await consumed("signin")).toBeNull();
+		expect(await consumed("mine")).toBeNull();
+	});
+});
+
+// Security review of PR #67, finding 5: only ways in this server offers count
+// for the last-method rule.
+describe("the last-method rule counts only offered methods", () => {
+	it("an identity of an unconfigured provider, or a passkey without passkeys, doesn't keep an unlink from being the last", async () => {
+		const made = await socialAccount("github", 31, "solo");
+		const accountId = made.session.account_id as string;
+		await env.DB.batch([
+			env.DB.prepare("INSERT INTO account_identities (account_id, provider, subject, created_at) VALUES (?1, 'google', '1234', ?2)").bind(accountId, T0),
+			env.DB.prepare(
+				`INSERT INTO account_passkeys (credential_id, account_id, public_key, alg, sign_count, transports, created_at)
+  VALUES (?1, ?2, ?4, -7, 0, 'internal', ?3)`,
+			).bind(b64(crypto.getRandomValues(new Uint8Array(32))), accountId, T0, "A".repeat(64)),
+		]);
+		const solo = { token: made.session.token, device: made.device } as Account;
+		const withoutGoogle = testEnv({ ...CONFIG, GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined, PASSKEY_RP_ID: undefined });
+		const proof = (await linkStart(solo, "github", undefined, "proof")).body.flow_id;
+		providers.github.id = 1031;
+		providers.github.answers.push({ access_token: PII.accessToken });
+		await as("/v2/auth/github/poll", { flow_id: proof, device: wireDevice(made.device) }, { now: T0 + 5000 });
+		const r = await callJson("/v2/account/sign-in/identities/github/unlink", {
+			env: withoutGoogle,
+			now: T0 + 6000,
+			token: solo.token,
+			json: { proof: { kind: "provider", flow: proof } },
+		});
+		expect(r).toMatchObject({ status: 409, body: { error: "last_method" } });
 	});
 });
