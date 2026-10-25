@@ -18,6 +18,7 @@ use gpui_kit::*;
 use kanso_ai::{ClientSettings, Excerpt, Provider};
 use kanso_store::Store;
 
+use crate::config::{AgentChoice, AiBackend};
 use crate::editor::NoteEditor;
 use crate::library::Library;
 use crate::services::Services;
@@ -47,21 +48,25 @@ impl AskedTurn {
     }
 }
 
-/// What a conversation was asked under. A different provider, URL or model
-/// starts a new one.
+/// What a conversation was asked under. A different provider, URL or model,
+/// or another agent, starts a new one.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ConversationKey {
+    backend: AiBackend,
     provider: Provider,
     base_url: String,
     model: String,
+    agent: AgentChoice,
 }
 
 impl ConversationKey {
     fn of(ai: &crate::config::AiSettings) -> Self {
         Self {
+            backend: ai.backend,
             provider: ai.provider,
             base_url: ai.base_url.clone(),
             model: ai.model.clone(),
+            agent: ai.agent.clone(),
         }
     }
 }
@@ -72,6 +77,9 @@ enum Update {
     /// the model searched or read through a tool.
     Used(Vec<Excerpt>),
     Text(String),
+    /// A line about what is happening: an agent starting, still working, or
+    /// using one of its tools.
+    Status(String),
     Done,
     Error(String),
     /// The stream stopped without its end marker.
@@ -105,6 +113,8 @@ pub struct AskPanel {
     streaming: bool,
     empty: bool,
     error: Option<String>,
+    /// The last status line, until the answer's words arrive.
+    notice: Option<String>,
     cancel: Option<Arc<AtomicBool>>,
     task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
@@ -150,6 +160,7 @@ impl AskPanel {
             streaming: false,
             empty: false,
             error: None,
+            notice: None,
             cancel: None,
             task: None,
             _subscriptions: subscriptions,
@@ -200,6 +211,7 @@ impl AskPanel {
         self.answer.clear();
         self.empty = false;
         self.error = None;
+        self.notice = None;
         self.cut_off = false;
         self.searching = true;
         self.asking = Some(question.clone());
@@ -221,6 +233,7 @@ impl AskPanel {
             .try_global::<Services>()
             .and_then(|services| services.secrets.clone());
         let worker_ai = ai.clone();
+        let data_dir = cx.global::<AppState>().data_dir.clone();
         let (tx, rx) = async_channel::unbounded::<Update>();
         let spawned = std::thread::Builder::new()
             .name("kanso-ask".into())
@@ -239,24 +252,32 @@ impl AskPanel {
                 }
                 tx.try_send(Update::Used(excerpts.clone())).ok();
                 let prompt = kanso_ai::build_prompt(&asked, &excerpts, crate::ask::BUDGET);
-                // The Keychain read and the client build happen here, never
-                // on the UI thread: the macOS prompt can block, and building
-                // a reqwest client is not work for a frame.
-                let saved = secrets
-                    .as_ref()
-                    .and_then(|secrets| read_from(secrets.as_ref(), worker_ai.provider));
-                let settings = ClientSettings {
-                    provider: worker_ai.provider,
-                    base_url: worker_ai.base_url.clone(),
-                    model: worker_ai.model.clone(),
-                    api_key: saved,
-                    region: worker_ai.provider.default_region().to_owned(),
-                };
-                let provider = match kanso_ai::cached_client(&settings) {
-                    Ok(provider) => provider,
-                    Err(err) => {
-                        tx.try_send(Update::Error(err.to_string())).ok();
-                        return;
+                let provider = if worker_ai.backend == AiBackend::Agent {
+                    // The agent keeps its own sign-in: no key is read.
+                    kanso_ai::agent::agent_client(&crate::ai_agent::agent_settings(
+                        &worker_ai.agent,
+                        &data_dir,
+                    ))
+                } else {
+                    // The Keychain read and the client build happen here,
+                    // never on the UI thread: the macOS prompt can block, and
+                    // building a reqwest client is not work for a frame.
+                    let saved = secrets
+                        .as_ref()
+                        .and_then(|secrets| read_from(secrets.as_ref(), worker_ai.provider));
+                    let settings = ClientSettings {
+                        provider: worker_ai.provider,
+                        base_url: worker_ai.base_url.clone(),
+                        model: worker_ai.model.clone(),
+                        api_key: saved,
+                        region: worker_ai.provider.default_region().to_owned(),
+                    };
+                    match kanso_ai::cached_client(&settings) {
+                        Ok(provider) => provider,
+                        Err(err) => {
+                            tx.try_send(Update::Error(err.to_string())).ok();
+                            return;
+                        }
                     }
                 };
                 let provider = provider
@@ -288,6 +309,7 @@ impl AskPanel {
                         }
                         let update = match event {
                             kanso_ai::Event::Text(text) => Update::Text(text),
+                            kanso_ai::Event::Status(line) => Update::Status(line),
                             kanso_ai::Event::Done => Update::Done,
                             kanso_ai::Event::Error(message) if message == kanso_ai::CUT_OFF => {
                                 Update::CutOff
@@ -316,7 +338,11 @@ impl AskPanel {
                                 this.searching = false;
                                 this.streaming = true;
                             }
-                            Update::Text(text) => this.answer.push_str(&text),
+                            Update::Text(text) => {
+                                this.notice = None;
+                                this.answer.push_str(&text);
+                            }
+                            Update::Status(line) => this.notice = Some(line),
                             Update::Done => {
                                 if let Some(question) = this.asking.take() {
                                     let answer = std::mem::take(&mut this.answer);
@@ -439,6 +465,7 @@ impl AskPanel {
         self.asked = false;
         self.empty = false;
         self.error = None;
+        self.notice = None;
         self.cut_off = false;
     }
 
@@ -518,6 +545,16 @@ impl AskPanel {
                     .line_height(px(18.))
                     .text_color(colors.text_secondary)
                     .child("Nothing in your notes matches this question.")
+                    .into_any_element(),
+            );
+        }
+        if let Some(notice) = &self.notice {
+            return Some(
+                div()
+                    .text_size(px(12.5))
+                    .line_height(px(18.))
+                    .text_color(colors.text_secondary)
+                    .child(notice.clone())
                     .into_any_element(),
             );
         }
@@ -643,15 +680,24 @@ impl Render for AskPanel {
             .pt(px(10.))
             .pb(px(10.))
             .gap(px(8.))
-            .when(!self.asked && ai.provider.is_remote(&ai.base_url), |el| {
-                el.child(
-                    div()
-                        .text_size(px(11.5))
-                        .line_height(px(16.))
-                        .text_color(colors.text_muted)
-                        .child(requests_line(ai.provider, &ai.base_url)),
-                )
-            })
+            .when(
+                !self.asked
+                    && (ai.backend == AiBackend::Agent || ai.provider.is_remote(&ai.base_url)),
+                |el| {
+                    let line = if ai.backend == AiBackend::Agent {
+                        crate::ai_agent::requests_line(&ai.agent)
+                    } else {
+                        requests_line(ai.provider, &ai.base_url)
+                    };
+                    el.child(
+                        div()
+                            .text_size(px(11.5))
+                            .line_height(px(16.))
+                            .text_color(colors.text_muted)
+                            .child(line),
+                    )
+                },
+            )
             .child(
                 div()
                     .debug_selector(|| "ask-question".into())

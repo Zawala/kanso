@@ -4281,6 +4281,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kanso-acp"
+version = "0.8.4"
+dependencies = [
+ "libc",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "kanso-ai"
 version = "0.8.4"
 dependencies = [
@@ -4288,6 +4300,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "futures-util",
+ "kanso-acp",
  "proptest",
  "serde",
  "serde_json",
@@ -4316,6 +4329,7 @@ dependencies = [
  "gpui-pre-platform",
  "htmd",
  "image",
+ "kanso-acp",
  "kanso-ai",
  "kanso-collab",
  "kanso-core",

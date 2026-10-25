@@ -8,6 +8,8 @@ rust-version.workspace = true
 
 [dependencies]
 agent-runtime.workspace = true
+# An agent on this computer, over the Agent Client Protocol.
+kanso-acp.workspace = true
 anyhow.workspace = true
 async-trait = "0.1"
 serde.workspace = true

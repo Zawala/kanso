@@ -5,12 +5,15 @@
 //! any OpenAI-compatible endpoint, with streaming, tool calling and typed
 //! timeouts. Kanso keeps a small synchronous surface here (an [`Event`]
 //! iterator) so the GPUI app never awaits, and owns one small tokio runtime on
-//! a background thread for the async calls. Nothing in this crate reads or
-//! writes notes.
+//! a background thread for the async calls. An agent on this computer
+//! (`agent.rs`, over `kanso-acp`) answers through the same [`ChatProvider`].
+//! Nothing in this crate reads or writes notes.
 
+pub mod agent;
 pub mod client;
 pub mod prompt;
 
+pub use agent::{AgentCheck, AgentKind, AgentSettings};
 pub use client::{
     AiError, CUT_OFF, ChatProvider, ClientSettings, Event, SharedProvider, Turn, answer,
     cached_client, client, client_with, client_with_timeouts, probe,

@@ -1,0 +1,38 @@
+[package]
+name = "kanso-acp"
+description = "The Agent Client Protocol client Kanso answers with when the person picks an agent on this computer: process, stdio JSON-RPC, sessions, and finding the agents."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# A scriptable ACP agent for tests: the integration tests launch it like a
+# real agent. It is never bundled with the app.
+[[bin]]
+name = "kanso-acp-fake"
+path = "src/bin/fake_agent.rs"
+test = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+# Killing the agent's whole process group (`npx` → `node` → the agent).
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# A Job Object that kills the agent's process tree when Kanso lets go of it.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+
+[target.'cfg(unix)'.dev-dependencies]
+libc = "0.2"
