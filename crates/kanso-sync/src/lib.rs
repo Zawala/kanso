@@ -25,6 +25,7 @@ mod http;
 pub mod keychain;
 pub mod lock;
 mod memory;
+pub mod methods;
 pub mod passkey;
 pub mod provider;
 mod remote;
@@ -77,7 +78,17 @@ pub use memory::{
     AccountSnapshot, DEFAULT_SETTINGS, Limits, MemoryServer, QuotaOverride, ServerDevice,
     ServerStats, Signup, is_valid_setting,
 };
-pub use passkey::{PasskeyAssertion, PasskeyRegistration};
+pub use methods::{
+    PasskeyProofStart, PasskeyRegistrationStart, PasskeySignIn, PasskeySignInStart,
+    PasskeySignUpStart, PasskeyUnlock, Proof, add_passkey, delete_account_with_proof,
+    new_recovery_key_with_proof, passkey_unlock, password_proof, remove_passkey, set_password,
+    sign_in_with_passkey, sign_up_with_passkey, start_add_passkey, start_passkey_proof,
+    start_passkey_sign_in, start_passkey_sign_up,
+};
+pub use passkey::{
+    PasskeyAssertion, PasskeyAssertionChallenge, PasskeyCeremony, PasskeyCeremonyError,
+    PasskeyRegistration, PasskeyRegistrationChallenge,
+};
 pub use provider::{
     AccountMethods, AppleCallback, AppleStart, GithubStart, GoogleStart, IdentityIntent,
     LinkOutcome, LinkedProvider, Loopback, NewAccount, PasskeyInfo, PasskeyMethods, ProofWire,

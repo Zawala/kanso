@@ -2014,7 +2014,11 @@ impl ServerState {
         now: i64,
     ) -> Result<RecoveryKeyResponse, ApiError> {
         let caller = self.authenticate(token, now, false)?;
-        let current = self.current_password(&caller, &r.current_auth_key, now)?;
+        let current = self.current_password(
+            &caller,
+            r.current_auth_key.as_deref().ok_or(ApiError::BadRequest)?,
+            now,
+        )?;
         let recovery = key32(&r.recovery_auth_key).ok_or(ApiError::BadRequest)?;
         if !is_wrap(&r.recovery_wrapped_key) {
             return Err(ApiError::BadRequest);
@@ -2038,7 +2042,11 @@ impl ServerState {
         now: i64,
     ) -> Result<DeleteResponse, ApiError> {
         let caller = self.authenticate(token, now, false)?;
-        let current = self.current_password(&caller, &r.auth_key, now)?;
+        let current = self.current_password(
+            &caller,
+            r.auth_key.as_deref().ok_or(ApiError::BadRequest)?,
+            now,
+        )?;
         let account = &self.accounts[&caller.account_id];
         if account.auth_hash != current {
             return Err(ApiError::InvalidCredentials);
@@ -3768,6 +3776,7 @@ impl Api for MemoryApi<'_> {
                     let k = key32(auth_key).ok_or(ApiError::BadRequest)?;
                     account.auth_hash == sha256_hex(&k)
                 }
+                crate::provider::ProofWire::Passkey { .. } => false,
                 crate::provider::ProofWire::Provider { flow } => {
                     s.provider_flows.get(flow).is_some_and(|f| {
                         f.consumed

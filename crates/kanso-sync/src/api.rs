@@ -180,6 +180,14 @@ pub trait Api {
     ) -> Result<(), ApiError> {
         Err(ApiError::NotFound)
     }
+    /// `POST /v2/account/sign-in/password`: the first password.
+    fn set_first_password(
+        &self,
+        _token: &SessionToken,
+        _request: &SignInPasswordRequest,
+    ) -> Result<PasswordResponse, ApiError> {
+        Err(ApiError::NotFound)
+    }
     /// `POST /v2/auth/recover/start`.
     fn recover_start(
         &self,
@@ -384,6 +392,7 @@ pub enum Route {
     AccountPasskeysStart,
     AccountPasskeysFinish,
     AccountPasskeyRemove,
+    SignInPassword,
     RecoverStart,
     RecoverFinish,
     Logout,
@@ -451,7 +460,7 @@ impl Route {
     /// Passkey HTTP contracts: the four public routes `MemoryServer` fakes,
     /// plus account-management routes described by revision 3 but not yet
     /// implemented by this checkout's Worker or `MemoryServer`.
-    pub const PASSKEYS: [Route; 9] = [
+    pub const PASSKEYS: [Route; 10] = [
         Route::PasskeyStart,
         Route::PasskeyFinish,
         Route::PasskeySignupStart,
@@ -461,6 +470,7 @@ impl Route {
         Route::AccountPasskeysStart,
         Route::AccountPasskeysFinish,
         Route::AccountPasskeyRemove,
+        Route::SignInPassword,
     ];
 
     /// Provider routes; their own fixture and wire tests exercise them rather
@@ -495,6 +505,7 @@ impl Route {
                 "POST",
                 "/v2/account/sign-in/passkeys/<credential_id>/remove",
             ),
+            Route::SignInPassword => ("POST", "/v2/account/sign-in/password"),
             Route::RecoverStart => ("POST", "/v2/auth/recover/start"),
             Route::RecoverFinish => ("POST", "/v2/auth/recover/finish"),
             Route::Logout => ("POST", "/v2/auth/logout"),
@@ -858,49 +869,9 @@ pub struct AccountPasskeyResponse {
     pub transports: Vec<String>,
 }
 
-/// A fresh proof for a session-authenticated account change. `Debug` is
-/// omitted because password proofs and assertion bytes are credentials.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ProofRequest {
-    Password {
-        auth_key: String,
-    },
-    Passkey {
-        flow: String,
-        assertion: PasskeyProofAssertion,
-    },
-    Provider {
-        flow: String,
-    },
-}
-
-impl fmt::Debug for ProofRequest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ProofRequest::Password { .. } => f
-                .debug_struct("Password")
-                .field("auth_key", &"<redacted>")
-                .finish(),
-            ProofRequest::Passkey { flow, assertion } => f
-                .debug_struct("Passkey")
-                .field("flow", flow)
-                .field("assertion", assertion)
-                .finish(),
-            ProofRequest::Provider { flow } => {
-                f.debug_struct("Provider").field("flow", flow).finish()
-            }
-        }
-    }
-}
-
-impl Drop for ProofRequest {
-    fn drop(&mut self) {
-        if let ProofRequest::Password { auth_key } = self {
-            auth_key.zeroize();
-        }
-    }
-}
+/// A fresh proof for a session-authenticated account change: the same
+/// shape as [`crate::provider::ProofWire`], which it names.
+pub type ProofRequest = crate::provider::ProofWire;
 
 /// The assertion fields used by a sensitive-change proof. No user handle is
 /// sent because proof/start has already selected a credential.
@@ -931,11 +902,16 @@ pub struct PasskeyProofRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recovery_auth_key: Option<String>,
 }
+/// The registration options, as the sign-up start's. `user` may be left out
+/// (the spec's "minus the username"): the client then uses the account's
+/// user handle and its own username.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccountPasskeysStartResponse {
     pub flow_id: String,
     pub challenge: String,
     pub rp_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<PasskeyUser>,
     pub pub_key_cred_params: Vec<i32>,
     pub authenticator_selection: PasskeySelection,
     pub exclude_credentials: Vec<PasskeyAllowedCredential>,
@@ -1037,9 +1013,18 @@ pub struct PasswordResponse {
     pub signed_out_devices: u64,
 }
 
+/// `{"current_auth_key", "recovery_auth_key", "recovery_wrapped_key"}`, or
+/// the same with a `proof` in place of `current_auth_key`, which is how a
+/// passwordless account replaces its key. A `provider` proof also takes
+/// `current_recovery_auth_key`.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecoveryKeyRequest {
-    pub current_auth_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_auth_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<ProofRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_recovery_auth_key: Option<String>,
     pub recovery_auth_key: String,
     pub recovery_wrapped_key: String,
 }
@@ -1048,10 +1033,34 @@ pub struct RecoveryKeyRequest {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecoveryKeyResponse {}
 
+/// `{"auth_key", "username"}` for a password account, or `{"proof",
+/// "username"}`; a `provider` proof also takes `current_recovery_auth_key`.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeleteRequest {
-    pub auth_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<ProofRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_recovery_auth_key: Option<String>,
     pub username: String,
+}
+
+/// `POST /v2/account/sign-in/password`: the first password of an account
+/// made with a passkey or a provider, the data key wrapped under its KEK, and
+/// a new recovery key. A `provider` proof also takes
+/// `current_recovery_auth_key`. 200 [`PasswordResponse`].
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignInPasswordRequest {
+    pub proof: ProofRequest,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_recovery_auth_key: Option<String>,
+    pub kdf: WireKdf,
+    pub salt: String,
+    pub auth_key: String,
+    pub wrapped_key: String,
+    pub recovery_auth_key: String,
+    pub recovery_wrapped_key: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1437,7 +1446,9 @@ mod tests {
             format!(
                 "{:?}",
                 RecoveryKeyRequest {
-                    current_auth_key: "SECRET-current".into(),
+                    current_auth_key: Some("SECRET-current".into()),
+                    proof: None,
+                    current_recovery_auth_key: Some("SECRET-old-recovery".into()),
                     recovery_auth_key: "SECRET-recovery".into(),
                     recovery_wrapped_key: "rwrap-shown".into(),
                 }
@@ -1445,7 +1456,9 @@ mod tests {
             format!(
                 "{:?}",
                 DeleteRequest {
-                    auth_key: "SECRET-auth".into(),
+                    auth_key: Some("SECRET-auth".into()),
+                    proof: None,
+                    current_recovery_auth_key: None,
                     username: "alice".into(),
                 }
             ),
@@ -1456,6 +1469,109 @@ mod tests {
         }
         assert!(printed[2].contains("a_shown") && printed[2].contains("d_shown"));
         assert!(printed[6].contains("rwrap-shown"));
+    }
+
+    #[test]
+    fn proofs_have_the_three_specified_shapes() {
+        let password = ProofRequest::password("A".repeat(43));
+        assert_eq!(
+            serde_json::to_value(&password).unwrap(),
+            serde_json::json!({"kind": "password", "auth_key": "A".repeat(43)})
+        );
+        let passkey = ProofRequest::passkey(
+            "F".repeat(43),
+            PasskeyProofAssertion {
+                credential_id: "cred".into(),
+                authenticator_data: "ad".into(),
+                client_data_json: "cd".into(),
+                signature: "sig".into(),
+            },
+        );
+        assert_eq!(
+            serde_json::to_value(&passkey).unwrap(),
+            serde_json::json!({"kind": "passkey", "flow": "F".repeat(43), "assertion": {
+                "credential_id": "cred", "authenticator_data": "ad",
+                "client_data_json": "cd", "signature": "sig"}})
+        );
+        let provider = ProofRequest::provider("G".repeat(43));
+        assert_eq!(
+            serde_json::to_value(&provider).unwrap(),
+            serde_json::json!({"kind": "provider", "flow": "G".repeat(43)})
+        );
+        for proof in [password, passkey, provider] {
+            let back: ProofRequest =
+                serde_json::from_value(serde_json::to_value(&proof).unwrap()).unwrap();
+            assert_eq!(back, proof);
+            let printed = format!("{proof:?}");
+            assert!(
+                !printed.contains(&"A".repeat(43)) && !printed.contains("\"sig\""),
+                "{printed}"
+            );
+        }
+    }
+
+    #[test]
+    fn proof_bodies_leave_out_what_they_dont_carry() {
+        let request = RecoveryKeyRequest {
+            current_auth_key: None,
+            proof: Some(ProofRequest::provider("G".repeat(43))),
+            current_recovery_auth_key: Some("R".repeat(43)),
+            recovery_auth_key: "N".repeat(43),
+            recovery_wrapped_key: "W".repeat(98),
+        };
+        let body = serde_json::to_value(&request).unwrap();
+        assert!(body.get("current_auth_key").is_none());
+        assert_eq!(body["proof"]["kind"], "provider");
+        assert_eq!(body["current_recovery_auth_key"], "R".repeat(43));
+        let old: RecoveryKeyRequest = serde_json::from_value(serde_json::json!({
+            "current_auth_key": "C", "recovery_auth_key": "N", "recovery_wrapped_key": "W"
+        }))
+        .unwrap();
+        assert_eq!(old.current_auth_key.as_deref(), Some("C"));
+        assert!(old.proof.is_none());
+
+        let delete = DeleteRequest {
+            auth_key: None,
+            proof: Some(ProofRequest::password("A".repeat(43))),
+            current_recovery_auth_key: None,
+            username: "alice".into(),
+        };
+        let body = serde_json::to_value(&delete).unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({"proof": {"kind": "password", "auth_key": "A".repeat(43)}, "username": "alice"})
+        );
+        assert!(!format!("{delete:?}").contains(&"A".repeat(43)));
+
+        let first = SignInPasswordRequest {
+            proof: ProofRequest::provider("G".repeat(43)),
+            current_recovery_auth_key: Some("SECRET-recovery".into()),
+            kdf: WireKdf::from(KdfParams::DEFAULT),
+            salt: "s".repeat(22),
+            auth_key: "SECRET-auth".into(),
+            wrapped_key: "w".repeat(98),
+            recovery_auth_key: "SECRET-new".into(),
+            recovery_wrapped_key: "r".repeat(98),
+        };
+        let printed = format!("{first:?}");
+        assert!(!printed.contains("SECRET"), "{printed}");
+        let body = serde_json::to_value(&first).unwrap();
+        for key in [
+            "proof",
+            "current_recovery_auth_key",
+            "kdf",
+            "salt",
+            "auth_key",
+            "wrapped_key",
+            "recovery_auth_key",
+            "recovery_wrapped_key",
+        ] {
+            assert!(body.get(key).is_some(), "{key}");
+        }
+        assert_eq!(
+            Route::SignInPassword.http(),
+            ("POST", "/v2/account/sign-in/password")
+        );
     }
 
     #[test]
@@ -1548,12 +1664,20 @@ secret_fields!(PasswordRequest {
     secret: [current_auth_key, auth_key, recovery_auth_key]
 });
 secret_fields!(RecoveryKeyRequest {
-    shown: [recovery_wrapped_key],
-    secret: [current_auth_key, recovery_auth_key]
+    shown: [proof, recovery_wrapped_key],
+    secret: [
+        current_auth_key,
+        current_recovery_auth_key,
+        recovery_auth_key
+    ]
 });
 secret_fields!(DeleteRequest {
-    shown: [username],
-    secret: [auth_key]
+    shown: [username, proof],
+    secret: [auth_key, current_recovery_auth_key]
+});
+secret_fields!(SignInPasswordRequest {
+    shown: [proof, kdf, salt, wrapped_key, recovery_wrapped_key],
+    secret: [current_recovery_auth_key, auth_key, recovery_auth_key]
 });
 secret_fields!(PasskeySignupFinishRequest {
     shown: [
