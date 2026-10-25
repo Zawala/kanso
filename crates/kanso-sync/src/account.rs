@@ -878,7 +878,8 @@ pub fn start_provider(
         .map_err(AccountError::from),
     }?;
     // Nothing opens a page the server named until it is the provider's.
-    crate::provider::check_provider_start(provider, &start, &server)?;
+    let mut start = start;
+    crate::provider::check_provider_start(provider, &mut start, &server)?;
     Ok(start)
 }
 
@@ -1103,7 +1104,8 @@ pub fn start_identity(
     .map_err(AccountError::from)?;
     // As for a sign-in start: nothing opens a page the server named until
     // it is the provider's.
-    crate::provider::check_provider_start(provider, &start, &session.server)?;
+    let mut start = start;
+    crate::provider::check_provider_start(provider, &mut start, &session.server)?;
     Ok(start)
 }
 
