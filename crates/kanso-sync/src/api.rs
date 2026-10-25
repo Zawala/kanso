@@ -425,10 +425,9 @@ pub enum Route {
 }
 
 impl Route {
-    /// Routes the shared conformance fixtures cover. The four public passkey
-    /// routes are implemented by `MemoryServer` and exercised by its own
-    /// tests, but have no fixture case yet; the account-management passkeys
-    /// are contracts only (neither the Worker nor `MemoryServer` serves them).
+    /// Routes the shared conformance fixtures cover. The passkey routes
+    /// ([`Route::PASSKEYS`]) are served by `MemoryServer` and the Worker and
+    /// covered by `sign_in.json`.
     pub const ALL: [Route; 25] = [
         Route::Health,
         Route::Prelogin,
@@ -457,9 +456,9 @@ impl Route {
         Route::ApprovalCancel,
     ];
 
-    /// Passkey HTTP contracts: the four public routes `MemoryServer` fakes,
-    /// plus account-management routes described by revision 3 but not yet
-    /// implemented by this checkout's Worker or `MemoryServer`.
+    /// The passkey, proof and first-password routes: the four public routes
+    /// and the account's own, all verified by `MemoryServer` as the Worker
+    /// verifies them.
     pub const PASSKEYS: [Route; 10] = [
         Route::PasskeyStart,
         Route::PasskeyFinish,

@@ -1,5 +1,5 @@
 //! Runs the protocol cases shared with the Worker's tests (`conformance.json`,
-//! `auth.json`) against `MemoryServer` through `kanso_sync::Api`, so the
+//! `auth.json`, and `sign_in.json` once the Worker ships it) against `MemoryServer` through `kanso_sync::Api`, so the
 //! server the sync tests use has the Worker's exact rules. The v1 cases
 //! (`conformance-v1.json`) check the rollback test's stand-in for the old
 //! Worker, in tests/rollback.rs.
@@ -16,10 +16,12 @@ mod v2 {
     use base64::Engine as _;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use kanso_sync::api::{
-        ApprovalApproveRequest, ApprovalChallengeRequest, ApprovalCreateRequest,
-        ApprovalNameRequest, DeleteRequest, DeviceNameRequest, LoginRequest, PasswordRequest,
-        PreloginRequest, RecoverFinishRequest, RecoverStartRequest, RecoveryKeyRequest,
-        SignupRequest,
+        AccountPasskeysFinishRequest, AccountPasskeysStartRequest, ApprovalApproveRequest,
+        ApprovalChallengeRequest, ApprovalCreateRequest, ApprovalNameRequest, DeleteRequest,
+        DeviceNameRequest, LoginRequest, PasskeyFinishRequest, PasskeyProofRequest,
+        PasskeyProofStartRequest, PasskeySignupFinishRequest, PasskeySignupStartRequest,
+        PasskeyStartRequest, PasswordRequest, PreloginRequest, RecoverFinishRequest,
+        RecoverStartRequest, RecoveryKeyRequest, SignInPasswordRequest, SignupRequest,
     };
     use kanso_sync::wire::PushRequest;
     use kanso_sync::{ApiError, Backend, KdfParams, MemoryServer, SessionToken};
@@ -27,11 +29,15 @@ mod v2 {
     use serde::de::DeserializeOwned;
     use serde_json::{Value, json};
 
-    fn load(name: &str) -> Value {
-        let path = format!(
+    fn fixture_path(name: &str) -> String {
+        format!(
             "{}/../../cloud/test/fixtures/{name}",
             env!("CARGO_MANIFEST_DIR")
-        );
+        )
+    }
+
+    fn load(name: &str) -> Value {
+        let path = fixture_path(name);
         let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
         serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {path}: {e}"))
     }
@@ -341,6 +347,48 @@ mod v2 {
                     &parse::<ApprovalApproveRequest>(body)?,
                 )),
                 "approval_cancel" => empty(api.cancel_approval(token, &path_part("id")?)),
+                // Sign-in (sign_in.json): passkeys, proofs and the first
+                // password. Provider routes have their own fixture.
+                "passkey_start" => {
+                    answer(200, api.passkey_start(&parse::<PasskeyStartRequest>(body)?))
+                }
+                "passkey_finish" => answer(
+                    200,
+                    api.passkey_finish(&parse::<PasskeyFinishRequest>(body)?),
+                ),
+                "passkey_signup_start" => answer(
+                    200,
+                    api.passkey_signup_start(&parse::<PasskeySignupStartRequest>(body)?),
+                ),
+                "passkey_signup_finish" => answer(
+                    201,
+                    api.passkey_signup_finish(&parse::<PasskeySignupFinishRequest>(body)?),
+                ),
+                "account_sign_in_methods" => answer(200, api.account_sign_in_methods(token)),
+                "passkey_proof_start" => answer(
+                    200,
+                    api.passkey_proof_start(token, &parse::<PasskeyProofStartRequest>(body)?),
+                ),
+                "account_passkeys_start" => answer(
+                    200,
+                    api.account_passkeys_start(token, &parse::<AccountPasskeysStartRequest>(body)?),
+                ),
+                "account_passkeys_finish" => answer(
+                    200,
+                    api.account_passkeys_finish(
+                        token,
+                        &parse::<AccountPasskeysFinishRequest>(body)?,
+                    ),
+                ),
+                "account_passkey_remove" => empty(api.account_passkey_remove(
+                    token,
+                    &path_part("credential_id")?,
+                    &parse::<PasskeyProofRequest>(body)?,
+                )),
+                "sign_in_password" => answer(
+                    200,
+                    api.set_first_password(token, &parse::<SignInPasswordRequest>(body)?),
+                ),
                 "push" => answer(200, api.push(token, &parse::<PushRequest>(body)?)),
                 "changes" => {
                     let query = step.get("query");
@@ -417,5 +465,17 @@ mod v2 {
     #[test]
     fn memory_server_follows_the_shared_sync_cases() {
         assert!(run_fixture("conformance.json") >= 15);
+    }
+
+    /// The sign-in cases (docs/ACCOUNTS.md › Tests › Sign-in conformance).
+    /// The Worker builder owns `sign_in.json`; until it lands this skips, and
+    /// it must be re-run once it does.
+    #[test]
+    fn memory_server_follows_the_shared_sign_in_cases() {
+        if !std::path::Path::new(&fixture_path("sign_in.json")).exists() {
+            eprintln!("skipped: cloud/test/fixtures/sign_in.json isn't in this checkout yet");
+            return;
+        }
+        assert!(run_fixture("sign_in.json") >= 1);
     }
 }

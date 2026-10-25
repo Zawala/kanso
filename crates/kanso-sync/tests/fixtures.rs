@@ -1,5 +1,6 @@
 //! The step-1 contract between the Worker and the Rust client: every request
-//! in `cloud/test/fixtures/auth.json` and `conformance.json` (protocol v2)
+//! in `cloud/test/fixtures/auth.json`, `conformance.json` and, once the Worker
+//! ships it, `sign_in.json` (protocol v2)
 //! has the shape of `kanso_sync::api`, every error is one `ApiError` knows,
 //! every setting is one D1 accepts and every value matches its wire pattern.
 //! The fixtures' behaviour is checked by the runners (step 2: the Worker's
@@ -11,9 +12,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use kanso_sync::api::{
-    ApprovalApproveRequest, ApprovalChallengeRequest, ApprovalCreateRequest, ApprovalNameRequest,
-    DeleteRequest, DeviceNameRequest, LoginRequest, PasswordRequest, PreloginRequest,
-    RecoverFinishRequest, RecoverStartRequest, RecoveryKeyRequest, SignupRequest, WireKdf,
+    AccountPasskeysFinishRequest, AccountPasskeysStartRequest, ApprovalApproveRequest,
+    ApprovalChallengeRequest, ApprovalCreateRequest, ApprovalNameRequest, DeleteRequest,
+    DeviceNameRequest, LoginRequest, PasskeyFinishRequest, PasskeyProofRequest,
+    PasskeyProofStartRequest, PasskeySignupFinishRequest, PasskeySignupStartRequest,
+    PasskeyStartRequest, PasswordRequest, PreloginRequest, RecoverFinishRequest,
+    RecoverStartRequest, RecoveryKeyRequest, SignInPasswordRequest, SignupRequest, WireKdf,
 };
 use kanso_sync::wire::{self, PushRequest, PushResponse};
 use kanso_sync::{ApiError, KdfParams, Route, is_valid_setting};
@@ -78,6 +82,8 @@ fn check_body(route: Route, body: Option<&Value>, at: &str) {
             | Route::ApprovalList
             | Route::ApprovalPoll
             | Route::ApprovalCancel
+            | Route::AccountSignInMethods
+            | Route::SignInMethods
     );
     assert_eq!(
         body.is_some(),
@@ -100,7 +106,17 @@ fn check_body(route: Route, body: Option<&Value>, at: &str) {
         Route::ApprovalName => shape::<ApprovalNameRequest>(body, at),
         Route::ApprovalApprove => shape::<ApprovalApproveRequest>(body, at),
         Route::Push => shape::<PushRequest>(body, at),
-        _ => unreachable!(),
+        Route::PasskeyStart => shape::<PasskeyStartRequest>(body, at),
+        Route::PasskeyFinish => shape::<PasskeyFinishRequest>(body, at),
+        Route::PasskeySignupStart => shape::<PasskeySignupStartRequest>(body, at),
+        Route::PasskeySignupFinish => shape::<PasskeySignupFinishRequest>(body, at),
+        Route::PasskeyProofStart => shape::<PasskeyProofStartRequest>(body, at),
+        Route::AccountPasskeysStart => shape::<AccountPasskeysStartRequest>(body, at),
+        Route::AccountPasskeysFinish => shape::<AccountPasskeysFinishRequest>(body, at),
+        Route::AccountPasskeyRemove => shape::<PasskeyProofRequest>(body, at),
+        Route::SignInPassword => shape::<SignInPasswordRequest>(body, at),
+        // Provider bodies have their own fixture and wire tests.
+        _ => {}
     }
 }
 
@@ -209,7 +225,10 @@ fn check_fixture(name: &str) -> usize {
                             "uploads-global",
                             "approval-create",
                             "approval-poll",
-                            "approval-respond"
+                            "approval-respond",
+                            "passkey-challenge",
+                            "proof-account",
+                            "passkey-manage"
                         ]
                         .contains(&limit.as_str()),
                         "{at}: limit {limit}"
@@ -262,6 +281,21 @@ fn check_values(name: &str, values: &BTreeMap<String, Value>) {
 #[test]
 fn auth_fixture_has_the_api_shapes() {
     assert!(check_fixture("auth.json") >= 250);
+}
+
+/// `sign_in.json` is the Worker builder's; until it lands this skips, and it
+/// must be re-run once it does.
+#[test]
+fn sign_in_fixture_has_the_api_shapes() {
+    let path = format!(
+        "{}/../../cloud/test/fixtures/sign_in.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    if !std::path::Path::new(&path).exists() {
+        eprintln!("skipped: cloud/test/fixtures/sign_in.json isn't in this checkout yet");
+        return;
+    }
+    assert!(check_fixture("sign_in.json") >= 1);
 }
 
 #[test]
