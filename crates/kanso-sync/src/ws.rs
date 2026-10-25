@@ -9,7 +9,6 @@
 
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::sync::Arc;
 use std::time::Duration;
 
 use tungstenite::client::IntoClientRequest;
@@ -74,19 +73,6 @@ pub enum WsError {
     Refused { status: u16, body: Vec<u8> },
 }
 
-fn tls_config() -> Arc<rustls::ClientConfig> {
-    let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    Arc::new(
-        rustls::ClientConfig::builder_with_provider(Arc::new(
-            rustls::crypto::ring::default_provider(),
-        ))
-        .with_safe_default_protocol_versions()
-        .expect("ring supports the default TLS versions")
-        .with_root_certificates(roots)
-        .with_no_client_auth(),
-    )
-}
-
 /// Opens a WebSocket to `path` on `server` (an http or https URL; the
 /// server's own path, if it has one, is kept) with `headers`, which may hold
 /// a session token: they go only to this server, in the upgrade.
@@ -131,9 +117,13 @@ pub fn connect(
     // A stalled send fails rather than holding the caller's thread.
     tcp.set_write_timeout(Some(SOCKET_TIMEOUT)).ok();
     let stream = if tls {
+        // Before the handshake: an Android app that hasn't handed over its
+        // Context gets an error, not a panic inside the verifier.
+        let config =
+            kanso_tls::client_config().map_err(|err| WsError::Transport(err.to_string()))?;
         let name = rustls::pki_types::ServerName::try_from(host.clone())
             .map_err(|err| WsError::Request(err.to_string()))?;
-        let connection = rustls::ClientConnection::new(tls_config(), name)
+        let connection = rustls::ClientConnection::new(config, name)
             .map_err(|err| WsError::Transport(err.to_string()))?;
         Stream::Tls(Box::new(rustls::StreamOwned::new(connection, tcp)))
     } else {

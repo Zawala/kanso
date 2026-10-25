@@ -33,10 +33,11 @@ thiserror.workspace = true
 unicode-normalization.workspace = true
 zeroize.workspace = true
 # The account event socket (events.rs) and shared notes' live room (kanso-collab): a
-# WebSocket over the rustls (ring) and web PKI roots ureq already uses.
+# WebSocket over rustls (ring), trusting what kanso-tls says (the web's roots on a
+# computer, the phone's store on iOS and Android).
+kanso-tls = { workspace = true, features = ["ureq"] }
 rustls.workspace = true
 tungstenite.workspace = true
-webpki-roots.workspace = true
 # WebAuthn signature checks (ES256, EdDSA, RS256): MemoryServer's relying party
 # and the Linux security-key registration check. Already built for rustls.
 ring = "0.17"

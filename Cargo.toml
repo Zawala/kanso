@@ -17,6 +17,7 @@ kanso-store = { path = "crates/kanso-store" }
 kanso-import = { path = "crates/kanso-import" }
 kanso-server = { path = "crates/kanso-server" }
 kanso-sync = { path = "crates/kanso-sync" }
+kanso-tls = { path = "crates/kanso-tls" }
 kanso-update = { path = "crates/kanso-update" }
 kanso-render = { path = "crates/kanso-render" }
 kanso-voice = { path = "crates/kanso-voice" }

@@ -16,7 +16,7 @@ hkdf.workspace = true
 kanso-core.workspace = true
 kanso-store.workspace = true
 kanso-sync.workspace = true
-rustls.workspace = true
+kanso-tls = { workspace = true, features = ["ureq"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -25,7 +25,6 @@ thiserror.workspace = true
 tungstenite.workspace = true
 ureq = "3.4"
 url = "2.5"
-webpki-roots.workspace = true
 yrs.workspace = true
 zeroize.workspace = true
 
