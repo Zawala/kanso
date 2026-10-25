@@ -13,6 +13,7 @@
 //! alone; tests use [`MemorySecrets`].
 
 pub mod account;
+pub mod lock;
 
 /// Where secrets live: the seam the Keychain, the Credential Manager and the
 /// mobile keystores stand behind.

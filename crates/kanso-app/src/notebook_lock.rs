@@ -23,13 +23,12 @@ use std::sync::Arc;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::*;
-use kanso_core::{Book, DocType};
-use kanso_store::{Origin, Put, Store};
-use kanso_sync::lock::{Envelope, LockKey, LockPassword};
+use kanso_sync::lock::{LockKey, LockPassword};
+
+pub use kanso_engine::lock::{seal_notebook, take_lock_off};
 
 use crate::dialogs::{self, Field, FormSpec, FormView, Submit};
 use crate::editor::NoteEditor;
-use crate::library::book_subtree;
 use crate::locked::{
     LockKeys, Target, after_password, any_lock, key_for, password, run_in_background, sentence,
     store, touch_id_on, with_touch_id,
@@ -37,39 +36,6 @@ use crate::locked::{
 
 /// What runs once a key is in hand.
 type WithKey = Rc<dyn Fn(Arc<LockKey>, &mut Window, &mut App)>;
-
-/// Locks notebook `book_id` with `key`: seals every note in it, and in the
-/// notebooks inside it, that isn't sealed yet, and sets the notebook's lock,
-/// in one write. Returns how many notes were sealed. A note locked on its
-/// own keeps its seal.
-pub fn seal_notebook(store: &Store, book_id: &str, key: &LockKey) -> Result<usize, String> {
-    let books = store.books().map_err(|err| err.to_string())?;
-    let mut book: Book = books
-        .iter()
-        .find(|book| book.id == book_id)
-        .cloned()
-        .ok_or_else(|| "The notebook was deleted.".to_owned())?;
-    let inside = book_subtree(book_id, &books);
-    let notes = store
-        .notes_in_books(&inside)
-        .map_err(|err| err.to_string())?;
-    let mut sealed = Vec::new();
-    for mut note in notes.into_iter().filter(|note| !note.is_locked()) {
-        let envelope = key.seal(&note.id, &note.body);
-        Envelope::store(Some(&envelope), &mut note.extra);
-        note.body.clear();
-        sealed.push(serde_json::to_value(&note).map_err(|err| err.to_string())?);
-    }
-    // The notebook's own lock seals nothing: it tells the password and its
-    // salt to a device that opens the notebook before any of its notes.
-    Envelope::store(Some(&key.seal(book_id, "")), &mut book.extra);
-    let count = sealed.len();
-    let book = serde_json::to_value(&book).map_err(|err| err.to_string())?;
-    store
-        .lock_book(book, sealed)
-        .map_err(|err| err.to_string())?;
-    Ok(count)
-}
 
 fn book_name(book_id: &str, cx: &App) -> String {
     store(cx)
@@ -173,7 +139,7 @@ pub fn open_notebook(
     cx: &mut App,
 ) -> Option<Entity<FormView>> {
     let target = Target::of_book(book_id, &store(cx))?;
-    if target.is_open(cx) {
+    if LockKeys::opens(&target, cx) {
         return None;
     }
     let name = book_name(&target.id, cx);
@@ -238,7 +204,7 @@ pub fn remove_notebook_lock(
     let Some(target) = Target::of_book(&book_id, &store(cx)).filter(|t| t.id == book_id) else {
         return;
     };
-    if !target.is_open(cx) {
+    if !LockKeys::opens(&target, cx) {
         open_notebook(&book_id, editor, window, cx);
         return;
     }
@@ -260,21 +226,6 @@ pub fn remove_notebook_lock(
             }
         },
     );
-}
-
-/// Writes notebook `book_id` without its lock. Its notes keep theirs.
-pub fn take_lock_off(store: &Store, book_id: &str) -> Result<(), String> {
-    let books = store.books().map_err(|err| err.to_string())?;
-    let mut book = books
-        .into_iter()
-        .find(|book| book.id == book_id)
-        .ok_or_else(|| "The notebook was deleted.".to_owned())?;
-    Envelope::store(None, &mut book.extra);
-    let value = serde_json::to_value(&book).map_err(|err| err.to_string())?;
-    store
-        .put(DocType::Book, value, Put::Upsert, Origin::Ui)
-        .map(drop)
-        .map_err(|err| err.to_string())
 }
 
 /// Asks for the lock password, tries it on `target`, keeps the key it gives
