@@ -25,7 +25,7 @@ import {
 	type SignOutReason,
 	unauthorized,
 } from "./http";
-import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, ipGroup, ipKey, sessionFilter, windowStart } from "./limits";
+import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, countSession, sessionLimitKeys, ipGroup, ipKey, sessionFilter, windowStart } from "./limits";
 import {
 	type Checked,
 	DAY,
@@ -65,6 +65,8 @@ export interface Session {
 	accountId: string;
 	deviceId: string;
 	username: string;
+	/** SHA-256 hex of this device's proof, as its session row holds it: a proof flow is bound to it. */
+	proofHash: string;
 }
 
 export const respond = (checked: Checked<unknown> & { ok: false }): Response => error(checked.status, checked.code, checked.message);
@@ -89,7 +91,7 @@ const kdfJson = (m_kib: number, t: number, p: number) => ({ alg: KDF_DEFAULT.alg
 
 // ------------------------------------------------------------------ sessions
 
-const SESSION_SQL = `SELECT s.device_id, s.last_seen_at, s.revoked_reason, a.id AS account_id, a.username, a.disabled_at
+const SESSION_SQL = `SELECT s.device_id, s.last_seen_at, s.revoked_reason, s.proof_hash, a.id AS account_id, a.username, a.disabled_at
   FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ?1`;
 
 /**
@@ -106,6 +108,7 @@ export async function authenticate(request: Request, env: Env, now: number, allo
 		device_id: string;
 		last_seen_at: number;
 		revoked_reason: SignOutReason | null;
+		proof_hash: string;
 		account_id: string;
 		username: string;
 		disabled_at: number | null;
@@ -116,6 +119,7 @@ export async function authenticate(request: Request, env: Env, now: number, allo
 		await env.DB.prepare("UPDATE sessions SET revoked_at = ?2, revoked_reason = 'expired' WHERE token_hash = ?1 AND revoked_at IS NULL")
 			.bind(tokenHash, now)
 			.run();
+		await signOutSockets(env, row.account_id, [row.device_id]);
 		return unauthorized("expired");
 	}
 	if (row.disabled_at !== null && !allowDisabled) return accountDisabled();
@@ -124,7 +128,7 @@ export async function authenticate(request: Request, env: Env, now: number, allo
 			.bind(tokenHash, now)
 			.run();
 	}
-	return { tokenHash, accountId: row.account_id, deviceId: row.device_id, username: row.username };
+	return { tokenHash, accountId: row.account_id, deviceId: row.device_id, username: row.username, proofHash: row.proof_hash };
 }
 
 /**
@@ -136,6 +140,17 @@ export function withSession(handler: (request: Request, env: Env, now: number, s
 		const session = await authenticate(request, env, now);
 		if (session instanceof Response) return session;
 		return (await sessionFilter(env.SESSION_LIMITER, session.accountId)) ?? handler(request, env, now, session);
+	};
+}
+
+/** `withSession` for a route that also needs the pepper's keys (it stores a flow). */
+export function withSessionKeys(
+	handler: (request: Request, env: Env, now: number, keys: PepperKeys, session: Session) => Promise<Response>,
+): PepperHandler {
+	return async (request, env, now, keys) => {
+		const session = await authenticate(request, env, now);
+		if (session instanceof Response) return session;
+		return (await sessionFilter(env.SESSION_LIMITER, session.accountId)) ?? handler(request, env, now, keys, session);
 	};
 }
 
@@ -241,6 +256,15 @@ export function sessionStatements(
 export interface SessionOutcome {
 	ok: boolean;
 	evicted: { id: string; sealed_name: string | null } | null;
+}
+
+/**
+ * After a batch with `sessionStatements` committed: closes the event socket of
+ * the device it evicted (the ten-device limit), if any. Every route that makes
+ * a session calls it, so an evicted device learns at once, not at its next request.
+ */
+export async function closeEvicted(env: Env, accountId: string, outcome: SessionOutcome): Promise<void> {
+	if (outcome.evicted) await signOutSockets(env, accountId, [outcome.evicted.id]);
 }
 
 /** Reads `sessionStatements`' results, starting at `offset` in the batch. */
@@ -407,7 +431,9 @@ export const signup: PepperHandler = async (request, env, now, keys) => {
 				[["auth_hash", existing.auth_hash]],
 			),
 		);
-		if (!sessionOutcome(results, 0).ok) return error(409, "username_taken", "That username is taken.");
+		const outcome = sessionOutcome(results, 0);
+		await closeEvicted(env, existing.id, outcome);
+		if (!outcome.ok) return error(409, "username_taken", "That username is taken.");
 		return json({ account_id: existing.id, username: b.username, token: session.token, epoch: existing.epoch }, 201);
 	};
 	const retry = await retried();
@@ -473,9 +499,10 @@ interface AccountRow {
 	key_id: string;
 	epoch: string;
 	disabled_at: number | null;
+	has_password: number;
 }
 
-const ACCOUNT_COLUMNS = "id, username, auth_hash, wrapped_key, recovery_hash, recovery_wrapped_key, key_id, epoch, disabled_at";
+const ACCOUNT_COLUMNS = "id, username, auth_hash, wrapped_key, recovery_hash, recovery_wrapped_key, key_id, epoch, disabled_at, has_password";
 const ACCOUNT_BY_NAME = `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE username = ?1`;
 const ACCOUNT_BY_ID = `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE id = ?1`;
 
@@ -517,6 +544,7 @@ export const login: PepperHandler = async (request, env, now, keys) => {
 		]),
 	);
 	const outcome = sessionOutcome(results, 0);
+	await closeEvicted(env, account.id, outcome);
 	// The password changed, or the account was disabled or deleted, since the check.
 	if (!outcome.ok) return invalidCredentials();
 	return json({
@@ -594,7 +622,7 @@ export const recoverFinish: PepperHandler = async (request, env, now, keys) => {
 			).bind(account.id, old),
 			env.DB.prepare(
 				`UPDATE accounts SET kdf_m_kib = ?3, kdf_t = ?4, kdf_p = ?5, salt = ?6, auth_hash = ?7, wrapped_key = ?8,
-  recovery_hash = ?9, recovery_wrapped_key = ?10
+  recovery_hash = ?9, recovery_wrapped_key = ?10, has_password = 1
   WHERE id = ?1 AND recovery_hash = ?2 AND disabled_at IS NULL RETURNING id`,
 			).bind(
 				account.id,
@@ -624,7 +652,9 @@ export const recoverFinish: PepperHandler = async (request, env, now, keys) => {
 				["auth_hash", authHash],
 			]),
 		);
-		if (sessionOutcome(results, 0).ok) {
+		const outcome = sessionOutcome(results, 0);
+		await closeEvicted(env, account.id, outcome);
+		if (outcome.ok) {
 			return json({ account_id: account.id, username: account.username, token: session.token, epoch: account.epoch });
 		}
 	}
@@ -689,7 +719,7 @@ async function checkCurrentPassword(
 	session: Session,
 	field: string,
 ): Promise<{ ok: true; body: Record<string, unknown>; account: AccountRow; current: Uint8Array } | { ok: false; response: Response }> {
-	const limited = await count(env.DB, "password-account", accountKey("password-account", session.accountId), now);
+	const limited = await countSession(env.DB, "password-account", session, now);
 	if (limited) return { ok: false, response: limited };
 	const body = await readObject(request);
 	if (!body.ok) return body;
@@ -705,7 +735,10 @@ async function checkCurrentPassword(
  * recovery key and a password change both carry: the new recovery hash and
  * wrap, or the 400 that ends the request.
  */
-async function newRecoveryKey(b: Record<string, unknown>): Promise<{ ok: true; hash: string; wrap: string } | { ok: false; response: Response }> {
+const noPassword = (): Response =>
+	error(409, "no_password", "The account has no password; set its first one with POST /v2/account/sign-in/password.");
+
+export async function newRecoveryKey(b: Record<string, unknown>): Promise<{ ok: true; hash: string; wrap: string } | { ok: false; response: Response }> {
 	const recoveryAuthKey = proof32(b.recovery_auth_key);
 	if (!recoveryAuthKey) return { ok: false, response: badRequest("recovery_auth_key must be 32 bytes of canonical base64url.") };
 	if (typeof b.recovery_wrapped_key !== "string" || !isWrappedKey(b.recovery_wrapped_key)) {
@@ -717,13 +750,16 @@ async function newRecoveryKey(b: Record<string, unknown>): Promise<{ ok: true; h
 /**
  * Changes the password and replaces the recovery key in one compare-and-swap
  * update, so a password change always ends every older recovery key,
- * including one planted by someone who once knew the password.
+ * including one planted by someone who once knew the password. 409
+ * `no_password` for an account made without one: its first password is
+ * `POST /v2/account/sign-in/password`.
  */
 export const password = withSession(async (request, env, now, session) => {
 	const checked = await checkCurrentPassword(request, env, now, session, "current_auth_key");
 	if (!checked.ok) return checked.response;
 	const { body: b, current } = checked;
 	let account = checked.account;
+	if (account.has_password !== 1) return noPassword();
 	const kdf = checkKdf(b.kdf);
 	if (!kdf.ok) return respond(kdf);
 	if (typeof b.salt !== "string" || !isSalt(b.salt)) return badRequest("salt must be 22 base64url characters.");
@@ -739,13 +775,13 @@ export const password = withSession(async (request, env, now, session) => {
 			env.DB.prepare(
 				`UPDATE sessions SET revoked_at = ?2, revoked_reason = 'password_changed'
   WHERE account_id = ?1 AND revoked_at IS NULL AND token_hash != ?3
-    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND auth_hash = ?4)
+    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND has_password = 1 AND auth_hash = ?4)
   RETURNING device_id`,
 			).bind(account.id, now, session.tokenHash, account.auth_hash),
 			env.DB.prepare(
 				`UPDATE accounts SET kdf_m_kib = ?3, kdf_t = ?4, kdf_p = ?5, salt = ?6, auth_hash = ?7, wrapped_key = ?8,
   recovery_hash = ?9, recovery_wrapped_key = ?10
-  WHERE id = ?1 AND auth_hash = ?2 RETURNING id`,
+  WHERE id = ?1 AND has_password = 1 AND auth_hash = ?2 RETURNING id`,
 			).bind(
 				account.id,
 				account.auth_hash,
@@ -778,76 +814,67 @@ export const password = withSession(async (request, env, now, session) => {
 	return invalidCredentials();
 });
 
-export const recoveryKey = withSession(async (request, env, now, session) => {
-	const checked = await checkCurrentPassword(request, env, now, session, "current_auth_key");
-	if (!checked.ok) return checked.response;
-	const { body: b, account, current } = checked;
-	const recovery = await newRecoveryKey(b);
-	if (!recovery.ok) return recovery.response;
-	if (!(await proofMatches(current, account.auth_hash))) return invalidCredentials();
-	// Setting the same values again (a retry) changes the row just the same.
-	const updated = await env.DB.prepare(
-		"UPDATE accounts SET recovery_hash = ?3, recovery_wrapped_key = ?4 WHERE id = ?1 AND auth_hash = ?2 RETURNING id",
-	)
-		.bind(account.id, account.auth_hash, recovery.hash, recovery.wrap)
-		.first();
-	return updated ? json({}) : invalidCredentials();
+/** A condition every statement of a deletion holds under, with the account and `value` at the given parameters. */
+export interface DeletionGuard {
+	sql(account: number, value: number): string;
+	value: string;
+}
+
+/** A password's guard: the auth hash the Worker just checked is still the account's. */
+export const authHashGuard = (authHash: string): DeletionGuard => ({
+	value: authHash,
+	sql: (a, v) => `EXISTS (SELECT 1 FROM accounts WHERE id = ?${a} AND auth_hash = ?${v})`,
 });
 
 /**
  * The deletion batch: documents, files, published notes (queued for their R2
  * objects' deletion), shared notes (its own stopped and their rooms queued for
  * purging; its identity, memberships, wraps, requests and notifications gone),
- * sessions, account-keyed limits, the purge row, then the account (children
- * first: D1 enforces foreign keys).
- * Every statement holds only while the checked auth hash is stored.
+ * the sign-in rows, sessions, account-keyed limits, the purge row, then the
+ * account (children first: D1 enforces foreign keys), and last its
+ * `auth_flows` rows. Every statement but the last holds only under `guard`:
+ * a password's auth hash, or a proof's attempt ID on its flow, which is why
+ * the flows go after the account (the last statement holds only once the
+ * account is gone). The account's deletion is the second to last result.
  */
-export function deletionStatements(db: D1Database, accountId: string, now: number, authHash: string): D1PreparedStatement[] {
-	const guard = "EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND auth_hash = ?2)";
-	const bind = (sql: string) => db.prepare(sql).bind(accountId, authHash);
+export function deletionStatements(db: D1Database, accountId: string, now: number, guard: DeletionGuard): D1PreparedStatement[] {
+	const where = guard.sql(1, 2);
+	const bind = (sql: string) => db.prepare(sql).bind(accountId, guard.value);
 	return [
-		bind(`DELETE FROM account_docs WHERE account_id = ?1 AND ${guard}`),
-		bind(`DELETE FROM account_files WHERE account_id = ?1 AND ${guard}`),
-		...accountShareStatements(db, accountId, guard, authHash, now),
-		...accountCollabStatements(db, accountId, guard, authHash, now),
-		bind(`DELETE FROM device_approvals WHERE account_id = ?1 AND ${guard}`),
-		bind(`DELETE FROM account_passkeys WHERE account_id = ?1 AND ${guard}`),
-		bind(`DELETE FROM account_identities WHERE account_id = ?1 AND ${guard}`),
-		bind(`DELETE FROM auth_flows WHERE account_id = ?1 AND ${guard}`),
-		bind(`DELETE FROM sessions WHERE account_id = ?1 AND ${guard}`),
+		bind(`DELETE FROM account_docs WHERE account_id = ?1 AND ${where}`),
+		bind(`DELETE FROM account_files WHERE account_id = ?1 AND ${where}`),
+		...accountShareStatements(db, accountId, where, guard.value, now),
+		...accountCollabStatements(db, accountId, where, guard.value, now),
+		bind(`DELETE FROM device_approvals WHERE account_id = ?1 AND ${where}`),
+		bind(`DELETE FROM account_passkeys WHERE account_id = ?1 AND ${where}`),
+		bind(`DELETE FROM account_identities WHERE account_id = ?1 AND ${where}`),
+		bind(`DELETE FROM sessions WHERE account_id = ?1 AND ${where}`),
 		bind(
-			`DELETE FROM limits WHERE key IN ('login-user:' || ?1, 'password-account:' || ?1, 'writes-account:' || ?1, 'uploads-account:' || ?1,
-  'lookup-account:' || ?1, 'join-account:' || ?1, 'notify-account:' || ?1, 'proof-account:' || ?1,
+			`DELETE FROM limits WHERE (key IN ('login-user:' || ?1, 'password-account:' || ?1, 'writes-account:' || ?1, 'uploads-account:' || ?1,
+  'lookup-account:' || ?1, 'join-account:' || ?1, 'notify-account:' || ?1, 'proof-account:' || ?1, 'passkey-manage:' || ?1,
   'approval-create:' || ?1, 'approval-poll:' || ?1, 'approval-respond:' || ?1)
-  AND ${guard}`,
+  OR ${sessionLimitKeys(1)})
+  AND ${where}`,
 		),
 		db
 			.prepare(
-				`INSERT INTO purges (prefix, requested_at) SELECT 'accounts/' || ?1 || '/', ?3 WHERE ${guard}
+				`INSERT INTO purges (prefix, requested_at) SELECT 'accounts/' || ?1 || '/', ?3 WHERE ${where}
   ON CONFLICT (prefix) DO UPDATE SET requested_at = excluded.requested_at`,
 			)
-			.bind(accountId, authHash, now),
-		bind(`DELETE FROM accounts WHERE id = ?1 AND ${guard} RETURNING id`),
+			.bind(accountId, guard.value, now),
+		bind(`DELETE FROM accounts WHERE id = ?1 AND ${where} RETURNING id`),
+		db.prepare("DELETE FROM auth_flows WHERE account_id = ?1 AND NOT EXISTS (SELECT 1 FROM accounts WHERE id = ?1)").bind(accountId),
 	];
 }
 
-export const deleteAccount = withSession(async (request, env, now, session) => {
-	const checked = await checkCurrentPassword(request, env, now, session, "auth_key");
-	if (!checked.ok) return checked.response;
-	const { body: b, account, current } = checked;
-	if (typeof b.username !== "string") return badRequest("username must be a string.");
-	if (!(await proofMatches(current, account.auth_hash))) return invalidCredentials();
-	if (normalizeUsername(b.username) !== account.username) {
-		return error(400, "username_mismatch", "The username doesn't match this account.");
-	}
-	const shared = await memberships(env, account.id);
-	const results = await env.DB.batch(deletionStatements(env.DB, account.id, now, account.auth_hash));
-	if (results[results.length - 1].results.length !== 1) return invalidCredentials();
-	await purgePrefix(env, accountPrefix(account.id), now, now, DELETE_PURGE_ROUNDS);
+/** After the deletion batch: its R2 prefix, published notes, shared rooms and event sockets. */
+export async function afterDeletion(env: Env, accountId: string, shared: string[], now: number): Promise<void> {
+	await purgePrefix(env, accountPrefix(accountId), now, now, DELETE_PURGE_ROUNDS);
 	await runSharePurges(env, now);
-	await afterAccountDeleted(env, account.id, shared, now);
-	return json({ deleted: true });
-});
+	await afterAccountDeleted(env, accountId, shared, now);
+	// The account's sessions are gone: every device's event socket closes.
+	await signOutSockets(env, accountId, null);
+}
 
 // ------------------------------------------------------------------- devices
 

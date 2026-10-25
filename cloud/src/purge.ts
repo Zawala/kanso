@@ -11,6 +11,7 @@
 // round finding the account alive drops the row instead of listing; objects
 // the old account left behind are then orphans, which reconciliation removes.
 
+import { signOutSockets } from "./account_room";
 import { runCollabPurges } from "./collab";
 import type { Env } from "./env";
 import { refusal } from "./http";
@@ -314,6 +315,8 @@ export interface CronReport {
 	shortLinksPurged: number;
 	/** Rooms of shared notes that stopped (or whose owner was deleted) purged by this run. */
 	collabPurged: number;
+	/** Accounts whose event sockets this run closed: admin disables and deletions, and sessions it expired. */
+	socketsClosed: number;
 }
 
 /** The scheduled jobs, every 15 minutes. */
@@ -325,16 +328,42 @@ export async function runCron(env: Env, now: number): Promise<CronReport> {
 	const collabPurged = await runCollabPurges(env, now);
 	await env.DB.prepare(expiredLimitsSql()).bind(now).run();
 	const reconciled = await reconcile(env, now);
-	await env.DB.batch([
+	const housekeeping = await env.DB.batch([
 		// Sign-in ceremonies and approvals are dead a day after they expire; the
 		// approval row itself is authoritative until then, so a late poll still
 		// sees `expired` rather than a missing request.
 		env.DB.prepare("DELETE FROM auth_flows WHERE expires_at < ?1 - ?2").bind(now, DAY),
 		env.DB.prepare("DELETE FROM device_approvals WHERE expires_at < ?1 - ?2").bind(now, DAY),
 		env.DB.prepare(
-			"UPDATE sessions SET revoked_at = ?1, revoked_reason = 'expired' WHERE revoked_at IS NULL AND last_seen_at < ?1 - ?2",
+			"UPDATE sessions SET revoked_at = ?1, revoked_reason = 'expired' WHERE revoked_at IS NULL AND last_seen_at < ?1 - ?2 RETURNING account_id, device_id",
 		).bind(now, SESSION_IDLE_MS),
 		env.DB.prepare("DELETE FROM sessions WHERE revoked_at IS NOT NULL AND revoked_at < ?1 - ?2").bind(now, REVOKED_KEEP_MS),
 	]);
-	return { purgeRounds, reconcile: reconciled, sharesExpired, sharesPurged, shortLinksPurged, collabPurged };
+	const expired = new Map<string, string[]>();
+	for (const row of housekeeping[2].results as { account_id: string; device_id: string }[]) {
+		expired.set(row.account_id, [...(expired.get(row.account_id) ?? []), row.device_id]);
+	}
+	for (const [accountId, devices] of expired) await signOutSockets(env, accountId, devices);
+	const socketsClosed = expired.size + (await runSocketCloses(env));
+	return { purgeRounds, reconcile: reconciled, sharesExpired, sharesPurged, shortLinksPurged, collabPurged, socketsClosed };
+}
+
+/** Accounts closed per cron run from `socket_closes`; the rest wait for the next. */
+export const SOCKET_CLOSE_BATCH = 100;
+
+/**
+ * Drains `socket_closes` (migration 0009), the admin script's requests: closes
+ * every event socket of each account, then deletes its row unless a newer
+ * request replaced it meanwhile. A room that can't be reached is logged and
+ * the row goes anyway: the account's sessions already fail on their own.
+ */
+export async function runSocketCloses(env: Env, limit = SOCKET_CLOSE_BATCH): Promise<number> {
+	const { results } = await env.DB.prepare("SELECT account_id, requested_at FROM socket_closes ORDER BY requested_at, account_id LIMIT ?1")
+		.bind(limit)
+		.all<{ account_id: string; requested_at: number }>();
+	for (const row of results) {
+		await signOutSockets(env, row.account_id, null);
+		await env.DB.prepare("DELETE FROM socket_closes WHERE account_id = ?1 AND requested_at <= ?2").bind(row.account_id, row.requested_at).run();
+	}
+	return results.length;
 }

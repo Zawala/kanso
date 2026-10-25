@@ -72,20 +72,22 @@
   // with go.kansoapp.app's CNAME in the kansoapp.app zone).
   // SHARE_ORIGIN: where short links lead, so a published note is read on share.kansoapp.app
   // whichever name the app published it through.
-  // Sign-in configuration (keep commented until step 7):
-  // PASSKEY_RP_ID: "sync.kansoapp.app"
-  // PASSKEY_ORIGINS: "[\"https://sync.kansoapp.app\"]"
-  // APPLE_CLIENT_ID: "app.kanso.Kanso.web"
-  // APPLE_TEAM_ID: "4973Y692JU"
-  // APPLE_KEY_ID: "MS6Y3S5ZL7"
-  // APPLE_REDIRECT_URI: "https://sync.kansoapp.app/v2/auth/apple/callback"
-  // GOOGLE_CLIENT_ID: "<Google Desktop OAuth client ID>"
-  // GITHUB_CLIENT_ID: "<GitHub OAuth App client ID>"
-  // Secrets go through `wrangler secret put NAME`; switch these vars on at step 7.
+  // Sign-in (step 7, on since 2026-10-25). Secrets go through `wrangler secret put NAME`:
+  // APPLE_PRIVATE_KEY and GOOGLE_CLIENT_SECRET. GOOGLE_CLIENT_ID is the Desktop client in Google
+  // Cloud project kanso-512706; GITHUB_CLIENT_ID is the device-flow OAuth app (no secret).
   "vars": {
     "REROUT_PROJECT_ID": "prj_xX6I1BVjuNKzdE0o",
     "REROUT_DOMAIN": "go.kansoapp.app",
-    "SHARE_ORIGIN": "https://share.kansoapp.app"
+    "SHARE_ORIGIN": "https://share.kansoapp.app",
+    "GOOGLE_CLIENT_ID": "1051829033489-h47joj5qmh7bthtbtnesl96eced84s1m.apps.googleusercontent.com",
+    "GITHUB_CLIENT_ID": "Ov23li1Yf81hocEW3k0d",
+    "PASSKEY_RP_ID": "sync.kansoapp.app",
+    "PASSKEY_ORIGINS": "[\"https://sync.kansoapp.app\"]",
+    "APP_ASSOC_APPS": "[\"4973Y692JU.app.kanso.Kanso\"]",
+    "APPLE_CLIENT_ID": "app.kanso.Kanso.web",
+    "APPLE_TEAM_ID": "4973Y692JU",
+    "APPLE_KEY_ID": "MS6Y3S5ZL7",
+    "APPLE_REDIRECT_URI": "https://sync.kansoapp.app/v2/auth/apple/callback"
   }
   // AUTH_PEPPER (required) is a secret: `wrangler secret put AUTH_PEPPER` (reads stdin; see README.md).
   // SYNC_TOKEN is no longer read; `admin purge-legacy` deletes it.

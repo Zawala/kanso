@@ -31,18 +31,22 @@ import {
 	isWrappedKey,
 	proof32,
 } from "./protocol";
-import { flowForDevice, flowExpired, isFlowId, newFlow, passkeyAdvertisement } from "./sign_in";
+import { checkProof, proofAccount, proofUsed, recoveryProof } from "./proofs";
+import { lastMethod, offeredMethods } from "./providers";
+import { consumeFlow, flowById, flowForDevice, flowExpired, flowStatement, hexEqual, isFlowId, newFlow, passkeyAdvertisement } from "./sign_in";
 import { isReserved, normalizeUsername } from "./usernames";
 import {
 	type Expected,
 	COSE_ALGORITHMS,
 	bytesField,
 	signCountAccepted,
+	storedTransports,
+	transportsField,
 	userHandle,
 	verifyAssertion,
 	verifyRegistration,
 } from "./webauthn";
-import { readObject, respond, sessionOutcome, sessionStatements } from "./auth";
+import { closeEvicted, readObject, respond, sessionOutcome, sessionStatements, withSession, withSessionKeys } from "./auth";
 
 /** The session shape every sign-in route answers (docs/ACCOUNTS.md › Sign-in routes). */
 interface SessionAnswer {
@@ -87,46 +91,6 @@ function expected(env: Env, challenge: string): Expected | Response {
 	const advertisement = passkeyAdvertisement(env);
 	if (!advertisement) return RP_NOT_CONFIGURED();
 	return { rpId: advertisement.rp_id, origins: advertisement.origins, challenge };
-}
-
-/**
- * The WebAuthn transport hints the column keeps, by the name it stores. The
- * column's CHECK (0006) allows only lowercase letters and spaces, so
- * `smart-card` is stored as `smartcard` and read back as `smart-card`.
- */
-const KNOWN_TRANSPORTS: Record<string, string> = {
-	usb: "usb",
-	nfc: "nfc",
-	ble: "ble",
-	hybrid: "hybrid",
-	internal: "internal",
-	"smart-card": "smartcard",
-};
-const STORED_TRANSPORTS = new Map(Object.entries(KNOWN_TRANSPORTS).map(([hint, stored]) => [stored, hint]));
-
-/** The transports a start lists, from the space-separated hints the server stored. */
-const transports = (value: string): string[] =>
-	value
-		.split(" ")
-		.map((t) => STORED_TRANSPORTS.get(t))
-		.filter((t): t is string => t !== undefined);
-
-/**
- * Reads a `transports` array from a registration body: at most 32 lowercase
- * hints, de-duplicated, as the space-separated string the column holds. A
- * well-formed hint the column doesn't know is dropped (hints only help
- * `allowCredentials`); a malformed one is 400.
- */
-function transportsField(value: unknown): string | null {
-	if (value === undefined || value === null) return "";
-	if (!Array.isArray(value) || value.length > 32) return null;
-	const seen: string[] = [];
-	for (const item of value) {
-		if (typeof item !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(item)) return null;
-		const stored = Object.hasOwn(KNOWN_TRANSPORTS, item) ? KNOWN_TRANSPORTS[item] : undefined;
-		if (stored !== undefined && !seen.includes(stored)) seen.push(stored);
-	}
-	return seen.join(" ");
 }
 
 function optionalWrap(value: unknown): string | null | undefined {
@@ -190,7 +154,7 @@ export const passkeyStart = async (request: Request, env: Env, now: number, keys
 		)
 			.bind(accountId)
 			.all<{ credential_id: string; transports: string }>();
-		allow = results.map((row) => ({ id: row.credential_id, transports: transports(row.transports) }));
+		allow = results.map((row) => ({ id: row.credential_id, transports: storedTransports(row.transports) }));
 	}
 	return json({
 		flow_id: flowId,
@@ -327,7 +291,11 @@ export const passkeyFinish = async (request: Request, env: Env, now: number, key
 		expectedValue,
 	);
 	if (!verified) return INVALID();
-	if (!signCountAccepted(found.sign_count, verified.signCount)) return INVALID();
+	if (!signCountAccepted(found.sign_count, verified.signCount)) {
+		// A possible clone: the challenge is used up, as a proof's is.
+		await consumeFlow(env, flowId, now);
+		return INVALID();
+	}
 	// The account is checked after the signature, so a disabled flag never
 	// short-circuits a credential failure.
 	if (found.account.disabled_at !== null) return accountDisabled();
@@ -365,6 +333,7 @@ export const passkeyFinish = async (request: Request, env: Env, now: number, key
 		),
 	);
 	const outcome = sessionOutcome(results, 0);
+	await closeEvicted(env, found.account.id, outcome);
 	if (!outcome.ok) return INVALID();
 	return sessionAnswer(found.account, token, outcome.evicted, found.wrapped_key, 200);
 };
@@ -558,6 +527,7 @@ export const passkeySignupFinish = async (request: Request, env: Env, now: numbe
 			),
 		);
 		const outcome = sessionOutcome(results, 0);
+		await closeEvicted(env, existing.id, outcome);
 		if (!outcome.ok) return flowExpired();
 		return sessionAnswer(
 			{
@@ -678,3 +648,229 @@ export const passkeySignupFinish = async (request: Request, env: Env, now: numbe
 	);
 };
 
+// ------------------------------------------------- adding a passkey (session)
+
+/** A passkey or registration challenge lives five minutes. */
+const REGISTER_FLOW_MS = 5 * 60_000;
+
+/** The account's credentials as `{id, transports}`, in the order added. */
+async function credentialList(env: Env, accountId: string): Promise<{ id: string; transports: string[] }[]> {
+	const { results } = await env.DB.prepare(
+		"SELECT credential_id, transports FROM account_passkeys WHERE account_id = ?1 ORDER BY created_at, credential_id",
+	)
+		.bind(accountId)
+		.all<{ credential_id: string; transports: string }>();
+	return results.map((row) => ({ id: row.credential_id, transports: storedTransports(row.transports) }));
+}
+
+/**
+ * `POST /v2/account/sign-in/passkeys/start` — `{proof}`, a password or passkey
+ * proof (a provider proof can't add a way in). The proof is used in the same
+ * batch that stores the registration flow (kind `passkey_register`, this
+ * session's device and proof, five minutes). Answers the registration options,
+ * as the sign-up start does, with the account's credentials in
+ * `exclude_credentials` so one authenticator isn't registered twice. Counts
+ * `passkey-manage`.
+ */
+export const registerStart = withSessionKeys(async (request, env, now, keys, session) => {
+	const advertisement = passkeyAdvertisement(env);
+	if (!advertisement) return RP_NOT_CONFIGURED();
+	const limited = await count(env.DB, "passkey-manage", accountKey("passkey-manage", session.accountId), now);
+	if (limited) return limited;
+	const body = await readObject(request);
+	if (!body.ok) return body.response;
+	const account = await proofAccount(env, session.accountId);
+	if (!account) return INVALID();
+	const checked = await checkProof(env, now, session, account, body.value.proof, { provider: null });
+	if (!checked.ok) return checked.response;
+
+	const challenge = base64url(randomBytes(32));
+	const { id, statement } = await flowStatement(
+		env,
+		keys,
+		{
+			kind: "passkey_register",
+			intent: "link",
+			account_id: session.accountId,
+			device_id: session.deviceId,
+			device_proof_hash: session.proofHash,
+			challenge,
+			rp_id: advertisement.rp_id,
+			nonce_hash: null,
+			state_hash: null,
+			pkce_hash: null,
+			redirect_uri: null,
+			provider: null,
+			subject: null,
+			device_code: null,
+			next_poll_at: null,
+			expires_at: now + REGISTER_FLOW_MS,
+		},
+		now,
+		checked.guard,
+	);
+	const results = await env.DB.batch([...checked.guard.before, statement]);
+	if (!proofUsed(checked.guard, results)) return flowExpired();
+	// The password changed between the check and the batch.
+	if (results[results.length - 1].results.length !== 1) return INVALID();
+	return json({
+		flow_id: id,
+		challenge,
+		rp_id: advertisement.rp_id,
+		user: { id: await userHandle(session.accountId), name: account.username, displayName: account.username },
+		pub_key_cred_params: [...COSE_ALGORITHMS],
+		authenticator_selection: { residentKey: "required", userVerification: "required" },
+		exclude_credentials: await credentialList(env, session.accountId),
+	});
+});
+
+/**
+ * `POST /v2/account/sign-in/passkeys/finish` — `{flow_id, credential_id,
+ * attestation_object, client_data_json, transports, passkey_wrapped_key?}`.
+ * Verifies the registration against the session's own `passkey_register`
+ * flow and stores the credential for the account, with the wrap when PRF gave
+ * one; the flow is consumed and the credential inserted in one batch. 201
+ * `{credential_id, prf, created_at}`; a retry of the same finish after a lost
+ * answer gets the same answer. 409 `credential_exists` for a credential ID
+ * already registered, by this account or another, which is never
+ * overwritten. Counts `passkey-manage`.
+ */
+export const registerFinish = withSession(async (request, env, now, session) => {
+	const advertisement = passkeyAdvertisement(env);
+	if (!advertisement) return RP_NOT_CONFIGURED();
+	const limited = await count(env.DB, "passkey-manage", accountKey("passkey-manage", session.accountId), now);
+	if (limited) return limited;
+	const body = await readObject(request);
+	if (!body.ok) return body.response;
+	const b = body.value;
+	const flowId = typeof b.flow_id === "string" ? b.flow_id : "";
+	if (!isFlowId(flowId)) return badRequest("flow_id must be 32 bytes of canonical base64url.");
+	const credentialId = bytesField(b.credential_id, 16, 1023);
+	const attestationObject = bytesField(b.attestation_object, 1, 16_384);
+	const clientDataJson = bytesField(b.client_data_json, 1, 8192);
+	if (!credentialId || !attestationObject || !clientDataJson) return badRequest("The registration is malformed.");
+	const transportValue = transportsField(b.transports);
+	if (transportValue === null) return badRequest("transports must be lowercase hints.");
+	const wrapped = optionalWrap(b.passkey_wrapped_key);
+	if (wrapped === undefined) return badRequest("passkey_wrapped_key must be 98 base64url characters.");
+	const credential = base64url(credentialId);
+
+	const flow = await flowById(env, flowId);
+	// Another session's flow is answered as an unknown one.
+	if (
+		!flow ||
+		flow.kind !== "passkey_register" ||
+		flow.account_id !== session.accountId ||
+		flow.device_id !== session.deviceId ||
+		flow.device_proof_hash === null ||
+		!hexEqual(flow.device_proof_hash, session.proofHash) ||
+		flow.expires_at <= now
+	) {
+		return flowExpired();
+	}
+	const answer = (prf: boolean, createdAt: number) => json({ credential_id: credential, prf, created_at: createdAt }, 201);
+	if (flow.consumed_at !== null) {
+		// A lost answer: the credential this flow stored, when it is this one.
+		const stored = await env.DB.prepare(
+			"SELECT wrapped_key IS NOT NULL AS prf, created_at FROM account_passkeys WHERE credential_id = ?1 AND account_id = ?2 AND created_at = ?3",
+		)
+			.bind(credential, session.accountId, flow.consumed_at)
+			.first<{ prf: number; created_at: number }>();
+		return stored ? answer(stored.prf === 1, stored.created_at) : flowExpired();
+	}
+
+	const expectedValue = expected(env, flow.challenge ?? "");
+	if (expectedValue instanceof Response) return expectedValue;
+	const registered = await verifyRegistration({ credentialId, attestationObject, clientDataJson }, expectedValue);
+	if (!registered) return INVALID();
+
+	const attemptId = base64url(randomBytes(32));
+	const results = await env.DB.batch([
+		env.DB.prepare(
+			`UPDATE auth_flows SET consumed_at = ?2, completion_attempt_id = ?3
+  WHERE id = ?1 AND kind = 'passkey_register' AND account_id = ?4 AND consumed_at IS NULL AND expires_at > ?2 RETURNING id`,
+		).bind(flowId, now, attemptId, session.accountId),
+		// Only under this batch's consumption; an existing credential ID, on any account, is left alone.
+		env.DB.prepare(
+			`INSERT INTO account_passkeys (credential_id, account_id, public_key, alg, sign_count, transports, wrapped_key, aaguid, created_at)
+  SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
+  WHERE EXISTS (SELECT 1 FROM auth_flows WHERE id = ?10 AND completion_attempt_id = ?11)
+    AND EXISTS (SELECT 1 FROM accounts WHERE id = ?2 AND disabled_at IS NULL)
+  ON CONFLICT (credential_id) DO NOTHING RETURNING created_at`,
+		).bind(
+			credential,
+			session.accountId,
+			base64url(registered.publicKey),
+			registered.alg,
+			registered.signCount,
+			transportValue,
+			wrapped,
+			hex(registered.aaguid),
+			now,
+			flowId,
+			attemptId,
+		),
+	]);
+	if (results[0].results.length !== 1) return flowExpired();
+	if (results[1].results.length !== 1) return error(409, "credential_exists", "That passkey is already added.");
+	return answer(wrapped !== null, now);
+});
+
+// ----------------------------------------------- removing a passkey (session)
+
+/**
+ * `POST /v2/account/sign-in/passkeys/<credential_id>/remove` — `{proof,
+ * recovery_auth_key?}`, a password or passkey proof. Deletes the credential
+ * and its wrap; no other key or session changes. One statement holds the
+ * proof's guard, the last-method rule (refused unless the account keeps a
+ * password, an identity or another passkey) and, when the body has one, the
+ * recovery key, so two removals of an account's last two ways in can't both
+ * pass. 204; 404 for a credential this account doesn't have; 409
+ * `last_method` without a recovery proof. Counts `passkey-manage`.
+ */
+export function removePasskey(raw: string) {
+	return withSession(async (request, env, now, session) => {
+		const limited = await count(env.DB, "passkey-manage", accountKey("passkey-manage", session.accountId), now);
+		if (limited) return limited;
+		const credentialId = bytesField(raw, 16, 1023);
+		if (!credentialId) return badRequest("The credential ID must be 16–1023 bytes of canonical base64url.");
+		const credential = base64url(credentialId);
+		const body = await readObject(request);
+		if (!body.ok) return body.response;
+		const account = await proofAccount(env, session.accountId);
+		if (!account) return INVALID();
+		const checked = await checkProof(env, now, session, account, body.value.proof, { provider: null });
+		if (!checked.ok) return checked.response;
+		const recovery = await recoveryProof(body.value, "recovery_auth_key", account);
+		if (!recovery.ok) return recovery.response;
+		const exists = await env.DB.prepare("SELECT 1 AS found FROM account_passkeys WHERE credential_id = ?1 AND account_id = ?2")
+			.bind(credential, session.accountId)
+			.first();
+		if (!exists) return error(404, "not_found", "Not found.");
+
+		const { guard } = checked;
+		// Only ways in this server offers count (providers.ts offeredMethods); this route needs passkeys, so the others do.
+		const offered = offeredMethods(env);
+		const deletion = env.DB.prepare(
+			`DELETE FROM account_passkeys WHERE credential_id = ?3 AND account_id = ?1
+  AND (?4 IS NOT NULL OR (SELECT has_password FROM accounts WHERE id = ?1) = 1
+    OR EXISTS (SELECT 1 FROM account_identities WHERE account_id = ?1 AND provider IN (SELECT value FROM json_each(?5)))
+    OR EXISTS (SELECT 1 FROM account_passkeys WHERE account_id = ?1 AND credential_id != ?3))
+  AND (?4 IS NULL OR EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND recovery_hash = ?4))
+  AND ${guard.sql(1, 2)} RETURNING credential_id`,
+		).bind(session.accountId, guard.value, credential, recovery.hash ?? null, offered.providers);
+		// The proof is used first, in the same batch: single use even when the removal is refused.
+		const results = await env.DB.batch([...guard.before, deletion]);
+		if (results[results.length - 1].results.length === 1) return new Response(null, { status: 204 });
+		if (!proofUsed(guard, results)) return flowExpired();
+		const still = await env.DB.prepare("SELECT 1 AS found FROM account_passkeys WHERE credential_id = ?1 AND account_id = ?2")
+			.bind(credential, session.accountId)
+			.first();
+		if (!still) return error(404, "not_found", "Not found.");
+		const current = await proofAccount(env, session.accountId);
+		// The password or the recovery key changed since the check.
+		if (checked.kind === "password" && current?.auth_hash !== account.auth_hash) return INVALID();
+		if (recovery.hash !== undefined && current?.recovery_hash !== recovery.hash) return INVALID();
+		return lastMethod();
+	});
+}

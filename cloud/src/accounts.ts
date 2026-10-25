@@ -120,6 +120,16 @@ export interface Report {
 // -------------------------------------------------------------------- values
 
 /** A SQL string literal. Callers validate the value first; this only doubles quotes. */
+/**
+ * Asks the cron to close every event socket of `user`'s account (migration
+ * 0009 `socket_closes`): this script can't reach a Durable Object. Runs before
+ * a deletion removes the row it reads.
+ */
+export function socketCloseSql(user: string, now: number): string {
+	return `INSERT INTO socket_closes (account_id, requested_at) SELECT id, ${now} FROM accounts WHERE username = ${sqlText(user)}
+  ON CONFLICT (account_id) DO UPDATE SET requested_at = excluded.requested_at`;
+}
+
 export function sqlText(value: string): string {
 	return `'${value.replaceAll("'", "''")}'`;
 }
@@ -501,9 +511,11 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 				disable
 					? `UPDATE accounts SET disabled_at = ${now} WHERE username = ${sqlText(user)} AND disabled_at IS NULL RETURNING id`
 					: `UPDATE accounts SET disabled_at = NULL WHERE username = ${sqlText(user)} AND disabled_at IS NOT NULL RETURNING id`,
+				// The cron closes a disabled account's event sockets (this script can't reach them).
+				...(disable ? [socketCloseSql(user, now)] : []),
 			]);
 			return result.results.length === 1
-				? ok(`${disable ? "Disabled" : "Enabled"} ${user}.`)
+				? ok(disable ? `Disabled ${user}. Its open event sockets close within 15 minutes (the cron).` : `Enabled ${user}.`)
 				: refused(`No ${disable ? "enabled" : "disabled"} account is named ${user}.`);
 		}
 		case "shares": {
@@ -585,7 +597,12 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 				`DELETE FROM sessions WHERE account_id = ${id}`,
 				`DELETE FROM limits WHERE key IN ('login-user:' || ${id}, 'password-account:' || ${id}, 'writes-account:' || ${id},
   'uploads-account:' || ${id}, 'lookup-account:' || ${id}, 'join-account:' || ${id}, 'notify-account:' || ${id},
-  'approval-create:' || ${id}, 'approval-poll:' || ${id}, 'approval-respond:' || ${id})`,
+  'proof-account:' || ${id}, 'passkey-manage:' || ${id},
+  'approval-create:' || ${id}, 'approval-poll:' || ${id}, 'approval-respond:' || ${id})
+  OR (key > 'password-account:' || ${id} || ':' AND key < 'password-account:' || ${id} || ';')
+  OR (key > 'proof-account:' || ${id} || ':' AND key < 'proof-account:' || ${id} || ';')
+  OR key IN ('password-total:' || ${id}, 'proof-total:' || ${id})`,
+				socketCloseSql(user, now),
 				`INSERT INTO purges (prefix, requested_at) SELECT 'accounts/' || id || '/', ${now} FROM accounts WHERE username = ${sqlText(user)}
   ON CONFLICT (prefix) DO UPDATE SET requested_at = excluded.requested_at`,
 				`DELETE FROM accounts WHERE username = ${sqlText(user)} RETURNING id`,
@@ -593,7 +610,7 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 			const deleted = results[results.length - 1].results[0];
 			return deleted
 				? ok(
-						`Deleted ${user} (${String(deleted.id)}). The cron empties accounts/${String(deleted.id)}/, deletes its published notes in R2 and purges the notes it shared within 15 minutes.`,
+						`Deleted ${user} (${String(deleted.id)}). The cron empties accounts/${String(deleted.id)}/, deletes its published notes in R2, purges the notes it shared and closes its event sockets within 15 minutes.`,
 					)
 				: refused(`No account is named ${user}.`);
 		}
