@@ -2408,6 +2408,147 @@ fn settings_create_account_custom(
     });
 }
 
+/// What the default server advertises in these shots: a password,
+/// passkeys for the entitled relying party with security keys, and the
+/// three providers.
+fn advertise_every_method(cx: &mut HeadlessAppContext) {
+    cx.update(|cx| {
+        let services = cx.global_mut::<Services>();
+        services.auth = Some((
+            kanso_sync::DEFAULT_SERVER.to_owned(),
+            kanso_sync::ServerAuth {
+                password: true,
+                passkeys: Some(kanso_sync::PasskeyMethods {
+                    rp_id: crate::passkey_ceremony::OFFICIAL_RP_ID.into(),
+                    security_key: true,
+                }),
+                providers: vec![
+                    kanso_sync::Provider::Apple,
+                    kanso_sync::Provider::Google,
+                    kanso_sync::Provider::Github,
+                ],
+                ..Default::default()
+            },
+        ));
+        services.signup = Some((kanso_sync::DEFAULT_SERVER.to_owned(), SignupState::Open));
+        services.platform_passkeys = Some(true);
+    });
+}
+
+/// Sign in with every method the server advertises: the passkey first,
+/// then the providers, then the username form.
+fn settings_sign_in_methods(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    open_account_form(
+        cx,
+        window,
+        workspace,
+        SignedOutForm::SignIn,
+        ["", "", "", ""],
+    );
+    advertise_every_method(cx);
+}
+
+/// Create account with every method: Create with a passkey above the
+/// providers and the username form.
+fn settings_create_methods(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    open_account_form(
+        cx,
+        window,
+        workspace,
+        SignedOutForm::CreateAccount,
+        ["", "", "", ""],
+    );
+    advertise_every_method(cx);
+}
+
+/// Opens `form` over Create account or Sign in, with `username` in place of
+/// the random suggestion.
+fn open_passkey_form(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    form: crate::account_page::PasskeyForm,
+    username: &str,
+) -> Entity<AccountPage> {
+    let signed_out = if form.creating {
+        SignedOutForm::CreateAccount
+    } else {
+        SignedOutForm::SignIn
+    };
+    let page = open_account_form(cx, window, workspace, signed_out, ["", "", "", ""]);
+    advertise_every_method(cx);
+    cx.update_window(window, |_, window, cx| {
+        page.update(cx, |page, cx| {
+            page.open_passkey_form(form, window, cx);
+            page.fill([username, "", "", ""], window, cx);
+        });
+    })
+    .unwrap();
+    page
+}
+
+/// Create with a passkey: the suggested username, which can be changed.
+fn settings_passkey_username(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    open_passkey_form(
+        cx,
+        window,
+        workspace,
+        crate::account_page::PasskeyForm {
+            creating: true,
+            security_key: false,
+        },
+        "quiet-otter-4821",
+    );
+}
+
+/// Linux: Continue with a security key, username first, after the key
+/// asked for its PIN.
+fn settings_security_key_pin(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| {
+        cx.global_mut::<Services>().security_keys = vec![kanso_fido::SecurityKeyDevice {
+            path: "/dev/hidraw3".into(),
+            vendor: "1050".into(),
+            product: "YubiKey 5 NFC".into(),
+            hmac_secret: true,
+        }];
+    });
+    let page = open_passkey_form(
+        cx,
+        window,
+        workspace,
+        crate::account_page::PasskeyForm {
+            creating: false,
+            security_key: true,
+        },
+        DEMO_USER,
+    );
+    cx.update(|cx| {
+        page.update(cx, |page, cx| {
+            page.show_error(crate::account_words::SECURITY_KEY_PIN, cx)
+        })
+    });
+}
+
 /// Creating the account: the keys are being derived.
 fn settings_create_account_busy(
     cx: &mut HeadlessAppContext,
@@ -5019,6 +5160,48 @@ fn snapshots() {
             Light,
             Edit,
             settings_create_account_busy,
+        ),
+        shot(
+            "dark-settings-sign-in-methods",
+            Dark,
+            Edit,
+            settings_sign_in_methods,
+        ),
+        shot(
+            "light-settings-sign-in-methods",
+            Light,
+            Edit,
+            settings_sign_in_methods,
+        ),
+        shot(
+            "dark-settings-create-methods",
+            Dark,
+            Edit,
+            settings_create_methods,
+        ),
+        shot(
+            "dark-settings-passkey-username",
+            Dark,
+            Edit,
+            settings_passkey_username,
+        ),
+        shot(
+            "light-settings-passkey-username",
+            Light,
+            Edit,
+            settings_passkey_username,
+        ),
+        shot(
+            "dark-settings-security-key-pin",
+            Dark,
+            Edit,
+            settings_security_key_pin,
+        ),
+        shot(
+            "light-settings-security-key-pin",
+            Light,
+            Edit,
+            settings_security_key_pin,
         ),
         shot("dark-settings-sign-in", Dark, Edit, settings_sign_in_error),
         shot(
