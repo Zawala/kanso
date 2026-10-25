@@ -128,10 +128,7 @@ impl<'a> FidoKey<'a> {
 
     /// This key as the account flows' ceremony.
     pub fn passkeys(&self) -> SecurityKeyPasskeys<'_> {
-        SecurityKeyPasskeys {
-            ceremony: self,
-            hmac_secret: self.device.hmac_secret,
-        }
+        SecurityKeyPasskeys::new(self, self.device.hmac_secret)
     }
 
     /// `kanso-fido`'s error in `kanso-sync`'s words; a PIN request is
