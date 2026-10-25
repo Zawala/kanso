@@ -33,7 +33,8 @@ use crate::passkey_ceremony::Platform;
 
 /// Whether the signed-out page shows [Continue with a security key] (or
 /// its Create twin): Linux only, and only when the server advertises
-/// security keys for a relying party that is its own host or a parent of it.
+/// security keys for a relying party that is its own host or a parent of it
+/// and not a public suffix ([`crate::passkey_ceremony::passkey_rp_allowed`]).
 /// Whether a key is attached decides if the button works or the page asks
 /// for one ([`crate::account_words::CONNECT_SECURITY_KEY`]).
 pub fn offers_security_keys(
@@ -43,7 +44,8 @@ pub fn offers_security_keys(
 ) -> bool {
     platform == Platform::Linux
         && passkeys.is_some_and(|passkeys| {
-            passkeys.security_key && kanso_sync::passkey_rp_allowed(&passkeys.rp_id, server)
+            passkeys.security_key
+                && crate::passkey_ceremony::passkey_rp_allowed(&passkeys.rp_id, server)
         })
 }
 
@@ -384,6 +386,17 @@ mod tests {
             server
         ));
         assert!(!offers_security_keys(Platform::Linux, None, server));
+        // A public suffix above a shared host's subdomain.
+        assert!(!offers_security_keys(
+            Platform::Linux,
+            Some(&methods("workers.dev", true)),
+            "https://kanso.someone.workers.dev"
+        ));
+        assert!(offers_security_keys(
+            Platform::Linux,
+            Some(&methods("someone.workers.dev", true)),
+            "https://kanso.someone.workers.dev"
+        ));
         for platform in [Platform::MacOs, Platform::Windows] {
             assert!(!offers_security_keys(platform, Some(&advertised), server));
         }
