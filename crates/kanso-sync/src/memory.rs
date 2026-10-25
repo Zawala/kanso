@@ -3350,14 +3350,18 @@ impl ServerState {
                 .map(|p| crate::provider::PasskeyRow {
                     credential_id: p.credential_id.clone(),
                     created_at: p.created_at,
-                    // Read to the hour, as the Worker answers it.
-                    last_used_at: p.last_used_at.map(|t| t - t.rem_euclid(HOUR_MS)),
+                    // Read to the hour, but not before it was added, as the
+                    // Worker answers it.
+                    last_used_at: p
+                        .last_used_at
+                        .map(|t| (t - t.rem_euclid(HOUR_MS)).max(p.created_at)),
                     prf: p.wrapped_key.is_some(),
                     transports: p
                         .transports
                         .split_ascii_whitespace()
                         .map(str::to_owned)
                         .collect(),
+                    aaguid: None,
                 })
                 .collect(),
             recovery: true,
@@ -4993,6 +4997,7 @@ impl Api for MemoryApi<'_> {
                         last_used_at: row.last_used_at,
                         prf: row.prf,
                         transports: row.transports,
+                        aaguid: None,
                     })
                     .collect(),
                 recovery: reply.recovery,

@@ -1183,7 +1183,7 @@ export const methods = async (request: Request, env: Env, now: number): Promise<
 			session.accountId,
 		),
 		env.DB.prepare(
-			`SELECT credential_id, created_at, last_used_at, wrapped_key IS NOT NULL AS prf, transports
+			`SELECT credential_id, created_at, last_used_at, wrapped_key IS NOT NULL AS prf, transports, aaguid
   FROM account_passkeys WHERE account_id = ?1 ORDER BY created_at, credential_id`,
 		).bind(session.accountId),
 	]);
@@ -1195,13 +1195,23 @@ export const methods = async (request: Request, env: Env, now: number): Promise<
 		has_password: row.has_password === 1,
 		identities: (identities.results as { provider: string; created_at: number }[]).map((r) => ({ provider: r.provider, created_at: r.created_at })),
 		passkeys: (
-			passkeys.results as { credential_id: string; created_at: number; last_used_at: number | null; prf: number; transports: string }[]
+			passkeys.results as {
+				credential_id: string;
+				created_at: number;
+				last_used_at: number | null;
+				prf: number;
+				transports: string;
+				aaguid: string | null;
+			}[]
 		).map((r) => ({
 			credential_id: r.credential_id,
 			created_at: r.created_at,
-			last_used_at: r.last_used_at === null ? null : Math.floor(r.last_used_at / hour) * hour,
+			// To the hour, but never before the passkey was added: created_at is exact anyway.
+			last_used_at: r.last_used_at === null ? null : Math.max(Math.floor(r.last_used_at / hour) * hour, r.created_at),
 			prf: r.prf === 1,
 			transports: storedTransports(r.transports),
+			// Names the passkey's manager (iCloud Keychain, 1Password…); all zeros says nothing.
+			aaguid: r.aaguid && !/^0+$/.test(r.aaguid) ? r.aaguid : null,
 		})),
 		recovery: true,
 	});

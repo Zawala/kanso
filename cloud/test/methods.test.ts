@@ -368,8 +368,23 @@ describe("POST /v2/account/sign-in/passkeys/start and /finish", () => {
 		expect(again.body.exclude_credentials).toEqual([{ id: base64url(first.credentialId), transports: ["smart-card", "usb"] }]);
 		const methods = await callJson("/v2/account/sign-in", { env: menv(), now: T0, token: alice.token });
 		expect(methods.body.passkeys).toEqual([
-			{ credential_id: base64url(first.credentialId), created_at: T0, last_used_at: null, prf: true, transports: ["smart-card", "usb"] },
+			{
+				credential_id: base64url(first.credentialId),
+				created_at: T0,
+				last_used_at: null,
+				prf: true,
+				transports: ["smart-card", "usb"],
+				aaguid: "07070707070707070707070707070707",
+			},
 		]);
+		// A use minutes after adding reads to the hour, but never before it was added;
+		// an all-zero AAGUID names nothing.
+		await env.DB.prepare("UPDATE account_passkeys SET last_used_at = ?1, aaguid = ?2").bind(T0 + 150_000, "0".repeat(32)).run();
+		const later = await callJson("/v2/account/sign-in", { env: menv(), now: T0 + 200_000, token: alice.token });
+		expect(later.body.passkeys[0]).toMatchObject({ created_at: T0, last_used_at: T0, aaguid: null });
+		await env.DB.prepare("UPDATE account_passkeys SET last_used_at = ?1").bind(T0 + 2 * 3_600_000 + 5).run();
+		const hours = await callJson("/v2/account/sign-in", { env: menv(), now: T0 + 3 * 3_600_000, token: alice.token });
+		expect(hours.body.passkeys[0].last_used_at).toBe(T0 + 2 * 3_600_000);
 	});
 
 	it("adds a second passkey with a passkey proof, without PRF", async () => {

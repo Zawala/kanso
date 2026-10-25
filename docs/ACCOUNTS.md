@@ -3829,7 +3829,11 @@ account] [Sign in].
   - Linked: one row per provider, "Apple · linked 12 Oct", with [Unlink]. [Link a provider…] lists
     the advertised providers that aren't linked.
   - Passkeys: one row per credential, "Passkey · added 12 Oct · last used 2 hours ago · can unlock"
-    (or "signs in only"), with [Remove]. [Add a passkey…] registers another.
+    (or "signs in only"), with [Remove]. The title names the manager when the AAGUID is a known
+    one ("Passkey in iCloud Keychain", "Passkey in 1Password"…). "Last used" is to the hour but
+    never earlier than "added". [Add a passkey…] registers another; on a Mac it isn't offered while
+    the account has an iCloud Keychain passkey, which that Mac already has, and the sheet would
+    refuse a second.
   - A quiet line: "Your recovery key still works if you lose these." and, when only one method
     remains, "This is your last way to sign in."
   - Every button here asks for a fresh proof first (a passkey sheet, the password, or the provider),

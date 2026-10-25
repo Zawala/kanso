@@ -716,6 +716,51 @@ pub struct PasskeyInfo {
     pub last_used_at: Option<i64>,
     pub prf: bool,
     pub transports: Vec<String>,
+    /// The authenticator's AAGUID, 32 lowercase hex digits, when known.
+    pub aaguid: Option<String>,
+}
+
+/// AAGUIDs of passkey managers, as 32 lowercase hex digits
+/// (docs/ACCOUNTS.md › Settings › Sign-in methods).
+pub const ICLOUD_KEYCHAIN_AAGUIDS: [&str; 2] = [
+    "fbfc3007154e4ecc8c0b6e020557d7bd",
+    "dd4ec289e01d41c9bb8970fa845d4bf2",
+];
+const GOOGLE_PASSWORD_MANAGER_AAGUID: &str = "ea9b8d664d011d213ce4b6b48cb575d4";
+const WINDOWS_HELLO_AAGUIDS: [&str; 3] = [
+    "08987058cadc4b81b6e130de50dcbe96",
+    "9ddd1817af5a4672a2b93e3dd95000a9",
+    "6028b017b1d44c02b4b3afcdafc96bb2",
+];
+const ONEPASSWORD_AAGUID: &str = "bada5566a7aa401fbd9645619a55120d";
+const BITWARDEN_AAGUID: &str = "d548826e79b4db40a3d811116f7e8349";
+
+impl PasskeyInfo {
+    /// The manager that keeps this passkey, when its AAGUID names one.
+    pub fn manager(&self) -> Option<&'static str> {
+        let aaguid = self.aaguid.as_deref()?;
+        if ICLOUD_KEYCHAIN_AAGUIDS.contains(&aaguid) {
+            Some("iCloud Keychain")
+        } else if aaguid == GOOGLE_PASSWORD_MANAGER_AAGUID {
+            Some("Google Password Manager")
+        } else if WINDOWS_HELLO_AAGUIDS.contains(&aaguid) {
+            Some("Windows Hello")
+        } else if aaguid == ONEPASSWORD_AAGUID {
+            Some("1Password")
+        } else if aaguid == BITWARDEN_AAGUID {
+            Some("Bitwarden")
+        } else {
+            None
+        }
+    }
+
+    /// Whether iCloud Keychain keeps it, so every Mac on that Apple Account
+    /// already has it.
+    pub fn in_icloud_keychain(&self) -> bool {
+        self.aaguid
+            .as_deref()
+            .is_some_and(|aaguid| ICLOUD_KEYCHAIN_AAGUIDS.contains(&aaguid))
+    }
 }
 
 /// Whether the server runs passkey ceremonies and accepts security keys.
@@ -824,6 +869,8 @@ pub struct PasskeyRow {
     pub last_used_at: Option<i64>,
     pub prf: bool,
     pub transports: Vec<String>,
+    #[serde(default)]
+    pub aaguid: Option<String>,
 }
 
 impl MethodsReply {
@@ -847,9 +894,14 @@ impl MethodsReply {
                     crate::crypto::unb64(&row.credential_id).map(|credential_id| PasskeyInfo {
                         credential_id,
                         created_at: row.created_at,
-                        last_used_at: row.last_used_at,
+                        // Rounded to the hour by the server; never shown as
+                        // before the passkey was added.
+                        last_used_at: row.last_used_at.map(|at| at.max(row.created_at)),
                         prf: row.prf,
                         transports: row.transports.clone(),
+                        aaguid: row.aaguid.clone().filter(|aaguid| {
+                            aaguid.len() == 32 && aaguid.bytes().any(|b| b != b'0')
+                        }),
                     })
                 })
                 .collect(),
@@ -1046,6 +1098,81 @@ mod tests {
             "kanso://auth/apple".to_owned(),
         ] {
             assert_eq!(apple_callback_flow(&bad), None, "{bad}");
+        }
+    }
+
+    fn reply(passkey: PasskeyRow) -> MethodsReply {
+        MethodsReply {
+            username: "ngoni".into(),
+            has_password: false,
+            identities: vec![],
+            passkeys: vec![passkey],
+            recovery: true,
+        }
+    }
+
+    fn row(aaguid: Option<&str>) -> PasskeyRow {
+        PasskeyRow {
+            credential_id: "AQ".into(),
+            created_at: 10,
+            last_used_at: None,
+            prf: true,
+            transports: vec!["internal".into()],
+            aaguid: aaguid.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn a_passkey_names_its_manager_from_the_aaguid() {
+        let manager = |aaguid: Option<&str>| {
+            let methods = reply(row(aaguid)).methods(vec![], None);
+            let passkey = &methods.passkeys[0];
+            (passkey.manager(), passkey.in_icloud_keychain())
+        };
+        assert_eq!(
+            manager(Some("fbfc3007154e4ecc8c0b6e020557d7bd")),
+            (Some("iCloud Keychain"), true)
+        );
+        assert_eq!(
+            manager(Some("bada5566a7aa401fbd9645619a55120d")),
+            (Some("1Password"), false)
+        );
+        assert_eq!(
+            manager(Some("0123456789abcdef0123456789abcdef")),
+            (None, false)
+        );
+        // All zeros, a wrong length, or an older server: nothing to name.
+        assert_eq!(
+            manager(Some("00000000000000000000000000000000")),
+            (None, false)
+        );
+        assert_eq!(manager(Some("fbfc3007")), (None, false));
+        assert_eq!(manager(None), (None, false));
+        let old: MethodsReply = serde_json::from_str(
+            r#"{"username":"a","has_password":true,"identities":[],"recovery":true,
+                "passkeys":[{"credential_id":"AQ","created_at":1,"last_used_at":null,"prf":false,"transports":[]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(old.methods(vec![], None).passkeys[0].aaguid, None);
+    }
+
+    proptest! {
+        /// A last use read to the hour is never shown as before the passkey
+        /// was added, and a later one is kept as the server sent it.
+        #[test]
+        fn prop_last_use_is_never_before_the_passkey(
+            created_at in 0i64..1_000_000_000,
+            last_used_at in proptest::option::of(0i64..1_000_000_000),
+        ) {
+            let mut passkey = row(None);
+            passkey.created_at = created_at;
+            passkey.last_used_at = last_used_at;
+            let shown = reply(passkey).methods(vec![], None).passkeys[0].last_used_at;
+            prop_assert_eq!(shown.is_some(), last_used_at.is_some());
+            if let (Some(shown), Some(sent)) = (shown, last_used_at) {
+                prop_assert!(shown >= created_at);
+                prop_assert_eq!(shown, sent.max(created_at));
+            }
         }
     }
 
@@ -1303,6 +1430,7 @@ mod tests {
             last_used_at: None,
             prf: false,
             transports: vec![],
+            aaguid: None,
         };
         assert!(
             !AccountMethods {

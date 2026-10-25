@@ -866,6 +866,10 @@ pub struct AccountPasskeyResponse {
     pub last_used_at: Option<i64>,
     pub prf: bool,
     pub transports: Vec<String>,
+    /// The authenticator's AAGUID as 32 lowercase hex digits; absent from
+    /// older servers and for an all-zero one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aaguid: Option<String>,
 }
 
 /// A fresh proof for a session-authenticated account change: the same
