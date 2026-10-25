@@ -47,8 +47,10 @@ Settings › Plugins has three ways in.
 
 - **Browse** lists the Kanso plugin directory: a signed index of plugins,
   each bundle signed by its author. Kanso checks both signatures before it
-  shows the install sheet. (This build of Kanso has no directory key yet,
-  so Browse says the directory isn't set up.)
+  shows the install sheet. The directory is the
+  [`iamngoni/kanso-plugins`](https://github.com/iamngoni/kanso-plugins)
+  repository, and Kanso fetches it only from that repository's path on
+  `raw.githubusercontent.com`, over HTTPS.
 - **Install from file…** takes a `.kansoplugin` file, but only one whose
   exact bytes the directory lists.
 - **Developer mode** runs an unsigned folder on this Mac only. Kanso asks you
@@ -68,7 +70,9 @@ lists the new permissions. Kanso never installs an older version over a
 newer one.
 
 The directory can withdraw a version, and Kanso turns it off at the next
-check. **Block on this Mac** does the same for any plugin.
+check. With a plugin from the directory installed, Kanso checks it 30
+seconds after it opens and every six hours, for withdrawn versions and
+updates; with none, it never asks. **Block on this Mac** does the same for any plugin.
 
 Removing a plugin deletes its folder, its tokens and its settings, and, if
 you tick it, the data it kept on notes.
@@ -87,11 +91,13 @@ you tick it, the data it kept on notes.
 ## Writing a plugin
 
 A plugin is a folder with `manifest.json` and the script it names. Two
-samples are in [`docs/plugins/`](plugins/): **Word count** (commands, the
-selection and a panel) and **Bar chart** (a fenced block).
+samples are in the directory's repository, under
+[`plugins/`](https://github.com/iamngoni/kanso-plugins/tree/main/plugins):
+**Word count** (commands, the selection and a panel) and **Bar chart** (a
+fenced block). To run one from a clone, in developer mode:
 
 ```
-kanso plugin dev docs/plugins/word-count
+kanso plugin dev kanso-plugins/plugins/app.kanso.sample.wordcount/source
 ```
 
 ### manifest.json
@@ -225,6 +231,21 @@ to an IP address or a private network, with redirects checked at each hop.
 A plugin may make 30 requests a minute and receive 20 MB a day, and
 Settings › Plugins lists its recent requests. Renderers can't fetch.
 
+## Decisions
+
+The design's open questions are settled:
+
+- Plugins may write, with review.
+- The directory is a repository.
+- Panels exist.
+- Network access is a host allowlist.
+- Attachments come only from readable notes.
+- Plugins are JavaScript only.
+- The budgets are the ones above.
+- Reads leave out `#ai-exclude` notes.
+- Settings stay on this Mac.
+- Per-note data syncs with the note.
+
 ## Publishing
 
 `kanso-plugin` packs, signs and lists bundles.
@@ -238,6 +259,12 @@ KANSO_PLUGIN_AUTHOR_KEY=… kanso-plugin sign my-plugin.kansoplugin
 `keygen` prints the `ed25519:` public key for the manifest's
 `publisher.key`. `pack` checks the folder as Kanso would and writes the
 same bytes for the same files. `sign` signs the bundle's SHA-256 with your
-secret key. The directory's maintainers add the bundle and its signature
-with `index-add`, sign the index with `index-sign`, and anyone can check it
-with `verify`.
+secret key.
+
+To publish, open a pull request on
+[`iamngoni/kanso-plugins`](https://github.com/iamngoni/kanso-plugins) that
+adds `plugins/<id>/source/` and `plugins/<id>/author-signature.txt`. Once
+it is merged, the repository's CI runs `kanso-plugin build-directory` and
+signs the index in a protected environment. A version, once published,
+never changes: a fix is a new version, signed with the same key. Anyone
+can check the published directory with `kanso-plugin verify-directory`.

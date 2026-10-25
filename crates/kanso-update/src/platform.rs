@@ -75,6 +75,15 @@ impl Platform {
         }
     }
 
+    /// The plugin host's file name, which ships beside `kanso`. On macOS it
+    /// lives inside the bundle and the updater never looks for it.
+    pub fn host_name(self) -> &'static str {
+        match self {
+            Platform::WindowsX64 => "kanso-plugin-host.exe",
+            Platform::MacosArm64 | Platform::LinuxX64 | Platform::LinuxArm64 => "kanso-plugin-host",
+        }
+    }
+
     /// Whether an update replaces a whole `.app` bundle rather than one
     /// executable.
     pub fn is_bundle(self) -> bool {
