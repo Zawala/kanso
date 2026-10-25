@@ -65,6 +65,8 @@ export interface Session {
 	accountId: string;
 	deviceId: string;
 	username: string;
+	/** SHA-256 hex of this device's proof, as its session row holds it: a proof flow is bound to it. */
+	proofHash: string;
 }
 
 export const respond = (checked: Checked<unknown> & { ok: false }): Response => error(checked.status, checked.code, checked.message);
@@ -89,7 +91,7 @@ const kdfJson = (m_kib: number, t: number, p: number) => ({ alg: KDF_DEFAULT.alg
 
 // ------------------------------------------------------------------ sessions
 
-const SESSION_SQL = `SELECT s.device_id, s.last_seen_at, s.revoked_reason, a.id AS account_id, a.username, a.disabled_at
+const SESSION_SQL = `SELECT s.device_id, s.last_seen_at, s.revoked_reason, s.proof_hash, a.id AS account_id, a.username, a.disabled_at
   FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ?1`;
 
 /**
@@ -106,6 +108,7 @@ export async function authenticate(request: Request, env: Env, now: number, allo
 		device_id: string;
 		last_seen_at: number;
 		revoked_reason: SignOutReason | null;
+		proof_hash: string;
 		account_id: string;
 		username: string;
 		disabled_at: number | null;
@@ -124,7 +127,7 @@ export async function authenticate(request: Request, env: Env, now: number, allo
 			.bind(tokenHash, now)
 			.run();
 	}
-	return { tokenHash, accountId: row.account_id, deviceId: row.device_id, username: row.username };
+	return { tokenHash, accountId: row.account_id, deviceId: row.device_id, username: row.username, proofHash: row.proof_hash };
 }
 
 /**
@@ -136,6 +139,17 @@ export function withSession(handler: (request: Request, env: Env, now: number, s
 		const session = await authenticate(request, env, now);
 		if (session instanceof Response) return session;
 		return (await sessionFilter(env.SESSION_LIMITER, session.accountId)) ?? handler(request, env, now, session);
+	};
+}
+
+/** `withSession` for a route that also needs the pepper's keys (it stores a flow). */
+export function withSessionKeys(
+	handler: (request: Request, env: Env, now: number, keys: PepperKeys, session: Session) => Promise<Response>,
+): PepperHandler {
+	return async (request, env, now, keys) => {
+		const session = await authenticate(request, env, now);
+		if (session instanceof Response) return session;
+		return (await sessionFilter(env.SESSION_LIMITER, session.accountId)) ?? handler(request, env, now, keys, session);
 	};
 }
 

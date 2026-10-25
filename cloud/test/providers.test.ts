@@ -1159,13 +1159,13 @@ describe("unlinking", () => {
 		const flow = await proofFlow();
 		const last = await as("/v2/account/sign-in/identities/github/unlink", { proof: { kind: "provider", flow } }, { token });
 		expect(last).toMatchObject({ status: 409, body: { error: "last_method" } });
-		// Used once already: the same proof again is refused.
+		// Used once already: the same proof again is a used flow (docs/ACCOUNTS.md › Conventions, 400 flow_expired).
 		const reused = await as(
 			"/v2/account/sign-in/identities/github/unlink",
 			{ proof: { kind: "provider", flow }, recovery_auth_key: made.body.recovery_auth_key },
 			{ token },
 		);
-		expect(reused.body.error).toBe("reauth_required");
+		expect(reused).toMatchObject({ status: 400, body: { error: "flow_expired" } });
 		// A provider proof can't act on another provider.
 		const other = await as("/v2/account/sign-in/identities/apple/unlink", { proof: { kind: "provider", flow: await proofFlow() } }, { token });
 		expect(other.body.error).toBe("reauth_required");

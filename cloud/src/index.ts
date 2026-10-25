@@ -56,6 +56,7 @@
 //   POST   /v2/auth/github/poll         one device-flow poll
 //   POST   /v2/auth/social/signup       the account a provider flow's ticket names
 //   GET    /v2/account/sign-in          the account's ways in                         (session)
+//   POST   /v2/account/sign-in/proof/start            a passkey proof's challenge          (session)
 //   POST   /v2/account/sign-in/identities/<provider>/start   link, or a proof flow   (session)
 //   POST   /v2/account/sign-in/identities/<provider>/unlink  unlink a provider       (session)
 //   POST   /v2/account/sign-in/approvals              ask another device to approve this one (session)
@@ -87,6 +88,7 @@ import * as identity from "./identity";
 import * as providers from "./providers";
 import { bindingFilter } from "./limits";
 import * as passkeys from "./passkeys";
+import * as proofs from "./proofs";
 import { runCron } from "./purge";
 import * as shares from "./shares";
 import * as sync from "./sync";
@@ -160,6 +162,7 @@ const ROUTES: Record<string, Route> = {
 	"/v2/auth/github/poll": { name: "github_poll", binding: true, methods: { POST: json(providers.githubPoll, true) } },
 	"/v2/auth/social/signup": { name: "social_signup", binding: true, methods: { POST: json(providers.socialSignup, true) } },
 	"/v2/account/sign-in": { name: "sign_in_methods", methods: { GET: { handler: providers.methods } } },
+	"/v2/account/sign-in/proof/start": { name: "proof_start", methods: { POST: json(proofs.proofStart, true) } },
 	"/v2/account/sign-in/approvals": { name: "approvals", methods: { POST: json(approvals.create), GET: { handler: approvals.list } } },
 	"/v2/account/events": { name: "account_events", methods: { GET: { handler: approvals.events } } },
 };
