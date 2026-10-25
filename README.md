@@ -121,7 +121,7 @@ in with a progress bar and a report. The source is only ever read. Each import i
 a note came from (a vault-relative path, or the other app's own ID), so importing the same source
 again updates its notes instead of duplicating them, and leaves alone any note you changed or
 deleted in Kanso since. **File › Open…** brings in a single `.md` or `.txt` file (and the pictures
-it links to) as a note in the Inbox and opens it; opening it again updates that note.
+it links to) as a note in the Inbox and opens it; opening it again updates that note. Kanso also opens Markdown files from Finder's or Explorer's Open With, or with `kanso file.md`.
 
 | Source | Pick | What comes in |
 |---|---|---|

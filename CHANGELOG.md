@@ -20,6 +20,10 @@ heading compares the release with the one before.
 - **ai:** Copy diagnostics in Settings › AI, beside Test, copies a report to paste into an issue: Kanso's version and system, whether the agent was found and where, its name and version, whether it runs, and the names, timings and error codes of its last messages. It holds no note text, titles, answers, tokens or the agent's own output, and a crash can still be diagnosed (#46 step 8)
 - **plugins:** Plugins, with notes kept safe: palette commands, fenced blocks and inspector panels from JavaScript plugins, each run in its own sandboxed `kanso-plugin-host` process with time and memory budgets. A plugin reaches only the notebooks you chose at install, never locked, trashed or `#ai-exclude` notes; its changes are staged, reviewed when they reach beyond the open note, and undone in one step. Network only to its listed HTTPS hosts through Kanso's proxy, tokens in the Keychain, a signed directory with author keys pinned on first install, developer mode for unsigned folders, safe mode (`--safe-mode` or Shift at launch), `kanso plugin dev` and the `kanso-plugin` packing and signing tool (docs/PLUGINS.md) (#37)
 
+### Fixed
+
+- **app:** Kanso is listed in Finder's and Explorer's Open With for Markdown and text files, and opens a file from there, from a double-click once chosen, or from `kanso file.md`, as a note that is shown and selected
+
 ## [0.8.4](https://github.com/iamngoni/kanso/compare/v0.8.3...v0.8.4) - 2026-10-22
 
 ### New

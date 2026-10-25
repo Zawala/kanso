@@ -3,11 +3,12 @@ Type=Application
 Name=Kanso
 GenericName=Notes
 Comment=Markdown notes with sync and end-to-end encryption
-Exec=kanso %u
+Exec=kanso %U
 Icon=kanso
 Terminal=false
 Categories=Office;Utility;TextEditor;
 Keywords=notes;markdown;writing;
 StartupWMClass=kanso
-# Sign in with Apple returns to Kanso through kanso:// URLs.
-MimeType=x-scheme-handler/kanso;
+# Sign in with Apple returns to Kanso through kanso:// URLs; Markdown and
+# text files open from the file manager's Open With.
+MimeType=x-scheme-handler/kanso;text/markdown;text/plain;
