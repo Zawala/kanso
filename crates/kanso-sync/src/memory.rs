@@ -3132,15 +3132,24 @@ impl ServerState {
         provider: Option<&Provider>,
     ) -> bool {
         let account = &self.accounts[account_id];
+        // Only the ways in this server offers count, as the Worker's
+        // offeredMethods: an identity of a provider it doesn't serve, or a
+        // passkey where it offers none, can't sign in.
         let passkeys = self
             .passkeys
             .iter()
-            .filter(|p| p.account_id == account_id && Some(p.credential_id.as_str()) != credential)
+            .filter(|p| {
+                self.passkey_rp.is_some()
+                    && p.account_id == account_id
+                    && Some(p.credential_id.as_str()) != credential
+            })
             .count();
         let identities = self
             .identities
             .iter()
-            .filter(|(id, p, _, _)| id == account_id && Some(p) != provider)
+            .filter(|(id, p, _, _)| {
+                id == account_id && Some(p) != provider && self.providers.contains(p)
+            })
             .count();
         !account.has_password && passkeys == 0 && identities == 0
     }
@@ -5321,6 +5330,38 @@ mod server_tests {
         assert_eq!(retried.account_id, session.account_id);
         assert_eq!(retried.passkey_wrapped_key, None);
         assert!(api.account(&retried.token).is_ok());
+    }
+
+    /// The Worker's offeredMethods: for the last-method rule, only the
+    /// providers this server offers count, and passkeys only when it offers
+    /// them; a way in it doesn't offer can't sign in.
+    #[test]
+    fn the_last_method_rule_counts_only_offered_ways_in() {
+        let server = MemoryServer::new();
+        server.set_now(1_700_000_000_000);
+        server.set_providers(vec![Provider::Github]);
+        let api = server.api("");
+        let d = device("d_00000000000000000000000000000001");
+        let id = "a_00000000000000000000000000000001";
+        let flow = signup_flow(api.as_ref(), "alice", id, &d);
+        let auth = TestAuthenticator::new(5);
+        api.passkey_signup_finish(&signup_finish(&flow, "alice", id, d, &auth))
+            .unwrap();
+        let credential = b64(auth.credential_id());
+        let mut state = server.server();
+        state
+            .identities
+            .push((id.into(), Provider::Github, "4242".into(), 0));
+        // Both offered: neither is the last.
+        assert!(!state.last_method(id, Some(&credential), None));
+        assert!(!state.last_method(id, None, Some(&Provider::Github)));
+        // GitHub no longer offered: the passkey is the last way in.
+        state.providers.clear();
+        assert!(state.last_method(id, Some(&credential), None));
+        // Passkeys no longer offered: GitHub is the last.
+        state.providers.push(Provider::Github);
+        state.passkey_rp = None;
+        assert!(state.last_method(id, None, Some(&Provider::Github)));
     }
 
     fn pdevice(n: u8) -> LoginDevice {
