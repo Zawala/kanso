@@ -4,6 +4,12 @@
 //! and `themes/kanso-light.json` give the same colors, and every other theme
 //! is read from a file the same way (see `theme_file.rs` and `themes.rs`).
 //!
+//! The palettes and the file format are `kanso_engine::theme`'s, shared with
+//! the mobile app. This file keeps their drawing side: [`Rgb`] and
+//! [`Colors`] here turn into the component library's colors (an engine type
+//! can't, as neither it nor the library's is this crate's), so the views
+//! read `colors.text` and hand it straight to `.text_color()`.
+//!
 //! The component library gets the theme in use as a theme file, so its
 //! buttons, menus and inputs match. The views read [`Colors`] directly for
 //! what the library can't express: three pane surfaces, secondary text, and
@@ -19,23 +25,39 @@ use gpui_kit::{App, Fill, FontWeight, Hsla, Styled, TextSystem, font};
 
 use crate::zoom::px;
 use kanso_core::NoteStatus;
+use kanso_engine::theme as engine;
 use serde_json::{Value, json};
 
 use crate::theme_file::{CAPTURES, ResolvedTheme, TokenStyle};
 
-/// An sRGB color, `0xRRGGBB`.
+pub use engine::{CURSOR_COLOURS, PALETTE_SELECTED_ALPHA, muted_tag_color};
+
+/// An sRGB color, `0xRRGGBB`: the engine's [`engine::Rgb`] that GPUI can
+/// draw with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rgb(pub u32);
 
 impl Rgb {
     /// `#RRGGBB`.
     pub fn hex(self) -> String {
-        format!("#{:06X}", self.0 & 0xFF_FFFF)
+        engine::Rgb::from(self).hex()
     }
 
     /// `#RRGGBBAA`, with `alpha` out of 255.
     pub(crate) fn hex_alpha(self, alpha: u8) -> String {
-        format!("{}{alpha:02X}", self.hex())
+        engine::Rgb::from(self).hex_alpha(alpha)
+    }
+}
+
+impl From<engine::Rgb> for Rgb {
+    fn from(color: engine::Rgb) -> Rgb {
+        Rgb(color.0)
+    }
+}
+
+impl From<Rgb> for engine::Rgb {
+    fn from(color: Rgb) -> engine::Rgb {
+        engine::Rgb(color.0)
     }
 }
 
@@ -51,7 +73,12 @@ impl From<Rgb> for Fill {
     }
 }
 
-/// One theme's colors.
+/// An engine color GPUI can draw with.
+pub fn hsla(color: engine::Rgb) -> Hsla {
+    Hsla::from(Rgb::from(color))
+}
+
+/// One theme's colors, as the engine has them, drawable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Colors {
     /// Behind everything; the title bar.
@@ -101,71 +128,140 @@ pub struct Colors {
     pub danger: Rgb,
 }
 
-pub const DARK: Colors = Colors {
-    app: Rgb(0x181816),
-    sidebar: Rgb(0x1D1D1A),
-    list: Rgb(0x232320),
-    editor: Rgb(0x282824),
-    elevated: Rgb(0x30302B),
-    fill: Rgb(0x30302B),
-    text: Rgb(0xF1EFE7),
-    text_secondary: Rgb(0xB7B3A8),
-    text_muted: Rgb(0x7E7A70),
-    divider: Rgb(0x3A3933),
-    accent: Rgb(0x7E96B3),
-    link: Rgb(0x869DB9),
-    row_active: Rgb(0x30302B),
-    row_hover: Rgb(0x2A2A26),
-    sidebar_active: Rgb(0x2E2E2A),
-    sidebar_hover: Rgb(0x252522),
-    hover: Rgb(0x3A3933),
-    selected: Rgb(0x3A3933),
-    active_line: Rgb(0x2D2D29),
-    button: Rgb(0x4A6385),
-    button_text: Rgb(0xF1EFE7),
-    code: Rgb(0x30302B),
-    code_text: Rgb(0xCDB892),
-    syntax_keyword: Rgb(0x9AACC4),
-    syntax_string: Rgb(0xA9BC98),
-    success: Rgb(0x7BAA78),
-    warning: Rgb(0xC49A5A),
-    danger: Rgb(0xC96E63),
-};
+impl Colors {
+    /// The engine's colors for these.
+    pub const fn to_engine(self) -> engine::Colors {
+        let Colors {
+            app,
+            sidebar,
+            list,
+            editor,
+            elevated,
+            fill,
+            text,
+            text_secondary,
+            text_muted,
+            divider,
+            accent,
+            link,
+            row_active,
+            row_hover,
+            sidebar_active,
+            sidebar_hover,
+            hover,
+            selected,
+            active_line,
+            button,
+            button_text,
+            code,
+            code_text,
+            syntax_keyword,
+            syntax_string,
+            success,
+            warning,
+            danger,
+        } = self;
+        engine::Colors {
+            app: engine::Rgb(app.0),
+            sidebar: engine::Rgb(sidebar.0),
+            list: engine::Rgb(list.0),
+            editor: engine::Rgb(editor.0),
+            elevated: engine::Rgb(elevated.0),
+            fill: engine::Rgb(fill.0),
+            text: engine::Rgb(text.0),
+            text_secondary: engine::Rgb(text_secondary.0),
+            text_muted: engine::Rgb(text_muted.0),
+            divider: engine::Rgb(divider.0),
+            accent: engine::Rgb(accent.0),
+            link: engine::Rgb(link.0),
+            row_active: engine::Rgb(row_active.0),
+            row_hover: engine::Rgb(row_hover.0),
+            sidebar_active: engine::Rgb(sidebar_active.0),
+            sidebar_hover: engine::Rgb(sidebar_hover.0),
+            hover: engine::Rgb(hover.0),
+            selected: engine::Rgb(selected.0),
+            active_line: engine::Rgb(active_line.0),
+            button: engine::Rgb(button.0),
+            button_text: engine::Rgb(button_text.0),
+            code: engine::Rgb(code.0),
+            code_text: engine::Rgb(code_text.0),
+            syntax_keyword: engine::Rgb(syntax_keyword.0),
+            syntax_string: engine::Rgb(syntax_string.0),
+            success: engine::Rgb(success.0),
+            warning: engine::Rgb(warning.0),
+            danger: engine::Rgb(danger.0),
+        }
+    }
 
-pub const LIGHT: Colors = Colors {
-    app: Rgb(0xF4F1EA),
-    sidebar: Rgb(0xEBE7DD),
-    list: Rgb(0xF8F5EF),
-    editor: Rgb(0xFCFAF4),
-    elevated: Rgb(0xFFFDF8),
-    fill: Rgb(0xE6E0D4),
-    text: Rgb(0x26241F),
-    text_secondary: Rgb(0x655F55),
-    // The spec's #948B7D reads below 3:1 on most surfaces.
-    text_muted: Rgb(0x857C6E),
-    divider: Rgb(0xDDD6C9),
-    accent: Rgb(0x5E7895),
-    // The accent itself is under 4.5:1 for text.
-    link: Rgb(0x4D6684),
-    row_active: Rgb(0xECE7DC),
-    row_hover: Rgb(0xF2EEE6),
-    sidebar_active: Rgb(0xE2DDD0),
-    sidebar_hover: Rgb(0xE5E0D5),
-    hover: Rgb(0xF0ECE3),
-    selected: Rgb(0xE6E0D4),
-    active_line: Rgb(0xF6F3EB),
-    button: Rgb(0x4D6684),
-    button_text: Rgb(0xFFFDF8),
-    code: Rgb(0xF4F1EA),
-    code_text: Rgb(0x7D5B32),
-    syntax_keyword: Rgb(0x4D6684),
-    syntax_string: Rgb(0x55704A),
-    // The spec's status colors are for the dark theme; on paper they fall
-    // under 3:1, so they are shaded the way muted text and links are.
-    success: Rgb(0x4F7F4C),
-    warning: Rgb(0x8A6424),
-    danger: Rgb(0xA6493F),
-};
+    /// The app's colors for the engine's: every field, named, so that a color
+    /// added to the engine fails to compile here until it is mirrored.
+    pub const fn from_engine(colors: &engine::Colors) -> Colors {
+        let engine::Colors {
+            app,
+            sidebar,
+            list,
+            editor,
+            elevated,
+            fill,
+            text,
+            text_secondary,
+            text_muted,
+            divider,
+            accent,
+            link,
+            row_active,
+            row_hover,
+            sidebar_active,
+            sidebar_hover,
+            hover,
+            selected,
+            active_line,
+            button,
+            button_text,
+            code,
+            code_text,
+            syntax_keyword,
+            syntax_string,
+            success,
+            warning,
+            danger,
+        } = colors;
+        Colors {
+            app: Rgb(app.0),
+            sidebar: Rgb(sidebar.0),
+            list: Rgb(list.0),
+            editor: Rgb(editor.0),
+            elevated: Rgb(elevated.0),
+            fill: Rgb(fill.0),
+            text: Rgb(text.0),
+            text_secondary: Rgb(text_secondary.0),
+            text_muted: Rgb(text_muted.0),
+            divider: Rgb(divider.0),
+            accent: Rgb(accent.0),
+            link: Rgb(link.0),
+            row_active: Rgb(row_active.0),
+            row_hover: Rgb(row_hover.0),
+            sidebar_active: Rgb(sidebar_active.0),
+            sidebar_hover: Rgb(sidebar_hover.0),
+            hover: Rgb(hover.0),
+            selected: Rgb(selected.0),
+            active_line: Rgb(active_line.0),
+            button: Rgb(button.0),
+            button_text: Rgb(button_text.0),
+            code: Rgb(code.0),
+            code_text: Rgb(code_text.0),
+            syntax_keyword: Rgb(syntax_keyword.0),
+            syntax_string: Rgb(syntax_string.0),
+            success: Rgb(success.0),
+            warning: Rgb(warning.0),
+            danger: Rgb(danger.0),
+        }
+    }
+}
+
+pub const DARK: Colors = Colors::from_engine(&engine::DARK);
+
+pub const LIGHT: Colors = Colors::from_engine(&engine::LIGHT);
 
 impl Colors {
     /// The colors of the UI theme in use; Kanso's own light or dark before
@@ -184,8 +280,9 @@ impl Colors {
     /// Quiet text that still says something (a row's time, a count, a
     /// hint, a shortcut): muted on a pane, and secondary on a `selected`
     /// row, whose fill takes muted text under 4.5:1.
-    // no-prop-test: two cases per theme; `quiet_text_reads_on_selected_rows`
-    // checks every one.
+    // no-prop-test: two cases per theme; the engine's `quiet` has
+    // `quiet_text_reads_on_selected_rows`, and `the_mirror_draws_like_the_engine`
+    // checks this one against it.
     pub fn quiet(&self, selected: bool) -> Rgb {
         if selected {
             self.text_secondary
@@ -195,30 +292,11 @@ impl Colors {
     }
 }
 
-/// How strongly the accent tints the palette's selected row over the
-/// elevated panel, in the dark theme and the light one: enough to show, and
-/// little enough that secondary text on it still reads at 4.5:1.
-pub const PALETTE_SELECTED_ALPHA: (f32, f32) = (0.22, 0.18);
-
-/// Other people's cursors in a shared note, eight hues apart: each as it
-/// shows on a light editor and on a dark one, at 3:1 or more against both
-/// themes' editors, so a thin caret and its name read on either.
-pub const CURSOR_COLOURS: [(Rgb, Rgb); 8] = [
-    (Rgb(0x2F6AAE), Rgb(0x7FB0EC)),
-    (Rgb(0x2D7A4D), Rgb(0x76C59C)),
-    (Rgb(0xA6531A), Rgb(0xEDA160)),
-    (Rgb(0x7550AE), Rgb(0xB89CEE)),
-    (Rgb(0xB03A3A), Rgb(0xEE8484)),
-    (Rgb(0x1E7474), Rgb(0x6CCBCB)),
-    (Rgb(0x9E3B80), Rgb(0xE68BC6)),
-    (Rgb(0x666C1E), Rgb(0xC6C672)),
-];
-
 /// The colour of cursor `index` (see [`CURSOR_COLOURS`]) on a light or dark
 /// editor.
 pub fn cursor_colour(index: usize, dark: bool) -> Hsla {
     let (light, on_dark) = CURSOR_COLOURS[index % CURSOR_COLOURS.len()];
-    Hsla::from(if dark { on_dark } else { light })
+    hsla(if dark { on_dark } else { light })
 }
 
 /// The size of a section's label.
@@ -284,7 +362,12 @@ fn loads_monospaced(text_system: &TextSystem, family: &str) -> bool {
 pub(crate) fn theme_set(mono: Option<&str>) -> Value {
     let config = |ix: usize| {
         let theme = &crate::themes::builtins()[ix].resolved;
-        theme_config(theme, &theme.colors, &theme.syntax, mono)
+        theme_config(
+            theme,
+            &Colors::from_engine(&theme.colors),
+            &theme.syntax,
+            mono,
+        )
     };
     json!({ "name": "Kanso", "themes": [config(0), config(1)] })
 }
@@ -426,12 +509,15 @@ pub(crate) fn highlight_style(c: &Colors, syntax: &BTreeMap<&'static str, TokenS
             (!style.is_empty()).then(|| ((*capture).to_owned(), style.to_highlight_json()))
         })
         .collect();
-    let foreground = syntax.get("text").and_then(|s| s.color).unwrap_or(c.text);
+    let foreground = syntax
+        .get("text")
+        .and_then(|s| s.color)
+        .map_or_else(|| c.text.hex(), |color| color.hex());
     // There are no line number keys: the gutter draws numbers in the
     // theme's `muted.foreground`, and the current line's in `foreground`.
     json!({
         "editor.background": c.editor.hex(),
-        "editor.foreground": foreground.hex(),
+        "editor.foreground": foreground,
         "editor.active_line.background": c.active_line.hex(),
         "editor.invisible": c.text_muted.hex_alpha(0x66),
         "error": c.danger.hex(),
@@ -443,480 +529,33 @@ pub(crate) fn highlight_style(c: &Colors, syntax: &BTreeMap<&'static str, TokenS
     })
 }
 
-/// WCAG relative luminance of an sRGB color, 0 (black) to 1 (white).
-#[cfg(test)]
-fn luminance(rgb: u32) -> f64 {
-    let channel = |shift: u32| {
-        let c = f64::from((rgb >> shift) & 0xFF) / 255.;
-        if c <= 0.04045 {
-            c / 12.92
-        } else {
-            ((c + 0.055) / 1.055).powf(2.4)
-        }
-    };
-    0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
-}
-
-/// The WCAG contrast ratio of two colors: 1 for the same color, 21 for black
-/// on white. Body text wants 4.5 or more, large or incidental text 3. The
-/// palette is checked with it in the tests below.
-#[cfg(test)]
-pub fn contrast_ratio(a: u32, b: u32) -> f64 {
-    let (la, lb) = (luminance(a), luminance(b));
-    let (light, dark) = if la >= lb { (la, lb) } else { (lb, la) };
-    ((light + 0.05) / (dark + 0.05)).clamp(1., 21.)
-}
-
-/// The most saturated a tag color gets.
-const TAG_SATURATION_MAX: f32 = 0.42;
-/// The lightness band tag colors are kept in, on dark and light surfaces.
-const TAG_LIGHTNESS_DARK: (f32, f32) = (0.50, 0.76);
-const TAG_LIGHTNESS_LIGHT: (f32, f32) = (0.32, 0.50);
-/// The input lightness that is spread across the band. Tag palettes sit in
-/// it; lighter and darker colors take the band's ends.
-const TAG_LIGHTNESS_SPREAD: (f32, f32) = (0.40, 0.60);
-
-/// A tag's color calmed for display: the same hue, no more saturated than
-/// it was or than [`TAG_SATURATION_MAX`], and light or dark enough to read on
-/// the theme's surfaces. Differences between colors survive it, so Orange
-/// and Brown, or Violet and Purple, stay apart. The stored color doesn't
-/// change.
-pub fn muted_tag_color(rgb: u32, dark: bool) -> u32 {
-    let (hue, saturation, lightness) = to_hsl(rgb);
-    let (saturation, lightness) = calm(saturation, lightness, dark);
-    from_hsl(hue, saturation, lightness)
-}
-
-/// The saturation and lightness [`muted_tag_color`] gives a color. Both keep
-/// their order instead of being cut off: saturation is compressed toward the
-/// cap by a square root, so a stronger color stays stronger, and lightness is
-/// stretched across the band, so a darker color stays darker.
-fn calm(saturation: f32, lightness: f32, dark: bool) -> (f32, f32) {
-    let (low, high) = if dark {
-        TAG_LIGHTNESS_DARK
-    } else {
-        TAG_LIGHTNESS_LIGHT
-    };
-    let (from, to) = TAG_LIGHTNESS_SPREAD;
-    let spread = ((lightness - from) / (to - from)).clamp(0., 1.);
-    (
-        saturation.min(TAG_SATURATION_MAX * saturation.sqrt()),
-        low + (high - low) * spread,
-    )
-}
-
-/// Hue in degrees `0..360`, saturation and lightness in `0..=1`.
-fn to_hsl(rgb: u32) -> (f32, f32, f32) {
-    let [r, g, b] = [16, 8, 0].map(|shift| ((rgb >> shift) & 0xFF) as f32 / 255.);
-    let max = r.max(g).max(b);
-    let min = r.min(g).min(b);
-    let lightness = (max + min) / 2.;
-    let chroma = max - min;
-    if chroma == 0. {
-        return (0., 0., lightness);
-    }
-    let saturation = chroma / (1. - (2. * lightness - 1.).abs());
-    let hue = if max == r {
-        60. * ((g - b) / chroma).rem_euclid(6.)
-    } else if max == g {
-        60. * ((b - r) / chroma + 2.)
-    } else {
-        60. * ((r - g) / chroma + 4.)
-    };
-    (hue, saturation.min(1.), lightness)
-}
-
-fn from_hsl(hue: f32, saturation: f32, lightness: f32) -> u32 {
-    let chroma = (1. - (2. * lightness - 1.).abs()) * saturation;
-    let sector = hue.rem_euclid(360.) / 60.;
-    let x = chroma * (1. - (sector.rem_euclid(2.) - 1.).abs());
-    let (r, g, b) = match sector as u32 {
-        0 => (chroma, x, 0.),
-        1 => (x, chroma, 0.),
-        2 => (0., chroma, x),
-        3 => (0., x, chroma),
-        4 => (x, 0., chroma),
-        _ => (chroma, 0., x),
-    };
-    let m = lightness - chroma / 2.;
-    let byte = |v: f32| ((v + m).clamp(0., 1.) * 255.).round() as u32;
-    (byte(r) << 16) | (byte(g) << 8) | byte(b)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use gpui_kit::component::ThemeSet;
-    use proptest::prelude::*;
-    use proptest::test_runner::FileFailurePersistence;
 
-    fn config() -> ProptestConfig {
-        ProptestConfig {
-            cases: 512,
-            failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
-            ..ProptestConfig::default()
-        }
-    }
-
-    fn rgb() -> impl Strategy<Value = u32> {
-        0u32..=0xFF_FFFF
-    }
-
-    /// Every cursor colour reads at 3:1 on its theme's editor, and the
-    /// eight stay apart from each other.
-    #[test]
-    fn cursor_colours_read_on_both_themes() {
-        for (light, dark) in CURSOR_COLOURS {
-            assert!(contrast_ratio(light.0, LIGHT.editor.0) >= 3.0, "{light:?}");
-            assert!(contrast_ratio(dark.0, DARK.editor.0) >= 3.0, "{dark:?}");
-        }
-        for (i, a) in CURSOR_COLOURS.iter().enumerate() {
-            for b in &CURSOR_COLOURS[i + 1..] {
-                assert_ne!(a.0, b.0);
-                assert_ne!(a.1, b.1);
-            }
-        }
-    }
-
-    proptest! {
-        #![proptest_config(config())]
-
-        /// Symmetry and range: order doesn't matter, and the ratio is
-        /// between 1 and 21, exactly 1 for a color against itself.
-        #[test]
-        fn prop_contrast_is_symmetric_and_bounded(a in rgb(), b in rgb()) {
-            let ratio = contrast_ratio(a, b);
-            prop_assert_eq!(ratio, contrast_ratio(b, a));
-            prop_assert!((1.0..=21.0).contains(&ratio), "{ratio}");
-            prop_assert_eq!(contrast_ratio(a, a), 1.0);
-        }
-
-        /// Monotonicity: a lighter grey stands out more against black and
-        /// less against white.
-        #[test]
-        fn prop_contrast_grows_with_distance(a in 0u32..=255, b in 0u32..=255) {
-            let (dark, light) = (a.min(b), a.max(b));
-            let grey = |v: u32| v * 0x01_0101;
-            prop_assert!(contrast_ratio(grey(light), 0) >= contrast_ratio(grey(dark), 0));
-            prop_assert!(contrast_ratio(grey(light), 0xFF_FFFF) <= contrast_ratio(grey(dark), 0xFF_FFFF));
-        }
-
-        /// Invariant: a tag color keeps its hue, is never more saturated than
-        /// it was or than the cap, and sits in its theme's lightness band.
-        /// One step of 8-bit rounding is allowed for.
-        #[test]
-        fn prop_muted_tag_colors_keep_hue_and_calm_down(color in rgb(), dark in any::<bool>()) {
-            let (hue, saturation, _) = to_hsl(color);
-            let out = muted_tag_color(color, dark);
-            let (out_hue, out_saturation, out_lightness) = to_hsl(out);
-            let step = 1.5 / 255.;
-            let (low, high) = if dark { TAG_LIGHTNESS_DARK } else { TAG_LIGHTNESS_LIGHT };
-            prop_assert!(out_lightness >= low - step && out_lightness <= high + step, "{out_lightness}");
-            // Saturation is measured against the band's own chroma limit, so
-            // rounding near the band's edges costs a little more.
-            let slack = 4. * step / (1. - (2. * out_lightness - 1.).abs());
-            prop_assert!(out_saturation <= saturation.min(TAG_SATURATION_MAX) + slack,
-                "{saturation} -> {out_saturation}");
-            let chroma = (1. - (2. * out_lightness - 1.).abs()) * out_saturation;
-            if chroma >= 0.15 {
-                let diff = (out_hue - hue).abs();
-                prop_assert!(diff.min(360. - diff) <= 3., "{hue} -> {out_hue}");
-            }
-        }
-
-        /// Order preservation: a more saturated or lighter color never
-        /// comes out less saturated or darker, and saturation doesn't depend
-        /// on lightness or the other way round.
-        #[test]
-        fn prop_calming_keeps_order(a in unit(), b in unit(), other in unit(), dark in any::<bool>()) {
-            let (less, more) = (a.min(b), a.max(b));
-            let (s_less, l_less) = calm(less, other, dark);
-            let (s_more, l_more) = calm(more, other, dark);
-            prop_assert!(s_less <= s_more, "{less} -> {s_less}, {more} -> {s_more}");
-            prop_assert_eq!(l_less, l_more);
-            let (s_less, l_less) = calm(other, less, dark);
-            let (s_more, l_more) = calm(other, more, dark);
-            prop_assert!(l_less <= l_more, "{less} -> {l_less}, {more} -> {l_more}");
-            prop_assert_eq!(s_less, s_more);
-        }
-
-        /// Strictness: different saturations stay different all the way up,
-        /// and so do lightnesses across the spread, rather than meeting at
-        /// the cap or the band's edge.
-        #[test]
-        fn prop_calming_keeps_colors_apart(a in unit(), gap in 0.01f32..1., dark in any::<bool>()) {
-            let b = (a + gap).min(1.);
-            prop_assume!(b - a >= 0.01);
-            prop_assert!(calm(a, 0.5, dark).0 < calm(b, 0.5, dark).0, "{a} {b}");
-            let (from, to) = TAG_LIGHTNESS_SPREAD;
-            let (l1, l2) = (from + (to - from) * a, from + (to - from) * b);
-            prop_assert!(calm(0.5, l1, dark).1 < calm(0.5, l2, dark).1, "{l1} {l2}");
-        }
-    }
-
-    fn unit() -> impl Strategy<Value = f32> {
-        0f32..=1.
-    }
-
-    /// CIE L*a*b* of an sRGB color (D65), for color differences.
-    fn lab(rgb: u32) -> [f64; 3] {
-        let [r, g, b] = [16, 8, 0].map(|shift| {
-            let c = f64::from((rgb >> shift) & 0xFF) / 255.;
-            if c <= 0.04045 {
-                c / 12.92
-            } else {
-                ((c + 0.055) / 1.055).powf(2.4)
-            }
-        });
-        let x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
-        let y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        let z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
-        let f = |t: f64| {
-            if t > 0.008856 {
-                t.cbrt()
-            } else {
-                7.787 * t + 16. / 116.
-            }
-        };
-        let (fx, fy, fz) = (f(x), f(y), f(z));
-        [116. * fy - 16., 500. * (fx - fy), 200. * (fy - fz)]
-    }
-
-    /// The CIE76 difference of two colors: about 2 is just noticeable, 10
-    /// tells two small dots apart at a glance.
-    fn delta_e(a: u32, b: u32) -> f64 {
-        let (a, b) = (lab(a), lab(b));
-        (0..3).map(|i| (a[i] - b[i]).powi(2)).sum::<f64>().sqrt()
-    }
-
-    /// Every tag color stays distinct from every other in both themes, and
-    /// readable as a dot on the surfaces tags sit on. The chromatic colors
-    /// stay clearly apart; the three neutrals only differ in lightness, so
-    /// they get a lower bar.
-    #[test]
-    fn tag_colors_stay_apart() {
-        use kanso_core::TagColor;
-        let neutral =
-            |c: TagColor| matches!(c, TagColor::Default | TagColor::Grey | TagColor::Black);
-        for (name, dark, c) in [("dark", true, &DARK), ("light", false, &LIGHT)] {
-            for (ix, a) in TagColor::ALL.iter().enumerate() {
-                let shown = muted_tag_color(a.rgb(), dark);
-                for bg in [c.sidebar, c.list, c.editor, c.elevated, c.fill] {
-                    let ratio = contrast_ratio(shown, bg.0);
-                    assert!(ratio >= 3.0, "{name}: {a:?} on {bg:?} is {ratio:.2}");
-                }
-                for b in &TagColor::ALL[ix + 1..] {
-                    let min = if neutral(*a) && neutral(*b) {
-                        5.0
-                    } else {
-                        10.0
-                    };
-                    let diff = delta_e(shown, muted_tag_color(b.rgb(), dark));
-                    assert!(diff >= min, "{name}: {a:?} and {b:?} are {diff:.1} apart");
-                }
-            }
-        }
-        // The pair that used to come out the same.
-        let (orange, brown) = (TagColor::Orange.rgb(), TagColor::Brown.rgb());
-        assert!(delta_e(muted_tag_color(orange, true), muted_tag_color(brown, true)) > 10.);
-    }
-
-    #[test]
-    fn contrast_examples() {
-        assert_eq!(contrast_ratio(0, 0xFF_FFFF), 21.0);
-        assert!((contrast_ratio(0x767676, 0xFF_FFFF) - 4.54).abs() < 0.01);
-    }
-
-    /// Every text color reads on every surface it can sit on, in both
-    /// themes: primary text at 7:1, secondary at 4.5:1, muted at 3:1, links
-    /// at 4.5:1. Muted text and links don't sit on the brief hover fill of a
-    /// menu item, and links aren't drawn on sidebar rows. Status colors,
-    /// drawn as icons and dots, read at 3:1 on every surface.
-    #[test]
-    fn text_contrast_on_every_surface() {
-        for (name, c) in [("dark", &DARK), ("light", &LIGHT)] {
-            let surfaces = [
-                ("app", c.app, true),
-                ("sidebar", c.sidebar, false),
-                ("list", c.list, true),
-                ("editor", c.editor, true),
-                ("elevated", c.elevated, true),
-                ("fill", c.fill, true),
-                ("row_active", c.row_active, true),
-                ("row_hover", c.row_hover, true),
-                ("sidebar_active", c.sidebar_active, false),
-                ("sidebar_hover", c.sidebar_hover, false),
-                ("code", c.code, true),
-            ];
-            let all_surfaces = surfaces
-                .iter()
-                .map(|&(surface, bg, _)| (surface, bg))
-                .chain([("hover", c.hover), ("selected", c.selected)]);
-            for (surface, bg) in all_surfaces {
-                for (status, fg) in [
-                    ("success", c.success),
-                    ("warning", c.warning),
-                    ("danger", c.danger),
-                ] {
-                    let ratio = contrast_ratio(fg.0, bg.0);
-                    assert!(
-                        ratio >= 3.0,
-                        "{name}: {status} on {surface} is {ratio:.2}, wants 3"
-                    );
-                }
-            }
-            // A chip or banner shows on the panes it sits on.
-            for (surface, bg) in [("list", c.list), ("editor", c.editor)] {
-                let ratio = contrast_ratio(c.fill.0, bg.0);
-                assert!(ratio >= 1.1, "{name}: fill on {surface} is {ratio:.2}");
-            }
-            for (surface, bg, links) in surfaces {
-                for (text, fg, min) in [
-                    ("text", c.text, 7.0),
-                    ("text_secondary", c.text_secondary, 4.5),
-                    ("text_muted", c.text_muted, 3.0),
-                    ("link", if links { c.link } else { c.text }, 4.5),
-                ] {
-                    let ratio = contrast_ratio(fg.0, bg.0);
-                    assert!(
-                        ratio >= min,
-                        "{name}: {text} on {surface} is {ratio:.2}, wants {min}"
-                    );
-                }
-            }
-            for fg in [c.text, c.text_secondary] {
-                assert!(
-                    contrast_ratio(fg.0, c.hover.0) >= 4.5,
-                    "{name}: {fg:?} on hover"
-                );
-            }
-            // Code text sits on the code background and the editor.
-            for bg in [c.code, c.editor] {
-                for fg in [c.code_text, c.syntax_keyword, c.syntax_string] {
-                    assert!(
-                        contrast_ratio(fg.0, bg.0) >= 4.5,
-                        "{name}: {fg:?} on {bg:?}"
-                    );
-                }
-            }
-            assert!(
-                contrast_ratio(c.button_text.0, c.button.0) >= 4.5,
-                "{name}: button"
-            );
-            // A switch's thumb shows on its track, off and on, and an off
-            // track shows on the panes (it is the muted text color, checked
-            // on every surface above).
-            let thumb = if name == "dark" { c.text } else { c.elevated };
-            for track in [c.text_muted, c.button] {
-                assert!(
-                    contrast_ratio(thumb.0, track.0) >= 3.0,
-                    "{name}: switch thumb on {track:?}"
-                );
-            }
-            // Text on a status color, as in a destructive button.
-            let on_status = if name == "dark" { c.app } else { c.button_text };
-            for fill in [c.success, c.warning, c.danger] {
-                assert!(
-                    contrast_ratio(on_status.0, fill.0) >= 4.5,
-                    "{name}: text on {fill:?}"
-                );
-            }
-            // Selected rows are a subtle fill, but one that shows against
-            // their pane. A chip on a selected row takes the pane's color,
-            // so it shows by the same step: in the dark theme no fill can be
-            // a step off the selected row and still carry muted text at 3:1.
-            assert!(
-                contrast_ratio(c.row_active.0, c.list.0) >= 1.08,
-                "{name}: row"
-            );
-            assert!(
-                contrast_ratio(c.sidebar_active.0, c.sidebar.0) >= 1.08,
-                "{name}: sidebar row"
-            );
-            // A selected ghost button shows on the editor, more than one
-            // under the pointer does (the library hovers a ghost button with
-            // the accent fill, at half strength in dark mode).
-            let ghost_hover = if name == "dark" {
-                mix(c.hover, c.editor, 0.5)
-            } else {
-                c.hover
-            };
-            let selected = contrast_ratio(c.selected.0, c.editor.0);
-            assert!(selected >= 1.2, "{name}: selected is {selected:.2}");
-            for hover in [
-                ghost_hover,
-                if name == "dark" { c.elevated } else { c.hover },
-            ] {
-                assert!(
-                    selected > contrast_ratio(hover.0, c.editor.0),
-                    "{name}: selected vs {hover:?}"
-                );
-            }
-            assert!(contrast_ratio(c.text.0, c.selected.0) >= 7.0, "{name}");
-            assert!(
-                contrast_ratio(c.text_secondary.0, c.selected.0) >= 4.5,
-                "{name}"
-            );
-            // The palette's selected row: the accent over the elevated
-            // panel. Its label is primary text; its icon, hint and keys
-            // turn secondary on it, and it shows against the panel.
-            let alpha = if name == "dark" {
-                PALETTE_SELECTED_ALPHA.0
-            } else {
-                PALETTE_SELECTED_ALPHA.1
-            };
-            let palette_selected = mix(c.accent, c.elevated, f64::from(alpha));
-            for (text, fg, min) in [
-                ("text", c.text, 7.0),
-                ("text_secondary", c.text_secondary, 4.5),
-            ] {
-                let ratio = contrast_ratio(fg.0, palette_selected.0);
-                assert!(
-                    ratio >= min,
-                    "{name}: {text} on the palette's selected row is {ratio:.2}, wants {min}"
-                );
-            }
-            assert!(
-                contrast_ratio(palette_selected.0, c.elevated.0) >= 1.2,
-                "{name}: palette selected row"
-            );
-        }
-    }
-
-    /// Times, counts and hints are small (11.5 to 13 px), so on a selected
-    /// row, note or sidebar or palette, they take the 4.5:1 that small
-    /// text needs; muted text falls short of it on every one of those
-    /// fills, which is why they don't stay muted there.
-    #[test]
-    fn quiet_text_reads_on_selected_rows() {
-        for (name, c, alpha) in [
-            ("dark", &DARK, PALETTE_SELECTED_ALPHA.0),
-            ("light", &LIGHT, PALETTE_SELECTED_ALPHA.1),
-        ] {
-            assert_eq!(c.quiet(false), c.text_muted, "{name}");
-            let palette_selected = mix(c.accent, c.elevated, f64::from(alpha));
-            for (fill, bg) in [
-                ("row_active", c.row_active),
-                ("sidebar_active", c.sidebar_active),
-                ("palette", palette_selected),
-            ] {
-                let ratio = contrast_ratio(c.quiet(true).0, bg.0);
-                assert!(ratio >= 4.5, "{name}: quiet text on {fill} is {ratio:.2}");
-                assert!(
-                    contrast_ratio(c.text_muted.0, bg.0) < 4.5,
-                    "{name}: muted text would do on {fill}"
-                );
-            }
-        }
+    /// The WCAG contrast ratio of two colors.
+    fn contrast_ratio(a: u32, b: u32) -> f64 {
+        engine::file::contrast(engine::Rgb(a), engine::Rgb(b))
     }
 
     /// `top` over `bottom` at `alpha`.
     fn mix(top: Rgb, bottom: Rgb, alpha: f64) -> Rgb {
-        let channel = |shift: u32| {
-            let (t, b) = ((top.0 >> shift) & 0xFF, (bottom.0 >> shift) & 0xFF);
-            (f64::from(t) * alpha + f64::from(b) * (1. - alpha)).round() as u32
-        };
-        Rgb((channel(16) << 16) | (channel(8) << 8) | channel(0))
+        engine::file::mix(top.into(), bottom.into(), alpha).into()
+    }
+
+    /// The app's palettes are the engine's, field for field, and quiet text
+    /// is chosen the same way.
+    #[test]
+    fn the_mirror_draws_like_the_engine() {
+        for (app, engine) in [(&DARK, &engine::DARK), (&LIGHT, &engine::LIGHT)] {
+            assert_eq!(app.text, Rgb::from(engine.text));
+            for selected in [false, true] {
+                assert_eq!(app.quiet(selected), Rgb::from(engine.quiet(selected)));
+            }
+        }
+        assert_eq!(Rgb(0x123456).hex(), "#123456");
+        assert_eq!(Rgb(0x123456).hex_alpha(0x80), "#12345680");
     }
 
     /// A status reads by its shape and its color alike: each has its own
@@ -970,41 +609,6 @@ mod tests {
                 }
             }
         }
-    }
-
-    /// The spec's own light muted text and accent fall short as text, and
-    /// its (dark) status colors fall short on paper, which is why [`LIGHT`]
-    /// shades them. Its elevated color is the lightest light surface, so it
-    /// can't be a fill there.
-    #[test]
-    fn spec_colors_that_were_shaded() {
-        let spec_muted = 0x948B7D;
-        assert!(contrast_ratio(spec_muted, LIGHT.sidebar.0) < 3.0);
-        let spec_accent = 0x5E7895;
-        assert!(contrast_ratio(spec_accent, LIGHT.sidebar.0) < 4.5);
-        assert!(contrast_ratio(DARK.accent.0, DARK.elevated.0) < 4.5);
-        for spec_status in [DARK.success, DARK.warning, DARK.danger] {
-            assert!(contrast_ratio(spec_status.0, LIGHT.sidebar.0) < 3.0);
-        }
-        assert!(contrast_ratio(LIGHT.elevated.0, LIGHT.list.0) < 1.1);
-    }
-
-    #[test]
-    fn tag_examples() {
-        use kanso_core::TagColor;
-        // Orange stays orange, and black becomes a readable grey.
-        let (hue, saturation, _) = to_hsl(muted_tag_color(TagColor::Orange.rgb(), true));
-        assert!(
-            (20.0..30.0).contains(&hue) && saturation <= TAG_SATURATION_MAX + 0.01,
-            "{hue} {saturation}"
-        );
-        // A grey keeps no tint, and a weak color isn't calmed further.
-        assert_eq!(calm(0., 0.5, true).0, 0.);
-        assert_eq!(calm(0.1, 0.5, true).0, 0.1);
-        let black = muted_tag_color(TagColor::Black.rgb(), true);
-        assert!(contrast_ratio(black, DARK.sidebar.0) >= 3.0);
-        assert_eq!(from_hsl(0., 0., 1.), 0xFF_FFFF);
-        assert_eq!(from_hsl(120., 1., 0.5), 0x00_FF00);
     }
 
     /// SF Mono loads under its system name, and the check tells a
@@ -1088,13 +692,21 @@ mod tests {
         use gpui_kit::component::highlighter::HighlightThemeStyle;
         for (ix, expected) in [(0, &LIGHT), (1, &DARK)] {
             let theme = &crate::themes::builtins()[ix].resolved;
-            assert_eq!(&theme.colors, expected, "{}", theme.name);
-            assert_eq!(theme.caret, expected.accent);
-            assert_eq!(theme.selection.rgb, expected.accent);
+            assert_eq!(
+                Colors::from_engine(&theme.colors),
+                *expected,
+                "{}",
+                theme.name
+            );
+            assert_eq!(Rgb::from(theme.caret), expected.accent);
+            assert_eq!(Rgb::from(theme.selection.rgb), expected.accent);
             assert_eq!(theme.selection.alpha, 0x4D);
             // Fitting to its own surface changes nothing.
-            let fitted =
-                crate::theme_file::fit_syntax(&theme.syntax, expected.editor, expected.text);
+            let fitted = crate::theme_file::fit_syntax(
+                &theme.syntax,
+                expected.editor.into(),
+                expected.text.into(),
+            );
             assert_eq!(fitted, theme.syntax, "{}", theme.name);
             let new: HighlightThemeStyle =
                 serde_json::from_value(highlight_style(expected, &fitted)).unwrap();
@@ -1111,8 +723,8 @@ mod tests {
             old.syntax.string_regex = new.syntax.string_regex;
             old.syntax.string_special_symbol = new.syntax.string_special_symbol;
             assert_eq!(new, old, "{}", theme.name);
-            let preview = crate::theme_file::fit_preview(&theme.preview, expected);
-            assert_eq!(preview, theme.preview);
+            let preview = crate::theme_file::fit_preview(&theme.preview.into(), expected);
+            assert_eq!(preview, theme.preview.into());
             assert_eq!(preview.code_background, expected.code);
             assert_eq!(preview.text, expected.text);
             assert_eq!(preview.quote, expected.text_secondary);

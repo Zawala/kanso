@@ -25,9 +25,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, bail};
 use serde_json::{Map, Value, json};
 
-use crate::theme::Rgb;
 use crate::theme_file::{Color, ThemeFile, TokenStyle, contrast, ensure_contrast, luminance, mix};
 use crate::themes::themes_dir;
+use kanso_engine::theme::Rgb;
 
 const HELP: &str = "\
 Usage: kanso theme <command>
@@ -441,7 +441,7 @@ fn read_tarball_in(path: &Path, parent: &Path) -> Result<ThemeFile, String> {
 // MARK: Legibility
 
 /// The pane surfaces text is drawn on, by name.
-fn surfaces(c: &crate::theme::Colors) -> [(&'static str, Rgb); 13] {
+fn surfaces(c: &kanso_engine::theme::Colors) -> [(&'static str, Rgb); 13] {
     [
         ("app", c.app),
         ("sidebar", c.sidebar),

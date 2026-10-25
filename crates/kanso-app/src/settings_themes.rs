@@ -22,7 +22,7 @@ use crate::config::{ThemePreference, ThemeSettings};
 use crate::icon_themes::{self, IconTheme, IconThemes};
 use crate::origin::Origin;
 use crate::settings::{Row, SettingsView, section};
-use crate::theme::{Colors, Rgb, SYSTEM_MONO};
+use crate::theme::{Colors, Rgb, SYSTEM_MONO, hsla};
 use crate::theme_file::{PreviewColors, TokenStyle, fit_preview, fit_syntax};
 use crate::themes::{self, ThemeEntry, Themes, themes_dir};
 use crate::workspace::AppState;
@@ -733,7 +733,7 @@ fn bar(width: f32, height: f32, color: Rgb) -> Div {
 /// A UI theme's picture: a small window with its sidebar, its note list
 /// with one note selected, and a note in the editor.
 pub(crate) fn ui_thumb(entry: &ThemeEntry) -> Div {
-    let c = &entry.resolved.colors;
+    let c = &Colors::from_engine(&entry.resolved.colors);
     let sidebar = v_flex()
         .w(px(34.))
         .h_full()
@@ -825,7 +825,7 @@ pub(crate) fn syntax_thumb(entry: &ThemeEntry) -> Div {
     let span = |words: &'static str, key: &str| run(words, style(key).or_text(text));
     let line = |runs: Vec<Div>| h_flex().children(runs);
     v_flex()
-        .bg(surface)
+        .bg(hsla(surface))
         .px(px(9.))
         .pt(px(9.))
         .gap(px(2.))
@@ -891,7 +891,7 @@ fn run(words: &'static str, style: TokenStyle) -> Div {
     div()
         .flex_none()
         .whitespace_nowrap()
-        .when_some(style.color, |el, c| el.text_color(c))
+        .when_some(style.color, |el, c| el.text_color(hsla(c)))
         .when(style.italic == Some(true), |el| el.italic())
         .when_some(style.weight, |el, w| {
             el.font_weight(FontWeight(f32::from(w)))
@@ -903,15 +903,15 @@ fn run(words: &'static str, style: TokenStyle) -> Div {
 /// code block, on its own editor surface.
 pub(crate) fn preview_thumb(entry: &ThemeEntry) -> Div {
     let theme = &entry.resolved;
-    let p: PreviewColors = fit_preview(&theme.preview, &theme.colors);
-    let code = fit_syntax(&theme.syntax, p.code_background, theme.colors.text);
+    let p: PreviewColors = fit_preview(&theme.preview.into(), &Colors::from_engine(&theme.colors));
+    let code = fit_syntax(&theme.syntax, p.code_background.into(), theme.colors.text);
     let token = |key: &str| code.get(key).copied().unwrap_or_default();
     let code_text = TokenStyle {
-        color: Some(p.code_text.unwrap_or(p.text)),
+        color: Some(p.code_text.unwrap_or(p.text).into()),
         ..TokenStyle::default()
     };
     v_flex()
-        .bg(theme.colors.editor)
+        .bg(hsla(theme.colors.editor))
         .px(px(10.))
         .pt(px(8.))
         .gap(px(4.))

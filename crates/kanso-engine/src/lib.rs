@@ -5,16 +5,21 @@
 //! of unlocked notes and seals and opens notes with them, [`account`] runs
 //! the account tasks (sign up, sign in, recover, unlock a device, restore at
 //! launch) and says their results in plain words, and [`sync`] decides when
-//! a sync starts, queues, backs off or stops. [`links`] decides how
-//! wiki-links resolve, what `[[` and `#` autocomplete offer, which link a
-//! note copies and when a rename offers to update links, and [`fuzzy`] ranks
-//! what was typed against candidates, [`edit`] turns the formatting toolbar,
-//! auto-pairing and Tab and Enter in lists and tables into one change to the
-//! text, and [`daily`] and [`tasks`] make daily notes and templates and
-//! decide due dates and reminders. [`text`] converts offsets between UTF-8
-//! and UTF-16. Nothing here opens a window, reads a
-//! clock of its own or touches the system's secret store: the caller passes
-//! the time, and secrets go through [`Secrets`].
+//! a sync starts, queues, backs off or stops.
+//!
+//! What happens in a note is here too. [`links`] decides how wiki-links
+//! resolve, what `[[` and `#` autocomplete offer, which link a note copies
+//! and when a rename offers to update links; [`fuzzy`] ranks what was typed
+//! against candidates; [`daily`] makes daily notes and notes from templates;
+//! [`tasks`] reads due dates and decides reminders; [`edit`] turns the
+//! formatting toolbar, auto-pairing and Tab and Enter in lists and tables
+//! into one change to the text; [`text`] converts offsets between UTF-8 and
+//! UTF-16; and [`theme`] has the palettes, the theme file format and how
+//! three themes are fitted together for drawing.
+//!
+//! Nothing here opens a window, reads a clock of its own or touches the
+//! system's secret store: the caller passes the time, and secrets go through
+//! [`Secrets`].
 //!
 //! The system's Keychain is `kanso_sync::Keychain`, built by the desktop app
 //! alone; tests use [`MemorySecrets`].
@@ -30,6 +35,7 @@ pub mod strategies;
 pub mod sync;
 pub mod tasks;
 pub mod text;
+pub mod theme;
 
 /// Where secrets live: the seam the Keychain, the Credential Manager and the
 /// mobile keystores stand behind.

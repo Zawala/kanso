@@ -4085,7 +4085,7 @@ fn shot_colors(shot: &Shot) -> &'static Colors {
                 .iter()
                 .find(|e| e.name() == name)
                 .unwrap_or_else(|| panic!("no built-in theme {name}"));
-            Box::leak(Box::new(entry.resolved.colors))
+            Box::leak(Box::new(Colors::from_engine(&entry.resolved.colors)))
         }
         None if dark => &DARK,
         None => &LIGHT,
@@ -4339,7 +4339,7 @@ impl gpui_kit::Render for ThemeCards {
             .flex()
             .gap(px(THUMB_GAP))
             .p(px(THUMB_GAP))
-            .bg(entry.resolved.colors.app)
+            .bg(crate::theme::hsla(entry.resolved.colors.app))
             .child(card(ui_thumb(entry)))
             .child(card(syntax_thumb(entry)))
             .child(card(preview_thumb(entry)))

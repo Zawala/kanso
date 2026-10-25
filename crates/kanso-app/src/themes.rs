@@ -27,8 +27,9 @@ use gpui_kit::{App, Global, Window};
 use crate::config::{KANSO_DARK, KANSO_LIGHT, ThemeSettings};
 use crate::origin::Origin;
 use crate::theme::{self, Colors};
-use crate::theme_file::{PreviewColors, ResolvedTheme, ThemeFile, fit_preview, fit_syntax};
+use crate::theme_file::{PreviewColors, ResolvedTheme, ThemeFile};
 use crate::workspace::AppState;
+use kanso_engine::theme::Tokens;
 
 include!(concat!(env!("OUT_DIR"), "/builtin_themes.rs"));
 
@@ -401,9 +402,9 @@ pub fn apply(window: Option<&mut Window>, cx: &mut App) {
         }
     };
 
-    let colors = intern(ui.resolved.colors);
-    let fitted = fit_syntax(&syntax.resolved.syntax, colors.editor, colors.text);
-    let config = theme::theme_config(&ui.resolved, colors, &fitted, theme::mono_font(cx));
+    let tokens = Tokens::fit(&ui.resolved, &syntax.resolved, &preview_theme.resolved);
+    let colors = intern(Colors::from_engine(&tokens.ui));
+    let config = theme::theme_config(&ui.resolved, colors, &tokens.syntax, theme::mono_font(cx));
     let config: Rc<ThemeConfig> = match serde_json::from_value(config) {
         Ok(config) => Rc::new(config),
         Err(err) => {
@@ -427,21 +428,16 @@ pub fn apply(window: Option<&mut Window>, cx: &mut App) {
     Theme::change(mode, window, cx);
     crate::zoom::apply_to_theme(cx);
 
-    let preview = fit_preview(&preview_theme.resolved.preview, colors);
     let code = if preview_theme.name() != syntax.name() {
-        let code = fit_syntax(
-            &preview_theme.resolved.syntax,
-            preview.code_background,
-            colors.text,
-        );
-        let highlight = preview_code::build(&preview_theme.resolved, &code);
+        let highlight = preview_code::build(&preview_theme.resolved, &tokens.code);
         if let Some(highlight) = &highlight {
             preview_code::install(highlight.clone(), cx);
         }
         highlight
     } else {
-        preview_code::build(&syntax.resolved, &fitted)
+        preview_code::build(&syntax.resolved, &tokens.code)
     };
+    let preview = tokens.preview.into();
     cx.set_global(ActiveTheme {
         ui,
         colors,
@@ -457,7 +453,7 @@ pub fn preview_colors(cx: &App) -> PreviewColors {
         Some(active) => active.preview,
         None => {
             let dark = Theme::global(cx).is_dark();
-            builtins()[usize::from(dark)].resolved.preview
+            builtins()[usize::from(dark)].resolved.preview.into()
         }
     }
 }
@@ -541,14 +537,15 @@ mod preview_code {
         theme: &ResolvedTheme,
         code: &BTreeMap<&'static str, TokenStyle>,
     ) -> Option<Arc<HighlightTheme>> {
-        let style: HighlightThemeStyle =
-            match serde_json::from_value(crate::theme::highlight_style(&theme.colors, code)) {
-                Ok(style) => style,
-                Err(err) => {
-                    eprintln!("kanso: couldn't build the preview's code colors: {err}");
-                    return None;
-                }
-            };
+        let style: HighlightThemeStyle = match serde_json::from_value(
+            crate::theme::highlight_style(&crate::theme::Colors::from_engine(&theme.colors), code),
+        ) {
+            Ok(style) => style,
+            Err(err) => {
+                eprintln!("kanso: couldn't build the preview's code colors: {err}");
+                return None;
+            }
+        };
         Some(Arc::new(HighlightTheme {
             name: theme.name.clone(),
             appearance: if theme.dark {
@@ -593,7 +590,8 @@ mod preview_code {
 #[cfg(test)]
 mod tests {
     use super::{BUILTIN, Themes, builtins};
-    use crate::theme_file::{ThemeFile, contrast, fit_preview, fit_syntax, mix};
+    use crate::theme_file::{ThemeFile, contrast, fit_syntax, mix};
+    use kanso_engine::theme::Tokens;
 
     /// Every built-in file reads, under a name of its own, and says the
     /// truth about its appearance: a dark theme's text is lighter than its
@@ -903,12 +901,12 @@ mod tests {
         write("#202020");
         let after = Themes::load(None, Some(&gallery));
         let new = after.get("Hot").unwrap().resolved.colors.editor;
-        assert_eq!(old, crate::theme::Rgb(0x101010));
-        assert_eq!(new, crate::theme::Rgb(0x202020));
+        assert_eq!(old, kanso_engine::theme::Rgb(0x101010));
+        assert_eq!(new, kanso_engine::theme::Rgb(0x202020));
     }
 
     /// The resolved colors as hex, field by field.
-    fn colors_json(c: &crate::theme::Colors) -> serde_json::Value {
+    fn colors_json(c: &kanso_engine::theme::Colors) -> serde_json::Value {
         serde_json::json!({
             "app": c.app.hex(), "sidebar": c.sidebar.hex(), "list": c.list.hex(),
             "editor": c.editor.hex(), "elevated": c.elevated.hex(), "fill": c.fill.hex(),
@@ -927,7 +925,7 @@ mod tests {
     }
 
     fn styles_json(
-        styles: &std::collections::BTreeMap<&'static str, crate::theme_file::TokenStyle>,
+        styles: &std::collections::BTreeMap<&'static str, kanso_engine::theme::file::TokenStyle>,
     ) -> serde_json::Value {
         styles
             .iter()
@@ -936,8 +934,8 @@ mod tests {
             .into()
     }
 
-    fn preview_json(p: &crate::theme_file::PreviewColors) -> serde_json::Value {
-        let hex = |c: Option<crate::theme::Rgb>| c.map(|c| c.hex());
+    fn preview_json(p: &kanso_engine::theme::file::PreviewColors) -> serde_json::Value {
+        let hex = |c: Option<kanso_engine::theme::Rgb>| c.map(|c| c.hex());
         serde_json::json!({
             "text": p.text.hex(), "heading": hex(p.heading), "link": p.link.hex(),
             "quote": p.quote.hex(), "task_done": p.task_done.hex(),
@@ -957,18 +955,8 @@ mod tests {
         syntax: &super::ThemeEntry,
         preview: &super::ThemeEntry,
     ) -> serde_json::Value {
-        let colors = ui.resolved.colors;
-        let fitted = fit_syntax(&syntax.resolved.syntax, colors.editor, colors.text);
-        let preview_fitted = fit_preview(&preview.resolved.preview, &colors);
-        let code = if preview.name() != syntax.name() {
-            fit_syntax(
-                &preview.resolved.syntax,
-                preview_fitted.code_background,
-                colors.text,
-            )
-        } else {
-            fitted.clone()
-        };
+        let tokens = Tokens::fit(&ui.resolved, &syntax.resolved, &preview.resolved);
+        let (fitted, preview_fitted, code) = (tokens.syntax, tokens.preview, tokens.code);
         serde_json::json!({
             "syntax": styles_json(&fitted),
             "preview": preview_json(&preview_fitted),
@@ -1012,7 +1000,12 @@ mod tests {
                     "syntax": styles_json(&t.syntax),
                     "preview": preview_json(&t.preview),
                     "own_panes": drawn_json(entry, entry, entry),
-                    "config": crate::theme::theme_config(t, &t.colors, &fitted, None),
+                    "config": crate::theme::theme_config(
+                        t,
+                        &crate::theme::Colors::from_engine(&t.colors),
+                        &fitted,
+                        None,
+                    ),
                 }),
             );
         }

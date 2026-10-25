@@ -959,7 +959,7 @@ pub(crate) fn text_style(colors: &Colors, p: &PreviewColors, dark: bool) -> Text
     let mut table = StyleRefinement::default().bg(colors.editor);
     table.overflow.x = Some(Overflow::Scroll);
     let selection = match p.selection {
-        Some(color) => Hsla::from(color.rgb).opacity(f32::from(color.alpha) / 255.),
+        Some(color) => crate::theme::hsla(color.rgb).opacity(f32::from(color.alpha) / 255.),
         None => Hsla::from(colors.accent).opacity(0.3),
     };
     let mut code_block = StyleRefinement::default()
