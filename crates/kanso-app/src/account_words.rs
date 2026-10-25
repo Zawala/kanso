@@ -75,6 +75,13 @@ pub const APPROVAL_CHANGED: &str = "This request changed after it was made. Don'
 
 // MARK: Passkeys and security keys (docs/ACCOUNTS.md › Account page)
 
+/// The signed-out forms' headings.
+pub const SIGN_IN_HEADING: &str = "Sign in to Kanso";
+pub const CREATE_HEADING: &str = "Create your account";
+pub const RECOVER_HEADING: &str = "Reset your password";
+/// After Apple, Google or GitHub, before the account exists.
+pub const PICK_USERNAME_HEADING: &str = "Choose a username";
+
 pub const CONTINUE_WITH_PASSKEY: &str = "Continue with a passkey";
 pub const CREATE_WITH_PASSKEY: &str = "Create with a passkey";
 pub const CONTINUE_WITH_SECURITY_KEY: &str = "Continue with a security key";

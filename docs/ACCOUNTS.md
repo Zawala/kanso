@@ -3750,7 +3750,8 @@ account] [Sign in].
     without `hmac-secret` can sign in but not unlock a new device, and the app says so.
   - [Continue with Apple], [Continue with Google], [Continue with GitHub] — only the advertised
     ones, with the provider's own button rules.
-  - Under the heading "Or sign in with your username", Username and Password (and Server, below).
+  - Below the methods, a rule with "or", then Username and Password with their labels above them
+    and "Forgot your password?" beside the Password label, then [Sign in] across the column.
   - "Forgot your password?" switches to Username, Recovery key, New password, Confirm and
     [Set new password].
   - The server row shows "sync.kansoapp.app (default)" or the custom URL, with "Use a different
@@ -3767,7 +3768,12 @@ account] [Sign in].
     shown in place of the method list; Cancel there returns to the list. A server that offers
     only passwords opens this form directly.
 
-  The method buttons are one left-aligned column of equal width, not the page's full width.
+  Every signed-out form is one left-aligned column, 360 points wide, headed "Sign in to Kanso",
+  "Create your account", "Reset your password" or (after a provider) "Choose a username": the
+  method buttons at the column's full width, the fields with labels above and hints below, the
+  primary button across the column, then a quiet Cancel ("Back to sign in" from recovery, "Other
+  ways to create an account" from the username form), and the server as a footnote with
+  [Change…]. The status row shows only on the first page and after a session ends.
   - Server as today.
 
   The social and passkey forms then show "Your *N* notes on this Mac will be encrypted and uploaded.
