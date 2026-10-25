@@ -15,12 +15,12 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak, mpsc};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, TryLockError, Weak, mpsc};
 use std::time::{Duration, Instant};
 
 use kanso_acp::detect::{self, Detection};
 use kanso_acp::{
-    AcpError, AcpEvent, AgentProcess, AgentSpec, Limits, McpServer, PermissionPolicy, Session,
+    AcpError, AcpEvent, AgentInfo, AgentProcess, AgentSpec, Limits, McpServer, PermissionPolicy, Session,
     StopReason,
 };
 
@@ -330,6 +330,27 @@ struct HostState {
     generation: u64,
     last_used: Option<Instant>,
     failures: Vec<Instant>,
+    /// What the process that ended last left behind, so a crash can still
+    /// be diagnosed.
+    last: Option<Last>,
+}
+
+/// An ended process, as far as a diagnostics report needs it.
+struct Last {
+    info: AgentInfo,
+    log: String,
+}
+
+impl HostState {
+    /// Lets go of the process, keeping what a report says about it.
+    fn release(&mut self) {
+        if let Some(process) = self.process.take() {
+            self.last = Some(Last {
+                info: process.info().clone(),
+                log: process.diagnostics(),
+            });
+        }
+    }
 }
 
 impl Host {
@@ -361,7 +382,7 @@ impl Host {
             .as_ref()
             .is_some_and(|process| !process.is_alive())
         {
-            state.process = None;
+            state.release();
         }
         if state.process.is_none() {
             let label = self.settings.label();
@@ -408,7 +429,7 @@ fn idle_watch(host: Weak<Host>) {
         if let Ok(mut state) = host.state.try_lock()
             && state.last_used.is_some_and(|used| used.elapsed() >= IDLE)
         {
-            state.process = None;
+            state.release();
             state.last_used = None;
         }
     }
@@ -504,7 +525,7 @@ fn run_turn(host: &Host, text: &str, stop: Arc<AtomicBool>, tx: &mpsc::Sender<Ev
     }
     drop(session);
     if !process.is_alive() {
-        state.process = None;
+        state.release();
     }
 }
 
@@ -755,7 +776,7 @@ impl Conversation {
             state.end();
         }
         if !alive {
-            host_state.process = None;
+            host_state.release();
         }
     }
 }
@@ -896,7 +917,7 @@ pub fn shutdown() {
     if let Some((_, host, _)) = taken
         && let Ok(mut state) = host.state.try_lock()
     {
-        state.process = None;
+        state.release();
     }
 }
 
@@ -908,6 +929,138 @@ pub fn find_again() {
         && let Ok(mut state) = host.state.try_lock()
     {
         state.failures.clear();
+    }
+}
+
+/// A plain-text report on `settings`' agent that is safe to paste into a
+/// public issue: Kanso's `version`, this computer, whether the agent is
+/// installed and where, what it called itself, and the protocol log (method
+/// names, timings, error codes, exit status).
+///
+/// It holds no note text, titles, questions, answers, tokens or stderr, and
+/// the home folder is written `~`. It never waits: a question holds the
+/// agent's state for its whole turn, and the report then says so.
+pub fn diagnostics(settings: &AgentSettings, version: &str) -> String {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from);
+    let host = lock(cache())
+        .as_ref()
+        .filter(|(cached, _, _)| cached == settings)
+        .map(|(_, host, _)| host.clone());
+    report(settings, version, home.as_deref(), host.as_deref())
+}
+
+fn report(
+    settings: &AgentSettings,
+    version: &str,
+    home: Option<&std::path::Path>,
+    host: Option<&Host>,
+) -> String {
+    let mut lines = vec![
+        format!(
+            "Kanso {version} on {} ({})",
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        ),
+        format!("Agent: {} ({:?})", settings.label(), settings.kind),
+        format!("Detection: {}", detection_line(settings)),
+    ];
+    let none = "Process: none has run since Kanso started";
+    match host {
+        None => lines.push(none.to_owned()),
+        Some(host) => {
+            let state = match host.state.try_lock() {
+                Ok(state) => Some(state),
+                Err(TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+                Err(TryLockError::WouldBlock) => None,
+            };
+            match state {
+                None => lines.push("Process: busy answering a question".to_owned()),
+                Some(state) => {
+                    let failed = state
+                        .failures
+                        .iter()
+                        .filter(|failed| failed.elapsed() < FAILURE_WINDOW)
+                        .count();
+                    let running = state
+                        .process
+                        .as_ref()
+                        .is_some_and(|process| process.is_alive());
+                    let (info, log) = match (&state.process, &state.last) {
+                        (Some(process), _) => (Some(process.info().clone()), process.diagnostics()),
+                        (None, Some(last)) => (Some(last.info.clone()), last.log.clone()),
+                        (None, None) => (None, String::new()),
+                    };
+                    lines.push(match (running, &info) {
+                        (true, _) => "Process: running".to_owned(),
+                        (false, Some(_)) => "Process: not running (the last one ended)".to_owned(),
+                        (false, None) => none.to_owned(),
+                    });
+                    if let Some(info) = info {
+                        let name = info.title.as_deref().unwrap_or(&info.name);
+                        lines.push(match &info.version {
+                            Some(version) => format!("Agent says: {name} {version}"),
+                            None => format!("Agent says: {name}"),
+                        });
+                    }
+                    lines.push(format!(
+                        "Failed starts in the last minute: {failed}; starts {}",
+                        if failed >= MAX_FAILURES {
+                            "blocked until Find again"
+                        } else {
+                            "allowed"
+                        }
+                    ));
+                    if !log.trim().is_empty() {
+                        lines.push("Protocol log, oldest first:".to_owned());
+                        lines.extend(log.lines().map(|line| format!("  {line}")));
+                    }
+                }
+            }
+        }
+    }
+    let mut text = lines.join("\n");
+    text.push('\n');
+    if let Some(home) = home.map(|home| home.to_string_lossy().into_owned())
+        && home.len() > 1
+    {
+        text = text.replace(&home, "~");
+    }
+    text
+}
+
+/// Whether the agent can be found on this computer, and where.
+fn detection_line(settings: &AgentSettings) -> String {
+    let found = |path: &std::path::Path| format!("found at {}", path.display());
+    match settings.kind {
+        AgentKind::Custom => {
+            let Some(command) = settings
+                .command
+                .as_deref()
+                .map(str::trim)
+                .filter(|command| !command.is_empty())
+            else {
+                return "no command set".to_owned();
+            };
+            let path = PathBuf::from(command);
+            let located = if path.is_absolute() {
+                path.exists().then_some(path)
+            } else {
+                detect::which_in(command, &detect::search_dirs())
+            };
+            match located {
+                Some(path) => found(&path),
+                None => "not installed".to_owned(),
+            }
+        }
+        kind => match detect::detect(kind) {
+            Detection::Found(path) => found(&path),
+            Detection::OldClaudeAdapter(path) => {
+                format!("only the old adapter, {}, is installed", path.display())
+            }
+            Detection::NotInstalled => "not installed".to_owned(),
+        },
     }
 }
 
@@ -1022,6 +1175,25 @@ mod tests {
     use crate::client::Turn;
     use crate::prompt::{self, Excerpt, Prompt};
     use proptest::prelude::*;
+
+    #[test]
+    fn the_report_writes_the_home_folder_as_a_tilde() {
+        let home = std::env::temp_dir().join(format!("kanso-diag-home-{}", std::process::id()));
+        std::fs::create_dir_all(home.join("bin")).unwrap();
+        let command = home.join("bin").join("my-agent");
+        std::fs::write(&command, "").unwrap();
+        let settings = AgentSettings {
+            kind: AgentKind::Custom,
+            command: Some(command.to_string_lossy().into_owned()),
+            args: Vec::new(),
+            env: Vec::new(),
+            workspace: home.join("ws"),
+        };
+        let report = super::report(&settings, "1.0.0", Some(&home), None);
+        std::fs::remove_dir_all(&home).ok();
+        assert!(report.contains("found at ~/bin/my-agent"), "{report}");
+        assert!(!report.contains(&*home.to_string_lossy()), "{report}");
+    }
 
     /// What the fake agent's permission question is answered with, through
     /// the host's policy.

@@ -298,3 +298,212 @@ fn real_agent_answers_the_test_question() {
     agent::shutdown();
     assert!(check.is_ok(), "{check:?}");
 }
+
+/// A notes grant with a known token, as the app would hand one out.
+struct FakeLease;
+
+impl agent::NotesLease for FakeLease {
+    fn is_live(&self) -> bool {
+        true
+    }
+    fn renew(&self) -> bool {
+        true
+    }
+    fn begin_turn(&self) {}
+    fn reads(&self) -> Vec<String> {
+        Vec::new()
+    }
+}
+
+fn grant_with(token: String) -> agent::NotesAccess {
+    Arc::new(move || {
+        Some(agent::NotesGrant {
+            url: "http://127.0.0.1:9/mcp".to_owned(),
+            token: token.clone(),
+            relay: None,
+            lease: Box::new(FakeLease),
+            suggest: false,
+        })
+    })
+}
+
+/// Asks one question in a conversation and waits for its events to end.
+fn converse(conversation: &Arc<agent::Conversation>, user: &str) -> Vec<Event> {
+    let prompt = Prompt {
+        system: "Reply.".to_owned(),
+        user: user.to_owned(),
+    };
+    conversation
+        .ask(
+            &prompt,
+            &[],
+            Box::new(|_| {}),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .unwrap()
+        .collect()
+}
+
+/// The report once no turn holds the agent any more (a turn lets go just
+/// after its last event).
+fn settled_report(settings: &AgentSettings) -> String {
+    for _ in 0..200 {
+        let report = agent::diagnostics(settings, "9.9.9");
+        if !report.contains("busy answering") {
+            return report;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("still busy");
+}
+
+fn home() -> String {
+    std::env::var("HOME").unwrap_or_default()
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::prelude::ProptestConfig::with_cases(12))]
+
+    /// Whatever the question, the answer, the notes and the token say, the
+    /// report holds none of it, nor the home folder.
+    #[test]
+    fn prop_diagnostics_never_hold_content_tokens_or_the_home_folder(
+        question in "[a-z]{14}",
+        answer in "[a-z]{14}",
+        title in "[a-z]{14}",
+        body in "[a-z]{14}",
+        token in "[a-z0-9]{24}",
+        case in 0u32..1_000_000,
+    ) {
+        let _serial = serial();
+        let (question, answer, title, body) = (
+            format!("qq{question}"),
+            format!("aa{answer}"),
+            format!("tt{title}"),
+            format!("bb{body}"),
+        );
+        let token = format!("kmcp-{token}");
+        let settings = settings(&format!("diag-{case}"));
+        let conversation = agent::conversation_with(
+            &settings,
+            limits(),
+            starter(Script::Answer(answer.clone()), Arc::new(AtomicUsize::new(0))),
+            Some(grant_with(token.clone())),
+        );
+        let user = format!("<note title=\"{title}\">{body}</note>\nQuestion: {question}");
+        let events = converse(&conversation, &user);
+        proptest::prop_assert_eq!(text(&events), answer.clone());
+        let report = settled_report(&settings);
+        for secret in [&question, &answer, &title, &body, &token] {
+            proptest::prop_assert!(!report.contains(secret.as_str()), "{secret} in:\n{report}");
+        }
+        if home().len() > 1 {
+            proptest::prop_assert!(!report.contains(&home()), "home in:\n{report}");
+        }
+        proptest::prop_assert!(report.contains("Process: running"), "{report}");
+        proptest::prop_assert!(report.contains("Agent says: Fake Agent 1.2.3"), "{report}");
+        proptest::prop_assert!(report.contains("session/prompt"), "{report}");
+    }
+}
+
+#[test]
+fn a_report_before_any_process_has_run_says_so_and_names_the_computer() {
+    let _serial = serial();
+    let settings = settings("diag-none");
+    let report = agent::diagnostics(&settings, "9.9.9");
+    assert!(report.starts_with("Kanso 9.9.9 on "), "{report}");
+    assert!(report.contains(std::env::consts::ARCH), "{report}");
+    assert!(report.contains("(Custom)"), "{report}");
+    assert!(report.contains("Detection: found at "), "{report}");
+    assert!(report.contains("Process: none has run"), "{report}");
+    if home().len() > 1 {
+        assert!(!report.contains(&home()), "{report}");
+    }
+    let missing = AgentSettings {
+        command: Some("/no/such/agent".to_owned()),
+        ..settings
+    };
+    let report = agent::diagnostics(&missing, "9.9.9");
+    assert!(report.contains("Detection: not installed"), "{report}");
+}
+
+#[test]
+fn a_report_after_a_crash_keeps_the_dead_process_and_its_log() {
+    let _serial = serial();
+    let settings = settings("diag-crash");
+    let provider = agent::agent_client_with(
+        &settings,
+        limits(),
+        starter(Script::BadJson, Arc::new(AtomicUsize::new(0))),
+    );
+    ask(&provider, "x");
+    let mut report = settled_report(&settings);
+    for _ in 0..200 {
+        if report.contains("not running") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+        report = settled_report(&settings);
+    }
+    eprintln!("{report}");
+    assert!(report.contains("Process: not running"), "{report}");
+    assert!(report.contains("Agent says: Fake Agent 1.2.3"), "{report}");
+    assert!(report.contains("ended: "), "{report}");
+    assert!(
+        report.contains("Failed starts in the last minute: 0; starts allowed"),
+        "{report}"
+    );
+}
+
+#[test]
+fn a_report_while_a_question_is_running_does_not_wait() {
+    let _serial = serial();
+    let settings = settings("diag-busy");
+    let provider = agent::agent_client_with(
+        &settings,
+        limits(),
+        starter(Script::Hang, Arc::new(AtomicUsize::new(0))),
+    );
+    let cancel = Arc::new(AtomicBool::new(false));
+    let provider = provider.lock().unwrap();
+    let prompt = Prompt {
+        system: "Reply.".into(),
+        user: "x".into(),
+    };
+    let mut events = provider
+        .ask(
+            &prompt,
+            &[],
+            ToolRegistry::new(),
+            Box::new(|| {}),
+            cancel.clone(),
+        )
+        .unwrap();
+    assert!(matches!(events.next(), Some(Event::Status(_))));
+    let began = std::time::Instant::now();
+    let report = agent::diagnostics(&settings, "9.9.9");
+    assert!(began.elapsed() < Duration::from_secs(1));
+    assert!(
+        report.contains("Process: busy answering a question"),
+        "{report}"
+    );
+    assert!(report.contains("Detection: found at "), "{report}");
+    cancel.store(true, Ordering::Relaxed);
+    assert_eq!(events.next(), None);
+}
+
+#[test]
+fn a_report_after_three_failed_starts_says_starts_are_blocked() {
+    let _serial = serial();
+    let settings = settings("diag-blocked");
+    let provider =
+        agent::agent_client_with(&settings, limits(), failing(Arc::new(AtomicUsize::new(0))));
+    for _ in 0..3 {
+        ask(&provider, "x");
+    }
+    let report = settled_report(&settings);
+    assert!(
+        report.contains("Failed starts in the last minute: 3; starts blocked until Find again"),
+        "{report}"
+    );
+}
