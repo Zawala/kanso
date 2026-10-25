@@ -15,6 +15,8 @@
 //! exactly, used without another hash. A key without `hmac-secret` registers
 //! without a wrap: it signs in, but a new device needs approval or recovery.
 
+pub mod watch;
+
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sha2::{Digest as _, Sha256};
@@ -179,6 +181,35 @@ fn validate(empty_rp: bool, username: &str) -> Result<(), FidoError> {
         return Err(FidoError::Invalid);
     }
     Ok(())
+}
+
+/// The PIN as libfido2 takes it: its bytes and a NUL, in memory that is
+/// wiped when it goes. Sized up front, so no reallocation leaves a copy
+/// behind. A PIN with a NUL in it can't be passed.
+#[cfg_attr(
+    not(target_os = "linux"),
+    allow(dead_code, reason = "tested everywhere")
+)]
+fn pin_bytes(pin: Option<&str>) -> Result<Option<zeroize::Zeroizing<Vec<u8>>>, FidoError> {
+    let Some(pin) = pin else {
+        return Ok(None);
+    };
+    if pin.as_bytes().contains(&0) {
+        return Err(FidoError::Invalid);
+    }
+    let mut bytes = zeroize::Zeroizing::new(Vec::with_capacity(pin.len() + 1));
+    bytes.extend_from_slice(pin.as_bytes());
+    bytes.push(0);
+    Ok(Some(bytes))
+}
+
+impl Drop for Assertion {
+    fn drop(&mut self) {
+        use zeroize::Zeroize as _;
+        if let Some(secret) = self.hmac_secret.as_mut() {
+            secret.zeroize();
+        }
+    }
 }
 
 // ------------------------------------------------------------- WebAuthn shapes
@@ -547,11 +578,7 @@ mod platform {
         let client_data =
             super::client_data_json("webauthn.create", &request.challenge, &request.origin);
         let hash = Sha256::digest(&client_data);
-        let pin = request
-            .pin
-            .as_deref()
-            .map(|pin| CString::new(pin.as_bytes()).map_err(|_| FidoError::Invalid))
-            .transpose()?;
+        let pin = super::pin_bytes(request.pin.as_deref().map(String::as_str))?;
         let use_hmac_secret = request.hmac_secret && supports_hmac_secret(&dev);
         // SAFETY: every pointer is valid for the call; libfido2 owns the credential.
         unsafe {
@@ -595,7 +622,8 @@ mod platform {
                 code = fido_dev_make_cred(
                     dev.0,
                     cred.0,
-                    pin.as_ref().map_or(std::ptr::null(), |p| p.as_ptr()),
+                    pin.as_ref()
+                        .map_or(std::ptr::null(), |p| p.as_ptr().cast::<c_char>()),
                 );
             }
             if code != 0 {
@@ -628,11 +656,7 @@ mod platform {
             super::client_data_json("webauthn.get", &request.challenge, &request.origin);
         let hash = Sha256::digest(&client_data);
         let salt = super::ctap_salt();
-        let pin = request
-            .pin
-            .as_deref()
-            .map(|pin| CString::new(pin.as_bytes()).map_err(|_| FidoError::Invalid))
-            .transpose()?;
+        let pin = super::pin_bytes(request.pin.as_deref().map(String::as_str))?;
         let use_hmac_secret = request.hmac_secret && supports_hmac_secret(&dev);
         // SAFETY: every pointer is valid for the call; libfido2 owns the assertion.
         unsafe {
@@ -669,7 +693,8 @@ mod platform {
                 code = fido_dev_get_assert(
                     dev.0,
                     assertion.0,
-                    pin.as_ref().map_or(std::ptr::null(), |p| p.as_ptr()),
+                    pin.as_ref()
+                        .map_or(std::ptr::null(), |p| p.as_ptr().cast::<c_char>()),
                 );
             }
             // A key can advertise hmac-secret but still hold an older
@@ -682,7 +707,8 @@ mod platform {
                     code = fido_dev_get_assert(
                         dev.0,
                         assertion.0,
-                        pin.as_ref().map_or(std::ptr::null(), |p| p.as_ptr()),
+                        pin.as_ref()
+                            .map_or(std::ptr::null(), |p| p.as_ptr().cast::<c_char>()),
                     );
                 }
             }
@@ -707,17 +733,20 @@ mod platform {
                 fido_assert_user_id_ptr(assertion.0, 0),
                 fido_assert_user_id_len(assertion.0, 0),
             );
+            // The PRF output is a key: the copy libfido2's buffer is read
+            // into is wiped when it goes.
             let secret = slice_opt(
                 fido_assert_hmac_secret_ptr(assertion.0, 0),
                 fido_assert_hmac_secret_len(assertion.0, 0),
-            );
+            )
+            .map(zeroize::Zeroizing::new);
             if authenticator_data.is_empty() || signature.is_empty() || credential_id.is_empty() {
                 return Err(FidoError::Incomplete);
             }
-            let hmac_secret = match secret {
+            let hmac_secret = match secret.as_deref() {
                 Some(bytes) if bytes.len() == 32 => {
                     let mut out = [0u8; 32];
-                    out.copy_from_slice(&bytes);
+                    out.copy_from_slice(bytes);
                     Some(out)
                 }
                 _ => None,
@@ -915,6 +944,14 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_pin_is_passed_with_one_nul_and_never_with_an_inner_one() {
+        assert_eq!(pin_bytes(None), Ok(None));
+        let pin = pin_bytes(Some("4821")).unwrap().unwrap();
+        assert_eq!(pin.as_slice(), b"4821\0");
+        assert_eq!(pin_bytes(Some("48\x0021")), Err(FidoError::Invalid));
+    }
 
     #[test]
     fn ctap_salt_is_the_webauthn_hash_of_the_prf_input() {
