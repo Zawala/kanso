@@ -29,6 +29,9 @@ pub enum Script {
     Crash,
     /// Asks permission for a tool, then answers with what it was told.
     Permission,
+    /// Says "before ", then asks permission `count` times in a row, then
+    /// answers "permissions=" and the option each got, or "cancelled".
+    Permissions(usize),
     /// Asks Kanso to read a file and open a terminal, then answers with the
     /// error codes it got.
     Fs,
@@ -67,6 +70,7 @@ impl Script {
             "ignore-cancel" => Script::IgnoreCancel,
             "crash" => Script::Crash,
             "permission" => Script::Permission,
+            "permissions" => Script::Permissions(arg(1).parse().unwrap_or(1)),
             "fs" => Script::Fs,
             "huge" => Script::Huge,
             "bad-json" => Script::BadJson,
@@ -375,6 +379,38 @@ impl<W: Write> Fake<W> {
                     .unwrap_or("cancelled")
                     .to_owned();
                 self.answer(&id, &session, &format!("permission={outcome}"));
+            }
+            Script::Permissions(count) => {
+                self.chunk(&session, "before ");
+                let mut outcomes = Vec::new();
+                for ix in 0..count {
+                    let response = self.ask(
+                        input,
+                        "session/request_permission",
+                        json!({
+                            "sessionId": session,
+                            "toolCall": { "toolCallId": format!("t{ix}"), "title": format!("Tool {ix}"), "kind": "execute" },
+                            "options": [
+                                { "optionId": "always", "name": "Always", "kind": "allow_always" },
+                                { "optionId": "yes", "name": "Allow", "kind": "allow_once" },
+                                { "optionId": "never", "name": "Never", "kind": "reject_always" },
+                                { "optionId": "no", "name": "Reject", "kind": "reject_once" },
+                            ],
+                        }),
+                    );
+                    outcomes.push(
+                        response
+                            .pointer("/result/outcome/optionId")
+                            .and_then(Value::as_str)
+                            .unwrap_or("cancelled")
+                            .to_owned(),
+                    );
+                }
+                self.answer(
+                    &id,
+                    &session,
+                    &format!("permissions={}", outcomes.join(",")),
+                );
             }
             Script::Fs => {
                 let fs = self.ask(

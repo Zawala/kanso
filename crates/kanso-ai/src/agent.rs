@@ -20,7 +20,8 @@ use std::time::{Duration, Instant};
 
 use kanso_acp::detect::{self, Detection};
 use kanso_acp::{
-    AcpError, AcpEvent, AgentProcess, AgentSpec, Limits, McpServer, Session, StopReason,
+    AcpError, AcpEvent, AgentProcess, AgentSpec, Limits, McpServer, PermissionPolicy, Session,
+    StopReason,
 };
 
 pub use kanso_acp::AgentKind;
@@ -262,8 +263,32 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 /// in tests.
 pub type Starter = Arc<dyn Fn(&AgentSpec, Limits) -> Result<AgentProcess, AcpError> + Send + Sync>;
 
+/// Who answers an agent's permission requests, if anyone: the app sets it
+/// once its windows can show a sheet.
+static DECIDER: Mutex<Option<PermissionPolicy>> = Mutex::new(None);
+
+/// Sets who decides when an agent asks permission to use one of its own
+/// tools; every agent Kanso starts, for questions, Test and sign-in, asks the
+/// same one. With none set (headless, tests, no window), every request is
+/// rejected.
+pub fn set_permission_decider(decider: Option<PermissionPolicy>) {
+    *lock(&DECIDER) = decider;
+}
+
+/// The decider as set when a request comes in, so a change reaches agents
+/// already running.
+fn permission_policy() -> PermissionPolicy {
+    Arc::new(|request, reply| {
+        let decider = lock(&DECIDER).clone();
+        match decider {
+            Some(decider) => decider(request, reply),
+            None => reply.reject(),
+        }
+    })
+}
+
 fn launch() -> Starter {
-    Arc::new(|spec, limits| AgentProcess::start(spec, limits, kanso_acp::reject_all()))
+    Arc::new(|spec, limits| AgentProcess::start(spec, limits, permission_policy()))
 }
 
 /// One selected agent: its warm process, if running, and recent failures.
@@ -966,10 +991,48 @@ fn sign_in_on(host: &Host, settings: &AgentSettings, method: &str) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use super::{AGENT_SYSTEM, AgentKind, AgentSettings, agent_text};
+    use super::{
+        AGENT_SYSTEM, AgentKind, AgentSettings, agent_text, permission_policy,
+        set_permission_decider,
+    };
     use crate::client::Turn;
     use crate::prompt::{self, Excerpt, Prompt};
     use proptest::prelude::*;
+
+    /// What the fake agent's permission question is answered with, through
+    /// the host's policy.
+    fn asked_permission() -> String {
+        let (from_agent, to_agent) =
+            kanso_acp::fake::in_process(kanso_acp::fake::Script::Permission).unwrap();
+        let agent = kanso_acp::AgentProcess::connect(
+            "Fake Agent",
+            from_agent,
+            to_agent,
+            kanso_acp::Limits::default(),
+            permission_policy(),
+        )
+        .unwrap();
+        let session = agent.new_session(&std::env::temp_dir()).unwrap();
+        session
+            .prompt("x", None)
+            .unwrap()
+            .filter_map(|event| match event {
+                kanso_acp::AcpEvent::Text(text) => Some(text),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn with_no_decider_every_permission_request_is_rejected() {
+        set_permission_decider(None);
+        assert_eq!(asked_permission(), "permission=no");
+        let allow: kanso_acp::PermissionPolicy = std::sync::Arc::new(|_, reply| reply.allow_once());
+        set_permission_decider(Some(allow));
+        assert_eq!(asked_permission(), "permission=yes");
+        set_permission_decider(None);
+        assert_eq!(asked_permission(), "permission=no");
+    }
 
     #[test]
     fn a_known_agent_is_called_by_its_name_and_a_custom_one_by_its_command() {
