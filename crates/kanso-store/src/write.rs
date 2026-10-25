@@ -384,6 +384,8 @@ thread_local! {
     /// Set by a write that overwrote a note's plain or old-key text, so the
     /// store empties the write-ahead log, where that text still is, once the
     /// write commits ([`forgot_text`]).
+    // Clippy asks for the `const` this already has when it checks for Android.
+    #[cfg_attr(target_os = "android", allow(clippy::missing_const_for_thread_local))]
     static FORGOT_TEXT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
