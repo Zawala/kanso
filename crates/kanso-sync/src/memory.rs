@@ -2762,6 +2762,9 @@ impl ServerState {
                 if rules.count_proof {
                     self.count_session(Rule::ProofAccount, caller, now)?;
                 }
+                // Bound to this session's device and its proof, as a passkey
+                // proof's flow is; another session's is unknown.
+                let proof_hash = self.session_proof_hash(caller);
                 let f = self
                     .provider_flows
                     .get(flow)
@@ -2770,6 +2773,8 @@ impl ServerState {
                             && !f.proof_used
                             && f.expires_at > now
                             && f.intent == Some(IdentityIntent::Proof)
+                            && f.device_id == caller.device_id
+                            && Some(&f.proof_hash) == proof_hash.as_ref()
                     })
                     .cloned()
                     .ok_or(ApiError::FlowExpired { gone: false })?;

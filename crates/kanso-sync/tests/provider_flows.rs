@@ -27,6 +27,7 @@ struct World {
     a: Session,
     /// Mac 2's session.
     b: Session,
+    recovery: kanso_sync::RecoveryKey,
 }
 
 fn world() -> World {
@@ -37,7 +38,7 @@ fn world() -> World {
     let auth = TestAuthenticator::new(1);
     let start = kanso_sync::start_passkey_sign_up(&server, SERVER, "alice", &mac(1)).unwrap();
     let registration = auth.register(&start.challenge).unwrap();
-    let a = kanso_sync::sign_up_with_passkey(
+    let up = kanso_sync::sign_up_with_passkey(
         &server,
         &MemorySecrets::new(),
         &start,
@@ -46,8 +47,8 @@ fn world() -> World {
         &quiet,
     )
     .map_err(|err| err.error)
-    .unwrap()
-    .session;
+    .unwrap();
+    let (a, recovery) = (up.session, up.recovery_key);
     let start = kanso_sync::start_passkey_sign_in(&server, SERVER, None, &LoginDevice::ephemeral())
         .unwrap();
     let assertion = auth.assert(&start.challenge).unwrap();
@@ -67,6 +68,7 @@ fn world() -> World {
         auth,
         a,
         b: b.session,
+        recovery,
     }
 }
 
@@ -141,4 +143,55 @@ fn a_link_on_a_disabled_account_links_nothing() {
     assert!(matches!(out, Err(AccountError::FlowExpired)), "{out:?}");
     w.server.enable("alice");
     assert_eq!(linked(&w), 0);
+}
+
+/// Links GitHub, then finishes a GitHub proof flow started by Mac 1.
+fn finished_proof(w: &World) -> String {
+    let flow = start_link(w);
+    assert!(matches!(poll(w, &flow), Ok(LinkOutcome::Linked { .. })));
+    let started = kanso_sync::start_identity(
+        &w.server,
+        &w.a,
+        &Provider::Github,
+        IdentityIntent::Proof,
+        None,
+        None,
+        None,
+        &device(1, &w.a),
+    )
+    .unwrap();
+    let ProviderStart::Github(github) = started else {
+        panic!("a GitHub start");
+    };
+    w.server.push_github_answer("authorized");
+    w.server.set_now(START + 30_000);
+    assert!(matches!(
+        poll(w, &github.flow_id),
+        Ok(LinkOutcome::Proof { .. })
+    ));
+    github.flow_id
+}
+
+fn rotate(w: &World, session: &Session, flow: &str) -> Result<(), AccountError> {
+    let proof = Proof::Provider { flow: flow.into() };
+    kanso_sync::new_recovery_key_with_proof(
+        &w.server,
+        &MemorySecrets::new(),
+        session,
+        &proof,
+        Some(&w.recovery),
+        &quiet,
+    )
+    .map(|_| ())
+    .map_err(|err| err.error)
+}
+
+#[test]
+fn a_provider_proof_is_only_its_devices() {
+    let w = world();
+    let flow = finished_proof(&w);
+    let out = rotate(&w, &w.b, &flow);
+    assert!(matches!(out, Err(AccountError::FlowExpired)), "{out:?}");
+    // Its own session may use it.
+    rotate(&w, &w.a, &flow).unwrap();
 }
