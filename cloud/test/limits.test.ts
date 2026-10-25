@@ -272,12 +272,13 @@ describe("keys", () => {
 				`login-user:${a.creds.accountId}`,
 				"login-user:unknown",
 				await expectedIpKey("recover-ip", "2001:db8:aa:0:0:0:0:0/48"),
-				`password-account:${a.creds.accountId}`,
+				`password-account:${a.creds.accountId}:${a.device.id.slice(2, 18)}`,
+				`password-total:${a.creds.accountId}`,
 			].sort(),
 		);
 		for (const key of keys) {
 			for (const leak of ["alice", "carol", "203.0.113", "2001", "db8"]) expect(key).not.toContain(leak);
-			expect(key).toMatch(/^(signup-ip|login-ip|recover-ip):[0-9a-f]{32}$|^(login-user|password-account|writes-account):(a_[0-9a-f]{32}|unknown)$/);
+			expect(key).toMatch(/^(signup-ip|login-ip|recover-ip):[0-9a-f]{32}$|^(login-user|password-account|password-total|writes-account):(a_[0-9a-f]{32}|unknown)(:[0-9a-f]{16})?$/);
 		}
 	});
 });

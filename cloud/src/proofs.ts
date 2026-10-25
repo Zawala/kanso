@@ -33,7 +33,7 @@ import { type Session, readObject, withSessionKeys } from "./auth";
 import { proofMatches, randomBytes, sha256Hex } from "./crypto";
 import type { Env } from "./env";
 import { badRequest, error, invalidCredentials, json, notFound } from "./http";
-import { accountKey, count } from "./limits";
+import { accountKey, count, countSession } from "./limits";
 import { base64url, fromBase64url, isObject, proof32 } from "./protocol";
 import {
 	type AuthFlowRow,
@@ -144,7 +144,7 @@ async function passwordProof(
 	rules: ProofRules,
 ): Promise<CheckedProof> {
 	if (!rules.passwordCounted) {
-		const limited = await count(env.DB, "password-account", accountKey("password-account", session.accountId), now);
+		const limited = await countSession(env.DB, "password-account", session, now);
 		if (limited) return failed(limited);
 	}
 	const authKey = proof32(value.auth_key);
@@ -204,7 +204,7 @@ async function passkeyProof(env: Env, now: number, session: Session, value: Reco
 	const signature = bytesField(assertion.signature, 1, 1024);
 	if (!credentialId || !authenticatorData || !clientDataJson || !signature) return failed(badRequest("proof.assertion is malformed."));
 	if (rules.countProof) {
-		const limited = await count(env.DB, "proof-account", accountKey("proof-account", session.accountId), now);
+		const limited = await countSession(env.DB, "proof-account", session, now);
 		if (limited) return failed(limited);
 	}
 
@@ -267,7 +267,7 @@ async function providerProof(env: Env, now: number, session: Session, value: Rec
 	const flowId = value.flow;
 	if (typeof flowId !== "string" || !isFlowId(flowId)) return failed(reauthRequired());
 	if (rules.countProof) {
-		const limited = await count(env.DB, "proof-account", accountKey("proof-account", session.accountId), now);
+		const limited = await countSession(env.DB, "proof-account", session, now);
 		if (limited) return failed(limited);
 	}
 	const flow = await flowById(env, flowId);
@@ -358,7 +358,7 @@ export async function proofWithRecovery(
 export const proofStart = withSessionKeys(async (request, env, now, keys, session) => {
 	const advertisement = passkeyAdvertisement(env);
 	if (!advertisement) return unsupportedMethod();
-	const limited = await count(env.DB, "proof-account", accountKey("proof-account", session.accountId), now);
+	const limited = await countSession(env.DB, "proof-account", session, now);
 	if (limited) return limited;
 	const body = await readObject(request);
 	if (!body.ok) return body.response;

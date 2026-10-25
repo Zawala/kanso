@@ -1493,8 +1493,10 @@ Bitwarden's phrase derivation are not public; only their user-facing behaviour i
 | `login-user` | account ID; one shared row for names without an account | 15 min | 10 | Every sign-in, unless its device ID has an active session row (`revoked_at IS NULL`) for that account and SHA-256 of the request's device proof equals that row's `proof_hash` (M8, security re-check 5, security review 2) |
 | `login-ip` | IP group (/48) | 15 min | 30 | Every sign-in |
 | `recover-ip` | IP group (/48) | 1 h | 10 | Every `recover/start` and `recover/finish` |
-| `password-account` | account ID | 15 min | 5 | Every current-password proof (password change, set, new recovery key, delete, linking, unlinking, passkeys) |
-| `proof-account` | account ID | 1 h | 20 | Every passkey or provider proof for a sensitive change (`sign-in/proof/start`, link and proof flows) |
+| `password-account` | account ID and device (the device ID's first 64 bits) | 15 min | 5 | Every current-password proof (password change, set, new recovery key, delete, linking, unlinking, passkeys) |
+| `password-total` | account ID | 15 min | 15 | The same requests, counted only after the device's `password-account` passes |
+| `proof-account` | account ID and device | 1 h | 20 | Every passkey or provider proof for a sensitive change (`sign-in/proof/start`, link and proof flows) |
+| `proof-total` | account ID | 1 h | 60 | The same requests, counted only after the device's `proof-account` passes |
 | `passkey-challenge` | IP group (/48) | 15 min | 30 | Every passkey sign-in start (`passkey/signup/start` counts `signup-ip`) |
 | `passkey-manage` | account ID | 1 h | 20 | Every passkey registration and removal |
 | `approval-create` | account ID | 1 h | 10 | Every new device-approval request |
@@ -1503,6 +1505,11 @@ Bitwarden's phrase derivation are not public; only their user-facing behaviour i
 | `provider-poll` | flow ID | 15 min | 300 | Every GitHub device-flow poll and Apple callback poll; 20 a minute, enough for GitHub's 5 s interval; the Worker also enforces that interval |
 | `writes-account` | account ID | 1 day | the account's `quota_writes_per_day`, else `settings.writes_per_day` | Documents in each push, plus 1 per file upload, plus 1 per push refused as malformed or too large (so failed pushes aren't free) |
 | `uploads-account` | account ID | 1 day | `settings.upload_bytes_per_day` | Each upload's `Content-Length` (capped at the largest file plus one byte; the largest file when it's missing), counted before the body is read, after `writes-account` passes; a body longer than it declared counts the rest |
+
+The proof rules count per device first (security review of PR #67, finding 3). One session sees the
+same `password-account` and `proof-account` answers it always did, but it can use up at most a third
+of the account's total and none of another device's own allowance. A stolen session therefore can't
+lock a passkey-only owner out of proofs. Deleting the account deletes all of these rows.
 
 There is no per-username recovery rule, so nobody can lock someone else out of recovery (M8). A
 sign-up past `signups_per_day` (server-wide per UTC day, counted by a trigger in `daily`; deleting

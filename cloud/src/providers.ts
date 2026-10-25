@@ -32,7 +32,7 @@ import {
 import { type PepperKeys, proofMatches, randomBytes, sha256, sha256Hex } from "./crypto";
 import type { Env } from "./env";
 import { accountDisabled, badRequest, constraint, error, invalidCredentials, json, notFound, readBody, refusal } from "./http";
-import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, ipGroup, ipKey, sessionFilter } from "./limits";
+import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, countSession, ipGroup, ipKey, sessionFilter } from "./limits";
 import {
 	APPLE_ID_TOKEN_ALGORITHMS,
 	APPLE_ISSUER,
@@ -1076,7 +1076,7 @@ export function identityStart(name: string): PepperHandler {
 	return withSessionKeys(async (request, env, now, keys, session) => {
 		const provider = servedProvider(env, name);
 		if (provider instanceof Response) return provider;
-		const limited = await count(env.DB, "proof-account", accountKey("proof-account", session.accountId), now);
+		const limited = await countSession(env.DB, "proof-account", session, now);
 		if (limited) return limited;
 		const body = await readObject(request);
 		if (!body.ok) return body.response;

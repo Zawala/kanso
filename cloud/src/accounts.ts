@@ -598,7 +598,10 @@ export async function admin(args: string[], io: AdminIO, now: number = Date.now(
 				`DELETE FROM limits WHERE key IN ('login-user:' || ${id}, 'password-account:' || ${id}, 'writes-account:' || ${id},
   'uploads-account:' || ${id}, 'lookup-account:' || ${id}, 'join-account:' || ${id}, 'notify-account:' || ${id},
   'proof-account:' || ${id}, 'passkey-manage:' || ${id},
-  'approval-create:' || ${id}, 'approval-poll:' || ${id}, 'approval-respond:' || ${id})`,
+  'approval-create:' || ${id}, 'approval-poll:' || ${id}, 'approval-respond:' || ${id})
+  OR (key > 'password-account:' || ${id} || ':' AND key < 'password-account:' || ${id} || ';')
+  OR (key > 'proof-account:' || ${id} || ':' AND key < 'proof-account:' || ${id} || ';')
+  OR key IN ('password-total:' || ${id}, 'proof-total:' || ${id})`,
 				socketCloseSql(user, now),
 				`INSERT INTO purges (prefix, requested_at) SELECT 'accounts/' || id || '/', ${now} FROM accounts WHERE username = ${sqlText(user)}
   ON CONFLICT (prefix) DO UPDATE SET requested_at = excluded.requested_at`,

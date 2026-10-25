@@ -777,7 +777,7 @@ describe("POST /v2/account/recovery-key with a proof", () => {
 		expect((await recoveryKey(alice.token, { proof: passwordProof(alice) })).body).toMatchObject({ limit: "password-account" });
 		const p = await passkeyAccount("prover");
 		await env.DB.prepare("INSERT INTO limits (key, window_start, count) VALUES (?1, ?2, 19)")
-			.bind(`proof-account:${p.accountId}`, Math.floor(T0 / 3_600_000) * 3_600_000)
+			.bind(`proof-account:${p.accountId}:${p.device.id.slice(2, 18)}`, Math.floor(T0 / 3_600_000) * 3_600_000)
 			.run();
 		// proof/start takes the twentieth; the proof itself is refused.
 		const proof = await passkeyProof(p.token, p.credential);
@@ -984,5 +984,44 @@ describe("a provider proof is the session's own device's", () => {
 		expect(unused).toEqual({ n: 2 });
 		// The session's own device's flow works.
 		expect((await recoveryKey(p.token, recoveryBody(p, await providerProof(p.accountId, p.device)))).status).toBe(200);
+	});
+});
+
+// Security review of PR #67, finding 3: a stolen session can't use up the
+// account's proof and password limits.
+describe("proof limits count per session first", () => {
+	async function secondSession(p: PasskeyAccount, signCount: number) {
+		const d = newDevice();
+		const begin = await callJson("/v2/auth/passkey/start", { json: { device: wire(d) }, env: menv(), now: T0 });
+		const signed = await callJson("/v2/auth/passkey/finish", {
+			json: { flow_id: begin.body.flow_id, ...assertion(p.credential, begin.body.challenge, { signCount }), device: wire(d) },
+			env: menv(),
+			now: T0,
+		});
+		expect(signed.status).toBe(200);
+		return signed.body.token as string;
+	}
+
+	it("one session's proof-account is its own; the account's proof-total is three sessions' worth", async () => {
+		const p = await passkeyAccount("prover");
+		const tokens = [p.token, await secondSession(p, 1), await secondSession(p, 2), await secondSession(p, 3)];
+		for (let i = 0; i < 20; i++) expect((await proofStart(tokens[0])).status).toBe(200);
+		expect((await proofStart(tokens[0])).body).toMatchObject({ error: "rate_limited", limit: "proof-account" });
+		// The owner's other device still proves.
+		expect((await proofStart(tokens[1])).status).toBe(200);
+		for (let i = 0; i < 19; i++) await proofStart(tokens[1]);
+		for (let i = 0; i < 20; i++) expect((await proofStart(tokens[2])).status).toBe(200);
+		expect((await proofStart(tokens[3])).body).toMatchObject({ error: "rate_limited", limit: "proof-total" });
+	});
+
+	it("one session's wrong passwords don't lock the account's other devices out", async () => {
+		const alice = await signUp("alice", { env: menv(), now: T0 });
+		const other = await callJson("/v2/auth/login", { env: menv(), now: T0, json: { username: "alice", auth_key: alice.creds.authKey, device: wire(newDevice()) } });
+		const wrong = { proof: { kind: "password", auth_key: newCreds("x").authKey } };
+		for (let i = 0; i < 5; i++) expect((await registerStart(alice.token, wrong.proof)).body.error).not.toBe("rate_limited");
+		// passkey-manage is per account; recovery-key counts only password-account.
+		const body = (token: string) => as("/v2/account/recovery-key", { ...wrong, recovery_auth_key: alice.creds.recoveryAuthKey, recovery_wrapped_key: alice.creds.recoveryWrappedKey }, token);
+		expect((await body(alice.token)).body).toMatchObject({ limit: "password-account" });
+		expect((await body(other.body.token)).body.error).toBe("invalid_credentials");
 	});
 });

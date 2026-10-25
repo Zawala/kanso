@@ -20,7 +20,7 @@ import { memberships } from "./collab";
 import { proofMatches, sha256Hex } from "./crypto";
 import type { Env } from "./env";
 import { badRequest, error, invalidCredentials, json } from "./http";
-import { accountKey, count } from "./limits";
+import { accountKey, count, countSession } from "./limits";
 import { checkKdf, isSalt, isWrappedKey, proof32 } from "./protocol";
 import { type ProofAccount, type ProofGuard, proofAccount, proofUsed, proofWithRecovery } from "./proofs";
 import { flowExpired } from "./sign_in";
@@ -44,7 +44,7 @@ const alreadyHasPassword = (): Response =>
  * `password-account`.
  */
 export const setPassword = withSession(async (request, env, now, session) => {
-	const limited = await count(env.DB, "password-account", accountKey("password-account", session.accountId), now);
+	const limited = await countSession(env.DB, "password-account", session, now);
 	if (limited) return limited;
 	const body = await readObject(request);
 	if (!body.ok) return body.response;
@@ -129,7 +129,7 @@ async function proofOrPassword(
 	field: string,
 ): Promise<{ ok: true; account: ProofAccount; guard: ProofGuard } | { ok: false; response: Response }> {
 	if (body.proof === undefined) {
-		const limited = await count(env.DB, "password-account", accountKey("password-account", session.accountId), now);
+		const limited = await countSession(env.DB, "password-account", session, now);
 		if (limited) return { ok: false, response: limited };
 		const current = proof32(body[field]);
 		if (!current) return { ok: false, response: badRequest(`${field} must be 32 bytes of canonical base64url.`) };

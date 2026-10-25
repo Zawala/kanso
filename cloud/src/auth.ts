@@ -25,7 +25,7 @@ import {
 	type SignOutReason,
 	unauthorized,
 } from "./http";
-import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, ipGroup, ipKey, sessionFilter, windowStart } from "./limits";
+import { UNKNOWN_LOGIN_KEY, accountKey, clientIp, count, countSession, sessionLimitKeys, ipGroup, ipKey, sessionFilter, windowStart } from "./limits";
 import {
 	type Checked,
 	DAY,
@@ -719,7 +719,7 @@ async function checkCurrentPassword(
 	session: Session,
 	field: string,
 ): Promise<{ ok: true; body: Record<string, unknown>; account: AccountRow; current: Uint8Array } | { ok: false; response: Response }> {
-	const limited = await count(env.DB, "password-account", accountKey("password-account", session.accountId), now);
+	const limited = await countSession(env.DB, "password-account", session, now);
 	if (limited) return { ok: false, response: limited };
 	const body = await readObject(request);
 	if (!body.ok) return body;
@@ -850,9 +850,10 @@ export function deletionStatements(db: D1Database, accountId: string, now: numbe
 		bind(`DELETE FROM account_identities WHERE account_id = ?1 AND ${where}`),
 		bind(`DELETE FROM sessions WHERE account_id = ?1 AND ${where}`),
 		bind(
-			`DELETE FROM limits WHERE key IN ('login-user:' || ?1, 'password-account:' || ?1, 'writes-account:' || ?1, 'uploads-account:' || ?1,
+			`DELETE FROM limits WHERE (key IN ('login-user:' || ?1, 'password-account:' || ?1, 'writes-account:' || ?1, 'uploads-account:' || ?1,
   'lookup-account:' || ?1, 'join-account:' || ?1, 'notify-account:' || ?1, 'proof-account:' || ?1, 'passkey-manage:' || ?1,
   'approval-create:' || ?1, 'approval-poll:' || ?1, 'approval-respond:' || ?1)
+  OR ${sessionLimitKeys(1)})
   AND ${where}`,
 		),
 		db
